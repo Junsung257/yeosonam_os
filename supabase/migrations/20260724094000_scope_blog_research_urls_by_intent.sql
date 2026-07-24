@@ -26,7 +26,18 @@ SET research_intents = CASE
   WHEN hostname = 'visitguam.com' AND source_type = 'official_tourism'
     THEN ARRAY['entry_requirements']
   ELSE ARRAY[]::text[]
-END;
+END
+WHERE (hostname, source_type) IN (
+  ('worldweather.wmo.int', 'meteorological_agency'),
+  ('guamairport.com', 'airport'),
+  ('kakaomobility.com', 'transport_operator'),
+  ('grta.guam.gov', 'transport_operator'),
+  ('cbp.gov', 'immigration'),
+  ('cbp.gov', 'customs'),
+  ('cqa.guam.gov', 'customs'),
+  ('ecfr.gov', 'government'),
+  ('visitguam.com', 'official_tourism')
+);
 
 COMMENT ON COLUMN public.blog_information_official_source_registry.research_intents IS
   'Informational intents for which the reviewed direct URLs may be fetched and attached as evidence.';
