@@ -17,8 +17,14 @@ import {
   summarizeBlogGenerationResearch,
 } from './blog-generation-research';
 import { validateBlogInformationStructure } from './blog-information-structure';
-import { checkHook, checkLinks, checkMarkdownTableIntegrity } from './blog-quality-gate';
+import {
+  checkArticleQualityV2,
+  checkHook,
+  checkLinks,
+  checkMarkdownTableIntegrity,
+} from './blog-quality-gate';
 import { inspectBlogImageQuality } from './blog-image-quality';
+import { computeReadability } from './blog-readability';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { extractFaqItems } from './blog-jsonld';
 import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
@@ -326,13 +332,19 @@ describe('blog generation research preflight', () => {
     expect(first.approvedClaims).toHaveLength(12);
     expect(first.markdown).toContain('| 1월 | 1981~2010 평년값: 1월 최고기온 29.0°C');
     expect(first.markdown).toContain('| 12월 | 1981~2010 평년값: 12월 최고기온 30.1°C');
-    expect(first.markdown).toContain('반팔·방수 겉옷·우산');
+    expect(first.markdown).toContain('반팔과 방수 겉옷, 우산');
     expect(extractFaqItems(first.markdown)).toHaveLength(3);
     expect(first.markdown.length).toBeGreaterThanOrEqual(2500);
     expect(extractBlogInformationClaims(first.markdown)).toHaveLength(12);
     expect(extractBlogInformationClaims(first.markdown).every((claim) => claim.claimType === 'climate')).toBe(true);
     expect(checkHook(first.markdown).passed).toBe(true);
     expect(checkLinks(first.markdown, 'https://www.yeosonam.com').passed).toBe(true);
+    expect(checkArticleQualityV2({
+      blog_html: first.markdown,
+      slug: WEATHER_CONTENT_KEY,
+      blog_type: 'info',
+    }).passed).toBe(true);
+    expect(computeReadability(first.markdown).duplicate_phrases).toEqual([]);
     expect(inspectBlogImageQuality(first.markdown, {
       destination: '괌',
       primaryKeyword: '괌 7월 날씨',
@@ -361,6 +373,21 @@ describe('blog generation research preflight', () => {
     })).toMatchObject({ passed: true, issues: [] });
     expect(second.changed).toBe(false);
     expect(second.markdown).toBe(first.markdown);
+
+    const repairedGenericLead = repairBlogGenerationResearchStructure({
+      markdown: `괌, 먼저 무엇을 확인해야 할까요? 일정과 비용을 비교하세요.\n\n${first.markdown}`,
+      intent: 'monthly_weather',
+      readiness: result,
+    });
+    expect(repairedGenericLead.changed).toBe(true);
+    expect(repairedGenericLead.markdown).toMatch(
+      /^<!-- blog_research_structure:monthly_weather:v2 -->\n# /,
+    );
+    expect(checkArticleQualityV2({
+      blog_html: repairedGenericLead.markdown,
+      slug: WEATHER_CONTENT_KEY,
+      blog_type: 'info',
+    }).passed).toBe(true);
 
     const regressedMarkdown = first.markdown.replace(
       '<!-- /blog_research_structure:monthly_weather:v2 -->',

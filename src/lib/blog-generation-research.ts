@@ -504,11 +504,40 @@ function monthlyWeatherClaimMonth(
   return Number.isInteger(month) && month >= 1 && month <= 12 ? month : null;
 }
 
-function monthlyWeatherClothing(claimText: string): string {
+function monthlyWeatherClothing(claimText: string, month: number): string {
   const rainfall = Number(claimText.match(/강수량\s*(\d+(?:\.\d+)?)\s*mm/i)?.[1]);
-  if (Number.isFinite(rainfall) && rainfall >= 250) return '반팔·방수 겉옷·우산';
-  if (Number.isFinite(rainfall) && rainfall >= 150) return '반팔·얇은 방수 겉옷';
-  return '반팔·얇은 겉옷';
+  const variantIndex = Math.max(0, month - 1) % 4;
+  if (Number.isFinite(rainfall) && rainfall >= 250) {
+    return [
+      '반팔과 방수 겉옷, 우산',
+      '가벼운 상의와 우비, 우산',
+      '얇은 옷과 방수 재킷, 여벌옷',
+      '통풍되는 옷과 우산, 방수 파우치',
+    ][variantIndex]!;
+  }
+  if (Number.isFinite(rainfall) && rainfall >= 150) {
+    return [
+      '반팔과 얇은 방수 겉옷',
+      '가벼운 상의와 휴대용 우산',
+      '얇은 옷과 가벼운 우비',
+      '통풍되는 옷과 방수 재킷',
+    ][variantIndex]!;
+  }
+  return [
+    '반팔과 얇은 겉옷',
+    '가벼운 상의와 냉방용 겉옷',
+    '얇은 옷과 휴대용 겉옷',
+    '통풍되는 옷과 가벼운 재킷',
+  ][variantIndex]!;
+}
+
+function monthlyWeatherAdjustment(month: number): string {
+  return [
+    '기온과 강수량을 함께 확인',
+    '강수일수와 단기예보 확인',
+    '체감기온과 비 예보 확인',
+    '출발 직전 예보로 최종 조정',
+  ][Math.max(0, month - 1) % 4]!;
 }
 
 function buildDeterministicMonthlyWeatherArticle(input: {
@@ -531,16 +560,16 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     ? ['', `![${imageAlts[index]}](${imageUrls[index]})`]
     : [];
   const climateRows = input.approvedClaims.map((claim, index) =>
-    `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} | ${monthlyWeatherClothing(claim.claimText)} |`);
+    `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} |`);
   const clothingRows = input.approvedClaims.map((claim, index) =>
-    `| ${index + 1}월 | ${monthlyWeatherClothing(claim.claimText)} | 기온·강수·단기예보 함께 확인 |`);
+    `| ${index + 1}월 | ${monthlyWeatherClothing(claim.claimText, index + 1)} | ${monthlyWeatherAdjustment(index + 1)} |`);
 
   return [
     MONTHLY_WEATHER_STRUCTURE_MARKER,
     `# ${title}`,
     '',
-    '1~12월 기온과 강수 자료에서 무엇을 먼저 비교해야 할까요?',
-    '여행하는 달의 기온·강수량·강수일수를 확인하고, 옷차림과 비 대비 준비를 같은 순서로 점검해 보세요.',
+    '기온과 비 예보를 확인한 뒤, 옷차림과 준비물을 출발 직전 조건에 맞춰 조정하세요.',
+    '1~12월 자료에서는 여행하는 달의 기온·강수량·강수일수를 어떤 순서로 확인해야 할까요?',
     '장기 평년자료와 실제 출발일 예보를 같은 값으로 보지 말고, 표는 준비 기준으로 활용한 뒤 단기예보를 다시 확인하세요.',
     ...imageAt(0),
     '',
@@ -556,8 +585,8 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '',
     `자료 원문: [${input.sourceLabel}](${input.sourceUrl})`,
     '',
-    '| 월 | 검증된 평년값 | 옷차림 준비 |',
-    '| --- | --- | --- |',
+    '| 월 | 검증된 평년값 |',
+    '| --- | --- |',
     ...climateRows,
     ...imageAt(1),
     '',
@@ -607,7 +636,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '## 공식 출처',
     '',
     `- [${input.sourceLabel} 월별 기후자료](${input.sourceUrl})`,
-    `- [출발 전 다시 여는 ${input.sourceLabel} 자료](${input.sourceUrl})`,
+    '- [WMO 세계 공식 예보·기후 포털](https://worldweather.wmo.int/en/home.html)',
     MONTHLY_WEATHER_STRUCTURE_END_MARKER,
   ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -646,7 +675,14 @@ function repairMonthlyWeatherResearchStructure(input: {
     intent: 'monthly_weather',
     markdown: input.markdown,
   });
-  if (hasCompleteBlock && existingReport.passed) return unchanged();
+  const firstParagraph = input.markdown.trim().match(
+    /^<!-- blog_research_structure:monthly_weather:v2 -->\s*\n#\s+.+\n\s*\n([^\n]+)/,
+  )?.[1] ?? '';
+  const hasIntentAlignedIntro = /기온/.test(firstParagraph)
+    && /비/.test(firstParagraph)
+    && /옷차림/.test(firstParagraph)
+    && /준비물/.test(firstParagraph);
+  if (hasCompleteBlock && existingReport.passed && hasIntentAlignedIntro) return unchanged();
 
   const source = input.readiness.bundle.sources.find((candidate) =>
     candidate.claimTypes.includes('climate') && Boolean(candidate.sourceUrl));
