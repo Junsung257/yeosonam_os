@@ -92,6 +92,8 @@
 | `AI_TASK_PROVIDER_OVERRIDES` | 태스크별 제공자 오버라이드. 형식: `task:provider,task:provider` | 빈 값 |
 | `AI_TASK_MODEL_OVERRIDES` | 태스크별 모델 오버라이드. 형식: `task:model,task:model` | 빈 값 |
 | `BLOG_AI_MODEL` | 블로그 생성 모델 강제 지정(선택) | `deepseek-v4-flash` |
+| `BLOG_RESEARCH_MODEL` | 정보성 블로그의 Google Search grounding 리서치 모델. 미설정 시 `gemini-2.5-flash` | `gemini-2.5-flash` |
+| `BLOG_RESEARCH_TIMEOUT_MS` | 정보성 블로그 자동 리서치 1회 제한 시간. 기본 `90000`, 허용 범위 20~120초 | `90000` |
 
 예시:
 - `AI_DEFAULT_PROVIDER=deepseek`
@@ -245,7 +247,7 @@ New DB migrations that must be applied for full persistence:
 |---|---|
 | `ADMIN_EMAILS` 없음 | 브라우저에서 로그인한 상태로 어드민 API·정책 API 등 `isAdminRequest` 경로 거부 |
 | `SUPABASE_JWT_SECRET` 없음 (Production) | `sb-access-token` 검증 실패 → 어드민·일부 보호 API 동작 불가 |
-| `GOOGLE_AI_API_KEY` 없음 | 블로그 자동 생성 fallback (하드코딩 시즌 토픽만 사용) |
+| `GOOGLE_AI_API_KEY` 없음 | 정보성 블로그의 근거 조사 preflight 실패. 근거 없는 fallback 글은 발행하지 않음 |
 | `SOLAPI_*` 없음 | 알림톡 발송 실패, DB 로그만 남음 |
 | `KAKAO_TEMPLATE_REVIEW_REQUEST` 없음 | 리뷰 요청 알림톡 skip. 콘솔 경고만 |
 | `AUTO_APPROVE_LEARNING=false` | 자기학습 수동 승인 필요 (권장 모드) |
