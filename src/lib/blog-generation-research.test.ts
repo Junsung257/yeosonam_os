@@ -96,6 +96,95 @@ function foodBudgetBundle(priceCount = 7): BlogInformationResearchBundle {
   };
 }
 
+const WEATHER_CONTENT_KEY = 'guam-weather-packing';
+const WEATHER_POLICY: BlogInformationSourcePolicy = {
+  minimumClaimSourceCoverage: 0.9,
+  primarySourcesRequired: true,
+  exactNumbersRequireSource: true,
+  retrievedAtRequired: true,
+  sourceTypes: ['official_climate_data'],
+};
+
+function monthlyWeatherBundle(monthCount = 12): BlogInformationResearchBundle {
+  const statements = Array.from({ length: monthCount }, (_, index) => {
+    const month = index + 1;
+    return `1981~2010 평년값: ${month}월 최고기온 ${(29 + index / 10).toFixed(1)}°C, 최저기온 ${(24 + index / 10).toFixed(1)}°C, 강수량 ${(100 + index * 20).toFixed(1)}mm, 강수일수 ${(18 + index / 10).toFixed(1)}일`;
+  });
+  const excerpts = statements.map((statement, index) =>
+    `${statement} [검증 범위: 미국 괌; 대상: 괌 여행자; 기준일: 2026-07-24; 값: ${(29 + index / 10).toFixed(1)} °C]`);
+  const snapshotContent = excerpts.join('\n\n');
+  return {
+    contentKey: WEATHER_CONTENT_KEY,
+    sources: [{
+      sourceKey: 'wmo-guam-climate',
+      sourceType: 'meteorological_agency',
+      authorityLevel: 'official_primary',
+      sourceUrl: 'https://worldweather.wmo.int/kr/json/1954_kr.xml',
+      publisher: '미국기상청',
+      retrievedAt: '2026-07-24T00:00:00.000Z',
+      snapshotContent,
+      contentHash: createBlogInformationSourceContentHash(snapshotContent),
+      destination: '괌',
+      country: '미국',
+      claimTypes: ['climate'],
+      riskLevel: 'LOW',
+    }],
+    evidence: excerpts.map((excerpt, index) => {
+      const codeUnitStart = snapshotContent.indexOf(excerpt);
+      const spanStart = Array.from(snapshotContent.slice(0, codeUnitStart)).length;
+      return {
+        evidenceKey: `wmo-month-${index + 1}`,
+        sourceKey: 'wmo-guam-climate',
+        sourceLocator: `month-${index + 1}`,
+        excerpt,
+        spanStart,
+        spanEnd: spanStart + Array.from(excerpt).length,
+        claimType: 'climate',
+        riskLevel: 'LOW',
+        observedAt: '2026-07-24T00:00:00.000Z',
+        scope: {
+          country: '미국',
+          destination: '괌',
+          applicableTo: '괌 여행자',
+          locale: 'ko-KR',
+          claimType: 'climate',
+          normalizedValue: (29 + index / 10).toFixed(1),
+          unit: '°C',
+          currency: null,
+          verifiedAt: '2026-07-24T00:00:00.000Z',
+          nextReviewAt: '2027-01-20T00:00:00.000Z',
+          conditions: [`${index + 1}월`, '1981~2010 평년값'],
+        },
+      };
+    }),
+    claims: statements.map((claimText, index) => ({
+      claimFingerprint: createBlogInformationClaimFingerprint(claimText),
+      claimText,
+      claimType: 'climate',
+      riskLevel: 'LOW',
+      extractedValue: {
+        normalizedValue: (29 + index / 10).toFixed(1),
+        unit: '°C',
+        currency: null,
+      },
+      requiresEvidence: true,
+      evidenceKeys: [`wmo-month-${index + 1}`],
+    })),
+  };
+}
+
+function monthlyWeatherReadiness(bundle: BlogInformationResearchBundle) {
+  return evaluateBlogGenerationResearchReadiness({
+    meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: bundle },
+    expectedContentKey: WEATHER_CONTENT_KEY,
+    destination: '괌',
+    intent: 'monthly_weather',
+    locale: 'ko-KR',
+    sourcePolicy: WEATHER_POLICY,
+    now: new Date('2026-07-24T12:00:00.000Z'),
+  });
+}
+
 function readiness(bundle: BlogInformationResearchBundle | null) {
   return evaluateBlogGenerationResearchReadiness({
     meta: bundle ? { [BLOG_INFORMATION_RESEARCH_META_KEY]: bundle } : {},
@@ -185,6 +274,55 @@ describe('blog generation research preflight', () => {
       'claim_semantic_coverage_missing:food_budget:breakfast',
       'claim_semantic_coverage_missing:food_budget:snack',
     ]));
+  });
+
+  it('requires complete 1~12 month climate coverage before weather writing starts', () => {
+    const incomplete = monthlyWeatherReadiness(monthlyWeatherBundle(6));
+    expect(incomplete.passed).toBe(false);
+    expect(incomplete.issues).toEqual(expect.arrayContaining([
+      'claim_type_below_minimum:climate:6/12',
+      'claim_semantic_coverage_missing:monthly_weather:month_7',
+      'claim_semantic_coverage_missing:monthly_weather:month_12',
+    ]));
+
+    const complete = monthlyWeatherReadiness(monthlyWeatherBundle());
+    expect(complete.issues).toEqual([]);
+    expect(complete.passed).toBe(true);
+    expect(complete.summary).toMatchObject({
+      claimCount: 12,
+      supportedClaimCount: 12,
+      distinctNormalizedValueCount: 12,
+    });
+  });
+
+  it('repairs the final weather article with one verified 12-month table', () => {
+    const result = monthlyWeatherReadiness(monthlyWeatherBundle());
+    const original = [
+      '# 괌 7월 날씨와 옷차림',
+      '괌 여행 전에는 기후 평년값과 단기예보를 나눠 확인하세요.',
+    ].join('\n\n');
+    const first = repairBlogGenerationResearchStructure({
+      markdown: original,
+      intent: 'monthly_weather',
+      readiness: result,
+    });
+    const second = repairBlogGenerationResearchStructure({
+      markdown: first.markdown,
+      intent: 'monthly_weather',
+      readiness: result,
+    });
+
+    expect(first.changed).toBe(true);
+    expect(first.approvedClaims).toHaveLength(12);
+    expect(first.markdown).toContain('| 1월 | 1981~2010 평년값: 1월 최고기온 29.0°C');
+    expect(first.markdown).toContain('| 12월 | 1981~2010 평년값: 12월 최고기온 30.1°C');
+    expect(first.markdown).toContain('반팔·방수 겉옷·우산');
+    expect(validateBlogInformationStructure({
+      intent: 'monthly_weather',
+      markdown: first.markdown,
+    })).toMatchObject({ passed: true, issues: [] });
+    expect(second.changed).toBe(false);
+    expect(second.markdown).toBe(first.markdown);
   });
 
   it('injects exact approved evidence and claims without copying snapshots into compact metadata', () => {
