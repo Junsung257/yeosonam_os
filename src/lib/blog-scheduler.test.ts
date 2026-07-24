@@ -7,6 +7,7 @@ import { buildBlogContentBrief } from './blog-content-brief';
 import {
   buildMicroAnglePrimaryKeyword,
   countPublishableQueueCandidates,
+  SCHEDULE_OCCUPYING_QUEUE_STATUSES,
 } from './blog-scheduler';
 
 function researchedTokyoWeatherMeta() {
@@ -66,6 +67,12 @@ function researchedTokyoWeatherMeta() {
 }
 
 describe('blog scheduler queue refill helpers', () => {
+  it('lets skipped and failed rows release their old future slots', () => {
+    expect(SCHEDULE_OCCUPYING_QUEUE_STATUSES).toEqual(['queued', 'generating']);
+    expect(SCHEDULE_OCCUPYING_QUEUE_STATUSES).not.toContain('skipped');
+    expect(SCHEDULE_OCCUPYING_QUEUE_STATUSES).not.toContain('failed');
+  });
+
   it('keeps English micro-angle ids out of reader-facing keywords', () => {
     const keyword = buildMicroAnglePrimaryKeyword('발리', { keywordSuffix: '가족여행 예산' });
 
