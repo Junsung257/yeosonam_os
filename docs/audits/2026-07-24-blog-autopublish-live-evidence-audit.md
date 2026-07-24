@@ -66,6 +66,51 @@ The final expected outcome is 3/10 evidence-ready, with only 2/10 eligible for a
 - Added a protected `targetQueueId` publisher path that accepts only an informational queued row explicitly marked `controlled_publish_canary=true` and touches no unrelated queue item.
 - Added research-backed citations with retrieval dates and improved article typography, contrast, heading rhythm, tables, captions, and legacy highlight rendering.
 
+## Merged Release Chain
+
+Every pull request below passed the repository's required GitHub checks, was merged to `main`, and received a production deployment.
+
+| Pull requests | Released capability |
+|---|---|
+| #888 | Direct-source research, trust registries, persisted evidence/claims, citations, public rendering, migrations, and controlled canary path |
+| #889 | Cron authorization hardening and secret rotation |
+| #890-#897 | Deterministic WMO weather facts, intent coverage, tables, FAQ/structured data, image preservation, readability, and semantic SEO |
+| #898-#899 | Update the queue-linked draft in place and detach superseded claim links without deleting history |
+| #900-#902 | Scope claims to the current creative, preserve the canonical intent/brief on republish, and preserve a verified body during metadata-only publication |
+
+The final republish fix was deployed as Vercel production deployment `dpl_HpttC81RogvPmzYVAoJJDTf1jNDy` from merge commit `7ceae0431157eef97641f3d698c8cb0ec5a327c4`.
+
+## Live Create, Publish, Update, And Reindex Proof
+
+The controlled low-risk canary used queue row `cf0bdf81-fe91-432e-a815-6ea8092fc7a1` and existing creative `fe73a1cd-3033-452c-ac2e-7723c30e6d8b`. It published at the canonical URL:
+
+- https://www.yeosonam.com/blog/guam-weather-packing
+- Representative key: `v1|괌|monthly_weather|general|ko-KR`
+- Current claims: 12/12 supported and linked to the current creative
+- Quality gate: passed; informational engine, intent, topic-fit, editorial, structure, readability, and image sub-gates each scored 100
+- SEO audit: 91/100 after the final metadata update, above the 85-point informational threshold
+- Render contract: three source-backed images with alt text, two tables, 12 rendered headings, and no render or table-integrity artifact
+- Public contract: HTTP 200, exact canonical URL, exact updated description, and sitemap membership
+
+The first atomic publication created fingerprint `128ca2ed1fa782948f52e91aa2f0e753cb8b8db246e47c3b30667c4075748ed5` and indexing job `85b10689-67f8-4bc3-bbc6-02e4352c144d`. The job succeeded on its first attempt.
+
+The same creative was then updated through the authenticated production `PATCH /api/blog` route with `status='published'`. The update returned HTTP 200 with no quality warnings and proved that update publication is a revision, not a duplicate:
+
+- Creative ID and slug stayed unchanged.
+- The improved 67-character description was persisted and rendered publicly.
+- Body SHA-256 stayed `e6b34259cdb9fd73e3b7742147298f8c472238bf3a791b4f7fe45356d2539798`.
+- Body length stayed 3,785 characters; three Markdown images and two Markdown table separators stayed unchanged.
+- A second immutable publication record was created with fingerprint `6bb51f0430af7df93df27629d551b7e9cef3caeef0c49a765dba7c7cce7e9054`.
+- A second indexing job, `fd1a54c8-f4db-482b-b23b-f196013ed1ee`, succeeded on its first attempt with Google and IndexNow both reporting success.
+
+Three failed live republish attempts were retained as defect evidence rather than hidden:
+
+1. Superseded claims from the same content key were mixed into the current revision, and incidental body words changed the inferred intent.
+2. The manual route lost the saved content brief and applied a generic quality repair.
+3. The generic repair removed a valid clothing table during a metadata-only update.
+
+PRs #900-#902 fixed those defects by scoping claims to the current creative, carrying the canonical content brief through every republish path, resolving the primary keyword from that brief, and evaluating an already-published body without mutating it when only metadata changes.
+
 ## External Standard Verification
 
 - Google people-first content: original value, clear sourcing, demonstrated expertise, and content created primarily for people. Mass automation or broad topic production for search traffic is a warning sign.
@@ -86,14 +131,16 @@ Primary references:
 
 ## Release Gates
 
-1. All migrations and focused tests pass in a clean branch.
-2. Preview deployment passes type, route, public-surface, mobile, image, citation, canonical, and noindex checks.
-3. One low-risk Guam weather queue row is explicitly flagged and published through `targetQueueId`.
-4. Read back the queue, creative, sources, evidence, claims, active representative, publication record, indexing job, public API, sitemap, and rendered public page.
-5. Update the same creative through authenticated PATCH with `status='published'`, then prove a second content fingerprint/publication and indexing job with no new canonical URL.
-6. High-risk entry and insurance candidates remain private until current human approval.
-7. Do not requeue the 34 product candidates until their product publication state is customer-visible and their open-contract evidence passes.
+1. Passed: all migrations and focused tests passed in clean branches.
+2. Passed: preview and production checks covered type, route, public surface, mobile, image, citation, canonical, noindex, readiness, security, and performance.
+3. Passed: one low-risk Guam weather queue row was explicitly flagged and published through `targetQueueId`.
+4. Passed: queue, creative, sources, evidence, claims, active representative, publication, indexing, sitemap, and rendered public page were read back from live systems.
+5. Passed: the same creative was updated through authenticated PATCH and produced a second fingerprint, publication record, and successful indexing job without creating a new canonical URL or changing the body.
+6. Enforced: high-risk entry and insurance candidates remain private until current human approval.
+7. Enforced: the 34 product candidates remain blocked until their linked products are customer-visible and their open-contract evidence passes.
 
 ## Decision
 
-Legacy published rows must remain excluded from the public view. Do not bulk repair prose, fabricate missing research, or lower category thresholds to restore volume. Release the new direct-source pipeline, prove one complete publish/update cycle, then onboard additional reviewed data sources category by category.
+The direct-source pipeline and one complete create/publish/update/reindex cycle are released and live. Automatic informational publication is approved only for `monthly_weather` and `currency_payment`; `entry_requirements` remains evidence-ready but requires current human approval. The other seven intents remain blocked until reviewed direct sources or structured operator feeds satisfy their category contracts.
+
+The 148 legacy published rows remain outside the strict public eligibility view because none has a current research bundle. Twenty-one legacy rows also mislabel Pexels assets as official sources. Do not bulk repair prose, fabricate research, or lower thresholds to restore volume. Remediate legacy rows as separate researched revisions, and onboard missing category sources one intent at a time.
