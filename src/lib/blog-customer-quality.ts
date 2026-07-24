@@ -564,8 +564,24 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
   }
 
   const longParagraph = input.blogHtml
+    .replace(/<table\b[\s\S]*?<\/table>/gi, '\n\n')
+    .replace(/```[\s\S]*?```/g, '\n\n')
     .split(/\n{2,}/)
-    .map((chunk) => stripMarkup(chunk).replace(/\s+/g, ' ').trim())
+    .map((chunk) => chunk
+      .split('\n')
+      .filter((line) => {
+        const trimmed = line.trim();
+        return trimmed
+          && !/^\|.*\|$/.test(trimmed)
+          && !/^#{1,6}\s+\S/.test(trimmed)
+          && !/^(?:[-*+]|\d+[.)])\s+\S/.test(trimmed)
+          && !/^>\s+\S/.test(trimmed)
+          && !/^!\[[^\]]*]\([^)]+\)$/.test(trimmed);
+      })
+      .map((line) => stripMarkup(line))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim())
     .find((chunk) => chunk.length >= 360);
   if (longParagraph) {
     addIssue(
