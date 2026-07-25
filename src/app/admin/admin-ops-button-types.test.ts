@@ -24,7 +24,6 @@ const files = [
   'src/app/admin/settings/integrations/page.tsx',
   'src/app/admin/terms-templates/[id]/page.tsx',
   'src/components/admin/ApprovalModal.tsx',
-  'src/components/admin/CampaignLinkBuilder.tsx',
 ] as const;
 
 const buttonWithoutTypePattern = /<button\b(?![^>]*\btype=)[^>]*>/g;

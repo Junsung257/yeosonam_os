@@ -26,6 +26,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 | External publish decisions | `src/lib/marketing-pipeline/publish-saga.ts`, `/api/admin/ad-os/**` |
 | Admin surfaces | `/admin/marketing/**`, `/admin/ad-os`, `/admin/control-tower` AI operations command center |
 | Runtime checks | `scripts/verify-marketing-automation-readiness.mjs`, `scripts/verify-marketing-release-readiness.mjs`, `scripts/verify-marketing-95-scorecard.mjs` |
+| Operator dashboard contract | `src/lib/marketing/operations-dashboard.ts`, `/api/admin/marketing/dashboard`, `/admin/marketing` |
 | Customer traffic acquisition | `src/components/GA4Tracker.tsx`, `src/lib/ga4.ts`, GA4 Traffic acquisition report |
 | Error memory | `docs/errors/marketing.md` |
 
@@ -44,6 +45,50 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Control-tower Ad OS status must show current evidence gaps separately from the 95+ ready fixture; a reachable fixture is not proof that live current execution is ready.
 - GA4 customer acquisition data must exclude admin, localhost, and preview traffic. Production measurement remains disabled until a valid `NEXT_PUBLIC_GA4_ID` is configured.
 - Campaign links must use lowercase, stable `utm_source`, `utm_medium`, and `utm_campaign` values. Do not compare channel performance using untagged social, email, or affiliate links.
+- A tracking API response may say `accepted: true` only after the primary database write succeeds. Optional counters may return warnings, but a failed primary write must return a retryable 503.
+- Provider spend, impressions, and clicks come from `ad_performance_snapshots`. Traffic sessions and conversion-allocated CPC must not be relabeled as provider impressions or confirmed spend.
+- Zero and not-collected are different states. A successful empty query may show zero; a missing provider connection or absent provider snapshot must show `not_collected`.
+- Channel state is evidence-based: `operating` requires a fresh health check, credentials, permission, campaign readiness, an external account, live publish enabled, and external API write enabled. Draft readiness is not live operation.
+
+## Operator Dashboard Contract
+
+The default `/admin/marketing` screen is for a non-specialist operator. It uses plain Korean and presents information in this order:
+
+1. up to three urgent actions;
+2. provider-confirmed ad spend, inquiries, marketing-attributed bookings, settlement-confirmed margin, and cost per booking;
+3. channel status with a reason and one next action;
+4. recorded customer funnel, content publishing status, campaigns, and reviewable recommendations;
+5. advanced Ad OS, probes, and command-center tools inside a collapsed expert section.
+
+The dashboard must always display:
+
+- selected period and `Asia/Seoul` basis;
+- dashboard collection time;
+- latest first-party tracking time;
+- latest provider performance date;
+- a visible distinction between collected, stale, and not-collected metrics.
+
+The following labels are prohibited on the default operator surface unless the matching evidence exists:
+
+- `운영 중` for a draft-only or stale channel;
+- `연동 완료` for a saved toggle without a verified account;
+- `광고비 0원` when provider performance has never been collected;
+- `전환 완료` when only the internal conversion record was saved and the provider delivery is still pending.
+
+## Recovery And Rollout Order
+
+Use this order when starting or repairing marketing operations:
+
+1. Apply the pending schema reconciliation migration and verify `gbraid`/`wbraid` writes.
+2. Send one consented and one non-consented traffic event; require 202 only after a database row exists.
+3. Verify inquiry, booking, and settlement-confirmed margin sources independently.
+4. Connect one ad provider account and run a fresh read-only health probe.
+5. Import provider impressions, clicks, and spend into `ad_performance_snapshots`.
+6. Confirm the dashboard changes from `수집 안 됨` to collected values without fallback estimates.
+7. Test a conversion and verify internal persistence first, then provider delivery result separately.
+8. Stage one campaign action, approve it, execute through the audited provider wrapper, and persist the provider result.
+9. Enable scheduled refresh with a lookback window at least as long as the provider attribution window.
+10. Only after the above gates pass, consider limited automation under budget caps; full automation remains a separate approval.
 
 ## External Write Boundary
 

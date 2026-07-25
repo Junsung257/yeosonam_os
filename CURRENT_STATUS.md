@@ -2,6 +2,8 @@
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
+> **마케팅 운영 재구축 (2026-07-25, 코드 완료·DB 스키마 적용 완료):** `/admin/marketing`은 쉬운 한국어의 우선 조치·핵심 수치·채널 상태·고객 흐름 중심 화면으로 재구성됐다. 추적 API는 주요 DB 쓰기 성공 후에만 202를 반환하고, 광고사 성과 미수집은 0이 아닌 `수집 안 됨`으로 표시한다. 운영 DB의 누락 광고 식별 컬럼은 `20260725083838_reconcile_marketing_attribution_schema.sql`로 복구됐다.
+
 > **정보성 블로그 근거 모델 (2026-07-24, 운영 스키마 적용):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 읽기 감사 기준 source 1건, source version 21건, evidence 147건, claim 48건이며 active 공식 출처 12개, 의도별 공식 원문 16개, 검토된 비공식 출처 6개다. 검색 스니펫은 근거가 아니며, 승인된 URL의 실제 원문을 직접 수집·검증한 뒤에만 글쓰기를 시작한다.
 
 > **정보성 대표키·canonical (2026-07-19, 운영 스키마 적용):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.
@@ -81,7 +83,7 @@
 
 | 메뉴 | 경로 | 세부 기능 |
 |------|------|-----------|
-| **마케팅 대시보드** | `/admin/marketing` | Meta 캠페인 개요, ROAS 등급, 월간 성과, 캠페인 링크 빌더, 분석 대시보드 |
+| **마케팅 운영** | `/admin/marketing` | 최대 3개 우선 조치, 광고사 확인 광고비, 문의·마케팅 연결 예약·정산 확인 마진, 채널별 실제 운영 상태, 고객 흐름, 콘텐츠·캠페인 현황 |
 | **크리에이티브** | `/admin/marketing/creatives` | 광고 소재 생성(carousel/single_image/text_ad/short_video), 채널별(Meta/Naver/Google), 상태 관리, hook 유형 |
 | **카드뉴스** | `/admin/marketing/card-news` | 카드뉴스 목록·생성(패키지 기반 자동생성), 슬라이드 에디터(`/[id]` — 이미지 오버레이·비율 프리셋·내보내기) |
 | **콘텐츠 허브** | `/admin/content-hub` | 3단계 콘텐츠 생성(패키지 선택 → AI 생성(앵글/채널/비율) → 슬라이드 편집/발행) |
@@ -182,7 +184,7 @@
 | 23 | **ad_campaigns** | `id`, `package_id`(FK), `meta/naver/google_campaign_id`, `channel`, `status`(DRAFT/ACTIVE/PAUSED/ARCHIVED), `daily_budget_krw`, `total_spend_krw` | 광고 캠페인 |
 | 24 | **ad_creatives** | `id`, `product_id`(FK), `campaign_id`(FK), `creative_type`(carousel/single_image/text_ad/short_video), `channel`, `hook_type`, `tone`, `slides`(JSONB), `status` | 광고 소재 |
 | 25 | **ad_performance_snapshots** | `id`, `campaign_id`(FK), `snapshot_date`, `impressions`, `clicks`, `spend_krw`, `attributed_bookings`, `net_roas_pct`, `raw_meta_json`(JSONB) | 캠페인 일일 성과 |
-| 26 | **ad_traffic_logs** | `id`, `session_id`, `user_id`(FK), `source`, `medium`, `campaign_name`, `keyword`, `gclid`, `fbclid`, `current_cpc` | 광고 유입 세션 |
+| 26 | **ad_traffic_logs** | `id`, `session_id`, `user_id`(FK), `source`, `medium`, `campaign_name`, `keyword`, `gclid`, `gbraid`, `wbraid`, `fbclid`, `current_cpc` | 광고 유입 세션 (`gbraid`/`wbraid` 운영 적용 완료) |
 | 27 | **ad_search_logs** | `id`, `session_id`, `user_id`(FK), `search_query`, `search_category`, `result_count` | 유입 후 검색 행동 |
 | 28 | **ad_engagement_logs** | `id`, `session_id`, `user_id`(FK), `event_type`(page_view/product_view/cart_added/checkout_start), `product_id` | 유입 후 인게이지먼트 |
 | 29 | **ad_conversion_logs** | `id`, `session_id`, `user_id`(FK), `final_booking_id`(FK), `final_sales_price`, `base_cost`, `allocated_ad_spend`, `net_profit`(GEN), `attributed_source` | 광고→예약 전환 |
