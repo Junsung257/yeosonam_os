@@ -62,6 +62,11 @@ export default function GA4Tracker() {
   const isPublicPage = isGa4PublicPath(pathname);
 
   useEffect(() => {
+    if (!GA4_ID || !isProductionHost || !isPublicPage) return;
+    configureGa4();
+  }, [configureGa4, isProductionHost, isPublicPage]);
+
+  useEffect(() => {
     if (!GA4_ID || !isProductionHost || !isTagReady || !isPublicPage) return;
     if (lastPagePath.current === pagePath) return;
 
