@@ -8,9 +8,9 @@ const source = readFileSync(
 );
 
 describe('blog information claim publish gate persistence scope', () => {
-  it('uses only claims linked to the creative when revalidating a published revision', () => {
+  it('loads both draft-scoped and research-scoped claims when revalidating a revision', () => {
     expect(source).toContain('loadPersistedClaimRecords(input.contentKey, input.creativeId)');
-    expect(source).toContain("claimsQuery = claimsQuery.eq('creative_id', creativeId)");
+    expect(source).toContain('creative_id.eq.${creativeId},creative_id.is.null');
   });
 
   it('uses the caller-provided intent instead of guessing from incidental body words', () => {
