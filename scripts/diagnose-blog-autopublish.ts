@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
+import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS } from '../src/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
 import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
@@ -376,7 +376,7 @@ async function main() {
     evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
     destinationless_info_count: publishabilityStats.destinationlessInfoBlocked,
     candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
-    candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
+    candidate_shortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
     next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
       : publishabilityStats.destinationlessInfoBlocked > 0
@@ -385,7 +385,7 @@ async function main() {
         ? 'repair_candidate_contract'
         : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
           ? 'quarantine_duplicates'
-          : publishabilityStats.publishableCount < dailyTarget * 2
+          : publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS
             ? 'refill_candidates'
             : 'publish_ready',
   };
@@ -403,6 +403,7 @@ async function main() {
     indexingOutboxMissingCount: indexingOutboxCoverage.missing_count,
     indexingOutboxCoverageRate: indexingOutboxCoverage.coverage_rate,
     recentPosts: recentPublishedRes.data ?? [],
+    bufferDays: MIN_PUBLISHABLE_BUFFER_DAYS,
   });
   const canaryPreflight = buildBlogCanaryPreflight({
     activeQueue: activeQueueRes.data ?? [],
@@ -580,11 +581,11 @@ async function main() {
   }
 
   const queued = publishabilitySnapshot.publishable_candidate_count;
-  if (queued < dailyTarget * 2) {
+  if (queued < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS) {
     buckets.push({
       code: 'candidate_shortage',
       severity: queued === 0 ? 'critical' : 'warning',
-      detail: `Only ${queued} publishable blog candidate(s) remain for a target of ${dailyTarget}/day.`,
+      detail: `Only ${queued} publishable blog candidate(s) remain for a target of ${dailyTarget}/day and a ${MIN_PUBLISHABLE_BUFFER_DAYS}-day buffer.`,
       evidence: publishabilitySnapshot,
     });
   }

@@ -114,6 +114,51 @@ export function buildMicroAnglePrimaryKeyword(destination: string, template: Pic
   return `${destination} ${template.keywordSuffix}`.replace(/\s+/g, ' ').trim();
 }
 
+export const MIN_PUBLISHABLE_BUFFER_DAYS = 3;
+
+const WEATHER_READER_SCENARIOS = [
+  'first_time_light_packer',
+  'family_rain_plan',
+  'urban_walking_day',
+  'late_arrival_check',
+] as const;
+
+const WEATHER_OPENING_VARIANTS = [
+  'temperature_first',
+  'rain_first',
+  'clothing_decision_first',
+  'packing_mistake_first',
+] as const;
+
+const WEATHER_SECTION_ORDER_VARIANTS = [
+  'weather_then_clothing',
+  'clothing_then_rain',
+  'decision_table_first',
+  'packing_then_local_risk',
+] as const;
+
+function stableIndex(seed: string, modulo: number): number {
+  let hash = 2166136261;
+  for (const char of seed) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0) % Math.max(1, modulo);
+}
+
+export function buildWeatherQueueVariation(destination: string, month: number): {
+  reader_scenario: string;
+  opening_variant: string;
+  section_order_variant: string;
+} {
+  const seed = `${destination}:${month}`;
+  return {
+    reader_scenario: WEATHER_READER_SCENARIOS[stableIndex(`${seed}:reader`, WEATHER_READER_SCENARIOS.length)]!,
+    opening_variant: WEATHER_OPENING_VARIANTS[stableIndex(`${seed}:opening`, WEATHER_OPENING_VARIANTS.length)]!,
+    section_order_variant: WEATHER_SECTION_ORDER_VARIANTS[stableIndex(`${seed}:section`, WEATHER_SECTION_ORDER_VARIANTS.length)]!,
+  };
+}
+
 type QueueCandidateLike = {
   id?: string | null;
   product_id?: string | null;
@@ -330,7 +375,11 @@ export async function ensureDailyPublishableQueue(opts?: {
 }> {
   const policy = await getBlogPublishingPolicy('global');
   const postsPerDay = normalizeDailyPostTarget(opts?.postsPerDay ?? policy.posts_per_day);
-  const targetCandidates = Math.max(opts?.minCandidates ?? 0, postsPerDay * 2, 10);
+  const targetCandidates = Math.max(
+    opts?.minCandidates ?? 0,
+    postsPerDay * MIN_PUBLISHABLE_BUFFER_DAYS,
+    15,
+  );
 
   const since = new Date();
   since.setDate(since.getDate() - Math.max(14, policy.multi_angle_gap_days ?? 14));
@@ -475,6 +524,7 @@ export async function ensureDailyPublishableQueue(opts?: {
           expected_slug: expectedMicroSlug(destination, template.id),
           generated_by: 'micro_angle_refill',
           research_fallback: 'reviewed_wmo_climate',
+          editorial_variation: buildWeatherQueueVariation(destination, month),
         },
       });
     }

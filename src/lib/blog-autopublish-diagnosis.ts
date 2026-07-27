@@ -31,8 +31,7 @@ function currentPublishPathHealthy(state: BlogAutopublishDiagnosisState): boolea
   return state.dailyTarget > 0
     && state.currentDayPublished >= state.dailyTarget
     && state.currentDayPublisherHealthy
-    && !state.publishPreflightBlocked
-    && !state.candidateShortage;
+    && !state.publishPreflightBlocked;
 }
 
 function shouldTreatAsHistorical(

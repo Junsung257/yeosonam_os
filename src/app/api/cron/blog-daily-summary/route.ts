@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
-import { countPublishableQueueCandidates, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '@/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
 import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
@@ -427,14 +427,14 @@ async function runDailySummary(request: NextRequest) {
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
     candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
-    candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
+    candidate_shortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
     next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
       : publishabilityStats.candidateContractBlocked > 0
         ? 'repair_candidate_contract'
         : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
           ? 'quarantine_duplicates'
-          : publishabilityStats.publishableCount < dailyTarget * 2
+          : publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS
             ? 'refill_candidates'
             : 'publish_ready',
   };
@@ -452,6 +452,7 @@ async function runDailySummary(request: NextRequest) {
     indexingOutboxMissingCount: indexingOutboxCoverage.missing_count,
     indexingOutboxCoverageRate: indexingOutboxCoverage.coverage_rate,
     recentPosts: published,
+    bufferDays: MIN_PUBLISHABLE_BUFFER_DAYS,
   });
   const canaryPreflight = buildBlogCanaryPreflight({
     activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
@@ -580,7 +581,7 @@ async function runDailySummary(request: NextRequest) {
     },
     failure_breakdown: {
       publisher: failureBreakdown,
-      candidate_shortage: summaryResults === summaryFallback ? null : Math.max(0, dailyTarget * 2 - publishability.publishable_candidate_count),
+      candidate_shortage: summaryResults === summaryFallback ? null : Math.max(0, dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS - publishability.publishable_candidate_count),
     },
     next_action: publishability.next_action !== 'publish_ready'
       ? `Resolve publishability issue: ${publishability.next_action}.`

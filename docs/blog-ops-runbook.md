@@ -18,6 +18,13 @@ A day is healthy only when all of these are true:
 - New information candidates have `meta.auto_research.version='reviewed-source-direct-fetch-v2'`, a validated `information_research_bundle`, and persisted source/evidence/claim rows before the writer starts. Search discovers candidate URLs; only directly downloaded, intent-approved official or reputable source pages may become evidence. `evidence_insufficient:auto_research_*` is a research blocker, not a reason to publish fallback prose.
 - Public blog sections (`/blog`, `/blog/[slug]`, `/blog/destination/[dest]`, `/blog/angle/[angle]`, sitemap, blog API) return healthy titles, canonical URLs, indexability signals, and non-empty collection evidence.
 
+## 2026-07-27 Publishable Buffer And Voice Rotation
+
+- The publishable queue buffer is now three days of the daily target, not two. For the current five-post policy, operations should keep at least 15 evidence-ready publishable candidates.
+- `blog-scheduler`, `blog-publisher`, `/admin/blog`, daily summary, and `diagnose:blog-autopublish` use the same buffer constant so operators do not see conflicting shortage states.
+- Weather fallback candidates receive stable `editorial_variation` metadata with reader scenario, opening angle, and section-order variant. The information writer prompt must receive that block and keep the same evidence while varying the customer-facing opening and H2 order.
+- Historical missed-day and timeout evidence remains visible, but it is not treated as an active critical blocker when the current KST day has met quota, the publisher is healthy, and publish preflight is not blocked. Candidate shortage remains a current warning instead of upgrading old SLA misses back to active risk.
+
 ## Prompt Change Standard
 
 Information-writer prompt changes are release changes, not copy edits.

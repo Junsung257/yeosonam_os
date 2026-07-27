@@ -29,6 +29,7 @@ export type BlogPublishPreflightInput = {
     readability_score?: number | string | null;
   }>;
   minimumCanarySamples?: number;
+  bufferDays?: number;
 };
 
 export type BlogPublishPreflightResult = {
@@ -89,6 +90,8 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
   const publishedToday = Math.max(0, Math.round(input.publishedToday || 0));
   const remainingToday = Math.max(0, dailyTarget - publishedToday);
   const minimumCanarySamples = Math.max(1, Math.round(input.minimumCanarySamples ?? 3));
+  const bufferDays = Math.max(2, Math.round(input.bufferDays ?? 3));
+  const bufferTarget = dailyTarget * bufferDays;
   const recentSample = input.recentPosts.slice(0, Math.max(minimumCanarySamples, 3));
   const canaryPassCount = recentSample.filter(recentPostPasses).length;
   const canaryFailures = recentSample.length - canaryPassCount;
@@ -110,12 +113,12 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
       detail: `Only ${input.publishableCandidateCount} publishable candidate(s) for ${remainingToday} remaining slot(s).`,
       next_action: 'Refill or repair candidates before claiming queue rows.',
     });
-  } else if (input.candidateShortage || input.publishableCandidateCount < dailyTarget * 2) {
+  } else if (input.candidateShortage || input.publishableCandidateCount < bufferTarget) {
     checks.push({
       id: 'publishable_inventory',
       status: 'warn',
       severity: 'warning',
-      detail: `${input.publishableCandidateCount} publishable candidate(s); below the ${dailyTarget * 2} buffer.`,
+      detail: `${input.publishableCandidateCount} publishable candidate(s); below the ${bufferTarget} buffer.`,
       next_action: 'Run scheduler/refill before the next publish window.',
     });
   } else {
@@ -149,7 +152,7 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
       detail: `${input.actionableFailedCount} actionable failed row(s), ${input.staleGeneratingCount} stale generating row(s).`,
       next_action: 'Resolve queue failures before relying on the next publisher run.',
     });
-  } else if ((remainingToday > 0 && manualReviewCount > 0) || (overdueQueuedCount > 0 && input.publishableCandidateCount < dailyTarget * 2)) {
+  } else if ((remainingToday > 0 && manualReviewCount > 0) || (overdueQueuedCount > 0 && input.publishableCandidateCount < bufferTarget)) {
     checks.push({
       id: 'queue_health',
       status: 'warn',
