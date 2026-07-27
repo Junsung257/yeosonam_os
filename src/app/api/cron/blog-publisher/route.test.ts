@@ -164,10 +164,11 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
     expect(source).toContain('fallbackImageUrls: replacementAssets?.inlineImageUrls');
     expect(source).toContain('preferFallbackImages: replacementAssets !== null');
-    expect(source).toContain('const mayFillSingleReplacementImageShortfall = replacementAssets !== null');
-    expect(source).toContain('allowPexelsSearch: replacementAssets === null || mayFillSingleReplacementImageShortfall');
-    expect(source).toContain('allowGeneratedFallback: replacementAssets === null || mayFillSingleReplacementImageShortfall');
-    expect(source).toContain('mayFillSingleReplacementImageShortfall ? 1 : 0');
+    expect(source).toContain('const replacementImageShortfall = replacementAssets !== null');
+    expect(source).toContain('const mayFillReplacementImageShortfall = replacementAssets !== null');
+    expect(source).toContain('allowPexelsSearch: replacementAssets === null || mayFillReplacementImageShortfall');
+    expect(source).toContain('allowGeneratedFallback: replacementAssets === null || mayFillReplacementImageShortfall');
+    expect(source).toContain(': replacementImageShortfall');
   });
 
   it('reuses a queue-linked draft image set during an evidence-backed retry', () => {
