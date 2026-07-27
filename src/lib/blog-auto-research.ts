@@ -1046,6 +1046,7 @@ function structuredResearchPrompt(input: {
     reviewedSourceTypes: string[];
   }>;
   now: Date;
+  retry?: boolean;
 }): string {
   const requiredFacts = input.brief.plan.requiredFacts
     .map((fact) => `- ${fact.id}: ${fact.label}`)
@@ -1076,6 +1077,11 @@ function structuredResearchPrompt(input: {
     '{"sources":[{"sourceKey":"s1","groundingChunkIndex":0,"publisher":"...","sourceType":"...","claimTypes":["price"],"country":"...","destination":"..."}],"evidence":[{"evidenceKey":"e1","sourceKey":"s1","excerpt":"...","sourceLocator":"...","claimType":"price","riskLevel":"MEDIUM","country":"...","destination":"...","applicableTo":"한국인 여행자","normalizedValue":"100","unit":"1회","currency":"USD","conditions":["..."]}],"claims":[{"claimText":"...","claimType":"price","riskLevel":"MEDIUM","evidenceKeys":["e1"],"normalizedValue":"100","unit":"1회","currency":"USD"}]}',
     'Required decision facts:',
     requiredFacts,
+    ...(input.retry ? [
+      'RETRY REQUIREMENT:',
+      'The prior JSON response contained no usable sources, evidence, or claims even though reviewed page extracts are present.',
+      'Extract only facts explicitly present in GROUNDED_DIGEST and return non-empty arrays when supported facts exist.',
+    ] : []),
     'SOURCE_CATALOG:',
     JSON.stringify(input.sourceCatalog),
     'GROUNDED_DIGEST:',
@@ -1089,6 +1095,10 @@ function parseJsonPayload(raw: string): GroundedBlogResearchPayload {
     .replace(/\s*```$/i, '')
     .trim();
   return JSON.parse(cleaned) as GroundedBlogResearchPayload;
+}
+
+function payloadHasResearchItems(payload: GroundedBlogResearchPayload): boolean {
+  return Boolean(payload.sources?.length || payload.evidence?.length || payload.claims?.length);
 }
 
 export function buildWmoMonthlyWeatherPayload(
@@ -1378,31 +1388,33 @@ export async function researchBlogInformationAutomatically(input: {
       finishReason = 'DETERMINISTIC_WMO_CLIMATE';
       responseTextLength = JSON.stringify(payload).length;
     } else {
-      const structuredResponse = await geminiClient().models.generateContent({
+      const sourceCatalog = eligibleWebChunks
+        .slice(0, MAX_SOURCE_CATALOG)
+        .map((chunk) => ({
+          groundingChunkIndex: chunk.chunkIndex,
+          title: chunk.title,
+          uri: chunk.uri,
+          reviewedSourceTypes: allowedSourceTypes.filter((sourceType) =>
+            Boolean(resolveBlogInformationOfficialSourceTrust({
+              sourceUrl: chunk.uri,
+              sourceType,
+              registry,
+            }))
+            || Boolean(resolveReputableSourceTrust({
+              sourceUrl: chunk.uri,
+              sourceType,
+              intent: input.brief.intentType,
+              registry: reputableRegistry,
+            }))),
+        }));
+      const generateStructuredResponse = async (retry = false) => geminiClient().models.generateContent({
         model: AUTO_RESEARCH_MODEL,
         contents: structuredResearchPrompt({
           ...input,
           digest: groundedDigest,
-          sourceCatalog: eligibleWebChunks
-            .slice(0, MAX_SOURCE_CATALOG)
-            .map((chunk) => ({
-              groundingChunkIndex: chunk.chunkIndex,
-              title: chunk.title,
-              uri: chunk.uri,
-              reviewedSourceTypes: allowedSourceTypes.filter((sourceType) =>
-                Boolean(resolveBlogInformationOfficialSourceTrust({
-                  sourceUrl: chunk.uri,
-                  sourceType,
-                  registry,
-                }))
-                || Boolean(resolveReputableSourceTrust({
-                  sourceUrl: chunk.uri,
-                  sourceType,
-                  intent: input.brief.intentType,
-                  registry: reputableRegistry,
-                }))),
-            })),
+          sourceCatalog,
           now,
+          retry,
         }),
         config: {
           temperature: 0,
@@ -1414,12 +1426,22 @@ export async function researchBlogInformationAutomatically(input: {
           httpOptions: { timeout: remainingTimeout() },
         },
       });
+      let structuredResponse = await generateStructuredResponse();
       finishReason = structuredResponse.candidates?.[0]?.finishReason
         ? String(structuredResponse.candidates[0].finishReason)
         : null;
-      const rawText = structuredResponse.text ?? '';
+      let rawText = structuredResponse.text ?? '';
       responseTextLength = rawText.length;
       payload = parseJsonPayload(rawText);
+      if (!payloadHasResearchItems(payload) && reviewedPages.length > 0 && remainingTimeout() > 15_000) {
+        structuredResponse = await generateStructuredResponse(true);
+        finishReason = structuredResponse.candidates?.[0]?.finishReason
+          ? String(structuredResponse.candidates[0].finishReason)
+          : finishReason;
+        rawText = structuredResponse.text ?? '';
+        responseTextLength += rawText.length;
+        payload = parseJsonPayload(rawText);
+      }
     }
     const webChunkByOriginalIndex = new Map(webChunks.map((chunk) => [chunk.chunkIndex, chunk]));
     const observedSources = (payload.sources ?? []).map((source) => {

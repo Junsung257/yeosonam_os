@@ -98,22 +98,37 @@ export async function findRelevantBlogPexelsImage(input: {
     const destinationQuery = input.destination
       ? destToEnKeyword(input.destination)
       : (input.primaryKeyword || 'travel destination');
+    const sectionTitle = cleanHeading(input.sectionTitle ?? '');
     const query = buildBlogImageSearchQuery({
       destinationQuery,
       primaryKeyword: input.primaryKeyword,
-      sectionTitle: cleanHeading(input.sectionTitle ?? ''),
+      sectionTitle,
     });
-    const photos = await searchPexelsPhotos(query, 18, 1);
-    const photo = selectRelevantPexelsPhoto(photos, {
-      destinationQuery,
-      primaryKeyword: input.primaryKeyword,
-      sectionTitle: input.sectionTitle,
-      usedUrls: input.usedUrls,
-      minimumScore: input.minimumScore,
-    });
-    return photo
-      ? photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original
-      : null;
+    const fallbackQueries = [
+      query,
+      `${destinationQuery} travel landmark cityscape`,
+      sectionTitle ? `${destinationQuery} ${sectionTitle} travel` : `${destinationQuery} travel`,
+    ]
+      .map((value) => value.replace(/\s+/g, ' ').trim())
+      .filter((value, index, values) => value && values.indexOf(value) === index);
+    const pages = [1, 2];
+
+    for (const candidateQuery of fallbackQueries) {
+      for (const page of pages) {
+        const photos = await searchPexelsPhotos(candidateQuery, 18, page);
+        const photo = selectRelevantPexelsPhoto(photos, {
+          destinationQuery,
+          primaryKeyword: input.primaryKeyword,
+          sectionTitle: input.sectionTitle,
+          usedUrls: input.usedUrls,
+          minimumScore: input.minimumScore,
+        });
+        if (photo) {
+          return photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original;
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }

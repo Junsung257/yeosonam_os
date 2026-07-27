@@ -211,4 +211,47 @@ describe('ensureBlogInlineImages', () => {
     expect(searchPexelsPhotos).toHaveBeenCalledTimes(1);
     expect(generateSectionImage).not.toHaveBeenCalled();
   });
+
+  it('checks a second Pexels page when the first page only returns used images', async () => {
+    vi.mocked(searchPexelsPhotos)
+      .mockResolvedValueOnce([{
+        id: 301,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam winter city street',
+        src: {
+          landscape: 'https://images.pexels.com/photos/already-used.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }])
+      .mockResolvedValueOnce([{
+        id: 302,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam city skyline and riverside landmark',
+        src: {
+          landscape: 'https://images.pexels.com/photos/sapporo-second-page.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }]);
+
+    const result = await ensureBlogInlineImages({
+      markdown: [
+        '# ?욱룷濡??ы뻾',
+        '',
+        '![?욱룷濡??쒖?](https://images.pexels.com/photos/already-used.jpg)',
+        '',
+        '## ?⑥궛 ?좎뵪',
+        '蹂몃Ц',
+      ].join('\n'),
+      destination: '?욱룷濡?',
+      primaryKeyword: '?욱룷濡??ы뻾',
+      minImages: 2,
+    });
+
+    expect(result.markdown).toContain('sapporo-second-page.jpg');
+    expect(searchPexelsPhotos).toHaveBeenNthCalledWith(2, expect.any(String), 18, 2);
+  });
 });
