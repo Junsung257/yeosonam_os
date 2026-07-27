@@ -226,6 +226,23 @@ function queueMetaWithoutResearchBundle(meta: unknown): Record<string, unknown> 
   return safeMeta;
 }
 
+function repairPrimaryKeywordPresence(markdown: string, primaryKeyword?: string | null): {
+  markdown: string;
+  changed: boolean;
+} {
+  const keyword = String(primaryKeyword ?? '').replace(/\s+/g, ' ').trim();
+  if (!keyword || markdown.includes(keyword)) return { markdown, changed: false };
+
+  const sentence = `이 글은 ${keyword} 기준으로 월별 기온, 강수량, 옷차림 준비물을 확인하는 체크리스트입니다.`;
+  const lines = markdown.split(/\r?\n/);
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line));
+  if (h1Index >= 0) {
+    lines.splice(h1Index + 1, 0, '', sentence);
+    return { markdown: lines.join('\n'), changed: true };
+  }
+  return { markdown: `${sentence}\n\n${markdown}`, changed: true };
+}
+
 async function findOrGenerateBlogCover(input: {
   destination: string;
   primaryKeyword: string;
@@ -2836,6 +2853,15 @@ async function processQueueItem(
         generated.seo_description = seoRepair.seoDescription;
         seoScore = computeSeoScore(buildSeoScoreInput());
         console.log(`[blog-publisher] SEO metadata repair: ${seoRepair.changes.join(', ')} -> ${seoScore.score}/${seoScore.maxScore}`);
+      }
+    }
+
+    if (seoScore.details.some(d => d.name === 'primary_keyword' && d.status === 'fail')) {
+      const keywordRepair = repairPrimaryKeywordPresence(generated.blog_html, primaryKeyword);
+      if (keywordRepair.changed) {
+        generated.blog_html = keywordRepair.markdown;
+        seoScore = computeSeoScore(buildSeoScoreInput());
+        console.log(`[blog-publisher] SEO primary keyword repair -> ${seoScore.score}/${seoScore.maxScore}`);
       }
     }
 
