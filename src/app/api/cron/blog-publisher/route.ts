@@ -2400,14 +2400,19 @@ async function processQueueItem(
     if (replacementAssets?.ogImageUrl && !generated.og_image_url) {
       generated.og_image_url = replacementAssets.ogImageUrl;
     }
+    const minimumInlineImages = item.card_news_id ? 2 : 3;
+    const maximumInlineImages = item.card_news_id ? 3 : 4;
     const reusableImageCount = replacementAssets
       ? new Set([
           ...replacementAssets.inlineImageUrls,
           ...(replacementAssets.ogImageUrl ? [replacementAssets.ogImageUrl] : []),
         ].filter((url) => /^https:\/\//i.test(url))).size
       : 0;
-    const mayFillSingleReplacementImageShortfall = replacementAssets !== null
-      && reusableImageCount === 2;
+    const replacementImageShortfall = replacementAssets !== null
+      ? Math.max(0, minimumInlineImages - reusableImageCount)
+      : 0;
+    const mayFillReplacementImageShortfall = replacementAssets !== null
+      && replacementImageShortfall > 0;
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
@@ -2508,15 +2513,15 @@ async function processQueueItem(
         destination: item.destination,
         primaryKeyword,
         ogImageUrl: generated.og_image_url,
-        minImages: item.card_news_id ? 2 : 3,
-        maxImages: item.card_news_id ? 3 : 4,
+        minImages: minimumInlineImages,
+        maxImages: maximumInlineImages,
         fallbackImageUrls: replacementAssets?.inlineImageUrls,
         preferFallbackImages: replacementAssets !== null,
-        allowPexelsSearch: replacementAssets === null || mayFillSingleReplacementImageShortfall,
-        allowGeneratedFallback: replacementAssets === null || mayFillSingleReplacementImageShortfall,
+        allowPexelsSearch: replacementAssets === null || mayFillReplacementImageShortfall,
+        allowGeneratedFallback: replacementAssets === null || mayFillReplacementImageShortfall,
         maxExternalAssetAttempts: replacementAssets === null
           ? undefined
-          : mayFillSingleReplacementImageShortfall ? 1 : 0,
+          : replacementImageShortfall,
       });
       if (imageResult.inserted > 0) {
         generated.blog_html = imageResult.markdown;
@@ -2663,8 +2668,8 @@ async function processQueueItem(
         destination: item.destination,
         primaryKeyword,
         ogImageUrl: replacementAssets.ogImageUrl,
-        minImages: item.card_news_id ? 2 : 3,
-        maxImages: item.card_news_id ? 3 : 4,
+        minImages: minimumInlineImages,
+        maxImages: maximumInlineImages,
         fallbackImageUrls: replacementAssets.inlineImageUrls,
         preferFallbackImages: true,
         allowPexelsSearch: false,
