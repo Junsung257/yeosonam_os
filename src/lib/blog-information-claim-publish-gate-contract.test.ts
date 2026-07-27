@@ -17,4 +17,10 @@ describe('blog information claim publish gate persistence scope', () => {
     expect(source).toContain('intentType: input.intentType ?? null');
     expect(source).not.toContain('/입국|출입국|비자|여권|세관|면세');
   });
+  it('chunks evidence lookups so large claim sets do not fail the publish gate URL', () => {
+    expect(source).toContain('selectBlogInformationRowsInChunks');
+    expect(source).toContain("'blog_information_evidence'");
+    expect(source).toContain('chunkSize = 100');
+    expect(source).not.toContain(".from('blog_information_evidence')\n        .select('id, evidence_key");
+  });
 });
