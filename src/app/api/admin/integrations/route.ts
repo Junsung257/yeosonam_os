@@ -24,7 +24,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   clobe: 'Clobe AI',
 };
 
-const SUPPORTED_PLATFORMS: Platform[] = ['google_ads', 'meta', 'naver', 'clobe'];
+const SUPPORTED_PLATFORMS: Platform[] = ['google_ads', 'google_analytics', 'meta', 'naver', 'clobe'];
 
 function emptyIntegrations(): IntegrationStatus[] {
   return SUPPORTED_PLATFORMS.map((p) => ({

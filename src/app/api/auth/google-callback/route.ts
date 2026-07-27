@@ -8,6 +8,8 @@ import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 export const dynamic = 'force-dynamic';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+const GOOGLE_ADS_SCOPE = 'https://www.googleapis.com/auth/adwords';
+const GOOGLE_ANALYTICS_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
 
 function verifyState(stateRaw: string): string | null {
   const dotIdx = stateRaw.lastIndexOf('.');
@@ -97,12 +99,20 @@ export async function GET(request: NextRequest) {
       return apiResponse({ error: 'token exchange failed' }, { status: 502 });
     }
 
-    await saveOAuthToken(tenantId, 'google_ads', {
+    const scopes = tokenJson.scope?.split(' ').filter(Boolean) ?? [];
+    const tokenPayload = {
       accessToken: tokenJson.access_token,
       refreshToken: tokenJson.refresh_token,
       expiresIn: tokenJson.expires_in,
-      scopes: tokenJson.scope?.split(' '),
-    });
+      scopes,
+    };
+
+    if (scopes.length === 0 || scopes.includes(GOOGLE_ADS_SCOPE)) {
+      await saveOAuthToken(tenantId, 'google_ads', tokenPayload);
+    }
+    if (scopes.includes(GOOGLE_ANALYTICS_SCOPE)) {
+      await saveOAuthToken(tenantId, 'google_analytics', tokenPayload);
+    }
   } catch (err) {
     console.error('[google-callback] callback failed:', sanitizeDbError(err, 'OAuth callback failed'));
     return apiResponse({ error: 'OAuth callback failed' }, { status: 500 });
