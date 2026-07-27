@@ -28,6 +28,17 @@ describe('repairArticleQualityV2Specifics', () => {
     expect(result.changes).toContain('article_v2_unsupported_internal_claim_repaired');
   });
 
+  it('replaces readable unsupported internal review claims with public-source wording', () => {
+    const result = repairArticleQualityV2Specifics(
+      '여소남 검토 상품 가격대는 799,000원부터 시작합니다.',
+      'info',
+    );
+
+    expect(result.markdown).not.toContain('여소남 검토');
+    expect(result.markdown).toContain('확인 가능한 상품 가격대는 799,000원부터 시작합니다.');
+    expect(result.changes).toContain('article_v2_unsupported_internal_claim_repaired');
+  });
+
   it('removes hard sales CTA lines from the top of information posts', () => {
     const result = repairArticleQualityV2Specifics(
       [

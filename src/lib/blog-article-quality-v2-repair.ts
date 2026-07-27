@@ -23,6 +23,14 @@ export function repairArticleQualityV2Specifics(
     changes.push('article_v2_unsupported_internal_claim_repaired');
   }
 
+  const readableInternalClaimRepaired = next
+    .replace(/여소남\s*검토\s*상품\s*가격대/g, '확인 가능한 상품 가격대')
+    .replace(/여소남\s*검토/g, '공개 정보 기준');
+  if (readableInternalClaimRepaired !== next) {
+    next = readableInternalClaimRepaired;
+    changes.push('article_v2_unsupported_internal_claim_repaired');
+  }
+
   if (blogType === 'info') {
     const lines = next.split('\n');
     const upperLimit = Math.min(lines.length, Math.max(12, Math.floor(lines.length * 0.3)));
