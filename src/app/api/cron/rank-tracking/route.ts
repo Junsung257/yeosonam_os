@@ -4,6 +4,7 @@ import { fetchBlogSearchMetrics, isGSCConfigured, extractSlugFromUrl } from '@/l
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { expandGscLongtailTopics } from '@/lib/blog-longtail-expander';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -29,6 +30,20 @@ export const dynamic = 'force-dynamic';
 const RANK_DROP_THRESHOLD = 5;       // 5계단 이상 하락 시 경보
 const LOOKBACK_AVG_DAYS = 7;
 
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function runRankTracking(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -53,6 +68,7 @@ async function runRankTracking(request: NextRequest) {
     errors.push(`GSC fetch failed: ${sanitizeDbError(err)}`);
     return [];
   });
+  const selectedGscSiteUrl = metrics[0]?.gscSiteUrl ?? siteUrl;
 
   if (metrics.length === 0) {
     return { date: dateStr, fetched: 0, inserted: 0, alerts: 0, errors, message: 'GSC 데이터 없음' };
@@ -84,6 +100,39 @@ async function runRankTracking(request: NextRequest) {
       .upsert(rows, { onConflict: 'slug,query,date,source', ignoreDuplicates: false });
     if (insErr) errors.push(`rank_history upsert failed: ${sanitizeDbError(insErr)}`);
     else inserted = rows.length;
+  }
+
+  let longtailExpansion: Record<string, unknown> | null = null;
+  if (inserted > 0) {
+    try {
+      const result = await withTimeout(
+        expandGscLongtailTopics({
+          dryRun: false,
+          limit: 5,
+          seedLimit: 20,
+          lookbackDays: 28,
+          maxCandidatesPerSeed: 4,
+          recentDedupDays: 90,
+          minSeedImpressions: 5,
+          minSeedClicks: 1,
+          maxAvgPosition: 25,
+        }),
+        60_000,
+      );
+      if (!result) {
+        errors.push('blog longtail expansion timed out after rank history update');
+      } else {
+        longtailExpansion = {
+          inserted: result.inserted,
+          candidate_count: result.candidates.length,
+          skipped_count: result.skipped.length,
+          error_count: result.errors.length,
+        };
+        errors.push(...result.errors.map((error) => `blog longtail expansion: ${sanitizeDbError(error)}`));
+      }
+    } catch (err) {
+      errors.push(`blog longtail expansion failed: ${sanitizeDbError(err)}`);
+    }
   }
 
   // 3) 이탈 경보 — 7일 평균 vs 어제, 5계단 이상 하락
@@ -195,6 +244,9 @@ async function runRankTracking(request: NextRequest) {
     fetched: metrics.length,
     inserted,
     alerts,
+    siteUrl: selectedGscSiteUrl,
+    fallback_used: selectedGscSiteUrl !== siteUrl,
+    longtail_expansion: longtailExpansion,
     errors,
     ranAt: new Date().toISOString(),
   };

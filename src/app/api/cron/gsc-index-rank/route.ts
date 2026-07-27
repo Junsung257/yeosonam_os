@@ -266,6 +266,7 @@ async function runGscIndexRank(request: NextRequest) {
     pageContains: '/blog/',
     rowLimit: 1000,
   });
+  const selectedGscSiteUrl = metrics[0]?.gscSiteUrl ?? siteUrl;
 
   // 2) rank_history 에 source='gsc-page' / query='__page__' 로 upsert
   //    date 컬럼은 aggregate 의 endDate 기준 (1행 = 1페이지 = 1주 평균)
@@ -418,6 +419,8 @@ async function runGscIndexRank(request: NextRequest) {
     endDate,
     fetched: metrics.length,
     inserted,
+    siteUrl: selectedGscSiteUrl,
+    fallback_used: selectedGscSiteUrl !== siteUrl,
     inspected,
     not_indexed: notIndexed,
     inspection_candidate_count: rawCandidates.length,
