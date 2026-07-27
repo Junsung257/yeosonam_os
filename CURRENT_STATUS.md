@@ -2,11 +2,15 @@
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
-> **정보성 블로그 근거 모델 (2026-07-19, 운영 스키마 적용·데이터 준비 전):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 DB에 테이블은 적용됐으며 2026-07-19 읽기 감사 기준 source/evidence/claim과 active 공식 출처 레지스트리는 모두 0건이다. 근거 수집·검증 없이 비공개 재생성을 실행하지 않으며 `docs/blog-autopublish-contract.md`를 따른다.
+> **정보성 블로그 근거 모델 (2026-07-24, 운영 스키마 적용):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 읽기 감사 기준 source 1건, source version 21건, evidence 147건, claim 48건이며 active 공식 출처 12개, 의도별 공식 원문 16개, 검토된 비공식 출처 6개다. 검색 스니펫은 근거가 아니며, 승인된 URL의 실제 원문을 직접 수집·검증한 뒤에만 글쓰기를 시작한다.
 
 > **정보성 대표키·canonical (2026-07-19, 운영 스키마 적용):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.
 
-> **R18 연구 우선 비공개 재생성 (2026-07-19):** 비공개 단일 재생성은 검증된 `information_research_bundle`을 글쓰기 전에 검사하고 기존 `blog_information_*` 감사 체인에 저장한다. 누락·오래된 근거·목적지/언어 불일치·의도별 claim 부족·저장 실패는 AI 호출 전에 `skipped + self_heal_blocked`로 보류한다. 일반 자동발행 경로는 이번 단계에서 아직 강제 차단하지 않는다. Pexels 관련 이미지가 없으면 AI 참고 이미지를 생성할 수 있지만 공개 alt/caption에 `AI 생성 참고 이미지`를 표시하고 사실 근거로 취급하지 않는다.
+> **R18 연구 우선 비공개 재생성 (2026-07-19):** 비공개 단일 재생성은 검증된 `information_research_bundle`을 글쓰기 전에 검사하고 기존 `blog_information_*` 감사 체인에 저장한다. 누락·오래된 근거·목적지/언어 불일치·의도별 claim 부족·저장 실패는 AI 호출 전에 `skipped + self_heal_blocked`로 보류한다. 2026-07-23부터 일반 자동발행도 아래 Google Search 근거 조사 계약으로 같은 preflight를 강제한다. Pexels 관련 이미지가 없으면 AI 참고 이미지를 생성할 수 있지만 공개 alt/caption에 `AI 생성 참고 이미지`를 표시하고 사실 근거로 취급하지 않는다.
+
+> **일반 자동발행 검토 원문 직접수집 (2026-07-24, 로컬 코드):** 일반 정보성 큐도 writer 호출 전에 `src/lib/blog-auto-research.ts`가 Google Search를 URL 발견에만 사용하고, 의도별 승인 레지스트리와 일치하는 HTTPS 원문을 직접 내려받아 source snapshot span·claim/evidence 연결을 만든다. 두 번째 research preflight가 실패하면 `evidence_insufficient`로 차단한다. 검색 스니펫·미검토 도메인·출처 유형 오표기는 근거가 될 수 없으며 입국/비자·보험은 계속 사람 검수가 필수다.
+
+> **블로그 공개면 운영 판독 (2026-07-23):** `content_creatives`의 `published + naver_blog` 원본은 148건이지만 `public_blog_content_creatives`는 0건이다. 품질 dry-run은 최근 50건 중 38건을 수정 대상으로, 31건을 현재 발행 차단 대상으로 판정했다. 공개 목록·API·sitemap에서 발견 가능한 글이 0건이면 고객 품질 감사도 실패하도록 변경했으며, 기존 저품질 글을 근거 없이 문장만 고쳐 재공개하지 않는다.
 
 > **정보성 관련 글 랭킹 (2026-07-15, 로컬 코드):** 신규 정보성 글은 목적지·의도·국가/권역·특정 고객군·편집 클러스터를 기준으로만 내부링크를 추천한다. 미발행·noindex·redirect·비canonical 후보를 제외하고, 관련 후보가 없으면 빈 결과를 허용한다. 상품성·레거시 글의 기존 경로는 유지한다.
 
@@ -36,7 +40,7 @@
 
 | 메뉴 | 경로 | 세부 기능 |
 |------|------|-----------|
-| **대시보드** | `/admin` | 월매출·확정출발·예약KPI, 6개월 캐시플로 예측, 패키지 승인현황, 예약 단계별 분포 |
+| **대시보드** | `/admin` | ERP형 정산 관제(예약 현금 잔액·출발일 기준 인식 총마진·미수/미지급·미매칭), KST 출발일 확정매출/생성일 신규예약 분리, 정확한 업무 큐·상품 검수 총건수, 데이터 품질 모니터, 지연 로딩 상세 추이 |
 | **예약 관리** | `/admin/bookings` | 예약 목록(상태별 필터·페이지네이션), 신규예약 생성(`/new`), 예약 상세(`/[id]`), 예약 수정(`/[id]/edit` — 가격변경 사유 추적), 상태 머신 전이(pending→fully_paid), 타임라인(message_logs) |
 | **고객 관리** | `/admin/customers` | 고객 CRUD, 마일리지 이력, 예약 내역, 여권·생년월일, 메모, CRM 등급(신규~VVIP), 상태(잠재고객~여행완료) |
 | **입금 관리** | `/admin/payments` | 입금 확인·매칭, 신한은행 SMS 파싱, bank_transactions 자동매칭 |
@@ -77,7 +81,7 @@
 
 | 메뉴 | 경로 | 세부 기능 |
 |------|------|-----------|
-| **마케팅 대시보드** | `/admin/marketing` | Meta 캠페인 개요, ROAS 등급, 월간 성과, 캠페인 링크 빌더, 분석 대시보드 |
+| **마케팅 대시보드** | `/admin/marketing` | Meta 캠페인 개요, ROAS 등급, 월간 성과, 전체 적격 예약 기반 유입 채널·고객 LTV 분석 |
 | **크리에이티브** | `/admin/marketing/creatives` | 광고 소재 생성(carousel/single_image/text_ad/short_video), 채널별(Meta/Naver/Google), 상태 관리, hook 유형 |
 | **카드뉴스** | `/admin/marketing/card-news` | 카드뉴스 목록·생성(패키지 기반 자동생성), 슬라이드 에디터(`/[id]` — 이미지 오버레이·비율 프리셋·내보내기) |
 | **콘텐츠 허브** | `/admin/content-hub` | 3단계 콘텐츠 생성(패키지 선택 → AI 생성(앵글/채널/비율) → 슬라이드 편집/발행) |
@@ -194,7 +198,7 @@
 |---|--------|-----------|------|
 | 32 | **card_news** | `id`, `package_id`(FK), `campaign_id`(FK), `title`, `status`(DRAFT/CONFIRMED/LAUNCHED/ARCHIVED), `slides`(JSONB), `meta_creative_id` | 카드뉴스 에디터 |
 | 33 | **content_creatives** | `id`, `tenant_id`(FK), `product_id`(FK), `angle_type`, `target_audience`, `channel`, `image_ratio`, `slides`(JSONB), `blog_html`, `tracking_id`(UNIQUE), `status` | 멀티채널 콘텐츠 |
-| 33a | **blog_information_sources / source_versions / evidence / claims / claim_evidence** | `source_type`, `source_url/internal_identifier`, `publisher`, `retrieved_at`, `valid_from/until`, `destination/country`, `claim_type`, `risk_level`, `reviewer/reviewed_at`, `validation_status` | 정보성 블로그 전용 source→evidence→claim 감사 체인(상품 evidence와 분리, 서버 전용, 운영 스키마 적용·2026-07-19 데이터 0건 확인) |
+| 33a | **blog_information_sources / source_versions / evidence / claims / claim_evidence** | `source_type`, `source_url/internal_identifier`, `publisher`, `retrieved_at`, `valid_from/until`, `destination/country`, `claim_type`, `risk_level`, `reviewer/reviewed_at`, `validation_status` | 정보성 블로그 전용 source→evidence→claim 감사 체인(상품 evidence와 분리, 서버 전용, 운영 스키마 적용·2026-07-24 source 1/version 21/evidence 147/claim 48, active 공식 registry 12) |
 | 33b | **blog_information_representatives** | `representative_key`, `destination_id`, `intent`, `audience`, `locale`, `canonical_creative_id`, `canonical_slug`, `status`, `reservation_owner` | 정보성 신규 URL 중복 방지·canonical 예약 레지스트리(서버 전용, 운영 스키마 적용, 기존 글 무변경) |
 | 34 | **content_performance** | `id`, `creative_id`(FK), `date`, `impressions`, `clicks`, `conversions`, `spend`, `ctr`, `cpa`, `roas`, UNIQUE(creative_id,date) | 콘텐츠 일일 성과 |
 | 35 | **content_insights** | `id`, `destination`, `angle_type`, `channel`, `avg_ctr`, `avg_conversions`, `confidence_score` | 콘텐츠 인사이트(자동집계) |

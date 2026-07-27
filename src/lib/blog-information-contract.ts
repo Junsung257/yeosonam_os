@@ -291,11 +291,11 @@ const SOURCE_POLICIES: Record<BlogInformationIntent, BlogInformationSourcePolicy
   airport_transport: sourcePolicy(0.9, true, ['airport', 'transport_operator', 'government']),
   hotel_areas: sourcePolicy(0.9, false, ['official_map', 'field_research', 'reputable_booking_data']),
   family_budget: sourcePolicy(0.9, false, ['official', 'field_research', 'reputable_price_source']),
-  itinerary: sourcePolicy(0.9, false, ['official_operator', 'official_map', 'field_research']),
+  itinerary: sourcePolicy(0.9, false, ['official_operator', 'official_map', 'official_tourism', 'field_research']),
   shopping_souvenirs: sourcePolicy(0.9, false, ['official_tourism', 'field_research', 'reputable_price_source', 'customs']),
   entry_requirements: sourcePolicy(1, true, ['government', 'embassy', 'immigration', 'customs']),
   travel_insurance: sourcePolicy(1, true, ['insurer_policy', 'regulator', 'legal_review']),
-  currency_payment: sourcePolicy(0.9, true, ['central_bank', 'bank', 'official_tourism']),
+  currency_payment: sourcePolicy(0.9, true, ['central_bank', 'bank', 'government', 'official_tourism']),
   general: sourcePolicy(0.9, false, ['official', 'reputable_source']),
 };
 

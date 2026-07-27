@@ -10,6 +10,7 @@ import AuthorBox from '@/components/blog/AuthorBox';
 import ShareButtons from '@/components/blog/ShareButtons';
 import ReadingProgress from '@/components/blog/ReadingProgress';
 import BlogCitations from '@/components/blog/BlogCitations';
+import { loadBlogPublicCitations } from '@/lib/blog-public-citations';
 import InlineRelated, {
   type RelatedProductLite,
   type RelatedPostLite,
@@ -1263,7 +1264,7 @@ async function renderBlogDetail({
 
   // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
-  const [dki, relatedPosts, relatedProducts, officialSourceTarget] = await Promise.all([
+  const [dki, relatedPosts, relatedProducts, officialSourceTarget, researchCitations] = await Promise.all([
     isLanding
       ? withBlogRenderTimeout(
           'dki',
@@ -1286,6 +1287,13 @@ async function renderBlogDetail({
           generationMeta: post.generation_meta,
         }), null, 1500)
       : Promise.resolve(null),
+    informationalIdentity
+      ? withBlogRenderTimeout('researchCitations', loadBlogPublicCitations({
+          creativeId: post.id,
+          contentKey: post.slug,
+          limit: 6,
+        }), [], 1500)
+      : Promise.resolve([]),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -1714,7 +1722,11 @@ async function renderBlogDetail({
             {curationSection}
 
             {/* 참고 · 출처 */}
-            <BlogCitations destination={effectiveDestination} airline={pkg?.airline ?? undefined} />
+            <BlogCitations
+              destination={effectiveDestination}
+              airline={pkg?.airline ?? undefined}
+              citations={researchCitations}
+            />
           </article>
 
           {/* 데스크톱 사이드바 — Jiwonnote 패턴: TOC + 추천 포스팅 */}

@@ -136,6 +136,19 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain(".eq('status', 'queued')\n    .select('id')\n    .maybeSingle()");
   });
 
+  it('supports an explicitly flagged single-item informational publication canary', () => {
+    const source = routeSource();
+    const targetedStart = source.indexOf("searchParams.get('targetQueueId')");
+    const regularRecovery = source.indexOf('const staleRecovery = await recoverStaleGeneratingQueueItems');
+
+    expect(targetedStart).toBeGreaterThanOrEqual(0);
+    expect(targetedStart).toBeLessThan(regularRecovery);
+    expect(source).toContain('targetMeta.controlled_publish_canary !== true');
+    expect(source).toContain("reason: item.product_id\n            ? 'target_queue_item_must_be_informational'");
+    expect(source).toContain('targetedCanaryPublication: true');
+    expect(source).toContain('const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });');
+  });
+
   it('uses a lower-variance writer temperature for private regeneration', () => {
     const source = routeSource();
 

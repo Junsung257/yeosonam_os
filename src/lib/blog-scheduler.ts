@@ -23,26 +23,26 @@ const MICRO_ANGLE_TEMPLATES: MicroAngleTemplate[] = [
   {
     id: 'budget_family',
     category: 'travel_tips',
-    keywordSuffix: '가족여행 예산',
-    topic: (destination, year) => `${destination} 가족여행 ${year} 실제 경비표`,
+    keywordSuffix: '가족여행 예산 계산',
+    topic: (destination) => `${destination} 가족여행 예산에서 먼저 계산할 비용`,
   },
   {
     id: 'transport_cost',
     category: 'transport',
-    keywordSuffix: '공항 픽업 이동비',
-    topic: (destination, year) => `${destination} 렌터카 택시 픽업 이동비 비교 ${year}`,
+    keywordSuffix: '공항 숙소 이동 비용',
+    topic: (destination) => `${destination} 공항에서 숙소 이동수단 비용과 시간 비교`,
   },
   {
     id: 'hotel_area',
     category: 'hotel',
-    keywordSuffix: '숙소 위치별 예산',
-    topic: (destination) => `${destination} 호텔 위치별 예산 차이와 숙소 지역 선택`,
+    keywordSuffix: '숙소 지역 선택',
+    topic: (destination) => `${destination} 숙소 지역 선택 공항 이동과 일정 기준`,
   },
   {
     id: 'food_budget',
     category: 'food',
     keywordSuffix: '식비 예산',
-    topic: (destination, year) => `${destination} 식비 예산 현지 맛집 비용 가이드 ${year}`,
+    topic: (destination) => `${destination} 식비 예산 끼니별 비용과 추가요금 확인`,
   },
   {
     id: 'weather_packing',
@@ -60,7 +60,7 @@ const MICRO_ANGLE_TEMPLATES: MicroAngleTemplate[] = [
     id: 'shopping_budget',
     category: 'shopping',
     keywordSuffix: '쇼핑 예산',
-    topic: (destination) => `${destination} 쇼핑 예산 선물 리스트와 면세점 체크`,
+    topic: (destination) => `${destination} 쇼핑 예산 품목별 가격과 세관 확인`,
   },
   {
     id: 'kid_friendly',
@@ -71,14 +71,14 @@ const MICRO_ANGLE_TEMPLATES: MicroAngleTemplate[] = [
   {
     id: 'airport_arrival',
     category: 'transport',
-    keywordSuffix: '공항 도착 입국 동선',
-    topic: (destination) => `${destination} 공항 도착 후 입국 심사 환전 픽업 순서`,
+    keywordSuffix: '공항 도착 숙소 이동',
+    topic: (destination) => `${destination} 공항 도착 후 숙소까지 이동 순서와 선택 기준`,
   },
   {
     id: 'local_mobility',
     category: 'transport',
     keywordSuffix: '현지 이동수단',
-    topic: (destination, year) => `${destination} 현지 이동수단 그랩 택시 렌터카 선택법 ${year}`,
+    topic: (destination) => `${destination} 현지 이동수단 비용과 이용 조건 비교`,
   },
 ];
 
@@ -569,11 +569,11 @@ import { destinationlessInfoBlocksPublishability } from './blog-destinationless-
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
-export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
+export const DAILY_PUBLISH_SLOTS = ['09:00', '12:00', '15:00', '18:00', '21:00'];
 
 export const MIN_POSTS_PER_DAY = 3;
-export const MAX_POSTS_PER_DAY = 4;
-export const DEFAULT_POSTS_PER_DAY = 4;
+export const MAX_POSTS_PER_DAY = 5;
+export const DEFAULT_POSTS_PER_DAY = 5;
 export const PRODUCT_RATIO = 0.4; // 40% — multi-angle drip 도입으로 상품 비중 상향
 
 export interface PublishingPolicy {

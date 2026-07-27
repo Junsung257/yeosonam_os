@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DAILY_PUBLISH_SLOTS,
+  DEFAULT_POSTS_PER_DAY,
+  MAX_POSTS_PER_DAY,
   buildMicroAnglePrimaryKeyword,
   countPublishableQueueCandidates,
+  normalizeDailyPostTarget,
 } from './blog-scheduler';
 
 describe('blog scheduler queue refill helpers', () => {
+  it('keeps the scheduler fallback aligned with the five-post daily policy', () => {
+    expect(DEFAULT_POSTS_PER_DAY).toBe(5);
+    expect(MAX_POSTS_PER_DAY).toBe(5);
+    expect(DAILY_PUBLISH_SLOTS).toHaveLength(5);
+    expect(normalizeDailyPostTarget(5)).toBe(5);
+    expect(normalizeDailyPostTarget(8)).toBe(5);
+  });
+
   it('keeps English micro-angle ids out of reader-facing keywords', () => {
     const keyword = buildMicroAnglePrimaryKeyword('발리', { keywordSuffix: '가족여행 예산' });
 

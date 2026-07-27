@@ -211,4 +211,46 @@ describe('ensureBlogInlineImages', () => {
     expect(searchPexelsPhotos).toHaveBeenCalledTimes(1);
     expect(generateSectionImage).not.toHaveBeenCalled();
   });
+
+  it('checks a second Pexels page when the first page only returns used images', async () => {
+    vi.mocked(searchPexelsPhotos)
+      .mockResolvedValueOnce([{
+        id: 301,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam city street and local landmark',
+        src: {
+          landscape: 'https://images.pexels.com/photos/used.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }])
+      .mockResolvedValueOnce([{
+        id: 302,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam bridge cityscape in summer weather',
+        src: {
+          landscape: 'https://images.pexels.com/photos/danang-second-page.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }]);
+
+    const result = await ensureBlogInlineImages({
+      markdown: '# 다낭 날씨\n\n![다낭 기존](https://images.pexels.com/photos/used.jpg)\n\n## 월별 날씨\n본문입니다.',
+      destination: '다낭',
+      primaryKeyword: '다낭 월별 날씨',
+      minImages: 2,
+    });
+
+    expect(result.imageCount).toBe(2);
+    expect(result.markdown).toContain('danang-second-page.jpg');
+    expect(searchPexelsPhotos).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('Da Nang Vietnam travel'),
+      18,
+      2,
+    );
+  });
 });
