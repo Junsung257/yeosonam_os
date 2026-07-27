@@ -2662,23 +2662,24 @@ async function processQueueItem(
       console.log(`[blog-publisher] final research structure repair: ${finalResearchRepair.changes.join(', ')}`);
     };
     const restoreFinalReusableImages = async (): Promise<void> => {
-      if (!replacementAssets) return;
       const imageResult = await ensureBlogInlineImages({
         markdown: generated.blog_html,
         destination: item.destination,
         primaryKeyword,
-        ogImageUrl: replacementAssets.ogImageUrl,
+        ogImageUrl: replacementAssets?.ogImageUrl ?? generated.og_image_url,
         minImages: minimumInlineImages,
         maxImages: maximumInlineImages,
-        fallbackImageUrls: replacementAssets.inlineImageUrls,
-        preferFallbackImages: true,
-        allowPexelsSearch: false,
-        allowGeneratedFallback: false,
-        maxExternalAssetAttempts: 0,
+        fallbackImageUrls: replacementAssets?.inlineImageUrls,
+        preferFallbackImages: replacementAssets !== null,
+        allowPexelsSearch: replacementAssets === null || mayFillReplacementImageShortfall,
+        allowGeneratedFallback: replacementAssets === null || mayFillReplacementImageShortfall,
+        maxExternalAssetAttempts: replacementAssets === null
+          ? undefined
+          : Math.max(replacementImageShortfall, minimumInlineImages),
       });
       if (imageResult.inserted > 0) {
         generated.blog_html = imageResult.markdown;
-        console.log(`[blog-publisher] final reusable images restored: ${imageResult.inserted}`);
+        console.log(`[blog-publisher] final inline images restored: ${imageResult.inserted}`);
       }
     };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
