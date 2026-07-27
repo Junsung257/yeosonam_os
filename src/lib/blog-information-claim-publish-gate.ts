@@ -54,6 +54,28 @@ export function toBlogInformationClaimValidationMeta(
   };
 }
 
+async function selectBlogInformationRowsInChunks<T>(
+  table: string,
+  select: string,
+  column: string,
+  values: string[],
+  chunkSize = 100,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const uniqueValues = [...new Set(values.filter(Boolean))];
+  const rows: T[] = [];
+  for (let index = 0; index < uniqueValues.length; index += chunkSize) {
+    const chunk = uniqueValues.slice(index, index + chunkSize);
+    if (chunk.length === 0) continue;
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select(select)
+      .in(column, chunk);
+    if (error) return { data: [], error };
+    rows.push(...((data ?? []) as T[]));
+  }
+  return { data: rows, error: null };
+}
+
 async function applyDurableReviewStateGate(input: {
   creativeId?: string | null;
   markdown: string;
@@ -150,10 +172,22 @@ async function loadPersistedClaimRecords(
 
   const evidenceIds = [...new Set((links ?? []).map((link) => link.evidence_id))];
   const { data: evidence, error: evidenceError } = evidenceIds.length > 0
-    ? await supabaseAdmin
-        .from('blog_information_evidence')
-        .select('id, evidence_key, source_id, source_version_id, excerpt, scope, claim_type, observed_at, valid_until')
-        .in('id', evidenceIds)
+    ? await selectBlogInformationRowsInChunks<{
+        id: string;
+        evidence_key: string;
+        source_id: string;
+        source_version_id: string | null;
+        excerpt: string;
+        scope: unknown;
+        claim_type: string;
+        observed_at: string;
+        valid_until: string | null;
+      }>(
+        'blog_information_evidence',
+        'id, evidence_key, source_id, source_version_id, excerpt, scope, claim_type, observed_at, valid_until',
+        'id',
+        evidenceIds,
+      )
     : { data: [], error: null };
   if (evidenceError) return { records: [], error: evidenceError.message };
 
