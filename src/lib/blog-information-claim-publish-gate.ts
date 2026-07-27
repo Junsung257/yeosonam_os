@@ -156,7 +156,7 @@ async function loadPersistedClaimRecords(
     .select('id, claim_fingerprint, claim_text, claim_type, extracted_value, validation_status')
     .eq('content_key', contentKey);
   if (creativeId) {
-    claimsQuery = claimsQuery.eq('creative_id', creativeId);
+    claimsQuery = claimsQuery.or(`creative_id.eq.${creativeId},creative_id.is.null`);
   }
   const { data: claims, error: claimsError } = await claimsQuery;
   if (claimsError) return { records: [], error: claimsError.message };
