@@ -254,4 +254,54 @@ describe('ensureBlogInlineImages', () => {
     expect(result.markdown).toContain('sapporo-second-page.jpg');
     expect(searchPexelsPhotos).toHaveBeenNthCalledWith(2, expect.any(String), 18, 2);
   });
+
+  it('appends a final relevant image when the article has fewer H2 slots than the minimum', async () => {
+    vi.mocked(searchPexelsPhotos)
+      .mockResolvedValueOnce([{
+        id: 401,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam city skyline travel planning',
+        src: {
+          landscape: 'https://images.pexels.com/photos/danang-1.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }])
+      .mockResolvedValueOnce([{
+        id: 402,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam riverside landmark travel weather',
+        src: {
+          landscape: 'https://images.pexels.com/photos/danang-2.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }])
+      .mockResolvedValueOnce([{
+        id: 403,
+        width: 1200,
+        height: 627,
+        alt: 'Da Nang Vietnam city street travel reference',
+        src: {
+          landscape: 'https://images.pexels.com/photos/danang-3.jpg',
+          large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+        },
+        url: '', photographer: '', photographer_url: '',
+      }]);
+
+    const result = await ensureBlogInlineImages({
+      markdown: '# ?ㅻ궘 7???좎뵪\n\n## ?좎뵪\n蹂몃Ц\n\n## ?룹감由?\n蹂몃Ц',
+      destination: '?ㅻ궘',
+      primaryKeyword: '?ㅻ궘 7???좎뵪',
+      minImages: 3,
+      maxImages: 4,
+    });
+
+    expect(result.imageCount).toBe(3);
+    expect(result.markdown).toContain('danang-1.jpg');
+    expect(result.markdown).toContain('danang-2.jpg');
+    expect(result.markdown).toContain('danang-3.jpg');
+  });
 });
