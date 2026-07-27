@@ -3,6 +3,7 @@ import {
   assignPublishSlots,
   ensureDailyPublishableQueue,
   getBlogPublishingPolicy,
+  MIN_PUBLISHABLE_BUFFER_DAYS,
   normalizeDailyPostTarget,
   refillWeeklyQueue,
 } from '@/lib/blog-scheduler';
@@ -29,8 +30,8 @@ const handleSchedule = async (request: NextRequest) => {
     const postsPerDay = normalizeDailyPostTarget(policy.posts_per_day);
     const queuePreparation = await ensureDailyPublishableQueue({ postsPerDay });
     const researchPreparation = await prepareDailyInformationResearch({
-      targetReady: postsPerDay * 2,
-      maxResearch: postsPerDay * 2 + 2,
+      targetReady: postsPerDay * MIN_PUBLISHABLE_BUFFER_DAYS,
+      maxResearch: postsPerDay * MIN_PUBLISHABLE_BUFFER_DAYS + 2,
     });
     const slotAssignment = await assignPublishSlots(postsPerDay);
     const pillarResult = await ensureAllDestinationsHavePillar();

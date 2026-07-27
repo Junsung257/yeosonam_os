@@ -103,7 +103,7 @@ import {
 import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
 import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
 import { repairArticleQualityV2Specifics } from '@/lib/blog-article-quality-v2-repair';
-import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { ensureDailyPublishableQueue, getBlogPublishingPolicy, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
@@ -600,6 +600,23 @@ function repairAiReadableStructure(markdown: string, item: any, primaryKeyword?:
     intent: contentBrief.intentType,
     approvedClaims: researchReadiness.passed ? researchReadiness.bundle?.claims : undefined,
   }).markdown;
+}
+
+function buildEditorialVariationPromptBlock(item: any): string | null {
+  const variation = item?.meta?.editorial_variation;
+  if (!variation || typeof variation !== 'object') return null;
+  const readerScenario = typeof variation.reader_scenario === 'string' ? variation.reader_scenario : null;
+  const openingVariant = typeof variation.opening_variant === 'string' ? variation.opening_variant : null;
+  const sectionOrderVariant = typeof variation.section_order_variant === 'string' ? variation.section_order_variant : null;
+  if (!readerScenario && !openingVariant && !sectionOrderVariant) return null;
+  return [
+    '## Editorial variation - prevents fleet-level sameness',
+    readerScenario ? `- Reader scenario: ${readerScenario}` : null,
+    openingVariant ? `- Opening angle: ${openingVariant}` : null,
+    sectionOrderVariant ? `- Section order variant: ${sectionOrderVariant}` : null,
+    '- Keep the same factual evidence and required sections, but do not reuse a generic opening formula or the same H2 order from other recent posts.',
+    '- The first paragraph must answer the reader task through the selected opening angle before any broad travel-planning wording.',
+  ].filter((line): line is string => Boolean(line)).join('\n');
 }
 
 function buildQualityGateInput(
@@ -1679,7 +1696,7 @@ async function runBlogPublisher(request: NextRequest) {
     // 원자적 큐 클레임 — FOR UPDATE SKIP LOCKED 로 중복 발행 방지
     const queueRefill = await ensureDailyPublishableQueue({
       postsPerDay: targetPostsToday,
-      minCandidates: Math.max(targetPostsToday * 3, remainingToday * CLAIM_POOL_MULTIPLIER, 8),
+      minCandidates: Math.max(targetPostsToday * MIN_PUBLISHABLE_BUFFER_DAYS, remainingToday * CLAIM_POOL_MULTIPLIER, 8),
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       errors.push(`publishable_queue_refill_failed: ${message}`);
@@ -1823,7 +1840,7 @@ async function runBlogPublisher(request: NextRequest) {
         emergencyRefillRounds += 1;
         const emergencyRefill = await ensureDailyPublishableQueue({
           postsPerDay: targetPostsToday,
-          minCandidates: Math.max(targetPostsToday * 3, remainingQuota * CLAIM_POOL_MULTIPLIER, 8),
+          minCandidates: Math.max(targetPostsToday * MIN_PUBLISHABLE_BUFFER_DAYS, remainingQuota * CLAIM_POOL_MULTIPLIER, 8),
         }).catch((err) => {
           const message = err instanceof Error ? err.message : String(err);
           errors.push(`emergency_publishable_queue_refill_failed: ${message}`);
@@ -3907,6 +3924,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     `- Secondary keywords: ${contentBrief.secondaryKeywords.join(', ')}`,
     `- Optional related terms: ${(item.meta?.keywords || []).join(', ') || 'none'}`,
   ].join('\n');
+  const editorialVariationBlock = buildEditorialVariationPromptBlock(item);
   const { prompt, manifest: promptManifest } = buildInformationalWriterPrompt({
     guide: informationWriterGuide,
     assignmentBlock,
@@ -3915,6 +3933,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       freshnessPromptBlock,
       intentPromptBlock,
       buildBlogContentBriefPromptBlock(contentBrief),
+      editorialVariationBlock,
       buildInfoWriterPromptBlock(infoGuideBrief),
       researchPromptBlock,
       trendBlock,
@@ -4023,6 +4042,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       source_requirements: contentBrief.sourceRequirements,
       evidence: contentBrief.evidence,
       claim_ledger_policy: contentBrief.claimLedgerPolicy,
+      editorial_variation: item.meta?.editorial_variation ?? null,
     },
     writer_claim_ledger: {
       version: 'v1',

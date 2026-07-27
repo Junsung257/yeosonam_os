@@ -2,7 +2,7 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
 import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
-import { countPublishableQueueCandidates } from '@/lib/blog-scheduler';
+import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS } from '@/lib/blog-scheduler';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
 import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
@@ -616,7 +616,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     publishableCandidateCount: publishabilityStats.publishableCount,
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
-    candidateShortage: publishabilityStats.publishableCount < dailyTarget * 2,
+    candidateShortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
     actionableFailedCount: retryableFailedQueue.length,
     staleGeneratingCount: staleGenerating,
     manualReviewCount: manualReviewQueue.length,
@@ -624,6 +624,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     indexingOutboxMissingCount: indexingCoverage.missing_count,
     indexingOutboxCoverageRate: indexingCoverage.coverage_rate,
     recentPosts: publishedRows.slice(0, 8),
+    bufferDays: MIN_PUBLISHABLE_BUFFER_DAYS,
   });
   const preflightLevel: BlogOpsLevel = preflight.status === 'block' ? 'risk' : preflight.status === 'warn' ? 'watch' : 'healthy';
   const canaryPreflight = buildBlogCanaryPreflight({

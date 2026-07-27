@@ -29,6 +29,28 @@ describe('blog autopublish diagnosis bucket classification', () => {
     ]);
   });
 
+  it('keeps past SLA evidence historical even when candidate buffer needs refill', () => {
+    const result = classifyBlogAutopublishDiagnosisBuckets(
+      [
+        { code: 'daily_publish_sla_miss', severity: 'critical', detail: '2026-07-26 missed target' },
+        { code: 'candidate_shortage', severity: 'warning', detail: 'buffer below target' },
+      ],
+      {
+        reportDay: '2026-07-26',
+        currentDay: '2026-07-27',
+        currentDayPublished: 7,
+        dailyTarget: 5,
+        currentDayPublisherHealthy: true,
+        publishPreflightBlocked: false,
+        candidateShortage: true,
+      },
+    );
+
+    expect(result.operating_status).toBe('watch');
+    expect(result.active_buckets.map((bucket) => bucket.code)).toEqual(['candidate_shortage']);
+    expect(result.historical_buckets.map((bucket) => bucket.code)).toEqual(['daily_publish_sla_miss']);
+  });
+
   it('keeps current-day failures active even when the code matches a historical bucket', () => {
     const result = classifyBlogAutopublishDiagnosisBuckets(
       [{ code: 'daily_publish_sla_miss', severity: 'critical', detail: 'today missed target' }],

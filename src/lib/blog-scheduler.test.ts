@@ -5,8 +5,10 @@ import {
 } from './blog-auto-research';
 import { buildBlogContentBrief } from './blog-content-brief';
 import {
+  buildWeatherQueueVariation,
   buildMicroAnglePrimaryKeyword,
   countPublishableQueueCandidates,
+  MIN_PUBLISHABLE_BUFFER_DAYS,
   SCHEDULE_OCCUPYING_QUEUE_STATUSES,
 } from './blog-scheduler';
 
@@ -78,6 +80,22 @@ describe('blog scheduler queue refill helpers', () => {
 
     expect(keyword).toBe('발리 가족여행 예산');
     expect(keyword).not.toMatch(/family budget|transport cost|hotel area budget|weather packing|local mobility/i);
+  });
+
+  it('keeps at least a three-day publishable buffer for daily automation', () => {
+    expect(MIN_PUBLISHABLE_BUFFER_DAYS).toBeGreaterThanOrEqual(3);
+  });
+
+  it('assigns stable editorial variation metadata for weather refill candidates', () => {
+    const first = buildWeatherQueueVariation('서울', 7);
+    const second = buildWeatherQueueVariation('서울', 7);
+    const other = buildWeatherQueueVariation('오사카', 7);
+
+    expect(first).toEqual(second);
+    expect(first.reader_scenario).toMatch(/packer|rain|walking|arrival/);
+    expect(first.opening_variant).toMatch(/temperature|rain|clothing|packing/);
+    expect(first.section_order_variant).toMatch(/weather|clothing|decision|packing/);
+    expect(new Set([first.reader_scenario, other.reader_scenario]).size).toBeGreaterThanOrEqual(1);
   });
 
   it('counts different micro-angles for the same destination as separate publishable candidates', () => {
