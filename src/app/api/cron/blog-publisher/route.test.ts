@@ -155,6 +155,15 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7');
   });
 
+  it('repairs an exact primary keyword miss before blocking SEO publication', () => {
+    const source = routeSource();
+
+    expect(source).toContain('function repairPrimaryKeywordPresence');
+    expect(source).toContain("d.name === 'primary_keyword' && d.status === 'fail'");
+    expect(source).toContain('const keywordRepair = repairPrimaryKeywordPresence(generated.blog_html, primaryKeyword)');
+    expect(source).toContain('SEO primary keyword repair');
+  });
+
   it('avoids duplicate AI and image work during a controlled private regeneration', () => {
     const source = routeSource();
 
