@@ -317,6 +317,7 @@ Correct sequence:
 2. Revalidate `/blog`, `/blog/[slug]`, and the blog list tag.
 3. Product/legacy paths enqueue a durable `blog_indexing_jobs` row through their existing flow; informational atomic publication already guarantees this row before the public transaction commits.
 4. Blog indexing URLs must be canonical `https://www.yeosonam.com/blog/{slug}` URLs. `BLOG_CANONICAL_ORIGIN` is the first-choice origin, and queued job URLs are canonicalized again before provider submission.
+4a. Search Console performance collection must prefer the canonical `https://www.yeosonam.com/` URL-prefix property, then try configured/apex/domain-property fallbacks. A zero-row apex property must not be treated as zero blog traffic until canonical `www` has also been checked.
 5. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
 6. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
 7. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.

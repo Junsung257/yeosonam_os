@@ -178,7 +178,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 - 역할: `rank_history`의 실제 GSC winning query를 seed로 삼아 관련검색어/검색량/경쟁도를 붙이고, 기존 글과 큐의 유사 키워드를 제외한 뒤 `blog_topic_queue.source='gsc_longtail'`로 등록한다.
 - 큐에 넣기 전 후보만 확인:
   ```bash
-  curl "https://yeosonam.com/api/cron/blog-longtail-expander?dry_run=1&limit=5"
+  curl "https://www.yeosonam.com/api/cron/blog-longtail-expander?dry_run=1&limit=5"
   ```
 - 최근 등록 확인:
   ```sql
@@ -192,6 +192,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 ### Keyword Growth Engine 확인
 - 대시보드: `/admin/blog/keyword-growth`
 - API: `/api/admin/blog/keyword-growth?days=28`
+- Auto loop: `/api/cron/rank-tracking` stores GSC query rows, then runs bounded `blog-longtail-expander` queue growth. The standalone `/api/cron/blog-longtail-expander` route remains for dry-run and manual repair.
 - 핵심 루프: GSC query seed -> semantic dedupe -> keyword family -> SERP 분석 -> 발행 -> GSC/전환 성과 재학습
 - `blog_keyword_families`: 비슷한 롱테일을 대표 키워드 중심으로 묶는다.
 - `blog_keyword_family_members`: 후보/보조/대표 역할, 점수, seed query, 잠식 위험을 저장한다.
@@ -200,7 +201,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 - `content_creatives.generation_meta.freshness_monitor`: 비자/입국/안전/환율/날씨/공항 이동/가격 글의 재검토 필요 여부를 저장한다.
 - 수동 점검:
   ```bash
-  curl "https://yeosonam.com/api/cron/blog-longtail-expander?dry_run=1&limit=5"
+  curl "https://www.yeosonam.com/api/cron/blog-longtail-expander?dry_run=1&limit=5"
   curl "https://yeosonam.com/api/cron/blog-freshness-monitor?dry_run=1&limit=20"
   ```
 

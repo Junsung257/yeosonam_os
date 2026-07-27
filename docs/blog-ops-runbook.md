@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-24
+Last updated: 2026-07-27
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -24,6 +24,14 @@ A day is healthy only when all of these are true:
 - `blog-scheduler`, `blog-publisher`, `/admin/blog`, daily summary, and `diagnose:blog-autopublish` use the same buffer constant so operators do not see conflicting shortage states.
 - Weather fallback candidates receive stable `editorial_variation` metadata with reader scenario, opening angle, and section-order variant. The information writer prompt must receive that block and keep the same evidence while varying the customer-facing opening and H2 order.
 - Historical missed-day and timeout evidence remains visible, but it is not treated as an active critical blocker when the current KST day has met quota, the publisher is healthy, and publish preflight is not blocked. Candidate shortage remains a current warning instead of upgrading old SLA misses back to active risk.
+
+## 2026-07-27 GSC Data And Improvement Loop
+
+- Google Search Console search performance must prefer the canonical `https://www.yeosonam.com/` URL-prefix property, then fall back to the configured property, apex URL-prefix, and `sc-domain:yeosonam.com`.
+- A zero-row response from `https://yeosonam.com/` is not proof that the blog has no traffic. Operators must compare the selected `siteUrl` returned by `rank-tracking` or `gsc-index-rank`.
+- `rank-tracking` now writes query-level search rows and then runs the GSC longtail expander with a bounded timeout. This keeps the search-data -> topic-queue loop active without adding another Vercel cron.
+- `/api/content-analytics` enriches ROAS rows and fallback published rows with `search_clicks`, `search_impressions`, `search_ctr`, `search_position`, `search_opportunity_score`, and `improvement_action`.
+- The improvement queue uses four actions: `title_meta_ctr_repair`, `intent_answer_refresh`, `expand_winner_cluster`, and `content_depth_refresh`. These are the first repair candidates before regenerating more generic topics.
 
 ## Prompt Change Standard
 

@@ -206,6 +206,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/gsc-index-rank',
   '/api/cron/seo-monitor',
   '/api/cron/programmatic-seo-generator',
+  '/api/cron/blog-longtail-expander',
   '/api/cron/blog-regenerate-zero-click',
   '/api/cron/blog-orchestrator',
   '/api/cron/topical-rebuild',
