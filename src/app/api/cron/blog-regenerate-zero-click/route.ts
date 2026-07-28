@@ -16,6 +16,12 @@ import { evaluatePublishedBlogQualityUpgradeCandidate } from '@/lib/blog-quality
 import { buildBlogInformationRepresentativeKey } from '@/lib/blog-information-representative';
 import type { BlogInformationIntent } from '@/lib/blog-information-contract';
 import type { BlogInformationAudience } from '@/lib/blog-information-planner';
+import {
+  hasReviewedBlogResearchCoverage,
+  type BlogResearchOfficialDocumentCapability,
+  type BlogResearchRegistryCapability,
+  type BlogResearchReputableCapability,
+} from '@/lib/blog-research-capability';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -48,7 +54,7 @@ interface PublishedPost {
 
 interface RegenResult {
   slug: string;
-  status: 'queued_upgrade' | 'cooldown' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review';
+  status: 'queued_upgrade' | 'cooldown' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review' | 'research_coverage_missing';
   reason?: string;
   queueId?: string;
 }
@@ -168,6 +174,37 @@ async function runRegenerator(request: NextRequest) {
         representative,
       ]),
     );
+    const [registryResult, officialDocumentsResult, reputableSourcesResult] = await Promise.all([
+      supabaseAdmin
+        .from('blog_information_official_source_registry')
+        .select('id,source_type,status')
+        .eq('status', 'active'),
+      supabaseAdmin
+        .from('blog_information_official_research_documents')
+        .select('official_source_registry_id,source_url,intents,destinations,status')
+        .eq('status', 'active'),
+      supabaseAdmin
+        .from('blog_information_reputable_source_registry')
+        .select('source_types,intents,research_urls,research_destinations,status')
+        .eq('status', 'active'),
+    ]);
+    const capabilityError = registryResult.error
+      ?? officialDocumentsResult.error
+      ?? reputableSourcesResult.error;
+    if (capabilityError) {
+      return {
+        processed: 0,
+        errors: [...errors, `research capability lookup failed: ${capabilityError.message}`],
+        results,
+      };
+    }
+    const researchRegistries = (registryResult.data ?? []) as BlogResearchRegistryCapability[];
+    const officialResearchDocuments = (
+      officialDocumentsResult.data ?? []
+    ) as BlogResearchOfficialDocumentCapability[];
+    const reputableResearchSources = (
+      reputableSourcesResult.data ?? []
+    ) as BlogResearchReputableCapability[];
 
     const rejectionCounts: Record<string, number> = {};
     let considered = 0;
@@ -194,6 +231,24 @@ async function runRegenerator(request: NextRequest) {
       const decision = evaluatePublishedBlogQualityUpgradeCandidate(post);
       if (!decision.accepted) {
         rejectionCounts[decision.reason] = (rejectionCounts[decision.reason] ?? 0) + 1;
+        continue;
+      }
+      if (!hasReviewedBlogResearchCoverage({
+        intent: decision.brief.intentType,
+        destination: decision.researchDestination,
+        allowedSourceTypes: decision.brief.sourcePolicy.sourceTypes,
+        registries: researchRegistries,
+        officialDocuments: officialResearchDocuments,
+        reputableSources: reputableResearchSources,
+      })) {
+        rejectionCounts.research_coverage_missing = (
+          rejectionCounts.research_coverage_missing ?? 0
+        ) + 1;
+        results.push({
+          slug,
+          status: 'research_coverage_missing',
+          reason: `${decision.researchDestination}:${decision.brief.intentType}`,
+        });
         continue;
       }
       const representative = representativeByIdentity.get(decision.representativeKey);
@@ -255,7 +310,7 @@ async function runRegenerator(request: NextRequest) {
           source: 'user_seed',
           priority: selectionSource === 'zero_click' ? 85 : 70,
           primary_keyword: queueTopic,
-          destination: post.destination,
+          destination: decision.researchDestination,
           angle_type: post.angle_type || 'value',
           category: post.category || 'travel_tips',
           content_creative_id: post.id,
