@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPublishedBlogUpgradeQueueTopic,
   hasPrivateBlogRegenerationIntent,
   isEligiblePrivateBlogRegenerationTarget,
   isPublishedBlogAtomicUpgradeRequest,
@@ -7,6 +8,28 @@ import {
 } from './blog-private-regeneration';
 
 describe('private blog regeneration contract', () => {
+  it('builds a reader-facing queue topic from the canonical slug', () => {
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: 'bohol-monthly-weather_and-clothes|2026',
+      destination: '보홀',
+    })).toBe('bohol monthly weather and clothes 2026');
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: '%EB%B3%B4%ED%99%80-%EC%9A%B0%EA%B8%B0-%EB%82%A0%EC%94%A8',
+      destination: '보홀',
+    })).toBe('보홀 우기 날씨');
+  });
+
+  it('uses a safe destination fallback when a legacy slug is empty or malformed', () => {
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: '',
+      destination: '보홀|필리핀',
+    })).toBe('보홀 필리핀 현지 여행 정보');
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: '%E0%A4%A',
+      destination: '보홀',
+    })).toBe('보홀 현지 여행 정보');
+  });
+
   it('accepts only an explicit private replacement request linked to an existing creative', () => {
     expect(hasPrivateBlogRegenerationIntent({
       meta: { private_regeneration: {} },

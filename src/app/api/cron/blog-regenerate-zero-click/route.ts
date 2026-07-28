@@ -9,7 +9,10 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
-import { PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE } from '@/lib/blog-private-regeneration';
+import {
+  buildPublishedBlogUpgradeQueueTopic,
+  PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+} from '@/lib/blog-private-regeneration';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -165,13 +168,14 @@ async function runRegenerator(request: NextRequest) {
       }
 
       const logId = lockRows?.[0]?.id;
+      const queueTopic = buildPublishedBlogUpgradeQueueTopic(post);
       const { data: queueRows, error: queueError } = await supabaseAdmin
         .from('blog_topic_queue')
         .insert({
-          topic: post.seo_title || post.slug,
+          topic: queueTopic,
           source: 'user_seed',
           priority: 85,
-          primary_keyword: post.seo_title || post.destination || post.slug,
+          primary_keyword: queueTopic,
           destination: post.destination,
           angle_type: post.angle_type || 'value',
           category: post.category || 'travel_tips',
