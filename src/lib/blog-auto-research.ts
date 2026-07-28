@@ -49,6 +49,7 @@ const BOOKING_GUAM_FAMILY_PATH = '/family/country/gu.ko.html';
 const AGODA_GUAM_HOTEL_GUIDE_PATH = '/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/';
 const USA_GOV_CURRENCY_PATH = '/currency';
 const VISIT_GUAM_PAYMENT_PATH = '/smscormoranguam/sms-diving-in-guam/';
+const VISIT_GUAM_SOUVENIR_PATH = '/blog/post/3376/';
 const AUTOMATIC_WEB_SOURCE_TYPES = new Set<BlogInformationSourceType>([
   'reputable_local_source',
   'reputable_price_source',
@@ -245,6 +246,8 @@ type WmoClimateDocument = {
   };
 };
 
+const reviewedDirectPageInFlight = new Map<string, Promise<ReviewedDirectPage>>();
+
 export function extractReviewedPageTextForResearch(value: string): string {
   const normalized = clean(value);
   if (normalized.length <= MAX_REVIEWED_PAGE_TEXT) return normalized;
@@ -356,7 +359,29 @@ async function fetchReviewedDirectPage(input: {
   throw new Error(`too_many_redirects:${input.entry.hostname}`);
 }
 
-async function fetchReviewedDirectPages(
+function fetchReviewedDirectPageShared(input: {
+  entry: Pick<
+    BlogInformationOfficialSourceRegistryEntry,
+    'hostname' | 'allowSubdomains' | 'researchUrls'
+  >;
+  url: string;
+}): Promise<ReviewedDirectPage> {
+  const cacheKey = `${input.entry.hostname.toLowerCase()}|${input.url}`;
+  const existing = reviewedDirectPageInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const request = (async () => {
+    try {
+      return await fetchReviewedDirectPage(input);
+    } finally {
+      reviewedDirectPageInFlight.delete(cacheKey);
+    }
+  })();
+  reviewedDirectPageInFlight.set(cacheKey, request);
+  return request;
+}
+
+export async function fetchReviewedDirectPages(
   registry: Array<Pick<
     BlogInformationOfficialSourceRegistryEntry,
     'hostname' | 'allowSubdomains' | 'researchUrls'
@@ -365,7 +390,7 @@ async function fetchReviewedDirectPages(
   const candidates = registry
     .flatMap((entry) => (entry.researchUrls ?? []).map((url) => ({ entry, url })))
     .slice(0, MAX_REVIEWED_DIRECT_PAGES);
-  const settled = await Promise.allSettled(candidates.map(fetchReviewedDirectPage));
+  const settled = await Promise.allSettled(candidates.map(fetchReviewedDirectPageShared));
   const pages: ReviewedDirectPage[] = [];
   const failures: string[] = [];
   settled.forEach((result, index) => {
@@ -2214,6 +2239,111 @@ export function augmentGrtaAirportTransportPayload(
   };
 }
 
+export function augmentGuamShoppingPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+  payload: GroundedBlogResearchPayload,
+): GroundedBlogResearchPayload {
+  const normalizedDestination = clean(destination).normalize('NFKC').toLowerCase();
+  if (normalizedDestination !== '괌' && normalizedDestination !== 'guam') return payload;
+
+  const pageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === 'www.visitguam.com'
+        && url.pathname === VISIT_GUAM_SOUVENIR_PATH;
+    } catch {
+      return false;
+    }
+  });
+  if (pageIndex < 0) return payload;
+
+  const pageText = pages[pageIndex]!.text.replace(/\s+/g, ' ');
+  if (!/official Made in Guam product seal/i.test(pageText)
+    || !/Chamorro Village/i.test(pageText)
+    || !/Guam Art Boutique/i.test(pageText)
+    || !/jewelry,\s*soaps,\s*coconut oils,\s*books/i.test(pageText)) {
+    return payload;
+  }
+
+  const sourceDrafts = [...(payload.sources ?? [])];
+  const matchingSourceIndex = sourceDrafts.findIndex(
+    (source) => Number(source.groundingChunkIndex) === pageIndex,
+  );
+  const matchingSource = matchingSourceIndex >= 0
+    ? sourceDrafts.splice(matchingSourceIndex, 1)[0]
+    : null;
+  const sourceKey = clean(matchingSource?.sourceKey) || 'visit-guam-made-in-guam-souvenirs';
+  const officialSource: GroundedSourceDraft = {
+    ...matchingSource,
+    sourceKey,
+    groundingChunkIndex: pageIndex,
+    publisher: clean(matchingSource?.publisher) || 'Guam Visitors Bureau',
+    sourceType: 'official_tourism',
+    claimTypes: [...new Set([...normalizeList(matchingSource?.claimTypes), 'factual'])],
+    country: clean(matchingSource?.country) || '괌',
+    destination,
+  };
+  const deterministicEvidence: GroundedEvidenceDraft[] = [
+    {
+      evidenceKey: 'visit-guam-official-product-seal',
+      sourceKey,
+      excerpt: 'Guam Visitors Bureau says the government-issued official Made in Guam product seal certifies that an item or product is made in Guam.',
+      sourceLocator: 'Authentic Made in Guam Souvenirs > introduction',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 기념품 구매 여행자`,
+      normalizedValue: 'official Made in Guam product seal',
+      conditions: ['제품 포장의 공식 인증 마크 확인'],
+    },
+    {
+      evidenceKey: 'visit-guam-chamorro-village-products',
+      sourceKey,
+      excerpt: 'Guam Visitors Bureau lists Guam Art Boutique in Chamorro Village and describes locally crafted jewelry, soaps, coconut oils, books, hand-woven accessories, gifts, and souvenirs.',
+      sourceLocator: 'Authentic Made in Guam Souvenirs > Chamorro Village',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 기념품 구매 여행자`,
+      normalizedValue: 'Chamorro Village Guam Art Boutique local souvenirs',
+      conditions: ['방문 전 현재 영업 여부와 재고 확인'],
+    },
+  ];
+  const deterministicClaims: GroundedClaimDraft[] = [
+    {
+      claimText: '괌정부관광청은 공식 Made in Guam 제품 인증 마크가 괌에서 만들어진 상품임을 인증한다고 안내한다.',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      evidenceKeys: ['visit-guam-official-product-seal'],
+      normalizedValue: 'official Made in Guam product seal',
+    },
+    {
+      claimText: '괌정부관광청은 하갓냐 Chamorro Village의 Guam Art Boutique에서 주얼리, 비누, 코코넛 오일, 책, 수공예 액세서리 등 현지 제작 기념품을 찾을 수 있다고 안내한다.',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      evidenceKeys: ['visit-guam-chamorro-village-products'],
+      normalizedValue: 'Chamorro Village Guam Art Boutique local souvenirs',
+    },
+  ];
+  const duplicatePattern = /Made in Guam.{0,80}(?:seal|인증)|Chamorro Village|Guam Art Boutique/i;
+  const originalEvidence = (payload.evidence ?? []).filter(
+    (evidence) => !duplicatePattern.test(clean(evidence.excerpt)),
+  );
+  const originalClaims = (payload.claims ?? []).filter(
+    (claim) => !duplicatePattern.test(clean(claim.claimText)),
+  );
+
+  return {
+    ...payload,
+    sources: [officialSource, ...sourceDrafts].slice(0, MAX_GROUNDING_SOURCES),
+    evidence: [...deterministicEvidence, ...originalEvidence].slice(0, MAX_RESEARCH_EVIDENCE),
+    claims: [...deterministicClaims, ...originalClaims].slice(0, MAX_RESEARCH_CLAIMS),
+  };
+}
+
 async function loadOfficialRegistry(
   intent: string,
   destination: string,
@@ -2489,6 +2619,9 @@ export async function researchBlogInformationAutomatically(input: {
       if (input.brief.intentType === 'family_budget') {
         payload = augmentGuamFamilyMealPayload(reviewedPages, input.destination, payload);
       }
+      if (input.brief.intentType === 'shopping_souvenirs') {
+        payload = augmentGuamShoppingPayload(reviewedPages, input.destination, payload);
+      }
       if (input.brief.intentType === 'airport_transport'
         || input.brief.intentType === 'family_budget'
         || input.brief.intentType === 'itinerary') {
@@ -2536,6 +2669,9 @@ export async function researchBlogInformationAutomatically(input: {
           }
           if (input.brief.intentType === 'family_budget') {
             payload = augmentGuamFamilyMealPayload(reviewedPages, input.destination, payload);
+          }
+          if (input.brief.intentType === 'shopping_souvenirs') {
+            payload = augmentGuamShoppingPayload(reviewedPages, input.destination, payload);
           }
           if (input.brief.intentType === 'airport_transport'
             || input.brief.intentType === 'family_budget'
