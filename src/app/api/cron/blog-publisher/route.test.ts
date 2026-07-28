@@ -20,6 +20,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('expectedContentKey: evidenceContentKey');
     expect(source).toContain('contentKey: evidenceContentKey');
     expect(source).toContain('information_evidence_content_key: evidenceContentKey');
+    expect(source).toContain('applyFinalResearchStructureRepair();');
+    expect(source).toContain('generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);');
+    expect(source).toContain("['title', 'meta_description'].includes(d.name) && d.score < d.maxScore");
     expect(source).toContain("contains('meta'");
     expect(source).toContain("? 'daily_publish_quota_reached'");
     expect(source).toContain("'scheduled_publish_window_not_due'");
@@ -268,7 +271,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(finalImageRestore).toBeGreaterThan(finalResearchRepair);
     expect(finalQualityGate).toBeGreaterThan(finalImageRestore);
     expect(source).toContain('hasRenderedPageH1: true');
-    expect(source).toContain("d.status !== 'pass' && ['title', 'meta_description'].includes(d.name)");
+    expect(source).toContain("['title', 'meta_description'].includes(d.name) && d.score < d.maxScore");
     expect(source).toContain('qa = await runQualityWithResearchStructure();');
     expect(source).toContain('qa = await runQualityAfterAiReadableRepair();');
     const genericRepair = source.indexOf('qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);');

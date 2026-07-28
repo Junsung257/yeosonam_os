@@ -2809,6 +2809,7 @@ async function processQueueItem(
     };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalResearchStructureRepair();
+      generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       await restoreFinalReusableImages();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
@@ -2949,7 +2950,11 @@ async function processQueueItem(
       console.log(`[blog-publisher] SEO CTA repair -> ${seoScore.score}/${seoScore.maxScore}`);
     }
 
-    if (seoScore.details.some(d => d.status !== 'pass' && ['title', 'meta_description'].includes(d.name))) {
+    if (
+      !seoScore.passed
+      && seoScore.details.some(d =>
+        ['title', 'meta_description'].includes(d.name) && d.score < d.maxScore)
+    ) {
       const seoRepair = repairBlogSeoMetadata({
         seoTitle: generated.seo_title,
         seoDescription: generated.seo_description,
