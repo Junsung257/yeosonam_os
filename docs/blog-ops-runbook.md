@@ -176,6 +176,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Evidence-backed `monthly_weather:v2` sections are protected from the generic legacy backfill rewrite. The backfill must preserve the 12 reviewed climate rows and may only rebuild the clothing table from each row's verified minimum temperature, with rainfall used only for rain gear.
 - Markdown rendering must retain a blank boundary after the final table row. A following explanatory paragraph must render as `<p>`, never as a table row with empty cells.
 - Public customer-quality is the final source of truth for reader-facing copy. If public pages contain generated residue, duplicate headings/sections, broken table surfaces, early hard CTA in information posts, unsupported internal claims, or AI-cliche tone, the system is not healthy even when internal DB audits and URL surface checks are green.
+- Inspect the public `<meta name="description">` after each intent canary or atomic legacy upgrade. Weather copy must mention climate, clothing, observation period, or official forecast checks; it must not inherit generic cost, itinerary, or reservation language. Apply the same intent-alignment check across all ten supported information intents.
 - Verification on 2026-07-08:
   - `npm run audit:blog-quality -- --limit=16 --json --write` updated affected recent posts and queued indexing jobs.
   - `npm run run:blog-indexing-worker -- --json --limit=15` processed the queued jobs with `failed=0`.
