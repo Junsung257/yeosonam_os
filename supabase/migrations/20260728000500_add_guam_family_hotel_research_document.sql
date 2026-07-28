@@ -33,7 +33,7 @@ set
   ),
   reviewed_by = 'codex_live_source_availability_audit',
   reviewed_at = now(),
-  review_note = 'Directly retrievable Guam family-hotel page with checked-date nightly samples. Prices vary by dates, occupancy, taxes, and availability; never present them as guaranteed quotes.',
+  review_note = 'Directly retrievable Guam family-hotel page with checked-date nightly samples. Prices vary by dates, occupancy, taxes, and availability, so never present them as guaranteed quotes.',
   updated_at = now()
 where hostname = 'booking.com'
   and status = 'active';
