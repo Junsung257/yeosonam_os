@@ -6,6 +6,7 @@ describe('blog information planner', () => {
     ['삿포로 식비', '삿포로', 'food_budget', 'LOW'],
     ['광저우 월별 날씨', '광저우', 'monthly_weather', 'MEDIUM'],
     ['오사카 공항 이동', '오사카', 'airport_transport', 'MEDIUM'],
+    ['캐나다 로키 대중교통', '캐나다 로키산맥', 'local_transport', 'MEDIUM'],
     ['대만 숙소 지역', '대만', 'hotel_areas', 'LOW'],
     ['싱가포르 가족 예산', '싱가포르', 'family_budget', 'LOW'],
   ] as const)('builds a distinct complete plan for %s', (topic, destination, intent, riskLevel) => {
@@ -13,7 +14,7 @@ describe('blog information planner', () => {
     expect(plan.passed).toBe(true);
     expect(plan.intent).toBe(intent);
     expect(plan.riskLevel).toBe(riskLevel);
-    expect(plan.destinationId).toBe(destination);
+    expect(plan.destinationId).toBe(destination.replace(/\s+/g, '-'));
     expect(plan.requiredFacts.length).toBeGreaterThanOrEqual(4);
     expect(plan.plannedTables.length).toBeGreaterThan(0);
     expect(plan.faqQuestions).toHaveLength(3);

@@ -68,7 +68,7 @@ describe('published blog quality upgrade candidate', () => {
       accepted: true,
       researchDestination: '캐나다 로키산맥',
       brief: {
-        intentType: 'airport_transport',
+        intentType: 'local_transport',
         passed: true,
       },
     });

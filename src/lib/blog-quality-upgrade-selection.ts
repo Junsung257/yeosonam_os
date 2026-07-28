@@ -61,8 +61,8 @@ const EXPLICIT_INTENT_RULES: ExplicitIntentRule[] = [
     pattern: /(?:공항\s*(?:교통|이동|픽업|철도|버스|택시)|공항에서.+(?:시내|호텔|숙소)|airport\s*(?:transport|transfer)|arrival\s*transfer)/i,
   },
   {
-    intent: 'airport_transport',
-    microAngle: 'transport_cost',
+    intent: 'local_transport',
+    microAngle: 'local_mobility',
     pattern: /(?:대중교통|렌터카|택시\s*(?:요금|비용)|교통비|이동\s*(?:비용|수단)|public\s*transport|rental\s*car|transport\s*(?:cost|guide))/i,
   },
   {
@@ -168,10 +168,10 @@ export function deduplicateBlogQualityUpgradeCandidates<T>(
   return { selected, duplicateCount };
 }
 
-const QUALITY_UPGRADE_FILTER_INTENTS: Record<string, BlogInformationIntent> = {
+const QUALITY_UPGRADE_FILTER_INTENTS: Record<string, BlogInformationIntent | readonly BlogInformationIntent[]> = {
   weather: 'monthly_weather',
   currency: 'currency_payment',
-  transport: 'airport_transport',
+  transport: ['airport_transport', 'local_transport'],
   hotel: 'hotel_areas',
   food: 'food_budget',
   shopping: 'shopping_souvenirs',
@@ -188,5 +188,7 @@ export function matchesBlogQualityUpgradeFilter(input: {
   const filter = (input.filter ?? '').trim().toLowerCase();
   if (!filter) return true;
   const expectedIntent = QUALITY_UPGRADE_FILTER_INTENTS[filter] ?? filter;
-  return input.intent === expectedIntent || input.microAngle === filter;
+  return (Array.isArray(expectedIntent)
+    ? expectedIntent.includes(input.intent)
+    : input.intent === expectedIntent) || input.microAngle === filter;
 }

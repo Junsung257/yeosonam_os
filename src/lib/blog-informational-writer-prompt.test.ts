@@ -15,6 +15,7 @@ const FIXTURES = {
   food_budget: ['삿포로 여행 식비', '삿포로', '삿포로 식비', 'food'],
   monthly_weather: ['괌 8월 날씨와 옷차림', '괌', '괌 8월 날씨', 'weather'],
   airport_transport: ['세부 공항에서 시내 이동', '세부', '세부 공항 교통', 'transport'],
+  local_transport: ['캐나다 로키 렌터카 없이 이동', '캐나다 로키산맥', '캐나다 로키 대중교통', 'transport'],
   hotel_areas: ['괌 호텔 지역 비교', '괌', '괌 호텔 위치', 'hotel'],
   family_budget: ['보홀 가족여행 예산', '보홀', '보홀 가족여행 비용', 'cost'],
   itinerary: ['다낭 3박 4일 일정', '다낭', '다낭 여행 일정', 'itinerary'],

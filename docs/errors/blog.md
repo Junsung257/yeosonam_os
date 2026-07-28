@@ -2,6 +2,13 @@
 
 Last updated: 2026-07-28
 
+## ERR-BLOG-local-transit-misclassified-as-airport@2026-07-28
+
+- [x] **ERR-BLOG-local-transit-misclassified-as-airport@2026-07-28**: A Canadian Rockies article about traveling without a rental car completed reviewed-source research and scored 98/100, but publication failed because the generic transport taxonomy required airport-to-city schedules, luggage handling, and late-arrival advice.
+- **Root cause**: `transport_cost` and `local_mobility` both mapped to `airport_transport`. Research, planning, structure validation, SEO, related links, CTA telemetry, and the atomic publication RPC therefore shared the wrong reader task.
+- **Fix**: Added the canonical `local_transport` intent across application and database contracts. It requires named local routes or modes, fares, route duration or frequency, service schedule, ticket/reservation method, seasonal or service limits, and official operator or government evidence. Airport-specific signals still resolve to `airport_transport`; generic public-transit and rental-car signals resolve to `local_transport`.
+- **Prevention**: Every new informational intent must be added end to end: classifier, slots, source policy, research minimums, writer fixtures, structure validator, SEO, related links, CTA telemetry, representative constraint, atomic publication guard, source scopes, live suite, and operator documentation. A high aggregate writing score never overrides a mismatched reader-task contract.
+
 ## ERR-BLOG-research-scheduler-serial-timeout@2026-07-28
 
 - [x] **ERR-BLOG-research-scheduler-serial-timeout@2026-07-28**: Intent-diverse preparation correctly continued past a weather-only ready buffer, but researched candidates serially and exceeded Vercel's 180-second function limit.

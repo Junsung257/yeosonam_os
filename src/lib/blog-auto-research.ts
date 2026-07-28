@@ -1147,6 +1147,13 @@ export function buildBlogStructuredResearchPrompt(input: {
           'Select at least two fare or pass-price claims and two route-duration claims before general transport facts.',
           'Do not select operator contact details, vehicle marketing, addresses, or insurance marketing as transport decision evidence.',
         ]
+      : input.brief.intentType === 'local_transport'
+        ? [
+            'LOCAL TRANSPORT PRIORITY:',
+            'Select at least two fare or pass-price claims and two route-duration or service-frequency claims before general destination facts.',
+            'Cover named origin-destination routes, ticket or reservation rules, service hours, and seasonal restrictions when the reviewed pages state them.',
+            'Do not invent airport arrival, luggage, or late-night requirements unless the topic and reviewed source explicitly concern them.',
+          ]
       : input.brief.intentType === 'hotel_areas'
         ? [
             'HOTEL AREA PRIORITY:',
@@ -1236,6 +1243,7 @@ const RESEARCH_CLAIM_TYPES_BY_INTENT: Partial<Record<string, BlogInformationClai
   food_budget: ['price'],
   monthly_weather: ['climate'],
   airport_transport: ['price', 'duration', 'factual', 'policy'],
+  local_transport: ['price', 'duration', 'factual', 'policy'],
   hotel_areas: ['price', 'duration', 'factual'],
   family_budget: ['price', 'duration', 'factual', 'policy'],
   itinerary: ['price', 'duration', 'factual', 'policy'],

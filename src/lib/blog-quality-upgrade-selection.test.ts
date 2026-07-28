@@ -10,6 +10,7 @@ describe('published blog quality upgrade topic selection', () => {
     ['다낭-6월-날씨와-옷차림-완벽-가이드', 'monthly_weather', 'weather_packing'],
     ['나트랑-달랏-화폐-환전-팁-문화-총정리', 'currency_payment', null],
     ['세부-공항에서-시내-이동-교통편', 'airport_transport', 'airport_arrival'],
+    ['캐나다-로키산맥-렌터카-없이-대중교통-여행', 'local_transport', 'local_mobility'],
     ['괌-가족-4박5일-예산과-비용', 'family_budget', 'budget_family'],
     ['오사카-아이와-3박4일-여행-일정', 'itinerary', 'kid_friendly'],
   ])('accepts an explicit legacy topic: %s', (slug, expectedIntent, microAngle) => {
@@ -75,7 +76,9 @@ describe('published blog quality upgrade topic selection', () => {
     ['weather', 'monthly_weather', 'weather_packing'],
     ['currency', 'currency_payment', null],
     ['currency_payment', 'currency_payment', null],
-    ['transport_cost', 'airport_transport', 'transport_cost'],
+    ['local_mobility', 'local_transport', 'local_mobility'],
+    ['transport', 'airport_transport', 'airport_arrival'],
+    ['transport', 'local_transport', 'local_mobility'],
   ])('supports operator intent and micro-angle filters: %s', (filter, intent, microAngle) => {
     expect(matchesBlogQualityUpgradeFilter({
       filter,

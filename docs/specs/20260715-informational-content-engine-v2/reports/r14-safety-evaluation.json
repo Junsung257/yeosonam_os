@@ -5,8 +5,8 @@
   "realPathModules": true,
   "externalCalls": 0,
   "publicMutations": 0,
-  "total": 10,
-  "passed": 10,
+  "total": 11,
+  "passed": 11,
   "failed": 0,
   "ok": true,
   "cases": [
@@ -410,6 +410,143 @@
           "evidence": {
             "issues": [],
             "canonicalUrl": "https://www.yeosonam.com/blog/osaka-airport-transport-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "canadian_rockies_local_transport",
+      "label": "캐나다 로키 현지 교통",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "local_transport",
+            "expected": "local_transport",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "local_transport:multiple_routes_or_modes_required",
+              "local_transport:prices_required",
+              "local_transport:durations_or_frequency_required",
+              "local_transport:schedule_required",
+              "local_transport:official_evidence_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 2
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 9,
+            "persistedClaims": 9,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 9,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "캐나다-로키산맥-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": "패스는 공식 운영사에서 구매·예약하며, 성수기와 계절 운행 변경 여부를 출발 전에 확인합니다.\n공식 운영사 근거: https://transit.gov.example/banff-routes\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/canadian-rockies-local-transport-safety-eval"
           }
         },
         "publicEligibility": {
@@ -969,8 +1106,8 @@
       }
     },
     {
-      "id": "mongolia_weather_clothing",
-      "label": "몽골 날씨·옷차림",
+      "id": "danang_itinerary",
+      "label": "다낭 여행 일정",
       "expectedPublishState": "published",
       "actualPublishState": "published",
       "passed": true,
@@ -979,8 +1116,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "actual": "monthly_weather",
-            "expected": "monthly_weather",
+            "actual": "itinerary",
+            "expected": "itinerary",
             "missingInputs": []
           }
         },
@@ -990,8 +1127,10 @@
           "evidence": {
             "missingSlots": [],
             "structuredIssues": [
-              "monthly_weather:month_rows_required",
-              "monthly_weather:source_required"
+              "itinerary:day_rows_required",
+              "itinerary:place_entities_required",
+              "itinerary:movement_required",
+              "itinerary:realistic_time_required"
             ]
           }
         },
@@ -1002,15 +1141,15 @@
             "contractIssues": [],
             "structureIssues": [],
             "tableCount": 1,
-            "meaningfulRowCount": 12
+            "meaningfulRowCount": 3
           }
         },
         "evidenceCoverage": {
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 16,
-            "persistedClaims": 16,
+            "claims": 8,
+            "persistedClaims": 8,
             "issues": []
           }
         },
@@ -1018,16 +1157,8 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 16,
+            "claims": 8,
             "issues": [
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
-              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -1054,7 +1185,7 @@
           "passed": true,
           "evidence": {
             "slugs": [
-              "몽골-related-guide"
+              "다낭-related-guide"
             ],
             "reasons": [
               "same_destination_adjacent_intent"
@@ -1079,7 +1210,7 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "sanitizedTail": " 11℃ | 60mm | 코트 |\n| 12월 | 21℃ | 14℃ | 64mm | 코트 |\n\n공식 기후 자료: https://weather.gov.example/climate-normal\n\n지금 예약 가능\n\n상담하기"
+            "sanitizedTail": " 호이안 올드타운 | 버스 이동 | 10:00~18:00 | 입장 마감과 휴무 확인 |\n\n공식 운영 정보: https://tourism.gov.example/danang-itinerary\n\n지금 예약 가능\n\n상담하기"
           }
         },
         "renderQuality": {
@@ -1087,7 +1218,7 @@
           "passed": true,
           "evidence": {
             "issues": [],
-            "canonicalUrl": "https://www.yeosonam.com/blog/mongolia-weather-clothing-safety-eval"
+            "canonicalUrl": "https://www.yeosonam.com/blog/danang-itinerary-safety-eval"
           }
         },
         "publicEligibility": {

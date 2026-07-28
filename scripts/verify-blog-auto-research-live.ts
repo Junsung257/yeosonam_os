@@ -9,6 +9,7 @@ type Fixture = {
   intent: string;
   topic: string;
   category: string;
+  destination?: string;
   microAngle?: string;
   travelerNationality?: string;
 };
@@ -31,6 +32,13 @@ const FIXTURES: Fixture[] = [
     topic: '괌 공항에서 투몬까지 택시 셔틀 렌터카 요금과 시간',
     category: 'transport',
     microAngle: 'airport_arrival',
+  },
+  {
+    intent: 'local_transport',
+    topic: '캐나다 로키 렌터카 없이 대중교통 노선 요금과 시간',
+    category: 'transport',
+    destination: '캐나다 로키산맥',
+    microAngle: 'local_mobility',
   },
   {
     intent: 'hotel_areas',
@@ -104,7 +112,7 @@ async function runWithConcurrency<T, R>(
 }
 
 async function main(): Promise<void> {
-  const destination = argValue('--destination', '괌');
+  const destinationOverride = argValue('--destination', '');
   const locale = argValue('--locale', 'ko-KR');
   const concurrency = Math.max(1, Math.min(3, Number(argValue('--concurrency', '2')) || 2));
   const selected = argValue('--intent', '');
@@ -128,6 +136,7 @@ async function main(): Promise<void> {
 
   const startedAt = new Date();
   const rows = await runWithConcurrency(fixtures, concurrency, async (fixture, index) => {
+    const destination = destinationOverride || fixture.destination || '괌';
     const brief = buildBlogContentBrief({
       topic: fixture.topic,
       destination,
@@ -161,6 +170,7 @@ async function main(): Promise<void> {
       : null;
     return {
       expectedIntent: fixture.intent,
+      destination,
       inferredIntent: brief.intentType,
       briefPassed: brief.passed,
       requiresHumanReview: brief.requiresHumanReview,
@@ -204,7 +214,7 @@ async function main(): Promise<void> {
   const passed = rows.filter((row) => row.readinessPassed).length;
   const report = {
     checkedAt: startedAt.toISOString(),
-    destination,
+    destination: destinationOverride || 'fixture_scoped',
     locale,
     total: rows.length,
     passed,

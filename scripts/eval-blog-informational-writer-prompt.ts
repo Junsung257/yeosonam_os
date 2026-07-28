@@ -18,6 +18,7 @@ const FIXTURES: Record<(typeof BLOG_INFORMATION_INTENTS)[number], {
   food_budget: { topic: '삿포로 여행 식비', destination: '삿포로', primaryKeyword: '삿포로 식비', category: 'food' },
   monthly_weather: { topic: '괌 8월 날씨와 옷차림', destination: '괌', primaryKeyword: '괌 8월 날씨', category: 'weather' },
   airport_transport: { topic: '세부 공항에서 시내 이동', destination: '세부', primaryKeyword: '세부 공항 교통', category: 'transport' },
+  local_transport: { topic: '캐나다 로키 렌터카 없이 이동', destination: '캐나다 로키산맥', primaryKeyword: '캐나다 로키 대중교통', category: 'transport' },
   hotel_areas: { topic: '괌 호텔 지역 비교', destination: '괌', primaryKeyword: '괌 호텔 위치', category: 'hotel' },
   family_budget: { topic: '보홀 가족여행 예산', destination: '보홀', primaryKeyword: '보홀 가족여행 비용', category: 'cost' },
   itinerary: { topic: '다낭 3박 4일 일정', destination: '다낭', primaryKeyword: '다낭 여행 일정', category: 'itinerary' },

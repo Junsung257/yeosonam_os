@@ -11,6 +11,7 @@ const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
   'food_budget',
   'monthly_weather',
   'airport_transport',
+  'local_transport',
   'hotel_areas',
   'family_budget',
   'itinerary',

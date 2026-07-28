@@ -103,7 +103,7 @@ function readInformationalRiskLevel(
     if (risk === 'LOW' || risk === 'MEDIUM' || risk === 'HIGH') return risk;
   }
   if (intent === 'entry_requirements' || intent === 'travel_insurance') return 'HIGH';
-  if (intent === 'monthly_weather' || intent === 'airport_transport' || intent === 'currency_payment') {
+  if (intent === 'monthly_weather' || intent === 'airport_transport' || intent === 'local_transport' || intent === 'currency_payment') {
     return 'MEDIUM';
   }
   return 'LOW';

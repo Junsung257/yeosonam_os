@@ -5,6 +5,7 @@ export const BLOG_INFORMATION_INTENTS = [
   'food_budget',
   'monthly_weather',
   'airport_transport',
+  'local_transport',
   'hotel_areas',
   'family_budget',
   'itinerary',
@@ -135,8 +136,8 @@ const MICRO_ANGLE_INTENTS: Record<string, BlogInformationIntent> = {
   food_budget: 'food_budget',
   weather_packing: 'monthly_weather',
   airport_arrival: 'airport_transport',
-  transport_cost: 'airport_transport',
-  local_mobility: 'airport_transport',
+  transport_cost: 'local_transport',
+  local_mobility: 'local_transport',
   hotel_area: 'hotel_areas',
   budget_family: 'family_budget',
   kid_friendly: 'itinerary',
@@ -151,7 +152,8 @@ const CATEGORY_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
   [/hotel|lodging|stay|숙소|호텔/i, 'hotel_areas'],
   [/shopping|souvenir|쇼핑|기념품|선물/i, 'shopping_souvenirs'],
   [/currency|payment|exchange|환율|환전|결제/i, 'currency_payment'],
-  [/transport|airport|교통|공항|이동/i, 'airport_transport'],
+  [/airport|공항/i, 'airport_transport'],
+  [/transport|transit|교통|이동/i, 'local_transport'],
   [/itinerary|route|일정|코스|동선|family|kid|가족|아이/i, 'itinerary'],
 ];
 
@@ -162,6 +164,7 @@ const TEXT_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
   [/(?:식비|음식값|메뉴\s*가격|맛집\s*비용|meal\s*budget|food\s*(?:cost|budget))/i, 'food_budget'],
   [/(?:숙소\s*지역|호텔\s*(?:지역|위치)|어디에\s*묵|hotel\s*areas?|where\s*to\s*stay)/i, 'hotel_areas'],
   [/(?:공항|픽업|공항철도|리무진|첫차|막차|airport\s*(?:transport|transfer)|transfer)/i, 'airport_transport'],
+  [/(?:대중교통|시내\s*교통|현지\s*교통|교통비|렌터카|버스\s*노선|열차\s*노선|public\s*transport|local\s*(?:transport|transit)|rental\s*car)/i, 'local_transport'],
   [/(?:가족|아이|아동|부모님|family|kid).*(?:예산|비용|경비|budget)|(?:예산|비용|경비|budget).*(?:가족|아이|아동|부모님|family|kid)/i, 'family_budget'],
   [/(?:기념품|쇼핑|선물|souvenirs?|shopping).*(?:가격|구매|시장|매장|품목)?|(?:가격|구매|시장|매장|품목).*(?:기념품|쇼핑|선물|souvenirs?|shopping)/i, 'shopping_souvenirs'],
   [/(?:일정|코스|동선|여정|itinerary|route)/i, 'itinerary'],
@@ -199,6 +202,16 @@ const SLOTS: Record<BlogInformationIntent, BlogInformationRequiredSlot[]> = {
     slot('ticket_purchase', '티켓 구매 방식', [['티켓', '표'], ['구매', '예매']]),
     slot('late_arrival', '심야 도착 대응', [['심야', '늦은 도착', '밤 도착']]),
     slot('traveler_fit', '인원·짐·아이 동반별 추천', [['인원', '혼자', '2인'], ['짐', '수하물'], ['아이', '아동']]),
+    slot('operator_source', '공식 운영사 링크와 확인일', [['공식', '운영사'], ['확인일', '기준일'], ['http', '링크']]),
+  ],
+  local_transport: [
+    slot('route_network', '주요 이동 구간과 노선 범위', [['출발', '도착', '구간'], ['노선', '정류장', '환승']]),
+    slot('option_comparison', '현지 이동수단 또는 노선 비교', [['버스', '열차', '셔틀'], ['렌터카', '택시', '도보']]),
+    slot('fares_passes', '편도 요금과 패스 가격', [['요금', '가격'], ['편도', '왕복', '패스']]),
+    slot('travel_time_frequency', '구간별 소요시간과 배차 간격', [['소요시간', '분', '시간'], ['배차', '간격', '빈도']]),
+    slot('operating_schedule', '첫차·막차 또는 운행 시간', [['첫차', '막차'], ['운행 시간', '시간표', '운영 시간']]),
+    slot('ticket_reservation', '승차권 구매와 예약 방법', [['승차권', '티켓'], ['구매', '예약']]),
+    slot('service_limits', '계절·예약·수하물·운휴 제한', [['계절', '성수기', '운휴'], ['예약', '수하물', '제한']]),
     slot('operator_source', '공식 운영사 링크와 확인일', [['공식', '운영사'], ['확인일', '기준일'], ['http', '링크']]),
   ],
   hotel_areas: [
@@ -295,6 +308,13 @@ const SOURCE_POLICIES: Record<BlogInformationIntent, BlogInformationSourcePolicy
     'reputable_local_source',
     'reputable_price_source',
   ]),
+  local_transport: sourcePolicy(0.9, false, [
+    'transport_operator',
+    'government',
+    'official_tourism',
+    'reputable_local_source',
+    'reputable_price_source',
+  ]),
   hotel_areas: sourcePolicy(0.9, false, [
     'official_map',
     'field_research',
@@ -344,6 +364,7 @@ const HUMAN_REVIEW_POLICIES: Record<BlogInformationIntent, BlogInformationHumanR
   food_budget: noHumanReview(),
   monthly_weather: noHumanReview(),
   airport_transport: noHumanReview(),
+  local_transport: noHumanReview(),
   hotel_areas: noHumanReview(),
   family_budget: noHumanReview(),
   itinerary: noHumanReview(),
@@ -447,10 +468,16 @@ export function inferBlogInformationIntent(input: BlogInformationContractInput):
     return input.intentType as BlogInformationPublishableIntent;
   }
 
+  const coreText = clean([input.topic, input.primaryKeyword, input.destination].filter(Boolean).join(' '));
   const microAngle = clean(input.microAngle).toLowerCase();
+  if (
+    microAngle === 'transport_cost'
+    && /공항|픽업|공항철도|리무진|airport\s*(?:transport|transfer)|arrival\s*transfer/i.test(coreText)
+  ) {
+    return 'airport_transport';
+  }
   if (microAngle && MICRO_ANGLE_INTENTS[microAngle]) return MICRO_ANGLE_INTENTS[microAngle];
 
-  const coreText = clean([input.topic, input.primaryKeyword, input.destination].filter(Boolean).join(' '));
   for (const [pattern, intent] of TEXT_INTENTS) {
     if (pattern.test(coreText)) return intent;
   }

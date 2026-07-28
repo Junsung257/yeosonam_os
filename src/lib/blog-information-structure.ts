@@ -138,6 +138,21 @@ function validateAirport(markdown: string, tables: BlogInformationTable[], issue
   add(issues, URL_RE.test(markdown), 'airport_transport:evidence_required');
 }
 
+function validateLocalTransport(markdown: string, tables: BlogInformationTable[], issues: string[]): void {
+  const rows = rowsFrom(tables, /노선|구간|교통|수단|요금|가격|소요|배차|운행|예약/i);
+  add(issues, distinctFirstCells(rows).length >= 2, 'local_transport:multiple_routes_or_modes_required');
+  add(issues, rows.filter((row) => PRICE_RE.test(rowText(row))).length >= 2, 'local_transport:prices_required');
+  add(issues, rows.filter((row) => TIME_RE.test(rowText(row))).length >= 2, 'local_transport:durations_or_frequency_required');
+  add(
+    issues,
+    rows.filter((row) => /첫차|막차|운행\s*시간|운영\s*시간|배차|간격|시간표|\d{1,2}:\d{2}/.test(rowText(row))).length >= 2,
+    'local_transport:schedule_required',
+  );
+  add(issues, /승차권|티켓|패스/.test(markdown) && /구매|예약/.test(markdown), 'local_transport:ticket_or_reservation_required');
+  add(issues, /계절|성수기|운휴|예약|제한|변경/.test(markdown), 'local_transport:service_limits_required');
+  add(issues, URL_RE.test(markdown) && /공식|운영사|정부|국립공원/.test(markdown), 'local_transport:official_evidence_required');
+}
+
 function validateHotel(markdown: string, tables: BlogInformationTable[], issues: string[]): void {
   const rows = rowsFrom(tables, /지역|숙소|1박|가격|장점|단점|접근|대상/i);
   add(issues, distinctFirstCells(rows).length >= 3, 'hotel_areas:real_area_rows_required');
@@ -222,6 +237,7 @@ export function validateBlogInformationStructure(input: {
       food_budget: () => validateFood(markdown, tables, issues),
       monthly_weather: () => validateWeather(markdown, tables, issues),
       airport_transport: () => validateAirport(markdown, tables, issues),
+      local_transport: () => validateLocalTransport(markdown, tables, issues),
       hotel_areas: () => validateHotel(markdown, tables, issues),
       family_budget: () => validateFamilyBudget(markdown, tables, issues),
       itinerary: () => validateItinerary(markdown, tables, issues),
