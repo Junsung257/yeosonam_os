@@ -1,26 +1,39 @@
 import { type NextRequest } from 'next/server';
+import { z } from 'zod';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
 import { transitionAgentTask } from '@/lib/agent/tasking';
-import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
+import { resolveAdminActorLabel, withAdminGuard } from '@/lib/admin-guard';
+import { isAgentApprovalOverdue } from '@/lib/agent-office';
 
-export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const DecisionSchema = z.object({
+  action: z.enum(['approve', 'reject']),
+  reason: z.string().trim().min(1).max(500).optional(),
+}).strict();
+
+async function postHandler(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    if (!(await isAdminRequest(request))) {
-      return apiResponse({ error: 'admin 권한 필요' }, { status: 403 });
+    const rawBody = await request.json().catch(() => null);
+    const parsed = DecisionSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return apiResponse(
+        { error: 'action은 approve 또는 reject여야 하며 reason은 500자 이하여야 합니다.' },
+        { status: 400 },
+      );
     }
 
     const approvalId = params.id;
-    const body = await request.json().catch(() => ({}));
-    const action = body?.action === 'reject' ? 'reject' : 'approve';
+    const { action, reason = null } = parsed.data;
     const reviewer = await resolveAdminActorLabel(request);
-    const reason = typeof body?.reason === 'string' ? body.reason : null;
 
     const { data: approval, error: approvalErr } = await supabaseAdmin
       .from('agent_approvals')
-      .select('id, task_id, status')
+      .select('id, task_id, status, requested_at, expires_at')
       .eq('id', approvalId)
       .maybeSingle();
     if (approvalErr) throw approvalErr;
@@ -30,9 +43,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     if (approval.status !== 'pending') {
       return apiResponse({ error: '이미 처리된 승인 요청입니다.' }, { status: 409 });
     }
+    if (isAgentApprovalOverdue(approval)) {
+      return apiResponse(
+        { error: '기한이 지난 승인 요청입니다. 현재 상태를 다시 검증해 새 승인 요청을 생성하세요.' },
+        { status: 409 },
+      );
+    }
 
     const nextStatus = action === 'approve' ? 'approved' : 'rejected';
-    const { error: updateErr } = await supabaseAdmin
+    const { data: updatedApproval, error: updateErr } = await supabaseAdmin
       .from('agent_approvals')
       .update({
         status: nextStatus,
@@ -41,8 +60,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         reason: reason ?? undefined,
       })
       .eq('id', approvalId)
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
     if (updateErr) throw updateErr;
+    if (!updatedApproval) {
+      return apiResponse({ error: '다른 운영자가 이미 처리한 승인 요청입니다.' }, { status: 409 });
+    }
 
     const { data: task, error: taskErr } = await supabaseAdmin
       .from('agent_tasks')
@@ -77,4 +101,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);
 
