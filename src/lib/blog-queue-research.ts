@@ -18,6 +18,8 @@ type QueueResearchCandidate = {
   meta?: any;
 };
 
+export const MIN_READY_INFORMATION_INTENT_DIVERSITY = 5;
+
 function cleanMeta(meta: unknown): Record<string, unknown> {
   return meta && typeof meta === 'object' && !Array.isArray(meta)
     ? { ...(meta as Record<string, unknown>) }
@@ -81,10 +83,11 @@ export function evaluateQueuedInformationResearch(row: QueueResearchCandidate) {
 
 export function prioritizeQueuedInformationResearch(
   rows: QueueResearchCandidate[],
+  alreadyReadyIntents: Iterable<string> = [],
 ): QueueResearchCandidate[] {
   const firstByIntent: QueueResearchCandidate[] = [];
   const remaining: QueueResearchCandidate[] = [];
-  const seenIntents = new Set<string>();
+  const seenIntents = new Set(alreadyReadyIntents);
 
   for (const row of rows) {
     const intent = buildQueuedInformationBrief(row).intentType;
@@ -125,12 +128,19 @@ export async function prepareDailyInformationResearch(input: {
 
   const rows = (data ?? []) as QueueResearchCandidate[];
   const readyRows = rows.filter((row) => evaluateQueuedInformationResearch(row).passed);
+  const readyIntents = new Set(
+    readyRows.map((row) => buildQueuedInformationBrief(row).intentType),
+  );
+  const targetIntentDiversity = Math.min(
+    MIN_READY_INFORMATION_INTENT_DIVERSITY,
+    Math.max(1, input.targetReady),
+  );
   let readyAfter = readyRows.length;
   let researched = 0;
   let blockedAndReplaced = 0;
   let failedResearch = 0;
   const issues: string[] = [];
-  if (readyAfter >= input.targetReady) {
+  if (readyAfter >= input.targetReady && readyIntents.size >= targetIntentDiversity) {
     return {
       readyBefore: readyRows.length,
       readyAfter,
@@ -144,10 +154,14 @@ export async function prepareDailyInformationResearch(input: {
   const pendingRows = rows.filter((row) => !evaluateQueuedInformationResearch(row).passed);
   const researchRows = prioritizeQueuedInformationResearch(
     pendingRows.filter((row) => Boolean(row.destination?.trim()) && Boolean(expectedContentKey(row))),
+    readyIntents,
   );
 
   for (const row of researchRows) {
-    if (readyAfter >= input.targetReady || researched + failedResearch >= maxResearch) break;
+    if (
+      (readyAfter >= input.targetReady && readyIntents.size >= targetIntentDiversity)
+      || researched + failedResearch >= maxResearch
+    ) break;
     const id = row.id;
     const destination = row.destination?.trim();
     const contentKey = expectedContentKey(row);
@@ -250,6 +264,7 @@ export async function prepareDailyInformationResearch(input: {
       if (updateError) throw new Error(updateError.message);
       researched += 1;
       readyAfter += 1;
+      readyIntents.add(brief.intentType);
     } catch (researchError) {
       failedResearch += 1;
       blockedAndReplaced += 1;
