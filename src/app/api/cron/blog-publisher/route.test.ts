@@ -196,8 +196,9 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('const privateRegeneration = hasPrivateBlogRegenerationIntent(item)');
-    expect(source).toContain('const shouldAnalyzeSerp = (!privateRegeneration || publishedAtomicUpgrade) && Boolean(');
-    expect(source).toContain('if (!privateRegeneration || publishedAtomicUpgrade) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
+    expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
+    expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
+    expect(source).toContain('if (destForImage && !privateRegeneration) {');
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
     expect(source).toContain('fallbackImageUrls: replacementAssets?.inlineImageUrls');
     expect(source).toContain('preferFallbackImages: replacementAssets !== null');
@@ -206,6 +207,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('allowPexelsSearch: replacementAssets === null || mayFillReplacementImageShortfall');
     expect(source).toContain('allowGeneratedFallback: replacementAssets === null || mayFillReplacementImageShortfall');
     expect(source).toContain(': replacementImageShortfall');
+    expect(source).toContain('if (publishedAtomicUpgrade && !generated.og_image_url) {');
+    expect(source).toContain('const [firstInlineImage] = extractBlogInlineImageUrls(generated.blog_html)');
+    expect(source).toContain("provider: 'inline_asset'");
   });
 
   it('reuses a queue-linked draft image set during an evidence-backed retry', () => {

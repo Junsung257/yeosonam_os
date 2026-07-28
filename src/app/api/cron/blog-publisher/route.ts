@@ -2653,6 +2653,19 @@ async function processQueueItem(
         generated.blog_html = imageResult.markdown;
         console.log(`[blog-publisher] 본문 이미지 ${imageResult.inserted}장 자동 삽입`);
       }
+      if (publishedAtomicUpgrade && !generated.og_image_url) {
+        const [firstInlineImage] = extractBlogInlineImageUrls(generated.blog_html);
+        if (firstInlineImage) {
+          generated.og_image_url = firstInlineImage;
+          generated.generation_meta = {
+            ...(generated.generation_meta || {}),
+            cover_image: {
+              provider: 'inline_asset',
+              disclosure: isGeneratedBlogImageUrl(firstInlineImage) ? 'AI 생성 참고 이미지' : null,
+            },
+          };
+        }
+      }
     } catch (e) {
       logWarning('[cron/blog-publisher] inline image insertion failed (non-blocking)', e);
     }
@@ -4035,7 +4048,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   let serpBlock = '';
   let serpGapBlock = '';
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  const shouldAnalyzeSerp = (!privateRegeneration || publishedAtomicUpgrade) && Boolean(
+  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
     primaryKw &&
     (
       tier === 'head' ||
@@ -4118,7 +4131,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
-  if (!privateRegeneration || publishedAtomicUpgrade) {
+  if (!privateRegeneration) {
     blog_html = await maybeApplyChainOfDensity(blog_html);
   }
   const researchStructureRepair = repairBlogGenerationResearchStructure({
@@ -4156,7 +4169,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
   const destForImage = item.destination || extractDestination(item.topic);
-  if (destForImage && (!privateRegeneration || publishedAtomicUpgrade)) {
+  if (destForImage && !privateRegeneration) {
     try {
       og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,
