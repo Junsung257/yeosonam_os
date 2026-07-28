@@ -366,7 +366,7 @@ describe('blog generation research preflight', () => {
     expect(first.approvedClaims).toHaveLength(12);
     expect(first.markdown).toContain('| 1월 | 1981~2010 평년값: 1월 최고기온 29.0°C');
     expect(first.markdown).toContain('| 12월 | 1981~2010 평년값: 12월 최고기온 30.1°C');
-    expect(first.markdown).toContain('반팔과 방수 겉옷, 우산');
+    expect(first.markdown).toContain('통풍되는 반팔과 냉방용 얇은 겉옷, 우산과 방수 겉옷');
     expect(extractFaqItems(first.markdown)).toHaveLength(3);
     expect(first.markdown.length).toBeGreaterThanOrEqual(2500);
     expect(extractBlogInformationClaims(first.markdown)).toHaveLength(12);
@@ -471,6 +471,22 @@ describe('blog generation research preflight', () => {
       primaryKeyword: '괌 7월 날씨',
       blogType: 'info',
     }).passed).toBe(true);
+  });
+
+  it('uses verified temperatures instead of rainfall alone for cold-weather clothing', () => {
+    const result = monthlyWeatherReadiness(monthlyWeatherBundle());
+    result.bundle!.claims[0]!.claimText =
+      '1991~2020 평년값: 1월 최고기온 -0.4°C, 최저기온 -6.4°C, 강수량 108.4mm, 강수일수 22.4일';
+    const repaired = repairBlogGenerationResearchStructure({
+      markdown: '# 삿포로 월별 날씨와 옷차림',
+      intent: 'monthly_weather',
+      readiness: result,
+    });
+
+    expect(repaired.markdown).toContain(
+      '| 1월 | 발열 내의와 니트, 두꺼운 방한 외투와 장갑 |',
+    );
+    expect(repaired.markdown).not.toContain('| 1월 | 반팔');
   });
 
   it('injects exact approved evidence and claims without copying snapshots into compact metadata', () => {

@@ -254,6 +254,26 @@ describe('blog-renderer', () => {
     expect(report.passed).toBe(true);
   });
 
+  it('keeps following prose outside a completed markdown table', async () => {
+    const source = [
+      '## 월별 옷차림',
+      '',
+      '| 월 | 옷차림 | 조정 기준 |',
+      '| --- | --- | --- |',
+      '| 1월 | 방한 외투 | 출발 직전 예보 확인 |',
+      '| 2월 | 방한 외투 | 출발 직전 예보 확인 |',
+      '',
+      '표의 옷차림은 출발점으로만 활용하고 단기예보에 맞춰 조정하세요.',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+
+    expect(html).toContain(
+      '<p>표의 옷차림은 출발점으로만 활용하고 단기예보에 맞춰 조정하세요.</p>',
+    );
+    expect(html).not.toContain('<td>표의 옷차림은 출발점으로만 활용');
+  });
+
   it('separates prose that was accidentally prefixed with a table pipe', async () => {
     const source = [
       '## 3~4월',

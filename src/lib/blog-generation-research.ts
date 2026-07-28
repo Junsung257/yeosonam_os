@@ -535,30 +535,102 @@ function monthlyWeatherClaimMonth(
 }
 
 function monthlyWeatherClothing(claimText: string, month: number): string {
+  const maximumTemperature = Number(
+    claimText.match(/최고기온\s*(-?\d+(?:\.\d+)?)\s*°?C/i)?.[1],
+  );
+  const minimumTemperature = Number(
+    claimText.match(/최저기온\s*(-?\d+(?:\.\d+)?)\s*°?C/i)?.[1],
+  );
   const rainfall = Number(claimText.match(/강수량\s*(\d+(?:\.\d+)?)\s*mm/i)?.[1]);
   const variantIndex = Math.max(0, month - 1) % 4;
+  const referenceTemperature = Number.isFinite(minimumTemperature)
+    ? minimumTemperature
+    : maximumTemperature;
+  const clothingByTemperature = referenceTemperature <= 0
+    ? [
+      '발열 내의와 니트, 두꺼운 방한 외투와 장갑',
+      '보온 내의와 두꺼운 상의, 방한 외투와 장갑',
+      '기모 상하의와 니트, 방한 외투와 장갑',
+      '겹쳐 입을 내의와 플리스, 방한 외투와 장갑',
+    ]
+    : referenceTemperature <= 8
+      ? [
+        '긴팔과 니트, 중간 두께 외투',
+        '얇은 내의와 긴팔, 보온 재킷',
+        '긴팔과 플리스, 중간 두께 외투',
+        '겹쳐 입을 긴팔과 니트, 보온 재킷',
+      ]
+      : referenceTemperature <= 15
+        ? [
+          '긴팔과 가디건, 가벼운 재킷',
+          '얇은 긴팔과 니트, 가벼운 겉옷',
+          '긴팔과 얇은 니트, 바람막이',
+          '겹쳐 입을 긴팔과 가디건, 가벼운 재킷',
+        ]
+        : referenceTemperature <= 22
+          ? [
+            '반팔과 얇은 긴팔, 가벼운 겉옷',
+            '가벼운 상의와 얇은 가디건',
+            '반팔과 얇은 셔츠, 휴대용 겉옷',
+            '통풍되는 상의와 얇은 재킷',
+          ]
+          : [
+            '통풍되는 반팔과 냉방용 얇은 겉옷',
+            '가벼운 반팔과 실내 냉방용 가디건',
+            '얇은 옷과 햇빛 차단용 긴팔',
+            '통풍되는 옷과 냉방용 가벼운 재킷',
+          ];
+  const baseClothing = clothingByTemperature[variantIndex]!;
+
   if (Number.isFinite(rainfall) && rainfall >= 250) {
-    return [
-      '반팔과 방수 겉옷, 우산',
-      '가벼운 상의와 우비, 우산',
-      '얇은 옷과 방수 재킷, 여벌옷',
-      '통풍되는 옷과 우산, 방수 파우치',
-    ][variantIndex]!;
+    return `${baseClothing}, 우산과 방수 겉옷`;
   }
   if (Number.isFinite(rainfall) && rainfall >= 150) {
-    return [
-      '반팔과 얇은 방수 겉옷',
-      '가벼운 상의와 휴대용 우산',
-      '얇은 옷과 가벼운 우비',
-      '통풍되는 옷과 방수 재킷',
-    ][variantIndex]!;
+    return `${baseClothing}, 휴대용 우산`;
   }
-  return [
-    '반팔과 얇은 겉옷',
-    '가벼운 상의와 냉방용 겉옷',
-    '얇은 옷과 휴대용 겉옷',
-    '통풍되는 옷과 가벼운 재킷',
-  ][variantIndex]!;
+  return baseClothing;
+}
+
+export function repairMonthlyWeatherClothingTable(markdown: string): {
+  markdown: string;
+  changed: boolean;
+} {
+  if (!markdown.includes(MONTHLY_WEATHER_STRUCTURE_MARKER)) {
+    return { markdown, changed: false };
+  }
+
+  const climateByMonth = new Map<number, string>();
+  for (const match of markdown.matchAll(/^\|\s*(\d{1,2})월\s*\|\s*([^|\n]+)\|\s*$/gm)) {
+    const month = Number(match[1]);
+    const claimText = match[2]?.trim() ?? '';
+    if (
+      month >= 1
+      && month <= 12
+      && /최고기온/i.test(claimText)
+      && /최저기온/i.test(claimText)
+    ) {
+      climateByMonth.set(month, claimText);
+    }
+  }
+  if (climateByMonth.size !== 12) {
+    return { markdown, changed: false };
+  }
+
+  const repairedRows = markdown.replace(
+    /^\|\s*(\d{1,2})월\s*\|\s*([^|\n]+)\|\s*([^|\n]+)\|\s*$/gm,
+    (row, monthValue: string, _clothing: string, adjustment: string) => {
+      const month = Number(monthValue);
+      const claimText = climateByMonth.get(month);
+      if (!claimText) return row;
+      return `| ${month}월 | ${monthlyWeatherClothing(claimText, month)} | ${adjustment.trim()} |`;
+    },
+  );
+  const repaired = repairedRows.replace(/(^\|[^\n]*\|)\n(?=[^\s|])/gm, '$1\n\n');
+
+  return {
+    markdown: repaired,
+    changed: repaired !== markdown,
+  };
 }
 
 function monthlyWeatherAdjustment(month: number): string {

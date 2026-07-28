@@ -302,4 +302,43 @@ describe('repairBlogFinalCustomerSurface', () => {
     expect(result.markdown).toContain(lead);
     expect(result.markdown).toContain('문장 1입니다\n\n문장 2입니다');
   });
+
+  it('repairs legacy monthly clothing rows from the persisted climate table', () => {
+    const climateRows = Array.from({ length: 12 }, (_, index) => {
+      const month = index + 1;
+      const temperatures = month === 1
+        ? '최고기온 -0.4°C, 최저기온 -6.4°C'
+        : '최고기온 28.0°C, 최저기온 23.0°C';
+      return `| ${month}월 | 1991~2020 평년값: ${month}월 ${temperatures}, 강수량 100.0mm, 강수일수 10.0일 |`;
+    });
+    const clothingRows = Array.from(
+      { length: 12 },
+      (_, index) => `| ${index + 1}월 | 반팔과 얇은 겉옷 | 출발 직전 예보로 최종 조정 |`,
+    );
+    const result = repairBlogFinalCustomerSurface({
+      destination: '삿포로',
+      primaryKeyword: '삿포로 월별 날씨',
+      markdown: [
+        '<!-- blog_research_structure:monthly_weather:v2 -->',
+        '# 삿포로 월별 날씨와 옷차림',
+        '',
+        '삿포로 월별 기온과 강수량을 확인하고 출발 직전 예보로 옷차림을 조정하세요.',
+        '',
+        '| 월 | 검증된 평년값 |',
+        '| --- | --- |',
+        ...climateRows,
+        '',
+        '| 월 | 기본 옷차림 | 출발 전 조정 기준 |',
+        '| --- | --- | --- |',
+        ...clothingRows,
+        '<!-- /blog_research_structure:monthly_weather:v2 -->',
+      ].join('\n'),
+    });
+
+    expect(result.changes).toContain('repair_monthly_weather_clothing_table');
+    expect(result.markdown).toContain(
+      '| 1월 | 발열 내의와 니트, 두꺼운 방한 외투와 장갑 |',
+    );
+    expect(result.markdown).not.toContain('| 1월 | 반팔과 얇은 겉옷 |');
+  });
 });

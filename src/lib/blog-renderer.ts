@@ -325,6 +325,7 @@ export function normalizeStoredBlogMarkdownStructure(source: string): string {
     .map((line) => line.replace(/\s+---\s*$/, '\n\n---'))
     .join('\n');
   out = removeDuplicateCoreHeadings(out);
+  out = out.replace(/(^\|[^\n]*\|)\n(?=[^\s|])/gm, '$1\n\n');
 
   return out.replace(/\n{4,}/g, '\n\n\n').trim();
 }
