@@ -29,6 +29,7 @@ export interface BlogInformationDuplicateCandidate extends BlogInformationRepres
 export interface BlogInformationDuplicateDecision {
   action: 'RESERVE_CREATE' | 'RESUME_RESERVATION' | 'UPDATE_EXISTING' | 'WAIT_FOR_EXISTING' | 'REVIEW_RETIRED';
   representativeKey: string;
+  canonicalCreativeId: string | null;
   canonicalSlug: string | null;
   exactDuplicate: boolean;
   nearDuplicate: boolean;
@@ -127,6 +128,7 @@ export function decideBlogInformationDuplicate(input: {
     return {
       action: 'RESERVE_CREATE',
       representativeKey,
+      canonicalCreativeId: null,
       canonicalSlug: null,
       exactDuplicate: false,
       nearDuplicate: false,
@@ -149,6 +151,7 @@ export function decideBlogInformationDuplicate(input: {
     return {
       action: 'UPDATE_EXISTING',
       representativeKey,
+      canonicalCreativeId: input.existing.canonicalCreativeId,
       canonicalSlug: input.existing.canonicalSlug,
       exactDuplicate,
       nearDuplicate,
@@ -160,6 +163,7 @@ export function decideBlogInformationDuplicate(input: {
     return {
       action: 'REVIEW_RETIRED',
       representativeKey,
+      canonicalCreativeId: input.existing.canonicalCreativeId,
       canonicalSlug: input.existing.canonicalSlug,
       exactDuplicate,
       nearDuplicate,
@@ -171,6 +175,7 @@ export function decideBlogInformationDuplicate(input: {
     return {
       action: 'RESUME_RESERVATION',
       representativeKey,
+      canonicalCreativeId: input.existing.canonicalCreativeId,
       canonicalSlug: input.existing.canonicalSlug,
       exactDuplicate,
       nearDuplicate,
@@ -181,12 +186,22 @@ export function decideBlogInformationDuplicate(input: {
   return {
     action: 'WAIT_FOR_EXISTING',
     representativeKey,
+    canonicalCreativeId: input.existing.canonicalCreativeId,
     canonicalSlug: input.existing.canonicalSlug,
     exactDuplicate,
     nearDuplicate,
     similarity,
     reason: 'representative_reserved_by_another_candidate',
   };
+}
+
+export function canUpgradePublishedBlogForRepresentative(input: {
+  decision: BlogInformationDuplicateDecision;
+  targetCreativeId: string;
+}): boolean {
+  if (['RESERVE_CREATE', 'RESUME_RESERVATION'].includes(input.decision.action)) return true;
+  return input.decision.action === 'UPDATE_EXISTING'
+    && input.decision.canonicalCreativeId === input.targetCreativeId;
 }
 
 export function readBlogInformationRepresentativeIdentity(

@@ -137,6 +137,7 @@ import {
 } from '@/lib/blog-information-claim-ledger';
 import {
   buildBlogInformationRepresentativeKey,
+  canUpgradePublishedBlogForRepresentative,
   readBlogInformationRepresentativeIdentity,
   type BlogInformationDuplicateDecision,
   type BlogInformationRepresentativeIdentity,
@@ -3245,6 +3246,43 @@ async function processQueueItem(
         atomic_publish_replace: publishedAtomicUpgrade,
         regenerated_at: now,
       };
+    }
+    if (publishedAtomicUpgrade && representativeIdentity && privateRegenerationRequest) {
+      representativeDecision = await reserveBlogInformationRepresentative({
+        reservationOwner: representativeOwner,
+        candidate: {
+          ...representativeIdentity,
+          slug: generated.slug,
+          title: generated.seo_title,
+          markdown: generated.blog_html,
+        },
+      });
+      generationMeta.information_representative = {
+        representative_key: representativeDecision.representativeKey,
+        status: representativeDecision.action === 'UPDATE_EXISTING'
+          ? 'active'
+          : 'reserved',
+        canonical_slug: representativeDecision.canonicalSlug,
+        decision: representativeDecision.action,
+      };
+      if (!canUpgradePublishedBlogForRepresentative({
+        decision: representativeDecision,
+        targetCreativeId: privateRegenerationRequest.contentCreativeId,
+      })) {
+        const reason = `information_representative_duplicate_upgrade_review:${representativeDecision.canonicalSlug || representativeDecision.reason}`;
+        const failureStatus = await handleFailure(item, reason, qa, false, {
+          published_atomic_upgrade_blocked: true,
+          preserved_published_creative_id: privateRegenerationRequest.contentCreativeId,
+          information_representative: representativeDecision,
+          proposed_action: 'MERGE_REVIEW',
+        });
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: failureStatus === 'skipped' ? 'skipped_duplicate' : 'upgrade_blocked',
+          reason,
+        };
+      }
     }
     if (representativeIdentity && requiresHumanReview) {
       representativeDecision = await reserveBlogInformationRepresentative({
