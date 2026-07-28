@@ -4,8 +4,8 @@
 
 | Check | Command or proof | Result |
 |---|---|---|
-| Focused tests | `npx vitest run` for projection, page, and approval boundary | PASS - 3 files, 15 tests |
-| Full test suite | `npm test` | PASS - 601 files, 4,685 tests |
+| Focused tests | `npx vitest run` for projection, page, admin API, and approval boundary | PASS - 4 files, 17 tests |
+| Full test suite | `npm test` | PASS - 602 files, 4,688 tests |
 | Type safety | `npm run type-check` | PASS |
 | Full lint | `npm run lint` | PASS - zero warnings |
 | Production build | `npm run build` | PASS - `/admin/agent-mas` 10.5 kB, 115 kB first load |
@@ -17,10 +17,11 @@
 | Sensitive API guards | `npm run audit:sensitive-api-guards` | PASS |
 | Agent workflow packet | `node scripts/check-agent-workflow-contract.mjs --strict` | FEATURE PASS; repository still has 3 pre-existing feature packets missing `plan.md` |
 | Patch integrity | `git diff --check origin/main...HEAD` | PASS |
+| Admin API boundary | route test rejects unauthenticated access before DB use and enforces `private, no-store` | PASS |
 | API behavior | authenticated local `GET /api/admin/agent/office` | PASS — 200, no source issues, autonomous loop false |
 | Desktop layout | Playwright/Chrome at 1440 x 1000 | PASS - loaded data, no overlay or console errors |
 | Mobile layout | Playwright/Chrome at 390 x 844 | PASS - no overlay, console errors, or horizontal overflow |
-| PII surface | projection test removes raw reason/message and masks phone/email | PASS |
+| Projection privacy | projection test removes raw reason/message and masks phone/email | PASS |
 
 ## Manual Gates
 
