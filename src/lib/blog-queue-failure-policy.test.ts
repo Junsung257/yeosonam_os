@@ -201,4 +201,15 @@ describe('blog queue failure policy', () => {
       reason: 'product_open_contract',
     });
   });
+
+  it('classifies blocked deterministic fallback artifacts as recoverable generation failures', () => {
+    expect(classifyBlogQueueFailure(
+      'deterministic_info_fallback_not_publishable',
+    )).toMatchObject({
+      code: 'deterministic_fallback_blocked',
+      retryable: true,
+      selfHealAllowed: true,
+      skipped: false,
+    });
+  });
 });

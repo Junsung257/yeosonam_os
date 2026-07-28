@@ -10,6 +10,7 @@ import {
   buildGuamHotelAreasPayload,
   buildBlogResearchBundleFromGrounding,
   buildBlogStructuredResearchPrompt,
+  buildPagasaMonthlyWeatherPayload,
   buildWmoMonthlyWeatherPayload,
   extractReviewedPageTextForResearch,
   fetchReviewedDirectPages,
@@ -1115,6 +1116,55 @@ describe('buildWmoMonthlyWeatherPayload', () => {
         },
       }),
     }], '도쿄');
+
+    expect(payload).toBeNull();
+  });
+});
+
+const PAGASA_MACTAN_ROWS = [
+  'JAN135.11229.724.026.8',
+  'FEB88.9930.024.027.0',
+  'MAR60.9731.024.627.8',
+  'APR55.6532.225.528.8',
+  'MAY94.4932.826.029.4',
+  'JUN180.71332.325.528.9',
+  'JUL210.61531.625.128.3',
+  'AUG157.91331.925.228.5',
+  'SEP190.41431.925.028.4',
+  'OCT207.61531.424.928.2',
+  'NOV131.01231.025.028.0',
+  'DEC171.91430.324.627.4',
+];
+
+describe('buildPagasaMonthlyWeatherPayload', () => {
+  it('extracts every decision field from a reviewed PAGASA PDF table', () => {
+    const payload = buildPagasaMonthlyWeatherPayload([{
+      url: 'https://pubfiles.pagasa.dost.gov.ph/pagasaweb/files/cad/MACTAN.pdf',
+      title: 'PAGASA Mactan climate normals',
+      text: [
+        'PERIOD: 1991 - 2020',
+        ...PAGASA_MACTAN_ROWS,
+        'STATION: MACTAN INTERNATIONAL AIRPORT, CEBU',
+      ].join('\n'),
+    }], '세부');
+
+    expect(payload?.evidence).toHaveLength(12);
+    expect(payload?.claims?.[0]?.claimText).toBe(
+      '1991~2020 평년값: 1월 최고기온 29.7°C, 최저기온 24.0°C, 강수량 135.1mm, 강수일수 12일',
+    );
+    expect(payload?.claims?.[11]?.claimText).toContain('12월');
+  });
+
+  it('refuses a PAGASA station for a different destination', () => {
+    const payload = buildPagasaMonthlyWeatherPayload([{
+      url: 'https://pubfiles.pagasa.dost.gov.ph/pagasaweb/files/cad/MACTAN.pdf',
+      title: 'PAGASA Mactan climate normals',
+      text: [
+        'PERIOD: 1991 - 2020',
+        ...PAGASA_MACTAN_ROWS,
+        'STATION: MACTAN INTERNATIONAL AIRPORT, CEBU',
+      ].join('\n'),
+    }], '보홀');
 
     expect(payload).toBeNull();
   });

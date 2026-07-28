@@ -18,6 +18,7 @@ type BlogQueueFailureCode =
   | 'db_write'
   | 'linked_draft_invalid'
   | 'card_news_render_pending'
+  | 'deterministic_fallback_blocked'
   | 'unknown';
 
 export interface BlogQueueFailureDecision {
@@ -70,6 +71,10 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (/render_buffer|png .*대기|render pending|card_news.*pending/i.test(text)) {
     return { code: 'card_news_render_pending', retryable: true, selfHealAllowed: true, skipped: false };
+  }
+
+  if (/deterministic_(?:info|fast)_fallback_not_publishable|deterministic_fallback_blocked/i.test(text)) {
+    return { code: 'deterministic_fallback_blocked', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'keyword_density') || /\[keyword_density\]|keyword_density|키워드.*밀도/i.test(text)) {

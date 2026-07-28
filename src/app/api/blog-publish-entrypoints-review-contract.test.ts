@@ -41,14 +41,17 @@ describe('informational review policy across publish-capable entrypoints', () =>
 
   it('prevents the zero-click cron from silently replacing high-risk public information', () => {
     const route = source('src/app/api/cron/blog-regenerate-zero-click/route.ts');
+    const publisher = source('src/app/api/cron/blog-publisher/route.ts');
     expect(route).toContain('isHighRiskInformationalTopic');
     expect(route).toContain("status: 'high_risk_review'");
-    expect(route).toContain('must not be regenerated without a new human review');
-    expect(route).toContain('evaluateBlogInformationClaimPublishGate({');
-    expect(route).toContain('intentType:');
-    expect(route).toContain('expectedScope:');
-    expect(route).toContain('generation_meta:');
-    expect(route).toContain("status: 'claim_gate_failed'");
+    expect(route).toContain('requires human review');
+    expect(route).toContain('PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE');
+    expect(route).toContain('atomic_publish_replace: true');
+    expect(route).not.toContain('llmCall');
+    expect(route).not.toContain(".from('content_creatives')\n          .update(");
+    expect(publisher).toContain('evaluateBlogInformationClaimPublishGate({');
+    expect(publisher).toContain('published_atomic_upgrade_claim_gate_failed');
+    expect(publisher).toContain('preserved_published_creative_id');
   });
 
   it('preserves a verified published body for metadata-only republishing', () => {

@@ -1,38 +1,15 @@
 /**
- * @file /api/cron/blog-regenerate-zero-click
- *
- * 매주 월요일 새벽 1회 실행 (vercel.json schedule: "0 5 * * 1" — UTC 05:00 ≈ KST 월 14:00)
- *
- * 무엇을 하는가:
- *   1) rank_history 에서 최근 14일 동안 한 번도 노출되거나 클릭되지 않은 slug 추출
- *      (sum(impressions)=0 AND sum(clicks)=0)
- *   2) 해당 slug 가 content_creatives 에 published 상태로 존재하는지 확인
- *   3) blog_regenerate_log 의 cooldown(7일) 미경과 글은 스킵
- *   4) llm-gateway.ts `task='blog-generate'` 로 재생성 (DeepSeek primary)
- *   5) runQualityGates() 통과 시에만 본문 교체 + revalidatePath
- *   6) 통과/실패 모두 blog_regenerate_log 에 기록 (감사용)
- *
- * 보호:
- *   - MAX_BATCH=5 — Vercel 60s 한계에 맞춤 (재생성당 ~8~10s)
- *   - 게이트 실패 시 본문 미교체 (구버전 유지) — 페이지 깨짐 방지
- *   - product_id NOT NULL 글(상품 랜딩)은 자동 재생성 대상에서 제외 — 마케터 의도된 카피이므로
+ * Queues low-performing published informational posts for an in-place,
+ * research-first upgrade. The live article is never changed in this route.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { applyBlogPublishQualityToUpdate, prepareBlogForPublish } from '@/lib/blog-publish-quality';
-import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
-import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
-import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
-import {
-  evaluateBlogInformationClaimPublishGate,
-  toBlogInformationClaimValidationMeta,
-} from '@/lib/blog-information-claim-publish-gate';
-import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
+import { PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE } from '@/lib/blog-private-regeneration';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -48,128 +25,90 @@ interface RankRow {
   clicks: number | null;
 }
 
+interface PublishedPost {
+  id: string;
+  slug: string;
+  seo_title: string | null;
+  blog_html: string | null;
+  destination: string | null;
+  angle_type: string | null;
+  category: string | null;
+  content_type: string | null;
+}
+
 interface RegenResult {
   slug: string;
-  status: 'replaced' | 'gate_failed' | 'claim_gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error' | 'race_skipped' | 'log_failed' | 'high_risk_review';
-  gateSummary?: string;
+  status: 'queued_upgrade' | 'cooldown' | 'no_post' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review';
   reason?: string;
+  queueId?: string;
 }
 
 function sha256(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
 
-async function regenerateBlogBody(seoTitle: string, destination: string | null): Promise<string | null> {
-  const systemPrompt = `너는 한국어 여행 SEO 블로거다. 검색자의 의도에 직답하는 마크다운 글을 작성한다.
-규칙:
-- 본문 1,800~2,500자 (info 게이트 통과 기준)
-- H1 1개 + H2 5~7개
-- 첫 H2 안에 핵심 정의/한 줄 답 포함
-- AI 클리셰 형용사 금지 ("아름다운","환상적인","완벽한","특별한" 등)
-- 구체 수치(분/원/km/℃) 활용
-- 내부링크 최소 1개 (/packages 또는 /blog/...)
-- 마지막에 "여소남" 브랜드 CTA 1줄
-- 코드블록으로 감싸지 말 것`;
-
-  const userPrompt = `다음 제목으로 블로그를 다시 작성하라.\n\n제목: ${seoTitle}\n${destination ? `목적지: ${destination}` : ''}\n\n이전 버전은 14일 동안 검색 노출 0회 — 검색자가 이 글을 찾지 못했다.\n새 버전은 검색 의도(longtail)에 더 직답하고, H2 구조를 명확히 한다.`;
-
-  const result = await llmCall<string>({
-    task: 'blog-generate',
-    systemPrompt,
-    userPrompt,
-    temperature: 0.7,
-    maxTokens: 4000,
-  });
-
-  if (!result.success || !result.rawText) return null;
-  // 코드펜스 제거
-  return result.rawText
-    .replace(/^```markdown\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-}
-
 async function runRegenerator(request: NextRequest) {
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
-  }
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
   const errors: string[] = [];
   const results: RegenResult[] = [];
-
-  const since = new Date(Date.now() - WINDOW_DAYS * 24 * 3600 * 1000).toISOString().split('T')[0];
-  const cooldownSince = new Date(Date.now() - COOLDOWN_DAYS * 24 * 3600 * 1000).toISOString();
+  const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString().split('T')[0];
+  const cooldownSince = new Date(Date.now() - COOLDOWN_DAYS * 86_400_000).toISOString();
 
   try {
-    // 1) zero-click slug 후보 추출
-    const { data: rankRows, error: rankErr } = await supabaseAdmin
+    const { data: rankRows, error: rankError } = await supabaseAdmin
       .from('rank_history')
       .select('slug, impressions, clicks')
       .gte('date', since);
-
-    if (rankErr) {
-      errors.push(`rank_history 조회 실패: ${rankErr.message}`);
-      return { processed: 0, errors, results };
-    }
-
+    if (rankError) return { processed: 0, errors: [rankError.message], results };
     if (!rankRows || rankRows.length === 0) {
-      return { processed: 0, message: 'rank_history 데이터 없음', errors };
+      return { processed: 0, message: 'rank_history 데이터 없음', errors, results };
     }
 
-    const agg = new Map<string, { impressions: number; clicks: number }>();
+    const performance = new Map<string, { impressions: number; clicks: number }>();
     for (const row of rankRows as RankRow[]) {
-      const slug = row.slug;
-      if (!slug) continue;
-      const cur = agg.get(slug) || { impressions: 0, clicks: 0 };
-      cur.impressions += row.impressions ?? 0;
-      cur.clicks += row.clicks ?? 0;
-      agg.set(slug, cur);
+      if (!row.slug) continue;
+      const current = performance.get(row.slug) ?? { impressions: 0, clicks: 0 };
+      current.impressions += row.impressions ?? 0;
+      current.clicks += row.clicks ?? 0;
+      performance.set(row.slug, current);
     }
-
-    const zeroSlugs = [...agg.entries()]
-      .filter(([, v]) => v.impressions === 0 && v.clicks === 0)
+    const zeroClickSlugs = [...performance.entries()]
+      .filter(([, value]) => value.impressions === 0 && value.clicks === 0)
       .map(([slug]) => slug)
-      .slice(0, MAX_BATCH * 4); // cooldown 필터로 줄어들 것 대비 여유
-
-    if (zeroSlugs.length === 0) {
-      return { processed: 0, message: '14일 zero-impression slug 없음', errors };
+      .slice(0, MAX_BATCH * 4);
+    if (zeroClickSlugs.length === 0) {
+      return { processed: 0, message: '14일 zero-impression slug 없음', errors, results };
     }
 
-    // 2) cooldown 필터 — 최근 7일 내 재생성된 slug 제외
     const { data: cooldownRows } = await supabaseAdmin
       .from('blog_regenerate_log')
       .select('slug')
       .gte('created_at', cooldownSince)
-      .in('slug', zeroSlugs);
-    const cooldownSet = new Set((cooldownRows || []).map((r: { slug: string }) => r.slug));
-
-    const candidateSlugs = zeroSlugs.filter(s => !cooldownSet.has(s)).slice(0, MAX_BATCH);
+      .in('slug', zeroClickSlugs);
+    const cooldownSet = new Set((cooldownRows ?? []).map(row => row.slug));
+    const candidateSlugs = zeroClickSlugs
+      .filter(slug => !cooldownSet.has(slug))
+      .slice(0, MAX_BATCH);
     if (candidateSlugs.length === 0) {
-      return { processed: 0, message: '후보 모두 cooldown 중', errors };
+      return { processed: 0, message: '후보 모두 cooldown 중', errors, results };
     }
 
-    // 3) content_creatives 매칭 — info 글(product_id NULL)만
-    const { data: posts, error: postErr } = await supabaseAdmin
+    const { data: posts, error: postError } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, review_status, category, content_type, generation_meta, travel_packages(destination)')
+      .select('id,slug,seo_title,blog_html,destination,angle_type,category,content_type')
       .in('slug', candidateSlugs)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .is('product_id', null);
+    if (postError) return { processed: 0, errors: [postError.message], results };
+    const postBySlug = new Map(
+      ((posts ?? []) as PublishedPost[]).map(post => [post.slug, post]),
+    );
 
-    if (postErr) {
-      errors.push(`content_creatives 조회 실패: ${postErr.message}`);
-      return { processed: 0, errors, results };
-    }
-
-    const postBySlug = new Map<string, any>();
-    for (const p of posts || []) postBySlug.set(p.slug, p);
-
-    // 4) 슬러그별 재생성 시도
     for (const slug of candidateSlugs) {
       const post = postBySlug.get(slug);
       if (!post) {
@@ -177,176 +116,109 @@ async function runRegenerator(request: NextRequest) {
         continue;
       }
       if (isHighRiskInformationalTopic({
-        title: post.seo_title ?? null,
-        category: post.category ?? null,
-        contentType: post.content_type ?? null,
+        title: post.seo_title,
+        category: post.category,
+        contentType: post.content_type,
       })) {
         results.push({
           slug,
           status: 'high_risk_review',
-          reason: 'Published high-risk information must not be regenerated without a new human review',
+          reason: 'Published high-risk information requires human review',
         });
         continue;
       }
 
-      // Race lock: partial UNIQUE (slug, created_day_utc) WHERE reason='zero_click'.
-      // 동시 인스턴스가 이미 sentinel 박았으면 23505 → 즉시 skip (LLM 호출 회피).
-      // created_day_utc 는 app 이 채워야 한다 (timestamptz cast 가 IMMUTABLE 이 아니므로
-      // generated/expression 인덱스 불가 — 20260517000000_blog_regenerate_race_lock.sql 참고).
-      const oldHash = sha256(post.blog_html || '');
+      const { data: activeUpgrade } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .select('id')
+        .eq('content_creative_id', post.id)
+        .in('status', ['queued', 'generating', 'pending_review'])
+        .limit(1)
+        .maybeSingle();
+      if (activeUpgrade) {
+        results.push({ slug, status: 'cooldown', reason: 'active upgrade already queued' });
+        continue;
+      }
+
       const createdDayUtc = Math.floor(Date.now() / 86_400_000);
-      const { data: lockRows, error: lockErr } = await supabaseAdmin
+      const { data: lockRows, error: lockError } = await supabaseAdmin
         .from('blog_regenerate_log')
         .insert({
           post_id: post.id,
           slug,
-          old_html_hash: oldHash,
+          old_html_hash: sha256(post.blog_html ?? ''),
           reason: 'zero_click',
           gate_passed: false,
-          gate_summary: 'in_progress',
+          gate_summary: 'queued_research_upgrade',
           created_day_utc: createdDayUtc,
         })
         .select('id')
         .limit(1);
-
-      if (lockErr) {
-        if ((lockErr as { code?: string }).code === '23505') {
-          results.push({ slug, status: 'race_skipped', reason: 'concurrent regenerate detected' });
-          continue;
+      if (lockError) {
+        if (lockError.code === '23505') {
+          results.push({ slug, status: 'race_skipped', reason: 'concurrent upgrade detected' });
+        } else {
+          errors.push(`${slug} lock insert 실패: ${lockError.message}`);
+          results.push({ slug, status: 'log_failed', reason: lockError.message });
         }
-        errors.push(`${slug} lock insert 실패: ${lockErr.message}`);
-        results.push({ slug, status: 'log_failed', reason: lockErr.message });
         continue;
       }
+
       const logId = lockRows?.[0]?.id;
-      const updateLog = (patch: Record<string, unknown>) =>
-        logId
-          ? supabaseAdmin.from('blog_regenerate_log').update(patch).eq('id', logId)
-          : Promise.resolve({ error: null });
-
-      try {
-        const newHtml = await regenerateBlogBody(post.seo_title || slug, post.destination ?? null);
-        if (!newHtml) {
-          await updateLog({ gate_summary: 'llm_failed' });
-          results.push({ slug, status: 'llm_failed' });
-          errors.push(`${slug}: LLM 생성 실패`);
-          continue;
-        }
-
-        const dest = (Array.isArray(post.travel_packages)
-          ? post.travel_packages[0]?.destination
-          : post.travel_packages?.destination) ?? post.destination ?? null;
-
-        const prepared = await prepareBlogForPublish({
-          id: post.id,
-          blog_html: newHtml,
-          slug,
-          seo_title: post.seo_title ?? null,
-          seo_description: post.seo_description ?? null,
-          destination: dest,
-          angle_type: post.angle_type ?? null,
-          category: post.category ?? null,
-          content_type: post.content_type ?? null,
-          primary_keyword: post.seo_title || dest || slug,
-          generation_meta: post.generation_meta ?? null,
-          excludeContentCreativeId: post.id,
-        });
-        const qa = prepared.report;
-
-        const newHash = sha256(prepared.blogHtml);
-
-        if (!qa.passed) {
-          await updateLog({
-            new_html_hash: newHash,
-            gate_passed: false,
-            gate_summary: qa.summary.slice(0, 1000),
-          });
-          results.push({ slug, status: 'gate_failed', gateSummary: qa.summary });
-          continue;
-        }
-
-        const claimReport = await evaluateBlogInformationClaimPublishGate({
-          creativeId: post.id,
-          contentKey: slug,
-          markdown: prepared.blogHtml,
-          reviewStatus: post.review_status ?? null,
-          intentType: readBlogInformationRepresentativeIdentity(post.generation_meta ?? null)?.intent ?? null,
-          expectedScope: { destination: post.destination ?? undefined },
-        });
-        if (!claimReport.passed) {
-          const claimSummary = claimReport.issues.map((issue) => issue.code).join(',');
-          await updateLog({
-            new_html_hash: newHash,
-            gate_passed: false,
-            gate_summary: `information_claim_gate:${claimSummary}`.slice(0, 1000),
-          });
-          results.push({ slug, status: 'claim_gate_failed', reason: claimSummary });
-          continue;
-        }
-
-        // 통과 — 본문 교체
-        const updateData: Record<string, unknown> = {
-          blog_html: prepared.blogHtml,
-          updated_at: new Date().toISOString(),
-          generation_meta: {
-            ...(post.generation_meta || {}),
-            information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+      const { data: queueRows, error: queueError } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .insert({
+          topic: post.seo_title || post.slug,
+          source: 'user_seed',
+          priority: 85,
+          primary_keyword: post.seo_title || post.destination || post.slug,
+          destination: post.destination,
+          angle_type: post.angle_type || 'value',
+          category: post.category || 'travel_tips',
+          content_creative_id: post.id,
+          target_publish_at: new Date().toISOString(),
+          meta: {
+            expected_slug: post.slug,
+            zero_click_upgrade: {
+              version: 'published-research-upgrade-v1',
+              enqueued_at: new Date().toISOString(),
+            },
+            private_regeneration: {
+              mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+              atomic_publish_replace: true,
+            },
           },
-        };
-        applyBlogPublishQualityToUpdate(updateData, qa);
-        const { error: upErr } = await supabaseAdmin
-          .from('content_creatives')
-          .update(updateData)
-          .eq('id', post.id);
-
-        if (upErr) {
-          errors.push(`${slug} update 실패: ${upErr.message}`);
-          await updateLog({
-            new_html_hash: newHash,
-            gate_passed: true,
-            gate_summary: `DB 업데이트 실패: ${upErr.message}`.slice(0, 1000),
-          });
-          results.push({ slug, status: 'error', reason: upErr.message });
-          continue;
+        })
+        .select('id')
+        .limit(1);
+      if (queueError) {
+        errors.push(`${slug} queue insert 실패: ${queueError.message}`);
+        if (logId) {
+          await supabaseAdmin
+            .from('blog_regenerate_log')
+            .update({ gate_summary: `queue_failed:${queueError.message}`.slice(0, 1000) })
+            .eq('id', logId);
         }
-
-        await updateLog({
-          new_html_hash: newHash,
-          gate_passed: true,
-          gate_summary: qa.summary.slice(0, 1000),
-        });
-
-        revalidatePublicBlogCache(slug, dest);
-        await enqueueBlogIndexingJob({
-          slug,
-          contentCreativeId: post.id,
-          source: 'blog_regenerate_zero_click',
-        });
-        results.push({ slug, status: 'replaced' });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        errors.push(`${slug} fatal: ${msg}`);
-        results.push({ slug, status: 'error', reason: msg });
-        // 예외 시에도 sentinel 행을 finalize 해서 cooldown 보존.
-        await updateLog({ gate_summary: `fatal: ${msg}`.slice(0, 1000) });
+        results.push({ slug, status: 'queue_failed', reason: queueError.message });
+        continue;
       }
+      results.push({ slug, status: 'queued_upgrade', queueId: queueRows?.[0]?.id });
     }
 
     return {
       processed: candidateSlugs.length,
-      replaced: results.filter(r => r.status === 'replaced').length,
-      gate_failed: results.filter(r => r.status === 'gate_failed').length,
+      queued: results.filter(result => result.status === 'queued_upgrade').length,
       results,
       errors,
       ranAt: new Date().toISOString(),
     };
-  } catch (err) {
-    errors.push(`fatal: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error) {
+    errors.push(`fatal: ${error instanceof Error ? error.message : String(error)}`);
     return { processed: 0, errors, results };
   }
 }
 
 export const GET = withCronLogging('blog-regenerate-zero-click', runRegenerator, {
-  handlerTimeoutMs: 285_000,
+  handlerTimeoutMs: 55_000,
   sideEffectTimeoutMs: 5_000,
 });

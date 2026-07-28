@@ -14,7 +14,10 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8)");
     expect(source).toContain('while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS)');
     expect(source).toContain('calculateBlogPublishSlotQuota({');
-    expect(source).toContain("reason: dailyQuotaReached");
+    expect(source).toContain("'daily_publish_quota_reached_atomic_upgrade_processed'");
+    expect(source).toContain('PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE');
+    expect(source).toContain("contains('meta'");
+    expect(source).toContain("? 'daily_publish_quota_reached'");
     expect(source).toContain("'scheduled_publish_window_not_due'");
     expect(source).toContain('getPublisherExtraClaimRecoveryPlan');
     expect(source).toContain('ensureDailyPublishableQueue({');
@@ -95,7 +98,8 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('isHighRiskInformationalTopic({');
-    expect(source).toContain("status: contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'");
+    expect(source).toContain('status: publishedAtomicUpgrade');
+    expect(source).toContain("(contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published')");
     expect(source).toContain("review_status: requiresHumanReview ? 'pending_review' : null");
     expect(source).toContain('representativeIdentity && !requiresHumanReview');
     expect(source).toContain('publishBlogInformationAtomically({');
@@ -113,8 +117,19 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("const reason = 'private_regeneration_request_invalid'");
     expect(source).toContain("const reason = 'private_regeneration_target_not_eligible'");
     expect(source).toContain('privateReplacementDraftId = privateRegenerationRequest.contentCreativeId');
-    expect(source).toContain('privateRegenerationRequest !== null || requiresClaimReview');
-    expect(source).toContain('forced_private_review: true');
+    expect(source).toContain('!publishedAtomicUpgrade && privateRegenerationRequest !== null');
+    expect(source).toContain('forced_private_review: !publishedAtomicUpgrade');
+  });
+
+  it('replaces public legacy posts only after research and every publication gate pass', () => {
+    const source = routeSource();
+
+    expect(source).toContain('isPublishedBlogAtomicUpgradeRequest');
+    expect(source).toContain('published_atomic_upgrade_claim_gate_failed');
+    expect(source).toContain('published_atomic_upgrade_human_review_required');
+    expect(source).toContain('preserved_published_creative_id');
+    expect(source).toContain('const publicationTimestamp = publishedAtomicUpgrade && originalPublishedAt');
+    expect(source).toContain("status: publishedAtomicUpgrade ? 'upgraded' : 'published'");
   });
 
   it('excludes the in-place replacement draft from its own duplicate check', () => {
@@ -135,7 +150,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const targetedAttempts = 1');
     expect(source).not.toContain('targetedAttempts < 2');
     expect(source).toContain('targetedAttempts,');
-    expect(source).toContain("result.status === 'pending_review' || result.status === 'done'");
+    expect(source).toContain("result.status === 'pending_review'");
+    expect(source).toContain("|| result.status === 'done'");
+    expect(source).toContain("|| result.status === 'upgraded'");
     expect(source).toContain(".eq('status', 'queued')\n    .select('id')\n    .maybeSingle()");
   });
 
@@ -171,8 +188,8 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('const privateRegeneration = hasPrivateBlogRegenerationIntent(item)');
-    expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
-    expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
+    expect(source).toContain('const shouldAnalyzeSerp = (!privateRegeneration || publishedAtomicUpgrade) && Boolean(');
+    expect(source).toContain('if (!privateRegeneration || publishedAtomicUpgrade) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
     expect(source).toContain('fallbackImageUrls: replacementAssets?.inlineImageUrls');
     expect(source).toContain('preferFallbackImages: replacementAssets !== null');
