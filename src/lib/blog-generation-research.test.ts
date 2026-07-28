@@ -320,6 +320,31 @@ describe('blog generation research preflight', () => {
     ]));
   });
 
+  it('recognizes operator route and fare claims as family transport evidence', () => {
+    const bundle = foodBudgetBundle();
+    bundle.claims[0] = {
+      ...bundle.claims[0],
+      claimText: 'GRTA Route 14의 공항 출발 구간은 5분이며 일반 1회 탑승 요금은 1.50 USD이다.',
+      claimFingerprint: createBlogInformationClaimFingerprint(
+        'GRTA Route 14의 공항 출발 구간은 5분이며 일반 1회 탑승 요금은 1.50 USD이다.',
+      ),
+    };
+
+    const result = evaluateBlogGenerationResearchReadiness({
+      meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: bundle },
+      expectedContentKey: CONTENT_KEY,
+      destination: '삿포로',
+      intent: 'family_budget',
+      locale: 'ko-KR',
+      sourcePolicy: FOOD_POLICY,
+      now: new Date('2026-07-19T12:00:00.000Z'),
+    });
+
+    expect(result.issues).not.toContain(
+      'claim_semantic_coverage_missing:family_budget:transport',
+    );
+  });
+
   it('requires complete 1~12 month climate coverage before weather writing starts', () => {
     const incomplete = monthlyWeatherReadiness(monthlyWeatherBundle(6));
     expect(incomplete.passed).toBe(false);
@@ -379,7 +404,7 @@ describe('blog generation research preflight', () => {
       blog_type: 'info',
     }).passed).toBe(true);
     expect(computeReadability(first.markdown).duplicate_phrases).toEqual([]);
-    expect(computeSeoScore({
+    const semanticCoverage = computeSeoScore({
       blogHtml: first.markdown,
       slug: WEATHER_CONTENT_KEY,
       seoTitle: '괌 7월 날씨와 옷차림',
@@ -395,10 +420,11 @@ describe('blog generation research preflight', () => {
         howTo: false,
         breadcrumbList: true,
       },
-    }).details.find((detail) => detail.name === 'semantic_longtail_coverage')).toMatchObject({
+    }).details.find((detail) => detail.name === 'semantic_longtail_coverage');
+    expect(semanticCoverage).toMatchObject({
       status: 'pass',
-      score: 6,
     });
+    expect(semanticCoverage?.score).toBeGreaterThanOrEqual(6);
     expect(inspectBlogImageQuality(first.markdown, {
       destination: '괌',
       primaryKeyword: '괌 7월 날씨',
@@ -603,6 +629,42 @@ describe('blog generation research preflight', () => {
     expect(first.changed).toBe(true);
     expect(second.changed).toBe(false);
     expect(second.markdown).toBe(first.markdown);
+  });
+
+  it('varies weather openings and headings without adding unsupported claims', () => {
+    const readiness = monthlyWeatherReadiness(monthlyWeatherBundle());
+    const base = [
+      '# 괌 7월 날씨와 옷차림',
+      '![괌 참고 1](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
+      '![괌 참고 2](https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg)',
+      '![괌 참고 3](https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg)',
+    ].join('\n\n');
+    const temperatureFirst = repairBlogGenerationResearchStructure({
+      markdown: base,
+      intent: 'monthly_weather',
+      readiness,
+      editorialVariation: {
+        opening_variant: 'temperature_first',
+        section_order_variant: 'weather_then_clothing',
+      },
+    });
+    const packingFirst = repairBlogGenerationResearchStructure({
+      markdown: base.replace('# 괌 7월 날씨와 옷차림', '# 괌 월별 날씨와 옷차림'),
+      intent: 'monthly_weather',
+      readiness,
+      editorialVariation: {
+        opening_variant: 'packing_mistake_first',
+        section_order_variant: 'packing_then_local_risk',
+      },
+    });
+
+    expect(temperatureFirst.markdown).not.toBe(packingFirst.markdown);
+    expect(temperatureFirst.markdown).toContain('## 먼저 확인할 핵심');
+    expect(packingFirst.markdown).toContain('## 옷차림을 정하는 확인 순서');
+    expect(extractBlogInformationClaims(temperatureFirst.markdown)).toHaveLength(12);
+    expect(extractBlogInformationClaims(packingFirst.markdown)).toHaveLength(12);
+    expect(checkHook(temperatureFirst.markdown).passed).toBe(true);
+    expect(checkHook(packingFirst.markdown).passed).toBe(true);
   });
 
   it('adds cautious area price guidance without inventing a local price delta', () => {

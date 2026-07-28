@@ -8,6 +8,7 @@ import {
   summarizeBlogQueueOperationalHealth,
   type BlogQueueOperationalRow,
 } from '../src/lib/blog-queue-operational-health';
+import { inspectBlogQueueLinkedContentState } from '../src/lib/blog-queue-linked-content-reconcile';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -30,6 +31,7 @@ type QueueRow = BlogQueueOperationalRow & {
   id: string;
   source?: string | null;
   product_id?: string | null;
+  content_creative_id?: string | null;
   meta?: Record<string, unknown> | null;
 };
 
@@ -86,6 +88,7 @@ async function main() {
   let overdueQueuedRescheduled = 0;
   let candidateContractQuarantined = 0;
   let metaRepaired = 0;
+  let linkedContentReconciled = 0;
 
   for (const row of rows) {
     const meta = asMeta(row.meta);
@@ -199,6 +202,63 @@ async function main() {
     }
   }
 
+  const { data: publishedQueueRows, error: publishedQueueError } = await supabase
+    .from('blog_topic_queue')
+    .select('id,status,content_creative_id,meta')
+    .eq('status', 'published')
+    .limit(1000);
+  if (publishedQueueError) throw publishedQueueError;
+  const linkedQueueRows = (publishedQueueRows ?? []) as QueueRow[];
+  const creativeIds = [...new Set(linkedQueueRows
+    .map((row) => row.content_creative_id)
+    .filter((id): id is string => Boolean(id)))];
+  const creativeStatusById = new Map<string, string>();
+  if (creativeIds.length > 0) {
+    const { data: creativeRows, error: creativeError } = await supabase
+      .from('content_creatives')
+      .select('id,status')
+      .in('id', creativeIds);
+    if (creativeError) throw creativeError;
+    for (const creative of creativeRows ?? []) {
+      creativeStatusById.set(String(creative.id), String(creative.status || ''));
+    }
+  }
+
+  for (const row of linkedQueueRows) {
+    const decision = inspectBlogQueueLinkedContentState({
+      queueStatus: row.status,
+      contentCreativeId: row.content_creative_id,
+      linkedCreativeStatus: row.content_creative_id
+        ? creativeStatusById.get(row.content_creative_id)
+        : null,
+    });
+    if (!decision.reconcile || !decision.reason) continue;
+    const payload = {
+      status: 'skipped',
+      updated_at: now.toISOString(),
+      last_error: decision.reason,
+      meta: {
+        ...asMeta(row.meta),
+        failure_code: 'linked_draft_invalid',
+        self_heal_blocked: true,
+        quarantine_reason: 'linked_draft_invalid',
+        linked_content_reconciled_at: now.toISOString(),
+        linked_content_reconciled_by: 'cleanup-blog-queue-health',
+        linked_content_reconcile_reason: decision.reason,
+      },
+    };
+    const result = await updateRow(row.id, payload);
+    if (!result.error) linkedContentReconciled += 1;
+    actions.push({
+      id: row.id,
+      status_before: row.status,
+      action: 'reconcile_linked_content_state',
+      issue: decision.reason,
+      write,
+      error: result.error ? result.error.message : null,
+    });
+  }
+
   const overdueQueuedResult = await rescheduleOverdueQueuedBlogQueueItems({
     limit,
     now,
@@ -233,7 +293,8 @@ async function main() {
       overdue_queued_rescheduled: overdueQueuedRescheduled,
       candidate_contract_quarantined: candidateContractQuarantined,
       failure_meta_repaired: metaRepaired,
-      total: staleRecovered + staleClosed + overdueQueuedRescheduled + candidateContractQuarantined + metaRepaired,
+      linked_content_reconciled: linkedContentReconciled,
+      total: staleRecovered + staleClosed + overdueQueuedRescheduled + candidateContractQuarantined + metaRepaired + linkedContentReconciled,
     },
     actions,
   };
@@ -244,7 +305,7 @@ async function main() {
   }
 
   console.log(`[cleanup-blog-queue-health] mode=${report.mode} scanned=${report.scanned} changed=${report.changed.total}`);
-  console.log(`stale recovered=${staleRecovered} closed=${staleClosed} overdue_rescheduled=${overdueQueuedRescheduled} candidate_contract_quarantined=${candidateContractQuarantined} meta_repaired=${metaRepaired}`);
+  console.log(`stale recovered=${staleRecovered} closed=${staleClosed} overdue_rescheduled=${overdueQueuedRescheduled} candidate_contract_quarantined=${candidateContractQuarantined} meta_repaired=${metaRepaired} linked_content_reconciled=${linkedContentReconciled}`);
   console.log(`actionable_failed before=${before.actionable_failed_count} after=${report.after.actionable_failed_count}`);
   if (!write && actions.length > 0) {
     console.log('Dry-run only. Re-run with --write to apply safe queue health repairs.');

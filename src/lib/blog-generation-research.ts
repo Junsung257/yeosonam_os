@@ -59,7 +59,7 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
   family_budget: [
     { key: 'lodging', pattern: /호텔|숙소|1박|리조트|hotel|lodging|resort/ },
     { key: 'meal', pattern: /식사|식비|레스토랑|패스트\s*푸드|meal|restaurant/ },
-    { key: 'transport', pattern: /교통|택시|버스|transport|taxi|bus/ },
+    { key: 'transport', pattern: /교통|택시|버스|대중교통|탑승\s*요금|1일권|grta|route|fare|transport|taxi|bus/ },
     { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
   ],
   itinerary: [
@@ -122,6 +122,7 @@ const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
 const MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v2 -->';
 const MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v2 -->';
+const MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER = '<!-- blog_research_intro:monthly_weather:evidence-safe:v1 -->';
 const LEGACY_MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v1 -->';
 const LEGACY_MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v1 -->';
 const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
@@ -642,11 +643,111 @@ function monthlyWeatherAdjustment(month: number): string {
   ][Math.max(0, month - 1) % 4]!;
 }
 
+type MonthlyWeatherEditorialVariation = {
+  opening_variant?: string | null;
+  section_order_variant?: string | null;
+};
+
+function stableWeatherVariant(seed: string, modulo: number): number {
+  let hash = 2166136261;
+  for (const char of seed) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0) % Math.max(1, modulo);
+}
+
+function monthlyWeatherOpening(
+  title: string,
+  variation?: MonthlyWeatherEditorialVariation | null,
+): string[] {
+  const subject = title
+    .replace(/\s+\d{1,2}월.*$/, '')
+    .replace(/\s+(?:(?:월별|연중|계절별)\s+)?(?:날씨|기후|옷차림).*$/, '')
+    .trim() || '여행지';
+  const variants: Record<string, string[]> = {
+    temperature_first: [
+      `${subject} 여행 준비에서 무엇을 먼저 비교해야 할까요? 이 글의 핵심 요약과 표부터 확인하세요.`,
+      '먼저 여행하는 달을 찾고, 현지 이동과 교통 일정을 포함한 체크리스트에서 필요한 항목을 골라 확인하세요.',
+      '마지막 결정은 출발 직전 공식 안내와 현지 예보로 다시 확인하세요.',
+    ],
+    rain_first: [
+      `${subject} 일정에 맞는 기준은 어떻게 비교해야 할까요? 월별 표의 해당 행부터 확인하세요.`,
+      '그다음 현지 이동과 교통 일정, 준비표와 위험 안내를 차례로 확인하세요.',
+      '출발 직전에는 이 글의 기준과 공식 최신 안내를 함께 다시 확인하세요.',
+    ],
+    clothing_decision_first: [
+      `${subject} 짐을 정하기 전에 어떤 항목을 비교해야 할까요? 핵심 표와 준비표를 차례로 확인하세요.`,
+      '해당 달의 행을 기준점으로 삼고 현지 이동과 교통 일정에 맞는 항목만 골라 확인하세요.',
+      '현지에서 바로 필요한 항목은 마지막 체크리스트에서 다시 확인하세요.',
+    ],
+    packing_mistake_first: [
+      `${subject} 준비에서 무엇을 먼저 비교해야 할까요? 본문의 표와 체크리스트부터 확인하세요.`,
+      '월별 기준을 찾은 뒤 현지 이동과 교통 일정, 준비표, 위험 안내 순서로 확인하세요.',
+      '짐을 닫기 전에는 출발일의 공식 최신 안내를 마지막으로 확인하세요.',
+    ],
+  };
+  const requested = variation?.opening_variant?.trim() || '';
+  return variants[requested]
+    ?? Object.values(variants)[stableWeatherVariant(title, Object.keys(variants).length)]!;
+}
+
+function monthlyWeatherHeadings(
+  title: string,
+  variation?: MonthlyWeatherEditorialVariation | null,
+): {
+  essentials: string;
+  climate: string;
+  clothing: string;
+  risks: string;
+  timing: string;
+} {
+  const variants = [
+    {
+      essentials: '먼저 확인할 핵심',
+      climate: '1~12월 기온·강수·옷차림',
+      clothing: '월별 옷차림 준비표',
+      risks: '우기·건기 및 태풍 위험 확인',
+      timing: '여행 목적별 추천 시기 확인법',
+    },
+    {
+      essentials: '출발 전에 볼 날씨 기준',
+      climate: '기온과 강수로 보는 1~12월',
+      clothing: '1~12월 옷차림 조정표',
+      risks: '비와 이상기후 위험 점검',
+      timing: '목적에 맞는 여행 시기 고르기',
+    },
+    {
+      essentials: '짐을 싸기 전 핵심 판단',
+      climate: '월별 최고·최저기온과 강수',
+      clothing: '기온대별 월별 옷차림',
+      risks: '우기·건기와 출발 전 위험 확인',
+      timing: '일정 유형별 추천 시기 판단',
+    },
+    {
+      essentials: '옷차림을 정하는 확인 순서',
+      climate: '1월부터 12월까지 기후 기준',
+      clothing: '월별 기본 옷차림과 추가 준비',
+      risks: '비·바람·이상기후 대비',
+      timing: '여행 목적과 날씨를 맞추는 법',
+    },
+  ];
+  const requested = variation?.section_order_variant?.trim() || '';
+  const namedIndex: Record<string, number> = {
+    weather_then_clothing: 0,
+    clothing_then_rain: 1,
+    decision_table_first: 2,
+    packing_then_local_risk: 3,
+  };
+  return variants[namedIndex[requested] ?? stableWeatherVariant(`${title}:headings`, variants.length)]!;
+}
+
 function buildDeterministicMonthlyWeatherArticle(input: {
   originalMarkdown: string;
   approvedClaims: BlogInformationResearchBundle['claims'];
   sourceLabel: string;
   sourceUrl: string;
+  editorialVariation?: MonthlyWeatherEditorialVariation | null;
 }): string {
   const title = input.originalMarkdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
     || '월별 날씨와 옷차림 준비';
@@ -665,17 +766,18 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} |`);
   const clothingRows = input.approvedClaims.map((claim, index) =>
     `| ${index + 1}월 | ${monthlyWeatherClothing(claim.claimText, index + 1)} | ${monthlyWeatherAdjustment(index + 1)} |`);
+  const opening = monthlyWeatherOpening(title, input.editorialVariation);
+  const headings = monthlyWeatherHeadings(title, input.editorialVariation);
 
   return [
     MONTHLY_WEATHER_STRUCTURE_MARKER,
     `# ${title}`,
     '',
-    '기온과 비 예보를 확인한 뒤, 옷차림과 준비물을 출발 직전 조건에 맞춰 조정하세요.',
-    '1~12월 자료에서는 여행하는 달의 기온·강수량·강수일수를 어떤 순서로 확인해야 할까요?',
-    '장기 평년자료와 실제 출발일 예보를 같은 값으로 보지 말고, 표는 준비 기준으로 활용한 뒤 단기예보를 다시 확인하세요.',
+    MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER,
+    ...opening,
     ...imageAt(0),
     '',
-    '## 먼저 확인할 핵심',
+    `## ${headings.essentials}`,
     '',
     '- 여행하는 달의 행에서 기온과 강수량, 강수일수를 함께 확인하세요.',
     '- 옷차림 준비 열을 기본값으로 삼고 실내 냉방용 얇은 겉옷을 더해 보세요.',
@@ -683,7 +785,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '- 장기 평년자료를 본 뒤 실제 출발일의 단기예보를 다시 확인하세요.',
     '- [여소남 여행지 가이드](/destinations)에서 목적지별 준비 정보도 함께 확인하세요.',
     '',
-    '## 1~12월 기온·강수·옷차림',
+    `## ${headings.climate}`,
     '',
     `자료 원문: [${input.sourceLabel}](${input.sourceUrl})`,
     '',
@@ -692,7 +794,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     ...climateRows,
     ...imageAt(1),
     '',
-    '## 월별 옷차림 준비표',
+    `## ${headings.clothing}`,
     '',
     '| 월 | 기본 옷차림 | 출발 전 조정 기준 |',
     '| --- | --- | --- |',
@@ -700,7 +802,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '',
     '표의 옷차림은 짐을 고르는 출발점으로만 활용하고, 출발 직전 체감기온과 비 예보에 맞춰 더하거나 빼세요.',
     '',
-    '## 우기·건기 및 태풍 위험 확인',
+    `## ${headings.risks}`,
     '',
     '- 이 표만으로 우기·건기의 경계나 태풍 발생 여부를 단정하지 마세요.',
     '- 이상기후 위험은 출발 직전 공식 특보와 단기예보에서 별도로 확인하세요.',
@@ -710,12 +812,13 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '- 바람과 습도, 갑작스러운 비는 장기 표만으로 결정하지 말고 단기예보에서 다시 확인하세요.',
     ...imageAt(2),
     '',
-    '## 여행 목적별 추천 시기 확인법',
+    `## ${headings.timing}`,
     '',
     '- 해변 일정은 여행하는 달의 강수량과 강수일수를 먼저 비교해 보세요.',
     '- 걷는 일정은 낮과 저녁의 옷차림을 나누고, 비가 올 때 쉴 실내 동선도 함께 확인하세요.',
     '- 아이 동반 일정은 갈아입을 옷과 방수팩, 얇은 겉옷을 한 묶음으로 준비해 보세요.',
     '- 사진 촬영이나 야외 일정은 원하는 달의 표와 출발 직전 예보를 함께 비교해 보세요.',
+    '- 일정 후보가 둘 이상이면 현지 이동에 드는 비용과 전체 예산도 함께 비교해 보세요.',
     '',
     '## 출발 전 체크리스트',
     '',
@@ -747,6 +850,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
 function repairMonthlyWeatherResearchStructure(input: {
   markdown: string;
   readiness: BlogGenerationResearchReadiness;
+  editorialVariation?: MonthlyWeatherEditorialVariation | null;
 }): BlogGenerationResearchStructureRepair {
   const unchanged = (approvedClaims: BlogInformationResearchBundle['claims'] = []) => ({
     markdown: input.markdown,
@@ -778,14 +882,11 @@ function repairMonthlyWeatherResearchStructure(input: {
     intent: 'monthly_weather',
     markdown: input.markdown,
   });
-  const firstParagraph = input.markdown.trim().match(
-    /^<!-- blog_research_structure:monthly_weather:v2 -->\s*\n#\s+.+\n\s*\n([^\n]+)/,
-  )?.[1] ?? '';
-  const hasIntentAlignedIntro = /기온/.test(firstParagraph)
-    && /비/.test(firstParagraph)
-    && /옷차림/.test(firstParagraph)
-    && /준비물/.test(firstParagraph);
-  if (hasCompleteBlock && existingReport.passed && hasIntentAlignedIntro) return unchanged();
+  const hasEvidenceSafeIntro = input.markdown.includes(MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER);
+  const startsWithDeterministicBlock = input.markdown.trimStart().startsWith(MONTHLY_WEATHER_STRUCTURE_MARKER);
+  if (hasCompleteBlock && existingReport.passed && hasEvidenceSafeIntro && startsWithDeterministicBlock) {
+    return unchanged();
+  }
 
   const source = input.readiness.bundle.sources.find((candidate) =>
     candidate.claimTypes.includes('climate') && Boolean(candidate.sourceUrl));
@@ -799,6 +900,7 @@ function repairMonthlyWeatherResearchStructure(input: {
     approvedClaims,
     sourceLabel,
     sourceUrl: source.sourceUrl,
+    editorialVariation: input.editorialVariation,
   });
 
   return {
@@ -817,6 +919,7 @@ export function repairBlogGenerationResearchStructure(input: {
   markdown: string;
   intent: BlogInformationIntent;
   readiness: BlogGenerationResearchReadiness;
+  editorialVariation?: MonthlyWeatherEditorialVariation | null;
 }): BlogGenerationResearchStructureRepair {
   const unchanged = (approvedClaims: BlogInformationResearchBundle['claims'] = []) => ({
     markdown: input.markdown,

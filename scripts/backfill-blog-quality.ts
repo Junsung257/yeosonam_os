@@ -1,5 +1,6 @@
 ﻿import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { buildBlogCategoryScorecard } from '../src/lib/blog-category-scorecard';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -67,6 +68,10 @@ type BlogRow = {
 
 type AuditRow = {
   slug: string;
+  auditCategory: string;
+  researchRequired: boolean;
+  researchVerified: boolean;
+  componentFloor: number | null;
   missingOgBefore: boolean;
   missingOgAfter: boolean;
   imageCountBefore: number;
@@ -115,27 +120,6 @@ type AuditRow = {
   debugHtmlExcerpt?: string | null;
   changed: boolean;
 };
-
-function hasBlockingBlogIssue(report: Awaited<ReturnType<typeof evaluateBlogPublishQuality>>): boolean {
-  const hasBlockingGate = report.qualityGate.gates.some((gate) => {
-    if (gate.passed) return false;
-    const evidence = gate.evidence && typeof gate.evidence === 'object'
-      ? gate.evidence as { criticalCount?: unknown; warningCount?: unknown }
-      : null;
-    if (typeof evidence?.criticalCount === 'number') return evidence.criticalCount > 0;
-    return true;
-  });
-  if (hasBlockingGate) return true;
-  return report.blogQualityScore.issues.some((issue) => {
-    if (issue.code === 'quality_gate.intent_quality') {
-      const evidence = issue.evidence && typeof issue.evidence === 'object'
-        ? issue.evidence as { criticalCount?: unknown }
-        : null;
-      if (typeof evidence?.criticalCount === 'number' && evidence.criticalCount === 0) return false;
-    }
-    return issue.severity === 'critical' || issue.severity === 'major';
-  });
-}
 
 const args = new Set(process.argv.slice(2));
 const dryRun = !args.has('--write');
@@ -5423,6 +5407,31 @@ async function resolveOgImage(row: BlogRow): Promise<string | null> {
   }
 }
 
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function resolveAuditCategory(
+  row: BlogRow,
+  contentType: string,
+  primaryKeyword: string,
+): string {
+  if (row.product_id) return `product:${contentType}`;
+  const brief = recordValue(recordValue(row.generation_meta).content_brief);
+  const intent = typeof brief.intent_type === 'string' ? brief.intent_type.trim() : '';
+  if (intent) return intent;
+  return `legacy:${contentType}:${topicKindFor(row, primaryKeyword)}`;
+}
+
+function hasVerifiedInformationResearch(meta: BlogRow['generation_meta']): boolean {
+  const preflight = recordValue(recordValue(meta).information_research_preflight);
+  const sourceKeys = Array.isArray(preflight.source_keys) ? preflight.source_keys : [];
+  const evidenceKeys = Array.isArray(preflight.evidence_keys) ? preflight.evidence_keys : [];
+  return preflight.passed === true && sourceKeys.length > 0 && evidenceKeys.length > 0;
+}
+
 async function revalidate(paths: string[]) {
   const secret = process.env.REVALIDATE_SECRET;
   if (!secret || paths.length === 0) return;
@@ -5496,6 +5505,10 @@ async function main() {
           : 'product_contract_blocked';
         auditRows.push({
           slug,
+          auditCategory: `product:${contentType}`,
+          researchRequired: false,
+          researchVerified: true,
+          componentFloor: null,
           missingOgBefore: !originalOg,
           missingOgAfter: !originalOg,
           imageCountBefore: countInlineImages(originalHtml),
@@ -6275,7 +6288,11 @@ async function main() {
       engineCategoryEvaluation.passed &&
       engineCategoryEvaluation.score === 100 &&
       engineCategoryFailedCategories.length === 0;
-    const publishReady = !hasBlockingBlogIssue(qaReport);
+    const componentScores = qaReport.blogQualityScore.components
+      .map((component) => component.score)
+      .filter((score): score is number => typeof score === 'number');
+    const componentFloor = componentScores.length > 0 ? Math.min(...componentScores) : null;
+    const publishReady = qaReport.passed;
     const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
     const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});
     const targetKeywordsChanged = stableJson(nextTargetAdKeywords ?? []) !== stableJson(row.target_ad_keywords ?? []);
@@ -6301,6 +6318,10 @@ async function main() {
 
     auditRows.push({
       slug,
+      auditCategory: resolveAuditCategory(row, contentType, primaryKeyword),
+      researchRequired: !productId,
+      researchVerified: productId ? true : hasVerifiedInformationResearch(nextGenerationMeta),
+      componentFloor,
       missingOgBefore: !originalOg,
       missingOgAfter: !nextOg,
       imageCountBefore: countInlineImages(originalHtml),
@@ -6416,6 +6437,17 @@ async function main() {
   }, {});
   const engineCategoryScoreTotal = engineCategoryRows.reduce((sum, row) => sum + (row.engineCategoryScore ?? 0), 0);
   const engineCategoryWeakRows = engineCategoryRows.filter((row) => !row.engineCategoryPerfect);
+  const categoryScorecard = buildBlogCategoryScorecard(auditRows.map((row) => ({
+    category: row.auditCategory,
+    publishReady: row.publishReady,
+    researchRequired: row.researchRequired,
+    researchVerified: row.researchVerified,
+    seoScore: row.seoScore,
+    readabilityScore: row.readabilityScore,
+    engineScore: row.engineCategoryScore,
+    componentFloor: row.componentFloor,
+    imageCount: row.imageCountAfter,
+  })));
   const summary = {
     mode: dryRun ? 'dry-run' : 'write',
     scanned: auditRows.length,
@@ -6470,6 +6502,12 @@ async function main() {
           score: row.engineCategoryScore,
           failedCategories: row.engineCategoryFailedCategories,
         })),
+    },
+    categoryScorecard: {
+      checkedCategoryCount: categoryScorecard.length,
+      passed95Count: categoryScorecard.filter((row) => row.passed95).length,
+      failed95Count: categoryScorecard.filter((row) => !row.passed95).length,
+      categories: categoryScorecard,
     },
     highlightAverageBefore: highlightCountsBefore.length > 0
       ? Number((highlightCountsBefore.reduce((sum, value) => sum + value, 0) / highlightCountsBefore.length).toFixed(2))
