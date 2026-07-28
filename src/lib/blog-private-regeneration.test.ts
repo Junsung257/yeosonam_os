@@ -5,6 +5,7 @@ import {
   hasPrivateBlogRegenerationIntent,
   isEligiblePrivateBlogRegenerationTarget,
   isPublishedBlogAtomicUpgradeRequest,
+  preservePublishedBlogAtomicUpgradeSlug,
   readPrivateBlogRegenerationRequest,
 } from './blog-private-regeneration';
 
@@ -52,6 +53,19 @@ describe('private blog regeneration contract', () => {
         destination: '보홀',
       }).passed).toBe(true);
     }
+  });
+
+  it('preserves the canonical slug for atomic published upgrades', () => {
+    expect(preservePublishedBlogAtomicUpgradeSlug({
+      publishedAtomicUpgrade: true,
+      originalSlug: '보홀-월별-날씨와-옷차림-가이드',
+      generatedSlug: 'bohol-weather',
+    })).toBe('보홀-월별-날씨와-옷차림-가이드');
+    expect(preservePublishedBlogAtomicUpgradeSlug({
+      publishedAtomicUpgrade: false,
+      originalSlug: 'existing-slug',
+      generatedSlug: 'new-generated-slug',
+    })).toBe('new-generated-slug');
   });
 
   it('accepts only an explicit private replacement request linked to an existing creative', () => {

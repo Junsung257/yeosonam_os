@@ -6,6 +6,12 @@ interface PublishedBlogUpgradeTopicInput {
   destination?: unknown;
 }
 
+interface PublishedBlogUpgradeSlugInput {
+  publishedAtomicUpgrade: boolean;
+  originalSlug?: unknown;
+  generatedSlug?: unknown;
+}
+
 function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -40,6 +46,14 @@ export function buildPublishedBlogUpgradeQueueTopic(
   }
 
   return destination ? `${destination} 현지 여행 정보` : '해외여행 현지 정보';
+}
+
+export function preservePublishedBlogAtomicUpgradeSlug(
+  input: PublishedBlogUpgradeSlugInput,
+): string {
+  const originalSlug = readTrimmedString(input.originalSlug);
+  const generatedSlug = readTrimmedString(input.generatedSlug);
+  return input.publishedAtomicUpgrade && originalSlug ? originalSlug : generatedSlug;
 }
 
 export interface PrivateBlogRegenerationRequest {

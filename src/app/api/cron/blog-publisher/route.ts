@@ -153,6 +153,7 @@ import {
   isEligiblePrivateBlogRegenerationTarget,
   isPublishedBlogAtomicUpgradeRequest,
   PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+  preservePublishedBlogAtomicUpgradeSlug,
   readPrivateBlogRegenerationRequest,
 } from '@/lib/blog-private-regeneration';
 
@@ -2307,6 +2308,7 @@ async function processQueueItem(
     let privateReplacementDraftId: string | null = null;
     let privateReplacementAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
     let originalPublishedAt: string | null = null;
+    let originalPublishedSlug: string | null = null;
     if (privateRegenerationIntent && !privateRegenerationRequest) {
       const reason = 'private_regeneration_request_invalid';
       await handleFailure(item, reason, null, true, {
@@ -2317,7 +2319,7 @@ async function processQueueItem(
     if (privateRegenerationRequest) {
       const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,channel,status,product_id,published_at,generation_meta,og_image_url,blog_html')
+        .select('id,channel,status,product_id,published_at,slug,generation_meta,og_image_url,blog_html')
         .eq('id', privateRegenerationRequest.contentCreativeId)
         .maybeSingle();
       if (
@@ -2335,6 +2337,9 @@ async function processQueueItem(
       privateReplacementDraftId = privateRegenerationRequest.contentCreativeId;
       originalPublishedAt = typeof replacementTarget.published_at === 'string'
         ? replacementTarget.published_at
+        : null;
+      originalPublishedSlug = typeof replacementTarget.slug === 'string'
+        ? replacementTarget.slug
         : null;
       if (!publishedAtomicUpgrade) {
         privateReplacementAssets = {
@@ -2507,6 +2512,12 @@ async function processQueueItem(
       };
     }
 
+    generated.slug = preservePublishedBlogAtomicUpgradeSlug({
+      publishedAtomicUpgrade,
+      originalSlug: originalPublishedSlug,
+      generatedSlug: generated.slug,
+    });
+
     if (replacementAssets?.ogImageUrl && !generated.og_image_url) {
       generated.og_image_url = replacementAssets.ogImageUrl;
     }
@@ -2524,7 +2535,7 @@ async function processQueueItem(
     const mayFillReplacementImageShortfall = replacementAssets !== null
       && replacementImageShortfall > 0;
 
-    const slugNormalized = normalizeGeneratedSlug(generated, item);
+    const slugNormalized = publishedAtomicUpgrade ? false : normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
       await supabaseAdmin
         .from('content_creatives')
@@ -2898,19 +2909,21 @@ async function processQueueItem(
       },
     });
 
-    const slugRepair = repairPublisherSeoSlug({
-      currentSlug: generated.slug,
-      item,
-      primaryKeyword,
-    });
-    if (slugRepair.changed) {
-      generated.slug = slugRepair.slug;
-      generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
-        destination: item.destination,
-        slug: generated.slug,
-        utmSource: 'naver_blog',
+    if (!publishedAtomicUpgrade) {
+      const slugRepair = repairPublisherSeoSlug({
+        currentSlug: generated.slug,
+        item,
+        primaryKeyword,
       });
-      console.log(`[blog-publisher] SEO slug repair: ${slugRepair.reason || 'slug_quality'} -> ${generated.slug}`);
+      if (slugRepair.changed) {
+        generated.slug = slugRepair.slug;
+        generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+          destination: item.destination,
+          slug: generated.slug,
+          utmSource: 'naver_blog',
+        });
+        console.log(`[blog-publisher] SEO slug repair: ${slugRepair.reason || 'slug_quality'} -> ${generated.slug}`);
+      }
     }
 
     let seoScore = computeSeoScore(buildSeoScoreInput());
