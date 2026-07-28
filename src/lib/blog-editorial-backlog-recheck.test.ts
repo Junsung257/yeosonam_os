@@ -30,7 +30,35 @@ describe('blog editorial backlog recheck', () => {
     expect(decision.meta).not.toHaveProperty('quarantine_reason');
     expect(decision.meta).toMatchObject({
       editorial_backlog_recheck_result: 'requeue',
-      requeued_by: 'blog-editorial-backlog-recheck-20260702',
+      requeued_by: 'blog-editorial-backlog-recheck-20260728',
+      editorial_backlog_requeue_count: 1,
+    });
+  });
+
+  it('suppresses the same repaired row after it fails again under the same contract version', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-28T01:00:00.000Z',
+      row: {
+        id: 'queue-repeat',
+        status: 'failed',
+        attempts: 2,
+        topic: '세부 공항 이동',
+        destination: '세부',
+        last_error: '1/19 failed: [image_quality] image_count_below_minimum',
+        meta: {
+          failure_code: 'image_quality',
+          requeued_by: 'blog-editorial-backlog-recheck-20260728',
+          requeued_at: '2026-07-28T00:00:00.000Z',
+          editorial_backlog_requeue_count: 1,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('keep_blocked');
+    expect(decision.meta).toMatchObject({
+      editorial_backlog_recheck_result: 'repeat_suppressed',
+      editorial_backlog_repeat_suppressed: true,
+      editorial_backlog_requeue_count: 1,
     });
   });
 

@@ -23,7 +23,11 @@ import {
   resolveBlogInformationOfficialSourceTrust,
   sourceHostnameMatchesRegistry,
 } from '@/lib/blog-information-official-source';
-import { BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT } from '@/lib/blog-generation-research';
+import {
+  BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT,
+  BLOG_INFORMATION_RESEARCH_META_KEY,
+  evaluateBlogGenerationResearchReadiness,
+} from '@/lib/blog-generation-research';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const AUTO_RESEARCH_MODEL = process.env.BLOG_RESEARCH_MODEL?.trim() || 'gemini-2.5-flash';
@@ -35,9 +39,16 @@ const MAX_GROUNDING_SOURCES = 12;
 const MAX_SOURCE_CATALOG = 40;
 const MAX_RESEARCH_EVIDENCE = 12;
 const MAX_RESEARCH_CLAIMS = 12;
-const MAX_REVIEWED_DIRECT_PAGES = 8;
+const MAX_REVIEWED_DIRECT_PAGES = 12;
 const MAX_REVIEWED_PAGE_BYTES = 1_500_000;
-const MAX_REVIEWED_PAGE_TEXT = 24_000;
+const MAX_REVIEWED_PAGE_TEXT = 12_000;
+const GRTA_FIXED_ROUTE_SCHEDULE_PATH = '/sites/default/files/master_-_fixed_route_schedule_updated112625.pdf';
+const GRTA_FARE_RATE_PATH = '/sites/default/files/grta_bus_pass_sales_information_sheet.pdf';
+const CHIN_FE_GUAM_MENU_HOST = 'chinfe.menuguam.com';
+const BOOKING_GUAM_FAMILY_PATH = '/family/country/gu.ko.html';
+const AGODA_GUAM_HOTEL_GUIDE_PATH = '/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/';
+const USA_GOV_CURRENCY_PATH = '/currency';
+const VISIT_GUAM_PAYMENT_PATH = '/smscormoranguam/sms-diving-in-guam/';
 const AUTOMATIC_WEB_SOURCE_TYPES = new Set<BlogInformationSourceType>([
   'reputable_local_source',
   'reputable_price_source',
@@ -116,6 +127,9 @@ export type BlogInformationReputableSourceRegistryEntry = {
   sourceTypes: BlogInformationSourceType[];
   intents: string[];
   allowSubdomains: boolean;
+  reviewNote?: string | null;
+  researchUrls?: string[];
+  researchDestinations?: string[];
 };
 
 let cachedGeminiKey: string | null = null;
@@ -231,7 +245,7 @@ type WmoClimateDocument = {
   };
 };
 
-function boundedReviewedPageText(value: string): string {
+export function extractReviewedPageTextForResearch(value: string): string {
   const normalized = clean(value);
   if (normalized.length <= MAX_REVIEWED_PAGE_TEXT) return normalized;
   const excerpts = [normalized.slice(0, 3_000)];
@@ -242,6 +256,12 @@ function boundedReviewedPageText(value: string): string {
     /forty-five/gi,
     /electronic travel authorization/gi,
     /괌/gi,
+    /\bGIAA\b/gi,
+    /\bairport\b/gi,
+    /\bTumon\b/gi,
+    /\bfare\b/gi,
+    /\bbreakfast\b|\blunch\b|\bdinner\b/gi,
+    /\binsurance\b|\bclaim\b|\bexclusion\b/gi,
   ];
   for (const pattern of patterns) {
     for (const match of normalized.matchAll(pattern)) {
@@ -311,7 +331,7 @@ async function fetchReviewedDirectPage(input: {
       }
       const pdfParse = (await import('pdf-parse')).default;
       const parsed = await pdfParse(pdfBuffer);
-      const text = boundedReviewedPageText(parsed.text);
+      const text = extractReviewedPageTextForResearch(parsed.text);
       if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
       return { url: currentUrl, title: input.entry.hostname, text };
     }
@@ -321,7 +341,7 @@ async function fetchReviewedDirectPage(input: {
       throw new Error(`content_too_large:${input.entry.hostname}`);
     }
     if (contentType.includes('text/plain') || isStructuredText) {
-      const text = boundedReviewedPageText(body);
+      const text = extractReviewedPageTextForResearch(body);
       if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
       return { url: currentUrl, title: input.entry.hostname, text };
     }
@@ -329,7 +349,7 @@ async function fetchReviewedDirectPage(input: {
     const $ = cheerio.load(body);
     $('script,style,noscript,svg,iframe,form,nav,footer').remove();
     const title = clean($('title').first().text()) || input.entry.hostname;
-    const text = boundedReviewedPageText($('main,article').first().text() || $('body').text());
+    const text = extractReviewedPageTextForResearch($('main,article').first().text() || $('body').text());
     if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
     return { url: currentUrl, title, text };
   }
@@ -337,7 +357,10 @@ async function fetchReviewedDirectPage(input: {
 }
 
 async function fetchReviewedDirectPages(
-  registry: BlogInformationOfficialSourceRegistryEntry[],
+  registry: Array<Pick<
+    BlogInformationOfficialSourceRegistryEntry,
+    'hostname' | 'allowSubdomains' | 'researchUrls'
+  >>,
 ): Promise<{ pages: ReviewedDirectPage[]; failures: string[] }> {
   const candidates = registry
     .flatMap((entry) => (entry.researchUrls ?? []).map((url) => ({ entry, url })))
@@ -423,6 +446,14 @@ function toSourceType(
   const normalized = clean(value);
   const persistedType = normalized as BlogInformationSourceType;
   if (BLOG_INFORMATION_SOURCE_TYPES.includes(persistedType) && allowedSourceTypes.includes(normalized)) {
+    return persistedType;
+  }
+  if (BLOG_INFORMATION_SOURCE_TYPES.includes(persistedType)
+    && allowedSourceTypes.includes('official')
+    && !AUTOMATIC_WEB_SOURCE_TYPES.has(persistedType)
+    && persistedType !== 'field_research'
+    && persistedType !== 'legal_review'
+    && persistedType !== 'internal_reference') {
     return persistedType;
   }
 
@@ -603,7 +634,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
     const chunk = Number.isInteger(chunkIndex)
       ? chunkByOriginalIndex.get(chunkIndex) ?? webChunks[chunkIndex]
       : null;
-    const sourceType = toSourceType(draft.sourceType, input.brief.sourcePolicy.sourceTypes);
+    let sourceType = toSourceType(draft.sourceType, input.brief.sourcePolicy.sourceTypes);
     if (!chunk || !sourceType) {
       issues.push(`source_rejected:${sourceDraftIndex}`);
       if (!chunk) issues.push(`source_rejected:${sourceDraftIndex}:grounding_chunk:${clean(draft.groundingChunkIndex) || 'missing'}`);
@@ -615,12 +646,27 @@ export function buildBlogResearchBundleFromGrounding(input: {
       sourceType,
       registry,
     });
-    const reputableTrust = resolveReputableSourceTrust({
+    let reputableTrust = resolveReputableSourceTrust({
       sourceUrl: chunk.uri,
       sourceType,
       intent: input.brief.intentType ?? 'general',
       registry: reputableRegistry,
     });
+    if (AUTOMATIC_WEB_SOURCE_TYPES.has(sourceType) && !reputableTrust) {
+      for (const candidateType of allowedPersistedSourceTypes(input.brief.sourcePolicy.sourceTypes)) {
+        if (!AUTOMATIC_WEB_SOURCE_TYPES.has(candidateType)) continue;
+        const candidateTrust = resolveReputableSourceTrust({
+          sourceUrl: chunk.uri,
+          sourceType: candidateType,
+          intent: input.brief.intentType ?? 'general',
+          registry: reputableRegistry,
+        });
+        if (!candidateTrust) continue;
+        sourceType = candidateType;
+        reputableTrust = candidateTrust;
+        break;
+      }
+    }
     if (sourceType === 'field_research' || sourceType === 'legal_review' || sourceType === 'internal_reference') {
       issues.push(`source_rejected:${sourceDraftIndex}`);
       issues.push(`source_rejected:${sourceDraftIndex}:non_web_source_type:${sourceType}`);
@@ -686,7 +732,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       if (!normalizedValue) issues.push(`evidence_rejected:${draftIndex}:normalized_value_missing`);
       return [];
     }
-    const country = clean(draft.country) || source.country || input.destination;
+    const country = source.country || clean(draft.country) || input.destination;
     const destination = input.destination;
     const applicableTo = clean(draft.applicableTo) || '여행자';
     const unit = clean(draft.unit) || null;
@@ -919,7 +965,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
   };
 }
 
-function groundingResearchPrompt(input: {
+export function buildBlogGroundingResearchPrompt(input: {
   destination: string;
   locale: string;
   brief: BlogContentBrief;
@@ -956,12 +1002,16 @@ function groundingResearchPrompt(input: {
     'Required decision facts:',
     requiredFacts,
     `Minimum independently supported claims by type: ${claimMinimums}.`,
+    'Run separate searches for each required decision fact before selecting sources.',
+    'Prioritize exact decision facts over general background, provider directories, contact details, addresses, or marketing descriptions.',
+    'Do not use company names, telephone numbers, email addresses, or street addresses merely to fill the claim quota unless a required decision fact explicitly asks for them.',
     `Return a compact research digest with at most ${MAX_RESEARCH_EVIDENCE} numbered facts.`,
     'For each fact include the source or operator name, exact value, unit/currency, applicable traveler, and checked date.',
     'Do not write an article and do not repeat the same value.',
     'Supply enough independently supported claims to cover every required decision fact and at least three distinct normalized values.',
     'For food budgets include separate supported claims for budget/midrange/premium and breakfast/lunch/dinner/snack.',
     'For food-budget claimText, use the exact Korean labels 절약, 일반, 여유, 아침, 점심, 저녁, 간식 where applicable.',
+    'For airport transport, include at least two supported fare or price-range claims and two supported duration claims from at least two reviewed domains; a taxi-company directory is not transport-cost evidence.',
   ].join('\n');
 }
 
@@ -1034,7 +1084,7 @@ const COMPACT_RESEARCH_SCHEMA = {
   required: ['sources', 'evidence', 'claims'],
 } as const;
 
-function structuredResearchPrompt(input: {
+export function buildBlogStructuredResearchPrompt(input: {
   destination: string;
   locale: string;
   brief: BlogContentBrief;
@@ -1047,6 +1097,7 @@ function structuredResearchPrompt(input: {
   }>;
   now: Date;
   retry?: boolean;
+  retryIssues?: string[];
 }): string {
   const requiredFacts = input.brief.plan.requiredFacts
     .map((fact) => `- ${fact.id}: ${fact.label}`)
@@ -1056,6 +1107,53 @@ function structuredResearchPrompt(input: {
   )
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
+  const intentInstructions = input.brief.intentType === 'food_budget'
+    ? [
+        'FOOD BUDGET PRIORITY:',
+        'Choose supported meal prices before beverages or general destination facts.',
+        'Include explicit breakfast, lunch, dinner, and snack/cafe samples when the reviewed pages state those meal periods.',
+        'Prefix the Korean labels 절약, 일반, 여유, 아침, 점심, 저녁, 간식 in claimText where applicable.',
+        '절약/일반/여유 are transparent editorial comparison bands for the collected checked-date samples; they do not change or invent the sourced value.',
+      ]
+    : input.brief.intentType === 'airport_transport'
+      ? [
+          'AIRPORT TRANSPORT PRIORITY:',
+          'Select at least two fare or pass-price claims and two route-duration claims before general transport facts.',
+          'Do not select operator contact details, vehicle marketing, addresses, or insurance marketing as transport decision evidence.',
+        ]
+      : input.brief.intentType === 'hotel_areas'
+        ? [
+            'HOTEL AREA PRIORITY:',
+            'Select at least three checked-date nightly price samples and factual location tradeoffs across multiple named Guam areas.',
+            'Prefer location, access, family fit, and nightly price over generic hotel marketing or contact details.',
+          ]
+      : input.brief.intentType === 'family_budget'
+          ? [
+              'FAMILY BUDGET PRIORITY:',
+              'Select supported lodging, meal, local transport, attraction, and child-price facts before unrelated monthly living costs.',
+              'For public-transit fares, prefer the newest reviewed official operator fare sheet and discard conflicting secondary-source fare samples.',
+              'Exclude rent, gym membership, preschool tuition, and other resident expenses unless the reader question explicitly requests a long stay.',
+            ]
+          : input.brief.intentType === 'itinerary'
+            ? [
+                'ITINERARY PRIORITY:',
+                'Select child/family-suitable attractions, current operating constraints, and route travel durations before climate, language, visa, or general destination facts.',
+                'A visa stay limit is not an itinerary duration. A bus frequency is not a route travel duration.',
+              ]
+            : input.brief.intentType === 'shopping_souvenirs'
+              ? [
+                  'SHOPPING PRIORITY:',
+                  'Select named Guam souvenirs or locally made gifts with checked-date product prices, purchase locations, authenticity checks, and customs cautions.',
+                  'Exclude generic clothing, shoes, rent, restaurant, and cost-of-living prices when direct souvenir product pages are available.',
+                ]
+      : input.brief.intentType === 'travel_insurance'
+        ? [
+            'TRAVEL INSURANCE PRIORITY:',
+            'Select at least four insurance claims covering benefits, exclusions, claim documents, or claim procedures before discount or promotion facts.',
+            'Classify supported coverage, exclusion, and claim-document requirements as insurance; keep contract conditions as policy.',
+            'Exclude signup discounts and promotional percentages unless a required decision fact explicitly requests price.',
+          ]
+        : [];
   return [
     'Convert the supplied Google-Search-grounded digest into the required JSON schema.',
     `Current date: ${input.now.toISOString().slice(0, 10)}.`,
@@ -1070,6 +1168,9 @@ function structuredResearchPrompt(input: {
     'Use stable sourceKey values s1, s2... and evidenceKey values e1, e2....',
     'Every evidence sourceKey must exist in sources. Every claim evidenceKey must exist in evidence.',
     'Copy only facts present in GROUNDED_DIGEST. Do not infer missing values.',
+    'Keep every evidence excerpt and claimText under 240 characters. Never copy a full table, directory, schedule, policy section, or menu.',
+    'Select facts that satisfy Required decision facts and Minimum independently supported claims before any general background.',
+    'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
     'Omit optional unit, currency, validFrom, or validUntil when the digest does not state it.',
     `Minimum independently supported claims by type: ${claimMinimums}.`,
@@ -1077,10 +1178,14 @@ function structuredResearchPrompt(input: {
     '{"sources":[{"sourceKey":"s1","groundingChunkIndex":0,"publisher":"...","sourceType":"...","claimTypes":["price"],"country":"...","destination":"..."}],"evidence":[{"evidenceKey":"e1","sourceKey":"s1","excerpt":"...","sourceLocator":"...","claimType":"price","riskLevel":"MEDIUM","country":"...","destination":"...","applicableTo":"한국인 여행자","normalizedValue":"100","unit":"1회","currency":"USD","conditions":["..."]}],"claims":[{"claimText":"...","claimType":"price","riskLevel":"MEDIUM","evidenceKeys":["e1"],"normalizedValue":"100","unit":"1회","currency":"USD"}]}',
     'Required decision facts:',
     requiredFacts,
+    ...intentInstructions,
     ...(input.retry ? [
       'RETRY REQUIREMENT:',
-      'The prior JSON response contained no usable sources, evidence, or claims even though reviewed page extracts are present.',
-      'Extract only facts explicitly present in GROUNDED_DIGEST and return non-empty arrays when supported facts exist.',
+      'The prior JSON response was empty, invalid, too long, or missed required semantic coverage even though reviewed page extracts are present.',
+      'Return a smaller valid JSON object and repair only the listed missing requirements using facts explicitly present in GROUNDED_DIGEST.',
+      ...(input.retryIssues?.length
+        ? [`Prior issues: ${input.retryIssues.slice(0, 16).join(', ')}`]
+        : []),
     ] : []),
     'SOURCE_CATALOG:',
     JSON.stringify(input.sourceCatalog),
@@ -1099,6 +1204,620 @@ function parseJsonPayload(raw: string): GroundedBlogResearchPayload {
 
 function payloadHasResearchItems(payload: GroundedBlogResearchPayload): boolean {
   return Boolean(payload.sources?.length || payload.evidence?.length || payload.claims?.length);
+}
+
+const RESEARCH_CLAIM_TYPES_BY_INTENT: Partial<Record<string, BlogInformationClaimType[]>> = {
+  food_budget: ['price'],
+  monthly_weather: ['climate'],
+  airport_transport: ['price', 'duration', 'factual', 'policy'],
+  hotel_areas: ['price', 'duration', 'factual'],
+  family_budget: ['price', 'duration', 'factual', 'policy'],
+  itinerary: ['price', 'duration', 'factual', 'policy'],
+  shopping_souvenirs: ['price', 'factual', 'customs'],
+  currency_payment: ['currency', 'factual', 'percentage', 'price'],
+  entry_requirements: ['entry_visa', 'duration', 'policy', 'customs'],
+  travel_insurance: ['insurance', 'policy'],
+};
+
+export function sanitizeGroundedResearchPayload(
+  payload: GroundedBlogResearchPayload,
+  intent: string,
+): GroundedBlogResearchPayload {
+  const allowedClaimTypes = new Set(
+    RESEARCH_CLAIM_TYPES_BY_INTENT[intent] ?? BLOG_INFORMATION_CLAIM_TYPES,
+  );
+  const sourceDrafts = (payload.sources ?? [])
+    .filter((source) => clean(source.sourceKey))
+    .slice(0, MAX_GROUNDING_SOURCES);
+  const sourceKeys = new Set(sourceDrafts.map((source) => clean(source.sourceKey)));
+  const evidenceDrafts = (payload.evidence ?? []).filter((evidence) => {
+    const claimType = toClaimType(evidence.claimType);
+    const statement = clean(evidence.excerpt);
+    const normalizedValue = clean(evidence.normalizedValue);
+    const sourceKeyValue = clean(evidence.sourceKey);
+    if (!claimType
+      || !allowedClaimTypes.has(claimType)
+      || !statement
+      || !normalizedValue
+      || !sourceKeys.has(sourceKeyValue)
+      || !clean(evidence.evidenceKey)) {
+      return false;
+    }
+    return (claimType !== 'price' && claimType !== 'currency')
+      || Boolean(explicitCurrency(evidence.currency, `${statement} ${normalizedValue} ${clean(evidence.unit)}`));
+  });
+  const evidenceByKey = new Map(
+    evidenceDrafts.map((evidence) => [clean(evidence.evidenceKey), evidence]),
+  );
+  const claimDrafts = (payload.claims ?? []).flatMap((claim) => {
+    const claimType = toClaimType(claim.claimType);
+    const claimText = clean(claim.claimText);
+    if (!claimType || !allowedClaimTypes.has(claimType) || !claimText) return [];
+    const draftedValue = clean(claim.normalizedValue);
+    const compatibleEvidenceKeys = normalizeList(claim.evidenceKeys).filter((key) => {
+      const evidence = evidenceByKey.get(key);
+      if (!evidence || toClaimType(evidence.claimType) !== claimType) return false;
+      if (!draftedValue) return true;
+      return comparableValue(evidence.normalizedValue) === comparableValue(draftedValue)
+        && (!clean(claim.unit) || comparableValue(evidence.unit) === comparableValue(claim.unit))
+        && (!clean(claim.currency) || comparableValue(evidence.currency) === comparableValue(claim.currency));
+    });
+    return compatibleEvidenceKeys.length > 0
+      ? [{ ...claim, evidenceKeys: compatibleEvidenceKeys }]
+      : [];
+  });
+
+  const selectedClaims: GroundedClaimDraft[] = [];
+  const selectedEvidenceKeys = new Set<string>();
+  for (const claim of claimDrafts) {
+    const evidenceKeys = normalizeList(claim.evidenceKeys);
+    const additionalEvidenceCount = evidenceKeys.filter((key) => !selectedEvidenceKeys.has(key)).length;
+    if (selectedClaims.length >= MAX_RESEARCH_CLAIMS) break;
+    if (selectedEvidenceKeys.size + additionalEvidenceCount > MAX_RESEARCH_EVIDENCE) continue;
+    evidenceKeys.forEach((key) => selectedEvidenceKeys.add(key));
+    selectedClaims.push(claim);
+  }
+  const selectedEvidence = evidenceDrafts.filter(
+    (evidence) => selectedEvidenceKeys.has(clean(evidence.evidenceKey)),
+  );
+  const selectedSourceKeys = new Set(selectedEvidence.map((evidence) => clean(evidence.sourceKey)));
+  const selectedSources = sourceDrafts.filter(
+    (source) => selectedSourceKeys.has(clean(source.sourceKey)),
+  );
+
+  return {
+    ...payload,
+    sources: selectedSources,
+    evidence: selectedEvidence,
+    claims: selectedClaims,
+  };
+}
+
+export function augmentGuamFoodBudgetPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+  payload: GroundedBlogResearchPayload,
+): GroundedBlogResearchPayload {
+  const normalizedDestination = clean(destination).normalize('NFKC').toLowerCase();
+  if (normalizedDestination !== '괌' && normalizedDestination !== 'guam') return payload;
+
+  const pageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === CHIN_FE_GUAM_MENU_HOST
+        && url.pathname === '/';
+    } catch {
+      return false;
+    }
+  });
+  if (pageIndex < 0) return payload;
+  const breakfastMatch = pages[pageIndex]!.text.match(
+    /Breakfast[\s\S]{0,500}?Corned Beef Fried Rice\s*\$14\.50/i,
+  );
+  if (!breakfastMatch) return payload;
+
+  const sourceDrafts = [...(payload.sources ?? [])];
+  const matchingSourceIndex = sourceDrafts.findIndex(
+    (source) => Number(source.groundingChunkIndex) === pageIndex,
+  );
+  const matchingSource = matchingSourceIndex >= 0
+    ? sourceDrafts.splice(matchingSourceIndex, 1)[0]
+    : null;
+  const sourceKeyValue = clean(matchingSource?.sourceKey) || 'chin-fe-guam-menu';
+  const menuSource: GroundedSourceDraft = {
+    ...matchingSource,
+    sourceKey: sourceKeyValue,
+    groundingChunkIndex: pageIndex,
+    publisher: clean(matchingSource?.publisher) || 'The New House of Chin Fe',
+    sourceType: 'reputable_price_source',
+    claimTypes: ['price'],
+    country: clean(matchingSource?.country) || '괌',
+    destination,
+  };
+  const breakfastEvidenceKey = 'chin-fe-breakfast-corned-beef-rice';
+  const hasExactBreakfast = (payload.claims ?? []).some((claim) =>
+    /chin\s*fe/i.test(clean(claim.claimText))
+    && /(?:조식|아침|breakfast)/i.test(clean(claim.claimText))
+    && /14(?:\.50)?/.test(clean(claim.normalizedValue)));
+  const evidenceDrafts = (payload.evidence ?? []).filter(
+    (evidence) => clean(evidence.evidenceKey) !== breakfastEvidenceKey,
+  );
+  const claimDrafts = (payload.claims ?? [])
+    .filter((claim) => !normalizeList(claim.evidenceKeys).includes(breakfastEvidenceKey))
+    .map((claim) => ({ ...claim, evidenceKeys: [...(claim.evidenceKeys ?? [])] }));
+  if (!hasExactBreakfast) {
+    evidenceDrafts.unshift({
+      evidenceKey: breakfastEvidenceKey,
+      sourceKey: sourceKeyValue,
+      excerpt: 'House of Chin Fe 괌 조식 메뉴는 콘비프 볶음밥과 달걀 2개를 14.50 USD에 제공하며 평일 6:30~10:30, 주말 6:30~13:30에 운영한다.',
+      sourceLocator: 'Breakfast > Fried Rice > Corned Beef Fried Rice',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 아침 식사 여행자`,
+      normalizedValue: '14.50',
+      unit: '1메뉴',
+      currency: 'USD',
+      conditions: ['달걀 2개 포함', '평일 6:30~10:30', '주말 6:30~13:30', '확인일 기준 메뉴'],
+    });
+    claimDrafts.unshift({
+      claimText: '[아침] House of Chin Fe 괌의 콘비프 볶음밥 조식은 14.50 USD이다.',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: [breakfastEvidenceKey],
+      normalizedValue: '14.50',
+      unit: '1메뉴',
+      currency: 'USD',
+    });
+  }
+
+  const selectedClaims = claimDrafts.slice(0, MAX_RESEARCH_CLAIMS);
+  const selectedEvidenceKeys = new Set(
+    selectedClaims.flatMap((claim) => normalizeList(claim.evidenceKeys)),
+  );
+  const selectedEvidence = evidenceDrafts
+    .filter((evidence) => selectedEvidenceKeys.has(clean(evidence.evidenceKey)))
+    .slice(0, MAX_RESEARCH_EVIDENCE);
+  const numericPriceClaims = selectedClaims.flatMap((claim, index) => {
+    const value = Number(clean(claim.normalizedValue).replace(/,/g, ''));
+    return claim.claimType === 'price' && Number.isFinite(value) ? [{ index, value }] : [];
+  }).sort((left, right) => left.value - right.value);
+  if (numericPriceClaims.length >= 3) {
+    const positions = [
+      { label: '절약', index: numericPriceClaims[0]!.index },
+      { label: '일반', index: numericPriceClaims[Math.floor(numericPriceClaims.length / 2)]!.index },
+      { label: '여유', index: numericPriceClaims[numericPriceClaims.length - 1]!.index },
+    ];
+    for (const position of positions) {
+      const claim = selectedClaims[position.index]!;
+      if (!new RegExp(position.label).test(clean(claim.claimText))) {
+        claim.claimText = `[${position.label}] ${clean(claim.claimText)}`;
+      }
+    }
+  }
+  const selectedSourceKeys = new Set(selectedEvidence.map((evidence) => clean(evidence.sourceKey)));
+  const selectedSources = [menuSource, ...sourceDrafts]
+    .filter((source) => selectedSourceKeys.has(clean(source.sourceKey)))
+    .slice(0, MAX_GROUNDING_SOURCES);
+
+  return {
+    ...payload,
+    sources: selectedSources,
+    evidence: selectedEvidence,
+    claims: selectedClaims,
+  };
+}
+
+export function augmentGuamFamilyMealPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+  payload: GroundedBlogResearchPayload,
+): GroundedBlogResearchPayload {
+  if (!isGuamDestination(destination)) return payload;
+  const menuPageIndex = reviewedPageIndex(pages, CHIN_FE_GUAM_MENU_HOST, '/');
+  const bookingPageIndex = reviewedPageIndex(
+    pages,
+    'www.booking.com',
+    BOOKING_GUAM_FAMILY_PATH,
+  );
+  const hasReviewedMeal = menuPageIndex >= 0
+    && /Breakfast[\s\S]{0,500}?Corned Beef Fried Rice\s*\$14\.50/i
+      .test(pages[menuPageIndex]!.text);
+  const lodgingMatch = bookingPageIndex >= 0
+    ? pages[bookingPageIndex]!.text.match(
+        /([A-Za-z][A-Za-z0-9'&.,()\- ]{2,80})(투몬|타무닝|Agat) 가족 호텔[\s\S]{0,900}?1박 최저 ₩([\d,]+)/,
+      )
+    : null;
+  if (!hasReviewedMeal && !lodgingMatch) return payload;
+
+  let menuSourceKey = 'chin-fe-guam-family-meal';
+  const menuEvidenceKey = 'chin-fe-family-breakfast';
+  let lodgingSourceKey = 'booking-guam-family-lodging';
+  const lodgingEvidenceKey = 'booking-guam-family-nightly';
+  const sources = (payload.sources ?? [])
+    .filter((source) =>
+      clean(source.sourceKey) !== menuSourceKey
+      && clean(source.sourceKey) !== lodgingSourceKey);
+  const evidence = (payload.evidence ?? [])
+    .filter((item) =>
+      clean(item.evidenceKey) !== menuEvidenceKey
+      && clean(item.evidenceKey) !== lodgingEvidenceKey);
+  const claims = (payload.claims ?? [])
+    .filter((claim) => {
+      const keys = normalizeList(claim.evidenceKeys);
+      return !keys.includes(menuEvidenceKey) && !keys.includes(lodgingEvidenceKey);
+    });
+  if (hasReviewedMeal) {
+    const existingSourceIndex = sources.findIndex(
+      (source) => Number(source.groundingChunkIndex) === menuPageIndex,
+    );
+    const existingSource = existingSourceIndex >= 0
+      ? sources.splice(existingSourceIndex, 1)[0]
+      : null;
+    menuSourceKey = clean(existingSource?.sourceKey) || menuSourceKey;
+    sources.unshift({
+      ...existingSource,
+      sourceKey: menuSourceKey,
+      groundingChunkIndex: menuPageIndex,
+      publisher: 'The New House of Chin Fe',
+      sourceType: 'reputable_price_source',
+      claimTypes: ['price'],
+      country: '괌',
+      destination,
+    });
+    evidence.unshift({
+      evidenceKey: menuEvidenceKey,
+      sourceKey: menuSourceKey,
+      excerpt: 'House of Chin Fe 괌의 콘비프 볶음밥 조식 확인일 메뉴 가격은 14.50 USD이다.',
+      sourceLocator: 'Breakfast > Fried Rice > Corned Beef Fried Rice',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 가족 식사 예산 여행자`,
+      normalizedValue: '14.50',
+      unit: '1메뉴',
+      currency: 'USD',
+      conditions: ['확인일 메뉴 가격', '계란 2개 포함', '가격·운영시간은 방문 전 재확인'],
+    });
+    claims.unshift({
+      claimText: '가족 식사 예산 표본으로 House of Chin Fe 괌의 콘비프 볶음밥 조식은 확인일 기준 14.50 USD이다.',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: [menuEvidenceKey],
+      normalizedValue: '14.50',
+      unit: '1메뉴',
+      currency: 'USD',
+    });
+  }
+  if (lodgingMatch) {
+    const existingSourceIndex = sources.findIndex(
+      (source) => Number(source.groundingChunkIndex) === bookingPageIndex,
+    );
+    const existingSource = existingSourceIndex >= 0
+      ? sources.splice(existingSourceIndex, 1)[0]
+      : null;
+    lodgingSourceKey = clean(existingSource?.sourceKey) || lodgingSourceKey;
+    const hotelName = clean(lodgingMatch[1]).replace(/^\W+|\)+$/g, '');
+    const hotelArea = clean(lodgingMatch[2]);
+    const displayedPrice = clean(lodgingMatch[3]);
+    const normalizedPrice = displayedPrice.replace(/,/g, '');
+    sources.unshift({
+      ...existingSource,
+      sourceKey: lodgingSourceKey,
+      groundingChunkIndex: bookingPageIndex,
+      publisher: 'Booking.com',
+      sourceType: 'reputable_price_source',
+      claimTypes: ['price'],
+      country: '괌',
+      destination,
+    });
+    evidence.unshift({
+      evidenceKey: lodgingEvidenceKey,
+      sourceKey: lodgingSourceKey,
+      excerpt: `${hotelName} (${hotelArea}) 가족 호텔의 확인일 표시 가격은 1박 최저 KRW ${displayedPrice}이다.`,
+      sourceLocator: `${hotelName} > 1박 최저`,
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 가족 숙박 예산 여행자`,
+      normalizedValue: normalizedPrice,
+      unit: '1박',
+      currency: 'KRW',
+      conditions: ['확인일 표시 가격', '날짜·인원·세금·객실 재고에 따라 변동', '예약 전 최종 총액 재확인'],
+    });
+    claims.unshift({
+      claimText: `가족 숙박 예산 표본으로 ${hotelName} (${hotelArea})의 확인일 표시 가격은 1박 최저 KRW ${displayedPrice}이다.`,
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: [lodgingEvidenceKey],
+      normalizedValue: normalizedPrice,
+      unit: '1박',
+      currency: 'KRW',
+    });
+  }
+  const selectedClaims = claims.slice(0, MAX_RESEARCH_CLAIMS);
+  const selectedEvidenceKeys = new Set(
+    selectedClaims.flatMap((claim) => normalizeList(claim.evidenceKeys)),
+  );
+  return {
+    ...payload,
+    sources: sources.slice(0, MAX_GROUNDING_SOURCES),
+    evidence: evidence
+      .filter((item) => selectedEvidenceKeys.has(clean(item.evidenceKey)))
+      .slice(0, MAX_RESEARCH_EVIDENCE),
+    claims: selectedClaims,
+  };
+}
+
+function isGuamDestination(destination: string): boolean {
+  const normalized = clean(destination).normalize('NFKC').toLowerCase();
+  return normalized === '괌' || normalized === 'guam';
+}
+
+function reviewedPageIndex(
+  pages: ReviewedDirectPage[],
+  hostname: string,
+  pathname: string,
+): number {
+  return pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === hostname && url.pathname === pathname;
+    } catch {
+      return false;
+    }
+  });
+}
+
+export function buildGuamHotelAreasPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+): GroundedBlogResearchPayload | null {
+  if (!isGuamDestination(destination)) return null;
+  const bookingIndex = reviewedPageIndex(
+    pages,
+    'www.booking.com',
+    BOOKING_GUAM_FAMILY_PATH,
+  );
+  const agodaIndex = reviewedPageIndex(
+    pages,
+    'www.agoda.com',
+    AGODA_GUAM_HOTEL_GUIDE_PATH,
+  );
+  if (bookingIndex < 0 || agodaIndex < 0) return null;
+
+  const bookingText = pages[bookingIndex]!.text;
+  const agodaText = pages[agodaIndex]!.text;
+  const pricePattern = /([A-Za-z][A-Za-z0-9'&.,()\- ]{2,80})(투몬|타무닝|Agat|망길라오|Sinajana|Dededo) 가족 호텔[\s\S]{0,900}?1박 최저 ₩([\d,]+)/g;
+  const priceRows = [...bookingText.matchAll(pricePattern)]
+    .map((match) => ({
+      name: clean(match[1]).replace(/^\W+|\)+$/g, ''),
+      area: clean(match[2]),
+      price: clean(match[3]).replace(/,/g, ''),
+      displayedPrice: clean(match[3]),
+    }))
+    .filter((row) => row.name && row.area && Number(row.price) > 0)
+    .slice(0, 3);
+  if (priceRows.length < 3
+    || !/투몬가족 호텔 12개/.test(bookingText)
+    || !/타무닝가족 호텔 5개/.test(bookingText)
+    || !/힐튼 괌 리조트 앤 스파/.test(agodaText)
+    || !/투몬 베이 남쪽 끝자락/.test(agodaText)
+    || !/어린이 전용 키즈풀/.test(agodaText)) {
+    return null;
+  }
+
+  const bookingSourceKey = 'booking-guam-family-hotels';
+  const agodaSourceKey = 'agoda-guam-hotel-guide';
+  const priceEvidence: GroundedEvidenceDraft[] = priceRows.map((row, index) => ({
+    evidenceKey: `booking-guam-nightly-${index + 1}`,
+    sourceKey: bookingSourceKey,
+    excerpt: `${row.name} (${row.area})의 Booking.com 확인일 표시 가격은 1박 최저 KRW ${row.displayedPrice}이다.`,
+    sourceLocator: `${row.name} > 1박 최저`,
+    claimType: 'price',
+    riskLevel: 'MEDIUM',
+    country: '괌',
+    destination,
+    applicableTo: `${destination} 가족 숙소 비교 여행자`,
+    normalizedValue: row.price,
+    unit: '1박',
+    currency: 'KRW',
+    conditions: ['확인일 표시 가격', '날짜·인원·세금·객실 재고에 따라 변동', '예약 전 최종 총액 재확인'],
+  }));
+  const factualEvidence: GroundedEvidenceDraft[] = [
+    {
+      evidenceKey: 'booking-guam-tumon-family-count',
+      sourceKey: bookingSourceKey,
+      excerpt: 'Booking.com 괌 가족 호텔 페이지에는 투몬 가족 호텔 12개가 표시된다.',
+      sourceLocator: '가족 호텔 관련 가장 많이 방문하는 도시 > 투몬',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 가족 숙소 지역 비교 여행자`,
+      normalizedValue: '12',
+      unit: '가족 호텔',
+      conditions: ['확인일 페이지 표시 수', '검색 재고와 분류에 따라 변동 가능'],
+    },
+    {
+      evidenceKey: 'booking-guam-tamuning-family-count',
+      sourceKey: bookingSourceKey,
+      excerpt: 'Booking.com 괌 가족 호텔 페이지에는 타무닝 가족 호텔 5개가 표시된다.',
+      sourceLocator: '가족 호텔 관련 가장 많이 방문하는 도시 > 타무닝',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 가족 숙소 지역 비교 여행자`,
+      normalizedValue: '5',
+      unit: '가족 호텔',
+      conditions: ['확인일 페이지 표시 수', '검색 재고와 분류에 따라 변동 가능'],
+    },
+    {
+      evidenceKey: 'agoda-guam-hilton-family-location',
+      sourceKey: agodaSourceKey,
+      excerpt: 'Agoda 가이드는 Hilton Guam Resort & Spa가 투몬 베이 남쪽 끝에 있고 어린이 전용 키즈풀이 있다고 설명한다.',
+      sourceLocator: '9. 힐튼 괌 리조트 앤 스파',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 가족 숙소 지역 비교 여행자`,
+      normalizedValue: '투몬 베이 남쪽 끝·어린이 전용 키즈풀',
+      conditions: ['확인일 호텔 가이드 설명', '시설 운영 여부는 예약 전 호텔에 재확인'],
+    },
+  ];
+  const evidence = [...priceEvidence, ...factualEvidence];
+  return {
+    sources: [
+      {
+        sourceKey: bookingSourceKey,
+        groundingChunkIndex: bookingIndex,
+        publisher: 'Booking.com',
+        sourceType: 'reputable_price_source',
+        claimTypes: ['price', 'factual'],
+        country: '괌',
+        destination,
+      },
+      {
+        sourceKey: agodaSourceKey,
+        groundingChunkIndex: agodaIndex,
+        publisher: 'Agoda',
+        sourceType: 'reputable_price_source',
+        claimTypes: ['factual'],
+        country: '괌',
+        destination,
+      },
+    ],
+    evidence,
+    claims: evidence.map((item) => ({
+      claimText: item.excerpt,
+      claimType: item.claimType,
+      riskLevel: item.riskLevel,
+      evidenceKeys: [item.evidenceKey!],
+      normalizedValue: item.normalizedValue,
+      unit: item.unit,
+      currency: item.currency,
+    })),
+  };
+}
+
+export function buildGuamCurrencyPaymentPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+): GroundedBlogResearchPayload | null {
+  if (!isGuamDestination(destination)) return null;
+  const usaGovIndex = reviewedPageIndex(pages, 'www.usa.gov', USA_GOV_CURRENCY_PATH);
+  const visitGuamIndex = reviewedPageIndex(
+    pages,
+    'www.visitguam.com',
+    VISIT_GUAM_PAYMENT_PATH,
+  );
+  if (usaGovIndex < 0 || visitGuamIndex < 0) return null;
+
+  const usaGovText = pages[usaGovIndex]!.text;
+  const visitGuamText = pages[visitGuamIndex]!.text;
+  if (!/United States dollar is the official currency of the U\.S\. and its territories/i.test(usaGovText)
+    || !/seven denominations:\s*\$1,\s*\$2,\s*\$5,\s*\$10,\s*\$20,\s*\$50,\s*and \$100/i.test(usaGovText)
+    || !/coin denominations include 1¢,\s*5¢,\s*10¢,\s*25¢,\s*50¢,\s*and \$1/i.test(usaGovText)
+    || !/Guam is a U\.S\. territory and uses the U\.S\. dollar\.\s*Major credit cards are accepted\./i.test(visitGuamText)) {
+    return null;
+  }
+
+  const usaGovSourceKey = 'usa-gov-currency';
+  const visitGuamSourceKey = 'visit-guam-payment';
+  const evidence: GroundedEvidenceDraft[] = [
+    {
+      evidenceKey: 'usa-gov-usd-territories',
+      sourceKey: usaGovSourceKey,
+      excerpt: 'USAGov는 미국 달러가 미국과 미국령의 공식 통화라고 안내한다.',
+      sourceLocator: 'American money',
+      claimType: 'currency',
+      riskLevel: 'MEDIUM',
+      country: '미국',
+      destination,
+      applicableTo: `${destination} 결제·환전 여행자`,
+      normalizedValue: 'USD',
+      unit: '공식 통화',
+      currency: 'USD',
+      conditions: ['확인일 기준 미국 정부 안내'],
+    },
+    {
+      evidenceKey: 'usa-gov-paper-denominations',
+      sourceKey: usaGovSourceKey,
+      excerpt: 'USAGov는 미국 지폐가 $1, $2, $5, $10, $20, $50, $100의 7개 권종이라고 안내한다.',
+      sourceLocator: 'Paper money',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '미국',
+      destination,
+      applicableTo: `${destination} 현금 사용 여행자`,
+      normalizedValue: '7',
+      unit: '지폐 권종',
+      conditions: ['확인일 기준 미국 정부 안내'],
+    },
+    {
+      evidenceKey: 'usa-gov-coin-denominations',
+      sourceKey: usaGovSourceKey,
+      excerpt: 'USAGov는 미국 동전 권종에 1¢, 5¢, 10¢, 25¢, 50¢, $1이 포함된다고 안내한다.',
+      sourceLocator: 'U.S. coins',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '미국',
+      destination,
+      applicableTo: `${destination} 현금 사용 여행자`,
+      normalizedValue: '1¢·5¢·10¢·25¢·50¢·$1',
+      conditions: ['확인일 기준 미국 정부 안내'],
+    },
+    {
+      evidenceKey: 'visit-guam-major-credit-cards',
+      sourceKey: visitGuamSourceKey,
+      excerpt: 'Guam Visitors Bureau는 괌에서 미국 달러를 사용하고 주요 신용카드를 받는다고 안내한다.',
+      sourceLocator: 'Money',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 카드 결제 여행자`,
+      normalizedValue: '주요 신용카드 사용 가능',
+      conditions: ['가맹점별 카드 수용 여부·해외결제 수수료는 결제 전 재확인'],
+    },
+  ];
+  return {
+    sources: [
+      {
+        sourceKey: usaGovSourceKey,
+        groundingChunkIndex: usaGovIndex,
+        publisher: 'USAGov',
+        sourceType: 'government',
+        claimTypes: ['currency', 'factual'],
+        country: '미국',
+        destination,
+      },
+      {
+        sourceKey: visitGuamSourceKey,
+        groundingChunkIndex: visitGuamIndex,
+        publisher: 'Guam Visitors Bureau',
+        sourceType: 'official_tourism',
+        claimTypes: ['factual'],
+        country: '괌',
+        destination,
+      },
+    ],
+    evidence,
+    claims: evidence.map((item) => ({
+      claimText: item.excerpt,
+      claimType: item.claimType,
+      riskLevel: item.riskLevel,
+      evidenceKeys: [item.evidenceKey!],
+      normalizedValue: item.normalizedValue,
+      unit: item.unit,
+      currency: item.currency,
+    })),
+  };
 }
 
 export function buildWmoMonthlyWeatherPayload(
@@ -1217,6 +1936,284 @@ export function buildWmoMonthlyWeatherPayload(
   };
 }
 
+function minutesBetweenScheduleTimes(start: string, end: string): number | null {
+  const parse = (value: string): number | null => {
+    const match = value.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isInteger(hours) || hours > 23 || !Number.isInteger(minutes) || minutes > 59) {
+      return null;
+    }
+    return hours * 60 + minutes;
+  };
+  const startMinutes = parse(start);
+  const endMinutes = parse(end);
+  if (startMinutes === null || endMinutes === null) return null;
+  const difference = endMinutes - startMinutes;
+  return difference >= 0 ? difference : difference + 24 * 60;
+}
+
+export function augmentGrtaAirportTransportPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+  payload: GroundedBlogResearchPayload,
+): GroundedBlogResearchPayload {
+  const normalizedDestination = clean(destination).normalize('NFKC').toLowerCase();
+  if (normalizedDestination !== '괌' && normalizedDestination !== 'guam') return payload;
+
+  const pageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === 'grta.guam.gov'
+        && url.pathname === GRTA_FIXED_ROUTE_SCHEDULE_PATH;
+    } catch {
+      return false;
+    }
+  });
+  if (pageIndex < 0) return payload;
+
+  const scheduleText = pages[pageIndex]!.text;
+  if (!/GIAA Departures,\s*Airport/i.test(scheduleText)
+    || !/Kmart/i.test(scheduleText)
+    || !/GTA Upper Tumon/i.test(scheduleText)) {
+    return payload;
+  }
+
+  // pdf-parse flattens the stop ordinals and time columns. Require the exact
+  // reviewed first-run sequence before calculating either elapsed duration.
+  const compactSchedule = scheduleText.replace(/\s+/g, '');
+  const firstRun = compactSchedule.match(/8(5:55)[\s\S]{0,800}?9(6:00)[\s\S]{0,800}?10(6:03)/);
+  if (!firstRun) return payload;
+  const airportTime = firstRun[1]!;
+  const kmartTime = firstRun[2]!;
+  const upperTumonTime = firstRun[3]!;
+  const kmartMinutes = minutesBetweenScheduleTimes(airportTime, kmartTime);
+  const upperTumonMinutes = minutesBetweenScheduleTimes(airportTime, upperTumonTime);
+  if (kmartMinutes !== 5 || upperTumonMinutes !== 8) return payload;
+
+  const deterministicSourceKey = 'grta-fixed-route-schedule';
+  const sourceDrafts = [...(payload.sources ?? [])];
+  const matchingSourceIndex = sourceDrafts.findIndex(
+    (source) => Number(source.groundingChunkIndex) === pageIndex,
+  );
+  const matchingSource = matchingSourceIndex >= 0
+    ? sourceDrafts.splice(matchingSourceIndex, 1)[0]
+    : null;
+  const grtaFarePageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === 'grta.guam.gov'
+        && url.pathname === GRTA_FARE_RATE_PATH;
+    } catch {
+      return false;
+    }
+  });
+  const grtaFareSourceIndex = sourceDrafts.findIndex(
+    (source) => Number(source.groundingChunkIndex) === grtaFarePageIndex,
+  );
+  const matchingFareSource = grtaFareSourceIndex >= 0
+    ? sourceDrafts.splice(grtaFareSourceIndex, 1)[0]
+    : null;
+  const grtaFareSourceKey = clean(matchingFareSource?.sourceKey) || 'grta-fare-sheet';
+  const fareText = grtaFarePageIndex >= 0 ? pages[grtaFarePageIndex]!.text : '';
+  const hasReviewedRegularFares = /REGULAR FARE PASSES\s*One Ride\s*=\s*\$\s*1\.50\s*One Day Pass\s*=\s*\$\s*4\.00/i
+    .test(fareText.replace(/\s+/g, ' '));
+  const sourceKeyValue = clean(matchingSource?.sourceKey) || deterministicSourceKey;
+  const scheduleSource: GroundedSourceDraft = {
+    ...matchingSource,
+    sourceKey: sourceKeyValue,
+    groundingChunkIndex: pageIndex,
+    publisher: clean(matchingSource?.publisher) || 'Guam Regional Transit Authority',
+    sourceType: 'transport_operator',
+    claimTypes: [...new Set([
+      ...normalizeList(matchingSource?.claimTypes),
+      'duration',
+    ])],
+    country: clean(matchingSource?.country) || '괌',
+    destination,
+  };
+
+  const rows = [
+    {
+      evidenceKey: 'grta-giaa-kmart-duration',
+      destinationLabel: 'Kmart',
+      endTime: kmartTime,
+      minutes: kmartMinutes,
+      stopOrdinal: 9,
+    },
+    {
+      evidenceKey: 'grta-giaa-upper-tumon-duration',
+      destinationLabel: 'GTA Upper Tumon',
+      endTime: upperTumonTime,
+      minutes: upperTumonMinutes,
+      stopOrdinal: 10,
+    },
+  ];
+  const deterministicEvidence: GroundedEvidenceDraft[] = rows.map((row) => ({
+    evidenceKey: row.evidenceKey,
+    sourceKey: sourceKeyValue,
+    excerpt: `GRTA Route 14 첫 운행 시간표에서 GIAA(공항) ${airportTime} 출발, ${row.destinationLabel} ${row.endTime} 도착으로 ${row.minutes}분이 소요된다.`,
+    sourceLocator: `Route 14 first run, stop 8 to stop ${row.stopOrdinal}`,
+    claimType: 'duration',
+    riskLevel: 'MEDIUM',
+    country: '괌',
+    destination,
+    applicableTo: `${destination} 공항 대중교통 이용자`,
+    normalizedValue: String(row.minutes),
+    unit: '분',
+    conditions: ['GRTA Route 14 첫 운행 시간표', '2025-11-26 게시본', '운행 전 최신 시간표 재확인'],
+  }));
+  const deterministicClaims: GroundedClaimDraft[] = rows.map((row) => ({
+    claimText: `GRTA Route 14 첫 운행 기준 괌 공항에서 ${row.destinationLabel}까지 ${row.minutes}분이다.`,
+    claimType: 'duration',
+    riskLevel: 'MEDIUM',
+    evidenceKeys: [row.evidenceKey],
+    normalizedValue: String(row.minutes),
+    unit: '분',
+  }));
+  const deterministicFareEvidence: GroundedEvidenceDraft[] = hasReviewedRegularFares
+    ? [
+        {
+          evidenceKey: 'grta-regular-one-ride-fare',
+          sourceKey: grtaFareSourceKey,
+          excerpt: 'GRTA 공식 요금표의 일반 1회 탑승 요금은 1.50 USD이다.',
+          sourceLocator: 'REGULAR FARE PASSES > One Ride',
+          claimType: 'price',
+          riskLevel: 'MEDIUM',
+          country: '괌',
+          destination,
+          applicableTo: `${destination} 대중교통 이용 여행자`,
+          normalizedValue: '1.50',
+          unit: '1회 탑승',
+          currency: 'USD',
+          conditions: ['공식 GRTA 확인일 요금', '탑승 전 최신 요금표 재확인'],
+        },
+        {
+          evidenceKey: 'grta-regular-one-day-pass-fare',
+          sourceKey: grtaFareSourceKey,
+          excerpt: 'GRTA 공식 요금표의 일반 1일권 요금은 4.00 USD이다.',
+          sourceLocator: 'REGULAR FARE PASSES > One Day Pass',
+          claimType: 'price',
+          riskLevel: 'MEDIUM',
+          country: '괌',
+          destination,
+          applicableTo: `${destination} 대중교통 이용 여행자`,
+          normalizedValue: '4.00',
+          unit: '1일권',
+          currency: 'USD',
+          conditions: ['공식 GRTA 확인일 요금', '구매 전 최신 요금표 재확인'],
+        },
+      ]
+    : [];
+  const deterministicFareClaims: GroundedClaimDraft[] = deterministicFareEvidence.map((item) => ({
+    claimText: item.excerpt,
+    claimType: 'price',
+    riskLevel: 'MEDIUM',
+    evidenceKeys: [item.evidenceKey!],
+    normalizedValue: item.normalizedValue,
+    unit: item.unit,
+    currency: item.currency,
+  }));
+  const deterministicEvidenceKeys = new Set([
+    ...rows.map((row) => row.evidenceKey),
+    ...deterministicFareEvidence.map((item) => item.evidenceKey!),
+  ]);
+  const competingTransitFarePattern = /(?:버스|대중교통|현지\s*교통편|bus|일일권|1일권|월간권|월간\s*(?:대중교통\s*)?정기권|정기권|편도\s*티켓|하루\s*이용권|승차당|one\s*day\s*pass|one\s*ride|monthly\s*pass|one-way\s*ticket)/i;
+  const originalEvidence = (payload.evidence ?? [])
+    .filter((evidence) =>
+      !deterministicEvidenceKeys.has(clean(evidence.evidenceKey))
+      && Boolean(toClaimType(evidence.claimType))
+      && !(
+        grtaFarePageIndex >= 0
+        && toClaimType(evidence.claimType) === 'price'
+        && (hasReviewedRegularFares || clean(evidence.sourceKey) !== grtaFareSourceKey)
+        && competingTransitFarePattern.test(clean(evidence.excerpt))
+        && !/(?:택시|taxi|수족관|언더워터|aquarium)/i.test(clean(evidence.excerpt))
+      ));
+  const originalEvidenceByKey = new Map(
+    originalEvidence.map((evidence) => [clean(evidence.evidenceKey), evidence]),
+  );
+  const originalClaims = (payload.claims ?? [])
+    .flatMap((claim) => {
+      const claimType = toClaimType(claim.claimType);
+      if (!claimType
+        || (claim.evidenceKeys ?? []).some((key) => deterministicEvidenceKeys.has(clean(key)))) {
+        return [];
+      }
+      if (grtaFarePageIndex >= 0
+        && claimType === 'price'
+        && competingTransitFarePattern.test(clean(claim.claimText))
+        && !/(?:택시|taxi|수족관|언더워터|aquarium)/i.test(clean(claim.claimText))
+        && (
+          hasReviewedRegularFares
+          || !normalizeList(claim.evidenceKeys).some(
+            (key) => clean(originalEvidenceByKey.get(key)?.sourceKey) === grtaFareSourceKey,
+          )
+        )) {
+        return [];
+      }
+      const draftedValue = clean(claim.normalizedValue);
+      const compatibleEvidenceKeys = normalizeList(claim.evidenceKeys).filter((key) => {
+        const evidence = originalEvidenceByKey.get(key);
+        return Boolean(
+          evidence
+          && toClaimType(evidence.claimType) === claimType
+          && (!draftedValue
+            || (
+              comparableValue(evidence.normalizedValue) === comparableValue(draftedValue)
+              && (!clean(claim.unit) || comparableValue(evidence.unit) === comparableValue(claim.unit))
+              && (!clean(claim.currency) || comparableValue(evidence.currency) === comparableValue(claim.currency))
+            )),
+        );
+      });
+      return compatibleEvidenceKeys.length > 0
+        ? [{ ...claim, evidenceKeys: compatibleEvidenceKeys }]
+        : [];
+    })
+    .sort((left, right) => Number(right.claimType === 'price') - Number(left.claimType === 'price'));
+  const selectedOriginalClaims: GroundedClaimDraft[] = [];
+  const selectedEvidenceKeys = new Set<string>();
+  const deterministicClaimsWithFares = [...deterministicClaims, ...deterministicFareClaims];
+  for (const claim of originalClaims) {
+    const evidenceKeys = normalizeList(claim.evidenceKeys);
+    const additionalEvidenceCount = evidenceKeys.filter((key) => !selectedEvidenceKeys.has(key)).length;
+    if (selectedOriginalClaims.length >= MAX_RESEARCH_CLAIMS - deterministicClaimsWithFares.length) break;
+    if (selectedEvidenceKeys.size + additionalEvidenceCount
+      > MAX_RESEARCH_EVIDENCE - deterministicEvidence.length - deterministicFareEvidence.length) {
+      continue;
+    }
+    evidenceKeys.forEach((key) => selectedEvidenceKeys.add(key));
+    selectedOriginalClaims.push(claim);
+  }
+  const selectedClaims = [...deterministicClaimsWithFares, ...selectedOriginalClaims];
+  const selectedEvidence = [
+    ...deterministicEvidence,
+    ...deterministicFareEvidence,
+    ...originalEvidence.filter((evidence) => selectedEvidenceKeys.has(clean(evidence.evidenceKey))),
+  ];
+  const fareSource: GroundedSourceDraft | null = hasReviewedRegularFares
+    ? {
+        ...matchingFareSource,
+        sourceKey: grtaFareSourceKey,
+        groundingChunkIndex: grtaFarePageIndex,
+        publisher: clean(matchingFareSource?.publisher) || 'Guam Regional Transit Authority',
+        sourceType: 'transport_operator',
+        claimTypes: ['price'],
+        country: clean(matchingFareSource?.country) || '괌',
+        destination,
+      }
+    : null;
+
+  return {
+    ...payload,
+    sources: [scheduleSource, ...(fareSource ? [fareSource] : []), ...sourceDrafts]
+      .slice(0, MAX_GROUNDING_SOURCES),
+    evidence: selectedEvidence,
+    claims: selectedClaims,
+  };
+}
+
 async function loadOfficialRegistry(
   intent: string,
   destination: string,
@@ -1257,7 +2254,7 @@ async function loadOfficialRegistry(
 async function loadReputableRegistry(): Promise<BlogInformationReputableSourceRegistryEntry[]> {
   const { data, error } = await supabaseAdmin
     .from('blog_information_reputable_source_registry')
-    .select('id, hostname, source_types, intents, allow_subdomains')
+    .select('id, hostname, source_types, intents, allow_subdomains, review_note, research_urls, research_destinations')
     .eq('status', 'active');
   if (error) throw new Error(`blog_auto_research_reputable_registry:${error.message}`);
   return (data ?? []).map((row) => ({
@@ -1266,6 +2263,11 @@ async function loadReputableRegistry(): Promise<BlogInformationReputableSourceRe
     sourceTypes: Array.isArray(row.source_types) ? row.source_types : [],
     intents: Array.isArray(row.intents) ? row.intents.map(String) : [],
     allowSubdomains: Boolean(row.allow_subdomains),
+    reviewNote: clean(row.review_note) || null,
+    researchUrls: Array.isArray(row.research_urls) ? row.research_urls.map(String) : [],
+    researchDestinations: Array.isArray(row.research_destinations)
+      ? row.research_destinations.map(String)
+      : [],
   })) as BlogInformationReputableSourceRegistryEntry[];
 }
 
@@ -1319,22 +2321,35 @@ export async function researchBlogInformationAutomatically(input: {
     const reviewedReputableRegistry = reputableRegistry.filter((entry) =>
       entry.intents.includes(input.brief.intentType)
       && entry.sourceTypes.some((sourceType) => allowedSourceTypes.includes(sourceType)));
+    const destinationKey = clean(input.destination);
+    const directlyReviewedReputableRegistry = reviewedReputableRegistry.filter((entry) => {
+      const destinations = entry.researchDestinations?.map(clean).filter(Boolean) ?? [];
+      return (entry.researchUrls?.length ?? 0) > 0
+        && (destinations.length === 0 || destinations.includes(destinationKey));
+    });
     const reviewedSources = [
       ...reviewedRegistry.map((entry) => `${entry.hostname} (${entry.sourceType})`),
       ...reviewedReputableRegistry.flatMap((entry) =>
         entry.sourceTypes
           .filter((sourceType) => allowedSourceTypes.includes(sourceType))
-          .map((sourceType) => `${entry.hostname} (${sourceType})`)),
+          .map((sourceType) => `${entry.hostname} (${sourceType}; ${entry.reviewNote ?? 'reviewed editorial source'})`)),
     ];
-    const directResult = await fetchReviewedDirectPages(reviewedRegistry);
+    const [officialDirectResult, reputableDirectResult] = await Promise.all([
+      fetchReviewedDirectPages(reviewedRegistry),
+      fetchReviewedDirectPages(directlyReviewedReputableRegistry),
+    ]);
+    const directResult = {
+      pages: [...officialDirectResult.pages, ...reputableDirectResult.pages],
+      failures: [...officialDirectResult.failures, ...reputableDirectResult.failures],
+    };
     directSourceFailures = directResult.failures;
     const canUseReviewedPagesOnly = input.brief.sourcePolicy.primarySourcesRequired
-      && directResult.pages.length > 0;
+      && officialDirectResult.pages.length > 0;
     let trustedSearchPages: ReviewedDirectPage[] = [];
     if (!canUseReviewedPagesOnly) {
       const groundedResponse = await geminiClient().models.generateContent({
         model: AUTO_RESEARCH_MODEL,
-        contents: groundingResearchPrompt({ ...input, reviewedSources, now }),
+        contents: buildBlogGroundingResearchPrompt({ ...input, reviewedSources, now }),
         config: {
           temperature: 0.1,
           maxOutputTokens: 4_096,
@@ -1383,9 +2398,17 @@ export async function researchBlogInformationAutomatically(input: {
     }
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
-      : null;
+      : input.brief.intentType === 'hotel_areas'
+        ? buildGuamHotelAreasPayload(reviewedPages, input.destination)
+        : input.brief.intentType === 'currency_payment'
+          ? buildGuamCurrencyPaymentPayload(reviewedPages, input.destination)
+          : null;
     if (payload) {
-      finishReason = 'DETERMINISTIC_WMO_CLIMATE';
+      finishReason = input.brief.intentType === 'monthly_weather'
+        ? 'DETERMINISTIC_WMO_CLIMATE'
+        : input.brief.intentType === 'hotel_areas'
+          ? 'DETERMINISTIC_GUAM_HOTEL_AREAS'
+          : 'DETERMINISTIC_GUAM_CURRENCY_PAYMENT';
       responseTextLength = JSON.stringify(payload).length;
     } else {
       const sourceCatalog = eligibleWebChunks
@@ -1407,14 +2430,18 @@ export async function researchBlogInformationAutomatically(input: {
               registry: reputableRegistry,
             }))),
         }));
-      const generateStructuredResponse = async (retry = false) => geminiClient().models.generateContent({
+      const generateStructuredResponse = async (
+        retry = false,
+        retryIssues: string[] = [],
+      ) => geminiClient().models.generateContent({
         model: AUTO_RESEARCH_MODEL,
-        contents: structuredResearchPrompt({
+        contents: buildBlogStructuredResearchPrompt({
           ...input,
           digest: groundedDigest,
           sourceCatalog,
           now,
           retry,
+          retryIssues,
         }),
         config: {
           temperature: 0,
@@ -1432,15 +2459,90 @@ export async function researchBlogInformationAutomatically(input: {
         : null;
       let rawText = structuredResponse.text ?? '';
       responseTextLength = rawText.length;
-      payload = parseJsonPayload(rawText);
-      if (!payloadHasResearchItems(payload) && reviewedPages.length > 0 && remainingTimeout() > 15_000) {
-        structuredResponse = await generateStructuredResponse(true);
+      try {
+        payload = parseJsonPayload(rawText);
+      } catch (error) {
+        if (reviewedPages.length === 0 || remainingTimeout() <= 15_000) throw error;
+        structuredResponse = await generateStructuredResponse(true, [
+          `invalid_or_truncated_json:${error instanceof Error ? error.message : String(error)}`,
+        ]);
         finishReason = structuredResponse.candidates?.[0]?.finishReason
           ? String(structuredResponse.candidates[0].finishReason)
           : finishReason;
         rawText = structuredResponse.text ?? '';
         responseTextLength += rawText.length;
         payload = parseJsonPayload(rawText);
+      }
+      if (!payloadHasResearchItems(payload) && reviewedPages.length > 0 && remainingTimeout() > 15_000) {
+        structuredResponse = await generateStructuredResponse(true, ['empty_research_payload']);
+        finishReason = structuredResponse.candidates?.[0]?.finishReason
+          ? String(structuredResponse.candidates[0].finishReason)
+          : finishReason;
+        rawText = structuredResponse.text ?? '';
+        responseTextLength += rawText.length;
+        payload = parseJsonPayload(rawText);
+      }
+      payload = sanitizeGroundedResearchPayload(payload, input.brief.intentType);
+      if (input.brief.intentType === 'food_budget') {
+        payload = augmentGuamFoodBudgetPayload(reviewedPages, input.destination, payload);
+      }
+      if (input.brief.intentType === 'family_budget') {
+        payload = augmentGuamFamilyMealPayload(reviewedPages, input.destination, payload);
+      }
+      if (input.brief.intentType === 'airport_transport'
+        || input.brief.intentType === 'family_budget'
+        || input.brief.intentType === 'itinerary') {
+        payload = augmentGrtaAirportTransportPayload(reviewedPages, input.destination, payload);
+      }
+      if (payloadHasResearchItems(payload) && remainingTimeout() > 20_000) {
+        const preliminary = buildBlogResearchBundleFromGrounding({
+          contentKey: input.contentKey,
+          destination: input.destination,
+          locale: input.locale,
+          brief: input.brief,
+          payload,
+          groundingChunks,
+          directSourceUrls: reviewedPages.map((page) => page.url),
+          officialRegistry: registry,
+          reputableRegistry,
+          now,
+        });
+        const readiness = preliminary.bundle
+          ? evaluateBlogGenerationResearchReadiness({
+              meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: preliminary.bundle },
+              expectedContentKey: input.contentKey,
+              destination: input.destination,
+              intent: input.brief.intentType,
+              locale: input.locale,
+              sourcePolicy: input.brief.sourcePolicy,
+              now,
+            })
+          : null;
+        const retryIssues = [
+          ...preliminary.issues,
+          ...(readiness?.issues ?? []),
+        ];
+        if ((!preliminary.bundle || !readiness?.passed) && retryIssues.length > 0) {
+          structuredResponse = await generateStructuredResponse(true, retryIssues);
+          finishReason = structuredResponse.candidates?.[0]?.finishReason
+            ? String(structuredResponse.candidates[0].finishReason)
+            : finishReason;
+          rawText = structuredResponse.text ?? '';
+          responseTextLength += rawText.length;
+          payload = parseJsonPayload(rawText);
+          payload = sanitizeGroundedResearchPayload(payload, input.brief.intentType);
+          if (input.brief.intentType === 'food_budget') {
+            payload = augmentGuamFoodBudgetPayload(reviewedPages, input.destination, payload);
+          }
+          if (input.brief.intentType === 'family_budget') {
+            payload = augmentGuamFamilyMealPayload(reviewedPages, input.destination, payload);
+          }
+          if (input.brief.intentType === 'airport_transport'
+            || input.brief.intentType === 'family_budget'
+            || input.brief.intentType === 'itinerary') {
+            payload = augmentGrtaAirportTransportPayload(reviewedPages, input.destination, payload);
+          }
+        }
       }
     }
     const webChunkByOriginalIndex = new Map(webChunks.map((chunk) => [chunk.chunkIndex, chunk]));

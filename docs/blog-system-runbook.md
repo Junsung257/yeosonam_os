@@ -211,7 +211,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 
 | 지표 | 목표 | 측정 |
 |---|---|---|
-| 월간 블로그 발행 수 | 150~180편 (하루 6개 × 25일) | `SELECT COUNT(*) FROM content_creatives WHERE published_at >= DATE_TRUNC('month', NOW())` |
+| 월간 블로그 발행 수 | 월 150개 이상 (하루 5개) | `SELECT COUNT(*) FROM content_creatives WHERE published_at >= DATE_TRUNC('month', NOW())` |
 | 자동 발행 성공률 | 95% 이상 | `status='published'` / (published + failed) |
 | 평균 3-Gate 통과율 | 90% 이상 | `quality_gate->>'passed'='true'` |
 | 평균 본문 이미지 수 | 글당 2장 이상 | `seo_score` 이미지 SEO 항목 또는 마크다운 이미지 수 |
@@ -323,7 +323,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 ### 발행 엔진 기준
 
 - `src/lib/blog-seo-scorer.ts`의 `computeSeoScore()`는 100점 만점이다.
-- 자동 발행 기준은 정보성 글 85점 이상, 상품형 글 80점 이상이다.
+- 자동 발행 기준은 정보성 글과 상품형 글 모두 각 품질 구성요소 95점 이상이다. Engine V2 카테고리는 별도의 100점 계약을 유지한다.
 - title, meta description, heading, image SEO, 내부링크/CTA, structured data, helpful content 항목 중 critical fail이 있으면 점수가 높아도 발행하지 않는다.
 - `blog-publisher`는 `blog_topic_queue.meta.keywords`를 `secondaryKeywords`로 넘겨 롱테일/보조 키워드 커버리지를 채점한다.
 - 새 글 발행, 수동 발행/재발행, 강제 재검증, 크론 발행은 `notifyIndexing()` 또는 batch indexing 경로로 sitemap 제출과 IndexNow를 요청한다.

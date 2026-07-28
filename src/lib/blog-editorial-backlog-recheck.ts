@@ -4,7 +4,7 @@ import {
   type BlogEditorialBacklogQueueRow,
 } from './blog-editorial-backlog-work';
 
-export const BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION = 'blog-editorial-backlog-recheck-20260702';
+export const BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION = 'blog-editorial-backlog-recheck-20260728';
 
 export type BlogEditorialBacklogRecheckAction =
   | 'requeue'
@@ -284,6 +284,28 @@ export function buildBlogEditorialBacklogRecheckDecision(input: {
     };
   }
 
+  if (meta.requeued_by === BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION) {
+    return {
+      action: 'keep_blocked',
+      reasons,
+      dedup_key: dedupKey,
+      last_error: input.row.last_error ?? 'editorial_backlog_recheck_repeat_suppressed',
+      meta: {
+        ...meta,
+        editorial_backlog_rechecked_at: checkedAt,
+        editorial_backlog_recheck_result: 'repeat_suppressed',
+        editorial_backlog_recheck_version: BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION,
+        editorial_backlog_recheck_blockers: blockers,
+        editorial_backlog_repeat_suppressed: true,
+        editorial_backlog_repeat_suppressed_at: checkedAt,
+        editorial_backlog_requeue_count: Math.max(
+          1,
+          Number(meta.editorial_backlog_requeue_count ?? 1),
+        ),
+      },
+    };
+  }
+
   if (input.activeDuplicateId || input.alreadyRequeuedId) {
     return {
       action: 'skip_duplicate',
@@ -313,6 +335,7 @@ export function buildBlogEditorialBacklogRecheckDecision(input: {
       editorial_backlog_recheck_reasons: reasons,
       requeued_by: BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION,
       requeued_at: checkedAt,
+      editorial_backlog_requeue_count: Number(meta.editorial_backlog_requeue_count ?? 0) + 1,
     },
   };
 }

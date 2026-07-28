@@ -40,6 +40,7 @@ import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { repairBlogAiReadableStructure } from '@/lib/blog-ai-readable-repair';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
+import { calculateBlogPublishSlotQuota } from '@/lib/blog-publish-slot-quota';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
@@ -1671,18 +1672,31 @@ async function runBlogPublisher(request: NextRequest) {
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
     const targetPostsToday = normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
     const todayQuota = await getTodayBlogPublishCount();
-    const remainingToday = Math.max(0, targetPostsToday - todayQuota.count);
-    if (remainingToday <= 0) {
+    const slotQuota = calculateBlogPublishSlotQuota({
+      dailyTarget: targetPostsToday,
+      alreadyPublished: todayQuota.count,
+      slotTimes: publishPolicy?.slot_times,
+    });
+    const remainingDueNow = slotQuota.remainingDueNow;
+    if (remainingDueNow <= 0) {
+      const dailyQuotaReached = slotQuota.remainingDaily <= 0;
       return {
         processed: 0,
         published: 0,
         skipped: true,
-        reason: 'daily_publish_quota_reached',
+        reason: dailyQuotaReached
+          ? 'daily_publish_quota_reached'
+          : 'scheduled_publish_window_not_due',
         dailyQuota: {
           day: todayQuota.dayKey,
           target: targetPostsToday,
+          scheduledTargetNow: slotQuota.scheduledTargetNow,
           alreadyPublished: todayQuota.count,
-          remaining: remainingToday,
+          remaining: remainingDueNow,
+          remainingAfterRun: 0,
+          remainingDailyAfterRun: slotQuota.remainingDaily,
+          nextSlot: slotQuota.nextSlot,
+          slotTimes: slotQuota.slotTimes,
         },
         staleRecovery,
         recoverableBacklogRecovery,
@@ -1696,7 +1710,7 @@ async function runBlogPublisher(request: NextRequest) {
     // 원자적 큐 클레임 — FOR UPDATE SKIP LOCKED 로 중복 발행 방지
     const queueRefill = await ensureDailyPublishableQueue({
       postsPerDay: targetPostsToday,
-      minCandidates: Math.max(targetPostsToday * MIN_PUBLISHABLE_BUFFER_DAYS, remainingToday * CLAIM_POOL_MULTIPLIER, 8),
+      minCandidates: Math.max(targetPostsToday * MIN_PUBLISHABLE_BUFFER_DAYS, remainingDueNow * CLAIM_POOL_MULTIPLIER, 8),
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       errors.push(`publishable_queue_refill_failed: ${message}`);
@@ -1705,7 +1719,7 @@ async function runBlogPublisher(request: NextRequest) {
 
     const claimLimit = Math.min(
       MAX_CANDIDATE_POOL,
-      Math.max(MAX_BATCH, remainingToday * CLAIM_POOL_MULTIPLIER),
+      Math.max(MAX_BATCH, remainingDueNow * CLAIM_POOL_MULTIPLIER),
     );
     const claimedQueueRows: any[] = [];
     let { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
@@ -1735,8 +1749,13 @@ async function runBlogPublisher(request: NextRequest) {
         dailyQuota: {
           day: todayQuota.dayKey,
           target: targetPostsToday,
+          scheduledTargetNow: slotQuota.scheduledTargetNow,
           alreadyPublished: todayQuota.count,
-          remaining: remainingToday,
+          remaining: remainingDueNow,
+          remainingAfterRun: remainingDueNow,
+          remainingDailyAfterRun: slotQuota.remainingDaily,
+          nextSlot: slotQuota.nextSlot,
+          slotTimes: slotQuota.slotTimes,
         },
         staleRecovery,
         recoverableBacklogRecovery,
@@ -1771,7 +1790,7 @@ async function runBlogPublisher(request: NextRequest) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
         continue;
       }
-      if (publishedThisRun >= remainingToday) {
+      if (publishedThisRun >= remainingDueNow) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
@@ -1796,13 +1815,13 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
+    while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
       const remaining = publisherRemainingMs(startTime);
       const extraClaimPlan = getPublisherExtraClaimRecoveryPlan({
         remainingMs: remaining,
         minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
         fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
-        remainingQuota: remainingToday - publishedThisRun,
+        remainingQuota: remainingDueNow - publishedThisRun,
         maxBatch: MAX_BATCH,
         claimPoolMultiplier: CLAIM_POOL_MULTIPLIER,
         maxCandidatePool: MAX_CANDIDATE_POOL,
@@ -1885,7 +1904,7 @@ async function runBlogPublisher(request: NextRequest) {
           results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
           continue;
         }
-        if (publishedThisRun >= remainingToday) break;
+        if (publishedThisRun >= remainingDueNow) break;
 
         const itemRemaining = publisherRemainingMs(startTime);
         if (!canStartPublisherQueueItem(item, itemRemaining)) {
@@ -2031,7 +2050,7 @@ async function runBlogPublisher(request: NextRequest) {
     const publishedCount = results.filter(r => r.status === 'published').length;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
     const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
-    const underfilledQuota = publishedCount < remainingToday;
+    const underfilledQuota = publishedCount < remainingDueNow;
     if (underfilledQuota) {
       errors.push(
         publishedCount === 0
@@ -2049,12 +2068,16 @@ async function runBlogPublisher(request: NextRequest) {
       dailyQuota: {
         day: todayQuota.dayKey,
         target: targetPostsToday,
+        scheduledTargetNow: slotQuota.scheduledTargetNow,
         alreadyPublishedBeforeRun: todayQuota.count,
-        remainingBeforeRun: remainingToday,
-        remainingAfterRun: Math.max(0, remainingToday - publishedCount),
+        remainingBeforeRun: remainingDueNow,
+        remainingAfterRun: Math.max(0, remainingDueNow - publishedCount),
+        remainingDailyAfterRun: Math.max(0, slotQuota.remainingDaily - publishedCount),
+        nextSlot: slotQuota.nextSlot,
+        slotTimes: slotQuota.slotTimes,
       },
       quota_fulfillment: {
-        required: remainingToday,
+        required: remainingDueNow,
         published: publishedCount,
         met: !underfilledQuota,
         candidate_failures: candidateFailures.length,

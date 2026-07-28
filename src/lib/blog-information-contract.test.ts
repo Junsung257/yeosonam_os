@@ -123,6 +123,30 @@ describe('blog information contract', () => {
     expect(contract.sourceRequirements.join(' ')).toContain('관측 기간');
   });
 
+  it('allows reviewed secondary transport evidence while keeping high-risk policy lanes official', () => {
+    const transport = buildBlogInformationContract({
+      destination: 'Cebu',
+      topic: 'airport transfer transport cost and duration',
+    });
+    const entry = buildBlogInformationContract({
+      destination: 'Philippines',
+      topic: 'visa entry immigration rules',
+    });
+
+    expect(transport.sourcePolicy).toMatchObject({
+      primarySourcesRequired: false,
+      minimumClaimSourceCoverage: 0.9,
+    });
+    expect(transport.sourcePolicy.sourceTypes).toEqual(expect.arrayContaining([
+      'airport',
+      'transport_operator',
+      'reputable_local_source',
+      'reputable_price_source',
+    ]));
+    expect(entry.sourcePolicy.primarySourcesRequired).toBe(true);
+    expect(entry.humanReview.required).toBe(true);
+  });
+
   it('does not pass weather content from required labels and a decorative table alone', () => {
     const contract = buildBlogInformationContract({ destination: 'Sapporo', topic: 'monthly weather' });
     const report = inspectBlogInformationMarkdown({

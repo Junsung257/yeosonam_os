@@ -8,11 +8,14 @@ describe('blog publisher quota recovery contract', () => {
     'utf8',
   );
 
-  it('keeps attempting replacement candidates until the daily quota is filled or time is unsafe', () => {
+  it('keeps attempting replacement candidates until the currently due slot quota is filled or time is unsafe', () => {
     const source = routeSource();
 
     expect(source).toContain("readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8)");
-    expect(source).toContain('while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS)');
+    expect(source).toContain('while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS)');
+    expect(source).toContain('calculateBlogPublishSlotQuota({');
+    expect(source).toContain("reason: dailyQuotaReached");
+    expect(source).toContain("'scheduled_publish_window_not_due'");
     expect(source).toContain('getPublisherExtraClaimRecoveryPlan');
     expect(source).toContain('ensureDailyPublishableQueue({');
     expect(source).toContain('claim_queue_items');

@@ -19,8 +19,8 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
   airport_transport: { price: 2, duration: 2 },
   hotel_areas: { price: 3, factual: 3 },
   family_budget: { price: 4 },
-  itinerary: { duration: 2, factual: 3 },
-  shopping_souvenirs: { price: 3, factual: 3 },
+  itinerary: { duration: 2 },
+  shopping_souvenirs: { price: 3, factual: 2 },
   currency_payment: { currency: 1, factual: 3 },
   entry_requirements: { entry_visa: 2, policy: 2 },
   travel_insurance: { insurance: 4, policy: 2 },
@@ -29,7 +29,7 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
 const BLOG_INFORMATION_MINIMUM_SOURCE_DOMAINS: Partial<Record<BlogInformationIntent, number>> = {
   food_budget: 1,
   monthly_weather: 1,
-  airport_transport: 1,
+  airport_transport: 2,
   hotel_areas: 2,
   family_budget: 2,
   itinerary: 2,
@@ -51,6 +51,35 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
     { key: 'lunch', pattern: /점심/ },
     { key: 'dinner', pattern: /저녁/ },
     { key: 'snack', pattern: /간식|커피|카페|패스트\s*푸드|길거리\s*음식/ },
+  ],
+  hotel_areas: [
+    { key: 'named_area', pattern: /투몬|타무닝|요나|아가트|하갓냐|데데도|건\s*비치|tumon|tamuning|yona|agat|hagatna|dededo/ },
+    { key: 'nightly_price', pattern: /1박|숙박|nightly|per\s*night/ },
+  ],
+  family_budget: [
+    { key: 'lodging', pattern: /호텔|숙소|1박|리조트|hotel|lodging|resort/ },
+    { key: 'meal', pattern: /식사|식비|레스토랑|패스트\s*푸드|meal|restaurant/ },
+    { key: 'transport', pattern: /교통|택시|버스|transport|taxi|bus/ },
+    { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
+  ],
+  itinerary: [
+    { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
+    { key: 'attraction', pattern: /수족관|언더워터|박물관|해변|비치|야시장|관광|명소|aquarium|museum|beach|attraction/ },
+    { key: 'route_duration', pattern: /(?:공항|투몬|하갓냐|kmart|giaa|tumon|hagatna)[^\n]{0,100}(?:\d+\s*(?:분|시간)|\d+\s*(?:minutes?|hours?))/ },
+  ],
+  shopping_souvenirs: [
+    { key: 'souvenir_product', pattern: /기념품|선물|괌\s*(?:제품|상품)|메이드\s*인\s*괌|souvenir|gift|made\s*in\s*guam|magnet|mug|cookie/ },
+    { key: 'purchase_location', pattern: /매장|상점|시장|구매|shop|store|차모로\s*빌리지|chamorro\s*village|투몬|tumon/ },
+    { key: 'customs', pattern: /세관|관세|반입|면세|customs|duty/ },
+  ],
+  currency_payment: [
+    { key: 'card', pattern: /카드|신용카드|credit\s*card/ },
+    { key: 'cash_or_currency', pattern: /현금|통화|달러|지폐|동전|cash|currency|dollar/ },
+  ],
+  travel_insurance: [
+    { key: 'medical', pattern: /의료비|병원|질병|상해|medical|illness|injury/ },
+    { key: 'disruption_or_baggage', pattern: /항공|지연|결항|수하물|휴대품|flight|delay|baggage/ },
+    { key: 'claim', pattern: /청구|서류|claim|document/ },
   ],
 };
 
@@ -306,6 +335,7 @@ export function buildBlogGenerationResearchPromptBlock(readiness: BlogGeneration
     '- Use only the claim sentences and exact values listed below for prices, currency, time, climate, policy, or other verifiable facts.',
     '- Copy each factual claim sentence exactly into the visible article and into the hidden claim ledger. Do not paraphrase a number-bearing claim.',
     '- You may add connective explanation and reader guidance, but never add a new number, policy, schedule, price tier, or factual superlative.',
+    '- Treat editorial, crowdsourced, metasearch, and route-planning values as checked-date estimates. State the source date and conditions; never present them as guaranteed live prices or schedules.',
     '- If the evidence does not cover a required section, keep the article private by recording the gap. Never fill it with an estimate.',
     '',
     '### Approved sources',

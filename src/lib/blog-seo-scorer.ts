@@ -69,8 +69,8 @@ const INFO_SOFT_CTA_RE = /\/packages|\/blog|\/group-inquiry|utm_|consult|문의|
 
 export const BLOG_SEO_MAX_SCORE = 100;
 export const BLOG_SEO_MIN_SCORE = {
-  info: 85,
-  product: 80,
+  info: 95,
+  product: 95,
 } as const;
 
 export interface SeoScoreResult {

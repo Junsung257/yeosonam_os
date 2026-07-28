@@ -249,13 +249,13 @@ export function classifyPublishedBlogQualityIssues(row: PostRow): string[] {
 
   if (row.seo_score == null) {
     issues.push('seo_score_missing');
-  } else if (seoScore > 0 && seoScore < 85) {
+  } else if (seoScore > 0 && seoScore < 95) {
     issues.push('seo_score_low');
   }
 
   if (row.readability_score == null || row.readability_score === '') {
     issues.push('readability_score_missing');
-  } else if (readabilityScore > 0 && readabilityScore < 70) {
+  } else if (readabilityScore > 0 && readabilityScore < 95) {
     issues.push('readability_score_low');
   }
 

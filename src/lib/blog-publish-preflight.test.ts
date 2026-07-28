@@ -5,8 +5,8 @@ const goodPost = (slug: string) => ({
   slug,
   quality_gate: { passed: true },
   generation_meta: { content_brief: { primary_keyword: '발리 가족여행' } },
-  seo_score: { score: 92 },
-  readability_score: 88,
+  seo_score: { score: 96 },
+  readability_score: 96,
 });
 
 describe('evaluateBlogPublishPreflight', () => {

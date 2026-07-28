@@ -1,6 +1,15 @@
 # Blog Errors
 
-Last updated: 2026-07-19
+Last updated: 2026-07-28
+
+## ERR-BLOG-slot-quality-learning-retry-source-drift@2026-07-28
+
+- [x] **ERR-BLOG-slot-quality-learning-retry-source-drift@2026-07-28**: The publisher could consume the whole daily quota at the first invocation, sub-95 components could pass through lower per-checker thresholds, Bayesian learning queried nonexistent `key/value` policy columns while reporting a soft success, the same failed editorial row could be requeued repeatedly, and the reviewed source registry was too narrow to support non-weather low-risk intents.
+- **Root cause**: Daily quota and publishing slots were modeled separately; quality pass flags and score floors were inconsistent; optimizer storage drifted from the live `publishing_policies.meta` schema; backlog retries had no same-version idempotency key; and research authority was concentrated in weather/Guam documents plus hotel and flight domains.
+- **Fix**: The publisher now computes cumulative KST due-slot quota, all scored publish components have a 95 floor, optimizer reads/writes `scope='global'` metadata and fails closed, and recheck suppresses a second failure under the same version. Direct-fetch migrations register intent-scoped official and reviewed secondary pages with explicit limitations; BudgetYourTrip and Rome2Rio were revoked after repeatable HTTP 403 from the production worker. Exact parsers now cover WMO monthly climate, GRTA schedules and current fares, Booking/Agoda hotel areas, USAGov/Guam Visitors Bureau currency and cards, and checked menu samples. Semantic gates cover every supported intent. High-risk entry and insurance rules are unchanged.
+- **Additional live finding**: The first 10/10 research pass still exposed a stale secondary bus fare in a family-budget sample. Passing counts alone were therefore insufficient. Family research now includes official GRTA documents, deterministically injects current regular fares, removes conflicting secondary transit claims, and preserves lodging, meal, transport, and child/family evidence within the bounded bundle.
+- **Prevention**: `remainingAfterRun` is due-now while `remainingDailyAfterRun` is observational; forced retries cannot publish future slots. Reviewed secondary data must be presented as a checked-date estimate and corroborated according to the intent contract. A current official operator value supersedes a conflicting secondary value. Advancing a backlog version requires a real source or repair change plus regression evidence.
+- **Verification**: Targeted research/contract tests pass, the production-registry strict live suite passed all 10/10 supported intents with no readiness issue after the family-fare correction, and all checked claims had full claim-source coverage. Full test, type-check, lint, build, migration, and post-deploy public audits remain required release evidence.
 
 ## ERR-BLOG-image-relevance-and-generation-persistence@2026-07-19
 
