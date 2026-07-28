@@ -2517,6 +2517,9 @@ async function processQueueItem(
       originalSlug: originalPublishedSlug,
       generatedSlug: generated.slug,
     });
+    const evidenceContentKey = contentBoundary.lane === 'informational'
+      ? buildQueueSlug(item)
+      : generated.slug;
 
     if (replacementAssets?.ogImageUrl && !generated.og_image_url) {
       generated.og_image_url = replacementAssets.ogImageUrl;
@@ -2733,7 +2736,7 @@ async function processQueueItem(
       if (!finalContentBrief.passed) return;
       const finalResearchReadiness = evaluateBlogGenerationResearchReadiness({
         meta: item.meta,
-        expectedContentKey: generated.slug,
+        expectedContentKey: evidenceContentKey,
         destination: item.destination,
         intent: finalContentBrief.intentType,
         locale: finalContentBrief.plan.locale,
@@ -3124,6 +3127,7 @@ async function processQueueItem(
       : {};
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
+      information_evidence_content_key: evidenceContentKey,
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
       ...queueMetaWithoutResearchBundle(successfulQueueMeta),
       ...(generated.generation_meta || {}),
@@ -3171,7 +3175,7 @@ async function processQueueItem(
       : null;
     const claimValidation = await evaluateBlogInformationClaimPublishGate({
       creativeId: promoteDraftId,
-      contentKey: generated.slug,
+      contentKey: evidenceContentKey,
       markdown: generated.blog_html,
       productId: item.product_id ?? null,
       tenantId: item.tenant_id ?? null,
@@ -3340,7 +3344,7 @@ async function processQueueItem(
     if (blogType === 'info') {
       await persistBlogInformationClaimFindings({
         creativeId,
-        contentKey: generated.slug,
+        contentKey: evidenceContentKey,
         tenantId: item.tenant_id ?? null,
         report: claimValidation,
       });
