@@ -67,6 +67,7 @@ export interface BlogInformationClaimValidationIssue {
     | 'invalid_claim_ledger'
     | 'validator_error';
   claimFingerprint: string;
+  claimText?: string;
   claimType: BlogInformationClaimType;
   message: string;
 }
@@ -453,6 +454,7 @@ export function validateBlogInformationClaims(input: {
         issues.push({
           code: 'unclassified_factual_candidate',
           claimFingerprint: claim.claimFingerprint,
+          claimText: claim.claimText,
           claimType: claim.claimType,
           message: `최종 본문 factual candidate가 구조화 claim ledger에 없습니다: ${claim.candidateKind}`,
         });

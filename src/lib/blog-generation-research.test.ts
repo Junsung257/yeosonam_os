@@ -699,6 +699,63 @@ describe('blog generation research preflight', () => {
     expect(repeated.markdown).toBe(packingFirst.markdown);
   });
 
+  it('keeps every monthly-weather editorial variation within the 12 approved climate claims', () => {
+    const weatherReadiness = monthlyWeatherReadiness(monthlyWeatherBundle());
+    const base = [
+      '# 보홀 6월 날씨와 옷차림',
+      '![보홀 참고 1](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
+      '![보홀 참고 2](https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg)',
+      '![보홀 참고 3](https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg)',
+    ].join('\n\n');
+    const openingVariants = [
+      'temperature_first',
+      'rain_first',
+      'clothing_decision_first',
+      'packing_mistake_first',
+    ];
+    const sectionOrderVariants = [
+      'weather_then_clothing',
+      'clothing_then_rain',
+      'decision_table_first',
+      'packing_then_local_risk',
+    ];
+    const headingCopyVariants = [
+      'core_weather_check',
+      'departure_weather_basis',
+      'packing_decision',
+      'clothing_check_order',
+      'trip_weather_decision',
+      'departure_packing_basis',
+      'route_weather_prep',
+      'forecast_prep',
+    ];
+
+    for (const openingVariant of openingVariants) {
+      for (const sectionOrderVariant of sectionOrderVariants) {
+        for (const headingCopyVariant of headingCopyVariants) {
+          const repaired = repairBlogGenerationResearchStructure({
+            markdown: base,
+            intent: 'monthly_weather',
+            readiness: weatherReadiness,
+            plannedTitle: '보홀 6월 날씨 옷차림 여행 준비물 체크리스트',
+            editorialVariation: {
+              opening_variant: openingVariant,
+              section_order_variant: sectionOrderVariant,
+              heading_copy_variant: headingCopyVariant,
+            },
+          });
+          const claims = extractBlogInformationClaims(repaired.markdown);
+
+          expect(
+            claims,
+            `${openingVariant}/${sectionOrderVariant}/${headingCopyVariant}`,
+          ).toHaveLength(12);
+          expect(claims.every((claim) => claim.claimType === 'climate')).toBe(true);
+        }
+      }
+    }
+  });
+
   it('adds cautious area price guidance without inventing a local price delta', () => {
     const result = readiness(foodBudgetBundle());
     const first = repairBlogGenerationResearchStructure({
