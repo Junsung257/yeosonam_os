@@ -16,6 +16,10 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('calculateBlogPublishSlotQuota({');
     expect(source).toContain("'daily_publish_quota_reached_atomic_upgrade_processed'");
     expect(source).toContain('PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE');
+    expect(source).toContain("const evidenceContentKey = contentBoundary.lane === 'informational'");
+    expect(source).toContain('expectedContentKey: evidenceContentKey');
+    expect(source).toContain('contentKey: evidenceContentKey');
+    expect(source).toContain('information_evidence_content_key: evidenceContentKey');
     expect(source).toContain("contains('meta'");
     expect(source).toContain("? 'daily_publish_quota_reached'");
     expect(source).toContain("'scheduled_publish_window_not_due'");
