@@ -1,0 +1,229 @@
+# AI Operations Office Current SSOT
+
+> Updated: 2026-07-28
+>
+> Scope: Yeosonam OS의 에이전트 협업, 실행 원장, 승인, 사고, trace, 운영 화면.
+> Domain-specific booking, settlement, affiliate, marketing, product-registration,
+> and AI Ops SSOT still override this document for their own mutations.
+
+## 1. Product Decision
+
+Yeosonam OS does not operate a free-form "AI virtual office" where many agents chat
+until they decide that work is complete.
+
+The adopted model is:
+
+```text
+durable backend execution
+  + correlation evidence timeline
+  + human control dashboard
+  + domain approval gates
+```
+
+This is intentionally a hybrid. A dashboard cannot make execution durable, a chat
+thread cannot provide reliable state, and a backend without an operator surface
+cannot provide accountable approval or incident handling.
+
+## 2. Why This Fits Yeosonam
+
+The platform already has:
+
+- `agent_tasks`: task state machine and retry metadata;
+- `agent_approvals`: human approval history;
+- `agent_incidents`: policy, validation, timeout, and handoff incidents;
+- `agent_trace_spans`: trace and duration records;
+- `agent_actions`: proposed production actions and execution state;
+- Inngest: durable marketing and billing functions;
+- Jarvis specialist routing and tool execution;
+- domain-specific approval and evidence gates.
+
+Installing another general multi-agent runtime would duplicate state, traces,
+retries, and approval semantics. V1 therefore improves the control plane around the
+existing primitives.
+
+## 3. Current Architecture
+
+```text
+Jarvis / QA / cron / manual
+              |
+              v
+        agent_tasks
+      /       |       \
+approvals  incidents  trace_spans
+      \       |       /
+              v
+    buildAgentOfficeSnapshot()
+              |
+              v
+ GET /api/admin/agent/office
+              |
+              v
+       /admin/agent-mas
+```
+
+### Workroom Identity
+
+`correlation_id` is the V1 workroom and thread key.
+
+- One task under one correlation is a single-agent run.
+- Multiple tasks with distinct specialist roles under one correlation are an
+  observed multi-agent workroom.
+- The UI must not label a run multi-agent merely because an agent has many tool calls.
+
+### Timeline
+
+The workroom timeline merges:
+
+- task state updates;
+- approval decisions;
+- incidents;
+- trace spans.
+
+It is evidence, not conversation. Free-form agent debate is not a completion signal.
+
+## 4. V1 Operator Surface
+
+`/admin/agent-mas` is named **AI 운영실** in the page.
+
+It provides:
+
+- active workrooms;
+- stale workrooms whose active state has not changed for 24 hours;
+- pending approvals;
+- overdue approvals whose explicit expiry passed or whose request is older than
+  seven days without an explicit expiry;
+- failed tasks in the last 24 hours;
+- seven-day done versus failed completion rate;
+- observed multi-agent workrooms;
+- trace P95 duration;
+- workroom role and progress summary;
+- workroom activity timeline;
+- an observation-only approval ledger;
+- bounded task and incident tables;
+- source degradation warnings;
+- the active safety boundary.
+
+The source API is read-only and bounded:
+
+- tasks: latest 240;
+- approvals: latest 240;
+- incidents: latest 160;
+- traces: latest 320;
+- workrooms returned: latest 24.
+
+These values describe an operator snapshot, not an all-time analytics warehouse.
+
+The current production ledger contains old `running` tasks and pending approvals.
+The UI must therefore display source freshness and must not equate a stored active
+status with live execution. V1 does not expose approve/reject controls because the
+current task model does not persist enough resumable runtime state to prove that a
+decision will continue the original execution safely.
+
+## 5. Privacy and Tenancy
+
+- The client never receives `task_context`.
+- `userMessage` is never promoted to a workroom title.
+- Free-text titles, errors, approval reasons, and incident messages pass through the
+  Korean PII redactor.
+- Raw `reason` and `message` fields are removed from the snapshot response after
+  redaction.
+- The service-role client remains server-side.
+- The current surface is platform-admin only through the existing admin guard.
+- Future tenant access requires explicit `tenant_id` scoping and tenant-owned RLS;
+  it must not reuse the platform-wide snapshot unchanged.
+
+## 6. Execution Rules
+
+V1 does not create or schedule autonomous work.
+
+When execution is added:
+
+1. Use an event-triggered durable workflow.
+2. Persist every worker as an `agent_task`.
+3. Use one `correlation_id` for the objective.
+4. Keep deterministic routing for known process steps.
+5. Limit parallel workers to three until evals justify more.
+6. Set explicit token, time, retry, and tool-call budgets.
+7. Require idempotency for every side effect.
+8. Wait for an approval event before production mutation.
+9. Persist a versioned resumable run state before showing an actionable approval.
+10. Reject malformed, concurrent, expired, or stale approval decisions.
+11. Record output evidence and trace spans.
+12. Stop on budget exhaustion, failed guardrail, or ambiguous domain authority.
+
+## 7. When Multi-Agent Is Allowed
+
+Use parallel specialists only when at least one condition is true:
+
+- the work divides into independent research branches;
+- one agent's tool/context set is too broad to route reliably;
+- independent security, evidence, or policy review has measurable value;
+- latency improves through real parallel work;
+- a fixed eval shows higher task success than the single-agent baseline.
+
+Do not use it for:
+
+- deterministic booking, payment, settlement, or publication transitions;
+- tasks with tightly shared context and sequential dependencies;
+- work that a single specialist plus a critic already completes reliably;
+- decorative role-play;
+- continuous autonomous loops without an operator objective and stop condition.
+
+## 8. Evaluation Gate
+
+Before enabling the first multi-agent executor, compare:
+
+| Metric | Single-agent baseline | Multi-agent candidate |
+|---|---:|---:|
+| Task success | required | required |
+| Unsupported factual claims | required | required |
+| Domain policy violations | required | required |
+| Median latency | required | required |
+| P95 latency | required | required |
+| Input/output tokens | required | required |
+| Cost per successful run | required | required |
+| Human correction rate | required | required |
+
+Adopt only when the candidate improves task success or materially reduces risk
+without unacceptable cost or latency.
+
+## 9. Next Safe Phase
+
+The next recommended implementation is one manually triggered, read-only workflow:
+
+```text
+planner
+  -> up to 3 independent evidence reviewers
+  -> critic
+  -> synthesizer
+  -> operator-visible report
+```
+
+Candidate domains:
+
+1. release evidence review;
+2. AI prompt/eval regression review;
+3. marketing evidence audit with no external publish;
+4. product-registration fixture review with no DB promotion.
+
+The first candidate must have a fixed input fixture set and a single-agent baseline
+before backend execution is enabled.
+
+## 10. External Lessons Adopted
+
+- Anthropic: add agentic complexity only when measured; multi-agent is strong for
+  breadth-first parallel research but expensive.
+- OpenAI: distinguish manager/agents-as-tools from handoffs and trace every model,
+  tool, guardrail, and handoff boundary. HITL approval pauses a run and resumes the
+  same serialized `RunState`; a status-only row is not equivalent.
+- LangChain: context engineering and capability boundaries matter more than agent
+  count; durable HITL interrupts require a persisted checkpointer and thread ID,
+  and side effects before an interrupt must be idempotent.
+- AutoGen: optimize one agent first and use a team only when it is inadequate.
+- Google ADK: separate predictable workflow agents from model-directed routing.
+- Inngest: durable steps, retries, waits, and keyed concurrency belong in the backend,
+  not in a browser thread. Event/function idempotency is still required because
+  duplicate delivery is otherwise valid behavior.
+
+The references and decision comparison are preserved in
+`docs/specs/20260728-agent-operations-office/spec.md`.

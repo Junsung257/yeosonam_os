@@ -63,6 +63,7 @@
 | Supabase Auth 오픈 보안 게이트 | `docs/supabase-auth-open-gate.md` |
 | AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
 | 에이전트 워크플로우 현재 SSOT | `docs/agent-workflow-current-ssot.md` |
+| **AI 운영실·멀티에이전트 실행 원장·승인·trace** | **`docs/agent-office-current-ssot.md`** |
 | 외부 에이전트 패턴 선별 도입 | `docs/agency-agents-adoption.md` |
 | AI 에이전트 문서 자동화·하네스 | `docs/ai-agent-doc-automation.md` |
 | 반복 오류 상세 보관소 | `docs/errors/README.md` |

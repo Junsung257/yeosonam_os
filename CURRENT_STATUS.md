@@ -1,5 +1,7 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
+> **AI 운영실 V1 (2026-07-28, 로컬 코드):** 기존 `agent_tasks`, `agent_approvals`, `agent_incidents`, `agent_trace_spans`를 `correlation_id` 작업실로 묶는 읽기 전용 통합 스냅샷과 `/admin/agent-mas` 운영 화면을 추가했다. 24시간 미갱신 작업과 7일 이상 지난 무기한 승인을 정체·기한 경과로 분리하며, 버전된 durable resume 상태가 연결되기 전까지 승인 큐는 관찰 전용이다. 실행은 백엔드 durable workflow, 스레드는 증거 타임라인, 외부·금전·고객 변경은 승인 경계라는 하이브리드 모델이며 자동 멀티에이전트 실행은 아직 열지 않았다. 상세 SSOT: `docs/agent-office-current-ssot.md`.
+
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
 > **정보성 블로그 근거 모델 (2026-07-24, 운영 스키마 적용):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 읽기 감사 기준 source 1건, source version 21건, evidence 147건, claim 48건이며 active 공식 출처 12개, 의도별 공식 원문 16개, 검토된 비공식 출처 6개다. 검색 스니펫은 근거가 아니며, 승인된 URL의 실제 원문을 직접 수집·검증한 뒤에만 글쓰기를 시작한다.
