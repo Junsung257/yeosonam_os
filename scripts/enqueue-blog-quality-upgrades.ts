@@ -4,7 +4,10 @@ import './load-script-env';
 
 import { supabaseAdmin } from '../src/lib/supabase';
 import { buildBlogContentBrief } from '../src/lib/blog-content-brief';
-import { PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE } from '../src/lib/blog-private-regeneration';
+import {
+  buildPublishedBlogUpgradeQueueTopic,
+  PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+} from '../src/lib/blog-private-regeneration';
 
 type PublishedBlog = {
   id: string;
@@ -74,16 +77,17 @@ async function main() {
     .filter(post => post.slug && !hasVerifiedResearch(post.generation_meta));
   const evaluated = missingResearch.map(post => {
     const microAngle = inferMicroAngle(post);
+    const queueTopic = buildPublishedBlogUpgradeQueueTopic(post);
     const brief = buildBlogContentBrief({
-      topic: post.seo_title || post.slug,
+      topic: queueTopic,
       destination: post.destination,
-      primaryKeyword: post.seo_title || post.destination || post.slug,
+      primaryKeyword: queueTopic,
       category: post.category,
       source: 'user_seed',
       microAngle,
       locale: 'ko-KR',
     });
-    return { post, microAngle, brief };
+    return { post, microAngle, brief, queueTopic };
   });
   const candidates = evaluated
     .filter(({ post, brief }) =>
@@ -119,12 +123,12 @@ async function main() {
     .filter(({ post }) => !activeIds.has(post.id))
     .slice(0, limit);
   const now = new Date().toISOString();
-  const rows = selected.map(({ post, microAngle, brief }, index) => {
+  const rows = selected.map(({ post, microAngle, brief, queueTopic }, index) => {
     return {
-      topic: post.seo_title || post.slug,
+      topic: queueTopic,
       source: 'user_seed',
       priority: 70,
-      primary_keyword: post.seo_title || post.destination || post.slug,
+      primary_keyword: queueTopic,
       destination: post.destination,
       angle_type: post.angle_type || 'value',
       category: post.category || 'travel_tips',

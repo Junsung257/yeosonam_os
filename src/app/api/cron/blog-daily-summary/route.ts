@@ -13,7 +13,10 @@ import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
 import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
 import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
-import { PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE } from '@/lib/blog-private-regeneration';
+import {
+  buildPublishedBlogUpgradeQueueTopic,
+  PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+} from '@/lib/blog-private-regeneration';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -751,27 +754,30 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
 
   if (fresh.length === 0) return { count: 0 };
 
-  const rows = fresh.map((c: any) => ({
-    topic: c.seo_title || '(제목 없음)',
-    source: 'user_seed',
-    priority: 85,
-    primary_keyword: c.seo_title || c.destination || c.slug,
-    destination: c.destination,
-    angle_type: c.angle_type,
-    category: c.category || 'travel_tips',
-    content_creative_id: c.id,
-    meta: {
-      regenerated_from: c.id,
-      regenerated_reason: '7일 GSC 클릭 0',
-      expected_slug: c.slug,
-      original_slug: c.slug,
-      original_title: c.seo_title,
-      private_regeneration: {
-        mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
-        atomic_publish_replace: true,
+  const rows = fresh.map((c: any) => {
+    const queueTopic = buildPublishedBlogUpgradeQueueTopic(c);
+    return {
+      topic: queueTopic,
+      source: 'user_seed',
+      priority: 85,
+      primary_keyword: queueTopic,
+      destination: c.destination,
+      angle_type: c.angle_type,
+      category: c.category || 'travel_tips',
+      content_creative_id: c.id,
+      meta: {
+        regenerated_from: c.id,
+        regenerated_reason: '7일 GSC 클릭 0',
+        expected_slug: c.slug,
+        original_slug: c.slug,
+        original_title: c.seo_title,
+        private_regeneration: {
+          mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+          atomic_publish_replace: true,
+        },
       },
-    },
-  }));
+    };
+  });
 
   const { data: inserted } = await supabaseAdmin
     .from('blog_topic_queue')

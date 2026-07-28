@@ -1,6 +1,42 @@
 export const PRIVATE_BLOG_REGENERATION_MODE = 'replace_existing_fallback_draft' as const;
 export const PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE = 'replace_published_after_quality_gate' as const;
 
+interface PublishedBlogUpgradeTopicInput {
+  slug?: unknown;
+  destination?: unknown;
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function buildPublishedBlogUpgradeQueueTopic(
+  input: PublishedBlogUpgradeTopicInput,
+): string {
+  const slug = readTrimmedString(input.slug);
+  let decodedSlug = slug;
+  if (slug) {
+    try {
+      decodedSlug = decodeURIComponent(slug);
+    } catch {
+      decodedSlug = '';
+    }
+  }
+
+  const slugTopic = decodedSlug
+    .replace(/[-_]+/g, ' ')
+    .replace(/[|\u00b7\u2022]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (slugTopic) return slugTopic;
+
+  const destination = readTrimmedString(input.destination)
+    .replace(/[|\u00b7\u2022]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return destination ? `${destination} 현지 여행 정보` : '해외여행 현지 정보';
+}
+
 export interface PrivateBlogRegenerationRequest {
   mode: typeof PRIVATE_BLOG_REGENERATION_MODE | typeof PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE;
   contentCreativeId: string;
