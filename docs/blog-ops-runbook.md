@@ -1,10 +1,23 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
 Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existing-post dry-run, staging order, and rollback are handed off in `docs/blog-informational-engine-v2-owner-runbook.md`.
+
+## 2026-07-28 Root-Cause Controls
+
+- Publishing is measured against cumulative KST slots, not the whole daily quota at the first invocation. With the five-post policy, the due totals are `09:00=1`, `12:00=2`, `15:00=3`, `18:00=4`, and `21:00=5`. `dailyQuota.remainingAfterRun` is the due-now retry signal; `remainingDailyAfterRun` is monitoring data.
+- A candidate is not publishable when any scored quality component is below 95. Do not normalize, average, or round a weak component into a pass. Engine V2 categories still require 100.
+- Bayesian learning uses `publishing_policies.scope='global'` and `meta.adaptive_thresholds`. Treat a database read/write error or a missing global row as `applied=false` and alert on it.
+- The editorial backlog may requeue a row only once for one recheck version. `repeat_suppressed` means the source defect still exists and must be repaired before the recheck version is advanced.
+- Reviewed secondary registries cover additional low-risk intents, but their values must be labeled as checked-date estimates and corroborated. They do not relax official-source or human-review rules for entry and insurance.
+- A registry entry is not permanently trusted merely because editorial methodology was reviewed. Production direct-fetch availability is part of the contract: revoke a source after repeatable 403/blocked retrieval, record the failure in a forward migration, and do not feed its search snippet to the writer. On 2026-07-28 BudgetYourTrip was revoked for this reason; Wikivoyage food sections remain corroboration-only and require a second reviewed domain.
+- The 2026-07-28 production audit found burst publishing after the first slot, weather-only recent output, repeated evidence failures in non-weather categories, and `publishing_policies.value` schema errors. These are distinct failures; meeting a raw count after a burst does not make the day healthy.
+- Run `npm run verify:blog-auto-research:live -- --strict --concurrency 2` against the production registry before release. On 2026-07-28 the final suite passed 10/10 supported intents with no readiness issues. This proves current research readiness; it does not waive final writing, image, render, SEO, publication, or human-review gates.
+- Read every live claim sample, not just the pass count. The 2026-07-28 review caught a stale secondary-source bus fare inside an otherwise passing family-budget row. The final control persists current GRTA family-budget documents, injects official fare samples, removes conflicting secondary transit fares, and preserves checked-date lodging, meal, transport, and child/family evidence within the 12-claim limit.
+- Booking and restaurant prices are checked-date samples. They must state that dates, occupancy, taxes, inventory, menu availability, and final totals can change. They are never guaranteed quotes or destination averages.
 
 ## Daily Operating Standard
 

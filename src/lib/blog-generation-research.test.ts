@@ -287,6 +287,39 @@ describe('blog generation research preflight', () => {
     ]));
   });
 
+  it('blocks semantically irrelevant itinerary and souvenir evidence packs', () => {
+    const unrelated = foodBudgetBundle();
+    unrelated.claims = unrelated.claims.map((claim, index) => {
+      const claimText = `일반 생활비 참고값 ${index + 1}은 ${claim.extractedValue?.normalizedValue} JPY입니다.`;
+      return {
+        ...claim,
+        claimText,
+        claimFingerprint: createBlogInformationClaimFingerprint(claimText),
+      };
+    });
+    const evaluateIntent = (intent: 'itinerary' | 'shopping_souvenirs') =>
+      evaluateBlogGenerationResearchReadiness({
+        meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: unrelated },
+        expectedContentKey: CONTENT_KEY,
+        destination: '삿포로',
+        intent,
+        locale: 'ko-KR',
+        sourcePolicy: FOOD_POLICY,
+        now: new Date('2026-07-19T12:00:00.000Z'),
+      });
+
+    expect(evaluateIntent('itinerary').issues).toEqual(expect.arrayContaining([
+      'claim_semantic_coverage_missing:itinerary:child_or_family',
+      'claim_semantic_coverage_missing:itinerary:attraction',
+      'claim_semantic_coverage_missing:itinerary:route_duration',
+    ]));
+    expect(evaluateIntent('shopping_souvenirs').issues).toEqual(expect.arrayContaining([
+      'claim_semantic_coverage_missing:shopping_souvenirs:souvenir_product',
+      'claim_semantic_coverage_missing:shopping_souvenirs:purchase_location',
+      'claim_semantic_coverage_missing:shopping_souvenirs:customs',
+    ]));
+  });
+
   it('requires complete 1~12 month climate coverage before weather writing starts', () => {
     const incomplete = monthlyWeatherReadiness(monthlyWeatherBundle(6));
     expect(incomplete.passed).toBe(false);

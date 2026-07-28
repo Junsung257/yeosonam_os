@@ -31,7 +31,7 @@ const passedSeo: SeoScoreResult = {
 };
 
 const passedReadability: ReadabilityResult = {
-  score: 88,
+  score: 96,
   sentence_count: 12,
   avg_sentence_len: 42,
   long_sentence_count: 0,
@@ -127,6 +127,20 @@ describe('blog quality score', () => {
     expect(report.score).toBe(95);
     expect(report.issues).toMatchObject([
       { code: 'editorial.weak_reading_design', severity: 'minor' },
+    ]);
+  });
+
+  it('blocks an otherwise passing component below the 95-point floor', () => {
+    const report = calculateBlogQualityScore({
+      seoScore: {
+        ...passedSeo,
+        score: 94,
+      },
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toMatchObject([
+      { code: 'seo.score_below_95', severity: 'minor' },
     ]);
   });
 

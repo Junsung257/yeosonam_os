@@ -1,8 +1,22 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-24
+Last updated: 2026-07-28
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
+
+## 2026-07-28 Slot, Quality, Learning, And Research Contract
+
+- The global five-post policy is a cumulative KST slot contract: 09:00 permits at most one post for the day, 12:00 permits two, 15:00 permits three, 18:00 permits four, and 21:00 permits all five. A normal or workflow retry may fill only the quota due at the current slot. The final slot may catch up every remaining daily post.
+- `dailyQuota.remainingAfterRun` means quota still due at the current time and therefore controls same-window retries. `remainingDailyAfterRun` is the total daily remainder for monitoring. A forced scheduler refill does not authorize early publication.
+- Every scored publish component has a hard floor of 95. Aggregate scores, rounding, or an underlying checker's lower pass flag cannot hide an SEO, readability, evidence, rendering, image, or customer-quality component below 95. The stricter Engine V2 100-point category contract remains unchanged.
+- Adaptive thresholds are read from and written to the global `publishing_policies.meta.adaptive_thresholds` object. A missing row, read error, or persistence error must return learning as not applied; it must never be reported as successful learning.
+- An editorial backlog row may be requeued once per recheck version. If the same row fails again under the same version, the system keeps it blocked with `repeat_suppressed` instead of creating an endless retry loop. A later repair release requires a new version and new regression evidence.
+- Reviewed secondary sources may support low-risk budget, transport, lodging-area, itinerary, shopping, or family-planning estimates only when the fetched page contains the claim and the claim is corroborated as required by its intent contract. Crowdsourced cost data, route aggregators, and collaborative travel guides are checked-date estimates, not official guarantees. Entry, visa, immigration, and insurance lanes retain official-source and human-review requirements.
+- Methodology review alone does not make a secondary source operationally usable. The production worker must be able to download the page directly; repeatable 403 or blocked retrieval revokes the registry entry until a permitted path is reviewed. Search snippets from a revoked or unreachable source are not evidence.
+- Model-produced JSON is not the final authority for stable structured facts. Guam weather, GRTA route times and fares, hotel-area nightly samples, currency/payment, and reviewed menu samples use fail-closed deterministic parsers that require exact source phrases or schema fields. A parser returns no bundle when a required phrase, area, price, date scope, or second source domain is absent.
+- A newer reviewed official operator document supersedes conflicting secondary-source values for the same decision. The research sanitizer removes competing bus fare and pass claims after a current GRTA fare sheet is present; this precedence also applies to family-budget research.
+- Intent readiness requires semantic coverage, not only claim counts. Hotel research needs named areas and checked-date nightly prices; family budgets need lodging, meal, transport, and child/family evidence; itinerary research needs family suitability, attraction evidence, and route durations; shopping needs products, purchase locations, and customs; currency needs cash/currency and card use; insurance needs medical, disruption/baggage, and claim-document evidence.
+- The strict live research suite must pass all ten supported intents before a release: food budget, monthly weather, airport transport, hotel areas, family budget, itinerary, shopping/souvenirs, currency/payment, entry requirements, and travel insurance. High-risk entry and insurance results remain human-review candidates even after research readiness passes.
 
 ## Evidence Base
 

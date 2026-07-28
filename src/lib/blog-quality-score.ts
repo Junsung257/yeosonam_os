@@ -106,6 +106,8 @@ const CRITICAL_SEO_DETAILS = new Set([
   'helpful_content_eeat',
 ]);
 
+export const BLOG_QUALITY_COMPONENT_MIN_SCORE = 95;
+
 function scoreFromIssues(issues: BlogQualityIssue[]): number {
   const penalty = issues.reduce((sum, issue) => sum + PENALTY[issue.severity], 0);
   return Math.max(0, 100 - penalty);
@@ -117,11 +119,26 @@ function component(
   issues: BlogQualityIssue[],
   sourcePassed = true,
 ): BlogQualityComponent {
+  const componentIssues = [...issues];
+  if (
+    sourcePassed
+    && componentIssues.length === 0
+    && score !== null
+    && score < BLOG_QUALITY_COMPONENT_MIN_SCORE
+  ) {
+    componentIssues.push({
+      code: `${id}.score_below_95`,
+      severity: 'minor',
+      message: `${id} score ${score}/100 is below the ${BLOG_QUALITY_COMPONENT_MIN_SCORE}-point publishing floor.`,
+      source: id,
+      evidence: { score, minimum: BLOG_QUALITY_COMPONENT_MIN_SCORE },
+    });
+  }
   return {
     id,
-    passed: sourcePassed && issues.length === 0,
+    passed: sourcePassed && componentIssues.length === 0,
     score,
-    issues,
+    issues: componentIssues,
   };
 }
 
@@ -194,17 +211,17 @@ function readabilityComponent(report: ReadabilityResult): BlogQualityComponent {
     },
   }));
 
-  if (report.score < 80 && issues.length === 0) {
+  if (report.score < BLOG_QUALITY_COMPONENT_MIN_SCORE && issues.length === 0) {
     issues.push({
       code: 'readability.low_score',
       severity: 'minor',
-      message: `Readability score ${report.score}/100 is below the strict 80-point publishing target.`,
+      message: `Readability score ${report.score}/100 is below the strict ${BLOG_QUALITY_COMPONENT_MIN_SCORE}-point publishing target.`,
       source: 'readability',
       evidence: { score: report.score },
     });
   }
 
-  return component('readability', report.score, issues, report.score >= 80);
+  return component('readability', report.score, issues, report.score >= BLOG_QUALITY_COMPONENT_MIN_SCORE);
 }
 
 function editorialComponent(report: BlogIntentQualityReport): BlogQualityComponent {

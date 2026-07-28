@@ -70,8 +70,8 @@ function recentPostPasses(post: BlogPublishPreflightInput['recentPosts'][number]
   const readabilityScore = asNumber(post.readability_score);
   return qualityPassed
     && hasContentBrief(post.generation_meta)
-    && (seoScore === 0 || seoScore >= 85)
-    && (readabilityScore === 0 || readabilityScore >= 70);
+    && (seoScore === 0 || seoScore >= 95)
+    && (readabilityScore === 0 || readabilityScore >= 95);
 }
 
 function rankStatus(status: BlogPublishPreflightStatus): number {

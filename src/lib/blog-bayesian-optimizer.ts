@@ -57,21 +57,18 @@ type ThresholdKey = keyof AdaptiveThresholds;
  * 현재 활성 임계값 조회 (DB → 없으면 기본값)
  */
 export async function getActiveThresholds(): Promise<AdaptiveThresholds> {
-  try {
-    const { data } = await supabaseAdmin
-      .from('publishing_policies')
-      .select('value')
-      .eq('key', 'adaptive_thresholds')
-      .limit(1);
-
-    if (data && data.length > 0) {
-      const stored = data[0].value as Partial<AdaptiveThresholds>;
-      return { ...DEFAULT_THRESHOLDS, ...stored };
-    }
-  } catch {
-    // fallthrough to defaults
-  }
-  return DEFAULT_THRESHOLDS;
+  const { data, error } = await supabaseAdmin
+    .from('publishing_policies')
+    .select('meta')
+    .eq('scope', 'global')
+    .maybeSingle();
+  if (error) throw new Error(`adaptive_threshold_read_failed:${error.message}`);
+  const meta = data?.meta && typeof data.meta === 'object' && !Array.isArray(data.meta)
+    ? data.meta as Record<string, unknown>
+    : {};
+  const stored = meta.adaptive_thresholds;
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return DEFAULT_THRESHOLDS;
+  return { ...DEFAULT_THRESHOLDS, ...stored as Partial<AdaptiveThresholds> };
 }
 
 /**
@@ -185,14 +182,26 @@ export async function computeAdaptiveThresholds(
 export async function persistAdaptiveThresholds(
   thresholds: AdaptiveThresholds,
 ): Promise<void> {
-  const { error } = await supabaseAdmin
+  const { data: policy, error: readError } = await supabaseAdmin
     .from('publishing_policies')
-    .upsert(
-      { key: 'adaptive_thresholds', value: thresholds as unknown as Record<string, unknown> },
-      { onConflict: 'key' },
-    );
-
-  if (error) {
-    console.error('[bayesian-optimizer] persist failed:', error.message);
-  }
+    .select('meta')
+    .eq('scope', 'global')
+    .maybeSingle();
+  if (readError) throw new Error(`adaptive_threshold_read_before_write_failed:${readError.message}`);
+  if (!policy) throw new Error('adaptive_threshold_global_policy_missing');
+  const currentMeta = policy.meta && typeof policy.meta === 'object' && !Array.isArray(policy.meta)
+    ? policy.meta as Record<string, unknown>
+    : {};
+  const { error: updateError } = await supabaseAdmin
+    .from('publishing_policies')
+    .update({
+      meta: {
+        ...currentMeta,
+        adaptive_thresholds: thresholds,
+        adaptive_thresholds_updated_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('scope', 'global');
+  if (updateError) throw new Error(`adaptive_threshold_write_failed:${updateError.message}`);
 }

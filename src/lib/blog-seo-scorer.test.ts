@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BLOG_SEO_MAX_SCORE, BLOG_SEO_MIN_SCORE, computeSeoScore } from './blog-seo-scorer';
 
 const longBody = Array.from({ length: 18 }, (_, index) => (
-  `방콕 날씨는 ${2026 + (index % 2)}년 기준으로 월별 기온, 우기, 건기, 옷차림을 함께 봐야 합니다. ` +
+  `${index % 3 === 0 ? '방콕 날씨' : '현지 기후'}는 ${2026 + (index % 2)}년 기준으로 월별 기온, 우기, 건기, 옷차림을 함께 봐야 합니다. ` +
   `여소남 운영팀은 공항 이동 시간 ${40 + index}분, 예상 비용 ${12000 + index * 1000}원, 호텔 위치와 예약 포함사항을 확인했습니다. ` +
   `여행 일정과 준비물 체크리스트를 비교하면 현지에서 놓치는 비용과 시간을 줄일 수 있습니다.`
 )).join('\n\n');
@@ -52,15 +52,28 @@ describe('computeSeoScore', () => {
       secondaryKeywords: ['방콕 옷차림', '방콕 여행 비용', '방콕 입국 서류'],
       destination: '방콕',
       blogType: 'info',
+      hasRenderedPageH1: true,
+      hasRuntimeInformationalCta: true,
+      imageCount: 3,
+      imagesWithAlt: 3,
       hasJsonLd: {
         blogPosting: true,
         breadcrumbList: true,
         faqPage: true,
+        howTo: true,
       },
     });
 
     expect(result.maxScore).toBe(BLOG_SEO_MAX_SCORE);
-    expect(result.score).toBeGreaterThanOrEqual(BLOG_SEO_MIN_SCORE.info);
+    expect(
+      result.score,
+      JSON.stringify(result.details.map(({ name, score, maxScore, status }) => ({
+        name,
+        score,
+        maxScore,
+        status,
+      }))),
+    ).toBeGreaterThanOrEqual(BLOG_SEO_MIN_SCORE.info);
     expect(result.passed).toBe(true);
   });
 
