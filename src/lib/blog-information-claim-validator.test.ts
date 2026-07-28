@@ -247,7 +247,66 @@ describe('blog information claim validator', () => {
 
     expect(report.passed).toBe(true);
     expect(report.claims).toEqual([
-      expect.objectContaining({ claimText, claimType: 'climate' }),
+      expect.objectContaining({
+        claimText,
+        claimType: 'climate',
+        extractedValue: {
+          normalizedValue: '30.6|24.8|308.4|26.2',
+          unit: '월별 기후 지표',
+          currency: null,
+        },
+      }),
+    ]);
+  });
+
+  it('keeps all monthly climate measurements bound to their composite evidence value', () => {
+    const claimText =
+      '1991~2013 평년값: 10월 최고기온 32.5°C, 최저기온 24.2°C, 강수량 176.5mm, 강수일수 15일';
+    const markdown = [
+      '<!-- blog_research_structure:monthly_weather:v2 -->',
+      '| 월 | 검증된 평년값 | 옷차림 준비 |',
+      '| --- | --- | --- |',
+      `| 10월 | ${claimText} | 반팔·우산 |`,
+      '<!-- /blog_research_structure:monthly_weather:v2 -->',
+    ].join('\n');
+    const record = supportedRecord(claimText);
+    record.extractedValue = {
+      normalizedValue: '32.5|24.2|176.5|15',
+      unit: '월별 기후 지표',
+      currency: null,
+    };
+    record.evidence[0]!.scope.normalizedValue = '32.5|24.2|176.5|15';
+    record.evidence[0]!.scope.unit = '월별 기후 지표';
+
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [record],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('blocks monthly climate evidence when any composite measurement differs', () => {
+    const claimText =
+      '1991~2013 평년값: 10월 최고기온 32.5°C, 최저기온 24.2°C, 강수량 176.5mm, 강수일수 15일';
+    const record = supportedRecord(claimText);
+    record.evidence[0]!.scope.normalizedValue = '32.5|24.2|100|15';
+    record.evidence[0]!.scope.unit = '월별 기후 지표';
+
+    const report = validateBlogInformationClaims({
+      markdown: claimText,
+      persistedClaims: [record],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toEqual([
+      expect.objectContaining({ code: 'evidence_semantic_mismatch' }),
     ]);
   });
 

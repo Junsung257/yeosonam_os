@@ -139,6 +139,20 @@ function clean(value?: string | null): string {
   return (value || '').replace(/\s+/g, ' ').trim();
 }
 
+export function extractMonthlyClimateCompositeValue(
+  value: string,
+): BlogInformationExtractedValue | null {
+  const match = value.match(
+    /최고기온\s*(-?\d+(?:\.\d+)?)\s*(?:℃|°C)[\s\S]*?최저기온\s*(-?\d+(?:\.\d+)?)\s*(?:℃|°C)[\s\S]*?강수량\s*(\d+(?:\.\d+)?)\s*mm[\s\S]*?강수일수\s*(\d+(?:\.\d+)?)\s*일/i,
+  );
+  if (!match) return null;
+  return {
+    normalizedValue: match.slice(1, 5).map((item) => item.replace(/,/g, '').replace(/^\+/, '').trim()).join('|'),
+    unit: '월별 기후 지표',
+    currency: null,
+  };
+}
+
 function isIsoDate(value?: string | null): boolean {
   return Boolean(value && !Number.isNaN(Date.parse(value)));
 }
@@ -331,11 +345,21 @@ export function validateBlogInformationEvidenceScope(
 
   const excerpt = normalizeMeaning(evidence.excerpt);
   if (!excerpt) return [...issues, 'missing_excerpt'];
-  if (!equivalentSemanticValueTokens(scope.normalizedValue).some((token) => excerpt.includes(normalizeMeaning(token)))) {
-    issues.push('excerpt_value_mismatch');
-  }
-  if (scope.unit && !equivalentUnitTokens(scope.unit).some((token) => excerpt.includes(normalizeMeaning(token)))) {
-    issues.push('excerpt_unit_mismatch');
+  const monthlyClimateValue = evidence.claimType === 'climate'
+    && normalizeMeaning(scope.unit) === normalizeMeaning('월별 기후 지표')
+    ? extractMonthlyClimateCompositeValue(evidence.excerpt ?? '')
+    : null;
+  if (monthlyClimateValue) {
+    if (normalizeMeaning(monthlyClimateValue.normalizedValue) !== normalizeMeaning(scope.normalizedValue)) {
+      issues.push('excerpt_value_mismatch');
+    }
+  } else {
+    if (!equivalentSemanticValueTokens(scope.normalizedValue).some((token) => excerpt.includes(normalizeMeaning(token)))) {
+      issues.push('excerpt_value_mismatch');
+    }
+    if (scope.unit && !equivalentUnitTokens(scope.unit).some((token) => excerpt.includes(normalizeMeaning(token)))) {
+      issues.push('excerpt_unit_mismatch');
+    }
   }
   if (scope.currency && !equivalentCurrencyTokens(scope.currency).some((token) => excerpt.includes(normalizeMeaning(token)))) {
     issues.push('excerpt_currency_mismatch');
