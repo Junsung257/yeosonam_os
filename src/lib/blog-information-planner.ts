@@ -65,6 +65,7 @@ const TABLE_SLOT_IDS: Partial<Record<BlogInformationIntent, string[]>> = {
   food_budget: ['daily_budget', 'meal_ranges', 'trip_total'],
   monthly_weather: ['monthly_temperature', 'precipitation'],
   airport_transport: ['mode_comparison', 'fare_breakdown', 'schedule'],
+  local_transport: ['option_comparison', 'fares_passes', 'travel_time_frequency', 'operating_schedule'],
   hotel_areas: ['four_areas', 'pros_cons_fit', 'nightly_price'],
   family_budget: ['budget_categories', 'budget_tiers', 'child_fares'],
   itinerary: ['day_by_day', 'movement_rest'],
@@ -107,7 +108,7 @@ function inferTravelerNationality(input: BlogInformationPlannerInput): string | 
 
 function riskLevel(intent: BlogInformationIntent): BlogInformationRiskLevel {
   if (intent === 'entry_requirements' || intent === 'travel_insurance') return 'HIGH';
-  if (['monthly_weather', 'airport_transport', 'currency_payment'].includes(intent)) return 'MEDIUM';
+  if (['monthly_weather', 'airport_transport', 'local_transport', 'currency_payment'].includes(intent)) return 'MEDIUM';
   return 'LOW';
 }
 
@@ -117,6 +118,7 @@ function primaryQuestion(intent: BlogInformationIntent, destination: string | nu
     food_budget: `${place}에서 하루 식비와 메뉴별 예산을 얼마로 잡아야 하나요?`,
     monthly_weather: `${place}의 월별 날씨와 옷차림은 어떻게 준비해야 하나요?`,
     airport_transport: `${place} 공항에서 시내까지 어떤 교통수단이 시간과 비용에 맞나요?`,
+    local_transport: `${place} 안에서 주요 관광지를 어떤 교통수단과 노선으로 이동해야 하나요?`,
     hotel_areas: `${place}에서 일정과 예산에 맞는 숙소 지역은 어디인가요?`,
     family_budget: `${place} 가족여행의 항목별 총예산은 얼마로 잡아야 하나요?`,
     itinerary: `${place} 여행 일정을 이동과 휴식까지 어떻게 구성해야 하나요?`,
@@ -136,6 +138,7 @@ function faqQuestions(intent: BlogInformationIntent, destination: string | null)
     food_budget: [`${place} 하루 식비는 얼마인가요?`, '현금과 카드 중 무엇이 유리한가요?', common],
     monthly_weather: [`${place} 여행하기 좋은 달은 언제인가요?`, '비가 오면 어떤 옷과 준비물이 필요한가요?', common],
     airport_transport: ['심야 도착 때 이용 가능한 교통수단은 무엇인가요?', '인원과 수하물에 따라 무엇이 유리한가요?', common],
+    local_transport: ['주요 구간의 요금과 소요 시간은 얼마인가요?', '예약과 계절 운행 제한은 무엇인가요?', common],
     hotel_areas: ['첫 방문자에게 편한 지역은 어디인가요?', '공항과 관광지 이동을 함께 고려하면 어디가 좋은가요?', common],
     family_budget: ['아동 요금은 몇 살부터 적용되나요?', '예상 밖 추가 비용은 무엇인가요?', common],
     itinerary: ['동행과 체력에 따라 일정을 어떻게 줄이나요?', '비 오는 날 대안 일정은 무엇인가요?', common],

@@ -6,16 +6,17 @@ import {
 } from './blog-informational-engine-v2-eval';
 
 describe('informational engine v2 R14 real-path safety evaluation', () => {
-  it('proves all ten required adversarial topics through production validators', async () => {
+  it('proves all eleven required adversarial topics through production validators', async () => {
     expect(BLOG_INFORMATION_ENGINE_V2_EVAL_FIXTURES.map((fixture) => fixture.label)).toEqual([
       '삿포로 식비',
       '광저우 월별 날씨',
       '오사카 공항 이동',
+      '캐나다 로키 현지 교통',
       '대만 숙소 지역',
       '싱가포르 가족 예산',
       '세부 쇼핑·기념품',
       '석가장 환전·결제',
-      '몽골 날씨·옷차림',
+      '다낭 여행 일정',
       '일본 입국·비자',
       '해외여행 보험',
     ]);
@@ -27,8 +28,8 @@ describe('informational engine v2 R14 real-path safety evaluation', () => {
       realPathModules: true,
       externalCalls: 0,
       publicMutations: 0,
-      total: 10,
-      passed: 10,
+      total: 11,
+      passed: 11,
       failed: 0,
       ok: true,
     });
@@ -43,7 +44,7 @@ describe('informational engine v2 R14 real-path safety evaluation', () => {
     const summary = formatBlogInformationEngineV2EvalSummary(
       await evaluateBlogInformationEngineV2Fixtures(),
     );
-    expect(summary).toContain('PASS (10/10)');
+    expect(summary).toContain('PASS (11/11)');
     expect(summary).toContain('실제 운영 모듈을 호출하되');
     expect(summary).toContain('운영 글·원격 DB·외부 API는 변경하거나 호출하지 않습니다');
   });

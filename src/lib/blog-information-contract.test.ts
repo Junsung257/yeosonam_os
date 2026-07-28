@@ -19,6 +19,7 @@ describe('blog information contract', () => {
     ['food_budget', { destination: 'Tokyo', topic: 'food budget and meal cost' }],
     ['monthly_weather', { destination: 'Sapporo', topic: 'monthly weather climate rainfall' }],
     ['airport_transport', { destination: 'Osaka', topic: 'airport transfer transport' }],
+    ['local_transport', { destination: 'Banff', topic: 'local public transport bus routes' }],
     ['hotel_areas', { destination: 'Bangkok', topic: 'where to stay hotel areas' }],
     ['family_budget', { destination: 'Cebu', topic: 'family trip budget' }],
     ['itinerary', { destination: 'Danang', topic: 'family itinerary and route' }],
@@ -35,6 +36,7 @@ describe('blog information contract', () => {
       'food_budget',
       'monthly_weather',
       'airport_transport',
+      'local_transport',
       'hotel_areas',
       'family_budget',
       'itinerary',
@@ -58,6 +60,15 @@ describe('blog information contract', () => {
       destination: 'Mongolia',
       topic: 'arrival options',
       category: 'weather',
+      microAngle: 'transport_cost',
+    })).toBe('local_transport');
+  });
+
+  it('keeps legacy transport-cost metadata on airport-specific topics compatible', () => {
+    expect(inferBlogInformationIntent({
+      destination: 'Cebu',
+      topic: '세부 공항에서 시내 이동 비용',
+      category: 'transport',
       microAngle: 'transport_cost',
     })).toBe('airport_transport');
   });

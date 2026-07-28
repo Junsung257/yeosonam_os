@@ -65,6 +65,7 @@ const EXTERNAL_PREFERENCE: Record<BlogInformationIntent, BlogInformationalCtaKey
   food_budget: ['DEAL_ROOM', 'NAVER_CAFE', 'CONSULTATION'],
   monthly_weather: ['NAVER_CAFE', 'CONSULTATION', 'DEAL_ROOM'],
   airport_transport: ['CONSULTATION', 'NAVER_CAFE', 'DEAL_ROOM'],
+  local_transport: ['NAVER_CAFE', 'CONSULTATION', 'DEAL_ROOM'],
   hotel_areas: ['CONSULTATION', 'NAVER_CAFE', 'DEAL_ROOM'],
   family_budget: ['DEAL_ROOM', 'CONSULTATION', 'NAVER_CAFE'],
   itinerary: ['NAVER_CAFE', 'CONSULTATION', 'DEAL_ROOM'],

@@ -160,6 +160,16 @@ function intentStructure(fixture: BlogInformationEngineV2EvalFixture): string {
         '수하물이 많으면 버스나 택시를, 심야·야간 도착이면 운행 종료 여부를 확인합니다.',
         '근거: https://transport.gov.example/osaka-airport',
       ].join('\n');
+    case 'local_transport':
+      return [
+        '| 노선·수단 | 요금 | 소요 시간·배차 | 운행 시간 |',
+        '| --- | --- | --- | --- |',
+        '| 밴프-레이크 루이스 8X 버스 | CAD 12.50 | 57분 · 30분 간격 | 07:00~22:00 |',
+        '| 레이크 루이스 셔틀 | CAD 8 | 45분 · 60분 간격 | 08:00~19:00 |',
+        '',
+        '승차권과 패스는 공식 운영사에서 구매·예약하며, 성수기와 계절 운행 변경 여부를 출발 전에 확인합니다.',
+        '공식 운영사 근거: https://transit.gov.example/banff-routes',
+      ].join('\n');
     case 'hotel_areas':
       return [
         '| 지역 | 숙소 1박 가격 | 장점·단점 | 접근 | 추천 대상 |',
@@ -220,7 +230,15 @@ function intentStructure(fixture: BlogInformationEngineV2EvalFixture): string {
         '보험사 약관·감독기관 공식 1차 출처: https://insurance.gov.example/travel-policy',
       ].join('\n');
     case 'itinerary':
-      throw new Error('R14 evaluation corpus does not contain an itinerary fixture');
+      return [
+        '| 일차 | 장소 | 이동 관계 | 현실적인 시간 | 휴무·예약 조건 |',
+        '| --- | --- | --- | --- | --- |',
+        '| 1일 차 | 미케비치 | 공항에서 버스 이동 | 09:00~12:00 | 연중 운영, 예약 불필요 |',
+        '| 2일 차 | 바나힐 | 셔틀버스 이동 | 08:00~16:00 | 운영 시간과 사전 예약 확인 |',
+        '| 3일 차 | 호이안 올드타운 | 버스 이동 | 10:00~18:00 | 입장 마감과 휴무 확인 |',
+        '',
+        '공식 운영 정보: https://tourism.gov.example/danang-itinerary',
+      ].join('\n');
   }
 }
 
@@ -389,7 +407,8 @@ async function evaluateFixture(
     food_budget: 'currency_payment',
     monthly_weather: 'airport_transport',
     airport_transport: 'hotel_areas',
-    hotel_areas: 'airport_transport',
+    local_transport: 'itinerary',
+    hotel_areas: 'local_transport',
     family_budget: 'food_budget',
     itinerary: 'monthly_weather',
     shopping_souvenirs: 'currency_payment',

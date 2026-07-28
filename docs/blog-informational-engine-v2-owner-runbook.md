@@ -38,7 +38,7 @@ Last updated: 2026-07-15
 npm run eval:blog-info-v2
 ```
 
-정상 결과는 `PASS (10/10)`, 외부 API 호출 `0회`, 공개/운영 데이터 변경 `0건`이다. 라벨만 채운 10개 문서는 모두 차단되고, 같은 10개 주제의 구조화 fixture는 실제 검증 모듈을 통과해야 한다. 결과 파일은 다음 두 곳에 생긴다.
+정상 결과는 `PASS (11/11)`, 외부 API 호출 `0회`, 공개/운영 데이터 변경 `0건`이다. 라벨만 채운 11개 문서는 모두 차단되고, 같은 11개 주제의 구조화 fixture는 실제 검증 모듈을 통과해야 한다. 결과 파일은 다음 두 곳에 생긴다.
 
 - `docs/specs/20260715-informational-content-engine-v2/reports/r14-safety-evaluation.json`
 - `docs/specs/20260715-informational-content-engine-v2/reports/r14-safety-summary.md`
@@ -145,7 +145,7 @@ npm test
 
 ## 10. 운영 배포 전 체크리스트
 
-- [ ] R14 실제 경로 평가가 10/10 PASS다.
+- [ ] R14 실제 경로 평가가 11/11 PASS다.
 - [ ] M11 dry-run 보고서에 DB write와 외부 호출이 0이다.
 - [ ] 기반 및 안전성 교정 migration이 staging에서 순서대로 적용됐다.
 - [ ] 저위험 글의 필수 section/fact와 evidence coverage가 통과한다.

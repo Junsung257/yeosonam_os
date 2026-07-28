@@ -100,6 +100,7 @@ function toLegacyBriefIntent(intentType: BlogInformationIntent): BlogBriefIntent
     case 'shopping_souvenirs':
       return 'cost';
     case 'airport_transport':
+    case 'local_transport':
       return 'transport';
     case 'hotel_areas':
       return 'comparison';
