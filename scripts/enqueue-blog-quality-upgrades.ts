@@ -19,6 +19,15 @@ type PublishedBlog = {
   generation_meta: Record<string, unknown> | null;
 };
 
+type InformationRepresentative = {
+  canonical_creative_id: string | null;
+  destination_id: string;
+  intent: string;
+  audience: string;
+  locale: string;
+  status: string;
+};
+
 function argValue(name: string): string | null {
   const prefix = `${name}=`;
   const found = process.argv.find(arg => arg.startsWith(prefix));
@@ -103,7 +112,35 @@ async function main() {
         : microAngle === only;
     });
 
-  const candidateIds = candidates.map(({ post }) => post.id);
+  const { data: representatives, error: representativesError } = await supabaseAdmin
+    .from('blog_information_representatives')
+    .select('canonical_creative_id,destination_id,intent,audience,locale,status')
+    .eq('status', 'active');
+  if (representativesError) throw new Error(representativesError.message);
+  const canonicalByIdentity = new Map(
+    ((representatives ?? []) as InformationRepresentative[]).map(representative => [
+      [
+        representative.destination_id,
+        representative.intent,
+        representative.audience,
+        representative.locale,
+      ].join('|'),
+      representative.canonical_creative_id,
+    ]),
+  );
+  const canonicalCandidates = candidates.filter(({ post, brief }) => {
+    const key = [
+      brief.plan.destinationId,
+      brief.intentType,
+      brief.plan.audience,
+      brief.plan.locale,
+    ].join('|');
+    const canonicalCreativeId = canonicalByIdentity.get(key);
+    return !canonicalCreativeId || canonicalCreativeId === post.id;
+  });
+  const representativeDuplicatesSkipped = candidates.length - canonicalCandidates.length;
+
+  const candidateIds = canonicalCandidates.map(({ post }) => post.id);
   const activeIds = new Set<string>();
   for (let offset = 0; offset < candidateIds.length; offset += 100) {
     const ids = candidateIds.slice(offset, offset + 100);
@@ -119,7 +156,7 @@ async function main() {
     }
   }
 
-  const selected = candidates
+  const selected = canonicalCandidates
     .filter(({ post }) => !activeIds.has(post.id))
     .slice(0, limit);
   const now = new Date().toISOString();
@@ -167,9 +204,10 @@ async function main() {
     checked_at: now,
     published_checked: published.length,
     missing_verified_research: missingResearch.length,
-    safe_automatic_candidates: candidates.length,
+    safe_automatic_candidates: canonicalCandidates.length,
     manual_review_or_invalid_skipped: evaluated.length - candidates.length,
-    active_upgrade_skipped: candidates.filter(({ post }) => activeIds.has(post.id)).length,
+    representative_duplicates_skipped: representativeDuplicatesSkipped,
+    active_upgrade_skipped: canonicalCandidates.filter(({ post }) => activeIds.has(post.id)).length,
     selected: rows.length,
     inserted,
     only: only || null,

@@ -5,6 +5,7 @@ import {
   buildBlogInformationRepresentativeKey,
   buildBlogInformationDuplicateDryRun,
   calculateBlogInformationSimilarity,
+  canUpgradePublishedBlogForRepresentative,
   decideBlogInformationDuplicate,
   isCanonicalInformationSitemapPost,
   readBlogInformationRepresentativeIdentity,
@@ -56,8 +57,26 @@ describe('blog information representative key and duplicate decisions', () => {
       existingMarkdown: candidate.markdown,
     });
     expect(decision.action).toBe('UPDATE_EXISTING');
+    expect(decision.canonicalCreativeId).toBe('creative-1');
     expect(decision.canonicalSlug).toBe('sapporo-food-budget');
     expect(decision.exactDuplicate).toBe(true);
+  });
+
+  it('allows an atomic upgrade only for the canonical creative owned by the representative', () => {
+    const decision = decideBlogInformationDuplicate({
+      candidate,
+      existing: active,
+      reservationOwner: 'queue-new',
+    });
+
+    expect(canUpgradePublishedBlogForRepresentative({
+      decision,
+      targetCreativeId: 'creative-1',
+    })).toBe(true);
+    expect(canUpgradePublishedBlogForRepresentative({
+      decision,
+      targetCreativeId: 'legacy-duplicate',
+    })).toBe(false);
   });
 
   it('detects near-duplicate text without depending on the year token', () => {
