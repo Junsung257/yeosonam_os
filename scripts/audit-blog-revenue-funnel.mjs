@@ -105,33 +105,36 @@ const checks = [
     remediation: 'When a package inquiry arrives, update recommendation_outcomes/recommendation_events for the same session/package.',
   },
   {
-    id: 'daily_publish_target_clamped_to_3_4',
+    id: 'daily_publish_target_is_exactly_5',
     weight: 7,
-    passed: /MIN_POSTS_PER_DAY\s*=\s*3/.test(source.scheduler) &&
-      /MAX_POSTS_PER_DAY\s*=\s*4/.test(source.scheduler) &&
-      /DEFAULT_POSTS_PER_DAY\s*=\s*4/.test(source.scheduler) &&
+    passed: /MIN_POSTS_PER_DAY\s*=\s*5/.test(source.scheduler) &&
+      /MAX_POSTS_PER_DAY\s*=\s*5/.test(source.scheduler) &&
+      /DEFAULT_POSTS_PER_DAY\s*=\s*5/.test(source.scheduler) &&
       /Math\.min\(MAX_POSTS_PER_DAY,\s*Math\.max\(MIN_POSTS_PER_DAY/.test(source.scheduler),
     evidence: files.scheduler,
+    remediation: 'Keep the scheduler policy fixed at five researched posts per KST day.',
   },
   {
-    id: 'publisher_respects_daily_remaining_quota',
+    id: 'publisher_respects_cumulative_slot_quota',
     weight: 6,
     passed: /normalizeDailyPostTarget/.test(source.publisher) &&
-      /remainingToday/.test(source.publisher) &&
+      /calculateBlogPublishSlotQuota/.test(source.publisher) &&
+      /remainingDueNow/.test(source.publisher) &&
       /claim_queue_items/.test(source.publisher) &&
-      (
-        /Math\.min\(MAX_BATCH,\s*remainingToday\)/.test(source.publisher) ||
-        (/publishedThisRun\s*>=\s*remainingToday/.test(source.publisher) &&
-          /MAX_CANDIDATE_POOL/.test(source.publisher))
-      ),
+      /publishedThisRun\s*>=\s*remainingDueNow/.test(source.publisher) &&
+      /remainingAfterRun:\s*Math\.max\(0,\s*remainingDueNow\s*-\s*publishedCount\)/.test(source.publisher) &&
+      /MAX_CANDIDATE_POOL/.test(source.publisher),
     evidence: files.publisher,
+    remediation: 'Limit each run to the cumulative KST slot quota and report both due-now and daily remainder.',
   },
   {
-    id: 'daily_summary_alerts_when_under_3_posts',
+    id: 'daily_summary_alerts_when_under_configured_target',
     weight: 6,
-    passed: /published.*<\s*3|min.*3|daily.*quota/i.test(source.dailySummary),
+    passed: /normalizeDailyPostTarget/.test(source.dailySummary) &&
+      /under_daily_target:\s*\(pubRes\.count\s*\|\|\s*0\)\s*<\s*dailyTarget/.test(source.dailySummary) &&
+      /if\s*\(summary\.under_daily_target\)/.test(source.dailySummary),
     evidence: files.dailySummary,
-    remediation: 'Daily summary must alert or queue repair if yesterday published fewer than 3 posts.',
+    remediation: 'Alert and trigger recovery whenever the configured five-post daily target is missed.',
   },
   {
     id: 'blog_learning_consumes_editorial_and_funnel_failures',
