@@ -1,5 +1,6 @@
 import type { BlogInformationIntent, BlogInformationSourcePolicy } from './blog-information-contract';
 import {
+  extractMonthlyClimateCompositeValue,
   isOfficialInformationAuthority,
   isPrimaryInformationAuthority,
   validateBlogInformationResearchBundle,
@@ -221,6 +222,35 @@ function sourceDomain(source: BlogInformationResearchBundle['sources'][number]):
   }
 }
 
+function normalizeMonthlyClimateCompositeBundle(
+  bundle: BlogInformationResearchBundle,
+): BlogInformationResearchBundle {
+  const evidence = bundle.evidence.map((item) => {
+    if (item.claimType !== 'climate') return item;
+    const composite = extractMonthlyClimateCompositeValue(item.excerpt ?? '');
+    if (!composite) return item;
+    return {
+      ...item,
+      scope: {
+        ...item.scope,
+        normalizedValue: composite.normalizedValue,
+        unit: composite.unit,
+        currency: composite.currency,
+      },
+    };
+  });
+  const claims = bundle.claims.map((claim) => {
+    if (claim.claimType !== 'climate') return claim;
+    const composite = extractMonthlyClimateCompositeValue(claim.claimText);
+    if (!composite) return claim;
+    return {
+      ...claim,
+      extractedValue: composite,
+    };
+  });
+  return { ...bundle, evidence, claims };
+}
+
 export function evaluateBlogGenerationResearchReadiness(input: {
   meta: unknown;
   expectedContentKey: string;
@@ -230,7 +260,8 @@ export function evaluateBlogGenerationResearchReadiness(input: {
   sourcePolicy: BlogInformationSourcePolicy;
   now?: Date;
 }): BlogGenerationResearchReadiness {
-  const bundle = readBlogInformationResearchBundle(input.meta);
+  const rawBundle = readBlogInformationResearchBundle(input.meta);
+  const bundle = rawBundle ? normalizeMonthlyClimateCompositeBundle(rawBundle) : null;
   const issues: string[] = [];
   if (!bundle) issues.push('research_bundle_missing_or_invalid_shape');
 

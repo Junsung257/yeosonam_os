@@ -363,6 +363,16 @@ describe('blog generation research preflight', () => {
       supportedClaimCount: 12,
       distinctNormalizedValueCount: 12,
     });
+    expect(complete.bundle?.evidence[0]?.scope).toMatchObject({
+      normalizedValue: '29.0|24.0|100.0|18.0',
+      unit: '월별 기후 지표',
+      currency: null,
+    });
+    expect(complete.bundle?.claims[0]?.extractedValue).toEqual({
+      normalizedValue: '29.0|24.0|100.0|18.0',
+      unit: '월별 기후 지표',
+      currency: null,
+    });
   });
 
   it('repairs the final weather article with one verified 12-month table', () => {
