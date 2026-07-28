@@ -273,7 +273,7 @@ async function main() {
       .limit(1000),
     supabase
       .from('blog_topic_queue')
-      .select('id, product_id, destination, angle_type, topic, source, priority, target_publish_at, primary_keyword, category, meta')
+      .select('id, product_id, content_creative_id, destination, angle_type, topic, source, priority, created_at, updated_at, target_publish_at, primary_keyword, category, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
     supabase

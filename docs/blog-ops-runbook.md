@@ -411,6 +411,7 @@ npm run run:blog-indexing-worker -- --json --limit=15
   - `npx vitest run src/lib/blog-indexing-coverage.test.ts src/lib/blog-indexing-worker.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-seo-scorer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-topic-fit-gate.test.ts` passed;
   - `npm run diagnose:blog-autopublish -- --json` reported selected-day publish `4/4`, `indexing_outbox_coverage.coverage_rate=100`, and `buckets=[]`.
 - If `diagnose:blog-autopublish` reports `publishability.next_action="quarantine_duplicates"` or `duplicate_candidate_count > 0`, run `npm run cleanup:blog-publishable-duplicates -- --json`, then apply with `--write` when `write_recommended=true`. This only skips duplicate active candidates; it does not delete queue history.
+- Before applying that cleanup, verify that `duplicate_keep_id` points to a valid atomic quality-upgrade row when a normal refill and a published upgrade share a dedup key. The cleanup contract protects a complete `replace_published_after_quality_gate` request and skips the refill; a malformed upgrade without `content_creative_id` remains quarantinable.
 
 ## 2026-07-03 Publish Preflight Evidence
 
