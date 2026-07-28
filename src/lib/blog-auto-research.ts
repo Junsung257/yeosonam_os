@@ -28,6 +28,7 @@ import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   evaluateBlogGenerationResearchReadiness,
 } from '@/lib/blog-generation-research';
+import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const AUTO_RESEARCH_MODEL = process.env.BLOG_RESEARCH_MODEL?.trim() || 'gemini-2.5-flash';
@@ -2474,10 +2475,12 @@ async function loadOfficialRegistry(
   if (documentError) throw new Error(`blog_auto_research_documents:${documentError.message}`);
   const urlsByRegistryId = new Map<string, string[]>();
   for (const row of documentRows ?? []) {
-    const destinations = Array.isArray(row.destinations)
-      ? row.destinations.map((value: unknown) => clean(value))
-      : [];
-    if (destinations.length > 0 && !destinations.includes(clean(destination))) continue;
+    if (!matchesBlogResearchDestinationScope({
+      destination,
+      scopes: row.destinations,
+    })) {
+      continue;
+    }
     const registryId = String(row.official_source_registry_id);
     urlsByRegistryId.set(registryId, [
       ...(urlsByRegistryId.get(registryId) ?? []),
