@@ -12,6 +12,7 @@ describe('blog search data and published quality recovery contract', () => {
 
     expect(gsc).toContain('handlerTimeoutMs: 285_000');
     expect(rank).toContain('handlerTimeoutMs: 285_000');
+    expect(rank).toContain('buildBlogGscQueryRankHistoryRows(metrics, dateStr)');
     expect(serp).toContain('handlerTimeoutMs: 55_000');
   });
 
@@ -33,10 +34,13 @@ describe('blog search data and published quality recovery contract', () => {
     const workflow = source('.github/workflows/blog-external-cron.yml');
 
     expect(route).toContain('const MAX_BATCH = 2');
+    expect(route).toContain('const PERFORMANCE_MATURITY_DAYS = 14');
+    expect(route).toContain(".in('source', ['gsc', 'gsc-page'])");
     expect(route).toContain('generation_meta,published_at');
     expect(route).toContain('!hasVerifiedResearch(post.generation_meta)');
+    expect(route).toContain('publishedAt <= performanceMaturityCutoff');
     expect(route).toContain('evaluatePublishedBlogQualityUpgradeCandidate(post)');
-    expect(route).toContain("selectionSource = zeroClickSet.has(slug) ? 'zero_click' : 'quality_gap'");
+    expect(route).toContain("selectionSource = matureZeroClickSet.has(slug) ? 'zero_click' : 'quality_gap'");
     expect(route).toContain('representative_conflict');
     expect(route).toContain('atomic_publish_replace: true');
     expect(route).not.toContain("message: 'rank_history 데이터 없음'");

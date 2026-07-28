@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchBlogSearchMetrics, isGSCConfigured, extractSlugFromUrl } from '@/lib/gsc-client';
+import { fetchBlogSearchMetrics, isGSCConfigured } from '@/lib/gsc-client';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { expandGscLongtailTopics } from '@/lib/blog-longtail-expander';
+import { buildBlogGscQueryRankHistoryRows } from '@/lib/blog-gsc-rank-history-rows';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -75,23 +76,7 @@ async function runRankTracking(request: NextRequest) {
   }
 
   // 2) rank_history 일괄 upsert (slug 추출)
-  const rows = metrics
-    .map(m => {
-      const slug = extractSlugFromUrl(m.page);
-      if (!slug || !m.query) return null;
-      return {
-        slug,
-        query: m.query,
-        date: dateStr,
-        position: m.position,
-        impressions: m.impressions,
-        clicks: m.clicks,
-        ctr: m.ctr,
-        page_url: m.page,
-        source: 'gsc',
-      };
-    })
-    .filter(Boolean) as unknown as Array<Record<string, unknown>>;
+  const rows = buildBlogGscQueryRankHistoryRows(metrics, dateStr);
 
   let inserted = 0;
   if (rows.length > 0) {
