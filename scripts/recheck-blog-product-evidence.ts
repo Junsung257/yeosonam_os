@@ -76,7 +76,7 @@ async function loadRows(limit: number): Promise<QueueRow[]> {
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
     .select('id,product_id,topic,destination,status,attempts,priority,last_error,target_publish_at,updated_at,meta')
-    .eq('status', 'failed')
+    .in('status', ['failed', 'deferred'])
     .not('product_id', 'is', null)
     .order('updated_at', { ascending: false })
     .limit(limit);
@@ -141,6 +141,7 @@ async function main() {
   let requeue = 0;
   let duplicateSkipped = 0;
   let archivedSkipped = 0;
+  let deferredUnapproved = 0;
   let keepBlocked = 0;
   let updated = 0;
   const requeuedProductKeys = new Map<string, string>();
@@ -164,6 +165,7 @@ async function main() {
           contractOk: blogPublishable,
           blockers: blogBlockers,
           checkedAt: now,
+          productStatus,
         });
 
     const result: Record<string, unknown> = {
@@ -205,7 +207,7 @@ async function main() {
             meta,
           } as never)
           .eq('id', row.id)
-          .eq('status', 'failed');
+          .eq('status', row.status);
         if (error) {
           result.update_error = error.message;
         } else {
@@ -229,7 +231,7 @@ async function main() {
             meta: decision.meta,
           } as never)
           .eq('id', row.id)
-          .eq('status', 'failed');
+          .eq('status', row.status);
         if (error) {
           result.update_error = error.message;
         } else {
@@ -250,12 +252,34 @@ async function main() {
             meta: decision.meta,
           } as never)
           .eq('id', row.id)
-          .eq('status', 'failed');
+          .eq('status', row.status);
         if (error) {
           result.update_error = error.message;
         } else {
           updated += 1;
           result.after_status = 'skipped';
+        }
+      }
+    } else if (decision.action === 'defer_unapproved_product') {
+      deferredUnapproved += 1;
+      if (write) {
+        const { error } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'deferred',
+            attempts: 0,
+            last_error: decision.last_error,
+            target_publish_at: null,
+            updated_at: now,
+            meta: decision.meta,
+          } as never)
+          .eq('id', row.id)
+          .eq('status', row.status);
+        if (error) {
+          result.update_error = error.message;
+        } else {
+          updated += 1;
+          result.after_status = 'deferred';
         }
       }
     } else {
@@ -269,7 +293,7 @@ async function main() {
             meta: decision.meta,
           } as never)
           .eq('id', row.id)
-          .eq('status', 'failed');
+          .eq('status', row.status);
         if (error) result.update_error = error.message;
         else updated += 1;
       }
@@ -281,6 +305,7 @@ async function main() {
     requeue,
     duplicateSkipped,
     archivedSkipped,
+    deferredUnapproved,
     keepBlocked,
   });
   const report = {
@@ -290,6 +315,7 @@ async function main() {
     requeue,
     duplicate_skipped: duplicateSkipped,
     archived_skipped: archivedSkipped,
+    deferred_unapproved: deferredUnapproved,
     keep_blocked: keepBlocked,
     updated,
     ...guidance,
@@ -298,7 +324,7 @@ async function main() {
 
   if (json) console.log(JSON.stringify(report, null, 2));
   else {
-    console.log(`[blog-product-evidence-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} archived_skipped=${archivedSkipped} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
+    console.log(`[blog-product-evidence-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} archived_skipped=${archivedSkipped} deferred_unapproved=${deferredUnapproved} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
     if (guidance.write_reasons.length > 0) {
       console.log(`write_reasons=${guidance.write_reasons.join(',')}`);
     }

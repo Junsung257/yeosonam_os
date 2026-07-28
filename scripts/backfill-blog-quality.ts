@@ -1459,7 +1459,11 @@ function improveBackfillSeoTitleCustomer(title: string, row: BlogRow, primaryKey
   return `${keyword} 2026 | ${modifier}`.slice(0, 60).trim();
 }
 
-function improveBackfillSeoDescriptionCustomer(_description: string | null, row: BlogRow, primaryKeyword: string): string {
+function improveBackfillSeoDescriptionCustomer(description: string | null, row: BlogRow, primaryKeyword: string): string {
+  const current = normalizeBlogDescription(description);
+  if (current && isSeoStrongDescription(current, row, primaryKeyword)) {
+    return current;
+  }
   const keyword = primaryKeywordForCustomer({ ...row, destination: row.destination || primaryKeyword });
   const kind = topicKindForCustomer(row, keyword);
   const topic = customerTopicLabel(kind);

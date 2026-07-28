@@ -201,13 +201,12 @@ function hasHardBlockerCategory(blockers: string[], categories: string[]): boole
   return false;
 }
 
-function isRetirableLegacySeed(row: RecheckRow, blockers: string[], categories: string[]): boolean {
+function isRetirableLegacySeed(row: RecheckRow, blockers: string[]): boolean {
   const source = normalized(String(row.source ?? ''));
   const topic = normalized(String(row.topic ?? ''));
   const joined = blockers.join(' ');
   return source === 'pillar'
     && topic.includes('pillar')
-    && categories.includes('self_heal_contract')
     && /context_missing|non_retryable_failure|self_heal/i.test(joined);
 }
 
@@ -254,7 +253,7 @@ export function buildBlogEditorialBacklogRecheckDecision(input: {
   const reasons = recoverableReasons(blockers, categories);
   const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
 
-  if (isRetirableLegacySeed(input.row, blockers, categories)) {
+  if (isRetirableLegacySeed(input.row, blockers)) {
     return {
       action: 'retire_legacy_seed',
       reasons: blockers,

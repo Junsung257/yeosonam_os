@@ -304,6 +304,30 @@ describe('blog editorial backlog recheck', () => {
     });
   });
 
+  it('retires a legacy pillar row even when its stored metadata omits the self-heal marker', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-29T00:00:00.000Z',
+      row: {
+        id: 'queue-pillar-with-narrow-metadata',
+        status: 'failed',
+        attempts: 1,
+        topic: '다낭/호이안 여행 완벽 가이드 (Pillar)',
+        destination: '다낭/호이안',
+        source: 'pillar',
+        last_error: 'context_missing',
+        meta: {
+          quarantine_reason: 'non_retryable_failure',
+        },
+      },
+    });
+
+    expect(decision.action).toBe('retire_legacy_seed');
+    expect(decision.meta).toMatchObject({
+      retired_legacy_pillar_seed: true,
+      editorial_backlog_recheck_version: 'blog-editorial-backlog-recheck-20260728',
+    });
+  });
+
   it('skips recoverable rows when an active duplicate is already available', () => {
     const decision = buildBlogEditorialBacklogRecheckDecision({
       activeDuplicateId: 'active-queue',
