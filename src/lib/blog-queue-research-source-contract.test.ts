@@ -56,6 +56,22 @@ describe('blog queue research source contract', () => {
       'hotel-1',
       'weather-2',
     ]);
+    expect(prioritizeQueuedInformationResearch(rows, ['monthly_weather']).map((row) => row.id)).toEqual([
+      'food-1',
+      'hotel-1',
+      'weather-1',
+      'weather-2',
+    ]);
+  });
+
+  it('requires intent diversity even when the total ready buffer is already full', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/blog-queue-research.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('readyIntents.size >= targetIntentDiversity');
+    expect(source).toContain('MIN_READY_INFORMATION_INTENT_DIVERSITY');
   });
 
   it('does not bulk-skip candidates that were not attempted in the research budget', () => {
