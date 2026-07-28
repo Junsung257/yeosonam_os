@@ -13,6 +13,7 @@ import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
 import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
 import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
+import { PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE } from '@/lib/blog-private-regeneration';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -733,16 +734,20 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
   const underperformers = candidates.filter((c: any) => (clickMap.get(c.slug) || 0) === 0);
   if (underperformers.length === 0) return { count: 0 };
 
-  // 14일 윈도 dedup — 같은 (destination, angle) 큐 이미 있으면 skip
+  // 14일 윈도 dedup — 동일 글의 업그레이드 큐만 중복 억제한다.
   const { data: recentQueue } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('destination, angle_type')
+    .select('content_creative_id')
     .gte('created_at', fourteenDaysAgo.toISOString());
-  const recentKeys = new Set(((recentQueue || []) as unknown as Array<Record<string, unknown>>).map(r => `${r.destination}::${r.angle_type}`));
+  const recentCreativeIds = new Set(
+    ((recentQueue || []) as Array<{ content_creative_id?: string | null }>)
+      .map(row => row.content_creative_id)
+      .filter((id): id is string => Boolean(id)),
+  );
 
-  const fresh = underperformers.filter((c: any) =>
-    !recentKeys.has(`${c.destination}::${c.angle_type}`)
-  ).slice(0, 5);  // 일일 5건 상한
+  const fresh = underperformers
+    .filter((c: any) => !recentCreativeIds.has(c.id))
+    .slice(0, 5);  // 일일 5건 상한
 
   if (fresh.length === 0) return { count: 0 };
 
@@ -750,14 +755,21 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
     topic: c.seo_title || '(제목 없음)',
     source: 'user_seed',
     priority: 85,
+    primary_keyword: c.seo_title || c.destination || c.slug,
     destination: c.destination,
     angle_type: c.angle_type,
-    category: 'travel_tips',
+    category: c.category || 'travel_tips',
+    content_creative_id: c.id,
     meta: {
       regenerated_from: c.id,
       regenerated_reason: '7일 GSC 클릭 0',
+      expected_slug: c.slug,
       original_slug: c.slug,
       original_title: c.seo_title,
+      private_regeneration: {
+        mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+        atomic_publish_replace: true,
+      },
     },
   }));
 

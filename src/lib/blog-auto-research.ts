@@ -1961,6 +1961,119 @@ export function buildWmoMonthlyWeatherPayload(
   };
 }
 
+const PAGASA_MONTHS = [
+  'JAN',
+  'FEB',
+  'MAR',
+  'APR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AUG',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DEC',
+] as const;
+
+export function buildPagasaMonthlyWeatherPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+): GroundedBlogResearchPayload | null {
+  const stationAliases: Record<string, string[]> = {
+    세부: ['세부', 'cebu', 'mactan'],
+    보홀: ['보홀', 'bohol', 'tagbilaran', 'dauis'],
+  };
+  const normalizePlace = (value: unknown): string => clean(value)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[,\s-]+/g, '');
+  const expectedAliases = new Set(
+    [destination, ...(stationAliases[destination] ?? [])].map(normalizePlace),
+  );
+  const pageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      if (!url.hostname.toLowerCase().endsWith('pagasa.dost.gov.ph')
+        || !url.pathname.toLowerCase().endsWith('.pdf')) {
+        return false;
+      }
+      const station = page.text.match(/STATION:\s*([^\r\n]+)/i)?.[1] ?? '';
+      const normalizedStation = normalizePlace(station);
+      return normalizedStation.length > 0
+        && [...expectedAliases].some((alias) =>
+          alias.length > 0
+          && (normalizedStation.includes(alias) || alias.includes(normalizedStation)));
+    } catch {
+      return false;
+    }
+  });
+  if (pageIndex < 0) return null;
+
+  const page = pages[pageIndex]!;
+  const periodMatch = page.text.match(
+    /PERIOD:\s*((?:19|20)\d{2})\s*-\s*(?:(?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\s+)?((?:19|20)\d{2})/i,
+  );
+  const periodStart = periodMatch?.[1] ?? '';
+  const periodEnd = periodMatch?.[2] ?? '';
+  if (!periodStart || !periodEnd) return null;
+
+  const rows = [...page.text.matchAll(
+    /\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{1,3}\.\d)(\d{1,2})(\d{2}\.\d)(\d{2}\.\d)(\d{2}\.\d)/g,
+  )].flatMap((match) => {
+    const monthNumber = PAGASA_MONTHS.indexOf(match[1] as typeof PAGASA_MONTHS[number]) + 1;
+    const rainfall = match[2]!;
+    const rainDays = match[3]!;
+    const maxTemp = match[4]!;
+    const minTemp = match[5]!;
+    const statement = `${periodStart}~${periodEnd} 평년값: ${monthNumber}월 최고기온 ${maxTemp}°C, 최저기온 ${minTemp}°C, 강수량 ${rainfall}mm, 강수일수 ${rainDays}일`;
+    return [{
+      monthNumber,
+      rainfall,
+      rainDays,
+      maxTemp,
+      minTemp,
+      statement,
+    }];
+  });
+  if (rows.length !== 12 || new Set(rows.map((row) => row.monthNumber)).size !== 12) return null;
+
+  const sourceKeyValue = `pagasa-climate-${normalizePlace(destination)}`;
+  return {
+    sources: [{
+      sourceKey: sourceKeyValue,
+      groundingChunkIndex: pageIndex,
+      publisher: 'PAGASA',
+      sourceType: 'meteorological_agency',
+      claimTypes: ['climate'],
+      country: '필리핀',
+      destination,
+    }],
+    evidence: rows.map((row) => ({
+      evidenceKey: `pagasa-month-${row.monthNumber}`,
+      sourceKey: sourceKeyValue,
+      excerpt: row.statement,
+      sourceLocator: `CLIMATOLOGICAL NORMALS row ${PAGASA_MONTHS[row.monthNumber - 1]}`,
+      claimType: 'climate',
+      riskLevel: 'LOW',
+      country: '필리핀',
+      destination,
+      applicableTo: `${destination} 여행자`,
+      normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+      unit: '월별 기후 지표',
+      conditions: [`${row.monthNumber}월`, `${periodStart}~${periodEnd} 평년값`],
+    })),
+    claims: rows.map((row) => ({
+      claimText: row.statement,
+      claimType: 'climate',
+      riskLevel: 'LOW',
+      evidenceKeys: [`pagasa-month-${row.monthNumber}`],
+      normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+      unit: '월별 기후 지표',
+    })),
+  };
+}
+
 function minutesBetweenScheduleTimes(start: string, end: string): number | null {
   const parse = (value: string): number | null => {
     const match = value.match(/^(\d{1,2}):(\d{2})$/);
@@ -2528,6 +2641,7 @@ export async function researchBlogInformationAutomatically(input: {
     }
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
+        ?? buildPagasaMonthlyWeatherPayload(reviewedPages, input.destination)
       : input.brief.intentType === 'hotel_areas'
         ? buildGuamHotelAreasPayload(reviewedPages, input.destination)
         : input.brief.intentType === 'currency_payment'
@@ -2535,7 +2649,7 @@ export async function researchBlogInformationAutomatically(input: {
           : null;
     if (payload) {
       finishReason = input.brief.intentType === 'monthly_weather'
-        ? 'DETERMINISTIC_WMO_CLIMATE'
+        ? 'DETERMINISTIC_OFFICIAL_CLIMATE'
         : input.brief.intentType === 'hotel_areas'
           ? 'DETERMINISTIC_GUAM_HOTEL_AREAS'
           : 'DETERMINISTIC_GUAM_CURRENCY_PAYMENT';

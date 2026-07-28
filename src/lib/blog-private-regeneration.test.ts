@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   hasPrivateBlogRegenerationIntent,
   isEligiblePrivateBlogRegenerationTarget,
+  isPublishedBlogAtomicUpgradeRequest,
   readPrivateBlogRegenerationRequest,
 } from './blog-private-regeneration';
 
@@ -27,6 +28,37 @@ describe('private blog regeneration contract', () => {
       meta: { private_regeneration: { mode: 'replace_existing_fallback_draft' } },
     })).toBeNull();
     expect(hasPrivateBlogRegenerationIntent({ meta: {} })).toBe(false);
+  });
+
+  it('accepts an explicit published replacement that preserves the canonical row', () => {
+    const request = readPrivateBlogRegenerationRequest({
+      content_creative_id: 'creative-1',
+      meta: {
+        private_regeneration: {
+          mode: 'replace_published_after_quality_gate',
+          atomic_publish_replace: true,
+        },
+      },
+    });
+    expect(request).toEqual({
+      mode: 'replace_published_after_quality_gate',
+      contentCreativeId: 'creative-1',
+    });
+    expect(isPublishedBlogAtomicUpgradeRequest(request)).toBe(true);
+    expect(isEligiblePrivateBlogRegenerationTarget({
+      id: 'creative-1',
+      channel: 'naver_blog',
+      status: 'published',
+      product_id: null,
+      generation_meta: {},
+    }, request!)).toBe(true);
+    expect(isEligiblePrivateBlogRegenerationTarget({
+      id: 'creative-1',
+      channel: 'naver_blog',
+      status: 'published',
+      product_id: 'product-1',
+      generation_meta: {},
+    }, request!)).toBe(false);
   });
 
   it('allows replacement only when the linked post is a private fallback draft', () => {

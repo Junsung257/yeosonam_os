@@ -151,6 +151,8 @@ import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
 import {
   hasPrivateBlogRegenerationIntent,
   isEligiblePrivateBlogRegenerationTarget,
+  isPublishedBlogAtomicUpgradeRequest,
+  PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
   readPrivateBlogRegenerationRequest,
 } from '@/lib/blog-private-regeneration';
 
@@ -1472,9 +1474,10 @@ async function runBlogPublisher(request: NextRequest) {
 
       const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
       if (privateRegenerationRequest) {
+        const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);
         const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
           .from('content_creatives')
-          .select('id,channel,status,generation_meta')
+          .select('id,channel,status,product_id,generation_meta')
           .eq('id', privateRegenerationRequest.contentCreativeId)
           .maybeSingle();
         if (replacementTargetError
@@ -1501,86 +1504,90 @@ async function runBlogPublisher(request: NextRequest) {
           };
         }
 
-        const contentBrief = buildQueueContentBrief(item);
-        const researchReadiness = evaluateBlogGenerationResearchReadiness({
-          meta: item.meta,
-          expectedContentKey: buildQueueSlug(item),
-          destination: item.destination,
-          intent: contentBrief.intentType,
-          locale: contentBrief.plan.locale,
-          sourcePolicy: contentBrief.sourcePolicy,
-        });
-        const researchSummary = summarizeBlogGenerationResearch(researchReadiness);
-        if (!contentBrief.passed || !researchReadiness.passed || !researchReadiness.bundle) {
-          const issues = !contentBrief.passed
-            ? contentBrief.issues.map((issue) => `brief:${issue}`)
-            : researchReadiness.issues;
-          const reason = `private_regeneration_research_preflight:${issues.slice(0, 8).join(',')}`;
-          await supabaseAdmin.from('blog_topic_queue').update({
-            status: 'skipped',
-            last_error: reason,
-            meta: {
-              ...(item.meta || {}),
-              self_heal_blocked: true,
-              research_preflight: researchSummary,
-            },
-          }).eq('id', privateQueueId);
-          return {
-            ok: false,
-            processed: 0,
-            published: 0,
-            targetedPrivateRegeneration: true,
-            reason,
-            researchPreflight: researchSummary,
-            results,
-            errors: [reason],
-          };
-        }
-
-        try {
-          await persistBlogInformationResearch({
-            ...researchReadiness.bundle,
-            creativeId: privateRegenerationRequest.contentCreativeId,
-            tenantId: item.tenant_id ?? researchReadiness.bundle.tenantId ?? null,
+        if (!publishedAtomicUpgrade) {
+          const contentBrief = buildQueueContentBrief(item);
+          const researchReadiness = evaluateBlogGenerationResearchReadiness({
+            meta: item.meta,
+            expectedContentKey: buildQueueSlug(item),
+            destination: item.destination,
+            intent: contentBrief.intentType,
+            locale: contentBrief.plan.locale,
+            sourcePolicy: contentBrief.sourcePolicy,
           });
-          await markBlogInformationResearchClaimsSupported({
-            contentKey: researchReadiness.bundle.contentKey,
-            claimFingerprints: researchReadiness.bundle.claims.map(
-              (claim) => claim.claimFingerprint,
-            ),
-          });
-        } catch (error) {
-          const persistenceIssue = error instanceof Error ? error.message : String(error);
-          const reason = `private_regeneration_research_persistence:${persistenceIssue}`;
-          await supabaseAdmin.from('blog_topic_queue').update({
-            status: 'skipped',
-            last_error: reason,
-            meta: {
-              ...(item.meta || {}),
-              self_heal_blocked: true,
-              research_preflight: {
-                ...researchSummary,
-                persistence_passed: false,
+          const researchSummary = summarizeBlogGenerationResearch(researchReadiness);
+          if (!contentBrief.passed || !researchReadiness.passed || !researchReadiness.bundle) {
+            const issues = !contentBrief.passed
+              ? contentBrief.issues.map((issue) => `brief:${issue}`)
+              : researchReadiness.issues;
+            const reason = `private_regeneration_research_preflight:${issues.slice(0, 8).join(',')}`;
+            await supabaseAdmin.from('blog_topic_queue').update({
+              status: 'skipped',
+              last_error: reason,
+              meta: {
+                ...(item.meta || {}),
+                self_heal_blocked: true,
+                research_preflight: researchSummary,
               },
-            },
-          }).eq('id', privateQueueId);
-          return {
-            ok: false,
-            processed: 0,
-            published: 0,
-            targetedPrivateRegeneration: true,
-            reason,
-            researchPreflight: researchSummary,
-            results,
-            errors: [reason],
-          };
+            }).eq('id', privateQueueId);
+            return {
+              ok: false,
+              processed: 0,
+              published: 0,
+              targetedPrivateRegeneration: true,
+              reason,
+              researchPreflight: researchSummary,
+              results,
+              errors: [reason],
+            };
+          }
+
+          try {
+            await persistBlogInformationResearch({
+              ...researchReadiness.bundle,
+              creativeId: privateRegenerationRequest.contentCreativeId,
+              tenantId: item.tenant_id ?? researchReadiness.bundle.tenantId ?? null,
+            });
+            await markBlogInformationResearchClaimsSupported({
+              contentKey: researchReadiness.bundle.contentKey,
+              claimFingerprints: researchReadiness.bundle.claims.map(
+                (claim) => claim.claimFingerprint,
+              ),
+            });
+          } catch (error) {
+            const persistenceIssue = error instanceof Error ? error.message : String(error);
+            const reason = `private_regeneration_research_persistence:${persistenceIssue}`;
+            await supabaseAdmin.from('blog_topic_queue').update({
+              status: 'skipped',
+              last_error: reason,
+              meta: {
+                ...(item.meta || {}),
+                self_heal_blocked: true,
+                research_preflight: {
+                  ...researchSummary,
+                  persistence_passed: false,
+                },
+              },
+            }).eq('id', privateQueueId);
+            return {
+              ok: false,
+              processed: 0,
+              published: 0,
+              targetedPrivateRegeneration: true,
+              reason,
+              researchPreflight: researchSummary,
+              results,
+              errors: [reason],
+            };
+          }
         }
       }
 
       const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
       const targetedAttempts = 1;
       results.push(result);
-      const completedPrivately = result.status === 'pending_review' || result.status === 'done';
+      const completedPrivately = result.status === 'pending_review'
+        || result.status === 'done'
+        || result.status === 'upgraded';
       return {
         ok: completedPrivately,
         processed: 1,
@@ -1680,13 +1687,52 @@ async function runBlogPublisher(request: NextRequest) {
     const remainingDueNow = slotQuota.remainingDueNow;
     if (remainingDueNow <= 0) {
       const dailyQuotaReached = slotQuota.remainingDaily <= 0;
+      let atomicUpgradeResult: Awaited<ReturnType<typeof processQueueItem>> | null = null;
+      if (dailyQuotaReached && canStartPublisherQueueItem({
+        source: 'quality_upgrade',
+        meta: {
+          private_regeneration: {
+            mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+            atomic_publish_replace: true,
+          },
+        },
+      }, publisherRemainingMs(startTime))) {
+        const { data: atomicUpgrade, error: atomicUpgradeError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .select('*')
+          .eq('status', 'queued')
+          .lte('target_publish_at', new Date().toISOString())
+          .contains('meta', {
+            private_regeneration: {
+              mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
+              atomic_publish_replace: true,
+            },
+          })
+          .order('priority', { ascending: false })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (atomicUpgradeError) {
+          errors.push(`atomic_quality_upgrade_lookup_failed:${atomicUpgradeError.message}`);
+        } else if (atomicUpgrade) {
+          atomicUpgradeResult = await processQueueItem(
+            atomicUpgrade,
+            new Map(),
+            { startedAtMs: startTime },
+          );
+        }
+      }
       return {
-        processed: 0,
+        processed: atomicUpgradeResult ? 1 : 0,
         published: 0,
-        skipped: true,
-        reason: dailyQuotaReached
-          ? 'daily_publish_quota_reached'
+        upgraded: atomicUpgradeResult?.status === 'upgraded' ? 1 : 0,
+        skipped: atomicUpgradeResult === null,
+        reason: atomicUpgradeResult
+          ? 'daily_publish_quota_reached_atomic_upgrade_processed'
+          : dailyQuotaReached
+            ? 'daily_publish_quota_reached'
           : 'scheduled_publish_window_not_due',
+        ...(atomicUpgradeResult ? { results: [atomicUpgradeResult] } : {}),
         dailyQuota: {
           day: todayQuota.dayKey,
           target: targetPostsToday,
@@ -2257,8 +2303,10 @@ async function processQueueItem(
 
     const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
     const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
+    const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);
     let privateReplacementDraftId: string | null = null;
     let privateReplacementAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
+    let originalPublishedAt: string | null = null;
     if (privateRegenerationIntent && !privateRegenerationRequest) {
       const reason = 'private_regeneration_request_invalid';
       await handleFailure(item, reason, null, true, {
@@ -2269,7 +2317,7 @@ async function processQueueItem(
     if (privateRegenerationRequest) {
       const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,channel,status,generation_meta,og_image_url,blog_html')
+        .select('id,channel,status,product_id,published_at,generation_meta,og_image_url,blog_html')
         .eq('id', privateRegenerationRequest.contentCreativeId)
         .maybeSingle();
       if (
@@ -2285,12 +2333,17 @@ async function processQueueItem(
         return { id: item.id, topic: item.topic, status: 'skipped', reason };
       }
       privateReplacementDraftId = privateRegenerationRequest.contentCreativeId;
-      privateReplacementAssets = {
-        ogImageUrl: typeof replacementTarget.og_image_url === 'string' ? replacementTarget.og_image_url : null,
-        inlineImageUrls: extractBlogInlineImageUrls(
-          typeof replacementTarget.blog_html === 'string' ? replacementTarget.blog_html : null,
-        ),
-      };
+      originalPublishedAt = typeof replacementTarget.published_at === 'string'
+        ? replacementTarget.published_at
+        : null;
+      if (!publishedAtomicUpgrade) {
+        privateReplacementAssets = {
+          ogImageUrl: typeof replacementTarget.og_image_url === 'string' ? replacementTarget.og_image_url : null,
+          inlineImageUrls: extractBlogInlineImageUrls(
+            typeof replacementTarget.blog_html === 'string' ? replacementTarget.blog_html : null,
+          ),
+        };
+      }
     }
     let queueReusableDraftId: string | null = null;
     let queueReusableAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
@@ -2318,7 +2371,7 @@ async function processQueueItem(
     }
     const replacementAssets = privateReplacementAssets ?? queueReusableAssets;
 
-    if (await isRecentInfoDuplicateCandidate(item)) {
+    if (!publishedAtomicUpgrade && await isRecentInfoDuplicateCandidate(item)) {
       const reason = `recent_info_duplicate_before_generation: 최근 14일 내 ${item.destination ?? '동일 목적지'} + ${item.angle_type ?? 'value'} 정보성 글 이미 발행됨`;
       await handleFailure(item, reason, null, false, {
         pre_generation_duplicate_check: true,
@@ -3143,17 +3196,28 @@ async function processQueueItem(
       && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
     const requiresClaimReview = blogType === 'info' && !claimValidation.passed;
     const requiresHumanReview = blogType === 'info'
-      && (privateRegenerationRequest !== null || requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
+      && ((!publishedAtomicUpgrade && privateRegenerationRequest !== null) || requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
         category: item.category ?? null,
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
       }));
+    if (publishedAtomicUpgrade && requiresHumanReview) {
+      const reason = requiresClaimReview
+        ? 'published_atomic_upgrade_claim_gate_failed'
+        : 'published_atomic_upgrade_human_review_required';
+      await handleFailure(item, reason, qa, true, {
+        published_atomic_upgrade_blocked: true,
+        preserved_published_creative_id: privateRegenerationRequest?.contentCreativeId ?? null,
+      });
+      return { id: item.id, topic: item.topic, status: 'upgrade_blocked', reason };
+    }
     if (privateRegenerationRequest) {
       generationMeta.private_regeneration = {
         mode: privateRegenerationRequest.mode,
         replaced_creative_id: privateRegenerationRequest.contentCreativeId,
-        forced_private_review: true,
+        forced_private_review: !publishedAtomicUpgrade,
+        atomic_publish_replace: publishedAtomicUpgrade,
         regenerated_at: now,
       };
     }
@@ -3191,6 +3255,9 @@ async function processQueueItem(
         };
       }
     }
+    const publicationTimestamp = publishedAtomicUpgrade && originalPublishedAt
+      ? originalPublishedAt
+      : now;
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -3202,8 +3269,12 @@ async function processQueueItem(
       category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: normalizeAngleType(item.angle_type),
-      status: contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published',
-      published_at: contentBoundary.lane === 'informational' || requiresHumanReview ? null : now,
+      status: publishedAtomicUpgrade
+        ? 'published'
+        : (contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'),
+      published_at: publishedAtomicUpgrade
+        ? publicationTimestamp
+        : (contentBoundary.lane === 'informational' || requiresHumanReview ? null : now),
       review_status: requiresHumanReview ? 'pending_review' : null,
       quality_gate: publishQuality.readingTimeMinutes == null
         ? qa
@@ -3275,7 +3346,7 @@ async function processQueueItem(
           information_claim_validation: generationMeta.information_claim_validation as Record<string, unknown>,
         },
         qualityGate: rowPayload.quality_gate as Record<string, unknown>,
-        publishedAt: now,
+        publishedAt: publicationTimestamp,
         identity: representativeIdentity,
         reservationOwner: representativeOwner,
       });
@@ -3389,7 +3460,7 @@ async function processQueueItem(
     return {
       id: item.id,
       topic: item.topic,
-      status: 'published',
+      status: publishedAtomicUpgrade ? 'upgraded' : 'published',
       reason: generated.slug,
       atomicIndexing: contentBoundary.lane === 'informational',
     };
@@ -3820,7 +3891,10 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     locale: contentBrief.plan.locale,
     sourcePolicy: contentBrief.sourcePolicy,
   });
-  if (!privateRegeneration && !researchReadiness.passed) {
+  const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(
+    readPrivateBlogRegenerationRequest(item),
+  );
+  if ((!privateRegeneration || publishedAtomicUpgrade) && !researchReadiness.passed) {
     const autoResearch = await researchBlogInformationAutomatically({
       contentKey: queueSlug,
       destination: item.destination,
@@ -3897,7 +3971,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   let serpBlock = '';
   let serpGapBlock = '';
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
+  const shouldAnalyzeSerp = (!privateRegeneration || publishedAtomicUpgrade) && Boolean(
     primaryKw &&
     (
       tier === 'head' ||
@@ -3980,7 +4054,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
-  if (!privateRegeneration) {
+  if (!privateRegeneration || publishedAtomicUpgrade) {
     blog_html = await maybeApplyChainOfDensity(blog_html);
   }
   const researchStructureRepair = repairBlogGenerationResearchStructure({
@@ -4028,7 +4102,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
   const destForImage = item.destination || extractDestination(item.topic);
-  if (destForImage && !privateRegeneration) {
+  if (destForImage && (!privateRegeneration || publishedAtomicUpgrade)) {
     try {
       og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,

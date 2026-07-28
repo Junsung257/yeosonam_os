@@ -329,6 +329,32 @@ describe('blog editorial backlog recheck', () => {
     });
   });
 
+  it.each([
+    'deterministic_info_fallback_not_publishable',
+    '2/20 실패: [length] 본문 2493자 — info 최소 2500자 미달 · [article_quality_v2] info_intro_intent_mismatch',
+    '2/20 실패: [intent_quality] missing:shopping_items · [image_quality] no_contextual_alt_or_caption',
+  ])('requeues current-engine generation failures once: %s', (lastError) => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      row: {
+        id: 'queue-current-engine-retry',
+        status: 'failed',
+        attempts: 2,
+        topic: '괌 여행 정보',
+        destination: '괌',
+        last_error: lastError,
+        meta: {
+          expected_slug: 'guam-current-engine-retry',
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.meta).toMatchObject({
+      editorial_backlog_recheck_result: 'requeue',
+      editorial_backlog_requeue_count: 1,
+    });
+  });
+
   it('uses product, micro-angle, slug, then topic as stable dedup keys', () => {
     expect(readBlogEditorialBacklogDedupKey({
       topic: 'fallback',

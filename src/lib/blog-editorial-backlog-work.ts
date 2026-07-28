@@ -110,7 +110,8 @@ export function categorizeEditorialBacklogBlocker(blocker: string): string {
     lower.includes('table_integrity') ||
     lower.includes('raw_directive') ||
     lower.includes('checklist_shape') ||
-    lower.includes('render_integrity')
+    lower.includes('render_integrity') ||
+    lower.includes('article_quality_v2')
   ) {
     return 'structure';
   }

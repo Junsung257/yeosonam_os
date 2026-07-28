@@ -56,6 +56,10 @@ const RECOVERABLE_PATTERNS = [
   /stale_generating/i,
   /stale_generating_or_non_retryable_failure/i,
   /intent_quality/i,
+  /length/i,
+  /article_quality_v2/i,
+  /deterministic_(?:info|fast)_fallback_not_publishable/i,
+  /deterministic_fallback_blocked/i,
   /early_strong_cta/i,
   /missing_answer_first/i,
   /unsupported_yeosonam_data/i,
@@ -86,6 +90,7 @@ const RECOVERABLE_PATTERNS = [
 
 const RECOVERABLE_IMAGE_PATTERNS = [
   /image_count_below_minimum/i,
+  /no_contextual_alt_or_caption/i,
 ];
 
 const IMAGE_CATEGORY_MARKER_PATTERNS = [
@@ -97,7 +102,6 @@ const HARD_IMAGE_PATTERNS = [
   /generic_alt/i,
   /malformed_image_url/i,
   /duplicate_image_url/i,
-  /no_contextual_alt_or_caption/i,
   /broken_image/i,
   /image_url/i,
 ];

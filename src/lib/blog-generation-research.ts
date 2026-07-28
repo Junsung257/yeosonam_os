@@ -19,7 +19,7 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
   airport_transport: { price: 2, duration: 2 },
   hotel_areas: { price: 3, factual: 3 },
   family_budget: { price: 4 },
-  itinerary: { duration: 2 },
+  itinerary: { duration: 1, factual: 2 },
   shopping_souvenirs: { price: 3, factual: 2 },
   currency_payment: { currency: 1, factual: 3 },
   entry_requirements: { entry_visa: 2, policy: 2 },
@@ -65,7 +65,10 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
   itinerary: [
     { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
     { key: 'attraction', pattern: /수족관|언더워터|박물관|해변|비치|야시장|관광|명소|aquarium|museum|beach|attraction/ },
-    { key: 'route_duration', pattern: /(?:공항|투몬|하갓냐|kmart|giaa|tumon|hagatna)[^\n]{0,100}(?:\d+\s*(?:분|시간)|\d+\s*(?:minutes?|hours?))/ },
+    {
+      key: 'route_duration',
+      pattern: /(?:공항|에서|부터|까지|이동|주행|airport|drive|ride|route|panglao|carmen|tumon|hagatna|kmart|giaa)[^\n]{0,120}\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/,
+    },
   ],
   shopping_souvenirs: [
     { key: 'souvenir_product', pattern: /기념품|선물|괌\s*(?:제품|상품)|메이드\s*인\s*괌|souvenir|gift|made\s*in\s*guam|magnet|mug|cookie/ },
