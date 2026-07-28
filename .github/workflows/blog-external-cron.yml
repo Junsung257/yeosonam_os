@@ -4,14 +4,22 @@ on:
   schedule:
     # KST 06:10, retry the primary trend miner before queue preparation.
     - cron: '10 21 * * *'
+    # KST 06:40, retry Naver/Serp rank snapshots independently of Vercel Cron.
+    - cron: '40 21 * * *'
     # KST 08:50, prepare researched candidates before the first publisher slot.
     - cron: '50 23 * * *'
+    # KST 11:40, retry GSC page metrics and indexing inspection.
+    - cron: '40 2 * * *'
+    # KST 12:10, retry query-level GSC rank tracking.
+    - cron: '10 3 * * *'
     # KST 09:07, 12:07, 15:07, 18:07, 21:07 plus 22:07 quota catch-up.
     - cron: '7 0,3,6,9,12,13 * * *'
     # KST 09:27, 12:27, 15:27, 18:27, 21:27, 22:27.
     - cron: '27 0,3,6,9,12,13 * * *'
     # KST 22:40, final indexing drain after late publisher retries.
     - cron: '40 13 * * *'
+    # KST 21:50, seed at most two fail-closed published-article upgrades.
+    - cron: '50 12 * * *'
     # KST 22:45, after the final publisher retries and indexing worker slots.
     - cron: '45 13 * * *'
   workflow_dispatch:
@@ -27,6 +35,10 @@ on:
           - blog-indexing-worker
           - blog-daily-summary
           - trend-topic-miner
+          - serp-rank-snapshot
+          - gsc-index-rank
+          - rank-tracking
+          - blog-regenerate-zero-click
       force:
         description: Add force=true for manual publisher checks.
         required: true
@@ -70,8 +82,20 @@ jobs:
               "10 21 * * *")
                 endpoint="trend-topic-miner"
                 ;;
+              "40 21 * * *")
+                endpoint="serp-rank-snapshot"
+                ;;
+              "40 2 * * *")
+                endpoint="gsc-index-rank"
+                ;;
+              "10 3 * * *")
+                endpoint="rank-tracking"
+                ;;
               "50 23 * * *")
                 endpoint="blog-scheduler"
+                ;;
+              "50 12 * * *")
+                endpoint="blog-regenerate-zero-click"
                 ;;
               "27 0,3,6,9,12,13 * * *"|"40 13 * * *")
                 endpoint="blog-indexing-worker"
@@ -278,6 +302,14 @@ jobs:
           }
           if (data?.skipped && data?.reason === 'db_resource_saver_mode') {
             console.error('Critical blog cron was skipped by DB resource saver mode');
+            process.exit(1);
+          }
+          if (
+            ['serp-rank-snapshot', 'gsc-index-rank', 'rank-tracking'].includes(endpoint)
+            && Array.isArray(data?.errors)
+            && data.errors.length > 0
+          ) {
+            console.error(`${endpoint} reported data collection errors: ${JSON.stringify(data.errors)}`);
             process.exit(1);
           }
           if (endpoint === 'blog-publisher') {

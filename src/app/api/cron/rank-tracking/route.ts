@@ -252,4 +252,7 @@ async function runRankTracking(request: NextRequest) {
   };
 }
 
-export const GET = withCronLogging('rank-tracking', runRankTracking);
+export const GET = withCronLogging('rank-tracking', runRankTracking, {
+  handlerTimeoutMs: 285_000,
+  sideEffectTimeoutMs: 10_000,
+});

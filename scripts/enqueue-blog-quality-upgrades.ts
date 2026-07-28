@@ -3,21 +3,17 @@
 import './load-script-env';
 
 import { supabaseAdmin } from '../src/lib/supabase';
-import { buildBlogContentBrief } from '../src/lib/blog-content-brief';
 import type { BlogInformationIntent } from '../src/lib/blog-information-contract';
 import type { BlogInformationAudience } from '../src/lib/blog-information-planner';
 import {
-  buildPublishedBlogUpgradeQueueTopic,
   PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
 } from '../src/lib/blog-private-regeneration';
 import {
-  classifyBlogQualityUpgradeTopic,
   deduplicateBlogQualityUpgradeCandidates,
   matchesBlogQualityUpgradeFilter,
 } from '../src/lib/blog-quality-upgrade-selection';
-import {
-  buildBlogInformationRepresentativeKey,
-} from '../src/lib/blog-information-representative';
+import { evaluatePublishedBlogQualityUpgradeCandidate } from '../src/lib/blog-quality-upgrade-candidate';
+import { buildBlogInformationRepresentativeKey } from '../src/lib/blog-information-representative';
 
 type PublishedBlog = {
   id: string;
@@ -82,31 +78,13 @@ async function main() {
   const missingResearch = published
     .filter(post => post.slug && !hasVerifiedResearch(post.generation_meta));
   const evaluated = missingResearch.map(post => {
-    const topicDecision = classifyBlogQualityUpgradeTopic({
-      slug: post.slug,
-      seoTitle: post.seo_title,
-      category: post.category,
-    });
-    const microAngle = topicDecision.microAngle;
-    const queueTopic = buildPublishedBlogUpgradeQueueTopic(post);
-    const brief = buildBlogContentBrief({
-      topic: queueTopic,
-      destination: post.destination,
-      primaryKeyword: queueTopic,
-      category: post.category,
-      source: 'user_seed',
-      microAngle,
-      locale: 'ko-KR',
-    });
-    return { post, microAngle, brief, queueTopic, topicDecision };
+    const decision = evaluatePublishedBlogQualityUpgradeCandidate(post);
+    return { post, decision };
   });
   const eligibleCandidates = evaluated
-    .filter(({ post, brief, topicDecision }) =>
-      Boolean(post.destination?.trim())
-      && topicDecision.accepted
-      && topicDecision.expectedIntent === brief.intentType
-      && brief.passed
-      && !brief.requiresHumanReview);
+    .flatMap(({ post, decision }) => decision.accepted
+      ? [{ post, ...decision }]
+      : []);
   const candidates = eligibleCandidates
     .filter(({ post }) => !destination || post.destination === destination)
     .filter(({ brief, microAngle }) => matchesBlogQualityUpgradeFilter({
@@ -131,16 +109,7 @@ async function main() {
       representative,
     ]),
   );
-  const candidatesWithKeys = candidates.map(candidate => ({
-    ...candidate,
-    representativeKey: buildBlogInformationRepresentativeKey({
-      destinationId: candidate.brief.plan.destinationId as string,
-      intent: candidate.brief.intentType,
-      audience: candidate.brief.plan.audience,
-      locale: candidate.brief.plan.locale,
-    }),
-  }));
-  const canonicalCandidates = candidatesWithKeys.filter(({ post, representativeKey }) => {
+  const canonicalCandidates = candidates.filter(({ post, representativeKey }) => {
     const representative = representativeByIdentity.get(representativeKey);
     if (!representative) return true;
     return representative.status === 'active'
@@ -212,23 +181,9 @@ async function main() {
     inserted = data?.length ?? 0;
   }
   const rejectionReasons = evaluated
-    .filter(({ post, brief, topicDecision }) =>
-      !post.destination?.trim()
-      || !topicDecision.accepted
-      || topicDecision.expectedIntent !== brief.intentType
-      || !brief.passed
-      || brief.requiresHumanReview)
-    .reduce<Record<string, number>>((counts, { post, brief, topicDecision }) => {
-      const reason = !post.destination?.trim()
-        ? 'missing_destination'
-        : !topicDecision.accepted
-          ? topicDecision.reason
-          : topicDecision.expectedIntent !== brief.intentType
-            ? 'classified_intent_mismatch'
-            : !brief.passed
-              ? 'content_brief_failed'
-              : 'human_review_required';
-      counts[reason] = (counts[reason] ?? 0) + 1;
+    .filter(({ decision }) => !decision.accepted)
+    .reduce<Record<string, number>>((counts, { decision }) => {
+      counts[decision.reason] = (counts[decision.reason] ?? 0) + 1;
       return counts;
     }, {});
   const candidateIntentCounts = uniqueCanonicalCandidates.reduce<Record<string, number>>(
@@ -256,15 +211,11 @@ async function main() {
     inserted,
     only: only || null,
     destination: destination || null,
-    samples: selected.slice(0, 20).map(({ post, brief }) => ({
+    samples: selected.slice(0, 20).map(({ post, brief, microAngle }) => ({
       id: post.id,
       slug: post.slug,
       destination: post.destination,
-      micro_angle: classifyBlogQualityUpgradeTopic({
-        slug: post.slug,
-        seoTitle: post.seo_title,
-        category: post.category,
-      }).microAngle,
+      micro_angle: microAngle,
       intent: brief.intentType,
     })),
   }, null, 2));

@@ -106,6 +106,10 @@
       "schedule": "5 0,3,6,9,12,13 * * *"
     },
     {
+      "path": "/api/cron/blog-regenerate-zero-click",
+      "schedule": "45 12 * * *"
+    },
+    {
       "path": "/api/cron/trend-topic-miner",
       "schedule": "0 21 * * *"
     },
