@@ -327,4 +327,7 @@ async function runSerpRankSnapshot(request: NextRequest) {
   };
 }
 
-export const GET = withCronLogging('serp-rank-snapshot', runSerpRankSnapshot);
+export const GET = withCronLogging('serp-rank-snapshot', runSerpRankSnapshot, {
+  handlerTimeoutMs: 55_000,
+  sideEffectTimeoutMs: 5_000,
+});

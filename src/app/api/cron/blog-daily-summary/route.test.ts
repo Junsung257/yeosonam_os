@@ -64,10 +64,14 @@ describe('blog daily summary report day', () => {
     expect(workflowDoc.jobs.trigger['timeout-minutes']).toBe(45);
     expect(workflowDoc.on.schedule.map(item => item.cron)).toEqual([
       '10 21 * * *',
+      '40 21 * * *',
       '50 23 * * *',
+      '40 2 * * *',
+      '10 3 * * *',
       '7 0,3,6,9,12,13 * * *',
       '27 0,3,6,9,12,13 * * *',
       '40 13 * * *',
+      '50 12 * * *',
       '45 13 * * *',
     ]);
     expect((triggerStep.match(/node <<'NODE'/g) ?? []).length).toBe(3);

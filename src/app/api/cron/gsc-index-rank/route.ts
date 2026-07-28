@@ -433,4 +433,7 @@ async function runGscIndexRank(request: NextRequest) {
   };
 }
 
-export const GET = withCronLogging('gsc-index-rank', runGscIndexRank);
+export const GET = withCronLogging('gsc-index-rank', runGscIndexRank, {
+  handlerTimeoutMs: 285_000,
+  sideEffectTimeoutMs: 10_000,
+});
