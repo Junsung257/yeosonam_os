@@ -1,4 +1,5 @@
 import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
+import { PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE } from './blog-private-regeneration';
 
 export type BlogDuplicateCleanupRow = {
   id?: string | null;
@@ -8,6 +9,10 @@ export type BlogDuplicateCleanupRow = {
   status?: string | null;
   source?: string | null;
   angle_type?: string | null;
+  content_creative_id?: string | null;
+  priority?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   slug?: string | null;
   slug_hint?: string | null;
   meta?: unknown;
@@ -38,6 +43,39 @@ function isBlockedCandidate(row: BlogDuplicateCleanupRow): boolean {
     generationMeta.failure_bucket === 'product_open_contract';
 }
 
+export function isPublishedBlogQualityUpgradeCandidate(row: BlogDuplicateCleanupRow): boolean {
+  const meta = asRecord(row.meta);
+  const privateRegeneration = asRecord(meta.private_regeneration);
+  return typeof row.content_creative_id === 'string'
+    && row.content_creative_id.trim().length > 0
+    && privateRegeneration.mode === PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE
+    && privateRegeneration.atomic_publish_replace === true;
+}
+
+function candidatePreference(row: BlogDuplicateCleanupRow): [number, number, number] {
+  const createdAt = typeof row.created_at === 'string' ? Date.parse(row.created_at) : Number.NaN;
+  return [
+    isPublishedBlogQualityUpgradeCandidate(row) ? 1 : 0,
+    typeof row.priority === 'number' && Number.isFinite(row.priority) ? row.priority : 0,
+    Number.isFinite(createdAt) ? -createdAt : 0,
+  ];
+}
+
+export function compareBlogDuplicateCandidatePreference(
+  left: BlogDuplicateCleanupRow,
+  right: BlogDuplicateCleanupRow,
+): number {
+  const leftPreference = candidatePreference(left);
+  const rightPreference = candidatePreference(right);
+  for (let index = 0; index < leftPreference.length; index += 1) {
+    const leftValue = leftPreference[index]!;
+    const rightValue = rightPreference[index]!;
+    if (leftValue === rightValue) continue;
+    return rightValue - leftValue;
+  }
+  return 0;
+}
+
 export function planBlogPublishableDuplicateCleanup(input: {
   activeRows: BlogDuplicateCleanupRow[];
   recentPublishedRows?: BlogDuplicateCleanupRow[];
@@ -48,14 +86,14 @@ export function planBlogPublishableDuplicateCleanup(input: {
     if (key && !recentKeys.has(key)) recentKeys.set(key, row.id ?? null);
   }
 
-  const seen = new Map<string, string | null>();
+  const grouped = new Map<string, BlogDuplicateCleanupRow[]>();
   const actions: BlogDuplicateCleanupAction[] = [];
   for (const row of input.activeRows) {
     if (!row.id || row.source === 'pillar' || isBlockedCandidate(row)) continue;
     const key = readBlogEditorialBacklogDedupKey(row);
     if (!key) continue;
     const recentPublishedId = recentKeys.get(key);
-    if (recentKeys.has(key)) {
+    if (recentKeys.has(key) && !isPublishedBlogQualityUpgradeCandidate(row)) {
       actions.push({
         id: row.id,
         duplicate_key: key,
@@ -64,17 +102,22 @@ export function planBlogPublishableDuplicateCleanup(input: {
       });
       continue;
     }
-    const queuedKeepId = seen.get(key);
-    if (seen.has(key)) {
+    const rows = grouped.get(key) ?? [];
+    rows.push(row);
+    grouped.set(key, rows);
+  }
+
+  for (const [key, rows] of grouped) {
+    const [keep, ...duplicates] = [...rows].sort(compareBlogDuplicateCandidatePreference);
+    for (const row of duplicates) {
+      if (!row.id) continue;
       actions.push({
         id: row.id,
         duplicate_key: key,
-        duplicate_keep_id: queuedKeepId ?? null,
+        duplicate_keep_id: keep?.id ?? null,
         reason: 'queued_duplicate',
       });
-      continue;
     }
-    seen.set(key, row.id);
   }
   return actions;
 }

@@ -16,7 +16,9 @@ type QueueRow = {
   status: string | null;
   source: string | null;
   angle_type: string | null;
+  content_creative_id: string | null;
   priority: number | null;
+  created_at: string | null;
   updated_at: string | null;
   meta: unknown;
 };
@@ -49,7 +51,7 @@ function numberArg(name: string, fallback: number, max: number): number {
 async function loadActiveRows(limit: number): Promise<QueueRow[]> {
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id,product_id,topic,destination,status,source,angle_type,priority,updated_at,meta')
+    .select('id,product_id,content_creative_id,topic,destination,status,source,angle_type,priority,created_at,updated_at,meta')
     .in('status', ['queued', 'generating'])
     .order('priority', { ascending: false })
     .order('updated_at', { ascending: true })

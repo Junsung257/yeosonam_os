@@ -52,6 +52,92 @@ describe('blog publishable duplicate cleanup', () => {
     expect(actions).toEqual([]);
   });
 
+  it('keeps an atomic published upgrade ahead of a higher-priority refill candidate', () => {
+    const actions = planBlogPublishableDuplicateCleanup({
+      activeRows: [
+        {
+          id: 'refill',
+          content_creative_id: null,
+          priority: 90,
+          destination: 'Cebu',
+          meta: { micro_angle: 'weather_packing' },
+        },
+        {
+          id: 'upgrade',
+          content_creative_id: 'published-creative',
+          priority: 70,
+          destination: 'Cebu',
+          meta: {
+            micro_angle: 'weather_packing',
+            private_regeneration: {
+              mode: 'replace_published_after_quality_gate',
+              atomic_publish_replace: true,
+            },
+          },
+        },
+      ],
+    });
+
+    expect(actions).toEqual([{
+      id: 'refill',
+      duplicate_key: 'info_writer::cebu::weather_packing',
+      duplicate_keep_id: 'upgrade',
+      reason: 'queued_duplicate',
+    }]);
+  });
+
+  it('allows an atomic upgrade to overlap its published target', () => {
+    const actions = planBlogPublishableDuplicateCleanup({
+      activeRows: [{
+        id: 'upgrade',
+        content_creative_id: 'published',
+        destination: 'Cebu',
+        meta: {
+          micro_angle: 'weather_packing',
+          private_regeneration: {
+            mode: 'replace_published_after_quality_gate',
+            atomic_publish_replace: true,
+          },
+        },
+      }],
+      recentPublishedRows: [{
+        id: 'published',
+        destination: 'Cebu',
+        generation_meta: { micro_angle: 'weather_packing' },
+      }],
+    });
+
+    expect(actions).toEqual([]);
+  });
+
+  it('does not protect malformed upgrade metadata without a target creative', () => {
+    const actions = planBlogPublishableDuplicateCleanup({
+      activeRows: [{
+        id: 'malformed',
+        destination: 'Cebu',
+        meta: {
+          micro_angle: 'weather_packing',
+          private_regeneration: {
+            mode: 'replace_published_after_quality_gate',
+            atomic_publish_replace: true,
+          },
+        },
+      }],
+      recentPublishedRows: [{
+        id: 'published',
+        destination: 'Cebu',
+        generation_meta: { micro_angle: 'weather_packing' },
+      }],
+    });
+
+    expect(actions).toEqual([{
+      id: 'malformed',
+      duplicate_key: 'info_writer::cebu::weather_packing',
+      duplicate_keep_id: 'published',
+      reason: 'recent_published_duplicate',
+    }]);
+  });
+
   it('builds durable duplicate quarantine metadata', () => {
     expect(buildBlogPublishableDuplicateMeta({
       meta: { previous: true },

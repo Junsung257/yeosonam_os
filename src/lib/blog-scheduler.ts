@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  compareBlogDuplicateCandidatePreference,
+  isPublishedBlogQualityUpgradeCandidate,
+} from './blog-publishable-duplicate-cleanup';
 import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 
 type MicroAngleId =
@@ -176,6 +180,7 @@ export function buildWeatherQueueVariation(destination: string, month: number): 
 type QueueCandidateLike = {
   id?: string | null;
   product_id?: string | null;
+  content_creative_id?: string | null;
   destination?: string | null;
   primary_keyword?: string | null;
   category?: string | null;
@@ -183,6 +188,9 @@ type QueueCandidateLike = {
   topic?: string | null;
   slug?: string | null;
   source?: string | null;
+  priority?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   slug_hint?: string | null;
   generation_meta?: any;
   meta?: any;
@@ -264,7 +272,7 @@ export function countPublishableQueueCandidates(input: {
   let candidateContractBlocked = 0;
   let researchNotReady = 0;
 
-  for (const row of input.activeQueue) {
+  for (const row of [...input.activeQueue].sort(compareBlogDuplicateCandidatePreference)) {
     if (row.source === 'pillar') continue;
     if (hasProductOpenContractBlock(row)) {
       productOpenContractBlocked += 1;
@@ -284,7 +292,7 @@ export function countPublishableQueueCandidates(input: {
     }
     const key = publishableQueueKey(row);
     if (!key) continue;
-    if (recentKeys.has(key)) {
+    if (recentKeys.has(key) && !isPublishedBlogQualityUpgradeCandidate(row)) {
       blockedRecentDuplicate += 1;
       continue;
     }
@@ -324,7 +332,7 @@ async function quarantineDuplicatePublishableCandidates(input: {
 
   const seen = new Set<string>();
   const duplicateRows: Array<{ id: string; key: string; meta: Record<string, unknown> }> = [];
-  for (const row of input.activeQueue) {
+  for (const row of [...input.activeQueue].sort(compareBlogDuplicateCandidatePreference)) {
     if (
       !row.id ||
       row.source === 'pillar' ||
@@ -339,7 +347,10 @@ async function quarantineDuplicatePublishableCandidates(input: {
     const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
       ? row.meta as Record<string, unknown>
       : {};
-    if (recentKeys.has(key) || seen.has(key)) {
+    if (
+      (recentKeys.has(key) && !isPublishedBlogQualityUpgradeCandidate(row))
+      || seen.has(key)
+    ) {
       duplicateRows.push({ id: row.id, key, meta });
       continue;
     }
@@ -408,7 +419,7 @@ export async function ensureDailyPublishableQueue(opts?: {
       .limit(300),
     supabaseAdmin
       .from('blog_topic_queue')
-      .select('id, product_id, destination, angle_type, topic, source, meta')
+      .select('id, product_id, content_creative_id, destination, angle_type, topic, source, priority, created_at, updated_at, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
   ]);
