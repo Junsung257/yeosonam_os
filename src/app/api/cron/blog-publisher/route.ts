@@ -82,6 +82,7 @@ import {
 } from '@/lib/blog-informational-writer-prompt';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
+import { buildBlogInformationalSeoDescription } from '@/lib/blog-informational-seo-description';
 import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
@@ -4147,21 +4148,10 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
   const seo_title = serpData
     ? buildOptimalTitle(effectiveTopic, serpData, tier)
     : effectiveTopic.substring(0, 55);
-  // SEO 설명: 주제 기반 맞춤형 (카테고리별 템플릿 다양화)
-  const cat = (item.category || '').toLowerCase();
-  let descTemplate: string;
-  if (cat.includes('visa') || cat.includes('입국')) {
-    descTemplate = `${effectiveTopic} | 필요 서류, 비자, 면세 한도와 출발 전 공식 확인 항목을 한눈에 정리했습니다.`;
-  } else if (cat.includes('itinerary') || cat.includes('일정')) {
-    descTemplate = `${effectiveTopic} | 이동 동선, 일정별 판단 기준, 예상 경비와 출발 전 확인 항목을 정리했습니다.`;
-  } else if (cat.includes('preparation') || cat.includes('준비')) {
-    descTemplate = `${effectiveTopic} | 여행 준비물, 체크리스트, 예약 전 확인사항과 놓치기 쉬운 주의점을 정리했습니다.`;
-  } else if (cat.includes('local') || cat.includes('현지')) {
-    descTemplate = `${effectiveTopic} | 교통, 식사, 쇼핑과 현지에서 확인할 실용적인 판단 기준을 정리했습니다.`;
-  } else {
-    descTemplate = `${effectiveTopic} | 2026년 기준 비용, 일정, 준비물, 예약 전 확인할 현지 체크 포인트를 차분하게 정리했습니다.`;
-  }
-  const seo_description = descTemplate.substring(0, 160);
+  const seo_description = buildBlogInformationalSeoDescription({
+    title: effectiveTopic,
+    intent: contentBrief.intentType,
+  });
 
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
