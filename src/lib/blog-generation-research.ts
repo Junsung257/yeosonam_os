@@ -724,7 +724,7 @@ const MONTHLY_WEATHER_HEADING_VARIANTS: MonthlyWeatherHeadings[] = [
   },
   {
     essentials: '짐을 싸기 전 핵심 판단',
-    climate: '월별 최고·최저기온과 강수',
+    climate: '월별 낮·밤 기온과 강수',
     clothing: '기온대별 월별 옷차림',
     risks: '우기·건기와 출발 전 위험 확인',
     timing: '일정 유형별 추천 시기 판단',
@@ -752,7 +752,7 @@ const MONTHLY_WEATHER_HEADING_VARIANTS: MonthlyWeatherHeadings[] = [
   },
   {
     essentials: '현지 동선에 맞춘 날씨 준비',
-    climate: '1년 기후표 핵심 읽기',
+    climate: '연간 기후표 핵심 읽기',
     clothing: '월별 겹쳐 입기와 우비 준비',
     risks: '강수와 기상특보 점검',
     timing: '가족·야외 일정 추천 시기',

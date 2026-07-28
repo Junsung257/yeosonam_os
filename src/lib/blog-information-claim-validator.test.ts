@@ -366,14 +366,18 @@ describe('blog information claim validator', () => {
   });
 
   it('blocks a factual candidate that is missing from the ledger', () => {
+    const markdown = '공항에서 시내까지 약 50분이 걸립니다.';
     const report = validateBlogInformationClaims({
-      markdown: '공항에서 시내까지 약 50분이 걸립니다.',
+      markdown,
       persistedClaims: [],
       now: NOW,
     });
     expect(report.passed).toBe(false);
     expect(report.coverage).toBe(0);
-    expect(report.issues[0]?.code).toBe('unclassified_factual_candidate');
+    expect(report.issues[0]).toMatchObject({
+      code: 'unclassified_factual_candidate',
+      claimText: markdown,
+    });
   });
 
   it('blocks a ledgered factual claim without evidence', () => {
