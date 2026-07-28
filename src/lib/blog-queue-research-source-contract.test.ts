@@ -74,6 +74,18 @@ describe('blog queue research source contract', () => {
     expect(source).toContain('MIN_READY_INFORMATION_INTENT_DIVERSITY');
   });
 
+  it('researches in bounded parallel batches so the cron stays within its runtime budget', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/blog-queue-research.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('BLOG_INFORMATION_RESEARCH_CONCURRENCY = 3');
+    expect(source).toContain('await Promise.all(batch.map(async (row) =>');
+    expect(source).toContain('remainingBudget');
+    expect(source).toContain('remainingNeeded');
+  });
+
   it('does not bulk-skip candidates that were not attempted in the research budget', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'src/lib/blog-queue-research.ts'),
