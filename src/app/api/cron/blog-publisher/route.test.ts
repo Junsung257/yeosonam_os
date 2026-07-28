@@ -135,6 +135,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('published_atomic_upgrade_claim_gate_failed');
     expect(source).toContain('published_atomic_upgrade_human_review_required');
     expect(source).toContain('preserved_published_creative_id');
+    expect(source).toContain('information_claim_validation: claimValidationSummary');
     expect(source).toContain('const publicationTimestamp = publishedAtomicUpgrade && originalPublishedAt');
     expect(source).toContain("status: publishedAtomicUpgrade ? 'upgraded' : 'published'");
   });

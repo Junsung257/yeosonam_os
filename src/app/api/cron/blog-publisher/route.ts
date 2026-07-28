@@ -3201,7 +3201,7 @@ async function processQueueItem(
           }
         : undefined,
     });
-    generationMeta.information_claim_validation = {
+    const claimValidationSummary = {
       passed: claimValidation.passed,
       coverage: claimValidation.coverage,
       claim_count: claimValidation.claims.length,
@@ -3212,6 +3212,7 @@ async function processQueueItem(
       auto_regeneration_limit: 0,
       ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
     };
+    generationMeta.information_claim_validation = claimValidationSummary;
     const plannedHumanReview = generatedPlanBrief
       && typeof generatedPlanBrief === 'object'
       && !Array.isArray(generatedPlanBrief)
@@ -3231,6 +3232,7 @@ async function processQueueItem(
       await handleFailure(item, reason, qa, true, {
         published_atomic_upgrade_blocked: true,
         preserved_published_creative_id: privateRegenerationRequest?.contentCreativeId ?? null,
+        information_claim_validation: claimValidationSummary,
       });
       return { id: item.id, topic: item.topic, status: 'upgrade_blocked', reason };
     }
