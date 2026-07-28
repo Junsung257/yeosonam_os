@@ -29,8 +29,6 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
-const MIN_DAILY_SUMMARY_ALERT_POSTS = 3;
-
 async function insertDedupedBlogAlert(input: {
   severity: string;
   title: string;
@@ -123,7 +121,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
-  if (summary.under_daily_target || summary.published < MIN_DAILY_SUMMARY_ALERT_POSTS) {
+  if (summary.under_daily_target) {
     issues.push({
       code: 'daily_publish_sla_miss',
       severity: summary.published === 0 ? 'critical' : 'high',

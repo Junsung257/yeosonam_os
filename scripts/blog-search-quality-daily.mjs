@@ -32,7 +32,11 @@ const outputJson = hasFlag('--json');
 const limit = Number(argValue('--limit', full ? '0' : '30')) || 0;
 const siteLimit = Number(argValue('--site-limit', full ? '0' : '200')) || 0;
 const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
-const hardTimeoutMs = Math.max(timeoutMs + 1000, Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || String(Math.max(30000, timeoutMs * 4)))) || 0);
+const DEFAULT_HARD_TIMEOUT_MS = 180_000;
+const hardTimeoutMs = Math.max(
+  timeoutMs + 1000,
+  Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || String(DEFAULT_HARD_TIMEOUT_MS))) || 0,
+);
 const outDir = argValue('--out-dir', '.tmp') || '.tmp';
 const hasSupabaseAdminEnv = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 const editorialSource = argValue('--editorial-source', hasSupabaseAdminEnv ? 'db' : 'web') || (hasSupabaseAdminEnv ? 'db' : 'web');

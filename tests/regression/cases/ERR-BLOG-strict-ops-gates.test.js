@@ -48,6 +48,30 @@ test('ERR-BLOG-strict-ops-gates: daily strict search audit forwards SEO warning 
   assert.match(source, /strict \? \['--strict-warnings'\] : \[\]/);
 });
 
+test('ERR-BLOG-strict-ops-gates: daily search audit allows measured image audit runtime', () => {
+  const source = read('scripts', 'blog-search-quality-daily.mjs');
+
+  assert.match(source, /DEFAULT_HARD_TIMEOUT_MS\s*=\s*180_000/);
+  assert.match(source, /BLOG_AUDIT_HARD_TIMEOUT_MS\s*\|\|\s*String\(DEFAULT_HARD_TIMEOUT_MS\)/);
+});
+
+test('ERR-BLOG-strict-ops-gates: revenue audit enforces the current five-slot contract', () => {
+  const source = read('scripts', 'audit-blog-revenue-funnel.mjs');
+
+  assert.match(source, /daily_publish_target_is_exactly_5/);
+  assert.match(source, /publisher_respects_cumulative_slot_quota/);
+  assert.match(source, /daily_summary_alerts_when_under_configured_target/);
+  assert.doesNotMatch(source, /daily_publish_target_clamped_to_3_4/);
+  assert.doesNotMatch(source, /daily_summary_alerts_when_under_3_posts/);
+});
+
+test('ERR-BLOG-strict-ops-gates: daily summary uses the configured target without a legacy floor', () => {
+  const source = read('src', 'app', 'api', 'cron', 'blog-daily-summary', 'route.ts');
+
+  assert.match(source, /if \(summary\.under_daily_target\)/);
+  assert.doesNotMatch(source, /MIN_DAILY_SUMMARY_ALERT_POSTS/);
+});
+
 test('ERR-BLOG-strict-ops-gates: autopublish diagnosis exposes SLA miss as a bucket', () => {
   const source = read('scripts', 'diagnose-blog-autopublish.ts');
 
