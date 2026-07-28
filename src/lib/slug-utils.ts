@@ -44,7 +44,7 @@ const ROMAN_MAP: Record<string, string> = {
   '비엔티엔': 'vientiane', '루앙프라방': 'luangprabang', '방비엥': 'vangvieng',
   // 미국/괌
   '괌': 'guam', '사이판': 'saipan', '하와이': 'hawaii',
-  '캐나다': 'canada',
+  '캐나다': 'canada', '로키산맥': 'rockies', '밴프': 'banff', '레이크 루이스': 'lake-louise',
   // 유럽
   '파리': 'paris', '런던': 'london', '로마': 'rome', '바르셀로나': 'barcelona',
   '프라하': 'prague', '부다페스트': 'budapest', '빈': 'vienna',
@@ -81,6 +81,7 @@ const TOPIC_TERM_MAP: Array<[RegExp, string]> = [
  * slug-utils SSOT — generate/route.ts 와 blog-publisher 공유.
  */
 const KNOWN_DESTINATIONS = [
+  '캐나다 로키산맥','레이크 루이스','로키산맥','밴프',
   '나트랑','다낭','호치민','하노이','푸꾸옥','달랏','하롱베이','사파',
   '오사카','도쿄','교토','후쿠오카','큐슈','북해도','삿포로','오키나와','시즈오카',
   '아소','쿠로가와','시모노세키',

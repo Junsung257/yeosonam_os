@@ -40,6 +40,9 @@ describe('blog search data and published quality recovery contract', () => {
     expect(route).toContain('!hasVerifiedResearch(post.generation_meta)');
     expect(route).toContain('publishedAt <= performanceMaturityCutoff');
     expect(route).toContain('evaluatePublishedBlogQualityUpgradeCandidate(post)');
+    expect(route).toContain('hasReviewedBlogResearchCoverage({');
+    expect(route).toContain('destination: decision.researchDestination');
+    expect(route).toContain("status: 'research_coverage_missing'");
     expect(route).toContain("selectionSource = matureZeroClickSet.has(slug) ? 'zero_click' : 'quality_gap'");
     expect(route).toContain('representative_conflict');
     expect(route).toContain('atomic_publish_replace: true');

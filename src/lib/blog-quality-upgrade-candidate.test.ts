@@ -54,4 +54,23 @@ describe('published blog quality upgrade candidate', () => {
       reason: 'missing_destination',
     });
   });
+
+  it('refines a broad stored country to the specific destination in the public topic', () => {
+    const decision = evaluatePublishedBlogQualityUpgradeCandidate({
+      id: 'post-4',
+      slug: '캐나다-로키산맥-7월-여행-렌터카-없이-대중교통',
+      seo_title: '캐나다 로키산맥 7월 여행 렌터카 없이 대중교통으로 가능할까',
+      destination: '캐나다',
+      category: 'travel_tips',
+    });
+
+    expect(decision).toMatchObject({
+      accepted: true,
+      researchDestination: '캐나다 로키산맥',
+      brief: {
+        intentType: 'airport_transport',
+        passed: true,
+      },
+    });
+  });
 });

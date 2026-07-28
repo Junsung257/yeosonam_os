@@ -7,6 +7,7 @@ import {
   type BlogQualityUpgradeTopicDecision,
 } from './blog-quality-upgrade-selection';
 import { buildBlogInformationRepresentativeKey } from './blog-information-representative';
+import { extractDestination } from './slug-utils';
 
 export interface PublishedBlogQualityUpgradeInput {
   id: string;
@@ -21,6 +22,7 @@ export type PublishedBlogQualityUpgradeDecision =
       accepted: true;
       reason: 'safe_automatic_candidate';
       queueTopic: string;
+      researchDestination: string;
       microAngle: string | null;
       brief: BlogContentBrief;
       topicDecision: BlogQualityUpgradeTopicDecision;
@@ -35,6 +37,7 @@ export type PublishedBlogQualityUpgradeDecision =
         | 'human_review_required'
         | string;
       queueTopic: string;
+      researchDestination: string;
       microAngle: string | null;
       brief: BlogContentBrief;
       topicDecision: BlogQualityUpgradeTopicDecision;
@@ -50,9 +53,15 @@ export function evaluatePublishedBlogQualityUpgradeCandidate(
     category: post.category,
   });
   const queueTopic = buildPublishedBlogUpgradeQueueTopic(post);
+  const storedDestination = post.destination?.trim() ?? '';
+  const extractedDestination = extractDestination(queueTopic).trim();
+  const researchDestination = extractedDestination.length > storedDestination.length
+    && extractedDestination.includes(storedDestination)
+    ? extractedDestination
+    : storedDestination;
   const brief = buildBlogContentBrief({
     topic: queueTopic,
-    destination: post.destination,
+    destination: researchDestination,
     primaryKeyword: queueTopic,
     category: post.category,
     source: 'user_seed',
@@ -72,6 +81,7 @@ export function evaluatePublishedBlogQualityUpgradeCandidate(
       accepted: false,
       reason,
       queueTopic,
+      researchDestination,
       microAngle: topicDecision.microAngle,
       brief,
       topicDecision,
@@ -83,6 +93,7 @@ export function evaluatePublishedBlogQualityUpgradeCandidate(
     accepted: true,
     reason,
     queueTopic,
+    researchDestination,
     microAngle: topicDecision.microAngle,
     brief,
     topicDecision,

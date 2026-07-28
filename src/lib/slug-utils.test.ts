@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { romanize, slugifyTopic } from './slug-utils';
+import { extractDestination, romanize, slugifyTopic } from './slug-utils';
 
 describe('slug-utils', () => {
   it('keeps compound destination boundaries in topic slugs', () => {
@@ -21,5 +21,10 @@ describe('slug-utils', () => {
     expect(slugifyTopic('\uD074\uB77D \uC5EC\uD589 \uC900\uBE44\uBB3C \uC644\uBCBD \uCCB4\uD06C\uB9AC\uC2A4\uD2B8')).toBe(
       'clark-preparation',
     );
+  });
+
+  it('extracts a specific Canadian Rockies scope before the broad country name', () => {
+    expect(extractDestination('캐나다 로키산맥 7월 여행 대중교통')).toBe('캐나다 로키산맥');
+    expect(romanize('캐나다 로키산맥')).toBe('canada-rockies');
   });
 });
