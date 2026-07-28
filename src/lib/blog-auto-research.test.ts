@@ -1044,6 +1044,14 @@ describe('buildWmoMonthlyWeatherPayload', () => {
     expect(payload?.claims?.[0]?.claimText).toContain(
       '1981~2010 평년값: 1월 최고기온 29°C, 최저기온 24°C, 강수량 100mm, 강수일수 18일',
     );
+    expect(payload?.evidence?.[0]).toMatchObject({
+      normalizedValue: '29|24|100|18',
+      unit: '월별 기후 지표',
+    });
+    expect(payload?.claims?.[0]).toMatchObject({
+      normalizedValue: '29|24|100|18',
+      unit: '월별 기후 지표',
+    });
     expect(payload?.claims?.[11]?.claimText).toContain('12월');
   });
 

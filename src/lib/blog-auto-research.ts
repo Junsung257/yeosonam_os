@@ -1921,6 +1921,9 @@ export function buildWmoMonthlyWeatherPayload(
     return [{
       monthNumber,
       maxTemp,
+      minTemp,
+      rainfall,
+      rainDays,
       statement,
     }];
   });
@@ -1947,8 +1950,8 @@ export function buildWmoMonthlyWeatherPayload(
       country: clean(document.city?.member?.memName) || undefined,
       destination,
       applicableTo: `${destination} 여행자`,
-      normalizedValue: row.maxTemp,
-      unit: '°C',
+      normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+      unit: '월별 기후 지표',
       conditions: [`${row.monthNumber}월`, `${periodStart}~${periodEnd} 평년값`],
     })),
     claims: rows.map((row) => ({
@@ -1956,8 +1959,8 @@ export function buildWmoMonthlyWeatherPayload(
       claimType: 'climate',
       riskLevel: 'LOW',
       evidenceKeys: [`wmo-month-${row.monthNumber}`],
-      normalizedValue: row.maxTemp,
-      unit: '°C',
+      normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+      unit: '월별 기후 지표',
     })),
   };
 }
