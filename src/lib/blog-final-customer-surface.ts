@@ -1,3 +1,5 @@
+import { repairMonthlyWeatherClothingTable } from './blog-generation-research';
+
 export interface BlogFinalCustomerSurfaceInput {
   markdown: string;
   destination?: string | null;
@@ -755,6 +757,7 @@ export function repairBlogFinalCustomerSurface(input: BlogFinalCustomerSurfaceIn
   apply('prune_low_value_overflow_sections', pruneLowValueOverflowSections(markdown));
   apply('flatten_excess_h2_headings', flattenExcessH2Headings(markdown));
   apply('separate_markdown_tables', separateMarkdownTables(markdown));
+  apply('repair_monthly_weather_clothing_table', repairMonthlyWeatherClothingTable(markdown));
   apply('repair_destination_surface', repairDestinationSurface(markdown, destination));
   apply('split_paragraph_walls', splitParagraphWalls(markdown));
   apply('dedupe_lead_sentences', dedupeLeadSentences(markdown));

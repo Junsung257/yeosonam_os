@@ -19,6 +19,7 @@ let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair'
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
 let repairBlogFinalCustomerSurface: typeof import('../src/lib/blog-final-customer-surface').repairBlogFinalCustomerSurface;
 let repairBlogEngineCategoryGaps: typeof import('../src/lib/blog-engine-category-repair').repairBlogEngineCategoryGaps;
+let repairMonthlyWeatherClothingTable: typeof import('../src/lib/blog-generation-research').repairMonthlyWeatherClothingTable;
 let canonicalizeBlogPublicLinks: typeof import('../src/lib/blog-link-surface').canonicalizeBlogPublicLinks;
 let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
@@ -37,6 +38,7 @@ async function loadLocalModules() {
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
   ({ repairBlogFinalCustomerSurface } = await import('../src/lib/blog-final-customer-surface'));
   ({ repairBlogEngineCategoryGaps } = await import('../src/lib/blog-engine-category-repair'));
+  ({ repairMonthlyWeatherClothingTable } = await import('../src/lib/blog-generation-research'));
   ({ canonicalizeBlogPublicLinks } = await import('../src/lib/blog-link-surface'));
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
@@ -1375,7 +1377,15 @@ function looksLikeGenericInfoRow(row: BlogRow, primaryKeyword?: string | null): 
 }
 
 function primaryKeywordForCustomer(row: BlogRow): string {
-  const base = (!row.product_id ? localizedMicroAngleKeyword(row) : null)
+  const contentBrief = row.generation_meta?.content_brief;
+  const storedPrimaryKeywordValue = contentBrief && typeof contentBrief === 'object'
+    ? (contentBrief as Record<string, unknown>).primary_keyword
+    : null;
+  const storedPrimaryKeyword = typeof storedPrimaryKeywordValue === 'string'
+    ? cleanTravelKeyword(storedPrimaryKeywordValue)
+    : null;
+  const base = storedPrimaryKeyword
+    || (!row.product_id ? localizedMicroAngleKeyword(row) : null)
     || inferredDestinationForCustomer(row)
     || cleanTravelKeyword(keywordFromStoredMeta(row))
     || cleanTravelKeyword(row.seo_title)
@@ -5457,6 +5467,9 @@ async function main() {
 
   for (const row of rows) {
     const originalHtml = row.blog_html || '';
+    const preservesEvidenceBackedMonthlyWeather = originalHtml.includes(
+      '<!-- blog_research_structure:monthly_weather:v2 -->',
+    );
     const repairSourceHtmlBase = removeLoneHashHeadings(stripGeneratedSeoAppendix(originalHtml));
     const originalOg = row.og_image_url?.trim() || null;
     const originalTitle = row.seo_title?.trim() || null;
@@ -6221,6 +6234,12 @@ async function main() {
       seo_title: normalizedTitle,
     }, primaryKeyword);
     nextHtml = dedupeOfficialLinksHeadingFinal(nextHtml);
+    if (preservesEvidenceBackedMonthlyWeather) {
+      nextHtml = repairMonthlyWeatherClothingTable(originalHtml).markdown;
+    }
+    const qualitySecondaryKeywords = preservesEvidenceBackedMonthlyWeather
+      ? [row.seo_title || primaryKeyword]
+      : secondaryKeywords;
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
@@ -6230,7 +6249,7 @@ async function main() {
       destination: normalizedDestinationForWrite,
       angle_type: null,
       primary_keyword: primaryKeyword,
-      secondary_keywords: secondaryKeywords,
+      secondary_keywords: qualitySecondaryKeywords,
       category: normalizedTitle,
       content_type: contentType,
       product_id: productId,
