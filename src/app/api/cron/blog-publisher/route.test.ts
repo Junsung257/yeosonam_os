@@ -255,6 +255,8 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('parseBlogInformationWriterOutput(raw)');
     expect(source).toContain('repairBlogGenerationResearchStructure({');
+    expect(source).toContain('plannedTitle: contentBrief.title');
+    expect(source).toContain('plannedTitle: finalContentBrief.title');
     expect(source).toContain('information_research_structure_repair: {');
     expect(source).toContain('const applyFinalResearchStructureRepair = (): void =>');
     expect(source).toContain("stage: 'final_quality_boundary'");

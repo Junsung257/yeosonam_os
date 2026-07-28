@@ -2746,6 +2746,7 @@ async function processQueueItem(
         markdown: generated.blog_html,
         intent: finalContentBrief.intentType,
         readiness: finalResearchReadiness,
+        plannedTitle: finalContentBrief.title,
         editorialVariation: item.meta?.editorial_variation ?? null,
       });
       if (!finalResearchRepair.changed) return;
@@ -4085,6 +4086,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     markdown: blog_html,
     intent: contentBrief.intentType,
     readiness: researchReadiness,
+    plannedTitle: contentBrief.title,
     editorialVariation: item.meta?.editorial_variation ?? null,
   });
   if (researchStructureRepair.changed) {

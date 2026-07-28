@@ -893,12 +893,14 @@ export function repairMonthlyWeatherEditorialVariation(
 
 function buildDeterministicMonthlyWeatherArticle(input: {
   originalMarkdown: string;
+  plannedTitle?: string | null;
   approvedClaims: BlogInformationResearchBundle['claims'];
   sourceLabel: string;
   sourceUrl: string;
   editorialVariation?: MonthlyWeatherEditorialVariation | null;
 }): string {
-  const title = input.originalMarkdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
+  const title = clean(input.plannedTitle)
+    || input.originalMarkdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
     || '월별 날씨와 옷차림 준비';
   const imageUrls = extractFoodBudgetImageBlocks(input.originalMarkdown)
     .slice(0, 3)
@@ -999,6 +1001,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
 
 function repairMonthlyWeatherResearchStructure(input: {
   markdown: string;
+  plannedTitle?: string | null;
   readiness: BlogGenerationResearchReadiness;
   editorialVariation?: MonthlyWeatherEditorialVariation | null;
 }): BlogGenerationResearchStructureRepair {
@@ -1047,6 +1050,7 @@ function repairMonthlyWeatherResearchStructure(input: {
     // Read the title and reusable images before replacing that block, otherwise
     // a second repair silently drops every inline image from the final article.
     originalMarkdown: input.markdown,
+    plannedTitle: input.plannedTitle,
     approvedClaims,
     sourceLabel,
     sourceUrl: source.sourceUrl,
@@ -1069,6 +1073,7 @@ export function repairBlogGenerationResearchStructure(input: {
   markdown: string;
   intent: BlogInformationIntent;
   readiness: BlogGenerationResearchReadiness;
+  plannedTitle?: string | null;
   editorialVariation?: MonthlyWeatherEditorialVariation | null;
 }): BlogGenerationResearchStructureRepair {
   const unchanged = (approvedClaims: BlogInformationResearchBundle['claims'] = []) => ({
