@@ -323,3 +323,10 @@ Last updated: 2026-07-28
 - **Root cause**: Operational policy changed without updating every source-pattern assertion and timeout budget in the aggregate audit. The image audit needs about 63 seconds against production, so the aggregate wrapper misclassified a hard timeout as a quality failure.
 - **Fix**: Align the audit with exact-five scheduler constants, `calculateBlogPublishSlotQuota()`, `remainingDueNow`, and the configured daily-summary target; remove the retired three-post floor; and use a 180-second default hard timeout for browser-backed daily checks.
 - **Verification rule**: The standalone 30-post image audit must pass at 180 seconds, the revenue-funnel audit must score 100, and `audit:blog-search-daily:strict` must finish with every required check at 100.
+
+## ERR-BLOG-weather-fleet-template-drift@2026-07-28
+
+- [x] **ERR-BLOG-weather-fleet-template-drift@2026-07-28**: Thirteen evidence-backed monthly-weather posts passed their individual 100-point gates but repeated the same opening signature and H2 order, making the public fleet look mechanically generated.
+- **Root cause**: Most rows predated editorial-variation metadata, the four-way assignment used a weak small-modulo hash, and `section_order_variant` changed labels without moving the actual sections.
+- **Fix**: Version the variation contract, use a stable SHA-256 assignment, reorder the five intact weather sections, and let the existing-post backfill migrate only evidence-safe prose and structure while preserving claims, tables, sources, images, and canonical identity.
+- **Verification rule**: The 13-destination regression fleet must use all four opening and section-order variants with no variant above five rows. Backfill write must be followed by an idempotent dry-run, public customer-quality/SEO/image audits, and fleet phrase-drift diagnosis.

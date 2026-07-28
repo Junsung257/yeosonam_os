@@ -14,6 +14,7 @@ import {
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
   repairBlogGenerationResearchStructure,
+  repairMonthlyWeatherEditorialVariation,
   summarizeBlogGenerationResearch,
 } from './blog-generation-research';
 import { validateBlogInformationStructure } from './blog-information-structure';
@@ -659,12 +660,29 @@ describe('blog generation research preflight', () => {
     });
 
     expect(temperatureFirst.markdown).not.toBe(packingFirst.markdown);
+    expect(temperatureFirst.markdown).toMatch(/괌 1~12월 날씨와 옷차림은 어떻게 달라질까요\?/);
+    expect(packingFirst.markdown).toMatch(/괌 1~12월 날씨 준비에서 빠뜨리기 쉬운 옷차림은 무엇일까요\?/);
     expect(temperatureFirst.markdown).toContain('## 먼저 확인할 핵심');
     expect(packingFirst.markdown).toContain('## 옷차림을 정하는 확인 순서');
     expect(extractBlogInformationClaims(temperatureFirst.markdown)).toHaveLength(12);
     expect(extractBlogInformationClaims(packingFirst.markdown)).toHaveLength(12);
     expect(checkHook(temperatureFirst.markdown).passed).toBe(true);
     expect(checkHook(packingFirst.markdown).passed).toBe(true);
+    expect(temperatureFirst.markdown.indexOf('## 1~12월 기온·강수·옷차림'))
+      .toBeLessThan(temperatureFirst.markdown.indexOf('## 월별 옷차림 준비표'));
+    expect(packingFirst.markdown.indexOf('## 비·바람·이상기후 대비'))
+      .toBeLessThan(packingFirst.markdown.indexOf('## 월별 기본 옷차림과 추가 준비'));
+
+    const repeated = repairMonthlyWeatherEditorialVariation(
+      packingFirst.markdown,
+      {
+        contract_version: 3,
+        opening_variant: 'packing_mistake_first',
+        section_order_variant: 'packing_then_local_risk',
+      },
+    );
+    expect(repeated.changed).toBe(false);
+    expect(repeated.markdown).toBe(packingFirst.markdown);
   });
 
   it('adds cautious area price guidance without inventing a local price delta', () => {

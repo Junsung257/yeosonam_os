@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 
 type MicroAngleId =
@@ -137,25 +138,38 @@ const WEATHER_SECTION_ORDER_VARIANTS = [
   'packing_then_local_risk',
 ] as const;
 
+const WEATHER_HEADING_COPY_VARIANTS = [
+  'core_weather_check',
+  'departure_weather_basis',
+  'packing_decision',
+  'clothing_check_order',
+  'trip_weather_decision',
+  'departure_packing_basis',
+  'route_weather_prep',
+  'forecast_prep',
+] as const;
+
+export const WEATHER_EDITORIAL_VARIATION_CONTRACT_VERSION = 3;
+
 function stableIndex(seed: string, modulo: number): number {
-  let hash = 2166136261;
-  for (const char of seed) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash >>> 0) % Math.max(1, modulo);
+  const digest = createHash('sha256').update(seed, 'utf8').digest();
+  return digest.readUInt32BE(0) % Math.max(1, modulo);
 }
 
 export function buildWeatherQueueVariation(destination: string, month: number): {
+  contract_version: number;
   reader_scenario: string;
   opening_variant: string;
   section_order_variant: string;
+  heading_copy_variant: string;
 } {
   const seed = `${destination}:${month}`;
   return {
+    contract_version: WEATHER_EDITORIAL_VARIATION_CONTRACT_VERSION,
     reader_scenario: WEATHER_READER_SCENARIOS[stableIndex(`${seed}:reader`, WEATHER_READER_SCENARIOS.length)]!,
     opening_variant: WEATHER_OPENING_VARIANTS[stableIndex(`${seed}:opening`, WEATHER_OPENING_VARIANTS.length)]!,
     section_order_variant: WEATHER_SECTION_ORDER_VARIANTS[stableIndex(`${seed}:section`, WEATHER_SECTION_ORDER_VARIANTS.length)]!,
+    heading_copy_variant: WEATHER_HEADING_COPY_VARIANTS[stableIndex(`${seed}:heading`, WEATHER_HEADING_COPY_VARIANTS.length)]!,
   };
 }
 
