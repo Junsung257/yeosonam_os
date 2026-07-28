@@ -23,6 +23,7 @@ export const dynamic = 'force-dynamic';
 
 const WINDOW_DAYS = 14;
 const COOLDOWN_DAYS = 7;
+const PERFORMANCE_MATURITY_DAYS = 14;
 const MAX_BATCH = 2;
 const CANDIDATE_POOL_LIMIT = 500;
 
@@ -93,7 +94,8 @@ async function runRegenerator(request: NextRequest) {
     const { data: rankRows, error: rankError } = await supabaseAdmin
       .from('rank_history')
       .select('slug, impressions, clicks')
-      .gte('date', since);
+      .gte('date', since)
+      .in('source', ['gsc', 'gsc-page']);
     if (rankError) errors.push(`rank_history lookup failed: ${rankError.message}`);
 
     const performance = new Map<string, { impressions: number; clicks: number }>();
@@ -128,11 +130,22 @@ async function runRegenerator(request: NextRequest) {
     if (postError) return { processed: 0, errors: [...errors, postError.message], results };
 
     const publishedPosts = (posts ?? []) as PublishedPost[];
+    const performanceMaturityCutoff = Date.now() - PERFORMANCE_MATURITY_DAYS * 86_400_000;
+    const matureZeroClickSet = new Set(
+      publishedPosts
+        .filter(post => zeroClickSet.has(post.slug))
+        .filter(post => {
+          const publishedAt = Date.parse(post.published_at ?? '');
+          return Number.isFinite(publishedAt) && publishedAt <= performanceMaturityCutoff;
+        })
+        .map(post => post.slug),
+    );
     const prioritizedPosts = publishedPosts
-      .filter(post => zeroClickSet.has(post.slug) || !hasVerifiedResearch(post.generation_meta))
+      .filter(post => matureZeroClickSet.has(post.slug) || !hasVerifiedResearch(post.generation_meta))
       .filter(post => !cooldownSet.has(post.slug))
       .sort((left, right) => {
-        const priorityDelta = Number(zeroClickSet.has(right.slug)) - Number(zeroClickSet.has(left.slug));
+        const priorityDelta = Number(matureZeroClickSet.has(right.slug))
+          - Number(matureZeroClickSet.has(left.slug));
         if (priorityDelta !== 0) return priorityDelta;
         return (left.published_at ?? '').localeCompare(right.published_at ?? '');
       });
@@ -208,7 +221,7 @@ async function runRegenerator(request: NextRequest) {
         continue;
       }
 
-      const selectionSource = zeroClickSet.has(slug) ? 'zero_click' : 'quality_gap';
+      const selectionSource = matureZeroClickSet.has(slug) ? 'zero_click' : 'quality_gap';
       const createdDayUtc = Math.floor(Date.now() / 86_400_000);
       const { data: lockRows, error: lockError } = await supabaseAdmin
         .from('blog_regenerate_log')
@@ -290,8 +303,10 @@ async function runRegenerator(request: NextRequest) {
       max_batch: MAX_BATCH,
       performance_window_days: WINDOW_DAYS,
       performance_rows: rankRows?.length ?? 0,
-      zero_click_candidates: zeroClickSlugs.length,
-      quality_gap_candidates: prioritizedPosts.filter(post => !zeroClickSet.has(post.slug)).length,
+      raw_zero_click_candidates: zeroClickSlugs.length,
+      zero_click_candidates: matureZeroClickSet.size,
+      performance_maturity_days: PERFORMANCE_MATURITY_DAYS,
+      quality_gap_candidates: prioritizedPosts.filter(post => !matureZeroClickSet.has(post.slug)).length,
       rejection_counts: rejectionCounts,
       results,
       errors,
