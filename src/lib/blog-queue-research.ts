@@ -19,6 +19,7 @@ type QueueResearchCandidate = {
 };
 
 export const MIN_READY_INFORMATION_INTENT_DIVERSITY = 5;
+export const BLOG_INFORMATION_RESEARCH_CONCURRENCY = 3;
 
 function cleanMeta(meta: unknown): Record<string, unknown> {
   return meta && typeof meta === 'object' && !Array.isArray(meta)
@@ -157,138 +158,155 @@ export async function prepareDailyInformationResearch(input: {
     readyIntents,
   );
 
-  for (const row of researchRows) {
+  let researchCursor = 0;
+  while (researchCursor < researchRows.length) {
     if (
       (readyAfter >= input.targetReady && readyIntents.size >= targetIntentDiversity)
       || researched + failedResearch >= maxResearch
     ) break;
-    const id = row.id;
-    const destination = row.destination?.trim();
-    const contentKey = expectedContentKey(row);
-    if (!id || !destination || !contentKey) continue;
-    const brief = buildQueuedInformationBrief(row);
-    try {
-      const result = await researchBlogInformationAutomatically({
-        contentKey,
-        destination,
-        locale: brief.plan.locale,
-        brief,
-      });
-      const nextMeta = cleanMeta(row.meta);
-      if (!result.passed || !result.bundle) {
-        failedResearch += 1;
-        blockedAndReplaced += 1;
-        const failureIssues = result.issues.slice(0, 12);
-        issues.push(`${id}:${failureIssues.join(',') || 'research_failed'}`);
-        await supabaseAdmin
-          .from('blog_topic_queue')
-          .update({
-            status: 'skipped',
-            last_error: 'evidence_insufficient',
-            meta: {
-              ...nextMeta,
-              evidence_insufficient: true,
-              failure_code: 'evidence_insufficient',
-              self_heal_blocked: true,
-              replacement_required: true,
-              research_issues: failureIssues,
-              research_failed_at: new Date().toISOString(),
-            },
-            updated_at: new Date().toISOString(),
-          } as never)
-          .eq('id', id)
-          .eq('status', 'queued');
-        continue;
-      }
+    const remainingBudget = maxResearch - researched - failedResearch;
+    const remainingNeeded = Math.max(
+      input.targetReady - readyAfter,
+      targetIntentDiversity - readyIntents.size,
+      1,
+    );
+    const batchSize = Math.min(
+      BLOG_INFORMATION_RESEARCH_CONCURRENCY,
+      remainingBudget,
+      remainingNeeded,
+    );
+    const batch = researchRows.slice(researchCursor, researchCursor + batchSize);
+    researchCursor += batch.length;
 
-      delete nextMeta.failure_code;
-      delete nextMeta.quarantine_reason;
-      delete nextMeta.self_heal_blocked;
-      delete nextMeta.replacement_required;
-      delete nextMeta.research_issues;
-      delete nextMeta.research_failed_at;
-      const candidateMeta = {
-        ...nextMeta,
-        [BLOG_INFORMATION_RESEARCH_META_KEY]: result.bundle,
-        evidence_insufficient: false,
-        research_preflight: {
-          passed: true,
-          model: result.model,
-          source_count: result.directSourceCount,
-          claim_count: result.bundle.claims.length,
-          checked_at: new Date().toISOString(),
-        },
-      };
-      const readiness = evaluateBlogGenerationResearchReadiness({
-        meta: candidateMeta,
-        expectedContentKey: contentKey,
-        destination,
-        intent: brief.intentType,
-        locale: brief.plan.locale,
-        sourcePolicy: brief.sourcePolicy,
-      });
-      if (!readiness.passed) {
-        failedResearch += 1;
-        blockedAndReplaced += 1;
-        issues.push(`${id}:${readiness.issues.slice(0, 12).join(',')}`);
-        await supabaseAdmin
-          .from('blog_topic_queue')
-          .update({
-            status: 'skipped',
-            last_error: 'evidence_insufficient',
-            meta: {
-              ...nextMeta,
-              evidence_insufficient: true,
-              failure_code: 'evidence_insufficient',
-              self_heal_blocked: true,
-              replacement_required: true,
-              research_issues: readiness.issues.slice(0, 12),
-              research_failed_at: new Date().toISOString(),
-            },
-            updated_at: new Date().toISOString(),
-          } as never)
-          .eq('id', id)
-          .eq('status', 'queued');
-        continue;
-      }
+    await Promise.all(batch.map(async (row) => {
+      const id = row.id;
+      const destination = row.destination?.trim();
+      const contentKey = expectedContentKey(row);
+      if (!id || !destination || !contentKey) return;
+      const brief = buildQueuedInformationBrief(row);
+      try {
+        const result = await researchBlogInformationAutomatically({
+          contentKey,
+          destination,
+          locale: brief.plan.locale,
+          brief,
+        });
+        const nextMeta = cleanMeta(row.meta);
+        if (!result.passed || !result.bundle) {
+          failedResearch += 1;
+          blockedAndReplaced += 1;
+          const failureIssues = result.issues.slice(0, 12);
+          issues.push(`${id}:${failureIssues.join(',') || 'research_failed'}`);
+          await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'skipped',
+              last_error: 'evidence_insufficient',
+              meta: {
+                ...nextMeta,
+                evidence_insufficient: true,
+                failure_code: 'evidence_insufficient',
+                self_heal_blocked: true,
+                replacement_required: true,
+                research_issues: failureIssues,
+                research_failed_at: new Date().toISOString(),
+              },
+              updated_at: new Date().toISOString(),
+            } as never)
+            .eq('id', id)
+            .eq('status', 'queued');
+          return;
+        }
 
-      const { error: updateError } = await supabaseAdmin
-        .from('blog_topic_queue')
-        .update({
-          meta: candidateMeta,
-          last_error: null,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq('id', id)
-        .eq('status', 'queued');
-      if (updateError) throw new Error(updateError.message);
-      researched += 1;
-      readyAfter += 1;
-      readyIntents.add(brief.intentType);
-    } catch (researchError) {
-      failedResearch += 1;
-      blockedAndReplaced += 1;
-      const message = researchError instanceof Error ? researchError.message : 'research_exception';
-      issues.push(`${id}:${message}`);
-      await supabaseAdmin
-        .from('blog_topic_queue')
-        .update({
-          status: 'skipped',
-          last_error: 'research_exception',
-          meta: {
-            ...cleanMeta(row.meta),
-            evidence_insufficient: true,
-            failure_code: 'research_exception',
-            self_heal_blocked: true,
-            replacement_required: true,
-            research_issues: [message],
-            research_failed_at: new Date().toISOString(),
+        delete nextMeta.failure_code;
+        delete nextMeta.quarantine_reason;
+        delete nextMeta.self_heal_blocked;
+        delete nextMeta.replacement_required;
+        delete nextMeta.research_issues;
+        delete nextMeta.research_failed_at;
+        const candidateMeta = {
+          ...nextMeta,
+          [BLOG_INFORMATION_RESEARCH_META_KEY]: result.bundle,
+          evidence_insufficient: false,
+          research_preflight: {
+            passed: true,
+            model: result.model,
+            source_count: result.directSourceCount,
+            claim_count: result.bundle.claims.length,
+            checked_at: new Date().toISOString(),
           },
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq('id', id)
-        .eq('status', 'queued');
-    }
+        };
+        const readiness = evaluateBlogGenerationResearchReadiness({
+          meta: candidateMeta,
+          expectedContentKey: contentKey,
+          destination,
+          intent: brief.intentType,
+          locale: brief.plan.locale,
+          sourcePolicy: brief.sourcePolicy,
+        });
+        if (!readiness.passed) {
+          failedResearch += 1;
+          blockedAndReplaced += 1;
+          issues.push(`${id}:${readiness.issues.slice(0, 12).join(',')}`);
+          await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'skipped',
+              last_error: 'evidence_insufficient',
+              meta: {
+                ...nextMeta,
+                evidence_insufficient: true,
+                failure_code: 'evidence_insufficient',
+                self_heal_blocked: true,
+                replacement_required: true,
+                research_issues: readiness.issues.slice(0, 12),
+                research_failed_at: new Date().toISOString(),
+              },
+              updated_at: new Date().toISOString(),
+            } as never)
+            .eq('id', id)
+            .eq('status', 'queued');
+          return;
+        }
+
+        const { error: updateError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            meta: candidateMeta,
+            last_error: null,
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq('id', id)
+          .eq('status', 'queued');
+        if (updateError) throw new Error(updateError.message);
+        researched += 1;
+        readyAfter += 1;
+        readyIntents.add(brief.intentType);
+      } catch (researchError) {
+        failedResearch += 1;
+        blockedAndReplaced += 1;
+        const message = researchError instanceof Error ? researchError.message : 'research_exception';
+        issues.push(`${id}:${message}`);
+        await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            last_error: 'research_exception',
+            meta: {
+              ...cleanMeta(row.meta),
+              evidence_insufficient: true,
+              failure_code: 'research_exception',
+              self_heal_blocked: true,
+              replacement_required: true,
+              research_issues: [message],
+              research_failed_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq('id', id)
+          .eq('status', 'queued');
+      }
+    }));
   }
 
   return {

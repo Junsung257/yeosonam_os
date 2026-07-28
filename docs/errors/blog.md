@@ -2,6 +2,13 @@
 
 Last updated: 2026-07-28
 
+## ERR-BLOG-research-scheduler-serial-timeout@2026-07-28
+
+- [x] **ERR-BLOG-research-scheduler-serial-timeout@2026-07-28**: Intent-diverse preparation correctly continued past a weather-only ready buffer, but researched candidates serially and exceeded Vercel's 180-second function limit.
+- **Root cause**: The scheduler added broader research coverage without changing the one-by-one execution model. A single invocation could make up to 12 full external research calls in series.
+- **Fix**: Research candidates now run in bounded batches of three. The scheduler recalculates remaining numeric inventory, intent diversity, and request budget after each completed batch, and leaves unattempted rows queued.
+- **Prevention**: Concurrency is an explicit exported constant with source-contract coverage. Release proof requires a protected production scheduler call to return before the function limit and runtime logs to contain no timeout.
+
 ## ERR-BLOG-weather-only-research-and-backfill-false-pass@2026-07-28
 
 - [x] **ERR-BLOG-weather-only-research-and-backfill-false-pass@2026-07-28**: Daily preparation researched only deterministic WMO weather rows, bulk-skipped other supported intents, and the legacy backfill treated some failed information contracts as publishable when its separate critical counter was zero. This could meet a five-post count with repetitive weather articles while describing unsupported legacy rewrites as minor cleanup.
