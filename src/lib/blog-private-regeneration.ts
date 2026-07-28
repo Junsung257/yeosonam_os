@@ -6,6 +6,12 @@ interface PublishedBlogUpgradeTopicInput {
   destination?: unknown;
 }
 
+interface PublishedBlogUpgradeSlugInput {
+  publishedAtomicUpgrade: boolean;
+  originalSlug?: unknown;
+  generatedSlug?: unknown;
+}
+
 function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -26,15 +32,28 @@ export function buildPublishedBlogUpgradeQueueTopic(
   const slugTopic = decodedSlug
     .replace(/[-_]+/g, ' ')
     .replace(/[|\u00b7\u2022]+/g, ' ')
+    .replace(/(?:총정리|완벽\s*(?:가이드|정리|체크리스트)|완벽한)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (slugTopic) return slugTopic;
-
   const destination = readTrimmedString(input.destination)
     .replace(/[|\u00b7\u2022]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  if (slugTopic) {
+    return /^(?:20\d{2}|\d{1,2}\s*(?:월|month))/i.test(slugTopic)
+      ? `${destination || '여행'} ${slugTopic}`
+      : slugTopic;
+  }
+
   return destination ? `${destination} 현지 여행 정보` : '해외여행 현지 정보';
+}
+
+export function preservePublishedBlogAtomicUpgradeSlug(
+  input: PublishedBlogUpgradeSlugInput,
+): string {
+  const originalSlug = readTrimmedString(input.originalSlug);
+  const generatedSlug = readTrimmedString(input.generatedSlug);
+  return input.publishedAtomicUpgrade && originalSlug ? originalSlug : generatedSlug;
 }
 
 export interface PrivateBlogRegenerationRequest {
