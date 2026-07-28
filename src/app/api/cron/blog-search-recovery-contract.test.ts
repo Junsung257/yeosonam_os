@@ -12,6 +12,7 @@ describe('blog search data and published quality recovery contract', () => {
 
     expect(gsc).toContain('handlerTimeoutMs: 285_000');
     expect(rank).toContain('handlerTimeoutMs: 285_000');
+    expect(rank).toContain('buildBlogGscQueryRankHistoryRows(metrics, dateStr)');
     expect(serp).toContain('handlerTimeoutMs: 55_000');
   });
 
