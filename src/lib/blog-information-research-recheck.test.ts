@@ -41,6 +41,36 @@ describe('blog information research backlog recheck', () => {
     expect(decision.meta.requeued_by).toBe(BLOG_INFORMATION_RESEARCH_RECHECK_VERSION);
   });
 
+  it('requeues a scheduler-quarantined research failure with durable research markers', () => {
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        status: 'skipped',
+        last_error: 'evidence_insufficient',
+        meta: {
+          micro_angle: 'airport_arrival',
+          research_failed_at: '2026-07-28T00:00:00.000Z',
+          research_issues: ['claim_type_below_minimum:price:0/2'],
+        },
+      }),
+    });
+
+    expect(decision).toMatchObject({
+      action: 'requeue',
+      intent: 'airport_transport',
+      reason: 'live_verified_research_retry',
+    });
+  });
+
+  it('does not treat a generic skipped quality row as an automatic research retry', () => {
+    expect(buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        status: 'skipped',
+        last_error: 'evidence_insufficient',
+        meta: { micro_angle: 'airport_arrival' },
+      }),
+    }).reason).toBe('not_information_research_failure');
+  });
+
   it('does not retry product rows or unsupported general topics', () => {
     expect(buildBlogInformationResearchRecheckDecision({
       row: failedResearchRow({ product_id: 'product-1' }),

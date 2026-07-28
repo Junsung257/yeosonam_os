@@ -54,7 +54,14 @@ function isResearchFailure(row: BlogInformationResearchRecheckRow): boolean {
     meta.quarantine_reason,
     meta.research_failure,
   ].filter(Boolean).join(' ');
-  return /BLOG_RESEARCH|research_(?:grounding|preflight|bundle)|evidence_insufficient:research|grounding_empty|claim_semantic_coverage_missing/i.test(joined);
+  if (/BLOG_RESEARCH|research_(?:grounding|preflight|bundle)|evidence_insufficient:research|grounding_empty|claim_semantic_coverage_missing/i.test(joined)) {
+    return true;
+  }
+  return Boolean(
+    meta.research_failed_at
+    && Array.isArray(meta.research_issues)
+    && /^(?:evidence_insufficient|research_exception)$/i.test(String(row.last_error ?? '')),
+  );
 }
 
 function clearedResearchFailureMeta(
@@ -115,7 +122,9 @@ export function buildBlogInformationResearchRecheckDecision(input: {
   });
 
   if (input.row.product_id) return blocked('product_row_excluded');
-  if (input.row.status !== 'failed') return blocked('status_not_failed');
+  if (!['failed', 'skipped'].includes(String(input.row.status ?? ''))) {
+    return blocked('status_not_research_failure_state');
+  }
   if (!input.row.destination || !input.row.topic) return blocked('research_context_missing');
   if (!AUTOMATED_RESEARCH_INTENTS.has(intent)) return blocked('intent_not_live_verified');
   if (!isResearchFailure(input.row)) return blocked('not_information_research_failure');
