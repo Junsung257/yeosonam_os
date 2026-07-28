@@ -92,10 +92,46 @@ describe('blog scheduler queue refill helpers', () => {
     const other = buildWeatherQueueVariation('오사카', 7);
 
     expect(first).toEqual(second);
+    expect(first.contract_version).toBe(3);
     expect(first.reader_scenario).toMatch(/packer|rain|walking|arrival/);
     expect(first.opening_variant).toMatch(/temperature|rain|clothing|packing/);
     expect(first.section_order_variant).toMatch(/weather|clothing|decision|packing/);
     expect(new Set([first.reader_scenario, other.reader_scenario]).size).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not collapse a destination fleet into one weather structure', () => {
+    const destinations = [
+      '런던',
+      '쿠알라룸푸르',
+      '호치민',
+      '코타키나발루',
+      '하노이',
+      '서울',
+      '오사카',
+      '파리',
+      '삿포로',
+      '도쿄',
+      '후쿠오카',
+      '오키나와',
+      '괌',
+    ];
+    const variations = destinations.map((destination) => buildWeatherQueueVariation(destination, 7));
+    const countValues = (values: string[]) => [...values.reduce((counts, value) => {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>()).values()];
+    const openingCounts = countValues(variations.map((item) => item.opening_variant));
+    const sectionCounts = countValues(variations.map((item) => item.section_order_variant));
+    const headingOrderCounts = countValues(
+      variations.map((item) => `${item.heading_copy_variant}:${item.section_order_variant}`),
+    );
+
+    expect(new Set(variations.map((item) => item.opening_variant)).size).toBe(4);
+    expect(new Set(variations.map((item) => item.section_order_variant)).size).toBe(4);
+    expect(new Set(variations.map((item) => item.heading_copy_variant)).size).toBeGreaterThanOrEqual(7);
+    expect(Math.max(...openingCounts)).toBeLessThanOrEqual(5);
+    expect(Math.max(...sectionCounts)).toBeLessThanOrEqual(5);
+    expect(Math.max(...headingOrderCounts)).toBeLessThanOrEqual(2);
   });
 
   it('counts different micro-angles for the same destination as separate publishable candidates', () => {

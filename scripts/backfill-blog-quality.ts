@@ -21,6 +21,8 @@ let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repai
 let repairBlogFinalCustomerSurface: typeof import('../src/lib/blog-final-customer-surface').repairBlogFinalCustomerSurface;
 let repairBlogEngineCategoryGaps: typeof import('../src/lib/blog-engine-category-repair').repairBlogEngineCategoryGaps;
 let repairMonthlyWeatherClothingTable: typeof import('../src/lib/blog-generation-research').repairMonthlyWeatherClothingTable;
+let repairMonthlyWeatherEditorialVariation: typeof import('../src/lib/blog-generation-research').repairMonthlyWeatherEditorialVariation;
+let buildWeatherQueueVariation: typeof import('../src/lib/blog-scheduler').buildWeatherQueueVariation;
 let canonicalizeBlogPublicLinks: typeof import('../src/lib/blog-link-surface').canonicalizeBlogPublicLinks;
 let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
@@ -39,7 +41,8 @@ async function loadLocalModules() {
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
   ({ repairBlogFinalCustomerSurface } = await import('../src/lib/blog-final-customer-surface'));
   ({ repairBlogEngineCategoryGaps } = await import('../src/lib/blog-engine-category-repair'));
-  ({ repairMonthlyWeatherClothingTable } = await import('../src/lib/blog-generation-research'));
+  ({ repairMonthlyWeatherClothingTable, repairMonthlyWeatherEditorialVariation } = await import('../src/lib/blog-generation-research'));
+  ({ buildWeatherQueueVariation } = await import('../src/lib/blog-scheduler'));
   ({ canonicalizeBlogPublicLinks } = await import('../src/lib/blog-link-surface'));
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
@@ -6248,7 +6251,28 @@ async function main() {
     }, primaryKeyword);
     nextHtml = dedupeOfficialLinksHeadingFinal(nextHtml);
     if (preservesEvidenceBackedMonthlyWeather) {
-      nextHtml = repairMonthlyWeatherClothingTable(originalHtml).markdown;
+      const storedVariation = recordValue(nextGenerationMeta.editorial_variation);
+      const storedSeasonMonth = Number(nextGenerationMeta.season_month);
+      const titleSeasonMonth = Number(
+        (originalHtml.match(/^#\s+.*?(\d{1,2})월(?:\s|$)/m)?.[1] ?? '0'),
+      );
+      const seasonMonth = storedSeasonMonth >= 1 && storedSeasonMonth <= 12
+        ? storedSeasonMonth
+        : titleSeasonMonth >= 1 && titleSeasonMonth <= 12
+          ? titleSeasonMonth
+          : 0;
+      const editorialVariation = storedVariation.contract_version === 3
+        ? storedVariation
+        : buildWeatherQueueVariation(normalizedDestinationForWrite || destination || slug, seasonMonth);
+      nextGenerationMeta = {
+        ...nextGenerationMeta,
+        editorial_variation: editorialVariation,
+      };
+      const clothingRepair = repairMonthlyWeatherClothingTable(originalHtml);
+      nextHtml = repairMonthlyWeatherEditorialVariation(
+        clothingRepair.markdown,
+        editorialVariation,
+      ).markdown;
     }
     const evidenceBackedBodyTitle = preservesEvidenceBackedMonthlyWeather
       ? originalHtml.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()

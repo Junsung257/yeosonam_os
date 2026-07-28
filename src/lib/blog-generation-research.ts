@@ -643,9 +643,11 @@ function monthlyWeatherAdjustment(month: number): string {
   ][Math.max(0, month - 1) % 4]!;
 }
 
-type MonthlyWeatherEditorialVariation = {
+export type MonthlyWeatherEditorialVariation = {
+  contract_version?: number | null;
   opening_variant?: string | null;
   section_order_variant?: string | null;
+  heading_copy_variant?: string | null;
 };
 
 function stableWeatherVariant(seed: string, modulo: number): number {
@@ -667,23 +669,23 @@ function monthlyWeatherOpening(
     .trim() || '여행지';
   const variants: Record<string, string[]> = {
     temperature_first: [
-      `${subject} 여행 준비에서 무엇을 먼저 비교해야 할까요? 이 글의 핵심 요약과 표부터 확인하세요.`,
-      '먼저 여행하는 달을 찾고, 현지 이동과 교통 일정을 포함한 체크리스트에서 필요한 항목을 골라 확인하세요.',
+      `${subject} 1~12월 날씨와 옷차림은 어떻게 달라질까요? 이 글의 기온·강수 요약과 표부터 확인하세요.`,
+      '먼저 여행하는 달을 찾고, 예상 기온과 비에 맞는 옷차림을 고른 뒤 현지 이동과 교통 일정에 필요한 항목을 확인하세요.',
       '마지막 결정은 출발 직전 공식 안내와 현지 예보로 다시 확인하세요.',
     ],
     rain_first: [
-      `${subject} 일정에 맞는 기준은 어떻게 비교해야 할까요? 월별 표의 해당 행부터 확인하세요.`,
-      '그다음 현지 이동과 교통 일정, 준비표와 위험 안내를 차례로 확인하세요.',
+      `${subject}에서 1~12월 중 비가 잦은 달과 필요한 옷차림은 무엇일까요? 월별 기온·강수 표의 해당 행부터 확인하세요.`,
+      '그다음 비 예보에 맞춘 준비물과 현지 이동·교통 일정, 위험 안내를 차례로 확인하세요.',
       '출발 직전에는 이 글의 기준과 공식 최신 안내를 함께 다시 확인하세요.',
     ],
     clothing_decision_first: [
-      `${subject} 짐을 정하기 전에 어떤 항목을 비교해야 할까요? 핵심 표와 준비표를 차례로 확인하세요.`,
-      '해당 달의 행을 기준점으로 삼고 현지 이동과 교통 일정에 맞는 항목만 골라 확인하세요.',
+      `${subject} 짐을 정하기 전에 1~12월 날씨와 옷차림 중 무엇을 비교해야 할까요? 기온·강수 표와 준비표를 차례로 확인하세요.`,
+      '해당 달의 행을 기준점으로 삼고 예상 기온과 비, 현지 이동과 교통 일정에 맞는 항목만 골라 확인하세요.',
       '현지에서 바로 필요한 항목은 마지막 체크리스트에서 다시 확인하세요.',
     ],
     packing_mistake_first: [
-      `${subject} 준비에서 무엇을 먼저 비교해야 할까요? 본문의 표와 체크리스트부터 확인하세요.`,
-      '월별 기준을 찾은 뒤 현지 이동과 교통 일정, 준비표, 위험 안내 순서로 확인하세요.',
+      `${subject} 1~12월 날씨 준비에서 빠뜨리기 쉬운 옷차림은 무엇일까요? 월별 기온·강수 표와 체크리스트부터 확인하세요.`,
+      '여행하는 달의 날씨 기준을 찾은 뒤 현지 이동과 교통 일정, 옷차림 준비표, 위험 안내 순서로 확인하세요.',
       '짐을 닫기 전에는 출발일의 공식 최신 안내를 마지막으로 확인하세요.',
     ],
   };
@@ -692,54 +694,198 @@ function monthlyWeatherOpening(
     ?? Object.values(variants)[stableWeatherVariant(title, Object.keys(variants).length)]!;
 }
 
-function monthlyWeatherHeadings(
-  title: string,
-  variation?: MonthlyWeatherEditorialVariation | null,
-): {
+type MonthlyWeatherSectionKey = 'essentials' | 'climate' | 'clothing' | 'risks' | 'timing';
+
+type MonthlyWeatherHeadings = {
   essentials: string;
   climate: string;
   clothing: string;
   risks: string;
   timing: string;
-} {
-  const variants = [
-    {
-      essentials: '먼저 확인할 핵심',
-      climate: '1~12월 기온·강수·옷차림',
-      clothing: '월별 옷차림 준비표',
-      risks: '우기·건기 및 태풍 위험 확인',
-      timing: '여행 목적별 추천 시기 확인법',
-    },
-    {
-      essentials: '출발 전에 볼 날씨 기준',
-      climate: '기온과 강수로 보는 1~12월',
-      clothing: '1~12월 옷차림 조정표',
-      risks: '비와 이상기후 위험 점검',
-      timing: '목적에 맞는 여행 시기 고르기',
-    },
-    {
-      essentials: '짐을 싸기 전 핵심 판단',
-      climate: '월별 최고·최저기온과 강수',
-      clothing: '기온대별 월별 옷차림',
-      risks: '우기·건기와 출발 전 위험 확인',
-      timing: '일정 유형별 추천 시기 판단',
-    },
-    {
-      essentials: '옷차림을 정하는 확인 순서',
-      climate: '1월부터 12월까지 기후 기준',
-      clothing: '월별 기본 옷차림과 추가 준비',
-      risks: '비·바람·이상기후 대비',
-      timing: '여행 목적과 날씨를 맞추는 법',
-    },
-  ];
-  const requested = variation?.section_order_variant?.trim() || '';
-  const namedIndex: Record<string, number> = {
+};
+
+const MONTHLY_WEATHER_HEADING_VARIANTS: MonthlyWeatherHeadings[] = [
+  {
+    essentials: '먼저 확인할 핵심',
+    climate: '1~12월 기온·강수·옷차림',
+    clothing: '월별 옷차림 준비표',
+    risks: '우기·건기 및 태풍 위험 확인',
+    timing: '여행 목적별 추천 시기 확인법',
+  },
+  {
+    essentials: '출발 전에 볼 날씨 기준',
+    climate: '기온과 강수로 보는 1~12월',
+    clothing: '1~12월 옷차림 조정표',
+    risks: '비와 이상기후 위험 점검',
+    timing: '목적에 맞는 여행 시기 고르기',
+  },
+  {
+    essentials: '짐을 싸기 전 핵심 판단',
+    climate: '월별 최고·최저기온과 강수',
+    clothing: '기온대별 월별 옷차림',
+    risks: '우기·건기와 출발 전 위험 확인',
+    timing: '일정 유형별 추천 시기 판단',
+  },
+  {
+    essentials: '옷차림을 정하는 확인 순서',
+    climate: '1월부터 12월까지 기후 기준',
+    clothing: '월별 기본 옷차림과 추가 준비',
+    risks: '비·바람·이상기후 대비',
+    timing: '여행 목적과 날씨로 추천 시기 고르기',
+  },
+  {
+    essentials: '이번 여행에 필요한 날씨 판단',
+    climate: '월별 기온과 비 자료 읽기',
+    clothing: '월별로 나누는 옷차림 기준',
+    risks: '비·바람과 기상 위험 대비',
+    timing: '활동별 추천 시기 비교',
+  },
+  {
+    essentials: '출발일 전에 정할 준비 기준',
+    climate: '한 해 기온·강수 흐름',
+    clothing: '달마다 달라지는 짐 구성',
+    risks: '우천·태풍 가능성 확인',
+    timing: '일정에 맞는 추천 시기 찾기',
+  },
+  {
+    essentials: '현지 동선에 맞춘 날씨 준비',
+    climate: '1년 기후표 핵심 읽기',
+    clothing: '월별 겹쳐 입기와 우비 준비',
+    risks: '강수와 기상특보 점검',
+    timing: '가족·야외 일정 추천 시기',
+  },
+  {
+    essentials: '예보 확인 전 준비할 항목',
+    climate: '월별 평년기온과 강수 해석',
+    clothing: '계절별 옷차림 조정',
+    risks: '갑작스러운 비와 바람 대비',
+    timing: '여행 방식별 추천 시기 선택',
+  },
+];
+
+const MONTHLY_WEATHER_SECTION_ORDERS: Record<string, MonthlyWeatherSectionKey[]> = {
+  weather_then_clothing: ['essentials', 'climate', 'clothing', 'risks', 'timing'],
+  clothing_then_rain: ['essentials', 'clothing', 'climate', 'timing', 'risks'],
+  decision_table_first: ['climate', 'essentials', 'timing', 'clothing', 'risks'],
+  packing_then_local_risk: ['essentials', 'risks', 'clothing', 'climate', 'timing'],
+};
+
+function monthlyWeatherHeadings(
+  title: string,
+  variation?: MonthlyWeatherEditorialVariation | null,
+): MonthlyWeatherHeadings {
+  const requestedOrder = variation?.section_order_variant?.trim() || '';
+  const requestedHeading = variation?.heading_copy_variant?.trim() || '';
+  const orderFallbackIndex: Record<string, number> = {
     weather_then_clothing: 0,
     clothing_then_rain: 1,
     decision_table_first: 2,
     packing_then_local_risk: 3,
   };
-  return variants[namedIndex[requested] ?? stableWeatherVariant(`${title}:headings`, variants.length)]!;
+  const headingIndex: Record<string, number> = {
+    core_weather_check: 0,
+    departure_weather_basis: 1,
+    packing_decision: 2,
+    clothing_check_order: 3,
+    trip_weather_decision: 4,
+    departure_packing_basis: 5,
+    route_weather_prep: 6,
+    forecast_prep: 7,
+  };
+  return MONTHLY_WEATHER_HEADING_VARIANTS[
+    headingIndex[requestedHeading]
+      ?? orderFallbackIndex[requestedOrder]
+      ?? stableWeatherVariant(`${title}:headings`, MONTHLY_WEATHER_HEADING_VARIANTS.length)
+  ]!;
+}
+
+function monthlyWeatherSectionKey(heading: string): MonthlyWeatherSectionKey | null {
+  for (const variant of MONTHLY_WEATHER_HEADING_VARIANTS) {
+    for (const key of Object.keys(variant) as MonthlyWeatherSectionKey[]) {
+      if (variant[key] === heading) return key;
+    }
+  }
+  return null;
+}
+
+export function repairMonthlyWeatherEditorialVariation(
+  markdown: string,
+  variation?: MonthlyWeatherEditorialVariation | null,
+): { markdown: string; changed: boolean } {
+  if (!markdown.includes(MONTHLY_WEATHER_STRUCTURE_MARKER)) {
+    return { markdown, changed: false };
+  }
+
+  const title = markdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim() || '월별 날씨와 옷차림 준비';
+  const headings = monthlyWeatherHeadings(title, variation);
+  const opening = monthlyWeatherOpening(title, variation);
+  let lines = markdown.split(/\r?\n/);
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (h1Index < 0) return { markdown, changed: false };
+
+  const firstBodyBoundary = lines.findIndex((line, index) =>
+    index > h1Index && (/^!\[[^\]]*\]\(/.test(line.trim()) || /^<figure\b/i.test(line.trim()) || /^##\s+\S/.test(line.trim())));
+  if (firstBodyBoundary < 0) return { markdown, changed: false };
+
+  lines = [
+    ...lines.slice(0, h1Index + 1),
+    '',
+    MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER,
+    ...opening,
+    '',
+    ...lines.slice(firstBodyBoundary),
+  ];
+
+  const h2Entries = lines
+    .map((line, index) => {
+      const match = line.match(/^##\s+(.+?)\s*$/);
+      return match ? { index, heading: match[1]!.trim() } : null;
+    })
+    .filter((entry): entry is { index: number; heading: string } => Boolean(entry));
+  const targetEntries = h2Entries
+    .map((entry, position) => ({
+      ...entry,
+      position,
+      key: monthlyWeatherSectionKey(entry.heading),
+    }))
+    .filter((entry): entry is typeof entry & { key: MonthlyWeatherSectionKey } => Boolean(entry.key));
+  const targetByKey = new Map(targetEntries.map((entry) => [entry.key, entry]));
+  if (targetByKey.size !== 5) {
+    const normalized = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return { markdown: normalized, changed: normalized !== markdown };
+  }
+
+  const positions = [...targetEntries].map((entry) => entry.position).sort((a, b) => a - b);
+  const targetSectionsAreContiguous = positions.every((position, index) =>
+    index === 0 || position === positions[index - 1]! + 1);
+  if (!targetSectionsAreContiguous) {
+    const normalized = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return { markdown: normalized, changed: normalized !== markdown };
+  }
+
+  const sectionMarkdown = new Map<MonthlyWeatherSectionKey, string[]>();
+  for (const entry of targetEntries) {
+    const nextH2Index = h2Entries[entry.position + 1]?.index ?? lines.length;
+    const section = lines.slice(entry.index, nextH2Index);
+    section[0] = `## ${headings[entry.key]}`;
+    sectionMarkdown.set(entry.key, section);
+  }
+
+  const firstTargetPosition = positions[0]!;
+  const lastTargetPosition = positions[positions.length - 1]!;
+  const blockStart = h2Entries[firstTargetPosition]!.index;
+  const blockEnd = h2Entries[lastTargetPosition + 1]?.index ?? lines.length;
+  const requestedOrder = variation?.section_order_variant?.trim() || '';
+  const order = MONTHLY_WEATHER_SECTION_ORDERS[requestedOrder]
+    ?? MONTHLY_WEATHER_SECTION_ORDERS.weather_then_clothing!;
+  const orderedLines = order.flatMap((key) => sectionMarkdown.get(key) ?? []);
+  const normalized = [
+    ...lines.slice(0, blockStart),
+    ...orderedLines,
+    ...lines.slice(blockEnd),
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return { markdown: normalized, changed: normalized !== markdown };
 }
 
 function buildDeterministicMonthlyWeatherArticle(input: {
@@ -769,7 +915,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
   const opening = monthlyWeatherOpening(title, input.editorialVariation);
   const headings = monthlyWeatherHeadings(title, input.editorialVariation);
 
-  return [
+  const article = [
     MONTHLY_WEATHER_STRUCTURE_MARKER,
     `# ${title}`,
     '',
@@ -845,6 +991,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '- [WMO 세계 공식 예보·기후 포털](https://worldweather.wmo.int/en/home.html)',
     MONTHLY_WEATHER_STRUCTURE_END_MARKER,
   ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return repairMonthlyWeatherEditorialVariation(article, input.editorialVariation).markdown;
 }
 
 function repairMonthlyWeatherResearchStructure(input: {
