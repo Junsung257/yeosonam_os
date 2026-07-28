@@ -142,6 +142,7 @@
     "backfill:blog-indexing-outbox": "npx tsx scripts/backfill-blog-indexing-outbox.ts",
     "recheck:blog-product-evidence": "npx tsx scripts/recheck-blog-product-evidence.ts",
     "recheck:blog-editorial-backlog": "npx tsx scripts/recheck-blog-editorial-backlog.ts",
+    "recheck:blog-information-research": "npx tsx scripts/recheck-blog-information-research.ts",
     "recheck:blog-destinationless-info": "npx tsx scripts/recheck-blog-destinationless-info.ts",
     "recheck:blog-published-info-destinations": "npx tsx scripts/recheck-blog-published-info-destinations.ts",
     "cleanup:blog-publishable-duplicates": "npx tsx scripts/cleanup-blog-publishable-duplicates.ts",

@@ -2,6 +2,14 @@
 
 Last updated: 2026-07-28
 
+## ERR-BLOG-weather-only-research-and-backfill-false-pass@2026-07-28
+
+- [x] **ERR-BLOG-weather-only-research-and-backfill-false-pass@2026-07-28**: Daily preparation researched only deterministic WMO weather rows, bulk-skipped other supported intents, and the legacy backfill treated some failed information contracts as publishable when its separate critical counter was zero. This could meet a five-post count with repetitive weather articles while describing unsupported legacy rewrites as minor cleanup.
+- **Root cause**: Research scheduling used source implementation type instead of supported intent readiness, and backfill duplicated the publish decision with a weaker exception. Queue publication state was also not reconciled after linked product creatives were archived.
+- **Fix**: Research preparation now prioritizes one queued candidate per intent and runs the shared live researcher for all ten supported intents. Unattempted rows remain queued. Backfill trusts only `qaReport.passed` and emits a weakest-dimension category scorecard. Versioned information-research recheck retries one deduplicated informational row per repaired intent, while queue health closes published rows whose linked creative is not published. Weather openings and headings vary by stable editorial metadata without adding unverified climate claims.
+- **Prevention**: A raw daily count, average score, or green legacy critical counter is never sufficient. Release evidence requires the ten-intent live suite, full-corpus category floors, same-version retry suppression, linked-content reconciliation, and post-deploy public/indexing checks.
+- **Verification**: The strict live suite passed 10/10 intents with full claim-source coverage. Focused research, scorecard, recheck, linked-state, phrase-drift, and weather generation tests pass; type-check passes. The full 161-row dry-run reports `publishBlocked=146`, proving unsupported legacy rows are now blocked instead of cosmetically written, while the current researched monthly-weather category remains above the 95 floor.
+
 ## ERR-BLOG-slot-quality-learning-retry-source-drift@2026-07-28
 
 - [x] **ERR-BLOG-slot-quality-learning-retry-source-drift@2026-07-28**: The publisher could consume the whole daily quota at the first invocation, sub-95 components could pass through lower per-checker thresholds, Bayesian learning queried nonexistent `key/value` policy columns while reporting a soft success, the same failed editorial row could be requeued repeatedly, and the reviewed source registry was too narrow to support non-weather low-risk intents.

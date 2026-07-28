@@ -4,9 +4,6 @@ import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   evaluateBlogGenerationResearchReadiness,
 } from './blog-generation-research';
-import {
-  REVIEWED_WMO_FALLBACK_DESTINATION_SET,
-} from './blog-research-fallback-catalog';
 import { supabaseAdmin } from './supabase';
 
 type QueueResearchCandidate = {
@@ -82,6 +79,26 @@ export function evaluateQueuedInformationResearch(row: QueueResearchCandidate) {
   return { passed: readiness.passed, issues: readiness.issues };
 }
 
+export function prioritizeQueuedInformationResearch(
+  rows: QueueResearchCandidate[],
+): QueueResearchCandidate[] {
+  const firstByIntent: QueueResearchCandidate[] = [];
+  const remaining: QueueResearchCandidate[] = [];
+  const seenIntents = new Set<string>();
+
+  for (const row of rows) {
+    const intent = buildQueuedInformationBrief(row).intentType;
+    if (!seenIntents.has(intent)) {
+      seenIntents.add(intent);
+      firstByIntent.push(row);
+    } else {
+      remaining.push(row);
+    }
+  }
+
+  return [...firstByIntent, ...remaining];
+}
+
 export async function prepareDailyInformationResearch(input: {
   targetReady: number;
   maxResearch?: number;
@@ -125,15 +142,11 @@ export async function prepareDailyInformationResearch(input: {
   }
 
   const pendingRows = rows.filter((row) => !evaluateQueuedInformationResearch(row).passed);
-  const deterministicRows = pendingRows.filter((row) => {
-    const destination = row.destination?.trim() || '';
-    const brief = buildQueuedInformationBrief(row);
-    return brief.intentType === 'monthly_weather'
-      && REVIEWED_WMO_FALLBACK_DESTINATION_SET.has(destination)
-      && Boolean(expectedContentKey(row));
-  });
+  const researchRows = prioritizeQueuedInformationResearch(
+    pendingRows.filter((row) => Boolean(row.destination?.trim()) && Boolean(expectedContentKey(row))),
+  );
 
-  for (const row of deterministicRows) {
+  for (const row of researchRows) {
     if (readyAfter >= input.targetReady || researched + failedResearch >= maxResearch) break;
     const id = row.id;
     const destination = row.destination?.trim();
@@ -150,6 +163,7 @@ export async function prepareDailyInformationResearch(input: {
       const nextMeta = cleanMeta(row.meta);
       if (!result.passed || !result.bundle) {
         failedResearch += 1;
+        blockedAndReplaced += 1;
         const failureIssues = result.issues.slice(0, 12);
         issues.push(`${id}:${failureIssues.join(',') || 'research_failed'}`);
         await supabaseAdmin
@@ -201,6 +215,7 @@ export async function prepareDailyInformationResearch(input: {
       });
       if (!readiness.passed) {
         failedResearch += 1;
+        blockedAndReplaced += 1;
         issues.push(`${id}:${readiness.issues.slice(0, 12).join(',')}`);
         await supabaseAdmin
           .from('blog_topic_queue')
@@ -237,6 +252,7 @@ export async function prepareDailyInformationResearch(input: {
       readyAfter += 1;
     } catch (researchError) {
       failedResearch += 1;
+      blockedAndReplaced += 1;
       const message = researchError instanceof Error ? researchError.message : 'research_exception';
       issues.push(`${id}:${message}`);
       await supabaseAdmin
@@ -258,30 +274,6 @@ export async function prepareDailyInformationResearch(input: {
         .eq('id', id)
         .eq('status', 'queued');
     }
-  }
-
-  const unsafeRows = pendingRows.filter((row) => !deterministicRows.some((safe) => safe.id === row.id));
-  for (const row of unsafeRows.slice(0, 50)) {
-    if (!row.id) continue;
-    const { error: quarantineError } = await supabaseAdmin
-      .from('blog_topic_queue')
-      .update({
-        status: 'skipped',
-        last_error: 'research_not_prepared_replaced',
-        meta: {
-          ...cleanMeta(row.meta),
-          evidence_insufficient: true,
-          failure_code: 'research_not_prepared',
-          self_heal_blocked: true,
-          replacement_required: true,
-          replaced_by: 'reviewed_research_fallback',
-          replaced_at: new Date().toISOString(),
-        },
-        updated_at: new Date().toISOString(),
-      } as never)
-      .eq('id', row.id)
-      .eq('status', 'queued');
-    if (!quarantineError) blockedAndReplaced += 1;
   }
 
   return {

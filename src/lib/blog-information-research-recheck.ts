@@ -1,0 +1,150 @@
+import {
+  inferBlogInformationIntent,
+  type BlogInformationIntent,
+} from './blog-information-contract';
+import { readBlogEditorialBacklogDedupKey } from './blog-editorial-backlog-recheck';
+
+export const BLOG_INFORMATION_RESEARCH_RECHECK_VERSION =
+  'blog-information-research-recheck-20260728-v1';
+
+const AUTOMATED_RESEARCH_INTENTS = new Set<BlogInformationIntent>([
+  'food_budget',
+  'monthly_weather',
+  'airport_transport',
+  'hotel_areas',
+  'family_budget',
+  'itinerary',
+  'shopping_souvenirs',
+  'currency_payment',
+  'entry_requirements',
+  'travel_insurance',
+]);
+
+export type BlogInformationResearchRecheckRow = {
+  id: string;
+  product_id?: string | null;
+  topic?: string | null;
+  destination?: string | null;
+  source?: string | null;
+  status?: string | null;
+  last_error?: string | null;
+  angle_type?: string | null;
+  meta?: unknown;
+};
+
+export type BlogInformationResearchRecheckDecision = {
+  action: 'requeue' | 'skip_duplicate' | 'keep_blocked';
+  intent: BlogInformationIntent;
+  dedupKey: string | null;
+  reason: string;
+  meta: Record<string, unknown>;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function isResearchFailure(row: BlogInformationResearchRecheckRow): boolean {
+  const meta = asRecord(row.meta);
+  const joined = [
+    row.last_error,
+    meta.failure_code,
+    meta.quarantine_reason,
+    meta.research_failure,
+  ].filter(Boolean).join(' ');
+  return /BLOG_RESEARCH|research_(?:grounding|preflight|bundle)|evidence_insufficient:research|grounding_empty|claim_semantic_coverage_missing/i.test(joined);
+}
+
+function clearedResearchFailureMeta(
+  meta: Record<string, unknown>,
+  checkedAt: string,
+  intent: BlogInformationIntent,
+): Record<string, unknown> {
+  const next = { ...meta };
+  for (const key of [
+    'failure_code',
+    'quarantine_reason',
+    'self_heal_blocked',
+    'self_heal_closed_at',
+    'research_failure',
+    'research_preflight',
+    'information_research_bundle',
+  ]) {
+    delete next[key];
+  }
+  return {
+    ...next,
+    information_research_rechecked_at: checkedAt,
+    information_research_recheck_version: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+    information_research_recheck_intent: intent,
+    information_research_recheck_result: 'requeued',
+    requeued_by: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+  };
+}
+
+export function buildBlogInformationResearchRecheckDecision(input: {
+  row: BlogInformationResearchRecheckRow;
+  checkedAt?: string;
+  activeDuplicateId?: string | null;
+  alreadyRequeuedId?: string | null;
+}): BlogInformationResearchRecheckDecision {
+  const checkedAt = input.checkedAt ?? new Date().toISOString();
+  const meta = asRecord(input.row.meta);
+  const intent = inferBlogInformationIntent({
+    topic: input.row.topic,
+    destination: input.row.destination,
+    category: typeof meta.category === 'string' ? meta.category : null,
+    microAngle: typeof meta.micro_angle === 'string' ? meta.micro_angle : null,
+    primaryKeyword: typeof meta.primary_keyword === 'string' ? meta.primary_keyword : null,
+  });
+  const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
+  const blocked = (reason: string): BlogInformationResearchRecheckDecision => ({
+    action: 'keep_blocked',
+    intent,
+    dedupKey,
+    reason,
+    meta: {
+      ...meta,
+      information_research_rechecked_at: checkedAt,
+      information_research_recheck_version: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+      information_research_recheck_intent: intent,
+      information_research_recheck_result: reason,
+    },
+  });
+
+  if (input.row.product_id) return blocked('product_row_excluded');
+  if (input.row.status !== 'failed') return blocked('status_not_failed');
+  if (!input.row.destination || !input.row.topic) return blocked('research_context_missing');
+  if (!AUTOMATED_RESEARCH_INTENTS.has(intent)) return blocked('intent_not_live_verified');
+  if (!isResearchFailure(input.row)) return blocked('not_information_research_failure');
+  if (meta.requeued_by === BLOG_INFORMATION_RESEARCH_RECHECK_VERSION) {
+    return blocked('repeat_suppressed');
+  }
+
+  if (input.activeDuplicateId || input.alreadyRequeuedId) {
+    return {
+      action: 'skip_duplicate',
+      intent,
+      dedupKey,
+      reason: 'active_or_published_duplicate',
+      meta: {
+        ...meta,
+        information_research_rechecked_at: checkedAt,
+        information_research_recheck_version: BLOG_INFORMATION_RESEARCH_RECHECK_VERSION,
+        information_research_recheck_intent: intent,
+        information_research_recheck_result: 'duplicate',
+        duplicate_keep_id: input.activeDuplicateId ?? input.alreadyRequeuedId,
+      },
+    };
+  }
+
+  return {
+    action: 'requeue',
+    intent,
+    dedupKey,
+    reason: 'live_verified_research_retry',
+    meta: clearedResearchFailureMeta(meta, checkedAt, intent),
+  };
+}
