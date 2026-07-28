@@ -6,6 +6,7 @@ import type {
 import {
   createBlogInformationClaimFingerprint,
   blogInformationEvidenceScopeSupportsClaim,
+  extractMonthlyClimateCompositeValue,
   isPrimaryInformationAuthority,
   type BlogInformationAuthorityLevel,
   type BlogInformationClaimType,
@@ -245,6 +246,10 @@ function extractClaimValue(segment: string, kind: BlogInformationFactualCandidat
   if (percent) return { normalizedValue: normalizeNumericValue(percent[0].replace('%', '')), unit: '%', currency: null };
   const clock = segment.match(/(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*(?:~|-|–)\s*(?:[01]?\d|2[0-3]):[0-5]\d)?/);
   if (clock) return { normalizedValue: clock[0].replace(/\s+/g, ''), unit: 'time', currency: null };
+  if (kind === 'climate_measurement') {
+    const monthlyClimateValue = extractMonthlyClimateCompositeValue(segment);
+    if (monthlyClimateValue) return monthlyClimateValue;
+  }
   const measured = segment.match(/(-?\d+(?:\.\d+)?)\s*(km|㎞|킬로미터|m|미터|분|시간|℃|°C|mm|병|개비|개|명|회|건|대|장|kg|g|㎏|L|ℓ|ml|mL|MB|GB)/i);
   if (measured) return { normalizedValue: normalizeNumericValue(measured[1]), unit: measured[2], currency: null };
   const period = segment.match(/(?<!\d)(\d{1,3})\s*(일|주|개월|년)/);
