@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { GroundingChunk } from '@google/genai';
 import {
   augmentGuamFoodBudgetPayload,
   augmentGuamFamilyMealPayload,
+  augmentGuamShoppingPayload,
   augmentGrtaAirportTransportPayload,
   buildBlogGroundingResearchPrompt,
   buildGuamCurrencyPaymentPayload,
@@ -11,6 +12,7 @@ import {
   buildBlogStructuredResearchPrompt,
   buildWmoMonthlyWeatherPayload,
   extractReviewedPageTextForResearch,
+  fetchReviewedDirectPages,
   sanitizeGroundedResearchPayload,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
@@ -103,6 +105,71 @@ describe('extractReviewedPageTextForResearch', () => {
     expect(extracted).toContain('GIAA Departures, Airport 5:55');
     expect(extracted).toContain('GTA Upper Tumon 6:03');
     expect(extracted).toContain('fare one ride USD 1.50');
+  });
+});
+
+describe('fetchReviewedDirectPages', () => {
+  it('shares an in-flight reviewed URL fetch across concurrent research candidates', async () => {
+    const fetchMock = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return new Response(`<main>${'reviewed source content '.repeat(10)}</main>`, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const registry = [{
+      hostname: 'example.com',
+      allowSubdomains: false,
+      researchUrls: ['https://example.com/research'],
+    }];
+
+    try {
+      const [first, second] = await Promise.all([
+        fetchReviewedDirectPages(registry),
+        fetchReviewedDirectPages(registry),
+      ]);
+      expect(first.pages).toHaveLength(1);
+      expect(second.pages).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('augmentGuamShoppingPayload', () => {
+  it('adds deterministic official product-authenticity and purchase-location facts', () => {
+    const payload = augmentGuamShoppingPayload([{
+      url: 'https://www.visitguam.com/blog/post/3376/',
+      title: 'Authentic Made in Guam Souvenirs',
+      text: [
+        'Look for the official Made in Guam product seal on the packaging.',
+        'Chamorro Village includes Guam Art Boutique.',
+        'The shop features jewelry, soaps, coconut oils, books, hand-woven accessories, gifts and souvenirs.',
+      ].join(' '),
+    }], '괌', {
+      sources: [{
+        sourceKey: 'visit-guam',
+        groundingChunkIndex: 0,
+        publisher: 'Guam Visitors Bureau',
+        sourceType: 'official_tourism',
+        claimTypes: ['factual'],
+      }],
+      evidence: [],
+      claims: [],
+    });
+
+    expect(payload.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(2);
+    expect(payload.evidence?.map((item) => item.evidenceKey)).toEqual([
+      'visit-guam-official-product-seal',
+      'visit-guam-chamorro-village-products',
+    ]);
+    expect(payload.sources?.[0]).toMatchObject({
+      sourceKey: 'visit-guam',
+      groundingChunkIndex: 0,
+      sourceType: 'official_tourism',
+    });
   });
 });
 

@@ -8,6 +8,7 @@ Last updated: 2026-07-28
 - **Root cause**: The scheduler added broader research coverage without changing the one-by-one execution model. A single invocation could make up to 12 full external research calls in series.
 - **Fix**: Research candidates now run in bounded batches of three. The scheduler recalculates remaining numeric inventory, intent diversity, and request budget after each completed batch, and leaves unattempted rows queued.
 - **Prevention**: Concurrency is an explicit exported constant with source-contract coverage. Release proof requires a protected production scheduler call to return before the function limit and runtime logs to contain no timeout.
+- **Follow-up**: The first bounded production run completed in 69 seconds but exposed non-deterministic source reuse and shopping factual coverage. Identical in-flight official-page requests are now shared, and the reviewed Guam Visitors Bureau souvenir article deterministically supplies the authenticity and purchase-location facts. The versioned research recheck advanced to `v2` only after the concurrency-three live suite passed 10/10 intents.
 
 ## ERR-BLOG-weather-only-research-and-backfill-false-pass@2026-07-28
 
