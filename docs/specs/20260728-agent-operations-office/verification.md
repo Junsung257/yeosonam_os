@@ -5,7 +5,7 @@
 | Check | Command or proof | Result |
 |---|---|---|
 | Focused tests | `npx vitest run` for projection, page, admin API, and approval boundary | PASS - 4 files, 17 tests |
-| Full test suite | `npm test` | PASS - 602 files, 4,688 tests |
+| Full test suite | `npm test` | PASS - 602 files, 4,689 tests |
 | Type safety | `npm run type-check` | PASS |
 | Full lint | `npm run lint` | PASS - zero warnings |
 | Production build | `npm run build` | PASS - `/admin/agent-mas` 10.5 kB, 115 kB first load |
