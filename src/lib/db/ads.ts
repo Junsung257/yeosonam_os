@@ -18,6 +18,25 @@ import { getSupabaseAdmin } from '../supabase';
 // If you need to call from a client component, route the call through an /api/* endpoint.
 const getSupabase = getSupabaseAdmin;
 
+type DbWriteError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+function requireTrackingDatabase() {
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new Error('TRACKING_DATABASE_UNAVAILABLE');
+  }
+  return supabase;
+}
+
+function throwTrackingWriteError(operation: string, error: DbWriteError | null): void {
+  if (!error) return;
+  const code = error.code ? `:${error.code}` : '';
+  throw new Error(`TRACKING_WRITE_FAILED:${operation}${code}`);
+}
+
 // ─── Meta Ads ────────────────────────────────────────────────
 
 export async function getAdCampaigns(filters?: {
@@ -299,20 +318,19 @@ export interface AdConversionLog {
 // ── INSERT 헬퍼 ──────────────────────────────────────────────
 
 export async function insertTrafficLog(data: Omit<AdTrafficLog, 'id' | 'created_at'>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_traffic_logs').insert(data as never);
+  const sb = requireTrackingDatabase();
+  const { error } = await sb.from('ad_traffic_logs').insert(data as never);
+  throwTrackingWriteError('traffic', error);
 }
 
 export async function insertSearchLog(data: Omit<AdSearchLog, 'id' | 'created_at'>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_search_logs').insert(data as never);
+  const sb = requireTrackingDatabase();
+  const { error } = await sb.from('ad_search_logs').insert(data as never);
+  throwTrackingWriteError('search', error);
 }
 
 export async function insertEngagementLog(data: Omit<AdEngagementLog, 'id' | 'created_at'>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
+  const sb = requireTrackingDatabase();
   const { error } = await sb.from('ad_engagement_logs').insert(data as never);
   if (!error) return;
 
@@ -331,50 +349,47 @@ export async function insertEngagementLog(data: Omit<AdEngagementLog, 'id' | 'cr
   delete baseData.destination;
   delete baseData.metadata;
   const fallback = await sb.from('ad_engagement_logs').insert(baseData as never);
-  if (fallback.error) {
-    console.warn('[tracking] engagement fallback insert failed:', fallback.error.message);
-  }
+  throwTrackingWriteError('engagement_fallback', fallback.error);
 }
 
 export async function insertConversionLog(
   data: Omit<AdConversionLog, 'id' | 'net_profit' | 'created_at'>
 ): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await sb.from('ad_conversion_logs').insert(data as never);
+  const sb = requireTrackingDatabase();
+  const { error } = await sb.from('ad_conversion_logs').insert(data as never);
+  throwTrackingWriteError('conversion', error);
 }
 
 // ── QUERY 헬퍼 ───────────────────────────────────────────────
 
 export async function getLatestTrafficBySession(session_id: string): Promise<AdTrafficLog | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
+  const sb = requireTrackingDatabase();
+  const { data, error } = await sb
     .from('ad_traffic_logs')
     .select('*')
     .eq('session_id', session_id)
     .order('created_at', { ascending: false })
     .limit(1);
+  throwTrackingWriteError('latest_traffic_lookup', error);
   return (data && data.length > 0) ? (data[0] as unknown as AdTrafficLog) : null;
 }
 
 /** First-touch: 해당 세션의 가장 첫 번째 유입 기록 */
 export async function getFirstTrafficBySession(session_id: string): Promise<AdTrafficLog | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
+  const sb = requireTrackingDatabase();
+  const { data, error } = await sb
     .from('ad_traffic_logs')
     .select('*')
     .eq('session_id', session_id)
     .order('created_at', { ascending: true })
     .limit(1);
+  throwTrackingWriteError('first_traffic_lookup', error);
   return (data && data.length > 0) ? (data[0] as unknown as AdTrafficLog) : null;
 }
 
 export async function mergeSessionToUser(session_id: string, user_id: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  await Promise.all([
+  const sb = requireTrackingDatabase();
+  const results = await Promise.all([
     sb.from('ad_traffic_logs')
       .update({ user_id } as never)
       .eq('session_id', session_id)
@@ -388,6 +403,9 @@ export async function mergeSessionToUser(session_id: string, user_id: string): P
       .eq('session_id', session_id)
       .is('user_id', null),
   ]);
+  results.forEach((result, index) => {
+    throwTrackingWriteError(`session_merge_${index + 1}`, result.error);
+  });
 }
 
 // ─── AdAccount / KeywordPerformance ──────────────────────────

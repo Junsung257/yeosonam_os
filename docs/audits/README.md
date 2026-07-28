@@ -79,6 +79,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-25 | `2026-07-25-marketing-operations-rebuild.md` | Live marketing tracking failure, zero provider-performance evidence, truthful KPI/channel-state rebuild, and production rollout gates. |
 | 2026-07-24 | `2026-07-24-blog-autopublish-live-evidence-audit.md` | Live ten-intent direct-source audit with production create, update-publish, immutable revision, public render, and reindex proof. |
 | 2026-07-20 | `2026-07-20-meta-publisher-boundary.md` | Meta publisher external-write boundary audit: disabled incomplete deploy context, guarded mutation routes, and aligned PAUSED ad copy with the marketing SSOT. |
 | 2026-07-22 | `2026-07-22-npm-audit-dependency-cleanup.md` | Dependency-only audit cleanup for high severity npm audit findings, including sharp/libvips and blog image normalize type compatibility evidence. |

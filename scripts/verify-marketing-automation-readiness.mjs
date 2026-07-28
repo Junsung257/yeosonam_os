@@ -359,9 +359,17 @@ function staticChecks() {
     'idx_ad_engagement_logs_kakao_context',
   ]);
 
-  requireIncludes('api:marketing-dashboard-degraded', 'src/app/api/admin/marketing/dashboard/route.ts', [
-    'degraded: true',
-    'Supabase 연동이 설정되지 않아 빈 마케팅 대시보드를 표시합니다.',
+  requireIncludes('api:marketing-dashboard-truthful-unavailable', 'src/app/api/admin/marketing/dashboard/route.ts', [
+    'MARKETING_DATA_UNAVAILABLE',
+    '마케팅 데이터를 읽을 수 있도록 데이터베이스 연결이 필요합니다.',
+    'buildMarketingOperationsDashboard',
+  ]);
+  requireIncludes('api:tracking-awaits-primary-writes', 'src/app/api/tracking/route.ts', [
+    'await insertTrafficLog',
+    'await insertSearchLog',
+    'await insertEngagementLog',
+    'await insertConversionLog',
+    "return unavailable('database_write_failed')",
   ]);
   requireIncludes('api:ad-os-summary-degraded', 'src/app/api/admin/ad-os/summary/route.ts', [
     'degraded: true',
@@ -990,7 +998,7 @@ function staticChecks() {
     'checkApiContract',
     'hasRuntimeSupabaseDbCredentials',
     'live:runtime-db-probes-skipped-credentials',
-    'DB-backed runtime probes skipped before hitting Supabase',
+    'DB-backed runtime probes could not run because service_role credentials are missing',
     'marketingCheckCardNewsId',
     'marketingCheckVariantGroupId',
     'requireDynamicProbes',
@@ -1436,7 +1444,12 @@ async function checkApiContract(endpoint, headers) {
 }
 
 async function liveChecks() {
-  if (!baseUrl) return;
+  if (!baseUrl) {
+    addCheck('live:runtime-probes', 'blocked', {
+      notes: '실행 중인 서비스 주소가 없어 실제 API와 화면은 검증하지 못했습니다.',
+    });
+    return;
+  }
 
   await checkRefreshWithoutToken();
   const livePagePaths = [...LIVE_PAGE_PATHS, ...dynamicMarketingPagePaths()];
@@ -1451,20 +1464,20 @@ async function liveChecks() {
   }
 
   if (!hasRuntimeSupabaseDbCredentials()) {
-    addCheck('live:runtime-db-probes-skipped-credentials', 'pass', {
-      notes: 'DB-backed runtime probes skipped before hitting Supabase because service_role credentials are missing, dummy, or invalid',
+    addCheck('live:runtime-db-probes-skipped-credentials', 'blocked', {
+      notes: 'DB-backed runtime probes could not run because service_role credentials are missing, dummy, or invalid',
     });
-    addCheck('live:tracking-engagement-context', 'pass', {
-      notes: 'tracking DB write probe skipped before hitting Supabase because service_role credentials are unavailable',
+    addCheck('live:tracking-engagement-context', 'blocked', {
+      notes: 'tracking DB write probe could not run because service_role credentials are unavailable',
     });
     for (const endpoint of LIVE_API_ENDPOINTS) {
-      addCheck(`live:api:${endpoint.path}`, 'pass', {
-        notes: 'protected DB-backed API probe skipped before hitting Supabase because service_role credentials are unavailable',
+      addCheck(`live:api:${endpoint.path}`, 'blocked', {
+        notes: 'protected DB-backed API probe could not run because service_role credentials are unavailable',
       });
     }
     for (const pagePath of livePagePaths) {
-      addCheck(`live:page:${pagePath}`, 'pass', {
-        notes: 'protected DB-backed page probe skipped before hitting Supabase because service_role credentials are unavailable',
+      addCheck(`live:page:${pagePath}`, 'blocked', {
+        notes: 'protected DB-backed page probe could not run because service_role credentials are unavailable',
       });
     }
     return;
@@ -1555,7 +1568,7 @@ async function main() {
   const blocked = checks.filter((check) => check.status === 'blocked');
   const passed = checks.filter((check) => check.status === 'pass');
   const summary = {
-    status: failed.length ? 'fail' : strict && blocked.length ? 'blocked' : 'pass',
+    status: failed.length ? 'fail' : blocked.length ? (strict ? 'blocked' : 'partial') : 'pass',
     passed: passed.length,
     blocked: blocked.length,
     failed: failed.length,

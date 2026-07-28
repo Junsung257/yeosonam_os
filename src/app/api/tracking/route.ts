@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { getSecret } from '@/lib/secret-registry';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   supabaseAdmin,
   isSupabaseConfigured,
@@ -12,6 +14,61 @@ import {
   mergeSessionToUser,
 } from '@/lib/supabase';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+
+export const dynamic = 'force-dynamic';
+
+const TRACKING_HEADERS = {
+  'Cache-Control': 'no-store, max-age=0',
+} as const;
+
+type TrackingDbError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+function throwTrackingDbError(operation: string, error: TrackingDbError | null): void {
+  if (!error) return;
+  const code = error.code ? `:${error.code}` : '';
+  throw new Error(`TRACKING_DB_FAILED:${operation}${code}`);
+}
+
+function accepted(data: Record<string, unknown> = {}): NextResponse {
+  return apiResponse({
+    ok: true,
+    data: {
+      accepted: true,
+      ...data,
+    },
+  }, { status: 202, headers: TRACKING_HEADERS });
+}
+
+function unavailable(reason: string): NextResponse {
+  return apiResponse({
+    ok: false,
+    error: {
+      code: 'TRACKING_UNAVAILABLE',
+      message: '기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      details: {
+        accepted: false,
+        retryable: true,
+        reason,
+      },
+    },
+  }, { status: 503, headers: TRACKING_HEADERS });
+}
+
+async function runOptionalTrackingStep(
+  operation: string,
+  task: () => Promise<void>,
+): Promise<string | null> {
+  try {
+    await task();
+    return null;
+  } catch (error) {
+    console.warn(`[tracking] 선택 기록 실패 (${operation}):`, sanitizeDbError(error));
+    return operation;
+  }
+}
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -118,7 +175,8 @@ async function resolveAdLandingMappingId(input: {
   if (input.utmSource) query = query.eq('utm_source', input.utmSource);
   if (input.utmTerm) query = query.eq('utm_term', input.utmTerm);
 
-  const { data } = await query;
+  const { data, error } = await query;
+  throwTrackingDbError('resolve_landing_mapping', error);
   return data?.[0]?.id ?? null;
 }
 
@@ -134,11 +192,12 @@ async function incrementMappingMetric(
     conversions: 'last_conversion_at',
   } as const;
   const selectColumns = metric === 'conversions' ? `${metric}, conversion_value_krw` : metric;
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('ad_landing_mappings')
     .select(selectColumns)
     .eq('id', id)
     .maybeSingle();
+  throwTrackingDbError('read_landing_metric', error);
   if (!data) return;
   const row = data as unknown as Record<string, number | null>;
 
@@ -149,7 +208,30 @@ async function incrementMappingMetric(
   if (metric === 'conversions') {
     patch.conversion_value_krw = Number(row.conversion_value_krw || 0) + Math.max(0, Math.round(value));
   }
-  await supabaseAdmin.from('ad_landing_mappings').update(patch).eq('id', id);
+  const updateResult = await supabaseAdmin.from('ad_landing_mappings').update(patch).eq('id', id);
+  throwTrackingDbError('update_landing_metric', updateResult.error);
+}
+
+async function incrementCreativeView(creativeId: string): Promise<void> {
+  const rpcResult = await supabaseAdmin.rpc('increment_content_view_count', {
+    p_creative_id: creativeId,
+  });
+  if (!rpcResult.error) return;
+
+  const currentResult = await supabaseAdmin
+    .from('content_creatives')
+    .select('view_count')
+    .eq('id', creativeId)
+    .limit(1);
+  throwTrackingDbError('read_creative_view_count', currentResult.error);
+  const current = (
+    currentResult.data?.[0] as { view_count?: number } | undefined
+  )?.view_count ?? 0;
+  const updateResult = await supabaseAdmin
+    .from('content_creatives')
+    .update({ view_count: current + 1 })
+    .eq('id', creativeId);
+  throwTrackingDbError('update_creative_view_count', updateResult.error);
 }
 
 function normalizeSource(value?: string | null): string {
@@ -222,35 +304,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'invalid json' }, { status: 400 });
+    return apiResponse({
+      ok: false,
+      error: { code: 'INVALID_INPUT', message: '요청 내용을 읽을 수 없습니다.' },
+    }, { status: 400, headers: TRACKING_HEADERS });
   }
 
   if (!body?.type || !body?.session_id) {
-    return NextResponse.json({ error: 'type and session_id are required' }, { status: 400 });
+    return apiResponse({
+      ok: false,
+      error: { code: 'INVALID_INPUT', message: '기록 종류와 방문 번호가 필요합니다.' },
+    }, { status: 400, headers: TRACKING_HEADERS });
   }
 
-  // Supabase 미설정 시 202 즉시 반환 (개발/테스트 환경)
+  // 저장소가 없으면 성공처럼 처리하지 않고 재시도 가능한 실패를 반환한다.
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: true, mock: true }, { status: 202 });
+    return unavailable('database_not_configured');
   }
 
   if (shouldSkipPublicDbReadsForResourceSaver()) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'db_resource_saver_mode' }, { status: 202 });
+    return unavailable('resource_saver_mode');
   }
 
-  switch (body.type) {
+  try {
+    switch (body.type) {
     // ── traffic ──────────────────────────────────────────────
     case 'traffic': {
       const consent = body.consent_agreed === true;
-      const adLandingMappingId = await resolveAdLandingMappingId({
-        explicitId: body.ad_landing_mapping_id ?? null,
-        contentCreativeId: body.content_creative_id ?? null,
-        utmSource: body.source ?? null,
-        utmCampaign: body.campaign_name ?? null,
-        utmTerm: body.keyword ?? null,
+      const warnings: string[] = [];
+      let adLandingMappingId: string | null = body.ad_landing_mapping_id ?? null;
+      const mappingWarning = await runOptionalTrackingStep('landing_mapping', async () => {
+        adLandingMappingId = await resolveAdLandingMappingId({
+          explicitId: body.ad_landing_mapping_id ?? null,
+          contentCreativeId: body.content_creative_id ?? null,
+          utmSource: body.source ?? null,
+          utmCampaign: body.campaign_name ?? null,
+          utmTerm: body.keyword ?? null,
+        });
       });
+      if (mappingWarning) warnings.push(mappingWarning);
       // PIPA: 동의 없으면 개인식별 클릭 ID NULL 처리
-      void insertTrafficLog({
+      await insertTrafficLog({
         session_id: body.session_id,
         user_id: body.user_id ?? null,
         source: body.source ?? null,
@@ -275,34 +369,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         viewport_w: body.viewport_w ?? null,
         viewport_h: body.viewport_h ?? null,
       });
-      void incrementMappingMetric(adLandingMappingId, 'clicks');
-      // 내부 조회수 원자적 증가 (어드민 대시보드 용)
+      const clickWarning = await runOptionalTrackingStep(
+        'landing_click_count',
+        () => incrementMappingMetric(adLandingMappingId, 'clicks'),
+      );
+      if (clickWarning) warnings.push(clickWarning);
+
       if (body.content_creative_id) {
-        const creativeId = body.content_creative_id as string;
-        supabaseAdmin.rpc('increment_content_view_count', {
-          p_creative_id: creativeId,
-        }).then(async (res: { error: unknown }) => {
-          if (res.error) {
-            // RPC 없으면 fallback: 현재값 +1 (race condition 허용 — 통계 용도)
-            const { data } = await supabaseAdmin
-              .from('content_creatives')
-              .select('view_count')
-              .eq('id', creativeId)
-              .limit(1);
-            const current = ((data?.[0] as { view_count?: number } | undefined)?.view_count) ?? 0;
-            await supabaseAdmin
-              .from('content_creatives')
-              .update({ view_count: current + 1 })
-              .eq('id', creativeId);
-          }
-        });
+        const creativeWarning = await runOptionalTrackingStep(
+          'creative_view_count',
+          () => incrementCreativeView(body.content_creative_id as string),
+        );
+        if (creativeWarning) warnings.push(creativeWarning);
       }
-      return NextResponse.json({ ok: true }, { status: 202 });
+      return accepted({ record_type: 'traffic', warnings });
     }
 
     // ── search ───────────────────────────────────────────────
     case 'search': {
-      void insertSearchLog({
+      await insertSearchLog({
         session_id: body.session_id,
         user_id: body.user_id ?? null,
         search_query: body.search_query ?? null,
@@ -311,11 +396,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         lead_time_days: body.lead_time_days ?? null,
         visitor_uid: body.visitor_uid ?? null,
       });
-      return NextResponse.json({ ok: true }, { status: 202 });
+      return accepted({ record_type: 'search' });
     }
 
     // ── engagement ───────────────────────────────────────────
     case 'engagement': {
+      const warnings: string[] = [];
       const baseMetadata = normalizeMetadata(body.metadata);
       const metadata: Record<string, unknown> = {
         ...baseMetadata,
@@ -326,7 +412,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       };
       const eventSource = nonEmptyString(body.event_source) ?? nonEmptyString(baseMetadata.source);
 
-      void insertEngagementLog({
+      await insertEngagementLog({
         session_id: body.session_id,
         user_id: body.user_id ?? null,
         event_type: body.event_type,
@@ -352,32 +438,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const attrEventType =
           body.event_type === 'inquiry' ? 'inquiry' :
           body.event_type === 'click' ? 'click' : 'view';
-        const adLandingMappingId = await resolveAdLandingMappingId({
-          explicitId: body.ad_landing_mapping_id ?? null,
-          contentCreativeId: body.content_id,
-          utmSource: body.utm_source ?? null,
-          utmCampaign: body.utm_campaign ?? null,
-          utmTerm: body.utm_term ?? null,
+        let adLandingMappingId: string | null = body.ad_landing_mapping_id ?? null;
+        const mappingWarning = await runOptionalTrackingStep('landing_mapping', async () => {
+          adLandingMappingId = await resolveAdLandingMappingId({
+            explicitId: body.ad_landing_mapping_id ?? null,
+            contentCreativeId: body.content_id,
+            utmSource: body.utm_source ?? null,
+            utmCampaign: body.utm_campaign ?? null,
+            utmTerm: body.utm_term ?? null,
+          });
         });
-        void supabaseAdmin.from('content_attribution_events').insert({
-          tenant_id: body.tenant_id ?? null,
-          content_id: body.content_id,
-          content_type: body.content_type,
-          ad_landing_mapping_id: adLandingMappingId,
-          session_id: body.session_id,
-          utm_source: body.utm_source ?? null,
-          utm_medium: body.utm_medium ?? null,
-          utm_campaign: body.utm_campaign ?? null,
-          event_type: attrEventType,
+        if (mappingWarning) warnings.push(mappingWarning);
+        const attributionWarning = await runOptionalTrackingStep('content_attribution', async () => {
+          const attributionResult = await supabaseAdmin.from('content_attribution_events').insert({
+            tenant_id: body.tenant_id ?? null,
+            content_id: body.content_id,
+            content_type: body.content_type,
+            ad_landing_mapping_id: adLandingMappingId,
+            session_id: body.session_id,
+            utm_source: body.utm_source ?? null,
+            utm_medium: body.utm_medium ?? null,
+            utm_campaign: body.utm_campaign ?? null,
+            event_type: attrEventType,
+          });
+          throwTrackingDbError('content_attribution', attributionResult.error);
         });
-        if (attrEventType === 'click') void incrementMappingMetric(adLandingMappingId, 'cta_clicks');
+        if (attributionWarning) warnings.push(attributionWarning);
+        if (attrEventType === 'click') {
+          const ctaWarning = await runOptionalTrackingStep(
+            'landing_cta_count',
+            () => incrementMappingMetric(adLandingMappingId, 'cta_clicks'),
+          );
+          if (ctaWarning) warnings.push(ctaWarning);
+        }
       }
-      return NextResponse.json({ ok: true }, { status: 202 });
+      return accepted({ record_type: 'engagement', warnings });
     }
 
     // ── conversion (순이익 자동 연산 + dual attribution) ────────
     case 'conversion': {
       const { session_id, user_id, booking_id, final_sales_price, base_cost } = body;
+      const warnings: string[] = [];
 
       // Last-touch: 가장 최근 트래픽
       const traffic = await getLatestTrafficBySession(session_id);
@@ -429,7 +530,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const attribution_path = `${classifyPaidSource(firstTraffic)}>${classifyPaidSource(traffic)}`;
 
       // net_profit는 DB GENERATED ALWAYS 컬럼 — insertConversionLog에서 제외됨
-      void insertConversionLog({
+      await insertConversionLog({
         session_id,
         user_id: user_id ?? null,
         final_booking_id: booking_id ?? null,
@@ -457,7 +558,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         content_creative_id,
         ad_landing_mapping_id,
       });
-      void incrementMappingMetric(ad_landing_mapping_id, 'conversions', final_sales_price);
+      const conversionMetricWarning = await runOptionalTrackingStep(
+        'landing_conversion_count',
+        () => incrementMappingMetric(ad_landing_mapping_id, 'conversions', final_sales_price),
+      );
+      if (conversionMetricWarning) warnings.push(conversionMetricWarning);
 
       // ── Postback (fire-and-forget) ──────────────────────
       // 외부 광고 플랫폼 전환 통보. await 차단으로 응답 지연 방지 — 실패해도 Conversion DB 기록은 이미 적재됨.
@@ -467,7 +572,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           `https://www.googleadservices.com/pagead/conversion/${getSecret('GOOGLE_CONVERSION_ID')}/?gclid=${attributed_gclid}&value=${final_sales_price}&currency_code=KRW`,
           { signal: AbortSignal.timeout(5000) },
         )
-          .then(() => console.log('[Postback] Google Ads 전환 완료'))
+          .then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log('[Postback] Google Ads 전환 전달 확인');
+          })
           .catch(e => console.warn('[Postback] Google Ads 실패:', e instanceof Error ? e.message : e));
       }
 
@@ -486,7 +594,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           }),
           signal: AbortSignal.timeout(5000),
         })
-          .then(() => console.log('[Postback] Meta CAPI 전환 완료'))
+          .then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log('[Postback] Meta CAPI 전환 전달 확인');
+          })
           .catch(e => console.warn('[Postback] Meta CAPI 실패:', e instanceof Error ? e.message : e));
       }
 
@@ -496,33 +607,53 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (attributed_source === 'naver' && naverAnalyticsId) {
         const naverPostbackUrl = `https://wcs.naver.net/wcsc.con?wo=${naverAnalyticsId}&co=${final_sales_price}&rc=100&gr=booking`;
         fetch(naverPostbackUrl, { signal: AbortSignal.timeout(5000) })
-          .then(() => console.log('[Postback] Naver 전환 완료'))
+          .then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log('[Postback] Naver 전환 전달 확인');
+          })
           .catch(e => console.warn('[Postback] Naver 실패:', e instanceof Error ? e.message : e));
       }
 
       // 콘텐츠 → 예약 어트리뷰션 기록
       if (content_creative_id) {
-        void supabaseAdmin.from('content_attribution_events').insert({
-          content_id: content_creative_id,
-          content_type: 'blog',
-          ad_landing_mapping_id,
-          session_id,
-          event_type: 'booking',
-          utm_source: attributed_source,
+        const bookingWarning = await runOptionalTrackingStep('booking_attribution', async () => {
+          const attributionResult = await supabaseAdmin.from('content_attribution_events').insert({
+            content_id: content_creative_id,
+            content_type: 'blog',
+            ad_landing_mapping_id,
+            session_id,
+            event_type: 'booking',
+            utm_source: attributed_source,
+          });
+          throwTrackingDbError('booking_attribution', attributionResult.error);
         });
+        if (bookingWarning) warnings.push(bookingWarning);
       }
 
       const net_profit = final_sales_price - base_cost - allocated_ad_spend;
-      return NextResponse.json({ ok: true, net_profit, attributed_source }, { status: 202 });
+      return accepted({
+        record_type: 'conversion',
+        net_profit,
+        attributed_source,
+        provider_delivery: 'pending',
+        warnings,
+      });
     }
 
     // ── merge (session → user 병합) ───────────────────────────
     case 'merge': {
-      void mergeSessionToUser(body.session_id, body.user_id);
-      return NextResponse.json({ ok: true }, { status: 202 });
+      await mergeSessionToUser(body.session_id, body.user_id);
+      return accepted({ record_type: 'merge' });
     }
 
     default:
-      return NextResponse.json({ error: 'unknown type' }, { status: 400 });
+      return apiResponse({
+        ok: false,
+        error: { code: 'INVALID_INPUT', message: '지원하지 않는 기록 종류입니다.' },
+      }, { status: 400, headers: TRACKING_HEADERS });
+    }
+  } catch (error) {
+    console.error('[tracking] 저장 실패:', sanitizeDbError(error));
+    return unavailable('database_write_failed');
   }
 }

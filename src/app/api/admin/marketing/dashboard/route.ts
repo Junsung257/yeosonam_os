@@ -4,285 +4,211 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
+import {
+  buildMarketingOperationsDashboard,
+  type AccountRow,
+  type BookingRow,
+  type CampaignRow,
+  type ChannelHealthRow,
+  type CreativeRow,
+  type DistributionRow,
+  type EngagementRow,
+  type LeadRow,
+  type PerformanceRow,
+  type RecommendationRow,
+  type TrafficRow,
+} from '@/lib/marketing';
 
-function emptyDashboardData() {
-  return {
-    channels: [],
-    funnel: [],
-    trends: [],
-    totalSpend: 0,
-    totalConversions: 0,
-    attributedRevenue: 0,
-    blendedRoas: 0,
-    avgCpa: 0,
-    prevTotalSpend: 0,
-    prevTotalRevenue: 0,
-  };
+export const dynamic = 'force-dynamic';
+
+type QueryError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+function assertQuerySucceeded(name: string, error: QueryError | null): void {
+  if (!error) return;
+  const code = error.code ? `:${error.code}` : '';
+  throw new Error(`MARKETING_DASHBOARD_QUERY_FAILED:${name}${code}`);
 }
 
-/**
- * GET /api/admin/marketing/dashboard
- *
- * 통합 광고 대시보드 데이터 API
- * 채널별 성과, 전환 퍼널, 트렌드 데이터를 한 번에 반환
- *
- * 응답 구조:
- * {
- *   data: {
- *     channels: ChannelPerformance[],
- *     funnel: FunnelStep[],
- *     trends: TrendPoint[],
- *     totalSpend, totalConversions, attributedRevenue, blendedRoas, avgCpa
- *   }
- * }
- */
+function parseDays(request: NextRequest): number {
+  const requested = Number.parseInt(request.nextUrl.searchParams.get('days') ?? '30', 10);
+  if (!Number.isFinite(requested)) return 30;
+  return [7, 30, 90].includes(requested) ? requested : 30;
+}
+
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!isSupabaseConfigured) {
     return apiResponse({
-      data: emptyDashboardData(),
-      degraded: true,
-      mock: false,
-      access_state: 'supabase_unconfigured',
-      message: 'Supabase 연동이 설정되지 않아 빈 마케팅 대시보드를 표시합니다.',
-    }, { headers: ADMIN_CACHE.noCache });
+      ok: false,
+      error: {
+        code: 'MARKETING_DATA_UNAVAILABLE',
+        message: '마케팅 데이터를 읽을 수 있도록 데이터베이스 연결이 필요합니다.',
+      },
+    }, { status: 503, headers: ADMIN_CACHE.noCache });
   }
 
-  const searchParams = request.nextUrl.searchParams;
-  const days = parseInt(searchParams.get('days') ?? '30', 10);
-  const dateFrom = new Date();
-  dateFrom.setDate(dateFrom.getDate() - days);
-  const fromStr = dateFrom.toISOString().slice(0, 10);
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  // 이전 기간 (전월 대비 비교용)
-  const prevDateFrom = new Date(dateFrom);
-  prevDateFrom.setDate(prevDateFrom.getDate() - days);
-  const prevFromStr = prevDateFrom.toISOString().slice(0, 10);
-  const prevToStr = dateFrom.toISOString().slice(0, 10);
-
-  const supabase = supabaseAdmin;
+  const days = parseDays(request);
+  const collectedAt = new Date().toISOString();
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const fromIso = from.toISOString();
+  const fromDate = fromIso.slice(0, 10);
 
   try {
-    // 1. 채널별 성과 — ad_traffic_logs + ad_conversion_logs 집계
-    // 현재 기간
-    const [currentTraffic, currentConversions, prevTraffic, prevConversions] = await Promise.all([
-      supabase
+    const [
+      trafficResult,
+      latestTrafficResult,
+      engagementResult,
+      leadResult,
+      bookingResult,
+      settledBookingResult,
+      campaignResult,
+      performanceResult,
+      channelHealthResult,
+      accountResult,
+      recommendationResult,
+      creativeResult,
+      distributionResult,
+    ] = await Promise.all([
+      supabaseAdmin
         .from('ad_traffic_logs')
-        .select('source, count, current_cpc')
-        .gte('created_at', fromStr),
-      supabase
-        .from('ad_conversion_logs')
-        .select('attributed_source, final_sales_price, allocated_ad_spend')
-        .gte('created_at', fromStr),
-      supabase
+        .select('source, medium, gclid, fbclid, n_keyword, created_at', { count: 'exact' })
+        .gte('created_at', fromIso)
+        .order('created_at', { ascending: false })
+        .limit(5000),
+      supabaseAdmin
         .from('ad_traffic_logs')
-        .select('source, count, current_cpc')
-        .gte('created_at', prevFromStr)
-        .lt('created_at', prevToStr),
-      supabase
-        .from('ad_conversion_logs')
-        .select('attributed_source, final_sales_price, allocated_ad_spend')
-        .gte('created_at', prevFromStr)
-        .lt('created_at', prevToStr),
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1),
+      supabaseAdmin
+        .from('ad_engagement_logs')
+        .select('event_type, created_at')
+        .gte('created_at', fromIso)
+        .order('created_at', { ascending: false })
+        .limit(5000),
+      supabaseAdmin
+        .from('leads')
+        .select('utm_source, channel, created_at, submitted_at')
+        .gte('created_at', fromIso)
+        .order('created_at', { ascending: false })
+        .limit(2000),
+      supabaseAdmin
+        .from('bookings')
+        .select('id, utm_source, channel_source, status, payment_status, margin, settlement_confirmed_at, created_at')
+        .gte('created_at', fromIso)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .order('created_at', { ascending: false })
+        .limit(2000),
+      supabaseAdmin
+        .from('bookings')
+        .select('id, utm_source, channel_source, status, payment_status, margin, settlement_confirmed_at, created_at')
+        .gte('settlement_confirmed_at', fromIso)
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .order('settlement_confirmed_at', { ascending: false })
+        .limit(2000),
+      supabaseAdmin
+        .from('ad_campaigns')
+        .select('id, name, channel, status, daily_budget_krw, meta_campaign_id, naver_campaign_id, google_campaign_id, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(500),
+      supabaseAdmin
+        .from('ad_performance_snapshots')
+        .select('campaign_id, snapshot_date, impressions, clicks, spend_krw, attributed_bookings, attributed_margin')
+        .gte('snapshot_date', fromDate)
+        .order('snapshot_date', { ascending: false })
+        .limit(5000),
+      supabaseAdmin
+        .from('ad_os_channel_adapter_health')
+        .select('platform, adapter_state, credentials_ready, permission_ready, campaign_ready, budget_ready, conversion_ready, live_publish_enabled, external_api_write, recommended_action, checked_at')
+        .order('checked_at', { ascending: false })
+        .limit(50),
+      supabaseAdmin
+        .from('ad_os_tenant_ad_accounts')
+        .select('platform, connection_status, external_account_id, external_campaign_id, last_probe_at, risk_status')
+        .order('updated_at', { ascending: false })
+        .limit(50),
+      supabaseAdmin
+        .from('marketing_recommendations')
+        .select('id, severity, title, reason, action_url, action_label, status, updated_at')
+        .in('status', ['open', 'pending'])
+        .order('updated_at', { ascending: false })
+        .limit(20),
+      supabaseAdmin
+        .from('content_creatives')
+        .select('status, channel, published_at, created_at')
+        .gte('created_at', fromIso)
+        .order('created_at', { ascending: false })
+        .limit(2000),
+      supabaseAdmin
+        .from('content_distributions')
+        .select('platform, status, published_at, scheduled_for, updated_at, error_message')
+        .gte('updated_at', fromIso)
+        .order('updated_at', { ascending: false })
+        .limit(2000),
     ]);
 
-    // 2. 퍼널 데이터 — engagement_logs + conversion_logs
-    const [impressions, clicks, pageViews, checkouts] = await Promise.all([
-      supabase
-        .from('ad_traffic_logs')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', fromStr),
-      supabase
-        .from('ad_traffic_logs')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', fromStr)
-        .not('gclid', 'is', null)
-        .or('fbclid.not.is.null,n_keyword.not.is.null'),
-      supabase
-        .from('ad_engagement_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('event_type', 'page_view')
-        .gte('created_at', fromStr),
-      supabase
-        .from('ad_engagement_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('event_type', 'checkout_start')
-        .gte('created_at', fromStr),
-    ]);
+    const results = [
+      ['traffic', trafficResult.error],
+      ['latest_traffic', latestTrafficResult.error],
+      ['engagement', engagementResult.error],
+      ['leads', leadResult.error],
+      ['bookings', bookingResult.error],
+      ['settled_bookings', settledBookingResult.error],
+      ['campaigns', campaignResult.error],
+      ['performance', performanceResult.error],
+      ['channel_health', channelHealthResult.error],
+      ['accounts', accountResult.error],
+      ['recommendations', recommendationResult.error],
+      ['creatives', creativeResult.error],
+      ['distributions', distributionResult.error],
+    ] as const;
+    for (const [name, error] of results) assertQuerySucceeded(name, error);
 
-    // 3. 트렌드 데이터 — 일별 집계
-    const { data: dailyConversions } = await supabase
-      .from('ad_conversion_logs')
-      .select('created_at, attributed_source, final_sales_price, allocated_ad_spend')
-      .gte('created_at', fromStr)
-      .order('created_at', { ascending: true });
+    const traffic = (trafficResult.data ?? []).map((row) => ({
+      ...row,
+      gbraid: null,
+      wbraid: null,
+    })) as TrafficRow[];
+    const engagements = (engagementResult.data ?? []).map((row) => ({
+      ...row,
+      event_source: null,
+    })) as EngagementRow[];
+    const latestTrackingAt = (
+      latestTrafficResult.data?.[0] as { created_at?: string } | undefined
+    )?.created_at ?? null;
 
-    // 4. 채널 집계
-    const currentRows = (currentConversions.data ?? []) as Array<{
-      attributed_source: string | null;
-      final_sales_price: number;
-      allocated_ad_spend: number;
-    }>;
-    const prevRows = (prevConversions.data ?? []) as Array<{
-      attributed_source: string | null;
-      final_sales_price: number;
-      allocated_ad_spend: number;
-    }>;
+    const data = buildMarketingOperationsDashboard({
+      days,
+      collectedAt,
+      trafficCount: trafficResult.count ?? traffic.length,
+      latestTrackingAt,
+      traffic,
+      engagements,
+      leads: (leadResult.data ?? []) as LeadRow[],
+      bookings: (bookingResult.data ?? []) as BookingRow[],
+      settledBookings: (settledBookingResult.data ?? []) as BookingRow[],
+      campaigns: (campaignResult.data ?? []) as CampaignRow[],
+      performance: (performanceResult.data ?? []) as PerformanceRow[],
+      channelHealth: (channelHealthResult.data ?? []) as ChannelHealthRow[],
+      accounts: (accountResult.data ?? []) as AccountRow[],
+      recommendations: (recommendationResult.data ?? []) as RecommendationRow[],
+      creatives: (creativeResult.data ?? []) as CreativeRow[],
+      distributions: (distributionResult.data ?? []) as DistributionRow[],
+    });
 
-    const channelMap = new Map<string, { spend: number; revenue: number; conversions: number; impressions: number; clicks: number }>();
-    const prevChannelMap = new Map<string, { spend: number; revenue: number }>();
-
-    for (const row of currentRows) {
-      const source = row.attributed_source ?? 'organic';
-      const entry = channelMap.get(source) ?? { spend: 0, revenue: 0, conversions: 0, impressions: 0, clicks: 0 };
-      entry.spend += row.allocated_ad_spend ?? 0;
-      entry.revenue += row.final_sales_price ?? 0;
-      entry.conversions += 1;
-      channelMap.set(source, entry);
-    }
-
-    for (const row of prevRows) {
-      const source = row.attributed_source ?? 'organic';
-      const entry = prevChannelMap.get(source) ?? { spend: 0, revenue: 0 };
-      entry.spend += row.allocated_ad_spend ?? 0;
-      entry.revenue += row.final_sales_price ?? 0;
-      prevChannelMap.set(source, entry);
-    }
-
-    // 트래픽에서 impressions/clicks 보정
-    const trafficRows = (currentTraffic.data ?? []) as Array<{ source: string | null }>;
-    for (const t of trafficRows) {
-      const source = t.source ?? 'organic';
-      const entry = channelMap.get(source);
-      if (entry) entry.impressions += 1;
-    }
-
-    // 5. 채널별 응답 구성
-    const CHANNEL_META: Record<string, { label: string; displayOrder: number }> = {
-      google: { label: 'Google Ads', displayOrder: 0 },
-      naver: { label: 'Naver Ads', displayOrder: 1 },
-      facebook: { label: 'Meta Ads', displayOrder: 2 },
-      meta: { label: 'Meta Ads', displayOrder: 2 },
-      organic: { label: 'Organic', displayOrder: 3 },
-      direct: { label: 'Direct', displayOrder: 4 },
-    };
-
-    const channels = Array.from(channelMap.entries())
-      .map(([channel, stats]) => {
-        const meta = CHANNEL_META[channel] ?? { label: channel, displayOrder: 99 };
-        const prev = prevChannelMap.get(channel);
-        const clicks = stats.clicks || Math.round(stats.impressions * 0.02);
-        const ctr = stats.impressions > 0 ? (clicks / stats.impressions) * 100 : 0;
-        const cpc = clicks > 0 ? stats.spend / clicks : 0;
-        const roas = stats.spend > 0 ? (stats.revenue / stats.spend) * 100 : 0;
-        return {
-          channel,
-          channelLabel: meta.label,
-          spend: stats.spend,
-          impressions: stats.impressions,
-          clicks,
-          ctr,
-          cpc,
-          conversions: stats.conversions,
-          revenue: stats.revenue,
-          roas,
-          prevSpend: prev?.spend,
-          prevRevenue: prev?.revenue,
-          displayOrder: meta.displayOrder,
-        };
-      })
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-
-    // 6. 퍼널 구성
-    const impressionCount = impressions.count ?? 0;
-    const clickCount = clicks.count ?? 0;
-    const pageViewCount = pageViews.count ?? 0;
-    const checkoutCount = checkouts.count ?? 0;
-    const bookingCount = currentRows.length;
-    const paymentCount = currentRows.filter(r => r.final_sales_price > 0).length;
-
-    const funnel = [
-      { label: 'Impression', count: Math.max(impressionCount, 1), rate: 100 },
-      { label: 'Click', count: Math.max(clickCount, 1), rate: impressionCount > 0 ? (clickCount / impressionCount) * 100 : 0 },
-      { label: 'Page View', count: Math.max(pageViewCount, 1), rate: clickCount > 0 ? (pageViewCount / clickCount) * 100 : 0 },
-      { label: 'Checkout', count: Math.max(checkoutCount, 0), rate: pageViewCount > 0 ? (checkoutCount / pageViewCount) * 100 : 0 },
-      { label: 'Booking', count: bookingCount, rate: checkoutCount > 0 ? (bookingCount / checkoutCount) * 100 : 0 },
-      { label: 'Payment Complete', count: paymentCount, rate: bookingCount > 0 ? (paymentCount / bookingCount) * 100 : 0 },
-    ];
-
-    // 7. 트렌드 데이터 — 일별 집계
-    const trendMap = new Map<string, TrendPoint>();
-    const rawDailyConversions = (dailyConversions ?? []) as Array<{
-      created_at: string;
-      attributed_source: string | null;
-      final_sales_price: number;
-      allocated_ad_spend: number;
-    }>;
-
-    for (const row of rawDailyConversions) {
-      const day = row.created_at.slice(0, 10);
-      const existing = trendMap.get(day) ?? { date: day, google_spend: 0, google_revenue: 0, naver_spend: 0, naver_revenue: 0, meta_spend: 0, meta_revenue: 0, organic_revenue: 0 };
-      const source = row.attributed_source ?? 'organic';
-      if (source === 'google') { existing.google_spend += row.allocated_ad_spend; existing.google_revenue += row.final_sales_price; }
-      else if (source === 'naver') { existing.naver_spend += row.allocated_ad_spend; existing.naver_revenue += row.final_sales_price; }
-      else if (source === 'facebook' || source === 'meta') { existing.meta_spend += row.allocated_ad_spend; existing.meta_revenue += row.final_sales_price; }
-      else { existing.organic_revenue += row.final_sales_price; }
-      trendMap.set(day, existing);
-    }
-
-    // 빈 날짜 채우기
-    const trends: TrendPoint[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
-      const existing = trendMap.get(dateStr);
-      trends.push({
-        date: dateStr,
-        google_spend: existing?.google_spend ?? 0,
-        google_revenue: existing?.google_revenue ?? 0,
-        naver_spend: existing?.naver_spend ?? 0,
-        naver_revenue: existing?.naver_revenue ?? 0,
-        meta_spend: existing?.meta_spend ?? 0,
-        meta_revenue: existing?.meta_revenue ?? 0,
-        organic_revenue: existing?.organic_revenue ?? 0,
-      });
-    }
-
-    // 8. 통합 KPI
-    const totalSpend = channels.reduce((s, c) => s + c.spend, 0);
-    const totalConversions = channels.reduce((s, c) => s + c.conversions, 0);
-    const attributedRevenue = channels.reduce((s, c) => s + c.revenue, 0);
-    const blendedRoas = totalSpend > 0 ? (attributedRevenue / totalSpend) * 100 : 0;
-    const avgCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
-
+    return apiResponse({ ok: true, data }, { headers: ADMIN_CACHE.analytics });
+  } catch (error) {
+    console.error('[marketing-dashboard] 집계 실패:', sanitizeDbError(error));
     return apiResponse({
-      data: {
-        channels,
-        funnel,
-        trends,
-        totalSpend,
-        totalConversions,
-        attributedRevenue,
-        blendedRoas,
-        avgCpa,
+      ok: false,
+      error: {
+        code: 'MARKETING_DASHBOARD_FAILED',
+        message: '마케팅 현황을 불러오지 못했습니다. 시스템 상태에서 연결을 확인해 주세요.',
       },
-    }, { headers: ADMIN_CACHE.analytics });
-  } catch (err) {
-    console.error('[dashboard] 집계 오류:', sanitizeDbError(err));
-    return apiResponse({ data: null, error: 'aggregation_error' }, { status: 500, headers: ADMIN_CACHE.noCache });
+    }, { status: 500, headers: ADMIN_CACHE.noCache });
   }
 }
 
 export const GET = withAdminGuard(getHandler);
-
-interface TrendPoint {
-  date: string;
-  google_spend: number;
-  google_revenue: number;
-  naver_spend: number;
-  naver_revenue: number;
-  meta_spend: number;
-  meta_revenue: number;
-  organic_revenue: number;
-}
