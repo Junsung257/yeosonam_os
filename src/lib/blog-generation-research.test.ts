@@ -500,6 +500,20 @@ describe('blog generation research preflight', () => {
     }).passed).toBe(true);
   });
 
+  it('uses the approved brief title instead of an unledgered AI date headline', () => {
+    const result = monthlyWeatherReadiness(monthlyWeatherBundle());
+    const repaired = repairBlogGenerationResearchStructure({
+      markdown: '# 보홀 날씨 2026년 6월 최신판',
+      intent: 'monthly_weather',
+      readiness: result,
+      plannedTitle: '보홀 6월 날씨와 옷차림',
+    });
+
+    expect(repaired.markdown).toContain('# 보홀 6월 날씨와 옷차림');
+    expect(repaired.markdown).not.toContain('2026년 6월 최신판');
+    expect(extractBlogInformationClaims(repaired.markdown)).toHaveLength(12);
+  });
+
   it('uses verified temperatures instead of rainfall alone for cold-weather clothing', () => {
     const result = monthlyWeatherReadiness(monthlyWeatherBundle());
     result.bundle!.claims[0]!.claimText =
