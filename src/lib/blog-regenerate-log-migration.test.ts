@@ -14,7 +14,9 @@ describe('blog regenerate log recovery reason migration', () => {
   it('accepts quality-gap locks and deduplicates all automatic recovery signals', () => {
     expect(migration).toContain("'quality_gap'");
     expect(migration).toContain('blog_regenerate_log_reason_check');
-    expect(migration).toContain('blog_regenerate_log_automatic_daily_unique');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS blog_regenerate_log_automatic_daily_unique',
+    );
     expect(migration).toContain("WHERE reason IN ('zero_click', 'quality_gap')");
   });
 });
