@@ -6237,8 +6237,11 @@ async function main() {
     if (preservesEvidenceBackedMonthlyWeather) {
       nextHtml = repairMonthlyWeatherClothingTable(originalHtml).markdown;
     }
+    const evidenceBackedBodyTitle = preservesEvidenceBackedMonthlyWeather
+      ? originalHtml.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
+      : null;
     const qualitySecondaryKeywords = preservesEvidenceBackedMonthlyWeather
-      ? [row.seo_title || primaryKeyword]
+      ? [evidenceBackedBodyTitle || row.seo_title || primaryKeyword]
       : secondaryKeywords;
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
