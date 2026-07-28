@@ -88,6 +88,29 @@ describe('evaluateBlogPublishPreflight', () => {
     expect(result.status).toBe('warn');
     expect(result.warnings.map((check) => check.id)).toContain('publishable_inventory');
     expect(result.warnings.map((check) => check.id)).toContain('duplicate_pressure');
+    expect(result.score).toBe(90);
+  });
+
+  it('keeps one non-blocking manual-review warning at the 95-point operating floor', () => {
+    const result = evaluateBlogPublishPreflight({
+      dailyTarget: 5,
+      publishedToday: 0,
+      publishableCandidateCount: 20,
+      duplicateCandidateCount: 0,
+      evidenceInsufficientCount: 0,
+      candidateShortage: false,
+      actionableFailedCount: 0,
+      staleGeneratingCount: 0,
+      manualReviewCount: 4,
+      indexingOutboxMissingCount: 0,
+      indexingOutboxCoverageRate: 100,
+      recentPosts: [goodPost('a'), goodPost('b'), goodPost('c')],
+    });
+
+    expect(result.status).toBe('warn');
+    expect(result.score).toBe(95);
+    expect(result.blockers).toHaveLength(0);
+    expect(result.warnings.map((check) => check.id)).toEqual(['queue_health']);
   });
 
   it('does not warn for overdue queued rows when publishable inventory is sufficient', () => {

@@ -1663,7 +1663,7 @@ async function runBlogPublisher(request: NextRequest) {
     }).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       errors.push(`recoverable_backlog_recovery_failed: ${message}`);
-      return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [message] };
+      return { scanned: 0, requeued: 0, skipped: 0, deferred: 0, kept_blocked: 0, errors: [message] };
     });
     const queueHealthCleanup = await rescheduleOverdueQueuedBlogQueueItems({
       limit: MAX_CANDIDATE_POOL * 3,

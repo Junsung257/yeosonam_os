@@ -1,3 +1,5 @@
+import { isDeferredBlogProductStatus } from './blog-product-status';
+
 export type BlogProductEvidenceRecheckDecision =
   | {
       action: 'requeue';
@@ -6,6 +8,11 @@ export type BlogProductEvidenceRecheckDecision =
     }
   | {
       action: 'skip_archived_product';
+      last_error: string;
+      meta: Record<string, unknown>;
+    }
+  | {
+      action: 'defer_unapproved_product';
       last_error: string;
       meta: Record<string, unknown>;
     }
@@ -84,12 +91,14 @@ export function buildBlogProductEvidenceRecheckGuidance(input: {
   requeue: number;
   duplicateSkipped: number;
   archivedSkipped?: number;
+  deferredUnapproved?: number;
   keepBlocked: number;
 }): BlogProductEvidenceRecheckGuidance {
   const writeReasons: string[] = [];
   if (input.requeue > 0) writeReasons.push('requeue_recovered_product_rows');
   if (input.duplicateSkipped > 0) writeReasons.push('skip_duplicate_product_rows');
   if (Number(input.archivedSkipped ?? 0) > 0) writeReasons.push('skip_archived_product_rows');
+  if (Number(input.deferredUnapproved ?? 0) > 0) writeReasons.push('defer_unapproved_product_rows');
   return {
     write_recommended: writeReasons.length > 0,
     write_reasons: writeReasons,
@@ -123,6 +132,7 @@ export function buildBlogProductEvidenceRecheckDecision(input: {
   contractOk: boolean;
   blockers?: string[];
   checkedAt?: string;
+  productStatus?: string | null;
 }): BlogProductEvidenceRecheckDecision {
   const checkedAt = input.checkedAt ?? new Date().toISOString();
   const meta = asRecord(input.meta);
@@ -135,6 +145,25 @@ export function buildBlogProductEvidenceRecheckDecision(input: {
   }
 
   const blockers = (input.blockers ?? []).map(value => String(value).trim()).filter(Boolean);
+  if (isDeferredBlogProductStatus(input.productStatus)) {
+    const normalizedStatus = String(input.productStatus).trim().toLowerCase();
+    return {
+      action: 'defer_unapproved_product',
+      last_error: `product_open_contract_deferred:${normalizedStatus}`,
+      meta: {
+        ...meta,
+        failure_code: 'product_open_contract',
+        quarantine_reason: 'product_approval_pending',
+        self_heal_blocked: true,
+        product_open_contract_blockers: blockers,
+        product_open_contract_rechecked_at: checkedAt,
+        product_open_contract_recheck_result: 'deferred_unapproved_product',
+        product_approval_pending_status: normalizedStatus,
+        product_approval_deferred_at: checkedAt,
+      },
+    };
+  }
+
   return {
     action: 'keep_blocked',
     last_error: productOpenContractFailure(blockers),

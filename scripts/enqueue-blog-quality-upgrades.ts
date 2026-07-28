@@ -4,10 +4,20 @@ import './load-script-env';
 
 import { supabaseAdmin } from '../src/lib/supabase';
 import { buildBlogContentBrief } from '../src/lib/blog-content-brief';
+import type { BlogInformationIntent } from '../src/lib/blog-information-contract';
+import type { BlogInformationAudience } from '../src/lib/blog-information-planner';
 import {
   buildPublishedBlogUpgradeQueueTopic,
   PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
 } from '../src/lib/blog-private-regeneration';
+import {
+  classifyBlogQualityUpgradeTopic,
+  deduplicateBlogQualityUpgradeCandidates,
+  matchesBlogQualityUpgradeFilter,
+} from '../src/lib/blog-quality-upgrade-selection';
+import {
+  buildBlogInformationRepresentativeKey,
+} from '../src/lib/blog-information-representative';
 
 type PublishedBlog = {
   id: string;
@@ -22,8 +32,8 @@ type PublishedBlog = {
 type InformationRepresentative = {
   canonical_creative_id: string | null;
   destination_id: string;
-  intent: string;
-  audience: string;
+  intent: BlogInformationIntent;
+  audience: BlogInformationAudience;
   locale: string;
   status: string;
 };
@@ -52,19 +62,6 @@ function hasVerifiedResearch(meta: PublishedBlog['generation_meta']): boolean {
   return preflight.passed === true && sourceKeys.length > 0 && evidenceKeys.length > 0;
 }
 
-function inferMicroAngle(post: PublishedBlog): string | null {
-  const text = `${post.slug} ${post.seo_title ?? ''} ${post.category ?? ''}`.toLowerCase();
-  if (/weather|climate|날씨|옷차림|우기|건기/.test(text)) return 'weather_packing';
-  if (/hotel|resort|숙소|호텔|리조트|지역 선택/.test(text)) return 'hotel_area';
-  if (/food|meal|식비|맛집|메뉴/.test(text)) return 'food_budget';
-  if (/shopping|souvenir|쇼핑|선물|기념품/.test(text)) return 'shopping_budget';
-  if (/airport|arrival|공항|입국.*동선/.test(text)) return 'airport_arrival';
-  if (/transport|taxi|rental|교통|택시|렌터카|이동비/.test(text)) return 'transport_cost';
-  if (/kid|child|family itinerary|아이|어린이|가족.*일정/.test(text)) return 'kid_friendly';
-  if (/budget|cost|expense|예산|경비|비용/.test(text)) return 'budget_family';
-  return null;
-}
-
 async function main() {
   const write = process.argv.includes('--write');
   const limit = positiveNumberArg('--limit', 25, 500);
@@ -85,7 +82,12 @@ async function main() {
   const missingResearch = published
     .filter(post => post.slug && !hasVerifiedResearch(post.generation_meta));
   const evaluated = missingResearch.map(post => {
-    const microAngle = inferMicroAngle(post);
+    const topicDecision = classifyBlogQualityUpgradeTopic({
+      slug: post.slug,
+      seoTitle: post.seo_title,
+      category: post.category,
+    });
+    const microAngle = topicDecision.microAngle;
     const queueTopic = buildPublishedBlogUpgradeQueueTopic(post);
     const brief = buildBlogContentBrief({
       topic: queueTopic,
@@ -96,51 +98,62 @@ async function main() {
       microAngle,
       locale: 'ko-KR',
     });
-    return { post, microAngle, brief, queueTopic };
+    return { post, microAngle, brief, queueTopic, topicDecision };
   });
-  const candidates = evaluated
-    .filter(({ post, brief }) =>
+  const eligibleCandidates = evaluated
+    .filter(({ post, brief, topicDecision }) =>
       Boolean(post.destination?.trim())
+      && topicDecision.accepted
+      && topicDecision.expectedIntent === brief.intentType
       && brief.passed
-      && !brief.requiresHumanReview)
+      && !brief.requiresHumanReview);
+  const candidates = eligibleCandidates
     .filter(({ post }) => !destination || post.destination === destination)
-    .filter(post => {
-      if (!only) return true;
-      const microAngle = post.microAngle;
-      return only === 'weather'
-        ? microAngle === 'weather_packing'
-        : microAngle === only;
-    });
+    .filter(({ brief, microAngle }) => matchesBlogQualityUpgradeFilter({
+      filter: only,
+      intent: brief.intentType,
+      microAngle,
+    }));
 
   const { data: representatives, error: representativesError } = await supabaseAdmin
     .from('blog_information_representatives')
     .select('canonical_creative_id,destination_id,intent,audience,locale,status')
-    .eq('status', 'active');
+    .in('status', ['reserved', 'active', 'retired']);
   if (representativesError) throw new Error(representativesError.message);
-  const canonicalByIdentity = new Map(
+  const representativeByIdentity = new Map(
     ((representatives ?? []) as InformationRepresentative[]).map(representative => [
-      [
-        representative.destination_id,
-        representative.intent,
-        representative.audience,
-        representative.locale,
-      ].join('|'),
-      representative.canonical_creative_id,
+      buildBlogInformationRepresentativeKey({
+        destinationId: representative.destination_id,
+        intent: representative.intent,
+        audience: representative.audience,
+        locale: representative.locale,
+      }),
+      representative,
     ]),
   );
-  const canonicalCandidates = candidates.filter(({ post, brief }) => {
-    const key = [
-      brief.plan.destinationId,
-      brief.intentType,
-      brief.plan.audience,
-      brief.plan.locale,
-    ].join('|');
-    const canonicalCreativeId = canonicalByIdentity.get(key);
-    return !canonicalCreativeId || canonicalCreativeId === post.id;
+  const candidatesWithKeys = candidates.map(candidate => ({
+    ...candidate,
+    representativeKey: buildBlogInformationRepresentativeKey({
+      destinationId: candidate.brief.plan.destinationId as string,
+      intent: candidate.brief.intentType,
+      audience: candidate.brief.plan.audience,
+      locale: candidate.brief.plan.locale,
+    }),
+  }));
+  const canonicalCandidates = candidatesWithKeys.filter(({ post, representativeKey }) => {
+    const representative = representativeByIdentity.get(representativeKey);
+    if (!representative) return true;
+    return representative.status === 'active'
+      && representative.canonical_creative_id === post.id;
   });
   const representativeDuplicatesSkipped = candidates.length - canonicalCandidates.length;
+  const sameRunDeduplication = deduplicateBlogQualityUpgradeCandidates(
+    canonicalCandidates,
+    candidate => candidate.representativeKey,
+  );
+  const uniqueCanonicalCandidates = sameRunDeduplication.selected;
 
-  const candidateIds = canonicalCandidates.map(({ post }) => post.id);
+  const candidateIds = uniqueCanonicalCandidates.map(({ post }) => post.id);
   const activeIds = new Set<string>();
   for (let offset = 0; offset < candidateIds.length; offset += 100) {
     const ids = candidateIds.slice(offset, offset + 100);
@@ -156,7 +169,7 @@ async function main() {
     }
   }
 
-  const selected = canonicalCandidates
+  const selected = uniqueCanonicalCandidates
     .filter(({ post }) => !activeIds.has(post.id))
     .slice(0, limit);
   const now = new Date().toISOString();
@@ -198,16 +211,47 @@ async function main() {
     if (error) throw new Error(error.message);
     inserted = data?.length ?? 0;
   }
+  const rejectionReasons = evaluated
+    .filter(({ post, brief, topicDecision }) =>
+      !post.destination?.trim()
+      || !topicDecision.accepted
+      || topicDecision.expectedIntent !== brief.intentType
+      || !brief.passed
+      || brief.requiresHumanReview)
+    .reduce<Record<string, number>>((counts, { post, brief, topicDecision }) => {
+      const reason = !post.destination?.trim()
+        ? 'missing_destination'
+        : !topicDecision.accepted
+          ? topicDecision.reason
+          : topicDecision.expectedIntent !== brief.intentType
+            ? 'classified_intent_mismatch'
+            : !brief.passed
+              ? 'content_brief_failed'
+              : 'human_review_required';
+      counts[reason] = (counts[reason] ?? 0) + 1;
+      return counts;
+    }, {});
+  const candidateIntentCounts = uniqueCanonicalCandidates.reduce<Record<string, number>>(
+    (counts, { brief }) => {
+      counts[brief.intentType] = (counts[brief.intentType] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
 
   console.log(JSON.stringify({
     mode: write ? 'write' : 'dry-run',
     checked_at: now,
     published_checked: published.length,
     missing_verified_research: missingResearch.length,
-    safe_automatic_candidates: canonicalCandidates.length,
-    manual_review_or_invalid_skipped: evaluated.length - candidates.length,
+    safe_automatic_candidates: uniqueCanonicalCandidates.length,
+    manual_review_or_invalid_skipped: evaluated.length - eligibleCandidates.length,
+    rejection_reasons: rejectionReasons,
+    operator_filter_skipped: eligibleCandidates.length - candidates.length,
     representative_duplicates_skipped: representativeDuplicatesSkipped,
-    active_upgrade_skipped: canonicalCandidates.filter(({ post }) => activeIds.has(post.id)).length,
+    same_run_duplicates_skipped: sameRunDeduplication.duplicateCount,
+    active_upgrade_skipped: uniqueCanonicalCandidates.filter(({ post }) => activeIds.has(post.id)).length,
+    candidate_intent_counts: candidateIntentCounts,
     selected: rows.length,
     inserted,
     only: only || null,
@@ -216,7 +260,11 @@ async function main() {
       id: post.id,
       slug: post.slug,
       destination: post.destination,
-      micro_angle: inferMicroAngle(post),
+      micro_angle: classifyBlogQualityUpgradeTopic({
+        slug: post.slug,
+        seoTitle: post.seo_title,
+        category: post.category,
+      }).microAngle,
       intent: brief.intentType,
     })),
   }, null, 2));

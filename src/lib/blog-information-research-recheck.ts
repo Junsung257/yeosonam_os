@@ -54,7 +54,7 @@ function isResearchFailure(row: BlogInformationResearchRecheckRow): boolean {
     meta.quarantine_reason,
     meta.research_failure,
   ].filter(Boolean).join(' ');
-  if (/BLOG_RESEARCH|research_(?:grounding|preflight|bundle)|evidence_insufficient:research|grounding_empty|claim_semantic_coverage_missing/i.test(joined)) {
+  if (/BLOG_RESEARCH|research_(?:grounding|preflight|bundle)|evidence_insufficient:(?:research|auto_research_failed)|grounding_empty|claim_semantic_coverage_missing/i.test(joined)) {
     return true;
   }
   return Boolean(

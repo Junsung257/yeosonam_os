@@ -231,7 +231,9 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
   const blockers = checks.filter((check) => check.status === 'block');
   const warnings = checks.filter((check) => check.status === 'warn');
   const status = worstStatus(checks);
-  const score = Math.max(0, 100 - blockers.length * 25 - warnings.length * 8);
+  // A single non-blocking warning should meet the 95-point operating floor.
+  // Hard blockers retain the larger deduction and can never be hidden by this score.
+  const score = Math.max(0, 100 - blockers.length * 25 - warnings.length * 5);
 
   return {
     status,

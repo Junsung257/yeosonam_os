@@ -7,7 +7,10 @@ import {
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
 import { inspectBlogCandidatePrepublishContract } from '@/lib/blog-candidate-prepublish-contract';
-import { isRetiredBlogProductStatus } from '@/lib/blog-product-status';
+import {
+  isDeferredBlogProductStatus,
+  isRetiredBlogProductStatus,
+} from '@/lib/blog-product-status';
 import {
   buildBlogProductEvidenceArchivedProductDecision,
   buildBlogProductEvidenceDuplicateMeta,
@@ -140,8 +143,8 @@ function buildProductOpenContractFailure(blockers: string[]): string {
 export async function quarantineNonRetryableBlogQueueItems(opts?: {
   limit?: number;
   maxAttempts?: number;
-}): Promise<{ scanned: number; quarantined: number; skipped: number; failed: number }> {
-  if (!isSupabaseConfigured) return { scanned: 0, quarantined: 0, skipped: 0, failed: 0 };
+}): Promise<{ scanned: number; quarantined: number; skipped: number; failed: number; deferred: number }> {
+  if (!isSupabaseConfigured) return { scanned: 0, quarantined: 0, skipped: 0, failed: 0, deferred: 0 };
 
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
@@ -154,13 +157,18 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     .limit(opts?.limit ?? 60);
 
   if (error || !data || data.length === 0) {
-    return { scanned: data?.length ?? 0, quarantined: 0, skipped: 0, failed: 0 };
+    return { scanned: data?.length ?? 0, quarantined: 0, skipped: 0, failed: 0, deferred: 0 };
   }
 
   let quarantined = 0;
   let skipped = 0;
   let failed = 0;
-  const productContractCache = new Map<string, string | null>();
+  let deferred = 0;
+  const productContractCache = new Map<string, {
+    failure: string | null;
+    defer: boolean;
+    productStatus: string | null;
+  }>();
 
   for (const row of data as Array<{
     id: string;
@@ -193,20 +201,28 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
           const contract = await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id);
           productContractCache.set(
             row.product_id,
-            isCustomerOpenContractBlogPublishable(contract)
-              ? null
-              : buildProductOpenContractFailure([customerOpenContractBlogBlockReason(contract)]),
+            {
+              failure: isCustomerOpenContractBlogPublishable(contract)
+                ? null
+                : buildProductOpenContractFailure([customerOpenContractBlogBlockReason(contract)]),
+              defer: isDeferredBlogProductStatus(contract.packageStatus),
+              productStatus: contract.packageStatus ?? null,
+            },
           );
         } catch (err) {
           productContractCache.set(
             row.product_id,
-            `product_customer_open_contract_failed:contract_lookup_error:${err instanceof Error ? err.message : String(err)}`,
+            {
+              failure: `product_customer_open_contract_failed:contract_lookup_error:${err instanceof Error ? err.message : String(err)}`,
+              defer: false,
+              productStatus: null,
+            },
           );
         }
       }
-      const contractFailure = productContractCache.get(row.product_id) ?? null;
-      if (contractFailure) {
-        lastError = contractFailure;
+      const contractState = productContractCache.get(row.product_id);
+      if (contractState?.failure) {
+        lastError = contractState.failure;
         forcedReason = 'product_open_contract';
       }
     }
@@ -224,8 +240,11 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
       ? row.meta as Record<string, unknown>
       : {};
     const reason = forcedReason ?? decision.reason ?? 'publisher_preflight';
+    const productContractState = row.product_id ? productContractCache.get(row.product_id) : null;
     const status = forcedReason === 'candidate_pre_publish_contract'
       ? 'skipped'
+      : forcedReason === 'product_open_contract' && productContractState?.defer
+        ? 'deferred'
       : forcedReason
         ? 'failed'
         : decision.status;
@@ -239,9 +258,16 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
           ...meta,
           failure_code: reason,
           self_heal_blocked: true,
-          quarantine_reason: reason,
+          quarantine_reason: status === 'deferred' ? 'product_approval_pending' : reason,
           quarantined_by: 'blog-publisher-preflight',
           quarantined_at: now,
+          ...(status === 'deferred'
+            ? {
+                product_open_contract_recheck_result: 'deferred_unapproved_product',
+                product_approval_pending_status: productContractState?.productStatus,
+                product_approval_deferred_at: now,
+              }
+            : {}),
         },
       } as never)
       .eq('id', row.id)
@@ -250,11 +276,12 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     if (!updateError) {
       quarantined += 1;
       if (status === 'skipped') skipped += 1;
+      else if (status === 'deferred') deferred += 1;
       else failed += 1;
     }
   }
 
-  return { scanned: data.length, quarantined, skipped, failed };
+  return { scanned: data.length, quarantined, skipped, failed, deferred };
 }
 
 type RecoverableQueueRow = {
@@ -364,20 +391,21 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
   scanned: number;
   requeued: number;
   skipped: number;
+  deferred: number;
   kept_blocked: number;
   errors: string[];
 }> {
-  if (!isSupabaseConfigured) return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [] };
+  if (!isSupabaseConfigured) return { scanned: 0, requeued: 0, skipped: 0, deferred: 0, kept_blocked: 0, errors: [] };
 
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
     .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,last_error,target_publish_at,created_at,updated_at,meta')
-    .eq('status', 'failed')
+    .in('status', ['failed', 'deferred'])
     .order('updated_at', { ascending: false })
     .limit(opts?.limit ?? 80);
   if (error || !data) {
-    return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [error?.message ?? 'recoverable_queue_scan_failed'] };
+    return { scanned: 0, requeued: 0, skipped: 0, deferred: 0, kept_blocked: 0, errors: [error?.message ?? 'recoverable_queue_scan_failed'] };
   }
 
   const rows = data as RecoverableQueueRow[];
@@ -388,6 +416,7 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
   const productStatusCache = new Map<string, string | null>();
   let requeued = 0;
   let skipped = 0;
+  let deferred = 0;
   let keptBlocked = 0;
   const errors: string[] = [];
 
@@ -416,6 +445,7 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
               contractOk: blogPublishable,
               blockers: blogBlockers,
               checkedAt: now,
+              productStatus,
             });
         const dedupKey = readBlogProductEvidenceDedupKey({ product_id: row.product_id, meta: decision.meta });
         const duplicateKeepId = dedupKey
@@ -439,7 +469,7 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
               meta,
             } as never)
             .eq('id', row.id)
-            .eq('status', 'failed');
+            .eq('status', row.status);
           if (updateError) errors.push(updateError.message);
           else skipped += 1;
         } else if (decision.action === 'requeue') {
@@ -458,7 +488,7 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
               },
             } as never)
             .eq('id', row.id)
-            .eq('status', 'failed');
+            .eq('status', row.status);
           if (updateError) errors.push(updateError.message);
           else {
             requeued += 1;
@@ -475,9 +505,28 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
               meta: decision.meta,
             } as never)
             .eq('id', row.id)
-            .eq('status', 'failed');
+            .eq('status', row.status);
           if (updateError) errors.push(updateError.message);
           else skipped += 1;
+        } else if (decision.action === 'defer_unapproved_product') {
+          if (row.status === 'deferred') {
+            keptBlocked += 1;
+          } else {
+            const { error: updateError } = await supabaseAdmin
+              .from('blog_topic_queue')
+              .update({
+                status: 'deferred',
+                attempts: 0,
+                last_error: decision.last_error,
+                target_publish_at: null,
+                updated_at: now,
+                meta: decision.meta,
+              } as never)
+              .eq('id', row.id)
+              .eq('status', row.status);
+            if (updateError) errors.push(updateError.message);
+            else deferred += 1;
+          }
         } else {
           keptBlocked += 1;
         }
@@ -537,7 +586,7 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
     }
   }
 
-  return { scanned: rows.length, requeued, skipped, kept_blocked: keptBlocked, errors };
+  return { scanned: rows.length, requeued, skipped, deferred, kept_blocked: keptBlocked, errors };
 }
 
 export async function rescheduleOverdueQueuedBlogQueueItems(opts?: {

@@ -61,6 +61,27 @@ describe('blog information research backlog recheck', () => {
     });
   });
 
+  it.each([
+    'evidence_insufficient:auto_research_failed:missing_sources,missing_evidence,missing_claims',
+    'evidence_insufficient:auto_research_failed:source_rejected:0:source_type:reputable_price_source',
+  ])('recognizes persisted automatic research failure variants: %s', (lastError) => {
+    const decision = buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        last_error: lastError,
+        meta: {
+          micro_angle: 'hotel_area',
+          failure_code: 'evidence_insufficient',
+          quarantine_reason: 'non_retryable_failure',
+        },
+      }),
+    });
+
+    expect(decision).toMatchObject({
+      action: 'requeue',
+      reason: 'live_verified_research_retry',
+    });
+  });
+
   it('does not treat a generic skipped quality row as an automatic research retry', () => {
     expect(buildBlogInformationResearchRecheckDecision({
       row: failedResearchRow({

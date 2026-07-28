@@ -55,6 +55,29 @@ describe('blog product evidence recheck', () => {
     });
   });
 
+  it('defers unapproved products until their customer-visible status changes', () => {
+    const decision = buildBlogProductEvidenceRecheckDecision({
+      checkedAt: '2026-07-29T00:00:00.000Z',
+      contractOk: false,
+      productStatus: 'pending_review',
+      blockers: ['product_status_not_customer_visible:pending_review'],
+      meta: { previous: true },
+    });
+
+    expect(decision).toMatchObject({
+      action: 'defer_unapproved_product',
+      last_error: 'product_open_contract_deferred:pending_review',
+      meta: {
+        previous: true,
+        failure_code: 'product_open_contract',
+        quarantine_reason: 'product_approval_pending',
+        self_heal_blocked: true,
+        product_open_contract_recheck_result: 'deferred_unapproved_product',
+        product_approval_pending_status: 'pending_review',
+      },
+    });
+  });
+
   it('uses the product dedup key before falling back to product id', () => {
     expect(readBlogProductEvidenceDedupKey({
       product_id: 'package-id',
@@ -123,10 +146,16 @@ describe('blog product evidence recheck', () => {
       requeue: 1,
       duplicateSkipped: 2,
       archivedSkipped: 1,
+      deferredUnapproved: 4,
       keepBlocked: 3,
     })).toEqual({
       write_recommended: true,
-      write_reasons: ['requeue_recovered_product_rows', 'skip_duplicate_product_rows', 'skip_archived_product_rows'],
+      write_reasons: [
+        'requeue_recovered_product_rows',
+        'skip_duplicate_product_rows',
+        'skip_archived_product_rows',
+        'defer_unapproved_product_rows',
+      ],
       metadata_refresh_available: true,
     });
 

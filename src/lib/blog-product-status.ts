@@ -10,12 +10,22 @@ const RETIRED_PRODUCT_STATUSES = new Set([
   'canceled',
 ]);
 
+const DEFERRED_PRODUCT_STATUSES = new Set([
+  'pending_review',
+  'draft',
+  'review_needed',
+]);
+
 export function normalizeBlogProductStatus(status?: string | null): string {
   return String(status ?? '').trim().toLowerCase();
 }
 
 export function isRetiredBlogProductStatus(status?: string | null): boolean {
   return RETIRED_PRODUCT_STATUSES.has(normalizeBlogProductStatus(status));
+}
+
+export function isDeferredBlogProductStatus(status?: string | null): boolean {
+  return DEFERRED_PRODUCT_STATUSES.has(normalizeBlogProductStatus(status));
 }
 
 export function isBlogProductPublishableStatus(status?: string | null): boolean {
