@@ -27,6 +27,7 @@ import {
 import { evaluateBlogEngineV2 } from './blog-engine-v2';
 import { evaluateBlogEditorialQuality, evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { normalizeBlogCtaDestination } from './blog-cta';
+import { withTimeout } from './promise-timeout';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -63,6 +64,7 @@ const THRESHOLDS = {
 } as const;
 
 const DEDUP_WINDOW_DAYS = 14;
+const QUALITY_GATE_DB_TIMEOUT_MS = 4_000;
 const GENERIC_SLUG_PREFIXES = new Set([
   'travel-guide',
   'package-guide',
@@ -101,7 +103,12 @@ interface CheckInput {
   product_id?: string | null;
   micro_angle?: string | null;
   skipFuzzyDuplicate?: boolean;
+  skipDuplicateCheck?: boolean;
   generation_meta?: Record<string, unknown> | null;
+}
+
+function withQualityGateDbTimeout<T>(operation: PromiseLike<T>, label: string): Promise<T> {
+  return withTimeout(Promise.resolve(operation), QUALITY_GATE_DB_TIMEOUT_MS, label);
 }
 
 function getSpecificSlugPrefix(slug: string): string | null {
@@ -908,6 +915,18 @@ function checkEditorialQuality(input: CheckInput): GateResult {
 }
 
 export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
+  if (input.skipDuplicateCheck) {
+    return {
+      gate: 'duplicate',
+      passed: true,
+      evidence: {
+        type: 'prevalidated_atomic_replacement',
+        excluded_content_creative_id: input.excludeContentCreativeId ?? null,
+      },
+    };
+  }
+
+  try {
   const since = new Date();
   since.setDate(since.getDate() - DEDUP_WINDOW_DAYS);
   const sinceIso = since.toISOString();
@@ -924,7 +943,10 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
     slugQuery.neq('id', input.excludeContentCreativeId);
   }
 
-  const { data: slugDupes } = await slugQuery.limit(1);
+  const { data: slugDupes } = await withQualityGateDbTimeout(
+    slugQuery.limit(1),
+    'blog_duplicate_slug_query',
+  );
   if (slugDupes && slugDupes.length > 0) {
     return {
       gate: 'duplicate',
@@ -951,7 +973,10 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
       prefixQuery.neq('id', input.excludeContentCreativeId);
     }
 
-    const { data: prefixDupes } = await prefixQuery.limit(1);
+    const { data: prefixDupes } = await withQualityGateDbTimeout(
+      prefixQuery.limit(1),
+      'blog_duplicate_prefix_query',
+    );
 
     if (prefixDupes && prefixDupes.length > 0) {
       return {
@@ -981,7 +1006,10 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
         microQuery.neq('id', input.excludeContentCreativeId);
       }
 
-      const { data: microDupes } = await microQuery.limit(1);
+      const { data: microDupes } = await withQualityGateDbTimeout(
+        microQuery.limit(1),
+        'blog_duplicate_micro_angle_query',
+      );
 
       if (microDupes && microDupes.length > 0) {
         return {
@@ -1008,7 +1036,10 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
       angleQuery.neq('id', input.excludeContentCreativeId);
     }
 
-    const { data: angleDupes } = await angleQuery.limit(1);
+    const { data: angleDupes } = await withQualityGateDbTimeout(
+      angleQuery.limit(1),
+      'blog_duplicate_product_angle_query',
+    );
 
     if (angleDupes && angleDupes.length > 0) {
       return {
@@ -1034,7 +1065,10 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
       infoQuery.neq('id', input.excludeContentCreativeId);
     }
 
-    const { data: infoDupes } = await infoQuery.limit(1);
+    const { data: infoDupes } = await withQualityGateDbTimeout(
+      infoQuery.limit(1),
+      'blog_duplicate_information_angle_query',
+    );
 
     if (infoDupes && infoDupes.length > 0) {
       return {
@@ -1047,6 +1081,17 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   }
 
   return { gate: 'duplicate', passed: true };
+  } catch (error) {
+    return {
+      gate: 'duplicate',
+      passed: false,
+      reason: `중복 검사 DB 조회 실패: ${error instanceof Error ? error.message : String(error)}`,
+      evidence: {
+        type: 'duplicate_check_unavailable',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
 }
 
 export async function runQualityGates(input: CheckInput): Promise<QualityGateReport> {
@@ -1057,7 +1102,10 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   // 동적 임계값 로드 (blog-bayesian-optimizer 에서 주간/월간 자동 조정)
   let adaptive: AdaptiveThresholds | null = null;
   try {
-    adaptive = await getActiveThresholds();
+    adaptive = await withQualityGateDbTimeout(
+      getActiveThresholds(),
+      'blog_quality_threshold_query',
+    );
   } catch {
     // fallback: 기본 THRESHOLDS 상수 사용
   }

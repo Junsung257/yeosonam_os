@@ -657,6 +657,9 @@ function buildQualityGateInput(
     micro_angle: getQueueMicroAngle(item),
     generation_meta: generated.generation_meta ?? null,
     excludeContentCreativeId: item.content_creative_id ?? null,
+    skipDuplicateCheck: isPublishedBlogAtomicUpgradeRequest(
+      readPrivateBlogRegenerationRequest(item),
+    ),
   };
 }
 

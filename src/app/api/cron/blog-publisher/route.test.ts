@@ -144,6 +144,7 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('excludeContentCreativeId: item.content_creative_id ?? null');
+    expect(source).toContain('skipDuplicateCheck: isPublishedBlogAtomicUpgradeRequest(');
   });
 
   it('supports an authenticated single-item private regeneration without quota refill', () => {
