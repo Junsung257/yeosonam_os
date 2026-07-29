@@ -83,21 +83,26 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
   body characters in Chrome. The static audit was reading the pre-materialized
   Next.js Flight response. Release and corpus classification now requires
   `--browser`; HTML mode remains a transport smoke check.
-- Browser-verified category results at the 95 floor (96/166 passed, average
-  score 88):
+- Browser-verified category results at the 95 floor after table-signal precision
+  correction (107/166 passed, average score 90):
   - `itinerary`: 2/2, minimum 100
-  - `preparation`: 29/36, minimum 71
-  - `local_info`: 15/26, minimum 59
+  - `preparation`: 31/36, minimum 71
+  - `local_info`: 17/26, minimum 59
   - `pillar`: 3/8, minimum 76
-  - `travel_tips`: 47/87, minimum 59
+  - `travel_tips`: 54/87, minimum 59
   - `visa_info`: 0/6, minimum 59
   - `card_news`: 0/1, minimum 83
-- Browser-visible issue counts are: mechanical structure 88, broken tables 34,
+- Browser-visible issue counts are: mechanical structure 88, broken tables 20,
   duplicate sections 34, unsupported internal claims 13, answer mismatch 9, and
-  placeholder copy 2. Browser mode found no genuinely body-empty article.
+  placeholder copy 2. Fourteen of the previous table findings came from parent
+  container duplication, ordinary numeric prose, or horizontal rules rather
+  than broken customer-visible tables. Browser mode found no genuinely
+  body-empty article.
 - A stored-body preflight of all 166 rows completed in 5.2 seconds, making it
   safe for the 55-second nightly recovery route. It is intentionally a fast
-  prioritization signal, not a replacement for the browser release audit.
+  prioritization signal, not a replacement for the browser release audit. After
+  sharing the public sanitizer and correcting table evidence, it matched the
+  browser headline exactly: 107 passed, 59 failed, average 90.
 - The cache hardening remains valid defense in depth: the detail cache is
   versioned for full bodies, a genuinely unusable cached body fails to the
   explicit unavailable surface, and low editorial quality no longer triggers a
