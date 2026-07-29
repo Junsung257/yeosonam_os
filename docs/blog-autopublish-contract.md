@@ -8,8 +8,25 @@ This document defines the required contract for automatic blog generation, publi
 
 - Publish approval must inspect the HTML produced by the real public renderer, not only stored Markdown or persisted component scores. `public_customer_quality` is a mandatory fail-closed gate with a minimum score of 95; broken tables, duplicate public sections, answer-intent mismatch, generated residue, unsupported internal claims, or excessive conversion pressure block publication.
 - The public customer audit must page through the complete public API catalog and report the weakest score, pass rate, and issue counts for every stored category. A corpus or category is not “95 complete” when its average is 95 but any public row is below 95, when a row cannot be fetched, or when its category is unknown.
+- The public customer audit normalizes encoded and decoded forms of the same
+  Korean slug before merging API, listing, and sitemap targets. It uses bounded
+  concurrency and retries only transient network, 408/425/429, and 5xx failures.
+  A URL-encoding representation must never create a duplicate `unknown`
+  category row.
 - Public collection surfaces and the public list API must reuse one compact cached catalog. The catalog excludes `blog_html`, `quality_gate`, and `generation_meta`, performs no exact-count query, and is filtered and paginated in memory. `/blog`, destination pages, angle pages, the public API, and sitemap must not independently fan out full-corpus list/count reads during a crawler burst.
+- A cached blog detail with no usable body is not a valid stale response. The
+  detail cache key must be versioned when its row shape or eligibility contract
+  changes; if a fresh read also fails, return the explicit database-unavailable
+  surface instead of a `200` article shell containing only a table of contents.
+  Editorial quality failure is not cache staleness and must not trigger a fresh
+  database read on every page request.
 - Legacy repair must separate presentation-only cleanup from factual replacement. A presentation repair may remove duplicate/generated residue or normalize rendering only when it introduces no new claim. Price, visa, entry, weather, transport, lodging, itinerary, or current-condition defects require reviewed destination/intent evidence and the atomic in-place upgrade contract; changing a score or adding generic prose is not remediation.
+- The nightly published-post recovery job evaluates every public body with the
+  same production renderer and public-customer 95 gate. It prioritizes current
+  public failures first, lowest score first, then mature Google zero-click and
+  missing-research candidates. The queue records the score and issue codes, but
+  research capability, high-risk review, representative ownership, cooldown,
+  and atomic replacement gates still decide whether a rewrite may proceed.
 - A legacy article without verified research is an explicit recovery backlog item even when its persisted SEO/readability fields are high. Stored scores are historical evidence, not proof of current public quality. A blocked automatic upgrade remains public and unchanged until a fully gated replacement succeeds, unless an authorized review separately decides to unpublish it.
 - The global five-post policy is a cumulative KST slot contract: 09:00 permits at most one post for the day, 12:00 permits two, 15:00 permits three, 18:00 permits four, and 21:00 permits all five. A normal or workflow retry may fill only the quota due at the current slot. The final slot may catch up every remaining daily post.
 - `dailyQuota.remainingAfterRun` means quota still due at the current time and therefore controls same-window retries. `remainingDailyAfterRun` is the total daily remainder for monitoring. A forced scheduler refill does not authorize early publication.

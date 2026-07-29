@@ -43,7 +43,14 @@ describe('blog search data and published quality recovery contract', () => {
     expect(route).toContain('hasReviewedBlogResearchCoverage({');
     expect(route).toContain('destination: decision.researchDestination');
     expect(route).toContain("status: 'research_coverage_missing'");
-    expect(route).toContain("selectionSource = matureZeroClickSet.has(slug) ? 'zero_click' : 'quality_gap'");
+    expect(route).toContain('evaluateBlogPublicCustomerQuality({');
+    expect(route).toContain('PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE');
+    expect(route).toContain('publicQualityGapSet.has(post.id)');
+    expect(route).toContain("? 'public_customer_quality'");
+    expect(route).toContain("reason: selectionSource === 'zero_click' ? 'zero_click' : 'quality_gap'");
+    expect(route).toContain("'public_customer_quality_upgrade'");
+    expect(route).toContain("priority: selectionSource === 'public_customer_quality'");
+    expect(route).toContain('public_quality_gap_candidates: publicQualityGapSet.size');
     expect(route).toContain('representative_conflict');
     expect(route).toContain('atomic_publish_replace: true');
     expect(route).not.toContain("message: 'rank_history 데이터 없음'");

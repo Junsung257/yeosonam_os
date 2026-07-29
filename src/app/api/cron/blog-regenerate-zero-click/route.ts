@@ -22,6 +22,10 @@ import {
   type BlogResearchRegistryCapability,
   type BlogResearchReputableCapability,
 } from '@/lib/blog-research-capability';
+import {
+  evaluateBlogPublicCustomerQuality,
+  PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
+} from '@/lib/blog-publish-quality';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -32,6 +36,7 @@ const COOLDOWN_DAYS = 7;
 const PERFORMANCE_MATURITY_DAYS = 14;
 const MAX_BATCH = 2;
 const CANDIDATE_POOL_LIMIT = 500;
+const PUBLIC_QUALITY_AUDIT_CONCURRENCY = 6;
 
 interface RankRow {
   slug: string;
@@ -68,6 +73,12 @@ interface InformationRepresentative {
   status: string;
 }
 
+interface PublicQualitySnapshot {
+  score: number;
+  passed: boolean;
+  issueCodes: string[];
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -83,6 +94,29 @@ function hasVerifiedResearch(meta: Record<string, unknown> | null): boolean {
 
 function sha256(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  workerCount: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]);
+    }
+  }
+  await Promise.all(
+    Array.from(
+      { length: Math.min(workerCount, Math.max(1, items.length)) },
+      runWorker,
+    ),
+  );
+  return results;
 }
 
 async function runRegenerator(request: NextRequest) {
@@ -136,6 +170,44 @@ async function runRegenerator(request: NextRequest) {
     if (postError) return { processed: 0, errors: [...errors, postError.message], results };
 
     const publishedPosts = (posts ?? []) as PublishedPost[];
+    const publicQualityEntries = await mapWithConcurrency(
+      publishedPosts,
+      PUBLIC_QUALITY_AUDIT_CONCURRENCY,
+      async (post): Promise<[string, PublicQualitySnapshot | null]> => {
+        try {
+          const report = await evaluateBlogPublicCustomerQuality({
+            blog_html: post.blog_html ?? '',
+            slug: post.slug,
+            seo_title: post.seo_title,
+            destination: post.destination,
+          });
+          return [post.id, {
+            score: report.score,
+            passed:
+              report.passed
+              && report.score >= PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
+            issueCodes: report.issues.map(issue => issue.code),
+          }];
+        } catch (error) {
+          errors.push(
+            `${post.slug} public quality audit failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return [post.id, null];
+        }
+      },
+    );
+    const publicQualityByPostId = new Map(
+      publicQualityEntries.filter(
+        (entry): entry is [string, PublicQualitySnapshot] => entry[1] !== null,
+      ),
+    );
+    const publicQualityGapSet = new Set(
+      publishedPosts
+        .filter(post => publicQualityByPostId.get(post.id)?.passed === false)
+        .map(post => post.id),
+    );
     const performanceMaturityCutoff = Date.now() - PERFORMANCE_MATURITY_DAYS * 86_400_000;
     const matureZeroClickSet = new Set(
       publishedPosts
@@ -147,9 +219,19 @@ async function runRegenerator(request: NextRequest) {
         .map(post => post.slug),
     );
     const prioritizedPosts = publishedPosts
-      .filter(post => matureZeroClickSet.has(post.slug) || !hasVerifiedResearch(post.generation_meta))
+      .filter(post =>
+        publicQualityGapSet.has(post.id)
+        || matureZeroClickSet.has(post.slug)
+        || !hasVerifiedResearch(post.generation_meta),
+      )
       .filter(post => !cooldownSet.has(post.slug))
       .sort((left, right) => {
+        const publicQualityPriorityDelta = Number(publicQualityGapSet.has(right.id))
+          - Number(publicQualityGapSet.has(left.id));
+        if (publicQualityPriorityDelta !== 0) return publicQualityPriorityDelta;
+        const leftQualityScore = publicQualityByPostId.get(left.id)?.score ?? 101;
+        const rightQualityScore = publicQualityByPostId.get(right.id)?.score ?? 101;
+        if (leftQualityScore !== rightQualityScore) return leftQualityScore - rightQualityScore;
         const priorityDelta = Number(matureZeroClickSet.has(right.slug))
           - Number(matureZeroClickSet.has(left.slug));
         if (priorityDelta !== 0) return priorityDelta;
@@ -276,7 +358,12 @@ async function runRegenerator(request: NextRequest) {
         continue;
       }
 
-      const selectionSource = matureZeroClickSet.has(slug) ? 'zero_click' : 'quality_gap';
+      const publicQuality = publicQualityByPostId.get(post.id) ?? null;
+      const selectionSource = publicQualityGapSet.has(post.id)
+        ? 'public_customer_quality'
+        : matureZeroClickSet.has(slug)
+          ? 'zero_click'
+          : 'quality_gap';
       const createdDayUtc = Math.floor(Date.now() / 86_400_000);
       const { data: lockRows, error: lockError } = await supabaseAdmin
         .from('blog_regenerate_log')
@@ -284,9 +371,13 @@ async function runRegenerator(request: NextRequest) {
           post_id: post.id,
           slug,
           old_html_hash: sha256(post.blog_html ?? ''),
-          reason: selectionSource,
+          reason: selectionSource === 'zero_click' ? 'zero_click' : 'quality_gap',
           gate_passed: false,
-          gate_summary: 'queued_research_upgrade',
+          gate_summary: publicQuality
+            ? `queued_research_upgrade:public_quality=${publicQuality.score}:${
+                publicQuality.issueCodes.slice(0, 5).join(',')
+              }`
+            : 'queued_research_upgrade',
           created_day_utc: createdDayUtc,
         })
         .select('id')
@@ -308,7 +399,11 @@ async function runRegenerator(request: NextRequest) {
         .insert({
           topic: queueTopic,
           source: 'user_seed',
-          priority: selectionSource === 'zero_click' ? 85 : 70,
+          priority: selectionSource === 'public_customer_quality'
+            ? 90
+            : selectionSource === 'zero_click'
+              ? 85
+              : 70,
           primary_keyword: queueTopic,
           destination: decision.researchDestination,
           angle_type: post.angle_type || 'value',
@@ -320,13 +415,16 @@ async function runRegenerator(request: NextRequest) {
             expected_slug: post.slug,
             ...(decision.microAngle ? { micro_angle: decision.microAngle } : {}),
             quality_upgrade: {
-              version: 'published-research-upgrade-v1',
+              version: 'published-research-upgrade-v2',
               enqueued_at: new Date().toISOString(),
-              reason: selectionSource === 'zero_click'
-                ? 'zero_click_performance_upgrade'
-                : 'missing_verified_information_research',
+              reason: selectionSource === 'public_customer_quality'
+                ? 'public_customer_quality_upgrade'
+                : selectionSource === 'zero_click'
+                  ? 'zero_click_performance_upgrade'
+                  : 'missing_verified_information_research',
               intent: decision.brief.intentType,
               selection_source: selectionSource,
+              public_customer_quality: publicQuality,
             },
             private_regeneration: {
               mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
@@ -361,6 +459,9 @@ async function runRegenerator(request: NextRequest) {
       raw_zero_click_candidates: zeroClickSlugs.length,
       zero_click_candidates: matureZeroClickSet.size,
       performance_maturity_days: PERFORMANCE_MATURITY_DAYS,
+      public_quality_audited: publicQualityByPostId.size,
+      public_quality_gap_candidates: publicQualityGapSet.size,
+      public_quality_minimum_score: PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
       quality_gap_candidates: prioritizedPosts.filter(post => !matureZeroClickSet.has(post.slug)).length,
       rejection_counts: rejectionCounts,
       results,

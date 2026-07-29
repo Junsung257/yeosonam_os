@@ -38,30 +38,25 @@ test('/api/v1/health performs a real DB probe with a short timeout', () => {
 
 test('/blog list renders DB unavailable state instead of silent empty posts', () => {
   const source = read('src', 'app', 'blog', 'BlogData.tsx');
+  const catalog = read('src', 'lib', 'blog-public-catalog.ts');
 
   assert.match(source, /unavailable: boolean/);
-  assert.match(source, /unstable_cache/);
-  assert.match(source, /getCachedBlogData/);
-  assert.match(source, /BLOG_LIST_CACHE_TAG/);
-  assert.match(source, /throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(source, /__blogQueryUnavailable/);
-  assert.match(source, /Promise\.race/);
-  assert.match(source, /isBlogQueryUnavailable/);
-  assert.match(source, /return unavailableBlogData\(filter\)/);
-  assert.match(source, /logBlogListDegraded/);
-  assert.match(source, /console\.info\(`\[blog\/list\]\[degraded\]/);
-  assert.doesNotMatch(source, /console\.warn\(`\\\[blog\/list\\\]/);
-  assert.match(source, /range\(offset, offset \+ PER_PAGE - 1\)/);
-  assert.match(source, /\.select\(BLOG_LIST_SELECT, \{ count: ['"]exact['"] \}\)/);
-  assert.doesNotMatch(source, /runBlogQuery\(['"]destinations['"]/);
-  assert.doesNotMatch(source, /runBlogQuery\(['"]angleCounts['"]/);
-  assert.match(source, /connection timeout/i);
+  assert.match(source, /loadPublicBlogCatalog/);
+  assert.match(source, /\.\.\.unavailableBlogData\(filter\)/);
+  assert.match(source, /matchingPosts\.slice\(offset, offset \+ PER_PAGE\)/);
+  assert.match(catalog, /unstable_cache/);
+  assert.match(catalog, /getCachedPublicBlogCatalog/);
+  assert.match(catalog, /BLOG_LIST_CACHE_TAG/);
+  assert.match(catalog, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(catalog, /abortSignal\(controller\.signal\)/);
+  assert.match(catalog, /\[blog\/catalog\]\[degraded\]/);
+  assert.doesNotMatch(catalog, /count:\s*['"]exact['"]/);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
   assert.match(source, /totalLabel = unavailable \? '확인 중' : total\.toLocaleString\(\)/);
   assert.match(source, /const jsonLdItemCount = fallback \? jsonLdPosts\.length : total/);
   assert.match(source, /numberOfItems: unavailable \? undefined : jsonLdItemCount/);
-  assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
+  assert.match(catalog, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });
 
 test('/blog detail does not convert DB timeouts into notFound', () => {
@@ -73,11 +68,16 @@ test('/blog detail does not convert DB timeouts into notFound', () => {
   assert.match(source, /unstable_cache/);
   assert.match(source, /getPostFastUncached/);
   assert.match(source, /getCachedPostFast/);
+  assert.match(source, /blog-detail-v4-full-body-required/);
+  assert.match(source, /function shouldRefreshCachedBlogPost[\s\S]+return !hasUsableBlogBody\(post\)/);
+  assert.doesNotMatch(source, /inspectBlogIntentQuality/);
+  assert.match(source, /if \(!hasUsableBlogBody\(cached\)\) \{\s*throw createBlogDatabaseUnavailableError\(\)/);
   assert.match(source, /BLOG_DETAIL_CACHE_TAG/);
   assert.match(source, /duplicateTitleSuffix/);
   assert.match(source, /headlineExperiment/);
   assert.match(source, /isBlogDetailQueryUnavailable/);
   assert.match(source, /BlogDatabaseUnavailableView/);
+  assert.match(source, /return <BlogDatabaseUnavailableView slug=\{slug\} \/>/);
   assert.match(source, /Promise\.race/);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답이 지연/);
@@ -98,7 +98,8 @@ test('/api/blog returns stale or Korean fallback for list DB timeout instead of 
   assert.match(source, /unavailableBlogResponse/);
   assert.match(source, /stale-if-error=86400/);
   assert.match(source, /status: 503/);
-  assert.match(source, /range\(offset, offset \+ limit - 1\)/);
+  assert.match(source, /loadPublicBlogCatalog/);
+  assert.match(source, /matchingPosts\.slice\(offset, offset \+ limit\)/);
   assert.doesNotMatch(source, /BLOG_LIST_COUNT_SELECT/);
 });
 
@@ -137,7 +138,6 @@ test('public blog publish paths invalidate list and detail data caches', () => {
     ['src', 'app', 'api', 'content-queue', 'route.ts'],
     ['src', 'app', 'api', 'content-hub', 'publish', 'route.ts'],
     ['src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts'],
-    ['src', 'app', 'api', 'cron', 'blog-regenerate-zero-click', 'route.ts'],
   ]) {
     assert.match(read(...file), /revalidatePublicBlogCache/);
   }
@@ -156,17 +156,16 @@ test('blog destination and angle tabs do not cache unavailable empty states', ()
   assert.match(destination, /getCachedDestinationPageData/);
   assert.match(destination, /BLOG_DESTINATION_CACHE_TAG/);
   assert.match(destination, /throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(destination, /Promise\.race/);
-  assert.match(destination, /\.eq\('destination', destination\)/);
-  assert.doesNotMatch(destination, /\.limit\(1000\)/);
-  assert.match(destination, /runBlogDestinationQuery\('posts'/);
+  assert.match(destination, /loadPublicBlogCatalog/);
+  assert.match(destination, /destinationSlugMatches\(postDestination, destination\)/);
+  assert.doesNotMatch(destination, /runBlogDestinationQuery\('posts'/);
   assert.match(destination, /블로그 데이터를 잠시 불러오지 못했습니다/);
 
   assert.match(angle, /getCachedAnglePageData/);
   assert.match(angle, /BLOG_ANGLE_CACHE_TAG/);
   assert.match(angle, /throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(angle, /Promise\.race/);
-  assert.match(angle, /runBlogAngleQuery/);
+  assert.match(angle, /loadPublicBlogCatalog/);
+  assert.match(angle, /\.filter\(\(post\) => post\.angle_type === angle\)/);
   assert.match(angle, /블로그 데이터를 잠시 불러오지 못했습니다/);
 
   assert.match(matcher, /runAnglePackageQuery/);
@@ -266,9 +265,11 @@ test('open readiness rejects package detail not-found bodies even when HTTP stat
 
 test('open readiness rejects blog detail not-found bodies even when HTTP status is 200', () => {
   const source = read('scripts', 'open-readiness-check.mjs');
+  const htmlContract = read('scripts', 'lib', 'open-readiness-html.mjs');
 
-  assert.match(source, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
-  assert.match(source, /BLOG_DETAIL_NOINDEX_PATTERN/);
+  assert.match(htmlContract, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
+  assert.match(htmlContract, /BLOG_DETAIL_NOINDEX_PATTERN/);
+  assert.match(htmlContract, /BLOG_CANONICAL_PATTERN/);
   assert.match(source, /blogDetailLooksRenderable/);
   assert.match(source, /public:blog-runtime/);
   assert.match(source, /OPEN_CHECK_BLOG_SLUG/);

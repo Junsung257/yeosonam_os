@@ -111,12 +111,14 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('if (/<table\\b/i.test(html)) return null;');
   });
 
-  it('bypasses stale cached blog detail rows when the article body is empty or editorially failed', () => {
+  it('bypasses cached blog detail rows only when the article body is unusable', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
 
     expect(source).toContain('function shouldRefreshCachedBlogPost');
-    expect(source).toContain('inspectBlogIntentQuality');
+    expect(source).toContain('return !hasUsableBlogBody(post)');
     expect(source).toContain('getPostFastUncached(slug).catch(() => null)');
+    expect(source).toContain('throw createBlogDatabaseUnavailableError()');
+    expect(source).not.toContain('inspectBlogIntentQuality');
   });
 
   it('expands short public SEO titles before metadata is emitted', () => {

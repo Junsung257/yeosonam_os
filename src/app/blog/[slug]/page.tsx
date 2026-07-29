@@ -33,7 +33,7 @@ import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
-import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
+import { classifyBlogIntent } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
@@ -557,7 +557,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
 
 const getCachedPostFast = unstable_cache(
   async (slug: string) => getPostFastUncached(slug),
-  ['blog-detail-v3-public-eligibility'],
+  ['blog-detail-v4-full-body-required'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
 
@@ -574,20 +574,9 @@ function hasUsableBlogBody(post: BlogPost | null | undefined): boolean {
   return text.length >= 200;
 }
 
-function shouldRefreshCachedBlogPost(post: BlogPost | null | undefined, slug: string): boolean {
+function shouldRefreshCachedBlogPost(post: BlogPost | null | undefined): boolean {
   if (!post) return false;
-  if (!hasUsableBlogBody(post)) return true;
-  const editorial = inspectBlogIntentQuality({
-    title: post.seo_title || slug,
-    slug: post.slug || slug,
-    primaryKeyword: post.seo_title || post.destination || slug,
-    angleType: post.angle_type,
-    category: post.seo_title || undefined,
-    contentType: post.product_id ? 'package_intro' : 'guide',
-    productId: post.product_id,
-    blogHtml: post.blog_html || '',
-  });
-  return !editorial.passed || editorial.issues.some((issue) => issue.severity === 'critical');
+  return !hasUsableBlogBody(post);
 }
 
 async function getPostFast(slug: string): Promise<BlogPost | null> {
@@ -596,9 +585,12 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   }
   try {
     const cached = await getCachedPostFast(slug);
-    if (shouldRefreshCachedBlogPost(cached, slug)) {
+    if (shouldRefreshCachedBlogPost(cached)) {
       const fresh = await getPostFastUncached(slug).catch(() => null);
       if (hasUsableBlogBody(fresh)) return fresh;
+      if (!hasUsableBlogBody(cached)) {
+        throw createBlogDatabaseUnavailableError();
+      }
     }
     return cached;
   } catch (error) {
@@ -1152,6 +1144,9 @@ export default async function BlogDetailPage({
   } catch (err) {
     if (isNextNotFoundError(err) || isNextRedirectError(err)) {
       throw err;
+    }
+    if (isBlogDatabaseUnavailableError(err)) {
+      return <BlogDatabaseUnavailableView slug={slug} />;
     }
 
     logError('[blog/detail] render failed', err, {
