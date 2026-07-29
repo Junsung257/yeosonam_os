@@ -44,6 +44,7 @@ import { calculateBlogPublishSlotQuota } from '@/lib/blog-publish-slot-quota';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
+import { boundBlogWriterOutput } from '@/lib/blog-writer-output-boundary';
 import {
   appendPublishReadinessSupport,
   ensurePublisherInternalLinks,
@@ -4145,6 +4146,12 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
+  const writerOutputBoundary = boundBlogWriterOutput(blog_html);
+  blog_html = writerOutputBoundary.markdown;
+  console.log(
+    `[blog-publisher] writer output boundary: ${writerOutputBoundary.originalCharacters}`
+    + ` -> ${writerOutputBoundary.finalCharacters}, truncated=${writerOutputBoundary.truncated}`,
+  );
   if (!privateRegeneration) {
     blog_html = await maybeApplyChainOfDensity(blog_html);
   }
@@ -4228,6 +4235,12 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       version: 'v1',
       claims: writerOutput.claimLedger,
       issues: writerOutput.ledgerIssues,
+    },
+    writer_output_boundary: {
+      version: 'v1',
+      original_characters: writerOutputBoundary.originalCharacters,
+      final_characters: writerOutputBoundary.finalCharacters,
+      truncated: writerOutputBoundary.truncated,
     },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
     information_research_structure_repair: {
