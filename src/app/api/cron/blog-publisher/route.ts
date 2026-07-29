@@ -2798,17 +2798,20 @@ async function processQueueItem(
         claimType: claim.claimType,
         riskLevel: claim.riskLevel,
       }));
-      const replacedWithDeterministicWeatherArticle = finalResearchRepair.changes
-        .includes('monthly_weather_deterministic_evidence_article');
+      const replacedWithDeterministicEvidenceArticle = finalResearchRepair.changes.some((change) =>
+        [
+          'monthly_weather_deterministic_evidence_article',
+          'local_transport_deterministic_evidence_article',
+        ].includes(change));
       generated.generation_meta = {
         ...currentMeta,
         writer_claim_ledger: {
           ...writerLedger,
-          claims: replacedWithDeterministicWeatherArticle
+          claims: replacedWithDeterministicEvidenceArticle
             ? approvedClaims
             : [...new Map([...currentClaims, ...approvedClaims]
                 .map((claim) => [claim.claimFingerprint, claim])).values()],
-          ...(replacedWithDeterministicWeatherArticle ? { issues: [] } : {}),
+          ...(replacedWithDeterministicEvidenceArticle ? { issues: [] } : {}),
         },
         information_research_structure_repair: {
           applied: true,
@@ -4193,15 +4196,24 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
   });
   if (researchStructureRepair.changed) {
     blog_html = researchStructureRepair.markdown;
-    writerOutput.claimLedger = [...new Map([
-      ...writerOutput.claimLedger,
-      ...researchStructureRepair.approvedClaims.map((claim) => ({
-        claimFingerprint: claim.claimFingerprint,
-        claimText: claim.claimText,
-        claimType: claim.claimType,
-        riskLevel: claim.riskLevel,
-      })),
-    ].map((claim) => [claim.claimFingerprint, claim])).values()];
+    const approvedClaims = researchStructureRepair.approvedClaims.map((claim) => ({
+      claimFingerprint: claim.claimFingerprint,
+      claimText: claim.claimText,
+      claimType: claim.claimType,
+      riskLevel: claim.riskLevel,
+    }));
+    const replacedWithDeterministicEvidenceArticle = researchStructureRepair.changes.some((change) =>
+      [
+        'monthly_weather_deterministic_evidence_article',
+        'local_transport_deterministic_evidence_article',
+      ].includes(change));
+    writerOutput.claimLedger = replacedWithDeterministicEvidenceArticle
+      ? approvedClaims
+      : [...new Map([
+          ...writerOutput.claimLedger,
+          ...approvedClaims,
+        ].map((claim) => [claim.claimFingerprint, claim])).values()];
+    if (replacedWithDeterministicEvidenceArticle) writerOutput.ledgerIssues = [];
   }
 
   // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시

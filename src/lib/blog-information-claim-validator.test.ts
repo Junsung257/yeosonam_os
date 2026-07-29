@@ -109,6 +109,7 @@ describe('blog information claim validator', () => {
       now: NOW,
     });
 
+    expect(report.issues).toEqual([]);
     expect(report.passed).toBe(true);
     expect(report.claims).toEqual([]);
   });
@@ -225,6 +226,72 @@ describe('blog information claim validator', () => {
 
     expect(report.passed).toBe(true);
     expect(report.claims).toEqual([expect.objectContaining({ claimText })]);
+  });
+
+  it('validates a deterministic local-transport article from its typed approved ledger', () => {
+    const priceClaim = 'Roam Transit 8X 성인 요금은 12.50 CAD입니다.';
+    const policyClaim = '모레인 호수 도로는 개인 차량 통행이 금지됩니다.';
+    const persistedClaims = [
+      supportedRecord(priceClaim, {
+        excerpt: `2026년 캐나다 로키산맥 KR 대상: ${priceClaim}`,
+        scope: {
+          country: '캐나다',
+          destination: '캐나다 로키산맥',
+          currency: 'CAD',
+        },
+      }),
+      supportedRecord(policyClaim, {
+        excerpt: `2026년 캐나다 로키산맥 KR 대상: ${policyClaim}`,
+        scope: { country: '캐나다', destination: '캐나다 로키산맥' },
+      }),
+    ];
+    persistedClaims[0]!.extractedValue!.currency = 'CAD';
+    persistedClaims[0]!.evidence[0]!.scope.currency = 'CAD';
+    persistedClaims[1]!.claimType = 'policy';
+    persistedClaims[1]!.evidence[0]!.claimType = 'policy';
+    persistedClaims[1]!.evidence[0]!.scope.claimType = 'policy';
+    const ledger: BlogInformationClaimLedgerEntry[] = [
+      {
+        ...ledgerFor(priceClaim)[0]!,
+        riskLevel: 'LOW',
+      },
+      {
+        ...ledgerFor(policyClaim)[0]!,
+        claimType: 'policy',
+        riskLevel: 'MEDIUM',
+      },
+    ];
+    const markdown = [
+      '<!-- blog_research_structure:local_transport:v1 -->',
+      '# 캐나다 로키산맥 대중교통',
+      '',
+      '공식 운영사의 표부터 비교해 보세요.',
+      '',
+      '| 노선 | 요금 | 예약 |',
+      '| --- | ---: | --- |',
+      '| 8X | 12.50 CAD | 사전 확인 |',
+      '<!-- /blog_research_structure:local_transport:v1 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims,
+      claimLedger: ledger,
+      intentType: 'local_transport',
+      expectedScope: {
+        country: '캐나다',
+        destination: '캐나다 로키산맥',
+      },
+      now: NOW,
+    });
+
+    expect(report.issues).toEqual([]);
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.requiresHumanReview).toBe(false);
+    expect(report.claims).toEqual([
+      expect.objectContaining({ claimText: priceClaim, claimType: 'price' }),
+      expect.objectContaining({ claimText: policyClaim, claimType: 'policy' }),
+    ]);
   });
 
   it('maps a deterministic monthly-weather row back to its exact persisted climate claim', () => {

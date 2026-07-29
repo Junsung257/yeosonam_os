@@ -273,6 +273,8 @@ function extractClaimValue(segment: string, kind: BlogInformationFactualCandidat
 
 const FOOD_BUDGET_RESEARCH_BLOCK_START = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:food_budget:v1 -->';
+const LOCAL_TRANSPORT_RESEARCH_BLOCK_START = '<!-- blog_research_structure:local_transport:v1 -->';
+const LOCAL_TRANSPORT_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:local_transport:v1 -->';
 const MONTHLY_WEATHER_RESEARCH_BLOCKS = [
   [
     '<!-- blog_research_structure:monthly_weather:v2 -->',
@@ -293,6 +295,20 @@ function sameExtractedValue(
     && (left.currency ?? '').normalize('NFKC').toUpperCase() === (right.currency ?? '').normalize('NFKC').toUpperCase();
 }
 
+function candidateKindForClaimType(
+  claimType: BlogInformationClaimType,
+): BlogInformationFactualCandidateKind {
+  if (claimType === 'price' || claimType === 'currency') return 'money_price';
+  if (claimType === 'duration') return 'time_schedule';
+  if (claimType === 'percentage') return 'percentage';
+  if (claimType === 'climate') return 'climate_measurement';
+  if (claimType === 'superlative') return 'superlative';
+  if (['customs', 'entry_visa', 'insurance', 'policy'].includes(claimType)) {
+    return 'regulated_policy';
+  }
+  return 'unknown_statement';
+}
+
 function expandDeterministicResearchRowsForValidation(
   markdown: string,
   persistedClaims: PersistedBlogInformationClaimRecord[],
@@ -305,6 +321,20 @@ function expandDeterministicResearchRowsForValidation(
   const eligibleClaims = declaredFingerprints
     ? persistedClaims.filter((claim) => declaredFingerprints.has(claim.claimFingerprint))
     : persistedClaims;
+
+  const localTransportStart = markdown.indexOf(LOCAL_TRANSPORT_RESEARCH_BLOCK_START);
+  const localTransportEnd = markdown.indexOf(
+    LOCAL_TRANSPORT_RESEARCH_BLOCK_END,
+    localTransportStart,
+  );
+  if (localTransportStart >= 0 && localTransportEnd >= 0) {
+    const contentStart = localTransportStart + LOCAL_TRANSPORT_RESEARCH_BLOCK_START.length;
+    const expanded = eligibleClaims
+      .map((claim) => claim.claimText?.trim())
+      .filter((claimText): claimText is string => Boolean(claimText))
+      .join('\n');
+    return `${markdown.slice(0, contentStart)}\n${expanded}\n${markdown.slice(localTransportEnd)}`;
+  }
 
   const weatherMarkers = MONTHLY_WEATHER_RESEARCH_BLOCKS.find(([startMarker, endMarker]) => {
     const start = markdown.indexOf(startMarker);
@@ -392,12 +422,6 @@ export function validateBlogInformationClaims(input: {
   now?: Date;
 }): BlogInformationClaimValidationReport {
   try {
-    const validationMarkdown = expandDeterministicResearchRowsForValidation(
-      input.markdown,
-      input.persistedClaims,
-      input.claimLedger,
-    );
-    const claims = extractBlogInformationClaims(validationMarkdown);
     const persistedByFingerprint = new Map(
       input.persistedClaims.map((claim) => [claim.claimFingerprint, claim]),
     );
@@ -408,7 +432,33 @@ export function validateBlogInformationClaims(input: {
         claimType: claim.claimType,
         riskLevel: 'MEDIUM' as const,
       }));
+    const validationMarkdown = expandDeterministicResearchRowsForValidation(
+      input.markdown,
+      input.persistedClaims,
+      input.claimLedger,
+    );
+    const deterministicLocalTransport = input.markdown.trimStart()
+      .startsWith(LOCAL_TRANSPORT_RESEARCH_BLOCK_START)
+      && input.markdown.includes(LOCAL_TRANSPORT_RESEARCH_BLOCK_END);
+    const claims: ExtractedBlogInformationClaim[] = deterministicLocalTransport
+      ? declaredClaims.map((declared) => {
+          const persisted = persistedByFingerprint.get(declared.claimFingerprint);
+          const candidateKind = candidateKindForClaimType(declared.claimType);
+          return {
+            claimFingerprint: declared.claimFingerprint,
+            claimText: declared.claimText,
+            claimType: declared.claimType,
+            riskLevel: declared.riskLevel,
+            candidateKind,
+            extractedValue: persisted?.extractedValue
+              ?? extractClaimValue(declared.claimText, candidateKind),
+          };
+        })
+      : extractBlogInformationClaims(validationMarkdown);
     const declaredFingerprints = new Set(declaredClaims.map((claim) => claim.claimFingerprint));
+    const declaredRiskByFingerprint = new Map(
+      declaredClaims.map((claim) => [claim.claimFingerprint, claim.riskLevel]),
+    );
     const issues: BlogInformationClaimValidationIssue[] = [];
     let supportedClaims = 0;
     let unclassifiedCount = 0;
@@ -533,7 +583,10 @@ export function validateBlogInformationClaims(input: {
         });
         continue;
       }
-      if (highRisk && input.reviewStatus !== 'approved') {
+      const requiresHumanApproval = HIGH_RISK_INTENTS.has(String(input.intentType ?? ''))
+        || (HIGH_RISK_CLAIM_TYPES.has(claim.claimType) && claim.claimType !== 'policy')
+        || declaredRiskByFingerprint.get(claim.claimFingerprint) === 'HIGH';
+      if (requiresHumanApproval && input.reviewStatus !== 'approved') {
         issues.push({
           code: 'human_approval_required',
           claimFingerprint: claim.claimFingerprint,
@@ -552,7 +605,10 @@ export function validateBlogInformationClaims(input: {
       coverage: claims.length === 0 ? (issues.length === 0 ? 1 : 0) : supportedClaims / claims.length,
       requiresHumanReview: issues.length > 0
         || HIGH_RISK_INTENTS.has(String(input.intentType ?? ''))
-        || claims.some((claim) => HIGH_RISK_CLAIM_TYPES.has(claim.claimType)),
+        || claims.some((claim) =>
+          HIGH_RISK_CLAIM_TYPES.has(claim.claimType) && claim.claimType !== 'policy')
+        || claims.some((claim) =>
+          declaredRiskByFingerprint.get(claim.claimFingerprint) === 'HIGH'),
       ledger: {
         declaredCount: declaredClaims.length,
         candidateCount: claims.length,

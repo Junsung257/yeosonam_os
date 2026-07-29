@@ -534,42 +534,10 @@ function localTransportSourceLinks(
   return [...links.values()].join(', ');
 }
 
-function removeExistingLocalTransportStructure(markdown: string): string {
-  return markdown
-    .replace(
-      /<!-- blog_research_structure:local_transport:v1 -->[\s\S]*?<!-- \/blog_research_structure:local_transport:v1 -->/g,
-      '',
-    )
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function removeLocalTransportClaimEchoes(
-  markdown: string,
-  claims: BlogInformationResearchBundle['claims'],
-): string {
-  let cleaned = markdown;
-  const claimTexts = [...new Set(claims.map((claim) => clean(claim.claimText)).filter(Boolean))]
-    .sort((left, right) => right.length - left.length);
-  for (const claimText of claimTexts) {
-    cleaned = cleaned.split(claimText).join('');
-  }
-
-  return cleaned
-    .replace(/\[\s*]\([^)]+\)/g, '')
-    .split(/\r?\n/)
-    .filter((line) =>
-      !/^\s*[-*]\s*$/.test(line)
-      && !/^\s*\|\s*(?:\|\s*)*\|\s*$/.test(line))
-    .join('\n')
-    .replace(/[ \t]+([.,!?])/g, '$1')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 function repairLocalTransportResearchStructure(input: {
   markdown: string;
   readiness: BlogGenerationResearchReadiness;
+  plannedTitle?: string | null;
 }): BlogGenerationResearchStructureRepair {
   const unchanged = () => ({
     markdown: input.markdown,
@@ -582,11 +550,13 @@ function repairLocalTransportResearchStructure(input: {
 
   const hasDeterministicBlock = input.markdown.includes(LOCAL_TRANSPORT_STRUCTURE_MARKER)
     && input.markdown.includes(LOCAL_TRANSPORT_STRUCTURE_END_MARKER);
+  const startsWithDeterministicBlock = input.markdown.trimStart()
+    .startsWith(LOCAL_TRANSPORT_STRUCTURE_MARKER);
   const report = validateBlogInformationStructure({
     intent: 'local_transport',
     markdown: input.markdown,
   });
-  if (hasDeterministicBlock && report.passed) return unchanged();
+  if (hasDeterministicBlock && startsWithDeterministicBlock && report.passed) return unchanged();
 
   const claims = bundle.claims;
   const priceClaims = claims
@@ -712,8 +682,21 @@ function repairLocalTransportResearchStructure(input: {
     .filter((line, index, lines) => lines.indexOf(line) === index);
   if (sourceLines.length === 0) return unchanged();
 
+  const title = clean(input.plannedTitle)
+    || input.markdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
+    || '렌터카 없이 이동하는 공식 대중교통 가이드';
+  const preservedImages = extractFoodBudgetImageBlocks(input.markdown).slice(0, 3);
+  const imageAt = (index: number): string[] => {
+    const image = preservedImages[index];
+    return image ? ['', ...image.markdown.split('\n'), ''] : [];
+  };
   const block = [
     LOCAL_TRANSPORT_STRUCTURE_MARKER,
+    `# ${title}`,
+    '',
+    '공식 운영사의 요금, 소요시간, 운행 범위와 예약 조건을 표부터 비교해 보세요.',
+    '실제 출발일에는 각 링크에서 시간표와 좌석을 다시 확인하세요.',
+    ...imageAt(0),
     '## 렌터카 없이 이동할 때의 공식 교통 비교',
     '',
     '아래 표는 검증된 버스·셔틀 근거만 정리합니다. 렌터카·택시·도보와 비교할 때는 실제 출발·도착 구간, 노선·정류장과 환승 가능 여부를 함께 확인하세요.',
@@ -721,14 +704,32 @@ function repairLocalTransportResearchStructure(input: {
     '| 노선·수단 및 출발·도착 구간 | 확인된 요금·패스 | 소요시간·배차 간격 | 운행 시간·시간표 | 승차권 구매·예약 | 공식 근거 |',
     '| --- | ---: | --- | --- | --- | --- |',
     ...tableRows,
+    ...imageAt(1),
     '',
     '표의 금액은 근거에서 확인된 요금입니다. 편도·왕복·패스 가격 구분은 결제 직전 공식 운영사 화면에서 다시 확인하세요.',
     '',
     '## 예약·계절·운휴 제한',
     '',
     ...policyLines,
+    ...imageAt(2),
     '',
     '성수기에는 예약 가능 여부와 수하물 제한이 바뀔 수 있습니다. 첫차·막차, 운행 시간, 배차 간격은 이동 당일 공식 시간표를 확인하세요.',
+    '',
+    '## 렌터카 없이 이동하는 확인 순서',
+    '',
+    '- 숙소에서 실제 승차 정류장까지의 이동 경로를 먼저 확인하세요.',
+    '- 표에서 노선별 요금과 소요시간을 비교한 뒤 예약 가능 여부를 확인하세요.',
+    '- 출발일의 첫차·막차와 운행 시간은 공식 시간표에서 다시 확인하세요.',
+    '- 예약 화면에서 인원, 수하물, 취소 조건과 결제 수수료를 함께 확인하세요.',
+    '- 돌아오는 편의 좌석과 마지막 연결편까지 확인한 뒤 하루 동선을 정하세요.',
+    '',
+    '## 비용과 시간 비교 기준',
+    '',
+    '- 표시 요금은 편도·왕복·패스 중 어느 조건인지 결제 화면에서 확인하세요.',
+    '- 예약 수수료와 현장 추가 비용은 승차권 금액과 나눠 기록해 보세요.',
+    '- 이동시간은 승차 구간과 정류장 대기시간을 분리해 비교해 보세요.',
+    '- 같은 날 여러 구간을 이용할 때는 각 노선의 예약 가능 여부를 따로 확인하세요.',
+    '- 운휴나 도로 제한은 출발 직전 공식 운영사 공지에서 다시 확인하세요.',
     '',
     '## 자주 묻는 질문',
     '',
@@ -739,18 +740,14 @@ function repairLocalTransportResearchStructure(input: {
     '',
     LOCAL_TRANSPORT_STRUCTURE_END_MARKER,
   ].join('\n');
-  const baseMarkdown = removeLocalTransportClaimEchoes(
-    removeExistingLocalTransportStructure(input.markdown),
-    approvedClaims,
-  );
-  const markdown = `${baseMarkdown}\n\n${block}`.trim();
+  const markdown = block.trim();
   const repairedReport = validateBlogInformationStructure({ intent: 'local_transport', markdown });
   if (!repairedReport.passed) return unchanged();
 
   return {
     markdown,
     changed: true,
-    changes: ['local_transport_verified_research_structure'],
+    changes: ['local_transport_deterministic_evidence_article'],
     approvedClaims,
   };
 }
