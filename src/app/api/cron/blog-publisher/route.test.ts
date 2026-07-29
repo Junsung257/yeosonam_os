@@ -200,6 +200,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
     expect(source).toContain('if (destForImage && !privateRegeneration) {');
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
+    expect(source).not.toContain('if (!publishedAtomicUpgrade) {\n        privateReplacementAssets = {');
     expect(source).toContain('fallbackImageUrls: replacementAssets?.inlineImageUrls');
     expect(source).toContain('preferFallbackImages: replacementAssets !== null');
     expect(source).toContain('const replacementImageShortfall = replacementAssets !== null');
