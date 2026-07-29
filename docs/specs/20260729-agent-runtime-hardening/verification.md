@@ -16,10 +16,10 @@
 ## Production Evidence
 
 - Existing deployment remains healthy before change.
-- The housekeeping-only source contract returns before external agent or channel
-  actions.
-- A manual production housekeeping call either returns counts successfully or
-  records the authorization failure and uses a scoped, auditable fallback.
+- The dedicated housekeeping route has no external agent or channel action
+  dependency.
+- A native Vercel production cron invocation returns housekeeping counts without
+  downloading `CRON_SECRET`.
 - A post-cleanup read query shows no legacy pending approvals, stale
   request-scoped active tasks, or stale open traces within processed bounds.
 - `/admin/agent-mas` remains admin-guarded and its API remains admin-only.
@@ -29,8 +29,9 @@
 
 Pre-deployment verification on 2026-07-29:
 
-- PASS: focused lifecycle and office tests, 9 files and 35 tests.
-- PASS: full Vitest suite, 615 files and 4,770 tests.
+- PASS: focused lifecycle and office tests, including the dedicated cron route,
+  authentication short-circuit, failure boundary, and Vercel schedule contract.
+- PASS: full Vitest suite, 617 files and 4,782 tests.
 - PASS: agent workflow contract and risk-pattern audit.
 - PASS: TypeScript and full ESLint with zero warnings.
 - PASS: production-env Jarvis readiness, 100/100.
@@ -51,10 +52,21 @@ Pre-deployment verification on 2026-07-29:
   requests to the login boundary.
 - PASS: no runtime error was reported for the affected agent routes after
   deployment.
-- NOTE: the authenticated manual housekeeping call returned `401` with the
-  locally pulled production `CRON_SECRET`. The one-time cleanup therefore used
-  an equivalent scoped SQL transaction. No secret was sent in a URL. The daily
-  Vercel schedule remains the normal housekeeping delivery path.
+- ROOT CAUSE: the original manual housekeeping call returned `401` because a
+  sensitive production `CRON_SECRET` was absent from the local Vercel env pull.
+  The route's production secret remained configured; the local caller sent an
+  empty bearer.
+- REMEDIATION: `/api/cron/agent-housekeeping` is a dedicated native Vercel cron
+  with no external action dependency. Operators invoke it with
+  `vercel crons run`, which supplies authentication server-side. Local env-backed
+  commands can now require variables and fail before execution when a sensitive
+  value is unavailable.
+- PASS: the missing-required-variable probe exited before its child command,
+  without reading or printing a secret.
+- PASS: TypeScript, full ESLint, direct-secret access audit, agent workflow,
+  agent risk-pattern, documentation, and Vercel function-budget checks.
+- PENDING: execute the dedicated cron after deployment and record the final
+  runtime and database evidence.
 - NOTE: local Windows `npm run build` generated compiled output but did not exit
   within 10 minutes during static generation. Three Linux/Vercel build paths
   subsequently passed, superseding that local environment limitation.

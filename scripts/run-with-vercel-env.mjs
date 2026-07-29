@@ -35,6 +35,7 @@ function run(commandArgs, options = {}) {
 const args = process.argv.slice(2);
 let environment = 'production';
 let vercelCwd = process.env.VERCEL_LINK_CWD || '';
+const requiredEnv = new Set();
 let separatorIndex = args.indexOf('--');
 
 for (let i = 0; i < args.length; i += 1) {
@@ -65,6 +66,21 @@ for (let i = 0; i < args.length; i += 1) {
 
   if (arg.startsWith('--vercel-cwd=')) {
     vercelCwd = arg.slice('--vercel-cwd='.length) || vercelCwd;
+    continue;
+  }
+
+  if (arg === '--require-env') {
+    for (const name of (args[i + 1] || '').split(',')) {
+      if (name) requiredEnv.add(name);
+    }
+    i += 1;
+    continue;
+  }
+
+  if (arg.startsWith('--require-env=')) {
+    for (const name of arg.slice('--require-env='.length).split(',')) {
+      if (name) requiredEnv.add(name);
+    }
   }
 }
 
@@ -75,7 +91,10 @@ if (separatorIndex === -1) {
 const commandArgs = separatorIndex === -1 ? [] : args.slice(separatorIndex + (args[separatorIndex] === '--' ? 1 : 0));
 
 if (commandArgs.length === 0) {
-  console.error('Usage: node scripts/run-with-vercel-env.mjs --environment=production -- <command> [args...]');
+  console.error(
+    'Usage: node scripts/run-with-vercel-env.mjs --environment=production '
+    + '[--require-env=KEY[,KEY]] -- <command> [args...]',
+  );
   process.exit(1);
 }
 
@@ -136,16 +155,25 @@ try {
     const childEnv = { ...process.env, ...parsed };
     console.log(`[vercel-env] Loaded ${Object.keys(parsed).length} ${environment} variables for child process.`);
 
-    const child = run(commandArgs, {
-      env: childEnv,
-      stdio: 'inherit',
-    });
-
-    if (child.error) {
-      console.error(`[vercel-env] Failed to run child command: ${child.error.message}`);
+    const missingRequiredEnv = [...requiredEnv].filter((name) => !childEnv[name]);
+    if (missingRequiredEnv.length > 0) {
+      console.error(
+        `[vercel-env] Missing required variables: ${missingRequiredEnv.join(', ')}. `
+        + 'Vercel does not expose some sensitive production values to local env pulls.',
+      );
       exitCode = 1;
     } else {
-      exitCode = child.status ?? 1;
+      const child = run(commandArgs, {
+        env: childEnv,
+        stdio: 'inherit',
+      });
+
+      if (child.error) {
+        console.error(`[vercel-env] Failed to run child command: ${child.error.message}`);
+        exitCode = 1;
+      } else {
+        exitCode = child.status ?? 1;
+      }
     }
   }
 } finally {
