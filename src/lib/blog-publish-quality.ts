@@ -18,6 +18,7 @@ import {
 import { renderBlogContentToHtml } from './blog-renderer';
 import { withPersistedBlogReadingTime } from './blog-reading-time';
 import { stripBlogInformationalBodyCtas } from './blog-informational-cta';
+import { sanitizePublicBlogBodyHtml } from './blog-public-render-normalizer';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -194,13 +195,17 @@ export async function evaluateBlogPublicCustomerQuality(
   input: BlogPublicCustomerQualityInput,
 ): Promise<PublicBlogCustomerQualityReport> {
   const renderedCustomerHtml = await renderBlogContentToHtml(input.blog_html);
+  const normalizedCustomerHtml = input.product_id
+    ? renderedCustomerHtml
+    : stripBlogInformationalBodyCtas(renderedCustomerHtml);
+  const publicCustomerHtml = sanitizePublicBlogBodyHtml(normalizedCustomerHtml);
   const safeTitle = (input.seo_title ?? input.slug)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
   return inspectPublicBlogCustomerQuality({
-    html: `<article><h1>${safeTitle}</h1>${renderedCustomerHtml}</article>`,
+    html: `<article><h1>${safeTitle}</h1>${publicCustomerHtml}</article>`,
     path: `/blog/${input.slug}`,
     title: input.seo_title,
     expectedType: input.product_id ? 'product' : 'info',

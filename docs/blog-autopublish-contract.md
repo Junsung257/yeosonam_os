@@ -17,6 +17,15 @@ This document defines the required contract for automatic blog generation, publi
   Next.js can defer article HTML in its Flight stream until Chrome materializes
   `.prose-blog`; static HTML mode is only a fast transport smoke check and must
   not classify an article as body-empty.
+- `broken_table_surface` requires actual compact row evidence: at least three
+  distinct leaf paragraphs or list items with at least three numeric cells, or
+  leaked Markdown table syntax. Parent containers, ordinary numeric prose, and
+  standalone horizontal rules are not table failures by themselves.
+- The nightly stored-body preflight and the public page must share
+  `sanitizePublicBlogBodyHtml`. Exact repeated long paragraphs and list items are
+  removed from the customer surface, while similar sentences with different
+  numbers or meaning are preserved. Three or more decorative horizontal rules
+  are removed; one or two intentional separators remain.
 - Public collection surfaces and the public list API must reuse one compact cached catalog. The catalog excludes `blog_html`, `quality_gate`, and `generation_meta`, performs no exact-count query, and is filtered and paginated in memory. `/blog`, destination pages, angle pages, the public API, and sitemap must not independently fan out full-corpus list/count reads during a crawler burst.
 - A cached blog detail with no usable body is not a valid stale response. The
   detail cache key must be versioned when its row shape or eligibility contract

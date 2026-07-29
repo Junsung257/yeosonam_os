@@ -7,4 +7,21 @@ describe('public blog render normalizer', () => {
     expect(html).toContain('<h2>본문 제목</h2>');
     expect(html).not.toMatch(/<h1\b|<script|onclick=/i);
   });
+
+  it('removes only exact repeated long blocks and excessive horizontal rules', () => {
+    const repeated = '동일한 긴 고객 문단은 공개 본문에서 한 번만 보여야 하며 숫자나 의미가 다른 문장은 유지해야 합니다.';
+    const html = sanitizePublicBlogBodyHtml(
+      `<p>${repeated}</p><hr><hr><hr><p>${repeated}</p><p>${repeated} 추가 정보</p>`,
+    );
+
+    expect(html.match(new RegExp(repeated, 'g'))).toHaveLength(2);
+    expect(html).toContain(`${repeated} 추가 정보`);
+    expect(html).not.toContain('<hr');
+  });
+
+  it('preserves a small number of intentional horizontal rules', () => {
+    const html = sanitizePublicBlogBodyHtml('<p>첫 구간입니다.</p><hr><p>둘째 구간입니다.</p><hr>');
+
+    expect(html.match(/<hr/g)).toHaveLength(2);
+  });
 });

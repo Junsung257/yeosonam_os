@@ -44,6 +44,13 @@ A day is healthy only when all of these are true:
 - Use `--browser` for release and corpus-quality decisions. Static HTML mode is
   only a fast transport smoke check because deferred Next.js Flight content can
   be absent from the parseable document until Chrome materializes the page.
+- Do not classify a page as a broken table from horizontal-rule count or parent
+  container text. Confirm three distinct compact row-shaped leaf blocks with at
+  least three numeric cells, or visible leaked Markdown table syntax.
+- Confirm the browser audit and nightly stored-body preflight agree on checked,
+  passed, failed, and average score. Both must use the public body sanitizer.
+  Exact long-block deduplication is safe presentation cleanup; near-duplicate
+  factual sentences remain research/review work.
 - A detail page returning HTTP 200 with only its title or table of contents is a
   failure, not a healthy stale response. Check the versioned detail cache and
   `hasUsableBlogBody`; a low editorial score belongs to the recovery queue and

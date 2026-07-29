@@ -170,16 +170,15 @@ function extractPublicArticle(input: PublicBlogCustomerQualityInput): ExtractedP
     .toArray()
     .map((element) => textOf($, element))
     .filter(Boolean);
-  const tableLikeParagraphs = bodyRoot
-    .find('p, div, li')
+  const tableLikeParagraphs = [...new Set(bodyRoot
+    .find('p, li')
     .toArray()
     .map((element) => textOf($, element))
     .filter((value) =>
       /^(?:\d{1,2}월|구분|항목|울란바토르|고비|홉스골|아이 동반|첫 해외여행|예산 중심)\s+/.test(value)
-      && /(?:\s\d[\d,]*(?:원|만원|℃|도|mm|일|%|분|시간)?|\t)/.test(value)
+      && (value.match(/\d[\d,.]*(?:원|만원|℃|도|mm|일|%|분|시간)?/g) ?? []).length >= 3
       && value.split(/\s+/).length >= 4,
-    )
-    .slice(0, 8);
+    ))].slice(0, 8);
 
   return {
     title,
@@ -286,8 +285,7 @@ export function inspectPublicBlogCustomerQuality(
   }
 
   const brokenTableLikely =
-    article.hrCount >= 3
-    || article.tableLikeParagraphs.length >= 3
+    article.tableLikeParagraphs.length >= 3
     || /\|\s*(?:구분|항목|월|상황)\s*\|[\s\S]{0,300}(?:\*\s*\*\s*\*|<hr\b)/i.test(article.htmlFragment);
   if (brokenTableLikely) {
     addIssue(

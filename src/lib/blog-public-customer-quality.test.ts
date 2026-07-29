@@ -24,6 +24,27 @@ describe('inspectPublicBlogCustomerQuality', () => {
     expect(report.issues.map((issue) => issue.code)).toContain('broken_table_surface');
   });
 
+  it('does not call ordinary numeric prose or standalone separators a broken table', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      html: page(`
+        <h1>몽골 숙소와 교통 비용 가이드</h1>
+        <p>울란바토르 시내는 1박 7만 원부터, 외곽 게르는 1박 5만 원대부터 시작합니다.</p>
+        <hr><hr><hr><hr>
+        <div>
+          <p>울란바토르 시내 호텔은 조식과 이동 동선을 함께 비교해야 합니다.</p>
+          <p>고비 이동은 차량 시간과 휴식 간격을 먼저 확인해야 합니다.</p>
+        </div>
+        <table><thead><tr><th>구분</th><th>비용</th></tr></thead><tbody>
+          <tr><td>시내</td><td>7만 원부터</td></tr>
+          <tr><td>외곽</td><td>5만 원대부터</td></tr>
+        </tbody></table>
+      `, '몽골 숙소와 교통 비용 가이드'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('broken_table_surface');
+  });
+
   it('catches generated residue and placeholder copy in visible text', () => {
     const report = inspectPublicBlogCustomerQuality({
       expectedType: 'info',
