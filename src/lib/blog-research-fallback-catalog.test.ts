@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   REVIEWED_JMA_FALLBACK_DESTINATIONS,
+  REVIEWED_PAGASA_FALLBACK_DESTINATIONS,
   REVIEWED_WMO_FALLBACK_DESTINATIONS,
 } from './blog-research-fallback-catalog';
 
@@ -22,9 +23,16 @@ describe('reviewed WMO fallback catalog', () => {
       process.cwd(),
       'supabase/migrations/20260730043000_add_xian_jma_climate_research.sql',
     ), 'utf8');
+    const pagasaExtension = readFileSync(join(
+      process.cwd(),
+      'supabase/migrations/20260730053000_add_manila_clark_climate_research.sql',
+    ), 'utf8');
     const reviewedDestinations = [
       ...migrationDestinations,
       ...([...extension.matchAll(/array\['([^']+)'\]/g)]
+        .map((match) => match[1])
+        .filter((destination) => destination !== 'monthly_weather')),
+      ...([...pagasaExtension.matchAll(/array\['([^']+)'\]/g)]
         .map((match) => match[1])
         .filter((destination) => destination !== 'monthly_weather')),
     ];
@@ -32,6 +40,7 @@ describe('reviewed WMO fallback catalog', () => {
     expect(new Set(reviewedDestinations)).toEqual(new Set([
       ...REVIEWED_WMO_FALLBACK_DESTINATIONS,
       ...REVIEWED_JMA_FALLBACK_DESTINATIONS,
+      ...REVIEWED_PAGASA_FALLBACK_DESTINATIONS,
     ]));
     expect(new Set(migrationDestinations).size).toBe(migrationDestinations.length);
     for (const destination of REVIEWED_WMO_FALLBACK_DESTINATIONS) {
@@ -40,6 +49,9 @@ describe('reviewed WMO fallback catalog', () => {
     }
     for (const destination of REVIEWED_JMA_FALLBACK_DESTINATIONS) {
       expect(extension).toContain(`array['${destination}']`);
+    }
+    for (const destination of REVIEWED_PAGASA_FALLBACK_DESTINATIONS) {
+      expect(pagasaExtension).toContain(`array['${destination}']`);
     }
   });
 });

@@ -2293,6 +2293,8 @@ export function buildPagasaMonthlyWeatherPayload(
   const stationAliases: Record<string, string[]> = {
     세부: ['세부', 'cebu', 'mactan'],
     보홀: ['보홀', 'bohol', 'tagbilaran', 'dauis'],
+    마닐라: ['마닐라', 'manila', 'naia', 'ninoy aquino'],
+    클락: ['클락', 'clark', 'clark international airport'],
   };
   const normalizePlace = (value: unknown): string => clean(value)
     .normalize('NFKC')
