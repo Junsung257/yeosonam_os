@@ -5486,6 +5486,9 @@ async function main() {
     const preservesEvidenceBackedMonthlyWeather = originalHtml.includes(
       '<!-- blog_research_structure:monthly_weather:v2 -->',
     );
+    const preservesEvidenceBackedResearchStructure =
+      hasVerifiedInformationResearch(row.generation_meta)
+      && /<!--\s*blog_research_structure:[a-z_]+:v\d+\s*-->/.test(originalHtml);
     const repairSourceHtmlBase = removeLoneHashHeadings(stripGeneratedSeoAppendix(originalHtml));
     const originalOg = row.og_image_url?.trim() || null;
     const originalTitle = row.seo_title?.trim() || null;
@@ -5627,7 +5630,7 @@ async function main() {
       slug,
       primaryKeyword,
       destination,
-      category: normalizedTitle,
+      category: auditedTitle,
       contentType,
       productId,
       blogHtml: repairSourceHtml,
@@ -6278,36 +6281,52 @@ async function main() {
         editorialVariation,
       ).markdown;
     }
-    const evidenceBackedBodyTitle = preservesEvidenceBackedMonthlyWeather
+    const auditedHtml = preservesEvidenceBackedResearchStructure ? originalHtml : nextHtml;
+    const auditedGenerationMeta = preservesEvidenceBackedResearchStructure
+      ? recordValue(row.generation_meta)
+      : nextGenerationMeta;
+    const auditedTitle = preservesEvidenceBackedResearchStructure
+      ? originalTitle
+      : normalizedTitle;
+    const auditedDescription = preservesEvidenceBackedResearchStructure
+      ? originalDescription
+      : normalizedDescription;
+    const auditedTargetAdKeywords = preservesEvidenceBackedResearchStructure
+      ? row.target_ad_keywords ?? null
+      : nextTargetAdKeywords;
+    const auditedDestination = preservesEvidenceBackedResearchStructure
+      ? row.destination
+      : normalizedDestinationForWrite;
+    const evidenceBackedBodyTitle = preservesEvidenceBackedResearchStructure
       ? originalHtml.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
       : null;
-    const qualitySecondaryKeywords = preservesEvidenceBackedMonthlyWeather
+    const qualitySecondaryKeywords = preservesEvidenceBackedResearchStructure
       ? [evidenceBackedBodyTitle || row.seo_title || primaryKeyword]
       : secondaryKeywords;
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
-      blog_html: nextHtml,
+      blog_html: auditedHtml,
       slug,
-      seo_title: normalizedTitle,
-      seo_description: normalizedDescription,
-      destination: normalizedDestinationForWrite,
+      seo_title: auditedTitle,
+      seo_description: auditedDescription,
+      destination: auditedDestination,
       angle_type: null,
       primary_keyword: primaryKeyword,
       secondary_keywords: qualitySecondaryKeywords,
       category: normalizedTitle,
       content_type: contentType,
       product_id: productId,
-      generation_meta: nextGenerationMeta,
+      generation_meta: auditedGenerationMeta,
       excludeContentCreativeId: row.id,
       skipFuzzyDuplicate: true,
     });
     const engineCategoryEvaluation = evaluateBlogEngineV2({
-      blogHtml: nextHtml,
+      blogHtml: auditedHtml,
       primaryKeyword,
-      destination: normalizedDestinationForWrite,
+      destination: auditedDestination,
       contentType,
       productId,
-      generationMeta: nextGenerationMeta,
+      generationMeta: auditedGenerationMeta,
     });
     const engineCategoryFailedCategories = engineCategoryEvaluation.category_scores
       .filter((category) => !category.passed || category.score < 100)
@@ -6321,24 +6340,26 @@ async function main() {
       .filter((score): score is number => typeof score === 'number');
     const componentFloor = componentScores.length > 0 ? Math.min(...componentScores) : null;
     const publishReady = qaReport.passed;
-    const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
-    const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});
-    const targetKeywordsChanged = stableJson(nextTargetAdKeywords ?? []) !== stableJson(row.target_ad_keywords ?? []);
-    const destinationChanged = shouldClearInvalidDestination ||
-      Boolean(normalizedDestinationForWrite && normalizedDestinationForWrite !== row.destination);
+    const htmlChanged = !isSameStoredBlogHtml(originalHtml, auditedHtml);
+    const metaChanged = stableJson(auditedGenerationMeta) !== stableJson(row.generation_meta ?? {});
+    const targetKeywordsChanged = stableJson(auditedTargetAdKeywords ?? []) !== stableJson(row.target_ad_keywords ?? []);
+    const destinationChanged = !preservesEvidenceBackedResearchStructure && (
+      shouldClearInvalidDestination
+      || Boolean(normalizedDestinationForWrite && normalizedDestinationForWrite !== row.destination)
+    );
     const changed =
       htmlChanged ||
       nextOg !== originalOg ||
-      normalizedTitle !== originalTitle ||
-      normalizedDescription !== originalDescription ||
+      auditedTitle !== originalTitle ||
+      auditedDescription !== originalDescription ||
       metaChanged ||
       targetKeywordsChanged ||
       destinationChanged;
     const changeReasons = [
       htmlChanged ? 'blog_html' : null,
       nextOg !== originalOg ? 'og_image_url' : null,
-      normalizedTitle !== originalTitle ? 'seo_title' : null,
-      normalizedDescription !== originalDescription ? 'seo_description' : null,
+      auditedTitle !== originalTitle ? 'seo_title' : null,
+      auditedDescription !== originalDescription ? 'seo_description' : null,
       metaChanged ? 'generation_meta' : null,
       targetKeywordsChanged ? 'target_ad_keywords' : null,
       destinationChanged ? 'destination' : null,
@@ -6348,20 +6369,20 @@ async function main() {
       slug,
       auditCategory: resolveAuditCategory(row, contentType, primaryKeyword),
       researchRequired: !productId,
-      researchVerified: productId ? true : hasVerifiedInformationResearch(nextGenerationMeta),
+      researchVerified: productId ? true : hasVerifiedInformationResearch(auditedGenerationMeta),
       componentFloor,
       missingOgBefore: !originalOg,
       missingOgAfter: !nextOg,
       imageCountBefore: countInlineImages(originalHtml),
-      imageCountAfter: countInlineImages(nextHtml),
+      imageCountAfter: countInlineImages(auditedHtml),
       faqMissingBefore: !hasFaq(originalHtml),
-      faqMissingAfter: !hasFaq(nextHtml),
+      faqMissingAfter: !hasFaq(auditedHtml),
       tldrMissingBefore: !hasSummary(originalHtml),
-      tldrMissingAfter: !hasSummary(nextHtml),
+      tldrMissingAfter: !hasSummary(auditedHtml),
       rewriteTraceBefore: hasRewriteTrace(`${row.seo_title || ''}\n${originalHtml}`),
-      rewriteTraceAfter: hasRewriteTrace(`${normalizedTitle}\n${nextHtml}`),
+      rewriteTraceAfter: hasRewriteTrace(`${auditedTitle || ''}\n${auditedHtml}`),
       highlightCountBefore: countHighlights(originalHtml),
-      highlightCountAfter: countHighlights(nextHtml),
+      highlightCountAfter: countHighlights(auditedHtml),
       qualityGatePassed: publishReady,
       publishReady,
       qualityGateSummary: publishReady ? null : qaReport.summary,
@@ -6385,11 +6406,11 @@ async function main() {
       engineCategoryPerfect,
       engineCategoryFailedCategories,
       engineCategoryWriter: engineCategoryEvaluation.brief.writer_type,
-      titleChanged: normalizedTitle !== originalTitle,
-      descriptionChanged: normalizedDescription !== originalDescription,
+      titleChanged: auditedTitle !== originalTitle,
+      descriptionChanged: auditedDescription !== originalDescription,
       changeReasons,
-      firstHtmlDiff: debugDiff && htmlChanged ? firstDiffSummary(originalHtml, nextHtml) : null,
-      debugHtmlExcerpt: debugDiff ? nextHtml.slice(0, 9000) : null,
+      firstHtmlDiff: debugDiff && htmlChanged ? firstDiffSummary(originalHtml, auditedHtml) : null,
+      debugHtmlExcerpt: debugDiff ? auditedHtml.slice(0, 9000) : null,
       changed,
     });
 
@@ -6402,16 +6423,16 @@ async function main() {
     const { error: updateError } = await supabase
       .from('content_creatives')
       .update({
-        blog_html: nextHtml,
+        blog_html: auditedHtml,
         og_image_url: nextOg,
-        seo_title: normalizedTitle,
-        seo_description: normalizedDescription,
+        seo_title: auditedTitle,
+        seo_description: auditedDescription,
         quality_gate: qaReport.qualityGate,
         seo_score: qaReport.seoScore,
         readability_score: qaReport.readability.score,
         readability_issues: qaReport.readability.issues,
-        generation_meta: nextGenerationMeta,
-        target_ad_keywords: nextTargetAdKeywords,
+        generation_meta: auditedGenerationMeta,
+        target_ad_keywords: auditedTargetAdKeywords,
         ...(destinationChanged ? { destination: normalizedDestinationForWrite ?? null } : {}),
         updated_at: new Date().toISOString(),
       })
@@ -6422,7 +6443,7 @@ async function main() {
       continue;
     }
 
-    if (htmlChanged || nextOg !== originalOg || normalizedTitle !== originalTitle || normalizedDescription !== originalDescription) {
+    if (htmlChanged || nextOg !== originalOg || auditedTitle !== originalTitle || auditedDescription !== originalDescription) {
       try {
         await enqueueIndexingJob({ id: row.id, slug }, 'blog_quality_backfill');
         indexingQueued += 1;
