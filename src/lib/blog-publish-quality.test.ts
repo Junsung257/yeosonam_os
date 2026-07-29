@@ -5,6 +5,7 @@ import { computeSeoScore } from './blog-seo-scorer';
 import {
   applyBlogPublishQualityToUpdate,
   blogPublishQualityWarnings,
+  evaluateBlogPublicCustomerQuality,
   evaluateBlogPublishQuality,
   prepareBlogForPublish,
   resolveBlogDestination,
@@ -109,6 +110,32 @@ describe('blog publish quality', () => {
       }),
     );
     expect(report.passed).toBe(false);
+  });
+
+  it('evaluates the normalized public body used by the customer page', async () => {
+    const repeated =
+      '동일한 긴 고객 문단은 공개 페이지에서 한 번만 보여야 하며 야간 품질 복구도 같은 화면을 평가해야 합니다.';
+    const report = await evaluateBlogPublicCustomerQuality({
+      blog_html: [
+        '# 고객 화면 품질 가이드',
+        '여행 준비는 일정, 비용, 이동 시간을 먼저 나눠 확인하면 판단이 쉬워집니다.',
+        repeated,
+        repeated,
+        '출발 전에는 공식 안내와 예약 조건을 다시 확인하고 가족 구성에 맞춰 이동량을 조정하세요.',
+        '첫날은 공항 도착 시각과 숙소 체크인 가능 시간을 함께 비교해 무리한 일정을 피하세요.',
+        '현지 교통은 요금뿐 아니라 탑승 위치와 운영 종료 시각까지 확인해야 실제 이동에 도움이 됩니다.',
+        '식비는 포함 식사와 개인 식사를 구분하고 결제 수단별 수수료를 따로 살펴보는 편이 정확합니다.',
+        '준비물은 계절과 실내외 온도 차이를 기준으로 나누면 불필요한 짐을 줄일 수 있습니다.',
+        '마지막 날에는 수하물 보관과 공항 이동 시간을 먼저 고정한 뒤 남는 시간에 일정을 배치하세요.',
+        '공식 안내가 바뀔 수 있는 항목은 출발 직전에 다시 확인하고 확인 날짜를 함께 기록하세요.',
+        '일행과 역할을 미리 나누면 예약 확인과 현지 결제 과정에서 빠뜨리는 항목을 줄일 수 있습니다.',
+      ].join('\n\n'),
+      slug: 'normalized-public-customer-view',
+      seo_title: '고객 화면 품질 가이드',
+      destination: '서울',
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('duplicate_public_section');
   });
 
   it.each([
