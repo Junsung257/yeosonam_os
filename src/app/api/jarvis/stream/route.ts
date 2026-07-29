@@ -116,6 +116,21 @@ export async function POST(req: NextRequest) {
 
   // 2) Router + config 조립
   const dispatch = await prepareDispatch({ message, session, ctx })
+
+  // V2 미지원 agent → 클라이언트가 V1 (/api/jarvis) 로 폴백하도록 명시 응답
+  if (!dispatch.supported || !dispatch.config) {
+    return new Response(
+      JSON.stringify({
+        fallback: 'v1',
+        agentType: dispatch.agentType,
+        sessionId: session.id,
+        reason: 'agent not yet V2-enabled',
+        specialist: dispatch.specialistPick,
+      }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
   const traceId = crypto.randomUUID()
   const decision = supervisorLite({
     message,
@@ -137,20 +152,6 @@ export async function POST(req: NextRequest) {
     agentType: dispatch.agentType,
     metadata: { specialistId: dispatch.specialistPick.specialistId },
   })
-
-  // V2 미지원 agent → 클라이언트가 V1 (/api/jarvis) 로 폴백하도록 명시 응답
-  if (!dispatch.supported || !dispatch.config) {
-    return new Response(
-      JSON.stringify({
-        fallback: 'v1',
-        agentType: dispatch.agentType,
-        sessionId: session.id,
-        reason: 'agent not yet V2-enabled',
-        specialist: dispatch.specialistPick,
-      }),
-      { status: 409, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
 
   // 3) SSE ReadableStream
   const stream = new ReadableStream<Uint8Array>({
@@ -336,6 +337,7 @@ export async function POST(req: NextRequest) {
         try {
           await transitionAgentTask(createdTask.id, 'running', 'failed', {
             last_error: err instanceof Error ? err.message : 'stream_error',
+            completed_at: new Date().toISOString(),
           })
         } catch {
           // ignore
@@ -348,9 +350,20 @@ export async function POST(req: NextRequest) {
       } finally {
         if (finalResult) {
           try {
-            await transitionAgentTask(createdTask.id, 'running', 'done')
+            await transitionAgentTask(createdTask.id, 'running', 'done', {
+              completed_at: new Date().toISOString(),
+            })
           } catch {
             // ignore
+          }
+        } else {
+          try {
+            await transitionAgentTask(createdTask.id, 'running', 'failed', {
+              last_error: 'stream_completed_without_result',
+              completed_at: new Date().toISOString(),
+            })
+          } catch {
+            // The catch path may already have terminalized the task.
           }
         }
         try {

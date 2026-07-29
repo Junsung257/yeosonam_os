@@ -1,6 +1,6 @@
 # AI Operations Office Current SSOT
 
-> Updated: 2026-07-28
+> Updated: 2026-07-29
 >
 > Scope: Yeosonam OS의 에이전트 협업, 실행 원장, 승인, 사고, trace, 운영 화면.
 > Domain-specific booking, settlement, affiliate, marketing, product-registration,
@@ -113,11 +113,12 @@ The source API is read-only and bounded:
 
 These values describe an operator snapshot, not an all-time analytics warehouse.
 
-The current production ledger contains old `running` tasks and pending approvals.
+The pre-hardening production ledger contained old `running` tasks and pending
+approvals created by request streams that ended before terminal state was persisted.
 The UI must therefore display source freshness and must not equate a stored active
-status with live execution. V1 does not expose approve/reject controls because the
-current task model does not persist enough resumable runtime state to prove that a
-decision will continue the original execution safely.
+status with live execution. V1 does not expose approve/reject controls, and the
+unused legacy decision endpoint is removed while no resumable runtime exists.
+Expiry remains available through lifecycle housekeeping.
 
 ## 5. Privacy and Tenancy
 
@@ -150,6 +151,22 @@ When execution is added:
 10. Reject malformed, concurrent, expired, or stale approval decisions.
 11. Record output evidence and trace spans.
 12. Stop on budget exhaustion, failed guardrail, or ambiguous domain authority.
+
+### Request Runtime Lifecycle
+
+- Request-scoped sources are `qa_chat`, `jarvis_v1`, and `jarvis_stream`.
+- A request task and its trace must reach terminal state before the response stream
+  closes. Work after stream closure is not durable on a serverless runtime.
+- Every approval receives an explicit expiry. The default is seven days.
+- The existing `agent-executor` performs bounded, idempotent housekeeping even when
+  non-critical GSC or Instagram work is skipped by resource-saver mode.
+- Authenticated operators can call
+  `GET /api/cron/agent-executor?housekeepingOnly=true` to run only lifecycle
+  cleanup. This path returns before agent actions, GSC, or external-channel work.
+- Housekeeping expires legacy no-expiry approvals after seven days, request-scoped
+  active tasks after 24 hours, tasks past explicit expiry, and trace spans left open
+  for more than 24 hours.
+- Housekeeping never resumes work and does not execute a production side effect.
 
 ## 7. When Multi-Agent Is Allowed
 

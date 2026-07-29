@@ -339,6 +339,15 @@ export async function createV1QaChatStream(params: {
               inquiryType: 'escalation',
               relatedPackages: [],
             }).catch((err: unknown) => console.warn('risk handoff inquiry save failed:', err))
+            if (traceSpan) {
+              await endTraceSpan({
+                id: traceSpan.id,
+                startedAt: traceSpan.started_at,
+                metadata: { traceId, outcome: 'approval_required' },
+              }).catch((err: unknown) => {
+                console.warn('risk handoff trace close failed:', err)
+              })
+            }
             closeStream()
             return
           }
@@ -703,16 +712,24 @@ ${message}`
             trace_id: traceId,
           },
         })
-        closeStream()
 
         if (agentTaskId && isSupabaseConfigured) {
-          try {
-            await transitionAgentTask(agentTaskId, 'running', 'done', { completed_at: new Date().toISOString() })
-            if (traceSpan) {
-              await endTraceSpan({ id: traceSpan.id, startedAt: traceSpan.started_at, metadata: { traceId } })
-            }
-          } catch { /* done 전이 실패는 사용자 응답과 무관 */ }
+          await transitionAgentTask(agentTaskId, 'running', 'done', {
+            completed_at: new Date().toISOString(),
+          }).catch((err: unknown) => {
+            console.warn('[Chat Engine] 태스크 완료 기록 실패:', err)
+          })
+          if (traceSpan) {
+            await endTraceSpan({
+              id: traceSpan.id,
+              startedAt: traceSpan.started_at,
+              metadata: { traceId, outcome: 'done' },
+            }).catch((err: unknown) => {
+              console.warn('[Chat Engine] trace 종료 실패:', err)
+            })
+          }
         }
+        closeStream()
 
         // Fire-and-forget 저장
         if (finalEscalate && isSupabaseConfigured) {
@@ -789,7 +806,10 @@ ${message}`
         console.error('[Chat Engine] 오류:', error)
         if (agentTaskId && isSupabaseConfigured) {
           try {
-            await transitionAgentTask(agentTaskId, 'running', 'failed', { last_error: error instanceof Error ? error.message : 'unknown' })
+            await transitionAgentTask(agentTaskId, 'running', 'failed', {
+              last_error: error instanceof Error ? error.message : 'unknown',
+              completed_at: new Date().toISOString(),
+            })
             if (traceSpan) {
               await endTraceSpan({ id: traceSpan.id, startedAt: traceSpan.started_at, metadata: { traceId, failed: true } })
             }

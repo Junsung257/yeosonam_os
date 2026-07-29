@@ -4,6 +4,8 @@
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
+> **Agent runtime lifecycle hardening (2026-07-29):** request-scoped QA/Jarvis tasks and traces are terminalized before response streams close; approvals default to a seven-day expiry; the existing agent executor performs bounded cleanup for legacy no-expiry approvals, stale request tasks, and open traces even when resource-saver mode skips non-critical publishing work. The unused approval-decision endpoint was removed until a versioned resumable run state exists. No autonomous multi-agent executor was enabled. Details: `docs/agent-office-current-ssot.md`.
+
 > **정보성 블로그 근거 모델 (2026-07-24, 운영 스키마 적용):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 읽기 감사 기준 source 1건, source version 21건, evidence 147건, claim 48건이며 active 공식 출처 12개, 의도별 공식 원문 16개, 검토된 비공식 출처 6개다. 검색 스니펫은 근거가 아니며, 승인된 URL의 실제 원문을 직접 수집·검증한 뒤에만 글쓰기를 시작한다.
 
 > **정보성 대표키·canonical (2026-07-19, 운영 스키마 적용):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.

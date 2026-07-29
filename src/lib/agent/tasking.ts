@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import type { AgentTaskEnvelope, AgentTaskStatus } from '@/lib/agent/envelope';
 import { canTransitionTask } from '@/lib/agent/task-machine';
+import { resolveAgentApprovalExpiry } from '@/lib/agent/lifecycle-policy';
 
 export async function createAgentTask(envelope: AgentTaskEnvelope) {
   const { data, error } = await supabaseAdmin
@@ -69,7 +70,7 @@ export async function createApprovalRequest(params: {
       status: 'pending',
       reason: params.reason,
       requested_by: params.requestedBy,
-      expires_at: params.expiresAt ?? null,
+      expires_at: resolveAgentApprovalExpiry(params.expiresAt),
       metadata: params.metadata ?? {},
     })
     .select('id, status')
@@ -110,4 +111,3 @@ export async function recordAgentIncident(params: {
     detected_by: params.detectedBy ?? 'system',
   });
 }
-

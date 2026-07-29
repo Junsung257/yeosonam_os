@@ -1,5 +1,10 @@
 # 여소남 OS — Concierge MAS 운영 런북
 
+> Superseded decision (2026-07-29): this historical runbook must not be used to
+> approve or resume tasks. The current contract is
+> `docs/agent-office-current-ssot.md`. Approval is observation-only until a
+> persisted resumable run state and atomic decision handler exist.
+
 ## 1) 목표
 
 - 고객 응대 자동화는 유지하되, 고위험 요청은 반드시 승인 게이트로 정지(freeze)한다.
@@ -10,7 +15,8 @@
 - `GET /api/admin/agent/tasks` : 작업 상태 조회
 - `GET /api/admin/agent/approvals` : 승인 대기/이력 조회
 - `GET /api/admin/agent/incidents` : 사고/위반 로그 조회
-- `POST /api/agent/approvals/[id]` : 승인/반려 처리
+- Approval decision endpoint: unavailable; use the read-only ledger and manual
+  counselor handoff.
 
 ## 3) 즉시 대응 체크리스트
 
@@ -29,8 +35,8 @@
 
 - `high`, `critical` 요청: 자동 실행 금지
 - 승인 전 상태: `frozen`
-- 승인 후: `resumed`
-- 반려 시: `cancelled`
+- Automatic resume after approval is disabled.
+- Pending handoffs expire through agent lifecycle housekeeping.
 
 ## 6) 배포 게이트
 
@@ -43,4 +49,3 @@
 2. `failed` task 재처리 여부 확인
 3. TTFT/응답 지연 회복 여부 확인
 4. 승인 대기열 정상화 확인
-

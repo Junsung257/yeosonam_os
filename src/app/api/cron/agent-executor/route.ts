@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCronBearer } from '@/lib/cron-auth'
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase'
 import { executeAction } from '@/lib/agent-action-executor'
 import { isValidTransition } from '@/lib/agent-action-machine'
 import { fetchBlogSearchMetrics, extractSlugFromUrl, isGSCConfigured } from '@/lib/gsc-client'
@@ -11,6 +11,8 @@ import {
   checkPublishingLimit,
 } from '@/lib/instagram-publisher'
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver'
+import { runAgentHousekeeping } from '@/lib/agent/housekeeping'
+import { apiResponse } from '@/lib/api-response'
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -23,18 +25,60 @@ export async function GET(request: NextRequest) {
   const authErr = requireCronBearer(request)
   if (authErr) return authErr
 
-  const resourceSaver = maybeSkipNonCriticalCron(request, 'agent-executor')
-  if (resourceSaver) return resourceSaver
-
   const isForce = request.nextUrl.searchParams.get('force') === 'true'
+  const housekeepingOnly =
+    request.nextUrl.searchParams.get('housekeepingOnly') === 'true'
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     push('Supabase 미설정 — 스킵')
     return NextResponse.json({ ok: true, skipped: true, log })
   }
 
+  const tasking = {
+    approvals_scanned: 0,
+    tasks_scanned: 0,
+    traces_scanned: 0,
+    approvals_expired: 0,
+    tasks_expired: 0,
+    traces_closed: 0,
+  }
+  let housekeepingSucceeded = false
+
+  // Agent ledger cleanup must still run while non-critical publishing work is paused.
+  try {
+    const housekeeping = await runAgentHousekeeping()
+    tasking.approvals_scanned = housekeeping.scanned.approvals
+    tasking.tasks_scanned = housekeeping.scanned.tasks
+    tasking.traces_scanned = housekeeping.scanned.traces
+    tasking.approvals_expired = housekeeping.expired.approvals
+    tasking.tasks_expired = housekeeping.expired.tasks
+    tasking.traces_closed = housekeeping.expired.traces
+    housekeepingSucceeded = true
+    push(
+      `원장 정리: approvals=${tasking.approvals_expired}, `
+      + `tasks=${tasking.tasks_expired}, traces=${tasking.traces_closed}`,
+    )
+  } catch (e) {
+    push(`원장 정리 실패: ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  if (housekeepingOnly) {
+    return apiResponse(
+      {
+        ok: housekeepingSucceeded,
+        housekeeping_only: true,
+        elapsed_ms: Date.now() - startAt,
+        tasking,
+        log,
+      },
+      { status: housekeepingSucceeded ? 200 : 500 },
+    )
+  }
+
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'agent-executor')
+  if (resourceSaver) return resourceSaver
+
   const processed = { executed: 0, failed: 0, expired: 0, errors: [] as string[] }
-  const tasking = { approvals_expired: 0, tasks_expired: 0 }
 
   // ── 1. approved 액션 실행 ─────────────────────────────────────────
   try {
@@ -122,49 +166,6 @@ export async function GET(request: NextRequest) {
     }
   } catch (e) {
     push(`만료 처리 실패: ${e instanceof Error ? e.message : String(e)}`)
-  }
-
-  // ── 2-1. MAS 승인/작업 만료 처리: pending approvals + frozen tasks ───────
-  try {
-    const now = new Date().toISOString()
-    const { data: expiredApprovals, error: apErr } = await supabaseAdmin
-      .from('agent_approvals')
-      .select('id, task_id')
-      .eq('status', 'pending')
-      .not('expires_at', 'is', null)
-      .lt('expires_at', now)
-      .limit(100)
-
-    if (apErr) throw apErr
-
-    if (expiredApprovals && expiredApprovals.length > 0) {
-      const approvalIds = expiredApprovals.map((a: any) => a.id)
-      const taskIds = expiredApprovals.map((a: any) => a.task_id).filter(Boolean)
-
-      await supabaseAdmin
-        .from('agent_approvals')
-        .update({ status: 'expired', reviewed_at: now, reviewed_by: 'system:agent-executor' })
-        .in('id', approvalIds)
-
-      if (taskIds.length > 0) {
-        await supabaseAdmin
-          .from('agent_tasks')
-          .update({
-            status: 'expired',
-            last_error: 'approval_expired',
-            completed_at: now,
-            updated_at: now,
-          })
-          .in('id', taskIds)
-          .eq('status', 'frozen')
-      }
-
-      tasking.approvals_expired = approvalIds.length
-      tasking.tasks_expired = taskIds.length
-      push(`MAS 만료 처리: approvals=${approvalIds.length}, tasks=${taskIds.length}`)
-    }
-  } catch (e) {
-    push(`MAS 만료 처리 실패: ${e instanceof Error ? e.message : String(e)}`)
   }
 
   // ── 3. Google Search Console 데이터 수집 ────────────────────────────
