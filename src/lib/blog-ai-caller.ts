@@ -37,6 +37,8 @@ export interface BlogCallOptions {
   temperature?: number;
   systemPrompt?: string;
   maxTokens?: number;
+  /** Per-provider network budget. The caller's outer deadline should remain larger. */
+  requestTimeoutMs?: number;
   /**
    * Claude prompt cache TTL 을 1h 로 확장 (기본 5min ephemeral).
    * 동일 systemPrompt 로 1시간 내 2회 이상 호출되는 워크로드(시간당 publisher,
@@ -56,7 +58,21 @@ export interface BlogCallOptions {
    *   2. JSON parse 실패 또는 결과가 '{}' 면 DeepSeek 으로 재시도
    *   3. 둘 다 실패하면 에러 throw
    */
-  cascade?: boolean | { firstTry: string; fallback: string };
+  cascade?: boolean | {
+    firstTry: string;
+    fallback: string;
+    firstTryTimeoutMs?: number;
+    fallbackTimeoutMs?: number;
+  };
+}
+
+function withRequestTimeout(
+  opts: BlogCallOptions,
+  requestTimeoutMs: number | undefined,
+): BlogCallOptions {
+  return requestTimeoutMs
+    ? { ...opts, requestTimeoutMs }
+    : opts;
 }
 
 // Anthropic SDK 타입이 ttl 을 직접 노출하지 않아 캐스팅 — 런타임은 그대로 통과.
@@ -70,6 +86,12 @@ function isDeepSeekModel(model: string): boolean {
 }
 function isClaudeModel(model: string): boolean {
   return model.startsWith('claude');
+}
+
+function providerName(modelOrProvider: string): 'deepseek' | 'claude' | 'gemini' {
+  if (isDeepSeekModel(modelOrProvider) || modelOrProvider === 'deepseek') return 'deepseek';
+  if (isClaudeModel(modelOrProvider) || modelOrProvider === 'claude') return 'claude';
+  return 'gemini';
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -132,10 +154,17 @@ export async function generateBlogJSON(
     // FrugalGPT cascade: cheap model first, fallback on failure
     const config = typeof cascade === 'object' ? cascade : { firstTry: 'gemini', fallback: 'deepseek' };
     const errors: string[] = [];
+    const attemptedProviders = new Set<string>();
 
     // 1st try: cheap model (Gemini Flash)
     try {
-      const firstResult = await callModelDirect(config.firstTry, prompt, opts, true);
+      attemptedProviders.add(providerName(config.firstTry));
+      const firstResult = await callModelDirect(
+        config.firstTry,
+        prompt,
+        withRequestTimeout(opts, config.firstTryTimeoutMs),
+        true,
+      );
       if (firstResult && firstResult !== '{}') {
         return firstResult;
       }
@@ -146,7 +175,13 @@ export async function generateBlogJSON(
 
     // 2nd try: fallback model (DeepSeek Flash)
     try {
-      const secondResult = await callModelDirect(config.fallback, prompt, opts, true);
+      attemptedProviders.add(providerName(config.fallback));
+      const secondResult = await callModelDirect(
+        config.fallback,
+        prompt,
+        withRequestTimeout(opts, config.fallbackTimeoutMs),
+        true,
+      );
       if (secondResult && secondResult !== '{}') {
         return secondResult;
       }
@@ -156,7 +191,10 @@ export async function generateBlogJSON(
     }
 
     // Both failed — try configured policy model as last resort
-    if (isDeepSeekModel(policy.model) || policy.provider === 'gemini') {
+    if (
+      (isDeepSeekModel(policy.model) || policy.provider === 'gemini')
+      && !attemptedProviders.has(providerName(policy.model))
+    ) {
       const lastTry = await callModelDirect(policy.model, prompt, opts, true).catch((e) => {
         errors.push(`policy(${policy.model}): ${e instanceof Error ? e.message : String(e)}`);
         return null;
@@ -187,9 +225,16 @@ export async function generateBlogText(
   if (cascade) {
     const config = typeof cascade === 'object' ? cascade : { firstTry: 'gemini', fallback: 'deepseek' };
     const errors: string[] = [];
+    const attemptedProviders = new Set<string>();
 
     try {
-      const result = await callModelDirect(config.firstTry, prompt, opts, false);
+      attemptedProviders.add(providerName(config.firstTry));
+      const result = await callModelDirect(
+        config.firstTry,
+        prompt,
+        withRequestTimeout(opts, config.firstTryTimeoutMs),
+        false,
+      );
       if (result && result.length > 20) return result;
       errors.push(`${config.firstTry}: too short or empty`);
     } catch (e) {
@@ -197,14 +242,23 @@ export async function generateBlogText(
     }
 
     try {
-      const result = await callModelDirect(config.fallback, prompt, opts, false);
+      attemptedProviders.add(providerName(config.fallback));
+      const result = await callModelDirect(
+        config.fallback,
+        prompt,
+        withRequestTimeout(opts, config.fallbackTimeoutMs),
+        false,
+      );
       if (result && result.length > 20) return result;
       errors.push(`${config.fallback}: too short or empty`);
     } catch (e) {
       errors.push(`${config.fallback}: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    if (isDeepSeekModel(policy.model) || policy.provider === 'gemini') {
+    if (
+      (isDeepSeekModel(policy.model) || policy.provider === 'gemini')
+      && !attemptedProviders.has(providerName(policy.model))
+    ) {
       const lastTry = await callModelDirect(policy.model, prompt, opts, false).catch((e) => {
         errors.push(`policy(${policy.model}): ${e instanceof Error ? e.message : String(e)}`);
         return '';
@@ -227,6 +281,9 @@ async function callModelDirect(
   jsonMode: boolean,
 ): Promise<string> {
   const temperature = opts.temperature ?? 0.85;
+  const requestOptions = opts.requestTimeoutMs
+    ? { timeout: opts.requestTimeoutMs, maxRetries: 0 }
+    : undefined;
 
   if (isDeepSeekModel(modelOrProvider) || modelOrProvider === 'deepseek') {
     const model = modelOrProvider === 'deepseek' ? 'deepseek-v4-flash' : modelOrProvider;
@@ -235,28 +292,34 @@ async function callModelDirect(
     if (opts.systemPrompt) messages.push({ role: 'system', content: opts.systemPrompt });
     messages.push({ role: 'user', content: prompt });
 
-    const r = await client.chat.completions.create({
-      model,
-      messages,
-      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-      temperature,
-      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-    });
+    const r = await client.chat.completions.create(
+      {
+        model,
+        messages,
+        ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+        temperature,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      },
+      requestOptions,
+    );
     return r.choices[0]?.message?.content ?? '';
   }
 
   if (isClaudeModel(modelOrProvider) || modelOrProvider === 'claude') {
     const model = modelOrProvider === 'claude' ? 'claude-sonnet-4-6' : modelOrProvider;
     const client = getAnthropicClient();
-    const r = await client.messages.create({
-      model,
-      max_tokens: opts.maxTokens || 2000,
-      temperature,
-      system: opts.systemPrompt
-        ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: buildCacheControl(opts.longCache) as { type: 'ephemeral' } }]
-        : undefined,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const r = await client.messages.create(
+      {
+        model,
+        max_tokens: opts.maxTokens || 2000,
+        temperature,
+        system: opts.systemPrompt
+          ? [{ type: 'text' as const, text: opts.systemPrompt, cache_control: buildCacheControl(opts.longCache) as { type: 'ephemeral' } }]
+          : undefined,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      requestOptions,
+    );
     const text = r.content.filter((x) => x.type === 'text').map((x) => (x as Anthropic.TextBlock).text).join('\n');
     return text || '';
   }
@@ -264,15 +327,18 @@ async function callModelDirect(
   // Gemini
   const model = modelOrProvider === 'gemini' ? 'gemini-2.5-flash' : modelOrProvider;
   const genAI = getGeminiClient();
-  const gmodel = genAI.getGenerativeModel({
-    model,
-    generationConfig: {
-      temperature,
-      ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
-      ...(opts.maxTokens ? { maxOutputTokens: opts.maxTokens } : {}),
+  const gmodel = genAI.getGenerativeModel(
+    {
+      model,
+      generationConfig: {
+        temperature,
+        ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+        ...(opts.maxTokens ? { maxOutputTokens: opts.maxTokens } : {}),
+      },
+      ...(opts.systemPrompt ? { systemInstruction: opts.systemPrompt } : {}),
     },
-    ...(opts.systemPrompt ? { systemInstruction: opts.systemPrompt } : {}),
-  });
+    opts.requestTimeoutMs ? { timeout: opts.requestTimeoutMs } : undefined,
+  );
   const r = await gmodel.generateContent(prompt);
   return r.response.text();
 }
