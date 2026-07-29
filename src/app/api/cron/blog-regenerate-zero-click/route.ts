@@ -26,6 +26,7 @@ import {
   evaluateBlogPublicCustomerQuality,
   PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
 } from '@/lib/blog-publish-quality';
+import { isBlogSlugRedirectSource } from '@/lib/blog-slug-redirects';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -169,7 +170,13 @@ async function runRegenerator(request: NextRequest) {
       .limit(CANDIDATE_POOL_LIMIT);
     if (postError) return { processed: 0, errors: [...errors, postError.message], results };
 
-    const publishedPosts = (posts ?? []) as PublishedPost[];
+    const allPublishedPosts = (posts ?? []) as PublishedPost[];
+    const redirectedPublishedPosts = allPublishedPosts.filter(post =>
+      isBlogSlugRedirectSource(post.slug),
+    );
+    const publishedPosts = allPublishedPosts.filter(post =>
+      !isBlogSlugRedirectSource(post.slug),
+    );
     const publicQualityEntries = await mapWithConcurrency(
       publishedPosts,
       PUBLIC_QUALITY_AUDIT_CONCURRENCY,
@@ -460,6 +467,7 @@ async function runRegenerator(request: NextRequest) {
       zero_click_candidates: matureZeroClickSet.size,
       performance_maturity_days: PERFORMANCE_MATURITY_DAYS,
       public_quality_audited: publicQualityByPostId.size,
+      canonical_redirect_candidates: redirectedPublishedPosts.length,
       public_quality_gap_candidates: publicQualityGapSet.size,
       public_quality_minimum_score: PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
       quality_gap_candidates: prioritizedPosts.filter(post => !matureZeroClickSet.has(post.slug)).length,

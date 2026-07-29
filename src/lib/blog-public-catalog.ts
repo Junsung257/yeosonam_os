@@ -8,6 +8,7 @@ import {
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import { isBlogSlugRedirectSource } from '@/lib/blog-slug-redirects';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const PUBLIC_BLOG_CATALOG_SELECT =
@@ -77,12 +78,13 @@ async function loadPublicBlogCatalogUncached(): Promise<PublicBlogCatalogPost[]>
   }
 
   return ((result.data ?? []) as unknown as PublicBlogCatalogPost[])
-    .filter((post) => Boolean(post.slug?.trim()));
+    .filter((post) => Boolean(post.slug?.trim()))
+    .filter((post) => !isBlogSlugRedirectSource(post.slug));
 }
 
 const getCachedPublicBlogCatalog = unstable_cache(
   loadPublicBlogCatalogUncached,
-  ['blog-public-catalog-v1'],
+  ['blog-public-catalog-v2'],
   {
     revalidate: 300,
     tags: [BLOG_LIST_CACHE_TAG, BLOG_DESTINATION_CACHE_TAG, BLOG_ANGLE_CACHE_TAG],

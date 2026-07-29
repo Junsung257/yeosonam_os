@@ -86,9 +86,17 @@ A day is healthy only when all of these are true:
 - Before applying those search fallbacks, the route renders the current public
   bodies with bounded concurrency and prioritizes any score below 95, lowest
   first. Read `public_quality_audited`,
-  `public_quality_gap_candidates`, and the queue metadata
+  `canonical_redirect_candidates`, `public_quality_gap_candidates`, and the queue metadata
   `quality_upgrade.public_customer_quality` when diagnosing why a row was
   selected.
+- `canonical_redirect_candidates` are published rows intentionally omitted from
+  recovery because their public URL permanently resolves to a live-audited
+  representative. Verify that every target still returns 200, has a
+  self-canonical URL, and scores at least 95 before adding or retaining a
+  mapping. The redirect source must not appear in `/api/blog` or `sitemap.xml`.
+  Never redirect a month-specific article to a body that answers only another
+  month; the accepted target must be the destination's researched 1-12 month
+  representative.
 - If every safe recovery candidate fails with `blog_regenerate_log_reason_check`, compare the producer's selection sources with the live check constraint before retrying. `quality_gap` is a valid automatic reason, and the automatic daily unique index must cover both `zero_click` and `quality_gap`; do not substitute a misleading legacy reason merely to bypass the database contract.
 - If all 12 monthly weather claims fail with `normalized_value_mismatch,unit_mismatch`, inspect the stored weather bundle before retrying. A legacy WMO payload may have retained only highest temperature with unit `°C`; the current readiness path must normalize all four values to the composite climate contract before persistence and claim validation.
 - `research_coverage_missing` is a healthy fail-closed result for published-post recovery. Add and live-review destination-scoped first-party documents before retrying; never broaden a regional document to an entire country merely to make generation proceed.

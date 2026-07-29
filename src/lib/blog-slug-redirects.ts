@@ -41,6 +41,26 @@ export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
   '여름방학-유럽-배낭여행-3주-경비-현실적으로-계산하기-재작성-v2': 'europe-summer-backpacking-3week-budget-2026',
   '5월-황금연휴-해외여행-비행시간-짧은-동남아-휴양지-추천-재작성-v2': 'southeast-asia-short-flight-holiday-destinations-2026',
   '태국-입국-시-필요한-서류와-면세-한도-총정리-2026년-기준-재작성-v2': 'thailand-entry-documents-duty-free-2026',
+  // Live-audited legacy weather duplicates. Each target is the active
+  // representative for the same destination and has a public score of 100.
+  '다낭-6월-날씨와-옷차림-완벽-가이드': '다낭-5월-날씨와-옷차림-우기-시작-전-쾌적한-여행-준비물',
+  'danang-weather': '다낭-5월-날씨와-옷차림-우기-시작-전-쾌적한-여행-준비물',
+  'danang-july-rainy-season-weather-tips-2026': '다낭-5월-날씨와-옷차림-우기-시작-전-쾌적한-여행-준비물',
+  'danang-weather-clothes-checklist-2026': '다낭-5월-날씨와-옷차림-우기-시작-전-쾌적한-여행-준비물',
+  'kualalumpursingaporemalacca-6': 'kualalumpur-weather-packing',
+  'kualalumpur-singapore-malacca-weather': 'kualalumpur-weather-packing',
+  'june-sapporo-weather': 'sapporo-weather-packing',
+  'fukuoka-6': 'fukuoka-weather-packing',
+  'fukuoka-june-weather-rainy-day-itinerary-2026': 'fukuoka-weather-packing',
+  'sydney-july-winter-weather-guide': 'sydney-weather-packing',
+  'cebu-july-weather-clothes-checklist-2026': '세부-6월-날씨와-옷차림-완벽-가이드',
+  'cebu-weather': '세부-6월-날씨와-옷차림-완벽-가이드',
+  'osaka-july-weather-clothes-checklist-2026': 'osaka-weather-packing',
+  'bohol-weather': '보홀-월별-날씨와-옷차림-가이드',
+  '보홀-6월-날씨와-옷차림-완벽-가이드': '보홀-월별-날씨와-옷차림-가이드',
+  'bangkok-weather-clothes-checklist-2026': 'bangkok-june-rainy-season-weather-preparation-2026',
+  'nhatrang-weather': 'nhatrang-6',
+  'bali-weather-packing': 'bali-july-weather-checklist',
 };
 
 export const BLOG_SLUG_REDIRECT_TOMBSTONES = new Set([
@@ -52,7 +72,20 @@ export function isBlogSlugRedirectTombstone(slug: string): boolean {
 }
 
 export function resolveBlogSlugRedirect(slug: string): string | null {
-  const target = BLOG_SLUG_REDIRECTS[slug] ?? null;
-  if (!target || BLOG_SLUG_REDIRECT_TOMBSTONES.has(target)) return null;
-  return target;
+  let current = slug;
+  const seen = new Set([slug]);
+
+  for (let depth = 0; depth < 12; depth += 1) {
+    const target = BLOG_SLUG_REDIRECTS[current] ?? null;
+    if (!target) return current === slug ? null : current;
+    if (BLOG_SLUG_REDIRECT_TOMBSTONES.has(target) || seen.has(target)) return null;
+    seen.add(target);
+    current = target;
+  }
+
+  return null;
+}
+
+export function isBlogSlugRedirectSource(slug: string | null | undefined): boolean {
+  return Boolean(slug && resolveBlogSlugRedirect(slug));
 }

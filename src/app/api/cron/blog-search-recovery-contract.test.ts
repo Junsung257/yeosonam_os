@@ -51,6 +51,8 @@ describe('blog search data and published quality recovery contract', () => {
     expect(route).toContain("'public_customer_quality_upgrade'");
     expect(route).toContain("priority: selectionSource === 'public_customer_quality'");
     expect(route).toContain('public_quality_gap_candidates: publicQualityGapSet.size');
+    expect(route).toContain('canonical_redirect_candidates: redirectedPublishedPosts.length');
+    expect(route).toContain('isBlogSlugRedirectSource(post.slug)');
     expect(route).toContain('representative_conflict');
     expect(route).toContain('atomic_publish_replace: true');
     expect(route).not.toContain("message: 'rank_history 데이터 없음'");

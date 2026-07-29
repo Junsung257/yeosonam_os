@@ -119,8 +119,9 @@ describe('blog public sections contract', () => {
     }
 
     const catalogSource = readSource('src/lib/blog-public-catalog.ts');
-    expect(catalogSource).toContain("['blog-public-catalog-v1']");
+    expect(catalogSource).toContain("['blog-public-catalog-v2']");
     expect(catalogSource).toContain('.limit(2000)');
+    expect(catalogSource).toContain('isBlogSlugRedirectSource');
     expect(catalogSource).not.toContain('blog_html');
     expect(catalogSource).not.toContain('quality_gate');
     expect(catalogSource).not.toContain('generation_meta');
@@ -128,5 +129,14 @@ describe('blog public sections contract', () => {
 
   it('does not redirect legacy slugs to archived blog posts', () => {
     expect(resolveBlogSlugRedirect('travel-guide-q35bf6ed0')).toBeNull();
+  });
+
+  it('consolidates live-audited weather duplicates into their active representative', () => {
+    expect(resolveBlogSlugRedirect('danang-weather'))
+      .toBe('다낭-5월-날씨와-옷차림-우기-시작-전-쾌적한-여행-준비물');
+    expect(resolveBlogSlugRedirect('6-danang'))
+      .toBe('다낭-5월-날씨와-옷차림-우기-시작-전-쾌적한-여행-준비물');
+    expect(resolveBlogSlugRedirect('june-sapporo-weather'))
+      .toBe('sapporo-weather-packing');
   });
 });

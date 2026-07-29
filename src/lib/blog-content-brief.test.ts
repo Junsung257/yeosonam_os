@@ -12,8 +12,8 @@ describe('blog content brief', () => {
     });
 
     expect(brief.passed).toBe(true);
-    expect(brief.title).toBe('보라카이 7월 날씨 옷차림 여행 준비물 체크리스트');
-    expect(brief.primaryKeyword).toBe('보라카이 7월 날씨');
+    expect(brief.title).toBe('보라카이 월별 날씨 옷차림 여행 준비물 체크리스트');
+    expect(brief.primaryKeyword).toBe('보라카이 월별 날씨');
     expect(brief.intentType).toBe('monthly_weather');
     expect(brief.requiresHumanReview).toBe(false);
     expect(brief.requiredSections).toContain('1~12월 평균 기온');
@@ -34,7 +34,7 @@ describe('blog content brief', () => {
 
     expect(brief.searchIntent).toBe('weather');
     expect(brief.intentType).toBe('monthly_weather');
-    expect(brief.primaryKeyword).toBe('다낭 7월 날씨');
+    expect(brief.primaryKeyword).toBe('다낭 월별 날씨');
     expect(brief.requiredSections).toEqual(
       expect.arrayContaining([
         '1~12월 평균 기온',
