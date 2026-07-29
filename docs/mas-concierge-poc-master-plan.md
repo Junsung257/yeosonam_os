@@ -124,9 +124,11 @@
 - 완료 기준: 전이 유효성 테스트
 
 ### T07. 승인 게이트 API
-- 경로: `src/app/api/agent/approvals/[id]/route.ts` (신규)
-- 변경: approve/reject + 감사로그 기록
-- 완료 기준: 승인 시 task resume 이벤트 생성
+- 상태: 폐기됨 (2026-07-29)
+- 이유: 버전된 durable run state 없이 task status만 `resumed`로 바꾸는 것은
+  실제 실행 재개가 아니다.
+- 대체: `docs/agent-office-current-ssot.md`의 읽기 전용 승인 원장과 만료
+  housekeeping을 사용한다.
 
 ### T08. Prompt injection 필터
 - 경로: `src/lib/guardrails/prompt-injection.ts` (신규), `src/app/api/qa/chat/route.ts`

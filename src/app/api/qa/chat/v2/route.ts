@@ -139,10 +139,22 @@ export async function POST(req: NextRequest) {
   // ── SSE 스트림 ──
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let streamClosed = false
+      const closeStream = () => {
+        if (streamClosed) return
+        streamClosed = true
+        try {
+          controller.close()
+        } catch {
+          // The client may already have cancelled the response.
+        }
+      }
       const emitSSE = (type: string, data: unknown) => {
+        if (streamClosed) return
         controller.enqueue(encodeSSE({ type, data } as StreamEvent))
       }
       const emitNDJSON = (ev: StreamEvent) => {
+        if (streamClosed) return
         // QA Chat 프론트엔드와 호환되는 이벤트 포맷 (NDJSON 과 SSE 모두 지원)
         controller.enqueue(encodeSSE(ev))
       }
@@ -204,7 +216,15 @@ export async function POST(req: NextRequest) {
             message: '요청이 고위험으로 분류되어 관리자 승인 대기 상태로 전환되었습니다. 잠시 후 상담원이 이어서 안내드립니다.',
           })
           emitSSE('done', {})
-          controller.close()
+          if (traceSpan) {
+            await endTraceSpan({
+              id: traceSpan.id,
+              startedAt: traceSpan.started_at,
+              metadata: { traceId, outcome: 'approval_required' },
+            }).catch((e: unknown) => {
+              console.warn('[qa-chat-v2] 승인 대기 trace 종료 실패:', e)
+            })
+          }
           return
         }
 
@@ -298,6 +318,7 @@ export async function POST(req: NextRequest) {
             referrer: body.referrer ?? null,
             affiliateRef: body.affiliateRef ?? null,
             affiliateId: (body.affiliateId as string | undefined) ?? null,
+            correlationId,
           })
           const v1Reader = v1Stream.getReader()
           const decoder = new TextDecoder()
@@ -306,8 +327,19 @@ export async function POST(req: NextRequest) {
             if (done) break
             controller.enqueue(encoder.encode(decoder.decode(value)))
           }
-          emitSSE('done', {})
-          controller.close()
+          if (agentTaskId) {
+            await transitionAgentTask(agentTaskId, 'running', 'done', {
+              completed_at: new Date().toISOString(),
+              result_payload: { delegatedTo: 'qa_chat_v1' },
+            })
+          }
+          if (traceSpan) {
+            await endTraceSpan({
+              id: traceSpan.id,
+              startedAt: traceSpan.started_at,
+              metadata: { traceId, outcome: 'delegated_to_v1' },
+            })
+          }
           return
         }
 
@@ -592,7 +624,9 @@ export async function POST(req: NextRequest) {
 
         // 태스크 완료
         if (agentTaskId) {
-          await transitionAgentTask(agentTaskId, 'running', 'done').catch((e: unknown) => {
+          await transitionAgentTask(agentTaskId, 'running', 'done', {
+            completed_at: new Date().toISOString(),
+          }).catch((e: unknown) => {
             console.warn('[qa-chat-v2] 태스크 완료 실패 (무시):', e instanceof Error ? e.message : e);
           })
         }
@@ -610,8 +644,18 @@ export async function POST(req: NextRequest) {
         if (agentTaskId) {
           await transitionAgentTask(agentTaskId, 'running', 'failed', {
             last_error: error instanceof Error ? error.message : 'unknown',
+            completed_at: new Date().toISOString(),
           }).catch((e: unknown) => {
             console.warn('[qa-chat-v2] 태스크 실패 기록 실패 (무시):', e instanceof Error ? e.message : e);
+          })
+        }
+        if (traceSpan) {
+          await endTraceSpan({
+            id: traceSpan.id,
+            startedAt: traceSpan.started_at,
+            metadata: { traceId, outcome: 'failed' },
+          }).catch((e: unknown) => {
+            console.warn('[qa-chat-v2] 실패 trace 종료 실패 (무시):', e)
           })
         }
         try {
@@ -621,7 +665,7 @@ export async function POST(req: NextRequest) {
           console.warn('[chat-v2] SSE emit 실패 (무시):', sseErr instanceof Error ? sseErr.message : String(sseErr));
         }
       } finally {
-        controller.close()
+        closeStream()
       }
     },
   })

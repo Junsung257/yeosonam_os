@@ -45,18 +45,19 @@ export async function endTraceSpan(params: {
   let metadata = params.metadata;
 
   if (params.metadata) {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('agent_trace_spans')
       .select('metadata')
       .eq('id', params.id)
       .maybeSingle();
+    if (error) throw error;
     metadata = mergeTraceMetadata(
       data?.metadata as Record<string, unknown> | null | undefined,
       params.metadata,
     );
   }
 
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from('agent_trace_spans')
     .update({
       ended_at: endedAt.toISOString(),
@@ -64,5 +65,5 @@ export async function endTraceSpan(params: {
       ...(metadata ? { metadata } : {}),
     })
     .eq('id', params.id);
+  if (error) throw error;
 }
-
