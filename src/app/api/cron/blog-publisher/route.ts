@@ -2999,11 +2999,9 @@ async function processQueueItem(
       console.log(`[blog-publisher] SEO CTA repair -> ${seoScore.score}/${seoScore.maxScore}`);
     }
 
-    if (
-      !seoScore.passed
-      && seoScore.details.some(d =>
-        ['title', 'meta_description'].includes(d.name) && d.score < d.maxScore)
-    ) {
+    const seoMetadataDetailsNeedRepair = seoScore.details.some(d =>
+      ['title', 'meta_description'].includes(d.name) && d.score < d.maxScore);
+    if (seoMetadataDetailsNeedRepair) {
       const seoRepair = repairBlogSeoMetadata({
         seoTitle: generated.seo_title,
         seoDescription: generated.seo_description,

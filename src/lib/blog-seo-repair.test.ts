@@ -88,4 +88,35 @@ describe('blog SEO repair', () => {
     expect(repair.seoTitle.length).toBeGreaterThanOrEqual(25);
     expect(repair.seoTitle.length).toBeLessThanOrEqual(60);
   });
+
+  it('repairs an otherwise passing long-tail title until the strict title detail passes', () => {
+    const primaryKeyword = '캐나다 로키산맥 7월 여행 렌터카 없이 대중교통으로 가능할까';
+    const repair = repairBlogSeoMetadata({
+      seoTitle: primaryKeyword,
+      seoDescription: `${primaryKeyword}의 공식 노선, 요금, 예약 방법과 이동 시간을 2026년 기준으로 비교합니다. 로키 여행 전 확인할 제한 사항도 함께 정리했습니다.`,
+      topic: primaryKeyword,
+      primaryKeyword,
+      destination: '캐나다 로키산맥',
+      category: 'local_transport',
+    });
+    const score = computeSeoScore({
+      blogHtml: [
+        `# ${primaryKeyword}`,
+        '',
+        '2026년 기준 공식 노선과 비용을 비교합니다.',
+      ].join('\n'),
+      slug: '캐나다-로키산맥-7월-여행-렌터카-없이-대중교통으로-가능할까',
+      seoTitle: repair.seoTitle,
+      seoDescription: repair.seoDescription,
+      primaryKeyword,
+      destination: '캐나다 로키산맥',
+      blogType: 'info',
+    });
+
+    expect(repair.changes).toContain('seo_title');
+    expect(score.details.find(detail => detail.name === 'title')).toMatchObject({
+      score: 12,
+      status: 'pass',
+    });
+  });
 });
