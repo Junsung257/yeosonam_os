@@ -17,6 +17,13 @@ Last updated: 2026-07-28
 - **Fix**: Pass real SDK request timeouts through the shared blog AI caller, disable provider SDK retries inside the bounded publisher path, reserve 55 seconds for Gemini and 30 seconds for DeepSeek, cap grounded writer output at 8,192 tokens, disable Gemini 2.5 dynamic thinking for the reviewed-evidence transformation pass, and deduplicate the final policy-provider attempt.
 - **Prevention**: Tests assert timeout propagation, first-provider failure to fallback-provider success, and no duplicate provider retry. Production proof must show the protected targeted upgrade finishing without `topic_generation_timeout` while preserving the prior public row until the atomic quality gate passes.
 
+## ERR-BLOG-quality-gate-db-read-consumed-function-budget@2026-07-29
+
+- [x] **ERR-BLOG-quality-gate-db-read-consumed-function-budget@2026-07-29**: After bounded writer inference completed, a targeted upgrade logged inline-image insertion but remained `generating` until Vercel terminated the function at 300 seconds.
+- **Root cause**: Every quality and repair round re-read adaptive thresholds and duplicate candidates through unbounded Supabase queries. The atomic replacement had already validated its representative and canonical target, but still repeated those duplicate reads.
+- **Fix**: Bound quality-gate DB reads to four seconds, fail ordinary duplicate checks closed on timeout, and skip repeated duplicate queries only for prevalidated atomic replacements. The atomic publication RPC still owns the final replacement.
+- **Prevention**: Regression tests require the atomic path to make zero duplicate queries and preserve ordinary self-exclusion behavior. A DB outage must return a gate failure inside the function budget rather than leaving a queue row in `generating`.
+
 ## ERR-BLOG-research-scheduler-serial-timeout@2026-07-28
 
 - [x] **ERR-BLOG-research-scheduler-serial-timeout@2026-07-28**: Intent-diverse preparation correctly continued past a weather-only ready buffer, but researched candidates serially and exceeded Vercel's 180-second function limit.

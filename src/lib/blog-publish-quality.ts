@@ -36,6 +36,7 @@ export interface BlogPublishQualityInput {
   generation_meta?: Record<string, unknown> | null;
   excludeContentCreativeId?: string | null;
   skipFuzzyDuplicate?: boolean;
+  skipDuplicateCheck?: boolean;
   preserveBody?: boolean;
 }
 
@@ -187,6 +188,7 @@ export async function evaluateBlogPublishQuality(
     generation_meta: input.generation_meta ?? null,
     excludeContentCreativeId: input.excludeContentCreativeId ?? input.id ?? null,
     skipFuzzyDuplicate: input.skipFuzzyDuplicate ?? false,
+    skipDuplicateCheck: input.skipDuplicateCheck ?? false,
   });
   const seoScore = computeSeoScore({
     blogHtml: input.blog_html,
