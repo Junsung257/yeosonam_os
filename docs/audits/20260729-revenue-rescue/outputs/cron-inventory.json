@@ -1,0 +1,1636 @@
+{
+  "observedAt": "2026-07-29T10:13:34.787Z",
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "scheduleCount": 90,
+  "limitations": [
+    "Table access is a static route-file scan and can miss calls hidden behind imported helpers.",
+    "External mutation is confirmed only after route-to-provider trace review.",
+    "No schedule or external system was mutated by this inventory."
+  ],
+  "inventory": [
+    {
+      "route": "/api/cron/refresh-registration-mv",
+      "schedule": "0 18 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/refresh-registration-mv/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/meta-optimize",
+      "schedule": "2 0 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/meta-optimize/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/journey-scheduler",
+      "schedule": "4 0 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/journey-scheduler/route.ts",
+      "tableReads": [
+        "bookings"
+      ],
+      "tableWrites": [
+        "bookings"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/post-travel",
+      "schedule": "5 9 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/post-travel/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/post-travel-reels",
+      "schedule": "10 10 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/post-travel-reels/route.ts",
+      "tableReads": [
+        "bookings",
+        "message_logs"
+      ],
+      "tableWrites": [
+        "message_logs"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/ad-optimizer",
+      "schedule": "2 2 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/ad-optimizer/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/ad-os-keyword-growth",
+      "schedule": "20 3 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/ad-os-keyword-growth/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "possible_static_match",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/ad-os-safe-pipelines",
+      "schedule": "35 3 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/ad-os-safe-pipelines/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "possible_static_match",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/sync-creative-performance",
+      "schedule": "6 0 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/sync-creative-performance/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/auto-archive",
+      "schedule": "0 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/auto-archive/route.ts",
+      "tableReads": [
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "travel_packages"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/unmatched-orchestrator",
+      "schedule": "18 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/unmatched-orchestrator/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": "2026-07-28T23:45:57.178Z",
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/legacy-sections-backfill",
+      "schedule": "58 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/legacy-sections-backfill/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/fill-attraction-photos",
+      "schedule": "0 3 * * *",
+      "owner": "product-ops",
+      "routeFile": "src/app/api/cron/fill-attraction-photos/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/agent-housekeeping",
+      "schedule": "7 0 * * *",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/agent-housekeeping/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "ESSENTIAL_SECURITY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/agent-executor",
+      "schedule": "8 0 * * *",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/agent-executor/route.ts",
+      "tableReads": [
+        "agent_actions",
+        "blog_search_metrics",
+        "card_news",
+        "content_creatives"
+      ],
+      "tableWrites": [
+        "agent_actions",
+        "blog_search_metrics",
+        "card_news"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/embed-products",
+      "schedule": "0 3 * * *",
+      "owner": "product-ops",
+      "routeFile": "src/app/api/cron/embed-products/route.ts",
+      "tableReads": [
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "travel_packages"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/affiliate-settlement-draft",
+      "schedule": "30 8 1 * *",
+      "owner": "affiliate",
+      "routeFile": "src/app/api/cron/affiliate-settlement-draft/route.ts",
+      "tableReads": [
+        "affiliates",
+        "agent_actions",
+        "audit_logs"
+      ],
+      "tableWrites": [
+        "agent_actions",
+        "audit_logs"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/affiliate-dormant",
+      "schedule": "30 2 1 * *",
+      "owner": "affiliate",
+      "routeFile": "src/app/api/cron/affiliate-dormant/route.ts",
+      "tableReads": [
+        "affiliates",
+        "audit_logs"
+      ],
+      "tableWrites": [
+        "affiliates",
+        "audit_logs"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/affiliate-anomaly-detect",
+      "schedule": "40 9 * * *",
+      "owner": "affiliate",
+      "routeFile": "src/app/api/cron/affiliate-anomaly-detect/route.ts",
+      "tableReads": [
+        "affiliate_anomaly_events",
+        "affiliate_geo_anomalies",
+        "affiliate_touchpoints",
+        "affiliates",
+        "agent_actions",
+        "audit_logs",
+        "bookings"
+      ],
+      "tableWrites": [
+        "affiliate_anomaly_events",
+        "agent_actions",
+        "audit_logs"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "ESSENTIAL_SECURITY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/affiliate-content-24h-report",
+      "schedule": "20 9 * * 1",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/affiliate-content-24h-report/route.ts",
+      "tableReads": [
+        "agent_actions",
+        "bookings",
+        "content_distributions"
+      ],
+      "tableWrites": [
+        "agent_actions"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/visual-baseline-monitor",
+      "schedule": "24 9 * * 0",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/visual-baseline-monitor/route.ts",
+      "tableReads": [
+        "travel_packages"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/blog-lifecycle",
+      "schedule": "30 16 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-lifecycle/route.ts",
+      "tableReads": [
+        "blog_topic_queue",
+        "content_creatives"
+      ],
+      "tableWrites": [
+        "blog_topic_queue",
+        "content_creatives"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/blog-scheduler",
+      "schedule": "50 23 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-scheduler/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-29T01:11:17.912Z",
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/blog-learn",
+      "schedule": "0 14 * * 0",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-learn/route.ts",
+      "tableReads": [
+        "agent_actions",
+        "content_creatives",
+        "recommendation_outcomes"
+      ],
+      "tableWrites": [
+        "agent_actions",
+        "content_creatives"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/publish-scheduled",
+      "schedule": "30 2 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/publish-scheduled/route.ts",
+      "tableReads": [
+        "card_news",
+        "content_distributions"
+      ],
+      "tableWrites": [
+        "card_news",
+        "content_distributions"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/auto-publish-loop",
+      "schedule": "0 4 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/auto-publish-loop/route.ts",
+      "tableReads": [
+        "card_news",
+        "card_news_publish_guards",
+        "content_distributions"
+      ],
+      "tableWrites": [
+        "content_distributions"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/blog-publisher",
+      "schedule": "5 0,3,6,9,12,13 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-publisher/route.ts",
+      "tableReads": [
+        "attractions",
+        "blog_topic_queue",
+        "card_news",
+        "content_creatives",
+        "content_review_queue",
+        "prompt_versions",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "blog_topic_queue",
+        "card_news",
+        "content_creatives",
+        "content_review_queue"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-29T09:06:35.323Z",
+      "lastFailure": "2026-07-29T10:11:18.507Z",
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/blog-regenerate-zero-click",
+      "schedule": "45 12 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-regenerate-zero-click/route.ts",
+      "tableReads": [
+        "blog_information_official_research_documents",
+        "blog_information_official_source_registry",
+        "blog_information_representatives",
+        "blog_information_reputable_source_registry",
+        "blog_regenerate_log",
+        "blog_topic_queue",
+        "content_creatives",
+        "rank_history"
+      ],
+      "tableWrites": [
+        "blog_regenerate_log",
+        "blog_topic_queue"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-28T20:55:01.976Z",
+      "lastFailure": "2026-07-28T20:31:27.732Z",
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/trend-topic-miner",
+      "schedule": "0 21 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/trend-topic-miner/route.ts",
+      "tableReads": [
+        "blog_topic_queue",
+        "travel_packages",
+        "trend_keyword_archive"
+      ],
+      "tableWrites": [
+        "blog_topic_queue",
+        "trend_keyword_archive"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-28T22:14:11.915Z",
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/serp-rank-snapshot",
+      "schedule": "30 21 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/serp-rank-snapshot/route.ts",
+      "tableReads": [
+        "blog_topic_queue",
+        "content_creatives",
+        "rank_history",
+        "serp_rank_snapshots",
+        "serp_snapshots"
+      ],
+      "tableWrites": [
+        "rank_history",
+        "serp_rank_snapshots",
+        "serp_snapshots"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-28T22:37:23.663Z",
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/rank-tracking",
+      "schedule": "0 3 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/rank-tracking/route.ts",
+      "tableReads": [
+        "content_creatives",
+        "rank_alerts",
+        "rank_history"
+      ],
+      "tableWrites": [
+        "content_creatives",
+        "rank_alerts",
+        "rank_history"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-29T06:05:39.127Z",
+      "lastFailure": "2026-07-28T20:01:24.164Z",
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/topical-rebuild",
+      "schedule": "0 18 * * 0",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/topical-rebuild/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/blog-daily-summary",
+      "schedule": "45 13 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-daily-summary/route.ts",
+      "tableReads": [
+        "admin_alerts",
+        "blog_indexing_jobs",
+        "blog_topic_queue",
+        "blog_visibility_snapshots",
+        "content_creatives",
+        "cron_health",
+        "indexing_reports",
+        "publishing_policies",
+        "rank_alerts",
+        "rank_history",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "admin_alerts",
+        "blog_topic_queue"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-28T15:54:31.958Z",
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/sync-engagement",
+      "schedule": "0 4 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/sync-engagement/route.ts",
+      "tableReads": [
+        "agent_actions",
+        "card_news",
+        "content_distributions",
+        "post_engagement_snapshots",
+        "social_webhook_events"
+      ],
+      "tableWrites": [
+        "agent_actions",
+        "content_distributions",
+        "post_engagement_snapshots",
+        "social_webhook_events"
+      ],
+      "externalMutations": "possible_static_match",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/meta-token-refresh",
+      "schedule": "36 9 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/meta-token-refresh/route.ts",
+      "tableReads": [
+        "system_secrets"
+      ],
+      "tableWrites": [
+        "system_secrets"
+      ],
+      "externalMutations": "possible_static_match",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/dlq-replay",
+      "schedule": "30 1 * * 0",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/dlq-replay/route.ts",
+      "tableReads": [
+        "slack_raw_events"
+      ],
+      "tableWrites": [
+        "slack_raw_events"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/booking-tasks-runner",
+      "schedule": "15 0 * * *",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/booking-tasks-runner/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/variant-winner-decide",
+      "schedule": "0 5 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/variant-winner-decide/route.ts",
+      "tableReads": [
+        "card_news"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/scoring-recompute",
+      "schedule": "30 19 * * *",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/scoring-recompute/route.ts",
+      "tableReads": [
+        "package_scores"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/seo-monitor",
+      "schedule": "0 22 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/seo-monitor/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/land-operator-reliability",
+      "schedule": "0 19 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/land-operator-reliability/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/payment-rules-learn",
+      "schedule": "0 18 * * *",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/payment-rules-learn/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/payment-stale-alert",
+      "schedule": "14 0 * * *",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/payment-stale-alert/route.ts",
+      "tableReads": [
+        "bank_transactions"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/refresh-seasonal",
+      "schedule": "0 4 1 * *",
+      "owner": "product-ops",
+      "routeFile": "src/app/api/cron/refresh-seasonal/route.ts",
+      "tableReads": [
+        "destination_climate"
+      ],
+      "tableWrites": [
+        "destination_climate"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/ltr-funnel-report",
+      "schedule": "0 9 * * 1",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/ltr-funnel-report/route.ts",
+      "tableReads": [
+        "v_ltr_signals",
+        "v_recommendation_funnel"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/policy-ab-compare",
+      "schedule": "0 10 * * 6",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/policy-ab-compare/route.ts",
+      "tableReads": [
+        "policy_ab_results",
+        "recommendation_outcomes",
+        "scoring_policies"
+      ],
+      "tableWrites": [
+        "policy_ab_results"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/ledger-reconcile",
+      "schedule": "30 3 * * *",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/ledger-reconcile/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/rag-incremental",
+      "schedule": "30 15 * * *",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/rag-incremental/route.ts",
+      "tableReads": [
+        "attractions",
+        "content_creatives",
+        "terms_templates",
+        "travel_packages"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/setup-new-destinations",
+      "schedule": "20 2 * * 0",
+      "owner": "product-ops",
+      "routeFile": "src/app/api/cron/setup-new-destinations/route.ts",
+      "tableReads": [
+        "active_destinations",
+        "destination_metadata",
+        "message_logs"
+      ],
+      "tableWrites": [
+        "destination_metadata",
+        "message_logs"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/free-travel-retarget",
+      "schedule": "0 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/free-travel-retarget/route.ts",
+      "tableReads": [
+        "free_travel_sessions"
+      ],
+      "tableWrites": [
+        "free_travel_sessions"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/free-travel-plan-housekeeping",
+      "schedule": "30 2 * * 0",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/free-travel-plan-housekeeping/route.ts",
+      "tableReads": [
+        "free_travel_sessions"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/mrt-revenue-sync",
+      "schedule": "30 16 * * *",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/mrt-revenue-sync/route.ts",
+      "tableReads": [
+        "free_travel_sessions"
+      ],
+      "tableWrites": [
+        "free_travel_sessions"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/mrt-hotel-ranking",
+      "schedule": "0 2 * * 1",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/mrt-hotel-ranking/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/booking-attribution-audit",
+      "schedule": "30 5 * * *",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/booking-attribution-audit/route.ts",
+      "tableReads": [
+        "bookings",
+        "content_creatives"
+      ],
+      "tableWrites": [
+        "bookings"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/marketing-rules",
+      "schedule": "15 19 * * 1",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/marketing-rules/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/marketing-asset-snapshot",
+      "schedule": "50 2 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/marketing-asset-snapshot/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/concierge-cart-retarget",
+      "schedule": "30 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/concierge-cart-retarget/route.ts",
+      "tableReads": [
+        "ad_engagement_logs",
+        "carts",
+        "transactions"
+      ],
+      "tableWrites": [
+        "ad_engagement_logs"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/affiliate-attribution-recalc",
+      "schedule": "30 6 * * *",
+      "owner": "affiliate",
+      "routeFile": "src/app/api/cron/affiliate-attribution-recalc/route.ts",
+      "tableReads": [
+        "affiliate_touchpoints",
+        "affiliates",
+        "app_settings",
+        "bookings"
+      ],
+      "tableWrites": [
+        "affiliates"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/affiliate-lifetime-commission",
+      "schedule": "0 7 * * *",
+      "owner": "affiliate",
+      "routeFile": "src/app/api/cron/affiliate-lifetime-commission/route.ts",
+      "tableReads": [
+        "affiliate_lifetime_links",
+        "affiliate_reward_events",
+        "bookings"
+      ],
+      "tableWrites": [
+        "affiliate_reward_events",
+        "bookings"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/affiliate-sub-daily-rollup",
+      "schedule": "20 6 * * *",
+      "owner": "affiliate",
+      "routeFile": "src/app/api/cron/affiliate-sub-daily-rollup/route.ts",
+      "tableReads": [
+        "affiliate_sub_attribution_daily",
+        "affiliate_touchpoints"
+      ],
+      "tableWrites": [
+        "affiliate_sub_attribution_daily"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/hard-block-alert",
+      "schedule": "0 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/hard-block-alert/route.ts",
+      "tableReads": [
+        "bookings",
+        "travel_packages"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "ESSENTIAL_SECURITY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/dynamic-pricing",
+      "schedule": "0 20 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/dynamic-pricing/route.ts",
+      "tableReads": [
+        "bookings",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "travel_packages"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/hitl-reminder",
+      "schedule": "0 4 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/hitl-reminder/route.ts",
+      "tableReads": [
+        "agent_tasks"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/content-drift-detect",
+      "schedule": "0 22 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/content-drift-detect/route.ts",
+      "tableReads": [
+        "trend_keyword_archive"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "ESSENTIAL_SECURITY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/churn-detect",
+      "schedule": "0 4 * * 1",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/churn-detect/route.ts",
+      "tableReads": [
+        "ad_traffic_logs",
+        "bookings",
+        "customer_leak_audit"
+      ],
+      "tableWrites": [
+        "bookings",
+        "customer_leak_audit"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/weather-upsell",
+      "schedule": "0 0 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/weather-upsell/route.ts",
+      "tableReads": [
+        "bookings"
+      ],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/fx-rate-sync",
+      "schedule": "0 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/fx-rate-sync/route.ts",
+      "tableReads": [
+        "fx_rate_snapshots"
+      ],
+      "tableWrites": [
+        "fx_rate_snapshots"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/review-sentiment",
+      "schedule": "0 5 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/review-sentiment/route.ts",
+      "tableReads": [
+        "package_reviews"
+      ],
+      "tableWrites": [
+        "package_reviews"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/fraud-detect",
+      "schedule": "30 4 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/fraud-detect/route.ts",
+      "tableReads": [
+        "bookings",
+        "fraud_signals_log"
+      ],
+      "tableWrites": [
+        "bookings",
+        "fraud_signals_log"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "ESSENTIAL_SECURITY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/daily-marketing",
+      "schedule": "20 0 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/daily-marketing/route.ts",
+      "tableReads": [
+        "agent_incidents",
+        "tenants"
+      ],
+      "tableWrites": [
+        "agent_incidents"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/band-rss",
+      "schedule": "0 5 * * 1",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/band-rss/route.ts",
+      "tableReads": [
+        "band_import_log",
+        "products"
+      ],
+      "tableWrites": [
+        "band_import_log"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/threads-trend-miner",
+      "schedule": "30 21 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/threads-trend-miner/route.ts",
+      "tableReads": [
+        "external_trend_posts",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "external_trend_posts"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/ig-trend-miner",
+      "schedule": "0 22 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/ig-trend-miner/route.ts",
+      "tableReads": [
+        "external_trend_posts",
+        "ig_competitor_handles",
+        "ig_hashtag_pool"
+      ],
+      "tableWrites": [
+        "external_trend_posts",
+        "ig_competitor_handles",
+        "ig_hashtag_pool"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/design-archetype-update",
+      "schedule": "0 4 * * 0",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/design-archetype-update/route.ts",
+      "tableReads": [
+        "card_news_design_archetypes",
+        "external_trend_posts"
+      ],
+      "tableWrites": [
+        "card_news_design_archetypes"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/review-digest",
+      "schedule": "20 16 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/review-digest/route.ts",
+      "tableReads": [
+        "package_review_digests",
+        "post_trip_reviews",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "package_review_digests"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/inp-monitor",
+      "schedule": "40 16 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/inp-monitor/route.ts",
+      "tableReads": [
+        "inp_measurements",
+        "rank_history",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "inp_measurements"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/solapi-review-request",
+      "schedule": "0 1 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/solapi-review-request/route.ts",
+      "tableReads": [
+        "bookings",
+        "solapi_review_sent_log"
+      ],
+      "tableWrites": [
+        "solapi_review_sent_log"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/gsc-index-rank",
+      "schedule": "30 2 * * *",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/gsc-index-rank/route.ts",
+      "tableReads": [
+        "indexing_reports",
+        "rank_history"
+      ],
+      "tableWrites": [
+        "indexing_reports",
+        "rank_history"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": "2026-07-29T05:40:49.793Z",
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/programmatic-seo-generator",
+      "schedule": "0 4 * * 0",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/programmatic-seo-generator/route.ts",
+      "tableReads": [
+        "blog_topic_queue",
+        "programmatic_seo_topics",
+        "publishing_policies"
+      ],
+      "tableWrites": [
+        "blog_topic_queue",
+        "programmatic_seo_topics"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    },
+    {
+      "route": "/api/cron/snapshot-inventory",
+      "schedule": "0 18 * * *",
+      "owner": "product-ops",
+      "routeFile": "src/app/api/cron/snapshot-inventory/route.ts",
+      "tableReads": [
+        "ad_engagement_logs",
+        "bookings",
+        "daily_inventory_snapshots",
+        "travel_packages"
+      ],
+      "tableWrites": [
+        "daily_inventory_snapshots"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/refresh-booking-pace",
+      "schedule": "0 19 * * 0",
+      "owner": "revenue-ops",
+      "routeFile": "src/app/api/cron/refresh-booking-pace/route.ts",
+      "tableReads": [
+        "booking_pace_aggregate",
+        "bookings"
+      ],
+      "tableWrites": [
+        "booking_pace_aggregate"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/sync-flight-availability",
+      "schedule": "0 21 * * *",
+      "owner": "product-ops",
+      "routeFile": "src/app/api/cron/sync-flight-availability/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "direct_or_required",
+      "decision": "ESSENTIAL_REVENUE",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/demand-forecast",
+      "schedule": "0 20 * * 1",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/demand-forecast/route.ts",
+      "tableReads": [
+        "booking_pace_aggregate",
+        "demand_forecast_v2",
+        "destination_climate"
+      ],
+      "tableWrites": [
+        "demand_forecast_v2"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/magic-tokens-cleanup",
+      "schedule": "30 18 * * 0",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/magic-tokens-cleanup/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "ESSENTIAL_SECURITY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/conformal-recalibrate",
+      "schedule": "0 19 * * *",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/conformal-recalibrate/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/learning-flywheel",
+      "schedule": "18 2 * * 1",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/learning-flywheel/route.ts",
+      "tableReads": [
+        "critique_results",
+        "platform_learning_events",
+        "qa_inquiries",
+        "qa_learning_scenarios",
+        "response_corrections"
+      ],
+      "tableWrites": [
+        "qa_learning_scenarios",
+        "response_corrections"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/product-registration-learning-report",
+      "schedule": "24 2 * * 1",
+      "owner": "ai-ops",
+      "routeFile": "src/app/api/cron/product-registration-learning-report/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/admin/optimization",
+      "schedule": "0 21 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/admin/optimization/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/trend-cleanup",
+      "schedule": "30 3 * * *",
+      "owner": "platform-ops",
+      "routeFile": "src/app/api/cron/trend-cleanup/route.ts",
+      "tableReads": [
+        "external_trend_posts"
+      ],
+      "tableWrites": [
+        "external_trend_posts"
+      ],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "OBSERVE_ONLY",
+      "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
+    },
+    {
+      "route": "/api/cron/blog-orchestrator",
+      "schedule": "45 5 * * 1",
+      "owner": "marketing/content",
+      "routeFile": "src/app/api/cron/blog-orchestrator/route.ts",
+      "tableReads": [],
+      "tableWrites": [],
+      "externalMutations": "none_found_in_route",
+      "lastSuccessfulRun": null,
+      "lastFailure": null,
+      "revenueDependency": "not_proven_for_p0",
+      "decision": "PAUSE",
+      "rollbackMethod": "Restore the exact vercel.json schedule entry and revert the central capability override."
+    }
+  ]
+}

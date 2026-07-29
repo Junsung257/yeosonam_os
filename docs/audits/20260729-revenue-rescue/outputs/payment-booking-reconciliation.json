@@ -1,0 +1,15 @@
+{
+  "observedAt": "2026-07-29T10:15:30Z",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "activeBookings": 50,
+  "paidBookings": 39,
+  "bookingPaidTotalKrw": 51261988,
+  "bookingSalesTotalKrw": 78560988,
+  "recordedMarginTotalKrw": 48248608,
+  "paymentTransactions": 0,
+  "bankTransactions": 234,
+  "ledgerEntries": 61,
+  "settlements": 1,
+  "interpretation": "Aggregate values exist but do not prove a complete booking-to-payment-to-ledger reconciliation. No customer-level values were exported."
+}

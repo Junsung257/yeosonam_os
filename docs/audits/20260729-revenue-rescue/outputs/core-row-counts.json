@@ -1,0 +1,38 @@
+{
+  "observedAt": "2026-07-29T10:09:13.448868Z",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "counts": {
+    "travel_packages": 919,
+    "products": 792,
+    "public_package_snapshots": 0,
+    "active_public_package_snapshots": 0,
+    "latest_publishable_decisions": 0,
+    "leads": 11,
+    "leads_recent_30d": 0,
+    "qa_inquiries": 118,
+    "qa_inquiries_recent_30d": 0,
+    "group_rfqs": 0,
+    "bookings": 88,
+    "bookings_recent_30d": 0,
+    "bookings_with_paid_amount": 39,
+    "transactions": 0,
+    "bank_transactions": 234,
+    "ledger_entries": 61,
+    "settlements": 1,
+    "content_attribution_events": 0,
+    "meta_conversion_events": 3,
+    "ad_os_performance_facts": 1000,
+    "cron_runs_24h": 68,
+    "cron_success_24h": 38,
+    "cron_error_24h": 2,
+    "cron_partial_failure_24h": 28,
+    "cron_non_success_24h": 30
+  },
+  "tableInventory": {
+    "observedAt": "2026-07-29T09:58:31.699888Z",
+    "publicTables": 367,
+    "emptyTables": 178,
+    "nonEmptyTables": 189
+  }
+}

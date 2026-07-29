@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-24
+Last updated: 2026-07-29
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -26,6 +26,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Area | File |
 |---|---|
+| Revenue rescue reproducible baseline | `20260729-revenue-rescue/` |
 | Learning engine verification | `2026-06-08-product-registration-learning-engine-audit.md` |
 | Upload pipeline map | `2026-06-04-upload-registration-pipeline-map.md` |
 | Registration object verification | `2026-06-05-registration-object-verification.md` |

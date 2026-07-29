@@ -1,0 +1,28 @@
+{
+  "observedAt": "2026-07-29T09:54:53.504981Z",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "publicTables": 367,
+  "rlsEnabledTables": 367,
+  "policies": 361,
+  "rlsEnabledNoPolicyTables": 50,
+  "policiesIncludingAuthenticatedRole": 50,
+  "authenticatedOrPublicUsingTruePolicies": 14,
+  "withCheckTruePolicies": 0,
+  "interpretation": "RLS enabled with no policy is default deny and is not broad access.",
+  "usingTruePolicyTables": [
+    "ab_assignments",
+    "ab_experiments",
+    "ab_variants",
+    "ai_training_logs",
+    "blog_categories",
+    "competitor_ads",
+    "departing_locations",
+    "destination_climate",
+    "fx_rate_snapshots",
+    "kr_holidays",
+    "land_operators",
+    "package_review_digests",
+    "product_prices",
+    "terms_templates"
+  ]
+}

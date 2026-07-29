@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "auditId": "20260729-revenue-rescue",
+  "repository": "https://github.com/Junsung257/yeosonam_os.git",
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "startedAtUtc": "2026-07-29T09:55:26.5861253Z",
+  "startedAtKst": "2026-07-29T18:55:26.5861253+09:00",
+  "production": {
+    "project": "os",
+    "deploymentId": "dpl_921Z3DpkGB8GK4AWu8MGfgtePoXz",
+    "commitSha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+    "matchesRepositorySha": true
+  },
+  "supabase": {
+    "name": "Yeosonam_OS",
+    "projectRef": "ixaxnvbmhzjvupissmly"
+  },
+  "runtime": {
+    "node": "v24.14.0",
+    "npm": "11.9.0",
+    "next": "15.5.21",
+    "packageLockSha256": "244fa2bfb5a2eb7b9d7f81bcd64006cd87b7dbf217fdb63259cacb3e650dbf11"
+  },
+  "claims": [
+    {
+      "claim": "travel_packages row count",
+      "originalReportedValue": 919,
+      "currentValue": 919,
+      "exactSqlOrCommand": "queries/01-core-row-counts.sql",
+      "observedAt": "2026-07-29T10:09:13.448868Z",
+      "evidenceFile": "outputs/core-row-counts.json",
+      "verdict": "CONFIRMED",
+      "confidence": "high"
+    },
+    {
+      "claim": "active public offer count",
+      "originalReportedValue": 0,
+      "currentValue": 0,
+      "exactSqlOrCommand": "queries/02-public-offer-readiness.sql",
+      "observedAt": "2026-07-29T10:09:13.448868Z",
+      "evidenceFile": "outputs/core-row-counts.json",
+      "verdict": "CONFIRMED",
+      "confidence": "high"
+    },
+    {
+      "claim": "private-tour CTA redirects to login",
+      "originalReportedValue": true,
+      "currentValue": false,
+      "exactSqlOrCommand": "production browser click of exact link text 단독맞춤",
+      "observedAt": "2026-07-29T10:10:00Z",
+      "evidenceFile": "screenshots/02-private-tour-before.png",
+      "verdict": "ALREADY_FIXED",
+      "confidence": "high"
+    },
+    {
+      "claim": "private-tour exposes hardcoded social proof",
+      "originalReportedValue": true,
+      "currentValue": true,
+      "exactSqlOrCommand": "production browser + src/app/private-tour/page.tsx",
+      "observedAt": "2026-07-29T10:10:00Z",
+      "evidenceFile": "screenshots/02-private-tour-before.png",
+      "verdict": "CONFIRMED",
+      "confidence": "high"
+    }
+  ],
+  "limitations": [
+    "The supplied execution prompt did not include every original report value, timestamp, project ref, or SQL.",
+    "The deep security scan worker runtime failed with spawn EPERM; focused source and runtime validation continued.",
+    "No production data or external mutation was performed."
+  ]
+}

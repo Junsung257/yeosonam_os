@@ -1,0 +1,10 @@
+{
+  "observedAt": "2026-07-29T10:08:45.386353Z",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "canonicalization": "One jsonb_build_object text line per pg_policies row ordered by tablename, policyname and joined with LF.",
+  "rowCount": 361,
+  "sha256": "48f0d8f716022fdca966e13694cc62c213791515bcbef5af35eb52b97a02bc3d",
+  "reproductionQuery": "../queries/05-rls-policy-inventory.sql",
+  "note": "The complete ordered query is the immutable reproducer; the digest detects any policy-body or ordering change without storing customer data."
+}
