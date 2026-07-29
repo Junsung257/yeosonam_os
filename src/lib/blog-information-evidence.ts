@@ -385,10 +385,30 @@ export function blogInformationEvidenceScopeSupportsClaim(input: {
   if (!scope) return { passed: false, issues };
   if (scope.claimType !== input.claimType) issues.push('claim_type_mismatch');
   if (input.extractedValue) {
-    if (normalizeMeaning(scope.normalizedValue) !== normalizeMeaning(input.extractedValue.normalizedValue)) {
+    const compositeParts = clean(input.extractedValue.normalizedValue).split('|');
+    const supportsMonthlyClimateComponent = input.claimType === 'climate'
+      && clean(input.extractedValue.unit) === '월별 기후 지표'
+      && compositeParts.length === 4
+      && (
+        (
+          clean(scope.unit) === '월별 기온 지표'
+          && normalizeMeaning(scope.normalizedValue)
+            === normalizeMeaning(compositeParts.slice(0, 2).join('|'))
+        )
+        || (
+          clean(scope.unit) === '월별 강수 지표'
+          && normalizeMeaning(scope.normalizedValue)
+            === normalizeMeaning(compositeParts.slice(2, 4).join('|'))
+        )
+      );
+    if (!supportsMonthlyClimateComponent
+      && normalizeMeaning(scope.normalizedValue) !== normalizeMeaning(input.extractedValue.normalizedValue)) {
       issues.push('normalized_value_mismatch');
     }
-    if (normalizeMeaning(scope.unit) !== normalizeMeaning(input.extractedValue.unit)) issues.push('unit_mismatch');
+    if (!supportsMonthlyClimateComponent
+      && normalizeMeaning(scope.unit) !== normalizeMeaning(input.extractedValue.unit)) {
+      issues.push('unit_mismatch');
+    }
     if (normalizeMeaning(scope.currency) !== normalizeMeaning(input.extractedValue.currency)) issues.push('currency_mismatch');
   }
   for (const [key, value] of Object.entries(input.expectedScope ?? {})) {
@@ -397,6 +417,52 @@ export function blogInformationEvidenceScopeSupportsClaim(input: {
     }
   }
   return { passed: issues.length === 0, issues: [...new Set(issues)] };
+}
+
+export function blogInformationEvidenceSetSupportsClaim(input: {
+  evidence: Array<Pick<BlogInformationEvidenceInput, 'claimType' | 'excerpt' | 'scope'>>;
+  claimType: BlogInformationClaimType;
+  extractedValue?: BlogInformationExtractedValue;
+  expectedScope?: Partial<Pick<BlogInformationEvidenceScope, 'country' | 'destination' | 'applicableTo' | 'locale'>>;
+}): { passed: boolean; issues: string[] } {
+  const reports = input.evidence.map((evidence) =>
+    blogInformationEvidenceScopeSupportsClaim({
+      evidence,
+      claimType: input.claimType,
+      extractedValue: input.extractedValue,
+      expectedScope: input.expectedScope,
+    }));
+  const compositeParts = clean(input.extractedValue?.normalizedValue).split('|');
+  const isMonthlyClimateComposite = input.claimType === 'climate'
+    && clean(input.extractedValue?.unit) === '월별 기후 지표'
+    && compositeParts.length === 4;
+  if (!isMonthlyClimateComposite) {
+    return {
+      passed: reports.some((report) => report.passed),
+      issues: [...new Set(reports.flatMap((report) => report.issues))],
+    };
+  }
+  const hasCompleteCompositeEvidence = input.evidence.some((evidence, index) =>
+    reports[index]?.passed
+    && clean(evidence.scope?.unit) === '월별 기후 지표'
+    && normalizeMeaning(evidence.scope?.normalizedValue)
+      === normalizeMeaning(input.extractedValue?.normalizedValue));
+  if (hasCompleteCompositeEvidence) {
+    return { passed: true, issues: [] };
+  }
+
+  const passedUnits = new Set(input.evidence.flatMap((evidence, index) =>
+    reports[index]?.passed ? [clean(evidence.scope?.unit)] : []));
+  const missingComponents = [
+    ['월별 기온 지표', 'monthly_temperature'],
+    ['월별 강수 지표', 'monthly_precipitation'],
+  ].flatMap(([unit, issue]) => passedUnits.has(unit) ? [] : [`composite_evidence_missing:${issue}`]);
+  return {
+    passed: missingComponents.length === 0,
+    issues: missingComponents.length > 0
+      ? missingComponents
+      : [],
+  };
 }
 
 export function validateBlogInformationResearchBundle(
@@ -492,6 +558,19 @@ export function validateBlogInformationResearchBundle(
     }
     if (claim.requiresEvidence && claim.evidenceKeys.length === 0) {
       issues.push(`claim:missing_evidence:${fingerprint || 'unknown'}`);
+    }
+    const linkedEvidence = claim.evidenceKeys
+      .map((evidenceKey) => evidenceByKey.get(clean(evidenceKey)))
+      .filter((evidence): evidence is BlogInformationEvidenceInput => Boolean(evidence));
+    const setSupport = blogInformationEvidenceSetSupportsClaim({
+      evidence: linkedEvidence,
+      claimType: claim.claimType,
+      extractedValue: claim.extractedValue,
+    });
+    if (!setSupport.passed) {
+      for (const supportIssue of setSupport.issues) {
+        issues.push(`claim:evidence_set_mismatch:${supportIssue}:${fingerprint || 'unknown'}`);
+      }
     }
     for (const evidenceKey of claim.evidenceKeys) {
       if (!evidenceKeys.has(clean(evidenceKey))) {

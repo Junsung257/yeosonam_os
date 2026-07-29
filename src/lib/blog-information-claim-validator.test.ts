@@ -357,6 +357,61 @@ describe('blog information claim validator', () => {
     expect(report.issues).toEqual([]);
   });
 
+  it('requires both official evidence components for a split monthly climate claim', () => {
+    const claimText =
+      '1991~2020 평년값: 1월 최고기온 11.7°C, 최저기온 2.1°C, 강수량 79.6mm, 강수일수 5.3일';
+    const record = supportedRecord(claimText);
+    record.extractedValue = {
+      normalizedValue: '11.7|2.1|79.6|5.3',
+      unit: '월별 기후 지표',
+      currency: null,
+    };
+    record.evidence = [
+      {
+        ...record.evidence[0]!,
+        evidenceKey: 'jma-temperature',
+        excerpt: '2026년 일본 오사카 KR 대상: 1991~2020 평년값 1월 최고기온 11.7°C, 최저기온 2.1°C; 값=11.7|2.1; 단위=월별 기온 지표',
+        scope: {
+          ...record.evidence[0]!.scope,
+          normalizedValue: '11.7|2.1',
+          unit: '월별 기온 지표',
+        },
+      },
+      {
+        ...record.evidence[0]!,
+        evidenceKey: 'jma-precipitation',
+        excerpt: '2026년 일본 오사카 KR 대상: 1991~2020 평년값 1월 강수량 79.6mm, 강수일수 5.3일; 값=79.6|5.3; 단위=월별 강수 지표',
+        scope: {
+          ...record.evidence[0]!.scope,
+          normalizedValue: '79.6|5.3',
+          unit: '월별 강수 지표',
+        },
+      },
+    ];
+
+    const complete = validateBlogInformationClaims({
+      markdown: claimText,
+      persistedClaims: [record],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+    const incomplete = validateBlogInformationClaims({
+      markdown: claimText,
+      persistedClaims: [{ ...record, evidence: record.evidence.slice(0, 1) }],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+
+    expect(complete.passed).toBe(true);
+    expect(incomplete.passed).toBe(false);
+    expect(incomplete.issues).toEqual([
+      expect.objectContaining({
+        code: 'evidence_semantic_mismatch',
+        message: expect.stringContaining('composite_evidence_missing:monthly_precipitation'),
+      }),
+    ]);
+  });
+
   it('blocks monthly climate evidence when any composite measurement differs', () => {
     const claimText =
       '1991~2013 평년값: 10월 최고기온 32.5°C, 최저기온 24.2°C, 강수량 176.5mm, 강수일수 15일';

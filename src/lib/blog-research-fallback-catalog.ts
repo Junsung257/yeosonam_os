@@ -65,8 +65,20 @@ export const REVIEWED_WMO_FALLBACK_DESTINATIONS = [
   '상파울루',
   '부에노스아이레스',
   '산티아고',
+  '서안',
 ] as const;
 
 export const REVIEWED_WMO_FALLBACK_DESTINATION_SET = new Set<string>(
   REVIEWED_WMO_FALLBACK_DESTINATIONS,
 );
+
+export const REVIEWED_JMA_FALLBACK_DESTINATIONS = [
+  '나가사키',
+  '시즈오카',
+  '유후인',
+] as const;
+
+export const REVIEWED_CLIMATE_FALLBACK_DESTINATIONS = [
+  ...REVIEWED_WMO_FALLBACK_DESTINATIONS,
+  ...REVIEWED_JMA_FALLBACK_DESTINATIONS,
+] as const;

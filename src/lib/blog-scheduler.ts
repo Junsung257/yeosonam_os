@@ -494,10 +494,10 @@ export async function ensureDailyPublishableQueue(opts?: {
     .map(row => row.destination)
     .filter((destination): destination is string => typeof destination === 'string' && destination.trim().length > 0);
   const recentDestinationSet = new Set(recentDestinations);
-  const freshDestinations = REVIEWED_WMO_FALLBACK_DESTINATIONS
+  const freshDestinations = REVIEWED_CLIMATE_FALLBACK_DESTINATIONS
     .filter(destination => !recentDestinationSet.has(destination));
   const destinations = Array.from(
-    new Set([...freshDestinations, ...REVIEWED_WMO_FALLBACK_DESTINATIONS]),
+    new Set([...freshDestinations, ...REVIEWED_CLIMATE_FALLBACK_DESTINATIONS]),
   );
   const now = new Date();
   const year = now.getFullYear();
@@ -651,7 +651,7 @@ import type { BlogPublishabilitySnapshot } from './blog-engine-v2';
 import { destinationlessInfoBlocksPublishability } from './blog-destinationless-info';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 import { evaluateQueuedInformationResearch } from './blog-queue-research';
-import { REVIEWED_WMO_FALLBACK_DESTINATIONS } from './blog-research-fallback-catalog';
+import { REVIEWED_CLIMATE_FALLBACK_DESTINATIONS } from './blog-research-fallback-catalog';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:00', '15:00', '18:00', '21:00'];

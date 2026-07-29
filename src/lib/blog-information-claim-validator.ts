@@ -5,7 +5,7 @@ import type {
 } from './blog-information-claim-ledger';
 import {
   createBlogInformationClaimFingerprint,
-  blogInformationEvidenceScopeSupportsClaim,
+  blogInformationEvidenceSetSupportsClaim,
   extractMonthlyClimateCompositeValue,
   isPrimaryInformationAuthority,
   type BlogInformationAuthorityLevel,
@@ -564,15 +564,14 @@ export function validateBlogInformationClaims(input: {
       const authorityEligibleEvidence = highRisk
         ? currentEvidence.filter((evidence) => isPrimaryInformationAuthority(evidence.source.authorityLevel))
         : currentEvidence;
-      const semanticReports = authorityEligibleEvidence.map((evidence) =>
-        blogInformationEvidenceScopeSupportsClaim({
-          evidence,
-          claimType: claim.claimType,
-          extractedValue: claim.extractedValue,
-          expectedScope: input.expectedScope,
-        }));
-      if (!semanticReports.some((report) => report.passed)) {
-        const mismatchCodes = semanticReports.flatMap((report) => report.issues);
+      const semanticReport = blogInformationEvidenceSetSupportsClaim({
+        evidence: authorityEligibleEvidence,
+        claimType: claim.claimType,
+        extractedValue: claim.extractedValue,
+        expectedScope: input.expectedScope,
+      });
+      if (!semanticReport.passed) {
+        const mismatchCodes = semanticReport.issues;
         const hasScopeMismatch = mismatchCodes.some((code) =>
           /country|destination|applicable|locale|claim_type|scope_window|conditions/.test(code));
         issues.push({

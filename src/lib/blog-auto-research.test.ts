@@ -10,8 +10,10 @@ import {
   buildGuamHotelAreasPayload,
   buildBlogResearchBundleFromGrounding,
   buildBlogStructuredResearchPrompt,
+  buildJmaMonthlyWeatherPayload,
   buildPagasaMonthlyWeatherPayload,
   buildWmoMonthlyWeatherPayload,
+  extractReviewedHtmlTextForResearch,
   extractReviewedPageTextForResearch,
   fetchReviewedDirectPages,
   sanitizeGroundedResearchPayload,
@@ -1199,6 +1201,130 @@ describe('buildWmoMonthlyWeatherPayload', () => {
     }], '도쿄');
 
     expect(payload).toBeNull();
+  });
+});
+
+describe('buildJmaMonthlyWeatherPayload', () => {
+  const page = (url: string, heading: string, rows: string[][]) => {
+    const body = [
+      '<html><head><title>気象庁｜過去の気象データ検索</title></head><body>',
+      `<h3>${heading}</h3>`,
+      '<table>',
+      ...rows.map((row) =>
+        `<tr>${row.map((cell, index) =>
+          index === 0 ? `<th>${cell}</th>` : `<td>${cell}</td>`).join('')}</tr>`),
+      '</table></body></html>',
+    ].join('');
+    return {
+      url,
+      title: '気象庁｜過去の気象データ検索',
+      text: extractReviewedHtmlTextForResearch({ body, url }),
+    };
+  };
+  const temperatureRows = [
+    ['統計期間', '1991～2020'],
+    ...Array.from({ length: 12 }, (_, index) => [
+      `${index + 1}月`,
+      '1000.0',
+      '1005.0',
+      String(70 + index),
+      String(10 + index),
+      String(15 + index),
+      String(5 + index),
+    ]),
+  ];
+  const precipitationRows = [
+    ['統計期間', '1991～2020'],
+    ...Array.from({ length: 12 }, (_, index) => [
+      `${index + 1}月`,
+      '1000.0',
+      '1005.0',
+      String(70 + index),
+      String(12 + index),
+      String(8 + index),
+      String(7 + index),
+    ]),
+  ];
+  const pages = [
+    page(
+      'https://www.data.jma.go.jp/stats/etrn/view/nml_sfc_ym.php?block_no=47656&prec_no=50&view=p1s',
+      '静岡（静岡県) 平年値（年・月ごとの値） 主な要素',
+      temperatureRows,
+    ),
+    page(
+      'https://www.data.jma.go.jp/stats/etrn/view/nml_sfc_ym.php?block_no=47656&prec_no=50&view=a1',
+      '静岡（静岡県) 平年値（年・月ごとの値） 詳細（気圧・降水量）',
+      precipitationRows,
+    ),
+  ];
+
+  it('requires and combines the temperature and precipitation tables', () => {
+    const payload = buildJmaMonthlyWeatherPayload(pages, '시즈오카');
+
+    expect(payload?.sources).toHaveLength(2);
+    expect(payload?.evidence).toHaveLength(24);
+    expect(payload?.claims).toHaveLength(12);
+    expect(payload?.claims?.[0]).toMatchObject({
+      normalizedValue: '15|5|70|7',
+      unit: '월별 기후 지표',
+      evidenceKeys: ['jma-temperature-month-1', 'jma-precipitation-month-1'],
+    });
+    expect(payload?.claims?.[11]?.claimText).toContain('12월');
+  });
+
+  it('refuses a destination mismatch or a missing precipitation table', () => {
+    expect(buildJmaMonthlyWeatherPayload(pages, '나가사키')).toBeNull();
+    expect(buildJmaMonthlyWeatherPayload(pages.slice(0, 1), '시즈오카')).toBeNull();
+  });
+
+  it('normalizes the two official tables into one fully supported monthly claim set', () => {
+    const payload = buildJmaMonthlyWeatherPayload(pages, '시즈오카');
+    const now = new Date();
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'shizuoka-monthly-weather',
+      destination: '시즈오카',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'monthly_weather',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: true,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['meteorological_agency'],
+        },
+      },
+      payload: payload!,
+      groundingChunks: pages.map((item) => ({ web: { uri: item.url, title: item.title } })),
+      directSourceUrls: pages.map((item) => item.url),
+      officialRegistry: [{
+        id: 'jma',
+        hostname: 'data.jma.go.jp',
+        sourceType: 'meteorological_agency',
+        authorityLevel: 'official_primary',
+        allowSubdomains: true,
+      }],
+      now,
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.bundle?.evidence).toHaveLength(24);
+    expect(result.bundle?.claims).toHaveLength(12);
+    expect(evaluateBlogGenerationResearchReadiness({
+      meta: { information_research_bundle: result.bundle },
+      expectedContentKey: 'shizuoka-monthly-weather',
+      destination: '시즈오카',
+      intent: 'monthly_weather',
+      locale: 'ko-KR',
+      sourcePolicy: {
+        minimumClaimSourceCoverage: 0.9,
+        primarySourcesRequired: true,
+        exactNumbersRequireSource: true,
+        retrievedAtRequired: true,
+        sourceTypes: ['meteorological_agency'],
+      },
+      now,
+    })).toMatchObject({ passed: true, issues: [] });
   });
 });
 
