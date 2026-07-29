@@ -544,6 +544,29 @@ function removeExistingLocalTransportStructure(markdown: string): string {
     .trim();
 }
 
+function removeLocalTransportClaimEchoes(
+  markdown: string,
+  claims: BlogInformationResearchBundle['claims'],
+): string {
+  let cleaned = markdown;
+  const claimTexts = [...new Set(claims.map((claim) => clean(claim.claimText)).filter(Boolean))]
+    .sort((left, right) => right.length - left.length);
+  for (const claimText of claimTexts) {
+    cleaned = cleaned.split(claimText).join('');
+  }
+
+  return cleaned
+    .replace(/\[\s*]\([^)]+\)/g, '')
+    .split(/\r?\n/)
+    .filter((line) =>
+      !/^\s*[-*]\s*$/.test(line)
+      && !/^\s*\|\s*(?:\|\s*)*\|\s*$/.test(line))
+    .join('\n')
+    .replace(/[ \t]+([.,!?])/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function repairLocalTransportResearchStructure(input: {
   markdown: string;
   readiness: BlogGenerationResearchReadiness;
@@ -716,7 +739,11 @@ function repairLocalTransportResearchStructure(input: {
     '',
     LOCAL_TRANSPORT_STRUCTURE_END_MARKER,
   ].join('\n');
-  const markdown = `${removeExistingLocalTransportStructure(input.markdown)}\n\n${block}`.trim();
+  const baseMarkdown = removeLocalTransportClaimEchoes(
+    removeExistingLocalTransportStructure(input.markdown),
+    approvedClaims,
+  );
+  const markdown = `${baseMarkdown}\n\n${block}`.trim();
   const repairedReport = validateBlogInformationStructure({ intent: 'local_transport', markdown });
   if (!repairedReport.passed) return unchanged();
 

@@ -25,6 +25,7 @@ import {
   checkMarkdownTableIntegrity,
 } from './blog-quality-gate';
 import { inspectBlogImageQuality } from './blog-image-quality';
+import { inspectBlogCustomerQuality } from './blog-customer-quality';
 import { computeReadability } from './blog-readability';
 import { computeSeoScore } from './blog-seo-scorer';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
@@ -778,11 +779,20 @@ describe('blog generation research preflight', () => {
     const researchReadiness = localTransportReadiness();
     expect(researchReadiness.issues).toEqual([]);
     expect(researchReadiness.passed).toBe(true);
+    const vehicleRestrictionClaim = researchReadiness.bundle!.claims.find((claim) =>
+      claim.claimText.includes('모레인 호수 도로는 연중 개인 차량 통행이 금지'))!.claimText;
+    const reservationClaim = researchReadiness.bundle!.claims.find((claim) =>
+      claim.claimText.includes('8X 서비스만 예약이 가능'))!.claimText;
 
     const repaired = repairBlogGenerationResearchStructure({
       markdown: [
         '# 캐나다 로키산맥 렌터카 없이 이동하기',
         '밴프와 레이크 루이스를 연결하는 대중교통을 비교합니다.',
+        vehicleRestrictionClaim,
+        vehicleRestrictionClaim,
+        vehicleRestrictionClaim,
+        `| ${vehicleRestrictionClaim} |`,
+        `| ${reservationClaim} |`,
         '![캐나다 로키 교통 1](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
         '![캐나다 로키 교통 2](https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg)',
         '![캐나다 로키 교통 3](https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg)',
@@ -817,6 +827,17 @@ describe('blog generation research preflight', () => {
     expect(extractFaqItems(repaired.markdown)).toHaveLength(3);
     expect(repaired.markdown).toContain('https://parks.canada.ca/');
     expect(repaired.markdown).toContain('https://roamtransit.com/');
+    expect(repaired.markdown.match(new RegExp(vehicleRestrictionClaim, 'g')) ?? []).toHaveLength(2);
+    expect(computeReadability(repaired.markdown).duplicate_phrases.every((item) => item.count < 5))
+      .toBe(true);
+    expect(inspectBlogCustomerQuality({
+      blogHtml: repaired.markdown,
+      blogType: 'info',
+      title: '캐나다 로키산맥 대중교통 여행',
+      primaryKeyword: '캐나다 로키산맥 대중교통',
+      destination: '캐나다 로키산맥',
+      generationMeta: { writer: 'info_writer' },
+    }).issues.map((issue) => issue.code)).not.toContain('table_render_risk');
     expect(structureReport).toMatchObject({ passed: true, issues: [] });
     expect(informationReport).toMatchObject({
       passed: true,
