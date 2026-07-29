@@ -40,6 +40,7 @@ A day is healthy only when all of these are true:
 - `/admin/blog/system` shows `blog-publisher`, `blog-scheduler`, `blog-daily-summary`, `blog-indexing-worker`, `gsc-index-rank`, and `serp-rank-snapshot` as successful or explainably skipped.
 - Published posts have current `quality_gate`, `seo_score`, `readability_score`, `generation_meta.content_brief`, final slug, title, description, and image evidence.
 - New information candidates have `meta.auto_research.version='reviewed-source-direct-fetch-v2'`, a validated `information_research_bundle`, and persisted source/evidence/claim rows before the writer starts. Search discovers candidate URLs; only directly downloaded, intent-approved official or reputable source pages may become evidence. `evidence_insufficient:auto_research_*` is a research blocker, not a reason to publish fallback prose.
+- When Engine V2 reports `evidence_faithfulness:35` even though a deterministic evidence article visibly contains approved operator links, inspect `generation_meta.information_research_preflight.official_source_urls`. It must be present only after a passed `r18-research-first-v1` preflight. Do not solve operator-domain gaps by widening the generic official-host heuristic; repair the reviewed research-preflight handoff and retain the final claim gate.
 - Public blog sections (`/blog`, `/blog/[slug]`, `/blog/destination/[dest]`, `/blog/angle/[angle]`, sitemap, blog API) return healthy titles, canonical URLs, indexability signals, and non-empty collection evidence.
 
 ## 2026-07-27 Publishable Buffer And Voice Rotation

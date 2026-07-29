@@ -30,6 +30,50 @@ describe('blog engine v2 evaluation', () => {
     ]);
   });
 
+  it('uses registry-verified research preflight sources for operator evidence', () => {
+    const brief = buildBlogEngineV2Brief({
+      blogHtml: '# 캐나다 로키 대중교통\n\n공식 요금과 예약 조건을 비교합니다.',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        information_research_preflight: {
+          version: 'r18-research-first-v1',
+          passed: true,
+          official_source_urls: [
+            'https://parks.canada.ca/pn-np/ab/banff/visit/parkbus/louise',
+            'https://roamtransit.com/fares/',
+          ],
+        },
+      },
+    });
+
+    expect(brief.evidence_items.filter((item) => item.kind === 'official_source')).toEqual([
+      expect.objectContaining({
+        url: 'https://parks.canada.ca/pn-np/ab/banff/visit/parkbus/louise',
+        source: 'verified_research_preflight',
+      }),
+      expect.objectContaining({
+        url: 'https://roamtransit.com/fares/',
+        source: 'verified_research_preflight',
+      }),
+    ]);
+  });
+
+  it('does not trust failed or unversioned research preflight metadata', () => {
+    const brief = buildBlogEngineV2Brief({
+      blogHtml: '# 교통 정보\n\n검증되지 않은 외부 링크는 근거가 아닙니다.',
+      generationMeta: {
+        writer: 'info_writer',
+        information_research_preflight: {
+          passed: true,
+          official_source_urls: ['https://example.com/not-reviewed'],
+        },
+      },
+    });
+
+    expect(brief.evidence_items.filter((item) => item.kind === 'official_source')).toEqual([]);
+  });
+
   it('passes an evidence-backed informational post with bottom-soft CTA', () => {
     const blogHtml = `# 발리 가족 여행 경비
 

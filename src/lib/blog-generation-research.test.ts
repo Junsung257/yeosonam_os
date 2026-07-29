@@ -830,6 +830,12 @@ describe('blog generation research preflight', () => {
     expect(extractFaqItems(repaired.markdown)).toHaveLength(3);
     expect(repaired.markdown).toContain('https://parks.canada.ca/');
     expect(repaired.markdown).toContain('https://roamtransit.com/');
+    expect(repaired.markdown).toContain('[여소남 여행지 가이드](/destinations)');
+    expect(summarizeBlogGenerationResearch(researchReadiness).official_source_urls)
+      .toEqual(expect.arrayContaining([
+        expect.stringContaining('parks.canada.ca/'),
+        expect.stringContaining('roamtransit.com/'),
+      ]));
     expect(repaired.markdown.match(new RegExp(vehicleRestrictionClaim, 'g')) ?? []).toHaveLength(2);
     expect(computeReadability(repaired.markdown).duplicate_phrases.every((item) => item.count < 5))
       .toBe(true);

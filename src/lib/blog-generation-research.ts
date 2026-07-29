@@ -738,6 +738,8 @@ function repairLocalTransportResearchStructure(input: {
     '',
     ...sourceLines,
     '',
+    '목적지별 준비 정보는 [여소남 여행지 가이드](/destinations)에서도 이어서 확인할 수 있습니다.',
+    '',
     LOCAL_TRANSPORT_STRUCTURE_END_MARKER,
   ].join('\n');
   const markdown = block.trim();
@@ -1512,6 +1514,14 @@ export function repairBlogGenerationResearchStructure(input: {
 }
 
 export function summarizeBlogGenerationResearch(readiness: BlogGenerationResearchReadiness): Record<string, unknown> {
+  const officialSourceUrls = readiness.passed
+    ? [...new Set(
+        (readiness.bundle?.sources ?? [])
+          .filter((source) => isOfficialInformationAuthority(source.authorityLevel))
+          .map((source) => clean(source.sourceUrl))
+          .filter(Boolean),
+      )].slice(0, 12)
+    : [];
   return {
     version: 'r18-research-first-v1',
     passed: readiness.passed,
@@ -1519,5 +1529,6 @@ export function summarizeBlogGenerationResearch(readiness: BlogGenerationResearc
     ...readiness.summary,
     source_keys: readiness.bundle?.sources.map((source) => source.sourceKey) ?? [],
     evidence_keys: readiness.bundle?.evidence.map((evidence) => evidence.evidenceKey) ?? [],
+    official_source_urls: officialSourceUrls,
   };
 }
