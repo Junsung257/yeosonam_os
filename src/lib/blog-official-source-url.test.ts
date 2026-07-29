@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { isLikelyOfficialBlogSourceUrl } from './blog-official-source-url';
+import {
+  isLikelyOfficialBlogSourceUrl,
+  isSafePublicBlogSourceUrl,
+} from './blog-official-source-url';
 
 describe('blog official source URL candidates', () => {
   it.each([
@@ -22,5 +25,21 @@ describe('blog official source URL candidates', () => {
     'https://127.0.0.1/',
   ])('rejects an unsafe or non-official URL: %s', (url) => {
     expect(isLikelyOfficialBlogSourceUrl(url)).toBe(false);
+  });
+
+  it.each([
+    'https://parks.canada.ca/pn-np/ab/banff',
+    'https://roamtransit.com/fares/',
+  ])('accepts a registry-reviewed operator URL as a safe public source: %s', (url) => {
+    expect(isSafePublicBlogSourceUrl(url)).toBe(true);
+  });
+
+  it.each([
+    'https://metadata.google.internal/latest',
+    'https://service.local/source',
+    'https://169.254.169.254/latest',
+    'https://user:pass@roamtransit.com/source',
+  ])('rejects a non-public research source URL: %s', (url) => {
+    expect(isSafePublicBlogSourceUrl(url)).toBe(false);
   });
 });
