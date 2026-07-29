@@ -14,7 +14,7 @@ Last updated: 2026-07-28
 
 - [x] **ERR-BLOG-provider-call-consumed-generation-budget@2026-07-29**: A targeted evidence-backed upgrade repeatedly reached `topic_generation_timeout:120000ms` while its public predecessor correctly remained live.
 - **Root cause**: The publisher had an outer writer timeout, but the Gemini and DeepSeek SDK calls had no per-provider request deadline. A stalled first provider consumed the entire writer window, so the prepared fallback provider never ran. The cascade could also retry the policy provider after that provider had already failed.
-- **Fix**: Pass real SDK request timeouts through the shared blog AI caller, disable provider SDK retries inside the bounded publisher path, reserve 30 seconds for Gemini and 50 seconds for DeepSeek, and deduplicate the final policy-provider attempt.
+- **Fix**: Pass real SDK request timeouts through the shared blog AI caller, disable provider SDK retries inside the bounded publisher path, reserve 55 seconds for Gemini and 30 seconds for DeepSeek, cap grounded writer output at 8,192 tokens, disable Gemini 2.5 dynamic thinking for the reviewed-evidence transformation pass, and deduplicate the final policy-provider attempt.
 - **Prevention**: Tests assert timeout propagation, first-provider failure to fallback-provider success, and no duplicate provider retry. Production proof must show the protected targeted upgrade finishing without `topic_generation_timeout` while preserving the prior public row until the atomic quality gate passes.
 
 ## ERR-BLOG-research-scheduler-serial-timeout@2026-07-28

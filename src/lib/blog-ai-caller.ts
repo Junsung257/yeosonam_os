@@ -39,6 +39,8 @@ export interface BlogCallOptions {
   maxTokens?: number;
   /** Per-provider network budget. The caller's outer deadline should remain larger. */
   requestTimeoutMs?: number;
+  /** Gemini 2.5 reasoning budget. Use zero for grounded transformation tasks. */
+  thinkingBudget?: number;
   /**
    * Claude prompt cache TTL 을 1h 로 확장 (기본 5min ephemeral).
    * 동일 systemPrompt 로 1시간 내 2회 이상 호출되는 워크로드(시간당 publisher,
@@ -334,6 +336,9 @@ async function callModelDirect(
         temperature,
         ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
         ...(opts.maxTokens ? { maxOutputTokens: opts.maxTokens } : {}),
+        ...(typeof opts.thinkingBudget === 'number'
+          ? { thinkingConfig: { thinkingBudget: opts.thinkingBudget } }
+          : {}),
       },
       ...(opts.systemPrompt ? { systemInstruction: opts.systemPrompt } : {}),
     },
