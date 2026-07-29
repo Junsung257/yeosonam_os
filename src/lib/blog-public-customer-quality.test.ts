@@ -1,11 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { inspectPublicBlogCustomerQuality } from './blog-public-customer-quality';
+import {
+  inspectPublicBlogCustomerQuality,
+  requiresHydratedPublicBlogAudit,
+} from './blog-public-customer-quality';
 
 function page(body: string, title = '발리 7월 날씨 옷차림 체크리스트'): string {
   return `<!doctype html><html><head><title>${title}</title></head><body><main><article>${body}</article></main></body></html>`;
 }
 
 describe('inspectPublicBlogCustomerQuality', () => {
+  it('requires browser hydration when the raw Next.js stream still has pending article boundaries', () => {
+    const html = page(`
+      <div aria-label="목차">목차 (16)</div>
+      <template id="P:4"></template>
+    `) + '<script>$RS=function(a,b){};$RS("S:4","P:4")</script>';
+
+    expect(requiresHydratedPublicBlogAudit(html)).toBe(true);
+  });
+
+  it('does not hydrate an already materialized article body', () => {
+    const html = page(`
+      <template id="P:4"></template>
+      <div class="prose-blog"><p>완성된 공개 본문입니다.</p></div>
+    `) + '<script>$RS=function(a,b){};$RS("S:4","P:4")</script>';
+
+    expect(requiresHydratedPublicBlogAudit(html)).toBe(false);
+  });
+
   it('blocks broken public table surfaces that look fine to technical URL checks', () => {
     const report = inspectPublicBlogCustomerQuality({
       expectedType: 'info',

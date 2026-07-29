@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import type { Browser } from 'playwright';
 import {
   inspectPublicBlogCustomerQuality,
+  requiresHydratedPublicBlogAudit,
   type PublicBlogCustomerQualityReport,
 } from '@/lib/blog-public-customer-quality';
 
@@ -43,6 +44,7 @@ interface PublicBlogTarget {
 interface AuditedPublicBlogTarget extends PublicBlogTarget {
   url: string;
   ok: boolean;
+  renderer?: 'html' | 'browser';
   status?: number;
   report?: PublicBlogCustomerQualityReport;
   error?: string;
@@ -57,6 +59,7 @@ const retries = Math.max(0, Math.min(3, Number(argValue('--retries', '2')) || 0)
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const browserMode = hasFlag('--browser');
+const htmlOnlyMode = hasFlag('--html-only');
 const minScore = Math.max(0, Math.min(100, Number(argValue('--min-score', '88')) || 88));
 
 function absolutize(path: string): string {
@@ -316,11 +319,26 @@ async function auditTarget(
 ): Promise<AuditedPublicBlogTarget> {
   const url = absolutize(target.path);
   try {
-    const { status, text } = browser
+    let renderer: 'html' | 'browser' = 'html';
+    let response = browserMode && browser
       ? await loadBrowserRenderedHtml(browser, url)
       : await fetchText(url);
+    if (
+      !browserMode
+      && !htmlOnlyMode
+      && browser
+      && response.status >= 200
+      && response.status < 300
+      && requiresHydratedPublicBlogAudit(response.text)
+    ) {
+      response = await loadBrowserRenderedHtml(browser, url);
+      renderer = 'browser';
+    } else if (browserMode) {
+      renderer = 'browser';
+    }
+    const { status, text } = response;
     if (status < 200 || status >= 300) {
-      return { ...target, url, ok: false, status, error: `HTTP ${status}` };
+      return { ...target, url, ok: false, renderer, status, error: `HTTP ${status}` };
     }
     const report = inspectPublicBlogCustomerQuality({
       html: text,
@@ -333,6 +351,7 @@ async function auditTarget(
     return {
       ...target,
       url,
+      renderer,
       status,
       ok: report.passed && report.score >= minScore,
       report,
@@ -342,6 +361,7 @@ async function auditTarget(
       ...target,
       url,
       ok: false,
+      renderer: browserMode ? 'browser' : 'html',
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -374,10 +394,10 @@ async function main() {
   }
   if (!outputJson) {
     console.log(
-      `Auditing ${targets.length} public blog page(s) with renderer=${browserMode ? 'browser' : 'html'}, concurrency=${concurrency}, retries=${retries}`,
+      `Auditing ${targets.length} public blog page(s) with renderer=${browserMode ? 'browser' : htmlOnlyMode ? 'html' : 'hybrid'}, concurrency=${concurrency}, retries=${retries}`,
     );
   }
-  const auditBrowser = browserMode
+  const auditBrowser = !htmlOnlyMode
     ? await (await import('playwright')).chromium.launch({ headless: true })
     : null;
   let completed = 0;
@@ -410,6 +430,7 @@ async function main() {
   const averageScore = rows.length > 0
     ? Math.round(rows.reduce((sum, row) => sum + (row.report?.score ?? 0), 0) / rows.length)
     : 0;
+  const hydratedFallbackCount = rows.filter((row) => row.renderer === 'browser').length;
   const categoryScores = Object.values(rows.reduce<Record<string, {
     category: string;
     checked: number;
@@ -460,7 +481,8 @@ async function main() {
     failed: failed.length,
     averageScore,
     minScore,
-    renderer: browserMode ? 'browser' : 'html',
+    renderer: browserMode ? 'browser' : htmlOnlyMode ? 'html' : 'hybrid',
+    hydratedFallbackCount,
     concurrency,
     retries,
     issueCounts,

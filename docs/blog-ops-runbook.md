@@ -36,8 +36,9 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 
 A day is healthy only when all of these are true:
 
-- `npm run audit:blog-public-customer-quality -- --limit=500 --min-score=95 --browser --strict` completes the entire sitemap/API corpus in a real browser. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.
+- `npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=500 --min-score=95 --strict` completes the entire sitemap/API corpus with the hybrid public renderer. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.
 - A public customer audit failure is classified before repair. Rendering/duplication defects may use deterministic presentation cleanup; factual, freshness, intent, or evidence defects enter reviewed atomic replacement. Never raise a persisted score to close a public-render finding.
+- The command uses fast server HTML for complete pages and automatically hydrates only unresolved streamed article bodies in Playwright. Review `hydratedFallbackCount`; do not replace this release check with `--html-only`, because raw Next.js stream placeholders can otherwise be misclassified as an empty article. Use `--browser` only when diagnosing a renderer discrepancy on every URL.
 - The full public audit defaults to bounded concurrency 6 and two transient
   retries. Use `--concurrency=1` only for incident isolation; do not remove URL
   decoding before target deduplication. Confirm `checked` equals the unique API
