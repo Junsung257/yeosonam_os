@@ -45,18 +45,6 @@ export type PublishedBlogQualityUpgradeDecision =
       representativeKey: null;
     };
 
-function extractUpgradeMonth(value: string): number | null {
-  const numericMatch = value.match(/(?:^|\D)(1[0-2]|[1-9])\s*(?:월|month|\b|$)/i);
-  if (numericMatch) return Number(numericMatch[1]);
-  const englishMonths = [
-    'january', 'february', 'march', 'april', 'may', 'june',
-    'july', 'august', 'september', 'october', 'november', 'december',
-  ];
-  const normalized = value.toLowerCase();
-  const index = englishMonths.findIndex(month => new RegExp(`\\b${month}\\b`).test(normalized));
-  return index >= 0 ? index + 1 : null;
-}
-
 function buildIntentAnchoredUpgradeTopic(input: {
   destination: string;
   intent: BlogInformationIntent | null;
@@ -64,12 +52,9 @@ function buildIntentAnchoredUpgradeTopic(input: {
   publicTopic: string;
 }): string {
   if (!input.destination || !input.intent) return input.publicTopic;
-  const month = input.intent === 'monthly_weather'
-    ? extractUpgradeMonth(input.publicTopic)
-    : null;
   const topics: Record<BlogInformationIntent, string> = {
     general: input.publicTopic,
-    monthly_weather: `${input.destination} ${month ? `${month}월 ` : ''}날씨와 옷차림`,
+    monthly_weather: `${input.destination} 월별 날씨와 옷차림`,
     airport_transport: `${input.destination} 공항에서 시내 이동 교통`,
     local_transport: `${input.destination} 현지 대중교통 이용법`,
     hotel_areas: `${input.destination} 숙소 지역별 비교`,

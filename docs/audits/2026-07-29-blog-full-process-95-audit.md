@@ -120,6 +120,19 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
   prioritizes the lowest public-quality failures before search and missing-
   research fallbacks. It still cannot rewrite a row without reviewed
   destination/intent evidence and every atomic publish gate.
+- A follow-up representative audit found 18 published weather URLs that resolve
+  to an active representative for the same destination and intent. Every target
+  was fetched from production, was still published, and scored 100. Six of the
+  source URLs were below 95; the other twelve were already 95-100 but still
+  split crawl and performance signals. The prepared consolidation keeps the
+  stored rows, sends each public source directly to the terminal representative,
+  and removes sources from the catalog, API, sitemap, and recovery pool.
+- The same audit exposed a producer mismatch: a specific-month title could wrap
+  the deterministic 1-12 month article even though the representative identity
+  is destination-wide. Future weather briefs now use a `월별` canonical title
+  and primary keyword while preserving the requested month only as a secondary
+  long-tail. The pre-deploy recalculation is 96/148 active canonical rows passed,
+  52 failed, average 90; this is not yet a production release claim.
 
 ## External Evidence
 
@@ -136,3 +149,9 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
   https://developers.google.com/search/docs/appearance/structured-data/article
 - Search performance interpretation:
   https://support.google.com/webmasters/answer/7576553
+- Google treats a permanent server-side redirect as a strong canonical signal
+  and recommends using it for deprecated duplicates:
+  https://developers.google.com/search/docs/crawling-indexing/301-redirects
+- Google recommends combining canonical signals by linking internally to the
+  representative and listing only representative URLs in the sitemap:
+  https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls

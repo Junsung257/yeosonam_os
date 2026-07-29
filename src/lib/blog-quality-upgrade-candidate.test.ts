@@ -14,7 +14,7 @@ describe('published blog quality upgrade candidate', () => {
     expect(decision).toMatchObject({
       accepted: true,
       reason: 'safe_automatic_candidate',
-      queueTopic: '세부 6월 날씨와 옷차림',
+      queueTopic: '세부 월별 날씨와 옷차림',
       microAngle: 'weather_packing',
       brief: {
         intentType: 'monthly_weather',
@@ -36,7 +36,7 @@ describe('published blog quality upgrade candidate', () => {
 
     expect(decision).toMatchObject({
       accepted: true,
-      queueTopic: '나트랑 6월 날씨와 옷차림',
+      queueTopic: '나트랑 월별 날씨와 옷차림',
       brief: {
         intentType: 'monthly_weather',
         passed: true,

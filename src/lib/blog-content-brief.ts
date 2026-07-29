@@ -130,22 +130,24 @@ function weatherBrief(destination: string, month: string): Pick<
   BlogContentBrief,
   'title' | 'primaryKeyword' | 'secondaryKeywords' | 'readerQuestion' | 'requiredSections' | 'forbiddenAngles' | 'sourceRequirements' | 'titleCandidates'
 > {
-  const base = `${destination} ${month}`;
+  const base = `${destination} 월별`;
+  const monthLongtail = `${destination} ${month}`;
   return {
     title: `${base} 날씨 옷차림 여행 준비물 체크리스트`,
     primaryKeyword: `${base} 날씨`,
     secondaryKeywords: [
-      `${base} 옷차림`,
+      `${destination} 월별 옷차림`,
       `${destination} 여행 준비물`,
-      `${base} 우기`,
-      `${base} 스콜`,
-      `${base} 태풍`,
+      `${monthLongtail} 날씨`,
+      `${monthLongtail} 옷차림`,
+      `${monthLongtail} 우기`,
+      `${monthLongtail} 태풍`,
     ],
-    readerQuestion: `${base} 여행을 준비하는 사람이 날씨, 옷차림, 준비물을 한 번에 판단할 수 있어야 한다.`,
+    readerQuestion: `${destination} 여행을 준비하는 사람이 1~12월 날씨, 옷차림, 준비물을 한 번에 비교하고 ${month} 출발 조건도 판단할 수 있어야 한다.`,
     requiredSections: [
-      `${base} 날씨 한눈에 보기`,
-      `${month} 기온/강수/습도 표`,
-      `${base} 옷차림`,
+      `${destination} 월별 날씨 한눈에 보기`,
+      `1~12월 기온/강수/습도 표`,
+      `${destination} 월별 옷차림`,
       `${destination} 여행 준비물 체크리스트`,
       `우기/스콜/태풍 리스크`,
       `출발 전 최종 확인 FAQ`,
@@ -161,8 +163,8 @@ function weatherBrief(destination: string, month: string): Pick<
     ],
     titleCandidates: [
       `${base} 날씨 옷차림 여행 준비물 체크리스트`,
-      `${base} 우기 여행 준비: 날씨, 옷차림, 준비물`,
-      `${base} 여행 전 확인할 날씨와 짐싸기`,
+      `${destination} 1~12월 날씨와 옷차림 여행 준비`,
+      `${destination} 월별 기온 강수 옷차림 가이드`,
     ],
   };
 }
