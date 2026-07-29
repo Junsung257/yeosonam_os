@@ -1,6 +1,24 @@
 {
   "version": 1,
   "approvals": {
+    "20260730063000_lock_active_blog_quality_upgrade_representatives.sql": {
+      "sha256": "881088fa8f1b97fa44cbafe7ec2193156473c59616d00763a06bbcde4648f69c",
+      "status": "M",
+      "rationale": "The partial unique index was created concurrently and verified unique, valid, and ready on production before this replay-safe migration was recorded. Supabase's remote migration transaction cannot execute CREATE INDEX CONCURRENTLY; fresh databases have no production traffic while bootstrap migrations run.",
+      "evidence": "docs/blog-ops-runbook.md",
+      "approvedIssues": [
+        {
+          "severity": "critical",
+          "type": "migration-history",
+          "description": "Applied migration SQL changed (old 33b3666c6df3, new 881088fa8f1b)"
+        },
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    },
     "20260724113000_scope_official_research_documents_by_destination.sql": {
       "sha256": "a6a53e8768454820cf9e2d03f84facad0dd873924e6d4fce8c180be59f8576e2",
       "status": "A",
