@@ -46,16 +46,16 @@ ALTER TABLE public.customer_events
     consent_state IN ('granted', 'denied', 'not_required', 'unknown')
   );
 
-CREATE UNIQUE INDEX IF NOT EXISTS customer_events_source_dedupe_uidx
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS customer_events_source_dedupe_uidx
   ON public.customer_events(source, dedupe_key);
 
-CREATE INDEX IF NOT EXISTS customer_events_offer_occurred_idx
+CREATE INDEX CONCURRENTLY IF NOT EXISTS customer_events_offer_occurred_idx
   ON public.customer_events(offer_id, occurred_at DESC);
 
-CREATE INDEX IF NOT EXISTS customer_events_lead_occurred_idx
+CREATE INDEX CONCURRENTLY IF NOT EXISTS customer_events_lead_occurred_idx
   ON public.customer_events(lead_id, occurred_at DESC);
 
-CREATE INDEX IF NOT EXISTS customer_events_booking_occurred_idx
+CREATE INDEX CONCURRENTLY IF NOT EXISTS customer_events_booking_occurred_idx
   ON public.customer_events(booking_id, occurred_at DESC);
 
 COMMENT ON COLUMN public.customer_events.source IS

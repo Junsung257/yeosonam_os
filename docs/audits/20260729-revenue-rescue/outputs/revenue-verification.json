@@ -1,5 +1,5 @@
 {
-  "observedAt": "2026-07-29T12:07:18.127Z",
+  "observedAt": "2026-07-29T12:14:30Z",
   "branch": "codex/revenue-rescue-p0-revenue",
   "stackBaseCommit": "80110967",
   "focusedTests": {
@@ -33,6 +33,12 @@
     "total": 0,
     "high": 0,
     "critical": 0
+  },
+  "migrationSafety": {
+    "command": "node scripts/migration-safety-checker.js supabase/migrations/20260729112950_extend_customer_events_for_revenue_funnel.sql supabase/migrations/20260729114849_add_offer_verification_fields.sql",
+    "filesChecked": 2,
+    "issues": 0,
+    "exitCode": 0
   },
   "databaseIntegration": {
     "status": "BLOCKED",
