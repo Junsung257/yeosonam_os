@@ -1,8 +1,8 @@
 import { stripMarkup } from './blog-text-utils';
 import {
   isLikelyOfficialBlogSourceUrl,
-  isSafePublicBlogSourceUrl,
 } from './blog-official-source-url';
+import { readVerifiedResearchOfficialSourceUrls } from './blog-verified-research-sources';
 
 export const BLOG_ENGINE_V2_VERSION = 'blog-engine-v2';
 
@@ -161,28 +161,14 @@ function extractExternalLinks(markdown: string): BlogEngineEvidenceItem[] {
 }
 
 function extractVerifiedResearchSources(meta: Record<string, unknown>): BlogEngineEvidenceItem[] {
-  const preflight = asRecord(meta.information_research_preflight);
-  if (preflight.version !== 'r18-research-first-v1' || preflight.passed !== true) return [];
-
-  const seen = new Set<string>();
-  const sources: BlogEngineEvidenceItem[] = [];
-  for (const value of asStringArray(preflight.official_source_urls)) {
-    const url = value.trim();
-    if (
-      !url
-      || seen.has(url)
-      || /yeosonam\.com/i.test(url)
-      || !isSafePublicBlogSourceUrl(url)
-    ) continue;
-    seen.add(url);
-    sources.push({
+  return readVerifiedResearchOfficialSourceUrls(meta)
+    .slice(0, 6)
+    .map((url) => ({
       kind: 'official_source',
       label: new URL(url).hostname,
       url,
       source: 'verified_research_preflight',
-    });
-  }
-  return sources.slice(0, 6);
+    }));
 }
 
 function inferWriter(input: BuildBriefInput): BlogWriterType {

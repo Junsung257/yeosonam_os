@@ -2955,6 +2955,7 @@ async function processQueueItem(
       blogType,
       hasRenderedPageH1: true,
       hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
+      generationMeta: generated.generation_meta,
       imageCount: imgCount,
       imagesWithAlt: imgWithAlt,
       hasJsonLd: {

@@ -107,6 +107,51 @@ describe('computeSeoScore', () => {
     });
   });
 
+  it('credits passed registry-reviewed operator links as SEO authority sources', () => {
+    const result = computeSeoScore({
+      blogHtml: [
+        '# 캐나다 로키 대중교통',
+        '',
+        '[Parks Canada](https://parks.canada.ca/pn-np/ab/banff)',
+        '[Roam Transit](https://roamtransit.com/fares/)',
+      ].join('\n\n'),
+      slug: 'canada-rockies-public-transit',
+      blogType: 'info',
+      primaryKeyword: '캐나다 로키 대중교통',
+      destination: '캐나다 로키',
+      generationMeta: {
+        information_research_preflight: {
+          version: 'r18-research-first-v1',
+          passed: true,
+          official_source_urls: [
+            'https://parks.canada.ca/pn-np/ab/banff',
+            'https://roamtransit.com/fares/',
+          ],
+        },
+      },
+    });
+
+    expect(result.details.find((detail) => detail.name === 'external_authority_links'))
+      .toMatchObject({ score: 6, status: 'pass' });
+  });
+
+  it('does not credit unversioned operator metadata as SEO authority', () => {
+    const result = computeSeoScore({
+      blogHtml: '[Unknown operator](https://example.com/fares/)',
+      slug: 'unverified-operator',
+      blogType: 'info',
+      generationMeta: {
+        information_research_preflight: {
+          passed: true,
+          official_source_urls: ['https://example.com/fares/'],
+        },
+      },
+    });
+
+    expect(result.details.find((detail) => detail.name === 'external_authority_links'))
+      .toMatchObject({ score: 1, status: 'fail' });
+  });
+
   it('does not count markdown image and link targets as long raw urls', () => {
     const longUrl = 'https://images.pexels.com/photos/123456789/pexels-photo-123456789.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200&utm_source=very-long-tracking-value';
     const result = computeSeoScore({
