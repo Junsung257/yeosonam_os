@@ -193,6 +193,13 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('SEO primary keyword repair');
   });
 
+  it('persists SEO component evidence when aggregate SEO remains below the release floor', () => {
+    const source = routeSource();
+
+    expect(source).toContain('last_seo_score: {');
+    expect(source).toContain('details: seoScore.details');
+  });
+
   it('avoids duplicate AI and image work during a controlled private regeneration', () => {
     const source = routeSource();
 
