@@ -324,4 +324,14 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).not.toContain('여행 완벽 가이드');
     expect(source).not.toContain('지금 한국인이 가장 많이 묻는');
   });
+
+  it('bounds grounded writer output and disables dynamic Gemini thinking', () => {
+    const source = routeSource();
+
+    expect(source).toContain('const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192');
+    expect(source).toContain('maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS');
+    expect(source).toContain('thinkingBudget: options.thinkingBudget ?? 0');
+    expect(source).toContain('firstTryTimeoutMs: BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS');
+    expect(source).toContain('fallbackTimeoutMs: BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS');
+  });
 });

@@ -154,23 +154,30 @@ describe('blog-ai-caller — 공개 API', () => {
 
     const { generateBlogText } = await import('./blog-ai-caller');
     const result = await generateBlogText('p1', {
+      maxTokens: 8_192,
+      thinkingBudget: 0,
       cascade: {
         firstTry: 'gemini',
         fallback: 'deepseek',
-        firstTryTimeoutMs: 30_000,
-        fallbackTimeoutMs: 50_000,
+        firstTryTimeoutMs: 55_000,
+        fallbackTimeoutMs: 30_000,
       },
     });
 
     expect(result).toBe('fallback article response long enough');
     expect(mocks.geminiGetGenerativeModel).toHaveBeenCalledWith(
-      expect.any(Object),
-      { timeout: 30_000 },
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({
+          maxOutputTokens: 8_192,
+          thinkingConfig: { thinkingBudget: 0 },
+        }),
+      }),
+      { timeout: 55_000 },
     );
     expect(mocks.geminiGenContent).toHaveBeenCalledWith('p1');
     expect(mocks.dsCreate).toHaveBeenCalledWith(
       expect.any(Object),
-      { timeout: 50_000, maxRetries: 0 },
+      { timeout: 30_000, maxRetries: 0 },
     );
   });
 
