@@ -24,6 +24,13 @@ Last updated: 2026-07-28
 - **Fix**: Bound quality-gate DB reads to four seconds, fail ordinary duplicate checks closed on timeout, and skip repeated duplicate queries only for prevalidated atomic replacements. The atomic publication RPC still owns the final replacement.
 - **Prevention**: Regression tests require the atomic path to make zero duplicate queries and preserve ordinary self-exclusion behavior. A DB outage must return a gate failure inside the function budget rather than leaving a queue row in `generating`.
 
+## ERR-BLOG-oversized-writer-output-stalled-postprocessing@2026-07-29
+
+- [x] **ERR-BLOG-oversized-writer-output-stalled-postprocessing@2026-07-29**: A targeted replacement completed bounded inference and inline-image insertion, but a candidate-specific synchronous postprocessing path prevented the function from returning before 300 seconds.
+- **Root cause**: Writer output had a token cap but no character boundary before regex-heavy editorial, structure, and rendering repairs. A bloated or malformed model response could therefore monopolize the event loop, outside asynchronous timeout protection.
+- **Fix**: Bound raw writer Markdown to 16,000 characters at a recent paragraph boundary before any postprocessing and record original/final sizes plus truncation in generation metadata. Server-owned evidence sections and every publish gate still run afterward.
+- **Prevention**: Unit tests cover normal preservation and oversized truncation. Production logs expose the boundary decision without logging article text or evidence payloads.
+
 ## ERR-BLOG-research-scheduler-serial-timeout@2026-07-28
 
 - [x] **ERR-BLOG-research-scheduler-serial-timeout@2026-07-28**: Intent-diverse preparation correctly continued past a weather-only ready buffer, but researched candidates serially and exceeded Vercel's 180-second function limit.

@@ -332,6 +332,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192');
     expect(source).toContain('maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS');
     expect(source).toContain('thinkingBudget: options.thinkingBudget ?? 0');
+    expect(source).toContain('const writerOutputBoundary = boundBlogWriterOutput(blog_html)');
+    expect(source).toContain('writer_output_boundary: {');
     expect(source).toContain('firstTryTimeoutMs: BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS');
     expect(source).toContain('fallbackTimeoutMs: BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS');
   });
