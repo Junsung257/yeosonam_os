@@ -40,3 +40,10 @@ test('ERR-BLOG-public-customer-audit-feedback-loop: encoded and decoded slugs sh
 test('ERR-BLOG-public-customer-audit-feedback-loop: strict mode fails any weak category', () => {
   assert.match(source, /categoryScores\.some\(category => !category\.passed95\)/);
 });
+
+test('ERR-BLOG-public-customer-audit-feedback-loop: browser mode audits the hydrated customer view', () => {
+  assert.match(source, /hasFlag\('--browser'\)/);
+  assert.match(source, /loadBrowserRenderedHtml/);
+  assert.match(source, /page\.content\(\)/);
+  assert.match(source, /renderer: browserMode \? 'browser' : 'html'/);
+});

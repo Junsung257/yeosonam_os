@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import * as cheerio from 'cheerio';
+import type { Browser } from 'playwright';
 import {
   inspectPublicBlogCustomerQuality,
   type PublicBlogCustomerQualityReport,
@@ -55,6 +56,7 @@ const concurrency = Math.max(1, Math.min(12, Number(argValue('--concurrency', '6
 const retries = Math.max(0, Math.min(3, Number(argValue('--retries', '2')) || 0));
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
+const browserMode = hasFlag('--browser');
 const minScore = Math.max(0, Math.min(100, Number(argValue('--min-score', '88')) || 88));
 
 function absolutize(path: string): string {
@@ -263,10 +265,60 @@ async function collectTargets(): Promise<PublicBlogTarget[]> {
   return mergeTargets([api, list, sitemap]);
 }
 
-async function auditTarget(target: PublicBlogTarget): Promise<AuditedPublicBlogTarget> {
+async function loadBrowserRenderedHtml(
+  browser: Browser,
+  url: string,
+): Promise<{ status: number; text: string }> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const page = await browser.newPage({
+      userAgent: 'yeosonam-public-customer-quality-audit/1.0',
+    });
+    page.setDefaultTimeout(timeoutMs);
+    await page.route('**/*', async (route) => {
+      const resourceType = route.request().resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+        await route.abort();
+        return;
+      }
+      await route.continue();
+    });
+
+    try {
+      const response = await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: timeoutMs,
+      });
+      await page.locator('.prose-blog').first().waitFor({
+        state: 'attached',
+        timeout: Math.min(timeoutMs, 8_000),
+      }).catch(() => undefined);
+      const result = {
+        status: response?.status() ?? 0,
+        text: await page.content(),
+      };
+      if (!shouldRetryStatus(result.status) || attempt >= retries) return result;
+      lastError = new Error(`Transient HTTP ${result.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) throw error;
+    } finally {
+      await page.close();
+    }
+    await new Promise(resolve => setTimeout(resolve, retryDelayMs(attempt)));
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function auditTarget(
+  target: PublicBlogTarget,
+  browser: Browser | null,
+): Promise<AuditedPublicBlogTarget> {
   const url = absolutize(target.path);
   try {
-    const { status, text } = await fetchText(url);
+    const { status, text } = browser
+      ? await loadBrowserRenderedHtml(browser, url)
+      : await fetchText(url);
     if (status < 200 || status >= 300) {
       return { ...target, url, ok: false, status, error: `HTTP ${status}` };
     }
@@ -322,22 +374,30 @@ async function main() {
   }
   if (!outputJson) {
     console.log(
-      `Auditing ${targets.length} public blog page(s) with concurrency=${concurrency}, retries=${retries}`,
+      `Auditing ${targets.length} public blog page(s) with renderer=${browserMode ? 'browser' : 'html'}, concurrency=${concurrency}, retries=${retries}`,
     );
   }
+  const auditBrowser = browserMode
+    ? await (await import('playwright')).chromium.launch({ headless: true })
+    : null;
   let completed = 0;
-  const rows = await mapWithConcurrency(
-    targets,
-    concurrency,
-    async (target) => {
-      const result = await auditTarget(target);
-      completed += 1;
-      if (!outputJson && (completed % 25 === 0 || completed === targets.length)) {
-        console.log(`Audited ${completed}/${targets.length}`);
-      }
-      return result;
-    },
-  );
+  let rows: AuditedPublicBlogTarget[];
+  try {
+    rows = await mapWithConcurrency(
+      targets,
+      browserMode ? Math.min(concurrency, 6) : concurrency,
+      async (target) => {
+        const result = await auditTarget(target, auditBrowser);
+        completed += 1;
+        if (!outputJson && (completed % 25 === 0 || completed === targets.length)) {
+          console.log(`Audited ${completed}/${targets.length}`);
+        }
+        return result;
+      },
+    );
+  } finally {
+    await auditBrowser?.close();
+  }
 
   const failed = rows.filter((row) => !row.ok);
   const issueCounts = rows.reduce<Record<string, number>>((acc, row) => {
@@ -400,6 +460,7 @@ async function main() {
     failed: failed.length,
     averageScore,
     minScore,
+    renderer: browserMode ? 'browser' : 'html',
     concurrency,
     retries,
     issueCounts,
