@@ -14,6 +14,7 @@ describe('published blog quality upgrade candidate', () => {
     expect(decision).toMatchObject({
       accepted: true,
       reason: 'safe_automatic_candidate',
+      queueTopic: '세부 6월 날씨와 옷차림',
       microAngle: 'weather_packing',
       brief: {
         intentType: 'monthly_weather',
@@ -22,6 +23,25 @@ describe('published blog quality upgrade candidate', () => {
       },
     });
     expect(decision.representativeKey).toContain('monthly_weather');
+  });
+
+  it('rebuilds a thin legacy slug into an intent-anchored queue topic', () => {
+    const decision = evaluatePublishedBlogQualityUpgradeCandidate({
+      id: 'post-thin-weather',
+      slug: 'nhatrang-6',
+      seo_title: '나트랑 6월 날씨',
+      destination: '나트랑',
+      category: 'weather',
+    });
+
+    expect(decision).toMatchObject({
+      accepted: true,
+      queueTopic: '나트랑 6월 날씨와 옷차림',
+      brief: {
+        intentType: 'monthly_weather',
+        passed: true,
+      },
+    });
   });
 
   it('rejects broad guides before they enter an automatic rewrite queue', () => {
@@ -67,6 +87,7 @@ describe('published blog quality upgrade candidate', () => {
     expect(decision).toMatchObject({
       accepted: true,
       researchDestination: '캐나다 로키산맥',
+      queueTopic: '캐나다 로키산맥 현지 대중교통 이용법',
       brief: {
         intentType: 'local_transport',
         passed: true,
