@@ -60,6 +60,13 @@ function hasWeakAnswerFirstBoilerplate(text: string): boolean {
   return /기준으로\s*(?:보면|확인하면)\s*됩니다|(?:날씨|비용|예산|준비물|체크리스트)(?:은|는)\s*먼저|(?:날씨[,\s]*)?출발\s*\d+\s*일\s*전\s*무엇을\s*다시\s*봐야\s*할까요/.test(text);
 }
 
+function repairCustomerLanguageSurface(markdown: string): string {
+  return markdown.replace(
+    /현지에서\s+1\s*[~–-]\s*2시간을\s+아끼고\s+예산\s+오차를\s+줄일\s+수\s+있습니다\.?/g,
+    '이동 조건과 추가 비용을 함께 확인하면 일정에 맞는 선택인지 판단하기 쉽습니다.',
+  );
+}
+
 function insertAnswerFirstIntro(input: BlogEngineCategoryRepairInput, markdown: string): string {
   const first = firstParagraph(markdown);
   if (
@@ -366,6 +373,12 @@ export function repairBlogEngineCategoryGaps(input: BlogEngineCategoryRepairInpu
       || weakCategories.includes('naturalness')
       || weakCategories.includes('sales_pressure_control')
     ) {
+      const customerLanguageRepair = repairCustomerLanguageSurface(markdown);
+      if (customerLanguageRepair !== markdown) {
+        markdown = customerLanguageRepair;
+        changes.push('engine_category_customer_language_surface');
+      }
+
       const editorialRepair = repairBlogEditorialQuality({
         title: input.title,
         slug: input.slug,

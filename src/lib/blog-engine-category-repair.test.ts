@@ -102,6 +102,41 @@ describe('repairBlogEngineCategoryGaps', () => {
     expect(result.afterScore).toBe(100);
   });
 
+  it('removes the repetitive time-saving and budget-error claim from customer copy', () => {
+    const result = repairBlogEngineCategoryGaps({
+      markdown: [
+        '# 캐나다 로키산맥 대중교통',
+        '',
+        '2026년 7월 기준, 비용과 이동 시간을 먼저 비교해야 합니다. 현지에서 1~2시간을 아끼고 예산 오차를 줄일 수 있습니다.',
+        '',
+        '## 노선 비교',
+        '| 노선 | 요금 | 소요 시간 |',
+        '| --- | --- | --- |',
+        '| 8X | 12.50 CAD | 57분 |',
+        '| 셔틀 | 12.75 CAD | 예약 확인 |',
+        '',
+        '## 이용 순서',
+        '- 공식 시간표를 확인합니다.',
+        '- 예약 가능 여부를 확인합니다.',
+        '- 추가 수수료를 비교합니다.',
+        '- 숙소와 정류장 거리를 확인합니다.',
+        '- 막차 전에 복귀합니다.',
+      ].join('\n'),
+      blogType: 'info',
+      title: '캐나다 로키산맥 대중교통',
+      slug: 'canada-rockies-public-transport',
+      destination: '캐나다 로키산맥',
+      primaryKeyword: '캐나다 로키산맥 대중교통',
+      contentType: 'guide',
+      generationMeta: { writer: 'info_writer' },
+    });
+
+    expect(result.changes).toContain('engine_category_customer_language_surface');
+    expect(result.markdown).not.toContain('1~2시간을 아끼고 예산 오차');
+    expect(result.markdown).toContain('이동 조건과 추가 비용을 함께 확인하면');
+    expect(result.afterScore).toBe(100);
+  });
+
   it('adds missing product decision blocks from product brief evidence', () => {
     const markdown = [
       '# 푸꾸옥 4박6일 패키지',
