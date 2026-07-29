@@ -5630,7 +5630,7 @@ async function main() {
       slug,
       primaryKeyword,
       destination,
-      category: auditedTitle,
+      category: normalizedTitle,
       contentType,
       productId,
       blogHtml: repairSourceHtml,
