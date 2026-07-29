@@ -35,6 +35,9 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 
 A day is healthy only when all of these are true:
 
+- `npm run audit:blog-public-customer-quality -- --limit=500 --min-score=95 --strict` completes the entire sitemap/API corpus. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.
+- A public customer audit failure is classified before repair. Rendering/duplication defects may use deterministic presentation cleanup; factual, freshness, intent, or evidence defects enter reviewed atomic replacement. Never raise a persisted score to close a public-render finding.
+- If collection routes emit `BLOG_DATABASE_UNAVAILABLE`, compare the database execution time with request concurrency. A fast direct query plus clustered `/blog`, destination, angle, API, and sitemap misses indicates a catalog stampede. Verify every collection consumer uses `loadPublicBlogCatalog()` before increasing timeouts.
 - `/admin/blog` shows the blog OS level as `정상` or an accepted `관찰`.
 - Today's published count is at or above the global publishing policy target.
 - `/admin/blog/queue` has no failed, overdue, or stale generating rows in `운영 필요`.

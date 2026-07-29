@@ -1,11 +1,16 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
 ## 2026-07-28 Slot, Quality, Learning, And Research Contract
 
+- Publish approval must inspect the HTML produced by the real public renderer, not only stored Markdown or persisted component scores. `public_customer_quality` is a mandatory fail-closed gate with a minimum score of 95; broken tables, duplicate public sections, answer-intent mismatch, generated residue, unsupported internal claims, or excessive conversion pressure block publication.
+- The public customer audit must page through the complete public API catalog and report the weakest score, pass rate, and issue counts for every stored category. A corpus or category is not “95 complete” when its average is 95 but any public row is below 95, when a row cannot be fetched, or when its category is unknown.
+- Public collection surfaces and the public list API must reuse one compact cached catalog. The catalog excludes `blog_html`, `quality_gate`, and `generation_meta`, performs no exact-count query, and is filtered and paginated in memory. `/blog`, destination pages, angle pages, the public API, and sitemap must not independently fan out full-corpus list/count reads during a crawler burst.
+- Legacy repair must separate presentation-only cleanup from factual replacement. A presentation repair may remove duplicate/generated residue or normalize rendering only when it introduces no new claim. Price, visa, entry, weather, transport, lodging, itinerary, or current-condition defects require reviewed destination/intent evidence and the atomic in-place upgrade contract; changing a score or adding generic prose is not remediation.
+- A legacy article without verified research is an explicit recovery backlog item even when its persisted SEO/readability fields are high. Stored scores are historical evidence, not proof of current public quality. A blocked automatic upgrade remains public and unchanged until a fully gated replacement succeeds, unless an authorized review separately decides to unpublish it.
 - The global five-post policy is a cumulative KST slot contract: 09:00 permits at most one post for the day, 12:00 permits two, 15:00 permits three, 18:00 permits four, and 21:00 permits all five. A normal or workflow retry may fill only the quota due at the current slot. The final slot may catch up every remaining daily post.
 - `dailyQuota.remainingAfterRun` means quota still due at the current time and therefore controls same-window retries. `remainingDailyAfterRun` is the total daily remainder for monitoring. A forced scheduler refill does not authorize early publication.
 - Every scored publish component has a hard floor of 95. Aggregate scores, rounding, or an underlying checker's lower pass flag cannot hide an SEO, readability, evidence, rendering, image, or customer-quality component below 95. The stricter Engine V2 100-point category contract remains unchanged.

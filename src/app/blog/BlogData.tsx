@@ -1,9 +1,7 @@
 import Link from 'next/link';
-import { unstable_cache } from 'next/cache';
 import type { ReactNode } from 'react';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
-import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { encodeDestinationPathSegment } from '@/lib/regions';
@@ -15,19 +13,16 @@ import {
   BLOG_PUBLIC_ANGLE_CHIP_CLASSES,
   BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON,
 } from '@/lib/blog-public-taxonomy';
-import {
-  BLOG_LIST_CACHE_TAG,
-  createBlogDatabaseUnavailableError,
-  isBlogDatabaseUnavailableError,
-} from '@/lib/blog-cache';
-import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { isBlogDatabaseUnavailableError } from '@/lib/blog-cache';
 import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  loadPublicBlogCatalog,
+  type PublicBlogCatalogPost,
+} from '@/lib/blog-public-catalog';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
-const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, quality_gate';
 
 // 콘텐츠 타입별 읽기 시간 추정 (분)
 const READING_TIME: Record<string, number> = {
@@ -42,21 +37,8 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   pillar: '목적지 가이드',
 };
 
-interface BlogPost {
-  id: string;
-  slug: string;
+interface BlogPost extends PublicBlogCatalogPost {
   detail_available?: boolean | null;
-  seo_title: string | null;
-  seo_description: string | null;
-  og_image_url: string | null;
-  angle_type: string;
-  published_at: string;
-  product_id: string | null;
-  destination: string | null;
-  content_type: string | null;
-  featured: boolean | null;
-  featured_order: number | null;
-  view_count: number | null;
   quality_gate?: Record<string, unknown> | null;
   travel_packages: {
     id: string; title: string; destination: string;
@@ -67,8 +49,7 @@ interface BlogPost {
 
 interface DestinationStat {
   destination: string;
-  package_count: number;
-  min_price: number | null;
+  post_count: number;
 }
 
 function getBlogReadingMinutes(post: BlogPost, fallback: number): number {
@@ -76,16 +57,6 @@ function getBlogReadingMinutes(post: BlogPost, fallback: number): number {
     ?? READING_TIME[post.content_type || 'guide']
     ?? fallback;
 }
-
-type ActiveDestinationRow = {
-  destination: string | null;
-  package_count: number | string | null;
-  min_price: number | string | null;
-};
-
-type BlogDestinationEvidenceRow = {
-  destination: string | null;
-};
 
 function isGenericBlogImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
@@ -130,57 +101,6 @@ function BlogPostCardFrame({
   );
 }
 
-type AbortableQuery<T> = {
-  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
-};
-
-type BlogQueryResult<T> = T & { __blogQueryUnavailable?: true };
-
-function isBlogQueryUnavailable(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return false;
-  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
-  if (maybeResult.__blogQueryUnavailable) return true;
-  const error = maybeResult.error;
-  if (!error) return false;
-  const message = typeof error === 'object'
-    ? JSON.stringify(error)
-    : String(error);
-  return /abort|timeout|timed out|connection timeout/i.test(message);
-}
-
-function logBlogListDegraded(label: string, message: unknown): void {
-  console.info(`[blog/list][degraded] ${label} query unavailable`, message instanceof Error ? message.message : message);
-}
-
-async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: unknown, timeoutMs = 3500): Promise<T> {
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let timedOut = false;
-  const unavailableFallback = () => {
-    if (fallback && typeof fallback === 'object') {
-      return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogQueryResult<T>;
-    }
-    return fallback as T;
-  };
-  const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
-    if (!timedOut) logBlogListDegraded(label, err);
-    return unavailableFallback();
-  });
-  const timeoutPromise = new Promise<T>((resolve) => {
-    timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-      logBlogListDegraded(label, `timed out after ${timeoutMs}ms`);
-      resolve(unavailableFallback());
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([queryPromise, timeoutPromise]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 type BlogListData = {
   featured: BlogPost[];
   posts: BlogPost[];
@@ -199,8 +119,7 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
     const destinations = [...new Set(fallbackPosts.map((post) => post.destination).filter(Boolean))]
       .map((destination) => ({
         destination: String(destination),
-        package_count: fallbackPosts.filter((post) => post.destination === destination).length,
-        min_price: null,
+        post_count: fallbackPosts.filter((post) => post.destination === destination).length,
       }));
     const angleCounts = fallbackPosts.reduce<Record<string, number>>((acc, post) => {
       if (post.angle_type) acc[post.angle_type] = (acc[post.angle_type] ?? 0) + 1;
@@ -220,8 +139,6 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
   return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {}, unavailable: true };
 }
 
-const lastGoodBlogData = new Map<string, BlogListData>();
-
 function stripRawPackageDataFromBlogListPosts(posts: BlogPost[]): BlogPost[] {
   return posts.map(post => ({
     ...post,
@@ -229,38 +146,12 @@ function stripRawPackageDataFromBlogListPosts(posts: BlogPost[]): BlogPost[] {
   }));
 }
 
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 function destinationsFromPosts(posts: BlogPost[]): DestinationStat[] {
   return [...new Set(posts.map((post) => post.destination).filter(Boolean))]
     .map((destination) => ({
       destination: String(destination),
-      package_count: posts.filter((post) => post.destination === destination).length,
-      min_price: null,
+      post_count: posts.filter((post) => post.destination === destination).length,
     }));
-}
-
-function destinationsFromEvidenceRows(rows: BlogDestinationEvidenceRow[]): DestinationStat[] {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    const destination = row.destination?.trim();
-    if (!destination) continue;
-    counts.set(destination, (counts.get(destination) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([destination, count]) => ({
-      destination,
-      package_count: count,
-      min_price: null,
-    }))
-    .sort((a, b) => b.package_count - a.package_count);
 }
 
 function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Record<string, number> {
@@ -271,131 +162,24 @@ function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Recor
   }, {});
 }
 
-function normalizeActiveDestinations(rows: ActiveDestinationRow[], postFallback: DestinationStat[]): DestinationStat[] {
-  const publishedDestinations = new Map(postFallback.map((row) => [row.destination, row]));
-  const normalized = rows
-    .map((row) => {
-      const destination = row.destination?.trim();
-      if (!destination) return null;
-      if (!publishedDestinations.has(destination)) return null;
-      const packageCount = Math.max(0, Math.trunc(toFiniteNumber(row.package_count) ?? 0));
-      if (packageCount <= 0) return null;
-      return {
-        destination,
-        package_count: packageCount,
-        min_price: toFiniteNumber(row.min_price),
-      };
-    })
-    .filter((row): row is DestinationStat => row !== null);
-
-  if (normalized.length === 0) return postFallback;
-
-  const seen = new Set(normalized.map((row) => row.destination));
-  for (const fallback of postFallback) {
-    if (!seen.has(fallback.destination)) normalized.push(fallback);
-  }
-
-  return normalized;
-}
-
-function blogDataCacheKey(page: number, filter: { destination?: string; angle?: string }): string {
-  return JSON.stringify({
-    page,
-    destination: filter.destination || '',
-    angle: filter.angle || '',
-  });
-}
-
 async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return unavailableBlogData(filter);
-  const publicReadSaverActive = shouldSkipPublicDbReadsForResourceSaver();
-
+  const catalog = stripRawPackageDataFromBlogListPosts(
+    (await loadPublicBlogCatalog()) as BlogPost[],
+  );
   const offset = (page - 1) * PER_PAGE;
-
-  let listQuery = supabaseAdmin
-    .from(PUBLIC_BLOG_READ_SOURCE)
-    .select(BLOG_LIST_SELECT, { count: 'exact' })
-    .eq('status', 'published')
-    .eq('channel', 'naver_blog')
-    .not('slug', 'is', null)
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .range(offset, offset + PER_PAGE - 1);
-
-  if (filter.angle) {
-    listQuery = listQuery.eq('angle_type', filter.angle);
-  }
-  if (filter.destination) {
-    listQuery = listQuery.eq('destination', filter.destination);
-  }
-
-  const listRes = await runBlogQuery('posts', listQuery, { data: [] }, publicReadSaverActive ? 2500 : 3500);
-
-  const listUnavailable = isBlogQueryUnavailable(listRes);
-  if (listUnavailable) {
-    return unavailableBlogData(filter);
-  }
-
-  const fetchedPosts = stripRawPackageDataFromBlogListPosts((listRes.data as unknown as BlogPost[]) || []);
-  const exactTotal = typeof listRes.count === 'number' && Number.isFinite(listRes.count)
-    ? Math.max(0, Math.trunc(listRes.count))
-    : null;
-  if (exactTotal == null) {
-    return unavailableBlogData(filter);
-  }
+  const matchingPosts = catalog.filter((post) => {
+    if (filter.angle && post.angle_type !== filter.angle) return false;
+    if (filter.destination && post.destination !== filter.destination) return false;
+    return true;
+  });
+  const exactTotal = matchingPosts.length;
+  const fetchedPosts = matchingPosts.slice(offset, offset + PER_PAGE);
   const posts = fetchedPosts.slice(0, PER_PAGE);
 
   const pageAngleCounts = countAnglesFromPosts(posts);
-
-  const angleRes = await runBlogQuery(
-    'angles',
-    supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select('angle_type')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .limit(500),
-    { data: [] as Array<Pick<BlogPost, 'angle_type'>>, error: null },
-    publicReadSaverActive ? 2000 : 3000,
-  );
-  const angleRows = isBlogQueryUnavailable(angleRes) || angleRes.error
-    ? []
-    : ((angleRes.data || []) as unknown as Array<Pick<BlogPost, 'angle_type'>>);
-  const angleCounts = angleRows.length > 0 ? countAnglesFromPosts(angleRows) : pageAngleCounts;
-
-  const publishedDestinationRes = await runBlogQuery(
-    'publishedDestinations',
-    supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select('destination')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('destination', 'is', null)
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(500),
-    { data: [] as BlogDestinationEvidenceRow[], error: null },
-    publicReadSaverActive ? 2000 : 3000,
-  );
-  const publishedDestinationRows = isBlogQueryUnavailable(publishedDestinationRes) || publishedDestinationRes.error
-    ? []
-    : ((publishedDestinationRes.data || []) as unknown as BlogDestinationEvidenceRow[]);
-  const postDestinations = publishedDestinationRows.length > 0
-    ? destinationsFromEvidenceRows(publishedDestinationRows)
-    : destinationsFromPosts(posts);
-  const destinationRes = await runBlogQuery(
-    'activeDestinations',
-    supabaseAdmin
-      .from('active_destinations')
-      .select('destination, package_count, min_price')
-      .order('package_count', { ascending: false })
-      .limit(24),
-    { data: [] as ActiveDestinationRow[], error: null },
-    publicReadSaverActive ? 2000 : 3000,
-  );
-  const destinationRows = isBlogQueryUnavailable(destinationRes) || destinationRes.error
-    ? []
-    : ((destinationRes.data || []) as unknown as ActiveDestinationRow[]);
-  const destinations = normalizeActiveDestinations(destinationRows, postDestinations);
+  const angleCounts = catalog.length > 0 ? countAnglesFromPosts(catalog) : pageAngleCounts;
+  const destinations = destinationsFromPosts(catalog)
+    .sort((a, b) => b.post_count - a.post_count);
 
   const featured = posts
     .filter((post) => Boolean(getDisplayImageUrl(post)))
@@ -418,31 +202,11 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   };
 }
 
-const getCachedBlogData = unstable_cache(
-  async (page: number, destination: string, angle: string) => {
-    const data = await getBlogDataUncached(page, {
-      destination: destination || undefined,
-      angle: angle || undefined,
-    });
-    if (data.unavailable) {
-      throw createBlogDatabaseUnavailableError();
-    }
-    return data;
-  },
-  ['blog-list-v4-precontract-restore'],
-  { revalidate: 300, tags: [BLOG_LIST_CACHE_TAG] },
-);
-
 async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
-  const cacheKey = blogDataCacheKey(page, filter);
   try {
-    const data = await getCachedBlogData(page, filter.destination ?? '', filter.angle ?? '');
-    if (!data.unavailable && data.posts.length > 0) lastGoodBlogData.set(cacheKey, data);
-    return data;
+    return await getBlogDataUncached(page, filter);
   } catch (err) {
     if (isBlogDatabaseUnavailableError(err)) {
-      const lastGood = lastGoodBlogData.get(cacheKey);
-      if (lastGood) return lastGood;
       return {
         ...unavailableBlogData(filter),
         fallback: true,
@@ -858,7 +622,7 @@ export default async function BlogData({ searchParams }: Props) {
                       {d.destination}
                     </span>
                     <span className="text-micro text-text-secondary">
-                      {d.package_count}개 상품{d.min_price ? ` · ${Math.round(d.min_price / 10000)}만원~` : ''}
+                      {d.post_count}개 여행 글
                     </span>
                   </Link>
                 ))}

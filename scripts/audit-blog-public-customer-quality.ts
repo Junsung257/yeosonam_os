@@ -22,7 +22,9 @@ function hasFlag(name: string): boolean {
 type BlogApiPost = {
   slug?: string | null;
   title?: string | null;
+  seo_title?: string | null;
   destination?: string | null;
+  category?: string | null;
   blog_type?: string | null;
   content_type?: string | null;
   product_id?: string | null;
@@ -33,6 +35,7 @@ interface PublicBlogTarget {
   slug: string;
   title?: string | null;
   destination?: string | null;
+  category?: string | null;
   expectedType?: 'info' | 'product' | 'unknown';
 }
 
@@ -98,21 +101,33 @@ function inferExpectedType(post: BlogApiPost): 'info' | 'product' | 'unknown' {
 
 async function collectFromApi(): Promise<PublicBlogTarget[]> {
   try {
-    const { status, text } = await fetchText(`${baseUrl}/api/blog?limit=${Math.max(limit, 20)}`, 'application/json');
-    if (status < 200 || status >= 300) return [];
-    const payload = JSON.parse(text) as { posts?: BlogApiPost[] };
-    const posts = Array.isArray(payload.posts) ? payload.posts : [];
     const targets: PublicBlogTarget[] = [];
-    for (const post of posts) {
-      const slug = post.slug?.trim();
-      if (!slug) continue;
-      targets.push({
-        path: slugToPath(slug),
-        slug,
-        title: post.title ?? null,
-        destination: post.destination ?? null,
-        expectedType: inferExpectedType(post),
-      });
+    const perPage = Math.min(50, Math.max(1, limit));
+    const maxPages = Math.ceil(limit / perPage);
+    for (let page = 1; page <= maxPages && targets.length < limit; page += 1) {
+      const { status, text } = await fetchText(
+        `${baseUrl}/api/blog?limit=${perPage}&page=${page}`,
+        'application/json',
+      );
+      if (status < 200 || status >= 300) break;
+      const payload = JSON.parse(text) as {
+        posts?: BlogApiPost[];
+        totalPages?: number;
+      };
+      const posts = Array.isArray(payload.posts) ? payload.posts : [];
+      for (const post of posts) {
+        const slug = post.slug?.trim();
+        if (!slug) continue;
+        targets.push({
+          path: slugToPath(slug),
+          slug,
+          title: post.seo_title ?? post.title ?? null,
+          destination: post.destination ?? null,
+          category: post.category ?? null,
+          expectedType: inferExpectedType(post),
+        });
+      }
+      if (posts.length < perPage || page >= (payload.totalPages ?? page)) break;
     }
     return targets;
   } catch {
@@ -172,6 +187,7 @@ function mergeTargets(groups: PublicBlogTarget[][]): PublicBlogTarget[] {
           : target.expectedType,
         title: existing?.title || target.title,
         destination: existing?.destination || target.destination,
+        category: existing?.category || target.category,
       });
     }
   }
@@ -271,6 +287,49 @@ async function main() {
   const averageScore = rows.length > 0
     ? Math.round(rows.reduce((sum, row) => sum + (row.report?.score ?? 0), 0) / rows.length)
     : 0;
+  const categoryScores = Object.values(rows.reduce<Record<string, {
+    category: string;
+    checked: number;
+    passed: number;
+    scores: number[];
+    issueCounts: Record<string, number>;
+  }>>((acc, row) => {
+    const category = row.category?.trim() || 'unknown';
+    const bucket = acc[category] ?? {
+      category,
+      checked: 0,
+      passed: 0,
+      scores: [],
+      issueCounts: {},
+    };
+    bucket.checked += 1;
+    if (row.ok) bucket.passed += 1;
+    if (row.report) bucket.scores.push(row.report.score);
+    for (const issue of row.report?.issues ?? []) {
+      bucket.issueCounts[issue.code] = (bucket.issueCounts[issue.code] ?? 0) + 1;
+    }
+    acc[category] = bucket;
+    return acc;
+  }, {})).map((bucket) => {
+    const minimumScore = bucket.scores.length > 0 ? Math.min(...bucket.scores) : 0;
+    const averageCategoryScore = bucket.scores.length > 0
+      ? Math.round(bucket.scores.reduce((sum, score) => sum + score, 0) / bucket.scores.length)
+      : 0;
+    return {
+      category: bucket.category,
+      checked: bucket.checked,
+      passed: bucket.passed,
+      passRate: Math.round((bucket.passed / Math.max(1, bucket.checked)) * 100),
+      minimumScore,
+      averageScore: averageCategoryScore,
+      score: minimumScore,
+      passed95:
+        bucket.category !== 'unknown'
+        && minimumScore >= 95
+        && bucket.passed === bucket.checked,
+      issueCounts: bucket.issueCounts,
+    };
+  }).sort((a, b) => a.category.localeCompare(b.category));
   const summary = {
     baseUrl,
     checked: rows.length,
@@ -279,6 +338,9 @@ async function main() {
     averageScore,
     minScore,
     issueCounts,
+    passed95CategoryCount: categoryScores.filter(category => category.passed95).length,
+    failed95CategoryCount: categoryScores.filter(category => !category.passed95).length,
+    categoryScores,
   };
 
   if (outputJson) {
@@ -292,7 +354,9 @@ async function main() {
     }
   }
 
-  if (strict && failed.length > 0) process.exitCode = 1;
+  if (strict && (failed.length > 0 || categoryScores.some(category => !category.passed95))) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

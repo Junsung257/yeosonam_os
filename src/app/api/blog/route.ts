@@ -19,6 +19,7 @@ import {
   evaluateBlogInformationClaimPublishGate,
   toBlogInformationClaimValidationMeta,
 } from '@/lib/blog-information-claim-publish-gate';
+import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 import { buildBlogContentBrief } from '@/lib/blog-content-brief';
 import {
   ensureBlogInformationRepresentativeForPublish,
@@ -30,7 +31,6 @@ import {
 } from '@/lib/blog-information-representative';
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -38,7 +38,6 @@ type AbortableQuery<T> = {
 
 const BLOG_PUBLIC_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400';
 const BLOG_STALE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300, stale-if-error=86400';
-const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination';
 const CONTENT_CREATIVE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidContentCreativeId(id: string): boolean {
@@ -225,52 +224,24 @@ export async function GET(request: NextRequest) {
     }
 
     if (slug) {
-      const { data, error } = await runApiBlogQuery('slug', supabaseAdmin
-        .from(PUBLIC_BLOG_READ_SOURCE)
-        .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, destination')
-        .eq('slug', slug)
-        .eq('status', 'published')
-        .eq('channel', 'naver_blog')
-        .not('slug', 'is', null)
-        .limit(1),
-        2500,
-      );
-
-      if (error) throw error;
-      if (!data || data.length === 0) {
+      const post = (await loadPublicBlogCatalog()).find(row => row.slug === slug);
+      if (!post) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
 
-      return apiResponse({ post: data[0] }, {
+      return apiResponse({ post }, {
         headers: { 'Cache-Control': BLOG_PUBLIC_CACHE_CONTROL },
       });
     }
 
     const offset = (page - 1) * limit;
     const cacheKey = blogListCacheKey(page, limit, destination);
-
-    let query = supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select(BLOG_LIST_SELECT, { count: 'exact' })
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + limit - 1);
-
-    if (destination) {
-      query = query.eq('destination', destination);
-    }
-
-    const listResult = await runApiBlogQuery('list', query, 2500);
-    const { data, count, error } = listResult;
-    if (error) throw error;
-    const fetchedPosts = Array.isArray(data) ? data : [];
-    const posts = fetchedPosts.slice(0, limit);
-    if (typeof count !== 'number' || !Number.isFinite(count)) {
-      throw new Error('Exact blog count unavailable');
-    }
-    const total = Math.max(0, Math.trunc(count));
+    const catalog = await loadPublicBlogCatalog();
+    const matchingPosts = destination
+      ? catalog.filter(post => post.destination === destination)
+      : catalog;
+    const posts = matchingPosts.slice(offset, offset + limit);
+    const total = matchingPosts.length;
     const payload: BlogListPayload = {
       posts,
       total,

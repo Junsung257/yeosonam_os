@@ -24,7 +24,10 @@ import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-pu
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isObviouslyInvalidDestinationRoute } from '../public-route';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  loadPublicBlogCatalog,
+  type PublicBlogCatalogPost,
+} from '@/lib/blog-public-catalog';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -35,10 +38,10 @@ const BLOG_DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 
-interface BlogPost {
-  id: string; slug: string; seo_title: string | null; seo_description: string | null;
-  og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-}
+type BlogPost = Pick<
+  PublicBlogCatalogPost,
+  'id' | 'slug' | 'seo_title' | 'seo_description' | 'og_image_url' | 'angle_type' | 'published_at' | 'destination'
+>;
 
 type DestinationPackage = {
   id: string;
@@ -66,16 +69,6 @@ type AbortableQuery<T> = {
 };
 
 type BlogDestinationQueryResult<T> = T & { __blogQueryUnavailable?: true };
-
-function isBlogDestinationQueryUnavailable(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return false;
-  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
-  if (maybeResult.__blogQueryUnavailable) return true;
-  const error = maybeResult.error;
-  if (!error) return false;
-  const message = typeof error === 'object' ? JSON.stringify(error) : String(error);
-  return /abort|timeout|timed out|connection timeout/i.test(message);
-}
 
 async function runBlogDestinationQuery<T>(
   label: string,
@@ -143,25 +136,10 @@ async function mergeBlogDestinationPublicPackages<T extends Record<string, unkno
 async function resolveDestinationRouteParamUncached(value: string): Promise<string> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
-  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
 
   try {
-    const result = await runBlogDestinationQuery(
-      'resolveDestination',
-      supabaseAdmin
-        .from('active_destinations')
-        .select('destination')
-        .limit(500),
-      { data: [] as Array<{ destination: string | null }>, error: null },
-      3000,
-    );
-    if (isBlogDestinationQueryUnavailable(result)) {
-      return decoded;
-    }
-    if (result.error) return decoded;
-
-    const match = ((result.data ?? []) as Array<{ destination: string | null }>)
-      .map(row => row.destination?.trim() ?? '')
+    const match = (await loadPublicBlogCatalog())
+      .map((row) => row.destination?.trim() ?? '')
       .find(destination => destination && destinationSlugMatches(destination, decoded));
 
     return match || decoded;
@@ -191,39 +169,24 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
     throw createBlogDatabaseUnavailableError();
   }
-  if (shouldSkipPublicDbReadsForResourceSaver()) {
-    throw createBlogDatabaseUnavailableError();
-  }
 
   const destination = await resolveDestinationRouteParam(dest);
 
   try {
-    // 블로그 글 (해당 목적지)
-    const postsQuery = supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .eq('destination', destination)
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(60);
-
-    const postsResult = await runBlogDestinationQuery('posts', postsQuery, { data: [] as BlogPost[], error: null }, 6000);
-    if (isBlogDestinationQueryUnavailable(postsResult) || postsResult.error) {
-      throw createBlogDatabaseUnavailableError();
-    }
-
-    const posts = ((postsResult.data || []) as unknown as BlogPost[])
+    const posts = (await loadPublicBlogCatalog())
       .filter(p => {
         const postDestination = (p.destination || '').trim();
         return (
           postDestination.includes(destination) ||
           destinationSlugMatches(postDestination, destination)
         );
-      });
+      })
+      .slice(0, 60) as BlogPost[];
 
-    // 관련 상품
+    if (shouldSkipPublicDbReadsForResourceSaver()) {
+      return { destination, posts, packages: [], unavailable: false };
+    }
+
     const packagesQuery = supabaseAdmin
       .from('travel_packages')
       .select('id, title, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
@@ -256,7 +219,17 @@ const getCachedDestinationPageData = unstable_cache(
 );
 
 async function getDestinationPageData(dest: string): Promise<DestinationPageData> {
-  return getCachedDestinationPageData(dest);
+  try {
+    return await getCachedDestinationPageData(dest);
+  } catch (error) {
+    if (!isBlogDatabaseUnavailableError(error)) throw error;
+    return {
+      destination: safeDecodePathSegment(dest).trim(),
+      posts: [],
+      packages: [],
+      unavailable: true,
+    };
+  }
 }
 
 export async function generateStaticParams() {
@@ -265,16 +238,8 @@ export async function generateStaticParams() {
   if (shouldSkipPublicDbReadsForResourceSaver()) return [];
 
   try {
-    const { data } = await supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select('destination')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('destination', 'is', null)
-      .limit(BLOG_DESTINATION_STATIC_PRERENDER_LIMIT);
-
     const destinations = new Set<string>();
-    for (const row of (data || []) as Array<{ destination: string | null }>) {
+    for (const row of (await loadPublicBlogCatalog()).slice(0, BLOG_DESTINATION_STATIC_PRERENDER_LIMIT)) {
       const destination = row.destination?.trim();
       if (destination) destinations.add(destinationToSlug(destination));
     }

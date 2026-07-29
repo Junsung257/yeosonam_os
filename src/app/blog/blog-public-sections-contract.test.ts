@@ -59,13 +59,12 @@ describe('blog public sections contract', () => {
     }
   });
 
-  it('keeps destination guide cards inside the blog topical cluster', () => {
+  it('derives destination guide cards from the shared public blog catalog', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
-    expect(source).toContain(".from('active_destinations')");
-    expect(source).toContain("'publishedDestinations'");
-    expect(source).toContain('publishedDestinations.has(destination)');
-    expect(source).toContain("order('package_count'");
+    expect(source).toContain('loadPublicBlogCatalog()');
+    expect(source).toContain('destinationsFromPosts(catalog)');
+    expect(source).toContain('b.post_count - a.post_count');
     expect(source).toContain('/blog/destination/${encodeDestinationPathSegment(d.destination)}');
     expect(source).not.toContain('getDestinationUrl(d.destination)');
   });
@@ -73,16 +72,16 @@ describe('blog public sections contract', () => {
   it('does not expose empty style filters without site-wide angle evidence', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
-    expect(source).toContain("runBlogQuery(\n    'angles'");
+    expect(source).toContain('countAnglesFromPosts(catalog)');
     expect(source).toContain('(angleCounts[candidate.key] ?? 0) > 0');
     expect(source).not.toContain('const visibleAngleChips = BLOG_PUBLIC_ANGLES;');
   });
 
-  it('uses the database exact count for pagination instead of an offset approximation', () => {
+  it('uses the complete shared catalog for exact pagination', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
-    expect(source).toContain(".select(BLOG_LIST_SELECT, { count: 'exact' })");
-    expect(source).toContain('.range(offset, offset + PER_PAGE - 1)');
+    expect(source).toContain('const exactTotal = matchingPosts.length');
+    expect(source).toContain('matchingPosts.slice(offset, offset + PER_PAGE)');
     expect(source).toContain('total: exactTotal');
     expect(source).not.toContain('approximateTotal');
     expect(source).not.toContain('offset + PER_PAGE + 1');
@@ -104,8 +103,27 @@ describe('blog public sections contract', () => {
 
     expect(blogSource).toContain('getBlogPostHref(post)');
     expect(blogSource).toContain('jsonLdPosts.map');
-    expect(sitemapSource).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(sitemapSource).toContain('loadPublicBlogCatalog()');
     expect(sitemapSource).not.toContain('getFallbackBlogPosts');
+  });
+
+  it('shares one compact catalog across public blog collection surfaces', () => {
+    const files = [
+      'src/app/blog/BlogData.tsx',
+      'src/app/blog/destination/[dest]/page.tsx',
+      'src/app/blog/angle/[angle]/page.tsx',
+      'src/app/sitemap.ts',
+    ];
+    for (const file of files) {
+      expect(readSource(file)).toContain('loadPublicBlogCatalog');
+    }
+
+    const catalogSource = readSource('src/lib/blog-public-catalog.ts');
+    expect(catalogSource).toContain("['blog-public-catalog-v1']");
+    expect(catalogSource).toContain('.limit(2000)');
+    expect(catalogSource).not.toContain('blog_html');
+    expect(catalogSource).not.toContain('quality_gate');
+    expect(catalogSource).not.toContain('generation_meta');
   });
 
   it('does not redirect legacy slugs to archived blog posts', () => {

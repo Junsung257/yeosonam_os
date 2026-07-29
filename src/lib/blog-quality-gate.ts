@@ -77,7 +77,7 @@ const GENERIC_SLUG_PREFIXES = new Set([
 ]);
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density' | 'article_quality_v2';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density' | 'article_quality_v2' | 'public_customer_quality';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;

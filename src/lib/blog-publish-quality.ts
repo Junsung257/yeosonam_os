@@ -8,9 +8,14 @@ import { repairPublishReadiness } from './blog-publish-readiness-repair';
 import { inspectBlogCustomerQuality, type BlogCustomerQualityReport } from './blog-customer-quality';
 import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
 import {
+  inspectPublicBlogCustomerQuality,
+  type PublicBlogCustomerQualityReport,
+} from './blog-public-customer-quality';
+import {
   inspectBlogRenderedSeoQuality,
   type BlogRenderedSeoQualityReport,
 } from './blog-rendered-seo-quality';
+import { renderBlogContentToHtml } from './blog-renderer';
 import { withPersistedBlogReadingTime } from './blog-reading-time';
 import { stripBlogInformationalBodyCtas } from './blog-informational-cta';
 
@@ -56,11 +61,14 @@ export interface BlogPublishQualityReport {
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
   customerQuality: BlogCustomerQualityReport;
+  publicCustomerQuality: PublicBlogCustomerQualityReport;
   renderedSeoQuality: BlogRenderedSeoQualityReport | null;
   readingTimeMinutes: number | null;
   blogQualityScore: BlogQualityScoreReport;
   summary: string;
 }
+
+export const PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE = 95;
 
 export interface PreparedBlogPublishResult {
   blogHtml: string;
@@ -129,6 +137,7 @@ function buildSummary(report: {
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
   blogQualityScore: BlogQualityScoreReport;
+  publicCustomerQuality: PublicBlogCustomerQualityReport;
   renderedSeoQuality?: BlogRenderedSeoQualityReport | null;
 }): string {
   const parts: string[] = [];
@@ -140,6 +149,12 @@ function buildSummary(report: {
   if (!report.seoScore.passed) parts.push(`[seo] ${report.seoScore.summary}`);
   if (report.readability.issues.length > 0) {
     parts.push(`[readability] ${report.readability.score}/100 ${report.readability.issues.slice(0, 3).join(' / ')}`);
+  }
+  if (report.publicCustomerQuality.score < PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE) {
+    parts.push(
+      `[public-customer] ${report.publicCustomerQuality.score}/100 `
+      + report.publicCustomerQuality.issues.map((issue) => issue.code).slice(0, 5).join(', '),
+    );
   }
   if (report.renderedSeoQuality && !report.renderedSeoQuality.passed) {
     parts.push(`[rendered-seo] ${report.renderedSeoQuality.issues.map((issue) => issue.code).slice(0, 5).join(', ')}`);
@@ -221,6 +236,43 @@ export async function evaluateBlogPublishQuality(
     productId: input.product_id ?? null,
     generationMeta: input.generation_meta ?? null,
   });
+  const renderedCustomerHtml = await renderBlogContentToHtml(input.blog_html);
+  const safeTitle = (input.seo_title ?? input.slug)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  const publicCustomerQuality = inspectPublicBlogCustomerQuality({
+    html: `<article><h1>${safeTitle}</h1>${renderedCustomerHtml}</article>`,
+    path: `/blog/${input.slug}`,
+    title: input.seo_title,
+    expectedType: blogType,
+    expectedDestination: destination,
+  });
+  const publicCustomerGatePassed =
+    publicCustomerQuality.passed
+    && publicCustomerQuality.score >= PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE;
+  qualityGate.gates.push({
+    gate: 'public_customer_quality',
+    passed: publicCustomerGatePassed,
+    reason: publicCustomerGatePassed
+      ? undefined
+      : `public customer quality ${publicCustomerQuality.score}/100 `
+        + `(minimum ${PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE})`,
+    evidence: {
+      score: publicCustomerQuality.score,
+      minimum_score: PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
+      metrics: publicCustomerQuality.metrics,
+      issues: publicCustomerQuality.issues.slice(0, 12),
+    },
+  });
+  if (!publicCustomerGatePassed) {
+    qualityGate.passed = false;
+    qualityGate.summary = `공개 고객품질 ${publicCustomerQuality.score}/100: ${publicCustomerQuality.issues
+      .map((issue) => issue.code)
+      .slice(0, 5)
+      .join(', ')}`;
+  }
   const renderedSeoQuality = blogType === 'info'
     ? await inspectBlogRenderedSeoQuality({
         markdown: input.blog_html,
@@ -252,6 +304,7 @@ export async function evaluateBlogPublishQuality(
     seoScore,
     readability,
     customerQuality,
+    publicCustomerQuality,
     renderedSeoQuality,
     readingTimeMinutes: renderedSeoQuality?.readingTimeMinutes ?? null,
     blogQualityScore,
@@ -259,7 +312,10 @@ export async function evaluateBlogPublishQuality(
 
   return {
     ...report,
-    passed: blogQualityScore.isPerfect && publishContractIssues.length === 0,
+    passed:
+      blogQualityScore.isPerfect
+      && publishContractIssues.length === 0
+      && publicCustomerGatePassed,
     summary: buildSummary(report),
   };
 }
@@ -445,6 +501,11 @@ export function blogPublishQualityWarnings(report: BlogPublishQualityReport | nu
       .map((issue) => ({ type: issue.source, gate: issue.code, reason: issue.message })),
     ...(report.renderedSeoQuality?.issues ?? []).map((issue) => ({
       type: 'rendered_seo',
+      gate: issue.code,
+      reason: issue.message,
+    })),
+    ...report.publicCustomerQuality.issues.map((issue) => ({
+      type: 'public_customer_quality',
       gate: issue.code,
       reason: issue.message,
     })),
