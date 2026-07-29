@@ -1375,4 +1375,45 @@ describe('buildPagasaMonthlyWeatherPayload', () => {
 
     expect(payload).toBeNull();
   });
+
+  it.each([
+    {
+      destination: '마닐라',
+      station: 'NINOY AQUINO INTERNATIONAL AIRPORT (NAIA), PASAY CITY',
+      file: 'NAIA.pdf',
+      period: '1991 - 2020',
+      expectedPeriod: '1991~2020',
+    },
+    {
+      destination: '클락',
+      station: 'CLARK INTERNATIONAL AIRPORT, PAMPANGA',
+      file: 'CLARK.pdf',
+      period: '1997 - 2020',
+      expectedPeriod: '1997~2020',
+    },
+  ])('accepts the reviewed exact station alias for $destination', ({
+    destination,
+    station,
+    file,
+    period,
+    expectedPeriod,
+  }) => {
+    const payload = buildPagasaMonthlyWeatherPayload([{
+      url: `https://pubfiles.pagasa.dost.gov.ph/pagasaweb/files/cad/${file}`,
+      title: `PAGASA ${station} climate normals`,
+      text: [
+        `PERIOD: ${period}`,
+        ...PAGASA_MACTAN_ROWS,
+        `STATION: ${station}`,
+      ].join('\n'),
+    }], destination);
+
+    expect(payload?.sources?.[0]).toMatchObject({
+      publisher: 'PAGASA',
+      destination,
+    });
+    expect(payload?.evidence).toHaveLength(12);
+    expect(payload?.claims).toHaveLength(12);
+    expect(payload?.claims?.[0]?.claimText).toContain(expectedPeriod);
+  });
 });
