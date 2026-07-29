@@ -8,6 +8,11 @@
       "evidence": "docs/blog-ops-runbook.md",
       "approvedIssues": [
         {
+          "severity": "critical",
+          "type": "migration-history",
+          "description": "Applied migration SQL changed (old 33b3666c6df3, new 881088fa8f1b)"
+        },
+        {
           "severity": "high",
           "type": "lock-heavy",
           "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
