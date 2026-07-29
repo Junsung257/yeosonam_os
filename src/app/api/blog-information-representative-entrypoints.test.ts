@@ -30,10 +30,11 @@ describe('informational representative enforcement across publish entrypoints', 
 
   it('reads only centrally eligible information rows into the sitemap', () => {
     const sitemap = source('src/app/sitemap.ts');
-    expect(sitemap).toContain("import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility'");
-    expect(sitemap).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
-    expect(sitemap).toContain('generation_meta');
-    expect(sitemap).toContain('const canonicalPosts = queriedPosts');
+    const catalog = source('src/lib/blog-public-catalog.ts');
+    expect(sitemap).toContain("import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog'");
+    expect(sitemap).toContain('loadPublicBlogCatalog()');
+    expect(catalog).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(catalog).not.toContain('generation_meta');
     expect(sitemap).toContain('for (const post of canonicalPosts)');
     expect(sitemap).not.toContain('isCanonicalInformationSitemapPost');
   });
