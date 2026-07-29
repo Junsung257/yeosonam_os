@@ -138,6 +138,33 @@ describe('fetchReviewedDirectPages', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('retries a transient reviewed-source timeout once', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('The operation was aborted due to timeout'))
+      .mockResolvedValueOnce(new Response(
+        `<main>${'official climate source content '.repeat(10)}</main>`,
+        {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        },
+      ));
+    vi.stubGlobal('fetch', fetchMock);
+    const registry = [{
+      hostname: 'weather.example',
+      allowSubdomains: false,
+      researchUrls: ['https://weather.example/climate'],
+    }];
+
+    try {
+      const result = await fetchReviewedDirectPages(registry);
+      expect(result.pages).toHaveLength(1);
+      expect(result.failures).toHaveLength(0);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('selectReputableResearchRegistryForIntent', () => {

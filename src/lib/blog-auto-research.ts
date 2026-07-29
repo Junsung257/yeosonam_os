@@ -361,6 +361,31 @@ async function fetchReviewedDirectPage(input: {
   throw new Error(`too_many_redirects:${input.entry.hostname}`);
 }
 
+function isRetryableReviewedDirectFetchError(error: unknown): boolean {
+  const message = clean(error instanceof Error ? error.message : error).toLowerCase();
+  return message.includes('timeout')
+    || message.includes('timed out')
+    || message.includes('fetch failed')
+    || message.includes('network')
+    || /http_(?:408|425|429|5\d\d):/.test(message);
+}
+
+async function fetchReviewedDirectPageWithRetry(input: {
+  entry: Pick<
+    BlogInformationOfficialSourceRegistryEntry,
+    'hostname' | 'allowSubdomains' | 'researchUrls'
+  >;
+  url: string;
+}): Promise<ReviewedDirectPage> {
+  try {
+    return await fetchReviewedDirectPage(input);
+  } catch (error) {
+    if (!isRetryableReviewedDirectFetchError(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return fetchReviewedDirectPage(input);
+  }
+}
+
 function fetchReviewedDirectPageShared(input: {
   entry: Pick<
     BlogInformationOfficialSourceRegistryEntry,
@@ -374,7 +399,7 @@ function fetchReviewedDirectPageShared(input: {
 
   const request = (async () => {
     try {
-      return await fetchReviewedDirectPage(input);
+      return await fetchReviewedDirectPageWithRetry(input);
     } finally {
       reviewedDirectPageInFlight.delete(cacheKey);
     }
