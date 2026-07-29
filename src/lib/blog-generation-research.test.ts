@@ -817,7 +817,10 @@ describe('blog generation research preflight', () => {
     });
 
     expect(repaired.changed).toBe(true);
-    expect(repaired.changes).toContain('local_transport_verified_research_structure');
+    expect(repaired.changes).toContain('local_transport_deterministic_evidence_article');
+    expect(repaired.markdown.trimStart()).toMatch(/^<!-- blog_research_structure:local_transport:v1 -->/);
+    expect(repaired.markdown).not.toContain('밴프와 레이크 루이스를 연결하는 대중교통을 비교합니다.');
+    expect(repaired.markdown.length).toBeGreaterThan(2500);
     expect(repaired.markdown).toContain('| Roam Transit 8X 이동 | 12.50 CAD');
     expect(repaired.markdown).toContain('| Parks Canada 셔틀 | 12.75 CAD');
     expect(repaired.markdown).toContain('약 57분 소요');
