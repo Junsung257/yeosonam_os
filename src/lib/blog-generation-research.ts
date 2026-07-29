@@ -126,6 +126,8 @@ export interface BlogGenerationResearchStructureRepair {
 
 const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
+const LOCAL_TRANSPORT_STRUCTURE_MARKER = '<!-- blog_research_structure:local_transport:v1 -->';
+const LOCAL_TRANSPORT_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:local_transport:v1 -->';
 const MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v2 -->';
 const MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v2 -->';
 const MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER = '<!-- blog_research_intro:monthly_weather:evidence-safe:v1 -->';
@@ -448,6 +450,246 @@ function formatExtractedPrice(claim: BlogInformationResearchBundle['claims'][num
     ? Number(normalizedValue).toLocaleString('en-US')
     : normalizedValue;
   return escapeMarkdownTableCell(`${formattedValue} ${currency}`.trim());
+}
+
+function formatExtractedDuration(claim: BlogInformationResearchBundle['claims'][number]): string {
+  const normalizedValue = clean(claim.extractedValue?.normalizedValue);
+  const unit = clean(claim.extractedValue?.unit);
+  if (!normalizedValue || !unit) return '';
+  const qualifier = /최대|up to/i.test(claim.claimText)
+    ? '최대 '
+    : /약|approximately|about/i.test(claim.claimText)
+      ? '약 '
+      : '';
+  const suffix = /대기|wait/i.test(claim.claimText) ? ' 대기' : ' 소요';
+  return escapeMarkdownTableCell(`${qualifier}${normalizedValue}${unit}${suffix}`);
+}
+
+function localTransportClaimSources(
+  bundle: BlogInformationResearchBundle,
+  claim: BlogInformationResearchBundle['claims'][number],
+) {
+  const evidenceKeys = new Set(claim.evidenceKeys);
+  const sourceKeys = new Set(bundle.evidence
+    .filter((evidence) => evidenceKeys.has(evidence.evidenceKey))
+    .map((evidence) => evidence.sourceKey));
+  return bundle.sources.filter((source) => sourceKeys.has(source.sourceKey));
+}
+
+function localTransportPublisher(
+  bundle: BlogInformationResearchBundle,
+  claim: BlogInformationResearchBundle['claims'][number],
+): string {
+  return clean(localTransportClaimSources(bundle, claim)[0]?.publisher) || '공식 운영사';
+}
+
+function localTransportRouteCode(claimText: string): string {
+  return claimText.match(/\b(?:[A-Z]{1,3}\d+[A-Z]{0,2}|\d+[A-Z]{1,3})\b/i)?.[0]?.toUpperCase() ?? '';
+}
+
+function localTransportRowLabel(
+  bundle: BlogInformationResearchBundle,
+  claim: BlogInformationResearchBundle['claims'][number],
+): string {
+  const publisher = localTransportPublisher(bundle, claim);
+  const routeCode = localTransportRouteCode(claim.claimText);
+  const service = /셔틀|shuttle/i.test(claim.claimText) ? ' 셔틀' : '';
+  const qualifier = /예약 없이|비예약|without (?:a )?reservation/i.test(claim.claimText)
+    ? ' 비예약 이용'
+    : /대기|wait/i.test(claim.claimText)
+      ? ' 대기'
+      : claim.claimType === 'duration'
+        ? ' 이동'
+        : '';
+  return escapeMarkdownTableCell(
+    `${publisher}${routeCode && !publisher.toUpperCase().includes(routeCode) ? ` ${routeCode}` : ''}${service}${qualifier}`,
+  );
+}
+
+function localTransportClaimsSharePublisher(
+  bundle: BlogInformationResearchBundle,
+  left: BlogInformationResearchBundle['claims'][number],
+  right: BlogInformationResearchBundle['claims'][number],
+): boolean {
+  const leftPublishers = new Set(localTransportClaimSources(bundle, left)
+    .map((source) => normalize(source.publisher))
+    .filter(Boolean));
+  return localTransportClaimSources(bundle, right)
+    .some((source) => leftPublishers.has(normalize(source.publisher)));
+}
+
+function localTransportSourceLinks(
+  bundle: BlogInformationResearchBundle,
+  claims: BlogInformationResearchBundle['claims'],
+): string {
+  const links = new Map<string, string>();
+  for (const claim of claims) {
+    for (const source of localTransportClaimSources(bundle, claim)) {
+      const url = clean(source.sourceUrl);
+      if (!url || links.has(url)) continue;
+      const publisher = escapeMarkdownTableCell(clean(source.publisher) || '공식 운영사');
+      links.set(url, `[${publisher}](${url})`);
+    }
+  }
+  return [...links.values()].join(', ');
+}
+
+function removeExistingLocalTransportStructure(markdown: string): string {
+  return markdown
+    .replace(
+      /<!-- blog_research_structure:local_transport:v1 -->[\s\S]*?<!-- \/blog_research_structure:local_transport:v1 -->/g,
+      '',
+    )
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function repairLocalTransportResearchStructure(input: {
+  markdown: string;
+  readiness: BlogGenerationResearchReadiness;
+}): BlogGenerationResearchStructureRepair {
+  const unchanged = () => ({
+    markdown: input.markdown,
+    changed: false,
+    changes: [],
+    approvedClaims: [],
+  });
+  const bundle = input.readiness.bundle;
+  if (!input.readiness.passed || !bundle) return unchanged();
+
+  const hasDeterministicBlock = input.markdown.includes(LOCAL_TRANSPORT_STRUCTURE_MARKER)
+    && input.markdown.includes(LOCAL_TRANSPORT_STRUCTURE_END_MARKER);
+  const report = validateBlogInformationStructure({
+    intent: 'local_transport',
+    markdown: input.markdown,
+  });
+  if (hasDeterministicBlock && report.passed) return unchanged();
+
+  const claims = bundle.claims;
+  const priceClaims = claims
+    .filter((claim) => claim.claimType === 'price' && formatExtractedPrice(claim))
+    .sort((left, right) =>
+      Number(/수수료|fee|transaction/i.test(left.claimText))
+      - Number(/수수료|fee|transaction/i.test(right.claimText)));
+  const durationClaims = claims
+    .filter((claim) => claim.claimType === 'duration' && formatExtractedDuration(claim))
+    .sort((left, right) =>
+      Number(/대기|wait/i.test(left.claimText))
+      - Number(/대기|wait/i.test(right.claimText)))
+    .slice(0, 2);
+  if (priceClaims.length < 2 || durationClaims.length < 2) return unchanged();
+
+  const scheduleClaims = claims.filter((claim) =>
+    (claim.claimType === 'factual' || claim.claimType === 'policy')
+    && /연중|매일|운행|운영|직행|첫차|막차|배차|시간표|year[\s-]*round|daily/i.test(claim.claimText));
+  const reservationClaims = claims.filter((claim) =>
+    /예약|승차권|티켓|reservation|booking/i.test(claim.claimText));
+  const policyClaims = claims.filter((claim) =>
+    claim.claimType === 'policy' || /계절|성수기|운휴|예약|제한|금지|대기|closed|wait/i.test(claim.claimText));
+
+  const rows: Array<{
+    label: string;
+    price: BlogInformationResearchBundle['claims'][number];
+    duration?: BlogInformationResearchBundle['claims'][number];
+    schedule?: BlogInformationResearchBundle['claims'][number];
+    reservation?: BlogInformationResearchBundle['claims'][number];
+  }> = durationClaims.map((duration) => ({
+    label: localTransportRowLabel(bundle, duration),
+    price: priceClaims.find((price) => localTransportClaimsSharePublisher(bundle, duration, price))
+      ?? priceClaims[0]!,
+    duration,
+    schedule: scheduleClaims.find((claim) => localTransportClaimsSharePublisher(bundle, duration, claim)),
+    reservation: reservationClaims.find((claim) => localTransportClaimsSharePublisher(bundle, duration, claim)),
+  }));
+
+  for (const price of priceClaims) {
+    const label = localTransportRowLabel(bundle, price);
+    if (rows.some((row) => row.label === label)) continue;
+    rows.push({
+      label,
+      price,
+      schedule: scheduleClaims.find((claim) => localTransportClaimsSharePublisher(bundle, price, claim)),
+      reservation: reservationClaims.find((claim) => localTransportClaimsSharePublisher(bundle, price, claim)),
+    });
+    if (rows.length >= 3) break;
+  }
+
+  const approvedClaims = [...new Map(
+    rows.flatMap((row) => [row.price, row.duration, row.schedule, row.reservation])
+      .concat(policyClaims)
+      .filter((claim): claim is BlogInformationResearchBundle['claims'][number] => Boolean(claim))
+      .map((claim) => [claim.claimFingerprint, claim]),
+  ).values()];
+  const checkedAt = bundle.sources
+    .map((source) => clean(source.retrievedAt).slice(0, 10))
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? '발행 전';
+  const sourceClaims = approvedClaims.length > 0 ? approvedClaims : claims;
+  const allSourceLinks = localTransportSourceLinks(bundle, sourceClaims);
+
+  const tableRows = rows.map((row) => {
+    const scheduleText = row.schedule
+      ? `${row.schedule.claimText} 첫차·막차와 배차 간격은 공식 시간표 확인`
+      : '첫차·막차, 운행 시간과 배차 간격은 공식 시간표 확인';
+    const reservationText = row.reservation
+      ? `${row.reservation.claimText} 승차권 구매 전 공식 예약 페이지 확인`
+      : '승차권 구매·예약 조건은 공식 운영사 페이지 확인';
+    const rowClaims = [row.price, row.duration, row.schedule, row.reservation]
+      .filter((claim): claim is BlogInformationResearchBundle['claims'][number] => Boolean(claim));
+    return `| ${[
+      row.label,
+      `${formatExtractedPrice(row.price)} (편도·왕복·패스 여부 확인)`,
+      row.duration ? formatExtractedDuration(row.duration) : '공식 시간표에서 소요시간 확인',
+      escapeMarkdownTableCell(scheduleText),
+      escapeMarkdownTableCell(reservationText),
+      localTransportSourceLinks(bundle, rowClaims) || allSourceLinks,
+    ].join(' | ')} |`;
+  });
+
+  const policyLines = policyClaims.length > 0
+    ? policyClaims.map((claim) => `- ${claim.claimText}`)
+    : ['- 계절·성수기 운휴, 예약·수하물 제한은 공식 운영사에서 출발 전에 확인하세요.'];
+  const sourceLines = bundle.sources
+    .filter((source) => clean(source.sourceUrl))
+    .map((source) => `- [${clean(source.publisher) || '공식 운영사'}](${clean(source.sourceUrl)})`)
+    .filter((line, index, lines) => lines.indexOf(line) === index);
+  if (sourceLines.length === 0) return unchanged();
+
+  const block = [
+    LOCAL_TRANSPORT_STRUCTURE_MARKER,
+    '## 렌터카 없이 이동할 때의 공식 교통 비교',
+    '',
+    '아래 표는 검증된 버스·셔틀 근거만 정리합니다. 렌터카·택시·도보와 비교할 때는 실제 출발·도착 구간, 노선·정류장과 환승 가능 여부를 함께 확인하세요.',
+    '',
+    '| 노선·수단 및 출발·도착 구간 | 확인된 요금·패스 | 소요시간·배차 간격 | 운행 시간·시간표 | 승차권 구매·예약 | 공식 근거 |',
+    '| --- | ---: | --- | --- | --- | --- |',
+    ...tableRows,
+    '',
+    '표의 금액은 근거에서 확인된 요금입니다. 편도·왕복·패스 가격 구분은 결제 직전 공식 운영사 화면에서 다시 확인하세요.',
+    '',
+    '## 예약·계절·운휴 제한',
+    '',
+    ...policyLines,
+    '',
+    '성수기에는 예약 가능 여부와 수하물 제한이 바뀔 수 있습니다. 첫차·막차, 운행 시간, 배차 간격은 이동 당일 공식 시간표를 확인하세요.',
+    '',
+    `## 공식 운영사 근거와 확인일 (${checkedAt})`,
+    '',
+    ...sourceLines,
+    '',
+    LOCAL_TRANSPORT_STRUCTURE_END_MARKER,
+  ].join('\n');
+  const markdown = `${removeExistingLocalTransportStructure(input.markdown)}\n\n${block}`.trim();
+  const repairedReport = validateBlogInformationStructure({ intent: 'local_transport', markdown });
+  if (!repairedReport.passed) return unchanged();
+
+  return {
+    markdown,
+    changed: true,
+    changes: ['local_transport_verified_research_structure'],
+    approvedClaims,
+  };
 }
 
 function findFoodBudgetClaim(
@@ -1117,6 +1359,9 @@ export function repairBlogGenerationResearchStructure(input: {
   });
   if (input.intent === 'monthly_weather') {
     return repairMonthlyWeatherResearchStructure(input);
+  }
+  if (input.intent === 'local_transport') {
+    return repairLocalTransportResearchStructure(input);
   }
   if (input.intent !== 'food_budget' || !input.readiness.passed || !input.readiness.bundle) {
     return unchanged();
