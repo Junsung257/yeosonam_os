@@ -3,19 +3,27 @@ import { getSecret } from '@/lib/secret-registry';
 import { safeEqualString } from '@/lib/timing-safe';
 import { apiResponse } from '@/lib/api-response';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
+import {
+  getRevenueRescueCronMode,
+  isRevenueRescueCronExecutionAllowed,
+} from '@/lib/revenue-rescue-capability-policy';
 
 /**
- * Vercel Cron은 `Authorization: Bearer ${CRON_SECRET}` 를 붙이고,
- * 수동 호출은 `?secret=` 로도 맞출 수 있게 허용한다.
- * CRON_SECRET 미설정 시에는 통과(로컬 개발 편의) — 프로덕션에서는 반드시 설정할 것.
+ * Cron 인증은 `Authorization: Bearer ${CRON_SECRET}`만 허용한다.
+ * URL query와 scheduling marker header는 로그·분석 도구에 노출될 수 있으므로 인증으로 쓰지 않는다.
+ * CRON_SECRET이 없는 production은 fail closed한다.
  */
-export function isCronAuthorized(request: NextRequest | Request): boolean {
+export function isCronBearerAuthenticated(request: NextRequest | Request): boolean {
   const secret = getSecret('CRON_SECRET');
   if (!secret) return process.env.NODE_ENV !== 'production';
   const authHeader = request.headers.get('authorization');
-  const url = request instanceof NextRequest ? request.nextUrl : new URL(request.url);
-  const querySecret = url.searchParams.get('secret');
-  return safeEqualString(authHeader, `Bearer ${secret}`) || safeEqualString(querySecret, secret);
+  return safeEqualString(authHeader, `Bearer ${secret}`);
+}
+
+export function isCronAuthorized(request: NextRequest | Request): boolean {
+  if (!isCronBearerAuthenticated(request)) return false;
+  const pathname = request instanceof NextRequest ? request.nextUrl.pathname : new URL(request.url).pathname;
+  return isRevenueRescueCronExecutionAllowed(pathname);
 }
 
 /**
@@ -30,6 +38,21 @@ export function cronUnauthorizedResponse(): NextResponse {
   const res = apiResponse(
     { ok: false, error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } },
     { status: 401 },
+  );
+  res.headers.set('Cache-Control', 'no-store');
+  return res;
+}
+
+export function cronCapabilityDisabledResponse(): NextResponse {
+  const res = apiResponse(
+    {
+      ok: false,
+      error: {
+        code: 'CRON_CAPABILITY_DISABLED',
+        message: 'Cron capability unavailable',
+      },
+    },
+    { status: 503 },
   );
   res.headers.set('Cache-Control', 'no-store');
   return res;
@@ -52,8 +75,11 @@ export function requireCronBearer(request: NextRequest): NextResponse | null {
     }
     return null;
   }
-  if (!isCronAuthorized(request)) {
+  if (!isCronBearerAuthenticated(request)) {
     return cronUnauthorizedResponse();
+  }
+  if (getRevenueRescueCronMode(request.nextUrl.pathname) === 'disabled') {
+    return cronCapabilityDisabledResponse();
   }
   return null;
 }

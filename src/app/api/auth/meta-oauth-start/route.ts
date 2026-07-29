@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState } from '@/lib/oauth-state';
 
 /**
  * Meta (Instagram/Facebook Ads) OAuth 시작
@@ -27,9 +27,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const payload = Buffer.from(JSON.stringify({ tenant_id: tenantId, ts: Date.now() })).toString('base64url');
-  const sig = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(payload).digest('hex').slice(0, 16);
-  const state = `${payload}.${sig}`;
+  const state = createOAuthState({ tenant_id: tenantId, ts: Date.now() });
+  if (!state) {
+    return apiResponse(
+      { code: 'OAUTH_NOT_CONFIGURED', error: 'OAuth 연결을 사용할 수 없습니다.' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
 
   const params = new URLSearchParams({
     client_id: appId,

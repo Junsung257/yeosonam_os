@@ -22,6 +22,7 @@ const essentialSecurity = new Set([
   'magic-tokens-cleanup',
   'fraud-detect',
   'content-drift-detect',
+  'meta-token-refresh',
 ]);
 
 const pause = new Set([

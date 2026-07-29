@@ -1,0 +1,29 @@
+{
+  "observedAt": "2026-07-29T11:15:00Z",
+  "branch": "codex/revenue-rescue-p0-security",
+  "focusedTests": {
+    "command": "node C:\\dev\\yeosonam-os\\node_modules\\vitest\\vitest.mjs run --config vitest.revenue-rescue.config.ts <11 focused security test files>",
+    "filesPassed": 11,
+    "testsPassed": 46,
+    "failed": 0
+  },
+  "changedFileLint": {
+    "command": "eslint <changed JS/TS files> --max-warnings=0",
+    "exitCode": 0
+  },
+  "changedAreaTypecheck": {
+    "command": "node C:\\dev\\yeosonam-os\\node_modules\\typescript\\bin\\tsc -p tsconfig.revenue-rescue.json --pretty false",
+    "exitCode": 0
+  },
+  "productionDependencyAudit": {
+    "command": "npm audit --omit=dev --json",
+    "total": 0,
+    "high": 0,
+    "critical": 0
+  },
+  "rlsIntegration": {
+    "status": "BLOCKED",
+    "reason": "Supabase local database/Docker runtime was unavailable; no production DDL was applied.",
+    "contractTest": "supabase/tests/revenue_rescue_sensitive_rls.sql"
+  }
+}

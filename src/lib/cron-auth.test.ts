@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isCronAuthorized, isCronOrVercelAuthorized, withCronGuard } from './cron-auth';
+import {
+  isCronAuthorized,
+  isCronBearerAuthenticated,
+  isCronOrVercelAuthorized,
+  requireCronBearer,
+  withCronGuard,
+} from './cron-auth';
 
 describe('withCronGuard resource saver', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('skips guarded non-critical crons while DB resource saver is enabled', async () => {
+  it('blocks disabled mutation crons before the resource saver or handler', async () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
     vi.stubEnv('CRON_SECRET', 'secret');
 
@@ -22,10 +28,8 @@ describe('withCronGuard resource saver', () => {
 
     expect(handler).not.toHaveBeenCalled();
     expect(body).toMatchObject({
-      ok: true,
-      skipped: true,
-      cron: 'fill-attraction-photos',
-      reason: 'db_resource_saver_mode',
+      ok: false,
+      error: { code: 'CRON_CAPABILITY_DISABLED' },
     });
   });
 
@@ -55,11 +59,54 @@ describe('withCronGuard resource saver', () => {
     expect(isCronAuthorized(request)).toBe(false);
   });
 
+  it('accepts only the configured bearer secret', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', 'secret');
+
+    const valid = new NextRequest('https://www.yeosonam.com/api/cron/booking-tasks-runner', {
+      headers: { authorization: 'Bearer secret' },
+    });
+    const invalid = new NextRequest('https://www.yeosonam.com/api/cron/booking-tasks-runner', {
+      headers: { authorization: 'Bearer wrong' },
+    });
+    const missing = new NextRequest('https://www.yeosonam.com/api/cron/booking-tasks-runner');
+
+    expect(isCronAuthorized(valid)).toBe(true);
+    expect(isCronAuthorized(invalid)).toBe(false);
+    expect(isCronAuthorized(missing)).toBe(false);
+  });
+
+  it('rejects the configured secret when it is supplied in the query string', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', 'secret');
+
+    const request = new NextRequest(
+      'https://www.yeosonam.com/api/cron/blog-publisher?secret=secret',
+    );
+
+    expect(isCronBearerAuthenticated(request)).toBe(false);
+  });
+
+  it('fails closed with a non-cacheable response when the production secret is missing', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', '');
+
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher');
+    const response = requireCronBearer(request);
+
+    expect(response?.status).toBe(503);
+    expect(response?.headers.get('cache-control')).toBe('no-store');
+    expect(await response?.json()).toMatchObject({
+      ok: false,
+      error: { code: 'CRON_UNAVAILABLE', message: 'Cron endpoint unavailable' },
+    });
+  });
+
   it('rejects a spoofed Vercel cron header without the configured bearer secret', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('CRON_SECRET', 'secret');
 
-    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher', {
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/booking-tasks-runner', {
       headers: { 'x-vercel-cron': '1' },
     });
 
@@ -70,7 +117,7 @@ describe('withCronGuard resource saver', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('CRON_SECRET', 'secret');
 
-    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher', {
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/booking-tasks-runner', {
       headers: {
         authorization: 'Bearer secret',
         'x-vercel-cron': '1',
@@ -78,5 +125,17 @@ describe('withCronGuard resource saver', () => {
     });
 
     expect(isCronOrVercelAuthorized(request)).toBe(true);
+  });
+
+  it('rejects an otherwise valid bearer for a disabled mutation cron', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', 'secret');
+
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher', {
+      headers: { authorization: 'Bearer secret' },
+    });
+
+    expect(isCronBearerAuthenticated(request)).toBe(true);
+    expect(isCronAuthorized(request)).toBe(false);
   });
 });

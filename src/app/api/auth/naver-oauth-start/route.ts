@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState } from '@/lib/oauth-state';
 
 /**
  * 네이버 OAuth 시작 (블로그 API 연동)
@@ -29,14 +29,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // CSRF 방어용 HMAC-signed state (10분 유효) — Google OAuth와 동일 패턴
-  const stateSecret = getSecret('OAUTH_STATE_SECRET');
-  if (!stateSecret) {
-    console.warn('[naver-oauth-start] OAUTH_STATE_SECRET 미설정 — CSRF 보호 비활성화 상태');
+  const state = createOAuthState({ tenant_id: tenantId, ts: Date.now() });
+  if (!state) {
+    return apiResponse(
+      { code: 'OAUTH_NOT_CONFIGURED', error: 'OAuth 연결을 사용할 수 없습니다.' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
-  const payload = Buffer.from(JSON.stringify({ tenant_id: tenantId, ts: Date.now() })).toString('base64url');
-  const sig     = createHmac('sha256', stateSecret ?? 'dev').update(payload).digest('hex').slice(0, 16);
-  const state   = `${payload}.${sig}`;
 
   const params = new URLSearchParams({
     response_type: 'code',

@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { verifyOAuthState } from '@/lib/oauth-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,25 +12,11 @@ const GOOGLE_ADS_SCOPE = 'https://www.googleapis.com/auth/adwords';
 const GOOGLE_ANALYTICS_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
 
 function verifyState(stateRaw: string): string | null {
-  const dotIdx = stateRaw.lastIndexOf('.');
-  if (dotIdx < 0) return null;
-
-  const payload = stateRaw.slice(0, dotIdx);
-  const sig = stateRaw.slice(dotIdx + 1);
-  const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev')
-    .update(payload)
-    .digest('hex')
-    .slice(0, 16);
-  const sigBuf = Buffer.from(sig);
-  const expBuf = Buffer.from(expected);
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null;
-
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+  const decoded = verifyOAuthState<{
     tenant_id?: string;
     ts?: number;
-  };
-  if (!decoded.tenant_id || typeof decoded.ts !== 'number') return null;
-  if (Date.now() - decoded.ts > STATE_TTL_MS) return null;
+  }>(stateRaw, STATE_TTL_MS);
+  if (!decoded?.tenant_id) return null;
   return decoded.tenant_id;
 }
 

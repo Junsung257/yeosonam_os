@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin } from '@/lib/supabase';
+import { verifyOAuthState } from '@/lib/oauth-state';
 
 /**
  * Meta OAuth 콜백
@@ -40,20 +40,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'code 또는 state 누락' }, { status: 400 });
   }
 
-  let payload: StatePayload;
-  try {
-    const dotIdx = stateRaw.lastIndexOf('.');
-    if (dotIdx < 0) throw new Error('state 형식 오류');
-    const enc = stateRaw.slice(0, dotIdx);
-    const sig = stateRaw.slice(dotIdx + 1);
-    const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(enc).digest('hex').slice(0, 16);
-    const sigBuf = Buffer.from(sig);
-    const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) throw new Error('state 서명 불일치');
-    const decoded = JSON.parse(Buffer.from(enc, 'base64url').toString('utf8')) as StatePayload;
-    if (Date.now() - decoded.ts > STATE_TTL_MS) throw new Error('state 만료');
-    payload = decoded;
-  } catch {
+  const payload = verifyOAuthState<StatePayload>(stateRaw, STATE_TTL_MS);
+  if (!payload?.tenant_id) {
     return NextResponse.json({ error: 'state 검증 실패' }, { status: 400 });
   }
 

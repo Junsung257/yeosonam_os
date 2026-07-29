@@ -1,0 +1,80 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "typeRoots": [
+      "C:/dev/yeosonam-os/node_modules/@types"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "next": [
+        "C:/dev/yeosonam-os/node_modules/next"
+      ],
+      "next/*": [
+        "C:/dev/yeosonam-os/node_modules/next/*"
+      ],
+      "openai": [
+        "C:/dev/yeosonam-os/node_modules/openai"
+      ],
+      "@google/generative-ai": [
+        "C:/dev/yeosonam-os/node_modules/@google/generative-ai"
+      ],
+      "@anthropic-ai/sdk": [
+        "C:/dev/yeosonam-os/node_modules/@anthropic-ai/sdk"
+      ],
+      "pdf-parse": [
+        "C:/dev/yeosonam-os/node_modules/pdf-parse"
+      ],
+      "jszip": [
+        "C:/dev/yeosonam-os/node_modules/jszip"
+      ],
+      "@opentelemetry/api": [
+        "C:/dev/yeosonam-os/node_modules/@opentelemetry/api"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/types/pdf-parse.d.ts",
+    "src/lib/affiliate/auth-service.ts",
+    "src/lib/affiliate/auth-service.test.ts",
+    "src/lib/affiliate/jwt-auth.ts",
+    "src/lib/affiliate/jwt-auth.test.ts",
+    "src/lib/affiliate/pin-hash.ts",
+    "src/lib/cron-auth.ts",
+    "src/lib/cron-auth.test.ts",
+    "src/lib/guidebook-token.ts",
+    "src/lib/guidebook-token.test.ts",
+    "src/lib/oauth-state.ts",
+    "src/lib/oauth-state.test.ts",
+    "src/lib/revenue-rescue-capability-policy.ts",
+    "src/lib/revenue-rescue-capability-policy.test.ts",
+    "src/app/api/admin/social-configs/route.ts",
+    "src/app/api/auth/google-callback/route.ts",
+    "src/app/api/auth/google-oauth-start/route.ts",
+    "src/app/api/auth/meta-callback/route.ts",
+    "src/app/api/auth/meta-oauth-start/route.ts",
+    "src/app/api/auth/naver-callback/route.ts",
+    "src/app/api/auth/naver-oauth-start/route.ts",
+    "src/app/api/auth/oauth-state-boundary.test.ts",
+    "src/app/api/auth/threads-oauth-start/route.ts",
+    "src/app/api/influencer/auth/route.ts",
+    "src/app/api/influencer/auth/route.test.ts",
+    "src/app/api/join/[token]/route.ts",
+    "src/app/api/leads/route.ts",
+    "src/app/api/leads/error-boundary.test.ts",
+    "src/app/api/passport/ocr/route.ts",
+    "src/app/api/public-pii-boundary.test.ts",
+    "src/app/join/[token]/page.tsx",
+    "src/app/passport-assist/page.tsx",
+    "src/app/private-tour/page.tsx",
+    "src/app/private-tour/public-claims.test.ts"
+  ],
+  "exclude": [
+    "node_modules.partial-*",
+    "node_modules.rescue-*"
+  ]
+}

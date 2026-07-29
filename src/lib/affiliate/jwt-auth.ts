@@ -11,11 +11,10 @@ interface AffiliateJwtPayload extends JWTPayload {
 
 function getJwtSecret(): Uint8Array {
   const raw = (getSecret('AFFILIATE_JWT_SECRET') || '').trim();
-  if (raw) {
-    return new TextEncoder().encode(raw);
+  if (!raw) {
+    throw new Error('AFFILIATE_JWT_SECRET is required');
   }
-  // fallback: 프로젝트 키 기반 (개발용)
-  return new TextEncoder().encode(getSecret('AFFILIATE_INVITE_CODES') || 'yeosonam-dev-jwt-secret-fallback');
+  return new TextEncoder().encode(raw);
 }
 
 /** PIN 인증 성공 후 JWT 발급 (24h 만료) */
@@ -42,8 +41,7 @@ export async function verifyAffiliateToken(token: string): Promise<{
       return { ok: false, error: '토큰에 필수 정보가 없습니다.' };
     }
     return { ok: true, affiliateId: p.sub, code: p.code, name: p.name || '' };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '토큰 검증 실패';
-    return { ok: false, error: msg };
+  } catch {
+    return { ok: false, error: '토큰 검증 실패' };
   }
 }
