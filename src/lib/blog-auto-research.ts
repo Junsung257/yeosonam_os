@@ -38,7 +38,7 @@ const AUTO_RESEARCH_TIMEOUT_MS = Math.max(
 );
 const MAX_GROUNDING_SOURCES = 12;
 const MAX_SOURCE_CATALOG = 40;
-const MAX_RESEARCH_EVIDENCE = 12;
+const MAX_RESEARCH_EVIDENCE = 24;
 const MAX_RESEARCH_CLAIMS = 12;
 const MAX_REVIEWED_DIRECT_PAGES = 12;
 const MAX_REVIEWED_PAGE_BYTES = 1_500_000;
@@ -224,6 +224,9 @@ export type ReviewedDirectPage = {
   text: string;
 };
 
+const JMA_CLIMATE_ROW_MARKER = 'JMA_CLIMATE_ROW:';
+const JMA_CLIMATE_ROW_END_MARKER = ':JMA_CLIMATE_ROW_END';
+
 type WmoClimateMonth = {
   month?: number;
   maxTemp?: string | number | null;
@@ -279,6 +282,37 @@ export function extractReviewedPageTextForResearch(value: string): string {
     if (excerpts.join('\n...\n').length >= MAX_REVIEWED_PAGE_TEXT) break;
   }
   return excerpts.join('\n...\n').slice(0, MAX_REVIEWED_PAGE_TEXT);
+}
+
+export function extractReviewedHtmlTextForResearch(input: {
+  body: string;
+  url: string;
+}): string {
+  const $ = cheerio.load(input.body);
+  $('script,style,noscript,svg,iframe,form,nav,footer').remove();
+  const bodyText = $('main,article').first().text() || $('body').text();
+  let hostname = '';
+  try {
+    hostname = new URL(input.url).hostname.toLowerCase();
+  } catch {
+    // The caller already validates direct research URLs. Keep extraction fail-safe.
+  }
+  if (hostname !== 'data.jma.go.jp' && !hostname.endsWith('.data.jma.go.jp')) {
+    return extractReviewedPageTextForResearch(bodyText);
+  }
+
+  const heading = clean($('h3').first().text());
+  const rowMarkers = $('table tr').toArray().flatMap((row) => {
+    const cells = $(row).find('th,td').toArray().map((cell) => clean($(cell).text()));
+    return cells.some(Boolean)
+      ? [`${JMA_CLIMATE_ROW_MARKER}${JSON.stringify(cells)}${JMA_CLIMATE_ROW_END_MARKER}`]
+      : [];
+  });
+  return extractReviewedPageTextForResearch([
+    heading,
+    ...rowMarkers,
+    bodyText,
+  ].filter(Boolean).join(' '));
 }
 
 async function fetchReviewedDirectPage(input: {
@@ -352,9 +386,8 @@ async function fetchReviewedDirectPage(input: {
     }
 
     const $ = cheerio.load(body);
-    $('script,style,noscript,svg,iframe,form,nav,footer').remove();
     const title = clean($('title').first().text()) || input.entry.hostname;
-    const text = extractReviewedPageTextForResearch($('main,article').first().text() || $('body').text());
+    const text = extractReviewedHtmlTextForResearch({ body, url: currentUrl });
     if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
     return { url: currentUrl, title, text };
   }
@@ -903,7 +936,26 @@ export function buildBlogResearchBundleFromGrounding(input: {
         && (!clean(draft.unit) || comparableValue(item.scope?.unit) === comparableValue(draft.unit))
         && (!clean(draft.currency) || comparableValue(item.scope?.currency) === comparableValue(draft.currency)))
       : typeCompatibleEvidence.slice(0, 1);
-    const linkedEvidenceItems = valueMatchedEvidence;
+    const monthlyClimateParts = draftedValue.split('|').map(clean);
+    const temperatureValue = monthlyClimateParts.slice(0, 2).join('|');
+    const precipitationValue = monthlyClimateParts.slice(2, 4).join('|');
+    const hasTemperatureEvidence = typeCompatibleEvidence.some((item) =>
+      clean(item.scope?.unit) === '월별 기온 지표'
+      && comparableValue(item.scope?.normalizedValue) === comparableValue(temperatureValue));
+    const hasPrecipitationEvidence = typeCompatibleEvidence.some((item) =>
+      clean(item.scope?.unit) === '월별 강수 지표'
+      && comparableValue(item.scope?.normalizedValue) === comparableValue(precipitationValue));
+    const usesMonthlyClimateComponents = input.brief.intentType === 'monthly_weather'
+      && draftedClaimType === 'climate'
+      && clean(draft.unit) === '월별 기후 지표'
+      && monthlyClimateParts.length === 4
+      && monthlyClimateParts.every(Boolean)
+      && hasTemperatureEvidence
+      && hasPrecipitationEvidence;
+    const linkedEvidenceItems = usesMonthlyClimateComponents
+      ? typeCompatibleEvidence.filter((item) =>
+        ['월별 기온 지표', '월별 강수 지표'].includes(clean(item.scope?.unit)))
+      : valueMatchedEvidence;
     const claimType = typeMatchedEvidence.length > 0
       ? draftedClaimType
       : linkedEvidenceItems[0]?.claimType ?? draftedClaimType;
@@ -916,9 +968,15 @@ export function buildBlogResearchBundleFromGrounding(input: {
       return [];
     }
     const primaryEvidence = linkedEvidenceItems[0];
-    const normalizedValue = primaryEvidence.scope?.normalizedValue || '';
-    const unit = primaryEvidence.scope?.unit || null;
-    const currency = primaryEvidence.scope?.currency || null;
+    const normalizedValue = usesMonthlyClimateComponents
+      ? draftedValue
+      : primaryEvidence.scope?.normalizedValue || '';
+    const unit = usesMonthlyClimateComponents
+      ? clean(draft.unit) || null
+      : primaryEvidence.scope?.unit || null;
+    const currency = usesMonthlyClimateComponents
+      ? clean(draft.currency) || null
+      : primaryEvidence.scope?.currency || null;
     return [{
       claimFingerprint: createBlogInformationClaimFingerprint(claimText),
       claimText,
@@ -1929,6 +1987,7 @@ export function buildWmoMonthlyWeatherPayload(
     발리: ['발리', '덴파사르'],
     오키나와: ['오키나와', '나하'],
     호치민: ['호치민', '호찌민시'],
+    서안: ['서안', '시안'],
   };
   const normalizePlace = (value: unknown): string => clean(value)
     .normalize('NFKC')
@@ -2035,6 +2094,180 @@ export function buildWmoMonthlyWeatherPayload(
       normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
       unit: '월별 기후 지표',
     })),
+  };
+}
+
+function parseJmaClimateRows(text: string): string[][] {
+  const pattern = new RegExp(
+    `${JMA_CLIMATE_ROW_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(.*?)`
+      + JMA_CLIMATE_ROW_END_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    'g',
+  );
+  return [...text.matchAll(pattern)].flatMap((match) => {
+    try {
+      const parsed = JSON.parse(match[1] ?? '') as unknown;
+      return Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')
+        ? [parsed as string[]]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function buildJmaMonthlyWeatherPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+): GroundedBlogResearchPayload | null {
+  const stationAliases: Record<string, string[]> = {
+    나가사키: ['長崎'],
+    시즈오카: ['静岡'],
+    유후인: ['湯布院'],
+  };
+  const normalizePlace = (value: unknown): string => clean(value)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[（）(),\s-]+/g, '');
+  const acceptedStations = new Set(
+    [destination, ...(stationAliases[destination] ?? [])].map(normalizePlace),
+  );
+  const parsedPages = pages.flatMap((page, pageIndex) => {
+    try {
+      const url = new URL(page.url);
+      if (url.hostname.toLowerCase() !== 'data.jma.go.jp'
+        && !url.hostname.toLowerCase().endsWith('.data.jma.go.jp')
+        || !/^\/stats\/etrn\/view\/nml_(?:amd|sfc)_ym\.php$/.test(url.pathname)) {
+        return [];
+      }
+      const station = page.text.match(/^(.+?)[（(][^)）]+[)）]/)?.[1] ?? '';
+      if (!acceptedStations.has(normalizePlace(station))) return [];
+      const tableRows = parseJmaClimateRows(page.text);
+      const period = tableRows
+        .find((row) => row[0] === '統計期間')
+        ?.find((value) => /^(?:19|20)\d{2}～(?:19|20)\d{2}$/.test(value));
+      const periodMatch = period?.match(/^((?:19|20)\d{2})～((?:19|20)\d{2})$/);
+      if (!periodMatch) return [];
+      const rows = new Map<number, string[]>();
+      for (const row of tableRows) {
+        const monthMatch = row[0]?.match(/^(\d{1,2})月$/);
+        if (!monthMatch) continue;
+        const monthNumber = Number(monthMatch[1]);
+        if (monthNumber >= 1 && monthNumber <= 12) rows.set(monthNumber, row);
+      }
+      if (rows.size !== 12) return [];
+      return [{
+        pageIndex,
+        url,
+        rows,
+        periodStart: periodMatch[1]!,
+        periodEnd: periodMatch[2]!,
+        isAmedas: url.pathname.includes('nml_amd_ym.php'),
+        view: url.searchParams.get('view') ?? '',
+      }];
+    } catch {
+      return [];
+    }
+  });
+  const temperaturePage = parsedPages.find((page) =>
+    page.isAmedas ? page.view === '' || page.view === 'p1' : page.view === 'p1s');
+  const precipitationPage = parsedPages.find((page) => page.view === 'a1');
+  if (!temperaturePage
+    || !precipitationPage
+    || temperaturePage.periodStart !== precipitationPage.periodStart
+    || temperaturePage.periodEnd !== precipitationPage.periodEnd) {
+    return null;
+  }
+
+  const numericValue = (value: unknown): string | null => {
+    const normalized = clean(value).replace(/\s*@$/, '');
+    return /^-?\d+(?:\.\d+)?$/.test(normalized) ? normalized : null;
+  };
+  const rows = Array.from({ length: 12 }, (_, index) => {
+    const monthNumber = index + 1;
+    const temperatureRow = temperaturePage.rows.get(monthNumber) ?? [];
+    const precipitationRow = precipitationPage.rows.get(monthNumber) ?? [];
+    const maxTemp = numericValue(temperatureRow[temperaturePage.isAmedas ? 3 : 5]);
+    const minTemp = numericValue(temperatureRow[temperaturePage.isAmedas ? 4 : 6]);
+    const rainfall = numericValue(precipitationRow[precipitationPage.isAmedas ? 1 : 3]);
+    const rainDays = numericValue(precipitationRow[precipitationPage.isAmedas ? 2 : 6]);
+    return maxTemp && minTemp && rainfall && rainDays
+      ? { monthNumber, maxTemp, minTemp, rainfall, rainDays }
+      : null;
+  });
+  if (rows.some((row) => !row)) return null;
+
+  const period = `${temperaturePage.periodStart}~${temperaturePage.periodEnd}`;
+  const destinationKey = normalizePlace(destination);
+  const temperatureSourceKey = `jma-temperature-${destinationKey}`;
+  const precipitationSourceKey = `jma-precipitation-${destinationKey}`;
+  return {
+    sources: [
+      {
+        sourceKey: temperatureSourceKey,
+        groundingChunkIndex: temperaturePage.pageIndex,
+        publisher: '일본 기상청',
+        sourceType: 'meteorological_agency',
+        claimTypes: ['climate'],
+        country: '일본',
+        destination,
+      },
+      {
+        sourceKey: precipitationSourceKey,
+        groundingChunkIndex: precipitationPage.pageIndex,
+        publisher: '일본 기상청',
+        sourceType: 'meteorological_agency',
+        claimTypes: ['climate'],
+        country: '일본',
+        destination,
+      },
+    ],
+    evidence: rows.flatMap((row) => {
+      if (!row) return [];
+      return [
+        {
+          evidenceKey: `jma-temperature-month-${row.monthNumber}`,
+          sourceKey: temperatureSourceKey,
+          excerpt: `${period} 평년값: ${row.monthNumber}월 최고기온 ${row.maxTemp}°C, 최저기온 ${row.minTemp}°C`,
+          sourceLocator: `平年値 row ${row.monthNumber}月 temperature`,
+          claimType: 'climate',
+          riskLevel: 'LOW',
+          country: '일본',
+          destination,
+          applicableTo: `${destination} 여행자`,
+          normalizedValue: [row.maxTemp, row.minTemp].join('|'),
+          unit: '월별 기온 지표',
+          conditions: [`${row.monthNumber}월`, `${period} 평년값`],
+        },
+        {
+          evidenceKey: `jma-precipitation-month-${row.monthNumber}`,
+          sourceKey: precipitationSourceKey,
+          excerpt: `${period} 평년값: ${row.monthNumber}월 강수량 ${row.rainfall}mm, 강수일수 ${row.rainDays}일`,
+          sourceLocator: `平年値 row ${row.monthNumber}月 precipitation`,
+          claimType: 'climate',
+          riskLevel: 'LOW',
+          country: '일본',
+          destination,
+          applicableTo: `${destination} 여행자`,
+          normalizedValue: [row.rainfall, row.rainDays].join('|'),
+          unit: '월별 강수 지표',
+          conditions: [`${row.monthNumber}월`, `${period} 평년값`, '강수일수는 1.0mm 이상 일수'],
+        },
+      ];
+    }),
+    claims: rows.flatMap((row) => {
+      if (!row) return [];
+      return [{
+        claimText: `${period} 평년값: ${row.monthNumber}월 최고기온 ${row.maxTemp}°C, 최저기온 ${row.minTemp}°C, 강수량 ${row.rainfall}mm, 강수일수 ${row.rainDays}일`,
+        claimType: 'climate',
+        riskLevel: 'LOW',
+        evidenceKeys: [
+          `jma-temperature-month-${row.monthNumber}`,
+          `jma-precipitation-month-${row.monthNumber}`,
+        ],
+        normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+        unit: '월별 기후 지표',
+      }];
+    }),
   };
 }
 
@@ -2733,6 +2966,7 @@ export async function researchBlogInformationAutomatically(input: {
     }
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
+        ?? buildJmaMonthlyWeatherPayload(reviewedPages, input.destination)
         ?? buildPagasaMonthlyWeatherPayload(reviewedPages, input.destination)
       : input.brief.intentType === 'hotel_areas'
         ? buildGuamHotelAreasPayload(reviewedPages, input.destination)

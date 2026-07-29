@@ -1,6 +1,6 @@
 # Blog Errors
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 ## ERR-BLOG-local-transit-misclassified-as-airport@2026-07-28
 
@@ -359,3 +359,4 @@ Last updated: 2026-07-28
 - **Root cause**: Most rows predated editorial-variation metadata, the four-way assignment used a weak small-modulo hash, and `section_order_variant` changed labels without moving the actual sections.
 - **Fix**: Version the variation contract, use a stable SHA-256 assignment, reorder the five intact weather sections, and let the existing-post backfill migrate only evidence-safe prose and structure while preserving claims, tables, sources, images, and canonical identity.
 - **Verification rule**: The 13-destination regression fleet must use all four opening and section-order variants with no variant above five rows. Backfill write must be followed by an idempotent dry-run, public customer-quality/SEO/image audits, and fleet phrase-drift diagnosis.
+- [x] **ERR-BLOG-climate-url-without-complete-data@2026-07-30** (a reviewed weather URL could be counted as research coverage even when its city climate table was empty, incomplete, or split across pages): A hostname and destination allowlist proved document relevance but not operational claim completeness. **Fix**: new climate destinations are admitted only after live deterministic parsing of the exact station, normals period, 12 months, and all four monthly decision fields. JMA temperature and precipitation tables are extracted with stable row markers and must jointly support each composite claim; the `>=1.0 mm` column is the explicit rain-day definition. Existing complete WMO single-feed evidence remains compatible. **Verification**: live WMO Xi'an and JMA Nagasaki/Shizuoka/Yufuin feeds each produced 12 complete claims with no fetch failures; incomplete or destination-mismatched fixtures fail closed. **Prevention**: never equate an HTTP 200 city page with research readiness, never substitute a nearby station without explicit review, and never attach a composite weather claim to only one of multiple source tables.
