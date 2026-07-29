@@ -29,7 +29,16 @@ function source(path: string): string {
 describe('public blog surface contract', () => {
   it.each(PUBLIC_SURFACES)('%s reads blog rows from the canonical public source', (path) => {
     const contents = source(path);
-    expect(contents).toContain('PUBLIC_BLOG_READ_SOURCE');
+    expect(
+      contents.includes('PUBLIC_BLOG_READ_SOURCE')
+      || contents.includes('loadPublicBlogCatalog'),
+    ).toBe(true);
+    expect(contents).not.toContain(".from('content_creatives')");
+  });
+
+  it('keeps the shared public catalog on the canonical public source', () => {
+    const contents = source('src/lib/blog-public-catalog.ts');
+    expect(contents).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
     expect(contents).not.toContain(".from('content_creatives')");
   });
 
@@ -40,12 +49,13 @@ describe('public blog surface contract', () => {
       contents.indexOf('const offset ='),
     );
     const publicListBranch = contents.slice(
-      contents.indexOf('let query = supabaseAdmin', contents.indexOf('const offset =')),
-      contents.indexOf('if (destination)'),
+      contents.indexOf('const offset ='),
+      contents.indexOf('const payload:'),
     );
 
-    expect(publicSlugBranch).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
-    expect(publicListBranch).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(publicSlugBranch).toContain('loadPublicBlogCatalog()');
+    expect(publicListBranch).toContain('loadPublicBlogCatalog()');
+    expect(source('src/lib/blog-public-catalog.ts')).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
   });
 
   it('does not synthesize fallback articles for public detail, list, API, or sitemap output', () => {
@@ -75,11 +85,16 @@ describe('public blog surface contract', () => {
     expect(revalidateIndex).toBeGreaterThan(decisionIndex);
   });
 
-  it('does not downgrade taxonomy database outages into indexable empty pages', () => {
+  it('labels taxonomy database outages instead of presenting them as empty categories', () => {
     const angle = source('src/app/blog/angle/[angle]/page.tsx');
     const destination = source('src/app/blog/destination/[dest]/page.tsx');
 
-    expect(angle).not.toContain('return { posts: [], recommendedPackages: [], unavailable: true }');
-    expect(destination).not.toContain('return { destination: fallbackDestination, posts: [], packages: [], unavailable: true }');
+    expect(angle).toContain('return { posts: [], recommendedPackages: [], unavailable: true }');
+    expect(angle).toContain('unavailable ? (');
+    expect(angle).toContain('발행 글이 없는 상태가 아니라 DB 응답 지연입니다.');
+    expect(destination).toContain('posts: [],');
+    expect(destination).toContain('unavailable: true');
+    expect(destination).toContain('unavailable ? (');
+    expect(destination).toContain('발행 글이 없는 상태가 아니라 DB 응답 지연입니다.');
   });
 });

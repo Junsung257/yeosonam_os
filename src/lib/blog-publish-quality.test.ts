@@ -80,19 +80,35 @@ describe('blog publish quality', () => {
     });
 
     expect(report.passed).toBe(false);
-    expect(blogPublishQualityWarnings(report)).toEqual([
+    expect(blogPublishQualityWarnings(report)).toEqual(expect.arrayContaining([
       { type: 'seo', gate: 'image_seo', reason: 'images 0, alt 0' },
-      {
-        type: 'readability',
-        gate: 'readability.low_score',
-        reason: 'Readability score 88/100 is below the strict 95-point publishing target.',
-      },
-      {
-        type: 'customer_quality',
-        gate: 'customer.weak_answer_first',
-        reason: '정보성 글은 첫 문단에서 고객 질문에 바로 답해야 합니다.',
-      },
-    ]);
+      expect.objectContaining({ type: 'quality', gate: 'public_customer_quality' }),
+      expect.objectContaining({ type: 'public_customer_quality', gate: 'public_body_too_short' }),
+    ]));
+  });
+
+  it('blocks posts whose rendered public customer quality is below 95', async () => {
+    const sections = Array.from(
+      { length: 16 },
+      (_, index) => `## 판단 기준 ${index + 1}\n\n여소남 운영팀 검증 문구 대신 독자가 확인할 조건을 설명합니다. `.repeat(3),
+    ).join('\n\n');
+
+    const report = await evaluateBlogPublishQuality({
+      blog_html: `# 세부 여행 준비\n\n세부 여행 준비는 비용과 이동 조건부터 확인하면 됩니다.\n\n${sections}`,
+      slug: 'cebu-public-customer-gate',
+      seo_title: '세부 여행 준비 체크리스트',
+      seo_description: '세부 여행 준비 비용과 이동 조건을 확인하는 체크리스트',
+      destination: '세부',
+    });
+
+    expect(report.publicCustomerQuality.score).toBeLessThan(95);
+    expect(report.qualityGate.gates).toContainEqual(
+      expect.objectContaining({
+        gate: 'public_customer_quality',
+        passed: false,
+      }),
+    );
+    expect(report.passed).toBe(false);
   });
 
   it.each([

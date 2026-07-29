@@ -44,11 +44,12 @@ describe('blog API and editorial audit contracts', () => {
     expect(route).toContain('{ status: 409 }');
   });
 
-  it('uses exact list counts and does not index a draft through force revalidation', () => {
+  it('uses the shared catalog for exact in-memory pagination and does not index a draft through force revalidation', () => {
     const route = source('src/app/api/blog/route.ts');
 
-    expect(route).toContain(".select(BLOG_LIST_SELECT, { count: 'exact' })");
-    expect(route).toContain('.range(offset, offset + limit - 1)');
+    expect(route).toContain('const catalog = await loadPublicBlogCatalog()');
+    expect(route).toContain('const total = matchingPosts.length');
+    expect(route).toContain('matchingPosts.slice(offset, offset + limit)');
     expect(route).toContain("target.status !== 'published' || reviewBlock");
     expect(route).toContain('Only an approved published article can be reindexed');
   });

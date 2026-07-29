@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
 
-import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { getPackagesByAngle, type AnglePackage } from '@/lib/angle-matcher';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
@@ -11,23 +10,26 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_ANGLE_CACHE_TAG,
   createBlogDatabaseUnavailableError,
+  isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
-import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  loadPublicBlogCatalog,
+  type PublicBlogCatalogPost,
+} from '@/lib/blog-public-catalog';
 
 export const revalidate = 300;
 export const dynamicParams = true;
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 
-interface BlogPost {
-  id: string; slug: string; seo_title: string | null; seo_description: string | null;
-  og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-}
+type BlogPost = Pick<
+  PublicBlogCatalogPost,
+  'id' | 'slug' | 'seo_title' | 'seo_description' | 'og_image_url' | 'angle_type' | 'published_at' | 'destination'
+>;
 
 type AnglePageData = {
   posts: BlogPost[];
@@ -35,56 +37,8 @@ type AnglePageData = {
   unavailable: boolean;
 };
 
-type AbortableQuery<T> = {
-  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
-};
-
-type BlogAngleQueryResult<T> = T & { __blogQueryUnavailable?: true };
-
 function getDisplayImageUrl(post: BlogPost): string | null {
   return toBlogImageDisplaySrc(post.og_image_url);
-}
-
-function isBlogAngleQueryUnavailable(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return false;
-  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
-  if (maybeResult.__blogQueryUnavailable) return true;
-  const error = maybeResult.error;
-  if (!error) return false;
-  const message = typeof error === 'object' ? JSON.stringify(error) : String(error);
-  return /abort|timeout|timed out|connection timeout/i.test(message);
-}
-
-async function runBlogAngleQuery<T>(
-  label: string,
-  query: AbortableQuery<T>,
-  fallback: unknown,
-  timeoutMs = 6000,
-): Promise<T> {
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const unavailableFallback = () => {
-    if (fallback && typeof fallback === 'object') {
-      return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogAngleQueryResult<T>;
-    }
-    return fallback as T;
-  };
-  const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
-    console.warn(`[blog/angle] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
-    return unavailableFallback();
-  });
-  const timeoutPromise = new Promise<T>((resolve) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      console.warn(`[blog/angle] ${label} query timed out after ${timeoutMs}ms`);
-      resolve(unavailableFallback());
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([queryPromise, timeoutPromise]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 function getRouteParam(value: string | string[] | undefined): string {
@@ -92,37 +46,14 @@ function getRouteParam(value: string | string[] | undefined): string {
 }
 
 async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
-    throw createBlogDatabaseUnavailableError();
-  }
-  if (shouldSkipPublicDbReadsForResourceSaver()) {
-    throw createBlogDatabaseUnavailableError();
-  }
-
   try {
-    const postsResult = await runBlogAngleQuery(
-      'posts',
-      supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .eq('angle_type', angle)
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(60),
-      { data: [] as BlogPost[], error: null },
-      6000,
-    );
-
-    if (isBlogAngleQueryUnavailable(postsResult) || postsResult.error) {
-      throw createBlogDatabaseUnavailableError();
-    }
-
-    const recommendedPackages = await getPackagesByAngle(angle, 6);
+    const posts = (await loadPublicBlogCatalog())
+      .filter((post) => post.angle_type === angle)
+      .slice(0, 60) as BlogPost[];
+    const recommendedPackages = await getPackagesByAngle(angle, 6).catch(() => []);
 
     return {
-      posts: (postsResult.data || []) as unknown as BlogPost[],
+      posts,
       recommendedPackages,
       unavailable: false,
     };
@@ -140,7 +71,12 @@ const getCachedAnglePageData = unstable_cache(
 );
 
 async function getAnglePageData(angle: string): Promise<AnglePageData> {
-  return getCachedAnglePageData(angle);
+  try {
+    return await getCachedAnglePageData(angle);
+  } catch (error) {
+    if (!isBlogDatabaseUnavailableError(error)) throw error;
+    return { posts: [], recommendedPackages: [], unavailable: true };
+  }
 }
 
 export function generateStaticParams() {

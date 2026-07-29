@@ -7,7 +7,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -129,7 +129,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
   ];
 
-  const [packageDestinations, queriedPosts] = await Promise.all([
+  const [packageDestinations, canonicalPosts] = await Promise.all([
     runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
       supabaseAdmin
         .from('travel_packages')
@@ -140,27 +140,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .limit(PACKAGE_LIMIT)
         .abortSignal(signal),
     ),
-    runSitemapQuery<{
-      slug: string;
-      destination: string | null;
-      angle_type: string | null;
-      published_at: string | null;
-      updated_at: string | null;
-      product_id: string | null;
-      generation_meta: Record<string, unknown> | null;
-    }>('blog', (signal) =>
-      supabaseAdmin
-        .from(PUBLIC_BLOG_READ_SOURCE)
-        .select('slug, destination, angle_type, published_at, updated_at, product_id, generation_meta')
-        .eq('status', 'published')
-        .eq('channel', 'naver_blog')
-        .not('slug', 'is', null)
-        .order('published_at', { ascending: false })
-        .limit(BLOG_LIMIT)
-        .abortSignal(signal),
-    ),
+    loadPublicBlogCatalog()
+      .then((posts) => posts.slice(0, BLOG_LIMIT))
+      .catch((error) => {
+        console.warn('[sitemap] shared blog catalog unavailable:', error);
+        return [];
+      }),
   ]);
-  const canonicalPosts = queriedPosts;
 
   const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
     packageDestinations.filter(isSitemapPublicSnapshotCandidate),
