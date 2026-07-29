@@ -47,7 +47,9 @@ const ROMAN_MAP: Record<string, string> = {
   '캐나다': 'canada', '로키산맥': 'rockies', '밴프': 'banff', '레이크 루이스': 'lake-louise',
   // 유럽
   '파리': 'paris', '런던': 'london', '로마': 'rome', '바르셀로나': 'barcelona',
-  '프라하': 'prague', '부다페스트': 'budapest', '빈': 'vienna',
+  '프라하': 'prague', '부다페스트': 'budapest', '빈': 'vienna', '이스탄불': 'istanbul',
+  // 오세아니아
+  '멜버른': 'melbourne',
   // 한국
   '부산': 'busan', '서울': 'seoul', '제주': 'jeju', '인천': 'incheon',
 };
@@ -106,6 +108,18 @@ export function romanize(dest: string): string {
   if (romanParts.length > 0) return romanParts.join('-');
   // 매핑 실패 시 알파벳/숫자만 유지 (한글 제거)
   return dest.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+export function slugIncludesDestination(slug: unknown, destination: unknown): boolean {
+  if (typeof slug !== 'string' || typeof destination !== 'string') return false;
+  const destinationSlug = romanize(destination.trim());
+  if (!destinationSlug) return false;
+
+  const normalizedSlug = slug.trim().toLowerCase();
+  return normalizedSlug === destinationSlug
+    || normalizedSlug.startsWith(`${destinationSlug}-`)
+    || normalizedSlug.includes(`-${destinationSlug}-`)
+    || normalizedSlug.endsWith(`-${destinationSlug}`);
 }
 
 /** 토픽(문장)을 안전한 영문 slug로 변환 — 모든 목적지명 로마자 변환 */

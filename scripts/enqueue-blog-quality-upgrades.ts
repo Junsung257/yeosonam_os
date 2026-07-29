@@ -14,6 +14,12 @@ import {
 } from '../src/lib/blog-quality-upgrade-selection';
 import { evaluatePublishedBlogQualityUpgradeCandidate } from '../src/lib/blog-quality-upgrade-candidate';
 import { buildBlogInformationRepresentativeKey } from '../src/lib/blog-information-representative';
+import {
+  hasReviewedBlogResearchCoverage,
+  type BlogResearchOfficialDocumentCapability,
+  type BlogResearchRegistryCapability,
+  type BlogResearchReputableCapability,
+} from '../src/lib/blog-research-capability';
 
 type PublishedBlog = {
   id: string;
@@ -33,6 +39,10 @@ type InformationRepresentative = {
   locale: string;
   status: string;
 };
+
+const DETERMINISTIC_BULK_UPGRADE_INTENTS = new Set<BlogInformationIntent>([
+  'monthly_weather',
+]);
 
 function argValue(name: string): string | null {
   const prefix = `${name}=`;
@@ -93,6 +103,50 @@ async function main() {
       microAngle,
     }));
 
+  const [registryResult, officialDocumentsResult, reputableSourcesResult] = await Promise.all([
+    supabaseAdmin
+      .from('blog_information_official_source_registry')
+      .select('id,source_type,status'),
+    supabaseAdmin
+      .from('blog_information_official_research_documents')
+      .select('official_source_registry_id,source_url,intents,destinations,status'),
+    supabaseAdmin
+      .from('blog_information_reputable_source_registry')
+      .select('source_types,intents,research_urls,research_destinations,status'),
+  ]);
+  if (registryResult.error) throw new Error(registryResult.error.message);
+  if (officialDocumentsResult.error) throw new Error(officialDocumentsResult.error.message);
+  if (reputableSourcesResult.error) throw new Error(reputableSourcesResult.error.message);
+
+  const registries = (registryResult.data ?? []) as BlogResearchRegistryCapability[];
+  const officialDocuments = (
+    officialDocumentsResult.data ?? []
+  ) as BlogResearchOfficialDocumentCapability[];
+  const reputableSources = (
+    reputableSourcesResult.data ?? []
+  ) as BlogResearchReputableCapability[];
+  const hasResearchCoverage = (
+    candidate: (typeof candidates)[number],
+  ): boolean => hasReviewedBlogResearchCoverage({
+    intent: candidate.brief.intentType,
+    destination: candidate.post.destination ?? '',
+    allowedSourceTypes: candidate.brief.sourcePolicy.sourceTypes,
+    registries,
+    officialDocuments,
+    reputableSources,
+  });
+  const researchCoveredCandidates = candidates.filter(hasResearchCoverage);
+  const researchNonDeterministicCandidates = researchCoveredCandidates.filter(
+    candidate => !DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  );
+  const researchCapableCandidates = researchCoveredCandidates.filter(
+    candidate => DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  );
+  const researchUnsupportedCandidates = candidates.filter(
+    candidate => !hasResearchCoverage(candidate)
+      || !DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  );
+
   const { data: representatives, error: representativesError } = await supabaseAdmin
     .from('blog_information_representatives')
     .select('canonical_creative_id,destination_id,intent,audience,locale,status')
@@ -109,7 +163,7 @@ async function main() {
       representative,
     ]),
   );
-  const canonicalCandidates = candidates.filter(({ post, representativeKey }) => {
+  const canonicalCandidates = researchCapableCandidates.filter(({ post, representativeKey }) => {
     const representative = representativeByIdentity.get(representativeKey);
     if (!representative) return true;
     return representative.status === 'active'
@@ -121,6 +175,31 @@ async function main() {
     candidate => candidate.representativeKey,
   );
   const uniqueCanonicalCandidates = sameRunDeduplication.selected;
+  const now = new Date().toISOString();
+
+  let unsupportedActiveUpgradesPruned = 0;
+  if (write && researchUnsupportedCandidates.length > 0) {
+    const unsupportedIds = researchUnsupportedCandidates.map(({ post }) => post.id);
+    for (let offset = 0; offset < unsupportedIds.length; offset += 100) {
+      const ids = unsupportedIds.slice(offset, offset + 100);
+      const { data, error } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .update({
+          status: 'skipped',
+          last_error: 'quality_upgrade_research_capability_unavailable',
+          updated_at: now,
+        })
+        .in('content_creative_id', ids)
+        .eq('source', 'user_seed')
+        .eq('status', 'queued')
+        .contains('meta', {
+          quality_upgrade: { version: 'published-research-upgrade-v1' },
+        })
+        .select('id');
+      if (error) throw new Error(error.message);
+      unsupportedActiveUpgradesPruned += data?.length ?? 0;
+    }
+  }
 
   const candidateIds = uniqueCanonicalCandidates.map(({ post }) => post.id);
   const activeIds = new Set<string>();
@@ -138,10 +217,46 @@ async function main() {
     }
   }
 
+  let activeUpgradesRetopiced = 0;
+  if (write && candidateIds.length > 0) {
+    const candidateByCreativeId = new Map(
+      uniqueCanonicalCandidates.map(candidate => [candidate.post.id, candidate]),
+    );
+    for (let offset = 0; offset < candidateIds.length; offset += 100) {
+      const ids = candidateIds.slice(offset, offset + 100);
+      const { data, error } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .select('id,content_creative_id,topic')
+        .in('content_creative_id', ids)
+        .eq('source', 'user_seed')
+        .eq('status', 'queued')
+        .contains('meta', {
+          quality_upgrade: { version: 'published-research-upgrade-v1' },
+        });
+      if (error) throw new Error(error.message);
+      for (const row of data ?? []) {
+        const candidate = candidateByCreativeId.get(row.content_creative_id ?? '');
+        if (!candidate || row.topic === candidate.queueTopic) continue;
+        const { error: updateError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            topic: candidate.queueTopic,
+            primary_keyword: candidate.queueTopic,
+            attempts: 0,
+            last_error: null,
+            updated_at: now,
+          })
+          .eq('id', row.id)
+          .eq('status', 'queued');
+        if (updateError) throw new Error(updateError.message);
+        activeUpgradesRetopiced += 1;
+      }
+    }
+  }
+
   const selected = uniqueCanonicalCandidates
     .filter(({ post }) => !activeIds.has(post.id))
     .slice(0, limit);
-  const now = new Date().toISOString();
   const rows = selected.map(({ post, microAngle, brief, queueTopic }, index) => {
     return {
       topic: queueTopic,
@@ -200,6 +315,10 @@ async function main() {
     published_checked: published.length,
     missing_verified_research: missingResearch.length,
     safe_automatic_candidates: uniqueCanonicalCandidates.length,
+    research_capability_unavailable_skipped: researchUnsupportedCandidates.length,
+    non_deterministic_research_upgrade_skipped: researchNonDeterministicCandidates.length,
+    active_unsupported_upgrades_pruned: unsupportedActiveUpgradesPruned,
+    active_upgrades_retopiced: activeUpgradesRetopiced,
     manual_review_or_invalid_skipped: evaluated.length - eligibleCandidates.length,
     rejection_reasons: rejectionReasons,
     operator_filter_skipped: eligibleCandidates.length - candidates.length,

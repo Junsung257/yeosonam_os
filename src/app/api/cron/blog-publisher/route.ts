@@ -62,7 +62,12 @@ import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
-import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
+import {
+  slugifyTopic,
+  romanize,
+  extractDestination,
+  slugIncludesDestination,
+} from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
 import {
   customerOpenContractBlogBlockReason,
@@ -505,8 +510,13 @@ function buildQueueSlug(item: any): string {
   const expected = item.meta?.expected_slug ?? item.meta?.spun_slug ?? item.slug_hint;
   const cleanTopic = String(item.topic || '').replace(/[\s—–-]*재작성\s*v\d+/gi, '').trim();
   const topicSlug = slugifyTopic(cleanTopic);
+  const destination = String(item.destination || extractDestination(cleanTopic) || '');
+  const hasKnownDestination = Boolean(romanize(destination));
 
-  if (isUsableBlogSlug(expected)) {
+  if (
+    isUsableBlogSlug(expected)
+    && (!hasKnownDestination || slugIncludesDestination(expected, destination))
+  ) {
     const cleanExpected = expected.trim().toLowerCase();
     const expectedLooksThin =
       !cleanExpected.includes('-') &&
@@ -515,7 +525,10 @@ function buildQueueSlug(item: any): string {
     if (!expectedLooksThin) return cleanExpected;
   }
 
-  if (isUsableBlogSlug(topicSlug)) return topicSlug;
+  if (
+    isUsableBlogSlug(topicSlug)
+    && (!hasKnownDestination || slugIncludesDestination(topicSlug, destination))
+  ) return topicSlug;
 
   return stableFallbackSlug(item);
 }
@@ -525,11 +538,21 @@ function normalizeGeneratedSlug(generated: GeneratedBlog, item: any): boolean {
   if (!isUsableBlogSlug(queueSlug) || generated.slug === queueSlug) return false;
 
   const current = String(generated.slug || '').trim().toLowerCase();
+  const destination = String(item.destination || extractDestination(String(item.topic || '')) || '');
   const queueHasCategory = /-(preparation|currency|weather|visa|budget|food|faq|itinerary|transport|guide)(-v\d+)?$/.test(queueSlug);
   const currentLooksThin = !current.includes('-') && queueSlug.includes('-') && queueHasCategory;
   const currentIsCategoryOnly = /^-?(preparation|currency|weather|visa|budget|food|faq|itinerary|transport|guide)(-v\d+)?$/.test(current);
+  const currentMissesKnownDestination =
+    Boolean(romanize(destination))
+    && slugIncludesDestination(queueSlug, destination)
+    && !slugIncludesDestination(current, destination);
 
-  if (!isUsableBlogSlug(current) || currentLooksThin || currentIsCategoryOnly) {
+  if (
+    !isUsableBlogSlug(current)
+    || currentLooksThin
+    || currentIsCategoryOnly
+    || currentMissesKnownDestination
+  ) {
     generated.slug = queueSlug;
     return true;
   }
