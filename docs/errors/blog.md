@@ -10,6 +10,13 @@ Last updated: 2026-07-28
 - **Prevention**: Every new informational intent must be added end to end: classifier, slots, source policy, research minimums, writer fixtures, structure validator, SEO, related links, CTA telemetry, representative constraint, atomic publication guard, source scopes, live suite, and operator documentation. A high aggregate writing score never overrides a mismatched reader-task contract.
 - **Generation-time follow-up**: The first production retry reached the corrected intent and reviewed bundle but exceeded the 120-second topic-generation budget because private atomic upgrades still ran optional SERP enrichment, a second Chain-of-Density model pass, and a separate cover-image request. After those calls were removed, the next retry passed topic generation but the whole function still timed out while rebuilding an image set even though the public target already had one cover and three inline assets. Private upgrades now reserve the request for evidence-backed content work, reuse the target's verified HTTPS image set, and fetch only a real shortfall. Asset refresh is a separate quality workflow rather than a blocker inside the atomic replacement.
 
+## ERR-BLOG-provider-call-consumed-generation-budget@2026-07-29
+
+- [x] **ERR-BLOG-provider-call-consumed-generation-budget@2026-07-29**: A targeted evidence-backed upgrade repeatedly reached `topic_generation_timeout:120000ms` while its public predecessor correctly remained live.
+- **Root cause**: The publisher had an outer writer timeout, but the Gemini and DeepSeek SDK calls had no per-provider request deadline. A stalled first provider consumed the entire writer window, so the prepared fallback provider never ran. The cascade could also retry the policy provider after that provider had already failed.
+- **Fix**: Pass real SDK request timeouts through the shared blog AI caller, disable provider SDK retries inside the bounded publisher path, reserve 30 seconds for Gemini and 50 seconds for DeepSeek, and deduplicate the final policy-provider attempt.
+- **Prevention**: Tests assert timeout propagation, first-provider failure to fallback-provider success, and no duplicate provider retry. Production proof must show the protected targeted upgrade finishing without `topic_generation_timeout` while preserving the prior public row until the atomic quality gate passes.
+
 ## ERR-BLOG-research-scheduler-serial-timeout@2026-07-28
 
 - [x] **ERR-BLOG-research-scheduler-serial-timeout@2026-07-28**: Intent-diverse preparation correctly continued past a weather-only ready buffer, but researched candidates serially and exceeded Vercel's 180-second function limit.

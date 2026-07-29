@@ -192,6 +192,8 @@ const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL'
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 3, 0, 3);
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
+const BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS = 30_000;
+const BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS = 50_000;
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
 const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
@@ -319,7 +321,15 @@ function generatePublisherBlogText(
   options: Parameters<typeof generateBlogText>[1] = {},
 ): Promise<string> {
   return withPublisherTimeout(
-    generateBlogText(prompt, options),
+    generateBlogText(prompt, {
+      ...options,
+      cascade: {
+        firstTry: 'gemini',
+        fallback: 'deepseek',
+        firstTryTimeoutMs: BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS,
+        fallbackTimeoutMs: BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS,
+      },
+    }),
     BLOG_PUBLISHER_AI_TIMEOUT_MS,
     'blog_ai_generation',
   );

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
   const dsCreate = vi.fn();
   const claudeCreate = vi.fn();
   const geminiGenContent = vi.fn();
+  const geminiGetGenerativeModel = vi.fn(() => ({ generateContent: geminiGenContent }));
 
   // class constructor mock — `new OpenAI(...)` 호출 시 인스턴스 1회 생성 추적
   const OpenAICtor = vi.fn(function (this: { chat: unknown }) {
@@ -22,10 +23,18 @@ const mocks = vi.hoisted(() => {
     this.messages = { create: claudeCreate };
   });
   const GeminiCtor = vi.fn(function (this: { getGenerativeModel: unknown }) {
-    this.getGenerativeModel = vi.fn(() => ({ generateContent: geminiGenContent }));
+    this.getGenerativeModel = geminiGetGenerativeModel;
   });
 
-  return { dsCreate, claudeCreate, geminiGenContent, OpenAICtor, AnthropicCtor, GeminiCtor };
+  return {
+    dsCreate,
+    claudeCreate,
+    geminiGenContent,
+    geminiGetGenerativeModel,
+    OpenAICtor,
+    AnthropicCtor,
+    GeminiCtor,
+  };
 });
 
 vi.mock('openai', () => ({ default: mocks.OpenAICtor }));
@@ -55,6 +64,7 @@ describe('blog-ai-caller — 공개 API', () => {
     mocks.dsCreate.mockClear();
     mocks.claudeCreate.mockClear();
     mocks.geminiGenContent.mockClear();
+    mocks.geminiGetGenerativeModel.mockClear();
     // 모듈-레벨 캐시 변수 리셋
     const mod = await import('./blog-ai-caller');
     mod._resetBlogAiClientCacheForTest();
@@ -96,7 +106,7 @@ describe('blog-ai-caller — 공개 API', () => {
 
   it('API 키 교체 → 새 SDK 인스턴스 생성 (캐시 무효화)', async () => {
     process.env.DEEPSEEK_API_KEY = 'sk-test-1';
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: '{}' } }] });
+    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: '{"ok":true}' } }] });
 
     const { generateBlogJSON } = await import('./blog-ai-caller');
     await generateBlogJSON('p1');
@@ -110,7 +120,7 @@ describe('blog-ai-caller — 공개 API', () => {
 
   it('generateBlogText 도 같은 인스턴스 공유 (provider 별 1개)', async () => {
     process.env.DEEPSEEK_API_KEY = 'sk-test';
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'plain text' } }] });
+    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'plain text response long enough' } }] });
 
     const { generateBlogJSON, generateBlogText } = await import('./blog-ai-caller');
     await generateBlogJSON('p1');
@@ -118,5 +128,62 @@ describe('blog-ai-caller — 공개 API', () => {
     await generateBlogJSON('p3');
 
     expect(mocks.OpenAICtor).toHaveBeenCalledTimes(1); // JSON / text 가 인스턴스 공유
+  });
+
+  it('passes a per-provider timeout to the underlying SDK request', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'plain text result' } }] });
+
+    const { generateBlogText } = await import('./blog-ai-caller');
+    await generateBlogText('p1', {
+      cascade: false,
+      requestTimeoutMs: 12_345,
+    });
+
+    expect(mocks.dsCreate).toHaveBeenCalledWith(
+      expect.any(Object),
+      { timeout: 12_345, maxRetries: 0 },
+    );
+  });
+
+  it('moves to the fallback provider when the first provider times out', async () => {
+    process.env.GEMINI_API_KEY = 'gemini-test';
+    process.env.DEEPSEEK_API_KEY = 'deepseek-test';
+    mocks.geminiGenContent.mockRejectedValue(new Error('request timed out'));
+    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'fallback article response long enough' } }] });
+
+    const { generateBlogText } = await import('./blog-ai-caller');
+    const result = await generateBlogText('p1', {
+      cascade: {
+        firstTry: 'gemini',
+        fallback: 'deepseek',
+        firstTryTimeoutMs: 30_000,
+        fallbackTimeoutMs: 50_000,
+      },
+    });
+
+    expect(result).toBe('fallback article response long enough');
+    expect(mocks.geminiGetGenerativeModel).toHaveBeenCalledWith(
+      expect.any(Object),
+      { timeout: 30_000 },
+    );
+    expect(mocks.geminiGenContent).toHaveBeenCalledWith('p1');
+    expect(mocks.dsCreate).toHaveBeenCalledWith(
+      expect.any(Object),
+      { timeout: 50_000, maxRetries: 0 },
+    );
+  });
+
+  it('does not retry the same policy provider after both cascade providers fail', async () => {
+    process.env.GEMINI_API_KEY = 'gemini-test';
+    process.env.DEEPSEEK_API_KEY = 'deepseek-test';
+    mocks.geminiGenContent.mockRejectedValue(new Error('gemini failed'));
+    mocks.dsCreate.mockRejectedValue(new Error('deepseek failed'));
+
+    const { generateBlogText } = await import('./blog-ai-caller');
+    await expect(generateBlogText('p1')).rejects.toThrow(/cascade.*all failed/i);
+
+    expect(mocks.geminiGenContent).toHaveBeenCalledTimes(1);
+    expect(mocks.dsCreate).toHaveBeenCalledTimes(1);
   });
 });

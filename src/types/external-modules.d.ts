@@ -64,15 +64,20 @@ declare module '@google/generative-ai' {
     totalTokens: number;
   };
 
+  export type RequestOptions = {
+    timeout?: number;
+    signal?: AbortSignal;
+  };
+
   export type GenerativeModel = {
-    generateContent(input: unknown): Promise<GenerateContentResult>;
+    generateContent(input: unknown, requestOptions?: RequestOptions): Promise<GenerateContentResult>;
     generateContentStream?(input: unknown): Promise<unknown>;
     countTokens?(input: unknown): Promise<CountTokensResult>;
   };
 
   export class GoogleGenerativeAI {
     constructor(apiKey: string);
-    getGenerativeModel(config: Record<string, unknown>): GenerativeModel;
+    getGenerativeModel(config: Record<string, unknown>, requestOptions?: RequestOptions): GenerativeModel;
   }
 }
 
