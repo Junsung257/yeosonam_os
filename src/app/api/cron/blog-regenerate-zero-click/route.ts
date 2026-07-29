@@ -60,7 +60,7 @@ interface PublishedPost {
 
 interface RegenResult {
   slug: string;
-  status: 'queued_upgrade' | 'cooldown' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review' | 'research_coverage_missing';
+  status: 'queued_upgrade' | 'cooldown' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review' | 'research_coverage_missing' | 'same_run_representative_conflict';
   reason?: string;
   queueId?: string;
 }
@@ -296,6 +296,7 @@ async function runRegenerator(request: NextRequest) {
     ) as BlogResearchReputableCapability[];
 
     const rejectionCounts: Record<string, number> = {};
+    const selectedRepresentativeKeys = new Set<string>();
     let considered = 0;
     let queued = 0;
 
@@ -349,6 +350,17 @@ async function runRegenerator(request: NextRequest) {
         )
       ) {
         rejectionCounts.representative_conflict = (rejectionCounts.representative_conflict ?? 0) + 1;
+        continue;
+      }
+      if (selectedRepresentativeKeys.has(decision.representativeKey)) {
+        rejectionCounts.same_run_representative_conflict = (
+          rejectionCounts.same_run_representative_conflict ?? 0
+        ) + 1;
+        results.push({
+          slug,
+          status: 'same_run_representative_conflict',
+          reason: decision.representativeKey,
+        });
         continue;
       }
 
@@ -424,6 +436,7 @@ async function runRegenerator(request: NextRequest) {
             quality_upgrade: {
               version: 'published-research-upgrade-v2',
               enqueued_at: new Date().toISOString(),
+              representative_key: decision.representativeKey,
               reason: selectionSource === 'public_customer_quality'
                 ? 'public_customer_quality_upgrade'
                 : selectionSource === 'zero_click'
@@ -442,17 +455,29 @@ async function runRegenerator(request: NextRequest) {
         .select('id')
         .limit(1);
       if (queueError) {
-        errors.push(`${slug} queue insert failed: ${queueError.message}`);
+        const representativeRace = queueError.code === '23505';
+        if (!representativeRace) {
+          errors.push(`${slug} queue insert failed: ${queueError.message}`);
+        }
         if (logId) {
           await supabaseAdmin
             .from('blog_regenerate_log')
-            .update({ gate_summary: `queue_failed:${queueError.message}`.slice(0, 1000) })
+            .update({
+              gate_summary: `${
+                representativeRace ? 'representative_race_skipped' : 'queue_failed'
+              }:${queueError.message}`.slice(0, 1000),
+            })
             .eq('id', logId);
         }
-        results.push({ slug, status: 'queue_failed', reason: queueError.message });
+        results.push({
+          slug,
+          status: representativeRace ? 'race_skipped' : 'queue_failed',
+          reason: queueError.message,
+        });
         continue;
       }
 
+      selectedRepresentativeKeys.add(decision.representativeKey);
       queued += 1;
       results.push({ slug, status: 'queued_upgrade', queueId: queueRows?.[0]?.id });
     }

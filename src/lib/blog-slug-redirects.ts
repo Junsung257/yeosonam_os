@@ -61,6 +61,7 @@ export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
   'bangkok-weather-clothes-checklist-2026': 'bangkok-june-rainy-season-weather-preparation-2026',
   'nhatrang-weather': 'nhatrang-6',
   'bali-weather-packing': 'bali-july-weather-checklist',
+  'manila-6-weather-complete-guide': 'manila-weather',
 };
 
 export const BLOG_SLUG_REDIRECT_TOMBSTONES = new Set([
