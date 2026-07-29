@@ -40,6 +40,10 @@ type InformationRepresentative = {
   status: string;
 };
 
+const DETERMINISTIC_BULK_UPGRADE_INTENTS = new Set<BlogInformationIntent>([
+  'monthly_weather',
+]);
+
 function argValue(name: string): string | null {
   const prefix = `${name}=`;
   const found = process.argv.find(arg => arg.startsWith(prefix));
@@ -131,8 +135,17 @@ async function main() {
     officialDocuments,
     reputableSources,
   });
-  const researchCapableCandidates = candidates.filter(hasResearchCoverage);
-  const researchUnsupportedCandidates = candidates.filter(candidate => !hasResearchCoverage(candidate));
+  const researchCoveredCandidates = candidates.filter(hasResearchCoverage);
+  const researchNonDeterministicCandidates = researchCoveredCandidates.filter(
+    candidate => !DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  );
+  const researchCapableCandidates = researchCoveredCandidates.filter(
+    candidate => DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  );
+  const researchUnsupportedCandidates = candidates.filter(
+    candidate => !hasResearchCoverage(candidate)
+      || !DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  );
 
   const { data: representatives, error: representativesError } = await supabaseAdmin
     .from('blog_information_representatives')
@@ -303,6 +316,7 @@ async function main() {
     missing_verified_research: missingResearch.length,
     safe_automatic_candidates: uniqueCanonicalCandidates.length,
     research_capability_unavailable_skipped: researchUnsupportedCandidates.length,
+    non_deterministic_research_upgrade_skipped: researchNonDeterministicCandidates.length,
     active_unsupported_upgrades_pruned: unsupportedActiveUpgradesPruned,
     active_upgrades_retopiced: activeUpgradesRetopiced,
     manual_review_or_invalid_skipped: evaluated.length - eligibleCandidates.length,
