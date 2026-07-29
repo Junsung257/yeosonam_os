@@ -37,6 +37,14 @@ A day is healthy only when all of these are true:
 
 - `npm run audit:blog-public-customer-quality -- --limit=500 --min-score=95 --strict` completes the entire sitemap/API corpus. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.
 - A public customer audit failure is classified before repair. Rendering/duplication defects may use deterministic presentation cleanup; factual, freshness, intent, or evidence defects enter reviewed atomic replacement. Never raise a persisted score to close a public-render finding.
+- The full public audit defaults to bounded concurrency 6 and two transient
+  retries. Use `--concurrency=1` only for incident isolation; do not remove URL
+  decoding before target deduplication. Confirm `checked` equals the unique API
+  catalog count before accepting category results.
+- A detail page returning HTTP 200 with only its title or table of contents is a
+  failure, not a healthy stale response. Check the versioned detail cache and
+  `hasUsableBlogBody`; a low editorial score belongs to the recovery queue and
+  must not force a database refresh on every reader request.
 - If collection routes emit `BLOG_DATABASE_UNAVAILABLE`, compare the database execution time with request concurrency. A fast direct query plus clustered `/blog`, destination, angle, API, and sitemap misses indicates a catalog stampede. Verify every collection consumer uses `loadPublicBlogCatalog()` before increasing timeouts.
 - `/admin/blog` shows the blog OS level as `정상` or an accepted `관찰`.
 - Today's published count is at or above the global publishing policy target.
@@ -63,6 +71,12 @@ A day is healthy only when all of these are true:
 - `rank_history` freshness is an operating dependency, not an optional dashboard detail. `serp-rank-snapshot`, `gsc-index-rank`, and `rank-tracking` have external retry schedules at 06:40, 11:40, and 12:10 KST. Their cron logging guards must remain below the route's serverless limit but above the measured handler runtime; a 45-second generic guard is invalid for the two five-minute routes.
 - If `rank-tracking` reports `ON CONFLICT DO UPDATE command cannot affect row a second time`, the GSC response was not grouped by the durable key before upsert. The current route must aggregate duplicate `(slug, query)` rows, recalculate CTR, and store one canonical www row. Do not retry the unchanged batch.
 - At 21:45 KST Vercel and 21:50 KST the external scheduler call `blog-regenerate-zero-click`. The route queues no more than two published in-place upgrades. Google zero-click priority applies only to `gsc`/`gsc-page` rows and articles published at least 14 days ago; Naver/Serp rows are rank observations, not impression evidence. When mature Google data is absent the route falls back to missing-research legacy posts, while preserving explicit-intent classification, representative ownership, high-risk review, cooldown, and atomic replacement gates.
+- Before applying those search fallbacks, the route renders the current public
+  bodies with bounded concurrency and prioritizes any score below 95, lowest
+  first. Read `public_quality_audited`,
+  `public_quality_gap_candidates`, and the queue metadata
+  `quality_upgrade.public_customer_quality` when diagnosing why a row was
+  selected.
 - If every safe recovery candidate fails with `blog_regenerate_log_reason_check`, compare the producer's selection sources with the live check constraint before retrying. `quality_gap` is a valid automatic reason, and the automatic daily unique index must cover both `zero_click` and `quality_gap`; do not substitute a misleading legacy reason merely to bypass the database contract.
 - If all 12 monthly weather claims fail with `normalized_value_mismatch,unit_mismatch`, inspect the stored weather bundle before retrying. A legacy WMO payload may have retained only highest temperature with unit `°C`; the current readiness path must normalize all four values to the composite climate contract before persistence and claim validation.
 - `research_coverage_missing` is a healthy fail-closed result for published-post recovery. Add and live-review destination-scoped first-party documents before retrying; never broaden a regional document to an entire country merely to make generation proceed.

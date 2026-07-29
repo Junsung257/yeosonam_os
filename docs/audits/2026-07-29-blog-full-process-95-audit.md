@@ -69,6 +69,35 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
   upgrades. Ambiguous, high-risk, or unsupported legacy topics require manual
   editorial review or an explicit unpublish decision.
 
+## Production Reverification And Feedback Loop
+
+- The post-deploy audit initially reported 184 rows because sitemap Korean slugs
+  were URL-encoded while API slugs were decoded. After identity normalization,
+  the verified corpus returned to 166 unique rows; there was no hidden 18-row
+  category.
+- Bounded concurrency 6 plus two transient retries reduced the full live audit
+  from an unbounded serial run to 84 seconds.
+- Verified category results at the 95 floor:
+  - `itinerary`: 2/2, minimum 100
+  - `preparation`: 30/36, minimum 71
+  - `local_info`: 14/26, minimum 52
+  - `pillar`: 3/8, minimum 52
+  - `travel_tips`: 45/87, minimum 52
+  - `visa_info`: 0/6, minimum 52
+  - `card_news`: 0/1, minimum 83
+- A same-renderer scan of all 166 stored bodies completed in 5.2 seconds, making
+  it safe for the 55-second nightly recovery route. It found 70 stored-body
+  failures; the live page audit found 72.
+- The two-row gap exposed a separate availability defect: a stale detail cache
+  could return HTTP 200 with only the table of contents after a fresh DB read
+  failed. The detail cache is now versioned for full bodies, unusable cached
+  bodies fail to the explicit unavailable surface, and low editorial quality no
+  longer triggers a DB refresh on every reader request.
+- Nightly recovery now records the rendered public score and issue codes and
+  prioritizes the lowest public-quality failures before search and missing-
+  research fallbacks. It still cannot rewrite a row without reviewed
+  destination/intent evidence and every atomic publish gate.
+
 ## External Evidence
 
 - Google requires helpful, reliable, people-first content with original value,
