@@ -16,6 +16,7 @@
 | Private-tour mock proof | anonymous visitor → `MOCK_FEED`, `120+` → production UI → false trust signal | CONFIRMED | FIXED | `src/app/private-tour/public-claims.test.ts` |
 | Broad authenticated RLS | any Supabase authenticated user → global allow policy → bookings/customers/internal tables → cross-user PII/financial reads/writes | CONFIRMED | PARTIALLY_FIXED | additive migration + pgTAP contract; production apply pending |
 | Raw internal errors | public API caller → provider/DB/config failure → raw `error.message` → customer response | CONFIRMED on reviewed P0 routes | PARTIALLY_FIXED | companion/influencer/passport/lead paths fixed; repository-wide inventory remains |
+| Public read of NULL-tenant customer events | anonymous caller → `customer_events_tenant_select` (`tenant_id IS NULL`) → attribution/customer event rows | CONFIRMED | PARTIALLY_FIXED | revenue migration replaces it with database-backed admin SELECT; production apply pending |
 
 ## RLS scope and limitation
 

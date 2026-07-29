@@ -7,9 +7,10 @@
  * 정렬: submitted_at(leads) / created_at(qa_inquiries) → 통합 created_at desc.
  */
 
+import { randomUUID } from 'node:crypto';
 import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
-import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { decideOperatorQueueAction, type OperatorAction } from '@/lib/operator-action-queue';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export type AdminInquirySource = 'lead' | 'qa' | 'rfq';
@@ -31,17 +32,28 @@ export interface AdminInquiryRow {
   utm_campaign: string | null;
   landing_url: string | null;
   status: string | null;
+  booking_id: string | null;
+  queue_rank: number;
+  queue_label: string;
+  waiting_minutes: number;
+  next_action: OperatorAction;
+  action_href: string | null;
 }
 
 async function getHandler() {
+  const requestId = randomUUID();
   if (!isSupabaseConfigured) {
-    return apiResponse({ rows: [], total: 0 });
+    return apiResponse(
+      { rows: [], total: 0 },
+      { headers: { 'Cache-Control': 'no-store', 'x-request-id': requestId } },
+    );
   }
   try {
     const [
       { data: leads, error: leadsErr },
       { data: qaInquiries, error: qaErr },
       { data: groupRfqs, error: rfqErr },
+      { data: bookingTasks, error: tasksErr },
     ] = await Promise.all([
       supabaseAdmin
         .from('leads')
@@ -58,16 +70,75 @@ async function getHandler() {
         .select('id, created_at, updated_at, customer_name, customer_phone, destination, departure_date_from, adult_count, child_count, budget_per_person, total_budget, special_requests, custom_requirements, status')
         .order('created_at', { ascending: false })
         .limit(500),
+      supabaseAdmin
+        .from('booking_tasks')
+        .select('booking_id, task_type, status, context, priority, created_at, bookings(booking_no, status, payment_status)')
+        .order('priority', { ascending: true })
+        .order('created_at', { ascending: false })
+        .limit(500),
     ]);
 
     if (leadsErr) throw leadsErr;
     if (qaErr) throw qaErr;
     if (rfqErr) throw rfqErr;
+    if (tasksErr) throw tasksErr;
+
+    const taskByLeadId = new Map<string, {
+      bookingId: string;
+      taskType: string | null;
+      taskStatus: string | null;
+      bookingStatus: string | null;
+      paymentStatus: string | null;
+    }>();
+    for (const task of bookingTasks ?? []) {
+      const row = task as unknown as Record<string, unknown>;
+      const context = (row.context ?? {}) as Record<string, unknown>;
+      const leadId = typeof context.lead_id === 'string' ? context.lead_id : null;
+      if (!leadId) continue;
+      const relation = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
+      const booking = (relation ?? {}) as Record<string, unknown>;
+      const candidate = {
+        bookingId: String(row.booking_id),
+        taskType: (row.task_type as string) ?? null,
+        taskStatus: (row.status as string) ?? null,
+        bookingStatus: (booking.status as string) ?? null,
+        paymentStatus: (booking.payment_status as string) ?? null,
+      };
+      const existing = taskByLeadId.get(leadId);
+      const candidateActive = ['open', 'snoozed'].includes(candidate.taskStatus ?? '');
+      const existingActive = ['open', 'snoozed'].includes(existing?.taskStatus ?? '');
+      if (!existing || (candidateActive && !existingActive)) taskByLeadId.set(leadId, candidate);
+    }
+
+    function withQueueDecision(row: Omit<AdminInquiryRow,
+      'booking_id' | 'queue_rank' | 'queue_label' | 'waiting_minutes' | 'next_action' | 'action_href'
+    >): AdminInquiryRow {
+      const task = row.source === 'lead' ? taskByLeadId.get(row.id) : undefined;
+      const decision = decideOperatorQueueAction({
+        source: row.source,
+        createdAt: row.created_at,
+        phone: row.phone,
+        bookingId: task?.bookingId ?? null,
+        bookingStatus: task?.bookingStatus ?? row.status,
+        paymentStatus: task?.paymentStatus ?? null,
+        taskType: task?.taskType ?? null,
+        taskStatus: task?.taskStatus ?? null,
+      });
+      return {
+        ...row,
+        booking_id: task?.bookingId ?? null,
+        queue_rank: decision.rank,
+        queue_label: decision.label,
+        waiting_minutes: decision.waitingMinutes,
+        next_action: decision.action,
+        action_href: decision.href,
+      };
+    }
 
     const leadRows: AdminInquiryRow[] = (leads ?? []).map((l: unknown) => {
       const r = l as Record<string, unknown>;
       const pkg = r.travel_packages as { title?: string } | null;
-      return {
+      return withQueueDecision({
         source: 'lead',
         id: String(r.id),
         created_at: String(r.submitted_at ?? r.created_at ?? ''),
@@ -84,12 +155,12 @@ async function getHandler() {
         utm_campaign: (r.utm_campaign as string) ?? null,
         landing_url: (r.landing_url as string) ?? null,
         status: null,
-      };
+      });
     });
 
     const qaRows: AdminInquiryRow[] = (qaInquiries ?? []).map((q: unknown) => {
       const r = q as Record<string, unknown>;
-      return {
+      return withQueueDecision({
         source: 'qa',
         id: String(r.id),
         created_at: String(r.created_at ?? ''),
@@ -106,7 +177,7 @@ async function getHandler() {
         utm_campaign: null,
         landing_url: null,
         status: (r.status as string) ?? null,
-      };
+      });
     });
 
     const rfqRows: AdminInquiryRow[] = (groupRfqs ?? []).map((q: unknown) => {
@@ -119,7 +190,7 @@ async function getHandler() {
         : r.total_budget
           ? `총 ${Number(r.total_budget).toLocaleString('ko-KR')}원`
           : null;
-      return {
+      return withQueueDecision({
         source: 'rfq',
         id: String(r.id),
         created_at: String(r.created_at ?? r.updated_at ?? ''),
@@ -141,16 +212,32 @@ async function getHandler() {
         utm_campaign: (utm.campaign as string) ?? null,
         landing_url: '/group',
         status: (r.status as string) ?? null,
-      };
+      });
     });
 
-    const rows = [...leadRows, ...qaRows, ...rfqRows].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
+    const rows = [...leadRows, ...qaRows, ...rfqRows]
+      .filter(row => row.queue_rank < 8)
+      .sort((a, b) =>
+        a.queue_rank - b.queue_rank
+        || new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
 
-    return apiResponse({ rows, total: rows.length });
+    return apiResponse(
+      { rows, total: rows.length },
+      { headers: { 'Cache-Control': 'no-store', 'x-request-id': requestId } },
+    );
   } catch (err) {
-    return apiResponse({ error: sanitizeDbError(err, '조회 실패') }, { status: 500 });
+    console.error('[admin-leads] queue query failed', { requestId, error: err });
+    return apiResponse(
+      {
+        error: {
+          code: 'OPERATOR_QUEUE_LOAD_FAILED',
+          message: '업무 큐를 불러오지 못했습니다.',
+          requestId,
+        },
+      },
+      { status: 500, headers: { 'Cache-Control': 'no-store', 'x-request-id': requestId } },
+    );
   }
 }
 

@@ -81,6 +81,16 @@
       "evidenceFile": "security-verdicts.md",
       "verdict": "CONFIRMED_PARTIAL_FIX",
       "confidence": "high"
+    },
+    {
+      "claim": "a Busan-departure offer is ready to publish with current price and inventory",
+      "originalReportedValue": null,
+      "currentValue": false,
+      "exactSqlOrCommand": "queries/11-busan-offer-candidates.sql",
+      "observedAt": "2026-07-29T11:37:41.6931876Z",
+      "evidenceFile": "outputs/offer-candidate.json",
+      "verdict": "BLOCKED_OFFER_CANDIDATE",
+      "confidence": "high"
     }
   ],
   "limitations": [

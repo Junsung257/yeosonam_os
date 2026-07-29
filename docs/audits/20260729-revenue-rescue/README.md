@@ -19,3 +19,7 @@ production 고객 화면 증거다. 비밀키와 고객 단위 PII는 저장하�
 
 보안 finding의 actor-to-sink 판정, 브랜치 수정 상태, production 적용 전 요구사항은
 `security-verdicts.md`에 기록했다. RLS migration과 비밀키 설정은 production에 적용하지 않았다.
+
+매출 웨지 검토 결과는 `outputs/offer-candidate.json`에 기록했다. 현재 가격·좌석을 동시에
+확인할 수 있는 상품은 없으므로, 선택 후보는 `BLOCKED_OFFER_CANDIDATE`이며 public snapshot을
+생성하거나 production 상품 상태를 변경하지 않았다.

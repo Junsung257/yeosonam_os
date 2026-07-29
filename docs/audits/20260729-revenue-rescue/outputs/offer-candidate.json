@@ -1,0 +1,44 @@
+{
+  "observedAt": "2026-07-29T11:37:41.6931876Z",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "repositorySha": "80110967",
+  "status": "BLOCKED_OFFER_CANDIDATE",
+  "selectedCandidate": {
+    "id": "efcfd933-4561-4db0-9a35-062b724cf287",
+    "shortCode": "ETC-CTS-03-02",
+    "internalCode": "PUS-ETC-CTS-03-0002",
+    "title": "2박3일 알짜BA팩] 화&일♠ #온천1박 #게뷔페 #아이스크림",
+    "destination": "북해도 알짜팩",
+    "departureRegion": "부산",
+    "nextRecordedDepartureDate": "2026-09-01",
+    "nextRecordedPrice": 749000,
+    "priceDateConfirmed": false,
+    "remainingRecordedSeats": 0,
+    "status": "pending_review",
+    "publicationState": "blocked",
+    "auditStatus": "blocked",
+    "hasSupplierSourceText": true,
+    "hasSourceHash": true,
+    "hasInclusions": true,
+    "hasExclusions": true,
+    "hasCancellationPolicy": true,
+    "hasOperator": false,
+    "supplierCode": "ETC",
+    "recordedMarginRate": 0.09
+  },
+  "selectionRationale": [
+    "Busan departure identity is explicit.",
+    "A future September/October price schedule and supplier source hash exist.",
+    "The candidate is not archived and leaves time for a human inventory recheck.",
+    "No current seat evidence, confirmed price date, named operator, or approved snapshot exists, so it must not be published."
+  ],
+  "humanVerificationRequired": [
+    "Confirm the responsible supplier/operator and the reservation contact.",
+    "Confirm one exact departure/return date and flight schedule.",
+    "Confirm the current customer selling price and its expiry.",
+    "Confirm current seats or the exact reconfirmation SLA.",
+    "Confirm cancellation terms and expected contribution margin."
+  ],
+  "productionMutation": false,
+  "publicSnapshotCreated": false
+}

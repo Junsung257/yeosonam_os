@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/supabase', () => ({
+  isSupabaseConfigured: false,
   supabaseAdmin: { from: mocks.from },
 }));
 
