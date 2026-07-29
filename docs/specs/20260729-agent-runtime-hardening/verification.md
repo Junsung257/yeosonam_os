@@ -65,8 +65,18 @@ Pre-deployment verification on 2026-07-29:
   without reading or printing a secret.
 - PASS: TypeScript, full ESLint, direct-secret access audit, agent workflow,
   agent risk-pattern, documentation, and Vercel function-budget checks.
-- PENDING: execute the dedicated cron after deployment and record the final
-  runtime and database evidence.
+- PASS: PR #963 merged as `932e386c`; all CI, security, visual regression,
+  performance, Next build, bundle-budget, and Vercel Preview checks passed.
+- PASS: production deployment `dpl_8jZyvft7eUt1kx1dxNc7Nufcbza7` reached
+  `READY` with commit `932e386c`.
+- PASS: `vercel crons run /api/cron/agent-housekeeping` triggered the registered
+  production cron at `2026-07-29T05:38:48.093Z`; Vercel recorded HTTP `200` for
+  the dedicated route and no `5xx` for the deployment.
+- PASS: the post-run database query returned zero stale pending approvals, zero
+  active tasks, zero stale active tasks, and zero open or stale trace spans.
+- PASS: production health returned `healthy` with the database connected.
+- PASS: unauthenticated direct access was intercepted by the login boundary;
+  only the native cron invocation reached the dedicated route successfully.
 - NOTE: local Windows `npm run build` generated compiled output but did not exit
   within 10 minutes during static generation. Three Linux/Vercel build paths
   subsequently passed, superseding that local environment limitation.
