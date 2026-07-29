@@ -45,6 +45,7 @@ import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLi
 import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
 import { boundBlogWriterOutput } from '@/lib/blog-writer-output-boundary';
+import { repairBlogLiteralNewlines } from '@/lib/blog-literal-newline-repair';
 import {
   appendPublishReadinessSupport,
   ensurePublisherInternalLinks,
@@ -2838,10 +2839,26 @@ async function processQueueItem(
         console.log(`[blog-publisher] final inline images restored: ${imageResult.inserted}`);
       }
     };
+    const applyFinalLiteralNewlineRepair = (): void => {
+      const literalNewlineRepair = repairBlogLiteralNewlines(generated.blog_html);
+      if (!literalNewlineRepair.changed) return;
+      generated.blog_html = literalNewlineRepair.markdown;
+      generated.generation_meta = {
+        ...(generated.generation_meta || {}),
+        literal_newline_repair: {
+          applied: true,
+          replacement_count: literalNewlineRepair.replacementCount,
+        },
+      };
+      console.log(
+        `[blog-publisher] literal newline repair: ${literalNewlineRepair.replacementCount}`,
+      );
+    };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalResearchStructureRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       await restoreFinalReusableImages();
+      applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
     const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> => {
@@ -2852,6 +2869,7 @@ async function processQueueItem(
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       await restoreFinalReusableImages();
+      applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
 
