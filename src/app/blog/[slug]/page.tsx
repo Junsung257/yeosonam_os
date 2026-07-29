@@ -62,7 +62,10 @@ import {
   loadBlogInformationalOfficialSourceUrl,
 } from '@/lib/blog-informational-cta-settings';
 import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
-import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
+import {
+  sanitizePublicBlogBodyHtml,
+  stripPublicDuplicateBodyTitleHeading,
+} from '@/lib/blog-public-render-normalizer';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import {
   calculateBlogReadingTimeFromHtml,
@@ -427,35 +430,6 @@ async function withBlogRenderTimeout<T>(
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function normalizeHeadingTextForCompare(value: string): string {
-  return value
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;|\u00a0/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/[^\p{L}\p{N}\uac00-\ud7a3]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function stripDuplicateBodyTitleHeading(html: string, pageTitle: string): string {
-  const titleSignature = normalizeHeadingTextForCompare(pageTitle);
-  if (!titleSignature) return html;
-
-  return html.replace(
-    /^\s*<h2\b([^>]*)>([\s\S]*?)<\/h2>\s*/i,
-    (match, attrs: string, headingHtml: string) => {
-      const headingSignature = normalizeHeadingTextForCompare(headingHtml);
-      if (!headingSignature) return match;
-      const isSameTitle =
-        headingSignature === titleSignature ||
-        headingSignature.includes(titleSignature) ||
-        titleSignature.includes(headingSignature);
-      return isSameTitle ? '' : `<h2${attrs}>${headingHtml}</h2>`;
-    },
-  );
 }
 
 // ── 데이터 페칭 ──────────────────────────────────────────────
@@ -1327,7 +1301,10 @@ async function renderBlogDetail({
     // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
     const normalizedBody = isInfoBlog ? stripBlogInformationalBodyCtas(rendered) : rendered;
-    const sanitized = stripDuplicateBodyTitleHeading(sanitizePublicBlogBodyHtml(normalizedBody), abTestTitle);
+    const sanitized = stripPublicDuplicateBodyTitleHeading(
+      sanitizePublicBlogBodyHtml(normalizedBody),
+      abTestTitle,
+    );
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;

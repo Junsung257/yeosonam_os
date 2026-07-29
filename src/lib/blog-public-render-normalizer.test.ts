@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizePublicBlogBodyHtml } from './blog-public-render-normalizer';
+import {
+  sanitizePublicBlogBodyHtml,
+  stripPublicDuplicateBodyTitleHeading,
+} from './blog-public-render-normalizer';
 
 describe('public blog render normalizer', () => {
   it('keeps the page title as the only possible H1 and removes executable markup', () => {
@@ -23,5 +26,20 @@ describe('public blog render normalizer', () => {
     const html = sanitizePublicBlogBodyHtml('<p>첫 구간입니다.</p><hr><p>둘째 구간입니다.</p><hr>');
 
     expect(html.match(/<hr/g)).toHaveLength(2);
+  });
+
+  it('removes only a leading body heading that repeats the page title', () => {
+    expect(
+      stripPublicDuplicateBodyTitleHeading(
+        '<h2 id="same">몽골 여행 준비 가이드</h2><p>본문</p>',
+        '몽골 여행 준비 가이드 | 여소남',
+      ),
+    ).toBe('<p>본문</p>');
+    expect(
+      stripPublicDuplicateBodyTitleHeading(
+        '<h2 id="different">출발 전 체크</h2><p>본문</p>',
+        '몽골 여행 준비 가이드',
+      ),
+    ).toContain('출발 전 체크');
   });
 });
