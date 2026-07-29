@@ -9,4 +9,4 @@
 - [x] Replace executor's partial approval cleanup with housekeeping.
 - [x] Add regression tests.
 - [x] Update SSOT and verification record.
-- [ ] Verify, commit, PR, merge, deploy, and inspect production.
+- [x] Verify, commit, PR, merge, deploy, and inspect production.
