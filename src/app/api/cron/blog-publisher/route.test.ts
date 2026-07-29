@@ -200,6 +200,15 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('details: seoScore.details');
   });
 
+  it('normalizes literal newline escapes at every final quality boundary', () => {
+    const source = routeSource();
+
+    expect(source).toContain('const applyFinalLiteralNewlineRepair = (): void => {');
+    expect(source).toContain('repairBlogLiteralNewlines(generated.blog_html)');
+    expect(source.match(/applyFinalLiteralNewlineRepair\(\);/g)).toHaveLength(2);
+    expect(source).toContain('replacement_count: literalNewlineRepair.replacementCount');
+  });
+
   it('avoids duplicate AI and image work during a controlled private regeneration', () => {
     const source = routeSource();
 
