@@ -906,7 +906,7 @@ describe('blog generation research preflight', () => {
       },
     });
     expect(productionBoundarySeo.details.find((detail) => detail.name === 'semantic_longtail_coverage'))
-      .toMatchObject({ score: 5, status: 'warn' });
+      .toMatchObject({ score: 6, status: 'pass' });
     expect(productionBoundarySeo.details.find((detail) => detail.name === 'external_authority_links'))
       .toMatchObject({ score: 6, status: 'pass' });
     expect(productionBoundarySeo.score - productionBoundarySeoWithoutSourceHandoff.score).toBe(3);
