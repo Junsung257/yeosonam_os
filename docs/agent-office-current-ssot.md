@@ -158,11 +158,17 @@ When execution is added:
 - A request task and its trace must reach terminal state before the response stream
   closes. Work after stream closure is not durable on a serverless runtime.
 - Every approval receives an explicit expiry. The default is seven days.
-- The existing `agent-executor` performs bounded, idempotent housekeeping even when
-  non-critical GSC or Instagram work is skipped by resource-saver mode.
-- Authenticated operators can call
-  `GET /api/cron/agent-executor?housekeepingOnly=true` to run only lifecycle
-  cleanup. This path returns before agent actions, GSC, or external-channel work.
+- The dedicated `agent-housekeeping` cron performs bounded, idempotent lifecycle
+  cleanup at `00:07 UTC`. It imports no agent action, GSC, Instagram, or
+  resource-saver code.
+- The existing `agent-executor` also performs defensive housekeeping before
+  non-critical GSC or Instagram work and before its resource-saver boundary.
+- Operators run production housekeeping with
+  `npm run agent:housekeeping:production`, which delegates to
+  `vercel crons run /api/cron/agent-housekeeping`. Vercel supplies the cron
+  authorization server-side.
+- Do not assume `vercel env pull` exposes a sensitive production `CRON_SECRET`,
+  do not send an empty bearer, and do not put the secret in a URL.
 - Housekeeping expires legacy no-expiry approvals after seven days, request-scoped
   active tasks after 24 hours, tasks past explicit expiry, and trace spans left open
   for more than 24 hours.

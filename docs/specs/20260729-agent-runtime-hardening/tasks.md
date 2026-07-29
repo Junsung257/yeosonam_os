@@ -10,3 +10,7 @@
 - [x] Add regression tests.
 - [x] Update SSOT and verification record.
 - [x] Verify, commit, PR, merge, deploy, and inspect production.
+- [x] Replace the misleading local-secret manual call with a dedicated native
+  Vercel housekeeping cron.
+- [ ] Execute the dedicated cron in production and verify logs and lifecycle
+  state.

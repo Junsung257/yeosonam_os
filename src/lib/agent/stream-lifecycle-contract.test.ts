@@ -52,12 +52,15 @@ describe('agent stream lifecycle contract', () => {
     ).toBe(false);
   });
 
-  it('returns from housekeeping-only mode before external executor actions', () => {
-    const text = source('src/app/api/cron/agent-executor/route.ts');
-    const housekeepingReturn = text.indexOf('if (housekeepingOnly)');
-    const externalExecution = text.indexOf('executeAction(');
+  it('isolates housekeeping from external executor and channel actions', () => {
+    const text = source('src/app/api/cron/agent-housekeeping/route.ts');
 
-    expect(housekeepingReturn).toBeGreaterThan(-1);
-    expect(externalExecution).toBeGreaterThan(housekeepingReturn);
+    expect(text).toContain('requireCronBearer');
+    expect(text).toContain('runAgentHousekeeping');
+    expect(text).not.toContain('executeAction');
+    expect(text).not.toContain('gsc-client');
+    expect(text).not.toContain('instagram');
+    expect(text).not.toContain('maybeSkipNonCriticalCron');
+    expect(text).not.toContain('maybeSkipCronForResourceSaver');
   });
 });

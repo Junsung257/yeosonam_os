@@ -12,7 +12,6 @@ import {
 } from '@/lib/instagram-publisher'
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver'
 import { runAgentHousekeeping } from '@/lib/agent/housekeeping'
-import { apiResponse } from '@/lib/api-response'
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -26,8 +25,6 @@ export async function GET(request: NextRequest) {
   if (authErr) return authErr
 
   const isForce = request.nextUrl.searchParams.get('force') === 'true'
-  const housekeepingOnly =
-    request.nextUrl.searchParams.get('housekeepingOnly') === 'true'
 
   if (!isSupabaseAdminConfigured) {
     push('Supabase 미설정 — 스킵')
@@ -42,8 +39,6 @@ export async function GET(request: NextRequest) {
     tasks_expired: 0,
     traces_closed: 0,
   }
-  let housekeepingSucceeded = false
-
   // Agent ledger cleanup must still run while non-critical publishing work is paused.
   try {
     const housekeeping = await runAgentHousekeeping()
@@ -53,26 +48,12 @@ export async function GET(request: NextRequest) {
     tasking.approvals_expired = housekeeping.expired.approvals
     tasking.tasks_expired = housekeeping.expired.tasks
     tasking.traces_closed = housekeeping.expired.traces
-    housekeepingSucceeded = true
     push(
       `원장 정리: approvals=${tasking.approvals_expired}, `
       + `tasks=${tasking.tasks_expired}, traces=${tasking.traces_closed}`,
     )
   } catch (e) {
     push(`원장 정리 실패: ${e instanceof Error ? e.message : String(e)}`)
-  }
-
-  if (housekeepingOnly) {
-    return apiResponse(
-      {
-        ok: housekeepingSucceeded,
-        housekeeping_only: true,
-        elapsed_ms: Date.now() - startAt,
-        tasking,
-        log,
-      },
-      { status: housekeepingSucceeded ? 200 : 500 },
-    )
   }
 
   const resourceSaver = maybeSkipNonCriticalCron(request, 'agent-executor')
