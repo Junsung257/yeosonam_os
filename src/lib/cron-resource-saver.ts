@@ -8,6 +8,7 @@ const CRITICAL_CRONS = new Set([
   'blog-publisher',
   'blog-scheduler',
   'blog-daily-summary',
+  'blog-regenerate-zero-click',
 ]);
 
 export function isDbResourceSaverEnabled(): boolean {

@@ -26,6 +26,9 @@ This document defines the required contract for automatic blog generation, publi
   removed from the customer surface, while similar sentences with different
   numbers or meaning are preserved. Three or more decorative horizontal rules
   are removed; one or two intentional separators remain.
+- The page-title/body-title deduplication helper is also shared by the public
+  page and stored-body preflight. Browser and preflight headline counts must
+  match before a recovery release is accepted.
 - Public collection surfaces and the public list API must reuse one compact cached catalog. The catalog excludes `blog_html`, `quality_gate`, and `generation_meta`, performs no exact-count query, and is filtered and paginated in memory. `/blog`, destination pages, angle pages, the public API, and sitemap must not independently fan out full-corpus list/count reads during a crawler burst.
 - A cached blog detail with no usable body is not a valid stale response. The
   detail cache key must be versioned when its row shape or eligibility contract
@@ -63,6 +66,10 @@ This document defines the required contract for automatic blog generation, publi
 - Search-performance collection must not inherit the generic 45-second cron wrapper when the route declares a longer serverless budget. `gsc-index-rank` and `rank-tracking` receive a 285-second handler guard, while `serp-rank-snapshot` receives 55 seconds. Each has an independently scheduled GitHub retry so an absent Vercel Cron invocation cannot silently stop `rank_history` growth.
 - Query-level GSC metrics must be grouped by the database conflict key `(slug, query, date, source)` before upsert. Duplicate www/apex or repeated page rows are summed, CTR is recalculated from total clicks and impressions, position uses an impression-weighted average, and the stored page URL is the canonical www URL. A repeated input key must never abort the entire daily search-data batch.
 - Published-article recovery remains active when recent `rank_history` is empty. The daily recovery route prioritizes true zero-click posts only from Google sources (`gsc`, `gsc-page`) and only after the article has matured for at least 14 days, then falls back to the oldest published informational rows without verified research. Naver/Serp rank snapshots store zero impressions by design and must never be treated as Google zero-impression evidence. The route may enqueue at most two in-place upgrades per day and must reuse the same explicit-intent, content-brief, high-risk, active-upgrade, and representative-ownership gates as the operator recovery script. Missing or ambiguous evidence never authorizes a public rewrite.
+- `blog-regenerate-zero-click` is a critical blog cron for resource-saver
+  allowlisting. It remains fail-closed unless
+  `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`, keeps its 60-second route budget,
+  audits at most 500 rows, and queues at most two private upgrades.
 - `blog_regenerate_log.reason` must accept both automatic selection signals, `zero_click` and `quality_gap`. A partial unique index over `(slug, created_day_utc)` covers both values so concurrent or repeated runs cannot enqueue the same published article twice through different recovery signals. The producer contract and database constraint must be changed together.
 - A monthly climate row is one composite evidence claim, not a highest-temperature scalar. WMO and other weather adapters must persist `highest temperature|lowest temperature|rainfall|rain days` with unit `월별 기후 지표`. Research readiness upgrades legacy scalar bundles in memory before validation and persistence so old queued recovery work cannot repeatedly fail the final claim gate.
 - Automatic published-post recovery must resolve the most specific reviewed destination present in the public topic and confirm destination-scoped direct research coverage before queueing. A broad country label must not cause unrelated regional evidence to be reused.

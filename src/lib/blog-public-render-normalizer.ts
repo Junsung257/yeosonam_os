@@ -22,6 +22,35 @@ function removeExcessiveHorizontalRules(html: string): string {
   return count >= 3 ? html.replace(/<hr\b[^>]*\/?>/gi, '') : html;
 }
 
+function normalizeHeadingTextForCompare(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|\u00a0/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/[^\p{L}\p{N}\uac00-\ud7a3]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function stripPublicDuplicateBodyTitleHeading(html: string, pageTitle: string): string {
+  const titleSignature = normalizeHeadingTextForCompare(pageTitle);
+  if (!titleSignature) return html;
+
+  return html.replace(
+    /^\s*<h2\b([^>]*)>([\s\S]*?)<\/h2>\s*/i,
+    (match, attrs: string, headingHtml: string) => {
+      const headingSignature = normalizeHeadingTextForCompare(headingHtml);
+      if (!headingSignature) return match;
+      const isSameTitle =
+        headingSignature === titleSignature
+        || headingSignature.includes(titleSignature)
+        || titleSignature.includes(headingSignature);
+      return isSameTitle ? '' : `<h2${attrs}>${headingHtml}</h2>`;
+    },
+  );
+}
+
 export function sanitizePublicBlogBodyHtml(html: string): string {
   const sanitized = html
     .replace(/<!--[\s\S]*?-->/g, '')

@@ -84,16 +84,16 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
   Next.js Flight response. Release and corpus classification now requires
   `--browser`; HTML mode remains a transport smoke check.
 - Browser-verified category results at the 95 floor after table-signal precision
-  correction (107/166 passed, average score 90):
+  and exact-block cleanup (108/166 passed, average score 90):
   - `itinerary`: 2/2, minimum 100
-  - `preparation`: 31/36, minimum 71
+  - `preparation`: 32/36, minimum 71
   - `local_info`: 17/26, minimum 59
   - `pillar`: 3/8, minimum 76
   - `travel_tips`: 54/87, minimum 59
   - `visa_info`: 0/6, minimum 59
   - `card_news`: 0/1, minimum 83
 - Browser-visible issue counts are: mechanical structure 88, broken tables 20,
-  duplicate sections 34, unsupported internal claims 13, answer mismatch 9, and
+  duplicate sections 33, unsupported internal claims 13, answer mismatch 9, and
   placeholder copy 2. Fourteen of the previous table findings came from parent
   container duplication, ordinary numeric prose, or horizontal rules rather
   than broken customer-visible tables. Browser mode found no genuinely
@@ -101,8 +101,16 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
 - A stored-body preflight of all 166 rows completed in 5.2 seconds, making it
   safe for the 55-second nightly recovery route. It is intentionally a fast
   prioritization signal, not a replacement for the browser release audit. After
-  sharing the public sanitizer and correcting table evidence, it matched the
-  browser headline exactly: 107 passed, 59 failed, average 90.
+  sharing the public sanitizer, title deduplication, and corrected table
+  evidence, it matched the browser headline exactly: 108 passed, 58 failed,
+  average 90.
+- A forced production recovery proof completed the 166-row audit in 6.6
+  seconds with no runtime errors and queued no unsafe upgrade. Rejections were
+  high-risk review 9, representative conflict 17, missing destination 11,
+  research coverage missing 42, ambiguous/general topic 48, and
+  comparison/listicle review 10. The route had previously been skipped by
+  resource-saver mode, so it is now included in the explicit critical blog cron
+  allowlist while retaining the two-upgrade cap.
 - The cache hardening remains valid defense in depth: the detail cache is
   versioned for full bodies, a genuinely unusable cached body fails to the
   explicit unavailable surface, and low editorial quality no longer triggers a

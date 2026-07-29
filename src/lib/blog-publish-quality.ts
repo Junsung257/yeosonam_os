@@ -18,7 +18,10 @@ import {
 import { renderBlogContentToHtml } from './blog-renderer';
 import { withPersistedBlogReadingTime } from './blog-reading-time';
 import { stripBlogInformationalBodyCtas } from './blog-informational-cta';
-import { sanitizePublicBlogBodyHtml } from './blog-public-render-normalizer';
+import {
+  sanitizePublicBlogBodyHtml,
+  stripPublicDuplicateBodyTitleHeading,
+} from './blog-public-render-normalizer';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -198,8 +201,12 @@ export async function evaluateBlogPublicCustomerQuality(
   const normalizedCustomerHtml = input.product_id
     ? renderedCustomerHtml
     : stripBlogInformationalBodyCtas(renderedCustomerHtml);
-  const publicCustomerHtml = sanitizePublicBlogBodyHtml(normalizedCustomerHtml);
-  const safeTitle = (input.seo_title ?? input.slug)
+  const safePageTitle = input.seo_title ?? input.slug;
+  const publicCustomerHtml = stripPublicDuplicateBodyTitleHeading(
+    sanitizePublicBlogBodyHtml(normalizedCustomerHtml),
+    safePageTitle,
+  );
+  const safeTitle = safePageTitle
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

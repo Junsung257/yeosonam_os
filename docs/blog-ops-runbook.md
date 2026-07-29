@@ -51,6 +51,8 @@ A day is healthy only when all of these are true:
   passed, failed, and average score. Both must use the public body sanitizer.
   Exact long-block deduplication is safe presentation cleanup; near-duplicate
   factual sentences remain research/review work.
+- Confirm both paths also share leading page-title/body-title deduplication. A
+  one-row difference is a renderer-contract defect, not an acceptable margin.
 - A detail page returning HTTP 200 with only its title or table of contents is a
   failure, not a healthy stale response. Check the versioned detail cache and
   `hasUsableBlogBody`; a low editorial score belongs to the recovery queue and
@@ -80,7 +82,7 @@ A day is healthy only when all of these are true:
 - `rank-tracking` now writes query-level search rows and then runs the GSC longtail expander with a bounded timeout. This keeps the search-data -> topic-queue loop active without adding another Vercel cron.
 - `rank_history` freshness is an operating dependency, not an optional dashboard detail. `serp-rank-snapshot`, `gsc-index-rank`, and `rank-tracking` have external retry schedules at 06:40, 11:40, and 12:10 KST. Their cron logging guards must remain below the route's serverless limit but above the measured handler runtime; a 45-second generic guard is invalid for the two five-minute routes.
 - If `rank-tracking` reports `ON CONFLICT DO UPDATE command cannot affect row a second time`, the GSC response was not grouped by the durable key before upsert. The current route must aggregate duplicate `(slug, query)` rows, recalculate CTR, and store one canonical www row. Do not retry the unchanged batch.
-- At 21:45 KST Vercel and 21:50 KST the external scheduler call `blog-regenerate-zero-click`. The route queues no more than two published in-place upgrades. Google zero-click priority applies only to `gsc`/`gsc-page` rows and articles published at least 14 days ago; Naver/Serp rows are rank observations, not impression evidence. When mature Google data is absent the route falls back to missing-research legacy posts, while preserving explicit-intent classification, representative ownership, high-risk review, cooldown, and atomic replacement gates.
+- At 21:45 KST Vercel and 21:50 KST the external scheduler call `blog-regenerate-zero-click`. It is part of the critical-blog-cron allowlist and runs during DB resource-saver mode only when `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`. The route queues no more than two published in-place upgrades. Google zero-click priority applies only to `gsc`/`gsc-page` rows and articles published at least 14 days ago; Naver/Serp rows are rank observations, not impression evidence. When mature Google data is absent the route falls back to missing-research legacy posts, while preserving explicit-intent classification, representative ownership, high-risk review, cooldown, and atomic replacement gates.
 - Before applying those search fallbacks, the route renders the current public
   bodies with bounded concurrency and prioritizes any score below 95, lowest
   first. Read `public_quality_audited`,

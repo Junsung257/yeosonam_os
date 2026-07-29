@@ -54,6 +54,12 @@ describe('cron resource saver', () => {
     expect(isDbResourceSaverCriticalCronAllowlistEnabled()).toBe(true);
     expect(maybeSkipNonCriticalCron(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeNull();
     expect(maybeSkipCronForResourceSaver(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeNull();
+    expect(
+      maybeSkipCronForResourceSaver(
+        cronRequest('https://www.yeosonam.com/api/cron/blog-regenerate-zero-click'),
+        'blog-regenerate-zero-click',
+      ),
+    ).toBeNull();
   });
 
   it('allows forced crons and keeps product-readiness crons closed unless explicitly enabled', () => {
