@@ -2343,14 +2343,12 @@ async function processQueueItem(
       originalPublishedSlug = typeof replacementTarget.slug === 'string'
         ? replacementTarget.slug
         : null;
-      if (!publishedAtomicUpgrade) {
-        privateReplacementAssets = {
-          ogImageUrl: typeof replacementTarget.og_image_url === 'string' ? replacementTarget.og_image_url : null,
-          inlineImageUrls: extractBlogInlineImageUrls(
-            typeof replacementTarget.blog_html === 'string' ? replacementTarget.blog_html : null,
-          ),
-        };
-      }
+      privateReplacementAssets = {
+        ogImageUrl: typeof replacementTarget.og_image_url === 'string' ? replacementTarget.og_image_url : null,
+        inlineImageUrls: extractBlogInlineImageUrls(
+          typeof replacementTarget.blog_html === 'string' ? replacementTarget.blog_html : null,
+        ),
+      };
     }
     let queueReusableDraftId: string | null = null;
     let queueReusableAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
