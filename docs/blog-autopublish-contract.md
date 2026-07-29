@@ -13,6 +13,10 @@ This document defines the required contract for automatic blog generation, publi
   concurrency and retries only transient network, 408/425/429, and 5xx failures.
   A URL-encoding representation must never create a duplicate `unknown`
   category row.
+- Release and corpus-quality decisions must use the audit's `--browser` mode.
+  Next.js can defer article HTML in its Flight stream until Chrome materializes
+  `.prose-blog`; static HTML mode is only a fast transport smoke check and must
+  not classify an article as body-empty.
 - Public collection surfaces and the public list API must reuse one compact cached catalog. The catalog excludes `blog_html`, `quality_gate`, and `generation_meta`, performs no exact-count query, and is filtered and paginated in memory. `/blog`, destination pages, angle pages, the public API, and sitemap must not independently fan out full-corpus list/count reads during a crawler burst.
 - A cached blog detail with no usable body is not a valid stale response. The
   detail cache key must be versioned when its row shape or eligibility contract
@@ -450,7 +454,7 @@ Run:
 npm run audit:blog-quality -- --limit=50
 npm run audit:blog-search-daily:strict
 npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict
-npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --strict
+npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --browser --strict
 npm run audit:blog-images -- --base=https://www.yeosonam.com --json
 npm run audit:blog-seo -- --base=https://www.yeosonam.com --json
 npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict

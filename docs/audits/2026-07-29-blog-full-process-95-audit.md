@@ -75,24 +75,34 @@ Persisted SEO/readability fields therefore did not prove that the public body wa
   were URL-encoded while API slugs were decoded. After identity normalization,
   the verified corpus returned to 166 unique rows; there was no hidden 18-row
   category.
-- Bounded concurrency 6 plus two transient retries reduced the full live audit
-  from an unbounded serial run to 84 seconds.
-- Verified category results at the 95 floor:
+- Bounded concurrency 6 plus two transient retries reduced the full static
+  transport audit from an unbounded serial run to 84 seconds. The authoritative
+  166-page browser audit completed in 114 seconds.
+- Post-deploy investigation proved that two apparent title/TOC-only pages had
+  5,421 and 5,634 stored body characters and rendered 3,470 and 3,539 visible
+  body characters in Chrome. The static audit was reading the pre-materialized
+  Next.js Flight response. Release and corpus classification now requires
+  `--browser`; HTML mode remains a transport smoke check.
+- Browser-verified category results at the 95 floor (96/166 passed, average
+  score 88):
   - `itinerary`: 2/2, minimum 100
-  - `preparation`: 30/36, minimum 71
-  - `local_info`: 14/26, minimum 52
-  - `pillar`: 3/8, minimum 52
-  - `travel_tips`: 45/87, minimum 52
-  - `visa_info`: 0/6, minimum 52
+  - `preparation`: 29/36, minimum 71
+  - `local_info`: 15/26, minimum 59
+  - `pillar`: 3/8, minimum 76
+  - `travel_tips`: 47/87, minimum 59
+  - `visa_info`: 0/6, minimum 59
   - `card_news`: 0/1, minimum 83
-- A same-renderer scan of all 166 stored bodies completed in 5.2 seconds, making
-  it safe for the 55-second nightly recovery route. It found 70 stored-body
-  failures; the live page audit found 72.
-- The two-row gap exposed a separate availability defect: a stale detail cache
-  could return HTTP 200 with only the table of contents after a fresh DB read
-  failed. The detail cache is now versioned for full bodies, unusable cached
-  bodies fail to the explicit unavailable surface, and low editorial quality no
-  longer triggers a DB refresh on every reader request.
+- Browser-visible issue counts are: mechanical structure 88, broken tables 34,
+  duplicate sections 34, unsupported internal claims 13, answer mismatch 9, and
+  placeholder copy 2. Browser mode found no genuinely body-empty article.
+- A stored-body preflight of all 166 rows completed in 5.2 seconds, making it
+  safe for the 55-second nightly recovery route. It is intentionally a fast
+  prioritization signal, not a replacement for the browser release audit.
+- The cache hardening remains valid defense in depth: the detail cache is
+  versioned for full bodies, a genuinely unusable cached body fails to the
+  explicit unavailable surface, and low editorial quality no longer triggers a
+  DB refresh on every reader request. The two investigated pages were not cache
+  failures; Chrome rendered their complete streamed bodies.
 - Nightly recovery now records the rendered public score and issue codes and
   prioritizes the lowest public-quality failures before search and missing-
   research fallbacks. It still cannot rewrite a row without reviewed

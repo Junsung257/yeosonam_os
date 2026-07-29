@@ -35,12 +35,15 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 
 A day is healthy only when all of these are true:
 
-- `npm run audit:blog-public-customer-quality -- --limit=500 --min-score=95 --strict` completes the entire sitemap/API corpus. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.
+- `npm run audit:blog-public-customer-quality -- --limit=500 --min-score=95 --browser --strict` completes the entire sitemap/API corpus in a real browser. Review `categoryScores`: each category uses its minimum public score, so one weak article keeps that category below 95.
 - A public customer audit failure is classified before repair. Rendering/duplication defects may use deterministic presentation cleanup; factual, freshness, intent, or evidence defects enter reviewed atomic replacement. Never raise a persisted score to close a public-render finding.
 - The full public audit defaults to bounded concurrency 6 and two transient
   retries. Use `--concurrency=1` only for incident isolation; do not remove URL
   decoding before target deduplication. Confirm `checked` equals the unique API
   catalog count before accepting category results.
+- Use `--browser` for release and corpus-quality decisions. Static HTML mode is
+  only a fast transport smoke check because deferred Next.js Flight content can
+  be absent from the parseable document until Chrome materializes the page.
 - A detail page returning HTTP 200 with only its title or table of contents is a
   failure, not a healthy stale response. Check the versioned detail cache and
   `hasUsableBlogBody`; a low editorial score belongs to the recovery queue and
@@ -149,7 +152,7 @@ npm run type-check
 npx vitest run src/lib/blog-editorial-repair.test.ts src/lib/blog-seo-scorer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-topic-fit-gate.test.ts
 npm run verify:blog-auto-research:live
 npm run audit:blog-quality -- --limit=50
-npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --strict
+npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --browser --strict
 npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
 npm run audit:blog-search-daily:strict
 ```
