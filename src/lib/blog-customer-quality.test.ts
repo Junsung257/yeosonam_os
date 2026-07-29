@@ -222,6 +222,27 @@ describe('inspectBlogCustomerQuality', () => {
     expect(report.issues.map((issue) => issue.code)).not.toContain('table_render_risk');
   });
 
+  it('allows official source link lists without mistaking URL separators for table columns', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '캐나다 로키산맥 대중교통',
+      destination: '캐나다 로키산맥',
+      blogHtml: [
+        '# 캐나다 로키산맥 대중교통',
+        '',
+        '공식 운영사에서 노선과 예약 조건을 확인하세요.',
+        '',
+        '## 공식 운영사 근거',
+        '',
+        '- [Parks Canada](https://parks.canada.ca/pn-np/ab/banff/visit/parkbus/louise)',
+        '- [Roam Transit 요금](https://roamtransit.com/fares/)',
+        '- [Roam Transit 예약](https://roamtransit.com/fares/reservations/)',
+      ].join('\n'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('table_render_risk');
+  });
+
   it('blocks readable Korean weather guides that open with reservation or cost copy', () => {
     const report = inspectBlogCustomerQuality({
       blogType: 'info',
