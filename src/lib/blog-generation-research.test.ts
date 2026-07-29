@@ -888,6 +888,28 @@ describe('blog generation research preflight', () => {
     expect(seoWithFaq.score - seoWithoutFaq.score).toBe(2);
     expect(seoWithFaq.details.find((detail) => detail.name === 'structured_data'))
       .toMatchObject({ score: 7, status: 'pass' });
+    const productionBoundarySeoInput = {
+      ...seoInput,
+      secondaryKeywords: [],
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+        howTo: false,
+      },
+    };
+    const productionBoundarySeoWithoutSourceHandoff = computeSeoScore(productionBoundarySeoInput);
+    const productionBoundarySeo = computeSeoScore({
+      ...productionBoundarySeoInput,
+      generationMeta: {
+        information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
+      },
+    });
+    expect(productionBoundarySeo.details.find((detail) => detail.name === 'semantic_longtail_coverage'))
+      .toMatchObject({ score: 5, status: 'warn' });
+    expect(productionBoundarySeo.details.find((detail) => detail.name === 'external_authority_links'))
+      .toMatchObject({ score: 6, status: 'pass' });
+    expect(productionBoundarySeo.score - productionBoundarySeoWithoutSourceHandoff.score).toBe(3);
 
     const second = repairBlogGenerationResearchStructure({
       markdown: repaired.markdown,

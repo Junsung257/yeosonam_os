@@ -6,6 +6,7 @@
  */
 
 import { inspectBlogSlugQuality } from './blog-slug-quality';
+import { readVerifiedResearchOfficialSourceUrls } from './blog-verified-research-sources';
 
 const SEMANTIC_DICTIONARY: Record<string, string[]> = {
   destination: ['여행', '목적지', '방문', '현지', '출발', '일정'],
@@ -100,6 +101,7 @@ export interface ScorerInput {
   destination?: string | null;
   blogType: 'product' | 'info';
   hasRuntimeInformationalCta?: boolean;
+  generationMeta?: Record<string, unknown> | null;
   /** The public blog template renders seoTitle as the page-level H1 outside blogHtml. */
   hasRenderedPageH1?: boolean;
   imageCount?: number;
@@ -420,10 +422,25 @@ function scorePublicLinkIntegrity(blogHtml: string): SeoScoreDetail {
   };
 }
 
-function scoreExternalLinks(blogHtml: string): SeoScoreDetail {
+function normalizeExternalUrl(value: string): string {
+  try {
+    return new URL(value).href;
+  } catch {
+    return value;
+  }
+}
+
+function scoreExternalLinks(
+  blogHtml: string,
+  generationMeta?: Record<string, unknown> | null,
+): SeoScoreDetail {
   const links = extractLinks(blogHtml);
   const external = links.filter((href) => /^https?:\/\//i.test(href) && !/yeosonam\.com/i.test(href));
+  const verifiedOfficialSources = new Set(
+    readVerifiedResearchOfficialSourceUrls(generationMeta).map(normalizeExternalUrl),
+  );
   const authority = external.filter((href) => {
+    if (verifiedOfficialSources.has(normalizeExternalUrl(href))) return true;
     try {
       const host = new URL(href).hostname.toLowerCase();
       return AUTHORITATIVE_HOST_HINTS.some((hint) => host.includes(hint));
@@ -533,7 +550,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scoreSemanticCoverage(plainText, input.secondaryKeywords),
     scoreImages(input, keyword, dest),
     scoreInternalLinks(input.blogHtml, input.blogType, input.hasRuntimeInformationalCta),
-    scoreExternalLinks(input.blogHtml),
+    scoreExternalLinks(input.blogHtml, input.generationMeta),
     scorePublicLinkIntegrity(input.blogHtml),
     scoreReadability(input.blogHtml, plainText),
     scoreSchema(input),

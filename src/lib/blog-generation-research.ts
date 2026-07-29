@@ -8,6 +8,7 @@ import {
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
 import { validateBlogInformationStructure } from './blog-information-structure';
+import { BLOG_RESEARCH_PREFLIGHT_VERSION } from './blog-verified-research-sources';
 
 export const BLOG_INFORMATION_RESEARCH_META_KEY = 'information_research_bundle';
 
@@ -717,7 +718,7 @@ function repairLocalTransportResearchStructure(input: {
     '',
     '## 렌터카 없이 이동하는 확인 순서',
     '',
-    '- 숙소에서 실제 승차 정류장까지의 이동 경로를 먼저 확인하세요.',
+    '- 숙소 위치에서 실제 승차 정류장까지의 이동 경로를 먼저 확인하세요.',
     '- 표에서 노선별 요금과 소요시간을 비교한 뒤 예약 가능 여부를 확인하세요.',
     '- 출발일의 첫차·막차와 운행 시간은 공식 시간표에서 다시 확인하세요.',
     '- 예약 화면에서 인원, 수하물, 취소 조건과 결제 수수료를 함께 확인하세요.',
@@ -1523,7 +1524,7 @@ export function summarizeBlogGenerationResearch(readiness: BlogGenerationResearc
       )].slice(0, 12)
     : [];
   return {
-    version: 'r18-research-first-v1',
+    version: BLOG_RESEARCH_PREFLIGHT_VERSION,
     passed: readiness.passed,
     issues: readiness.issues.slice(0, 20),
     ...readiness.summary,
