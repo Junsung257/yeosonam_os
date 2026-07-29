@@ -15,6 +15,7 @@ import {
   extractReviewedPageTextForResearch,
   fetchReviewedDirectPages,
   sanitizeGroundedResearchPayload,
+  selectReputableResearchRegistryForIntent,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
 
@@ -136,6 +137,43 @@ describe('fetchReviewedDirectPages', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('selectReputableResearchRegistryForIntent', () => {
+  it('keeps only intent- and destination-scoped reviewed documents before the fetch cap', () => {
+    const registry = [
+      {
+        id: 'food-guam',
+        hostname: 'menuguam.com',
+        sourceTypes: ['reputable_price_source' as const],
+        intents: ['food_budget', 'family_budget'],
+        allowSubdomains: true,
+        researchUrls: ['https://chinfe.menuguam.com/'],
+        researchDestinations: ['괌'],
+      },
+      {
+        id: 'shopping-guam',
+        hostname: 'guamroute.com',
+        sourceTypes: ['reputable_price_source' as const],
+        intents: ['shopping_souvenirs'],
+        allowSubdomains: true,
+        researchUrls: ['https://guamroute.com/'],
+        researchDestinations: ['괌'],
+      },
+      {
+        id: 'food-osaka',
+        hostname: 'example.jp',
+        sourceTypes: ['reputable_price_source' as const],
+        intents: ['food_budget'],
+        allowSubdomains: false,
+        researchUrls: ['https://example.jp/menu'],
+        researchDestinations: ['오사카'],
+      },
+    ];
+
+    expect(selectReputableResearchRegistryForIntent(registry, 'family_budget', '괌'))
+      .toEqual([registry[0]]);
   });
 });
 
@@ -358,7 +396,11 @@ describe('augmentGuamFoodBudgetPayload', () => {
     const payload = augmentGuamFoodBudgetPayload([{
       url: 'https://chinfe.menuguam.com/',
       title: 'House of Chin Fe menu',
-      text: 'Breakfast Weekdays 6:30 AM - 10:30 AM Weekends 6:30 AM - 01:30 PM Corned Beef Fried Rice $14.50',
+      text: [
+        'Breakfast Weekdays 6:30 AM - 10:30 AM Weekends 6:30 AM - 01:30 PM',
+        'Corned Beef Fried Rice $14.50',
+        'Beverages Coffee* $2.50',
+      ].join(' '),
     }], '괌', {
       sources: [{
         sourceKey: 'rootz',
@@ -380,11 +422,15 @@ describe('augmentGuamFoodBudgetPayload', () => {
 
     expect(claimText).toContain('아침');
     expect(claimText).toContain('14.50 USD');
+    expect(claimText).toContain('간식');
+    expect(claimText).toContain('2.50 USD');
     expect(claimText).toContain('절약');
     expect(claimText).toContain('일반');
     expect(claimText).toContain('여유');
     expect(payload.evidence?.some((evidence) =>
       evidence.evidenceKey === 'chin-fe-breakfast-corned-beef-rice')).toBe(true);
+    expect(payload.evidence?.some((evidence) =>
+      evidence.evidenceKey === 'chin-fe-snack-coffee')).toBe(true);
   });
 });
 

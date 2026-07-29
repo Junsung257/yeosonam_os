@@ -265,6 +265,7 @@ export function extractReviewedPageTextForResearch(value: string): string {
     /\bTumon\b/gi,
     /\bfare\b/gi,
     /\bbreakfast\b|\blunch\b|\bdinner\b/gi,
+    /\bsnacks?\b|\bcoffee\b|\bcafe\b|\bdesserts?\b/gi,
     /\binsurance\b|\bclaim\b|\bexclusion\b/gi,
   ];
   for (const pattern of patterns) {
@@ -1349,6 +1350,9 @@ export function augmentGuamFoodBudgetPayload(
     /Breakfast[\s\S]{0,500}?Corned Beef Fried Rice\s*\$14\.50/i,
   );
   if (!breakfastMatch) return payload;
+  const coffeeMatch = pages[pageIndex]!.text.match(
+    /Beverages[\s\S]{0,600}?Coffee\*\s*\$2\.50/i,
+  );
 
   const sourceDrafts = [...(payload.sources ?? [])];
   const matchingSourceIndex = sourceDrafts.findIndex(
@@ -1369,15 +1373,25 @@ export function augmentGuamFoodBudgetPayload(
     destination,
   };
   const breakfastEvidenceKey = 'chin-fe-breakfast-corned-beef-rice';
+  const coffeeEvidenceKey = 'chin-fe-snack-coffee';
   const hasExactBreakfast = (payload.claims ?? []).some((claim) =>
     /chin\s*fe/i.test(clean(claim.claimText))
     && /(?:조식|아침|breakfast)/i.test(clean(claim.claimText))
     && /14(?:\.50)?/.test(clean(claim.normalizedValue)));
+  const hasExactCoffee = (payload.claims ?? []).some((claim) =>
+    /chin\s*fe/i.test(clean(claim.claimText))
+    && /(?:간식|커피|coffee|snack)/i.test(clean(claim.claimText))
+    && /2(?:\.50)?/.test(clean(claim.normalizedValue)));
   const evidenceDrafts = (payload.evidence ?? []).filter(
-    (evidence) => clean(evidence.evidenceKey) !== breakfastEvidenceKey,
+    (evidence) =>
+      clean(evidence.evidenceKey) !== breakfastEvidenceKey
+      && clean(evidence.evidenceKey) !== coffeeEvidenceKey,
   );
   const claimDrafts = (payload.claims ?? [])
-    .filter((claim) => !normalizeList(claim.evidenceKeys).includes(breakfastEvidenceKey))
+    .filter((claim) => {
+      const keys = normalizeList(claim.evidenceKeys);
+      return !keys.includes(breakfastEvidenceKey) && !keys.includes(coffeeEvidenceKey);
+    })
     .map((claim) => ({ ...claim, evidenceKeys: [...(claim.evidenceKeys ?? [])] }));
   if (!hasExactBreakfast) {
     evidenceDrafts.unshift({
@@ -1402,6 +1416,32 @@ export function augmentGuamFoodBudgetPayload(
       evidenceKeys: [breakfastEvidenceKey],
       normalizedValue: '14.50',
       unit: '1메뉴',
+      currency: 'USD',
+    });
+  }
+  if (coffeeMatch && !hasExactCoffee) {
+    evidenceDrafts.unshift({
+      evidenceKey: coffeeEvidenceKey,
+      sourceKey: sourceKeyValue,
+      excerpt: 'House of Chin Fe 괌의 확인일 음료 메뉴에서 커피는 2.50 USD이다.',
+      sourceLocator: 'Beverages > Coffee',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 간식·커피 예산 여행자`,
+      normalizedValue: '2.50',
+      unit: '1잔',
+      currency: 'USD',
+      conditions: ['확인일 기준 메뉴', '방문 전 가격·제공 여부 재확인'],
+    });
+    claimDrafts.unshift({
+      claimText: '[간식] House of Chin Fe 괌의 커피는 확인일 기준 2.50 USD이다.',
+      claimType: 'price',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: [coffeeEvidenceKey],
+      normalizedValue: '2.50',
+      unit: '1잔',
       currency: 'USD',
     });
   }
@@ -2528,6 +2568,20 @@ async function loadReputableRegistry(): Promise<BlogInformationReputableSourceRe
   })) as BlogInformationReputableSourceRegistryEntry[];
 }
 
+export function selectReputableResearchRegistryForIntent(
+  registry: BlogInformationReputableSourceRegistryEntry[],
+  intent: string,
+  destination: string,
+): BlogInformationReputableSourceRegistryEntry[] {
+  const destinationKey = clean(destination);
+  return registry.filter((entry) => {
+    const destinations = entry.researchDestinations?.map(clean).filter(Boolean) ?? [];
+    return entry.intents.includes(intent)
+      && (entry.researchUrls?.length ?? 0) > 0
+      && (destinations.length === 0 || destinations.includes(destinationKey));
+  });
+}
+
 function allowedPersistedSourceTypes(sourceTypes: string[]): BlogInformationSourceType[] {
   const values = new Set<BlogInformationSourceType>();
   for (const sourceType of sourceTypes) {
@@ -2578,12 +2632,11 @@ export async function researchBlogInformationAutomatically(input: {
     const reviewedReputableRegistry = reputableRegistry.filter((entry) =>
       entry.intents.includes(input.brief.intentType)
       && entry.sourceTypes.some((sourceType) => allowedSourceTypes.includes(sourceType)));
-    const destinationKey = clean(input.destination);
-    const directlyReviewedReputableRegistry = reviewedReputableRegistry.filter((entry) => {
-      const destinations = entry.researchDestinations?.map(clean).filter(Boolean) ?? [];
-      return (entry.researchUrls?.length ?? 0) > 0
-        && (destinations.length === 0 || destinations.includes(destinationKey));
-    });
+    const directlyReviewedReputableRegistry = selectReputableResearchRegistryForIntent(
+      reviewedReputableRegistry,
+      input.brief.intentType,
+      input.destination,
+    );
     const reviewedSources = [
       ...reviewedRegistry.map((entry) => `${entry.hostname} (${entry.sourceType})`),
       ...reviewedReputableRegistry.flatMap((entry) =>
