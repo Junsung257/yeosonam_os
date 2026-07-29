@@ -70,6 +70,14 @@ export interface BlogPublishQualityReport {
 
 export const PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE = 95;
 
+export interface BlogPublicCustomerQualityInput {
+  blog_html: string;
+  slug: string;
+  seo_title?: string | null;
+  destination?: string | null;
+  product_id?: string | null;
+}
+
 export interface PreparedBlogPublishResult {
   blogHtml: string;
   changed: boolean;
@@ -182,6 +190,24 @@ function inspectBlogPublishContract(input: BlogPublishQualityInput): BlogPublish
   }];
 }
 
+export async function evaluateBlogPublicCustomerQuality(
+  input: BlogPublicCustomerQualityInput,
+): Promise<PublicBlogCustomerQualityReport> {
+  const renderedCustomerHtml = await renderBlogContentToHtml(input.blog_html);
+  const safeTitle = (input.seo_title ?? input.slug)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  return inspectPublicBlogCustomerQuality({
+    html: `<article><h1>${safeTitle}</h1>${renderedCustomerHtml}</article>`,
+    path: `/blog/${input.slug}`,
+    title: input.seo_title,
+    expectedType: input.product_id ? 'product' : 'info',
+    expectedDestination: input.destination ?? null,
+  });
+}
+
 export async function evaluateBlogPublishQuality(
   input: BlogPublishQualityInput,
 ): Promise<BlogPublishQualityReport> {
@@ -236,18 +262,12 @@ export async function evaluateBlogPublishQuality(
     productId: input.product_id ?? null,
     generationMeta: input.generation_meta ?? null,
   });
-  const renderedCustomerHtml = await renderBlogContentToHtml(input.blog_html);
-  const safeTitle = (input.seo_title ?? input.slug)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  const publicCustomerQuality = inspectPublicBlogCustomerQuality({
-    html: `<article><h1>${safeTitle}</h1>${renderedCustomerHtml}</article>`,
-    path: `/blog/${input.slug}`,
-    title: input.seo_title,
-    expectedType: blogType,
-    expectedDestination: destination,
+  const publicCustomerQuality = await evaluateBlogPublicCustomerQuality({
+    blog_html: input.blog_html,
+    slug: input.slug,
+    seo_title: input.seo_title,
+    destination,
+    product_id: input.product_id,
   });
   const publicCustomerGatePassed =
     publicCustomerQuality.passed

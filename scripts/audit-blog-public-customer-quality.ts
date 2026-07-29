@@ -51,6 +51,8 @@ const baseUrl = (argValue('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://
   .replace(/\/+$/, '');
 const limit = Math.max(1, Number(argValue('--limit', '10')) || 10);
 const timeoutMs = Math.max(3000, Number(argValue('--timeout-ms', '15000')) || 15000);
+const concurrency = Math.max(1, Math.min(12, Number(argValue('--concurrency', '6')) || 6));
+const retries = Math.max(0, Math.min(3, Number(argValue('--retries', '2')) || 0));
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const minScore = Math.max(0, Math.min(100, Number(argValue('--min-score', '88')) || 88));
@@ -68,27 +70,74 @@ function normalizeBlogPath(href: string | null | undefined): string | null {
   try {
     const url = /^https?:\/\//i.test(href) ? new URL(href) : new URL(href, baseUrl);
     if (url.origin !== new URL(baseUrl).origin) return null;
-    if (!/^\/blog\/[^/]+/.test(url.pathname)) return null;
-    if (/\/blog\/(?:angle|destination)\//.test(url.pathname)) return null;
-    if (/\/opengraph-image(?:$|[/?#])/.test(url.pathname)) return null;
-    return url.pathname.replace(/\/+$/, '');
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (!/^\/blog\/[^/]+/.test(decodedPath)) return null;
+    if (/\/blog\/(?:angle|destination)\//.test(decodedPath)) return null;
+    if (/\/opengraph-image(?:$|[/?#])/.test(decodedPath)) return null;
+    return decodedPath.replace(/\/+$/, '');
   } catch {
     return null;
   }
 }
 
+function retryDelayMs(attempt: number): number {
+  return Math.min(2_000, 250 * (2 ** attempt));
+}
+
+function shouldRetryStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
 async function fetchText(url: string, accept = 'text/html,application/xhtml+xml'): Promise<{ status: number; text: string }> {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    signal: AbortSignal.timeout(timeoutMs),
-    headers: {
-      accept,
-      'cache-control': 'no-cache',
-      pragma: 'no-cache',
-      'user-agent': 'yeosonam-public-customer-quality-audit/1.0',
-    },
-  });
-  return { status: response.status, text: await response.text() };
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          accept,
+          'cache-control': 'no-cache',
+          pragma: 'no-cache',
+          'user-agent': 'yeosonam-public-customer-quality-audit/1.0',
+        },
+      });
+      if (shouldRetryStatus(response.status) && attempt < retries) {
+        await response.body?.cancel();
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs(attempt)));
+        continue;
+      }
+      return { status: response.status, text: await response.text() };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) throw error;
+      await new Promise(resolve => setTimeout(resolve, retryDelayMs(attempt)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  workerCount: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(
+    Array.from(
+      { length: Math.min(workerCount, Math.max(1, items.length)) },
+      runWorker,
+    ),
+  );
+  return results;
 }
 
 function inferExpectedType(post: BlogApiPost): 'info' | 'product' | 'unknown' {
@@ -271,10 +320,24 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const rows: AuditedPublicBlogTarget[] = [];
-  for (const target of targets) {
-    rows.push(await auditTarget(target));
+  if (!outputJson) {
+    console.log(
+      `Auditing ${targets.length} public blog page(s) with concurrency=${concurrency}, retries=${retries}`,
+    );
   }
+  let completed = 0;
+  const rows = await mapWithConcurrency(
+    targets,
+    concurrency,
+    async (target) => {
+      const result = await auditTarget(target);
+      completed += 1;
+      if (!outputJson && (completed % 25 === 0 || completed === targets.length)) {
+        console.log(`Audited ${completed}/${targets.length}`);
+      }
+      return result;
+    },
+  );
 
   const failed = rows.filter((row) => !row.ok);
   const issueCounts = rows.reduce<Record<string, number>>((acc, row) => {
@@ -337,6 +400,8 @@ async function main() {
     failed: failed.length,
     averageScore,
     minScore,
+    concurrency,
+    retries,
     issueCounts,
     passed95CategoryCount: categoryScores.filter(category => category.passed95).length,
     failed95CategoryCount: categoryScores.filter(category => !category.passed95).length,
