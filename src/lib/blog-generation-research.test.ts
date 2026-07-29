@@ -209,6 +209,183 @@ function readiness(bundle: BlogInformationResearchBundle | null) {
   });
 }
 
+function localTransportBundle(): BlogInformationResearchBundle {
+  type ClaimType = BlogInformationResearchBundle['claims'][number]['claimType'];
+  const records: Array<{
+    sourceKey: 'parks-canada' | 'roam-transit';
+    claimText: string;
+    claimType: ClaimType;
+    normalizedValue: string;
+    unit: string | null;
+    currency: string | null;
+  }> = [
+    {
+      sourceKey: 'parks-canada',
+      claimText: 'Parks Canada 셔틀의 성인 요금은 12.75 CAD입니다.',
+      claimType: 'price',
+      normalizedValue: '12.75',
+      unit: 'CAD',
+      currency: 'CAD',
+    },
+    {
+      sourceKey: 'roam-transit',
+      claimText: '밴프와 레이크 루이스 간 Roam Transit 8X 서비스는 성인 12.50 CAD입니다.',
+      claimType: 'price',
+      normalizedValue: '12.50',
+      unit: 'CAD',
+      currency: 'CAD',
+    },
+    {
+      sourceKey: 'roam-transit',
+      claimText: '밴프 고등학교 교통 허브에서 레이크 루이스 레이크쇼어까지 Roam Transit 8X 서비스는 약 57분 소요됩니다.',
+      claimType: 'duration',
+      normalizedValue: '57',
+      unit: '분',
+      currency: null,
+    },
+    {
+      sourceKey: 'roam-transit',
+      claimText: 'Roam Transit 8X 서비스는 예약 없이 이용할 경우 여름철 최대 2시간까지 대기할 수 있습니다.',
+      claimType: 'duration',
+      normalizedValue: '2',
+      unit: '시간',
+      currency: null,
+    },
+    {
+      sourceKey: 'roam-transit',
+      claimText: '밴프와 레이크 루이스 간 Roam Transit 8X 서비스는 연중 매일 직행 연결을 제공합니다.',
+      claimType: 'factual',
+      normalizedValue: '밴프와 레이크 루이스 간 직행 연결',
+      unit: null,
+      currency: null,
+    },
+    {
+      sourceKey: 'roam-transit',
+      claimText: 'Roam Transit 서비스 중 밴프와 레이크 루이스 간 8X 서비스만 예약이 가능합니다.',
+      claimType: 'policy',
+      normalizedValue: '8X 서비스만 예약 가능',
+      unit: null,
+      currency: null,
+    },
+    {
+      sourceKey: 'parks-canada',
+      claimText: '모레인 호수 도로는 연중 개인 차량 통행이 금지됩니다.',
+      claimType: 'policy',
+      normalizedValue: '개인 차량 통행 금지',
+      unit: null,
+      currency: null,
+    },
+  ];
+  const excerptFor = (record: typeof records[number]) => [
+    record.claimText,
+    `[검증 범위: Canada 캐나다 로키산맥; 대상: 캐나다 로키산맥 여행자; 기준일: 2026-07-28; 값: ${record.normalizedValue}${record.unit ? ` ${record.unit}` : ''}]`,
+  ].join(' ');
+  const snapshots = {
+    'parks-canada': records.filter((record) => record.sourceKey === 'parks-canada')
+      .map(excerptFor).join('\n'),
+    'roam-transit': records.filter((record) => record.sourceKey === 'roam-transit')
+      .map(excerptFor).join('\n'),
+  };
+  const sources: BlogInformationResearchBundle['sources'] = [
+    {
+      sourceKey: 'parks-canada',
+      sourceType: 'government',
+      authorityLevel: 'official_primary',
+      sourceUrl: 'https://parks.canada.ca/pn-np/ab/banff/visit/parkbus/louise',
+      publisher: 'Parks Canada',
+      retrievedAt: '2026-07-28T22:26:21.656Z',
+      snapshotContent: snapshots['parks-canada'],
+      contentHash: createBlogInformationSourceContentHash(snapshots['parks-canada']),
+      destination: '캐나다 로키산맥',
+      country: 'Canada',
+      claimTypes: ['price', 'policy'],
+      riskLevel: 'LOW',
+    },
+    {
+      sourceKey: 'roam-transit',
+      sourceType: 'transport_operator',
+      authorityLevel: 'official_primary',
+      sourceUrl: 'https://roamtransit.com/schedules-routes/lake-louise-banff-express-route-8x/',
+      publisher: 'Roam Transit',
+      retrievedAt: '2026-07-28T22:26:21.656Z',
+      snapshotContent: snapshots['roam-transit'],
+      contentHash: createBlogInformationSourceContentHash(snapshots['roam-transit']),
+      destination: '캐나다 로키산맥',
+      country: 'Canada',
+      claimTypes: ['price', 'duration', 'factual', 'policy'],
+      riskLevel: 'LOW',
+    },
+  ];
+
+  return {
+    contentKey: 'canada-rockies-7-transport',
+    sources,
+    evidence: records.map((record, index) => {
+      const snapshot = snapshots[record.sourceKey];
+      const excerpt = excerptFor(record);
+      const codeUnitStart = snapshot.indexOf(excerpt);
+      const spanStart = Array.from(snapshot.slice(0, codeUnitStart)).length;
+      return {
+        evidenceKey: `local-transport-${index + 1}`,
+        sourceKey: record.sourceKey,
+        sourceLocator: `claim-${index + 1}`,
+        excerpt,
+        spanStart,
+        spanEnd: spanStart + Array.from(excerpt).length,
+        claimType: record.claimType,
+        riskLevel: 'LOW' as const,
+        observedAt: '2026-07-28T22:26:21.656Z',
+        scope: {
+          country: 'Canada',
+          destination: '캐나다 로키산맥',
+          applicableTo: '캐나다 로키산맥 여행자',
+          locale: 'ko-KR',
+          claimType: record.claimType,
+          normalizedValue: record.normalizedValue,
+          unit: record.unit,
+          currency: record.currency,
+          verifiedAt: '2026-07-28T22:26:21.656Z',
+          nextReviewAt: '2026-08-27T22:26:21.656Z',
+          conditions: ['공식 운영사 확인일 기준'],
+        },
+      };
+    }),
+    claims: records.map((record, index) => ({
+      claimFingerprint: createBlogInformationClaimFingerprint(record.claimText),
+      claimText: record.claimText,
+      claimType: record.claimType,
+      riskLevel: 'LOW',
+      extractedValue: {
+        normalizedValue: record.normalizedValue,
+        unit: record.unit,
+        currency: record.currency,
+      },
+      requiresEvidence: true,
+      evidenceKeys: [`local-transport-${index + 1}`],
+    })),
+  };
+}
+
+function localTransportReadiness() {
+  const contract = buildBlogInformationContract({
+    intentType: 'local_transport',
+    destination: '캐나다 로키산맥',
+    topic: '캐나다 로키산맥 렌터카 없이 대중교통 여행',
+    primaryKeyword: '캐나다 로키산맥 대중교통',
+    category: 'transport',
+    microAngle: 'local_mobility',
+  });
+  return evaluateBlogGenerationResearchReadiness({
+    meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: localTransportBundle() },
+    expectedContentKey: 'canada-rockies-7-transport',
+    destination: '캐나다 로키산맥',
+    intent: 'local_transport',
+    locale: 'ko-KR',
+    sourcePolicy: contract.sourcePolicy,
+    now: new Date('2026-07-29T00:00:00.000Z'),
+  });
+}
+
 describe('blog generation research preflight', () => {
   it('blocks missing research before writing starts', () => {
     expect(readiness(null)).toMatchObject({
@@ -595,6 +772,64 @@ describe('blog generation research preflight', () => {
       }),
     });
     expect(informationReport.missingSlots).not.toContain('fees_and_booking');
+  });
+
+  it('turns verified local-transport claims into a complete customer decision table', () => {
+    const researchReadiness = localTransportReadiness();
+    expect(researchReadiness.issues).toEqual([]);
+    expect(researchReadiness.passed).toBe(true);
+
+    const repaired = repairBlogGenerationResearchStructure({
+      markdown: [
+        '# 캐나다 로키산맥 렌터카 없이 이동하기',
+        '밴프와 레이크 루이스를 연결하는 대중교통을 비교합니다.',
+        '![캐나다 로키 교통 1](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
+        '![캐나다 로키 교통 2](https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg)',
+        '![캐나다 로키 교통 3](https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg)',
+      ].join('\n\n'),
+      intent: 'local_transport',
+      readiness: researchReadiness,
+    });
+    const structureReport = validateBlogInformationStructure({
+      intent: 'local_transport',
+      markdown: repaired.markdown,
+    });
+    const informationReport = inspectBlogInformationMarkdown({
+      markdown: repaired.markdown,
+      contract: buildBlogInformationContract({
+        intentType: 'local_transport',
+        destination: '캐나다 로키산맥',
+        topic: '캐나다 로키산맥 렌터카 없이 대중교통 여행',
+        primaryKeyword: '캐나다 로키산맥 대중교통',
+        category: 'transport',
+        microAngle: 'local_mobility',
+      }),
+    });
+
+    expect(repaired.changed).toBe(true);
+    expect(repaired.changes).toContain('local_transport_verified_research_structure');
+    expect(repaired.markdown).toContain('| Roam Transit 8X 이동 | 12.50 CAD');
+    expect(repaired.markdown).toContain('| Parks Canada 셔틀 | 12.75 CAD');
+    expect(repaired.markdown).toContain('약 57분 소요');
+    expect(repaired.markdown).toContain('최대 2시간 대기');
+    expect(repaired.markdown).toContain('연중 매일 직행 연결을 제공합니다.');
+    expect(repaired.markdown).toContain('8X 서비스만 예약이 가능합니다.');
+    expect(repaired.markdown).toContain('https://parks.canada.ca/');
+    expect(repaired.markdown).toContain('https://roamtransit.com/');
+    expect(structureReport).toMatchObject({ passed: true, issues: [] });
+    expect(informationReport).toMatchObject({
+      passed: true,
+      missingSlots: [],
+      structuredIssues: [],
+    });
+
+    const second = repairBlogGenerationResearchStructure({
+      markdown: repaired.markdown,
+      intent: 'local_transport',
+      readiness: researchReadiness,
+    });
+    expect(second.changed).toBe(false);
+    expect(second.markdown).toBe(repaired.markdown);
   });
 
   it('replaces conflicting model tables and escaped newlines with one clean deterministic block', async () => {
