@@ -9,8 +9,14 @@ export interface GuidebookTokenPayload {
   scope: 'guide:read';
 }
 
-function guidebookHmacSecret() {
-  return getSecret('GUIDEBOOK_TOKEN_SECRET') || getSecret('SUPABASE_SERVICE_ROLE_KEY') || 'dev-guidebook-secret';
+function guidebookHmacSecret(): string | null {
+  return getSecret('GUIDEBOOK_TOKEN_SECRET');
+}
+
+function requireGuidebookHmacSecret(): string {
+  const secret = guidebookHmacSecret();
+  if (!secret) throw new Error('GUIDEBOOK_TOKEN_SECRET is required');
+  return secret;
 }
 
 function encodeBase64Url(input: string) {
@@ -35,14 +41,16 @@ export function signGuidebookToken(input: {
     scope: 'guide:read',
   };
   const body = encodeBase64Url(JSON.stringify(payload));
-  const sig = crypto.createHmac('sha256', guidebookHmacSecret()).update(body).digest('base64url');
+  const sig = crypto.createHmac('sha256', requireGuidebookHmacSecret()).update(body).digest('base64url');
   return `${body}.${sig}`;
 }
 
 export function verifyGuidebookToken(token: string): GuidebookTokenPayload | null {
   const [body, sig] = token.split('.');
   if (!body || !sig) return null;
-  const expected = crypto.createHmac('sha256', guidebookHmacSecret()).update(body).digest('base64url');
+  const secret = guidebookHmacSecret();
+  if (!secret) return null;
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url');
   if (sig.length !== expected.length) return null;
   const ok = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
   if (!ok) return null;

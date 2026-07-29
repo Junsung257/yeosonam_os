@@ -1,5 +1,5 @@
 {
-  "observedAt": "2026-07-29T10:13:34.787Z",
+  "observedAt": "2026-07-29T10:52:19.798Z",
   "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
   "projectRef": "ixaxnvbmhzjvupissmly",
   "scheduleCount": 90,
@@ -660,7 +660,7 @@
       "lastSuccessfulRun": null,
       "lastFailure": null,
       "revenueDependency": "not_proven_for_p0",
-      "decision": "OBSERVE_ONLY",
+      "decision": "ESSENTIAL_SECURITY",
       "rollbackMethod": "Revert the classification/policy commit; no route deletion is planned."
     },
     {

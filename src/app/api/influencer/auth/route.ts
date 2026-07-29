@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { verifyInfluencerPinForReferral } from '@/lib/affiliate-influencer-auth';
 import { issueAffiliateToken } from '@/lib/affiliate/jwt-auth';
@@ -64,10 +65,18 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('[Influencer Auth]', error);
+    const requestId = randomUUID();
+    console.error('[Influencer Auth]', { requestId, error });
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '인증 실패' },
-      { status: 500 },
+      {
+        code: 'INFLUENCER_AUTH_FAILED',
+        error: '인증 처리 중 오류가 발생했습니다.',
+        requestId,
+      },
+      {
+        status: 500,
+        headers: { 'Cache-Control': 'no-store' },
+      },
     );
   }
 }

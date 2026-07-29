@@ -1,5 +1,6 @@
+import { randomUUID } from 'crypto';
 import { NextRequest } from 'next/server';
-import { successResponse, ApiErrors } from '@/lib/api-response';
+import { apiResponse, successResponse, ApiErrors } from '@/lib/api-response';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { createLandingBookingRequest, findExistingLandingBookingReplay } from '@/lib/lead-booking-request';
@@ -41,6 +42,8 @@ function isValidLeadPhone(value: unknown): value is string {
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = randomUUID();
+
   try {
     const body = await req.json();
     const { productId, channel, form, tracking, submittedAt, chatSessionId, idempotencyKey } = body;
@@ -111,8 +114,24 @@ export async function POST(req: NextRequest) {
     }).select('id').single();
 
     if (error) {
-      console.error('[leads] supabase error:', error);
-      return ApiErrors.internalError(error.message);
+      console.error('[leads] supabase error:', { requestId, error });
+      return apiResponse(
+        {
+          ok: false,
+          error: {
+            code: 'LEAD_SAVE_FAILED',
+            message: '상담 요청을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+            requestId,
+          },
+        },
+        {
+          status: 500,
+          headers: {
+            'Cache-Control': 'no-store',
+            'x-request-id': requestId,
+          },
+        }
+      );
     }
 
     const bookingResult = await createLandingBookingRequest({
@@ -152,7 +171,23 @@ export async function POST(req: NextRequest) {
       idempotent_replay: bookingResult.idempotentReplay,
     });
   } catch (err) {
-    console.error('[leads] unexpected error:', err);
-    return ApiErrors.internalError(err instanceof Error ? err.message : 'Internal server error');
+    console.error('[leads] unexpected error:', { requestId, error: err });
+    return apiResponse(
+      {
+        ok: false,
+        error: {
+          code: 'LEAD_REQUEST_FAILED',
+          message: '상담 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+          requestId,
+        },
+      },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store',
+          'x-request-id': requestId,
+        },
+      }
+    );
   }
 }

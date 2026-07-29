@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
-import { createHmac } from 'crypto';
+import { createOAuthState } from '@/lib/oauth-state';
 
 // ── GET /api/admin/social-configs ────────────────────────────────────────────
 // 소셜 플랫폼 config 목록 조회
@@ -43,15 +43,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'META_APP_ID 미설정' }, { status: 503 });
   }
 
-  // state 생성 (CSRF 방지)
-  const stateSecret = getSecret('OAUTH_STATE_SECRET') ?? 'dev';
-  const payload = Buffer.from(JSON.stringify({
+  const state = createOAuthState({
     tenant_id: '00000000-0000-0000-0000-000000000000', // 단일 테넌트
     ts: Date.now(),
     platform,
-  })).toString('base64url');
-  const sig = createHmac('sha256', stateSecret).update(payload).digest('hex').slice(0, 16);
-  const state = `${payload}.${sig}`;
+  });
+  if (!state) {
+    return NextResponse.json(
+      { code: 'OAUTH_NOT_CONFIGURED', error: 'OAuth 연결을 사용할 수 없습니다.' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
   const redirectUri = `${siteUrl}/api/auth/meta-callback`;

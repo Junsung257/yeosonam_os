@@ -2,30 +2,17 @@ import { NextRequest } from 'next/server';
 import crypto from 'node:crypto';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
-import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { issueAffiliateToken, verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
+import { hashAffiliatePin } from '@/lib/affiliate/pin-hash';
+
+export { hashAffiliatePin } from '@/lib/affiliate/pin-hash';
 
 const { PIN_MAX_ATTEMPTS, PIN_WINDOW_MINUTES } = AFFILIATE_CONFIG;
 
 export type AuthAffiliateResult =
   | { ok: true; affiliate: Record<string, unknown>; token?: string }
   | { ok: false; error: string; status: number; code?: string };
-
-function pinSecret(): string {
-  return (
-    getSecret('AFFILIATE_JWT_SECRET') ||
-    getSecret('SUPABASE_JWT_SECRET') ||
-    'yeosonam-dev-affiliate-pin-secret'
-  );
-}
-
-export function hashAffiliatePin(pin: string): string {
-  return crypto
-    .createHmac('sha256', pinSecret())
-    .update(pin.trim())
-    .digest('hex');
-}
 
 function constantTimeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);

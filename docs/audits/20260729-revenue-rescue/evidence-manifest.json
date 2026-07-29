@@ -61,6 +61,26 @@
       "evidenceFile": "screenshots/02-private-tour-before.png",
       "verdict": "CONFIRMED",
       "confidence": "high"
+    },
+    {
+      "claim": "query-string cron secret is accepted",
+      "originalReportedValue": true,
+      "currentValue": false,
+      "exactSqlOrCommand": "src/lib/cron-auth.test.ts",
+      "observedAt": "2026-07-29T11:15:00Z",
+      "evidenceFile": "outputs/security-verification.json",
+      "verdict": "CONFIRMED_FIXED_IN_BRANCH",
+      "confidence": "high"
+    },
+    {
+      "claim": "authenticated sessions are isolated from sensitive internal tables",
+      "originalReportedValue": null,
+      "currentValue": false,
+      "exactSqlOrCommand": "queries/05-rls-policy-inventory.sql plus targeted pg_policies query",
+      "observedAt": "2026-07-29T11:00:00Z",
+      "evidenceFile": "security-verdicts.md",
+      "verdict": "CONFIRMED_PARTIAL_FIX",
+      "confidence": "high"
     }
   ],
   "limitations": [

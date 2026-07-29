@@ -16,3 +16,6 @@ production 고객 화면 증거다. 비밀키와 고객 단위 PII는 저장하�
 보안 심층 스캔 플러그인은 worker process 생성 단계에서 `spawn EPERM`으로 종료됐다.
 동일 스캔을 반복하지 않고 실패 manifest를 보존한 뒤, repository와 runtime surface를
 직접 연결하는 focused validation으로 계속했다.
+
+보안 finding의 actor-to-sink 판정, 브랜치 수정 상태, production 적용 전 요구사항은
+`security-verdicts.md`에 기록했다. RLS migration과 비밀키 설정은 production에 적용하지 않았다.
