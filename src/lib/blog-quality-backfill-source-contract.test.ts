@@ -23,4 +23,16 @@ describe('blog quality backfill publish contract', () => {
     expect(source).toContain('return current;');
     expect(source).not.toContain('improveBackfillSeoDescriptionCustomer(_description');
   });
+
+  it('audits verified evidence structures from their stored public body', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'scripts/backfill-blog-quality.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('preservesEvidenceBackedResearchStructure');
+    expect(source).toContain('const auditedHtml = preservesEvidenceBackedResearchStructure ? originalHtml : nextHtml;');
+    expect(source).toContain('blog_html: auditedHtml');
+    expect(source).toContain('generation_meta: auditedGenerationMeta');
+  });
 });
