@@ -3014,7 +3014,20 @@ async function processQueueItem(
     if (!seoScore.passed) {
       const failedDetails = seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ');
       console.log(`[blog-publisher] SEO score ${seoScore.score}/${seoScore.maxScore} - publish blocked (${seoScore.summary})`);
-      await handleFailure(item, `SEO score ${seoScore.score}/${seoScore.maxScore} - ${failedDetails || seoScore.summary}`, null);
+      await handleFailure(
+        item,
+        `SEO score ${seoScore.score}/${seoScore.maxScore} - ${failedDetails || seoScore.summary}`,
+        null,
+        false,
+        {
+          last_seo_score: {
+            score: seoScore.score,
+            max_score: seoScore.maxScore,
+            summary: seoScore.summary,
+            details: seoScore.details,
+          },
+        },
+      );
       return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
     }
 

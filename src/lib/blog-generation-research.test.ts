@@ -814,6 +814,7 @@ describe('blog generation research preflight', () => {
     expect(repaired.markdown).toContain('최대 2시간 대기');
     expect(repaired.markdown).toContain('연중 매일 직행 연결을 제공합니다.');
     expect(repaired.markdown).toContain('8X 서비스만 예약이 가능합니다.');
+    expect(extractFaqItems(repaired.markdown)).toHaveLength(3);
     expect(repaired.markdown).toContain('https://parks.canada.ca/');
     expect(repaired.markdown).toContain('https://roamtransit.com/');
     expect(structureReport).toMatchObject({ passed: true, issues: [] });
@@ -822,6 +823,41 @@ describe('blog generation research preflight', () => {
       missingSlots: [],
       structuredIssues: [],
     });
+    const seoInput = {
+      blogHtml: repaired.markdown,
+      slug: '캐나다-로키산맥-7월-여행-렌터카-없이-대중교통으로-가능할까',
+      seoTitle: '캐나다 로키산맥 대중교통 여행: 렌터카 없이 이동하는 법',
+      seoDescription: '캐나다 로키산맥에서 렌터카 없이 이동할 때 필요한 공식 셔틀 요금, 소요시간, 운행 확인, 승차권 예약 조건을 근거와 함께 정리합니다.',
+      primaryKeyword: '캐나다 로키산맥 대중교통',
+      secondaryKeywords: ['밴프 셔틀', '레이크 루이스 버스'],
+      destination: '캐나다 로키산맥',
+      blogType: 'info' as const,
+      hasRuntimeInformationalCta: true,
+      hasRenderedPageH1: true,
+      imageCount: 3,
+      imagesWithAlt: 3,
+    };
+    const seoWithFaq = computeSeoScore({
+      ...seoInput,
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: extractFaqItems(repaired.markdown).length > 0,
+        howTo: false,
+      },
+    });
+    const seoWithoutFaq = computeSeoScore({
+      ...seoInput,
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: false,
+        howTo: false,
+      },
+    });
+    expect(seoWithFaq.score - seoWithoutFaq.score).toBe(2);
+    expect(seoWithFaq.details.find((detail) => detail.name === 'structured_data'))
+      .toMatchObject({ score: 7, status: 'pass' });
 
     const second = repairBlogGenerationResearchStructure({
       markdown: repaired.markdown,

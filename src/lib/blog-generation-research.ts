@@ -650,6 +650,39 @@ function repairLocalTransportResearchStructure(input: {
   const policyLines = policyClaims.length > 0
     ? policyClaims.map((claim) => `- ${claim.claimText}`)
     : ['- 계절·성수기 운휴, 예약·수하물 제한은 공식 운영사에서 출발 전에 확인하세요.'];
+  const fareAndDurationAnswer = rows
+    .filter((row) => row.duration)
+    .slice(0, 2)
+    .map((row) =>
+      `${row.label}은 ${formatExtractedPrice(row.price)}, ${formatExtractedDuration(row.duration!)} 기준입니다.`)
+    .join(' ');
+  const scheduleAnswer = scheduleClaims[0]?.claimText ?? '';
+  const reservationAnswer = [
+    reservationClaims.find((claim) => claim.claimType === 'policy')?.claimText
+      ?? reservationClaims[0]?.claimText
+      ?? '',
+    durationClaims.find((claim) => /대기|wait/i.test(claim.claimText))?.claimText ?? '',
+  ].filter(Boolean).join(' ');
+  const faqItems = [
+    {
+      question: '요금과 소요시간은 어느 정도인가요?',
+      answer: fareAndDurationAnswer,
+    },
+    {
+      question: '매일 운행하는지 어디서 확인하나요?',
+      answer: scheduleAnswer,
+    },
+    {
+      question: '승차권을 미리 예약해야 하나요?',
+      answer: reservationAnswer,
+    },
+  ].filter((item) => item.answer);
+  const faqLines = faqItems.flatMap((item, index) => [
+    `### Q${index + 1}. ${item.question}`,
+    '',
+    item.answer,
+    '',
+  ]);
   const sourceLines = bundle.sources
     .filter((source) => clean(source.sourceUrl))
     .map((source) => `- [${clean(source.publisher) || '공식 운영사'}](${clean(source.sourceUrl)})`)
@@ -674,6 +707,9 @@ function repairLocalTransportResearchStructure(input: {
     '',
     '성수기에는 예약 가능 여부와 수하물 제한이 바뀔 수 있습니다. 첫차·막차, 운행 시간, 배차 간격은 이동 당일 공식 시간표를 확인하세요.',
     '',
+    '## 자주 묻는 질문',
+    '',
+    ...faqLines,
     `## 공식 운영사 근거와 확인일 (${checkedAt})`,
     '',
     ...sourceLines,
