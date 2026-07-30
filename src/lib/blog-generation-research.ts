@@ -47,6 +47,33 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
   key: string;
   pattern: RegExp;
 }>>> = {
+  airport_transport: [
+    {
+      key: 'multiple_modes',
+      pattern: /(?=[\s\S]*(?:버스|셔틀|bus|shuttle))(?=[\s\S]*(?:택시|렌터카|승차\s*호출|taxi|rental|ride))/i,
+    },
+    {
+      key: 'operating_hours',
+      pattern: /첫차|막차|운행\s*(?:시간|시각|시작|종료)|\d{1,2}:\d{2}|first\s*(?:bus|service)|last\s*(?:bus|service)|operating\s*hours/i,
+    },
+    { key: 'luggage', pattern: /수하물|짐|캐리어|luggage|baggage|suitcase/i },
+    { key: 'late_arrival', pattern: /심야|야간|늦은|연착|지연|late\s*arrival|overnight|delay/i },
+  ],
+  local_transport: [
+    { key: 'route', pattern: /노선|구간|직행|연결|정류장|route|line|stop/i },
+    {
+      key: 'frequency_schedule',
+      pattern: /배차|간격|매일|운행\s*(?:시간|시각)|첫차|막차|\d{1,2}:\d{2}|daily|frequency|schedule|timetable/i,
+    },
+    {
+      key: 'ticket_or_reservation',
+      pattern: /승차권|티켓|교통카드|예약|구매|ticket|pass|reservation|book/i,
+    },
+    {
+      key: 'service_limitation',
+      pattern: /제한|금지|운휴|미운행|불가|제외|주의|limited|unavailable|does\s+not|restriction|closed/i,
+    },
+  ],
   food_budget: [
     { key: 'budget_tier', pattern: /절약/ },
     { key: 'midrange_tier', pattern: /일반|중간/ },

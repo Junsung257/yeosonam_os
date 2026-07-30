@@ -373,11 +373,15 @@ async function main() {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady,
     destinationless_info_count: publishabilityStats.destinationlessInfoBlocked,
     candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
-    next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
+    next_action: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady > 0
       ? 'collect_evidence'
       : publishabilityStats.destinationlessInfoBlocked > 0
         ? 'repair_destinationless_info'
@@ -394,7 +398,9 @@ async function main() {
     publishedToday: publishedCurrentDayRes.count ?? 0,
     publishableCandidateCount: publishabilityStats.publishableCount,
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady,
     candidateShortage: publishabilitySnapshot.candidate_shortage,
     actionableFailedCount: queueOperationalHealth.actionable_failed_count,
     staleGeneratingCount: queueOperationalHealth.stale_generating_count,

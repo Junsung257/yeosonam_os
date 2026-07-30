@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { buildBlogCanaryPreflight } from './blog-canary-preflight';
 
+const buildCanary: typeof buildBlogCanaryPreflight = (input) =>
+  buildBlogCanaryPreflight({
+    ...input,
+    evaluateInformationResearch: () => ({ passed: true, issues: [] }),
+  });
+
 describe('buildBlogCanaryPreflight', () => {
   it('selects three unique low-risk canary candidates', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 3,
       recentPublished: [],
       activeQueue: [
@@ -28,7 +34,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('prefers a mixed info/product writer canary set when both are available', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 3,
       recentPublished: [],
       activeQueue: [
@@ -55,7 +61,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('rejects recent duplicates and evidence-blocked candidates before canary selection', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 2,
       recentPublished: [
         { slug: 'bali-budget', destination: '발리', meta: { micro_angle: 'budget_family', writer_type: 'info_writer' } },
@@ -74,7 +80,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('blocks when no topic-fit candidate is available', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 1,
       recentPublished: [],
       activeQueue: [
@@ -88,7 +94,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('rejects canary candidates with known pre-publish title or slug risks', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 1,
       recentPublished: [],
       activeQueue: [
@@ -109,7 +115,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('rejects destinationless info candidates until generic intent is durable', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 1,
       recentPublished: [],
       activeQueue: [
@@ -124,7 +130,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('allows destinationless info canaries only after they are marked intentionally generic', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 1,
       recentPublished: [],
       activeQueue: [
@@ -146,7 +152,7 @@ describe('buildBlogCanaryPreflight', () => {
   });
 
   it('rejects info canaries whose destination is a reader segment, not a place', () => {
-    const result = buildBlogCanaryPreflight({
+    const result = buildCanary({
       requested: 1,
       recentPublished: [],
       activeQueue: [
@@ -162,5 +168,28 @@ describe('buildBlogCanaryPreflight', () => {
 
     expect(result.status).toBe('block');
     expect(result.rejected_counts.info_invalid_destination).toBe(1);
+  });
+
+  it('rejects a destination information canary when durable research is not ready', () => {
+    const result = buildBlogCanaryPreflight({
+      requested: 1,
+      recentPublished: [],
+      activeQueue: [
+        {
+          id: 'unresearched',
+          topic: '\uAD0C \uACF5\uD56D \uB3C4\uCC29 \uD6C4 \uC219\uC18C\uAE4C\uC9C0 \uC774\uB3D9 \uC21C\uC11C\uC640 \uC120\uD0DD \uAE30\uC900',
+          destination: '\uAD0C',
+          meta: {
+            expected_slug: 'guam-airport-arrival',
+            micro_angle: 'airport_arrival',
+            writer_type: 'info_writer',
+          },
+        },
+      ],
+    });
+
+    expect(result.status).toBe('block');
+    expect(result.ready_count).toBe(0);
+    expect(result.rejected_counts.research_not_ready).toBe(1);
   });
 });
