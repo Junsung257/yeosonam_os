@@ -21,6 +21,7 @@ import {
   buildBlogEditorialBacklogRecheckDecision,
   readBlogEditorialBacklogDedupKey,
 } from '@/lib/blog-editorial-backlog-recheck';
+import { evaluateQueuedInformationResearch } from '@/lib/blog-queue-research';
 
 /**
  * 판매 불가·아카이브 등으로 블로그 자동발행 큐를 중단한다.
@@ -149,7 +150,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id, attempts, last_error, meta, product_id, source, topic, destination, primary_keyword')
+    .select('id, attempts, last_error, meta, product_id, source, topic, destination, primary_keyword, category, angle_type, target_publish_at')
     .eq('status', 'queued')
     .or(`target_publish_at.is.null,target_publish_at.lte.${now}`)
     .order('priority', { ascending: false })
@@ -180,9 +181,13 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     topic?: string | null;
     destination?: string | null;
     primary_keyword?: string | null;
+    category?: string | null;
+    angle_type?: string | null;
+    target_publish_at?: string | null;
   }>) {
     let lastError = row.last_error ?? null;
     let forcedReason: string | null = null;
+    let researchIssues: string[] | null = null;
     const candidateContract = inspectBlogCandidatePrepublishContract({
       topic: row.topic,
       destination: row.destination,
@@ -194,6 +199,20 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     if (!candidateContract.passed) {
       lastError = `candidate_pre_publish_contract:${candidateContract.issues.map((issue) => issue.code).join('|')}`;
       forcedReason = 'candidate_pre_publish_contract';
+    }
+    if (
+      !forcedReason
+      && !row.product_id
+      && row.source !== 'pillar'
+      && row.target_publish_at
+      && new Date(row.target_publish_at).getTime() <= Date.now()
+    ) {
+      const researchReadiness = evaluateQueuedInformationResearch(row);
+      if (!researchReadiness.passed) {
+        lastError = 'evidence_insufficient';
+        forcedReason = 'information_research_not_ready';
+        researchIssues = researchReadiness.issues.slice(0, 12);
+      }
     }
     if (row.product_id) {
       if (!productContractCache.has(row.product_id)) {
@@ -242,6 +261,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     const reason = forcedReason ?? decision.reason ?? 'publisher_preflight';
     const productContractState = row.product_id ? productContractCache.get(row.product_id) : null;
     const status = forcedReason === 'candidate_pre_publish_contract'
+      || forcedReason === 'information_research_not_ready'
       ? 'skipped'
       : forcedReason === 'product_open_contract' && productContractState?.defer
         ? 'deferred'
@@ -256,11 +276,21 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
         updated_at: now,
         meta: {
           ...meta,
-          failure_code: reason,
+          failure_code: forcedReason === 'information_research_not_ready'
+            ? 'evidence_insufficient'
+            : reason,
           self_heal_blocked: true,
           quarantine_reason: status === 'deferred' ? 'product_approval_pending' : reason,
           quarantined_by: 'blog-publisher-preflight',
           quarantined_at: now,
+          ...(forcedReason === 'information_research_not_ready'
+            ? {
+                evidence_insufficient: true,
+                replacement_required: true,
+                research_issues: researchIssues ?? ['information_research_not_ready'],
+                research_failed_at: now,
+              }
+            : {}),
           ...(status === 'deferred'
             ? {
                 product_open_contract_recheck_result: 'deferred_unapproved_product',
