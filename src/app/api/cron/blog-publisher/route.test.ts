@@ -43,7 +43,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('buildRecentInfoDuplicateScope(item)');
     expect(source).toContain("query.contains('generation_meta', { micro_angle: scope.microAngle })");
     const representativePreclaim = source.indexOf('findBlogInformationRepresentative(representativeKey)');
-    const topicGeneration = source.indexOf("topic_generation', () => generateFromTopic(item)");
+    const topicGeneration = source.indexOf("topic_generation', () => generateFromTopic(item, {");
     expect(representativePreclaim).toBeGreaterThanOrEqual(0);
     expect(topicGeneration).toBeGreaterThan(representativePreclaim);
     expect(source).toContain('information_representative_preclaim:');
@@ -135,6 +135,13 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("const reason = 'private_regeneration_target_not_eligible'");
     expect(source).toContain('validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined');
     expect(source).toContain('options.validatedPrivateRegenerationRequest');
+    expect(source).toContain('generateFromTopic(item, {');
+    expect(source).toContain(
+      'const privateRegenerationRequest = options.validatedPrivateRegenerationRequest',
+    );
+    expect(source).toContain(
+      'const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);',
+    );
     expect(source).toContain('privateReplacementDraftId = privateRegenerationRequest.contentCreativeId');
     expect(source).toContain('!publishedAtomicUpgrade && privateRegenerationRequest !== null');
     expect(source).toContain('forced_private_review: !publishedAtomicUpgrade');
@@ -224,7 +231,7 @@ describe('blog publisher quota recovery contract', () => {
   it('avoids duplicate AI and image work during a controlled private regeneration', () => {
     const source = routeSource();
 
-    expect(source).toContain('const privateRegeneration = hasPrivateBlogRegenerationIntent(item)');
+    expect(source).toContain('const privateRegeneration = privateRegenerationRequest !== null');
     expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
     expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
     expect(source).toContain('if (destForImage && !privateRegeneration) {');

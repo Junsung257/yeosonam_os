@@ -2549,7 +2549,9 @@ async function processQueueItem(
       }
 
       try {
-        generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
+        generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item, {
+          validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined,
+        }));
       } catch (error) {
         if (item.meta?.private_diagnostic_fallback === true) {
           generated = {
@@ -4216,7 +4218,12 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   };
 }
 
-async function generateFromTopic(item: any): Promise<GeneratedBlog> {
+async function generateFromTopic(
+  item: any,
+  options: {
+    validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
+  } = {},
+): Promise<GeneratedBlog> {
   if (!hasBlogApiKey()) {
     throw new Error('AI API 키 미설정 — 정보성 블로그 생성 불가');
   }
@@ -4226,7 +4233,10 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     version: promptVersion,
     source: promptSource,
   } = await getActiveBlogInformationWriterGuide();
-  const privateRegeneration = hasPrivateBlogRegenerationIntent(item);
+  const privateRegenerationRequest = options.validatedPrivateRegenerationRequest
+    ?? readPrivateBlogRegenerationRequest(item);
+  const privateRegeneration = privateRegenerationRequest !== null
+    || hasPrivateBlogRegenerationIntent(item);
   const queueSlug = buildQueueSlug(item);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
@@ -4254,9 +4264,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     locale: contentBrief.plan.locale,
     sourcePolicy: contentBrief.sourcePolicy,
   });
-  const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(
-    readPrivateBlogRegenerationRequest(item),
-  );
+  const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);
   if ((!privateRegeneration || publishedAtomicUpgrade) && !researchReadiness.passed) {
     const autoResearch = await researchBlogInformationAutomatically({
       contentKey: queueSlug,
