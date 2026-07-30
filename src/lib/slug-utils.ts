@@ -56,6 +56,7 @@ const ROMAN_MAP: Record<string, string> = {
 
 const ROMAN_MAP_EXTRA: Record<string, string> = {
   '\uD074\uB77D': 'clark',
+  '\uC13C\uB2E4\uC774': 'sendai',
   '\uC720\uB7FD': 'europe',
   '\uC2DC\uB4DC\uB2C8': 'sydney',
   '\uD638\uC8FC': 'australia',

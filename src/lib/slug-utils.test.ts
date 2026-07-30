@@ -36,7 +36,11 @@ describe('slug-utils', () => {
 
   it('romanizes newer blog destinations used by automatic publishing', () => {
     expect(romanize('\uD074\uB77D')).toBe('clark');
+    expect(romanize('\uC13C\uB2E4\uC774')).toBe('sendai');
     expect(romanize('\uC720\uB7FD')).toBe('europe');
+    expect(slugifyTopic('\uC13C\uB2E4\uC774 7\uC6D4 \uB0A0\uC528\uC640 \uC637\uCC28\uB9BC \uC900\uBE44\uBB3C \uCCB4\uD06C')).toBe(
+      'sendai-7-weather-preparation',
+    );
     expect(slugifyTopic('\uD074\uB77D \uC5EC\uD589 \uC900\uBE44\uBB3C \uC644\uBCBD \uCCB4\uD06C\uB9AC\uC2A4\uD2B8')).toBe(
       'clark-preparation',
     );
