@@ -1027,14 +1027,18 @@ function stableWeatherVariant(seed: string, modulo: number): number {
   return Math.abs(hash >>> 0) % Math.max(1, modulo);
 }
 
+function monthlyWeatherSubject(title: string): string {
+  return title
+    .replace(/\s+\d{1,2}월.*$/, '')
+    .replace(/\s+(?:(?:월별|연중|계절별)\s+)?(?:날씨|기후|옷차림).*$/, '')
+    .trim() || '여행지';
+}
+
 function monthlyWeatherOpening(
   title: string,
   variation?: MonthlyWeatherEditorialVariation | null,
 ): string[] {
-  const subject = title
-    .replace(/\s+\d{1,2}월.*$/, '')
-    .replace(/\s+(?:(?:월별|연중|계절별)\s+)?(?:날씨|기후|옷차림).*$/, '')
-    .trim() || '여행지';
+  const subject = monthlyWeatherSubject(title);
   const variants: Record<string, string[]> = {
     temperature_first: [
       `${subject} 1~12월 날씨와 옷차림은 어떻게 달라질까요? 이 글의 기온·강수 요약과 표부터 확인하세요.`,
@@ -1160,17 +1164,21 @@ function monthlyWeatherHeadings(
     route_weather_prep: 6,
     forecast_prep: 7,
   };
-  return MONTHLY_WEATHER_HEADING_VARIANTS[
+  const headings = MONTHLY_WEATHER_HEADING_VARIANTS[
     headingIndex[requestedHeading]
       ?? orderFallbackIndex[requestedOrder]
       ?? stableWeatherVariant(`${title}:headings`, MONTHLY_WEATHER_HEADING_VARIANTS.length)
   ]!;
+  return {
+    ...headings,
+    essentials: `${monthlyWeatherSubject(title)} ${headings.essentials}`,
+  };
 }
 
 function monthlyWeatherSectionKey(heading: string): MonthlyWeatherSectionKey | null {
   for (const variant of MONTHLY_WEATHER_HEADING_VARIANTS) {
     for (const key of Object.keys(variant) as MonthlyWeatherSectionKey[]) {
-      if (variant[key] === heading) return key;
+      if (variant[key] === heading || heading.endsWith(` ${variant[key]}`)) return key;
     }
   }
   return null;

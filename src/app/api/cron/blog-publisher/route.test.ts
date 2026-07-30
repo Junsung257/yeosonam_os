@@ -133,6 +133,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('isEligiblePrivateBlogRegenerationTarget');
     expect(source).toContain("const reason = 'private_regeneration_request_invalid'");
     expect(source).toContain("const reason = 'private_regeneration_target_not_eligible'");
+    expect(source).toContain('validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined');
+    expect(source).toContain('options.validatedPrivateRegenerationRequest');
     expect(source).toContain('privateReplacementDraftId = privateRegenerationRequest.contentCreativeId');
     expect(source).toContain('!publishedAtomicUpgrade && privateRegenerationRequest !== null');
     expect(source).toContain('forced_private_review: !publishedAtomicUpgrade');

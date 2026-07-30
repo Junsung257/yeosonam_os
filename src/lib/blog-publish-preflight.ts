@@ -132,12 +132,20 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
   }
 
   if (input.evidenceInsufficientCount > 0) {
+    const blocksRemainingSlots = (
+      remainingToday > 0
+      && input.publishableCandidateCount < remainingToday
+    );
     checks.push({
       id: 'evidence_readiness',
-      status: remainingToday > 0 ? 'block' : 'warn',
-      severity: remainingToday > 0 ? 'high' : 'warning',
-      detail: `${input.evidenceInsufficientCount} candidate(s) still need evidence/product proof.`,
-      next_action: 'Collect evidence or repair linked product proof before requeueing.',
+      status: blocksRemainingSlots ? 'block' : 'warn',
+      severity: blocksRemainingSlots ? 'high' : 'warning',
+      detail: blocksRemainingSlots
+        ? `${input.evidenceInsufficientCount} candidate(s) still need evidence/product proof, leaving too few verified candidates for today's remaining slots.`
+        : `${input.evidenceInsufficientCount} candidate(s) still need evidence/product proof and remain quarantined; verified inventory is sufficient for today's remaining slots.`,
+      next_action: blocksRemainingSlots
+        ? 'Collect evidence or repair linked product proof before requeueing.'
+        : 'Continue with verified candidates and repair the quarantined evidence backlog separately.',
     });
   }
 

@@ -25,11 +25,26 @@ describe('blog editorial backlog work', () => {
     ]));
   });
 
+  it('preserves targeted private-regeneration errors for root-cause routing', () => {
+    const blockers = extractEditorialBacklogBlockers({
+      status: 'failed',
+      attempts: 2,
+      last_error: 'private_regeneration_request_invalid',
+      meta: {
+        quarantine_reason: 'non_retryable_failure',
+      },
+    });
+
+    expect(blockers).toContain('private_regeneration_request_invalid');
+    expect(blockers.map(categorizeEditorialBacklogBlocker)).toContain('self_heal_contract');
+  });
+
   it('maps editorial blockers into operational categories', () => {
     expect(categorizeEditorialBacklogBlocker('intent_quality:early_strong_cta')).toBe('reader_intent');
     expect(categorizeEditorialBacklogBlocker('structure_integrity:raw_directive_leak')).toBe('structure');
     expect(categorizeEditorialBacklogBlocker('keyword_density')).toBe('keyword_use');
     expect(categorizeEditorialBacklogBlocker('engine_v2:product_decision_helpfulness')).toBe('engine_contract');
+    expect(categorizeEditorialBacklogBlocker('private_regeneration_request_invalid')).toBe('self_heal_contract');
   });
 
   it('summarizes only quarantined editorial backlog rows', () => {

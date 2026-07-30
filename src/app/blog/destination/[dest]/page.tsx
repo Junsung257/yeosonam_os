@@ -30,7 +30,6 @@ import {
 } from '@/lib/blog-public-catalog';
 
 export const revalidate = 300;
-export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 const BLOG_DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
   0,

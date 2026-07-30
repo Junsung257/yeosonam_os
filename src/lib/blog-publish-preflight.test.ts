@@ -113,6 +113,28 @@ describe('evaluateBlogPublishPreflight', () => {
     expect(result.warnings.map((check) => check.id)).toEqual(['queue_health']);
   });
 
+  it('does not block verified daily slots because a different candidate lacks evidence', () => {
+    const result = evaluateBlogPublishPreflight({
+      dailyTarget: 5,
+      publishedToday: 3,
+      publishableCandidateCount: 20,
+      duplicateCandidateCount: 0,
+      evidenceInsufficientCount: 1,
+      candidateShortage: false,
+      actionableFailedCount: 0,
+      staleGeneratingCount: 0,
+      indexingOutboxMissingCount: 0,
+      indexingOutboxCoverageRate: 100,
+      recentPosts: [goodPost('a'), goodPost('b'), goodPost('c')],
+    });
+
+    expect(result.status).toBe('warn');
+    expect(result.canary_ready).toBe(true);
+    expect(result.blockers).toHaveLength(0);
+    expect(result.warnings.map((check) => check.id)).toEqual(['evidence_readiness']);
+    expect(result.next_action).toContain('verified candidates');
+  });
+
   it('does not warn for overdue queued rows when publishable inventory is sufficient', () => {
     const result = evaluateBlogPublishPreflight({
       dailyTarget: 4,
