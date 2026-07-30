@@ -12,6 +12,7 @@ import {
   buildBlogStructuredResearchPrompt,
   buildJmaMonthlyWeatherPayload,
   buildPagasaMonthlyWeatherPayload,
+  buildSingaporeMonthlyWeatherPayload,
   buildWmoMonthlyWeatherPayload,
   extractReviewedHtmlTextForResearch,
   extractReviewedPageTextForResearch,
@@ -1325,6 +1326,55 @@ describe('buildJmaMonthlyWeatherPayload', () => {
       },
       now,
     })).toMatchObject({ passed: true, issues: [] });
+  });
+});
+
+describe('buildSingaporeMonthlyWeatherPayload', () => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const url = 'https://www.weather.gov.sg/climate-climate-of-singapore/';
+  const page = (rainDays = ['13', '9', '12', '15', '15', '13', '14', '14', '13', '15', '19', '19']) => {
+    const body = [
+      '<html><head><title>Climate of Singapore</title></head><body><main>',
+      '<h3>Records of Climate Station Means (Climatological Reference Period: 1991-2020)</h3>',
+      '<table>',
+      `<tr><th></th><th></th>${months.map((month) => `<th>${month}</th>`).join('')}</tr>`,
+      `<tr><th>Rainfall</th><th>Mean Monthly/ Annual Total (mm)</th>${['221.6', '105.1', '151.7', '164.3', '164.3', '135.3', '146.6', '146.9', '124.9', '168.3', '252.3', '331.9'].map((value) => `<td>${value}</td>`).join('')}</tr>`,
+      `<tr><th>Mean Raindays</th>${rainDays.map((value) => `<td>${value}</td>`).join('')}</tr>`,
+      `<tr><th>Temperature (°C)</th><th>Mean Daily Maximum</th>${['30.6', '31.5', '32.2', '32.4', '32.3', '31.9', '31.4', '31.4', '31.6', '31.8', '31.2', '30.5'].map((value) => `<td>${value}</td>`).join('')}</tr>`,
+      `<tr><th>Mean Daily Minimum</th>${['24.3', '24.6', '24.9', '25.3', '25.7', '25.7', '25.4', '25.3', '25.2', '25.0', '24.6', '24.3'].map((value) => `<td>${value}</td>`).join('')}</tr>`,
+      '</table></main></body></html>',
+    ].join('');
+    return {
+      url,
+      title: 'Climate of Singapore',
+      text: extractReviewedHtmlTextForResearch({ body, url }),
+    };
+  };
+
+  it('extracts all 12 complete station-normal rows from the official table', () => {
+    const payload = buildSingaporeMonthlyWeatherPayload([page()], '싱가포르');
+
+    expect(payload?.sources?.[0]).toMatchObject({
+      publisher: 'Meteorological Service Singapore',
+      destination: '싱가포르',
+    });
+    expect(payload?.evidence).toHaveLength(12);
+    expect(payload?.claims).toHaveLength(12);
+    expect(payload?.claims?.[0]).toMatchObject({
+      claimText: '1991~2020 평년값: 1월 최고기온 30.6°C, 최저기온 24.3°C, 강수량 221.6mm, 강수일수 13일',
+      normalizedValue: '30.6|24.3|221.6|13',
+      unit: '월별 기후 지표',
+    });
+    expect(payload?.claims?.[11]?.normalizedValue).toBe('30.5|24.3|331.9|19');
+  });
+
+  it('refuses a destination mismatch or incomplete monthly table', () => {
+    expect(buildSingaporeMonthlyWeatherPayload([page()], '쿠알라룸푸르')).toBeNull();
+    expect(buildSingaporeMonthlyWeatherPayload([page(['13'])], '싱가포르')).toBeNull();
+    expect(buildSingaporeMonthlyWeatherPayload([{
+      ...page(),
+      text: page().text.replace(/Climatological Reference Period:\s*1991\s*-\s*2020/gi, ''),
+    }], '싱가포르')).toBeNull();
   });
 });
 
