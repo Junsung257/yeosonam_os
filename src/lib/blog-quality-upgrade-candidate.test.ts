@@ -94,4 +94,28 @@ describe('published blog quality upgrade candidate', () => {
       },
     });
   });
+
+  it('accepts an entry upgrade only as a human-review candidate with nationality set', () => {
+    const decision = evaluatePublishedBlogQualityUpgradeCandidate({
+      id: 'post-entry',
+      slug: 'usa-esta-entry-requirements',
+      seo_title: 'USA ESTA entry requirements',
+      destination: 'United States',
+      category: 'visa_info',
+    });
+
+    expect(decision).toMatchObject({
+      accepted: true,
+      reason: 'human_review_candidate',
+      brief: {
+        intentType: 'entry_requirements',
+        passed: true,
+        requiresHumanReview: true,
+        plan: {
+          travelerNationality: '\uB300\uD55C\uBBFC\uAD6D',
+        },
+      },
+    });
+    expect(decision.representativeKey).toContain('entry_requirements');
+  });
 });

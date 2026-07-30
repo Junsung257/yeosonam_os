@@ -5,6 +5,7 @@ import {
 } from './blog-private-regeneration';
 import {
   classifyBlogQualityUpgradeTopic,
+  getBlogQualityUpgradeExecutionMode,
   type BlogQualityUpgradeTopicDecision,
 } from './blog-quality-upgrade-selection';
 import { buildBlogInformationRepresentativeKey } from './blog-information-representative';
@@ -21,7 +22,7 @@ export interface PublishedBlogQualityUpgradeInput {
 export type PublishedBlogQualityUpgradeDecision =
   | {
       accepted: true;
-      reason: 'safe_automatic_candidate';
+      reason: 'safe_automatic_candidate' | 'human_review_candidate';
       queueTopic: string;
       researchDestination: string;
       microAngle: string | null;
@@ -100,16 +101,22 @@ export function evaluatePublishedBlogQualityUpgradeCandidate(
     source: 'user_seed',
     microAngle: topicDecision.microAngle,
     locale: 'ko-KR',
+    travelerNationality: '\uB300\uD55C\uBBFC\uAD6D',
   });
 
-  let reason: PublishedBlogQualityUpgradeDecision['reason'] = 'safe_automatic_candidate';
+  const executionMode = getBlogQualityUpgradeExecutionMode(brief.intentType);
+  let reason: PublishedBlogQualityUpgradeDecision['reason'] = executionMode === 'human_review'
+    ? 'human_review_candidate'
+    : 'safe_automatic_candidate';
   if (!post.destination?.trim()) reason = 'missing_destination';
   else if (!topicDecision.accepted) reason = topicDecision.reason;
   else if (topicDecision.expectedIntent !== brief.intentType) reason = 'classified_intent_mismatch';
   else if (!brief.passed) reason = 'content_brief_failed';
-  else if (brief.requiresHumanReview) reason = 'human_review_required';
+  else if (brief.requiresHumanReview && executionMode !== 'human_review') {
+    reason = 'human_review_required';
+  }
 
-  if (reason !== 'safe_automatic_candidate') {
+  if (reason !== 'safe_automatic_candidate' && reason !== 'human_review_candidate') {
     return {
       accepted: false,
       reason,

@@ -10,6 +10,7 @@ import {
 } from '../src/lib/blog-private-regeneration';
 import {
   deduplicateBlogQualityUpgradeCandidates,
+  getBlogQualityUpgradeExecutionMode,
   matchesBlogQualityUpgradeFilter,
 } from '../src/lib/blog-quality-upgrade-selection';
 import { evaluatePublishedBlogQualityUpgradeCandidate } from '../src/lib/blog-quality-upgrade-candidate';
@@ -39,10 +40,6 @@ type InformationRepresentative = {
   locale: string;
   status: string;
 };
-
-const DETERMINISTIC_BULK_UPGRADE_INTENTS = new Set<BlogInformationIntent>([
-  'monthly_weather',
-]);
 
 function argValue(name: string): string | null {
   const prefix = `${name}=`;
@@ -136,15 +133,18 @@ async function main() {
     reputableSources,
   });
   const researchCoveredCandidates = candidates.filter(hasResearchCoverage);
-  const researchNonDeterministicCandidates = researchCoveredCandidates.filter(
-    candidate => !DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  const supportedResearchCandidates = researchCoveredCandidates.filter(
+    candidate => getBlogQualityUpgradeExecutionMode(candidate.brief.intentType) !== 'unsupported',
   );
-  const researchCapableCandidates = researchCoveredCandidates.filter(
-    candidate => DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+  const researchNonDeterministicCandidates = researchCoveredCandidates.filter(
+    candidate => getBlogQualityUpgradeExecutionMode(candidate.brief.intentType) === 'unsupported',
+  );
+  const reviewedHighRiskCandidates = supportedResearchCandidates.filter(
+    candidate => getBlogQualityUpgradeExecutionMode(candidate.brief.intentType) === 'human_review',
   );
   const researchUnsupportedCandidates = candidates.filter(
     candidate => !hasResearchCoverage(candidate)
-      || !DETERMINISTIC_BULK_UPGRADE_INTENTS.has(candidate.brief.intentType),
+      || getBlogQualityUpgradeExecutionMode(candidate.brief.intentType) === 'unsupported',
   );
 
   const { data: representatives, error: representativesError } = await supabaseAdmin
@@ -163,13 +163,15 @@ async function main() {
       representative,
     ]),
   );
-  const canonicalCandidates = researchCapableCandidates.filter(({ post, representativeKey }) => {
+  const canonicalCandidates = supportedResearchCandidates.filter(({ post, representativeKey }) => {
     const representative = representativeByIdentity.get(representativeKey);
     if (!representative) return true;
     return representative.status === 'active'
       && representative.canonical_creative_id === post.id;
   });
-  const representativeDuplicatesSkipped = candidates.length - canonicalCandidates.length;
+  const representativeDuplicatesSkipped = (
+    supportedResearchCandidates.length - canonicalCandidates.length
+  );
   const sameRunDeduplication = deduplicateBlogQualityUpgradeCandidates(
     canonicalCandidates,
     candidate => candidate.representativeKey,
@@ -258,6 +260,7 @@ async function main() {
     .filter(({ post }) => !activeIds.has(post.id))
     .slice(0, limit);
   const rows = selected.map(({ post, microAngle, brief, queueTopic }, index) => {
+    const executionMode = getBlogQualityUpgradeExecutionMode(brief.intentType);
     return {
       topic: queueTopic,
       source: 'user_seed',
@@ -277,6 +280,8 @@ async function main() {
           enqueued_at: now,
           reason: 'missing_verified_information_research',
           intent: brief.intentType,
+          execution_mode: executionMode,
+          requires_human_review: executionMode === 'human_review',
         },
         private_regeneration: {
           mode: PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
@@ -314,7 +319,8 @@ async function main() {
     checked_at: now,
     published_checked: published.length,
     missing_verified_research: missingResearch.length,
-    safe_automatic_candidates: uniqueCanonicalCandidates.length,
+    supported_upgrade_candidates: uniqueCanonicalCandidates.length,
+    reviewed_high_risk_candidates: reviewedHighRiskCandidates.length,
     research_capability_unavailable_skipped: researchUnsupportedCandidates.length,
     non_deterministic_research_upgrade_skipped: researchNonDeterministicCandidates.length,
     active_unsupported_upgrades_pruned: unsupportedActiveUpgradesPruned,
