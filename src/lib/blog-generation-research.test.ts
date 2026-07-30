@@ -1036,8 +1036,19 @@ describe('blog generation research preflight', () => {
     expect(temperatureFirst.markdown).not.toBe(packingFirst.markdown);
     expect(temperatureFirst.markdown).toMatch(/괌 1~12월 날씨와 옷차림은 어떻게 달라질까요\?/);
     expect(packingFirst.markdown).toMatch(/괌 1~12월 날씨 준비에서 빠뜨리기 쉬운 옷차림은 무엇일까요\?/);
-    expect(temperatureFirst.markdown).toContain('## 먼저 확인할 핵심');
-    expect(packingFirst.markdown).toContain('## 옷차림을 정하는 확인 순서');
+    expect(temperatureFirst.markdown).toContain('## 괌 먼저 확인할 핵심');
+    expect(packingFirst.markdown).toContain('## 괌 옷차림을 정하는 확인 순서');
+    const sameVariationDifferentDestination = repairBlogGenerationResearchStructure({
+      markdown: base.replaceAll('괌', '오키나와'),
+      intent: 'monthly_weather',
+      readiness,
+      editorialVariation: {
+        opening_variant: 'temperature_first',
+        section_order_variant: 'weather_then_clothing',
+      },
+    });
+    expect(sameVariationDifferentDestination.markdown).toContain('## 오키나와 먼저 확인할 핵심');
+    expect(sameVariationDifferentDestination.markdown).not.toContain('## 괌 먼저 확인할 핵심');
     expect(extractBlogInformationClaims(temperatureFirst.markdown)).toHaveLength(12);
     expect(extractBlogInformationClaims(packingFirst.markdown)).toHaveLength(12);
     expect(checkHook(temperatureFirst.markdown).passed).toBe(true);

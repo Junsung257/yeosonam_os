@@ -18,6 +18,7 @@ export type BlogCurrentDayPublisherHealth = {
     remaining_after_run: number | null;
     errors: string[];
     failure_breakdown: Record<string, unknown> | null;
+    targeted_private_regeneration: boolean;
   };
 };
 
@@ -77,6 +78,7 @@ export function evaluateCurrentDayPublisherHealth(params: {
   const summary = objectOrNull(health?.last_summary) ?? {};
   const errors = stringArray(summary.errors);
   const dailyQuota = objectOrNull(summary.dailyQuota) ?? {};
+  const targetedPrivateRegeneration = summary.targetedPrivateRegeneration === true;
   const published = numberOrNull(summary.published);
   const remainingBeforeRun = numberOrNull(dailyQuota.remainingBeforeRun);
   const remainingAfterRun = numberOrNull(dailyQuota.remainingAfterRun);
@@ -98,6 +100,7 @@ export function evaluateCurrentDayPublisherHealth(params: {
     remaining_after_run: remainingAfterRun,
     errors,
     failure_breakdown: failureBreakdown,
+    targeted_private_regeneration: targetedPrivateRegeneration,
   };
 
   if (!isCurrentDayRun) {
@@ -119,6 +122,15 @@ export function evaluateCurrentDayPublisherHealth(params: {
       status: 'healthy',
       code: null,
       detail: 'Current KST day publish target has been met after the observed publisher run.',
+      evidence,
+    };
+  }
+
+  if (targetedPrivateRegeneration) {
+    return {
+      status: 'healthy',
+      code: null,
+      detail: 'The latest publisher record is a targeted private regeneration run, not a daily quota run.',
       evidence,
     };
   }

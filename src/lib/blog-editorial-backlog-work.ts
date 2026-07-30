@@ -77,6 +77,10 @@ function extractNamedFailures(error: string): string[] {
 
   if (/context_missing/i.test(error)) failures.push('context_missing');
   if (/missing_primary_keyword/i.test(error)) failures.push('missing_primary_keyword');
+  const privateRegenerationFailure = error.match(/\b(private_regeneration_[a-z0-9_]+)/i);
+  if (privateRegenerationFailure?.[1]) {
+    failures.push(privateRegenerationFailure[1].toLowerCase());
+  }
   return failures;
 }
 
@@ -130,7 +134,9 @@ export function categorizeEditorialBacklogBlocker(blocker: string): string {
   if (lower.includes('stale_generating')) return 'stale_recovery';
   if (lower.includes('seo_score') || lower.includes('seo')) return 'seo_metadata';
   if (lower.includes('image')) return 'image_evidence';
-  if (lower.includes('self_heal')) return 'self_heal_contract';
+  if (lower.includes('self_heal') || lower.includes('private_regeneration')) {
+    return 'self_heal_contract';
+  }
   return 'other';
 }
 

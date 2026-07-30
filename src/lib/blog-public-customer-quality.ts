@@ -120,7 +120,6 @@ function normalizeText(value: string): string {
 function normalizeSignature(value: string): string {
   return normalizeText(value)
     .toLowerCase()
-    .replace(/\d{1,4}(?:,\d{3})*/g, '{num}')
     .replace(/[^\p{L}\p{N}\s{}]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -298,7 +297,7 @@ export function inspectPublicBlogCustomerQuality(
   }
 
   const brokenTableLikely =
-    article.tableLikeParagraphs.length >= 3
+    (article.tableCount === 0 && article.tableLikeParagraphs.length >= 3)
     || /\|\s*(?:구분|항목|월|상황)\s*\|[\s\S]{0,300}(?:\*\s*\*\s*\*|<hr\b)/i.test(article.htmlFragment);
   if (brokenTableLikely) {
     addIssue(

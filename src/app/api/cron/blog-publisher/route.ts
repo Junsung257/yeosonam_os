@@ -167,6 +167,7 @@ import {
   preservePublishedBlogAtomicUpgradeSlug,
   REVIEWED_PUBLISHED_BLOG_REPLACEMENT_MODE,
   readPrivateBlogRegenerationRequest,
+  type PrivateBlogRegenerationRequest,
 } from '@/lib/blog-private-regeneration';
 
 /**
@@ -1629,7 +1630,10 @@ async function runBlogPublisher(request: NextRequest) {
         }
       }
 
-      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      const result = await processQueueItem(item, new Map(), {
+        startedAtMs: startTime,
+        validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined,
+      });
       const targetedAttempts = 1;
       results.push(result);
       const completedPrivately = result.status === 'pending_review'
@@ -2260,7 +2264,10 @@ async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
 async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
-  options: { startedAtMs?: number } = {},
+  options: {
+    startedAtMs?: number;
+    validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
+  } = {},
 ): Promise<{
   id: string;
   topic: string;
@@ -2349,7 +2356,8 @@ async function processQueueItem(
     }
 
     const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
-    const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
+    const privateRegenerationRequest = options.validatedPrivateRegenerationRequest
+      ?? readPrivateBlogRegenerationRequest(item);
     const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);
     let privateReplacementDraftId: string | null = null;
     let privateReplacementAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;

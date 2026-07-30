@@ -103,4 +103,28 @@ describe('evaluateCurrentDayPublisherHealth', () => {
     expect(health.evidence.current_day_published_count).toBe(4);
     expect(health.detail).toContain('target has been met');
   });
+
+  it('does not let targeted private regeneration failures replace daily quota health', () => {
+    const health = evaluateCurrentDayPublisherHealth({
+      now: new Date('2026-07-30T07:20:00.000Z'),
+      currentDayPublishedCount: 3,
+      dailyTarget: 5,
+      cronHealth: {
+        last_status: 'partial_failure',
+        last_run_at: '2026-07-30T07:10:45.796+00:00',
+        last_error_count: 1,
+        last_summary: {
+          targetedPrivateRegeneration: true,
+          processed: 1,
+          published: 0,
+          errors: ['private_regeneration_request_invalid'],
+        },
+      },
+    });
+
+    expect(health.status).toBe('healthy');
+    expect(health.code).toBeNull();
+    expect(health.evidence.targeted_private_regeneration).toBe(true);
+    expect(health.detail).toContain('targeted private regeneration');
+  });
 });

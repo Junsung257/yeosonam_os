@@ -66,6 +66,24 @@ describe('inspectPublicBlogCustomerQuality', () => {
     expect(report.issues.map((issue) => issue.code)).not.toContain('broken_table_surface');
   });
 
+  it('does not reject numeric supporting prose when a real public table is present', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      html: page(`
+        <h1>몽골 숙소와 교통 비용 가이드</h1>
+        <p>울란바토르 시내는 1박 7만 원부터, 외곽 게르는 1박 5만 원대부터 시작합니다.</p>
+        <p>울란바토르 시내 호텔은 1박 70,000원부터 120,000원이고 조식 1회를 포함합니다.</p>
+        <p>울란바토르 시내 교통은 버스 500투그릭, 식사는 5,000원부터 10,000원입니다.</p>
+        <table><thead><tr><th>구분</th><th>비용</th></tr></thead><tbody>
+          <tr><td>시내</td><td>7만 원부터</td></tr>
+          <tr><td>외곽</td><td>5만 원대부터</td></tr>
+        </tbody></table>
+      `, '몽골 숙소와 교통 비용 가이드'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('broken_table_surface');
+  });
+
   it('catches generated residue and placeholder copy in visible text', () => {
     const report = inspectPublicBlogCustomerQuality({
       expectedType: 'info',
@@ -80,6 +98,21 @@ describe('inspectPublicBlogCustomerQuality', () => {
     expect(report.passed).toBe(false);
     expect(report.issues.map((issue) => issue.code)).toContain('generated_residue');
     expect(report.issues.map((issue) => issue.code)).toContain('placeholder_copy');
+  });
+
+  it('does not call evidence sentences duplicates when their numeric values differ', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      html: page(`
+        <h1>괌 월별 날씨 옷차림 체크리스트</h1>
+        <p>괌 날씨는 월별 기온과 강수량을 함께 보고 옷차림을 정해야 합니다.</p>
+        <p>1월 최고기온은 29.0도, 최저기온은 24.0도, 강수량은 100.0mm입니다.</p>
+        <p>2월 최고기온은 29.1도, 최저기온은 24.1도, 강수량은 120.0mm입니다.</p>
+        <p>3월 최고기온은 29.2도, 최저기온은 24.2도, 강수량은 140.0mm입니다.</p>
+      `, '괌 월별 날씨 옷차림 체크리스트'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('duplicate_public_section');
   });
 
   it('blocks info posts that answer with reservation talk before the reader question', () => {

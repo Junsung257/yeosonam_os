@@ -7,6 +7,7 @@ import {
   requiresHydratedPublicBlogAudit,
   type PublicBlogCustomerQualityReport,
 } from '@/lib/blog-public-customer-quality';
+import { resolvePublicBlogAuditCategory } from '@/lib/blog-public-audit-category';
 
 const args = process.argv.slice(2);
 
@@ -38,6 +39,7 @@ interface PublicBlogTarget {
   title?: string | null;
   destination?: string | null;
   category?: string | null;
+  contentType?: string | null;
   expectedType?: 'info' | 'product' | 'unknown';
 }
 
@@ -60,7 +62,7 @@ const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const browserMode = hasFlag('--browser');
 const htmlOnlyMode = hasFlag('--html-only');
-const minScore = Math.max(0, Math.min(100, Number(argValue('--min-score', '88')) || 88));
+const minScore = Math.max(0, Math.min(100, Number(argValue('--min-score', '95')) || 95));
 
 function absolutize(path: string): string {
   return /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -178,6 +180,7 @@ async function collectFromApi(): Promise<PublicBlogTarget[]> {
           title: post.seo_title ?? post.title ?? null,
           destination: post.destination ?? null,
           category: post.category ?? null,
+          contentType: post.content_type ?? null,
           expectedType: inferExpectedType(post),
         });
       }
@@ -242,6 +245,7 @@ function mergeTargets(groups: PublicBlogTarget[][]): PublicBlogTarget[] {
         title: existing?.title || target.title,
         destination: existing?.destination || target.destination,
         category: existing?.category || target.category,
+        contentType: existing?.contentType || target.contentType,
       });
     }
   }
@@ -438,7 +442,13 @@ async function main() {
     scores: number[];
     issueCounts: Record<string, number>;
   }>>((acc, row) => {
-    const category = row.category?.trim() || 'unknown';
+    const category = resolvePublicBlogAuditCategory({
+      category: row.category,
+      title: row.title,
+      destination: row.destination,
+      expectedType: row.expectedType,
+      contentType: row.contentType,
+    });
     const bucket = acc[category] ?? {
       category,
       checked: 0,
