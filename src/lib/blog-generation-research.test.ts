@@ -16,6 +16,7 @@ import {
   repairBlogGenerationResearchStructure,
   repairMonthlyWeatherEditorialVariation,
   summarizeBlogGenerationResearch,
+  type BlogGenerationResearchReadiness,
 } from './blog-generation-research';
 import { validateBlogInformationStructure } from './blog-information-structure';
 import {
@@ -210,6 +211,41 @@ function readiness(bundle: BlogInformationResearchBundle | null) {
   });
 }
 
+function entryRequirementsReadiness(destination: string): BlogGenerationResearchReadiness {
+  const snapshotContent = `${destination} 입국 요건 공식 안내`;
+  return {
+    passed: true,
+    issues: [],
+    bundle: {
+      contentKey: `${destination}-entry`,
+      sources: [{
+        sourceKey: `${destination}-immigration`,
+        sourceType: 'immigration',
+        authorityLevel: 'official_primary',
+        sourceUrl: 'https://travel.state.gov/content/travel/en/us-visas/tourism-visit.html',
+        publisher: 'Official immigration authority',
+        retrievedAt: CHECKED_AT,
+        snapshotContent,
+        contentHash: createBlogInformationSourceContentHash(snapshotContent),
+        destination,
+        country: destination,
+        claimTypes: ['entry_visa'],
+        riskLevel: 'LOW',
+      }],
+      evidence: [],
+      claims: [],
+    },
+    summary: {
+      sourceCount: 1,
+      evidenceCount: 0,
+      claimCount: 0,
+      supportedClaimCount: 0,
+      claimSourceCoverage: 1,
+      distinctNormalizedValueCount: 0,
+    },
+  };
+}
+
 function localTransportBundle(): BlogInformationResearchBundle {
   type ClaimType = BlogInformationResearchBundle['claims'][number]['claimType'];
   const records: Array<{
@@ -388,6 +424,58 @@ function localTransportReadiness() {
 }
 
 describe('blog generation research preflight', () => {
+  it('adds a verified destination-country label for entry requirements and stays idempotent', () => {
+    const initial = [
+      '# 미국 입국 요건과 비자',
+      '',
+      '여행자 국적은 대한민국 여권을 가진 한국인입니다.',
+      '관광 목적 30일 체류 기준으로 여권과 ESTA 조건을 확인합니다.',
+      '확인일 2026-07-30 공식 1차 출처: https://www.cbp.gov/travel/international-visitors/esta',
+    ].join('\n');
+    const researchReadiness = entryRequirementsReadiness('미국');
+
+    const first = repairBlogGenerationResearchStructure({
+      markdown: initial,
+      intent: 'entry_requirements',
+      readiness: researchReadiness,
+    });
+    const second = repairBlogGenerationResearchStructure({
+      markdown: first.markdown,
+      intent: 'entry_requirements',
+      readiness: researchReadiness,
+    });
+
+    expect(first.changed).toBe(true);
+    expect(first.changes).toContain('entry_requirements_verified_destination_context');
+    expect(first.markdown).toContain('목적 국가: 미국.');
+    expect(validateBlogInformationStructure({
+      intent: 'entry_requirements',
+      markdown: first.markdown,
+    }).issues).not.toContain('entry_requirements:destination_country_required');
+    expect(second.changed).toBe(false);
+    expect(second.markdown).toBe(first.markdown);
+  });
+
+  it('does not add an entry destination when passed research contains conflicting destinations', () => {
+    const researchReadiness = entryRequirementsReadiness('미국');
+    researchReadiness.bundle!.sources.push({
+      ...researchReadiness.bundle!.sources[0]!,
+      sourceKey: 'japan-immigration',
+      destination: '일본',
+      country: '일본',
+    });
+    const markdown = '# 입국 요건\n\n한국인 관광 목적 30일 체류 기준으로 여권과 비자를 확인합니다.';
+
+    const result = repairBlogGenerationResearchStructure({
+      markdown,
+      intent: 'entry_requirements',
+      readiness: researchReadiness,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.markdown).toBe(markdown);
+  });
+
   it('blocks missing research before writing starts', () => {
     expect(readiness(null)).toMatchObject({
       passed: false,
