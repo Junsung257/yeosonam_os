@@ -226,6 +226,8 @@ export type ReviewedDirectPage = {
 
 const JMA_CLIMATE_ROW_MARKER = 'JMA_CLIMATE_ROW:';
 const JMA_CLIMATE_ROW_END_MARKER = ':JMA_CLIMATE_ROW_END';
+const SINGAPORE_CLIMATE_ROW_MARKER = 'SINGAPORE_CLIMATE_ROW:';
+const SINGAPORE_CLIMATE_ROW_END_MARKER = ':SINGAPORE_CLIMATE_ROW_END';
 
 type WmoClimateMonth = {
   month?: number;
@@ -297,19 +299,28 @@ export function extractReviewedHtmlTextForResearch(input: {
   } catch {
     // The caller already validates direct research URLs. Keep extraction fail-safe.
   }
-  if (hostname !== 'data.jma.go.jp' && !hostname.endsWith('.data.jma.go.jp')) {
+  const isJmaHost = hostname === 'data.jma.go.jp' || hostname.endsWith('.data.jma.go.jp');
+  const isSingaporeWeatherHost =
+    hostname === 'weather.gov.sg' || hostname.endsWith('.weather.gov.sg');
+  if (!isJmaHost && !isSingaporeWeatherHost) {
     return extractReviewedPageTextForResearch(bodyText);
   }
 
   const heading = clean($('h3').first().text());
+  const referencePeriod = isSingaporeWeatherHost
+    ? bodyText.match(/Climatological Reference Period:\s*1991\s*-\s*2020/i)?.[0] ?? ''
+    : '';
   const rowMarkers = $('table tr').toArray().flatMap((row) => {
     const cells = $(row).find('th,td').toArray().map((cell) => clean($(cell).text()));
     return cells.some(Boolean)
-      ? [`${JMA_CLIMATE_ROW_MARKER}${JSON.stringify(cells)}${JMA_CLIMATE_ROW_END_MARKER}`]
+      ? [isJmaHost
+        ? `${JMA_CLIMATE_ROW_MARKER}${JSON.stringify(cells)}${JMA_CLIMATE_ROW_END_MARKER}`
+        : `${SINGAPORE_CLIMATE_ROW_MARKER}${JSON.stringify(cells)}${SINGAPORE_CLIMATE_ROW_END_MARKER}`]
       : [];
   });
   return extractReviewedPageTextForResearch([
     heading,
+    referencePeriod,
     ...rowMarkers,
     bodyText,
   ].filter(Boolean).join(' '));
@@ -2271,6 +2282,121 @@ export function buildJmaMonthlyWeatherPayload(
   };
 }
 
+function parseSingaporeClimateRows(text: string): string[][] {
+  const pattern = new RegExp(
+    `${SINGAPORE_CLIMATE_ROW_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(.*?)`
+      + SINGAPORE_CLIMATE_ROW_END_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    'g',
+  );
+  return [...text.matchAll(pattern)].flatMap((match) => {
+    try {
+      const parsed = JSON.parse(match[1] ?? '') as unknown;
+      return Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')
+        ? [parsed as string[]]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function buildSingaporeMonthlyWeatherPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+): GroundedBlogResearchPayload | null {
+  if (clean(destination).normalize('NFKC').toLowerCase() !== '싱가포르') return null;
+
+  const pageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return (url.hostname.toLowerCase() === 'weather.gov.sg'
+          || url.hostname.toLowerCase().endsWith('.weather.gov.sg'))
+        && url.pathname === '/climate-climate-of-singapore/';
+    } catch {
+      return false;
+    }
+  });
+  if (pageIndex < 0) return null;
+
+  const sourceText = pages[pageIndex]!.text;
+  if (!/Climatological Reference Period:\s*1991\s*-\s*2020/i.test(sourceText)) return null;
+  const tableRows = parseSingaporeClimateRows(sourceText);
+  const header = tableRows.find((row) =>
+    row.slice(-12).map((value) => value.toLowerCase()).join('|')
+      === 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec');
+  const rainfallRow = tableRows.find((row) =>
+    row[0] === 'Rainfall' && row[1] === 'Mean Monthly/ Annual Total (mm)');
+  const rainDaysRow = tableRows.find((row) => row[0] === 'Mean Raindays');
+  const maxTempRow = tableRows.find((row) =>
+    row[0] === 'Temperature (°C)' && row[1] === 'Mean Daily Maximum');
+  const minTempRow = tableRows.find((row) => row[0] === 'Mean Daily Minimum');
+  if (!header || !rainfallRow || !rainDaysRow || !maxTempRow || !minTempRow) return null;
+
+  const numericValue = (value: unknown): string | null => {
+    const normalized = clean(value);
+    return /^-?\d+(?:\.\d+)?$/.test(normalized) ? normalized : null;
+  };
+  const rows = Array.from({ length: 12 }, (_, index) => {
+    const rainfall = numericValue(rainfallRow[index + 2]);
+    const rainDays = numericValue(rainDaysRow[index + 1]);
+    const maxTemp = numericValue(maxTempRow[index + 2]);
+    const minTemp = numericValue(minTempRow[index + 1]);
+    return rainfall && rainDays && maxTemp && minTemp
+      ? {
+          monthNumber: index + 1,
+          rainfall,
+          rainDays,
+          maxTemp,
+          minTemp,
+        }
+      : null;
+  });
+  if (rows.some((row) => !row)) return null;
+
+  const sourceKeyValue = 'mss-climate-singapore';
+  const period = '1991~2020';
+  return {
+    sources: [{
+      sourceKey: sourceKeyValue,
+      groundingChunkIndex: pageIndex,
+      publisher: 'Meteorological Service Singapore',
+      sourceType: 'meteorological_agency',
+      claimTypes: ['climate'],
+      country: '싱가포르',
+      destination,
+    }],
+    evidence: rows.flatMap((row) => {
+      if (!row) return [];
+      const statement = `${period} 평년값: ${row.monthNumber}월 최고기온 ${row.maxTemp}°C, 최저기온 ${row.minTemp}°C, 강수량 ${row.rainfall}mm, 강수일수 ${row.rainDays}일`;
+      return [{
+        evidenceKey: `mss-month-${row.monthNumber}`,
+        sourceKey: sourceKeyValue,
+        excerpt: statement,
+        sourceLocator: `Records of Climate Station Means row ${row.monthNumber}월`,
+        claimType: 'climate',
+        riskLevel: 'LOW',
+        country: '싱가포르',
+        destination,
+        applicableTo: `${destination} 여행자`,
+        normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+        unit: '월별 기후 지표',
+        conditions: [`${row.monthNumber}월`, `${period} Changi Climate Station 평년값`],
+      }];
+    }),
+    claims: rows.flatMap((row) => {
+      if (!row) return [];
+      return [{
+        claimText: `${period} 평년값: ${row.monthNumber}월 최고기온 ${row.maxTemp}°C, 최저기온 ${row.minTemp}°C, 강수량 ${row.rainfall}mm, 강수일수 ${row.rainDays}일`,
+        claimType: 'climate',
+        riskLevel: 'LOW',
+        evidenceKeys: [`mss-month-${row.monthNumber}`],
+        normalizedValue: [row.maxTemp, row.minTemp, row.rainfall, row.rainDays].join('|'),
+        unit: '월별 기후 지표',
+      }];
+    }),
+  };
+}
+
 const PAGASA_MONTHS = [
   'JAN',
   'FEB',
@@ -2969,6 +3095,7 @@ export async function researchBlogInformationAutomatically(input: {
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
         ?? buildJmaMonthlyWeatherPayload(reviewedPages, input.destination)
+        ?? buildSingaporeMonthlyWeatherPayload(reviewedPages, input.destination)
         ?? buildPagasaMonthlyWeatherPayload(reviewedPages, input.destination)
       : input.brief.intentType === 'hotel_areas'
         ? buildGuamHotelAreasPayload(reviewedPages, input.destination)
