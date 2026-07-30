@@ -152,6 +152,57 @@ describe('computeSeoScore', () => {
       .toMatchObject({ score: 1, status: 'fail' });
   });
 
+  it('caps high-risk entry content without current verified official research', () => {
+    const result = computeSeoScore({
+      blogHtml: '# Vietnam visa entry requirements\n\nKorean travelers should check the current visa waiver and passport rules before departure.',
+      slug: 'vietnam-visa-entry-documents-2026',
+      seoTitle: 'Vietnam visa and entry documents 2026',
+      primaryKeyword: 'Vietnam visa',
+      destination: 'Vietnam',
+      blogType: 'info',
+      generationMeta: {
+        content_brief: { intent_type: 'entry_requirements' },
+      },
+    });
+
+    expect(result.details.find((item) => item.name === 'information_freshness'))
+      .toMatchObject({ status: 'fail' });
+    expect(result.score).toBeLessThanOrEqual(79);
+    expect(result.passed).toBe(false);
+  });
+
+  it('accepts current high-risk research while leaving human approval to the publish gate', () => {
+    const result = computeSeoScore({
+      blogHtml: '# Vietnam visa entry requirements\n\nKorean travelers should check the current visa waiver and passport rules before departure.',
+      slug: 'vietnam-visa-entry-documents-2026',
+      seoTitle: 'Vietnam visa and entry documents 2026',
+      primaryKeyword: 'Vietnam visa',
+      destination: 'Vietnam',
+      blogType: 'info',
+      generationMeta: {
+        content_brief: { intent_type: 'entry_requirements' },
+        auto_research: { completed_at: new Date().toISOString() },
+        information_research_preflight: {
+          version: 'r18-research-first-v1',
+          passed: true,
+          claimCount: 3,
+          evidenceCount: 3,
+          claimSourceCoverage: 1,
+          official_source_urls: ['https://vnembassy-seoul.mofa.gov.vn/visa-exemption'],
+        },
+        information_claim_validation: {
+          passed: true,
+          claim_count: 3,
+          coverage: 1,
+          requires_human_review: true,
+        },
+      },
+    });
+
+    expect(result.details.find((item) => item.name === 'information_freshness'))
+      .toMatchObject({ status: 'pass' });
+  });
+
   it('does not count markdown image and link targets as long raw urls', () => {
     const longUrl = 'https://images.pexels.com/photos/123456789/pexels-photo-123456789.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200&utm_source=very-long-tracking-value';
     const result = computeSeoScore({

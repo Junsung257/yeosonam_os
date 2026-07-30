@@ -7,6 +7,7 @@
 
 import { inspectBlogSlugQuality } from './blog-slug-quality';
 import { readVerifiedResearchOfficialSourceUrls } from './blog-verified-research-sources';
+import { inferBlogInformationIntent } from './blog-information-contract';
 
 const SEMANTIC_DICTIONARY: Record<string, string[]> = {
   destination: ['여행', '목적지', '방문', '현지', '출발', '일정'],
@@ -67,6 +68,7 @@ const TITLE_INTENT_COMPANIONS: Record<TitleIntentGroup, TitleIntentGroup[]> = {
 
 const PRODUCT_DECISION_SIGNAL_RE = /가성비|패키지|특가|출발|포함|불포함|노팁|노옵션|리뷰|만원|박\d일|\d박|상담|예약|출발일|인원|일정/i;
 const INFO_SOFT_CTA_RE = /\/packages|\/blog|\/group-inquiry|utm_|consult|문의|상담|확인/i;
+const HIGH_RISK_RESEARCH_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
 
 export const BLOG_SEO_MAX_SCORE = 100;
 export const BLOG_SEO_MIN_SCORE = {
@@ -537,6 +539,82 @@ function scoreSlug(input: ScorerInput, keyword: string): SeoScoreDetail {
   return detail('url_slug', score, 4, 3, 2, `slug ${slug.length}자`);
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function scoreInformationFreshness(input: ScorerInput): SeoScoreDetail {
+  if (input.blogType !== 'info') {
+    return detail('information_freshness', 0, 0, 0, 0, 'product content');
+  }
+
+  const generationMeta = asRecord(input.generationMeta);
+  const contentBrief = asRecord(generationMeta?.content_brief);
+  const declaredIntent = typeof contentBrief?.intent_type === 'string'
+    ? contentBrief.intent_type
+    : null;
+  const inferredIntent = declaredIntent ?? inferBlogInformationIntent({
+    destination: input.destination,
+    topic: [
+      input.seoTitle,
+      input.primaryKeyword,
+      input.slug,
+    ].filter(Boolean).join('\n'),
+  });
+
+  if (inferredIntent !== 'entry_requirements' && inferredIntent !== 'travel_insurance') {
+    return detail('information_freshness', 0, 0, 0, 0, 'non-high-risk information');
+  }
+
+  const preflight = asRecord(generationMeta?.information_research_preflight);
+  const claimValidation = asRecord(generationMeta?.information_claim_validation);
+  const autoResearch = asRecord(generationMeta?.auto_research);
+  const officialUrls = Array.isArray(preflight?.official_source_urls)
+    ? preflight.official_source_urls.filter((value): value is string =>
+      typeof value === 'string' && /^https:\/\//i.test(value))
+    : [];
+  const claimCount = Number(preflight?.claimCount ?? claimValidation?.claim_count ?? 0);
+  const evidenceCount = Number(preflight?.evidenceCount ?? 0);
+  const coverage = Number(preflight?.claimSourceCoverage ?? claimValidation?.coverage ?? 0);
+  const completedAt = typeof autoResearch?.completed_at === 'string'
+    ? Date.parse(autoResearch.completed_at)
+    : Number.NaN;
+  const researchAgeMs = Number.isFinite(completedAt)
+    ? Date.now() - completedAt
+    : Number.POSITIVE_INFINITY;
+
+  const checks = {
+    versioned_preflight: preflight?.version === 'r18-research-first-v1' && preflight?.passed === true,
+    official_sources: officialUrls.length > 0,
+    supported_claims: claimCount > 0 && evidenceCount > 0 && coverage >= 0.9,
+    claim_validation: claimValidation?.passed === true && claimValidation?.requires_human_review === true,
+    current_review_window: researchAgeMs >= 0 && researchAgeMs <= HIGH_RISK_RESEARCH_MAX_AGE_MS,
+  };
+  const failed = Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name);
+
+  return failed.length === 0
+    ? detail(
+      'information_freshness',
+      0,
+      0,
+      0,
+      0,
+      `high-risk evidence current; official ${officialUrls.length}, claims ${claimCount}`,
+    )
+    : detail(
+      'information_freshness',
+      0,
+      0,
+      1,
+      1,
+      `high-risk evidence blocked: ${failed.join(', ')}`,
+    );
+}
+
 export function computeSeoScore(input: ScorerInput): SeoScoreResult {
   const plainText = stripMarkdownAndHtml(input.blogHtml);
   const keyword = input.primaryKeyword?.trim() || '';
@@ -557,13 +635,18 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scoreHelpfulContent(input, plainText),
     scoreMobile(input.blogHtml),
     scoreSlug(input, keyword),
+    scoreInformationFreshness(input),
   ];
 
-  const score = details.reduce((sum, item) => sum + item.score, 0);
+  const rawScore = details.reduce((sum, item) => sum + item.score, 0);
+  const freshnessFailure = details.some((item) =>
+    item.name === 'information_freshness' && item.status === 'fail',
+  );
+  const score = freshnessFailure ? Math.min(rawScore, 79) : rawScore;
   const minScore = BLOG_SEO_MIN_SCORE[input.blogType];
   const criticalFailures = details.filter((item) =>
     item.status === 'fail' &&
-    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'public_link_integrity', 'structured_data', 'helpful_content_eeat', 'url_slug'].includes(item.name),
+    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'public_link_integrity', 'structured_data', 'helpful_content_eeat', 'url_slug', 'information_freshness'].includes(item.name),
   );
   const passed = score >= minScore && criticalFailures.length === 0;
   const summary = passed
