@@ -1281,6 +1281,15 @@ export function buildBlogStructuredResearchPrompt(input: {
             'Classify supported coverage, exclusion, and claim-document requirements as insurance; keep contract conditions as policy.',
             'Exclude signup discounts and promotional percentages unless a required decision fact explicitly requests price.',
           ]
+        : input.brief.intentType === 'entry_requirements'
+          ? [
+              'ENTRY REQUIREMENTS PRIORITY:',
+              'Use facts from at least two reviewed official domains; do not let one authority satisfy the cross-domain requirement.',
+              'Classify visa exemption, visa or electronic travel authorization eligibility, passport validity, and permitted stay as entry_visa.',
+              'Classify mandatory arrival registration, entry forms, biometric collection, declarations, and submission timing as policy.',
+              'Select at least two independently supported entry_visa claims and two policy claims with at least three distinct normalized values.',
+              'Prefer rules that explicitly apply to Korean passport holders and short tourist visits; do not generalize another nationality or residence status.',
+            ]
         : [];
   return [
     'Convert the supplied Google-Search-grounded digest into the required JSON schema.',
