@@ -9,6 +9,8 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 ## 2026-07-28 Root-Cause Controls
 
 - Publishing is measured against cumulative KST slots, not the whole daily quota at the first invocation. With the five-post policy, the due totals are `09:00=1`, `12:00=2`, `15:00=3`, `18:00=4`, and `21:00=5`. `dailyQuota.remainingAfterRun` is the due-now retry signal; `remainingDailyAfterRun` is monitoring data.
+- Exact slug collisions remain global because two public rows cannot own the same URL. Fuzzy slug-prefix duplicate checks are scoped to the same destination, and generic fallback prefixes such as `travel-preparation` are excluded from fuzzy matching. This prevents an unmapped new city from being skipped because an unrelated destination already used the same fallback family.
+- When a destination first appears in the automatic queue, add its stable English form to `src/lib/slug-utils.ts`; the generic fallback is only an availability backstop, not the preferred SEO URL. A slot rejected by duplicate QA still leaves `dailyQuota.remainingAfterRun > 0` and must be replaced by the same-run claim loop or the next forced scheduler/publisher retry.
 - A candidate is not publishable when any scored quality component is below 95. Do not normalize, average, or round a weak component into a pass. Engine V2 categories still require 100.
 - Bayesian learning uses `publishing_policies.scope='global'` and `meta.adaptive_thresholds`. Treat a database read/write error or a missing global row as `applied=false` and alert on it.
 - The editorial backlog may requeue a row only once for one recheck version. `repeat_suppressed` means the source defect still exists and must be repaired before the recheck version is advanced.

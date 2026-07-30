@@ -72,6 +72,40 @@ describe('checkDuplicate', () => {
     expect(mocks.calls[0].filters).toContainEqual(['eq', 'slug', 'travel-guide-q1234']);
   });
 
+  it('does not fuzzy-block an unmapped destination that falls back to travel-preparation', async () => {
+    mocks.responses.push([]);
+
+    const gate = await checkDuplicate({
+      blog_html: '# 센다이 월별 날씨와 옷차림',
+      slug: 'travel-preparation-q42ba3aa5',
+      destination: '센다이',
+      blog_type: 'info',
+      category: 'preparation',
+    });
+
+    expect(gate.passed).toBe(true);
+    expect(mocks.calls).toHaveLength(1);
+    expect(mocks.calls[0].filters).toContainEqual(['eq', 'slug', 'travel-preparation-q42ba3aa5']);
+    expect(mocks.calls.flatMap((call) => call.filters)).not.toContainEqual(['gte', 'slug', 'travel-preparation']);
+  });
+
+  it('scopes specific fuzzy slug checks to the same destination', async () => {
+    mocks.responses.push([], []);
+
+    const gate = await checkDuplicate({
+      blog_html: '# 센다이 월별 날씨와 옷차림',
+      slug: 'sendai-weather-packing-2026',
+      destination: '센다이',
+      blog_type: 'info',
+      category: 'preparation',
+    });
+
+    expect(gate.passed).toBe(true);
+    expect(mocks.calls).toHaveLength(2);
+    expect(mocks.calls[1].filters).toContainEqual(['gte', 'slug', 'sendai-weather-packing']);
+    expect(mocks.calls[1].filters).toContainEqual(['eq', 'destination', '센다이']);
+  });
+
   it('excludes an in-place replacement draft from its own duplicate queries', async () => {
     mocks.responses.push([]);
 

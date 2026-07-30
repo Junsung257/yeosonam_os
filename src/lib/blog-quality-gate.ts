@@ -67,6 +67,15 @@ const DEDUP_WINDOW_DAYS = 14;
 const QUALITY_GATE_DB_TIMEOUT_MS = 4_000;
 const GENERIC_SLUG_PREFIXES = new Set([
   'travel-guide',
+  'travel-preparation',
+  'travel-currency',
+  'travel-weather',
+  'travel-visa',
+  'travel-budget',
+  'travel-food',
+  'travel-faq',
+  'travel-itinerary',
+  'travel-transport',
   'package-guide',
   'complete-guide',
   'weather-guide',
@@ -968,6 +977,10 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
       .in('status', ['published', 'scheduled', 'draft'])
       .gte('slug', slugPrefix)
       .lt('slug', slugPrefix + '~'); // 문자열 범위 검색
+
+    if (input.destination) {
+      prefixQuery.eq('destination', input.destination);
+    }
 
     if (input.excludeContentCreativeId) {
       prefixQuery.neq('id', input.excludeContentCreativeId);
