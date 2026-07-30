@@ -165,6 +165,15 @@ The repository prompt is the safe baseline. A database override in `prompt_versi
 - Verify the write by reading back creative status, review status, fallback flags, queue status, replacement metadata, and representative ownership. A fallback flag remaining on a `published` row is a release blocker.
 - Verify generated cover and inline images in the public renderer. AI-created assets must visibly say `AI 생성 참고 이미지`; they are never evidence for prices, schedules, policies, weather, or current conditions.
 
+## Reviewed Replacement of Published High-Risk Posts
+
+- Enqueue the existing public creative with `private_regeneration.mode=replace_published_after_quality_gate`, `atomic_publish_replace=true`, and the exact `content_creative_id`. Do not unpublish or edit the public row while research and generation run.
+- The publisher may create a private replacement only after the claim gate passes. The resulting draft must have `review_status=pending_review`, a `blog_information_review_cases` row with the same evidence content key, and `generation_meta.reviewed_published_replacement.mode=reviewed_published_replacement_v1`.
+- In the information-review API, confirm `reviewedReplacement.targetCreativeId` and `reviewedReplacement.canonicalSlug` match the live article. Review the claim/source/excerpt/validity packet, not only the prose.
+- Approval and publication are separate explicit actions. Approval revalidates evidence and locks the exact draft fingerprint. Publication reruns public QA against the canonical slug, then calls the atomic replacement RPC.
+- After publication, verify that the original creative remains `published` with the same ID, slug, and `published_at`; its `review_status` is `approved`; the shadow draft is `archived`; the queue points to the public creative; and one `blog_information_replacements` audit row plus a pending indexing job exist.
+- A missing review case, changed draft fingerprint, unsupported claim, stale or non-official high-risk evidence, representative mismatch, or indexing outbox failure must leave the previous public article unchanged. Repair the cause and repeat the explicit publish action; never copy the draft into the public row manually.
+
 ## Verification Commands
 
 Run these after code changes that affect blog generation, rendering, indexing, or admin operations:

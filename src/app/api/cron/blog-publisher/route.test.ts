@@ -115,8 +115,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('representativeIdentity && !requiresHumanReview');
     expect(source).toContain('publishBlogInformationAtomically({');
     expect(source).toContain("status: 'pending_review'");
-    expect(source).toContain('humanReviewRequired: true');
-    expect(source).toContain("riskLevel: 'high'");
+    expect(source).toContain('createBlogInformationEvidenceWorkflowStore({');
+    expect(source).toContain("state: 'pending_review'");
+    expect(source).toContain('review_case_research_missing:');
   });
 
   it('replaces quarantined fallback posts in place and always sends them to private review', () => {

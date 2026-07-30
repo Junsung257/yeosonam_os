@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildBlogInformationPublicationIdempotencyKey } from './blog-information-atomic-publication';
+import {
+  buildBlogInformationPublicationIdempotencyKey,
+  buildBlogInformationReplacementIdempotencyKey,
+} from './blog-information-atomic-publication';
 
 const migration = fs.readFileSync(path.join(
   process.cwd(),
@@ -76,5 +79,21 @@ describe('informational publication idempotency key', () => {
       .toBe(buildBlogInformationPublicationIdempotencyKey(base));
     expect(buildBlogInformationPublicationIdempotencyKey(base))
       .not.toBe(buildBlogInformationPublicationIdempotencyKey({ ...base, contentFingerprint: 'b'.repeat(64) }));
+  });
+
+  it('separates reviewed replacement retries by draft, target, content, and representative', () => {
+    const base = {
+      replacementDraftId: 'draft-1',
+      targetCreativeId: 'public-1',
+      sourceFingerprint: 'a'.repeat(64),
+      representativeKey: 'v1|vietnam|entry_requirements|general|ko-KR',
+    };
+    expect(buildBlogInformationReplacementIdempotencyKey(base))
+      .toBe(buildBlogInformationReplacementIdempotencyKey(base));
+    expect(buildBlogInformationReplacementIdempotencyKey(base))
+      .not.toBe(buildBlogInformationReplacementIdempotencyKey({
+        ...base,
+        targetCreativeId: 'public-2',
+      }));
   });
 });

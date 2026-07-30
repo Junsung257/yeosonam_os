@@ -13,8 +13,12 @@ import {
 } from './blog-information-review-workflow';
 import type { BlogInformationPlan } from './blog-information-planner';
 import { validateBlogInformationResearchBundle, type BlogInformationResearchBundle } from './blog-information-evidence';
-import { publishBlogInformationAtomically } from './blog-information-atomic-publication';
+import {
+  publishBlogInformationAtomically,
+  replaceBlogInformationReviewedDraftAtomically,
+} from './blog-information-atomic-publication';
 import { readBlogInformationRepresentativeIdentity } from './blog-information-representative';
+import { readReviewedPublishedBlogReplacement } from './blog-private-regeneration';
 
 interface InformationReviewCaseRow {
   id: string;
@@ -241,6 +245,8 @@ export async function publishBlogInformationReviewedDraft(input: {
   report?: BlogInformationClaimValidationReport;
   indexingJobId?: string;
   idempotent?: boolean;
+  targetCreativeId?: string;
+  replacementId?: string;
 }> {
   const loaded = await loadReviewCase(input.creativeId);
   if (!loaded) return { handled: false };
@@ -274,6 +280,32 @@ export async function publishBlogInformationReviewedDraft(input: {
   const identity = readBlogInformationRepresentativeIdentity(loaded.creative.generation_meta);
   if (!identity) throw new Error('blog_information_publish_identity_missing');
   const publishedAt = (input.now ?? new Date()).toISOString();
+  const reviewedReplacement = readReviewedPublishedBlogReplacement(
+    loaded.creative.generation_meta,
+  );
+  if (reviewedReplacement) {
+    const actorId = normalizedActorId(input.actorId);
+    if (!actorId) throw new Error('blog_information_replacement_human_actor_required');
+    const replacement = await replaceBlogInformationReviewedDraftAtomically({
+      replacementDraftId: input.creativeId,
+      targetCreativeId: reviewedReplacement.targetCreativeId,
+      reviewCaseId: loaded.reviewCase.id,
+      actorId,
+      sourceFingerprint: fingerprint,
+      validationMeta: { information_claim_validation: toBlogInformationClaimValidationMeta(report) },
+      qualityGate: input.qualityGate,
+      identity,
+    });
+    return {
+      handled: true,
+      slug: replacement.slug,
+      report,
+      indexingJobId: replacement.indexingJobId,
+      idempotent: replacement.idempotent,
+      targetCreativeId: replacement.targetCreativeId,
+      replacementId: replacement.replacementId,
+    };
+  }
   const publication = await publishBlogInformationAtomically({
     creativeId: input.creativeId,
     reviewCaseId: loaded.reviewCase.id,
@@ -304,6 +336,11 @@ export interface BlogInformationReviewQueueDetail {
   status: string;
   contentFingerprint: string;
   validatorReasons: string[];
+  reviewedReplacement: {
+    targetCreativeId: string;
+    canonicalSlug: string;
+    originalPublishedAt: string | null;
+  } | null;
   claims: Array<{
     claim: string;
     source: string | null;
@@ -327,7 +364,7 @@ export async function getBlogInformationReviewQueue(limit = 50): Promise<BlogInf
   if (!cases?.length) return [];
   const creativeIds = cases.map((item) => item.creative_id);
   const [{ data: creatives, error: creativesError }, { data: claims, error: claimsError }] = await Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, seo_title, destination').in('id', creativeIds),
+    supabaseAdmin.from('content_creatives').select('id, seo_title, destination, generation_meta').in('id', creativeIds),
     supabaseAdmin.from('blog_information_claims').select('id, creative_id, claim_text, validation_reason').in('creative_id', creativeIds),
   ]);
   if (creativesError) throw persistenceError('queue_creatives', creativesError);
@@ -356,6 +393,9 @@ export async function getBlogInformationReviewQueue(limit = 50): Promise<BlogInf
 
   return cases.map((reviewCase) => {
     const creative = creativeById.get(reviewCase.creative_id);
+    const reviewedReplacement = readReviewedPublishedBlogReplacement(
+      creative?.generation_meta,
+    );
     const caseClaims = (claims ?? []).filter((claim) => claim.creative_id === reviewCase.creative_id);
     const report = reviewCase.validator_report as BlogInformationClaimValidationReport;
     return {
@@ -368,6 +408,13 @@ export async function getBlogInformationReviewQueue(limit = 50): Promise<BlogInf
       status: reviewCase.status,
       contentFingerprint: reviewCase.content_fingerprint,
       validatorReasons: (report?.issues ?? []).map((issue) => issue.code),
+      reviewedReplacement: reviewedReplacement
+        ? {
+            targetCreativeId: reviewedReplacement.targetCreativeId,
+            canonicalSlug: reviewedReplacement.canonicalSlug,
+            originalPublishedAt: reviewedReplacement.originalPublishedAt,
+          }
+        : null,
       claims: caseClaims.flatMap((claim) => (linksByClaim.get(claim.id) ?? []).map((evidenceId) => {
         const item = evidenceById.get(evidenceId);
         const version = item?.source_version_id ? versionById.get(item.source_version_id) : null;
