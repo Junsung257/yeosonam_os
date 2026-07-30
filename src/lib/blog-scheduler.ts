@@ -3,6 +3,8 @@ import {
   compareBlogDuplicateCandidatePreference,
   isPublishedBlogQualityUpgradeCandidate,
 } from './blog-publishable-duplicate-cleanup';
+import { buildBlogContentBrief } from './blog-content-brief';
+import { buildBlogInformationRepresentativeKey } from './blog-information-representative';
 import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 
 type MicroAngleId =
@@ -243,9 +245,34 @@ function publishableQueueKey(row: QueueCandidateLike): string | null {
   return null;
 }
 
+function publishableRepresentativeKey(row: QueueCandidateLike): string | null {
+  if (row.product_id || row.source === 'pillar') return null;
+  const brief = buildBlogContentBrief({
+    topic: row.topic,
+    destination: row.destination,
+    primaryKeyword: row.primary_keyword,
+    category: row.category,
+    source: row.source,
+    microAngle: readMicroAngle(row),
+    audience: typeof row.meta?.audience === 'string' ? row.meta.audience : null,
+    locale: typeof row.meta?.locale === 'string' ? row.meta.locale : 'ko-KR',
+    travelerNationality: typeof row.meta?.traveler_nationality === 'string'
+      ? row.meta.traveler_nationality
+      : null,
+  });
+  if (!brief.passed || !brief.plan.destinationId || brief.intentType === 'general') return null;
+  return buildBlogInformationRepresentativeKey({
+    destinationId: brief.plan.destinationId,
+    intent: brief.intentType,
+    audience: brief.plan.audience,
+    locale: brief.plan.locale,
+  });
+}
+
 export function countPublishableQueueCandidates(input: {
   activeQueue: QueueCandidateLike[];
   recentPublished: QueueCandidateLike[];
+  activeRepresentativeKeys?: ReadonlySet<string>;
 }): {
   publishableCount: number;
   blockedRecentDuplicate: number;
@@ -292,6 +319,15 @@ export function countPublishableQueueCandidates(input: {
     }
     const key = publishableQueueKey(row);
     if (!key) continue;
+    const representativeKey = publishableRepresentativeKey(row);
+    if (
+      representativeKey
+      && input.activeRepresentativeKeys?.has(representativeKey)
+      && !isPublishedBlogQualityUpgradeCandidate(row)
+    ) {
+      blockedRecentDuplicate += 1;
+      continue;
+    }
     if (recentKeys.has(key) && !isPublishedBlogQualityUpgradeCandidate(row)) {
       blockedRecentDuplicate += 1;
       continue;
@@ -323,6 +359,7 @@ export function countPublishableQueueCandidates(input: {
 async function quarantineDuplicatePublishableCandidates(input: {
   activeQueue: QueueCandidateLike[];
   recentPublished: QueueCandidateLike[];
+  activeRepresentativeKeys?: ReadonlySet<string>;
 }): Promise<number> {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
@@ -344,10 +381,17 @@ async function quarantineDuplicatePublishableCandidates(input: {
     ) continue;
     const key = publishableQueueKey(row);
     if (!key) continue;
+    const representativeKey = publishableRepresentativeKey(row);
     const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
       ? row.meta as Record<string, unknown>
       : {};
     if (
+      (
+        representativeKey
+        && input.activeRepresentativeKeys?.has(representativeKey)
+        && !isPublishedBlogQualityUpgradeCandidate(row)
+      )
+      ||
       (recentKeys.has(key) && !isPublishedBlogQualityUpgradeCandidate(row))
       || seen.has(key)
     ) {
@@ -409,7 +453,7 @@ export async function ensureDailyPublishableQueue(opts?: {
   const since = new Date();
   since.setDate(since.getDate() - Math.max(14, policy.multi_angle_gap_days ?? 14));
 
-  const [recentPublishedRes, activeQueueRes] = await Promise.all([
+  const [recentPublishedRes, activeQueueRes, activeRepresentativesRes] = await Promise.all([
     supabaseAdmin
       .from('content_creatives')
       .select('destination, angle_type, slug, product_id, generation_meta')
@@ -419,14 +463,25 @@ export async function ensureDailyPublishableQueue(opts?: {
       .limit(300),
     supabaseAdmin
       .from('blog_topic_queue')
-      .select('id, product_id, content_creative_id, destination, angle_type, topic, source, priority, created_at, updated_at, meta')
+      .select('id, product_id, content_creative_id, destination, primary_keyword, category, angle_type, topic, source, priority, created_at, updated_at, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
+    supabaseAdmin
+      .from('blog_information_representatives')
+      .select('representative_key')
+      .eq('status', 'active')
+      .limit(500),
   ]);
+  const activeRepresentativeKeys = new Set(
+    (activeRepresentativesRes.data ?? [])
+      .map(row => row.representative_key)
+      .filter((key): key is string => typeof key === 'string' && key.length > 0),
+  );
 
   const queueCandidateStats = countPublishableQueueCandidates({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
+    activeRepresentativeKeys,
   });
   const queuedTotal = activeQueueRes.data?.filter((row: QueueCandidateLike) => row.source !== 'pillar').length ?? 0;
   const duplicateCount = queueCandidateStats.blockedRecentDuplicate + queueCandidateStats.duplicateQueued;
@@ -457,6 +512,7 @@ export async function ensureDailyPublishableQueue(opts?: {
   const quarantinedDuplicateCandidates = await quarantineDuplicatePublishableCandidates({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
+    activeRepresentativeKeys,
   });
   const existingQueued = queueCandidateStats.publishableCount;
   if (existingQueued >= targetCandidates) {
@@ -514,6 +570,26 @@ export async function ensureDailyPublishableQueue(opts?: {
       const key = microAngleKey(destination, template.id);
       const topic = template.topic(destination, year, month);
       if (!key) continue;
+      const audience = template.id === 'kid_friendly' || template.id === 'budget_family'
+        ? 'family'
+        : 'general';
+      const primaryKeyword = buildMicroAnglePrimaryKeyword(destination, template);
+      const representativeKey = publishableRepresentativeKey({
+        topic,
+        destination,
+        primary_keyword: primaryKeyword,
+        category: template.category,
+        source: 'coverage_gap',
+        angle_type: 'value',
+        meta: {
+          micro_angle: template.id,
+          audience,
+        },
+      });
+      if (representativeKey && activeRepresentativeKeys.has(representativeKey)) {
+        skippedRecentDuplicate += 1;
+        continue;
+      }
       if (recentKeys.has(key)) {
         skippedRecentDuplicate += 1;
         continue;
@@ -539,12 +615,12 @@ export async function ensureDailyPublishableQueue(opts?: {
         destination,
         category: template.category,
         angle_type: 'value',
-        primary_keyword: buildMicroAnglePrimaryKeyword(destination, template),
+        primary_keyword: primaryKeyword,
         keyword_tier: 'longtail' as KeywordTier,
         competition_level: 'low',
         meta: {
           micro_angle: template.id,
-          audience: template.id === 'kid_friendly' || template.id === 'budget_family' ? 'family' : 'general',
+          audience,
           season_month: month,
           expected_slug: expectedMicroSlug(destination, template.id),
           generated_by: 'micro_angle_refill',

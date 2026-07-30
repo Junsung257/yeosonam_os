@@ -318,4 +318,25 @@ describe('blog scheduler queue refill helpers', () => {
     expect(stats.publishableCount).toBe(1);
     expect(stats.researchNotReady).toBe(0);
   });
+
+  it('quarantines an old canonical representative before a refill consumes a slot', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeRepresentativeKeys: new Set([
+        'v1|\uB3C4\uCFC4|monthly_weather|general|ko-KR',
+      ]),
+      activeQueue: [{
+        destination: '\uB3C4\uCFC4',
+        topic: '\uB3C4\uCFC4 7\uC6D4 \uB0A0\uC528\uC640 \uC637\uCC28\uB9BC \uC900\uBE44\uBB3C \uCCB4\uD06C',
+        primary_keyword: '\uB3C4\uCFC4 \uB0A0\uC528 \uC637\uCC28\uB9BC \uC900\uBE44\uBB3C',
+        category: 'preparation',
+        angle_type: 'value',
+        meta: researchedTokyoWeatherMeta(),
+      }],
+    });
+
+    expect(stats.publishableCount).toBe(0);
+    expect(stats.blockedRecentDuplicate).toBe(1);
+    expect(stats.researchNotReady).toBe(0);
+  });
 });

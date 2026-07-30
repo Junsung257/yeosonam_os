@@ -151,6 +151,7 @@ import {
 } from '@/lib/blog-information-representative';
 import {
   attachBlogInformationRepresentativeDraft,
+  findBlogInformationRepresentative,
   reserveBlogInformationRepresentative,
 } from '@/lib/blog-information-representative-repository';
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
@@ -2418,6 +2419,36 @@ async function processQueueItem(
       }
     }
     const replacementAssets = privateReplacementAssets ?? queueReusableAssets;
+
+    if (contentBoundary.lane === 'informational' && !publishedAtomicUpgrade) {
+      const queueBrief = buildQueueContentBrief(item);
+      const destinationId = queueBrief.plan.destinationId;
+      if (queueBrief.passed && destinationId) {
+        const representativeKey = buildBlogInformationRepresentativeKey({
+          destinationId,
+          intent: queueBrief.intentType,
+          audience: queueBrief.plan.audience,
+          locale: queueBrief.plan.locale,
+        });
+        const existingRepresentative = await findBlogInformationRepresentative(representativeKey);
+        const reservationOwner = `blog_topic_queue:${item.id}`;
+        const mayResumeOwnReservation = existingRepresentative?.status === 'reserved'
+          && existingRepresentative.reservationOwner === reservationOwner;
+        if (existingRepresentative && !mayResumeOwnReservation) {
+          const reason = `information_representative_preclaim:${existingRepresentative.status}:${
+            existingRepresentative.canonicalSlug ?? representativeKey
+          }`;
+          await handleFailure(item, reason, null, false, {
+            information_representative_preclaim: true,
+            representative_key: representativeKey,
+            canonical_creative_id: existingRepresentative.canonicalCreativeId,
+            canonical_slug: existingRepresentative.canonicalSlug,
+            representative_status: existingRepresentative.status,
+          });
+          return { id: item.id, topic: item.topic, status: 'skipped_duplicate', reason };
+        }
+      }
+    }
 
     if (!publishedAtomicUpgrade && await isRecentInfoDuplicateCandidate(item)) {
       const reason = `recent_info_duplicate_before_generation: 최근 14일 내 ${item.destination ?? '동일 목적지'} + ${item.angle_type ?? 'value'} 정보성 글 이미 발행됨`;

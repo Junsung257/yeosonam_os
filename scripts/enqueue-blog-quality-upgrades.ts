@@ -275,6 +275,9 @@ async function main() {
         writer_type: 'info_writer',
         expected_slug: post.slug,
         ...(microAngle ? { micro_angle: microAngle } : {}),
+        ...(brief.plan.travelerNationality
+          ? { traveler_nationality: brief.plan.travelerNationality }
+          : {}),
         quality_upgrade: {
           version: 'published-research-upgrade-v1',
           enqueued_at: now,
