@@ -16,4 +16,15 @@ describe('blog queue lifecycle schema contract', () => {
     expect(lifecycleSelects.some((columns) => /\bslug_hint\b/.test(columns))).toBe(false);
     expect(editorialSelects.some((columns) => /\bslug_hint\b/.test(columns))).toBe(false);
   });
+
+  it('quarantines due information rows whose durable research is not ready', () => {
+    const lifecycleSource = readFileSync(join(process.cwd(), 'src/lib/blog-queue-lifecycle.ts'), 'utf8');
+
+    expect(lifecycleSource).toContain('evaluateQueuedInformationResearch(row)');
+    expect(lifecycleSource).toContain("forcedReason = 'information_research_not_ready'");
+    expect(lifecycleSource).toContain("lastError = 'evidence_insufficient'");
+    expect(lifecycleSource).toContain('research_issues: researchIssues');
+    expect(lifecycleSource).toContain('research_failed_at: now');
+    expect(lifecycleSource).toContain("forcedReason === 'information_research_not_ready'");
+  });
 });
