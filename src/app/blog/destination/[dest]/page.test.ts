@@ -28,4 +28,14 @@ describe('/blog/destination/[dest] public route guard', () => {
     expect(source).toContain('if (!unavailable && posts.length === 0) notFound();');
     expect(source).toContain('const destination = await resolveDestinationRouteParam(dest);');
   });
+
+  it('renders uncached route shells while retaining the cached catalog', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/app/blog/destination/[dest]/page.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain("export const dynamic = 'force-dynamic';");
+    expect(source).toContain('const getCachedDestinationPageData = unstable_cache(');
+  });
 });

@@ -35,6 +35,7 @@ describe('slug-utils', () => {
   });
 
   it('romanizes newer blog destinations used by automatic publishing', () => {
+    expect(romanize('\uB450\uBC14\uC774')).toBe('dubai');
     expect(romanize('\uD074\uB77D')).toBe('clark');
     expect(romanize('\uC13C\uB2E4\uC774')).toBe('sendai');
     expect(romanize('\uC720\uB7FD')).toBe('europe');
@@ -44,6 +45,10 @@ describe('slug-utils', () => {
     expect(slugifyTopic('\uD074\uB77D \uC5EC\uD589 \uC900\uBE44\uBB3C \uC644\uBCBD \uCCB4\uD06C\uB9AC\uC2A4\uD2B8')).toBe(
       'clark-preparation',
     );
+    expect(slugifyTopic('\uB450\uBC14\uC774 7\uC6D4 \uB0A0\uC528\uC640 \uC637\uCC28\uB9BC \uC900\uBE44\uBB3C \uCCB4\uD06C')).toBe(
+      'dubai-7-weather-preparation',
+    );
+    expect(slugIncludesDestination('weather-checklist-july', '\uB450\uBC14\uC774')).toBe(false);
   });
 
   it('extracts a specific Canadian Rockies scope before the broad country name', () => {
