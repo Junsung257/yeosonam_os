@@ -83,6 +83,26 @@ describe('blog publisher repair helpers', () => {
     }).passed).toBe(true);
   });
 
+  it('repairs a destination-free Dubai weather slug', () => {
+    const result = repairPublisherSeoSlug({
+      currentSlug: 'weather-checklist-july',
+      item: {
+        topic: '\uB450\uBC14\uC774 \uC6D4\uBCC4 \uB0A0\uC528 \uC637\uCC28\uB9BC \uC5EC\uD589 \uC900\uBE44\uBB3C \uCCB4\uD06C\uB9AC\uC2A4\uD2B8',
+        destination: '\uB450\uBC14\uC774',
+        category: 'weather',
+      },
+      primaryKeyword: '\uB450\uBC14\uC774 \uC6D4\uBCC4 \uB0A0\uC528',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.slug).toMatch(/^dubai-/);
+    expect(inspectBlogSlugQuality({
+      slug: result.slug,
+      primaryKeyword: '\uB450\uBC14\uC774 \uC6D4\uBCC4 \uB0A0\uC528',
+      destination: '\uB450\uBC14\uC774',
+    }).passed).toBe(true);
+  });
+
   it('replaces a weak first paragraph with a concrete hook', () => {
     const source = [
       '# \uB098\uD2B8\uB791/\uB2EC\uB78F 6\uC6D4 \uB0A0\uC528\uC640 \uC637\uCC28\uB9BC',

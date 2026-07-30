@@ -47,4 +47,15 @@ describe('blog slug quality', () => {
     expect(report.passed).toBe(true);
     expect(report.issues).toEqual([]);
   });
+
+  it('blocks a generic slug when a known destination is missing', () => {
+    const report = inspectBlogSlugQuality({
+      slug: 'weather-checklist-july',
+      primaryKeyword: '\uB450\uBC14\uC774 7\uC6D4 \uB0A0\uC528',
+      destination: '\uB450\uBC14\uC774',
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('missing_destination_slug');
+  });
 });

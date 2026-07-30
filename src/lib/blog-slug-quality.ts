@@ -1,3 +1,5 @@
+import { romanize, slugIncludesDestination } from './slug-utils';
+
 export type BlogSlugQualityIssueCode =
   | 'missing_slug'
   | 'hash_suffix_slug'
@@ -6,6 +8,7 @@ export type BlogSlugQualityIssueCode =
   | 'numeric_leading_slug'
   | 'draft_or_test_slug'
   | 'invalid_slug_chars'
+  | 'missing_destination_slug'
   | 'keyword_mismatch_slug';
 
 export interface BlogSlugQualityIssue {
@@ -82,6 +85,19 @@ export function inspectBlogSlugQuality(input: {
 
   if (/(?:^|-)draft(?:-|$)|(?:^|-)test(?:-|$)|(?:^|-)untitled(?:-|$)|(?:^|-)v\d+$/i.test(slug)) {
     addIssue(issues, 'draft_or_test_slug', 'critical', 'Blog slug contains draft, test, or version markers.');
+  }
+
+  const destinationSlug = romanize(input.destination?.trim() ?? '');
+  if (
+    destinationSlug
+    && !slugIncludesDestination(slug, input.destination)
+  ) {
+    addIssue(
+      issues,
+      'missing_destination_slug',
+      'critical',
+      'Blog slug must include its known destination.',
+    );
   }
 
   const requiredTokens = [

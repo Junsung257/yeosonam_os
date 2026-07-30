@@ -1,4 +1,5 @@
 export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
+  'weather-checklist-july': 'dubai-july-weather-preparation',
   'product-intro': 'guangzhou-4n6d-value-d09764f0-20260909-6d-pus-etc-can',
   '7-bali': 'bali-july-weather-checklist',
   'post-hv01': 'travel-emergency-medicine-summer-checklist',
