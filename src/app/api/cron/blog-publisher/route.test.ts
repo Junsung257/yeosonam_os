@@ -42,6 +42,11 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('buildRecentInfoDuplicateScope(item)');
     expect(source).toContain("query.contains('generation_meta', { micro_angle: scope.microAngle })");
+    const representativePreclaim = source.indexOf('findBlogInformationRepresentative(representativeKey)');
+    const topicGeneration = source.indexOf("topic_generation', () => generateFromTopic(item)");
+    expect(representativePreclaim).toBeGreaterThanOrEqual(0);
+    expect(topicGeneration).toBeGreaterThan(representativePreclaim);
+    expect(source).toContain('information_representative_preclaim:');
   });
 
   it('never lets deterministic information fallback become a public article', () => {
@@ -115,8 +120,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('representativeIdentity && !requiresHumanReview');
     expect(source).toContain('publishBlogInformationAtomically({');
     expect(source).toContain("status: 'pending_review'");
-    expect(source).toContain('humanReviewRequired: true');
-    expect(source).toContain("riskLevel: 'high'");
+    expect(source).toContain('createBlogInformationEvidenceWorkflowStore({');
+    expect(source).toContain("state: 'pending_review'");
+    expect(source).toContain('review_case_research_missing:');
   });
 
   it('replaces quarantined fallback posts in place and always sends them to private review', () => {

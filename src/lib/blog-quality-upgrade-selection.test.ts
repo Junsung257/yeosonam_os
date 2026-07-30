@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyBlogQualityUpgradeTopic,
   deduplicateBlogQualityUpgradeCandidates,
+  getBlogQualityUpgradeExecutionMode,
   matchesBlogQualityUpgradeFilter,
 } from './blog-quality-upgrade-selection';
 
@@ -93,5 +94,16 @@ describe('published blog quality upgrade topic selection', () => {
       intent: 'monthly_weather',
       microAngle: 'weather_packing',
     })).toBe(false);
+  });
+
+  it.each([
+    ['monthly_weather', 'deterministic'],
+    ['entry_requirements', 'human_review'],
+    ['travel_insurance', 'human_review'],
+    ['currency_payment', 'unsupported'],
+  ])('routes %s upgrades through %s execution', (intent, mode) => {
+    expect(getBlogQualityUpgradeExecutionMode(
+      intent as Parameters<typeof getBlogQualityUpgradeExecutionMode>[0],
+    )).toBe(mode);
   });
 });

@@ -499,6 +499,33 @@ describe('blog generation research preflight', () => {
     ]));
   });
 
+  it('blocks transport research that has numbers but not the operating decisions', () => {
+    const unrelated = foodBudgetBundle();
+    const evaluateIntent = (intent: 'airport_transport' | 'local_transport') =>
+      evaluateBlogGenerationResearchReadiness({
+        meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: unrelated },
+        expectedContentKey: CONTENT_KEY,
+        destination: '\uC0BF\uD3EC\uB85C',
+        intent,
+        locale: 'ko-KR',
+        sourcePolicy: FOOD_POLICY,
+        now: new Date('2026-07-19T12:00:00.000Z'),
+      });
+
+    expect(evaluateIntent('airport_transport').issues).toEqual(expect.arrayContaining([
+      'claim_semantic_coverage_missing:airport_transport:multiple_modes',
+      'claim_semantic_coverage_missing:airport_transport:operating_hours',
+      'claim_semantic_coverage_missing:airport_transport:luggage',
+      'claim_semantic_coverage_missing:airport_transport:late_arrival',
+    ]));
+    expect(evaluateIntent('local_transport').issues).toEqual(expect.arrayContaining([
+      'claim_semantic_coverage_missing:local_transport:route',
+      'claim_semantic_coverage_missing:local_transport:frequency_schedule',
+      'claim_semantic_coverage_missing:local_transport:ticket_or_reservation',
+      'claim_semantic_coverage_missing:local_transport:service_limitation',
+    ]));
+  });
+
   it('recognizes operator route and fare claims as family transport evidence', () => {
     const bundle = foodBudgetBundle();
     bundle.claims[0] = {

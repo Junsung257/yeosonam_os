@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 import {
+  buildReviewedPublishedBlogReplacementDraftSlug,
   buildPublishedBlogUpgradeQueueTopic,
   hasPrivateBlogRegenerationIntent,
   isEligiblePrivateBlogRegenerationTarget,
   isPublishedBlogAtomicUpgradeRequest,
   preservePublishedBlogAtomicUpgradeSlug,
   readPrivateBlogRegenerationRequest,
+  readReviewedPublishedBlogReplacement,
 } from './blog-private-regeneration';
 
 describe('private blog regeneration contract', () => {
@@ -66,6 +68,37 @@ describe('private blog regeneration contract', () => {
       originalSlug: 'existing-slug',
       generatedSlug: 'new-generated-slug',
     })).toBe('new-generated-slug');
+  });
+
+  it('builds and validates a private shadow slug for a reviewed published replacement', () => {
+    expect(buildReviewedPublishedBlogReplacementDraftSlug({
+      canonicalSlug: 'vietnam-visa-entry-documents-2026',
+      queueId: '7090b96d-4001-41ab-acd0-f5c442ba3aa5',
+    })).toBe('vietnam-visa-entry-documents-2026--review-7090b96d4001');
+
+    expect(readReviewedPublishedBlogReplacement({
+      reviewed_published_replacement: {
+        mode: 'reviewed_published_replacement_v1',
+        target_creative_id: 'creative-public',
+        canonical_slug: 'vietnam-visa-entry-documents-2026',
+        original_published_at: '2026-01-01T00:00:00.000Z',
+        queue_id: 'queue-1',
+      },
+    })).toEqual({
+      mode: 'reviewed_published_replacement_v1',
+      targetCreativeId: 'creative-public',
+      canonicalSlug: 'vietnam-visa-entry-documents-2026',
+      originalPublishedAt: '2026-01-01T00:00:00.000Z',
+      queueId: 'queue-1',
+    });
+    expect(readReviewedPublishedBlogReplacement({
+      reviewed_published_replacement: {
+        mode: 'reviewed_published_replacement_v1',
+        target_creative_id: '',
+        canonical_slug: 'vietnam-visa-entry-documents-2026',
+        queue_id: 'queue-1',
+      },
+    })).toBeNull();
   });
 
   it('accepts only an explicit private replacement request linked to an existing creative', () => {

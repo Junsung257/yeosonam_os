@@ -22,7 +22,7 @@ function mapRecord(row: Record<string, unknown>): BlogInformationRepresentativeR
   };
 }
 
-async function findRepresentative(
+export async function findBlogInformationRepresentative(
   representativeKey: string,
 ): Promise<BlogInformationRepresentativeRecord | null> {
   const { data, error } = await supabaseAdmin
@@ -44,7 +44,7 @@ export interface BlogInformationRepresentativeReservationStore {
 }
 
 const databaseReservationStore: BlogInformationRepresentativeReservationStore = {
-  find: findRepresentative,
+  find: findBlogInformationRepresentative,
   async insert(input) {
     const { error } = await supabaseAdmin.from('blog_information_representatives').insert({
       representative_key: input.representativeKey,
@@ -142,7 +142,7 @@ export async function ensureBlogInformationRepresentativeForPublish(input: {
   const identity = readBlogInformationRepresentativeIdentity(input.generationMeta);
   if (!identity) throw new Error('blog_information_representative_identity_missing');
   const representativeKey = buildBlogInformationRepresentativeKey(identity);
-  const existing = await findRepresentative(representativeKey);
+  const existing = await findBlogInformationRepresentative(representativeKey);
   if (existing?.status === 'active') {
     if (existing.canonicalCreativeId !== input.creativeId || existing.canonicalSlug !== input.slug) {
       throw new Error(`blog_information_representative_duplicate:${existing.canonicalSlug || representativeKey}`);

@@ -13,6 +13,28 @@ export interface BlogQualityUpgradeTopicDecision {
   reason: string;
 }
 
+export type BlogQualityUpgradeExecutionMode =
+  | 'deterministic'
+  | 'human_review'
+  | 'unsupported';
+
+const DETERMINISTIC_UPGRADE_INTENTS = new Set<BlogInformationIntent>([
+  'monthly_weather',
+]);
+
+const HUMAN_REVIEW_UPGRADE_INTENTS = new Set<BlogInformationIntent>([
+  'entry_requirements',
+  'travel_insurance',
+]);
+
+export function getBlogQualityUpgradeExecutionMode(
+  intent: BlogInformationIntent,
+): BlogQualityUpgradeExecutionMode {
+  if (DETERMINISTIC_UPGRADE_INTENTS.has(intent)) return 'deterministic';
+  if (HUMAN_REVIEW_UPGRADE_INTENTS.has(intent)) return 'human_review';
+  return 'unsupported';
+}
+
 interface ExplicitIntentRule {
   intent: BlogInformationIntent;
   microAngle: string | null;

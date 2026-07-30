@@ -17,6 +17,7 @@ import {
   publishBlogInformationReviewedDraft,
   submitBlogInformationReviewDecision,
 } from '@/lib/blog-information-review-repository';
+import { readReviewedPublishedBlogReplacement } from '@/lib/blog-private-regeneration';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,24 +107,30 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
     const { data: creative, error: creativeError } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, blog_html, seo_title, seo_description, destination, angle_type, product_id')
+      .select('id, slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, generation_meta')
       .eq('id', body.creative_id)
       .single();
     if (creativeError || !creative) return apiResponse({ error: 'Draft not found' }, { status: 404 });
     if (creative.product_id || !creative.slug || !creative.blog_html) {
       return apiResponse({ error: 'A complete informational draft is required' }, { status: 409 });
     }
+    const reviewedReplacement = readReviewedPublishedBlogReplacement(
+      creative.generation_meta,
+    );
+    const publishSlug = reviewedReplacement?.canonicalSlug ?? creative.slug;
+    const publishCreativeId = reviewedReplacement?.targetCreativeId ?? creative.id;
     const prepared = await prepareBlogForPublish({
-      id: creative.id,
+      id: publishCreativeId,
       blog_html: creative.blog_html,
-      slug: creative.slug,
+      slug: publishSlug,
       seo_title: creative.seo_title,
       seo_description: creative.seo_description,
       destination: creative.destination,
       angle_type: creative.angle_type,
       product_id: null,
-      primary_keyword: creative.destination || creative.seo_title || creative.slug,
-      excludeContentCreativeId: creative.id,
+      primary_keyword: creative.destination || creative.seo_title || publishSlug,
+      generation_meta: creative.generation_meta,
+      excludeContentCreativeId: publishCreativeId,
     });
     if (!prepared.report.passed) {
       return apiResponse({ error: 'Blog publish quality gate failed', quality: prepared.report }, { status: 422 });

@@ -1,6 +1,7 @@
 import { evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { classifyDestinationlessInfoCandidate } from './blog-destinationless-info';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
+import { evaluateQueuedInformationResearch } from './blog-queue-research';
 
 export type BlogCanaryCandidateRow = {
   id?: string | null;
@@ -134,8 +135,13 @@ export function buildBlogCanaryPreflight(input: {
   activeQueue: BlogCanaryCandidateRow[];
   recentPublished: BlogCanaryCandidateRow[];
   requested?: number;
+  evaluateInformationResearch?: (
+    row: BlogCanaryCandidateRow,
+  ) => { passed: boolean; issues?: string[] };
 }): BlogCanaryPreflightResult {
   const requested = Math.max(1, Math.min(5, Math.round(input.requested ?? 3)));
+  const evaluateInformationResearch = input.evaluateInformationResearch
+    ?? evaluateQueuedInformationResearch;
   const rejectedCounts: Record<string, number> = {};
   const recentKeys = new Set(
     input.recentPublished
@@ -166,8 +172,9 @@ export function buildBlogCanaryPreflight(input: {
       continue;
     }
     const writerType = readWriterType(row);
+    let destinationlessIssue: ReturnType<typeof classifyDestinationlessInfoCandidate> = null;
     if (writerType === 'info_writer') {
-      const destinationlessIssue = classifyDestinationlessInfoCandidate(row);
+      destinationlessIssue = classifyDestinationlessInfoCandidate(row);
       if (destinationlessIssue === 'generic_unmarked') {
         addRejected(rejectedCounts, 'info_generic_unmarked');
         continue;
@@ -180,6 +187,14 @@ export function buildBlogCanaryPreflight(input: {
         addRejected(rejectedCounts, 'info_missing_destination');
         continue;
       }
+    }
+    if (
+      writerType === 'info_writer'
+      && destinationlessIssue !== 'intentionally_generic'
+      && !evaluateInformationResearch(row).passed
+    ) {
+      addRejected(rejectedCounts, 'research_not_ready');
+      continue;
     }
     const key = canaryDedupKey(row);
     if (!key) {

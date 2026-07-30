@@ -1,5 +1,14 @@
 export const PRIVATE_BLOG_REGENERATION_MODE = 'replace_existing_fallback_draft' as const;
 export const PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE = 'replace_published_after_quality_gate' as const;
+export const REVIEWED_PUBLISHED_BLOG_REPLACEMENT_MODE = 'reviewed_published_replacement_v1' as const;
+
+export interface ReviewedPublishedBlogReplacement {
+  mode: typeof REVIEWED_PUBLISHED_BLOG_REPLACEMENT_MODE;
+  targetCreativeId: string;
+  canonicalSlug: string;
+  originalPublishedAt: string | null;
+  queueId: string;
+}
 
 interface PublishedBlogUpgradeTopicInput {
   slug?: unknown;
@@ -14,6 +23,45 @@ interface PublishedBlogUpgradeSlugInput {
 
 function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+export function buildReviewedPublishedBlogReplacementDraftSlug(input: {
+  canonicalSlug: unknown;
+  queueId: unknown;
+}): string {
+  const canonicalSlug = readTrimmedString(input.canonicalSlug);
+  const queueId = readTrimmedString(input.queueId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+  if (!canonicalSlug || !queueId) return '';
+  return `${canonicalSlug}--review-${queueId}`.slice(0, 240);
+}
+
+export function readReviewedPublishedBlogReplacement(
+  generationMeta: unknown,
+): ReviewedPublishedBlogReplacement | null {
+  const metadata = record(generationMeta);
+  const replacement = record(metadata?.reviewed_published_replacement);
+  const mode = replacement?.mode;
+  const targetCreativeId = readTrimmedString(replacement?.target_creative_id);
+  const canonicalSlug = readTrimmedString(replacement?.canonical_slug);
+  const queueId = readTrimmedString(replacement?.queue_id);
+  const originalPublishedAt = replacement?.original_published_at === null
+    ? null
+    : readTrimmedString(replacement?.original_published_at);
+  if (
+    mode !== REVIEWED_PUBLISHED_BLOG_REPLACEMENT_MODE
+    || !targetCreativeId
+    || !canonicalSlug
+    || !queueId
+  ) {
+    return null;
+  }
+  return {
+    mode,
+    targetCreativeId,
+    canonicalSlug,
+    originalPublishedAt: originalPublishedAt || null,
+    queueId,
+  };
 }
 
 export function buildPublishedBlogUpgradeQueueTopic(
