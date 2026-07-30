@@ -212,7 +212,9 @@ function readiness(bundle: BlogInformationResearchBundle | null) {
 }
 
 function entryRequirementsReadiness(destination: string): BlogGenerationResearchReadiness {
-  const snapshotContent = `${destination} 입국 요건 공식 안내`;
+  const purposeClaimText = `${destination} 비자면제 입국은 관광 또는 상용 목적의 단기 방문에 적용됩니다.`;
+  const stayClaimText = `${destination} 비자면제 입국의 체류 기간은 최대 90일입니다.`;
+  const snapshotContent = `${purposeClaimText}\n${stayClaimText}`;
   return {
     passed: true,
     issues: [],
@@ -232,16 +234,90 @@ function entryRequirementsReadiness(destination: string): BlogGenerationResearch
         claimTypes: ['entry_visa'],
         riskLevel: 'LOW',
       }],
-      evidence: [],
-      claims: [],
+      evidence: [
+        {
+          evidenceKey: `${destination}-entry-purpose`,
+          sourceKey: `${destination}-immigration`,
+          excerpt: purposeClaimText,
+          spanStart: 0,
+          spanEnd: Array.from(purposeClaimText).length,
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          observedAt: CHECKED_AT,
+          scope: {
+            country: destination,
+            destination,
+            applicableTo: '대한민국 여권 여행자',
+            locale: 'ko-KR',
+            claimType: 'entry_visa',
+            normalizedValue: '관광 또는 상용 목적',
+            unit: null,
+            currency: null,
+            verifiedAt: CHECKED_AT,
+            nextReviewAt: '2026-08-18T00:00:00.000Z',
+            conditions: ['비자면제 입국 기준'],
+          },
+        },
+        {
+          evidenceKey: `${destination}-entry-stay`,
+          sourceKey: `${destination}-immigration`,
+          excerpt: stayClaimText,
+          spanStart: Array.from(`${purposeClaimText}\n`).length,
+          spanEnd: Array.from(snapshotContent).length,
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          observedAt: CHECKED_AT,
+          scope: {
+            country: destination,
+            destination,
+            applicableTo: '대한민국 여권 여행자',
+            locale: 'ko-KR',
+            claimType: 'entry_visa',
+            normalizedValue: '90일',
+            unit: '일',
+            currency: null,
+            verifiedAt: CHECKED_AT,
+            nextReviewAt: '2026-08-18T00:00:00.000Z',
+            conditions: ['비자면제 입국 기준'],
+          },
+        },
+      ],
+      claims: [
+        {
+          claimFingerprint: createBlogInformationClaimFingerprint(purposeClaimText),
+          claimText: purposeClaimText,
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          extractedValue: {
+            normalizedValue: '관광 또는 상용 목적',
+            unit: null,
+            currency: null,
+          },
+          requiresEvidence: true,
+          evidenceKeys: [`${destination}-entry-purpose`],
+        },
+        {
+          claimFingerprint: createBlogInformationClaimFingerprint(stayClaimText),
+          claimText: stayClaimText,
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          extractedValue: {
+            normalizedValue: '90일',
+            unit: '일',
+            currency: null,
+          },
+          requiresEvidence: true,
+          evidenceKeys: [`${destination}-entry-stay`],
+        },
+      ],
     },
     summary: {
       sourceCount: 1,
-      evidenceCount: 0,
-      claimCount: 0,
-      supportedClaimCount: 0,
+      evidenceCount: 2,
+      claimCount: 2,
+      supportedClaimCount: 2,
       claimSourceCoverage: 1,
-      distinctNormalizedValueCount: 0,
+      distinctNormalizedValueCount: 2,
     },
   };
 }
@@ -424,12 +500,12 @@ function localTransportReadiness() {
 }
 
 describe('blog generation research preflight', () => {
-  it('adds a verified destination-country label for entry requirements and stays idempotent', () => {
+  it('adds verified destination and purpose-stay context for entry requirements and stays idempotent', () => {
     const initial = [
       '# 미국 입국 요건과 비자',
       '',
       '여행자 국적은 대한민국 여권을 가진 한국인입니다.',
-      '관광 목적 30일 체류 기준으로 여권과 ESTA 조건을 확인합니다.',
+      '여권과 ESTA 조건을 확인합니다.',
       '확인일 2026-07-30 공식 1차 출처: https://www.cbp.gov/travel/international-visitors/esta',
     ].join('\n');
     const researchReadiness = entryRequirementsReadiness('미국');
@@ -447,11 +523,24 @@ describe('blog generation research preflight', () => {
 
     expect(first.changed).toBe(true);
     expect(first.changes).toContain('entry_requirements_verified_destination_context');
+    expect(first.changes).toContain('entry_requirements_verified_purpose_stay_context');
     expect(first.markdown).toContain('목적 국가: 미국.');
+    expect(first.markdown).toContain('여행 목적과 체류기간 (공식 근거):');
+    expect(first.markdown).toContain('관광 또는 상용 목적');
+    expect(first.markdown).toContain('체류 기간은 최대 90일');
+    expect(first.approvedClaims).toHaveLength(2);
     expect(validateBlogInformationStructure({
       intent: 'entry_requirements',
       markdown: first.markdown,
     }).issues).not.toContain('entry_requirements:destination_country_required');
+    const contract = buildBlogInformationContract({
+      intentType: 'entry_requirements',
+      destination: '미국',
+    });
+    expect(inspectBlogInformationMarkdown({
+      markdown: first.markdown,
+      contract,
+    }).missingSlots).not.toContain('purpose_stay');
     expect(second.changed).toBe(false);
     expect(second.markdown).toBe(first.markdown);
   });
@@ -474,6 +563,45 @@ describe('blog generation research preflight', () => {
 
     expect(result.changed).toBe(false);
     expect(result.markdown).toBe(markdown);
+  });
+
+  it('requires explicit permitted-purpose and permitted-stay claims before entry writing', () => {
+    const complete = entryRequirementsReadiness('미국').bundle!;
+    const contract = buildBlogInformationContract({
+      intentType: 'entry_requirements',
+      destination: '미국',
+    });
+    const evaluate = (bundle: BlogInformationResearchBundle) =>
+      evaluateBlogGenerationResearchReadiness({
+        meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: bundle },
+        expectedContentKey: '미국-entry',
+        destination: '미국',
+        intent: 'entry_requirements',
+        locale: 'ko-KR',
+        sourcePolicy: contract.sourcePolicy,
+        now: new Date('2026-07-20T00:00:00.000Z'),
+      });
+
+    const completeResult = evaluate(complete);
+    expect(completeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:permitted_purpose',
+    );
+    expect(completeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:permitted_stay',
+    );
+
+    const missingPurpose = structuredClone(complete);
+    missingPurpose.claims[0] = {
+      ...missingPurpose.claims[0]!,
+      claimText: '미국 비자면제 입국에는 전자여권이 필요합니다.',
+    };
+    const missingPurposeResult = evaluate(missingPurpose);
+    expect(missingPurposeResult.issues).toContain(
+      'claim_semantic_coverage_missing:entry_requirements:permitted_purpose',
+    );
+    expect(missingPurposeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:permitted_stay',
+    );
   });
 
   it('blocks missing research before writing starts', () => {

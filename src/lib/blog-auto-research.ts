@@ -1288,6 +1288,7 @@ export function buildBlogStructuredResearchPrompt(input: {
               'Classify visa exemption, visa or electronic travel authorization eligibility, passport validity, and permitted stay as entry_visa.',
               'Classify mandatory arrival registration, entry forms, biometric collection, declarations, and submission timing as policy.',
               'Select at least two independently supported entry_visa claims and two policy claims with at least three distinct normalized values.',
+              'Include one explicit supported claim stating the permitted travel purpose or purposes and one explicit supported claim stating the permitted stay duration.',
               'Prefer rules that explicitly apply to Korean passport holders and short tourist visits; do not generalize another nationality or residence status.',
             ]
         : [];

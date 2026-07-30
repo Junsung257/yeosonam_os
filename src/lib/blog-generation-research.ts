@@ -1,4 +1,9 @@
-import type { BlogInformationIntent, BlogInformationSourcePolicy } from './blog-information-contract';
+import {
+  buildBlogInformationContract,
+  inspectBlogInformationMarkdown,
+  type BlogInformationIntent,
+  type BlogInformationSourcePolicy,
+} from './blog-information-contract';
 import {
   extractMonthlyClimateCompositeValue,
   isOfficialInformationAuthority,
@@ -109,6 +114,16 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
   currency_payment: [
     { key: 'card', pattern: /카드|신용카드|credit\s*card/ },
     { key: 'cash_or_currency', pattern: /현금|통화|달러|지폐|동전|cash|currency|dollar/ },
+  ],
+  entry_requirements: [
+    {
+      key: 'permitted_purpose',
+      pattern: /관광|출장|상용|(?:여행|방문|입국)\s*목적|\b(?:touris(?:m|t)|business)\b|travel\s+purpose/i,
+    },
+    {
+      key: 'permitted_stay',
+      pattern: /체류\s*(?:가능\s*)?(?:기간|일수)|\d+\s*일|permitted\s*stay|stay\s*(?:of|up\s*to)|\bdays?\b/i,
+    },
   ],
   travel_insurance: [
     { key: 'medical', pattern: /의료비|병원|질병|상해|medical|illness|injury/ },
@@ -1451,14 +1466,10 @@ function repairEntryRequirementsResearchStructure(input: {
   });
   if (!input.readiness.passed || !input.readiness.bundle) return unchanged();
 
-  const report = validateBlogInformationStructure({
+  const structureReport = validateBlogInformationStructure({
     intent: 'entry_requirements',
     markdown: input.markdown,
   });
-  if (!report.issues.includes('entry_requirements:destination_country_required')) {
-    return unchanged();
-  }
-  if (input.markdown.includes(ENTRY_REQUIREMENTS_CONTEXT_MARKER)) return unchanged();
 
   const destinations = new Set(
     [
@@ -1469,12 +1480,58 @@ function repairEntryRequirementsResearchStructure(input: {
   if (destinations.size !== 1) return unchanged();
 
   const destination = [...destinations][0]!;
+  const contract = buildBlogInformationContract({
+    intentType: 'entry_requirements',
+    destination,
+  });
+  const informationReport = inspectBlogInformationMarkdown({
+    markdown: input.markdown,
+    contract,
+  });
+  const needsDestination = structureReport.issues.includes(
+    'entry_requirements:destination_country_required',
+  ) || informationReport.missingSlots.includes('destination_country');
+  const needsPurposeStay = structureReport.issues.includes(
+    'entry_requirements:purpose_stay_required',
+  ) || informationReport.missingSlots.includes('purpose_stay');
+  if (!needsDestination && !needsPurposeStay) return unchanged();
+
+  const supportedClaims = input.readiness.bundle.claims;
+  const purposeClaim = supportedClaims.find((claim) =>
+    /관광|출장|상용|(?:여행|방문|입국)\s*목적|\b(?:touris(?:m|t)|business)\b|travel\s+purpose/i.test(claim.claimText));
+  const stayClaim = supportedClaims.find((claim) =>
+    /체류\s*(?:가능\s*)?(?:기간|일수)|\d+\s*일|permitted\s*stay|stay\s*(?:of|up\s*to)|\bdays?\b/i.test(claim.claimText));
+  const canRepairPurposeStay = Boolean(purposeClaim && stayClaim);
+  if (!needsDestination && !canRepairPurposeStay) return unchanged();
+
   const lines = input.markdown.split('\n');
   const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
-  const contextBlock = [
-    ENTRY_REQUIREMENTS_CONTEXT_MARKER,
-    `목적 국가: ${destination}.`,
-  ];
+  const contextBlock = input.markdown.includes(ENTRY_REQUIREMENTS_CONTEXT_MARKER)
+    ? []
+    : [ENTRY_REQUIREMENTS_CONTEXT_MARKER];
+  const changes: string[] = [];
+  const approvedClaims: BlogInformationResearchBundle['claims'] = [];
+  if (needsDestination) {
+    contextBlock.push(`목적 국가: ${destination}.`);
+    changes.push('entry_requirements_verified_destination_context');
+  }
+  if (needsPurposeStay && purposeClaim && stayClaim) {
+    contextBlock.push(
+      '',
+      '여행 목적과 체류기간 (공식 근거):',
+      `- ${purposeClaim.claimText}`,
+      ...(stayClaim.claimFingerprint === purposeClaim.claimFingerprint
+        ? []
+        : [`- ${stayClaim.claimText}`]),
+    );
+    approvedClaims.push(
+      purposeClaim,
+      ...(stayClaim.claimFingerprint === purposeClaim.claimFingerprint ? [] : [stayClaim]),
+    );
+    changes.push('entry_requirements_verified_purpose_stay_context');
+  }
+  if (contextBlock.length === 0) return unchanged();
+
   if (h1Index >= 0) {
     lines.splice(h1Index + 1, 0, '', ...contextBlock, '');
   } else {
@@ -1484,8 +1541,8 @@ function repairEntryRequirementsResearchStructure(input: {
   return {
     markdown: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(),
     changed: true,
-    changes: ['entry_requirements_verified_destination_context'],
-    approvedClaims: [],
+    changes,
+    approvedClaims,
   };
 }
 
