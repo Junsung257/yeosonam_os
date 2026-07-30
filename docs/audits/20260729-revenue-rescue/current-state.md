@@ -69,3 +69,21 @@ Empty-table 관측 시각은 `2026-07-29T09:58:31.699888Z`다. `public` 367개 �
 
 따라서 과거 login redirect finding은 현재 production에서 재현되지 않지만, 공개 상품 부재와
 허위 사회적 증거 finding은 현재도 재현된다.
+
+## Continuation deployment observation
+
+`2026-07-30T06:12:37.2540342Z`에 다시 조회한 결과, 시작 시점의 locked baseline 이후
+production 배포가 변경됐다.
+
+| Item | Continuation value |
+|---|---|
+| Current `origin/main` | `8b5ba2515714ca4545ddf43f16e98b040850ed77` |
+| Latest production target deployment | `dpl_Eh6dNToTFKkg85dwoEvpEW7dTRoc` |
+| Latest production target SHA | `62e08bc9dcb876a9f3cec8973f2b9f840cec3e13` |
+| Deployment source ref | `codex/ai-operations-office-source-20260728` |
+| Deployment metadata | `gitDirty=1` |
+| Main/production divergence | 있음 |
+
+이 continuation 관측은 시작 시점 baseline을 덮어쓰지 않는다. 현재 production 동작은
+`origin/main` 또는 revenue-rescue PR 코드로 추정하지 않으며, production 배포 출처를 먼저
+확정하기 전에는 이 PR을 production에 적용하지 않는다.
