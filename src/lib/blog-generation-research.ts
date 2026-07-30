@@ -161,6 +161,7 @@ const MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:mont
 const MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER = '<!-- blog_research_intro:monthly_weather:evidence-safe:v1 -->';
 const LEGACY_MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v1 -->';
 const LEGACY_MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v1 -->';
+const ENTRY_REQUIREMENTS_CONTEXT_MARKER = '<!-- blog_research_context:entry_requirements:v1 -->';
 const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
 const FOOD_BUDGET_DETERMINISTIC_HEADINGS = [
   '근거로 확인한 1인 하루 식비',
@@ -1438,6 +1439,56 @@ function repairMonthlyWeatherResearchStructure(input: {
   };
 }
 
+function repairEntryRequirementsResearchStructure(input: {
+  markdown: string;
+  readiness: BlogGenerationResearchReadiness;
+}): BlogGenerationResearchStructureRepair {
+  const unchanged = (): BlogGenerationResearchStructureRepair => ({
+    markdown: input.markdown,
+    changed: false,
+    changes: [],
+    approvedClaims: [],
+  });
+  if (!input.readiness.passed || !input.readiness.bundle) return unchanged();
+
+  const report = validateBlogInformationStructure({
+    intent: 'entry_requirements',
+    markdown: input.markdown,
+  });
+  if (!report.issues.includes('entry_requirements:destination_country_required')) {
+    return unchanged();
+  }
+  if (input.markdown.includes(ENTRY_REQUIREMENTS_CONTEXT_MARKER)) return unchanged();
+
+  const destinations = new Set(
+    [
+      ...input.readiness.bundle.sources.map((source) => clean(source.destination)),
+      ...input.readiness.bundle.evidence.map((evidence) => clean(evidence.scope.destination)),
+    ].filter(Boolean),
+  );
+  if (destinations.size !== 1) return unchanged();
+
+  const destination = [...destinations][0]!;
+  const lines = input.markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  const contextBlock = [
+    ENTRY_REQUIREMENTS_CONTEXT_MARKER,
+    `목적 국가: ${destination}.`,
+  ];
+  if (h1Index >= 0) {
+    lines.splice(h1Index + 1, 0, '', ...contextBlock, '');
+  } else {
+    lines.unshift(...contextBlock, '');
+  }
+
+  return {
+    markdown: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+    changed: true,
+    changes: ['entry_requirements_verified_destination_context'],
+    approvedClaims: [],
+  };
+}
+
 /**
  * Reuses only preflight-approved claims to make required food-budget tables deterministic.
  * It never calculates a total, converts currencies, or introduces a value outside the bundle.
@@ -1460,6 +1511,9 @@ export function repairBlogGenerationResearchStructure(input: {
   }
   if (input.intent === 'local_transport') {
     return repairLocalTransportResearchStructure(input);
+  }
+  if (input.intent === 'entry_requirements') {
+    return repairEntryRequirementsResearchStructure(input);
   }
   if (input.intent !== 'food_budget' || !input.readiness.passed || !input.readiness.bundle) {
     return unchanged();
