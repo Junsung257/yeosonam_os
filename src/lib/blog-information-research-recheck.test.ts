@@ -118,4 +118,56 @@ describe('blog information research backlog recheck', () => {
       }),
     }).reason).toBe('repeat_suppressed');
   });
+
+  it('allows only a fully contracted human-reviewed published replacement past the original duplicate', () => {
+    const replacementMeta = {
+      micro_angle: 'entry_requirements',
+      failure_code: 'evidence_insufficient',
+      quality_upgrade: {
+        execution_mode: 'human_review',
+        requires_human_review: true,
+      },
+      private_regeneration: {
+        mode: 'replace_published_after_quality_gate',
+        atomic_publish_replace: true,
+      },
+    };
+
+    expect(buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        topic: '태국 입국 요건과 비자',
+        destination: '태국',
+        meta: replacementMeta,
+      }),
+      activeDuplicateId: 'published-original',
+    })).toMatchObject({
+      action: 'requeue',
+      reason: 'live_verified_research_retry',
+    });
+
+    expect(buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        topic: '태국 입국 요건과 비자',
+        destination: '태국',
+        meta: {
+          ...replacementMeta,
+          private_regeneration: {
+            mode: 'replace_published_after_quality_gate',
+            atomic_publish_replace: false,
+          },
+        },
+      }),
+      activeDuplicateId: 'published-original',
+    }).action).toBe('skip_duplicate');
+
+    expect(buildBlogInformationResearchRecheckDecision({
+      row: failedResearchRow({
+        topic: '태국 입국 요건과 비자',
+        destination: '태국',
+        meta: replacementMeta,
+      }),
+      activeDuplicateId: 'published-original',
+      alreadyRequeuedId: 'replacement-queued-this-run',
+    }).action).toBe('skip_duplicate');
+  });
 });

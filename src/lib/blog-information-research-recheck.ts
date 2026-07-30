@@ -47,6 +47,15 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function isHumanReviewedPublishedReplacement(meta: Record<string, unknown>): boolean {
+  const qualityUpgrade = asRecord(meta.quality_upgrade);
+  const privateRegeneration = asRecord(meta.private_regeneration);
+  return qualityUpgrade.execution_mode === 'human_review'
+    && qualityUpgrade.requires_human_review === true
+    && privateRegeneration.mode === 'replace_published_after_quality_gate'
+    && privateRegeneration.atomic_publish_replace === true;
+}
+
 function isResearchFailure(row: BlogInformationResearchRecheckRow): boolean {
   const meta = asRecord(row.meta);
   const joined = [
@@ -108,6 +117,7 @@ export function buildBlogInformationResearchRecheckDecision(input: {
     primaryKeyword: typeof meta.primary_keyword === 'string' ? meta.primary_keyword : null,
   });
   const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
+  const reviewedPublishedReplacement = isHumanReviewedPublishedReplacement(meta);
   const blocked = (reason: string): BlogInformationResearchRecheckDecision => ({
     action: 'keep_blocked',
     intent,
@@ -133,7 +143,10 @@ export function buildBlogInformationResearchRecheckDecision(input: {
     return blocked('repeat_suppressed');
   }
 
-  if (input.activeDuplicateId || input.alreadyRequeuedId) {
+  if (
+    (input.activeDuplicateId && !reviewedPublishedReplacement)
+    || input.alreadyRequeuedId
+  ) {
     return {
       action: 'skip_duplicate',
       intent,
