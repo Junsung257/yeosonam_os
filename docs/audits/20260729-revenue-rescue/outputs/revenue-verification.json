@@ -83,6 +83,14 @@
     "finding": "The pre-fix group page exposed mock reception activity, an unsupported 120+ count, and same-day response claims.",
     "branchResult": "Removed, guarded by src/app/group/public-claims.test.ts, and verified on the post-fix preview."
   },
+  "productionReadiness": {
+    "status": "PASS_AFTER_PRODUCTION_RECOVERY",
+    "workflowRun": 30519118372,
+    "completedAt": "2026-07-30T10:01:16Z",
+    "productionDeploymentId": "dpl_96r5cJHbvztb2ZUeEwV6VBhWpsej",
+    "productionCommit": "c3d2e97c514ba8ddce65883dc281a652ea58b602",
+    "notes": "Two earlier attempts failed on unrelated production blog collection HTTP 500s. Blog fixes #1000 and #1001 replaced production; the rerun passed."
+  },
   "offer": {
     "status": "BLOCKED_OFFER_CANDIDATE",
     "publicSnapshotCreated": false,

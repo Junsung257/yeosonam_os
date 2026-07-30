@@ -45,11 +45,22 @@ select
   coalesce(array_length(tp.inclusions, 1), 0) > 0 as has_inclusions,
   coalesce(array_length(tp.excludes, 1), 0) > 0 as has_exclusions,
   tp.cancellation_policy is not null and tp.cancellation_policy <> '{}'::jsonb as has_cancellation_policy,
-  tp.land_operator_id is not null or nullif(tp.land_operator, '') is not null as has_operator,
+  coalesce(tp.land_operator_id, p.land_operator_id) is not null
+    or nullif(tp.land_operator, '') is not null as has_operator,
+  lo.name as operator_name,
+  lo.is_active as operator_active,
+  nullif(lo.contact, '') is not null as has_operator_contact,
   p.supplier_code,
+  p.supplier_name,
+  p.net_price as product_net_price,
+  p.selling_price as product_selling_price,
+  tp.price as package_price,
+  tp.cost_price as package_cost_price,
   p.margin_rate
 from public.travel_packages tp
 left join public.products p on p.internal_code = tp.internal_code
+left join public.land_operators lo
+  on lo.id = coalesce(tp.land_operator_id, p.land_operator_id)
 left join future_price fp on fp.id = tp.id
 where lower(coalesce(p.departure_region, '')) in ('부산', '김해', 'busan', 'gimhae', 'pus')
    or tp.title ilike '%부산%'

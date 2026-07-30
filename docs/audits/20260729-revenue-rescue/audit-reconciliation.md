@@ -48,3 +48,9 @@
 - `origin/main` advanced to `0afe611c3ac0c21ceaf147e1a4cdf8607bad4359` after the locked baseline.
   The evidence above remains explicitly tied to baseline/deployment SHA
   `eb582cabd6d16b98bd26ca8fca8ddc740fb80845`; production behavior is not inferred from the newer main.
+- A later dirty non-main production deployment caused the PR Open Readiness check to fail twice on
+  blog collection HTTP 500s. After blog fixes `#1000` and `#1001`, production and `origin/main`
+  converged at `c3d2e97c514ba8ddce65883dc281a652ea58b602`; the same readiness run then passed.
+- The selected Busan candidate remains blocked. A second product-level lookup found no operator or
+  operator contact, zero seats, and conflicting customer-price evidence: KRW 749,000 in package/net
+  records versus KRW 816,410 in `products.selling_price`.

@@ -87,3 +87,19 @@ production 배포가 변경됐다.
 이 continuation 관측은 시작 시점 baseline을 덮어쓰지 않는다. 현재 production 동작은
 `origin/main` 또는 revenue-rescue PR 코드로 추정하지 않으며, production 배포 출처를 먼저
 확정하기 전에는 이 PR을 production에 적용하지 않는다.
+
+### Deployment drift resolution
+
+`2026-07-30T10:01:03.8040443Z` 재확인 시 production은 다시 `main` 배포로 교체됐다.
+
+| Item | Resolved value |
+|---|---|
+| Current `origin/main` | `c3d2e97c514ba8ddce65883dc281a652ea58b602` |
+| Current production deployment | `dpl_96r5cJHbvztb2ZUeEwV6VBhWpsej` |
+| Current production SHA | `c3d2e97c514ba8ddce65883dc281a652ea58b602` |
+| Main/production divergence | 없음 |
+| Recent production 5xx logs | 최근 30분 0건 |
+
+블로그 복구 PR `#1000`, `#1001` 반영 뒤 revenue PR의 Open Readiness 재실행도
+`2026-07-30T10:01:16Z`에 성공했다. 앞선 dirty non-main production 배포 사실은 시점
+증거로 보존하되, 현재 blocker에서는 해제한다.
