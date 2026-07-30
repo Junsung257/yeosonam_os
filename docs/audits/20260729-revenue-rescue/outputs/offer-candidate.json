@@ -40,5 +40,17 @@
     "Confirm cancellation terms and expected contribution margin."
   ],
   "productionMutation": false,
-  "publicSnapshotCreated": false
+  "publicSnapshotCreated": false,
+  "continuationRecheck": {
+    "observedAt": "2026-07-30T06:01:53.084498Z",
+    "projectRef": "ixaxnvbmhzjvupissmly",
+    "result": "UNCHANGED_BLOCKED",
+    "nextRecordedDepartureDate": "2026-09-01",
+    "nextRecordedPrice": 749000,
+    "priceDateConfirmed": false,
+    "remainingRecordedSeats": 0,
+    "hasOperator": false,
+    "publicationState": "blocked",
+    "productionMutation": false
+  }
 }
