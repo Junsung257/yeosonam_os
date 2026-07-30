@@ -65,6 +65,19 @@ interface ExtractedPublicArticle {
   htmlFragment: string;
 }
 
+export function requiresHydratedPublicBlogAudit(html: string): boolean {
+  const $ = cheerio.load(html);
+  const article = $('article').first();
+  if (!article.length || article.find('.prose-blog').length > 0) return false;
+
+  const pendingBoundaryCount = article.find('template[id^="P:"]').length;
+  const hasReactStreamReplacer =
+    /\$RS\s*=\s*function\b/.test(html)
+    || /\$RS\(["']S:[^"']+["'],["']P:[^"']+["']\)/.test(html);
+
+  return pendingBoundaryCount > 0 && hasReactStreamReplacer;
+}
+
 const WEATHER_OR_PACKING_RE =
   /날씨|옷차림|준비물|체크리스트|강수|우기|비자|입국|환전|유심|교통|공항|이동|시즌|성수기|비용|예산|보험/i;
 const WEATHER_TOPIC_RE = /날씨|옷차림|준비물|체크리스트|강수|우기|건기/i;

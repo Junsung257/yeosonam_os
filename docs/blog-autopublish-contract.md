@@ -8,6 +8,7 @@ This document defines the required contract for automatic blog generation, publi
 
 - Publish approval must inspect the HTML produced by the real public renderer, not only stored Markdown or persisted component scores. `public_customer_quality` is a mandatory fail-closed gate with a minimum score of 95; broken tables, duplicate public sections, answer-intent mismatch, generated residue, unsupported internal claims, or excessive conversion pressure block publication.
 - The public customer audit must page through the complete public API catalog and report the weakest score, pass rate, and issue counts for every stored category. A corpus or category is not “95 complete” when its average is 95 but any public row is below 95, when a row cannot be fetched, or when its category is unknown.
+- The public customer audit is hybrid by default. It may score the server HTML only when the article body is already materialized. If the Next.js response still contains pending React stream boundaries inside the article and no public body surface, the audit must hydrate that URL in a real browser before scoring it. A table of contents plus unresolved `<template id="P:*">` placeholders is not evidence that the published body is empty. `--html-only` is diagnostic only and cannot certify the corpus.
 - The public customer audit normalizes encoded and decoded forms of the same
   Korean slug before merging API, listing, and sitemap targets. It uses bounded
   concurrency and retries only transient network, 408/425/429, and 5xx failures.
