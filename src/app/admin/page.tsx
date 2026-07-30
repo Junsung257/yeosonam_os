@@ -1,5 +1,4 @@
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import AdminPageClient, { type TravelPackage } from './AdminPageClient';
 
 // Admin data depends on request-time Supabase credentials and must not prerender.
@@ -7,37 +6,24 @@ export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
   if (!isSupabaseAdminConfigured) {
-    return <AdminPageClient initialPendingPackages={[]} initialPackages={[]} />;
+    return <AdminPageClient initialPendingPackages={[]} initialPendingPackageCount={0} />;
   }
 
-  // 대시보드에서 가장 먼저 보이는 데이터: 승인대기 + 전체 패키지 목록
-  // Promise.all로 병렬 조회 — 클라이언트 useEffect waterfall 제거
-  // Server prefetch is only a speed hint. Keep the page renderable even if a
-  // table/query drifts; the client has per-widget loading/error states.
-  const [pendingResult, approvedResult] = await Promise.allSettled([
-    supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, price, status, created_at, filename, file_type, confidence')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(20),
-    supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, price, status, created_at, filename, file_type, confidence')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .order('created_at', { ascending: false })
-      .limit(50),
-  ]);
+  // 첫 화면에는 검수 대기 상품만 필요하다. 판매 상품 전체 목록은 사이드바의
+  // 상품 관리에서 조회해 /admin 첫 응답의 DB·직렬화 비용을 줄인다.
+  const pendingResult = await supabaseAdmin
+    .from('travel_packages')
+    .select('id, title, destination, price, status, created_at, filename, file_type, confidence', { count: 'exact' })
+    .in('status', ['pending', 'pending_review', 'draft'])
+    .order('created_at', { ascending: false })
+    .limit(6);
 
-  const pendingPackages =
-    pendingResult.status === 'fulfilled' ? (pendingResult.value.data ?? []) : [];
-  const approvedPackages =
-    approvedResult.status === 'fulfilled' ? (approvedResult.value.data ?? []) : [];
+  const pendingPackages = pendingResult.data ?? [];
 
   return (
     <AdminPageClient
       initialPendingPackages={pendingPackages as unknown as TravelPackage[]}
-      initialPackages={approvedPackages as unknown as TravelPackage[]}
+      initialPendingPackageCount={pendingResult.count ?? pendingPackages.length}
     />
   );
 }

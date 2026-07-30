@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiResponse as baseApiResponse } from '@/lib/api-response';
 import { requireAdminRequest, resolveAdminActorLabel, withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { isValidTransition } from '@/lib/agent-action-machine';
 import { executeAction } from '@/lib/agent-action-executor';
 import {
@@ -27,8 +27,8 @@ export async function GET(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
 
-  if (!isSupabaseConfigured) {
-    return apiResponse({ actions: [], total: 0 });
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: 'Supabase admin connection is not configured.' }, { status: 503 });
   }
 
   try {
@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
 
-  if (!isSupabaseConfigured) {
-    return apiResponse({ error: 'Supabase is not configured.' }, { status: 500 });
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: 'Supabase admin connection is not configured.' }, { status: 503 });
   }
 
   try {
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
 }
 
 const patchHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) {
-    return apiResponse({ error: 'Supabase is not configured.' }, { status: 500 });
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: 'Supabase admin connection is not configured.' }, { status: 503 });
   }
 
   try {

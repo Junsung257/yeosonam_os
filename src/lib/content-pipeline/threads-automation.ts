@@ -17,6 +17,7 @@ export interface ThreadsGateResult {
   text: string;
   fullText: string;
   reason?: string;
+  rejected_reason?: string;
 }
 
 export function getThreadsMainText(payload: Record<string, unknown>): string {
@@ -48,7 +49,14 @@ export async function evaluateThreadsDistribution(args: {
   const fullText = getThreadsFullText(args.payload);
   const bodyError = validateThreadsBody(text);
   if (bodyError) {
-    return { approved: false, predicted_er: 0, text, fullText, reason: bodyError };
+    return {
+      approved: false,
+      predicted_er: 0,
+      text,
+      fullText,
+      reason: bodyError,
+      rejected_reason: 'validation_failed',
+    };
   }
 
   const trend = extractTrendFeatures(text);
@@ -57,6 +65,7 @@ export async function evaluateThreadsDistribution(args: {
     cardNewsId: null,
     platform: 'threads',
     fullText,
+    dryRun: args.dryRun,
     features: extractThreadsFeatures({
       text: fullText,
       hook_type: trend.hook_type_guess,
@@ -70,5 +79,6 @@ export async function evaluateThreadsDistribution(args: {
     text,
     fullText,
     reason: decision.reason,
+    rejected_reason: decision.rejected_reason,
   };
 }

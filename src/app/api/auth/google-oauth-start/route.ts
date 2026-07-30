@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState, isOAuthStateConfigured } from '@/lib/oauth-state';
 
 /**
  * Google Ads + Analytics OAuth 시작
@@ -20,17 +20,14 @@ export async function GET(request: NextRequest) {
 
   const clientId = getSecret('GOOGLE_ADS_CLIENT_ID');
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!clientId || !siteUrl) {
+  if (!clientId || !siteUrl || !isOAuthStateConfigured()) {
     return apiResponse(
-      { error: 'GOOGLE_ADS_CLIENT_ID 또는 NEXT_PUBLIC_SITE_URL 미설정' },
-      { status: 500 },
+      { error: 'Google OAuth is not configured' },
+      { status: 503 },
     );
   }
 
-  // CSRF 방어용 HMAC-signed state (10분 유효)
-  const payload = Buffer.from(JSON.stringify({ tenant_id: tenantId, ts: Date.now() })).toString('base64url');
-  const sig = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(payload).digest('hex').slice(0, 16);
-  const state = `${payload}.${sig}`;
+  const state = createOAuthState({ tenantId, provider: 'google' });
 
   const params = new URLSearchParams({
     client_id: clientId,

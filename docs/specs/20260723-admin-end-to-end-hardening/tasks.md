@@ -1,0 +1,21 @@
+# Tasks
+
+- [x] Inventory routes, APIs, actions, and current audit coverage.
+- [x] Identify backend correctness, auth, tenant, and performance risks.
+- [x] Identify frontend broken interactions, hidden failures, and rendering costs.
+- [ ] Capture and inspect representative admin screenshots and flows (in-app Browser runtime had no available browser; Playwright requires explicit approval).
+- [x] Authenticate against production and exercise dashboard filters, refresh, sidebar, command palette, and cross-page navigation; screenshot capture still times out at the browser CDP layer.
+- [x] Prioritize findings by impact and confidence.
+- [x] Implement safe P0/P1 fixes with tests.
+- [x] Remove silent mock-success fallbacks from admin analytics and integration mutations.
+- [x] Replace tenant N+1 and capped operations/marketing metrics with server aggregates.
+- [x] Run static/type/unit regression and document remaining approval-gated work.
+- [x] Apply every new migration to local PostgreSQL and execute RPCs under the real `service_role`.
+- [x] Clear local Supabase security advisor errors and verify production build output.
+- [x] Establish a shared raw-source evidence contract for registration, review, and publication.
+- [x] Persist source-evidence decisions in the admin audit trail and expose contract status in the review queue.
+- [x] Fail closed on missing/stale source evidence before public snapshot publication.
+- [x] Apply the eight reviewed dashboard migrations to the linked production schema and verify RPC/RLS/security-advisor results.
+- [x] Apply the explicitly approved source-backed repair only where raw hash and single-region context both match; keep unresolved source cases in review.
+- [x] Correct admin package list pagination totals by using exact counts for authenticated admin requests; regression test added after production browser QA found rows/count divergence.
+- [ ] Resolve the remaining 54 ambiguous optional-tour entries through the admin evidence queue; do not infer from title or destination.

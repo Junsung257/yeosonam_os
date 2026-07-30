@@ -1,6 +1,11 @@
 import type { TrackingData } from '@/hooks/useTracking';
 import { trackLead } from '@/components/MetaPixel';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
+import {
+  getAttributionSnapshot,
+  trackAnalyticsEvent,
+} from '@/lib/analytics';
+import type { AttributionSnapshot } from '@/lib/analytics';
 
 export interface KakaoLeadContext {
   productTitle?: string;
@@ -26,6 +31,7 @@ export interface LeadPayload {
   submittedAt: string;
   chatSessionId?: string;
   idempotencyKey?: string;
+  attribution?: AttributionSnapshot | null;
 }
 
 export interface LeadSubmitResult {
@@ -53,6 +59,7 @@ export function buildPayload(
     tracking,
     submittedAt: new Date().toISOString(),
     chatSessionId,
+    attribution: getAttributionSnapshot(),
     idempotencyKey: [
       'lp',
       productId,
@@ -72,9 +79,12 @@ async function postLead(payload: LeadPayload): Promise<LeadSubmitResult> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(body?.error ?? `HTTP ${res.status}`);
+    const message = typeof body?.error === 'string'
+      ? body.error
+      : body?.error?.message;
+    throw new Error(message ?? `HTTP ${res.status}`);
   }
-  return body as LeadSubmitResult;
+  return (body?.data ?? body) as LeadSubmitResult;
 }
 
 export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Promise<LeadSubmitResult> {
@@ -127,20 +137,22 @@ export async function submitLeadPipeline(
   kakaoChannelUrl: string,
   kakaoContext?: KakaoLeadContext,
   chatSessionId?: string,
-): Promise<void> {
+): Promise<LeadSubmitResult> {
   const payload = buildPayload(productId, form, tracking, chatSessionId);
-  let result: LeadSubmitResult | undefined;
-
-  try {
-    result = await submitWithRetry(payload);
-    trackLead({
-      content_name: kakaoContext?.productTitle ?? '여행 예약 요청',
-      value: kakaoContext?.leadValueForPixel ?? 0,
-      content_ids: [productId],
-    });
-  } catch (err) {
-    console.error('[LeadPipeline] submit failed:', err);
+  const result = await submitWithRetry(payload);
+  if (!result.ok || (!result.lead_id && !result.idempotent_replay && !result.booking?.id)) {
+    throw new Error('Lead persistence was not confirmed');
   }
+  trackAnalyticsEvent('generate_lead', {
+    lead_source: 'website',
+    lead_type: 'package_inquiry',
+    package_id: productId,
+  }, { dedupeKey: result.lead_id ?? result.booking?.id ?? payload.idempotencyKey });
+  trackLead({
+    content_name: kakaoContext?.productTitle ?? '여행 예약 요청',
+    value: kakaoContext?.leadValueForPixel,
+    content_ids: [productId],
+  });
 
   try {
     const message = buildKakaoMessage(form, kakaoContext, result);
@@ -150,4 +162,5 @@ export async function submitLeadPipeline(
   }
 
   redirectToKakao(kakaoChannelUrl);
+  return result;
 }

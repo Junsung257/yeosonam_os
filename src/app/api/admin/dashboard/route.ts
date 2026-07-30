@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, type NextResponse } from 'next/server';
 import {
-  isSupabaseConfigured,
+  isSupabaseAdminConfigured,
   getAdAccounts,
   getKeywordPerformances,
   getAdDashboardStats,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/supabase';
 import { calcRoas, classifyKeywordStatus } from '@/lib/ad-controller';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
 
 // ── Mock 데이터 ───────────────────────────────────────────────
 
@@ -110,11 +111,17 @@ const getDashboard = async (request: NextRequest): Promise<NextResponse> => {
   const platformParam = searchParams.get('platform') ?? undefined;
   const filterParam   = searchParams.get('filter') ?? 'all';
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
+    if (searchParams.get('demo') !== '1') {
+      return apiResponse(
+        { error: 'Supabase admin connection is not configured.' },
+        { status: 503 },
+      );
+    }
     const mock = buildMockDashboard(dateParam);
     // filter 파라미터 적용
     if (filterParam !== 'all' && filterParam in mock.keywords) {
-      return NextResponse.json({
+      return apiResponse({
         ...mock,
         keywords: {
           ...mock.keywords,
@@ -123,7 +130,7 @@ const getDashboard = async (request: NextRequest): Promise<NextResponse> => {
         },
       });
     }
-    return NextResponse.json(mock);
+    return apiResponse(mock);
   }
 
   // ── 실제 Supabase 데이터 ────────────────────────────────────
@@ -159,7 +166,7 @@ const getDashboard = async (request: NextRequest): Promise<NextResponse> => {
       ? keywordTable[filterParam as keyof typeof keywordTable]
       : keywordTable.all;
 
-  return NextResponse.json({
+  return apiResponse({
     date: dateParam ?? new Date().toISOString().slice(0, 10),
     kpis: {
       total_spend:      stats.total_spend,

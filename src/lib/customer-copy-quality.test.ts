@@ -19,6 +19,24 @@ describe('customer visible copy quality', () => {
     );
   });
 
+  it('normalizes compact itinerary spacing without changing the facts', () => {
+    expect(normalizeCustomerVisibleCopy('출발2시간30분전 김해공항 미팅 후 수속')).toBe(
+      '출발 2시간 30분 전 김해공항 미팅 후 수속',
+    );
+    expect(normalizeCustomerVisibleCopy('출발2시간반전 부산 김해 국제공항 미팅')).toBe(
+      '출발 2시간 30분 전 부산 김해 국제공항 미팅',
+    );
+    expect(normalizeCustomerVisibleCopy('출발3시간전까지 인천공항에 도착')).toBe(
+      '출발 3시간 전까지 인천공항에 도착',
+    );
+    expect(normalizeCustomerVisibleCopy('티오프 15분전에는 체크인')).toBe(
+      '티오프 15분 전에는 체크인',
+    );
+    expect(normalizeCustomerVisibleCopy('천문산,원가계+칠성산+부용진 3박4일')).toBe(
+      '천문산, 원가계 + 칠성산 + 부용진 3박4일',
+    );
+  });
+
   it('normalizes Ba Na Hills summit and OR wording without leaving supplier notation', () => {
     const normalized = normalizeCustomerVisibleCopy('특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔');
 
@@ -138,5 +156,21 @@ describe('customer visible copy quality', () => {
       'placeholder_or_mojibake',
       'html_entity_visible',
     ]));
+  });
+
+  it('keeps fuel surcharge timing while rewriting supplier shorthand for customers', () => {
+    expect(normalizeCustomerVisibleCopy('유류할증료(7월발권기준)')).toBe(
+      '유류할증료(7월에 발권하는 항공권 기준)',
+    );
+    expect(normalizeCustomerVisibleCopy('유류할증료(7월발권)')).toBe(
+      '유류할증료(7월에 발권하는 항공권 기준)',
+    );
+    expect(issueCodes(normalizeCustomerVisibleCopy('유류할증료(7월발권기준)'))).toEqual([]);
+  });
+
+  it('removes generic filler from a source-backed massage benefit', () => {
+    const normalized = normalizeCustomerVisibleCopy('여행의 피로를 풀어줄 발마사지 50분 (팁불포함)');
+    expect(normalized).toBe('발마사지 50분 (팁불포함)');
+    expect(issueCodes(normalized)).toEqual([]);
   });
 });

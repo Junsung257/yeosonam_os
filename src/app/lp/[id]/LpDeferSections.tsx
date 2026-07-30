@@ -17,24 +17,56 @@ import {
 } from 'lucide-react';
 import type { ItineraryDay, DayActivity, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 function fmt(n: number) {
   return n.toLocaleString('ko-KR');
 }
 
 const ACTIVITY_ICON: Record<DayActivity['type'], ReactNode> = {
-  sightseeing: <Camera className="h-4 w-4 text-blue-500" />,
+  sightseeing: <Camera className="h-4 w-4 text-blue-700" />,
   meal: <Utensils className="h-4 w-4 text-orange-400" />,
   hotel: <Hotel className="h-4 w-4 text-purple-500" />,
   flight: <span className="text-sm" aria-hidden="true">✈</span>,
-  transport: <Bus className="h-4 w-4 text-gray-400" />,
+  transport: <Bus className="h-4 w-4 text-gray-600" />,
   optional: <Star className="h-4 w-4 text-yellow-500" />,
   shopping: <span className="text-sm" aria-hidden="true">🛍</span>,
 };
 
-function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: string[] }) {
+function IncludeExclude({
+  includes,
+  excludes,
+  productTitle,
+  packageId,
+}: {
+  includes: string[];
+  excludes: string[];
+  productTitle: string;
+  packageId: string;
+}) {
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.intersectionRatio < 0.5) return;
+        trackAnalyticsEvent('ysn_inclusions_view', { package_id: packageId }, {
+          dedupeKey: `lp:${packageId}:inclusions`,
+        });
+        observer.disconnect();
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [packageId]);
+
+  const clarifyNoTip = /노\s*팁|no.?tip/i.test(productTitle)
+    && excludes.some(item => /매너\s*팁/.test(item));
   return (
-    <section className="border-t border-gray-100 bg-white px-5 py-5">
+    <section ref={sectionRef} className="border-t border-gray-100 bg-white px-5 py-5">
       <h3 className="mb-4 text-base font-bold uppercase tracking-wider text-gray-500">포함 / 불포함</h3>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <div className="space-y-2">
@@ -54,6 +86,11 @@ function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: 
           ))}
         </div>
       </div>
+      {clarifyNoTip && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+          상품명의 ‘노팁’ 표기와 별도로, 원문에 명시된 매너팁은 불포함입니다.
+        </p>
+      )}
     </section>
   );
 }
@@ -110,7 +147,7 @@ function CleanMealRow({ meals }: { meals: ItineraryDay['meals'] }) {
       {rows.map(row => (
         <span
           key={row.label}
-          className={`flex items-center gap-0.5 text-xs ${row.active ? 'text-orange-500' : 'text-gray-300'}`}
+          className={`flex items-center gap-0.5 text-xs ${row.active ? 'text-orange-700' : 'text-gray-600'}`}
         >
           <Utensils className="h-3 w-3" /> {row.label}
         </span>
@@ -136,15 +173,15 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
           <div>
             <p className="text-base font-semibold leading-snug text-gray-900">{dayData.title}</p>
             <div className="mt-0.5 flex items-center gap-1.5">
-              <MapPin className="h-3 w-3 text-gray-400" />
-              <span className="text-sm text-gray-400">{dayData.regions}</span>
+              <MapPin className="h-3 w-3 text-gray-600" />
+              <span className="text-sm text-gray-600">{dayData.regions}</span>
             </div>
             {(dayData.meals.breakfast || dayData.meals.lunch || dayData.meals.dinner) && (
               <CleanMealRow meals={dayData.meals} />
             )}
           </div>
         </div>
-        <div className="ml-2 mt-1 shrink-0 text-gray-400">
+        <div className="ml-2 mt-1 shrink-0 text-gray-600">
           {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
       </button>
@@ -153,12 +190,12 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
         <div className="space-y-2.5 bg-gray-50/60 px-5 pb-4">
           <div className="ml-4 space-y-2.5 border-l-2 border-blue-100 pl-4 pt-1">
             {dayData.activities.map((activity, index) => (
-              <div key={`${activity.type}-${index}-${activity.label}`} className={`flex items-start gap-2.5 ${activity.type === 'optional' ? 'opacity-70' : ''}`}>
+              <div key={`${activity.type}-${index}-${activity.label}`} className="flex items-start gap-2.5">
                 <div className="mt-0.5 shrink-0">{ACTIVITY_ICON[activity.type]}</div>
                 <div>
                   <p className="text-sm font-medium leading-snug text-gray-800">{activity.label}</p>
                   {activity.detail && (
-                    <p className="mt-0.5 text-xs text-gray-400">{activity.detail}</p>
+                    <p className="mt-0.5 text-xs text-gray-600">{activity.detail}</p>
                   )}
                   {activity.attractionNames && activity.attractionNames.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -177,9 +214,14 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
             ))}
           </div>
           {dayData.hotel && (
-            <div className="flex items-center gap-2 pl-0.5 pt-1">
+            <div className="flex items-start gap-2 pl-0.5 pt-1">
               <Hotel className="h-4 w-4 shrink-0 text-purple-400" />
-              <span className="text-xs font-medium text-gray-600">{dayData.hotel}</span>
+              <div>
+                <p className="text-xs font-medium text-gray-600">{dayData.hotel}</p>
+                {dayData.hotelDetail && (
+                  <p className="mt-0.5 text-xs text-gray-600">{dayData.hotelDetail}</p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -218,7 +260,7 @@ function ItinerarySection({
     <section ref={sectionRef} className="mt-2 border-t border-gray-100 bg-white">
       <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
         <h3 className="text-base font-bold text-gray-900">상세 일정</h3>
-        <span className="flex items-center gap-1 text-xs text-gray-400">
+        <span className="flex items-center gap-1 text-xs text-gray-600">
           <Clock className="h-3.5 w-3.5" /> {days.length}일 전체 일정
         </span>
       </div>
@@ -282,6 +324,7 @@ export interface LpDeferSectionsProps {
   onItineraryViewed: () => void;
   includes: string[];
   excludes: string[];
+  productTitle: string;
   optionalTours: LandingProductData['itinerary']['optionalTours'];
   legalNotices: string[];
   packageId: string;
@@ -295,6 +338,7 @@ export function LpDeferSections({
   onItineraryViewed,
   includes,
   excludes,
+  productTitle,
   optionalTours,
   legalNotices,
   packageId,
@@ -306,7 +350,12 @@ export function LpDeferSections({
     <>
       <ItinerarySection days={days} onViewed={onItineraryViewed} />
       <OptionalToursSection tours={optionalTours} />
-      <IncludeExclude includes={includes} excludes={excludes} />
+      <IncludeExclude
+        includes={includes}
+        excludes={excludes}
+        productTitle={productTitle}
+        packageId={packageId}
+      />
       <LegalNotice legalNotices={legalNotices} />
       <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} recommendation={recommendation} />
     </>

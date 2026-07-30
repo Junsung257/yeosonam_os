@@ -33,6 +33,7 @@ export interface PriceTier {
   departure_dates: string[];
   departure_day_of_week: string | null;
   date_range: { start: string; end: string } | null;
+  excluded_dates?: string[];
   adult_price: number;
   child_price: number | null;
   status: 'available' | 'soldout' | 'tentative';

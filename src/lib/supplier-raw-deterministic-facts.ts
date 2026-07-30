@@ -214,7 +214,7 @@ function parseLiteralHwpDepartureDateList(source: string, fallbackYear: number):
 function extractKoreanDepartureDateBlock(rawText: string): string {
   const lines = rawText.replace(/\r\n/g, '\n').split('\n');
   const labelRe = /(?:출\s*발\s*일\s*자|출\s*발\s*일|출발일자|출발일|출발날짜|출발일정)/;
-  const stopRe = /(?:룸\s*타\s*입|인\s*원|판\s*매|판매|요금|상품가|포\s*함|불\s*포\s*함|쇼\s*핑|R\s*M\s*K|날\s*짜|일\s*자|상세\s*일정)/;
+  const stopRe = /(?:룸\s*타\s*입|인\s*원|성\s*인|아\s*동|소\s*아|유\s*아|판\s*매|판매|요금|상품가|발권\s*마감|티켓팅\s*마감|마감\s*시한|포\s*함|불\s*포\s*함|쇼\s*핑|R\s*M\s*K|날\s*짜|일\s*자|상세\s*일정)/;
   for (let i = 0; i < lines.length; i++) {
     if (!labelRe.test(lines[i])) continue;
     const collected = [lines[i]];
@@ -249,7 +249,7 @@ function extractDepartureDates(rawText: string): string[] {
   const literalHwpLabeled = extractHeadingBlock(
     rawText,
     /^\s*(?:\uCD9C\s*\uBC1C\s*\uC77C|\uCD9C\uBC1C\uC77C|\uCD9C\uBC1C\s*\uC77C\uC815)\s*[:\uFF1A]?\s*(.*)$/i,
-    /^\s*(?:\uC778\s*\uC6D0|\uD310\s*\uB9E4\s*\uAC00(?:\s*\uACA9)?|\uD310\uB9E4\uAC00|\uC0C1\uD488\s*\uAC00|\uC694\s*\uAE08|\uD638\uD154|\uAC1D\s*\uC2E4|\uD3EC\uD568\uC0AC\uD56D|\uBD88\uD3EC\uD568\uC0AC\uD56D)\s*$/i,
+    /^\s*(?:\uC778\s*\uC6D0|\uD310\s*\uB9E4\s*\uAC00(?:\s*\uACA9)?|\uD310\uB9E4\uAC00|\uC0C1\uD488\s*\uAC00|\uC694\s*\uAE08|\uBC1C\uAD8C\s*\uB9C8\uAC10|\uD2F0\uCF13\uD305\s*\uB9C8\uAC10|\uB9C8\uAC10\s*\uC2DC\uD55C|\uD638\uD154|\uAC1D\s*\uC2E4|\uD3EC\uD568\uC0AC\uD56D|\uBD88\uD3EC\uD568\uC0AC\uD56D)(?:\s|[:\uFF1A]|$)/i,
     4,
   );
   const literalHwpDates = parseLiteralHwpDepartureDateList(literalHwpLabeled, fallbackYear);
@@ -261,7 +261,7 @@ function extractDepartureDates(rawText: string): string[] {
   const labeled = extractHeadingBlock(
     rawText,
     /^\s*(?:출\s*발\s*일(?:자|정)?|출\s*발\s*날\s*짜)\s*[:：-]?\s*(.*)$/i,
-    /^\s*(?:판\s*매\s*가|최\s*저\s*가|인\s*원|룸\s*타입|포함\s*사항|불\s*포함\s*사항|일\s*자|PKG)\s*$/i,
+    /^\s*(?:판\s*매\s*가|최\s*저\s*가|인\s*원|룸\s*타입|포함\s*사항|불\s*포함\s*사항|발권\s*마감|티켓팅\s*마감|마감\s*시한|일\s*자|PKG)(?:\s|[:：]|$)/i,
     4,
   );
   const labeledDates = parseCompactDepartureDateList(labeled, fallbackYear);
@@ -285,7 +285,19 @@ function extractPrices(rawText: string): { adult: number | null; child: number |
   );
   const headingPrice = parseMoney(priceBlock.match(/([0-9]{1,3}(?:,[0-9]{3})+|[1-9][0-9]{4,})\s*(?:원|\/?\s*인)?/)?.[1]);
   const tableRow = rawText.match(/20\d{2}[./-]\d{1,2}[./-]\d{1,2}\s*[|／/]\s*([0-9,]+)\s*원?\s*[|／/]\s*([0-9,]+)\s*원?/);
-  const adult = headingPrice ?? parseMoney(rawText.match(/(?:성인|대인)\s*([0-9,]+)\s*원/)?.[1] ?? tableRow?.[1]);
+  const sellingPrice = parseMoney(rawText.match(
+    /(?:판매가|소비자가|상품가)\s*[:：]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[1-9][0-9]{4,})\s*원?/,
+  )?.[1]);
+  const weekdayPrices = [...rawText.matchAll(
+    /(?:월|화|수|목|금|토|일)(?:\s*[\/·,]\s*(?:월|화|수|목|금|토|일))+\s*([0-9]{1,3}(?:,[0-9]{3})+|[1-9][0-9]{4,})\s*원/g,
+  )]
+    .map(match => parseMoney(match[1]))
+    .filter((value): value is number => value != null);
+  const weekdayMinPrice = weekdayPrices.length > 0 ? Math.min(...weekdayPrices) : null;
+  const adult = sellingPrice
+    ?? headingPrice
+    ?? parseMoney(rawText.match(/(?:성인|대인)\s*([0-9,]+)\s*원/)?.[1] ?? tableRow?.[1])
+    ?? weekdayMinPrice;
   const child = parseMoney(rawText.match(/(?:아동|소아|어린이)\s*([0-9,]+)\s*원/)?.[1] ?? tableRow?.[2]);
   return { adult: literalHwpAdult ?? adult, child };
 }
@@ -351,9 +363,11 @@ const SUPPLIER_CATEGORY_HEADER_RE = /^(?:중화권｜인도차이나｜골프|�
 const CONTACT_OR_ADDRESS_RE = /^(?:부산광역시|서울특별시|T\.\s*\d|F\.\s*\d|수\s*신|발\s*신|발\s*신\s*일|룸\s*타\s*입|인\s*원)$/;
 const KNOWN_DESTINATION_WORDS = [
   '대만', '타이베이', '단수이',
+  '방콕', '파타야', '홍콩',
   '나트랑', '달랏', '다낭', '푸꾸옥', '하노이', '호치민',
   '후쿠오카', '벳부', '유후인', '오사카', '도쿄', '시즈오카', '대마도',
-  '장가계', '서안', '연길', '백두산', '클락', '보홀', '세부',
+  '장가계', '서안', '연길', '백두산', '곤명', '쿤밍', '여강', '대리', '샹그릴라',
+  '클락', '보홀', '세부',
 ];
 
 function isSupplierHeaderLine(line: string): boolean {
@@ -367,6 +381,7 @@ function isSupplierHeaderLine(line: string): boolean {
 
 function cleanTitleCandidate(line: string): string {
   return line
+    .replace(/^\s*(?:상품\s*명(?:칭)?|행사명|product(?:\s*name)?)\s*[:：]?\s*/i, '')
     .replace(/★?\s*~?\s*\d{1,2}\s*\/\s*\d{1,2}\s*일까지\s*선발특가\s*★?/g, ' ')
     .replace(/★/g, ' ')
     .replace(/\s*요금표\s*$/g, '')
@@ -423,10 +438,12 @@ function extractRegion(rawText: string): string | null {
     ?? extractTitle(rawText)
     ?? '';
   const cleaned = title
+    .replace(/^\s*(?:상품\s*명(?:칭)?|행사명|product(?:\s*name)?)\s*[:：]?\s*/i, '')
     .replace(/\[[^\]]+\]/g, '')
     .replace(/상품\s*안내/g, '')
     .replace(/\d+\s*성/g, '')
     .replace(/\d+\s*박\s*\d+\s*일/g, '')
+    .replace(/\d+\s*일/g, '')
     .replace(/\b[A-Z0-9]{2,}\b/g, '')
     .replace(/[()]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -439,8 +456,17 @@ function extractRegion(rawText: string): string | null {
       return parts.join('/');
     }
   }
+  const firstKnown = KNOWN_DESTINATION_WORDS
+    .filter(word => cleaned.includes(word))
+    .sort((a, b) => (
+      cleaned.indexOf(a) - cleaned.indexOf(b)
+      || a.length - b.length
+    ))[0];
+  if (firstKnown) return firstKnown;
   const known = inferKnownDestination(cleaned);
   if (known) return known;
+  const knownFromDocument = inferKnownDestination(rawText);
+  if (knownFromDocument) return knownFromDocument;
   const singlePrimary = cleaned.split(/[\/|·,，]/)[0].trim();
   if (KNOWN_DESTINATION_WORDS.includes(singlePrimary)) return singlePrimary;
   if (singlePrimary === '서안') return singlePrimary;
@@ -511,7 +537,17 @@ function extractNights(rawText: string): number | null {
 
 function extractDepartureAirport(rawText: string): string | null {
   const match = rawText.match(/(?:출발공항|출발지)\s*[:：]?\s*([가-힣A-Za-z/ ]+?)(?:\s*\/|\s+항공|\s+이용항공|\n|$)/);
-  return match?.[1]?.trim() ?? null;
+  const labeled = match?.[1]?.trim();
+  if (labeled) return labeled;
+
+  // Supplier titles frequently carry the only source-backed home airport signal
+  // (for example "인천출발 천진 ..."). Restrict this fallback to Korean
+  // departure hubs so an itinerary's overseas return departure is not mistaken
+  // for the customer's origin.
+  const sourceDeparture = rawText.match(
+    /(?:^|[\s[(])((?:인천|김포|김해|부산|청주|대구|무안|제주|양양))(?:\s*(?:국제)?공항)?\s*출발/,
+  );
+  return sourceDeparture?.[1]?.trim() ?? null;
 }
 
 function extractMinParticipants(rawText: string): number | null {
@@ -803,6 +839,15 @@ function extractAdjacentScheduleFlightRows(rawText: string): Array<NonNullable<R
     const code = codeFromLine(lines[i]);
     if (!code) continue;
     const originHint = cityFromLine(lines[i]);
+    const inlineTimes = [...lines[i].matchAll(/\b(\d{1,2}:\d{2})\b/g)].map(match => match[1]);
+    if (inlineTimes.length >= 2) {
+      rows.push({
+        code,
+        departure: { time: inlineTimes[0], airport: originHint || '미정' },
+        arrival: { time: inlineTimes[1], airport: '미정' },
+      });
+      continue;
+    }
     if (/(도착|입국)/.test(lines[i]) && !/(출발|향발)/.test(lines[i])) {
       const arrivalTime = timeFromLine(lines[i]);
       const departureLine = lines
@@ -985,13 +1030,24 @@ function extractCommaListSection(rawText: string, heading: string): string[] {
       const line = rawLine.trim();
       if (!line) continue;
       const compact = line.replace(/\s+/g, '');
-      if (/^(포함사항|포함내역|불포함사항|불포함내역|룸타입|추천옵션|선택관광|쇼핑센터|비고|주의사항|일자|PKG)$/.test(compact)) break;
+      if (/^(포함사항|포함내역|불포함사항|불포함내역|룸타입|추천옵션|선택관광|쇼핑센터|비고|주의사항|항공시간|항공일정|항공편|일자|PKG)$/.test(compact)) break;
       if (/^제\d+일$/.test(compact)) break;
+
+      // HWP table extraction can concatenate the next "항공시간" heading onto
+      // the final exclusion row. Keep the text before the heading and stop
+      // instead of leaking schedules/carrier typos into customer exclusions.
+      const inlineFlightHeadingIndex = line.search(/\s+(?:항공시간|항공일정|항공편)(?:\s|[:：]|$)/);
+      if (inlineFlightHeadingIndex >= 0) {
+        const beforeHeading = line.slice(0, inlineFlightHeadingIndex).trim();
+        if (beforeHeading) collected.push(beforeHeading);
+        break;
+      }
       collected.push(line);
     }
   }
   const legacyLine = rawText.match(new RegExp(`${escaped}\\s*\\n([^\\n]+)`))?.[1] ?? '';
-  return splitTopLevelCommaList(collected.length ? collected.join(' ') : legacyLine);
+  const sourceLines = collected.length > 0 ? collected : [legacyLine];
+  return sourceLines.flatMap(line => splitTopLevelCommaList(line));
 }
 
 function extractInfoNotices(rawText: string) {

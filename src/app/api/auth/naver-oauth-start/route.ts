@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState, isOAuthStateConfigured } from '@/lib/oauth-state';
 
 /**
  * 네이버 OAuth 시작 (블로그 API 연동)
@@ -22,21 +22,14 @@ export async function GET(request: NextRequest) {
 
   const clientId = getSecret('NAVER_CLIENT_ID');
   const siteUrl  = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!clientId || !siteUrl) {
+  if (!clientId || !siteUrl || !isOAuthStateConfigured()) {
     return apiResponse(
-      { error: 'NAVER_CLIENT_ID 또는 NEXT_PUBLIC_SITE_URL 미설정' },
-      { status: 500 },
+      { error: 'Naver OAuth is not configured' },
+      { status: 503 },
     );
   }
 
-  // CSRF 방어용 HMAC-signed state (10분 유효) — Google OAuth와 동일 패턴
-  const stateSecret = getSecret('OAUTH_STATE_SECRET');
-  if (!stateSecret) {
-    console.warn('[naver-oauth-start] OAUTH_STATE_SECRET 미설정 — CSRF 보호 비활성화 상태');
-  }
-  const payload = Buffer.from(JSON.stringify({ tenant_id: tenantId, ts: Date.now() })).toString('base64url');
-  const sig     = createHmac('sha256', stateSecret ?? 'dev').update(payload).digest('hex').slice(0, 16);
-  const state   = `${payload}.${sig}`;
+  const state = createOAuthState({ tenantId, provider: 'naver' });
 
   const params = new URLSearchParams({
     response_type: 'code',

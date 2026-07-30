@@ -135,6 +135,20 @@ export interface V3LedgerVariant {
     arr_time: string | null;
     evidence: V3Evidence;
   }>;
+  /**
+   * Source-backed schedule alternatives when the supplier document names
+   * routes and time ranges but does not provide a fixed flight number.
+   * These must never be converted into an invented flight_segments[].code.
+   */
+  flight_options?: Array<{
+    leg: 'outbound' | 'inbound';
+    carrier_name: string;
+    dep_time: string;
+    arr_time: string;
+    dep_location: string;
+    arr_location: string;
+    evidence: V3Evidence;
+  }>;
   days: Array<{
     day: number;
     route: string[];

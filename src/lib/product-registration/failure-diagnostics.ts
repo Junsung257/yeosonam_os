@@ -11,7 +11,10 @@ export type ProductRegistrationFailureCode =
   | 'ITINERARY_DUPLICATE_DAY'
   | 'ITINERARY_DURATION_OVERFLOW'
   | 'ITINERARY_ENTITY_MISMATCH'
+  | 'MINIMUM_DEPARTURE_MISSING'
+  | 'ROUND_TRIP_FLIGHT_EVIDENCE_MISSING'
   | 'FLIGHT_TIME_MISMATCH'
+  | 'UNPRICED_HIGH_RISK_SURCHARGE'
   | 'CATALOG_SPLIT_REQUIRED'
   | 'PRODUCT_COUNT_MISMATCH'
   | 'MOBILE_RENDER_FAILED'
@@ -109,10 +112,50 @@ const RULES: Rule[] = [
     nextAction: 'Reclassify meal, hotel, transfer, shopping, and optional-tour rows before customer mobile/A4 render; do not attach attraction cards to non-attraction text.',
   },
   {
+    code: 'MINIMUM_DEPARTURE_MISSING',
+    severity: 'high',
+    patterns: [
+      /\.minimum_departure\b/i,
+      /minimum departure evidence exists/i,
+      /minimum[_\s-]*(?:departure|participants?).*(?:missing|required|review)/i,
+      /최소\s*(?:출발|행사)\s*(?:인원|인원수)?.*(?:누락|없음|확인|필요)/u,
+    ],
+    nextAction: 'Request the supplier-confirmed adult minimum departure count and preserve it as source evidence; never use a default.',
+  },
+  {
+    code: 'ROUND_TRIP_FLIGHT_EVIDENCE_MISSING',
+    severity: 'critical',
+    patterns: [
+      /\.flight\b/i,
+      /air package has flight evidence/i,
+      /round-trip flight evidence.*(?:missing|required|incomplete)/i,
+      /왕복\s*항공편명.*(?:누락|없음|확인|필요)/u,
+      /(?:출발편|귀국편).*(?:누락|없음|확인|필요)/u,
+    ],
+    nextAction: 'Request source-backed outbound and inbound airline, flight number, departure time, and arrival time before customer opening.',
+  },
+  {
     code: 'FLIGHT_TIME_MISMATCH',
     severity: 'critical',
-    patterns: [/flight time source mismatch/i, /saved segments are incomplete/i, /source has round-trip flight times/i],
+    patterns: [
+      /\.flight_times_complete\b/i,
+      /flight time source mismatch/i,
+      /saved segments are incomplete/i,
+      /source has round-trip flight times/i,
+      /source-timed outbound\/inbound flight segments must include both/i,
+    ],
     nextAction: 'Recover outbound and inbound flight code, departure time, and arrival time from the original source.',
+  },
+  {
+    code: 'UNPRICED_HIGH_RISK_SURCHARGE',
+    severity: 'critical',
+    patterns: [
+      /\.high_risk_(?:notice|structured_fact)_values\b/i,
+      /high-risk (?:standard notices|structured facts) must have (?:required )?values/i,
+      /(?:추가\s*비용|추가\s*요금|지상비|송영요금).*(?:금액|누락|미정|확인\s*필요)/u,
+      /금액\s*(?:없는|없음|누락).*(?:추가\s*비용|지상비|송영)/u,
+    ],
+    nextAction: 'Request the exact trigger, applicable period, currency, and per-person amount, or an explicit supplier-confirmed no-surcharge state.',
   },
   {
     code: 'CATALOG_SPLIT_REQUIRED',
@@ -147,7 +190,13 @@ const RULES: Rule[] = [
   {
     code: 'ATTRACTION_UNRESOLVED',
     severity: 'high',
-    patterns: [/attraction_unresolved/i, /unmatched attraction/i, /attraction unmatched/i],
+    patterns: [
+      /attraction_unresolved/i,
+      /unmatched attraction/i,
+      /attraction unmatched/i,
+      /v3:unmatched_attraction/i,
+      /mobile_media:attraction\.unmatched_major/i,
+    ],
     nextAction: 'Keep the source phrase visible and send the entity through review or safe existing-master matching.',
   },
   {

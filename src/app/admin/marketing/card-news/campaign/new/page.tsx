@@ -58,8 +58,7 @@ export default function CampaignNewPage() {
   });
 
   useEffect(() => {
-    fetch('/api/card-news/campaign').catch(() => null); // warm
-    fetch('/api/admin/packages?status=approved&limit=200')
+    fetch('/api/packages?status=approved&limit=200')
       .then((r) => r.ok ? r.json() : { data: [] })
       .then((d) => {
         const pkgs = (d?.data ?? d?.packages ?? []) as Package[];
@@ -255,18 +254,19 @@ export default function CampaignNewPage() {
 
             {/* 자동 컨펌 */}
             <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label htmlFor="campaign-auto-confirm" aria-label="렌더 완료 후 자동 확인 및 블로그 큐 등록" className="flex items-center gap-3 cursor-pointer">
                 <input
+                  id="campaign-auto-confirm"
                   type="checkbox"
                   checked={autoConfirm}
                   onChange={(e) => setAutoConfirm(e.target.checked)}
                   disabled={running}
                   className="w-4 h-4 rounded"
                 />
-                <div>
-                  <div className="text-sm font-medium text-admin-text-2">렌더 완료 후 자동 CONFIRMED</div>
-                  <div className="text-xs text-admin-muted">블로그 큐 자동 등록 포함</div>
-                </div>
+                <span>
+                  <span className="block text-sm font-medium text-admin-text-2">렌더 완료 후 자동 CONFIRMED</span>
+                  <span className="block text-xs text-admin-muted">블로그 큐 자동 등록 포함</span>
+                </span>
               </label>
             </div>
 

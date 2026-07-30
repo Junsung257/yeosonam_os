@@ -23,7 +23,7 @@ describe('threads-api', () => {
   });
 
   it('parses identity probes', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
       id: '123456789',
       username: 'yeosonam',
     }), { status: 200 }));
@@ -31,10 +31,14 @@ describe('threads-api', () => {
     const result = await probeThreadsIdentity('token');
 
     expect(result).toMatchObject({ ok: true, id: '123456789', username: 'yeosonam' });
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('token');
+    expect((fetchMock.mock.calls[0][1]?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer token',
+    );
   });
 
   it('verifies a published post and returns its permalink', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
       id: 'post-1',
       permalink: 'https://www.threads.com/@yeosonam/post/test',
       timestamp: '2026-06-03T00:00:00+0000',
@@ -47,5 +51,6 @@ describe('threads-api', () => {
       postId: 'post-1',
       permalink: 'https://www.threads.com/@yeosonam/post/test',
     });
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('access_token');
   });
 });

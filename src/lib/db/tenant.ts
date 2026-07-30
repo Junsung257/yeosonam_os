@@ -96,10 +96,11 @@ export interface TenantSettlementRow {
 export async function listTenants(): Promise<Tenant[]> {
   const sb = getSupabase();
   if (!sb) return [];
-  const { data } = await sb
+  const { data, error } = await sb
     .from('tenants')
     .select('*')
     .order('name');
+  if (error) throw error;
   return (data ?? []) as Tenant[];
 }
 

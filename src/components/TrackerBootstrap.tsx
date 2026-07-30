@@ -2,7 +2,11 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { hasAnalyticsConsent } from '@/lib/consent';
+import {
+  hasAnalyticsConsent,
+  useAnalyticsConsent,
+  useMarketingConsent,
+} from '@/lib/consent';
 import { initTracker, trackScrollMilestone, trackPageExit } from '@/lib/tracker';
 
 /**
@@ -14,6 +18,8 @@ import { initTracker, trackScrollMilestone, trackPageExit } from '@/lib/tracker'
 export default function TrackerBootstrap() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const analyticsConsent = useAnalyticsConsent();
+  const marketingConsent = useMarketingConsent();
   const fired = useRef<Set<string>>(new Set());
   const pageEnteredAt = useRef<number>(Date.now());
   const maxScrollPct = useRef<number>(0);
@@ -31,9 +37,10 @@ export default function TrackerBootstrap() {
     if (typeof window === 'undefined') return;
     const path = pathname || '/';
     if (path.startsWith('/admin')) return;
+    if (!analyticsConsent) return;
     initTracker();
 
-    const keyBase = `${path}?${searchParams.toString()}`;
+    const keyBase = `${path}?${searchParams?.toString() ?? ''}`;
 
     const emitMilestones = () => {
       if (!hasAnalyticsConsent()) return;
@@ -54,7 +61,7 @@ export default function TrackerBootstrap() {
         const k = `${keyBase}:90`;
         if (!fired.current.has(k)) {
           fired.current.add(k);
-          trackScrollMilestone(90, window.location.href);
+          trackScrollMilestone(90, window.location.pathname);
         }
         return;
       }
@@ -64,7 +71,7 @@ export default function TrackerBootstrap() {
           const k = `${keyBase}:${t}`;
           if (!fired.current.has(k)) {
             fired.current.add(k);
-            trackScrollMilestone(t, window.location.href);
+            trackScrollMilestone(t, window.location.pathname);
           }
         }
       }
@@ -92,7 +99,7 @@ export default function TrackerBootstrap() {
       // 너무 짧은 체류(<300ms)는 noise — 스킵
       if (elapsedMs < 300) return;
       trackPageExit({
-        page_url: window.location.href,
+        page_url: window.location.pathname,
         time_on_page_ms: elapsedMs,
         max_scroll_pct: maxScrollPct.current,
         interaction_count: interactionCount.current,
@@ -122,7 +129,7 @@ export default function TrackerBootstrap() {
       // 클라이언트 라우팅으로 경로가 바뀌는 경우(언마운트), exit 한 번 송신
       sendExit();
     };
-  }, [pathname, searchParams]);
+  }, [analyticsConsent, marketingConsent, pathname, searchParams]);
 
   return null;
 }

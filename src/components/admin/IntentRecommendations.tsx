@@ -122,7 +122,7 @@ export function IntentRecommendationsBar({
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 mb-2 bg-brand-light/30 rounded-admin-md border border-brand-light/50 text-admin-xs text-admin-text-2">
       <Sparkles size={12} className="shrink-0 text-brand" />
-      <span className="text-admin-2xs font-medium text-brand mr-0.5">추천:</span>
+      <span className="text-admin-2xs font-medium text-brand-dark mr-0.5">추천:</span>
       {recs.map((rec, i) => (
         <span key={rec.href} className="flex items-center gap-1">
           {i > 0 && <ArrowRight size={10} className="text-admin-muted-2" />}

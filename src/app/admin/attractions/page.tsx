@@ -5,6 +5,10 @@ import useSWR from 'swr';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, Camera, Search as SearchIcon, Download, Upload as UploadIcon, AlertCircle } from 'lucide-react';
+import {
+  buildAttractionOwnerReviewCsv,
+  parseAttractionOwnerReviewCsv,
+} from '@/lib/attraction-owner-review-import';
 
 interface PhotoItem { pexels_id: number; src_medium: string; src_large: string; photographer: string; alt?: string; }
 
@@ -394,73 +398,82 @@ export default function AttractionsPage() {
 
   // CSV
   const downloadCsv = () => {
-    const header = 'name,short_desc,long_desc,country,region,badge_type,emoji\n';
-    const rows = attractions.map(a =>
-      `"${a.name}","${a.short_desc || ''}","${(a.long_desc || '').replace(/"/g, '""')}","${a.country || ''}","${a.region || ''}","${a.badge_type}","${a.emoji || ''}"`
-    ).join('\n');
-    const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
+    const csv = buildAttractionOwnerReviewCsv(attractions.map(attraction => ({
+      name: attraction.name,
+      short_desc: attraction.short_desc ?? '',
+      long_desc: attraction.long_desc,
+      country: attraction.country ?? '',
+      region: attraction.region ?? '',
+      badge_type: attraction.badge_type,
+      emoji: attraction.emoji ?? '',
+      aliases: attraction.aliases ?? [],
+      official_source_url: null,
+      supporting_source_urls: [],
+      source_phrases: [],
+      verification_method: null,
+      evidence_summary: null,
+      owner_reviewed: false,
+    })));
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = 'attractions.csv'; link.click();
+    const link = document.createElement('a'); link.href = url; link.download = 'attractions-owner-review.csv'; link.click();
+    URL.revokeObjectURL(url);
   };
 
   const uploadCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const text = await file.text();
-    // 멀티라인 CSV 파싱: long_desc에 줄바꿈이 포함될 수 있음
-    const parseCsvFull = (csv: string): string[][] => {
-      const rows: string[][] = [];
-      let current = '';
-      let inQuotes = false;
-      const row: string[] = [];
-      for (let i = 0; i < csv.length; i++) {
-        const ch = csv[i];
-        if (ch === '"') {
-          if (inQuotes && csv[i + 1] === '"') { current += '"'; i++; }
-          else { inQuotes = !inQuotes; }
-        } else if (ch === ',' && !inQuotes) {
-          row.push(current); current = '';
-        } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
-          if (ch === '\r' && csv[i + 1] === '\n') i++;
-          row.push(current); current = '';
-          if (row.some(c => c.trim())) rows.push([...row]);
-          row.length = 0;
-        } else {
-          current += ch;
-        }
-      }
-      row.push(current);
-      if (row.some(c => c.trim())) rows.push(row);
-      return rows;
-    };
-    const allRows = parseCsvFull(text);
-    const dataRows = allRows.slice(1); // 헤더 제외
-    // header: name,short_desc,long_desc,country,region,badge_type,emoji
-    // ⚠️ ERR-attractions-csv-badge-check@2026-04-21: 엑셀에서 badge_type 칸에 공백/한글/대소문자 변형 등이 들어가면
-    //    서버 CHECK 제약 위반으로 전체 0건 반영되던 사고 → 서버가 정규화하지만 클라이언트도 확실히 trim 후 fallback.
-    const items = dataRows.map(cols => {
-      const badgeRaw = (cols[5] || '').trim();
-      return {
-        name: (cols[0] || '').trim(),
-        short_desc: (cols[1] || '').trim(),
-        long_desc: (cols[2] || '').trim() || null,
-        country: (cols[3] || '').trim(),
-        region: (cols[4] || '').trim(),
-        badge_type: badgeRaw || 'tour', // 빈/공백 → 'tour' (서버가 한번 더 한글·대소문자 정규화)
-        emoji: (cols[6] || '').trim(),
-      };
-    }).filter(i => i.name);
-    if (items.length === 0) { alert('유효한 행이 없습니다. CSV 형식을 확인해주세요.\n헤더: name,short_desc,long_desc,country,region,badge_type,emoji'); return; }
+    const parsed = parseAttractionOwnerReviewCsv(text);
+    if (parsed.legacyFormat) {
+      alert('이전 CSV 형식에는 owner_reviewed 열이 없어 DB에 반영하지 않았습니다.\n현재 CSV를 다시 다운로드한 뒤, 검수한 행만 owner_reviewed=yes로 표시해 주세요.');
+      e.target.value = '';
+      return;
+    }
+    if (parsed.rejectedRows.length > 0) {
+      const details = parsed.rejectedRows
+        .slice(0, 5)
+        .map(row => `${row.row}행${row.name ? `(${row.name})` : ''}: ${row.reason}`)
+        .join('\n');
+      alert(`CSV 형식 오류 ${parsed.rejectedRows.length}건이 있어 전체 반영을 중단했습니다.\n${details}`);
+      e.target.value = '';
+      return;
+    }
+    const approvedItems = parsed.items.filter(item => item.owner_reviewed);
+    const pendingCount = parsed.items.length - approvedItems.length;
+    if (approvedItems.length === 0) {
+      alert('사장님 검수 완료 행이 없습니다.\n반영할 행만 owner_reviewed=yes로 표시해 주세요.');
+      e.target.value = '';
+      return;
+    }
+    if (!confirm([
+      `사장님 검수 완료 ${approvedItems.length}건만 반영합니다.`,
+      pendingCount > 0 ? `미승인 ${pendingCount}건은 반영하지 않습니다.` : null,
+      '신규 관광지는 원문 문구·공식 URL·검증 방식·근거 요약이 모두 있어야 합니다.',
+      '신규 관광지는 내부 마스터로만 등록되고, 사진·설명 검수 전에는 고객에게 공개되지 않습니다.',
+      '계속하시겠습니까?',
+    ].filter(Boolean).join('\n'))) {
+      e.target.value = '';
+      return;
+    }
     setSaving(true);
     try {
-      const res = await fetch('/api/attractions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+      const res = await fetch('/api/attractions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: approvedItems,
+          ownerReviewed: true,
+          reviewSource: 'admin_csv_owner_confirmed',
+        }),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || '서버 오류');
       const dup = json.skippedDuplicates > 0 ? `\n(중복 name ${json.skippedDuplicates}건 자동 제거)` : '';
       if (json.totalErrors > 0) {
         const top = (json.errors || []).slice(0, 5).map((e: { name: string; error: string }) => `  • ${e.name.slice(0, 40)}: ${e.error.slice(0, 60)}`).join('\n');
-        alert(`CSV 업로드: ${json.upserted}/${items.length}건 반영\n실패 ${json.totalErrors}건:\n${top}${json.totalErrors > 5 ? `\n  ... 외 ${json.totalErrors - 5}건` : ''}${dup}`);
+        alert(`CSV 업로드: ${json.upserted}/${approvedItems.length}건 반영\n실패 ${json.totalErrors}건:\n${top}${json.totalErrors > 5 ? `\n  ... 외 ${json.totalErrors - 5}건` : ''}${dup}`);
       } else {
-        alert(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (총 ${items.length}건)${dup}`);
+        alert(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (사장님 승인 ${approvedItems.length}건)${dup}`);
       }
       load();
     } catch (err) {
@@ -584,19 +597,20 @@ export default function AttractionsPage() {
           <input
             value={filter.search}
             onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
+            aria-label="관광지 검색"
             placeholder="관광지명, 국가, 지역 검색"
             className="w-full h-9 pl-8 pr-3 text-admin-base border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           />
         </div>
-        <select value={filter.country} onChange={e => setFilter(f => ({ ...f, country: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
+        <select aria-label="국가 필터" value={filter.country} onChange={e => setFilter(f => ({ ...f, country: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
           <option value="">전체 국가</option>
           {countries.sort().map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={filter.region} onChange={e => setFilter(f => ({ ...f, region: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
+        <select aria-label="지역 필터" value={filter.region} onChange={e => setFilter(f => ({ ...f, region: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
           <option value="">전체 지역</option>
           {regions.sort().map(r => <option key={r} value={r}>{r}</option>)}
         </select>
-        <select value={filter.badge} onChange={e => setFilter(f => ({ ...f, badge: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
+        <select aria-label="배지 필터" value={filter.badge} onChange={e => setFilter(f => ({ ...f, badge: e.target.value }))} className="h-9 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
           <option value="">전체 배지</option>
           {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.icon} {b.label}</option>)}
         </select>
@@ -608,19 +622,19 @@ export default function AttractionsPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-admin-md p-4 mb-4">
           <h3 className="font-bold text-blue-900 mb-3">신규 관광지 등록</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <input placeholder="관광지명 *" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} className="text-sm border rounded-lg px-3 py-2" />
-            <input placeholder="한줄 설명" value={addForm.short_desc} onChange={e => setAddForm(f => ({ ...f, short_desc: e.target.value }))} className="text-sm border rounded-lg px-3 py-2" />
+            <input aria-label="신규 관광지명" placeholder="관광지명 *" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} className="text-sm border rounded-lg px-3 py-2" />
+            <input aria-label="신규 관광지 한줄 설명" placeholder="한줄 설명" value={addForm.short_desc} onChange={e => setAddForm(f => ({ ...f, short_desc: e.target.value }))} className="text-sm border rounded-lg px-3 py-2" />
             <div className="flex gap-2">
-              <input placeholder="국가" value={addForm.country} onChange={e => setAddForm(f => ({ ...f, country: e.target.value }))} className="flex-1 text-sm border rounded-lg px-3 py-2" />
-              <input placeholder="지역" value={addForm.region} onChange={e => setAddForm(f => ({ ...f, region: e.target.value }))} className="flex-1 text-sm border rounded-lg px-3 py-2" />
+              <input aria-label="신규 관광지 국가" placeholder="국가" value={addForm.country} onChange={e => setAddForm(f => ({ ...f, country: e.target.value }))} className="flex-1 text-sm border rounded-lg px-3 py-2" />
+              <input aria-label="신규 관광지 지역" placeholder="지역" value={addForm.region} onChange={e => setAddForm(f => ({ ...f, region: e.target.value }))} className="flex-1 text-sm border rounded-lg px-3 py-2" />
             </div>
-            <textarea placeholder="상세 설명 (long_desc)" value={addForm.long_desc} onChange={e => setAddForm(f => ({ ...f, long_desc: e.target.value }))}
+            <textarea aria-label="신규 관광지 상세 설명" placeholder="상세 설명 (long_desc)" value={addForm.long_desc} onChange={e => setAddForm(f => ({ ...f, long_desc: e.target.value }))}
               rows={2} className="md:col-span-2 text-sm border rounded-lg px-3 py-2 resize-none" />
             <div className="flex gap-2">
-              <select value={addForm.badge_type} onChange={e => setAddForm(f => ({ ...f, badge_type: e.target.value }))} className="flex-1 text-sm border rounded-lg px-3 py-2">
+              <select aria-label="신규 관광지 배지 타입" value={addForm.badge_type} onChange={e => setAddForm(f => ({ ...f, badge_type: e.target.value }))} className="flex-1 text-sm border rounded-lg px-3 py-2">
                 {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.icon} {b.label}</option>)}
               </select>
-              <input placeholder="이모지" value={addForm.emoji} onChange={e => setAddForm(f => ({ ...f, emoji: e.target.value }))} className="w-16 text-sm border rounded-lg px-3 py-2 text-center" />
+              <input aria-label="신규 관광지 이모지" placeholder="이모지" value={addForm.emoji} onChange={e => setAddForm(f => ({ ...f, emoji: e.target.value }))} className="w-16 text-sm border rounded-lg px-3 py-2 text-center" />
             </div>
             <div className="md:col-span-3 flex gap-2">
               <button onClick={addAttraction} disabled={saving} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50">등록</button>
@@ -741,7 +755,20 @@ export default function AttractionsPage() {
             return (
               <div key={a.id} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden hover:shadow-admin-xs transition">
                 {/* 메인 행 */}
-                <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : a.id)}>
+                <div
+                  className="flex items-start gap-3 p-4 cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  aria-controls={`attraction-details-${a.id}`}
+                  onClick={() => setExpandedId(isExpanded ? null : a.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setExpandedId(isExpanded ? null : a.id);
+                    }
+                  }}
+                >
                   {/* 사진 썸네일 */}
                   <div className="w-16 h-16 rounded-lg overflow-hidden bg-admin-surface-2 shrink-0 flex items-center justify-center">
                     {a.photos?.length > 0 ? (
@@ -772,7 +799,7 @@ export default function AttractionsPage() {
 
                 {/* 확장 패널 */}
                 {isExpanded && (
-                  <div className="border-t border-admin-border bg-admin-bg p-4 space-y-4">
+                  <div id={`attraction-details-${a.id}`} className="border-t border-admin-border bg-admin-bg p-4 space-y-4">
                     {/* 사진 관리 */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -819,11 +846,14 @@ export default function AttractionsPage() {
                               {photoPanel.results.map(p => {
                                 const already = a.photos?.some(x => x.pexels_id === p.pexels_id);
                                 return (
-                                  <div key={p.pexels_id} onClick={() => !already && addPhotoToAttraction(a.id, p)}
-                                    className={`cursor-pointer rounded-lg overflow-hidden border-2 transition ${already ? 'border-green-400 opacity-60' : 'border-transparent hover:border-blue-400'}`}>
+                                  <button type="button" key={p.pexels_id}
+                                    onClick={() => addPhotoToAttraction(a.id, p)}
+                                    disabled={already}
+                                    aria-label={already ? `${p.alt || p.photographer} 사진 추가됨` : `${p.alt || p.photographer} 사진 추가`}
+                                    className={`text-left rounded-lg overflow-hidden border-2 transition ${already ? 'border-green-400 opacity-60 cursor-default' : 'border-transparent hover:border-blue-400 cursor-pointer'}`}>
                                     <img src={p.src_medium} alt={p.alt || ''} className="w-full h-16 object-cover" />
-                                    <p className="text-[8px] text-admin-muted-2 px-1 truncate">{already ? '✅ 추가됨' : `📸 ${p.photographer}`}</p>
-                                  </div>
+                                    <span className="block text-[8px] text-admin-muted-2 px-1 truncate">{already ? '✅ 추가됨' : `📸 ${p.photographer}`}</span>
+                                  </button>
                                 );
                               })}
                             </div>
@@ -835,8 +865,8 @@ export default function AttractionsPage() {
                     {/* X4-3 박제 (2026-05-15): 정확/부정확 1-click 피드백 (active learning) */}
                     <div className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded-lg">
                       <div className="text-xs text-admin-muted">
-                        🤖 자동 시드 검증 (사장님 1-click)
-                        <span className="ml-2 text-blue-700">정확도가 다음 시드 학습에 반영됩니다</span>
+                        등록 정보 검증 (사장님 1-click)
+                        <span className="ml-2 text-blue-700">정확도가 이후 매칭 품질에 반영됩니다</span>
                       </div>
                       <div className="flex gap-1.5">
                         <button
@@ -889,41 +919,41 @@ export default function AttractionsPage() {
                     {/* 기본 정보 편집 */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">관광지명</label>
-                        <input defaultValue={a.name} onBlur={e => { if (e.target.value !== a.name) inlineSave(a.id, 'name', e.target.value); }}
+                        <label htmlFor={`attraction-name-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">관광지명</label>
+                        <input id={`attraction-name-${a.id}`} defaultValue={a.name} onBlur={e => { if (e.target.value !== a.name) inlineSave(a.id, 'name', e.target.value); }}
                           className="w-full text-sm border rounded-lg px-3 py-2" />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">한줄 설명</label>
-                        <input defaultValue={a.short_desc || ''} onBlur={e => { if (e.target.value !== (a.short_desc || '')) inlineSave(a.id, 'short_desc', e.target.value); }}
+                        <label htmlFor={`attraction-short-desc-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">한줄 설명</label>
+                        <input id={`attraction-short-desc-${a.id}`} defaultValue={a.short_desc || ''} onBlur={e => { if (e.target.value !== (a.short_desc || '')) inlineSave(a.id, 'short_desc', e.target.value); }}
                           className="w-full text-sm border rounded-lg px-3 py-2" />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">상세 설명 (long_desc)</label>
-                        <textarea defaultValue={a.long_desc || ''} onBlur={e => { if (e.target.value !== (a.long_desc || '')) inlineSave(a.id, 'long_desc', e.target.value); }}
+                        <label htmlFor={`attraction-long-desc-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">상세 설명 (long_desc)</label>
+                        <textarea id={`attraction-long-desc-${a.id}`} defaultValue={a.long_desc || ''} onBlur={e => { if (e.target.value !== (a.long_desc || '')) inlineSave(a.id, 'long_desc', e.target.value); }}
                           rows={3} className="w-full text-sm border rounded-lg px-3 py-2 resize-none" />
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">국가</label>
-                          <input defaultValue={a.country || ''} onBlur={e => { if (e.target.value !== (a.country || '')) inlineSave(a.id, 'country', e.target.value); }}
+                          <label htmlFor={`attraction-country-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">국가</label>
+                          <input id={`attraction-country-${a.id}`} defaultValue={a.country || ''} onBlur={e => { if (e.target.value !== (a.country || '')) inlineSave(a.id, 'country', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2" />
                         </div>
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">지역</label>
-                          <input defaultValue={a.region || ''} onBlur={e => { if (e.target.value !== (a.region || '')) inlineSave(a.id, 'region', e.target.value); }}
+                          <label htmlFor={`attraction-region-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">지역</label>
+                          <input id={`attraction-region-${a.id}`} defaultValue={a.region || ''} onBlur={e => { if (e.target.value !== (a.region || '')) inlineSave(a.id, 'region', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2" />
                         </div>
                         <div className="w-20">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">이모지</label>
-                          <input defaultValue={a.emoji || ''} onBlur={e => { if (e.target.value !== (a.emoji || '')) inlineSave(a.id, 'emoji', e.target.value); }}
+                          <label htmlFor={`attraction-emoji-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">이모지</label>
+                          <input id={`attraction-emoji-${a.id}`} defaultValue={a.emoji || ''} onBlur={e => { if (e.target.value !== (a.emoji || '')) inlineSave(a.id, 'emoji', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2 text-center" />
                         </div>
                       </div>
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">배지 타입</label>
-                          <select value={a.badge_type} onChange={e => inlineSave(a.id, 'badge_type', e.target.value)}
+                          <label htmlFor={`attraction-badge-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">배지 타입</label>
+                          <select id={`attraction-badge-${a.id}`} value={a.badge_type} onChange={e => inlineSave(a.id, 'badge_type', e.target.value)}
                             className="w-full text-sm border rounded-lg px-3 py-2">
                             {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.icon} {b.label}</option>)}
                           </select>

@@ -27,6 +27,7 @@ vi.mock('@/lib/supabase-jwt-verify', () => ({
 
 vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
+  isSupabaseAdminConfigured: true,
   getDashboardStatsV3: mocks.getDashboardStatsV3,
   getRecognizedRevenueMonthly: mocks.getRecognizedRevenueMonthly,
   getNewBookingsMonthly: mocks.getNewBookingsMonthly,

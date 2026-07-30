@@ -81,6 +81,14 @@ describe('product-registration-v3 structured facts', () => {
     expect(guideTip?.review_status).toBe('auto_clean');
   });
 
+  it('does not misread first-come capacity as a minimum departure promise', () => {
+    const rawText = '모객인원 각항차별 30명 선착순마감';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+
+    expect(result.structuredFacts.some(row => row.category === 'min_pax')).toBe(false);
+    expect(result.standardNotices.some(row => row.category === 'minimum_departure')).toBe(false);
+  });
+
   it('treats guide expense inside an inclusion list as included instead of missing local payment', () => {
     const rawText = '기사가이드경비, 바나산 국립공원 입장료, 전신마사지 2시간, 김해공항샌딩, 해외여행자보험';
     const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
@@ -91,6 +99,16 @@ describe('product-registration-v3 structured facts', () => {
     expect(result.standardNotices.some(row =>
       row.category === 'tip_guideline' && row.review_status === 'review_needed'
     )).toBe(false);
+  });
+
+  it('does not apply a massage tip exclusion to an included guide tip on the same line', () => {
+    const rawText = '항공료, 숙박, 입장료, 전용차량, 기사/가이드팁, 전신마사지 90분(팁별도)';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
+    expect(guideTips[0]?.review_status).toBe('auto_clean');
   });
 
   it('extracts no option, no shopping, shopping count, hotel grade, meals, and transport', () => {
@@ -205,6 +223,66 @@ describe('product-registration-v3 structured facts', () => {
     expect(notice?.review_status).toBe('auto_clean');
   });
 
+  it('extracts explicit package-shopping counts from shopping-category lists', () => {
+    const rawText = [
+      '쇼핑센터',
+      '커피, 침향, 잡화 중 3회 방문',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const fact = result.structuredFacts.find(row => row.category === 'shopping_policy');
+    const notice = result.standardNotices.find(row => row.category === 'shopping_visit');
+
+    expect(fact?.values).toMatchObject({
+      none: false,
+      count: 3,
+      items: expect.arrayContaining(['커피', '침향', '잡화']),
+    });
+    expect(fact?.review_status).toBe('auto_clean');
+    expect(notice?.template_key).toBe('shopping.visits_count');
+    expect(notice?.standard_text).toContain('쇼핑센터 3회 방문');
+  });
+
+  it('extracts explicit shopping-tour counts without treating them as free-time shopping', () => {
+    const rawText = '여행의 또다른 즐거움 쇼핑관광 3회';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const fact = result.structuredFacts.find(row => row.category === 'shopping_policy');
+
+    expect(fact?.values).toMatchObject({ none: false, count: 3 });
+    expect(fact?.values).not.toHaveProperty('optional_self_directed', true);
+    expect(fact?.review_status).toBe('auto_clean');
+  });
+
+  it('discloses free-time self-directed shopping without labeling it a required shopping visit', () => {
+    const rawText = '깜란 자유시간 (마사지, 이발소, 커피숍, 멀티숍쇼핑, 마트 등 개별 자유시간)';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const fact = result.structuredFacts.find(row => row.category === 'shopping_policy');
+    const notice = result.standardNotices.find(row => row.category === 'shopping_visit');
+
+    expect(fact?.values).toMatchObject({
+      none: false,
+      count: 0,
+      required: false,
+      optional_self_directed: true,
+    });
+    expect(fact?.review_status).toBe('auto_clean');
+    expect(notice?.template_key).toBe('shopping.optional_self_directed');
+    expect(notice?.standard_text).toBe('자유시간 중 개별 쇼핑은 선택 사항이며, 필수 쇼핑 일정이 아닙니다.');
+    expect(result.customerFieldPatch.itinerary_highlights?.shopping).not.toContain('쇼핑 방문 포함');
+  });
+
+  it('keeps Japanese-yen guide tips in yen in facts and customer notices', () => {
+    const rawText = '가이드/기사 팁 1인 2만엔 현지 지불';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const fact = result.structuredFacts.find(row => row.category === 'guide_tip');
+    const notice = result.standardNotices.find(row => row.category === 'tip_guideline');
+
+    expect(fact?.values).toMatchObject({ included: false, amount: 20000, currency: 'JPY' });
+    expect(fact?.standard_text).toContain('20,000엔');
+    expect(notice?.values).toMatchObject({ amount: 20000, currency: 'JPY' });
+    expect(notice?.standard_text).toContain('20,000엔');
+    expect(notice?.standard_text).not.toContain('2만원');
+  });
+
   it('treats season holiday extra-fee inquiry as an explicit safe inquiry state', () => {
     const rawText = '* \uC911\uAD6D \uC5F0\uD734 \uB2E8\uC624\uC808, \uCD94\uC11D, \uAD6D\uACBD\uC808 \uAE30\uAC04\uC740 \uBCC4\uB3C4 \uC694\uAE08 \uBB38\uC758 \uBD80\uD0C1\uB4DC\uB9BD\uB2C8\uB2E4.';
     const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
@@ -213,6 +291,22 @@ describe('product-registration-v3 structured facts', () => {
     expect(fact?.values).toMatchObject({ amount: null, percent: null });
     expect(fact?.risk_level).toBe('medium');
     expect(fact?.review_status).toBe('auto_clean');
+  });
+
+  it('preserves Japanese-yen surcharge units without converting them to Korean won', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '2인 출발시 송영 추가비용: 1인 2만엔',
+        '페어웨이 카트 진입시 550엔/인 추가비용 발생합니다.',
+      ].join('\n'),
+    });
+    const surcharges = result.structuredFacts.filter(row => row.category === 'surcharge');
+
+    expect(surcharges.map(row => row.values)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ amount: 20000, currency: 'JPY' }),
+      expect.objectContaining({ amount: 550, currency: 'JPY' }),
+    ]));
+    expect(surcharges.every(row => row.review_status === 'auto_clean')).toBe(true);
   });
 
   it('treats amount-less private-event surcharge as an explicit safe inquiry state', () => {
@@ -280,5 +374,161 @@ describe('product-registration-v3 structured facts', () => {
 
     expect(result.standardNotices.some(notice => notice.category === 'meal_plan')).toBe(false);
     expect(result.structuredFacts.some(fact => fact.category === 'meal_plan')).toBe(false);
+  });
+
+  it('extracts explicit 추가금 and 챠지 amounts instead of leaving them amountless', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '일본 휴일 숙박 추가금 4,000엔/1일/1인 발생합니다.',
+        '2B 챠지 2,200엔/1인/1라운딩 발생합니다.',
+        '해당일자 1인/1박/7만원 추가 - 일본공휴일',
+      ].join('\n'),
+    });
+
+    const surcharges = result.structuredFacts.filter(fact => fact.category === 'surcharge');
+    expect(surcharges.map(fact => fact.values.amount)).toEqual(expect.arrayContaining([4000, 2200, 70000]));
+    expect(surcharges.every(fact => fact.review_status === 'auto_clean')).toBe(true);
+    expect(surcharges[0]?.standard_text).toContain('4,000엔');
+  });
+
+  it('marks an amountless summary safe only when a same-topic source line carries the exact amount', () => {
+    const covered = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '일본공휴일 추가비용',
+        '일본 휴일 숙박 추가금 4,000엔/1일/1인 발생합니다.',
+      ].join('\n'),
+    });
+    const unresolved = extractStructuredFactsFromSupplierText({
+      rawText: '골프장 변경 시 송영요금이 추가로 발생할 수 있습니다.',
+    });
+
+    expect(covered.structuredFacts.find(fact =>
+      fact.category === 'surcharge' && fact.values.amount == null
+    )?.review_status).toBe('auto_clean');
+    expect(unresolved.structuredFacts.find(fact =>
+      fact.category === 'surcharge'
+    )?.review_status).toBe('review_needed');
+  });
+
+  it('uses a pre-booking quote and consent contract for conditional substitute transport charges', async () => {
+    const source = '골프장 예약 상황에 따라 다른 곳으로 대체될 수 있으며, 송영요금이 추가로 발생할 수 있습니다.';
+    const facts = extractStructuredFactsFromSupplierText({
+      rawText: source,
+      lines: createSourceLineIndex(source),
+    });
+    const surcharge = facts.structuredFacts.find(fact => fact.category === 'surcharge');
+
+    expect(surcharge?.values).toMatchObject({
+      amount: null,
+      percent: null,
+      safe_state: 'prebooking_quote_and_consent_required',
+      charge_timing: 'before_booking_confirmation',
+      consent_required: true,
+    });
+    expect(surcharge?.risk_level).toBe('high');
+    expect(surcharge?.review_status).toBe('auto_clean');
+    expect(surcharge?.standard_text).toContain('예약 확정 전에 금액을 안내');
+    expect(surcharge?.standard_text).toContain('고객 동의');
+
+    const result = await runProductRegistrationV3([
+      '상품: 나리타 골프 3박4일',
+      '가격: 1,289,000원 / 최소출발 4명',
+      'DAY 1 BX112 출발 07:50 도착 10:00',
+      source,
+      'DAY 4 BX111 출발 10:55 도착 13:15',
+      '포함 호텔 식사',
+      '불포함 개인경비',
+    ].join('\n'));
+    expect(result.gate_result.checks.find(check =>
+      check.id.endsWith('high_risk_structured_fact_values')
+    )?.status).toBe('pass');
+    expect(result.gate_result.checks.find(check =>
+      check.id.endsWith('prebooking_quote_and_consent_evidence')
+    )?.status).toBe('pass');
+  });
+
+  it('keeps a generic amountless transport surcharge blocked', () => {
+    const source = '송영요금이 추가로 발생할 수 있습니다.';
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: source,
+      lines: createSourceLineIndex(source),
+    });
+    const surcharge = result.structuredFacts.find(fact => fact.category === 'surcharge');
+
+    expect(surcharge?.values.safe_state).toBeUndefined();
+    expect(surcharge?.review_status).toBe('review_needed');
+  });
+
+  it('links two-player fee summaries to exact weekend and holiday price details', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '2인라운딩 니세코빌리지코스-2,500엔(주중), 3,500엔(주말, 연휴)/인',
+        '5인플레이 불가하여 3인/2인으로 들어가야합니다. 2인 2인라운딩 추가비용 발생',
+      ].join('\n'),
+    });
+    const summary = result.structuredFacts.find(fact =>
+      fact.category === 'surcharge'
+      && String(fact.values.label ?? '').includes('추가비용 발생')
+    );
+
+    expect(summary?.values).toMatchObject({ source_detail_disclosed: true });
+    expect(summary?.review_status).toBe('auto_clean');
+    expect(summary?.evidence).toHaveLength(2);
+  });
+
+  it('links split 2Bag summaries to the exact following two-player charge line', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '2Bag 차지 (카트 추가금) : 1순위) 다른2인신청팀과 조인라운드 필수 / 추가금없음, 2순위) 조인편성',
+        '불가능상황 한정 2인라운드 허용 단, 추가금18홀당-주중1인6만원, 주말/일본공휴일 1인9만원',
+      ].join('\n'),
+    });
+    const summary = result.structuredFacts.find(fact =>
+      fact.category === 'surcharge'
+      && String(fact.values.label ?? '').includes('2Bag')
+    );
+
+    expect(summary?.values).toMatchObject({ source_detail_disclosed: true });
+    expect(summary?.review_status).toBe('auto_clean');
+  });
+
+  it('keeps an amountless ground-cost holiday surcharge blocked', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '일본공휴일 기간은 일본연휴기간으로 지상비추가',
+        '2인라운드 추가금18홀당-주중1인6만원, 주말/일본공휴일 1인9만원',
+      ].join('\n'),
+    });
+    const groundCost = result.structuredFacts.find(fact =>
+      fact.category === 'surcharge'
+      && String(fact.values.label ?? '').includes('지상비추가')
+    );
+
+    expect(groundCost?.values).toMatchObject({ amount: null, percent: null });
+    expect(groundCost?.review_status).toBe('review_needed');
+  });
+
+  it('records an explicit safe state only when exact holiday dates and a source-backed year can be quarantined', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '2026년 7월 출발 상품',
+        '일본공휴일 7/18~20, 8/11, 8/14 기간은 일본연휴기간으로 지상비추가',
+      ].join('\n'),
+    });
+    const groundCost = result.structuredFacts.find(fact =>
+      fact.category === 'surcharge'
+      && String(fact.values.label ?? '').includes('지상비추가')
+    );
+
+    expect(groundCost?.values).toMatchObject({
+      amount: null,
+      percent: null,
+      safe_state: 'date_sales_quarantined',
+      quarantine_reason: 'unpriced_holiday_ground_cost',
+      quarantined_date_tokens: ['7/18~7/20', '8/11', '8/14'],
+    });
+    expect(groundCost?.values.quarantined_dates).toContain('2026-07-20');
+    expect(groundCost?.review_status).toBe('auto_clean');
+    expect(groundCost?.standard_text).toContain('판매 대상에서 제외');
   });
 });

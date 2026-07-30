@@ -313,6 +313,45 @@ BX341 21:55 01:25
     ]);
     expect(result.rows.some(row => row.date === '2026-08-30' || row.date === '2026-09-19')).toBe(false);
   });
+
+  it('keeps same-duration Baekdu route variants in separate price sections', () => {
+    const rawText = [
+      '백두산 하계 통합 요금표',
+      '출발일',
+      '판매가',
+      '노팁,노옵션',
+      '북파+서파',
+      '4박5일',
+      '6월',
+      '27일',
+      '1,280,000원',
+      '<3파 완전정복>',
+      '노팁,노옵션',
+      '남파+북파+서파',
+      '4박5일',
+      '6월',
+      '27일',
+      '1,380,000원',
+    ].join('\n');
+
+    const northWest = extractPriceIR(rawText, {
+      year: 2026,
+      durationDays: 5,
+      title: '청주 ➡ 연길직항 [TW] / 백두산 [북파+서파] 5일',
+    });
+    const allThree = extractPriceIR(rawText, {
+      year: 2026,
+      durationDays: 5,
+      title: '청주 ➡ 연길직항 [TW] / 백두산 [북파+서파+남파] 완전일주 5일',
+    });
+
+    expect(northWest.rows).toEqual([
+      expect.objectContaining({ date: '2026-06-27', adult_price: 1280000 }),
+    ]);
+    expect(allThree.rows).toEqual([
+      expect.objectContaining({ date: '2026-06-27', adult_price: 1380000 }),
+    ]);
+  });
 });
 
 const HOTEL_COLUMN_MATRIX = `

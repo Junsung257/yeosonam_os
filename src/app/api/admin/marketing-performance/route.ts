@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -52,7 +52,13 @@ function buildMockPerformance() {
  * - recent_tasks: 에이전트 실행 최신 20건
  */
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
+    if (request.nextUrl.searchParams.get('demo') !== '1') {
+      return apiResponse(
+        { error: 'Supabase admin connection is not configured.' },
+        { status: 503 },
+      );
+    }
     return apiResponse(buildMockPerformance());
   }
 

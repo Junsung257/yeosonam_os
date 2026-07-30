@@ -18,6 +18,13 @@ describe('mapTravelPackageToLandingData', () => {
       inclusions: ['왕복 항공권', '호텔 2박'],
       excludes: ['가이드 팁', '개인경비'],
       surcharges: [{ name: '연휴', start: '2026-05-05', end: '2026-05-06', amount: 50, currency: 'USD', unit: '인' }],
+      notices_parsed: [
+        {
+          type: 'INFO',
+          title: '항공편 확정 안내',
+          text: '항공사와 편명은 예약 시 최종 확정됩니다.',
+        },
+      ],
       itinerary_data: {
         meta: {
           title: '후쿠오카 3일',
@@ -75,10 +82,18 @@ describe('mapTravelPackageToLandingData', () => {
     expect(mapped.itinerary.excludes).toEqual(view.excludes.basic);
     expect(mapped.itinerary.optionalTours).toEqual(view.optionalTours.flat);
     expect(mapped.itinerary.legalNotices).toEqual(['출발 7일 전 취소 시 수수료 발생', '현지 사정으로 일정 변경 가능']);
+    expect(mapped.itinerary.customerNotices).toEqual([
+      {
+        type: 'INFO',
+        title: '항공편 확정 안내',
+        text: '항공사와 편명은 예약 시 최종 확정됩니다.',
+      },
+    ]);
     expect(mapped.itinerary.days).toHaveLength(view.days.length);
 
     const day1 = mapped.itinerary.days[0];
-    expect(day1.activities.some((a) => a.type === 'hotel' && a.label.includes('하카타 호텔'))).toBe(true);
+    expect(day1.hotel).toBe('하카타 호텔');
+    expect(day1.activities.some((a) => a.type === 'hotel' && a.label.includes('하카타 호텔'))).toBe(false);
     expect(day1.activities.some((a) => a.type === 'flight')).toBe(true);
   });
   it('prefers public snapshot canonical view and LP projection over recalculating from the raw row', () => {

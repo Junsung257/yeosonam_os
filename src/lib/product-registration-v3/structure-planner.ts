@@ -13,7 +13,8 @@ const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})
 const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\uCC28)?(?:\s|$)|\d{1,2}\s*\uc77c(?:\uCC28)?(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\ud604\uc9c0\s*\uc9c0\ubd88\s*\uc635\uc158|\uac15\ub825\s*\ucd94\ucc9c\s*\uc635\uc158|\ucd94\ucc9c\s*\uc120\ud0dd\s*\uad00\uad11/i;
-const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
+const SHOPPING_RE = /shopping|쇼핑|면세점|쇼핑\s*센터|센터\s*쇼핑/i;
+const CUSTOMS_DUTY_DISCLOSURE_RE = /세관|과세|면세품|반입|신고서|전자\s*세관|입국|출국/i;
 const MEETING_RE = /meeting|\ubbf8\ud305|\uc9d1\uacb0|\ud53d\uc5c5|\uacf5\ud56d\s*\ubbf8\ud305/i;
 const AIR_MODE_RE = /flight|airline|airport|\ud56d\uacf5|\ube44\ud589|\ud3b8\uba85|\ucd9c\ubc1c\ud3b8|\uadc0\uad6d\ud3b8|\uacf5\ud56d|\uad6d\uc81c\uacf5\ud56d/i;
 const FERRY_MODE_RE = /ferry|cruise|\ud6fc\ub9ac|\ud398\ub9ac|\uc120\ubc15|\ud06c\ub8e8\uc988|\ubd80\uad00\ud6fc\ub9ac|\ub274\uce74\uba5c\ub9ac\uc544|\uce74\uba5c\ub9ac\uc544|\ubd80\uc0b0\ud56d|\ud558\uce74\ub2e4\ud56d/i;
@@ -193,10 +194,12 @@ function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boun
   }));
 }
 
-function collectSectionLocations(lines: V3SourceLine[], pattern: RegExp, label: string) {
-  return lines
-    .filter(line => pattern.test(line.quote))
-    .map(line => ({ line_start: line.lineNumber, line_end: line.lineNumber, label }));
+function isShoppingSectionLine(text: string): boolean {
+  if (!SHOPPING_RE.test(text)) return false;
+  if (CUSTOMS_DUTY_DISCLOSURE_RE.test(text) && !/(면세점|쇼핑\s*(?:센터|방문|횟수|일정))/i.test(text)) {
+    return false;
+  }
+  return true;
 }
 
 function isOptionSectionLine(line: string): boolean {
@@ -263,7 +266,9 @@ export function planProductRegistrationV3(lines: V3SourceLine[]): V3StructurePla
   const optionSections = lines
     .filter(line => isOptionSectionLine(line.quote))
     .map(line => ({ line_start: line.lineNumber, line_end: line.lineNumber, label: 'option section' }));
-  const shoppingSections = collectSectionLocations(lines, SHOPPING_RE, 'shopping section');
+  const shoppingSections = lines
+    .filter(line => isShoppingSectionLine(line.quote))
+    .map(line => ({ line_start: line.lineNumber, line_end: line.lineNumber, label: 'shopping section' }));
   const unresolved_parts: string[] = [];
 
   if (!priceLine) unresolved_parts.push('price table not found');

@@ -14,6 +14,7 @@ import {
   updateTransaction,
   upsertCart,
 } from '@/lib/supabase';
+import { recordServerAnalyticsEvent } from '@/lib/analytics/server-events';
 
 export const dynamic = 'force-dynamic';
 
@@ -361,6 +362,30 @@ export async function POST(request: NextRequest) {
     });
     await upsertCart(txn.session_id, []);
     await markClaim(txn.id, { status: 'completed' });
+    try {
+      await recordServerAnalyticsEvent({
+        eventName: 'purchase',
+        idempotencyKey: `checkout-purchase:${txn.id}`,
+        sourceType: 'checkout_transaction',
+        sourceId: txn.id,
+        transactionId: txn.id,
+        valueKrw: Math.round(Number(txn.total_price)),
+        payload: {
+          transaction_id: txn.id,
+          currency: 'KRW',
+          value: Math.round(Number(txn.total_price)),
+          items: confirmedOrders.map(order => ({
+            item_id: order.product_id,
+            item_name: order.product_name,
+            item_category: order.product_type.toLowerCase(),
+            price: order.price,
+            quantity: order.quantity,
+          })),
+        },
+      });
+    } catch (analyticsError) {
+      console.warn('[checkout/complete] analytics event recording failed:', analyticsError);
+    }
 
     return apiResponse(
       {

@@ -18,7 +18,7 @@ import { type NextRequest, type NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
-import { withAdminGuard } from '@/lib/admin-guard';
+import { inferTrustedAdminRole, inferTrustedTenantId } from '@/lib/admin-auth-claims';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,55 +30,6 @@ export interface AdminSessionUser {
   email: string | null;
   role: AdminRole;
   tenantId?: string;
-}
-
-function inferRoleFromPayload(payload: Record<string, unknown>): AdminRole {
-  // 1) app_metadata.role (Supabase custom claims에 가장 흔함)
-  const appMeta = payload.app_metadata as Record<string, unknown> | undefined;
-  if (appMeta) {
-    const role = appMeta.role;
-    if (typeof role === 'string') {
-      const normalized = role.toLowerCase();
-      if (normalized === 'platform_admin' || normalized === 'platform' || normalized === 'admin') return 'platform_admin';
-      if (normalized === 'tenant_admin') return 'tenant_admin';
-      if (normalized === 'tenant_staff' || normalized === 'staff') return 'tenant_staff';
-    }
-  }
-
-  // 2) user_metadata.role
-  const userMeta = payload.user_metadata as Record<string, unknown> | undefined;
-  if (userMeta) {
-    const role = userMeta.role;
-    if (typeof role === 'string') {
-      const normalized = role.toLowerCase();
-      if (normalized === 'platform_admin') return 'platform_admin';
-      if (normalized === 'tenant_admin') return 'tenant_admin';
-      if (normalized === 'tenant_staff') return 'tenant_staff';
-    }
-  }
-
-  // 3) JWT 커스텀 claim: https://supabase.com/schemas/auth/role
-  if (typeof payload.role === 'string') {
-    const role = (payload.role as string).toLowerCase();
-    if (['platform_admin', 'tenant_admin', 'tenant_staff'].includes(role)) {
-      return role as AdminRole;
-    }
-  }
-
-  return 'unknown';
-}
-
-function inferTenantId(payload: Record<string, unknown>): string | undefined {
-  // app_metadata.tenant_id 또는 tenantId
-  const appMeta = payload.app_metadata as Record<string, unknown> | undefined;
-  if (appMeta?.tenant_id && typeof appMeta.tenant_id === 'string') return appMeta.tenant_id;
-  if (appMeta?.tenantId && typeof appMeta.tenantId === 'string') return appMeta.tenantId;
-
-  const userMeta = payload.user_metadata as Record<string, unknown> | undefined;
-  if (userMeta?.tenant_id && typeof userMeta.tenant_id === 'string') return userMeta.tenant_id;
-  if (userMeta?.tenantId && typeof userMeta.tenantId === 'string') return userMeta.tenantId;
-
-  return undefined;
 }
 
 const getHandler = async (req: NextRequest): Promise<NextResponse> => {
@@ -112,11 +63,13 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
   const user: AdminSessionUser = {
     id: (typeof payload.sub === 'string' ? payload.sub : '') as string,
     email: typeof payload.email === 'string' ? payload.email : null,
-    role: inferRoleFromPayload(payload),
-    tenantId: inferTenantId(payload),
+    role: inferTrustedAdminRole(payload),
+    tenantId: inferTrustedTenantId(payload),
   };
 
   return apiResponse({ user });
 };
 
-export const GET = withAdminGuard(getHandler);
+// 자신의 검증된 JWT claim만 반환하므로 platform-admin 전용 guard를 적용하지 않는다.
+// tenant_admin/staff도 이 endpoint를 읽어야 UI와 API 권한 모델이 일치한다.
+export const GET = getHandler;

@@ -187,7 +187,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
       {/* ── 상단 툴바 ──────────────────────────────── */}
       <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onClose} className="text-admin-muted-2 hover:text-admin-muted transition p-1">
+          <button type="button" onClick={onClose} aria-label="카드뉴스 스튜디오 닫기" className="text-admin-muted-2 hover:text-admin-muted transition p-1">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
           <h2 className="text-admin-md font-semibold text-admin-text-2">카드뉴스 스튜디오</h2>

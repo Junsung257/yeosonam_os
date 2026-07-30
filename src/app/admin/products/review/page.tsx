@@ -292,12 +292,16 @@ export default function ProductReviewPage() {
   const bulkAction = useCallback(async (action: 'approve' | 'reject') => {
     if (bulkSelected.size === 0 || bulkBusy) return;
     const codes = Array.from(bulkSelected);
-    const reason = action === 'reject' ? (window.prompt(`${codes.length}건 일괄 거절 사유 (공통):`, '검수 반려') ?? '검수 반려') : null;
-    if (action === 'reject' && reason === null) return;
+    const promptedReason = action === 'reject'
+      ? window.prompt(`${codes.length}건 일괄 거절 사유 (공통):`, '검수 반려')
+      : null;
+    if (action === 'reject' && promptedReason === null) return;
+    const reason = promptedReason?.trim() || '검수 반려';
     if (!window.confirm(`${codes.length}건 ${action === 'approve' ? '일괄 승인' : '일괄 거절'} 진행?`)) return;
 
     setBulkBusy(true);
-    let success = 0, fail = 0;
+    const succeededCodes: string[] = [];
+    const failedCodes: string[] = [];
     for (const code of codes) {
       try {
         const res = await fetch(`/api/products/review?action=${action}`, {
@@ -306,20 +310,29 @@ export default function ProductReviewPage() {
           body: JSON.stringify(
             action === 'approve'
               ? { product_id: code, force_approve: true }
-              : { product_id: code, reason: reason ?? '검수 반려' },
+              : { product_id: code, reason },
           ),
         });
-        if (res.ok) success++;
-        else fail++;
+        const payload = await res.json().catch(() => null) as { success?: boolean } | null;
+        if (res.ok && payload?.success === true) succeededCodes.push(code);
+        else failedCodes.push(code);
       } catch {
-        fail++;
+        failedCodes.push(code);
       }
     }
     // 성공한 것만 목록 제거
-    setProducts(ps => ps.filter(p => !codes.includes(p.internal_code)));
-    setBulkSelected(new Set());
+    const succeeded = new Set(succeededCodes);
+    setProducts(ps => ps.filter(p => !succeeded.has(p.internal_code)));
+    setSelected(current => current && succeeded.has(current.internal_code) ? null : current);
+    setBulkSelected(new Set(failedCodes));
     setBulkBusy(false);
-    showToast(`${action === 'approve' ? '승인' : '거절'} 완료: ${success}건 성공 / ${fail}건 실패`, fail > 0 ? 'err' : 'ok');
+    const failureDetail = failedCodes.length > 0
+      ? ` (실패: ${failedCodes.slice(0, 3).join(', ')}${failedCodes.length > 3 ? ' 외' : ''})`
+      : '';
+    showToast(
+      `${action === 'approve' ? '승인' : '거절'} 완료: ${succeededCodes.length}건 성공 / ${failedCodes.length}건 실패${failureDetail}`,
+      failedCodes.length > 0 ? 'err' : 'ok',
+    );
   }, [bulkSelected, bulkBusy, showToast]);
 
   // ── 이미지 불러오기 ────────────────────────────────────────────────────────
@@ -417,7 +430,7 @@ export default function ProductReviewPage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error);
-      showToast(`승인 완료! 랜딩페이지 활성화: ${removed.display_name}`);
+      showToast(`ERP 상품 승인 완료 · 고객 공개는 패키지 발행 검수에서 진행: ${removed.display_name}`);
     } catch (e) {
       // 롤백
       setProducts(ps => [removed, ...ps]);
@@ -585,13 +598,15 @@ export default function ProductReviewPage() {
                 <li key={p.internal_code} className="border-b border-admin-border-mid">
                   <div className={`flex items-stretch transition-colors hover:bg-admin-bg ${selected?.internal_code === p.internal_code ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''} ${bulkSelected.has(p.internal_code) ? 'bg-amber-50' : ''}`}>
                     {/* P10-2 박제: 체크박스 — 좌측 컴팩트 */}
-                    <label className="flex items-center pl-3 pr-1 cursor-pointer" onClick={e => e.stopPropagation()}>
+                    <label className="flex items-center pl-3 pr-1 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={bulkSelected.has(p.internal_code)}
                         onChange={() => toggleBulk(p.internal_code)}
+                        aria-label={`${p.display_name || p.internal_code} 다중 선택`}
                         className="w-4 h-4 cursor-pointer"
                       />
+                      <span className="sr-only">{p.display_name || p.internal_code} 다중 선택</span>
                     </label>
                     <button type="button"
                       onClick={() => selectProduct(p)}
@@ -910,8 +925,9 @@ export default function ProductReviewPage() {
                         {faq.map((item, i) => (
                           <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
                             <div className="mb-2">
-                              <label className="text-[11px] text-blue-600 font-medium">Q{i + 1}</label>
+                              <label htmlFor={`faq-question-${i}`} className="text-[11px] text-blue-600 font-medium">Q{i + 1}</label>
                               <textarea
+                                id={`faq-question-${i}`}
                                 value={item.q}
                                 onChange={e => setFaq(fs => fs.map((f, j) => j === i ? { ...f, q: e.target.value } : f))}
                                 rows={1}
@@ -919,8 +935,9 @@ export default function ProductReviewPage() {
                               />
                             </div>
                             <div>
-                              <label className="text-[11px] text-admin-muted-2 font-medium">A</label>
+                              <label htmlFor={`faq-answer-${i}`} className="text-[11px] text-admin-muted-2 font-medium">A</label>
                               <textarea
+                                id={`faq-answer-${i}`}
                                 value={item.a}
                                 onChange={e => setFaq(fs => fs.map((f, j) => j === i ? { ...f, a: e.target.value } : f))}
                                 rows={2}

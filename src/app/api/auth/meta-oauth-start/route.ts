@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState, isOAuthStateConfigured } from '@/lib/oauth-state';
 
 /**
  * Meta (Instagram/Facebook Ads) OAuth 시작
@@ -20,16 +20,14 @@ export async function GET(request: NextRequest) {
 
   const appId = getSecret('META_APP_ID');
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!appId || !siteUrl) {
+  if (!appId || !siteUrl || !isOAuthStateConfigured()) {
     return apiResponse(
-      { error: 'META_APP_ID 또는 NEXT_PUBLIC_SITE_URL 미설정' },
-      { status: 500 },
+      { error: 'Meta OAuth is not configured' },
+      { status: 503 },
     );
   }
 
-  const payload = Buffer.from(JSON.stringify({ tenant_id: tenantId, ts: Date.now() })).toString('base64url');
-  const sig = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(payload).digest('hex').slice(0, 16);
-  const state = `${payload}.${sig}`;
+  const state = createOAuthState({ tenantId, provider: 'meta' });
 
   const params = new URLSearchParams({
     client_id: appId,

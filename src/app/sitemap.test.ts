@@ -108,7 +108,7 @@ vi.mock('@/lib/cron-resource-saver', () => ({
 }));
 
 describe('sitemap', () => {
-  it('keeps noindex package detail pages out of sitemap', async () => {
+  it('includes only publicly approved package and landing detail pages', async () => {
     queriedTables.length = 0;
     const { default: sitemap } = await import('./sitemap');
 
@@ -120,7 +120,10 @@ describe('sitemap', () => {
     expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
     expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
-    expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
+    expect(urls).toContain(`${expectedBaseUrl}/packages/pkg-osaka`);
+    expect(urls).toContain(`${expectedBaseUrl}/lp/pkg-osaka`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/packages/pkg-hidden`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/lp/pkg-hidden`);
     expect(queriedTables).toContain('travel_packages');
     expect(queriedTables).toContain('public_package_snapshots');
     expect(queriedTables).toContain('public_blog_content_creatives');

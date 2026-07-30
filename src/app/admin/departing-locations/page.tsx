@@ -108,7 +108,7 @@ export default function DepartingLocationsPage() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i}>
                   {[120, 48, 64].map((w, j) => (
-                    <td key={j}>
+                    <td key={j} aria-label={`${['출발지명', '상태', '액션'][j]} 불러오는 중`}>
                       <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
                     </td>
                   ))}
@@ -142,7 +142,7 @@ export default function DepartingLocationsPage() {
                     {editingId === l.id ? (
                       <div className="flex gap-1.5">
                         <input
-                          autoFocus
+                          aria-label={`${l.name} 출발지명 수정`}
                           value={editName}
                           onChange={e => setEditName(e.target.value)}
                           onKeyDown={e => {

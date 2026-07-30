@@ -2,6 +2,7 @@
 import { isPublishableStandardNoticeDraft } from './customer-payload';
 import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
 import type { V3DraftLedger } from './types';
+import { buildFlightOptionCustomerNotice } from './flight-schedule-options';
 
 function renderMeal(value: Record<string, unknown>): { enabled: boolean; note: string | null } {
   const raw = typeof value.raw_text === 'string' ? value.raw_text : null;
@@ -20,6 +21,10 @@ function renderHotel(value: Record<string, unknown>): HotelInfo {
 export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackageInput[] {
   return ledger.variants.map(variant => {
     const publishableNotices = variant.standard_notices.filter(isPublishableStandardNoticeDraft);
+    const flightOptionNotice = buildFlightOptionCustomerNotice(variant.flight_options ?? []);
+    const prebookingQuoteNotices = variant.structured_facts
+      .filter(fact => fact.values.safe_state === 'prebooking_quote_and_consent_required')
+      .map(fact => fact.standard_text);
     const title = variant.title_parts[0] || variant.variant_key;
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
@@ -61,16 +66,35 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
       airline: outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
       inclusions: variant.inclusions.map(item => item.value),
       excludes: variant.exclusions.map(item => item.value),
-      notices_parsed: publishableNotices.map(notice => ({
-        type: notice.risk_level === 'high' ? 'CRITICAL' : notice.risk_level === 'medium' ? 'POLICY' : 'INFO',
-        title: '유의사항',
-        text: `• ${notice.standard_text}`,
-        category: notice.category,
-        template_key: notice.template_key,
-        review_status: notice.review_status,
-      })),
-      customer_notes: publishableNotices
-        .map(notice => notice.standard_text)
+      notices_parsed: [
+        ...publishableNotices.map(notice => ({
+          type: notice.risk_level === 'high' ? 'CRITICAL' : notice.risk_level === 'medium' ? 'POLICY' : 'INFO',
+          title: '유의사항',
+          text: `• ${notice.standard_text}`,
+          category: notice.category,
+          template_key: notice.template_key,
+          review_status: notice.review_status,
+        })),
+        ...(flightOptionNotice ? [{
+          type: 'INFO' as const,
+          title: '항공편 확정 안내',
+          text: `• ${flightOptionNotice}`,
+          category: 'flight_schedule_options',
+          review_status: 'auto_clean',
+        }] : []),
+        ...prebookingQuoteNotices.map(text => ({
+          type: 'PAYMENT' as const,
+          title: '변동 추가비용 확정 절차',
+          text: `• ${text}`,
+          category: 'prebooking_quote_and_consent',
+          review_status: 'auto_clean',
+        })),
+      ],
+      customer_notes: [
+        ...publishableNotices.map(notice => notice.standard_text),
+        ...(flightOptionNotice ? [flightOptionNotice] : []),
+        ...prebookingQuoteNotices,
+      ]
         .join('\n'),
       optional_tours: variant.options
         .filter(option => isCustomerOptionalTourCandidate([

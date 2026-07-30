@@ -48,6 +48,8 @@ describe('resolveShopping + resolveTermsMisc', () => {
     const misc = resolveTermsMisc(s);
     expect(misc.items).toHaveLength(1);
     expect(misc.items[0]).toMatch(/한 달 이내/);
+    expect(misc.items[0]).toMatch(/현지 쇼핑센터에서 구매한 물품/);
+    expect(misc.items[0]).toMatch(/패키지여행 계약의 취소·환불 규정과는 별도/);
   });
 });
 

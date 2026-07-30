@@ -21,6 +21,24 @@ describe('upload title normalization', () => {
     )).toBe('BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일');
   });
 
+  it('removes supplier field labels from a pasted product title', () => {
+    expect(normalizeUploadTitle(
+      '\uC0C1\uD488\uBA85 [PASTE-GOLDEN] \uBC29\uCF55 \uD30C\uD0C0\uC57C 5\uC77C',
+      null,
+    )).toBe('[PASTE-GOLDEN] \uBC29\uCF55 \uD30C\uD0C0\uC57C 5\uC77C');
+  });
+
+  it('replaces generic marketing headers with a source-backed itinerary title', () => {
+    expect(normalizeUploadTitle(
+      '한정상품',
+      '[고품격] 곤명+여강+대리+샹그릴라 5박6일',
+    )).toBe('[고품격] 곤명+여강+대리+샹그릴라 5박6일');
+    expect(normalizeUploadTitle(
+      '홍보특가',
+      '곤명+만봉림+황과수+마령하대협곡+석림 5박6일',
+    )).toBe('곤명+만봉림+황과수+마령하대협곡+석림 5박6일');
+  });
+
   it('prefers the document product title over a dated HWP source label', () => {
     expect(normalizeUploadTitle(
       '[0813] VJ 멜리아빈펄 5일_0626',

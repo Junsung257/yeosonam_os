@@ -99,7 +99,7 @@ export default function SidebarAIWidget() {
         '랜드사': { label: '랜드사 관리', href: '/admin/land-operators', iconName: 'building-2' },
         '광고': { label: '검색광고', href: '/admin/search-ads', iconName: 'megaphone' },
         '결제': { label: '입금/정산', href: '/admin/payments', iconName: 'wallet' },
-        'FAQ': { label: 'FAQ 봇', href: '/admin/faq', iconName: 'message-circle' },
+        'FAQ': { label: 'FAQ 봇', href: '/admin/qa', iconName: 'message-circle' },
         '약관': { label: '약관 템플릿', href: '/admin/terms-templates', iconName: 'file-text' },
       };
 
@@ -154,10 +154,10 @@ export default function SidebarAIWidget() {
       <div className="px-2 pb-2">
         <button type="button"
           onClick={() => setExpanded(true)}
-          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-admin-sm text-admin-xs text-admin-muted-2 hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
+          className="w-full flex items-center gap-2 px-2.5 py-2 rounded-admin-sm text-admin-xs text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
           title="AI 명령 입력"
         >
-          <Sparkles size={12} className="text-brand" />
+          <Sparkles size={12} className="text-brand-dark" />
           <span>AI 명령...</span>
         </button>
       </div>
@@ -167,7 +167,7 @@ export default function SidebarAIWidget() {
   return (
     <div className="px-2 pb-2">
       <div className="bg-admin-surface-2 rounded-admin-md border border-admin-border p-2 space-y-2">
-        <div className="flex items-center gap-1.5 text-admin-2xs font-semibold text-brand uppercase tracking-[0.06em]">
+        <div className="flex items-center gap-1.5 text-admin-2xs font-semibold text-brand-dark uppercase tracking-[0.06em]">
           <Bot size={10} />
           AI 명령
           <button type="button"

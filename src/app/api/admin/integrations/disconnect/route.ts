@@ -1,5 +1,5 @@
 import { type NextRequest, type NextResponse } from 'next/server';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
@@ -12,8 +12,11 @@ import { apiResponse } from '@/lib/api-response';
  * 토큰 데이터는 보존 (재연결 시 덮어씀).
  */
 const postHandler = async (request: NextRequest): Promise<NextResponse> => {
-  if (!isSupabaseConfigured) {
-    return apiResponse({ success: true, mock: true });
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse(
+      { error: 'Supabase admin connection is not configured.' },
+      { status: 503 },
+    );
   }
 
   try {

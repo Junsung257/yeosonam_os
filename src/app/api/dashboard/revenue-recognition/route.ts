@@ -1,29 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import {
   getRecognizedRevenueMonthly,
   getNewBookingsMonthly,
   getBookingPaceAndCancellation,
-  isSupabaseConfigured,
+  isSupabaseAdminConfigured,
 } from '@/lib/supabase';
+import { apiResponse } from '@/lib/api-response';
 
-/**
- * Dashboard V4 — 매출 인식 분리 (IFRS 15 / ASC 606) + Booking Pace
- *  - recognized: 출발일 기준 확정매출 (회계, 사장님 요구 #1)
- *  - newBookings: 생성일 KST 기준 신규예약 + 취소율 (영업, 사장님 요구 #2)
- *  - paceAndCancellation: D-N 버킷별 향후 출발 + 90일 취소율 (Booking.com 표준)
- */
 const PRIVATE_NO_STORE = { 'Cache-Control': 'private, no-store' };
 
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { recognized: [], newBookings: [], pace: [], cancellation_90d: null },
-      { headers: PRIVATE_NO_STORE },
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse(
+      { error: 'Supabase admin connection is not configured.', recognized: [], newBookings: [], pace: [], cancellation_90d: null },
+      { status: 503, headers: PRIVATE_NO_STORE },
     );
   }
   const { searchParams } = new URL(request.url);
-  const months = Math.min(24, Math.max(1, parseInt(searchParams.get('months') || '6', 10)));
+  const requestedMonths = Number.parseInt(searchParams.get('months') || '6', 10);
+  const months = Number.isFinite(requestedMonths) ? Math.min(24, Math.max(1, requestedMonths)) : 6;
 
   try {
     const [recognized, newBookings, paceAndCancel] = await Promise.all([
@@ -31,19 +27,28 @@ const getHandler = async (request: NextRequest) => {
       getNewBookingsMonthly(months),
       getBookingPaceAndCancellation(),
     ]);
-    return NextResponse.json(
+    return apiResponse(
       {
         recognized,
         newBookings,
         pace: paceAndCancel.pace,
         cancellation_90d: paceAndCancel.cancellation_90d,
+        data_status: 'ok',
       },
       { headers: PRIVATE_NO_STORE },
     );
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '대시보드 V4 조회 실패' },
-      { status: 500, headers: PRIVATE_NO_STORE },
+    console.error('[dashboard/revenue-recognition] source unavailable', err);
+    return apiResponse(
+      {
+        recognized: [],
+        newBookings: [],
+        pace: [],
+        cancellation_90d: null,
+        data_status: 'unavailable',
+        status_detail: '매출 인식 데이터 소스가 아직 활성화되지 않았습니다.',
+      },
+      { status: 206, headers: PRIVATE_NO_STORE },
     );
   }
 };

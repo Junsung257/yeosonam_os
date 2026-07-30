@@ -163,6 +163,111 @@ function dayNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
 }
 
+function repairSourceBackedDaySequence(
+  itineraryData: ItineraryDataLike | null,
+  rawText: string | null | undefined,
+  durationDays: number | null | undefined,
+): { itineraryData: ItineraryDataLike | null; warnings: string[] } {
+  if (!itineraryData?.days?.length || !durationDays || durationDays < 2) {
+    return { itineraryData, warnings: [] };
+  }
+
+  const days = itineraryData.days.map(day => ({
+    ...day,
+    schedule: Array.isArray(day.schedule) ? day.schedule.map(item => ({ ...item })) : day.schedule,
+  }));
+  const existing = new Set(days.map(day => dayNumber(day.day)).filter((day): day is number => day != null));
+  const expanded: number[] = [];
+  const shifted: Array<{ from: number; to: number }> = [];
+  const rangePattern = /제\s*(\d{1,2})\s*일\s*~\s*(\d{1,2})\s*일/gu;
+
+  for (const match of rawText?.matchAll(rangePattern) ?? []) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (
+      !Number.isInteger(start)
+      || !Number.isInteger(end)
+      || start < 1
+      || end <= start
+      || end > durationDays
+      || end - start > 4
+    ) {
+      continue;
+    }
+    const laterText = rawText?.slice((match.index ?? 0) + match[0].length) ?? '';
+    const repeatedRangeEndHeader = new RegExp(`제\\s*${end}\\s*일`, 'u').test(laterText);
+    if (
+      repeatedRangeEndHeader
+      && end + 1 < durationDays
+      && existing.has(end)
+      && !existing.has(end + 1)
+    ) {
+      const mislabeledDay = days.find(day => dayNumber(day.day) === end);
+      if (mislabeledDay) {
+        mislabeledDay.day = end + 1;
+        existing.delete(end);
+        existing.add(end + 1);
+        shifted.push({ from: end, to: end + 1 });
+      }
+    }
+    const sourceDay = days.find(day => dayNumber(day.day) === start);
+    if (!sourceDay?.schedule?.length) continue;
+    for (let day = start + 1; day <= end; day++) {
+      const targetDay = days.find(candidate => dayNumber(candidate.day) === day);
+      if (targetDay?.schedule?.length) continue;
+      const repairedDay = {
+        ...sourceDay,
+        day,
+        schedule: sourceDay.schedule.map(item => ({
+          ...item,
+          activity: typeof item.activity === 'string' && item.activity.trim()
+            ? `${item.activity.trim()} (${start}~${end}일 공통 일정)`
+            : item.activity,
+        })),
+      };
+      if (targetDay) {
+        Object.assign(targetDay, repairedDay);
+      } else {
+        days.push(repairedDay);
+      }
+      existing.add(day);
+      expanded.push(day);
+    }
+  }
+
+  days.sort((left, right) => (dayNumber(left.day) ?? Number.MAX_SAFE_INTEGER) - (dayNumber(right.day) ?? Number.MAX_SAFE_INTEGER));
+  const numbers = days.map(day => dayNumber(day.day));
+  const canRelabelSequentially = days.length === durationDays
+    && numbers.every((value): value is number => value != null)
+    && new Set(numbers).size === numbers.length
+    && numbers.every((value, index) => (
+      index === 0
+        ? value === 1
+        : value > numbers[index - 1] && value >= index + 1 && value <= index + 2
+    ));
+  const relabeled = canRelabelSequentially
+    && numbers.some((value, index) => value !== index + 1);
+
+  if (relabeled) {
+    days.forEach((day, index) => {
+      day.day = index + 1;
+    });
+  }
+
+  if (expanded.length === 0 && shifted.length === 0 && !relabeled) return { itineraryData, warnings: [] };
+  return {
+    itineraryData: {
+      ...itineraryData,
+      days,
+    },
+    warnings: [
+      ...(expanded.length > 0 ? [`source-backed itinerary day range expanded: day ${expanded.join(', ')}`] : []),
+      ...shifted.map(item => `source-backed repeated range-end day shifted: day ${item.from} -> ${item.to}`),
+      ...(relabeled ? [`source-backed itinerary day labels normalized: ${numbers.join(',')} -> ${days.map(day => day.day).join(',')}`] : []),
+    ],
+  };
+}
+
 function dayCompletenessScore(day: ItineraryDayLike): number {
   const schedule = Array.isArray(day.schedule) ? day.schedule : [];
   const text = JSON.stringify({
@@ -477,7 +582,13 @@ export async function normalizeUploadItinerary(input: {
   warnings.push(...initialReturnDayRepair.warnings);
   const initialDuplicateRepair = collapseDuplicateDayEntries(initialReturnDayRepair.itineraryData, input.durationDays);
   warnings.push(...initialDuplicateRepair.warnings);
-  itineraryInput = compileItineraryForLanding(initialDuplicateRepair.itineraryData);
+  const initialSequenceRepair = repairSourceBackedDaySequence(
+    initialDuplicateRepair.itineraryData,
+    input.productRawText,
+    input.durationDays,
+  );
+  warnings.push(...initialSequenceRepair.warnings);
+  itineraryInput = compileItineraryForLanding(initialSequenceRepair.itineraryData);
 
   const enrichment = enrichItineraryWithAttractionReferences(
     itineraryInput,
@@ -522,8 +633,14 @@ export async function normalizeUploadItinerary(input: {
     input.durationDays,
   );
   warnings.push(...finalSourceDayFill.warnings);
-  const finalEnrichment = enrichItineraryWithAttractionReferences(
+  const finalSequenceRepair = repairSourceBackedDaySequence(
     finalSourceDayFill.itineraryData,
+    input.productRawText,
+    input.durationDays,
+  );
+  warnings.push(...finalSequenceRepair.warnings);
+  const finalEnrichment = enrichItineraryWithAttractionReferences(
+    finalSequenceRepair.itineraryData,
     input.activeAttractions,
     input.destination ?? undefined,
   );

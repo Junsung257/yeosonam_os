@@ -225,6 +225,104 @@ describe('readSupplierDocumentLikeHuman', () => {
     expect(premium.pricePairs.find(row => row.date === '2026-03-06')?.adult_price).toBe(1659000);
   });
 
+  it('uses the selected spot-table variant instead of a neighboring product column', () => {
+    const rawText = [
+      '출발일',
+      '요일',
+      '실속 알뜰3색',
+      '더비스타 품격2색',
+      '스팟특가',
+      '6/20,21,28',
+      '999,-',
+      '1,159,-',
+      '7/2,9',
+      '1,139,-',
+      '1,259,-',
+      '6/4~6/30',
+      '수',
+      '1,169,-',
+      '1,289,-',
+      'PKG',
+      '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일',
+      '출 발 일',
+      '6/1~10/24 (수,목)',
+      '판 매 가',
+      '요금표 참조',
+    ].join('\n');
+
+    const result = readSupplierDocumentLikeHuman({
+      rawText,
+      title: '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일',
+      durationDays: 5,
+      departureDays: '수,목',
+      year: 2026,
+    });
+
+    expect(result.priceSource).toBe('spot_weekday_table');
+    expect(result.pricePairs.find(row => row.date === '2026-07-02')?.adult_price).toBe(1259000);
+    expect(result.pricePairs.find(row => row.date === '2026-06-20')).toBeUndefined();
+  });
+
+  it('does not mix adjacent weekday prices into the same date for golf range tables', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        'BX 시즈오카 후지산 품격 다색골프',
+        '7/6~7/29',
+        '월,수',
+        '1,079,-',
+        '금(4일)',
+        '1,519,-',
+      ].join('\n'),
+      title: 'BX 시즈오카 후지산 품격 다색골프 36홀 2박3일',
+      durationDays: 3,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.filter(row => row.date === '2026-07-06')).toEqual([
+      expect.objectContaining({ adult_price: 1079000 }),
+    ]);
+    expect(result.pricePairs.filter(row => row.date === '2026-07-10')).toEqual([]);
+
+    const fourDayResult = readSupplierDocumentLikeHuman({
+      rawText: [
+        'BX 시즈오카 후지산 품격 다색골프',
+        '7/6~7/29',
+        '월,수',
+        '1,079,-',
+        '금(4일)',
+        '1,519,-',
+      ].join('\n'),
+      title: 'BX 시즈오카 후지산 품격 다색골프 3박4일',
+      durationDays: 4,
+      year: 2026,
+    });
+    expect(fourDayResult.pricePairs.filter(row => row.date === '2026-07-10')).toEqual([
+      expect.objectContaining({ adult_price: 1519000 }),
+    ]);
+  });
+
+  it('recovers Korean month-day lists followed by a shared package price', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '출 발 일',
+        '상 품 가',
+        '3박 4일',
+        '(토요일)',
+        '9월 5일, 12일, 19일',
+        '849,000원',
+      ].join('\n'),
+      title: '장가계 3박4일',
+      durationDays: 4,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual([
+      '2026-09-05:849000',
+      '2026-09-12:849000',
+      '2026-09-19:849000',
+    ]);
+  });
+
   it('ignores surcharge dates when building independent product-price evidence', () => {
     const result = readSupplierDocumentLikeHuman({
       rawText: [

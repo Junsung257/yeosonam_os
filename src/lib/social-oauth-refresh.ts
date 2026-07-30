@@ -1,6 +1,8 @@
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin } from '@/lib/supabase';
+import { invalidateMetaTokenCache } from '@/lib/meta-token-resolver';
+import { refreshThreadsLongLivedToken } from '@/lib/threads-token';
 
 export interface OAuthRefreshResult {
   platform: string;
@@ -53,7 +55,16 @@ async function refreshTokenForPlatform(
 ): Promise<{ accessToken: string; expiresAt: Date }> {
   console.log(`[social-oauth-refresh] ${platform} token refresh started`);
 
-  const metaPlatforms = new Set(['threads', 'instagram', 'facebook']);
+  if (platform === 'threads') {
+    const result = await refreshThreadsLongLivedToken(accessToken);
+    const expiresAt = result.expiresAt
+      ? new Date(result.expiresAt)
+      : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+    console.log(`[social-oauth-refresh] threads token refresh completed (expires=${expiresAt.toISOString()})`);
+    return { accessToken: result.accessToken, expiresAt };
+  }
+
+  const metaPlatforms = new Set(['instagram', 'facebook']);
   if (metaPlatforms.has(platform)) {
     const result = await refreshMetaToken(platform, accessToken);
     if (result) {
@@ -80,7 +91,8 @@ export async function refreshExpiringTokens(): Promise<OAuthRefreshResult[]> {
       .from('social_platform_configs')
       .select('platform, access_token, token_expires_at')
       .eq('enabled', true)
-      .lt('token_expires_at', sevenDaysFromNow);
+      .not('access_token', 'is', null)
+      .or(`token_expires_at.is.null,token_expires_at.lt.${sevenDaysFromNow}`);
 
     if (error) {
       console.error('[social-oauth-refresh] config lookup failed:', sanitizeDbError(error));
@@ -101,6 +113,22 @@ export async function refreshExpiringTokens(): Promise<OAuthRefreshResult[]> {
           platform,
           config.access_token as string,
         );
+
+        // The token resolver treats system_secrets as authoritative. Persist the
+        // refreshed Threads token there first so a later config-write failure
+        // cannot leave the publisher pinned to the expired credential.
+        if (platform === 'threads') {
+          const { error: secretError } = await supabaseAdmin.from('system_secrets').upsert({
+            key: 'THREADS_ACCESS_TOKEN',
+            value: accessToken,
+            expires_at: expiresAt.toISOString(),
+            updated_at: new Date().toISOString(),
+          } as never, { onConflict: 'key' });
+          if (secretError) {
+            throw new Error(`Threads secret sync failed: ${sanitizeDbError(secretError)}`);
+          }
+          invalidateMetaTokenCache('THREADS_ACCESS_TOKEN');
+        }
 
         const { error: updateError } = await supabaseAdmin
           .from('social_platform_configs')

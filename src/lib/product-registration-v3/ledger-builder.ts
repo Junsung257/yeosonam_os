@@ -12,6 +12,7 @@ import { extractStandardNoticesFromRemarkLines } from './standard-notices';
 import { extractStructuredFactsFromSupplierText } from './structured-facts';
 import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
 import { isCustomerOptionalTourCandidate, isNonCustomerOptionText } from '@/lib/customer-option-classifier';
+import { extractSourceBackedRoundTripFlightOptions } from './flight-schedule-options';
 
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -20,6 +21,8 @@ const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})
 const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
 const USD_RE = /(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/i;
 const USD_RE_GLOBAL = /(?:USD|US\$|\$)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/gi;
+const JPY_RE = /(?:JPY|¥)\s*([\d,]+)|([\d,]+)\s*(?:JPY|¥|엔)/i;
+const JPY_RE_GLOBAL = /(?:JPY|¥)\s*[\d,]+|[\d,]+\s*(?:JPY|¥|엔)/gi;
 const DAY_HEADER_RE = /^(?:day\s*(\d{1,2})(?:\b|\s|$)|\uc81c\s*(\d{1,2})\s*\uc77c(?:\uCC28)?(?:\s|$)|(\d{1,2})\s*\uc77c(?:\uCC28)?(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const PRICE_HEADER_RE = /^price\s*[:\-]|^(?:\uac00\uaca9|\uc694\uae08)\s*[:\-]?/i;
@@ -47,7 +50,7 @@ const GOLF_ROUND_RE =
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const SHOPPING_DETAIL_RE = /\uae30\ub150\ud488|\ud1a0\uc0b0\ud488|\uac74\uac15\ubcf4\uc870\uc2dd\ud488|\uc7a1\ud654|\uc9c4\uc8fc/i;
 const INCLUDED_ACTIVITY_RE = /\ub514\uc2a4\ucee4\ubc84\ub9ac\s*\ud22c\uc5b4|\uc2dc\ub0b4\uad00\uad11|\uc2a4\ucfe0\ubc84\ub2e4\uc774\ube59|\uc218\uc601\uc7a5\s*\uc2e4\uc2b5|\uc624\uc77c\ub9c8\uc0ac\uc9c0|\ud638\ud551\ud22c\uc5b4/i;
-const OPTION_PRICE_CANDIDATE_RE = /\uc120\ud0dd|\uc635\uc158|\ud638\ud551|\ubc14\ub098\ub098\s*\ubcf4\ud2b8|\ud30c\ub77c\uc138\uc77c\ub9c1|\ud328\ub7ec\uc138\uc77c\ub9c1|\ud30c\ub77c\uc140\ub9c1|\uc81c\ud2b8\s*\uc2a4\ud0a4|\uc528\s*\uc6cc\ud06c|\uc528\s*\uc6cc\ud0b9|\ub2e4\uc774\ube59|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\uc1fc|\ud22c\uc5b4/i;
+const OPTION_PRICE_CANDIDATE_RE = /\uc120\ud0dd|\uc635\uc158|\ud638\ud551|\uc628\ucc9c|\ubc14\ub098\ub098\s*\ubcf4\ud2b8|\ud30c\ub77c\uc138\uc77c\ub9c1|\ud328\ub7ec\uc138\uc77c\ub9c1|\ud30c\ub77c\uc140\ub9c1|\uc81c\ud2b8\s*\uc2a4\ud0a4|\uc528\s*\uc6cc\ud06c|\uc528\s*\uc6cc\ud0b9|\ub2e4\uc774\ube59|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\uc1fc|\ud22c\uc5b4/i;
 const TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22c\uc5b4|\ub9c8\ucf13|\uc2dc\uc7a5|\uc57c\uc2dc\uc7a5|\uc0ac\uc6d0|\ud574\ubcc0|\ube44\uce58|\ub18d\uc7a5|\uc218\uc6a9\uc18c|\ud3ec\ud1a0\uc874|\uc57c\uacbd|\ubc14\uc790|\uc120\uc14b\ud0c0\uc6b4|\ud56b\ud50c\s*\uce74\ud398)/i;
 const ACTIVITY_NOTE_LINE_RE = /(?:\uc900\ube44\ubb3c|\uc7a5\ube44|\uad6c\uba85\uc870\ub07c|\ubbf8\ub07c|\uc544\ucfe0\uc544\uc288\uc988|\uc218\uc601\ubcf5|\uc120\ud06c\ub9bc|\uc5ec\ubc8c\s*\uc637)/i;
 const BROAD_TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22c\uc5b4|\ub9c8\ucf13|\uc2dc\uc7a5|\uc57c\uc2dc\uc7a5|\uc0ac\uc6d0|\ud574\ubcc0|\ube44\uce58|\ub18d\uc7a5|\uc218\uc6a9\uc18c|\ud3ec\ud1a0\uc874|\uc57c\uacbd|\ubc14\uc790|\uc120\uc14b\ud0c0\uc6b4|\ud56b\ud50c\s*\uce74\ud398|\ud14c\ub9c8\ud30c\ud06c|\uc6cc\ud130\ud30c\ud06c|\ube0c\ub9bf\uc9c0|\uc0ac\ud30c\ub9ac|\ub3d9\ubb3c\uc6d0|\uc2dd\ubb3c\uc6d0)/i;
@@ -78,7 +81,7 @@ const POST_ITINERARY_PRICE_EVIDENCE_SECTION_RE =
   /^(?:\[\s*\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\s*\]|.*\bPKG\b.*(?:\d+\s*\ubc15\s*\d+\s*\uc77c|\d+N\d+D)|\*{2,}.*\ubc1c\uad8c\uc870\uac74.*\*{2,})/i;
 const HOLIDAY_PRICE_NOISE_RE = /^[\s\u25cf\u2605\u2606*]+.*\uc5f0\ud734\s*\ucd9c\ubc1c/;
 const KOREAN_REGION_CELL_ONLY_RE =
-  /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
+  /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c|\uccad\uc8fc|\uace4\uba85|\ub300\ub9ac|\uc758\ucc3d|\ud55c\ub2e8|\ubcf4\ucc9c|\ud765\uc758|\ucc9c\uc9c4|\uc9c4\ud669\ub3c4|\uc2ec\ucc9c|\uc2ec\uc591|\uce58\ubc14|\ub098\ub77c|\uc778\ucc9c|\uac00\uc624\uc29d|\uc0f9\uadf8\ub9b4\ub77c|\ub2c8\uc138\ucf54|\ub2e8\uc218\uc774|\uc2dc\ub77c\ud558\ub9c8)$/;
 const BRACKETED_DESCRIPTION_ONLY_RE = /^\[[^\]]{8,80}\]$/;
 const BRACKETED_NAMED_ATTRACTION_RE = /^\[[^\]]*(?:\uACF5\uC6D0|\uC2DC\uC7A5|\uAC70\uB9AC|\uB3D9\uAD74|\uD3ED\uD3EC|\uC0AC\uC6D0|\uC1FC|\uC720\uB78C\uC120)[^\]]*\]$/;
 const GUANGZHOU_ROUTE_CELL_ONLY_RE =
@@ -117,6 +120,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (RAIL_CODE_CELL_ONLY_RE.test(compact)) return 'transfer';
   if (RAIL_SEAT_OR_CHANGE_NOTICE_RE.test(compact)) return 'notice';
   if (ROUTE_RETURN_CELL_RE.test(compact)) return 'transfer';
+  if (/(?:출발|귀환).*(?:도착|이동)/.test(text)) return 'transfer';
   if (TRANSPORT_PATH_FRAGMENT_RE.test(text)) return 'activity';
   if (DESCRIPTION_ONLY_FRAGMENT_RE.test(text)) return 'activity';
   if (KOREAN_REGION_CELL_ONLY_RE.test(compact)) return 'transfer';
@@ -131,6 +135,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (ABBREVIATED_PRICE_RE.test(compact)) return 'price_noise';
   if (/^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(compact)) return 'notice';
   if (/^(?:\ub178\uc635\uc158|no\s*option)$/i.test(compact)) return 'notice';
+  if (/^\(?예정\)?$/.test(compact)) return 'notice';
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return 'shopping';
   if (/^\(\+\d+\)$/.test(compact)) return null;
   if (/^(?:부산|클락|푸꾸옥|세부|다낭|나트랑|호치민|방콕)$/.test(compact)) return null;
@@ -178,6 +183,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (/(?:\uc1fc|show|\ud06c\ub8e8\uc988|\uc720\ub78c\uc120|\uccb4\ud5d8)/i.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc635\uc158/i.test(text)) return 'activity';
   if (FREE_TIME_RE.test(text)) return 'free_time';
   if (OPTION_RE.test(text)) return 'option';
+  if (/(?:세관\s*신고|세관에서|과세|면세품.*조심|전자세관신고|세관신고서)/i.test(text)) return 'notice';
   if (SHOPPING_RE.test(text) || SHOPPING_DETAIL_RE.test(text)) return 'shopping';
   if (NOTICE_RE.test(text)) return 'notice';
   if (INCLUDED_ACTIVITY_RE.test(text)) return 'activity';
@@ -186,6 +192,19 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (/^\s*[-–]/.test(text) && BROAD_TOUR_ACTIVITY_LINE_RE.test(text)) return 'activity';
   if (ATTRACTION_DECOY_RE.test(text) || PRICE_RE.test(text)) return 'price_noise';
   return text.length >= 2 ? 'attraction' : null;
+}
+
+function isAdjacentRestaurantMealLabel(
+  currentText: string,
+  previousText: string | null,
+  nextText: string | null,
+): boolean {
+  const current = currentText.trim();
+  const previous = previousText?.trim() ?? '';
+  const next = nextText?.replace(/\s+/g, '') ?? '';
+  if (!current || next !== '레스토랑') return false;
+  if (eventTypeForLine(current) !== 'attraction') return false;
+  return /^(?:석|중|조)\s*:|(?:석식|중식|조식|특식|미슐랭\s*추천)/i.test(previous);
 }
 
 function dayNumberFromMatch(match: RegExpMatchArray): number {
@@ -231,6 +250,14 @@ function parseUsdAmount(text: string): number | null {
   return Number.isFinite(amount) ? amount : null;
 }
 
+function parseJpyOptionAmount(text: string): number | null {
+  const amounts = [...text.matchAll(JPY_RE_GLOBAL)]
+    .map(match => Number(match[0].replace(/[^\d]/g, '')))
+    .filter(amount => Number.isFinite(amount) && amount > 0);
+  if (amounts.length === 0) return null;
+  return amounts.reduce((sum, amount) => sum + amount, 0);
+}
+
 function optionDurationMinutes(text: string): number | null {
   const hourMinute = text.match(/(\d+)\s*(?:\uc2dc\uac04|hour)s?\s*(\d+)\s*(?:\ubd84|min|minutes?)?/i);
   if (hourMinute) return Number(hourMinute[1]) * 60 + Number(hourMinute[2]);
@@ -256,7 +283,7 @@ function normalizeOptionName(text: string): string {
 }
 
 function isOptionHeadingOrNonCustomerOption(text: string): boolean {
-  const normalized = text.replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-○▪◦*\u2663]+/, '').trim();
+  const normalized = text.replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-○▪◦*\u2663↓↑]+/, '').trim();
   const compact = normalized.replace(/\s+/g, '');
   if (/^(?:현지지불옵션|강력추천옵션|추천옵션|\(?현지지불옵션\)?)$/i.test(compact)) return true;
   if (/^(?:선택관광비용|유류변동분|매너팁및개인경비|개인경비)$/.test(compact)) return true;
@@ -265,14 +292,20 @@ function isOptionHeadingOrNonCustomerOption(text: string): boolean {
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return true;
   if (INCLUDED_ACTIVITY_RE.test(normalized) && !USD_RE.test(normalized) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(normalized)) return true;
   if (/^(?:\ub178\uc635\uc158|no\s*option|\uc120\ud0dd\uad00\uad11\s*(?:\uc5c6\uc74c|\ubb34|0\ud68c))$/i.test(compact)) return true;
-  if (isNonCustomerOptionText(normalized)) return true;
+  if (
+    isNonCustomerOptionText(normalized)
+    && !(JPY_RE.test(normalized) && /(?:투어|온천|마사지|스파|쇼|공연|크루즈|체험|입장권|티켓)/i.test(normalized))
+  ) return true;
   return false;
 }
 
 function isOptionPriceCandidate(text: string): boolean {
-  return USD_RE.test(text)
-    && (OPTION_PRICE_CANDIDATE_RE.test(text) || /\b(?:5D|VIP)\b|VIP|5D/i.test(text))
-    && isCustomerOptionalTourCandidate(text);
+  const knownPricedOption = (USD_RE.test(text) || JPY_RE.test(text))
+    && (OPTION_PRICE_CANDIDATE_RE.test(text) || /\b(?:5D|VIP)\b|VIP|5D/i.test(text));
+  return knownPricedOption && (
+    isCustomerOptionalTourCandidate(text)
+    || (JPY_RE.test(text) && /(?:투어|온천|마사지|스파|쇼|공연|크루즈|체험|입장권|티켓)/i.test(text))
+  );
 }
 
 function buildPriceCalendarFromIR(sectionLines: V3SourceLine[], title: string): V3LedgerVariant['price_calendar'] {
@@ -384,6 +417,49 @@ function itineraryLinesBeforePriceEvidenceTail(sectionLines: V3SourceLine[]): V3
   return sectionLines;
 }
 
+function extractMinimumDeparture(
+  lines: V3SourceLine[],
+  sectionLines: V3SourceLine[],
+): V3LedgerVariant['minimum_departure'] {
+  const sameLine = sectionLines.find(line =>
+    /(?:\bminimum\b|\bmin\.(?=\s|\d)|\ucd5c\uc18c|\d+\s*(?:\uba85|\uc778)\s*(?:\uc774\uc0c1|\ubd80\ud130)\s*\ucd9c\ubc1c)/i.test(line.quote)
+    && /\d+/.test(line.quote)
+  );
+  if (sameLine) {
+    return {
+      value: Number(
+        sameLine.quote.match(/(?:\bminimum\b|\bmin\.(?=\s|\d)|\ucd5c\uc18c(?:\ucd9c\ubc1c)?)\D*(\d+)/i)?.[1]
+          ?? sameLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/)?.[1]
+          ?? sameLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\ubd80\ud130\s*\ucd9c\ubc1c/)?.[1]
+          ?? sameLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1/)?.[1]
+          ?? sameLine.quote.match(/\d+/)?.[0]
+          ?? 0,
+      ),
+      evidence: evidenceFromLines(lines, sameLine.lineNumber),
+    };
+  }
+
+  const explicitLabelRe = /^(?:\ucd5c\uc18c\s*\ucd9c\ubc1c(?:\s*\uc778\uc6d0)?|minimum(?:\s+departure)?|min\.?(?:\s+departure)?)\s*[:\uff1a]?\s*$/i;
+  const exactValueRe = /^(?:\ucd5c\uc18c\s*)?(\d{1,3})\s*(?:\uba85|\uc778)(?:\s*(?:\uc774\uc0c1|\ubd80\ud130))?(?:\s*\ucd9c\ubc1c)?\s*$/;
+  for (let index = 0; index < sectionLines.length; index++) {
+    const label = sectionLines[index];
+    if (!explicitLabelRe.test(label.quote.trim())) continue;
+
+    for (const candidate of sectionLines.slice(index + 1, index + 4)) {
+      const valueText = candidate.quote.trim();
+      if (!valueText) continue;
+      const match = valueText.match(exactValueRe);
+      if (!match) break;
+      return {
+        value: Number(match[1]),
+        evidence: evidenceFromLines(lines, label.lineNumber, candidate.lineNumber),
+      };
+    }
+  }
+
+  return null;
+}
+
 function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): V3LedgerVariant {
   const sectionLines = lines.slice(boundary.line_start - 1, boundary.line_end);
   const linePrices = sectionLines
@@ -403,7 +479,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   const flightRows = itinerarySectionLines
     .map((line, sectionIndex) => ({ line, sectionIndex, match: line.quote.match(FLIGHT_CODE_RE) }))
     .filter((row): row is { line: V3SourceLine; sectionIndex: number; match: RegExpMatchArray } => Boolean(row.match));
-  const flight_segments = flightRows.map(({ line, match, sectionIndex }, index) => {
+  const unresolvedFlightSegments = flightRows.map(({ line, match, sectionIndex }) => {
     const times = [...line.quote.matchAll(TIME_RE_GLOBAL)].map(m => m[0]);
     const resolvedTimes = resolveAdjacentFlightTimes(itinerarySectionLines, sectionIndex, times);
     let arrTime = resolvedTimes.arrTime;
@@ -420,20 +496,40 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     }
     arrTime ??= resolveSeparatedArrivalTime(itinerarySectionLines, sectionIndex);
     return {
-      leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
       code: `${match[1]}${match[2]}`,
       dep_time: resolvedTimes.depTime,
       arr_time: arrTime,
       evidence: evidenceFromLines(lines, line.lineNumber),
     };
   });
+  const completeFlightIndexes = unresolvedFlightSegments
+    .map((segment, index) => (segment.dep_time && segment.arr_time ? index : -1))
+    .filter(index => index >= 0);
+  const outboundFlightIndex = completeFlightIndexes[0] ?? (unresolvedFlightSegments.length > 0 ? 0 : -1);
+  const inboundFlightIndex = completeFlightIndexes.length >= 2
+    ? completeFlightIndexes[completeFlightIndexes.length - 1]
+    : unresolvedFlightSegments.length >= 2
+      ? 1
+      : -1;
+  const flight_segments = unresolvedFlightSegments.map((segment, index) => ({
+    ...segment,
+    leg: index === outboundFlightIndex
+      ? 'outbound' as const
+      : index === inboundFlightIndex
+        ? 'inbound' as const
+        : 'unknown' as const,
+  }));
+  const flight_options = flight_segments.length === 0
+    ? extractSourceBackedRoundTripFlightOptions(sectionLines)
+    : [];
 
   const days: V3LedgerVariant['days'] = [];
   let currentDay: V3LedgerVariant['days'][number] | null = null;
   let inRemarkSection = false;
   let seenItineraryDay = false;
   let itineraryClosed = false;
-  for (const line of itinerarySectionLines) {
+  for (let itineraryIndex = 0; itineraryIndex < itinerarySectionLines.length; itineraryIndex++) {
+    const line = itinerarySectionLines[itineraryIndex];
     const trimmed = line.quote.trim();
     if (/^(REMARK|비고|주의\s*사항|공지\s*사항)\s*$/i.test(trimmed)) {
       inRemarkSection = true;
@@ -469,7 +565,14 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     }
     if (!seenItineraryDay) continue;
     if (inRemarkSection) continue;
-    const type = eventTypeForLine(eventText);
+    const classifiedType = eventTypeForLine(eventText);
+    const type = classifiedType === 'attraction' && isAdjacentRestaurantMealLabel(
+      eventText,
+      itinerarySectionLines[itineraryIndex - 1]?.quote ?? null,
+      itinerarySectionLines[itineraryIndex + 1]?.quote ?? null,
+    )
+      ? 'meal'
+      : classifiedType;
     if (!type) continue;
     if (!currentDay) continue;
     const event = buildEvent(line, type, eventText.trim());
@@ -487,9 +590,13 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     .filter(line => eventTypeForLine(line.quote) === 'option' || isOptionPriceCandidate(line.quote))
     .flatMap(splitOptionLine)
     .filter(candidate => !isOptionHeadingOrNonCustomerOption(candidate.text))
-    .filter(candidate => isCustomerOptionalTourCandidate(candidate.text));
+    .filter(candidate => (
+      isCustomerOptionalTourCandidate(candidate.text)
+      || (JPY_RE.test(candidate.text) && /(?:투어|온천|마사지|스파|쇼|공연|크루즈|체험|입장권|티켓)/i.test(candidate.text))
+    ));
   const options = optionCandidates.map(candidate => {
     const usdAmount = parseUsdAmount(candidate.text);
+    const jpyAmount = usdAmount == null ? parseJpyOptionAmount(candidate.text) : null;
     const day = [...days].reverse().find(d => d.events.some(event => event.evidence.line_start <= candidate.line.lineNumber));
     return {
       region: null,
@@ -497,8 +604,8 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       raw_name: candidate.text,
       normalized_name: normalizeOptionName(candidate.text),
       category: optionCategory(candidate.text),
-      price_amount: usdAmount,
-      currency: usdAmount == null ? null : 'USD',
+      price_amount: usdAmount ?? jpyAmount,
+      currency: usdAmount != null ? 'USD' : jpyAmount != null ? 'JPY' : null,
       duration_minutes: optionDurationMinutes(candidate.text),
       day_number: day?.day ?? null,
       evidence: evidenceFromLines(lines, candidate.line.lineNumber),
@@ -515,7 +622,9 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   const shopping: V3LedgerVariant['shopping'] = [];
   for (let index = 0; index < sectionLines.length; index++) {
     const line = sectionLines[index];
-    if (eventTypeForLine(line.quote) !== 'shopping') continue;
+    const explicitItineraryShopping = /(?:쇼핑|면세점|마트|(?:이온|돈키)[^\s]*몰)/i.test(line.quote)
+      && !/(?:세관|과세|신고서|면세품.*조심)/i.test(line.quote);
+    if (eventTypeForLine(line.quote) !== 'shopping' && !explicitItineraryShopping) continue;
     const value = line.quote.trim();
     const compactValue = value.replace(/\s+/g, '');
     const nextDetail = sectionLines
@@ -591,28 +700,15 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     }
     return !hasIncludedGuideTipNotice;
   });
-  const minDepartureLine = sectionLines.find(line =>
-    /minimum|min\.?|\ucd5c\uc18c|\uc778\s*\uc6d0|\d+\s*(?:\uba85|\uc778)\s*(?:\uc774\uc0c1|\ubd80\ud130)\s*\ucd9c\ubc1c/i.test(line.quote)
-    && /\d+/.test(line.quote)
-  );
+  const sourceMinimumDeparture = extractMinimumDeparture(lines, sectionLines);
   const structuredMinPaxFact = structured.structuredFacts.find(fact =>
     fact.category === 'min_pax'
     && typeof fact.values.count === 'number'
     && Number.isFinite(fact.values.count)
     && fact.values.count > 0
   );
-  const minimum_departure = minDepartureLine
-    ? {
-        value: Number(
-          minDepartureLine.quote.match(/(?:minimum|min\.?|\ucd5c\uc18c(?:\ucd9c\ubc1c)?)\D*(\d+)/i)?.[1]
-            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/)?.[1]
-            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\ubd80\ud130\s*\ucd9c\ubc1c/)?.[1]
-            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1/)?.[1]
-            ?? minDepartureLine.quote.match(/\d+/)?.[0]
-            ?? 0,
-        ),
-        evidence: evidenceFromLines(lines, minDepartureLine.lineNumber),
-      }
+  const minimum_departure = sourceMinimumDeparture
+    ? sourceMinimumDeparture
     : structuredMinPaxFact
       ? {
           value: Number(structuredMinPaxFact.values.count),
@@ -631,6 +727,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     title_parts: titleParts(lines, boundary),
     price_calendar: prices,
     flight_segments,
+    flight_options,
     days,
     inclusions,
     exclusions,
@@ -641,7 +738,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     minimum_departure,
     evidence_coverage: {
       price: prices.length > 0,
-      flight: flight_segments.length > 0,
+      flight: flight_segments.length > 0 || flight_options.length > 0,
       itinerary: days.length > 0,
       meals: days.some(day => Object.values(day.meals).some(value => Object.keys(value).length > 0)),
       hotel: days.some(day => Object.keys(day.hotel).length > 0),

@@ -1,4 +1,12 @@
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
+const REQUEST_TIMEOUT_MS = 15_000;
+
+function threadsFetch(url: URL, accessToken: string): Promise<Response> {
+  return fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+}
 
 export type ThreadsApiErrorCategory =
   | 'identity_or_permission_mismatch'
@@ -44,8 +52,9 @@ export interface ThreadsInsightsResult {
 
 export async function probeThreadsIdentity(accessToken: string): Promise<ThreadsIdentityProbe> {
   try {
-    const url = `${GRAPH_API_BASE}/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`;
-    const res = await fetch(url);
+    const url = new URL(`${GRAPH_API_BASE}/me`);
+    url.searchParams.set('fields', 'id,username');
+    const res = await threadsFetch(url, accessToken);
     const data = await res.json();
     if (!res.ok) {
       return {
@@ -72,8 +81,10 @@ export async function verifyThreadsPostOwnership(
   if (direct.verified) return direct;
 
   try {
-    const url = `${GRAPH_API_BASE}/me/threads?fields=id,permalink,timestamp&limit=25&access_token=${encodeURIComponent(accessToken)}`;
-    const res = await fetch(url);
+    const url = new URL(`${GRAPH_API_BASE}/me/threads`);
+    url.searchParams.set('fields', 'id,permalink,timestamp');
+    url.searchParams.set('limit', '25');
+    const res = await threadsFetch(url, accessToken);
     const data = await res.json();
     if (!res.ok) {
       return {
@@ -115,8 +126,9 @@ export async function fetchThreadsInsights(
 ): Promise<ThreadsInsightsResult> {
   try {
     const metricList = ['views', 'likes', 'replies', 'reposts', 'quotes'].join(',');
-    const url = `${GRAPH_API_BASE}/${mediaId}/insights?metric=${metricList}&access_token=${encodeURIComponent(accessToken)}`;
-    const res = await fetch(url);
+    const url = new URL(`${GRAPH_API_BASE}/${mediaId}/insights`);
+    url.searchParams.set('metric', metricList);
+    const res = await threadsFetch(url, accessToken);
     const data = await res.json();
     if (!res.ok) {
       return {
@@ -153,7 +165,9 @@ export function computeThreadsScore(m: ThreadsMetrics): number {
 }
 
 function fetchThreadsPostFields(postId: string, accessToken: string): Promise<ThreadsPostVerification> {
-  return fetch(`${GRAPH_API_BASE}/${postId}?fields=id,permalink,timestamp&access_token=${encodeURIComponent(accessToken)}`)
+  const url = new URL(`${GRAPH_API_BASE}/${postId}`);
+  url.searchParams.set('fields', 'id,permalink,timestamp');
+  return threadsFetch(url, accessToken)
     .then(async (res) => {
       const data = await res.json();
       if (!res.ok) {

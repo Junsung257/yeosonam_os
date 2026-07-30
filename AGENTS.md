@@ -57,6 +57,7 @@
 | 블로그 운영 런북 | `docs/blog-system-runbook.md`, `docs/blog-ops-runbook.md` |
 | **정산 현재 SSOT·ledger·지급 계약** | **`docs/settlement-current-ssot.md`** |
 | **마케팅 현재 SSOT·Ad OS·외부발행 계약** | **`docs/marketing-current-ssot.md`** |
+| 마케팅 측정·GTM·GA4·광고 전환 기반 | `docs/analytics/architecture.md`, `docs/analytics/event-catalog.md` |
 | **AI Ops 현재 SSOT·자비스·RAG·모델 라우팅** | **`docs/ai-ops-current-ssot.md`** |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |

@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- Customer proof-chip overflow regions must be keyboard-scrollable. */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -17,7 +18,7 @@ import PackageTermsSection from '@/components/package/PackageTermsSection';
 import PackageTermsBottomSheet from '@/components/customer/PackageTermsBottomSheet';
 import type { NoticeBlock } from '@/lib/standard-terms-client';
 import { hasSpecialTermsBanner, shouldSuppressStandardCancelTable } from '@/lib/standard-terms-client';
-import { trackViewContent, trackLead } from '@/components/MetaPixel';
+import { trackViewContent } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
@@ -37,6 +38,13 @@ import {
 import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { extractCustomerNoticeCards } from '@/lib/customer-notice-cards';
+import CustomerNoticeCards from '@/components/customer/CustomerNoticeCards';
+import {
+  getAttributionSnapshot,
+  sanitizeAttributionCampaignValue,
+  trackAnalyticsEvent,
+} from '@/lib/analytics';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -119,7 +127,11 @@ interface Package {
   customer_notes?: string;
   internal_notes?: string;
   notices_parsed?: (string | CustomerSafeNotice | { type: string; title: string; text: string })[];
-  itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
+  itinerary_data?: {
+    days?: DaySchedule[];
+    highlights?: { remarks?: string[] };
+    flight_schedule_options?: unknown[];
+  } | DaySchedule[];
   display_title?: string;
   hero_tagline?: string;
   product_summary?: string;
@@ -574,7 +586,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const priceSectionRef = useRef<HTMLElement | null>(null);
+  const termsSectionRef = useRef<HTMLDivElement | null>(null);
   const openInquiryForm = useCallback((source: string) => {
+    trackAnalyticsEvent('begin_checkout', {
+      package_id: id,
+      package_name: pkg?.title ?? undefined,
+      destination: pkg?.destination ?? undefined,
+      departure_date: selectedDate || selectedTier?.period_label,
+      currency: 'KRW',
+      value: selectedTier?.adult_price && selectedTier.adult_price > 0
+        ? selectedTier.adult_price
+        : undefined,
+    }, { dedupeKey: `${id}:${selectedDate || selectedTier?.period_label || 'none'}` });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
       product_id: id,
@@ -609,7 +633,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     setReservationSubmitError('');
     setReservationConsent(false);
     setShowForm(true);
-  }, [id, pkg?.title, selectedDate, selectedTier?.period_label]);
+  }, [id, pkg?.destination, pkg?.title, selectedDate, selectedTier?.adult_price, selectedTier?.period_label]);
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -627,6 +651,22 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         value: initialPackage.price || 0,
         content_ids: [id],
       });
+      trackAnalyticsEvent('view_item', {
+        package_id: id,
+        package_name: initialPackage.title || undefined,
+        destination: initialPackage.destination || undefined,
+        currency: 'KRW',
+        value: initialPackage.price && initialPackage.price > 0 ? initialPackage.price : undefined,
+        price_type: initialPackage.price && initialPackage.price > 0 ? 'from_price' : 'inquiry',
+        items: [{
+          item_id: id,
+          item_name: initialPackage.title || id,
+          item_category: 'travel_package',
+          item_category2: initialPackage.destination || undefined,
+          price: initialPackage.price && initialPackage.price > 0 ? initialPackage.price : undefined,
+          quantity: 1,
+        }],
+      }, { dedupeKey: id });
       setIsLoading(false);
       return;
     }
@@ -641,6 +681,22 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           value: p.price || 0,
           content_ids: [String(p.id ?? id)],
         });
+        trackAnalyticsEvent('view_item', {
+          package_id: String(p.id ?? id),
+          package_name: p.title || undefined,
+          destination: p.destination || undefined,
+          currency: 'KRW',
+          value: p.price && p.price > 0 ? p.price : undefined,
+          price_type: p.price && p.price > 0 ? 'from_price' : 'inquiry',
+          items: [{
+            item_id: String(p.id ?? id),
+            item_name: p.title || String(p.id ?? id),
+            item_category: 'travel_package',
+            item_category2: p.destination || undefined,
+            price: p.price && p.price > 0 ? p.price : undefined,
+            quantity: 1,
+          }],
+        }, { dedupeKey: String(p.id ?? id) });
       }
     }).catch(console.error).finally(() => setIsLoading(false));
     // initialAttractions가 비어 있을 때만 폴백 fetch (불필요 중복 호출 방지)
@@ -686,6 +742,54 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       window.removeEventListener('resize', onScroll);
     };
   }, [pkg, updateActiveSection]);
+
+  useEffect(() => {
+    if (!pkg) return;
+    const observeOnce = (
+      element: Element | null,
+      threshold: number,
+      callback: () => void,
+    ) => {
+      if (!element) return () => {};
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.intersectionRatio < threshold) return;
+          callback();
+          observer.disconnect();
+        },
+        { threshold },
+      );
+      observer.observe(element);
+      return () => observer.disconnect();
+    };
+    const cleanups = [
+      observeOnce(priceSectionRef.current, 0.5, () => {
+        trackAnalyticsEvent('ysn_price_view', {
+          package_id: id,
+          package_name: pkg.title ?? undefined,
+          destination: pkg.destination ?? undefined,
+          price_type: pkg.price && pkg.price > 0 ? 'from_price' : 'inquiry',
+          displayed_price: pkg.price && pkg.price > 0 ? pkg.price : undefined,
+          currency: 'KRW',
+        }, { dedupeKey: `detail:${id}:price` });
+      }),
+      observeOnce(sectionRefs.current['일정표'], 0.1, () => {
+        trackAnalyticsEvent('ysn_schedule_view', {
+          package_id: id,
+          package_name: pkg.title ?? undefined,
+          destination: pkg.destination ?? undefined,
+        }, { dedupeKey: `detail:${id}:schedule` });
+      }),
+      observeOnce(termsSectionRef.current, 0.3, () => {
+        trackAnalyticsEvent('ysn_inclusions_view', {
+          package_id: id,
+          package_name: pkg.title ?? undefined,
+          destination: pkg.destination ?? undefined,
+        }, { dedupeKey: `detail:${id}:inclusions` });
+      }),
+    ];
+    return () => cleanups.forEach(cleanup => cleanup());
+  }, [id, pkg]);
 
   /** 한 번 이상 스크롤한 뒤 멈춤 → 상담 힌트만 준비, 화면을 자동으로 덮지는 않음 */
   const proactiveDisplayCopy = pkg ? buildCustomerPackageDisplayCopy({
@@ -936,6 +1040,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     minPrice,
     productTypeLabel,
   });
+  const customerNoticeCards = extractCustomerNoticeCards(pkg.notices_parsed).map(notice => ({
+    ...notice,
+    title: normalizeCustomerVisibleCopy(notice.title),
+    text: normalizeCustomerVisibleCopy(notice.text),
+  }));
+  const hasProvisionalFlightOptions = (
+    !Array.isArray(pkg.itinerary_data)
+    && Array.isArray(pkg.itinerary_data?.flight_schedule_options)
+    && pkg.itinerary_data.flight_schedule_options.length > 0
+  );
 
   // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
   // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
@@ -988,18 +1102,44 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             privacyConsent: reservationConsent,
           },
           tracking: {
-            landingUrl: window.location.href,
-            utmSource: new URLSearchParams(window.location.search).get('utm_source') || null,
-            utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || null,
-            utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || null,
+            landingUrl: window.location.pathname,
+            utmSource: sanitizeAttributionCampaignValue(new URLSearchParams(window.location.search).get('utm_source')),
+            utmMedium: sanitizeAttributionCampaignValue(new URLSearchParams(window.location.search).get('utm_medium')),
+            utmCampaign: sanitizeAttributionCampaignValue(new URLSearchParams(window.location.search).get('utm_campaign')),
           },
+          attribution: getAttributionSnapshot(),
           submittedAt: new Date().toISOString(),
         }),
       });
-      ok = res.ok;
+      const responseBody = await res.json().catch(() => ({})) as {
+        data?: {
+          lead_id?: string;
+          idempotent_replay?: boolean;
+          booking?: { id?: string };
+        };
+        lead_id?: string;
+        idempotent_replay?: boolean;
+        booking?: { id?: string };
+        error?: string | { message?: string };
+      };
+      const data = responseBody.data ?? responseBody;
+      ok = res.ok && Boolean(data.lead_id || data.idempotent_replay || data.booking?.id);
+      if (ok) {
+        trackAnalyticsEvent('generate_lead', {
+          lead_source: 'website',
+          lead_type: 'package_inquiry',
+          package_id: id,
+          package_name: pkg?.title ?? undefined,
+          destination: pkg?.destination ?? undefined,
+          departure_date: formData.date || selectedTier?.period_label || undefined,
+        }, { dedupeKey: data.lead_id ?? data.booking?.id ?? `${id}:${formData.date}` });
+      }
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        errMsg = (data as { error?: string }).error || `요청 실패 (${res.status})`;
+        errMsg = typeof responseBody.error === 'string'
+          ? responseBody.error
+          : responseBody.error?.message || `요청 실패 (${res.status})`;
+      } else if (!ok) {
+        errMsg = '서버 저장 확인 응답이 없습니다.';
       }
     } catch (e) {
       errMsg = e instanceof Error ? e.message : '네트워크 오류';
@@ -1249,7 +1389,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <ReviewDigestStrip packageId={pkg.id} />
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}
-      <section className="px-4 mt-3 relative z-10">
+      <section ref={priceSectionRef} className="px-4 mt-3 relative z-10">
         <div className="bg-white rounded-2xl p-5 shadow-[0_16px_42px_rgba(15,23,42,0.08)] border border-slate-100">
           {/* Social Proof + 희소성 신호 — 서버에서 내려온 실제 데이터만 표시 */}
           {socialProof && (socialProof.bookings > 0 || socialProof.interest > 0 || (socialProof.todayViews ?? 0) > 0 || (socialProof.nextDepartureBookings ?? 0) > 0) && (
@@ -1499,7 +1639,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <div className="flex items-center justify-between">
                 <div className="text-center min-w-[60px]">
                   {flightDep.time && <p className="text-xl font-black text-gray-900 tabular-nums">{flightDep.time}</p>}
-                  <p className="text-xs text-gray-500 mt-0.5">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{(view.flightHeader.outbound?.depCity || pkg.departure_airport || '출발공항').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
                 <div className="flex flex-col items-center flex-1 px-2">
                   <div className="flex items-center w-full gap-1">
@@ -1511,15 +1651,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </div>
                   <div className="text-center mt-1">
                     {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
-                    {flightDep.transport && <span className="text-[10px] text-gray-400 ml-1">{flightDep.transport}</span>}
-                    <span className="text-[10px] text-gray-400 ml-1">직항</span>
+                    {flightDep.transport && <span className="text-[10px] text-gray-600 ml-1">{flightDep.transport}</span>}
                   </div>
                 </div>
                 <div className="text-center min-w-[60px]">
                   <p className="text-xl font-black text-gray-900 tabular-nums">
                     {depArrTime || UNKNOWN_FLIGHT_TIME_LABEL}
                     {view.flightHeader.outbound?.arrDayOffset === 1 && (
-                      <span className="text-[10px] text-orange-500 align-top ml-0.5">+1</span>
+                      <span className="text-[10px] text-orange-700 align-top ml-0.5">+1</span>
                     )}
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">{depArrCity}</p>
@@ -1531,7 +1670,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             {/* 오는편 */}
             {flightReturn && (
             <div className="p-4">
-              <p className="text-xs font-bold text-orange-500 mb-2.5">오는편</p>
+              <p className="text-xs font-bold text-orange-700 mb-2.5">오는편</p>
               <div className="flex items-center justify-between">
                 <div className="text-center min-w-[60px]">
                   <p className="text-xl font-black text-gray-900 tabular-nums">{flightReturn.time || UNKNOWN_FLIGHT_TIME_LABEL}</p>
@@ -1547,18 +1686,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </div>
                   <div className="text-center mt-1">
                     {airlineName && <span className="text-[10px] text-gray-600 font-medium">{airlineName}</span>}
-                    {flightReturn.transport && <span className="text-[10px] text-gray-400 ml-1">{flightReturn.transport}</span>}
-                    <span className="text-[10px] text-gray-400 ml-1">직항</span>
+                    {flightReturn.transport && <span className="text-[10px] text-gray-600 ml-1">{flightReturn.transport}</span>}
                   </div>
                 </div>
                 <div className="text-center min-w-[60px]">
                   <p className="text-xl font-black text-gray-900 tabular-nums">
                     {retArrTime || UNKNOWN_FLIGHT_TIME_LABEL}
                     {view.flightHeader.inbound?.arrDayOffset === 1 && (
-                      <span className="text-[10px] text-orange-500 align-top ml-0.5">+1</span>
+                      <span className="text-[10px] text-orange-700 align-top ml-0.5">+1</span>
                     )}
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{(view.flightHeader.inbound?.arrCity || pkg.departure_airport || '도착공항').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
               </div>
             </div>
@@ -1566,6 +1704,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
         </div>
       )}
+
+      <CustomerNoticeCards
+        notices={customerNoticeCards}
+        className="mx-4 my-5"
+      />
 
       {/* ═══ 스티키 탭 ═══ */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
@@ -1590,7 +1733,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 const isSelected = selectedTier === t;
                 const isMin = t.adult_price === minPrice;
                 return (
-                  <button key={i} type="button" onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
+                  <button key={i} type="button" onClick={() => {
+                    setSelectedTier(isSelected ? null : t);
+                    setSelectedDate(isSelected ? '' : t.period_label);
+                    setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() }));
+                    if (!isSelected) {
+                      trackAnalyticsEvent('ysn_departure_select', {
+                        package_id: id,
+                        destination: pkg.destination ?? undefined,
+                        departure_date: t.period_label,
+                      }, { dedupeKey: `detail:${id}:departure:${t.period_label}` });
+                    }
+                  }}
                     className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-brand bg-brand-light ring-1 ring-brand' : 'border-gray-200 bg-white'}`}>
                     <div>
                       <p className="text-sm font-medium text-gray-800">
@@ -1625,6 +1779,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const m = parseInt(date.split('-')[1]);
                   const d = parseInt(date.split('-')[2]);
                   setFormData(f => ({ ...f, date: `${m}/${d}` }));
+                  trackAnalyticsEvent('ysn_departure_select', {
+                    package_id: id,
+                    destination: pkg.destination ?? undefined,
+                    departure_date: date,
+                  }, { dedupeKey: `detail:${id}:departure:${date}` });
                 }}
               />
               {selectedDateInfo && (
@@ -1691,7 +1850,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 포함/불포함/써차지/쇼핑 — CRC + terms-catalog ═══ */}
-      {view && <PackageTermsSection view={view} />}
+      {view && (
+        <div ref={termsSectionRef}>
+          <PackageTermsSection view={view} productTitle={pkg.display_title ?? pkg.title} />
+        </div>
+      )}
 
       <section className="px-4 py-6" aria-label="추천 대상과 확인할 점">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
@@ -1736,13 +1899,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
 
           {decisionGuide.proofs.length > 0 && (
-            <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar" aria-label="출발일 선택 목록">
-              {decisionGuide.proofs.map(item => (
-                <span key={item} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-bold text-slate-700">
-                  {item}
-                </span>
-              ))}
-            </div>
+            <>
+              <div
+                className="mt-4 flex gap-2 overflow-x-auto no-scrollbar"
+                aria-label="출발일 선택 목록"
+                tabIndex={0}
+              >
+                {decisionGuide.proofs.map(item => (
+                  <span key={item} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-bold text-slate-700">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -1861,7 +2030,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     const arrivalItem = nextItems.find(n => /도착/.test(n.activity));
                     const isOutbound = /출발|향발/.test(item.activity) && currentDay.day === 1;
                     // 귀국편은 destination → departure_airport 방향
-                    const homeCity = (pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '');
+                    const homeCity = (
+                      view.flightHeader.outbound?.depCity
+                      || view.flightHeader.inbound?.arrCity
+                      || pkg.departure_airport
+                      || '출발공항'
+                    ).replace(/\s*(국제)?공항.*$/, '');
                     const destCity = (pkg.destination || '').split('/')[0];
                     const depCity = parsed.depCity
                       || parseCityFromActivity(item.activity)
@@ -1870,6 +2044,24 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       || parseCityFromActivity(arrivalItem?.activity || '')
                       || (isOutbound ? destCity : homeCity);
                     const arrTimeFinal = arrivalItem?.time || parsed.arrTime;
+                    const flightDisplayLabel = formatFlightLabel(item.transport) || '항공편';
+                    const sourceSaysDirect = /직항/.test(`${item.activity ?? ''} ${item.note ?? ''}`);
+
+                    if (hasProvisionalFlightOptions) {
+                      return (
+                        <div key={sIdx} className="relative pl-8">
+                          <div className="absolute -left-[7px] top-1.5 z-10 h-3 w-3 rounded-full bg-brand ring-2 ring-[#EBF3FE]" />
+                          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+                            <p className="text-sm font-bold text-gray-900">
+                              ✈ {depCity} 출발 → {arrCityParsed} 도착
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-blue-900">
+                              항공사·편명 및 탑승 시간은 예약 시 최종 확정됩니다.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div key={sIdx} className="relative pl-8">
@@ -1889,7 +2081,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             <div className="flex-1 flex flex-col justify-between py-0.5">
                               <div>
                                 <p className="font-bold text-sm text-gray-900">{depCity} 출발</p>
-                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-brand' : 'text-orange-500'}`}>✈ {formatFlightLabel(item.transport)} 직항</p>
+                                <p className={`text-xs font-medium mt-0.5 ${isOutbound ? 'text-brand' : 'text-orange-700'}`}>
+                                  ✈ {flightDisplayLabel}{sourceSaysDirect ? ' · 직항' : ''}
+                                </p>
                               </div>
                               <p className="font-bold text-sm text-gray-900">{arrCityParsed} 도착</p>
                             </div>
@@ -2192,7 +2386,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   {groups.map((group, gi) => (
                     <div key={gi} className="space-y-2">
                       {showRegionHeader && (
-                        <div className="text-[11px] font-semibold text-pink-700/80 pl-1">{group.region}</div>
+                        <div className="text-[11px] font-semibold text-pink-800 pl-1">{group.region}</div>
                       )}
                       {group.tours.map((tour, i) => (
                         <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-pink-100">
@@ -2419,6 +2613,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             aria-label="카카오톡으로 문의"
             data-analytics-id="mobile_kakao_consult"
             onClick={async () => {
+              trackAnalyticsEvent('ysn_kakao_click', {
+                cta_location: 'detail_mobile_sticky',
+                page_type: 'package_detail',
+                package_id: id,
+                package_name: displayCopy.cardTitle,
+                destination: pkg.destination ?? undefined,
+                departure_date: selectedDate || selectedTier?.period_label,
+                outbound_host: 'pf.kakao.com',
+              });
               trackEngagement({
                 event_type: ANALYTICS_EVENTS.kakaoClicked,
                 product_id: id,
@@ -2429,11 +2632,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   selectedDate,
                   selectedTier: selectedTier?.period_label ?? null,
                 },
-              });
-              trackLead({
-                content_name: displayCopy.cardTitle || '',
-                value: displayPrice || 0,
-                content_ids: [id],
               });
               // recommendation_outcomes inquiry 트래킹 (점수 시스템 funnel)
               fetch('/api/tracking/recommendation', {

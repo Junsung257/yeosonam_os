@@ -14,6 +14,8 @@ interface CohortRow {
 interface LtvResponse {
   cohorts: CohortRow[];
   totalCustomers?: number;
+  data_status?: 'ok' | 'unavailable';
+  status_detail?: string;
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -68,6 +70,10 @@ export default function AnalyticsPage() {
         <div className="text-center py-20 text-admin-muted-2 text-admin-base">분석 중...</div>
       ) : fetchError ? (
         <div className="text-center py-20 text-red-500 text-admin-base">{fetchError}</div>
+      ) : data?.data_status === 'unavailable' ? (
+        <div className="text-center py-20 text-amber-700 text-admin-base">
+          {data.status_detail ?? 'LTV 원천 데이터를 사용할 수 없습니다.'}
+        </div>
       ) : cohorts.length === 0 ? (
         <div className="text-center py-20 text-admin-muted-2 text-admin-base">
           UTM 데이터가 없습니다

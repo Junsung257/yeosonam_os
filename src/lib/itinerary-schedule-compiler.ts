@@ -259,7 +259,7 @@ function classifySafe(activity: string, type?: string | null): ScheduleEntityKin
   ) return 'hotel_stay';
   if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFC8\uBC14\uB85C\uC6B0|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compactText)) return 'meal';
   if (/^\uD2B9\uC804\s*:/.test(text)) return 'perk';
-  if (/^(.+?)\s*(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*\([^)]*\))?$/.test(text)) return 'transfer';
+  if (/^(.+?)\s*(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*(?:\([^)]*\)|\[[^\]]*\]))?$/.test(text)) return 'transfer';
   if (attractionQueries(text).length > 0 || /(\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uC870\uB9DD|\uCCB4\uD5D8)/.test(text)) return 'attraction_visit';
   return 'unknown';
 }

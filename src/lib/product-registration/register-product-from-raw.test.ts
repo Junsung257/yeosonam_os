@@ -457,4 +457,97 @@ HOTEL: 스기노이 호텔 (니지관)
     expect(labels).toContain('쿠로가와 온천마을을 산책하며 온천 마을의 분위기를 둘러봅니다.');
     expect(labels).toContain('호텔로 이동해 석식 후 휴식하며 온천욕을 즐깁니다.');
   });
+
+  it('persists provisional round-trip time options without inventing a fixed flight segment', async () => {
+    const rawText = `
+상품: 인천출발 천진 진황도 2색 골프 3박4일
+출발일 2026.08.01
+판매가 999,000원
+인원 2명 이상 출발 가능
+포함사항 왕복항공료, 호텔, 식사, 골프비용, 여행자보험
+불포함사항 미팅샌딩비용 400위안/인
+항공시간
+인천-천진 - 아시아나08:55-09:55, 대한항공10:15-11:15, 천진-인천 – 이사이나10:55-13:30, 대한항공11:30-14:20
+제1일 인천 국제공항 출발 후 천진 국제공항 도착
+제2일 골프 18홀 라운딩
+제3일 골프 18홀 라운딩
+제4일 천진 국제공항 출발 후 인천 국제공항 도착
+`.trim();
+    const result = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: '인천출발 천진 진황도 2색 골프 3박4일',
+        destination: '천진/진황도',
+        duration: 4,
+        min_participants: 2,
+        rawText,
+        price_tiers: [],
+      },
+      title: '인천출발 천진 진황도 2색 골프 3박4일',
+      activeAttractions: [],
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+    const itinerary = result.itinerary.itineraryDataToSave as {
+      flight_segments?: unknown[];
+      flight_schedule_options?: Array<{
+        leg?: string;
+        carrier_name?: string;
+        dep_time?: string;
+        arr_time?: string;
+      }>;
+    };
+    const notices = result.extractedData.notices_parsed ?? [];
+
+    expect(result.warnings.some(warning => warning.includes('v3:gate:v1.flight:'))).toBe(false);
+    expect(itinerary.flight_segments).toEqual([]);
+    expect(itinerary.flight_schedule_options).toHaveLength(4);
+    expect(itinerary.flight_schedule_options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ leg: 'outbound', dep_time: '08:55', arr_time: '09:55' }),
+      expect.objectContaining({ leg: 'inbound', dep_time: '11:30', arr_time: '14:20' }),
+    ]));
+    expect(itinerary.flight_schedule_options?.every(option => option.carrier_name == null)).toBe(true);
+    expect(result.extractedData.departure_airport).toBe('인천');
+    expect(result.extractedData.excludes?.join(' ')).not.toMatch(/항공시간|아시아나|이사이나|대한항공/);
+    expect(JSON.stringify(notices)).toContain('항공사와 편명은 예약 시 최종 확정');
+  });
+
+  it('adds a customer-visible pre-booking quote and consent contract for conditional transport charges', async () => {
+    const rawText = `
+상품: BX 나리타 치바 죠시 골프 54H 3박4일
+출발일 2026.08.01
+판매가 1,289,000원
+최소 출발 4명
+포함사항 왕복항공료, 호텔, 식사, 골프비용, 송영차량
+불포함사항 개인경비
+제1일 BX112 출발 07:50 도착 10:00
+골프장 예약 상황에 따라 다른 곳으로 대체될 수 있으며, 송영요금이 추가로 발생할 수 있습니다.
+제4일 BX111 출발 10:55 도착 13:15
+`.trim();
+    const result = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: 'BX 나리타 치바 죠시 골프 54H 3박4일',
+        destination: '나리타/치바',
+        duration: 4,
+        min_participants: 4,
+        rawText,
+        price_tiers: [],
+      },
+      title: 'BX 나리타 치바 죠시 골프 54H 3박4일',
+      activeAttractions: [],
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+    const notices = JSON.stringify(result.extractedData.notices_parsed ?? []);
+
+    expect(result.warnings.some(warning =>
+      warning.includes('v3:gate:v1.high_risk_structured_fact_values:')
+    )).toBe(false);
+    expect(notices).toContain('변동 추가비용 확정 절차');
+    expect(notices).toContain('예약 확정 전에 금액을 안내');
+    expect(notices).toContain('고객 동의');
+  });
 });

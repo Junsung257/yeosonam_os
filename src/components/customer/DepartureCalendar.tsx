@@ -99,7 +99,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
                     : 'bg-white text-slate-600 border-slate-200 hover:border-brand hover:bg-brand-light'
                 }`}
               >
-                {mm}월 <span className={isActive ? 'text-white/70' : 'text-slate-400'}>({count})</span>
+                {mm}월 <span className={isActive ? 'text-white' : 'text-slate-600'}>({count})</span>
               </button>
             );
           })}
@@ -133,7 +133,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           <div
             key={d}
             className={`text-xs font-medium text-center py-1 ${
-              i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-slate-500'
+              i === 0 ? 'text-red-700' : i === 6 ? 'text-blue-700' : 'text-slate-600'
             }`}
           >
             {d}
@@ -155,11 +155,11 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           const dow = cell.dow;
 
           const baseTextColor = isPast
-            ? 'text-slate-300'
+            ? 'text-slate-500'
             : dow === 0
-              ? 'text-red-500'
+              ? 'text-red-700'
               : dow === 6
-                ? 'text-blue-500'
+                ? 'text-blue-700'
                 : 'text-slate-800';
 
           let bg = '';
@@ -195,7 +195,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
                 {cell.day}
               </span>
               {pd && !isPast && (
-                <span className={`text-[9px] leading-tight font-medium ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                <span className={`text-[9px] leading-tight font-medium ${isSelected ? 'text-white' : 'text-slate-700'}`}>
                   {pd.price > 0
                     ? (() => {
                         // P0 #3 (2026-04-27): 반올림 시 579,000 → "58만" 으로 부풀려져 가격 사기 인상.
@@ -231,7 +231,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
 
       {/* 과거 날짜 탭 시 토스트 */}
       {pastToast && (
-        <div className="mt-2 text-center text-xs text-slate-400 animate-pulse">
+        <div className="mt-2 text-center text-xs text-slate-600 animate-pulse">
           이미 지난 날짜입니다
         </div>
       )}

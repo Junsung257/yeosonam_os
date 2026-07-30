@@ -10,6 +10,7 @@ import { checkSelfReferral } from '@/lib/affiliate/self-referral';
 import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
+import { recordServerAnalyticsEvent } from '@/lib/analytics/server-events';
 
 function buildAttributionSnapshot(
   body: Record<string, any>,
@@ -977,6 +978,44 @@ export async function PATCH(request: NextRequest) {
     if (status === 'confirmed' && booking) {
       const fullBooking = await getBookingById(id);
       const customer = (fullBooking as { customers?: { name?: string; phone?: string } })?.customers;
+      const conversionBooking = fullBooking as {
+        package_id?: string | null;
+        package_title?: string;
+        total_price?: number;
+        destination?: string | null;
+        departure_date?: string;
+        attribution_snapshot?: {
+          analytics?: unknown;
+        } | null;
+      };
+      try {
+        await recordServerAnalyticsEvent({
+          eventName: 'ysn_booking_confirmed',
+          idempotencyKey: `booking-confirmed:${id}`,
+          sourceType: 'booking',
+          sourceId: id,
+          bookingId: id,
+          productId: conversionBooking.package_id ?? null,
+          transactionId: `booking:${id}`,
+          valueKrw: Number.isFinite(conversionBooking.total_price)
+            ? Math.max(0, Math.round(conversionBooking.total_price ?? 0))
+            : null,
+          attribution: conversionBooking.attribution_snapshot?.analytics,
+          payload: {
+            transaction_id: `booking:${id}`,
+            currency: 'KRW',
+            value: Number.isFinite(conversionBooking.total_price)
+              ? Math.max(0, Math.round(conversionBooking.total_price ?? 0))
+              : undefined,
+            package_id: conversionBooking.package_id ?? undefined,
+            package_name: conversionBooking.package_title ?? undefined,
+            destination: conversionBooking.destination ?? undefined,
+            departure_date: conversionBooking.departure_date ?? undefined,
+          },
+        });
+      } catch (analyticsError) {
+        console.warn('[bookings] booking confirmation analytics failed:', analyticsError);
+      }
       if (customer?.phone && customer?.name) {
         const b = fullBooking as {
           package_title?: string;

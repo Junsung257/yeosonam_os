@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { trackEngagement } from '@/lib/tracker';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { getMinPriceFromDates, getNextDepartureFromDates } from '@/lib/price-dates';
 import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
@@ -34,6 +35,19 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
   const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
 
   function handleClick() {
+    trackAnalyticsEvent('select_item', {
+      item_list_id: 'public_packages',
+      item_list_name: '여소남 패키지',
+      items: [{
+        item_id: pkg.id,
+        item_name: pkg.title,
+        item_category: 'travel_package',
+        item_category2: pkg.destination,
+        item_variant: nextDate || undefined,
+        price: minPrice > 0 ? minPrice : undefined,
+        quantity: 1,
+      }],
+    });
     trackEngagement({
       event_type: 'product_view',
       product_id: pkg.id,

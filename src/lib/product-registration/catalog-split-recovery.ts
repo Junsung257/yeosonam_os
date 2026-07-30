@@ -60,22 +60,28 @@ function inferTitle(section: string, index: number): string {
     if (titleAfterSpecialPrice) return titleAfterSpecialPrice;
   }
   const inlinePkgTitle = lines.find(line => /\bPKG\b/i.test(line) && usableDurationTitle(line));
-  if (inlinePkgTitle) return inlinePkgTitle;
+  if (inlinePkgTitle) return cleanInlinePriceFromTitle(inlinePkgTitle);
   const readableDurationTitle = lines.find(line =>
     usableDurationTitle(line) &&
     !/^\s*\uC81C\s*\d+\s*\uC77C\b/u.test(line) &&
     !/^\s*(?:\uC77C\s*\uC790|\uC2DD\s*\uC0AC|\uC2DC\s*\uAC04)\s*$/u.test(line)
   );
-  if (readableDurationTitle) return readableDurationTitle;
+  if (readableDurationTitle) return cleanInlinePriceFromTitle(readableDurationTitle);
 
   const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
   const pkgTitle = pkgIndex >= 0
     ? lines.slice(pkgIndex + 1).find(usableDurationTitle)
     : undefined;
 
-  return pkgTitle
+  return cleanInlinePriceFromTitle(pkgTitle
     ?? lines.find(usableDurationTitle)
-    ?? `카탈로그 상품 ${index + 1}`;
+    ?? `카탈로그 상품 ${index + 1}`);
+}
+
+function cleanInlinePriceFromTitle(title: string): string {
+  return title
+    .replace(/\s+(?:성\s*인|아\s*동|소\s*아|유\s*아)\s*[:：]?\s*\d{1,3}(?:,\d{3})+\s*원?.*$/u, '')
+    .trim();
 }
 
 function inferTripStyle(title: string, section?: string): { nights?: number; duration?: number; tripStyle?: string } {
@@ -199,7 +205,9 @@ function splitReadableRepeatedProductHeaders(rawText: string): { sharedPrefix: s
   const starts: number[] = [];
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]?.trim() ?? '';
-    if (!/^\[[^\]\n]{2,120}\][^\n]{2,180}\d{1,2}\s*일(?:$|[\s&<\-–—])/u.test(line)) continue;
+    const bracketedProductHeader = /^\[[^\]\n]{2,120}\][^\n]{2,180}\d{1,2}\s*일(?:$|[\s&<\-–—])/u.test(line);
+    const routeProductHeader = /^(?:청주|부산|인천|대구|김해)\s*[➡↔→\-].{0,80}(?:직항|항공).{0,120}(?:백두산|연길).{0,120}\d{1,2}\s*일(?:$|[\s_&<\-–—])/u.test(line);
+    if (!bracketedProductHeader && !routeProductHeader) continue;
     const window = lines.slice(index, Math.min(lines.length, index + 110)).join('\n');
     if (/(?:^|\n)\s*제\s*1\s*일(?:$|[\s\n])/u.test(window) && /(?:^|\n)\s*제\s*[2-9]\s*일(?:$|[\s\n])/u.test(window)) {
       starts.push(offsets[index]);
@@ -212,6 +220,24 @@ function splitReadableRepeatedProductHeaders(rawText: string): { sharedPrefix: s
     sharedPrefix: text.slice(0, sorted[0]).trim(),
     sections: sorted.map((start, index) => text.slice(start, sorted[index + 1] ?? text.length).trim()),
   };
+}
+
+function splitExplicitProductSeparators(rawText: string): { sharedPrefix: string; sections: string[] } | null {
+  const sections = rawText
+    .replace(/\r\n/g, '\n')
+    .split(/^\s*-{3,}\s*$/m)
+    .map(section => section.trim())
+    .filter(Boolean);
+  if (sections.length < 2) return null;
+
+  const eachSectionStartsWithProduct = sections.every(section => {
+    const firstLine = section.split('\n').map(line => line.trim()).find(Boolean) ?? '';
+    return usableDurationTitle(firstLine)
+      && (/\[[^\]]+\]/u.test(firstLine) || /\b(?:PKG|PACKAGE)\b/i.test(firstLine) || /상품\s*명/u.test(firstLine));
+  });
+  return eachSectionStartsWithProduct
+    ? { sharedPrefix: '', sections }
+    : null;
 }
 
 function splitTransportVariantDetailBlocks(rawText: string): { sharedPrefix: string; sections: string[] } | null {
@@ -279,6 +305,13 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
     if (readableRepeatedProductSplit) {
       sharedPrefix = readableRepeatedProductSplit.sharedPrefix;
       sections = readableRepeatedProductSplit.sections;
+    }
+  }
+  if (sections.length < 2) {
+    const explicitProductSplit = splitExplicitProductSeparators(rawText);
+    if (explicitProductSplit) {
+      sharedPrefix = explicitProductSplit.sharedPrefix;
+      sections = explicitProductSplit.sections;
     }
   }
   if (sections.length < 2) return [];

@@ -1,6 +1,6 @@
 # Marketing Current SSOT
 
-Last updated: 2026-06-29
+Last updated: 2026-07-29
 
 This is the current operating contract for marketing automation, Ad OS, campaign actions, card-news distribution, external ad-platform writes, and marketing performance dashboards. Strategy research and campaign plans are not the source of truth for current execution behavior.
 
@@ -26,6 +26,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 | External publish decisions | `src/lib/marketing-pipeline/publish-saga.ts`, `/api/admin/ad-os/**` |
 | Admin surfaces | `/admin/marketing/**`, `/admin/ad-os`, `/admin/control-tower` AI operations command center |
 | Runtime checks | `scripts/verify-marketing-automation-readiness.mjs`, `scripts/verify-marketing-release-readiness.mjs`, `scripts/verify-marketing-95-scorecard.mjs` |
+| Website measurement | `src/lib/analytics/**`, `docs/analytics/architecture.md`, `docs/analytics/event-catalog.md` |
 | Error memory | `docs/errors/marketing.md` |
 
 ## Required Invariants
@@ -41,6 +42,9 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Ad OS deep scorecards must separate current evidence scores from target/post-repair scores. A ready fixture can prove the 95+ gate is reachable, but live current scores only pass when runtime summary evidence is present.
 - Ad OS AI Director repair runs may persist internal score snapshots and repair queue rows only. They must not perform external ad-platform writes, live spend, or full-auto mutations.
 - Control-tower Ad OS status must show current evidence gaps separately from the 95+ ready fixture; a reachable fixture is not proof that live current execution is ready.
+- Website code emits typed business events to `dataLayer`; GA4/Ads tag mapping belongs in GTM and must not duplicate the same primary conversion.
+- Lead, booking-confirmed, purchase, and refund outcomes require server evidence and stable idempotency keys. Browser-supplied revenue is never authoritative.
+- PII must not enter `dataLayer` or analytics delivery jobs. Enhanced Conversions remains blocked until consent, terms, hashing, and Data Manager credentials are approved.
 
 ## External Write Boundary
 

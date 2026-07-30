@@ -88,7 +88,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'awkward_spacing_or_customer_copy',
-    pattern: /월기준|기사가이드경비|추가\s+합니다|지불\s+하셔야|부\s+담\s+됩\s+니다/i,
+    pattern: /월기준|기사가이드경비|추가\s+합니다|지불\s+하셔야|부\s+담\s+됩\s+니다|출발\d+\s*시간|\d+\s*분전|[가-힣]\+[가-힣]/i,
     label: '불완전한 띄어쓰기 또는 어색한 고객 문구가 보입니다.',
   },
   {
@@ -172,7 +172,9 @@ export function normalizeCustomerVisibleCopy(value: string | null | undefined): 
     .replace(/(^|[^A-Za-z])P\.?\s*P\.?(?=$|[^A-Za-z])/gi, '$11인')
     .replace(/\\\s*(\d{1,3}(?:,\d{3})+)(?!\s*원)/g, '$1원')
     .replace(/\bTAX\s*\(\s*(\d{1,2})\s*월\s*기준\s*\)/gi, '항공세 $1월 기준')
+    .replace(/\bTAX\s*\(\s*(\d{1,2})\s*월\s*발권(?:\s*기준)?\s*\)/gi, '항공세($1월에 발권하는 항공권 기준)')
     .replace(/유류할증료\s*\(\s*(\d{1,2})\s*월\s*기준\s*\)/g, '유류할증료 $1월 기준')
+    .replace(/유류할증료\s*\(\s*(\d{1,2})\s*월\s*발권(?:\s*기준)?\s*\)/g, '유류할증료($1월에 발권하는 항공권 기준)')
     .replace(/(\d{1,2})\s*월기준/g, '$1월 기준')
     .replace(/기사가이드경비|기사\s*가이드\s*경비/g, '가이드/기사 경비')
     .replace(/바나산\s*정산/g, '바나산 정상')
@@ -180,9 +182,16 @@ export function normalizeCustomerVisibleCopy(value: string | null | undefined): 
     .replace(/^경우가\s*종종\s*발생합니다\.?$/g, '')
     .replace(/추가\s+합니다/g, '추가합니다')
     .replace(/지불\s+하셔야/g, '지불하셔야')
+    .replace(/출발\s*(\d+)\s*시간\s*반\s*전/g, '출발 $1시간 30분 전')
+    .replace(/출발\s*(\d+)\s*시간\s*(\d+)\s*분\s*전/g, '출발 $1시간 $2분 전')
+    .replace(/출발\s*(\d+)\s*시간\s*전/g, '출발 $1시간 전')
+    .replace(/(?<!\d)(\d+)\s*분\s*전/g, '$1분 전')
+    .replace(/(?<=[가-힣])\s*\+\s*(?=[가-힣])/g, ' + ')
+    .replace(/(?<!\d),\s*/g, ', ')
     .replace(/마사지\s*(\d+\s*시간)?(?:으로)?\s*여행의\s*피로를\s*풀어(?:봅니다|주는|줄 수 있습니다)\.?/g, (_, duration: string | undefined) => (
       duration ? `마사지 ${duration.replace(/\s+/g, '')}` : '마사지'
     ))
+    .replace(/여행의\s*피로를\s*풀어줄\s*((?:발\s*(?:\+\s*전신)?|전신)\s*마사지(?:\s*\d+\s*분)?)/g, '$1')
     .replace(/여행의\s*피로를\s*풀어(?:봅니다|주는|줄 수 있습니다)\.?/g, '휴식');
 
   return normalizeLowInformationSentence(normalizeKoreanAlternatives(decoded))

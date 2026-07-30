@@ -17,6 +17,22 @@ function sourceWithoutComments(path: string) {
 }
 
 describe('packages bulk/customer publication gate', () => {
+  it('uses exact counts for admin package lists so rows and pagination totals cannot diverge', () => {
+    const source = routeSourceWithoutComments();
+    const countModeIndex = source.indexOf('const countMode = searchParams.get(\'countMode\')');
+
+    expect(countModeIndex).toBeGreaterThanOrEqual(0);
+    expect(source.slice(countModeIndex, countModeIndex + 180)).toContain("isAdmin ? 'exact' : 'planned'");
+  });
+
+  it('keeps the admin package client aligned with the shared pagination response contract', () => {
+    const client = sourceWithoutComments('src/app/admin/packages/PackagesPageClient.tsx');
+
+    expect(client).toContain('listData.pagination?.total');
+    expect(client).toContain('listData.pagination?.totalPages');
+    expect(client).toContain('setTotalCount(responseTotal)');
+  });
+
   it('serves customer package API responses only from current public snapshots', () => {
     const source = routeSourceWithoutComments();
     const detailIndex = source.indexOf('if (id) {');

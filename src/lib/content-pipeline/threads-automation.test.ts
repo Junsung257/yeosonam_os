@@ -57,4 +57,23 @@ describe('threads-automation', () => {
     expect(result.approved).toBe(true);
     expect(result.predicted_er).toBe(0.072);
   });
+
+  it('passes dry-run through so preview checks do not consume publish quota', async () => {
+    vi.mocked(runCriticGate).mockResolvedValueOnce({
+      approved: false,
+      predicted_er: 0,
+      rejected_reason: 'quota_exceeded',
+      reason: 'daily quota reached',
+    });
+
+    const result = await evaluateThreadsDistribution({
+      payload: { main: '도쿄 가족여행에서 이동 시간을 줄이는 방법을 정리했어요' },
+      dryRun: true,
+    });
+
+    expect(vi.mocked(runCriticGate)).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: 'threads', dryRun: true }),
+    );
+    expect(result.rejected_reason).toBe('quota_exceeded');
+  });
 });

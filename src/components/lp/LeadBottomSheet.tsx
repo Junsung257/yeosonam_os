@@ -10,6 +10,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSubmit: (form: LeadFormData) => Promise<void>;
+  onDepartureSelect?: (date: string) => void;
   defaultDate?: string;
   priceDates?: PriceDate[];
   hasSpecialTerms?: boolean;
@@ -29,6 +30,7 @@ export default function LeadBottomSheet({
   open,
   onClose,
   onSubmit,
+  onDepartureSelect,
   defaultDate = '',
   priceDates,
   hasSpecialTerms = false,
@@ -45,6 +47,7 @@ export default function LeadBottomSheet({
   const [termsExpanded, setTermsExpanded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +62,7 @@ export default function LeadBottomSheet({
     setTermsExpanded(false);
     setSubmitting(false);
     setSuccess(false);
+    setSubmitError('');
   }, [open, defaultDate]);
 
   useEffect(() => {
@@ -92,6 +96,7 @@ export default function LeadBottomSheet({
     }
 
     setSubmitting(true);
+    setSubmitError('');
     try {
       await onSubmit({
         desiredDate,
@@ -104,10 +109,15 @@ export default function LeadBottomSheet({
       });
       setSuccess(true);
     } catch {
-      setSuccess(true);
+      setSubmitError('상담 신청을 저장하지 못했습니다. 잠시 후 다시 시도하거나 상단 카카오 버튼을 이용해 주세요.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const selectDeparture = (date: string) => {
+    setDesiredDate(date);
+    onDepartureSelect?.(date);
   };
 
   if (!open) return null;
@@ -156,6 +166,11 @@ export default function LeadBottomSheet({
             />
           </div>
         )}
+        {!success && submitError && (
+          <p role="alert" className="mx-5 mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            {submitError}
+          </p>
+        )}
 
         <div className="flex-1 overflow-hidden">
           {success ? (
@@ -175,13 +190,13 @@ export default function LeadBottomSheet({
                   <DepartureCalendar
                     priceDates={priceDates}
                     selectedDate={desiredDate}
-                    onSelect={setDesiredDate}
+                    onSelect={selectDeparture}
                   />
                 ) : (
                   <input
                     type="date"
                     value={desiredDate}
-                    onChange={event => setDesiredDate(event.target.value)}
+                    onChange={event => selectDeparture(event.target.value)}
                     min={new Date().toISOString().slice(0, 10)}
                     className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-center text-base transition focus:border-yellow-400 focus:outline-none"
                   />

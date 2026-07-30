@@ -6,6 +6,7 @@
  * Usage:
  *   node scripts/audit-admin-dashboard-contract.mjs
  *   BASE_URL=https://www.yeosonam.com node scripts/audit-admin-dashboard-contract.mjs
+ *   node scripts/audit-admin-dashboard-contract.mjs --warmup
  *
  * Local dev automatically enables the non-production ys-dev-admin bypass.
  */
@@ -26,6 +27,7 @@ const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
 const strict = hasFlag('--strict');
 const providedCookie = argValue('--cookie', process.env.ADMIN_AUDIT_COOKIE || '');
 const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.ADMIN_DASHBOARD_AUDIT_TIMEOUT_MS || '10000')) || 10000);
+const warmupTimeoutMs = Math.min(timeoutMs, 3000);
 const outputJson = hasFlag('--json');
 const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.ADMIN_DASHBOARD_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
 const hardTimeoutMs = requestedHardTimeoutMs > 0
@@ -70,7 +72,12 @@ const endpoints = [
     budgetMs: 2500,
   },
   {
-    path: '/api/agent-actions?status=pending&limit=6&count=none&fields=compact',
+    path: '/api/packages?status=pending&limit=6&lite=1&countMode=exact',
+    keys: ['ok', 'data', 'pagination'],
+    budgetMs: 2500,
+  },
+  {
+    path: '/api/agent-actions?status=pending&limit=6&fields=compact',
     keys: ['actions', 'total', 'page', 'limit'],
     budgetMs: 2500,
   },
@@ -80,6 +87,7 @@ const endpoints = [
     budgetMs: 3500,
   },
 ];
+const responseBodies = new Map();
 
 async function localDevCookie() {
   if (!isLocal) return '';
@@ -109,6 +117,7 @@ async function checkOne(endpoint, cookie) {
     let json = null;
     try {
       json = JSON.parse(text);
+      responseBodies.set(endpoint.path, json);
     } catch {
       // keep null
     }
@@ -128,6 +137,26 @@ async function checkOne(endpoint, cookie) {
       json: Boolean(json),
       sample: json ? JSON.stringify(json).slice(0, 220) : text.slice(0, 220),
     };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function warmOne(endpoint, cookie) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), warmupTimeoutMs);
+  try {
+    const res = await fetch(`${baseUrl}${endpoint.path}`, {
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+    });
+    await res.arrayBuffer();
+  } catch {
+    // Warm-up failures are measured and reported by the real contract request.
   } finally {
     clearTimeout(timer);
   }
@@ -178,15 +207,9 @@ if (!authCookie) {
   process.exit(strict ? 2 : 0);
 }
 
-if (isLocal) {
+if (isLocal && hasFlag('--warmup')) {
   for (const endpoint of endpoints) {
-    await fetch(`${baseUrl}${endpoint.path}`, {
-      redirect: 'manual',
-      headers: {
-        Accept: 'application/json',
-        ...(authCookie ? { Cookie: authCookie } : {}),
-      },
-    }).catch(() => null);
+    await warmOne(endpoint, authCookie);
   }
 }
 
@@ -208,6 +231,40 @@ for (const endpoint of endpoints) {
       sample: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+const dashboardBody = responseBodies.get('/api/dashboard');
+const recognitionBody = responseBodies.get('/api/dashboard/revenue-recognition?months=6');
+if (dashboardBody?.stats && recognitionBody?.data_status !== 'unavailable' && Array.isArray(recognitionBody?.recognized)) {
+  const currentMonth = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date());
+  const recognized = recognitionBody.recognized.find((row) => row.month === currentMonth) ?? {
+    gmv: 0,
+    margin: 0,
+    recognized_bookings: 0,
+  };
+  const mismatches = [
+    ['totalSales', recognized.gmv],
+    ['margin', recognized.margin],
+    ['totalMonthBookings', recognized.recognized_bookings],
+  ].filter(([key, expected]) => Number(dashboardBody.stats[key]) !== Number(expected));
+
+  results.push({
+    path: '[consistency] current-month-recognized-kpi',
+    status: mismatches.length === 0 ? 200 : 409,
+    ok: mismatches.length === 0,
+    ms: 0,
+    budgetMs: 0,
+    overBudget: false,
+    missingKeys: mismatches.map(([key]) => key),
+    json: true,
+    sample: mismatches.length === 0
+      ? `${currentMonth}: totalSales/margin/booking count aligned`
+      : `${currentMonth}: ${mismatches.map(([key, expected]) => `${key} expected=${expected} actual=${dashboardBody.stats[key]}`).join(', ')}`,
+  });
 }
 
 if (cookie) {

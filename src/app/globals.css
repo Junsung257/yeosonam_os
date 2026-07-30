@@ -11,16 +11,16 @@
  * ────────────────────────────────────────────────────────── */
 :root {
   /* ── 브랜드 (공통) ── */
-  --brand:        #3182F6;
+  --brand:        #1B64DA;
   --brand-light:  #EBF3FE;
-  --brand-dark:   #1B64DA;
+  --brand-dark:   #124AAB;
 
   /* ── 공개사이트 토큰 (유지) ── */
   --bg-page:      #FFFFFF;
   --bg-section:   #F2F4F6;
   --text-primary: #191F28;
   --text-body:    #4E5968;
-  --text-muted:   #8B95A1;
+  --text-muted:   #6B7280;
   --border:       #F2F4F6;
   --border-mid:   #E5E7EB;
   --danger:       #F04452;
@@ -41,8 +41,8 @@
   /* 텍스트 (5단계) */
   --admin-text:         #0F172A;
   --admin-text-2:       #334155;
-  --admin-muted:        #64748B;
-  --admin-muted-2:      #94A3B8;
+  --admin-muted:        #475569;
+  --admin-muted-2:      #64748B;
   /* 회계 (한국 주식 관행) */
   --admin-profit:       #F04452;
   --admin-loss:         #3182F6;
@@ -68,8 +68,8 @@
   --admin-border-strong:#475569;
   --admin-text:         #F1F5F9;
   --admin-text-2:       #CBD5E1;
-  --admin-muted:        #94A3B8;
-  --admin-muted-2:      #64748B;
+  --admin-muted:        #CBD5E1;
+  --admin-muted-2:      #94A3B8;
 }
 
 * {
@@ -312,68 +312,42 @@ td, th {
  * 한국어 매거진 타이포그래피 — prose / prose-lg 위에 덧입힘
  * ────────────────────────────────────────────────────────── */
 .prose-blog {
-  font-size: 1rem;        /* 16px — 모바일 우선 */
-  line-height: 1.75;
-  color: #374151;
+  font-size: 1.0625rem;
+  line-height: 1.82;
+  color: #273449;
   word-break: keep-all;
   overflow-wrap: break-word;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 @media (min-width: 768px) {
   .prose-blog {
-    font-size: 1.0625rem;  /* 17px — 데스크톱 가독성 최적 */
-    line-height: 1.8;
+    font-size: 1.125rem;
+    line-height: 1.84;
   }
 }
 
-/* h2 — 브랜드 번호 뱃지 + 굵은 제목 (CSS counter, JS 불필요) */
-.prose-blog {
-  counter-reset: h2-counter;
-}
-
 .prose-blog h2 {
-  margin-top: 2.5em;
-  margin-bottom: 1.5rem;
-  padding: 0;
-  border-left: none;
+  margin-top: 3.5rem;
+  margin-bottom: 1.25rem;
+  padding: 1.1rem 0 0;
+  border-top: 1px solid #dbe3ec;
   display: block;
-  font-size: 1.5rem;
+  font-size: 1.45rem;
   font-weight: 800;
-  line-height: 1.35;
-  letter-spacing: -0.02em;
+  line-height: 1.4;
+  letter-spacing: 0;
   color: #0f172a;
 }
 
 .prose-blog h2::before {
-  counter-increment: h2-counter;
-  content: counter(h2-counter, decimal-leading-zero);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  background: #f8fafc;
-  color: #475569;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  font-variant-numeric: tabular-nums;
-  margin-right: 0.75rem;
-  vertical-align: 0.15em;
+  content: none;
 }
 
 @media (min-width: 768px) {
   .prose-blog h2 {
-    font-size: 1.875rem;
-    margin-top: 4.5rem;
-  }
-  .prose-blog h2::before {
-    min-width: 2rem;
-    height: 2rem;
-    font-size: 0.78rem;
+    font-size: 1.75rem;
+    margin-top: 4rem;
   }
 }
 
@@ -383,7 +357,7 @@ td, th {
   font-size: 1.2rem;
   font-weight: 700;
   line-height: 1.45;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   color: #0f172a;
   display: block;
   overflow-wrap: anywhere;
@@ -408,8 +382,8 @@ td, th {
 }
 
 .prose-blog p {
-  margin-top: 1.2em;
-  margin-bottom: 1.2em;
+  margin-top: 1.15em;
+  margin-bottom: 1.15em;
 }
 
 .prose-blog {
@@ -476,13 +450,13 @@ td, th {
 }
 
 .prose-blog blockquote {
-  border-left-width: 6px;
+  border-left-width: 4px;
   border-left-color: var(--brand);
-  background-color: #F0F9FF;    /* 미세한 배경색 적용 */
+  background-color: #f4f8fc;
   padding: 1rem 1.25rem;
   border-radius: 0 0.5rem 0.5rem 0;
   font-style: normal;
-  color: #1E3A5F;
+  color: #20354d;
   quotes: none;
 }
 .prose-blog blockquote::before,
@@ -490,20 +464,13 @@ td, th {
   content: '';
 }
 
-/* ──────────────────────────────────────────────────────────
- * 3-color accent system (2026-04-22)
- *   1) <mark>              — 연노랑 형광펜 (AI가 H2당 1개 자동 마킹)
- *   2) <strong class="num"> — 주황 수치 (가격/거리/시간 자동 변환)
- *   3) <aside class="tip">  — 민트 인포박스 (TL;DR · 꿀팁)
- * ──────────────────────────────────────────────────────────*/
+/* Legacy highlight markup renders as plain text. New posts reject <mark>. */
 .prose-blog mark {
-  /* 2026-05-17 CRO 업데이트: 파스텔 노랑(#FEF3C7) → 주황계열로 — .num 과 팔레트 통일 + 가독성/주목도 ↑.
-   * 헬로마켓·당근·토스 등 모바일 커머스에서 검증된 amber 강조와 동일 톤. AA 대비 4.7:1. */
   background-color: transparent;
   color: inherit;
   padding: 0;
   border-radius: 0;
-  font-weight: 700;
+  font-weight: inherit;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -518,10 +485,10 @@ td, th {
 
 .prose-blog strong.num,
 .prose-blog .num {
-  color: #EA580C;
+  color: #9a3412;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .prose-blog aside.tip {
@@ -546,7 +513,7 @@ td, th {
   border-collapse: collapse;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   box-shadow: 0 0 0 1px #e5e7eb;
 }
 .prose-blog thead {
@@ -638,7 +605,7 @@ td, th {
   display: block;
   text-align: center;
   font-size: 0.85em;
-  color: #9ca3af;
+  color: #64748b;
   margin-top: -1rem;
   margin-bottom: 1.5rem;
   font-style: normal;

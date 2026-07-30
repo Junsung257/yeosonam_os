@@ -16,12 +16,8 @@
 
 import { getSupabaseAdmin, supabaseAdmin } from '../supabase';
 import {
-  KST_OFFSET_MS,
-  addCalendarDays,
   kstMonthKeysFor,
   kstMonthStart,
-  nonNegativeOutstanding,
-  toKstCalendar,
   toKstDate,
 } from '../admin-dashboard-kpi-basis';
 
@@ -29,91 +25,39 @@ import {
 // Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.
 const getSupabase = getSupabaseAdmin;
 
+const ADMIN_RPC_TIMEOUT_MS = 2500;
+
+function withAdminQueryTimeout<T>(query: T, timeoutMs = ADMIN_RPC_TIMEOUT_MS): T {
+  const candidate = query as T & { abortSignal?: (signal: AbortSignal) => T };
+  if (typeof candidate.abortSignal !== 'function' || typeof AbortSignal?.timeout !== 'function') return query;
+  return candidate.abortSignal(AbortSignal.timeout(timeoutMs));
+}
+
 // ─── V1: 이번 달 KPI ─────────────────────────────────────────
 
 export async function getDashboardStats() {
   try {
-    const now = new Date();
-    const thisMonthStartStr = kstMonthStart(now);
-    const todayStr = toKstDate(now);
-    // D-7 잔금미납: 7일 내 출발 예정 & pending/confirmed & 미수금 있음
-    const d7Str = addCalendarDays(todayStr, 7);
-    const passportCutoffStr = addCalendarDays(todayStr, 180);
-
-    const [recognizedBookingsRes, activeBookingsRes, unpaidD7Res, expiringPassportsRes] = await Promise.all([
-      // 이번 달 KST 출발 완료 기준 확정 예약 (삭제/취소 제외)
-      supabaseAdmin
-        .from('bookings')
-        .select('departure_date, total_cost, total_price, paid_amount, margin')
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .neq('status', 'cancelled')
-        .gte('departure_date', thisMonthStartStr)
-        .lte('departure_date', todayStr),
-      // 운영 중 예약은 매출 인식과 분리해 미래 출발도 유지한다.
-      supabaseAdmin
-        .from('bookings')
-        .select('id', { count: 'exact', head: true })
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .in('status', ['pending', 'confirmed']),
-      supabaseAdmin
-        .from('bookings')
-        .select('total_price, paid_amount')
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .in('status', ['pending', 'confirmed'])
-        .gte('departure_date', todayStr)
-        .lte('departure_date', d7Str),
-      supabaseAdmin
-        .from('customers')
-        .select('id', { count: 'exact', head: true })
-        .not('passport_expiry', 'is', null)
-        .lte('passport_expiry', passportCutoffStr),
-    ]);
-
-    const queryError = recognizedBookingsRes.error || activeBookingsRes.error || unpaidD7Res.error || expiringPassportsRes.error;
-    if (queryError) throw queryError;
-
-    interface DashboardBookingAmount {
-      total_cost?: number | null;
-      total_price?: number | null;
-      paid_amount?: number | null;
-      margin?: number | null;
-    }
-    const recognizedBookings = (recognizedBookingsRes.data || []) as DashboardBookingAmount[];
-    // 이번 달 총 판매가 (출발일 기준)
-    const totalSales = recognizedBookings.reduce((sum, booking) => sum + (booking.total_price || 0), 0);
-    // 원가: 전체 비취소 예약 합산
-    const totalCost = recognizedBookings.reduce((sum, booking) => sum + (booking.total_cost || 0), 0);
-    // 이번 달 총 입금액
-    const totalPaid = recognizedBookings.reduce((sum, booking) => sum + (booking.paid_amount || 0), 0);
-    // 미수금은 예약별 0 하한을 합산한다. 한 예약의 초과입금이 다른 예약의 미수를 상쇄하면 안 된다.
-    const totalOutstanding = recognizedBookings.reduce(
-      (sum, booking) => sum + nonNegativeOutstanding(booking.total_price, booking.paid_amount),
-      0,
+    // 서버 집계 RPC를 사용해 PostgREST 기본 1,000행 제한과 다중 왕복을 제거한다.
+    const { data, error } = await withAdminQueryTimeout(
+      supabaseAdmin.rpc('get_admin_dashboard_stats'),
     );
-    // 마진: margin 컬럼 기준 (DB 트리거가 자동 계산, completed 한정 아님)
-    const margin = recognizedBookings.reduce((sum, booking) => sum + (booking.margin || 0), 0);
-
-    const totalMileage = 0;
-    // 여권 만료: 여행업 실무 기준 6개월 이내 (90일 → 6개월 = 국제 기준)
-    const expiringPassports = expiringPassportsRes.count || 0;
-
-    // D-7 잔금미납: 실제 미납(paid < price)인 건만
-    const activeBookings = activeBookingsRes.count || 0;
-    const unpaidD7 = ((unpaidD7Res.data || []) as DashboardBookingAmount[]).filter(
-      booking => (booking.paid_amount || 0) < (booking.total_price || 0),
-    ).length;
-
+    if (error) throw error;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('대시보드 KPI 집계 결과가 올바르지 않습니다.');
+    }
+    const row = data as Record<string, unknown>;
+    const numberValue = (key: string) => Number(row[key]) || 0;
     return {
-      totalSales,
-      totalCost,
-      totalPaid,
-      totalOutstanding,
-      margin,
-      activeBookings,
-      unpaidD7,          // ← 신규: D-7 잔금미납 실제 건수
-      totalMonthBookings: recognizedBookings.length,
-      totalMileage,
-      expiringPassports,
+      totalSales: numberValue('totalSales'),
+      totalCost: numberValue('totalCost'),
+      totalPaid: numberValue('totalPaid'),
+      totalOutstanding: numberValue('totalOutstanding'),
+      margin: numberValue('margin'),
+      activeBookings: numberValue('activeBookings'),
+      unpaidD7: numberValue('unpaidD7'),
+      totalMonthBookings: numberValue('totalMonthBookings'),
+      totalMileage: numberValue('totalMileage'),
+      expiringPassports: numberValue('expiringPassports'),
     };
   } catch (error) { console.error('대시보드 통계 실패:', error); return null; }
 }
@@ -128,7 +72,7 @@ export interface MonthlyChartDataV3 {
   affiliate_margin: number;
   total_commission: number;
   ad_spend_krw: number;   // 신규
-  net_margin: number;     // 신규: margins - commission - ad_spend
+  net_margin: number;     // 신규: DB 순마진 합계 - 광고비 (수수료는 이미 margin에 반영)
 }
 
 export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV3[]> {
@@ -138,49 +82,58 @@ export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV
   try {
     const now = new Date();
     const monthKeys = kstMonthKeysFor(months, now);
-    const fromStr = `${monthKeys[0]}-01`;
-    const toStr = toKstDate(now);
-
     // 2개 쿼리 병렬 실행 (기존 12개 → 2개)
-    const [{ data: bookings }, { data: snapshots }] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('departure_date, total_price, margin, influencer_commission, booking_type')
-        .gte('departure_date', fromStr)
-        .lte('departure_date', toStr)
-        .neq('status', 'cancelled')
-        .or('is_deleted.is.null,is_deleted.eq.false'),
-      supabase
-        .from('ad_performance_snapshots')
-        .select('snapshot_date, spend_krw')
-        .gte('snapshot_date', fromStr)
-        .lte('snapshot_date', toStr),
+    const [bookingsResult, snapshotsResult] = await Promise.all([
+      withAdminQueryTimeout(supabase
+        .from('v_monthly_dashboard_profit')
+        .select('month, direct_sales, affiliate_sales, direct_margin, affiliate_margin, total_commission')
+        .gte('month', monthKeys[0])
+        .lte('month', monthKeys.at(-1)!)),
+      withAdminQueryTimeout(supabase
+        .from('v_monthly_ad_spend')
+        .select('month, ad_spend_krw')
+        .gte('month', monthKeys[0])
+        .lte('month', monthKeys.at(-1)!)),
     ]);
 
+    if (bookingsResult.error) throw bookingsResult.error;
+    if (snapshotsResult.error) throw snapshotsResult.error;
+    const bookings = bookingsResult.data;
+    const snapshots = snapshotsResult.data;
+
     // 월별로 그룹핑 (클라이언트 사이드)
-    const bookingList = bookings ?? [];
-    const snapshotList = snapshots ?? [];
+    interface ChartProfitRow {
+      month: string;
+      direct_sales: number | null;
+      affiliate_sales: number | null;
+      direct_margin: number | null;
+      affiliate_margin: number | null;
+      total_commission: number | null;
+    }
+    interface AdSpendRow { month: string; ad_spend_krw: number | null }
+    const profitByMonth = new Map(
+      ((bookings ?? []) as unknown as ChartProfitRow[]).map(row => [row.month, row]),
+    );
+    const adSpendByMonth = new Map(
+      ((snapshots ?? []) as unknown as AdSpendRow[]).map(row => [row.month, Number(row.ad_spend_krw) || 0]),
+    );
 
     const result: MonthlyChartDataV3[] = [];
     for (const monthLabel of monthKeys) {
-      const monthBookings = bookingList.filter((b: any) => (b.departure_date ?? '').slice(0, 7) === monthLabel);
-      const direct = monthBookings.filter((b: any) => b.booking_type !== 'AFFILIATE');
-      const affiliate = monthBookings.filter((b: any) => b.booking_type === 'AFFILIATE');
+      const profit = profitByMonth.get(monthLabel);
+      const directMargin = Number(profit?.direct_margin) || 0;
+      const affiliateMargin = Number(profit?.affiliate_margin) || 0;
+      const totalCommission = Number(profit?.total_commission) || 0;
+      const adSpend = adSpendByMonth.get(monthLabel) ?? 0;
 
-      const directMargin = direct.reduce((s: number, b: any) => s + (b.margin || 0), 0);
-      const affiliateMargin = affiliate.reduce((s: number, b: any) => s + (b.margin || 0), 0);
-      const totalCommission = affiliate.reduce((s: number, b: any) => s + (b.influencer_commission || 0), 0);
-
-      const adSpend = snapshotList
-        .filter((r: any) => (r.snapshot_date ?? '').slice(0, 7) === monthLabel)
-        .reduce((s: number, r: any) => s + (r.spend_krw || 0), 0);
-
-      const netMargin = directMargin + affiliateMargin - totalCommission - adSpend;
+      // bookings.margin은 DB 트리거에서 이미 인플루언서 수수료를 차감한 값이다.
+      // 표시용 totalCommission을 다시 빼면 제휴 예약 수수료가 이중 차감된다.
+      const netMargin = directMargin + affiliateMargin - adSpend;
 
       result.push({
         month: monthLabel,
-        direct_sales: direct.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
-        affiliate_sales: affiliate.reduce((s: number, b: any) => s + (b.total_price || 0), 0),
+        direct_sales: Number(profit?.direct_sales) || 0,
+        affiliate_sales: Number(profit?.affiliate_sales) || 0,
         direct_margin: directMargin,
         affiliate_margin: affiliateMargin,
         total_commission: totalCommission,
@@ -192,7 +145,7 @@ export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV
     return result;
   } catch (error) {
     console.error('V3 차트 통계 조회 실패:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -225,14 +178,6 @@ export interface NewBookingsMonth {
   cancellation_rate: number; // 0~1
 }
 
-const toKstMonth = (iso: string | null): string | null => {
-  if (!iso) return null;
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return null;
-  const kst = new Date(t + KST_OFFSET_MS);
-  return `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}`;
-};
-
 /**
  * 월별 확정매출 (출발일 기준, IFRS 15/ASC 606 매출 인식).
  * 출발일 ≤ 오늘 & status ≠ 'cancelled' 만 집계.
@@ -246,12 +191,10 @@ export async function getRecognizedRevenueMonthly(months = 6): Promise<Recognize
     const fromStr = kstMonthStart(now, -(months - 1));
 
     const { data, error } = await supabase
-      .from('bookings')
-      .select('departure_date, total_price, paid_amount, margin, influencer_commission, status')
-      .gte('departure_date', fromStr)
-      .lte('departure_date', todayStr)
-      .neq('status', 'cancelled')
-      .or('is_deleted.is.null,is_deleted.eq.false');
+      .from('v_monthly_recognized_revenue')
+      .select('month, recognized_bookings, gmv, margin, paid, outstanding, commission')
+      .gte('month', fromStr.slice(0, 7))
+      .lte('month', todayStr.slice(0, 7));
 
     if (error) throw error;
 
@@ -260,22 +203,20 @@ export async function getRecognizedRevenueMonthly(months = 6): Promise<Recognize
       buckets.set(m, { month: m, recognized_bookings: 0, gmv: 0, margin: 0, paid: 0, outstanding: 0, commission: 0 });
     }
     for (const b of (data ?? []) as Array<Record<string, unknown>>) {
-      const month = ((b.departure_date as string) ?? '').slice(0, 7);
+      const month = (b.month as string) ?? '';
       const row = buckets.get(month);
       if (!row) continue;
-      const gmv = (b.total_price as number) || 0;
-      const paid = (b.paid_amount as number) || 0;
-      row.recognized_bookings += 1;
-      row.gmv += gmv;
-      row.margin += (b.margin as number) || 0;
-      row.paid += paid;
-      row.outstanding += gmv - paid;
-      row.commission += (b.influencer_commission as number) || 0;
+      row.recognized_bookings = Number(b.recognized_bookings) || 0;
+      row.gmv = Number(b.gmv) || 0;
+      row.margin = Number(b.margin) || 0;
+      row.paid = Number(b.paid) || 0;
+      row.outstanding = Number(b.outstanding) || 0;
+      row.commission = Number(b.commission) || 0;
     }
     return [...buckets.values()];
   } catch (err) {
     console.error('확정매출 월별 조회 실패:', err);
-    return [];
+    throw err;
   }
 }
 
@@ -287,61 +228,44 @@ export async function getNewBookingsMonthly(months = 6): Promise<NewBookingsMont
   if (!supabase) return [];
   try {
     const now = new Date();
-    const kstNow = toKstCalendar(now);
-    const fromUtcIso = new Date(
-      Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() - (months - 1), 1) - KST_OFFSET_MS,
-    ).toISOString();
+    const monthKeys = kstMonthKeysFor(months, now);
 
     const { data, error } = await supabase
-      .from('bookings')
-      .select('created_at, departure_date, total_price, status')
-      .gte('created_at', fromUtcIso)
-      .lte('created_at', now.toISOString())
-      .or('is_deleted.is.null,is_deleted.eq.false');
+      .from('v_monthly_new_bookings')
+      .select('month, total_bookings, live_bookings, cancelled_bookings, gmv_live, gmv_total, avg_lead_time')
+      .gte('month', monthKeys[0])
+      .lte('month', monthKeys.at(-1)!);
 
     if (error) throw error;
 
-    const buckets = new Map<string, NewBookingsMonth & { _leadSum: number; _leadN: number }>();
-    for (const m of kstMonthKeysFor(months)) {
+    const buckets = new Map<string, NewBookingsMonth>();
+    for (const m of monthKeys) {
       buckets.set(m, {
         month: m, total_bookings: 0, live_bookings: 0, cancelled_bookings: 0,
         gmv_live: 0, gmv_total: 0, avg_lead_time: null, cancellation_rate: 0,
-        _leadSum: 0, _leadN: 0,
       });
     }
     for (const b of (data ?? []) as Array<Record<string, unknown>>) {
-      const month = toKstMonth(b.created_at as string | null);
+      const month = b.month as string | null;
       if (!month) continue;
       const row = buckets.get(month);
       if (!row) continue;
-      const gmv = (b.total_price as number) || 0;
-      const isCancelled = b.status === 'cancelled';
-      row.total_bookings += 1;
-      row.gmv_total += gmv;
-      if (isCancelled) {
-        row.cancelled_bookings += 1;
-      } else {
-        row.live_bookings += 1;
-        row.gmv_live += gmv;
-        if (b.departure_date && b.created_at) {
-          const dep = new Date(b.departure_date as string).getTime();
-          const cre = new Date(b.created_at as string).getTime();
-          const days = Math.round((dep - cre) / (24 * 60 * 60 * 1000));
-          if (days >= 0 && days < 730) { // 노이즈 가드
-            row._leadSum += days;
-            row._leadN += 1;
-          }
-        }
-      }
+      row.total_bookings = Number(b.total_bookings) || 0;
+      row.live_bookings = Number(b.live_bookings) || 0;
+      row.cancelled_bookings = Number(b.cancelled_bookings) || 0;
+      row.gmv_live = Number(b.gmv_live) || 0;
+      row.gmv_total = Number(b.gmv_total) || 0;
+      const avgLeadTime = b.avg_lead_time == null ? null : Number(b.avg_lead_time);
+      row.avg_lead_time = avgLeadTime != null && Number.isFinite(avgLeadTime) ? Math.round(avgLeadTime) : null;
     }
-    return [...buckets.values()].map(({ _leadSum, _leadN, ...row }) => ({
+    return [...buckets.values()].map(row => ({
       ...row,
-      avg_lead_time: _leadN > 0 ? Math.round(_leadSum / _leadN) : null,
+      avg_lead_time: row.avg_lead_time,
       cancellation_rate: row.total_bookings > 0 ? row.cancelled_bookings / row.total_bookings : 0,
     }));
   } catch (err) {
     console.error('신규예약 월별 조회 실패:', err);
-    return [];
+    throw err;
   }
 }
 
@@ -380,64 +304,15 @@ export async function getBookingPaceAndCancellation(): Promise<PaceAndCancellati
   if (!supabase) return empty;
 
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const ninetyAgo = new Date(today.getTime() - 90 * 86400000);
-    const ninetyAgoIso = new Date(ninetyAgo.getTime() - KST_OFFSET_MS).toISOString();
-
-    interface BookingPace { departure_date: string | null; total_price: number | null }
-    interface BookingStatus { status: string | null }
-
-    const [paceRes, cancellationRes] = await Promise.all([
-      // 향후 출발 (취소 제외)
-      supabase
-        .from('bookings')
-        .select('departure_date, total_price')
-        .gte('departure_date', todayStr)
-        .neq('status', 'cancelled')
-        .or('is_deleted.is.null,is_deleted.eq.false'),
-      // 최근 90일 생성 예약 (취소 포함)
-      supabase
-        .from('bookings')
-        .select('status')
-        .gte('created_at', ninetyAgoIso)
-        .or('is_deleted.is.null,is_deleted.eq.false'),
-    ]);
-
-    if (paceRes.error) throw paceRes.error;
-    if (cancellationRes.error) throw cancellationRes.error;
-
-    const pace = empty.pace.map(b => ({ ...b }));
-    const todayMs = today.getTime();
-    for (const b of (paceRes.data ?? []) as unknown as BookingPace[]) {
-      if (!b.departure_date) continue;
-      const d = new Date(b.departure_date).getTime();
-      const days = Math.floor((d - todayMs) / 86400000);
-      const gmv = b.total_price || 0;
-      let idx = 4;
-      if (days <= 7) idx = 0;
-      else if (days <= 30) idx = 1;
-      else if (days <= 90) idx = 2;
-      else if (days <= 180) idx = 3;
-      pace[idx].bookings += 1;
-      pace[idx].gmv += gmv;
-    }
-
-    const total = (cancellationRes.data ?? []).length;
-    const cancelled = ((cancellationRes.data ?? []) as unknown as BookingStatus[]).filter(b => b.status === 'cancelled').length;
-
-    return {
-      pace,
-      cancellation_90d: {
-        total_in_window: total,
-        cancelled_in_window: cancelled,
-        rate: total > 0 ? cancelled / total : 0,
-      },
-    };
+    const { data, error } = await withAdminQueryTimeout(
+      supabase.rpc('get_admin_booking_pace_and_cancellation'),
+    );
+    if (error) throw error;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Booking Pace 집계 결과가 올바르지 않습니다.');
+    return data as unknown as PaceAndCancellation;
   } catch (err) {
     console.error('Booking Pace 조회 실패:', err);
-    return empty;
+    throw err;
   }
 }
 
@@ -465,95 +340,13 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
   const empty: AIUsageStats = { total_usd_7d: 0, total_usd_30d: 0, total_calls_30d: 0, daily: [], by_model: [], by_provider: [] };
   if (!supabase) return empty;
   try {
-    const now = Date.now();
-    const since30 = new Date(now - 30 * 86400000).toISOString();
-    const since7Ms = now - 7 * 86400000;
-
-    interface CostLedgerRow { created_at: string; cost_usd: number | null; model: string | null; input_tokens: number | null; cache_read_tokens: number | null }
-
-    const { data, error } = await supabase
-      .from('jarvis_cost_ledger')
-      .select('created_at, cost_usd, model, input_tokens, cache_read_tokens')
-      .gte('created_at', since30);
-    if (error) {
-      // 테이블 미존재(jarvis V2 미설치) 시 조용히 빈값 반환
-      if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === '42P01') return empty;
-      throw error;
-    }
-
-    const rows = (data ?? []) as unknown as CostLedgerRow[];
-    let total7 = 0, total30 = 0;
-    const dailyMap = new Map<string, { cost_usd: number; calls: number }>();
-    const modelMap = new Map<string, { cost_usd: number; calls: number }>();
-    type ProviderBucket = { cost_usd: number; calls: number; input_tokens: number; cache_read_tokens: number };
-    const providerMap = new Map<string, ProviderBucket>();
-
-    function detectProvider(model: string): 'deepseek' | 'gemini' | 'anthropic' | 'unknown' {
-      if (model.startsWith('deepseek')) return 'deepseek';
-      if (model.startsWith('gemini')) return 'gemini';
-      if (model.startsWith('claude')) return 'anthropic';
-      return 'unknown';
-    }
-
-    for (const r of rows) {
-      const t = new Date(r.created_at as string).getTime();
-      const cost = Number(r.cost_usd) || 0;
-      total30 += cost;
-      if (t >= since7Ms) total7 += cost;
-      // KST 일자 키
-      const kst = new Date(t + KST_OFFSET_MS);
-      const dateKey = `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}-${String(kst.getUTCDate()).padStart(2, '0')}`;
-      const dayBucket = dailyMap.get(dateKey) ?? { cost_usd: 0, calls: 0 };
-      dayBucket.cost_usd += cost;
-      dayBucket.calls += 1;
-      dailyMap.set(dateKey, dayBucket);
-      const model = (r.model as string) || 'unknown';
-      const m = modelMap.get(model) ?? { cost_usd: 0, calls: 0 };
-      m.cost_usd += cost;
-      m.calls += 1;
-      modelMap.set(model, m);
-      // 프로바이더별 집계
-      const provider = detectProvider(model);
-      const pb = providerMap.get(provider) ?? { cost_usd: 0, calls: 0, input_tokens: 0, cache_read_tokens: 0 };
-      pb.cost_usd += cost;
-      pb.calls += 1;
-      pb.input_tokens += Number(r.input_tokens) || 0;
-      pb.cache_read_tokens += Number(r.cache_read_tokens) || 0;
-      providerMap.set(provider, pb);
-    }
-    // 30일 빈 칸 채우기
-    const daily: AIUsageStats['daily'] = [];
-    for (let i = 29; i >= 0; i--) {
-      const t = now - i * 86400000;
-      const kst = new Date(t + KST_OFFSET_MS);
-      const dateKey = `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}-${String(kst.getUTCDate()).padStart(2, '0')}`;
-      const bucket = dailyMap.get(dateKey) ?? { cost_usd: 0, calls: 0 };
-      daily.push({ date: dateKey, cost_usd: bucket.cost_usd, calls: bucket.calls });
-    }
-    const by_model = [...modelMap.entries()]
-      .map(([model, v]) => ({ model, ...v }))
-      .sort((a, b) => b.cost_usd - a.cost_usd)
-      .slice(0, 5);
-    const by_provider = [...providerMap.entries()]
-      .map(([provider, pb]) => ({
-        provider: provider as AIUsageStats['by_provider'][0]['provider'],
-        cost_usd: Math.round(pb.cost_usd * 1000000) / 1000000,
-        calls: pb.calls,
-        cache_hit_rate: pb.input_tokens > 0 ? Math.round((pb.cache_read_tokens / pb.input_tokens) * 1000) / 1000 : 0,
-      }))
-      .sort((a, b) => b.cost_usd - a.cost_usd);
-
-    return {
-      total_usd_7d: Math.round(total7 * 10000) / 10000,
-      total_usd_30d: Math.round(total30 * 10000) / 10000,
-      total_calls_30d: rows.length,
-      daily,
-      by_model,
-      by_provider,
-    };
+    const { data, error } = await supabase.rpc('get_admin_ai_usage_stats');
+    if (error) throw error;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('AI 비용 집계 결과가 올바르지 않습니다.');
+    return data as unknown as AIUsageStats;
   } catch (err) {
     console.error('AI 비용 추이 조회 실패:', err);
-    return empty;
+    throw err;
   }
 }
 
@@ -572,82 +365,23 @@ export interface SettlementBalances {
   };
   payable: {
     total: number;
-    aging: { bucket: '0-30d' | '30-60d' | '60-90d' | '90d+'; amount: number }[];
+    aging: { bucket: 'not_due' | '0-30d' | '30-60d' | '60-90d' | '90d+'; amount: number }[];
   };
   receivable: {
     total: number;
-    aging: { bucket: '0-30d' | '30-60d' | '60-90d' | '90d+'; amount: number }[];
+    aging: { bucket: 'not_due' | '0-30d' | '30-60d' | '60-90d' | '90d+'; amount: number }[];
   };
 }
 
 export async function getSettlementBalances(): Promise<SettlementBalances> {
   const supabase = getSupabase();
-  const emptyAging = (): SettlementBalances['payable']['aging'] => [
-    { bucket: '0-30d', amount: 0 }, { bucket: '30-60d', amount: 0 },
-    { bucket: '60-90d', amount: 0 }, { bucket: '90d+', amount: 0 },
-  ];
   if (!supabase) throw new Error('정산 DB 연결을 사용할 수 없습니다.');
 
   try {
-    const todayStr = toKstDate(new Date());
-    const todayMs = Date.parse(`${todayStr}T00:00:00.000Z`);
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('total_price, total_cost, paid_amount, total_paid_out, departure_date, status')
-      .or('is_deleted.is.null,is_deleted.eq.false');
+    const { data, error } = await supabase.rpc('get_admin_settlement_balances');
     if (error) throw error;
-
-    interface CashflowBooking { total_price: number | null; total_cost: number | null; paid_amount: number | null; total_paid_out: number | null; departure_date: string | null; status: string | null }
-
-    const out: SettlementBalances = {
-      cash: { received: 0, paid_out: 0, balance: 0, basis: 'all_time_non_deleted_bookings' },
-      payable: { total: 0, aging: emptyAging() },
-      receivable: { total: 0, aging: emptyAging() },
-    };
-
-    const bucketIdx = (days: number): 0 | 1 | 2 | 3 => {
-      if (days <= 30) return 0;
-      if (days <= 60) return 1;
-      if (days <= 90) return 2;
-      return 3;
-    };
-
-    for (const b of (data ?? []) as unknown as CashflowBooking[]) {
-      const totalPrice = b.total_price || 0;
-      const paid = b.paid_amount || 0;
-      const totalCost = b.total_cost || 0;
-      const paidOut = b.total_paid_out || 0;
-      out.cash.received += paid;
-      out.cash.paid_out += paidOut;
-      out.cash.balance += paid - paidOut;
-
-      // 취소 예약도 실제 입금/환불 현금에는 포함하되 미수·랜드 미지급에서는 제외한다.
-      if (b.status === 'cancelled') continue;
-
-      const depMs = b.departure_date ? new Date(b.departure_date).getTime() : null;
-      const departed = b.departure_date != null && b.departure_date <= todayStr;
-      // 경과일: 출발 완료 건은 출발일 기준, 출발 전 건은 0 (아직 부채 미확정)
-      const overdueDays = departed && depMs != null ? Math.floor((todayMs - depMs) / 86400000) : 0;
-      const idx = bucketIdx(overdueDays);
-
-      // Receivable: 모든 진행 예약의 미입금분
-      // 출발 전 예약은 0-30d(idx=0), 출발 후는 출발일 경과일 기준
-      const recv = Math.max(0, totalPrice - paid);
-      if (recv > 0) {
-        out.receivable.total += recv;
-        out.receivable.aging[idx].amount += recv;
-      }
-      // Payable: 출발 완료 예약만 — 회계상 부채 확정 (IFRS 15 매출인식 기준)
-      if (departed) {
-        const pay = Math.max(0, totalCost - paidOut);
-        if (pay > 0) {
-          out.payable.total += pay;
-          out.payable.aging[idx].amount += pay;
-        }
-      }
-    }
-    return out;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('정산 집계 결과가 올바르지 않습니다.');
+    return data as unknown as SettlementBalances;
   } catch (err) {
     console.error('정산 잔여 조회 실패:', err);
     throw err;
@@ -672,54 +406,24 @@ export async function getOperatorTakeRates(limit = 8): Promise<OperatorTakeRate[
   const supabase = getSupabase();
   if (!supabase) return [];
   try {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    // 최근 6개월 출발 완료 예약
-    const sixMoAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1);
-    const fromStr = `${sixMoAgo.getFullYear()}-${String(sixMoAgo.getMonth() + 1).padStart(2, '0')}-01`;
-
-    interface LandOpBooking { land_operator_id: string | null; land_operator: string | null; total_price: number | null; margin: number | null }
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('land_operator_id, land_operator, total_price, margin')
-      .gte('departure_date', fromStr)
-      .lte('departure_date', todayStr)
-      .neq('status', 'cancelled')
-      .or('is_deleted.is.null,is_deleted.eq.false');
+    const rpc = supabase.rpc.bind(supabase) as unknown as (
+      functionName: string,
+      args?: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: unknown }>;
+    const { data, error } = await rpc('get_admin_operator_take_rates', { p_limit: limit });
     if (error) throw error;
-
-    const groups = new Map<string, { name: string; bookings: number; gmv: number; margin: number; gmvForRate: number; marginForRate: number }>();
-    for (const b of (data ?? []) as unknown as LandOpBooking[]) {
-      const id = b.land_operator_id ?? 'unknown';
-      const name = b.land_operator ?? '미지정';
-      const gmv = b.total_price || 0;
-      const margin = b.margin || 0;
-      const g = groups.get(id) ?? { name, bookings: 0, gmv: 0, margin: 0, gmvForRate: 0, marginForRate: 0 };
-      g.bookings += 1;
-      g.gmv += gmv;
-      g.margin += margin;
-      // take_rate 계산엔 gmv>0 & margin>0 모두 갖춘 행만 사용 (데이터 결측 제외)
-      if (gmv > 0 && margin > 0) {
-        g.gmvForRate += gmv;
-        g.marginForRate += margin;
-      }
-      groups.set(id, g);
-    }
-
-    const rows: OperatorTakeRate[] = [...groups.entries()].map(([id, g]) => ({
-      operator_id: id === 'unknown' ? null : id,
-      operator_name: g.name,
-      bookings: g.bookings,
-      gmv: g.gmv,
-      margin: g.margin,
-      take_rate: g.gmvForRate > 0 ? g.marginForRate / g.gmvForRate : null,
+    if (!Array.isArray(data)) return [];
+    return data.map((row: Record<string, unknown>) => ({
+      operator_id: typeof row.operator_id === 'string' ? row.operator_id : null,
+      operator_name: String(row.operator_name || '미지정'),
+      bookings: Number(row.bookings) || 0,
+      gmv: Number(row.gmv) || 0,
+      margin: Number(row.margin) || 0,
+      take_rate: row.take_rate == null ? null : Number(row.take_rate),
     }));
-    rows.sort((a, b) => b.gmv - a.gmv);
-    return rows.slice(0, limit);
   } catch (err) {
     console.error('Take Rate 조회 실패:', err);
-    return [];
+    throw err;
   }
 }
 
@@ -750,48 +454,13 @@ export async function getRepeatBookingStats(): Promise<RepeatBookingStats> {
   };
   if (!supabase) return empty;
   try {
-    interface RetentionBooking { lead_customer_id: string | null; total_price: number | null }
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('lead_customer_id, total_price')
-      .neq('status', 'cancelled')
-      .or('is_deleted.is.null,is_deleted.eq.false')
-      .not('lead_customer_id', 'is', null);
+    const { data, error } = await supabase.rpc('get_admin_repeat_booking_stats');
     if (error) throw error;
-
-    const perCustomer = new Map<string, { count: number; gmv: number }>();
-    for (const b of (data ?? []) as unknown as RetentionBooking[]) {
-      const id = b.lead_customer_id ?? '';
-      if (!id) continue;
-      const c = perCustomer.get(id) ?? { count: 0, gmv: 0 };
-      c.count += 1;
-      c.gmv += b.total_price || 0;
-      perCustomer.set(id, c);
-    }
-    const customers = [...perCustomer.values()];
-    const total = customers.length;
-    const oneTime = customers.filter(c => c.count === 1).length;
-    const twoTime = customers.filter(c => c.count === 2).length;
-    const threePlus = customers.filter(c => c.count >= 3).length;
-    const repeat = twoTime + threePlus;
-    const totalGmv = customers.reduce((s, c) => s + c.gmv, 0);
-    const repeatGmv = customers.filter(c => c.count >= 2).reduce((s, c) => s + c.gmv, 0);
-    const topLtv = customers.length > 0 ? Math.max(...customers.map(c => c.gmv)) : 0;
-
-    return {
-      total_customers: total,
-      repeat_customers: repeat,
-      repeat_rate: total > 0 ? repeat / total : 0,
-      repeat_revenue_share: totalGmv > 0 ? repeatGmv / totalGmv : 0,
-      top_customer_ltv: topLtv,
-      one_time: oneTime,
-      two_time: twoTime,
-      three_plus: threePlus,
-    };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('재구매 집계 결과가 올바르지 않습니다.');
+    return data as unknown as RepeatBookingStats;
   } catch (err) {
     console.error('Repeat Booking Rate 조회 실패:', err);
-    return empty;
+    throw err;
   }
 }
 
@@ -833,27 +502,13 @@ export async function getDataQualityIssues(): Promise<DataQualityReport | null> 
   if (!supabase) return null;
 
   try {
-    interface BookingHealthRow {
-      id: string; total_price: number | null; total_cost: number | null;
-      paid_amount: number | null; margin: number | null;
-      status: string | null; payment_status: string | null;
-      departure_date: string | null; departure_region: string | null;
-      land_operator_id: string | null; lead_customer_id: string | null;
-    }
-
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('id, total_price, total_cost, paid_amount, margin, status, payment_status, departure_date, departure_region, land_operator_id, lead_customer_id')
-      .or('is_deleted.is.null,is_deleted.eq.false')
-      .neq('status', 'cancelled');
+    const { data, error } = await supabase.rpc('get_admin_data_quality_counts');
     if (error) throw error;
-
-    const rows = (data ?? []) as unknown as BookingHealthRow[];
-    const total = rows.length;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('데이터 품질 집계 결과가 올바르지 않습니다.');
+    const counts = data as Record<string, unknown>;
+    const total = Number(counts.total_live) || 0;
     // 예약 0건 = 데이터 없음 (issues 없음, health 100)
     if (total === 0) return { total_live: 0, issues: [], health_score: 100 };
-
-    const cnt = (pred: (b: BookingHealthRow) => boolean) => rows.filter(pred).length;
 
     const checks: Array<{
       id: DataQualityIssueId;
@@ -866,42 +521,42 @@ export async function getDataQualityIssues(): Promise<DataQualityReport | null> 
         id: 'missing_total_price',
         label: '판매가 (total_price) 미입력',
         severity: 'critical',
-        affected: cnt(b => !b.total_price || b.total_price === 0),
+        affected: Number(counts.missing_total_price) || 0,
         hint: 'GMV / 확정매출 / Take Rate 산출 불가',
       },
       {
         id: 'missing_total_cost',
         label: '원가 (total_cost) 미입력',
         severity: 'critical',
-        affected: cnt(b => !b.total_cost || b.total_cost === 0),
+        affected: Number(counts.missing_total_cost) || 0,
         hint: 'Margin / Take Rate / Payable 산출 불가',
       },
       {
         id: 'missing_operator',
         label: '랜드사 (land_operator_id) 미연결',
         severity: 'warning',
-        affected: cnt(b => !b.land_operator_id),
+        affected: Number(counts.missing_operator) || 0,
         hint: '랜드사별 GMV / 정산 / 신뢰도 점수 분석 불가',
       },
       {
         id: 'missing_region',
         label: '출발 지역 (departure_region) 미입력',
         severity: 'info',
-        affected: cnt(b => !b.departure_region),
+        affected: Number(counts.missing_region) || 0,
         hint: '지역별 인기 분석 불가',
       },
       {
         id: 'missing_margin_calc',
         label: '마진 미계산 (price·cost 있는데 margin=0)',
         severity: 'warning',
-        affected: cnt(b => (!b.margin || b.margin === 0) && (b.total_price || 0) > 0 && (b.total_cost || 0) > 0),
+        affected: Number(counts.missing_margin_calc) || 0,
         hint: 'trg_booking_margin 트리거 점검 필요',
       },
       {
         id: 'payment_status_mismatch',
         label: 'payment_status 불일치 (입금됐는데 미입금 표시)',
         severity: 'critical',
-        affected: cnt(b => (b.paid_amount || 0) > 0 && b.payment_status === '미입금'),
+        affected: Number(counts.payment_status_mismatch) || 0,
         hint: 'trg_payment_status 트리거 점검 필요. ActionBoard 미수금 카운트 왜곡',
       },
     ];
@@ -925,6 +580,6 @@ export async function getDataQualityIssues(): Promise<DataQualityReport | null> 
     return { total_live: total, issues, health_score: Math.max(0, Math.round(score)) };
   } catch (err) {
     console.error('데이터 품질 조회 실패:', err);
-    return null;
+    throw err;
   }
 }

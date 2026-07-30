@@ -47,6 +47,52 @@ interface SearchTermInfo {
   last_seen: string;
 }
 
+interface KeywordSummaryResponse {
+  available?: boolean;
+  reason?: string;
+  summary?: {
+    totalRows: number;
+    uniqueKeywords: number;
+    totalSpend: number;
+    totalClicks: number;
+    totalImpressions: number;
+    totalConversions: number;
+    ctr: number;
+    cpc: number;
+    roas: number;
+  };
+  error?: string;
+  partial?: boolean;
+  totalRowsAvailable?: number;
+}
+
+interface SearchTermRow {
+  search_term: string;
+  keyword_text?: string | null;
+  platform: string;
+  impressions?: number | null;
+  clicks?: number | null;
+  cost_krw?: number | null;
+  ctr?: number | null;
+  first_seen: string;
+  last_seen?: string | null;
+}
+
+interface KeywordRankingRow {
+  keyword?: string;
+  keyword_text?: string;
+  platform?: string;
+  impressions?: number;
+  clicks?: number;
+  spend?: number;
+  cost_krw?: number;
+  ctr?: number;
+  cpc?: number;
+  avg_cpc?: number;
+  conversions?: number;
+  roas?: number;
+}
+
 const PLATFORM_LABELS: Record<string, string> = { naver: '네이버', google: '구글', meta: '메타' };
 const PLATFORM_COLORS: Record<string, string> = { naver: '#03C75A', google: '#4285F4', meta: '#1877F2' };
 
@@ -62,7 +108,7 @@ function fmtMoney(n: number | null | undefined): string {
 
 function fmtPct(n: number | null | undefined): string {
   if (n == null) return '-';
-  return `${(n * 100).toFixed(2)}%`;
+  return `${n.toFixed(2)}%`;
 }
 
 export default function KeywordStatsPage() {
@@ -72,27 +118,101 @@ export default function KeywordStatsPage() {
   const [bottomKeywords, setBottomKeywords] = useState<KeywordRanking[]>([]);
   const [searchTerms, setSearchTerms] = useState<SearchTermInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<'overview' | 'top' | 'search-terms'>('overview');
 
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
-        const params = platform !== 'all' ? `?platform=${platform}` : '';
+        const commonParams = new URLSearchParams();
+        if (platform !== 'all') commonParams.set('platform', platform);
+        const buildParams = (path?: 'top' | 'search-terms') => {
+          const params = new URLSearchParams(commonParams);
+          if (path) params.set('_path', path);
+          const query = params.toString();
+          return query ? `?${query}` : '';
+        };
         const [summaryRes, topRes, termsRes] = await Promise.all([
-          fetch(`/api/admin/keyword-stats${params}`),
-          fetch(`/api/admin/keyword-stats/top${params}`),
-          fetch(`/api/admin/keyword-stats/search-terms${params}`),
+          fetch(`/api/admin/keyword-stats${buildParams()}`),
+          fetch(`/api/admin/keyword-stats${buildParams('top')}`),
+          fetch(`/api/admin/keyword-stats${buildParams('search-terms')}`),
         ]);
-        if (summaryRes.ok) setSummary((await summaryRes.json()) as KeywordStatsSummary);
-        if (topRes.ok) {
-          const topData = (await topRes.json()) as { top: KeywordRanking[]; bottom: KeywordRanking[] };
-          setTopKeywords(topData.top ?? []);
-          setBottomKeywords(topData.bottom ?? []);
+
+        const [summaryData, topData, termsData] = await Promise.all([
+          summaryRes.json().catch(() => ({})) as Promise<KeywordSummaryResponse>,
+          topRes.json().catch(() => ({})) as Promise<{ top?: KeywordRankingRow[]; bottom?: KeywordRankingRow[]; error?: string; partial?: boolean; totalRowsAvailable?: number }>,
+          termsRes.json().catch(() => ({})) as Promise<{ searchTerms?: SearchTermRow[]; error?: string }>,
+        ]);
+
+        const issues: string[] = [];
+        if (!summaryRes.ok) {
+          issues.push(summaryData.error ?? '요약 지표 조회 실패');
+          setSummary(null);
+        } else if (summaryData.available === false) {
+          issues.push(summaryData.reason ?? '키워드 성과 데이터가 연결되지 않았습니다.');
+          setSummary(null);
+        } else if (summaryData.summary) {
+          const value = summaryData.summary;
+          setSummary({
+            total_keywords: value.uniqueKeywords,
+            total_impressions: value.totalImpressions,
+            total_clicks: value.totalClicks,
+            total_spend: value.totalSpend,
+            avg_ctr: value.ctr,
+            avg_cpc: value.cpc,
+            total_conversions: value.totalConversions,
+            avg_roas: value.roas,
+          });
+          if (summaryData.partial) issues.push(`요약은 전체 ${summaryData.totalRowsAvailable ?? '?'}행 중 조회 한도 내 데이터입니다.`);
+        } else {
+          issues.push('요약 지표 응답이 비어 있습니다.');
+          setSummary(null);
         }
-        if (termsRes.ok) setSearchTerms((await termsRes.json()) as SearchTermInfo[]);
+
+        if (topRes.ok) {
+          const normalizeRanking = (row: KeywordRankingRow): KeywordRanking => ({
+            keyword: row.keyword ?? row.keyword_text ?? '(키워드 없음)',
+            platform: row.platform ?? (platform === 'all' ? 'all' : platform),
+            impressions: row.impressions ?? 0,
+            clicks: row.clicks ?? 0,
+            spend: row.spend ?? row.cost_krw ?? 0,
+            ctr: row.ctr ?? 0,
+            cpc: row.cpc ?? row.avg_cpc ?? 0,
+            conversions: row.conversions ?? 0,
+            roas: row.roas ?? 0,
+          });
+          setTopKeywords((topData.top ?? []).map(normalizeRanking));
+          setBottomKeywords((topData.bottom ?? []).map(normalizeRanking));
+          if (topData.partial) issues.push(`키워드 순위는 전체 ${topData.totalRowsAvailable ?? '?'}행 중 조회 한도 내 데이터입니다.`);
+        } else {
+          setTopKeywords([]);
+          setBottomKeywords([]);
+          issues.push(topData.error ?? '키워드 랭킹 조회 실패');
+        }
+
+        if (termsRes.ok) {
+          setSearchTerms((termsData.searchTerms ?? []).map((row) => ({
+            search_term: row.search_term,
+            keyword: row.keyword_text ?? '-',
+            platform: row.platform,
+            impressions: row.impressions ?? 0,
+            clicks: row.clicks ?? 0,
+            spend: row.cost_krw ?? 0,
+            ctr: row.ctr ?? 0,
+            first_seen: row.first_seen,
+            last_seen: row.last_seen ?? '',
+          })));
+        } else {
+          setSearchTerms([]);
+          issues.push(termsData.error ?? '검색어 조회 실패');
+        }
+
+        if (issues.length > 0) setLoadError([...new Set(issues)].join(' / '));
       } catch (err) {
         console.error('Failed to load keyword stats:', err);
+        setLoadError('키워드 성과를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
       } finally {
         setLoading(false);
       }
@@ -103,7 +223,7 @@ export default function KeywordStatsPage() {
   const chartData = useMemo(() => {
     return topKeywords.slice(0, 10).map(k => ({
       name: k.keyword.length > 12 ? k.keyword.slice(0, 12) + '…' : k.keyword,
-      ctr: +(k.ctr * 100).toFixed(2),
+      ctr: +k.ctr.toFixed(2),
       cpc: k.cpc,
     }));
   }, [topKeywords]);
@@ -125,7 +245,7 @@ export default function KeywordStatsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-admin-text">키워드 성과 대시보드</h1>
         <div className="flex gap-2">
-          {['all', 'naver', 'google', 'meta'].map(p => (
+          {['all', 'naver', 'google'].map(p => (
             <button type="button"
               key={p}
               onClick={() => setPlatform(p)}
@@ -140,6 +260,12 @@ export default function KeywordStatsPage() {
           ))}
         </div>
       </div>
+
+      {loadError && (
+        <div role="alert" className="rounded-admin-md border border-amber-300 bg-amber-50 px-4 py-3 text-admin-sm text-amber-900">
+          {loadError}
+        </div>
+      )}
 
       {/* 요약 KPI */}
       {summary && (
@@ -192,7 +318,7 @@ export default function KeywordStatsPage() {
           <div className="bg-admin-surface rounded-xl border border-admin-border p-4">
             <h3 className="text-admin-sm font-medium text-admin-text mb-4">플랫폼별 성과</h3>
             <div className="space-y-3">
-              {['all', 'naver', 'google', 'meta'].filter(p => p !== 'all').map(p => {
+              {['naver', 'google'].map(p => {
                 const kw = topKeywords.filter(k => k.platform === p).length;
                 const total = topKeywords.length || 1;
                 const barWidth = (kw / Math.min(total, 20)) * 100;

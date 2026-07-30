@@ -549,4 +549,51 @@ BX0000 PUS 22:00 → CAN 01:05+1  |  BX0000 CAN 02:05 → PUS 06:30
     expect(fourNightScheduleText).not.toContain('중국 패키지 상품 취소규정 안내');
     expect(fourNightScheduleText).not.toMatch(/^(서안|화산|부산)$/m);
   });
+
+  it('splits repeated route-style product headers without PKG markers', () => {
+    const raw = [
+      '공용 출발일 및 상품가 표',
+      '청주 ➡ 연길직항 [TW] / 백두산 [ 북파+서파 ] /용정 /도문 4일 _ 노팁, 노옵션',
+      '여행기간 2026년 05월 1일 ~ 10월 9일',
+      '제1일 청주 출발 연길 도착',
+      '제2일 백두산 서파 관광',
+      '제3일 백두산 북파 관광',
+      '제4일 연길 출발 청주 도착',
+      '청주 ➡ 연길직항 [TW] / 백두산 [ 북파+서파 ] /용정 /도문 5일 _ 노팁, 노옵션',
+      '여행기간 2026년 05월 1일 ~ 10월 5일',
+      '제1일 청주 출발 연길 도착',
+      '제2일 백두산 서파 관광',
+      '제3일 백두산 북파 관광',
+      '제4일 도문 관광',
+      '제5일 연길 출발 청주 도착',
+    ].join('\n');
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products.map(product => product.extractedData.duration)).toEqual([4, 5]);
+    expect(products[0]?.sectionRawText).not.toContain('백두산 [ 북파+서파 ] /용정 /도문 5일');
+    expect(products[1]?.sectionRawText).toContain('제5일 연길 출발 청주 도착');
+  });
+
+  it('splits explicitly separated paste products and removes an inline adult price from the title', () => {
+    const raw = [
+      '[PASTE-GOLDEN] 큐슈 온천 3일 성인 599,000원',
+      'DAY1 후쿠오카 도착 / DAY3 귀국',
+      '---',
+      '[PASTE-GOLDEN] 오사카 교토 4일 성인 799,000원',
+      '공통 포함: 항공, 호텔, 차량, 가이드',
+    ].join('\n');
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products.map(product => product.extractedData.title)).toEqual([
+      '[PASTE-GOLDEN] 큐슈 온천 3일',
+      '[PASTE-GOLDEN] 오사카 교토 4일',
+    ]);
+    expect(products.map(product => product.extractedData.duration)).toEqual([3, 4]);
+    expect(products[0]?.sectionRawText).not.toContain('오사카 교토');
+    expect(products[1]?.sectionRawText).not.toContain('큐슈 온천');
+  });
 });

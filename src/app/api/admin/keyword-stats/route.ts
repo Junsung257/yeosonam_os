@@ -90,41 +90,29 @@ async function handleKeywordStats(
   const dateTo = searchParams.get('dateTo');
   const keywordFilter = searchParams.get('keyword');
 
-  let query = supabase!.from('keyword_performance_daily').select('*');
-
-  if (platform) query = query.eq('platform', platform);
-  if (dateFrom) query = query.gte('date', dateFrom);
-  if (dateTo) query = query.lte('date', dateTo);
-  if (keywordFilter) query = query.ilike('keyword', `%${keywordFilter}%`);
-
-  const { data, error } = await query.order('date', { ascending: false });
+  const { data, error } = await supabase!.rpc('get_keyword_performance_admin_summary', {
+    p_platform: platform || null,
+    p_date_from: dateFrom || null,
+    p_date_to: dateTo || null,
+    p_keyword: keywordFilter || null,
+  });
 
   if (error) {
+    if ((error.code === 'PGRST205' || error.code === 'PGRST202') && error.message.includes('keyword')) {
+      return apiResponse({
+        available: false,
+        reason: '검색광고 성과 테이블이 아직 연결되지 않았습니다.',
+        data: [],
+      });
+    }
     return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  // 집계
-  const totalSpend = data?.reduce((s, r) => s + (r.spend || 0), 0) ?? 0;
-  const totalClicks = data?.reduce((s, r) => s + (r.clicks || 0), 0) ?? 0;
-  const totalImpressions = data?.reduce((s, r) => s + (r.impressions || 0), 0) ?? 0;
-  const totalConversions = data?.reduce((s, r) => s + (r.conversions || 0), 0) ?? 0;
-
-  // 고유 키워드 수
-  const uniqueKeywords = new Set(data?.map((r) => r.keyword) ?? []);
-
   return apiResponse({
-    summary: {
-      totalRows: data?.length ?? 0,
-      uniqueKeywords: uniqueKeywords.size,
-      totalSpend,
-      totalClicks,
-      totalImpressions,
-      totalConversions,
-      ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-      cpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
-      roas: totalSpend > 0 ? totalConversions / totalSpend : 0,
-    },
-    data,
+    available: true,
+    summary: data,
+    data: [],
+    partial: false,
   });
 }
 
@@ -136,7 +124,8 @@ async function handleTopKeywords(
 ) {
   const { searchParams } = new URL(req.url);
   const platform = searchParams.get('platform');
-  const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
+  const requestedLimit = Number.parseInt(searchParams.get('limit') || '20', 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 20;
   const orderBy = searchParams.get('orderBy') || 'spend';
 
   const allowedOrder = ['clicks', 'impressions', 'spend', 'roas', 'conversions', 'ctr', 'cpc'];
@@ -144,48 +133,48 @@ async function handleTopKeywords(
     return apiResponse({ error: `Invalid orderBy. Allowed: ${allowedOrder.join(', ')}` }, { status: 400 });
   }
 
-  let query = supabase!.from('keyword_performance_daily').select('*');
+  const orderColumn: Record<string, string> = {
+    clicks: 'clicks', impressions: 'impressions', spend: 'cost_krw', roas: 'roas',
+    conversions: 'conversions', ctr: 'ctr', cpc: 'avg_cpc',
+  };
+  const fields = 'keyword_text, platform, impressions, clicks, cost_krw, conversions, conversion_value, days_active, ctr, avg_cpc, roas';
+  let topQuery = supabase!.from('v_keyword_performance_summary').select(fields, { count: 'exact' });
+  let bottomQuery = supabase!.from('v_keyword_performance_summary').select(fields);
+  if (platform) {
+    topQuery = topQuery.eq('platform', platform);
+    bottomQuery = bottomQuery.eq('platform', platform);
+  }
+  const [topResult, bottomResult] = await Promise.all([
+    topQuery.order(orderColumn[orderBy], { ascending: false }).limit(limit),
+    bottomQuery.order(orderColumn[orderBy], { ascending: true }).limit(5),
+  ]);
 
-  if (platform) query = query.eq('platform', platform);
-
-  const { data, error } = await query.order(orderBy, { ascending: false }).limit(limit);
-
-  if (error) {
-    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  if (topResult.error || bottomResult.error) {
+    return apiResponse({ error: sanitizeDbError(topResult.error || bottomResult.error) }, { status: 500 });
   }
 
-  // 키워드별 집계
-  const keywordMap = new Map<string, { impressions: number; clicks: number; spend: number; conversions: number; count: number }>();
-  for (const row of data ?? []) {
-    const k = row.keyword;
-    const existing = keywordMap.get(k) ?? { impressions: 0, clicks: 0, spend: 0, conversions: 0, count: 0 };
-    existing.impressions += row.impressions ?? 0;
-    existing.clicks += row.clicks ?? 0;
-    existing.spend += row.spend ?? 0;
-    existing.conversions += row.conversions ?? 0;
-    existing.count += 1;
-    keywordMap.set(k, existing);
-  }
+  const normalizeRanking = (row: Record<string, unknown>) => ({
+    keyword: String(row.keyword_text || '(키워드 없음)'),
+    platform: String(row.platform || 'unknown'),
+    impressions: Number(row.impressions) || 0,
+    clicks: Number(row.clicks) || 0,
+    spend: Number(row.cost_krw) || 0,
+    conversions: Number(row.conversions) || 0,
+    ctr: Number(row.ctr) || 0,
+    cpc: Number(row.avg_cpc) || 0,
+    roas: Number(row.roas) || 0,
+    daysActive: Number(row.days_active) || 0,
+  });
 
-  const ranked = Array.from(keywordMap.entries())
-    .map(([keyword, stats]) => ({
-      keyword,
-      ...stats,
-      ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
-      cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
-      roas: stats.spend > 0 ? stats.conversions / stats.spend : 0,
-      daysActive: stats.count,
-    }))
-    .sort((a, b) => {
-      const field = orderBy as keyof typeof a;
-      return (b[field] as number) - (a[field] as number);
-    })
-    .slice(0, limit);
+  const ranked = (topResult.data ?? []).map(row => normalizeRanking(row));
+  const bottom = (bottomResult.data ?? []).map(row => normalizeRanking(row));
 
   return apiResponse({
     orderBy,
     top: ranked,
-    bottom: ranked.slice().reverse().slice(0, Math.min(5, ranked.length)),
+    bottom,
+    partial: false,
+    totalRowsAvailable: topResult.count ?? topResult.data?.length ?? 0,
   });
 }
 
@@ -199,17 +188,18 @@ async function handleSearchTerms(
   const platform = searchParams.get('platform');
   const dateFrom = searchParams.get('dateFrom');
   const dateTo = searchParams.get('dateTo');
-  const minImpressions = parseInt(searchParams.get('minImpressions') || '1');
+  const requestedMinImpressions = Number.parseInt(searchParams.get('minImpressions') || '1', 10);
+  const minImpressions = Number.isFinite(requestedMinImpressions) ? Math.max(0, requestedMinImpressions) : 1;
 
   let query = supabase!.from('keyword_search_terms').select('*');
 
   if (platform) query = query.eq('platform', platform);
   if (dateFrom) query = query.gte('first_seen', dateFrom);
   if (dateTo) query = query.lte('first_seen', dateTo);
-  query = query.gte('total_impressions', minImpressions);
+  query = query.gte('impressions', minImpressions);
 
   const { data, error } = await query
-    .order('total_impressions', { ascending: false })
+    .order('impressions', { ascending: false })
     .limit(500);
 
   if (error) {
@@ -218,11 +208,11 @@ async function handleSearchTerms(
 
   // negative 키워드 추천 (전환 0, 노출↑)
   const negativeCandidates = (data ?? [])
-    .filter((t) => (t.total_conversions ?? 0) === 0 && (t.total_impressions ?? 0) >= 100)
+    .filter((t) => (t.conversions ?? 0) === 0 && (t.impressions ?? 0) >= 100)
     .map((t) => ({
       searchTerm: t.search_term,
-      totalImpressions: t.total_impressions,
-      totalSpend: t.total_spend,
+      totalImpressions: t.impressions,
+      totalSpend: t.cost_krw,
     }))
     .sort((a, b) => b.totalImpressions - a.totalImpressions)
     .slice(0, 30);

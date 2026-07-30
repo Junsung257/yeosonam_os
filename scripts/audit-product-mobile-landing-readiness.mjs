@@ -1785,7 +1785,7 @@ function readinessFor(row) {
 
 let packageQuery = supabase
   .from('travel_packages')
-  .select('id, title, short_code, internal_code, status, audit_status, audit_report, created_at, price, destination, duration, nights, trip_style, price_dates, price_tiers, itinerary, itinerary_data, raw_text, notices_parsed, customer_notes, inclusions, excludes, optional_tours')
+  .select('id, title, short_code, internal_code, status, audit_status, audit_report, created_at, price, destination, duration, nights, trip_style, price_dates, price_tiers, itinerary, itinerary_data, raw_text, raw_text_hash, notices_parsed, customer_notes, inclusions, excludes, optional_tours')
   .gte('created_at', since)
   .order('created_at', { ascending: false })
   .limit(limit);

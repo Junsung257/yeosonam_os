@@ -10,9 +10,17 @@ const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
  * Microsoft Clarity — 세션 리플레이·히트맵 (분석 동의 시에만 로드, PIPA 대비).
  * 프로젝트 ID: Clarity 대시보드 → 설정. Vercel에 NEXT_PUBLIC_CLARITY_PROJECT_ID 설정.
  */
-export default function MsClarity() {
+export default function MsClarity({
+  runtimeEnabled,
+  expectedHostname,
+}: {
+  runtimeEnabled: boolean;
+  expectedHostname: string;
+}) {
   const consent = useAnalyticsConsent();
-  if (!CLARITY_ID || !consent) return null;
+  const hostAllowed = typeof window !== 'undefined'
+    && window.location.hostname === expectedHostname;
+  if (!CLARITY_ID || !consent || !runtimeEnabled || !hostAllowed) return null;
 
   const safeId = CLARITY_ID.replace(/[^a-zA-Z0-9_-]/g, '');
 

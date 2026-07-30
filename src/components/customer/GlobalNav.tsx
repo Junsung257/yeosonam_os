@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { REGIONS, getDestinationUrl, getRegionUrl } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import TrackedPhoneLink from '@/components/customer/TrackedPhoneLink';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { trackEngagement } from '@/lib/tracker';
 function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
   const next = e.relatedTarget as Node | null;
@@ -79,6 +81,15 @@ export default function GlobalNav() {
   }
 
   function trackKakaoClick(source: string) {
+    trackAnalyticsEvent('ysn_kakao_click', {
+      cta_location: source,
+      page_type: pathname?.startsWith('/packages/') ? 'package_detail'
+        : pathname?.startsWith('/lp/') ? 'campaign_landing'
+          : pathname === '/packages' ? 'package_list'
+            : pathname?.startsWith('/blog/') ? 'blog_article'
+              : pathname === '/' ? 'home' : 'content',
+      outbound_host: 'pf.kakao.com',
+    });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       page_url: pathname ?? '/',
@@ -418,12 +429,14 @@ export default function GlobalNav() {
                 💬 카카오톡 상담
               </a>
               {consultTelHref && consultPhoneLabel ? (
-                <a
+                <TrackedPhoneLink
                   href={consultTelHref}
+                  ctaLocation="global_nav_mobile_drawer"
+                  pageType="global_navigation"
                   className="w-full text-center text-sm text-slate-600 py-2"
                 >
                   📞 {consultPhoneLabel}
-                </a>
+                </TrackedPhoneLink>
               ) : null}
             </div>
           </div>

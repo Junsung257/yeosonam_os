@@ -1,5 +1,7 @@
 import type { V3Evidence, V3SourceLine } from './types';
 import { buildStandardNoticeDraft, type StandardNoticeDraft } from './standard-notices';
+import { extractUnpricedDateSalesQuarantines } from '@/lib/product-registration/date-sales-quarantine';
+import { inferSourceBackedPriceYear } from '@/lib/product-registration/price-year';
 
 export type StructuredFactCategory =
   | 'guide_presence'
@@ -142,10 +144,24 @@ function parseKrw(text: string): number | null {
   if (koreanMan) return Math.round(Number(koreanMan[1]) * 10000);
   const koreanWon = text.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/);
   if (koreanWon) return Number(koreanWon[1].replace(/,/g, ''));
-  const man = text.match(/(\d+(?:\.\d+)?)\s*만\s*원?/);
+  const man = text.match(/(\d+(?:\.\d+)?)\s*만(?!\s*(?:엔|달러|위안|동))\s*원?/);
   if (man) return Math.round(Number(man[1]) * 10000);
   const won = text.match(/(\d{2,3}(?:,\d{3})+|\d{5,})\s*원/);
   return won ? Number(won[1].replace(/,/g, '')) : null;
+}
+
+function parseVnd(text: string): number | null {
+  const tenThousands = text.match(/(\d+(?:\.\d+)?)\s*만\s*동/);
+  if (tenThousands) return Math.round(Number(tenThousands[1]) * 10000);
+  const dong = text.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*(?:동|VND)/i);
+  return dong ? Number(dong[1].replace(/,/g, '')) : null;
+}
+
+function parseJpy(text: string): number | null {
+  const tenThousandYen = text.match(/(\d+(?:\.\d+)?)\s*만\s*엔/);
+  if (tenThousandYen) return Math.round(Number(tenThousandYen[1]) * 10000);
+  const yen = text.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*(?:엔|JPY)/i);
+  return yen ? Number(yen[1].replace(/,/g, '')) : null;
 }
 
 function parsePercent(text: string): number | null {
@@ -166,6 +182,14 @@ function isCleanIncludedGuideTipLine(source: string): boolean {
 }
 
 function isCleanExcludedGuideTipLine(source: string): boolean {
+  const guideTipIndex = source.search(/(?:기사|가이드)[\s\S]{0,12}(?:팁|경비)/u);
+  const massageIndex = source.search(/마사지/u);
+  const massageSeparateTipIndex = source.search(/(?:팁\s*별도|별도\s*팁)/u);
+  const massageTipOnly = guideTipIndex >= 0
+    && massageIndex > guideTipIndex
+    && massageSeparateTipIndex > massageIndex
+    && !/(?:불포함|현지\s*지불|현지지불|개인경비|매너팁)/u.test(source);
+  if (massageTipOnly) return false;
   return /(?:\uBD88\uD3EC\uD568|\uD604\uC9C0\s*\uC9C0\uBD88|\uD604\uC9C0\uC9C0\uBD88|\uBCC4\uB3C4|\uAC1C\uC778\uACBD\uBE44|\uB9E4\uB108\uD301)/u.test(source)
     && /(?:\uAE30\uC0AC\s*(?:\/|&)?\s*\uAC00\uC774\uB4DC\s*\uD301|\uAC00\uC774\uB4DC\s*(?:\/|&)?\s*\uAE30\uC0AC\s*\uD301|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301)/u.test(source);
 }
@@ -210,7 +234,37 @@ function isConditionalMinPaxSurchargeLine(source: string): boolean {
 }
 
 function isInquiryOnlySurchargeLine(source: string): boolean {
-  return /(?:\uB2E8\uB3C5\uD589\uC0AC|\uB2E8\uB3C5\s*\uC694\uCCAD|\uB2E8\uB3C5\s*\uC9C4\uD589).*(?:\uCD94\uAC00\s*\uC694\uAE08|\uCD94\uAC00\uAE08|\uBCC4\uB3C4\s*\uBE44\uC6A9)|(?:\uCD94\uAC00\s*\uC694\uAE08|\uCD94\uAC00\uAE08|\uBCC4\uB3C4\s*\uBE44\uC6A9|\uBCC4\uB3C4\s*\uC694\uAE08).*(?:\uC608\uC57D\s*\uC2DC|\uBB38\uC758|\uD655\uC778)|(?:\uC5F0\uD734|\uB2E8\uC624\uC808|\uCD94\uC11D|\uAD6D\uACBD\uC808).*(?:\uBCC4\uB3C4\s*\uC694\uAE08|\uCD94\uAC00\s*\uC694\uAE08).*(?:\uBB38\uC758|\uD655\uC778)/u.test(source);
+  return /(?:\uB2E8\uB3C5\uD589\uC0AC|\uB2E8\uB3C5\s*\uC694\uCCAD|\uB2E8\uB3C5\s*\uC9C4\uD589).*(?:\uCD94\uAC00\s*\uC694\uAE08|\uCD94\uAC00\uAE08|\uBCC4\uB3C4\s*\uBE44\uC6A9)|(?:\uCD94\uAC00\s*\uC694\uAE08|\uCD94\uAC00\uAE08|\uBCC4\uB3C4\s*\uBE44\uC6A9|\uBCC4\uB3C4\s*\uC694\uAE08).*(?:\uC608\uC57D\s*\uC2DC|\uBB38\uC758|\uD655\uC778)|(?:\uC5F0\uD734|\uB2E8\uC624\uC808|\uCD94\uC11D|\uAD6D\uACBD\uC808).*(?:\uBCC4\uB3C4\s*\uC694\uAE08|\uCD94\uAC00\s*\uC694\uAE08).*(?:\uBB38\uC758|\uD655\uC778)|(?:써|서)차지.*(?:체크|확인|문의)|(?:체크|확인|문의).*(?:추가금|추가\s*요금|(?:써|서)차지)|요청\s*시.*(?:별도\s*)?추가금/u.test(source);
+}
+
+function isPrebookingQuoteAndConsentSurchargeLine(source: string): boolean {
+  const conditionalSubstitution = /(?:예약|배정|운영|현지)\s*상황에?\s*따라.*(?:다른\s*곳|대체|변경)/u.test(source)
+    || /(?:다른\s*곳|대체\s*(?:골프장|숙소|호텔|차량)?|변경).*(?:배정|진행|이용|될\s*수)/u.test(source);
+  const variableTransportCharge = /(?:송영|차량|교통|이동)\s*(?:요금|비용|추가금).*(?:추가|발생)/u.test(source)
+    || /(?:추가|발생).*(?:송영|차량|교통|이동)\s*(?:요금|비용|추가금)/u.test(source);
+  return conditionalSubstitution && variableTransportCharge;
+}
+
+function surchargeCoverageTopic(source: string): 'holiday' | 'two_player' | null {
+  // A two-player fee detail often contains weekend/holiday amounts as well.
+  // Classify the more specific player-count topic first so it cannot be
+  // mistaken for a generic holiday surcharge disclosure.
+  if (/(?:2B(?:ag)?|2\s*인(?:\s*2\s*인)?\s*라운(?:드|딩))/i.test(source)) return 'two_player';
+  if (/(?:공휴일|휴일|연휴|오봉|골드위크)/i.test(source)) return 'holiday';
+  return null;
+}
+
+function hasExplicitSurchargeAmount(source: string): boolean {
+  return parseUsd(source) != null
+    || parseJpy(source) != null
+    || parseKrw(source) != null
+    || parseVnd(source) != null
+    || parsePercent(source) != null;
+}
+
+function customerSafeSourceSentence(source: string): string {
+  const clean = source.replace(/^[\s*•▪▶\-–—]+/, '').replace(/\s+/g, ' ').trim();
+  return /[.!?。]$/.test(clean) ? clean : `${clean}.`;
 }
 
 function isSourceBackedShoppingVisitLine(source: string): boolean {
@@ -218,22 +272,50 @@ function isSourceBackedShoppingVisitLine(source: string): boolean {
     && !/(?:\uB178\s*\uC1FC\uD551|NO\s*SHOPPING)/iu.test(source);
 }
 
+function isOptionalSelfDirectedShoppingLine(source: string): boolean {
+  return /(?:자유\s*시간|개별\s*자유\s*시간|자율\s*쇼핑)/u.test(source)
+    && /(?:쇼핑|멀티\s*[숍샵]|마트|쇼핑몰)/u.test(source)
+    && !/(?:쇼핑\s*센터\s*\d+\s*회|\d+\s*회\s*(?:방문|쇼핑)|의무\s*쇼핑|필수\s*쇼핑)/u.test(source);
+}
+
 function formatGuideTip(values: Record<string, unknown>): string {
   if (values.included) return '가이드/기사 팁은 포함되어 있습니다.';
-  if (typeof values.amount === 'number') return `가이드/기사 팁은 1인 기준 $${values.amount} 현지 지불입니다.`;
+  if (typeof values.amount === 'number') {
+    const currency = values.currency === 'USD'
+      ? '$'
+      : values.currency === 'JPY'
+        ? '엔'
+        : values.currency === '원' || values.currency === 'KRW'
+          ? '원'
+          : String(values.currency ?? '');
+    const formatted = currency === '$'
+      ? `$${values.amount.toLocaleString('en-US')}`
+      : `${values.amount.toLocaleString('ko-KR')}${currency}`;
+    return `가이드/기사 팁은 1인 기준 ${formatted} 현지 지불입니다.`;
+  }
   return '가이드/기사 팁은 예약 시 확인이 필요합니다.';
 }
 
 function parseShoppingItems(text: string): string[] {
   const withoutCount = text
     .replace(/\[?쇼핑\s*\d+\s*회\]?/gi, '')
-    .replace(/쇼핑\s*(센터|방문|횟수)?/gi, '')
+    .replace(/쇼핑\s*(센터|관광|방문|횟수)?/gi, '')
+    .replace(/\s*(?:중|등)?\s*\d+\s*(?:회|곳)\s*(?:방문|예정)?/gi, '')
     .replace(/노\s*쇼핑|NO\s*SHOPPING/gi, '');
   return withoutCount
     .split(/[,&/·ㆍ|]|또는|or/gi)
     .map(item => item.trim())
     .filter(item => item.length >= 2 && item.length <= 20)
     .slice(0, 8);
+}
+
+function parseShoppingVisitCount(source: string): number | null {
+  const explicit = source.match(/쇼핑(?:센터|관광)?\s*(\d+)\s*회|\[?쇼핑\s*(\d+)\s*회\]?/i);
+  if (explicit) return Number(explicit[1] ?? explicit[2]);
+  const hasShoppingCategory = /(침향|한약|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|잡화|토산품|기념품|면세|노니|커피|명품샵)/i.test(source);
+  if (!hasShoppingCategory) return null;
+  const categorized = source.match(/(?:중|등)?\s*(\d+)\s*(?:회|곳)\s*(?:방문|예정)?/i);
+  return categorized ? Number(categorized[1]) : null;
 }
 
 function parseMealSummary(text: string): string | null {
@@ -289,6 +371,17 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
   const notices: StandardNoticeDraft[] = [];
   const patch: StructuredFactCustomerFieldPatch = {};
   const lines = sourceLines(input);
+  const quarantineRawText = input.rawText ?? lines.map(line => line.quote).join('\n');
+  const dateSalesQuarantines = extractUnpricedDateSalesQuarantines(
+    quarantineRawText,
+    inferSourceBackedPriceYear(quarantineRawText),
+  );
+  const quarantineBySource = new Map(
+    dateSalesQuarantines.map(item => [
+      item.sourceText.replace(/\s+/g, ' ').trim(),
+      item,
+    ]),
+  );
   let currentCostSection: 'include' | 'exclude' | null = null;
 
   for (const line of lines) {
@@ -297,9 +390,19 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     const evidence = evidenceFromLine(line);
     if (isCleanExcludedGuideTipLine(source)) {
       const usdAmount = parseUsd(source);
-      const krwAmount = usdAmount == null ? parseKrw(source) : null;
-      const amount = usdAmount ?? krwAmount;
-      const currency = usdAmount ? 'USD' : krwAmount ? '\uC6D0' : null;
+      const jpyAmount = usdAmount == null ? parseJpy(source) : null;
+      const krwAmount = usdAmount == null && jpyAmount == null ? parseKrw(source) : null;
+      const vndAmount = usdAmount == null && jpyAmount == null && krwAmount == null ? parseVnd(source) : null;
+      const amount = usdAmount ?? jpyAmount ?? krwAmount ?? vndAmount;
+      const currency = usdAmount != null
+        ? 'USD'
+        : jpyAmount != null
+          ? 'JPY'
+          : krwAmount != null
+            ? '\uC6D0'
+            : vndAmount != null
+              ? 'VND'
+              : null;
       const reviewStatus = amount ? 'auto_clean' : 'review_needed';
       const values = { included: false, amount, currency, payment: 'local' };
       addFact(facts, makeFact({
@@ -310,7 +413,9 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         review_status: reviewStatus,
         standard_text: formatGuideTip(values),
       }));
-      patch.guide_tip = amount ? `${currency === 'USD' ? '$' : ''}${amount}/\uC778` : null;
+      patch.guide_tip = amount
+        ? `${currency === 'USD' ? '$' : ''}${amount.toLocaleString('ko-KR')}${currency === 'JPY' ? '엔' : currency === '\uC6D0' ? '원' : ''}/\uC778`
+        : null;
       addNotice(notices, buildStandardNoticeDraft({
         source_text: source,
         category: 'tip_guideline',
@@ -361,7 +466,25 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         }));
       }
     }
-    if (isSourceBackedShoppingVisitLine(source)) {
+    if (isOptionalSelfDirectedShoppingLine(source)) {
+      const standardText = '자유시간 중 개별 쇼핑은 선택 사항이며, 필수 쇼핑 일정이 아닙니다.';
+      addFact(facts, makeFact({
+        category: 'shopping_policy',
+        values: { none: false, count: 0, required: false, optional_self_directed: true, items: [] },
+        evidence,
+        risk_level: 'low',
+        review_status: 'auto_clean',
+        standard_text: standardText,
+      }));
+      patch.itinerary_highlights = { shopping: standardText };
+      addNotice(notices, buildStandardNoticeDraft({
+        source_text: source,
+        category: 'shopping_visit',
+        template_key: 'shopping.optional_self_directed',
+        values: { none: false, count: 0, required: false, optional_self_directed: true },
+        evidence: [evidence],
+      }));
+    } else if (isSourceBackedShoppingVisitLine(source)) {
       const items = parseShoppingItems(source);
       const normalizedItems = items.length ? items : ['\uC1FC\uD551\uC13C\uD130'];
       addFact(facts, makeFact({
@@ -432,9 +555,11 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       const included = /포함|노\s*팁|NO\s*TIP/i.test(source)
         || (currentCostSection === 'include' && !/불포함|별도|현지\s*지불|현지지불|개인경비/i.test(source));
       const usdAmount = parseUsd(source);
-      const krwAmount = usdAmount == null ? parseKrw(source) : null;
-      const amount = usdAmount ?? krwAmount;
-      const currency = usdAmount ? 'USD' : krwAmount ? '원' : null;
+      const jpyAmount = usdAmount == null ? parseJpy(source) : null;
+      const krwAmount = usdAmount == null && jpyAmount == null ? parseKrw(source) : null;
+      const vndAmount = usdAmount == null && jpyAmount == null && krwAmount == null ? parseVnd(source) : null;
+      const amount = usdAmount ?? jpyAmount ?? krwAmount ?? vndAmount;
+      const currency = usdAmount != null ? 'USD' : jpyAmount != null ? 'JPY' : krwAmount != null ? '원' : null;
       const values = included
         ? { included: true, amount: null, currency: null, payment: null }
         : { included: false, amount, currency, payment: 'local' };
@@ -447,7 +572,11 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         review_status: reviewStatus,
         standard_text: formatGuideTip(values),
       }));
-      patch.guide_tip = included ? '포함' : amount ? `$${amount}/인` : null;
+      patch.guide_tip = included
+        ? '포함'
+        : amount
+          ? `${currency === 'USD' ? '$' : ''}${amount.toLocaleString('ko-KR')}${currency === 'JPY' ? '엔' : currency === '원' ? '원' : ''}/인`
+          : null;
       addNotice(notices, buildStandardNoticeDraft({
         source_text: source,
         category: 'tip_guideline',
@@ -511,9 +640,9 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    const shoppingCount = source.match(/쇼핑(?:센터)?\s*(\d+)\s*회|\[?쇼핑\s*(\d+)\s*회\]?/i);
-    if (shoppingCount) {
-      const count = Number(shoppingCount[1] ?? shoppingCount[2]);
+    const shoppingCount = parseShoppingVisitCount(source);
+    if (shoppingCount != null) {
+      const count = shoppingCount;
       const items = parseShoppingItems(source);
       addFact(facts, makeFact({
         category: 'shopping_policy',
@@ -671,7 +800,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    const minPax = source.match(/최소\s*출발\s*(\d+)\s*명|출발\s*확정\s*(\d+)\s*명|모객\s*(\d+)\s*명/i);
+    const minPax = source.match(/최소\s*출발\s*(\d+)\s*명|출발\s*확정\s*(\d+)\s*명|모객\s*최소\s*(\d+)\s*명/i);
     if (minPax) {
       const count = Number(minPax[1] ?? minPax[2] ?? minPax[3]);
       addFact(facts, makeFact({
@@ -691,24 +820,69 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     }
 
     if (
-      /유류\s*할증료|추가\s*(요금|비용|금액)|별도\s*(비용|요금)|불포함\s*(비용|요금|금액)|입장료|관광세|리조트피|비자비|환경세/i.test(source)
+      (
+        /유류\s*할증료|추가\s*(요금|비용|금액|금|발생)|(?:요금|비용|금액)(?:이|가)?\s*추가로?\s*발생|\d[\d,.]*\s*(?:만\s*)?(?:원|엔|USD|달러|\$)\s*추가|별도\s*(비용|요금|추가금)|불포함\s*(비용|요금|금액)|지상비\s*추가|입장료|관광세|리조트피|비자비|환경세/i.test(source)
+        || (
+          /(?:싱글|2B|9홀)?\s*(?:써|서|챠|차)지/i.test(source)
+          && /\d[\d,]*(?:\s*)(?:원|엔|USD|달러|\$)/i.test(source)
+        )
+      )
       && !isIncludedCostLine(source)
       && !isCancellationOrPaymentPolicyLine(source)
       && !/왕복항공료|유류할증료|포함|관광지\s*입장료|여행자보험|중국비자|비자\s*필요/i.test(source)
     ) {
-      const amount = parseKrw(source) ?? parseUsd(source);
+      const usdAmount = parseUsd(source);
+      const jpyAmount = usdAmount == null ? parseJpy(source) : null;
+      const krwAmount = usdAmount == null && jpyAmount == null ? parseKrw(source) : null;
+      const vndAmount = usdAmount == null && jpyAmount == null && krwAmount == null ? parseVnd(source) : null;
+      const amount = usdAmount ?? jpyAmount ?? krwAmount ?? vndAmount;
       const percent = amount == null ? parsePercent(source) : null;
       const conditionalMinPax = isConditionalMinPaxSurchargeLine(source);
       const inquiryOnlySurcharge = isInquiryOnlySurchargeLine(source);
-      const currency = /\$|USD/i.test(source) ? 'USD' : amount ? '원' : null;
+      const prebookingQuoteAndConsent = isPrebookingQuoteAndConsentSurchargeLine(source);
+      const dateSalesQuarantine = quarantineBySource.get(source.replace(/\s+/g, ' ').trim());
+      const currency = usdAmount != null
+        ? 'USD'
+        : jpyAmount != null
+          ? 'JPY'
+          : krwAmount != null
+            ? 'KRW'
+            : vndAmount != null
+              ? 'VND'
+              : null;
       addFact(facts, makeFact({
         category: 'surcharge',
-        values: { label: source.slice(0, 80), amount, currency, percent },
+        values: {
+          label: source.slice(0, 80),
+          amount,
+          currency,
+          percent,
+          ...(dateSalesQuarantine
+            ? {
+                safe_state: dateSalesQuarantine.safeState,
+                quarantine_reason: dateSalesQuarantine.reason,
+                quarantined_date_tokens: dateSalesQuarantine.dateTokens,
+                quarantined_dates: dateSalesQuarantine.dates,
+              }
+            : prebookingQuoteAndConsent
+              ? {
+                  safe_state: 'prebooking_quote_and_consent_required',
+                  charge_timing: 'before_booking_confirmation',
+                  consent_required: true,
+                }
+              : {}),
+        },
         evidence,
-        risk_level: amount || percent || (!conditionalMinPax && !inquiryOnlySurcharge) ? 'high' : 'medium',
-        review_status: amount || percent || conditionalMinPax || inquiryOnlySurcharge ? 'auto_clean' : 'review_needed',
+        risk_level: amount || percent || dateSalesQuarantine || (!conditionalMinPax && !inquiryOnlySurcharge) ? 'high' : 'medium',
+        review_status: amount || percent || conditionalMinPax || inquiryOnlySurcharge || prebookingQuoteAndConsent || dateSalesQuarantine
+          ? 'auto_clean'
+          : 'review_needed',
         standard_text: amount || percent
-          ? `${source.slice(0, 40)}은 별도 비용으로 발생할 수 있습니다.`
+          ? customerSafeSourceSentence(source)
+          : dateSalesQuarantine
+            ? `지상비가 확정되지 않은 ${dateSalesQuarantine.dateTokens.join(', ')} 출발일은 판매 대상에서 제외됩니다.`
+          : prebookingQuoteAndConsent
+            ? '골프장 예약 상황에 따라 대체 골프장이 배정될 수 있습니다. 대체 시 발생 가능한 송영 추가요금은 예약 확정 전에 금액을 안내하고 고객 동의를 받은 경우에만 반영합니다.'
           : conditionalMinPax
             ? '기준 인원 미충족 시 추가요금이 발생할 수 있어 예약 시 확인이 필요합니다.'
             : '별도 비용 항목은 예약 시 확인이 필요합니다.',
@@ -716,14 +890,47 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     }
   }
 
-  const hasIncludedGuideTip = facts.some(fact =>
+  const factsWithSourceBackedSurcharges = facts.map(fact => {
+    if (
+      fact.category !== 'surcharge'
+      || fact.review_status !== 'review_needed'
+      || fact.values.amount != null
+      || fact.values.percent != null
+    ) return fact;
+
+    const label = String(fact.values.label ?? '');
+    const topic = surchargeCoverageTopic(label);
+    if (!topic) return fact;
+    const detailLines = lines.filter(line => (
+      line.quote.trim() !== label.trim()
+      && surchargeCoverageTopic(line.quote) === topic
+      && hasExplicitSurchargeAmount(line.quote)
+    ));
+    if (detailLines.length === 0) return fact;
+
+    return {
+      ...fact,
+      values: {
+        ...fact.values,
+        source_detail_disclosed: true,
+      },
+      evidence: [
+        ...fact.evidence,
+        ...detailLines.map(evidenceFromLine),
+      ],
+      review_status: 'auto_clean' as const,
+      standard_text: customerSafeSourceSentence(label),
+    };
+  });
+
+  const hasIncludedGuideTip = factsWithSourceBackedSurcharges.some(fact =>
     fact.category === 'guide_tip'
     && fact.review_status === 'auto_clean'
     && fact.values.included === true
   );
   const resolvedFacts = hasIncludedGuideTip
-    ? facts.filter(fact => !isAmountlessDerivedGuideTipReview(fact))
-    : facts;
+    ? factsWithSourceBackedSurcharges.filter(fact => !isAmountlessDerivedGuideTipReview(fact))
+    : factsWithSourceBackedSurcharges;
   const resolvedNotices = hasIncludedGuideTip
     ? notices.filter(notice => !isAmountlessDerivedGuideTipNotice(notice))
     : notices;

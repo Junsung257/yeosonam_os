@@ -114,6 +114,36 @@ describe('renderPackage flight pair merge', () => {
     expect(view.flightHeader.outbound?.depCity).toBe('부산');
     expect(view.flightHeader.outbound?.arrCity).toBe('나트랑');
   });
+
+  it('does not synthesize a confirmed flight header from provisional schedule options', () => {
+    const view = renderPackage({
+      departure_airport: '인천',
+      destination: '천진',
+      itinerary_data: {
+        flight_segments: [],
+        flight_schedule_options: [
+          {
+            leg: 'outbound',
+            dep_time: '08:55',
+            arr_time: '09:55',
+            dep_location: '인천',
+            arr_location: '천진',
+          },
+        ],
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { type: 'flight', activity: '인천 국제공항 출발' },
+              { type: 'normal', activity: '천진 국제공항 도착' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(view.flightHeader).toEqual({ outbound: null, inbound: null });
+  });
 });
 
 describe('parseCityFromActivity', () => {

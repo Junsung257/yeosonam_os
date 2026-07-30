@@ -16,6 +16,7 @@ import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
 import { rawTextHash, safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
 
 const PRODUCT_FAQ_FALLBACK = `
 다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
@@ -230,32 +231,22 @@ async function handleApprove(body: {
     }
   }
 
-  // 1. products: status → ACTIVE + thumbnail + (optional) supplier 업데이트
-  const updatePayload: Record<string, unknown> = {
-    status: 'ACTIVE',
-    thumbnail_urls: selected_image_url ? [selected_image_url] : [],
-    updated_at: new Date().toISOString(),
-  };
-  if (resolved_supplier_id && resolved_supplier_name) {
-    updatePayload.supplier_name    = resolved_supplier_name;
-    updatePayload.land_operator_id = resolved_supplier_id;
-    if (resolved_supplier_code) updatePayload.supplier_code = resolved_supplier_code;
+  // 이 화면은 내부 ERP 상품만 승인한다. 고객 공개는 public snapshot과
+  // publish decision을 함께 기록하는 /api/packages/[id]/approve 흐름에서만 수행한다.
+  const { error: approvalError } = await supabaseAdmin.rpc('approve_reviewed_erp_product', {
+    p_product_id: product_id,
+    p_thumbnail_urls: selected_image_url ? [selected_image_url] : [],
+    p_resolved_supplier_id: resolved_supplier_id || null,
+    p_resolved_supplier_name: resolved_supplier_name || null,
+    p_resolved_supplier_code: resolved_supplier_code || null,
+  });
+
+  if (approvalError) {
+    console.error('[products/review] 원자적 승인 실패:', approvalError);
+    return apiResponse({ error: 'ERP 상품 승인을 완료하지 못했습니다.' }, { status: 503 });
   }
 
-  const { error: prodErr } = await supabaseAdmin
-    .from('products')
-    .update(updatePayload)
-    .eq('internal_code', product_id);
-
-  if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
-
-  // 2. travel_packages: status → approved (랜딩페이지 활성화)
-  await supabaseAdmin
-    .from('travel_packages')
-    .update({ status: 'approved' })
-    .eq('internal_code', product_id);
-
-  // 3. ai_training_logs: 플라이휠 기록 (실패해도 무시)
+  // 승인 이후 학습 로그는 보조 기록이므로 실패해도 승인 상태에는 영향을 주지 않는다.
   const flywheelJson: Record<string, unknown> = faq ? { faq_approved: faq } : {};
   const correctionDiff: Record<string, unknown> | null =
     (resolved_supplier_id && resolved_supplier_name && !resolved_supplier_id.startsWith('default-'))

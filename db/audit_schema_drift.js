@@ -55,7 +55,88 @@ const sb = createClient(supabaseUrl, serviceRoleKey);
 
 const AMBIGUOUS_OT = ['2층버스', '리버보트', '야시장투어', '크루즈', '마사지', '스카이파크', '스카이 파크'];
 const INTERNAL_KEYWORDS_LEAK = ['커미션', 'commission_rate', '정산', '스키마 제약', 'LAND_OPERATOR', '[랜드사', 'net_price', 'margin_rate'];
-const OT_REGION_KW = ['말레이시아', '쿠알라', '말라카', '겐팅', '싱가포르', '태국', '방콕', '파타야', '푸켓', '베트남', '다낭', '하노이', '나트랑', '대만', '타이페이', '타이베이', '일본', '후쿠오카', '오사카', '중국', '서안', '라오스', '몽골', '필리핀', '보홀', '세부', '인도네시아', '발리'];
+const OT_REGION_KW = ['홍콩', '마카오', '말레이시아', '쿠알라', '말라카', '겐팅', '싱가포르', '태국', '방콕', '파타야', '푸켓', '베트남', '다낭', '호이안', '하노이', '하롱', '나트랑', '푸꾸옥', '달랏', '판랑', '대만', '타이페이', '타이베이', '일본', '후쿠오카', '오사카', '중국', 'China', 'Tianjin', '광저우', '계림', '양삭', '칭다오', '청도', '구채구', '황룡', '화산', '서안', '백두산', '연길', '라오스', '비엔티안', '비엔티엔', '루앙프라방', '방비엥', '몽골', '울란바토르', '필리핀', '보홀', '세부', '인도네시아', '발리'];
+
+function normalizedSource(value) {
+  const normalized = [];
+  const originalIndexes = [];
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.slice(index, index + 6).toLowerCase() === '&nbsp;') {
+      normalized.push(' ');
+      originalIndexes.push(index);
+      index += 5;
+      continue;
+    }
+    const entity = value.slice(index).match(/^&#(?:x[0-9a-f]+|\d+);/i)?.[0];
+    if (entity) {
+      normalized.push(' ');
+      originalIndexes.push(index);
+      index += entity.length - 1;
+      continue;
+    }
+    const chunk = value[index].normalize('NFKC').toLowerCase();
+    for (const character of chunk) {
+      if (/^[\p{Letter}\p{Number}]$/u.test(character)) {
+        normalized.push(character);
+        originalIndexes.push(index);
+      }
+    }
+  }
+  return { value: normalized.join(''), originalIndexes };
+}
+
+function findSourceMatch(rawText, name) {
+  const exactIndex = rawText.indexOf(name);
+  if (exactIndex >= 0) return { index: exactIndex, end: exactIndex + name.length, normalized: false };
+  const normalizedName = normalizedSource(name).value;
+  if (!normalizedName) return { index: -1, end: -1, normalized: false };
+  const normalizedRaw = normalizedSource(rawText);
+  const matchIndex = normalizedRaw.value.indexOf(normalizedName);
+  if (matchIndex < 0) return { index: -1, end: -1, normalized: false };
+  const originalStart = normalizedRaw.originalIndexes[matchIndex];
+  const originalEnd = normalizedRaw.originalIndexes[matchIndex + normalizedName.length - 1];
+  return { index: originalStart, end: originalEnd + 1, normalized: true };
+}
+
+function sourceEvidenceForOptionalTour(pkg, tour) {
+  const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+  const name = String(tour.name || '');
+  const match = rawText && name ? findSourceMatch(rawText, name) : { index: -1, end: -1, normalized: false };
+  const context = match.index >= 0
+    ? rawText.slice(Math.max(0, match.index - 180), Math.min(rawText.length, match.end + 180)).replace(/\s+/g, ' ').trim()
+    : null;
+  const contextRegions = context
+    ? OT_REGION_KW.filter(keyword => context.includes(keyword))
+    : [];
+  const itineraryRegions = [];
+  const days = pkg.itinerary_data && Array.isArray(pkg.itinerary_data.days) ? pkg.itinerary_data.days : [];
+  for (const day of days) {
+    if (Array.isArray(day.regions)) itineraryRegions.push(...day.regions.filter(Boolean).map(String));
+    else if (day.region) itineraryRegions.push(String(day.region));
+  }
+  const uniqueItineraryRegions = [...new Set(itineraryRegions.filter(region => OT_REGION_KW.some(keyword => region.includes(keyword))))];
+  const nameRegion = OT_REGION_KW.find(keyword => name.includes(keyword));
+  const packageDestination = typeof pkg.destination === 'string' ? pkg.destination : null;
+  const hasExplicitRegion = Boolean(tour.region || nameRegion);
+  const sourceBackedCandidate = !hasExplicitRegion && contextRegions.length === 1
+    ? contextRegions[0]
+    : !hasExplicitRegion && uniqueItineraryRegions.length === 1 && uniqueItineraryRegions[0] !== '부산'
+      ? uniqueItineraryRegions[0]
+      : null;
+
+  return {
+    raw_text_present: Boolean(rawText),
+    raw_text_hash_present: Boolean(pkg.raw_text_hash),
+    name_found_in_raw_text: match.index >= 0,
+    normalized_name_match: match.normalized,
+    context_excerpt: context,
+    context_regions: [...new Set(contextRegions)],
+    itinerary_regions: uniqueItineraryRegions,
+    package_destination: packageDestination,
+    source_backed_region_candidate: sourceBackedCandidate,
+    repair_disposition: sourceBackedCandidate ? 'candidate_only_review_required' : 'needs_review',
+  };
+}
 
 async function paginatedFetch(table, select, filter) {
   const out = [];
@@ -83,7 +164,7 @@ async function paginatedFetch(table, select, filter) {
   };
 
   // ── Packages 감사 ─────────────────────────────────────────────────
-  const pkgs = await paginatedFetch('travel_packages', 'id, title, duration, status, departure_days, optional_tours, itinerary_data, special_notes');
+  const pkgs = await paginatedFetch('travel_packages', 'id, internal_code, title, duration, destination, status, publication_state, raw_text, raw_text_hash, departure_days, optional_tours, itinerary_data, special_notes');
   report.packages.total = pkgs.length;
 
   let jsonArrayDeparture = 0;
@@ -91,6 +172,11 @@ async function paginatedFetch(table, select, filter) {
   let itineraryMalformed = 0;
   let statusInvalid = 0;
   let internalKeywordLeaks = 0;
+  let optionalToursRawPresent = 0;
+  let optionalToursRawNameMatches = 0;
+  let optionalToursNormalizedNameMatches = 0;
+  let optionalToursRawRegionCandidates = 0;
+  let optionalToursNeedsReview = 0;
 
   for (const pkg of pkgs) {
     const issues = [];
@@ -111,7 +197,18 @@ async function paginatedFetch(table, select, filter) {
         const nameHasRegion = OT_REGION_KW.some(kw => t.name.includes(kw));
         const isAmbiguous = AMBIGUOUS_OT.some(kw => t.name.includes(kw));
         if (isAmbiguous && !nameHasRegion && !t.region) {
-          issues.push({ field: 'optional_tours', issue: 'AMBIGUOUS_NO_REGION', name: t.name });
+          const sourceEvidence = sourceEvidenceForOptionalTour(pkg, t);
+          if (sourceEvidence.raw_text_present) optionalToursRawPresent++;
+          if (sourceEvidence.name_found_in_raw_text) optionalToursRawNameMatches++;
+          if (sourceEvidence.normalized_name_match) optionalToursNormalizedNameMatches++;
+          if (sourceEvidence.source_backed_region_candidate) optionalToursRawRegionCandidates++;
+          if (!sourceEvidence.source_backed_region_candidate) optionalToursNeedsReview++;
+          issues.push({
+            field: 'optional_tours',
+            issue: 'AMBIGUOUS_NO_REGION',
+            name: t.name,
+            source_evidence: sourceEvidence,
+          });
           optTourRegionMissing++;
         }
       }
@@ -155,7 +252,16 @@ async function paginatedFetch(table, select, filter) {
     }
 
     if (issues.length > 0) {
-      report.packages.drift.push({ id: pkg.id, title: pkg.title, duration: pkg.duration, issues });
+      report.packages.drift.push({
+        id: pkg.id,
+        internal_code: pkg.internal_code,
+        title: pkg.title,
+        duration: pkg.duration,
+        destination: pkg.destination,
+        status: pkg.status,
+        publication_state: pkg.publication_state,
+        issues,
+      });
     }
   }
 
@@ -195,6 +301,14 @@ async function paginatedFetch(table, select, filter) {
     packages_issues: {
       departure_days_json_array: jsonArrayDeparture,
       optional_tours_ambiguous_no_region: optTourRegionMissing,
+      optional_tours_source_evidence: {
+        flagged_entries: optTourRegionMissing,
+        raw_text_present: optionalToursRawPresent,
+        raw_name_matches: optionalToursRawNameMatches,
+        normalized_name_matches: optionalToursNormalizedNameMatches,
+        source_backed_region_candidates: optionalToursRawRegionCandidates,
+        needs_review: optionalToursNeedsReview,
+      },
       itinerary_data_malformed: itineraryMalformed,
       status_invalid: statusInvalid,
       internal_keyword_leaks: internalKeywordLeaks,

@@ -233,6 +233,71 @@ describe('public package snapshot gate', () => {
     ]));
   });
 
+  it('does not turn an explicit no-shopping source claim into a shopping-may-be-included notice', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      title: '노쇼핑 연길·백두산 3박4일',
+      display_title: '노쇼핑 연길·백두산 3박4일',
+      raw_text: '노쇼핑\n연길·백두산 3박4일',
+      itinerary_data: {
+        meta: { title: '노쇼핑 연길·백두산 3박4일' },
+        days: [
+          { day: 1, schedule: [{ activity: '연길 도착', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광', type: 'sightseeing' }] },
+        ],
+      },
+    }));
+
+    expect(snapshot.public_notices).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        template_key: 'shopping_none_confirmed',
+        title: '쇼핑 일정 없음',
+      }),
+    ]));
+    expect(snapshot.public_notices).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ template_key: 'shopping_disclosure_check' }),
+    ]));
+    expect(snapshot.route_text_dump.join('\n')).not.toContain('쇼핑 일정이 포함될 수 있습니다');
+  });
+
+  it('blocks publication when no-shopping source evidence conflicts with an actual shopping visit', () => {
+    const pkg = yanjiPackage({
+      title: '노쇼핑 연길·백두산 3박4일',
+      display_title: '노쇼핑 연길·백두산 3박4일',
+      raw_text: '노쇼핑\n연길·백두산 3박4일',
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '연길 도착', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '라텍스 매장 방문', type: 'shopping', entity_kind: 'shopping' }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        title: snapshot.public_title,
+        display_title: snapshot.public_title,
+        product_summary: snapshot.package.product_summary,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
+      sourcePkg: pkg,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'shopping_evidence_conflict' }),
+    ]));
+    expect(gate.required_actions.join('\n')).toContain('쇼핑 횟수');
+  });
+
   it('sanitizes itinerary source rows before public snapshot text is generated', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
       optional_tours: [],
@@ -708,6 +773,32 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'public_snapshot_hash_mismatch' }),
     ]));
+  });
+
+  it('fails closed when the customer destination is contaminated with product copy', () => {
+    const pkg = yanjiPackage({
+      destination: '실속 치앙마이 3색골프 + 관광',
+      optional_tours: [],
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'destination_display_pollution',
+        fieldPath: 'destination',
+      }),
+    ]));
+    expect(gate.required_actions.join('\n')).toContain('도시·권역명만');
   });
 
   it('fails closed when the customer-open contract was not explicitly passed', () => {

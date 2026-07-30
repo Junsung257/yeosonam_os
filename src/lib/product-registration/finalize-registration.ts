@@ -77,6 +77,11 @@ export function finalizeUploadRegistration(
     && (input.itineraryDataToSave as { meta?: { flight_out?: string | null; flight_in?: string | null } } | null)?.meta?.flight_out
     && (input.itineraryDataToSave as { meta?: { flight_out?: string | null; flight_in?: string | null } } | null)?.meta?.flight_in
   );
+  const customerMobileReviewWarnings = input.registration.warnings.filter(warning => (
+    warning.startsWith('mobile_media:attraction.unmatched_major:')
+    || warning.startsWith('mobile_media:attraction.description_missing:')
+    || warning.startsWith('mobile_media:attraction.photo_missing:')
+  ));
   const failedChecks: ValidationCheck[] = [
     ...v2WithAttraction.checks.filter(check => !check.passed),
     ...(input.rawNormalizerFailedReason && !rawNormalizerFailureCovered
@@ -85,6 +90,14 @@ export function finalizeUploadRegistration(
           passed: false,
           severity: 'critical' as const,
           message: `Raw upload normalizer failed; customer exposure requires review: ${input.rawNormalizerFailedReason}`,
+        }]
+      : []),
+    ...(customerMobileReviewWarnings.length > 0
+      ? [{
+          id: 'customer_mobile_attraction_readiness',
+          passed: false,
+          severity: 'high' as const,
+          message: `Customer mobile attraction review required: ${customerMobileReviewWarnings.slice(0, 3).join(' | ')}`,
         }]
       : []),
   ];
@@ -138,6 +151,10 @@ export function finalizeUploadRegistration(
     pkgStatus = 'pending';
   } else if (input.registration.evidence.v3DraftStatus === 'needs_review' && productStatus === 'approved') {
     productStatus = 'draft';
+    pkgStatus = 'pending';
+  }
+  if (customerMobileReviewWarnings.length > 0) {
+    if (productStatus === 'approved') productStatus = 'draft';
     pkgStatus = 'pending';
   }
 

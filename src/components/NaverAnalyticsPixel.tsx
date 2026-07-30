@@ -24,10 +24,18 @@ declare global {
  */
 const ACCOUNT_ID = process.env.NEXT_PUBLIC_NAVER_ANALYTICS_ID;
 
-export default function NaverAnalyticsPixel() {
+export default function NaverAnalyticsPixel({
+  runtimeEnabled,
+  expectedHostname,
+}: {
+  runtimeEnabled: boolean;
+  expectedHostname: string;
+}) {
   const marketing = useMarketingConsent();
+  const hostAllowed = typeof window !== 'undefined'
+    && window.location.hostname === expectedHostname;
 
-  if (!ACCOUNT_ID || !marketing) return null;
+  if (!ACCOUNT_ID || !marketing || !runtimeEnabled || !hostAllowed) return null;
 
   // Common.js 스크립트 (네이버 제공 표준 코드)
   const commonScript = `

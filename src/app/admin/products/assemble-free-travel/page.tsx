@@ -392,8 +392,8 @@ export default function AssembleFreeTravelPage() {
           <p className="text-sm text-green-700 mb-1">코드: <span className="font-mono font-bold">{registered.internal_code}</span></p>
           <p className="text-sm text-admin-muted mb-4">{registered.title}</p>
           <div className="flex gap-3 justify-center">
-            <Link href="/admin/products" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
-              상품 관리
+            <Link href="/admin/products/review" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+              상품 검수로
             </Link>
             <button type="button"
               onClick={() => { setStep(1); setRegistered(null); setCity(''); setDateFrom(''); setDateTo(''); setSelectedHotel(null); setSelectedActs(new Set()); }}

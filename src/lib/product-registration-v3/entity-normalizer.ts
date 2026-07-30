@@ -97,6 +97,10 @@ function hasExplicitShoppingCountDisclosure(text: string): boolean {
 
 function shoppingEventHasCustomerSafeDisclosure(rawText: string): boolean {
   const compact = rawText.replace(/\s+/g, '');
+  if (
+    /(?:이온몰|돈키호테|쇼핑몰|마트|면세점|백화점|시장).*(?:쇼핑|방문|이동)/i.test(compact)
+    || /(?:쇼핑|방문).*(?:이온몰|돈키호테|쇼핑몰|마트|면세점|백화점|시장)/i.test(compact)
+  ) return true;
   if (/쇼핑.*\d+\s*회|(?:차|캐시미어).*\d+\s*회/.test(compact)) return true;
   if (hasExplicitShoppingCountDisclosure(rawText)) return true;
   return /쇼핑(?:센터)?\s*\d+\s*회|\d+\s*회/.test(rawText)

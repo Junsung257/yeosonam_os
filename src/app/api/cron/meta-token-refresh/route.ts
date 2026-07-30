@@ -74,6 +74,23 @@ async function runMetaTokenRefresh(request: NextRequest) {
     new_expires_at: null as string | null,
   };
 
+  // Threads has a separate OAuth/token lifecycle from Facebook. Run the
+  // social-platform refresh before any Meta-only early return so a deployment
+  // with Threads credentials alone can still renew its token.
+  if (isSupabaseConfigured) {
+    try {
+      const socialResults = await refreshExpiringTokens();
+      summary.social_refreshed = socialResults.filter((result) => result.success).length;
+      for (const result of socialResults.filter((item) => !item.success)) {
+        summary.errors.push(`social-${result.platform}: ${result.error}`);
+      }
+    } catch (error) {
+      summary.errors.push(
+        `social-refresh-exception: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   const appId = getSecret('META_APP_ID');
   const appSecret = getSecret('META_APP_SECRET');
   if (!appId || !appSecret) {
@@ -169,22 +186,6 @@ async function runMetaTokenRefresh(request: NextRequest) {
 
   // ── 추가: social_platform_configs OAuth 토큰 갱신 ──
   // Threads, Instagram 등 Meta 계열 토큰을 7일 이내 만료 예정이면 갱신한다.
-  if (isSupabaseConfigured) {
-    try {
-      const socialResults = await refreshExpiringTokens();
-      summary['social_refreshed'] = socialResults.filter(r => r.success).length;
-      const socialErrors = socialResults.filter(r => !r.success);
-      if (socialErrors.length > 0) {
-        for (const e of socialErrors) {
-          summary.errors.push(`social-${e.platform}: ${e.error}`);
-        }
-      }
-    } catch (socialErr) {
-      const msg = socialErr instanceof Error ? socialErr.message : String(socialErr);
-      summary.errors.push(`social-refresh-exception: ${msg}`);
-    }
-  }
-
   return summary;
 }
 

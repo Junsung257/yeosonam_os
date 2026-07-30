@@ -227,6 +227,23 @@ export function isCustomerRenderableAttraction(attraction: AttractionData | null
   return getCustomerAttractionRenderBlockers(attraction).length === 0;
 }
 
+/**
+ * Registration recognition and customer rich rendering are separate gates.
+ * Active internal masters may be used to save an evidence-backed reference even
+ * while their customer card remains hidden. Product-like or otherwise polluted
+ * rows must never enter the recognition index.
+ */
+export function isRecognizableAttractionMaster(
+  attraction: AttractionData | null | undefined,
+): boolean {
+  return getCustomerAttractionRenderBlockers(attraction)
+    .filter(blocker => (
+      blocker !== 'not_customer_publishable'
+      && blocker !== 'non_customer_badge_type'
+    ))
+    .length === 0;
+}
+
 function normalizeScope(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
 }
@@ -338,6 +355,7 @@ export function buildAttractionIndex(
   // 2차: 호텔/MRT 상품 제외 (활동 매칭 대상 아님)
   const filtered = destFiltered
     .filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category))
+    .filter(isRecognizableAttractionMaster)
     .filter(a => !options.customerFacing || isCustomerRenderableAttraction(a));
 
   const byLowerName = new Map<string, AttractionData>();

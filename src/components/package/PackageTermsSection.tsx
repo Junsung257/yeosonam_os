@@ -11,6 +11,7 @@ type PackageTermsSectionProps = {
     'inclusions' | 'excludes' | 'surchargesMerged' | 'shopping' | 'termsMisc'
   >;
   variant?: 'mobile' | 'a4';
+  productTitle?: string | null;
 };
 
 function renderLine(text: string, remainder?: string | null) {
@@ -32,6 +33,7 @@ function renderCustomerTermLine(item: Parameters<typeof formatTermLine>[0]): str
 export default function PackageTermsSection({
   view,
   variant = 'mobile',
+  productTitle,
 }: PackageTermsSectionProps) {
   const [programExpanded, setProgramExpanded] = useState(false);
 
@@ -41,6 +43,8 @@ export default function PackageTermsSection({
     ? view.excludes.display
     : view.excludes.basic.map(text => ({ text, slug: null, remainder: null }));
   const hasExcludes = excludeLines.length > 0;
+  const clarifyNoTip = /노\s*팁|no.?tip/i.test(productTitle ?? '')
+    && excludeLines.some(item => /매너\s*팁/.test(renderCustomerTermLine(item)));
   const hasSurcharges = view.surchargesMerged.length > 0;
   const shoppingLine = view.shopping.displayLine ?? view.shopping.text;
   const hasShopping =
@@ -178,17 +182,24 @@ export default function PackageTermsSection({
         >
           <h3 className={`${titleCls} text-red-800`}>❌ 불포함 사항</h3>
           {isMobile ? (
-            <ul className="space-y-1.5">
-              {excludeLines.map((item, i) => (
-                <li
-                  key={i}
-                  className={`${bodyCls} text-red-700 flex gap-2`}
-                >
-                  <span className="shrink-0 text-red-300">•</span>
-                  <span>{renderCustomerTermLine(item)}</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-1.5">
+                {excludeLines.map((item, i) => (
+                  <li
+                    key={i}
+                    className={`${bodyCls} text-red-700 flex gap-2`}
+                  >
+                    <span className="shrink-0 text-red-300">•</span>
+                    <span>{renderCustomerTermLine(item)}</span>
+                  </li>
+                ))}
+              </ul>
+              {clarifyNoTip && (
+                <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+                  상품명의 ‘노팁’ 표기와 별도로, 원문에 명시된 매너팁은 불포함입니다.
+                </p>
+              )}
+            </>
           ) : (
             <p className={`${bodyCls} text-admin-text-2`}>
               {excludeLines.map((item, idx) => (

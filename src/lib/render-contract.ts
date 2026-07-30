@@ -151,6 +151,13 @@ export interface RenderPackageInput {
       arr_time: string | null;
       arr_day_offset: 0 | 1;
     }> | null;
+    flight_schedule_options?: Array<{
+      leg?: 'outbound' | 'inbound' | null;
+      dep_time?: string | null;
+      arr_time?: string | null;
+      dep_location?: string | null;
+      arr_location?: string | null;
+    }> | null;
     highlights?: {
       shopping?: string | null;
       excludes?: string[] | null;
@@ -1152,6 +1159,16 @@ function resolveFlightHeader(days: CanonicalDay[], pkg?: RenderPackageInput): Fl
       if (!inbound.arrCity && legacyInbound.arrCity) inbound.arrCity = legacyInbound.arrCity;
     }
     return { outbound, inbound };
+  }
+
+  // Multiple source-backed schedule candidates are not a confirmed flight.
+  // Their exact options are shown through the customer notice contract; do not
+  // synthesize a single route from legacy day rows or label it as confirmed.
+  const scheduleOptions = (pkg?.itinerary_data as {
+    flight_schedule_options?: unknown[];
+  } | undefined)?.flight_schedule_options;
+  if (Array.isArray(scheduleOptions) && scheduleOptions.length > 0) {
+    return { outbound: null, inbound: null };
   }
 
   // 2차: legacy fallback

@@ -102,6 +102,12 @@ function padFlightInfoHHMM(fi: ExtractedData['flight_info']): void {
 export function applyDeterministicExtractedDataFixes(ed: ExtractedData): void {
   padFlightInfoHHMM(ed.flight_info);
 
+  if (ed.title) {
+    ed.title = ed.title
+      .replace(/^\s*(?:상품\s*명(?:칭)?|행사명|product(?:\s*name)?)\s*[:：]?\s*/i, '')
+      .trim();
+  }
+
   if (ed.duration != null) {
     if (!Number.isFinite(ed.duration)) {
       ed.duration = undefined;
@@ -118,7 +124,12 @@ export function applyDeterministicExtractedDataFixes(ed: ExtractedData): void {
       .split('\n')
       .map(l => l.trim())
       .find(l => l.length >= 4 && !/^[\d\s.,\-–—%]+$/.test(l));
-    if (line) ed.title = line.slice(0, 200);
+    if (line) {
+      ed.title = line
+        .replace(/^\s*(?:상품\s*명(?:칭)?|행사명|product(?:\s*name)?)\s*[:：]?\s*/i, '')
+        .trim()
+        .slice(0, 200);
+    }
   }
 
   if (ed.title && ed.title.length > 200) ed.title = ed.title.slice(0, 200);

@@ -56,7 +56,7 @@ describe('Clark multi-product registration golden path', () => {
       expect(departureDays).toBe(expected.departureDays);
       expect(accommodations).toContain(expected.hotel);
       expect(recovered.ok).toBe(true);
-      expect(recovered.source).toBe('deterministic:spot_weekday_table');
+      expect(recovered.source).toBe('deterministic:spot_weekday_table+source_excluded_dates');
       expect(recovered.minPrice).toBe(expected.minPrice);
       expect(recovered.priceDates).toHaveLength(expected.count);
       expect(recovered.priceDates.find(row => row.date === expected.sampleDate)?.price).toBe(expected.samplePrice);

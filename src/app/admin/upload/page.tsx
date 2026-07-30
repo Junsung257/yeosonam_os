@@ -4,6 +4,10 @@ import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { STANDARD_PRODUCT_MARKDOWN_TEMPLATE } from '@/lib/standard-product-markdown';
+import type {
+  RegistrationRemediationAction,
+  RegistrationRemediationPlan,
+} from '@/lib/product-registration/operator-remediation';
 
 interface VerifyCheck {
   id: string;
@@ -43,6 +47,7 @@ interface QueueItem {
     elapsed_ms?: number;
   };
   gate?: string;
+  remediation?: RegistrationRemediationPlan;
   uploadRequestId?: string;
   replayQueueId?: string;
   replayState?: 'pending' | 'resolved' | 'failed' | 'skipped' | 'unknown';
@@ -76,6 +81,7 @@ interface QueueItem {
     checks: VerifyCheck[];
     warnCount: number;
     failCount: number;
+    remediation?: RegistrationRemediationPlan;
     packageResults?: PackageVerifyResult[];
   };
   verifyExpanded?: boolean;
@@ -95,6 +101,7 @@ interface PackageVerifyResult {
   checks: VerifyCheck[];
   warnCount: number;
   failCount: number;
+  remediation?: RegistrationRemediationPlan;
   error?: string;
 }
 
@@ -270,6 +277,80 @@ function firstVerifyIssue(result: PackageVerifyResult | undefined): string | nul
   return issue ? `[${issue.id}] ${issue.label}${issue.detail ? ` - ${issue.detail}` : ''}` : null;
 }
 
+function remediationTone(action: RegistrationRemediationAction): string {
+  if (action.kind === 'supplier_confirmation') return 'border-rose-200 bg-rose-50 text-rose-800';
+  if (action.kind === 'attraction_review') return 'border-indigo-200 bg-indigo-50 text-indigo-800';
+  if (action.kind === 'customer_disclosure_review') return 'border-violet-200 bg-violet-50 text-violet-800';
+  if (action.kind === 'mobile_proof') return 'border-sky-200 bg-sky-50 text-sky-800';
+  return 'border-amber-200 bg-amber-50 text-amber-800';
+}
+
+function supplierRequestForTitle(plan: RegistrationRemediationPlan, productTitle: string | null | undefined): string | null {
+  if (!plan.supplierRequestText) return null;
+  return plan.supplierRequestText.replace(
+    '상품: 상품명 확인 필요',
+    `상품: ${compactText(productTitle) || '상품명 확인 필요'}`,
+  );
+}
+
+function RemediationPanel({
+  plan,
+  productTitle,
+  copied,
+  onCopy,
+}: {
+  plan: RegistrationRemediationPlan | undefined;
+  productTitle: string | null | undefined;
+  copied: boolean;
+  onCopy: (text: string) => void;
+}) {
+  if (!plan || plan.actions.length === 0) return null;
+  const supplierRequest = supplierRequestForTitle(plan, productTitle);
+
+  return (
+    <div className="mt-2 rounded-lg border border-slate-200 bg-white/80 p-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold text-slate-800">고객 오픈 전 조치</p>
+        {supplierRequest && (
+          <button
+            type="button"
+            onClick={() => onCopy(supplierRequest)}
+            className="rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50"
+          >
+            {copied ? '복사됨' : '랜드사 요청문 복사'}
+          </button>
+        )}
+      </div>
+      <div className="space-y-1">
+        {plan.actions.map(action => (
+          <div key={action.field} className={`rounded border px-2 py-1.5 ${remediationTone(action)}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold">{action.title}</span>
+              {action.actionHref && action.actionLabel && (
+                <a
+                  href={action.actionHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-semibold underline"
+                >
+                  {action.actionLabel} →
+                </a>
+              )}
+            </div>
+            <p className="mt-0.5 text-[10px] leading-relaxed">{action.instruction}</p>
+            {action.sourcePhrases.length > 0 && (
+              <p className="mt-1 text-[10px] font-medium leading-relaxed">
+                대상: {action.sourcePhrases.slice(0, 3).join(' · ')}
+                {action.sourcePhrases.length > 3 ? ` 외 ${action.sourcePhrases.length - 3}건` : ''}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function uploadFailureMessage(data: any): string {
   if (data?.code === 'UPLOAD_DEFERRED_FOR_REPLAY') {
     return [
@@ -334,6 +415,7 @@ export default function UploadPage() {
   const [textInput, setTextInput] = useState('');
   const [textLandOperator, setTextLandOperator] = useState('');
   const [textCommissionRate, setTextCommissionRate] = useState('10');
+  const [copiedRemediationKey, setCopiedRemediationKey] = useState<string | null>(null);
 
   const activeCountRef = useRef(0);
   const pendingTextRef = useRef<PendingTextItem[]>([]);
@@ -407,6 +489,7 @@ export default function UploadPage() {
       titles: data.titles,
       tokenUsage: data.tokenUsage ?? null,
       gate: data.gate ?? null,
+      remediation: data.remediation ?? undefined,
       trustScore: data.trustScore ?? null,
       attractionStats: data.attractionStats ?? null,
       registerReport: data.registerReport ?? null,
@@ -471,6 +554,7 @@ export default function UploadPage() {
               checks: packageResults.flatMap(result => result.checks),
               warnCount: packageResults.reduce((sum, result) => sum + result.warnCount, 0),
               failCount: packageResults.reduce((sum, result) => sum + result.failCount, 0),
+              remediation: data.remediation,
               packageResults,
             },
             verifyError: data.error || `HTTP ${res.status}`,
@@ -486,6 +570,7 @@ export default function UploadPage() {
           checks: data.checks ?? [],
           warnCount: data.warnCount ?? 0,
           failCount: data.failCount ?? 0,
+          remediation: data.remediation,
           packageResults,
         },
         verifyError: isVerifyDisplayStatus(data.status) ? undefined : '검증 응답 상태가 올바르지 않습니다.',
@@ -499,6 +584,18 @@ export default function UploadPage() {
       } : it));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const copyRemediationRequest = useCallback(async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedRemediationKey(key);
+      window.setTimeout(() => {
+        setCopiedRemediationKey(current => current === key ? null : current);
+      }, 1_500);
+    } catch {
+      window.prompt('아래 요청문을 복사하세요.', text);
+    }
+  }, []);
 
   const pollDeferredReplay = useCallback((
     id: string,
@@ -587,7 +684,13 @@ export default function UploadPage() {
         }),
       });
       const data = await safeResJson(res);
-      if (!res.ok) throw new Error(uploadFailureMessage(data));
+      if (!res.ok) {
+        setQueue(prev => prev.map(it => it.id === id ? {
+          ...it,
+          remediation: data.remediation ?? it.remediation,
+        } : it));
+        throw new Error(uploadFailureMessage(data));
+      }
       if (isUploadDeferredForReplay(data)) {
         const deferred = deferredUploadResult(data);
         setQueue(prev => prev.map(it => it.id === id ? {
@@ -600,7 +703,13 @@ export default function UploadPage() {
         });
         return;
       }
-      if (data?.success === false) throw new Error(uploadFailureMessage(data));
+      if (data?.success === false) {
+        setQueue(prev => prev.map(it => it.id === id ? {
+          ...it,
+          remediation: data.remediation ?? it.remediation,
+        } : it));
+        throw new Error(uploadFailureMessage(data));
+      }
 
       const ed = data.data?.extractedData;
       const count = data.productCount || 1;
@@ -623,6 +732,7 @@ export default function UploadPage() {
         commissionRate: data.uploadMetadata?.commissionRate ?? item.commissionRate,
         tokenUsage: data.tokenUsage ?? null,
         gate: data.gate ?? null,
+        remediation: data.remediation ?? undefined,
         trustScore: data.trustScore ?? null,
         attractionStats: data.attractionStats ?? null,
         registerReport,
@@ -779,10 +889,19 @@ export default function UploadPage() {
           <div className="bg-white p-5 rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
             <div
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
+              role="button"
+              tabIndex={0}
+              aria-label="상품 문서 파일 선택"
               className={`border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer ${
                 dragActive ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid bg-admin-bg hover:border-admin-border-strong'
               }`}
               onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
             >
               <svg className="mx-auto h-10 w-10 text-admin-muted-2 mb-3" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                 <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h24a4 4 0 004-4V20m-18-8v12m0 0l-4-4m4 4l4-4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -790,15 +909,16 @@ export default function UploadPage() {
               <p className="text-admin-text-2 text-admin-base font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
               <p className="text-[11px] text-admin-muted mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 10MB</p>
               <p className="text-[11px] text-blue-600">[랜드사_커미션%]상품명.pdf 형식으로 파일명 작성 시 자동 추출</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.jpg,.jpeg,.png,.hwp,.hwpx"
-                onChange={e => e.target.files && addFiles(e.target.files)}
-                className="hidden"
-              />
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.jpg,.jpeg,.png,.hwp,.hwpx"
+              onChange={e => e.target.files && addFiles(e.target.files)}
+              aria-label="업로드할 상품 문서"
+              className="hidden"
+            />
 
             <div className="mt-3 flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -1175,10 +1295,24 @@ export default function UploadPage() {
                                       {verifyIssue}
                                     </p>
                                   )}
+                                  <RemediationPanel
+                                    plan={packageVerify?.remediation}
+                                    productTitle={r.title}
+                                    copied={copiedRemediationKey === r.package_id}
+                                    onCopy={(text) => void copyRemediationRequest(r.package_id, text)}
+                                  />
                                 </div>
                               );
                             })}
                           </div>
+                        )}
+                        {item.remediation && (!item.verifyReport?.packageResults || item.verifyStatus === 'error') && (
+                          <RemediationPanel
+                            plan={item.remediation}
+                            productTitle={item.title}
+                            copied={copiedRemediationKey === item.id}
+                            onCopy={(text) => void copyRemediationRequest(item.id, text)}
+                          />
                         )}
                         {/* 2026-05-19 박제: catalog split silent fallback 경고 (PR #128 UI 보강) */}
                         {item.catalogSplitWarning && (
@@ -1242,16 +1376,24 @@ export default function UploadPage() {
                       </div>
                     )}
                     {item.status === 'error' && (
-                      <div className="mt-0.5 flex items-start gap-2">
-                        <p className="text-[11px] text-red-500 flex-1 leading-snug">{item.errorMsg}</p>
-                        {item.rawText && (
-                          <button type="button"
-                            onClick={() => retryItem(item)}
-                            className="flex-shrink-0 text-[10px] font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50 transition"
-                          >
-                            재시도
-                          </button>
-                        )}
+                      <div className="mt-0.5">
+                        <div className="flex items-start gap-2">
+                          <p className="text-[11px] text-red-500 flex-1 leading-snug">{item.errorMsg}</p>
+                          {item.rawText && (
+                            <button type="button"
+                              onClick={() => retryItem(item)}
+                              className="flex-shrink-0 text-[10px] font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50 transition"
+                            >
+                              재시도
+                            </button>
+                          )}
+                        </div>
+                        <RemediationPanel
+                          plan={item.remediation}
+                          productTitle={item.title}
+                          copied={copiedRemediationKey === item.id}
+                          onCopy={(text) => void copyRemediationRequest(item.id, text)}
+                        />
                       </div>
                     )}
                     {item.status === 'deferred' && (

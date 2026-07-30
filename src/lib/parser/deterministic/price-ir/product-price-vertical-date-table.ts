@@ -239,6 +239,67 @@ function parseStandaloneKoreanDayList(line: string, month: number | null, yearHi
     .filter((date): date is string => Boolean(date));
 }
 
+const BAEKDU_ROUTE_MARKERS = ['남파', '북파', '서파', '동파'] as const;
+
+function extractRouteMarkers(text: string): Set<string> {
+  const compact = text.replace(/\s+/g, '');
+  return new Set(BAEKDU_ROUTE_MARKERS.filter(marker => compact.includes(marker)));
+}
+
+function isDurationPriceBlock(lines: string[], start: number, year?: number): boolean {
+  let currentMonth: number | null = null;
+  for (let i = start + 1; i < Math.min(lines.length, start + 45); i++) {
+    if (parseDurationDays(lines[i]) != null) break;
+    const month = parseStandaloneKoreanMonth(lines[i]);
+    if (month != null) {
+      currentMonth = month;
+      continue;
+    }
+    const dates = parseStandaloneKoreanDayList(lines[i], currentMonth, year);
+    if (dates.length === 0) continue;
+    for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
+      if (parseDurationDays(lines[j]) != null || parseStandaloneKoreanMonth(lines[j]) != null) break;
+      if (parseKoreanWonPrice(lines[j]) > 0) return true;
+    }
+  }
+  return false;
+}
+
+function selectRouteSpecificDurationBlock(
+  lines: string[],
+  wantedDuration: number,
+  title: string | null | undefined,
+  year?: number,
+): number | null {
+  const wantedMarkers = extractRouteMarkers(String(title ?? ''));
+  if (wantedMarkers.size === 0) return null;
+
+  const candidates = lines
+    .slice(0, 120)
+    .map((line, index) => ({ line, index }))
+    .filter(candidate => (
+      parseDurationDays(candidate.line) === wantedDuration
+      && isDurationPriceBlock(lines, candidate.index, year)
+    ))
+    .map(candidate => {
+      const context = lines.slice(Math.max(0, candidate.index - 6), candidate.index + 1).join(' ');
+      const markers = extractRouteMarkers(context);
+      const overlap = [...wantedMarkers].filter(marker => markers.has(marker)).length;
+      const missing = [...wantedMarkers].filter(marker => !markers.has(marker)).length;
+      const extra = [...markers].filter(marker => !wantedMarkers.has(marker)).length;
+      const exactBonus = missing === 0 && extra === 0 ? 20 : 0;
+      return {
+        index: candidate.index,
+        score: exactBonus + overlap * 4 - missing * 5 - extra * 3,
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  if (candidates.length < 2) return null;
+  if (candidates[0].score <= candidates[1].score || candidates[0].score <= 0) return null;
+  return candidates[0].index;
+}
+
 function extractKoreanDurationSectionPriceRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
   const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
@@ -253,13 +314,21 @@ function extractKoreanDurationSectionPriceRows(rawText: string, options: PriceIR
 
   const rows: MatrixPriceRow[] = [];
   const seen = new Set<string>();
+  const selectedDurationBlock = selectRouteSpecificDurationBlock(
+    lines,
+    wantedDuration,
+    options.title,
+    options.year,
+  );
   let currentDuration: number | null = null;
+  let currentDurationBlock: number | null = null;
   let currentMonth: number | null = null;
 
   for (let i = 0; i < Math.min(lines.length, 120); i++) {
     const duration = parseDurationDays(lines[i]);
     if (duration != null) {
       currentDuration = duration;
+      currentDurationBlock = i;
       currentMonth = null;
       continue;
     }
@@ -271,6 +340,7 @@ function extractKoreanDurationSectionPriceRows(rawText: string, options: PriceIR
     }
 
     if (currentDuration !== wantedDuration) continue;
+    if (selectedDurationBlock != null && currentDurationBlock !== selectedDurationBlock) continue;
     const dates = parseStandaloneKoreanDayList(lines[i], currentMonth, options.year);
     if (dates.length === 0 || dates.length > 31) continue;
 

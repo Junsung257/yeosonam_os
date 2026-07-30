@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import {
   getAIUsageStats,
@@ -6,15 +6,9 @@ import {
   getOperatorTakeRates,
   getRepeatBookingStats,
   getDataQualityIssues,
-  isSupabaseConfigured,
+  isSupabaseAdminConfigured,
 } from '@/lib/supabase';
-
-function withTimeout<T>(promise: Promise<T>, fallback: T, ms: number): Promise<T> {
-  return Promise.race([
-    promise.catch(() => fallback),
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
+import { apiResponse } from '@/lib/api-response';
 
 type MetricLoadResult<T> =
   | { status: 'ok'; data: T }
@@ -44,45 +38,53 @@ const PRIVATE_NO_STORE = { 'Cache-Control': 'private, no-store' };
  *  - dataQuality: 데이터 결측·모순 자동 감지 (다른 KPI 신뢰성의 전제)
  */
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json(
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse(
       {
         aiUsage: null,
+        aiUsageStatus: 'unconfigured',
         settlement: null,
         settlementStatus: 'unconfigured',
         takeRates: [],
+        takeRatesStatus: 'unconfigured',
         repeat: null,
+        repeatStatus: 'unconfigured',
         dataQuality: null,
+        dataQualityStatus: 'unconfigured',
       },
-      { headers: PRIVATE_NO_STORE },
+      { status: 503, headers: PRIVATE_NO_STORE },
     );
   }
   try {
     const { searchParams } = new URL(request.url);
     const dashboardMode = searchParams.get('mode') === 'dashboard';
     const budgetMs = dashboardMode ? 1800 : 10000;
-    const [aiUsage, settlementResult, takeRates, repeat, dataQuality] = await Promise.all([
-      withTimeout(getAIUsageStats(), null, budgetMs),
+    const [aiUsageResult, settlementResult, takeRatesResult, repeatResult, dataQualityResult] = await Promise.all([
+      withLoadStatus(getAIUsageStats(), budgetMs),
       withLoadStatus(getSettlementBalances(), budgetMs),
-      withTimeout(getOperatorTakeRates(8), [], budgetMs),
-      withTimeout(getRepeatBookingStats(), null, dashboardMode ? 900 : budgetMs),
-      withTimeout(getDataQualityIssues(), null, dashboardMode ? 900 : budgetMs),
+      withLoadStatus(getOperatorTakeRates(8), budgetMs),
+      withLoadStatus(getRepeatBookingStats(), dashboardMode ? 900 : budgetMs),
+      withLoadStatus(getDataQualityIssues(), dashboardMode ? 900 : budgetMs),
     ]);
-    return NextResponse.json(
+    return apiResponse(
       {
-        aiUsage,
+        aiUsage: aiUsageResult.data,
+        aiUsageStatus: aiUsageResult.status,
         settlement: settlementResult.data,
         settlementStatus: settlementResult.status,
-        takeRates,
-        repeat,
-        dataQuality,
+        takeRates: takeRatesResult.data ?? [],
+        takeRatesStatus: takeRatesResult.status,
+        repeat: repeatResult.data,
+        repeatStatus: repeatResult.status,
+        dataQuality: dataQualityResult.data,
+        dataQualityStatus: dataQualityResult.status,
       },
       { headers: PRIVATE_NO_STORE },
     );
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: err instanceof Error ? err.message : '운영 KPI 조회 실패' },
-      { status: 500, headers: PRIVATE_NO_STORE },
+      { status: 503, headers: PRIVATE_NO_STORE },
     );
   }
 };

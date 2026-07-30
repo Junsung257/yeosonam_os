@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { sanitizeAttributionCampaignValue } from '@/lib/analytics/attribution';
 
 export interface TrackingData {
   sessionId: string;
@@ -38,11 +39,11 @@ function getOrCreateSessionId(): string {
 function parseUtm(search: string) {
   const p = new URLSearchParams(search);
   return {
-    utmSource: p.get('utm_source'),
-    utmMedium: p.get('utm_medium'),
-    utmCampaign: p.get('utm_campaign'),
-    utmContent: p.get('utm_content'),
-    utmTerm: p.get('utm_term'),
+    utmSource: sanitizeAttributionCampaignValue(p.get('utm_source')),
+    utmMedium: sanitizeAttributionCampaignValue(p.get('utm_medium')),
+    utmCampaign: sanitizeAttributionCampaignValue(p.get('utm_campaign')),
+    utmContent: sanitizeAttributionCampaignValue(p.get('utm_content')),
+    utmTerm: sanitizeAttributionCampaignValue(p.get('utm_term')),
   };
 }
 
@@ -98,6 +99,12 @@ export function useTracking() {
 
   const getSnapshot = useCallback((): TrackingData => {
     const u = utmRef.current;
+    let safeReferrer = '';
+    try {
+      safeReferrer = document.referrer ? new URL(document.referrer).hostname : '';
+    } catch {
+      safeReferrer = '';
+    }
     return {
       sessionId: sessionIdRef.current,
       utmSource: u.utmSource,
@@ -105,8 +112,8 @@ export function useTracking() {
       utmCampaign: u.utmCampaign,
       utmContent: u.utmContent,
       utmTerm: u.utmTerm,
-      referrer: typeof document !== 'undefined' ? document.referrer : '',
-      landingUrl: typeof window !== 'undefined' ? window.location.href : '',
+      referrer: safeReferrer,
+      landingUrl: typeof window !== 'undefined' ? window.location.pathname : '',
       scrollDepthReached: scrollDepth,
       timeOnPageSeconds: Math.round((Date.now() - startTimeRef.current) / 1000),
       itineraryViewed,

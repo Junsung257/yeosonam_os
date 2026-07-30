@@ -14,6 +14,7 @@ if (fs.existsSync(envPath)) {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const APPLY = process.argv.includes('--apply');
+const ALLOW_REVIEWED_SOURCE_REPAIR = process.argv.includes('--allow-reviewed-source-repair');
 
 if (!supabaseUrl || !serviceKey) {
   console.error('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY is required');
@@ -50,18 +51,50 @@ const REGION_KEYWORDS = [
   ['중국', '중국'],
   ['China', '중국'],
   ['Tianjin', '중국'],
+  ['말레이시아', '말레이시아'],
+  ['쿠알라', '말레이시아'],
+  ['말라카', '말레이시아'],
+  ['싱가포르', '싱가포르'],
+  ['태국', '태국'],
+  ['방콕', '태국'],
+  ['파타야', '태국'],
+  ['푸켓', '태국'],
+  ['필리핀', '필리핀'],
+  ['보홀', '필리핀'],
+  ['세부', '필리핀'],
+  ['베트남', '베트남'],
+  ['다낭', '베트남'],
+  ['나트랑', '베트남'],
+  ['인도네시아', '인도네시아'],
+  ['발리', '인도네시아'],
+  ['일본', '일본'],
+  ['오사카', '일본'],
+  ['후쿠오카', '일본'],
+  ['대만', '대만'],
+  ['타이베이', '대만'],
 ];
 
 function hasExplicitRegion(text) {
   return REGION_KEYWORDS.some(([keyword]) => text.includes(keyword));
 }
 
-function inferRegion(pkg, tour) {
-  const haystack = [tour.name, pkg.destination, pkg.title].filter(Boolean).join(' ');
-  for (const [keyword, region] of REGION_KEYWORDS) {
-    if (haystack.includes(keyword)) return region;
-  }
-  return null;
+function inferRegionFromRawText(pkg, tour) {
+  const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+  const name = String(tour.name || '');
+  const index = rawText && name ? rawText.indexOf(name) : -1;
+  if (index < 0) return { region: null, evidence: { raw_text_present: Boolean(rawText), name_found: false, context_excerpt: null, context_regions: [] } };
+  const context = rawText.slice(Math.max(0, index - 180), Math.min(rawText.length, index + name.length + 180)).replace(/\s+/g, ' ').trim();
+  const contextRegions = [...new Set(REGION_KEYWORDS.filter(([keyword]) => context.includes(keyword)).map(([, region]) => region))];
+  return {
+    region: contextRegions.length === 1 ? contextRegions[0] : null,
+    evidence: {
+      raw_text_present: true,
+      raw_text_hash_present: Boolean(pkg.raw_text_hash),
+      name_found: true,
+      context_excerpt: context,
+      context_regions: contextRegions,
+    },
+  };
 }
 
 function needsRegion(tour) {
@@ -77,7 +110,7 @@ async function fetchPackages() {
   while (true) {
     const { data, error } = await sb
       .from('travel_packages')
-      .select('id,title,destination,optional_tours')
+      .select('id,title,destination,status,publication_state,raw_text,raw_text_hash,itinerary_data,optional_tours')
       .not('optional_tours', 'is', null)
       .range(offset, offset + page - 1);
     if (error) throw error;
@@ -92,19 +125,25 @@ async function fetchPackages() {
 const rows = await fetchPackages();
 const updates = [];
 const unresolved = [];
+let sourceBackedCandidates = 0;
+let rawTextPresent = 0;
+let rawNameMatches = 0;
 
 for (const pkg of rows) {
   if (!Array.isArray(pkg.optional_tours)) continue;
   let changed = false;
   const optionalTours = pkg.optional_tours.map((tour) => {
     if (!needsRegion(tour)) return tour;
-    const region = inferRegion(pkg, tour);
-    if (!region) {
-      unresolved.push({ id: pkg.id, title: pkg.title, destination: pkg.destination, name: tour.name });
+    const inferred = inferRegionFromRawText(pkg, tour);
+    if (inferred.evidence.raw_text_present) rawTextPresent++;
+    if (inferred.evidence.name_found) rawNameMatches++;
+    if (!inferred.region) {
+      unresolved.push({ id: pkg.id, title: pkg.title, destination: pkg.destination, name: tour.name, evidence: inferred.evidence });
       return tour;
     }
+    sourceBackedCandidates++;
     changed = true;
-    return { ...tour, region };
+    return { ...tour, region: inferred.region };
   });
   if (changed) {
     updates.push({ id: pkg.id, title: pkg.title, optional_tours: optionalTours });
@@ -115,12 +154,19 @@ if (!APPLY) {
   console.log(JSON.stringify({
     mode: 'dry-run',
     packagesToUpdate: updates.length,
+    sourceBackedCandidates,
+    rawTextPresent,
+    rawNameMatches,
     unresolved: unresolved.length,
     sampleUpdates: updates.slice(0, 10).map((u) => ({ id: u.id, title: u.title })),
     unresolvedSamples: unresolved.slice(0, 20),
   }, null, 2));
   if (unresolved.length > 0) process.exitCode = 2;
   process.exitCode ||= 0;
+}
+else if (!ALLOW_REVIEWED_SOURCE_REPAIR) {
+  console.error('Refusing to apply: add --allow-reviewed-source-repair after reviewing the source evidence dry-run.');
+  process.exit(2);
 }
 else if (unresolved.length > 0) {
   console.error(JSON.stringify({ error: 'Unresolved optional tour regions remain', unresolved }, null, 2));

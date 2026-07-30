@@ -1,9 +1,18 @@
 import { apiResponse } from '@/lib/api-response';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const CNY_TO_USD = 0.138;
+const AI_USAGE_RPC_TIMEOUT_MS = 2500;
+
+function withTimeout<T>(query: T): T {
+  const candidate = query as T & { abortSignal?: (signal: AbortSignal) => T };
+  return typeof candidate.abortSignal === 'function' && typeof AbortSignal?.timeout === 'function'
+    ? candidate.abortSignal(AbortSignal.timeout(AI_USAGE_RPC_TIMEOUT_MS))
+    : query;
+}
 
 interface ProviderCredit {
   balance_available: boolean;
@@ -17,6 +26,26 @@ interface ProviderCredit {
   error?: string;
 }
 
+function unavailableCredits(detail: string) {
+  const provider = (note: string): ProviderCredit => ({
+    balance_available: false,
+    month_cost_usd: 0,
+    month_calls: 0,
+    key_configured: false,
+    note,
+  });
+  return {
+    credits: {
+      deepseek: provider(detail),
+      gemini: provider(detail),
+      anthropic: provider(detail),
+    },
+    data_status: 'unavailable' as const,
+    status_detail: detail,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 type ProviderId = 'deepseek' | 'gemini' | 'anthropic';
 
 async function getMonthUsageByProvider(): Promise<Record<ProviderId, { cost_usd: number; calls: number }>> {
@@ -25,36 +54,20 @@ async function getMonthUsageByProvider(): Promise<Record<ProviderId, { cost_usd:
     gemini: { cost_usd: 0, calls: 0 },
     anthropic: { cost_usd: 0, calls: 0 },
   };
-  if (!isSupabaseConfigured) return empty;
-  try {
-    const since = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1,
-    ).toISOString();
-    const { data, error } = await supabaseAdmin
-      .from('jarvis_cost_ledger')
-      .select('model, cost_usd')
-      .gte('created_at', since)
-      .or('model.like.deepseek%,model.like.gemini%,model.like.claude%');
-    if (error) return empty;
+  const { data, error } = await withTimeout(
+    supabaseAdmin.rpc('get_admin_ai_month_usage_by_provider'),
+  );
+  if (error) throw error;
 
-    const out = { ...empty };
-    for (const row of (data ?? []) as Array<{ model: string | null; cost_usd: number | null }>) {
-      const model = row.model ?? '';
-      const provider: ProviderId | null =
-        model.startsWith('deepseek') ? 'deepseek'
-          : model.startsWith('gemini') ? 'gemini'
-            : model.startsWith('claude') ? 'anthropic'
-              : null;
-      if (!provider) continue;
-      out[provider].calls += 1;
-      out[provider].cost_usd += Number(row.cost_usd) || 0;
-    }
-    return out;
-  } catch {
-    return empty;
+  const out = { ...empty };
+  for (const row of (data ?? []) as Array<{ provider: string; cost_usd: number | null; calls: number | null }>) {
+    if (row.provider !== 'deepseek' && row.provider !== 'gemini' && row.provider !== 'anthropic') continue;
+    out[row.provider] = {
+      cost_usd: Number(row.cost_usd) || 0,
+      calls: Number(row.calls) || 0,
+    };
   }
+  return out;
 }
 
 async function fetchDeepSeekBalance(): Promise<{
@@ -85,13 +98,29 @@ async function fetchDeepSeekBalance(): Promise<{
 }
 
 const getHandler = async (request: Request) => {
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse(
+      { error: 'Supabase admin connection is not configured.' },
+      { status: 503 },
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const includeLiveBalance = searchParams.get('live_balance') !== '0';
 
-  const [deepseekBalance, usageByProvider] = await Promise.all([
-    includeLiveBalance ? fetchDeepSeekBalance() : Promise.resolve(null),
-    getMonthUsageByProvider(),
-  ]);
+  let deepseekBalance: Awaited<ReturnType<typeof fetchDeepSeekBalance>>;
+  let usageByProvider: Awaited<ReturnType<typeof getMonthUsageByProvider>>;
+  try {
+    [deepseekBalance, usageByProvider] = await Promise.all([
+      includeLiveBalance ? fetchDeepSeekBalance() : Promise.resolve(null),
+      getMonthUsageByProvider(),
+    ]);
+  } catch (error) {
+    return apiResponse(
+      unavailableCredits(`AI 사용량 원천을 조회할 수 없습니다: ${sanitizeDbError(error)}`),
+      { status: 206 },
+    );
+  }
   const dsUsage = usageByProvider.deepseek;
   const geminiUsage = usageByProvider.gemini;
   const claudeUsage = usageByProvider.anthropic;
@@ -125,7 +154,7 @@ const getHandler = async (request: Request) => {
     },
   };
 
-  return apiResponse({ credits, updated_at: new Date().toISOString() });
+  return apiResponse({ credits, data_status: 'ok' as const, updated_at: new Date().toISOString() });
 };
 
 export const GET = withAdminGuard(getHandler);

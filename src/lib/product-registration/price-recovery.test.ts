@@ -481,6 +481,26 @@ describe('recoverUploadPriceData', () => {
     expect(result.minPrice).toBe(1299000);
   });
 
+  it('preserves a source-backed adult price when departure dates are not provided', async () => {
+    const rawText = [
+      '\uC0C1\uD488\uBA85 [PASTE-GOLDEN] \uBC29\uCF55 \uD30C\uD0C0\uC57C 5\uC77C',
+      '\uC131\uC778 699,000\uC6D0',
+      '\uC120\uD0DD\uAD00\uAD11 \uC804\uD1B5 \uB9C8\uC0AC\uC9C0 USD30/\uC778',
+    ].join('\n');
+
+    const result = await recoverUploadPriceData({ rawText }, {
+      rawText,
+      year: 2026,
+      enableGeminiFallback: false,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.source).toBe('supplier_raw_price_without_departure_dates');
+    expect(result.minPrice).toBe(699000);
+    expect(result.priceRows).toEqual([]);
+    expect(result.priceDates).toEqual([]);
+  });
+
   it('uses the llm gateway DeepSeek fallback before direct Gemini price extraction', async () => {
     mocks.llmCall.mockResolvedValue({
       success: true,

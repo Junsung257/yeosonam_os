@@ -18,6 +18,7 @@ import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard
 import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { classifyProductRegistrationFailure, summarizeProductRegistrationFailures } from './failure-diagnostics';
+import { buildRegistrationRemediationPlan } from './operator-remediation';
 
 type TokenUsageSource = {
   provider?: string;
@@ -157,6 +158,21 @@ export async function buildUploadResponsePayload(input: {
     && registerReport.length > 0
     && customerPublishableCount === registerReport.length;
   const mobileProofRequiredCount = registerReport.filter(row => row.mobile_browser_proof_required).length;
+  const remediation = buildRegistrationRemediationPlan([
+    ...failureSummary.diagnostics.map(diagnostic => ({
+      code: diagnostic.code,
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+    })),
+    ...(attractionStats.unmatched > 0
+      ? [`attraction_unmatched_queue_clear: ${attractionStats.unmatched} unmatched attraction events require review`]
+      : []),
+    ...(mobileProofRequiredCount > 0
+      ? [`MOBILE_BROWSER_PROOF_REQUIRED: ${mobileProofRequiredCount} saved packages require internal mobile proof`]
+      : []),
+  ], {
+    productTitle: input.savedTitles[0] ?? null,
+  });
   const openEligible = successCount > 0
     && registerReport.length > 0
     && customerBlockedRows.length === 0
@@ -247,6 +263,7 @@ export async function buildUploadResponsePayload(input: {
     customerBlockedCount: customerBlockedRows.length,
     openEligible,
     openReadiness,
+    remediation,
     customerBlockedPackages: customerBlockedRows.slice(0, 10).map(row => ({
       package_id: row.package_id,
       title: row.title,

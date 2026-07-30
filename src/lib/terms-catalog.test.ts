@@ -95,6 +95,8 @@ describe('parseShoppingText', () => {
     expect(p.items).toEqual(['잡화', '토속품']);
     expect(p.displayLine).toBe('2회 — 잡화, 토속품 등');
     expect(p.policyNote).toMatch(/수수료 발생/);
+    expect(p.policyNote).toMatch(/현지 쇼핑센터에서 구매한 물품/);
+    expect(p.policyNote).toMatch(/패키지여행 계약의 취소·환불 규정과는 별도/);
     expect(p.remainder).toBeNull();
   });
 
@@ -111,7 +113,9 @@ describe('formatInclusionDisplay', () => {
 });
 
 describe('SHOPPING_POLICY_NOTE', () => {
-  it('기타 안내용 문구 존재', () => {
+  it('쇼핑 물품과 패키지여행 계약의 환불 규정을 구분한다', () => {
     expect(SHOPPING_POLICY_NOTE).toMatch(/한 달 이내/);
+    expect(SHOPPING_POLICY_NOTE).toMatch(/현지 쇼핑센터에서 구매한 물품/);
+    expect(SHOPPING_POLICY_NOTE).toMatch(/패키지여행 계약의 취소·환불 규정과는 별도/);
   });
 });

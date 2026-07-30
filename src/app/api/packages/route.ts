@@ -5,6 +5,7 @@ import {
   deletePackage,
   approvePackage,
   isSupabaseConfigured,
+  isSupabaseAdminConfigured,
   supabaseAdmin,
 } from '@/lib/supabase';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
@@ -436,6 +437,13 @@ const PACKAGE_LIST_FIELDS_LITE = `
 export async function GET(request: NextRequest) {
   const isAdmin = await isAdminRequest(request).catch(() => false);
 
+  if (isAdmin && !isSupabaseAdminConfigured) {
+    return applyPackageCache(
+      ApiErrors.unavailable('Supabase admin connection is not configured.'),
+      true,
+    );
+  }
+
   if (!isSupabaseConfigured) {
     return applyPackageCache(listResponse([], { total: 0 }), isAdmin);
   }
@@ -563,7 +571,9 @@ export async function GET(request: NextRequest) {
     // 목록 조회 — products JOIN 포함
     // count: 'planned' — pg_stat 기반 추정 (수만 행 테이블에서 'exact' 보다 100배+ 빠름).
     //   페이지 네비게이션 UI 목적에는 추정치로 충분. 정확도 필요 시 ?countMode=exact 명시.
-    const countMode = searchParams.get('countMode') || 'planned';
+    // 관리자 목록은 페이지 수·검수 큐 수치를 직접 표시하므로 정확한 count가 필요하다.
+    // 공개 목록은 대규모 조회 비용을 줄이기 위해 기존 planned 추정치를 유지한다.
+    const countMode = searchParams.get('countMode') || (isAdmin ? 'exact' : 'planned');
     const queryBase = supabaseAdmin.from('travel_packages');
     const selected = lite
       ? queryBase.select(PACKAGE_LIST_FIELDS_LITE, { count: countMode as 'exact' | 'planned' | 'estimated' })

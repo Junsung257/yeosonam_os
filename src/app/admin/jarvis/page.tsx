@@ -367,7 +367,7 @@ function JarvisPageContent() {
       {/* 결재함 탭 */}
       {activeTab === 'actions' && (
         <div className="flex-1 overflow-y-auto">
-          <AgentActionsPanel />
+          <AgentActionsPanel focusedActionId={searchParams?.get('action')} />
         </div>
       )}
 

@@ -26,6 +26,12 @@ export type GoldenPasteE2ECase = {
     adultPrice: number | null;
     departureDates: string[];
     optionalPriceCandidates: Array<{ amount: number; currency: 'USD' | 'KRW' | 'JPY' | 'VND' }>;
+    inboundFlight?: {
+      flightNo: string;
+      depTime: string;
+      arrTime: string;
+      arrDayOffset: number;
+    };
     hotelRequired: boolean;
     airlineRequired: boolean;
     packagesProofRequired: true;
@@ -64,7 +70,18 @@ export const GOLDEN_PASTE_E2E_CASES: GoldenPasteE2ECase[] = [
     id: 'paste-003-inbound-next-day',
     kind: 'inbound_next_day_arrival',
     rawText: '상품명 [PASTE-GOLDEN] 나트랑 3박5일\n가는편 BX781 19:20-22:20\n오는편 BX782 23:20-06:20+1 익일도착\n성인 1,099,000원',
-    expected: { ...baseExpected, title: '[PASTE-GOLDEN] 나트랑 3박5일', destination: '나트랑', dayCount: 5, adultPrice: 1099000, departureDates: [], optionalPriceCandidates: [], hotelRequired: true, airlineRequired: true },
+    expected: {
+      ...baseExpected,
+      title: '[PASTE-GOLDEN] 나트랑 3박5일',
+      destination: '나트랑',
+      dayCount: 5,
+      adultPrice: 1099000,
+      departureDates: [],
+      optionalPriceCandidates: [],
+      inboundFlight: { flightNo: 'BX782', depTime: '23:20', arrTime: '06:20', arrDayOffset: 1 },
+      hotelRequired: true,
+      airlineRequired: true,
+    },
   },
   {
     id: 'paste-004-multiple-dates',

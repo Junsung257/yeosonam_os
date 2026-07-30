@@ -25,7 +25,10 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import {
+  buildCandidatePublicPackageForProof,
+  fetchLatestPublicPackageSnapshot,
+} from '@/lib/package-publication/repository';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
@@ -165,6 +168,22 @@ const DETAIL_FIELDS = `
   products(internal_code, display_name, departure_region)
 `;
 
+type PackageDetailRecord = Record<string, unknown> & {
+  id: string;
+  title: string;
+  display_title?: string | null;
+  destination: string;
+  status?: string | null;
+  audit_status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
+  product_type?: string | null;
+  price?: number | null;
+  itinerary_data?: unknown;
+  price_dates?: Array<{ date?: string | null }> | null;
+  price_tiers?: Array<{ departure_dates?: string[] | null }> | null;
+};
+
 /**
  * 怨좉컼 ?곸꽭 ?몄텧 寃뚯씠????SSOT ??`src/lib/visibility-status.ts`.
  * 2026-05-16 諛뺤젣: ?댄쐶 遺덉씪移??? 'available' ?꾨씫)濡??ъ씪?고듃 誘몃끂異??ш퀬 李⑤떒.
@@ -218,7 +237,9 @@ export async function generateMetadata({
   let publicSnapshotFound = false;
   try {
     const allowInternalProof = await isInternalRenderProofRequest();
-    const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
+    const metadataSelect = allowInternalProof
+      ? '*, products(internal_code, display_name, departure_region, thumbnail_urls)'
+      : 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
     let result = await runSupabaseQueryWithTimeout(
       sb
         .from('travel_packages')
@@ -253,13 +274,18 @@ export async function generateMetadata({
       return buildPackageNoindexMetadata(id, canonical);
     }
     rawData = result.data as MetadataPackageRow | null;
+    const proofCandidate = allowInternalProof && rawData
+      ? buildCandidatePublicPackageForProof(rawData as Record<string, unknown>)
+      : null;
     const publicSnapshot = allowInternalProof || !rawData
       ? null
       : await fetchLatestPublicPackageSnapshot(sb, id, {
           expectedPackageRevision: Number(rawData.package_revision ?? 1),
         }).catch(() => null);
     publicSnapshotFound = Boolean(publicSnapshot);
-    data = allowInternalProof ? rawData : (publicSnapshot?.package as MetadataPackageRow | undefined) ?? null;
+    data = allowInternalProof
+      ? (proofCandidate?.package as MetadataPackageRow | undefined) ?? null
+      : (publicSnapshot?.package as MetadataPackageRow | undefined) ?? null;
   } catch {
     return buildPackageNoindexMetadata(id, canonical);
   }
@@ -339,12 +365,15 @@ export default async function PackageDetailPage({
   const sb = sbOrNull;
   const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
   const allowInternalProof = await isInternalRenderProofRequest();
+  const detailFields = allowInternalProof
+    ? '*, products(internal_code, display_name, departure_region, thumbnail_urls)'
+    : DETAIL_FIELDS;
 
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
   let rawPkgResult = await runSupabaseQueryWithTimeout(
     sb.from('travel_packages')
-      .select(DETAIL_FIELDS)
+      .select(detailFields)
       .eq('id', id)
       .maybeSingle(),
     { label: 'package.detail.primary', timeoutMs: 6000 },
@@ -354,7 +383,7 @@ export default async function PackageDetailPage({
     await waitForPackageDetailRetry(500);
     rawPkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
-        .select(DETAIL_FIELDS)
+        .select(detailFields)
         .eq('id', id)
         .maybeSingle(),
       { label: 'package.detail.primary.retry1', timeoutMs: 10000 },
@@ -365,14 +394,14 @@ export default async function PackageDetailPage({
     await waitForPackageDetailRetry(1_000);
     rawPkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
-        .select(DETAIL_FIELDS)
+        .select(detailFields)
         .eq('id', id)
         .maybeSingle(),
       { label: 'package.detail.primary.retry2', timeoutMs: 15000 },
     ).catch(() => ({ data: null, error: new Error('package detail retry2 timed out') }));
   }
 
-  const rawPkg = rawPkgResult.data;
+  const rawPkg = rawPkgResult.data as unknown as PackageDetailRecord | null;
 
   // 議댁옱?섏? ?딅뒗 ?⑦궎吏 ??404
   if (!rawPkg && rawPkgResult.error) {
@@ -387,12 +416,15 @@ export default async function PackageDetailPage({
     notFound();
   }
 
+  const proofCandidate = allowInternalProof
+    ? buildCandidatePublicPackageForProof(rawPkg as Record<string, unknown>)
+    : null;
   const publicSnapshot = allowInternalProof
     ? null
     : await fetchLatestPublicPackageSnapshot(sb, id, {
         expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1),
       }).catch(() => null);
-  const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package;
+  const pkg = (allowInternalProof ? proofCandidate?.package : publicSnapshot?.package) as PackageDetailRecord | undefined;
 
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
   if (!allowInternalProof && !isPublicPublicationState(publicationState)) {

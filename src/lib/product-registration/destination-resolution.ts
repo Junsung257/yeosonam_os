@@ -34,6 +34,7 @@ export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
   유후인: 'FUK',
   쿠로가와: 'FUK',
   삿포로: 'CTS',
+  니세코: 'CTS',
   북해도: 'CTS',
   홋카이도: 'CTS',
   도야: 'CTS',
@@ -75,6 +76,12 @@ export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
   구이린: 'KWL',
   연길: 'YNJ',
   백두산: 'YNJ',
+  천진: 'TSN',
+  톈진: 'TSN',
+  진황도: 'TSN',
+  친황다오: 'TSN',
+  심양: 'SHE',
+  선양: 'SHE',
   상해: 'SHA',
   상하이: 'SHA',
   충칭: 'CKG',
@@ -149,6 +156,8 @@ const DEST_FALLBACK_SKIP = new Set(['부산', '인천', '김해', '서울', '제
 const DESTINATION_FLIGHT_HINTS: Array<{ pattern: RegExp; destination: string }> = [
   { pattern: /\bBX(?:7395|7305)\b/g, destination: '하노이' },
 ];
+const CUSTOMER_DESTINATION_NOISE_PATTERN =
+  /(노팁|노옵션|노쇼핑|품격|실속|특급|초특가|이벤트|호텔|리조트|골프|골프텔|라운딩|무제한|패키지|관광|박물관|자유|단독차량|\d+\s*색|\d+\s*박|\d+\s*일|\d+\s*H\b|\bCC\b)/i;
 
 export type UploadDestinationResolution = {
   destination: string | null;
@@ -206,6 +215,65 @@ export function extractUploadDestinationFromFilename(name: string): string {
   return DEST_KEYWORDS.find(keyword => base.includes(keyword)) ?? '';
 }
 
+function hasNonDestinationLabelRemainder(label: string): boolean {
+  let remainder = label;
+  for (const keyword of [...DEST_KEYWORDS].sort((a, b) => b.length - a.length)) {
+    remainder = remainder.replaceAll(keyword, '');
+  }
+  return /[가-힣A-Za-z0-9]/.test(remainder);
+}
+
+/**
+ * Customer-facing destination labels must describe places, not the product name.
+ * Keep verified compound destinations such as "석가장/태항산", but remove hotel,
+ * golf, grade, duration, and itinerary-place suffixes from parser-contaminated labels.
+ */
+export function normalizeUploadDestinationDisplayLabel(
+  label: string | undefined | null,
+  destinationCode: string,
+): string {
+  const trimmed = label?.trim().replace(/\s+/g, ' ') ?? '';
+  if (!trimmed || destinationCode === 'UNK') return trimmed;
+
+  const requiresNormalization =
+    CUSTOMER_DESTINATION_NOISE_PATTERN.test(trimmed)
+    || hasNonDestinationLabelRemainder(trimmed);
+  if (!requiresNormalization) return trimmed;
+
+  const candidates = Object.entries(UPLOAD_DEST_CODE_MAP)
+    .filter(([, code]) => code === destinationCode)
+    .map(([keyword]) => ({
+      keyword,
+      index: trimmed.indexOf(keyword),
+      end: trimmed.indexOf(keyword) + keyword.length,
+    }))
+    .filter(candidate => candidate.index >= 0)
+    .sort((a, b) => a.index - b.index || b.keyword.length - a.keyword.length);
+
+  const accepted: typeof candidates = [];
+  for (const candidate of candidates) {
+    const overlaps = accepted.some(
+      current => candidate.index < current.end && candidate.end > current.index,
+    );
+    if (!overlaps && !accepted.some(current => current.keyword === candidate.keyword)) {
+      accepted.push(candidate);
+    }
+  }
+
+  return accepted.length > 0
+    ? accepted.map(candidate => candidate.keyword).join('/')
+    : trimmed;
+}
+
+function hasStandaloneDestinationEvidence(
+  evidenceText: string,
+  destination: string,
+): boolean {
+  if (!evidenceText || !destination) return false;
+  const escaped = destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^가-힣A-Za-z0-9])${escaped}([^가-힣A-Za-z0-9]|$)`).test(evidenceText);
+}
+
 export function resolveUploadDestinationAndCodes(input: {
   destination?: string | null;
   departureAirport?: string | null;
@@ -221,7 +289,7 @@ export function resolveUploadDestinationAndCodes(input: {
   const tempDestination = input.tempDestination?.trim() ?? '';
   const evidenceText = [input.productRawText, input.documentRawText].filter(Boolean).join('\n');
   const existingDestinationHasSourceEvidence = existingDestination
-    ? evidenceText.includes(existingDestination)
+    ? hasStandaloneDestinationEvidence(evidenceText, existingDestination)
     : false;
 
   const existingDestinationCode = resolveUploadCode(existingDestination, UPLOAD_DEST_CODE_MAP, 'UNK');
@@ -235,7 +303,8 @@ export function resolveUploadDestinationAndCodes(input: {
     ? existingDestination
     : '';
 
-  const destination = trustedExistingDestination || productInferred || documentInferred || tempDestination || existingDestination || null;
+  const rawDestination =
+    trustedExistingDestination || productInferred || documentInferred || tempDestination || existingDestination || null;
   const source: UploadDestinationResolution['source'] =
     trustedExistingDestination ? 'existing'
       : productInferred ? 'product_raw'
@@ -244,11 +313,14 @@ export function resolveUploadDestinationAndCodes(input: {
             : existingDestination ? 'existing'
             : 'unresolved';
 
-  if (!destination) failures.push('destination:unresolved');
+  if (!rawDestination) failures.push('destination:unresolved');
 
   const departureRaw = input.departureAirport?.trim() || '부산';
   const departureCode = resolveUploadCode(departureRaw, UPLOAD_REGION_CODE_MAP, 'PUS');
-  const destinationCode = resolveUploadCode(destination, UPLOAD_DEST_CODE_MAP, 'UNK');
+  const destinationCode = resolveUploadCode(rawDestination, UPLOAD_DEST_CODE_MAP, 'UNK');
+  const destination = rawDestination
+    ? normalizeUploadDestinationDisplayLabel(rawDestination, destinationCode)
+    : null;
   if (destinationCode === 'UNK') failures.push(`destination_code:UNK:${destination ?? 'empty'}`);
 
   const durationDays = typeof input.durationDays === 'number' && input.durationDays > 0

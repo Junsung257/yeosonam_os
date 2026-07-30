@@ -209,16 +209,23 @@ function extractHwpWithExternalTool(filePath: string): string | null {
     return !candidate.command.endsWith('.exe') || existsSync(candidate.command);
   });
 
+  let bestPlainText: string | null = null;
   for (const candidate of hwp5Candidates) {
     const result = spawnSync(candidate.command, candidate.args, { encoding: 'utf8', timeout: 30_000 });
     const text = normalizeExtractedText(result.stdout);
-    if (result.status === 0 && isUsableHwpText(text)) return text;
+    if (result.status !== 0 || !isUsableHwpText(text)) continue;
+    bestPlainText = text;
+    break;
   }
 
-  const htmlText = extractHwpViaHtmlFallback(filePath, hwp5ExecutableCandidates);
-  if (htmlText) return htmlText;
+  if (!bestPlainText || shouldTryHwpHtmlFallback(bestPlainText)) {
+    const htmlText = extractHwpViaHtmlFallback(filePath, hwp5ExecutableCandidates);
+    if (htmlText && (!bestPlainText || hwpExtractionQualityScore(htmlText) > hwpExtractionQualityScore(bestPlainText))) {
+      return htmlText;
+    }
+  }
 
-  return null;
+  return bestPlainText;
 }
 
 function extractHwpViaHtmlFallback(filePath: string, hwp5TxtExecutables: string[]): string | null {
@@ -306,6 +313,32 @@ function isUsableHwpText(text: string): boolean {
     .filter(line => line.length >= 8);
 
   return meaningfulText.length >= 900 && meaningfulLines.length >= 8;
+}
+
+function shouldTryHwpHtmlFallback(text: string): boolean {
+  const tablePlaceholders = text.match(/<표>/g)?.length ?? 0;
+  if (tablePlaceholders < 2) return false;
+
+  const hasProductHeader = /\bPKG\b|출\s*발\s*일|판\s*매\s*가/i.test(text);
+  const hasItinerary = /제\s*[1-9]\d*\s*일|일\s*자[\s\S]{0,100}(?:주요\s*)?행\s*사\s*일\s*정/.test(text);
+  const hasPriceTable = /\d{1,2}\/\d{1,2}[\s\S]{0,160}\d{1,3}(?:,\d{3})+\s*(?:원|-)?/.test(text);
+  return !hasProductHeader || !hasItinerary || !hasPriceTable;
+}
+
+function hwpExtractionQualityScore(text: string): number {
+  const compactLength = text.replace(/\s+/g, '').length;
+  const structuralSignals = [
+    /\bPKG\b/i,
+    /출\s*발\s*일/,
+    /판\s*매\s*가/,
+    /포\s*함\s*사\s*항/,
+    /불\s*포함\s*사\s*항/,
+    /제\s*[1-9]\d*\s*일/,
+    /\d{1,2}\/\d{1,2}/,
+    /\d{1,3}(?:,\d{3})+\s*(?:원|-)?/,
+  ].filter(pattern => pattern.test(text)).length;
+  const tablePlaceholderPenalty = (text.match(/<표>/g)?.length ?? 0) * 600;
+  return compactLength + structuralSignals * 2_000 - tablePlaceholderPenalty;
 }
 
 function candidatePdfplumberPythonCommands(): string[] {

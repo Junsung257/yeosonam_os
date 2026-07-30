@@ -7,6 +7,7 @@ import { fmtNum as fmtComma } from '@/lib/admin-utils';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 import { getKstCurrentAndPreviousMonthKeys } from '@/lib/admin-dashboard-kpi-basis';
+import { readAdminDashboardList, type AdminDashboardListResponse } from '@/lib/admin-dashboard-response';
 const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
@@ -68,6 +69,8 @@ interface AIProviderCredit {
 }
 interface AICredits {
   credits: { deepseek: AIProviderCredit; gemini: AIProviderCredit; anthropic: AIProviderCredit };
+  data_status?: 'ok' | 'unavailable';
+  status_detail?: string;
   updated_at: string;
 }
 interface SettlementBalances {
@@ -81,6 +84,7 @@ interface SettlementBalances {
   receivable: { total: number; aging: { bucket: string; amount: number }[] };
 }
 type SettlementLoadStatus = 'loading' | 'ok' | 'error' | 'timeout' | 'unconfigured';
+type MetricLoadStatus = Exclude<SettlementLoadStatus, 'loading'>;
 interface OperatorTakeRate {
   operator_id: string | null;
   operator_name: string;
@@ -104,9 +108,19 @@ interface DataQualityReport {
 
 export interface TravelPackage {
   id: string; title: string; destination?: string; duration?: number;
-  price?: number; filename: string; file_type: string;
+  price?: number; filename?: string; file_type?: string;
   confidence: number; status: string; created_at: string;
   itinerary?: string[]; inclusions?: string[]; special_notes?: string;
+}
+
+interface PendingAgentAction {
+  id: string;
+  agent_type: 'operations' | 'sales' | 'marketing' | 'finance' | 'products' | 'system' | string;
+  action_type: string;
+  summary: string;
+  priority: 'low' | 'normal' | 'high' | 'critical' | string;
+  status: string;
+  created_at?: string;
 }
 
 interface Booking {
@@ -167,7 +181,7 @@ function TwoTrackKPI({
       {/* 카드 1: 출발일 기준 확정매출 (회계, IFRS 15) */}
       <Link href="/admin/bookings?mode=recognized" className="block bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">확정매출 · 출발일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">이번 달 확정매출 · 출발일 기준</span>
           {recognizedGrowth !== 0 && (
             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${recognizedGrowth >= 0 ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
               {recognizedGrowth >= 0 ? '+' : ''}{recognizedGrowth}%
@@ -178,7 +192,9 @@ function TwoTrackKPI({
           {thisRecognized ? `₩${fmt만(thisRecognized.gmv)}` : '—'}
         </p>
         <p className="text-[11px] text-admin-muted mt-1">
-          {thisRecognized?.recognized_bookings ?? 0}건 출발 완료 · 마진 ₩{thisRecognized ? fmt만(thisRecognized.margin) : 0}
+          {thisRecognized
+            ? `${thisRecognized.recognized_bookings}건 출발 완료 · 마진 ₩${fmt만(thisRecognized.margin)} · ${periodLabel} 추이`
+            : '확정매출 집계 중'}
         </p>
         <MiniSpark data={recognizedSpark} color="#059669" />
       </Link>
@@ -186,7 +202,7 @@ function TwoTrackKPI({
       {/* 카드 2: 생성일 기준 신규예약 (영업, 취소 가능) */}
       <Link href="/admin/bookings?mode=new" className="block bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">신규예약 · 생성일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
+          <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">이번 달 신규예약 · 생성일 기준</span>
           {bookingsGrowth !== 0 && (
             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${bookingsGrowth >= 0 ? 'bg-success-light text-success' : 'bg-danger-light text-danger'}`}>
               {bookingsGrowth >= 0 ? '+' : ''}{bookingsGrowth}%
@@ -194,16 +210,21 @@ function TwoTrackKPI({
           )}
         </div>
         <p className="text-[28px] font-bold text-text-primary tabular-nums leading-none">
-          {thisBookings?.live_bookings ?? 0}<span className="text-[18px] text-admin-muted-2 ml-1">건</span>
+          {thisBookings ? thisBookings.live_bookings : '—'}<span className="text-[18px] text-admin-muted-2 ml-1">건</span>
         </p>
         <p className="text-[11px] text-admin-muted mt-1">
-          ₩{thisBookings ? fmt만(thisBookings.gmv_live) : 0}
-          {thisBookings && thisBookings.cancellation_rate > 0 && (
-            <span className="text-red-500 ml-2">취소율 {Math.round(thisBookings.cancellation_rate * 100)}%</span>
-          )}
-          {thisBookings?.avg_lead_time != null && (
-            <span className="text-admin-muted-2 ml-2">리드 D-{thisBookings.avg_lead_time}</span>
-          )}
+          {thisBookings ? (
+            <>
+              ₩{fmt만(thisBookings.gmv_live)}
+              {thisBookings.cancellation_rate > 0 && (
+                <span className="text-red-500 ml-2">취소율 {Math.round(thisBookings.cancellation_rate * 100)}%</span>
+              )}
+              {thisBookings.avg_lead_time != null && (
+                <span className="text-admin-muted-2 ml-2">리드 D-{thisBookings.avg_lead_time}</span>
+              )}
+              <span className="text-admin-muted-2 ml-2">{periodLabel} 추이</span>
+            </>
+          ) : '신규예약 집계 중'}
         </p>
         <MiniSpark data={bookingsSpark} color="#3b82f6" />
       </Link>
@@ -391,7 +412,7 @@ function OwnerFinanceCommandCenter({
 }) {
   const receivable = settlement?.receivable.total ?? null;
   const landPayable = settlement?.payable.total ?? null;
-  const preTaxMargin = stats?.margin ?? 0;
+  const recognizedGrossMargin = stats?.margin ?? null;
   const cashLeft = settlement?.cash.balance ?? null;
   const cashIsNegative = cashLeft != null && cashLeft < 0;
   const settlementUnavailable = ['error', 'timeout', 'unconfigured'].includes(settlementStatus);
@@ -400,7 +421,10 @@ function OwnerFinanceCommandCenter({
     : settlementStatus === 'loading'
       ? '조회 중'
       : '전체 기간 · 고객입금 - 송금/환불 · 자본 별도';
-  const totalTodo = (stats?.unpaidD7 ?? 0) + (unmatchedCount ?? 0) + pendingActionsCount + pendingPackagesCount;
+  const queueDataReady = stats !== null && unmatchedCount !== null;
+  const totalTodo = queueDataReady
+    ? stats.unpaidD7 + unmatchedCount + pendingActionsCount + pendingPackagesCount
+    : null;
 
   return (
     <section className="space-y-2">
@@ -428,8 +452,8 @@ function OwnerFinanceCommandCenter({
                 {cashLeft != null ? fmt만KRW(cashLeft) : '—'}
               </p>
             </div>
-            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${totalTodo > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-              처리 {totalTodo}건
+            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${(totalTodo ?? 0) > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
+              {totalTodo == null ? '처리 집계 중' : `처리 ${totalTodo}건`}
             </span>
           </div>
 
@@ -454,10 +478,10 @@ function OwnerFinanceCommandCenter({
 
         <FinanceTile
           href="/admin/ledger"
-          label="우리수익"
-          value={fmt만KRW(preTaxMargin)}
-          caption="출발일 기준 · 세전"
-          tone={preTaxMargin < 0 ? 'danger' : 'good'}
+          label="인식 총마진"
+          value={recognizedGrossMargin == null ? '—' : fmt만KRW(recognizedGrossMargin)}
+          caption="출발일 기준 · 수수료/광고비 전"
+          tone={recognizedGrossMargin == null ? 'neutral' : recognizedGrossMargin < 0 ? 'danger' : 'good'}
           className="xl:col-span-2"
         />
         <FinanceTile
@@ -479,27 +503,19 @@ function OwnerFinanceCommandCenter({
         <FinanceTile
           href="/admin/payments?filter=unmatched"
           label="미매칭 입금"
-          value={`${unmatchedCount ?? 0}건`}
+          value={unmatchedCount == null ? '—' : `${unmatchedCount}건`}
           caption="통장·문자 자동매칭 확인"
-          tone={(unmatchedCount ?? 0) > 0 ? 'warn' : 'good'}
-          className="xl:col-span-2"
-        />
-        <FinanceTile
-          href="/admin/jarvis?tab=actions"
-          label="승인 대기"
-          value={`${pendingActionsCount + pendingPackagesCount}건`}
-          caption={`자비스 ${pendingActionsCount} · 상품 ${pendingPackagesCount}`}
-          tone={pendingActionsCount + pendingPackagesCount > 0 ? 'warn' : 'neutral'}
+          tone={unmatchedCount == null ? 'neutral' : unmatchedCount > 0 ? 'warn' : 'good'}
           className="xl:col-span-2"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {[
-          { href: '/admin/payments?filter=unmatched', label: '입금 자동매칭', value: `${unmatchedCount ?? 0}건` },
+          { href: '/admin/payments?filter=unmatched', label: '입금 자동매칭', value: unmatchedCount == null ? '—' : `${unmatchedCount}건` },
           { href: '/admin/payments?filter=outstanding', label: '잔금 미수', value: receivable != null ? fmt만KRW(receivable) : '확인 필요' },
           { href: '/admin/land-settlements', label: '랜드사 정산', value: landPayable != null ? fmt만KRW(landPayable) : '확인 필요' },
-          { href: '/admin/bookings?status=pending,confirmed', label: '진행 예약', value: `${stats?.activeBookings ?? 0}건` },
+          { href: '/admin/bookings?status=pending,confirmed', label: '진행 예약', value: stats == null ? '—' : `${stats.activeBookings}건` },
         ].map(item => (
           <Link
             key={item.href}
@@ -531,15 +547,15 @@ function TodayWorkQueue({
       href: '/admin/bookings?mode=upcoming&filter=unpaid',
       label: 'D-7 미납 예약',
       detail: '출발 전 잔금 확인',
-      count: stats?.unpaidD7 ?? 0,
-      action: '알림 발송',
+      count: stats?.unpaidD7 ?? null,
+      action: '예약 보기',
       tone: 'danger',
     },
     {
       href: '/admin/payments?filter=unmatched',
       label: '미매칭 입금',
       detail: '입금자명과 예약 연결',
-      count: unmatchedCount ?? 0,
+      count: unmatchedCount,
       action: '매칭하기',
       tone: 'warn',
     },
@@ -548,7 +564,7 @@ function TodayWorkQueue({
       label: '자비스 승인',
       detail: '자동화 제안 검수',
       count: pendingActionsCount,
-      action: '검토하기',
+      action: '결재 검토',
       tone: 'neutral',
     },
     {
@@ -556,12 +572,13 @@ function TodayWorkQueue({
       label: '상품 검수',
       detail: '등록 대기 상품 발행',
       count: pendingPackagesCount,
-      action: '검수하기',
+      action: '상품 검수',
       tone: 'neutral',
     },
   ] as const;
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-  const activeRows = rows.filter(row => row.count > 0);
+  const allCountsLoaded = rows.every(row => row.count !== null);
+  const total = rows.reduce((sum, row) => sum + (row.count ?? 0), 0);
+  const activeRows = rows.filter(row => (row.count ?? 0) > 0);
   const visibleRows = activeRows.length > 0 ? activeRows : rows;
   const toneClass = {
     danger: 'border-red-200 bg-red-50 text-red-700',
@@ -577,7 +594,7 @@ function TodayWorkQueue({
           <p className="mt-0.5 text-[11px] text-admin-muted-2">예약, 입금, 자동화, 상품 검수를 한 번에 훑습니다.</p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-[11px] font-black tabular-nums ${total > 0 ? 'bg-slate-950 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
-          {total > 0 ? `${total}건 대기` : '처리 완료'}
+          {!allCountsLoaded ? '집계 중' : total > 0 ? `${total}건 대기` : '처리 완료'}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -585,7 +602,7 @@ function TodayWorkQueue({
           <Link
             key={row.href}
             href={row.href}
-            aria-label={`${row.label} ${row.count}건 ${row.count > 0 ? row.action : '확인'}`}
+            aria-label={`${row.label} ${row.count == null ? '집계 중' : `${row.count}건`} ${row.count && row.count > 0 ? row.action : '확인'}`}
             onClick={() => {
               trackEngagement({
                 event_type: ANALYTICS_EVENTS.adminActionCompleted,
@@ -596,22 +613,22 @@ function TodayWorkQueue({
                   label: row.label,
                   href: row.href,
                   count: row.count,
-                  has_waiting_work: row.count > 0,
+                  has_waiting_work: (row.count ?? 0) > 0,
                 },
               });
             }}
-            className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
+            className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${(row.count ?? 0) > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[12px] font-bold">{row.label}</p>
                 <p className="mt-0.5 text-[11px] text-current/60">{row.detail}</p>
               </div>
-              <span className="text-[22px] font-black leading-none tabular-nums">{row.count}</span>
+              <span className="text-[22px] font-black leading-none tabular-nums">{row.count ?? '—'}</span>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold">
-              <span className="text-current/55">{row.count > 0 ? '다음 액션' : '대기 없음'}</span>
-              <span className="text-current group-hover:underline">{row.count > 0 ? row.action : '확인'}</span>
+              <span className="text-current/55">{row.count == null ? '불러오는 중' : row.count > 0 ? '다음 액션' : '대기 없음'}</span>
+              <span className="text-current group-hover:underline">{row.count != null && row.count > 0 ? row.action : '확인'}</span>
             </div>
           </Link>
         ))}
@@ -645,6 +662,7 @@ function OperationsKPI({
   const recvOverdue = settlement?.receivable.aging.find(a => a.bucket === '90d+')?.amount ?? 0;
   const payOverdue = settlement?.payable.aging.find(a => a.bucket === '90d+')?.amount ?? 0;
   const settlementUnavailable = ['error', 'timeout', 'unconfigured'].includes(settlementStatus);
+  const agingLabel = (bucket: string) => bucket === 'not_due' ? '미도래' : bucket;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -664,7 +682,7 @@ function OperationsKPI({
               a.bucket === '60-90d' && a.amount > 0 ? 'bg-amber-50 text-amber-700' :
               'bg-admin-bg text-admin-muted'
             }`}>
-              <p className="font-medium">{a.bucket}</p>
+              <p className="font-medium">{agingLabel(a.bucket)}</p>
               <p className="tabular-nums">{a.amount > 0 ? fmt만KRW(a.amount).replace('₩', '') : '—'}</p>
             </div>
           ))}
@@ -693,7 +711,7 @@ function OperationsKPI({
               a.bucket === '60-90d' && a.amount > 0 ? 'bg-amber-50 text-amber-700' :
               'bg-admin-bg text-admin-muted'
             }`}>
-              <p className="font-medium">{a.bucket}</p>
+              <p className="font-medium">{agingLabel(a.bucket)}</p>
               <p className="tabular-nums">{a.amount > 0 ? fmt만KRW(a.amount).replace('₩', '') : '—'}</p>
             </div>
           ))}
@@ -750,8 +768,16 @@ function OperationsKPI({
         )}
 
         {/* 잔여 크레딧 */}
-        {aiCredits && (
-          <div className="mt-2 pt-2 border-t border-admin-border space-y-1">
+        {aiCredits && (<>
+          {aiCredits.data_status === 'unavailable' && (
+            <div className="mt-2 pt-2 border-t border-admin-border text-[10px] text-amber-700">
+              {aiCredits.status_detail ?? 'AI usage source is unavailable; balances are not displayed.'}
+            </div>
+          )}
+          <div className={`mt-2 pt-2 border-t border-admin-border space-y-1 ${aiCredits.data_status === 'unavailable' ? 'hidden' : ''}`}>
+            {aiCredits.data_status === 'unavailable' && (
+              <p className="mb-2 text-[10px] text-amber-700">AI 사용량 원천을 사용할 수 없어 현재 잔액/사용량을 표시하지 않습니다.</p>
+            )}
             {/* DeepSeek */}
             <div className="flex items-center justify-between text-[10px]">
               <span className="flex items-center gap-1 text-admin-muted">
@@ -790,7 +816,7 @@ function OperationsKPI({
               </span>
             </div>
           </div>
-        )}
+        </>)}
       </Link>
     </div>
   );
@@ -1380,9 +1406,7 @@ type DashboardFetchResult<T> =
   | { ok: true; data: T; status: number; url: string }
   | { ok: false; data: null; status: number | null; url: string; error: string; authExpired?: boolean };
 
-interface PackagesResponse {
-  packages?: TravelPackage[];
-}
+type PackagesResponse = AdminDashboardListResponse<TravelPackage>;
 
 interface DashboardStatsResponse {
   stats?: DashboardStats;
@@ -1399,6 +1423,8 @@ interface BankTransactionsSummaryResponse {
 
 interface ChartResponse {
   data?: MonthlyChartData[];
+  data_status?: 'ok' | 'unavailable';
+  status_detail?: string;
   error?: string;
 }
 
@@ -1407,21 +1433,28 @@ interface RevenueRecognitionResponse {
   newBookings?: NewBookingsMonth[];
   pace?: BookingPaceBucket[];
   cancellation_90d?: Cancellation90d;
+  data_status?: 'ok' | 'unavailable';
+  status_detail?: string;
   error?: string;
 }
 
 interface OperationsResponse {
   aiUsage?: AIUsageStats;
+  aiUsageStatus?: MetricLoadStatus;
   settlement?: SettlementBalances;
   settlementStatus?: Exclude<SettlementLoadStatus, 'loading'>;
   takeRates?: OperatorTakeRate[];
+  takeRatesStatus?: MetricLoadStatus;
   repeat?: RepeatBookingStats;
+  repeatStatus?: MetricLoadStatus;
   dataQuality?: DataQualityReport;
+  dataQualityStatus?: MetricLoadStatus;
   error?: string;
 }
 
 interface AgentActionsResponse {
-  actions?: any[];
+  actions?: PendingAgentAction[];
+  total?: number;
 }
 
 async function fetchDashboardJson<T>(url: string): Promise<DashboardFetchResult<T>> {
@@ -1465,10 +1498,10 @@ function fetchErrorLabel(label: string, result: DashboardFetchResult<unknown>) {
 
 export default function AdminPage({
   initialPendingPackages,
-  initialPackages,
+  initialPendingPackageCount,
 }: {
   initialPendingPackages?: TravelPackage[];
-  initialPackages?: TravelPackage[];
+  initialPendingPackageCount?: number;
 } = {}) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [chartData, setChartData] = useState<MonthlyChartData[]>([]);
@@ -1483,15 +1516,17 @@ export default function AdminPage({
   const [takeRates, setTakeRates] = useState<OperatorTakeRate[]>([]);
   const [repeat, setRepeat] = useState<RepeatBookingStats | null>(null);
   const [dataQuality, setDataQuality] = useState<DataQualityReport | null>(null);
-  const [packages, setPackages] = useState<TravelPackage[]>(initialPackages ?? []);
   const [pendingPackages, setPendingPackages] = useState<TravelPackage[]>(initialPendingPackages ?? []);
+  const [pendingPackageCount, setPendingPackageCount] = useState<number>(
+    initialPendingPackageCount ?? initialPendingPackages?.length ?? 0,
+  );
   const [capitalTotal, setCapitalTotal] = useState<number | null>(null);
   const [unmatchedCount, setUnmatchedCount] = useState<number | null>(null);
-  const [pendingActions, setPendingActions] = useState<any[]>([]);
-  const [actionProcessingId, setActionProcessingId] = useState<string | null>(null);
+  const [pendingActions, setPendingActions] = useState<PendingAgentAction[]>([]);
+  const [pendingActionCount, setPendingActionCount] = useState(0);
   // 서버 pre-fetch가 있으면 초기 로딩 스피너 스킵
-  const [isLoading, setIsLoading] = useState(!(initialPendingPackages && initialPackages));
-  const _skipPackageFetch = useRef(!!(initialPendingPackages && initialPackages));
+  const [isLoading, setIsLoading] = useState(initialPendingPackages === undefined);
+  const _skipPackageFetch = useRef(initialPendingPackages !== undefined);
   // UX-2: 새로고침 상태 추적
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -1503,6 +1538,7 @@ export default function AdminPage({
   // 상세 패널
   const [selectedPackage, setSelectedPackage] = useState<TravelPackage | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
 
   const loadAll = async (months = 6) => {
     setFetchErrors([]);
@@ -1511,7 +1547,7 @@ export default function AdminPage({
       // 서버 pre-fetch 패키지가 있으면 packages 2개 fetch 스킵 — stats/capital만 병렬 조회
       const skipPkg = _skipPackageFetch.current;
       _skipPackageFetch.current = false;
-      const hasHydratedShell = skipPkg || stats !== null || packages.length > 0 || pendingPackages.length > 0;
+      const hasHydratedShell = skipPkg || stats !== null || pendingPackages.length > 0;
       setIsLoading(!hasHydratedShell);
 
       const addFetchError = (label: string, result?: DashboardFetchResult<unknown> | null) => {
@@ -1519,23 +1555,20 @@ export default function AdminPage({
       };
 
       const pendingReq: Promise<DashboardFetchResult<PackagesResponse> | null> =
-        skipPkg ? Promise.resolve(null) : fetchDashboardJson<PackagesResponse>('/api/packages?status=pending');
-      const approvedReq: Promise<DashboardFetchResult<PackagesResponse> | null> =
-        skipPkg ? Promise.resolve(null) : fetchDashboardJson<PackagesResponse>('/api/packages');
-
-      const [pendingRes, approvedRes, statsRes, capRes, unmatchedRes] = await Promise.all([
+        skipPkg ? Promise.resolve(null) : fetchDashboardJson<PackagesResponse>('/api/packages?status=pending&limit=6&lite=1&countMode=exact');
+      const [pendingRes, statsRes, capRes, unmatchedRes] = await Promise.all([
         pendingReq,
-        approvedReq,
         fetchDashboardJson<DashboardStatsResponse>('/api/dashboard'),
         fetchDashboardJson<CapitalSummaryResponse>('/api/capital?summary=1'),
         fetchDashboardJson<BankTransactionsSummaryResponse>('/api/bank-transactions?match_status=unmatched&summary=1'),
       ]);
 
-      if (pendingRes?.ok) setPendingPackages(pendingRes.data.packages || []);
+      if (pendingRes?.ok) {
+        const pendingList = readAdminDashboardList(pendingRes.data);
+        setPendingPackages(pendingList.rows);
+        setPendingPackageCount(pendingList.total);
+      }
       else if (pendingRes) addFetchError('승인대기 상품', pendingRes);
-
-      if (approvedRes?.ok) setPackages(approvedRes.data.packages || []);
-      else if (approvedRes) addFetchError('상품 목록', approvedRes);
 
       if (statsRes.ok && statsRes.data.stats) setStats(statsRes.data.stats);
       else addFetchError('기본 KPI', statsRes);
@@ -1550,25 +1583,38 @@ export default function AdminPage({
         addFetchError('미매칭 입금', unmatchedRes);
       }
 
-      // 차트 (fire-and-forget — 느려도 초기 렌더 블록 안 함)
-      fetchDashboardJson<ChartResponse>(`/api/dashboard/chart?months=${months}`)
+      // 보조 KPI도 모두 끝난 뒤에만 새로고침 완료로 표시한다.
+      // 기존 fire-and-forget 구조는 "마지막 새로고침" 시각과 실제 데이터 시각을 어긋나게 했다.
+      const detailRequests = [
+        fetchDashboardJson<ChartResponse>(`/api/dashboard/chart?months=${months}`)
         .then(r => {
-          if (r.ok && r.data.data) setChartData(r.data.data);
+          if (r.ok && r.data.data_status === 'unavailable') {
+            setChartData([]);
+            addFetchError(`차트: ${r.data.status_detail ?? '원천 데이터 미활성'}`);
+          } else if (r.ok && r.data.data) setChartData(r.data.data);
           else addFetchError('차트', r);
-        });
+        }),
 
       // V4: 매출 인식 분리 + Booking Pace + 90일 취소율
       fetchDashboardJson<RevenueRecognitionResponse>(`/api/dashboard/revenue-recognition?months=${months}`)
         .then(r => {
+          if (r.ok && r.data.data_status === 'unavailable') {
+            setRecognized([]);
+            setNewBookings([]);
+            setPace([]);
+            setCancellation90d(null);
+            addFetchError(`Revenue recognition: ${r.data.status_detail ?? 'source unavailable'}`);
+            return;
+          }
           if (!r.ok || r.data.error) { addFetchError('매출인식', r); return; }
           if (r.data.recognized) setRecognized(r.data.recognized);
           if (r.data.newBookings) setNewBookings(r.data.newBookings);
           if (r.data.pace) setPace(r.data.pace);
           if (r.data.cancellation_90d) setCancellation90d(r.data.cancellation_90d);
-        });
+        }),
 
       // V4: 운영 KPI — BUG-3: 에러 응답 방어 추가
-      fetchDashboardJson<OperationsResponse>('/api/dashboard/operations?mode=dashboard')
+        fetchDashboardJson<OperationsResponse>('/api/dashboard/operations?mode=dashboard')
         .then(r => {
           if (!r.ok || r.data.error) {
             setSettlement(null);
@@ -1580,23 +1626,42 @@ export default function AdminPage({
           const nextSettlementStatus = r.data.settlementStatus ?? (r.data.settlement ? 'ok' : 'error');
           setSettlementStatus(nextSettlementStatus);
           setSettlement(nextSettlementStatus === 'ok' ? r.data.settlement ?? null : null);
-          if (r.data.takeRates) setTakeRates(r.data.takeRates);
-          if (r.data.repeat) setRepeat(r.data.repeat);
-          if (r.data.dataQuality) setDataQuality(r.data.dataQuality);
-        });
+          if (r.data.aiUsageStatus && r.data.aiUsageStatus !== 'ok') {
+            setAiUsage(null);
+            addFetchError('AI 비용');
+          } else if (r.data.aiUsage) setAiUsage(r.data.aiUsage);
+          if (r.data.takeRatesStatus && r.data.takeRatesStatus !== 'ok') {
+            setTakeRates([]);
+            addFetchError('랜드사 수익률');
+          } else if (r.data.takeRates) setTakeRates(r.data.takeRates);
+          if (r.data.repeatStatus && r.data.repeatStatus !== 'ok') {
+            setRepeat(null);
+            addFetchError('재구매 KPI');
+          } else if (r.data.repeat) setRepeat(r.data.repeat);
+          if (r.data.dataQualityStatus && r.data.dataQualityStatus !== 'ok') {
+            setDataQuality(null);
+            addFetchError('데이터 품질');
+          } else if (r.data.dataQuality) setDataQuality(r.data.dataQuality);
+        }),
 
-      fetchDashboardJson<AgentActionsResponse>('/api/agent-actions?status=pending&limit=6&count=none&fields=compact')
+        fetchDashboardJson<AgentActionsResponse>('/api/agent-actions?status=pending&limit=6&fields=compact')
         .then(r => {
-          if (r.ok && r.data.actions) setPendingActions(r.data.actions);
+          if (r.ok && r.data.actions) {
+            setPendingActions(r.data.actions);
+            setPendingActionCount(r.data.total ?? r.data.actions.length);
+          }
           else if (!r.ok) addFetchError('자비스 결재', r);
-        });
+        }),
 
       // AI 프로바이더 크레딧 (DeepSeek 잔액 + Gemini/Claude 사용량)
-      fetchDashboardJson<AICredits>('/api/admin/ai-credits?live_balance=0')
+        fetchDashboardJson<AICredits>('/api/admin/ai-credits?live_balance=0')
         .then(r => {
           if (r.ok && r.data.credits) setAiCredits(r.data);
           else if (!r.ok) addFetchError('AI 크레딧', r);
-        });
+        }),
+      ];
+
+      await Promise.all(detailRequests);
 
     } catch (err) {
       console.error('대시보드 로드 실패:', err);
@@ -1627,8 +1692,12 @@ export default function AdminPage({
           metadata: { surface: 'dashboard_pending_package', action, packageId },
         });
         setSelectedPackage(null);
-        await loadAll();
+        await loadAll(period === '3m' ? 3 : period === '12m' ? 12 : 6);
+      } else {
+        setFetchErrors(prev => [...new Set([...prev, `상품 ${action === 'approve' ? '승인' : '반려'} 실패`])]);
       }
+    } catch {
+      setFetchErrors(prev => [...new Set([...prev, `상품 ${action === 'approve' ? '승인' : '반려'} 실패`])]);
     } finally { setProcessingId(null); }
   };
 
@@ -1753,15 +1822,30 @@ export default function AdminPage({
         settlementStatus={settlementStatus}
         capitalTotal={capitalTotal}
         unmatchedCount={unmatchedCount}
-        pendingActionsCount={pendingActions.length}
-        pendingPackagesCount={pendingPackages.length}
+        pendingActionsCount={pendingActionCount}
+        pendingPackagesCount={pendingPackageCount}
+      />
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2 text-[10px] text-admin-muted">
+        <span className="font-bold text-admin-text-2">데이터 기준</span>
+        <span>확정매출·마진: 출발일</span>
+        <span>신규예약: 생성일</span>
+        <span>월 경계: KST</span>
+        <span>현금잔액: 비삭제 예약 전체 기간</span>
+      </div>
+
+      {/* 회계와 영업 기준을 접지 않고 첫 화면에 고정한다. */}
+      <TwoTrackKPI
+        recognized={recognized}
+        newBookings={newBookings}
+        periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'}
       />
 
       <TodayWorkQueue
         stats={stats}
         unmatchedCount={unmatchedCount}
-        pendingActionsCount={pendingActions.length}
-        pendingPackagesCount={pendingPackages.length}
+        pendingActionsCount={pendingActionCount}
+        pendingPackagesCount={pendingPackageCount}
       />
 
       {/* ── Zone 1: 긴급 액션 ────────────────────────────────────────────── */}
@@ -1773,21 +1857,18 @@ export default function AdminPage({
       {/* 자비스 실패 위젯 (실패 0건이면 자동 숨김) */}
       <RecentFailuresWidget />
 
-      {/* 실무자 경고판 — D-7 미납·미매칭·미수금 즉시 처리 */}
-      <ActionBoard stats={stats} unmatchedCount={unmatchedCount} />
-
       {/* 자비스 결재 대기 */}
       {pendingActions.length > 0 && (
         <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-admin-base font-semibold text-text-primary flex items-center gap-2">
               자비스 결재 대기
-              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingActions.length}</span>
+              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingActionCount}</span>
             </h2>
             <Link href="/admin/jarvis?tab=actions" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {pendingActions.slice(0, 6).map((act: any) => (
+            {pendingActions.slice(0, 6).map(act => (
               <div key={act.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
@@ -1809,54 +1890,12 @@ export default function AdminPage({
                 </div>
                 <p className="text-admin-sm font-medium text-admin-text-2 truncate">{act.summary}</p>
                 <p className="text-[11px] text-admin-muted-2 mt-0.5">{act.action_type}</p>
-                <div className="mt-2 flex gap-1">
-                  <button
-                    type="button"
-                    aria-label={`${act.summary} 승인`}
-                    aria-busy={actionProcessingId === act.id}
-                    onClick={async () => {
-                      setActionProcessingId(act.id);
-                      try {
-                        const res = await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'approve' }) });
-                        if (res.ok) {
-                          trackEngagement({
-                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
-                            page_url: '/admin',
-                            metadata: { surface: 'dashboard_agent_action', action: 'approve', actionId: act.id, actionType: act.action_type },
-                          });
-                          setPendingActions(prev => prev.filter(a => a.id !== act.id));
-                        }
-                      } catch {} finally { setActionProcessingId(null); }
-                    }}
-                    disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition"
-                  >
-                    승인
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`${act.summary} 반려`}
-                    aria-busy={actionProcessingId === act.id}
-                    onClick={async () => {
-                      setActionProcessingId(act.id);
-                      try {
-                        const res = await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'reject' }) });
-                        if (res.ok) {
-                          trackEngagement({
-                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
-                            page_url: '/admin',
-                            metadata: { surface: 'dashboard_agent_action', action: 'reject', actionId: act.id, actionType: act.action_type },
-                          });
-                          setPendingActions(prev => prev.filter(a => a.id !== act.id));
-                        }
-                      } catch {} finally { setActionProcessingId(null); }
-                    }}
-                    disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition"
-                  >
-                    반려
-                  </button>
-                </div>
+                <Link
+                  href={`/admin/jarvis?tab=actions&action=${encodeURIComponent(act.id)}`}
+                  className="mt-2 block rounded border border-admin-border-strong bg-white py-1 text-center text-[11px] font-medium text-admin-text-2 hover:bg-admin-bg transition"
+                >
+                  근거·영향 검토하기
+                </Link>
               </div>
             ))}
           </div>
@@ -1867,7 +1906,7 @@ export default function AdminPage({
       {pendingPackages.length > 0 && (
         <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-admin-base font-semibold text-text-primary">승인 대기 ({pendingPackages.length})</h2>
+            <h2 className="text-admin-base font-semibold text-text-primary">상품 검수 대기 ({pendingPackageCount})</h2>
             <Link href="/admin/packages" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -1877,6 +1916,9 @@ export default function AdminPage({
                 <div className="flex items-center gap-2 mt-1">
                   {pkg.destination && <span className="text-[11px] text-admin-muted">{pkg.destination}</span>}
                   {pkg.price && <span className="text-[11px] text-admin-muted">₩{pkg.price.toLocaleString()}</span>}
+                  <span className="text-[10px] text-admin-muted-2">
+                    {pkg.status === 'pending' ? '승인 대기' : pkg.status === 'pending_review' ? '검수 필요' : '초안'}
+                  </span>
                   <span className={`ml-auto px-1.5 py-0.5 text-[10px] rounded font-medium ${
                     pkg.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
                     pkg.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
@@ -1888,18 +1930,29 @@ export default function AdminPage({
                     className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-1 rounded text-[11px] hover:bg-admin-bg transition">
                     상세
                   </button>
-                  <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
-                    aria-label={`${pkg.title} 승인`}
-                    aria-busy={processingId === pkg.id}
-                    className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
-                    승인
-                  </button>
-                  <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
-                    aria-label={`${pkg.title} 반려`}
-                    aria-busy={processingId === pkg.id}
-                    className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
-                    반려
-                  </button>
+                  {pkg.status === 'pending' ? (
+                    <>
+                      <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
+                        aria-label={`${pkg.title} 승인`}
+                        aria-busy={processingId === pkg.id}
+                        className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
+                        승인
+                      </button>
+                      <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
+                        aria-label={`${pkg.title} 반려`}
+                        aria-busy={processingId === pkg.id}
+                        className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
+                        반려
+                      </button>
+                    </>
+                  ) : (
+                    <Link
+                      href={`/admin/packages/${pkg.id}/review`}
+                      className="flex-1 rounded bg-brand py-1 text-center text-[11px] text-white transition hover:bg-blue-700"
+                    >
+                      검수 열기
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}
@@ -1907,144 +1960,43 @@ export default function AdminPage({
         </div>
       )}
 
-      {/* ── Zone 2: 현황 KPI ─────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 mb-1 mt-2">
-        <span className="text-[11px] font-semibold text-admin-muted-2 uppercase tracking-wider whitespace-nowrap">현황 KPI</span>
-        <div className="flex-1 h-px bg-admin-surface-2" />
-      </div>
-
-      {/* 매출 인식 분리 KPI (IFRS 15 / ASC 606) */}
-      <TwoTrackKPI recognized={recognized} newBookings={newBookings} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
-
-      {/* Booking Pace + 90일 취소율 */}
-      {(pace.length > 0 || cancellation90d) && (
-        <BookingPaceWidget pace={pace} cancellation90d={cancellation90d} />
-      )}
-
-      {/* 캐시플로우 차트 */}
-      <CashflowChart chartData={chartData} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
-
-      {/* 운영 KPI — 정산 잔여(payable/receivable) + AI 비용 */}
-      <OperationsKPI
-        aiUsage={aiUsage}
-        settlement={settlement}
-        settlementStatus={settlementStatus}
-        aiCredits={aiCredits}
-      />
-
-      {/* ── Zone 3: 분석 ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 mb-1 mt-2">
-        <span className="text-[11px] font-semibold text-admin-muted-2 uppercase tracking-wider whitespace-nowrap">분석</span>
-        <div className="flex-1 h-px bg-admin-surface-2" />
-      </div>
-
-      {/* Retention + Take Rate (Tufte Small Multiples) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2">
-          <OperatorTakeRatesWidget rows={takeRates} />
-        </div>
-        <RepeatBookingCard stats={repeat} />
-      </div>
-
-      {/* AI 인사이트 (ROAS 포함) */}
-      <AIInsights packages={packages} chartData={chartData} />
-
-      {/* 검색광고 성과 */}
-      <AdKpiWidget />
-
-      {/* SNS 채널 현황 */}
-      <SocialMetricsWidget />
-
-      {/* 추천 시스템 헬스 (점수 v3) */}
-      <ScoringKpiWidget />
-
-      {/* 데이터 품질 모니터 (issues=0이면 자동 숨김) */}
+      {/* 데이터 품질은 모든 KPI의 전제이므로 접지 않는다. */}
       <DataQualityMonitor report={dataQuality} />
 
-      {/* 바로가기 */}
-      <div className="bg-white border border-dashed border-admin-border-strong rounded-lg p-4">
-        <h2 className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide tracking-wide mb-3">바로가기</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { title: '운영', links: [
-              { href: '/admin/bookings', label: '예약 관리' },
-              { href: '/admin/customers', label: '고객 관리' },
-              { href: '/admin/payments', label: '입금/정산' },
-              { href: '/admin/inbox', label: '고객 문의' },
-            ]},
-            { title: '상품', links: [
-              { href: '/admin/packages', label: '상품 관리' },
-              { href: '/admin/upload', label: '업로드' },
-              { href: '/admin/registration-monitor', label: '등록 모니터' },
-              { href: '/admin/fraud-quarantine', label: '자동 격리 검토' },
-              { href: '/admin/land-operators', label: '랜드사 관리' },
-              { href: '/admin/destinations', label: '출발지 관리' },
-            ]},
-            { title: 'AI/마케팅', links: [
-              { href: '/admin/marketing', label: '마케팅 대시' },
-              { href: '/admin/marketing/card-news', label: '카드뉴스' },
-              { href: '/admin/content-hub', label: '콘텐츠 허브' },
-              { href: '/admin/content-calendar', label: '콘텐츠 캘린더' },
-              { href: '/admin/search-ads', label: '검색광고' },
-              { href: '/admin/jarvis', label: '자비스 AI' },
-            ]},
-            { title: '재무', links: [
-              { href: '/admin/ledger', label: '통합 장부' },
-              { href: '/admin/settlements', label: '정산 관리' },
-              { href: '/admin/tax', label: '세무 관리' },
-              { href: '/admin/control-tower', label: 'OS 관제탑' },
-            ]},
-          ].map(group => (
-            <div key={group.title} className="space-y-1">
-              <p className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">{group.title}</p>
-              {group.links.map(l => (
-                <Link key={l.href} href={l.href}
-                  className="block text-admin-xs px-2 py-1 text-admin-muted rounded hover:bg-admin-bg hover:text-admin-text-2 truncate">
-                  {l.label}
-                </Link>
-              ))}
+      {/* 1뷰 밖의 분석은 필요할 때 펼친다. 사이드바와 중복되는 바로가기는 제거했다. */}
+      <details
+        className="group rounded-admin-md border border-admin-border-mid bg-white shadow-admin-xs"
+        onToggle={event => setAnalysisOpen(event.currentTarget.open)}
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-admin-sm font-bold text-text-primary">
+          <span>상세 분석 · 추이</span>
+          <span className="text-[11px] font-medium text-admin-muted group-open:hidden">펼치기</span>
+          <span className="hidden text-[11px] font-medium text-admin-muted group-open:inline">접기</span>
+        </summary>
+        {analysisOpen && <div className="space-y-4 border-t border-admin-border-mid p-4">
+          {(pace.length > 0 || cancellation90d) && (
+            <BookingPaceWidget pace={pace} cancellation90d={cancellation90d} />
+          )}
+          <CashflowChart
+            chartData={chartData}
+            periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'}
+          />
+          <OperationsKPI
+            aiUsage={aiUsage}
+            settlement={settlement}
+            settlementStatus={settlementStatus}
+            aiCredits={aiCredits}
+          />
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <OperatorTakeRatesWidget rows={takeRates} />
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 고객 페이지 바로가기 */}
-      <div className="bg-white border border-dashed border-blue-200 rounded-lg p-4">
-        <h2 className="text-[11px] font-semibold text-blue-400 uppercase tracking-wide mb-3">고객 페이지 (프론트)</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { title: '메인/상품', links: [
-              { href: '/', label: '메인 랜딩' },
-              { href: '/packages', label: '상품 목록' },
-              { href: '/blog', label: '블로그' },
-              { href: '/concierge', label: 'AI 컨시어지' },
-            ]},
-            { title: '단체/견적', links: [
-              { href: '/group', label: '단체여행 랜딩' },
-              { href: '/group-inquiry', label: '단체 견적 (AI)' },
-              { href: '/partner-apply', label: '파트너 신청' },
-            ]},
-            { title: '인플루언서', links: [
-              { href: '/admin/partner-preview', label: '파트너 포털·코브랜딩 미리보기' },
-              { href: '/admin/affiliates', label: '제휴 관리 (어드민)' },
-            ]},
-            { title: '기타', links: [
-              { href: '/lp', label: '마케팅 랜딩(LP)' },
-              { href: '/login', label: '로그인' },
-            ]},
-          ].map(group => (
-            <div key={group.title} className="space-y-1">
-              <p className="text-[11px] font-semibold text-blue-400 uppercase">{group.title}</p>
-              {group.links.map(l => (
-                <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer"
-                  className="block text-admin-xs px-2 py-1 text-blue-600 rounded hover:bg-blue-50 hover:text-blue-800 truncate">
-                  ↗ {l.label}
-                </a>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+            <RepeatBookingCard stats={repeat} />
+          </div>
+          <AdKpiWidget />
+          <ScoringKpiWidget />
+        </div>}
+      </details>
 
       {/* 상세 슬라이드 패널 */}
       {selectedPackage && (

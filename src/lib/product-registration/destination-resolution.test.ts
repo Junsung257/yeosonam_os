@@ -4,6 +4,7 @@ import { join } from 'path';
 import {
   extractUploadDestinationFromFilename,
   inferUploadDestinationFromText,
+  normalizeUploadDestinationDisplayLabel,
   resolveUploadDestinationAndCodes,
 } from './destination-resolution';
 
@@ -147,6 +148,26 @@ describe('upload destination resolution Korean aliases', () => {
     }
   });
 
+  it('does not treat a destination substring inside a hotel name as route evidence', () => {
+    const rawText = [
+      '청주- 석가장 [ 보천대협곡/천계산/대협곡 ] 4일',
+      '석가장 국제공항 도착',
+      '임주 람월만베이 또는 환빈서안호텔 또는 동급',
+    ].join('\n');
+    const result = resolveUploadDestinationAndCodes({
+      destination: '서안',
+      departureAirport: '청주',
+      durationDays: 4,
+      productRawText: rawText,
+      documentRawText: rawText,
+      tempDestination: '태항산',
+    });
+
+    expect(result.destination).toBe('석가장');
+    expect(result.source).toBe('product_raw');
+    expect(result.destinationCode).toBe('SJW');
+  });
+
   it('resolves Narita/Chiba golf catalog text to Tokyo airport group', () => {
     const rawText = readFileSync(
       join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),
@@ -166,7 +187,7 @@ describe('upload destination resolution Korean aliases', () => {
     expect(result.failures).toEqual([]);
   });
 
-  it('falls back from a bad existing destination string to a resolvable Kyushu alias', () => {
+  it('normalizes a noisy existing destination string to its resolvable Kyushu place label', () => {
     const result = resolveUploadDestinationAndCodes({
       destination: '큐슈 조석 스기노이',
       departureAirport: '부산',
@@ -175,7 +196,7 @@ describe('upload destination resolution Korean aliases', () => {
       documentRawText: '',
     });
 
-    expect(result.destination).toBe('큐슈 조석 스기노이');
+    expect(result.destination).toBe('큐슈');
     expect(result.destinationCode).toBe('FUK');
     expect(result.source).toBe('existing');
     expect(result.failures).toEqual([]);
@@ -223,5 +244,44 @@ BX7305 00:40 07:05
     expect(result.source).toBe('product_raw');
     expect(result.destinationCode).toBe('HAN');
     expect(result.failures).toEqual([]);
+  });
+
+  it.each([
+    ['천진 진황도 골프', 'TSN'],
+    ['톈진 친황다오 골프', 'TSN'],
+    ['심양 도심 골프', 'SHE'],
+    ['선양 도심 골프', 'SHE'],
+  ])('resolves northeast China alias %s to %s', (destination, expectedCode) => {
+    expect(resolveUploadDestinationAndCodes({
+      destination,
+      productRawText: destination,
+    }).destinationCode).toBe(expectedCode);
+  });
+
+  it.each([
+    ['실속 치앙마이 3색골프 + 관광', 'CNX', '치앙마이'],
+    ['품격 치앙마이 4색골프 + 관광', 'CNX', '치앙마이'],
+    ['노옵션/노쇼핑 가오슝 품격 3색골프', 'KHH', '가오슝'],
+    ['괌 파인이스트 골프텔', 'GUM', '괌'],
+    ['삿포로 니세코 골프 힐튼호텔 63H', 'CTS', '삿포로/니세코'],
+    ['삿포로 품격 시내 3색골프', 'CTS', '삿포로'],
+    ['청도 2색골프', 'TAO', '청도'],
+    ['청도 3색골프', 'TAO', '청도'],
+    ['노팁/노옵션 특급호텔 청도 + 맥주박물관', 'TAO', '청도'],
+    ['코타키나발루 보르네오 무제한 라운딩', 'BKI', '코타키나발루'],
+    ['심양 시내 힐튼 + 도심3색골프', 'SHE', '심양'],
+    ['서안/진시황릉', 'XIY', '서안'],
+    ['타이페이/예스지', 'TPE', '타이페이'],
+  ])('normalizes customer destination %s to %s place labels', (destination, code, expected) => {
+    expect(normalizeUploadDestinationDisplayLabel(destination, code)).toBe(expected);
+  });
+
+  it.each([
+    ['석가장/태항산', 'SJW'],
+    ['장가계/천자산', 'DYG'],
+    ['연길/백두산', 'YNJ'],
+    ['마카오/홍콩', 'HKG'],
+  ])('preserves clean compound destination %s', (destination, code) => {
+    expect(normalizeUploadDestinationDisplayLabel(destination, code)).toBe(destination);
   });
 });

@@ -129,10 +129,15 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
           <div key={row.id} className="admin-card overflow-hidden">
             {/* 헤더 */}
             <div
-              className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-admin-surface-2 transition-colors"
-              onClick={() => setOpenId(open ? null : row.id)}
+              className="px-4 py-3 flex items-center justify-between hover:bg-admin-surface-2 transition-colors"
             >
-              <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                className="flex items-center gap-3 min-w-0 text-left cursor-pointer"
+                aria-expanded={open}
+                aria-controls={`ir-draft-${row.id}`}
+                onClick={() => setOpenId(open ? null : row.id)}
+              >
                 <span className={`text-admin-xs px-2 py-0.5 rounded-admin-xs font-semibold ${STATUS_COLOR[row.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
                   {row.status}
                 </span>
@@ -144,7 +149,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
                     {row.land_operator} · days <span className="admin-num">{days.length}</span> · inclusions <span className="admin-num">{inclusions.length}</span> · {row.normalizer_version} · {fmtDateTime(row.created_at)}
                   </div>
                 </div>
-              </div>
+              </button>
               <div className="flex items-center gap-1.5 shrink-0">
                 {row.status === 'draft' && (
                   <>
@@ -172,7 +177,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
 
             {/* 펼침 */}
             {open && (
-              <div className="border-t border-admin-border grid grid-cols-1 md:grid-cols-3 gap-0 max-h-[600px] overflow-y-auto">
+              <div id={`ir-draft-${row.id}`} className="border-t border-admin-border grid grid-cols-1 md:grid-cols-3 gap-0 max-h-[600px] overflow-y-auto">
                 {/* rawText */}
                 <div className="p-3 border-r border-admin-border bg-admin-surface-2">
                   <SensitiveRawText value={row.raw_text} title="원문" />

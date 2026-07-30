@@ -90,6 +90,7 @@ function DistributePageContent() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setProductMissing(false);
     try {
       if (!id) {
         setProductMissing(true);
@@ -99,17 +100,24 @@ function DistributePageContent() {
       }
 
       // 1. 상품 조회
-      const prodRes = await fetch(`/api/packages/${encodedId}`);
+      const prodRes = await fetch(`/api/packages?id=${encodedId}`);
       let prodOk = false;
       if (prodRes.ok) {
-        const d = await prodRes.json();
-        const p = (d.package ?? d.product ?? d) as Product | Record<string, unknown> | null;
+        const d = await prodRes.json() as {
+          data?: { package?: Product };
+          package?: Product;
+          product?: Product;
+        };
+        const p = d.data?.package ?? d.package ?? d.product ?? null;
         if (p && (p as Product).id) {
-          setProduct(p as Product);
+          setProduct(p);
           prodOk = true;
         }
       }
-      if (!prodOk) setProductMissing(true);
+      if (!prodOk) {
+        setProduct(null);
+        setProductMissing(true);
+      }
 
       // 2. 연결된 카드뉴스 조회
       //    우선순위: URL ?card_news_id → product_id 로 가장 최근 CONFIRMED → 가장 최근 DRAFT

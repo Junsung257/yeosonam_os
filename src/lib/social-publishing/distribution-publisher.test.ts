@@ -92,6 +92,33 @@ describe('publishDistribution', () => {
     }));
   });
 
+  it('filters malformed stored media and continuation values before provider calls', async () => {
+    await publishDistribution(
+      row({
+        payload: {
+          main: 'This Jeju family trip saves time without feeling rushed',
+          image_urls: ['https://example.com/one.jpg', 7, null, ''],
+          thread: ['A valid continuation sentence.', { text: 'bad' }, '', null],
+        },
+      }),
+      {
+        precomputedGate: {
+          approved: true,
+          predicted_er: 0.08,
+          text: 'This Jeju family trip saves time without feeling rushed',
+          fullText: 'This Jeju family trip saves time without feeling rushed',
+        },
+      },
+    );
+
+    expect(vi.mocked(publishToThreads)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrls: ['https://example.com/one.jpg'],
+        replyThreads: ['A valid continuation sentence.'],
+      }),
+    );
+  });
+
   it('retries failed Threads publish before max retries', async () => {
     vi.mocked(publishToThreads).mockResolvedValueOnce({ ok: false, error: 'provider error' });
 

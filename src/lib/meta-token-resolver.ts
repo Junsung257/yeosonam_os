@@ -23,31 +23,32 @@ const dbFetchFlight = createSingleFlight<string, string | null>();
  * @param key 'META_ACCESS_TOKEN' | 'THREADS_ACCESS_TOKEN' 등
  */
 export async function resolveMetaToken(key: string): Promise<string | null> {
-  // env 값이 있으면 먼저 사용 (기본 경로)
-  const envValue = process.env[key];
-  if (envValue) return envValue;
-
-  // 캐시
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  if (!isSupabaseConfigured) return null;
+  // Runtime env cannot be updated after a token refresh. The database value is
+  // therefore authoritative; env is only a bootstrap/failure fallback.
+  const envValue = process.env[key] ?? null;
+  if (!isSupabaseConfigured) return envValue;
 
   try {
     const value = await dbFetchFlight(key, async () => {
       const { data } = await supabaseAdmin
         .from('system_secrets')
-        .select('value')
+        .select('value, expires_at')
         .eq('key', key)
         .maybeSingle();
-      return (data?.value as string | undefined) ?? null;
+      const dbValue = (data?.value as string | undefined) ?? null;
+      const expiresAt = (data?.expires_at as string | null | undefined) ?? null;
+      const isExpired = expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
+      return dbValue && !isExpired ? dbValue : envValue;
     });
     if (value) {
       cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
     }
     return value;
   } catch {
-    return null;
+    return envValue;
   }
 }
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   publicSnapshotRow: null as Record<string, unknown> | null,
   scores: [] as Record<string, unknown>[],
   mappedInput: null as Record<string, unknown> | null,
+  mappedHero: null as string | null,
 }));
 
 vi.mock('next/cache', () => ({
@@ -85,8 +86,9 @@ vi.mock('@/lib/lp-hero-resolver', () => ({
 }));
 
 vi.mock('@/lib/map-travel-package-to-lp', () => ({
-  mapTravelPackageToLandingData: vi.fn((pkg: Record<string, unknown>) => {
+  mapTravelPackageToLandingData: vi.fn((pkg: Record<string, unknown>, hero: string | null) => {
     mocks.mappedInput = pkg;
+    mocks.mappedHero = hero;
     return { id: pkg.id, title: pkg.title, priceFrom: pkg.price };
   }),
 }));
@@ -183,6 +185,7 @@ describe('fetchLpPackageUncached', () => {
     mocks.packageError = null;
     mocks.scores = [];
     mocks.mappedInput = null;
+    mocks.mappedHero = null;
   });
 
   it('returns landing data only through the approved public snapshot', async () => {
@@ -239,16 +242,41 @@ describe('fetchLpPackageUncached', () => {
   it('allows blocked packages only for internal mobile proof rendering', async () => {
     mocks.packageRow = {
       id: 'pkg-1',
-      title: 'Blocked proof package',
+      title: '[랜드사 원문] 도쿄 특가',
+      display_title: 'SPECIAL PRICE',
+      destination: '도쿄',
+      duration: 4,
+      nights: 3,
+      trip_style: '3박 4일',
       status: 'pending',
       audit_status: 'blocked',
-      price: 100000,
+      price: 1_000_000,
+      price_dates: [{ date: '2026-08-07', price: 1_000_000 }],
+      products: {
+        display_name: '도쿄 패키지',
+        thumbnail_urls: ['https://cdn.yeosonam.com/public/pkg-1-hero.jpg'],
+      },
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '도쿄 도착 후 숙소 이동', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '도쿄 핵심 관광', type: 'sightseeing' }] },
+          { day: 3, schedule: [{ activity: '자유 일정', type: 'sightseeing' }] },
+          { day: 4, schedule: [{ activity: '귀국', type: 'flight' }] },
+        ],
+      },
     };
 
     const result = await fetchLpPackageUncached('pkg-1', { allowNonPublicProof: true });
 
-    expect(result).toMatchObject({ id: 'pkg-1', title: 'Blocked proof package' });
-    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', audit_status: 'blocked' });
+    expect(result).toMatchObject({ id: 'pkg-1' });
+    expect(mocks.mappedInput).toMatchObject({
+      id: 'pkg-1',
+      title: expect.not.stringContaining('랜드사 원문'),
+      _public_snapshot: expect.objectContaining({ status: 'proof' }),
+    });
+    expect(mocks.mappedInput?.title).not.toBe('SPECIAL PRICE');
+    expect(mocks.mappedInput).not.toHaveProperty('audit_status');
+    expect(mocks.mappedHero).toBe('https://cdn.yeosonam.com/public/pkg-1-hero.jpg');
   });
 
   it('blocks stale active packages when the live source audit now fails', async () => {
@@ -396,7 +424,9 @@ premium villa golf package 3n5d
   it('allows live-audit-blocked packages only for internal mobile proof rendering', async () => {
     mocks.packageRow = {
       id: 'pkg-1',
-      title: 'Stale proof package',
+      title: '[랜드사 원문] 도쿄 특가',
+      display_title: 'SPECIAL PRICE',
+      destination: '도쿄',
       status: 'active',
       audit_status: 'clean',
       audit_report: {
@@ -406,7 +436,9 @@ premium villa golf package 3n5d
           mobile_browser_proof: { ok: true },
         },
       },
-      duration: 5,
+      duration: 4,
+      nights: 3,
+      trip_style: '3박 4일',
       raw_text: `
 spot
 7/2,9
@@ -417,15 +449,32 @@ PKG
 premium villa golf package 3n5d
 `,
       accommodations: ['villa'],
+      products: {
+        display_name: '도쿄 패키지',
+        thumbnail_urls: ['https://cdn.yeosonam.com/public/pkg-1-hero.jpg'],
+      },
       price_dates: [
         { date: '2027-07-02', price: 999000 },
         { date: '2027-07-09', price: 999000 },
       ],
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '도쿄 도착 후 숙소 이동', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '도쿄 핵심 관광', type: 'sightseeing' }] },
+          { day: 3, schedule: [{ activity: '자유 일정', type: 'sightseeing' }] },
+          { day: 4, schedule: [{ activity: '귀국', type: 'flight' }] },
+        ],
+      },
     };
 
     const result = await fetchLpPackageUncached('pkg-1', { allowNonPublicProof: true });
 
-    expect(result).toMatchObject({ id: 'pkg-1', title: 'Stale proof package' });
-    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', status: 'active' });
+    expect(result).toMatchObject({ id: 'pkg-1' });
+    expect(mocks.mappedInput).toMatchObject({
+      id: 'pkg-1',
+      title: expect.not.stringContaining('랜드사 원문'),
+      _public_snapshot: expect.objectContaining({ status: 'proof' }),
+    });
+    expect(mocks.mappedInput?.title).not.toBe('SPECIAL PRICE');
   });
 });

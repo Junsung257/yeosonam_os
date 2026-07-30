@@ -16,7 +16,14 @@ const META_ALLOWED_HOSTS = new Set(['yeosonam.com', 'www.yeosonam.com', 'localho
 function isMetaTrackingHost() {
   if (typeof window === 'undefined') return false;
   if (process.env.NEXT_PUBLIC_META_PIXEL_ALLOW_PREVIEW === '1') return true;
-  return META_ALLOWED_HOSTS.has(window.location.hostname);
+  if (
+    process.env.NODE_ENV !== 'production'
+    && process.env.NEXT_PUBLIC_ANALYTICS_DEBUG === 'true'
+  ) {
+    return META_ALLOWED_HOSTS.has(window.location.hostname);
+  }
+  return window.__YS_ANALYTICS_RUNTIME__ === true
+    && META_ALLOWED_HOSTS.has(window.location.hostname);
 }
 
 export default function MetaPixel() {
@@ -68,10 +75,13 @@ function createMetaEventId(eventName: string) {
 
 function sendServerConversion(eventName: string, eventId: string, payload: Record<string, unknown>) {
   if (!hasMarketingConsent() || !isMetaTrackingHost()) return;
+  const eventSourceUrl = typeof window !== 'undefined'
+    ? new URL(window.location.pathname, window.location.origin).toString()
+    : undefined;
   const body = {
     event_name: eventName,
     event_id: eventId,
-    event_source_url: typeof window !== 'undefined' ? window.location.href : undefined,
+    event_source_url: eventSourceUrl,
     ...payload,
   };
   const json = JSON.stringify(body);
@@ -114,7 +124,7 @@ export function trackViewContent(params: {
 
 export function trackLead(params: {
   content_name: string;
-  value: number;
+  value?: number;
   content_ids?: string[];
   content_type?: string;
 }) {
@@ -122,9 +132,11 @@ export function trackLead(params: {
   const eventId = createMetaEventId('Lead');
   const payload: Record<string, unknown> = {
     content_name: params.content_name,
-    value: params.value,
-    currency: 'KRW',
   };
+  if (typeof params.value === 'number' && Number.isFinite(params.value) && params.value >= 0) {
+    payload.value = params.value;
+    payload.currency = 'KRW';
+  }
   if (params.content_ids?.length) {
     payload.content_ids = params.content_ids;
     payload.content_type = params.content_type ?? 'product';

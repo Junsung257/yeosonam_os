@@ -1,4 +1,10 @@
-import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import {
+  isRecognizableAttractionMaster,
+  matchAttraction,
+  type AttractionData,
+} from '@/lib/attraction-matcher';
+import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
+import { HIGH_CONFIDENCE_ATTRACTION_DESCRIPTION_LABELS } from '@/lib/attraction-description-canonical';
 import type { V3DraftLedger, V3MatchSummary } from './types';
 import { buildV3EntitySummary } from './entity-normalizer';
 
@@ -26,6 +32,64 @@ function pushCandidate(candidates: string[], value: string | null | undefined): 
   }
 }
 
+function matchUniquePublicAttractionName(
+  candidate: string,
+  attractions: AttractionData[],
+): AttractionData | null {
+  const normalizedCandidate = compactAttractionText(candidate);
+  if (!normalizedCandidate) return null;
+  const rawExactMatches = attractions.filter(attraction => (
+    isRecognizableAttractionMaster(attraction)
+    && attraction.name.trim() === candidate.trim()
+  ));
+  if (rawExactMatches.length === 1) return rawExactMatches[0];
+  const exactMatches = attractions.filter(attraction => (
+    isRecognizableAttractionMaster(attraction)
+    && compactAttractionText(attraction.name) === normalizedCandidate
+  ));
+  return exactMatches.length === 1 ? exactMatches[0] : null;
+}
+
+function canonicalNameOccursInSupplierText(rawText: string, name: string): boolean {
+  const normalizedName = compactAttractionText(name);
+  if (normalizedName.length < 2) return false;
+  if (normalizedName.length > 2) {
+    return compactAttractionText(rawText).includes(normalizedName);
+  }
+  const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9가-힣])${escaped}(?=$|[^A-Za-z0-9가-힣])`, 'i').test(rawText);
+}
+
+function matchUniquePublicAttractionNameInText(
+  rawText: string,
+  attractions: AttractionData[],
+): AttractionData | null {
+  const byCanonicalName = new Map<string, AttractionData | null>();
+  for (const attraction of attractions) {
+    if (!isRecognizableAttractionMaster(attraction)) continue;
+    const canonicalName = compactAttractionText(attraction.name);
+    if (canonicalName.length < 2 || canonicalName.length > 24) continue;
+    if (byCanonicalName.has(canonicalName)) {
+      byCanonicalName.set(canonicalName, null);
+    } else {
+      byCanonicalName.set(canonicalName, attraction);
+    }
+  }
+  const matches = [...byCanonicalName.entries()]
+    .filter((entry): entry is [string, AttractionData] => Boolean(entry[1]))
+    .filter(([, attraction]) => canonicalNameOccursInSupplierText(rawText, attraction.name))
+    .map(([, attraction]) => attraction);
+  const maximalMatches = matches.filter(attraction => {
+    const name = compactAttractionText(attraction.name);
+    return !matches.some(other => (
+      other !== attraction
+      && compactAttractionText(other.name).length > name.length
+      && compactAttractionText(other.name).includes(name)
+    ));
+  });
+  return maximalMatches.length === 1 ? maximalMatches[0] : null;
+}
+
 const NON_ATTRACTION_CANDIDATE_RE =
   /^(?:전용|임주|석가장|치토세|삿포로|도야|오타루|후라노|비에이|노보리베츠|죠잔케이|동경|나리타|이도백화|출발확정|출확|마감|선발권조건|6일|=>)$/;
 
@@ -34,8 +98,11 @@ const NON_ATTRACTION_TEXT_RE =
 
 const NORMAL_NON_ATTRACTION_TEXT_RE =
   /^(?:[A-Z]{3}(?:-[A-Z]{3})?|#?시즈오카|#?다색골프|제외\s*일자|\d+\s*\+\s*\d+|\(?\d{1,4}(?:,\d{3})?\s*엔\)?|\*?인원미달\s*요금추가|\*?사가라CC\s*미진행시\s*쿨카트\s*제공\s*X|\*?오후\s*플레이\s*욕장\s*\+\s*락커\s*사용\s*불가.*)$/i;
+const OPERATIONAL_NON_ATTRACTION_TEXT_RE =
+  /(?:^(?:REMARKS?|아시아나|대한항공|도보|OR\s*택시|멀티캡|라운드\s*(?:전\s*또는,?\s*후|후)|타이페이로\s*귀환\s*후)$|^\d{3,4}\s*\/\s*\d{3,4}$|^\d{1,2}:\d{2}\s*~?$|^~\s*\d+\s*일$|^\d{1,2}일(?:\s*,?\s*\d{1,2}일)+(?:\s*,)?$|^[월화수목금토일](?:\s*,\s*[월화수목금토일])+$|^[월화수목금토일]\s*증편$|^<?(?:남파|북파|서파|\d+파)(?:\s*\+\s*(?:남파|북파|서파))*[^>]*>?$|^\d+박\s*\d+일(?:\s*&\s*\d+박\s*\d+일.*)?$|^\d+\s*홀.*(?:골프|라운딩|클럽)|\d+\s*홀.*(?:셀프\s*플레이|중\s*1\s*곳)|(?:골프장|CC\b|라운딩|라운드\s*전|라운드\s*후|셀프\s*플레이|트레킹|시티투어|마사지|맛사지|야외공연)|(?:ETA|ESTA|필수\s*서류|유효기간|발급\s*(?:승인|후)|세관|전자세관|입국\s*시|입국\s*필수|출입국|QR\s*코드|전용\s*키오스크|미국\s*비자|승인\s*조건으로\s*판매|상황에\s*따라.*일정)|(?:御膳|会席|海鮮鍋|焼\s*き|しゃぶしゃぶ|고젠|가이세키|회정식|일본코스요리|야채절임|된장국|해물전골|1인당|예약가능|실제\s*음식|조리\s*과정|플레이팅|한상차림|카오소이|전골|샌드위치|맥주\s*\d*병|에그타르트|육포|쿠키))/i;
 
-const DESCRIPTION_LABEL_RULES: Array<[RegExp, string]> = [
+const DESCRIPTION_LABEL_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  ...HIGH_CONFIDENCE_ATTRACTION_DESCRIPTION_LABELS,
   [/종고루광장\s*야경|종고루광장/i, '종고루광장 야시장'],
   [/북봉.*천제용령.*(?:상용령|금사관|중봉|남봉)/i, '화산'],
   [/진나라\s*2세\s*효예묘|진나라2세효예묘|효예묘/i, '진나라2세호혜묘'],
@@ -102,9 +169,16 @@ function isNonAttractionCandidate(rawText: string): boolean {
     || NORMAL_NON_ATTRACTION_TEXT_RE.test(cleaned)
     || NORMAL_NON_ATTRACTION_TEXT_RE.test(compact)
     || NON_ATTRACTION_CANDIDATE_RE.test(compact)
+    || OPERATIONAL_NON_ATTRACTION_TEXT_RE.test(rawText)
+    || OPERATIONAL_NON_ATTRACTION_TEXT_RE.test(cleaned)
+    || OPERATIONAL_NON_ATTRACTION_TEXT_RE.test(compact)
     || NON_ATTRACTION_TEXT_RE.test(rawText)
     || NON_ATTRACTION_TEXT_RE.test(cleaned)
     || NON_ATTRACTION_TEXT_RE.test(compact);
+}
+
+function isMatchedAttractionContinuation(rawText: string): boolean {
+  return /^\s*\([^)]*?(?:\d{1,3}(?:,\d{3})?\s*m|케이블카)/i.test(rawText);
 }
 
 function isDestinationScopedNonAttractionCandidate(rawText: string, destination?: string | null): boolean {
@@ -127,6 +201,9 @@ function extractAttractionCandidateLabels(rawText: string): string[] {
   }
 
   for (const part of cleaned.split(/\s*(?:,|\uff0c|\/|\u318d|\u00b7|\ubc0f|\u0026)\s*/)) {
+    pushCandidate(candidates, part);
+  }
+  for (const part of cleaned.split(/\s+(?:-|–|—|->|→)\s+/)) {
     pushCandidate(candidates, part);
   }
 
@@ -210,6 +287,19 @@ function isStructuralNonAttractionCandidate(rawText: string): boolean {
   return false;
 }
 
+function isGenericOptionHeading(rawText: string): boolean {
+  const compact = rawText
+    .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-○▪◦*\u2663↓↑]+/, '')
+    .replace(/\s+/g, '')
+    .trim();
+  return /^(?:선택관광|추천선택관광|추천옵션|강력추천옵션|현지지불옵션|옵션|옵션투어)$/i.test(compact);
+}
+
+function isCustomerSafeOptionDisclosure(rawText: string): boolean {
+  return isCustomerOptionalTourCandidate(rawText)
+    && /(?:\$\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:\$|달러|USD)|(?:USD|JPY|CNY)\s*\d+(?:\.\d+)?|\d[\d,]*\s*(?:원|KRW|엔|JPY|위안|CNY))/i.test(rawText);
+}
+
 function attractionScopeTokens(attraction: AttractionData): string[] {
   return String(attraction.region ?? '')
     .split(/[,/|&\u00b7\u318d\uBC0F\s]+/)
@@ -221,7 +311,10 @@ function isStandaloneKnownDestinationScope(
   rawText: string,
   attractions: AttractionData[],
 ): boolean {
-  const cleaned = normalizedAttractionCandidate(rawText);
+  const normalized = normalizedAttractionCandidate(rawText);
+  const cleaned = /^[가-힣](?:\s+[가-힣]){1,7}$/.test(normalized)
+    ? normalized.replace(/\s+/g, '')
+    : normalized;
   const compact = compactAttractionText(cleaned);
   if (compact.length < 2 || compact.length > 16) return false;
   if (/\s/.test(cleaned) || /\d/.test(cleaned)) return false;
@@ -255,14 +348,34 @@ export function applyProductRegistrationV3Matching(
     for (const day of variant.days) {
       const dayDestinationScopes = destinationScopesByDay.get(day.day) ?? [];
       if (!destinationScopesByDay.has(day.day)) destinationScopesByDay.set(day.day, dayDestinationScopes);
+      let hasMatchedAttractionOnDay = false;
       for (const event of day.events) {
         if (event.type === 'shopping') shoppingCount++;
+        if (event.type === 'option' && isGenericOptionHeading(event.raw_text)) {
+          event.type = 'notice';
+          event.canonical_type = null;
+          event.match_status = 'ignored';
+          continue;
+        }
+        if (event.type === 'option' && isCustomerSafeOptionDisclosure(event.raw_text)) {
+          event.canonical_type = 'option';
+          event.match_status = 'matched';
+          continue;
+        }
         if (event.type === 'option' && !variantHasAutoCleanOptionalDisclosure) optionReview++;
         if (event.type !== 'attraction') continue;
 
         if (event.canonical_id && event.match_status === 'matched') {
           event.canonical_type = event.canonical_type ?? 'attraction';
           attractionMatched++;
+          hasMatchedAttractionOnDay = true;
+          continue;
+        }
+
+        if (hasMatchedAttractionOnDay && isMatchedAttractionContinuation(event.raw_text)) {
+          event.type = 'notice';
+          event.canonical_type = null;
+          event.match_status = 'ignored';
           continue;
         }
 
@@ -271,6 +384,13 @@ export function applyProductRegistrationV3Matching(
           || isNonAttractionCandidate(event.raw_text)
           || isDestinationScopedNonAttractionCandidate(event.raw_text, destination)
         ) {
+          event.type = 'notice';
+          event.canonical_type = null;
+          event.match_status = 'ignored';
+          continue;
+        }
+        if (isStandaloneKnownDestinationScope(event.raw_text, attractions)) {
+          pushScopeHint(dayDestinationScopes, event.raw_text, destination?.trim() || undefined);
           event.type = 'notice';
           event.canonical_type = null;
           event.match_status = 'ignored';
@@ -291,16 +411,23 @@ export function applyProductRegistrationV3Matching(
             match = matchAttraction(candidate, attractions, scope);
             if (match) break;
           }
+          if (!match) {
+            match = matchUniquePublicAttractionName(candidate, attractions);
+          }
           if (!match && (!scopedDestination || DESCRIPTION_LABEL_FALLBACKS.has(candidate.replace(/\s+/g, '')))) {
-            match = matchAttraction(candidate, attractions, undefined);
+            match = matchAttraction(candidate, attractions);
           }
           if (match) break;
+        }
+        if (!match) {
+          match = matchUniquePublicAttractionNameInText(event.raw_text, attractions);
         }
         if (match?.id || match?.name) {
           event.canonical_id = match.id ?? match.name;
           event.canonical_type = 'attraction';
           event.match_status = 'matched';
           attractionMatched++;
+          hasMatchedAttractionOnDay = true;
         } else if (isStandaloneKnownDestinationScope(event.raw_text, attractions)) {
           pushScopeHint(dayDestinationScopes, event.raw_text, scopedDestination);
           event.type = 'notice';

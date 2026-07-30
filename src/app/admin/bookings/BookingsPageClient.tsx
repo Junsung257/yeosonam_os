@@ -1369,11 +1369,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
   // ── Undo 삭제 ────────────────────────────────────────────────────────────────
   const commitDeleteToDB = useCallback(async (ids: string[]) => {
-    await Promise.all(ids.map(id =>
+    const results = await Promise.allSettled(ids.map(id =>
       fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, is_deleted: true }) })
     ));
     setPendingDelete([]);
-  }, []);
+    const failed = results.filter(result => result.status === 'rejected' || !result.value.ok).length;
+    if (failed > 0) {
+      showToast(`휴지통 이동 실패 ${failed}건 · 목록을 다시 확인합니다`, 'err');
+      await load();
+    }
+  }, [load, showToast]);
 
   const triggerUndoDelete = useCallback((targets: Booking[]) => {
     const ids = targets.map(b => b.id);
@@ -1398,31 +1403,50 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const restore = useCallback(async (id: string) => {
     setProcessing(id);
     try {
-      await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, is_deleted: false }) });
-      load();
+      const response = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, is_deleted: false }) });
+      if (!response.ok) throw new Error((await response.json()).error || '복구 실패');
+      await load();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '복구 실패', 'err');
     } finally { setProcessing(null); }
-  }, [load]);
+  }, [load, showToast]);
 
   const handleBulkCommit = useCallback(async (field: string, value: string) => {
     const ids = Array.from(selected);
-    for (const id of ids) {
-      await fetch('/api/bookings', {
+    const results = await Promise.allSettled(ids.map(async id => {
+      const response = await fetch('/api/bookings', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, [field]: value }),
       });
-    }
-    setBookings(prev => prev.map(b => selected.has(b.id) ? { ...b, [field]: value } : b));
-    showToast(`${ids.length}건 일괄 변경 완료`);
-    setBulkField(null); setSelected(new Set());
+      if (!response.ok) throw new Error(`booking:${id}`);
+      return id;
+    }));
+    const succeeded = new Set(results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []));
+    const failed = ids.length - succeeded.size;
+    setBookings(prev => prev.map(b => succeeded.has(b.id) ? { ...b, [field]: value } : b));
+    showToast(
+      failed > 0 ? `일괄 변경 성공 ${succeeded.size}건 · 실패 ${failed}건` : `${succeeded.size}건 일괄 변경 완료`,
+      failed > 0 ? 'err' : 'ok',
+    );
+    if (succeeded.size > 0) setSelected(prev => new Set([...prev].filter(id => !succeeded.has(id))));
+    if (failed === 0) setBulkField(null);
   }, [selected, showToast]);
 
   const sendAlimtalk = useCallback(async (b: Booking) => {
     if (!b.customers?.phone) { showToast('전화번호 없음', 'err'); return; }
-    await fetch('/api/notify/alimtalk', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: b.customers.phone, name: b.customers.name, templateCode: 'BOOKING' }),
-    });
-    showToast('알림톡 발송 완료');
+    try {
+      const response = await fetch('/api/notify/alimtalk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: b.customers.phone, name: b.customers.name, templateCode: 'BOOKING' }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error || '알림톡 발송 실패');
+      }
+      showToast('알림톡 발송 완료');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '알림톡 발송 실패', 'err');
+    }
   }, [showToast]);
 
   const handleSort = useCallback((field: string) => {

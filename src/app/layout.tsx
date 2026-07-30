@@ -1,12 +1,18 @@
 import type { Metadata, Viewport } from 'next';
+import { cookies } from 'next/headers';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import PartytownInit from '@/components/PartytownInit';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 import LayoutClientWidgets from '@/components/LayoutClientWidgets';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { getPublicAnalyticsConfig, isProductionAnalyticsRuntime } from '@/lib/analytics/config';
+import GoogleTagManagerNoScript from '@/components/analytics/GoogleTagManagerNoScript';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL
+  || process.env.NEXT_PUBLIC_BASE_URL
+  || 'https://www.yeosonam.com';
 const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
 const SITE_NAME = '여소남';
 const SITE_TITLE = '여소남 | 믿고 떠나는 프리미엄 패키지 여행';
@@ -78,7 +84,10 @@ export const metadata: Metadata = {
     languages: { 'ko-KR': BASE_URL },
   },
   verification: {
-    google: process.env.GOOGLE_SITE_VERIFICATION || '',
+    google:
+      process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+      || process.env.GOOGLE_SITE_VERIFICATION
+      || '',
     other: {
       'naver-site-verification': 'af1da2c30b83023aa5c6f290ba2fc2460ef25edf',
     },
@@ -109,7 +118,27 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const analyticsConfig = getPublicAnalyticsConfig();
+  let expectedHostname = 'www.yeosonam.com';
+  try {
+    expectedHostname = new URL(analyticsConfig.siteUrl).hostname;
+  } catch {
+    // Invalid base URLs leave analytics disabled by the shared runtime guard.
+  }
+  const analytics = {
+    containerId: analyticsConfig.gtmContainerId,
+    measurementId: analyticsConfig.ga4MeasurementId,
+    runtimeEnabled: isProductionAnalyticsRuntime(analyticsConfig, {
+      nodeEnv: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV,
+    }),
+    expectedHostname,
+  };
+  const storedConsent = cookieStore.get('ys_consent_v2')?.value ?? '';
+  const noscriptEnabled = analytics.runtimeEnabled
+    && (storedConsent.includes('a') || storedConsent.includes('m'));
   return (
     <html lang="ko">
       <head>
@@ -157,10 +186,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="bg-gray-50 antialiased">
+        <GoogleTagManagerNoScript
+          containerId={analytics.containerId}
+          enabled={noscriptEnabled}
+        />
         <PartytownInit />
         <AffiliateAttributionBanner />
         {children}
-        <LayoutClientWidgets />
+        <LayoutClientWidgets analytics={analytics} />
         {ENABLE_SPEED_INSIGHTS ? <SpeedInsights /> : null}
       </body>
     </html>

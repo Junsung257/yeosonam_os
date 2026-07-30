@@ -2,12 +2,18 @@ import { NextRequest, type NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 const getHandler = async (request: NextRequest): Promise<NextResponse> => {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
+    if (request.nextUrl.searchParams.get('demo') !== '1') {
+      return apiResponse(
+        { error: 'Supabase admin connection is not configured.' },
+        { status: 503 },
+      );
+    }
     return apiResponse(buildMockAttribution());
   }
 

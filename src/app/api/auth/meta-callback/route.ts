@@ -1,25 +1,109 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { type NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { invalidateMetaTokenCache } from '@/lib/meta-token-resolver';
+import { OAuthStateConfigurationError, verifyOAuthState } from '@/lib/oauth-state';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin } from '@/lib/supabase';
+import {
+  exchangeThreadsAuthorizationCode,
+  exchangeThreadsLongLivedToken,
+  fetchThreadsTokenProfile,
+} from '@/lib/threads-token';
 
-/**
- * Meta OAuth 콜백
- * GET /api/auth/meta-callback?code=&state=
- *
- * Short-lived 코드 → Short-lived token → Long-lived token (fb_exchange_token)
- *
- * state.payload 에 platform 이 있으면 Threads 전용 OAuth 로 처리.
- */
 export const dynamic = 'force-dynamic';
 
-const STATE_TTL_MS = 10 * 60 * 1000;
+async function finishThreadsOAuth(input: {
+  code: string;
+  redirectUri: string;
+  appId: string;
+  appSecret: string;
+}): Promise<{ userId: string; expiresAt?: string }> {
+  const shortToken = await exchangeThreadsAuthorizationCode(input);
+  const longToken = await exchangeThreadsLongLivedToken(
+    shortToken.accessToken,
+    input.appSecret,
+  );
+  const userId =
+    longToken.userId ??
+    shortToken.userId ??
+    (await fetchThreadsTokenProfile(longToken.accessToken)).id;
+  const now = new Date().toISOString();
 
-interface StatePayload {
-  tenant_id: string;
-  ts: number;
-  platform?: 'meta' | 'threads';
+  const tokenWrite = await supabaseAdmin.from('system_secrets').upsert({
+    key: 'THREADS_ACCESS_TOKEN',
+    value: longToken.accessToken,
+    expires_at: longToken.expiresAt ?? null,
+    updated_at: now,
+  } as never, { onConflict: 'key' });
+  if (tokenWrite.error) throw tokenWrite.error;
+
+  const userWrite = await supabaseAdmin.from('system_secrets').upsert({
+    key: 'THREADS_USER_ID',
+    value: userId,
+    updated_at: now,
+  } as never, { onConflict: 'key' });
+  if (userWrite.error) throw userWrite.error;
+
+  const configWrite = await supabaseAdmin
+    .from('social_platform_configs')
+    .update({
+      access_token: longToken.accessToken,
+      token_expires_at: longToken.expiresAt ?? null,
+      account_id: userId,
+    } as never)
+    .eq('platform', 'threads');
+  if (configWrite.error) throw configWrite.error;
+
+  invalidateMetaTokenCache('THREADS_ACCESS_TOKEN');
+  invalidateMetaTokenCache('THREADS_USER_ID');
+  return { userId, expiresAt: longToken.expiresAt };
+}
+
+async function finishMetaOAuth(input: {
+  code: string;
+  redirectUri: string;
+  appId: string;
+  appSecret: string;
+  tenantId: string;
+}): Promise<void> {
+  const shortTokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
+  shortTokenUrl.searchParams.set('client_id', input.appId);
+  shortTokenUrl.searchParams.set('client_secret', input.appSecret);
+  shortTokenUrl.searchParams.set('redirect_uri', input.redirectUri);
+  shortTokenUrl.searchParams.set('code', input.code);
+
+  const shortResponse = await fetch(shortTokenUrl, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  const shortPayload = (await shortResponse.json().catch(() => null)) as {
+    access_token?: string;
+    user_id?: string;
+  } | null;
+  if (!shortResponse.ok || !shortPayload?.access_token) {
+    throw new Error(`Meta token exchange failed (HTTP ${shortResponse.status})`);
+  }
+
+  const longTokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
+  longTokenUrl.searchParams.set('grant_type', 'fb_exchange_token');
+  longTokenUrl.searchParams.set('client_id', input.appId);
+  longTokenUrl.searchParams.set('client_secret', input.appSecret);
+  longTokenUrl.searchParams.set('fb_exchange_token', shortPayload.access_token);
+  const longResponse = await fetch(longTokenUrl, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  const longPayload = longResponse.ok
+    ? ((await longResponse.json().catch(() => null)) as {
+        access_token?: string;
+        expires_in?: number;
+      } | null)
+    : null;
+
+  await saveOAuthToken(input.tenantId, 'meta', {
+    accessToken: longPayload?.access_token ?? shortPayload.access_token,
+    expiresIn: longPayload?.expires_in,
+    scopes: ['ads_management', 'ads_read', 'read_insights'],
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -29,108 +113,69 @@ export async function GET(request: NextRequest) {
   const errorParam = searchParams.get('error');
 
   if (errorParam) {
-    const ALLOWED = new Set(['access_denied', 'invalid_scope', 'server_error', 'temporarily_unavailable']);
-    const safeError = ALLOWED.has(errorParam) ? errorParam : 'unknown_error';
+    const allowed = new Set([
+      'access_denied',
+      'invalid_scope',
+      'server_error',
+      'temporarily_unavailable',
+    ]);
+    const safeError = allowed.has(errorParam) ? errorParam : 'unknown_error';
     return NextResponse.redirect(
       new URL(`/admin?oauth_error=${encodeURIComponent(safeError)}`, request.url),
     );
   }
-
   if (!code || !stateRaw) {
-    return NextResponse.json({ error: 'code 또는 state 누락' }, { status: 400 });
+    return apiResponse({ error: 'code or state is missing' }, { status: 400 });
   }
 
-  let payload: StatePayload;
+  let state: ReturnType<typeof verifyOAuthState> | null = null;
   try {
-    const dotIdx = stateRaw.lastIndexOf('.');
-    if (dotIdx < 0) throw new Error('state 형식 오류');
-    const enc = stateRaw.slice(0, dotIdx);
-    const sig = stateRaw.slice(dotIdx + 1);
-    const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev').update(enc).digest('hex').slice(0, 16);
-    const sigBuf = Buffer.from(sig);
-    const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) throw new Error('state 서명 불일치');
-    const decoded = JSON.parse(Buffer.from(enc, 'base64url').toString('utf8')) as StatePayload;
-    if (Date.now() - decoded.ts > STATE_TTL_MS) throw new Error('state 만료');
-    payload = decoded;
-  } catch {
-    return NextResponse.json({ error: 'state 검증 실패' }, { status: 400 });
-  }
-
-  const isThreadsOAuth = payload.platform === 'threads';
-  const appId = isThreadsOAuth
-    ? getSecret('THREADS_APP_ID') || getSecret('META_APP_ID')
-    : getSecret('META_APP_ID');
-  const appSecret = isThreadsOAuth
-    ? getSecret('THREADS_APP_SECRET') || getSecret('META_APP_SECRET')
-    : getSecret('META_APP_SECRET');
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (isThreadsOAuth ? 'https://www.yeosonam.com' : undefined);
-  if (!appId || !appSecret || !siteUrl) {
-    return NextResponse.json({ error: 'Meta OAuth 환경변수 미설정' }, { status: 500 });
-  }
-
-  // 1단계: code → short-lived token
-  const shortTokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
-  shortTokenUrl.searchParams.set('client_id', appId);
-  shortTokenUrl.searchParams.set('client_secret', appSecret);
-  shortTokenUrl.searchParams.set('redirect_uri', `${siteUrl}/api/auth/meta-callback`);
-  shortTokenUrl.searchParams.set('code', code);
-
-  const shortRes = await fetch(shortTokenUrl.toString());
-  if (!shortRes.ok) {
-    const detail = await shortRes.text();
-    console.error('[meta-callback] short-lived 토큰 교환 실패:', detail);
-    return NextResponse.json({ error: '토큰 교환 실패' }, { status: 502 });
-  }
-  const shortJson = (await shortRes.json()) as { access_token?: string; token_type?: string; user_id?: string };
-  if (!shortJson.access_token) {
-    return NextResponse.json({ error: '토큰 교환 실패: access_token 없음' }, { status: 502 });
-  }
-
-  // 2단계: short-lived → long-lived token (60일 유효)
-  const longTokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token');
-  longTokenUrl.searchParams.set('grant_type', 'fb_exchange_token');
-  longTokenUrl.searchParams.set('client_id', appId);
-  longTokenUrl.searchParams.set('client_secret', appSecret);
-  longTokenUrl.searchParams.set('fb_exchange_token', shortJson.access_token);
-
-  const longRes = await fetch(longTokenUrl.toString());
-  if (!longRes.ok) {
-    console.warn('[meta-callback] long-lived 토큰 교환 실패 (HTTP', longRes.status, ') — short-lived 토큰으로 대체');
-  }
-  const longJson = longRes.ok
-    ? ((await longRes.json()) as { access_token: string; user_id?: string; expires_in?: number })
-    : null;
-
-  const finalToken = longJson?.access_token ?? shortJson.access_token;
-  const metaUserId = longJson?.user_id ?? shortJson?.user_id;
-  const expiresIn = longJson?.expires_in;
-
-  if (payload.platform === 'threads') {
-    // Threads 전용: 토큰을 DB system_secrets 에 저장
-    const upsertData: Record<string, unknown> = {
-      key: 'THREADS_ACCESS_TOKEN',
-      value: finalToken,
-      updated_at: new Date().toISOString(),
-    };
-    await supabaseAdmin.from('system_secrets').upsert(upsertData, { onConflict: 'key' });
-
-    // threads_user_id 도 있으면 저장
-    if (metaUserId) {
-      await supabaseAdmin.from('system_secrets').upsert(
-        { key: 'THREADS_USER_ID', value: metaUserId, updated_at: new Date().toISOString() },
-        { onConflict: 'key' },
+    state = verifyOAuthState(stateRaw, ['meta', 'threads']);
+  } catch (error) {
+    if (error instanceof OAuthStateConfigurationError) {
+      return apiResponse(
+        { error: 'OAuth state verification is not configured' },
+        { status: 503 },
       );
     }
+  }
+  if (!state) return apiResponse({ error: 'state verification failed' }, { status: 400 });
 
-    return NextResponse.redirect(new URL('/admin?oauth=threads_success', request.url));
+  const isThreads = state.provider === 'threads';
+  const appId = isThreads
+    ? getSecret('THREADS_APP_ID') || getSecret('META_APP_ID')
+    : getSecret('META_APP_ID');
+  const appSecret = isThreads
+    ? getSecret('THREADS_APP_SECRET') || getSecret('META_APP_SECRET')
+    : getSecret('META_APP_SECRET');
+  const siteUrlRaw =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    (isThreads ? 'https://www.yeosonam.com' : undefined);
+  const siteUrl = siteUrlRaw?.replace(/\/+$/, '');
+  if (!appId || !appSecret || !siteUrl) {
+    return apiResponse({ error: 'Meta OAuth is not configured' }, { status: 503 });
   }
 
-  await saveOAuthToken(payload.tenant_id, 'meta', {
-    accessToken: finalToken,
-    expiresIn,
-    scopes: ['ads_management', 'ads_read', 'read_insights'],
-  });
-
-  return NextResponse.redirect(new URL('/admin?oauth=meta_success', request.url));
+  const redirectUri = `${siteUrl}/api/auth/meta-callback`;
+  try {
+    if (isThreads) {
+      await finishThreadsOAuth({ code, redirectUri, appId, appSecret });
+      return NextResponse.redirect(new URL('/admin?oauth=threads_success', request.url));
+    }
+    await finishMetaOAuth({
+      code,
+      redirectUri,
+      appId,
+      appSecret,
+      tenantId: state.tenant_id,
+    });
+    return NextResponse.redirect(new URL('/admin?oauth=meta_success', request.url));
+  } catch (error) {
+    console.error(
+      `[meta-callback] ${isThreads ? 'Threads' : 'Meta'} OAuth failed:`,
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    return apiResponse({ error: 'OAuth token exchange failed' }, { status: 502 });
+  }
 }

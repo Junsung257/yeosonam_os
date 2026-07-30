@@ -1,36 +1,11 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
+import { OAuthStateConfigurationError, verifyOAuthState } from '@/lib/oauth-state';
 
 export const dynamic = 'force-dynamic';
-
-const STATE_TTL_MS = 10 * 60 * 1000;
-
-function verifyState(stateRaw: string): string | null {
-  const dotIdx = stateRaw.lastIndexOf('.');
-  if (dotIdx < 0) return null;
-
-  const payload = stateRaw.slice(0, dotIdx);
-  const sig = stateRaw.slice(dotIdx + 1);
-  const expected = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev')
-    .update(payload)
-    .digest('hex')
-    .slice(0, 16);
-  const sigBuf = Buffer.from(sig);
-  const expBuf = Buffer.from(expected);
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null;
-
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-    tenant_id?: string;
-    ts?: number;
-  };
-  if (!decoded.tenant_id || typeof decoded.ts !== 'number') return null;
-  if (Date.now() - decoded.ts > STATE_TTL_MS) return null;
-  return decoded.tenant_id;
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -48,15 +23,18 @@ export async function GET(request: NextRequest) {
     return apiResponse({ error: 'code or state is missing' }, { status: 400 });
   }
 
-  let tenantId: string | null = null;
+  let statePayload = null;
   try {
-    tenantId = verifyState(stateRaw);
-  } catch {
-    tenantId = null;
+    statePayload = verifyOAuthState(stateRaw, 'naver');
+  } catch (error) {
+    if (error instanceof OAuthStateConfigurationError) {
+      return apiResponse({ error: 'OAuth state verification is not configured' }, { status: 503 });
+    }
   }
-  if (!tenantId) {
+  if (!statePayload) {
     return apiResponse({ error: 'state verification failed' }, { status: 400 });
   }
+  const tenantId = statePayload.tenant_id;
 
   const clientId = getSecret('NAVER_CLIENT_ID');
   const clientSecret = getSecret('NAVER_CLIENT_SECRET');

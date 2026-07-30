@@ -24,6 +24,21 @@ describe('product registration failure diagnostics', () => {
     expect(diagnostics.map(diagnostic => diagnostic.code)).toContain('FLIGHT_TIME_MISMATCH');
   });
 
+  it('classifies missing supplier facts without collapsing them into an unknown blocker', () => {
+    const summary = summarizeProductRegistrationFailures([
+      'variant_0.minimum_departure: minimum departure evidence exists',
+      'variant_0.flight: air package has flight evidence',
+      'variant_0.high_risk_notice_values: high-risk standard notices must have required values and review status',
+    ]);
+
+    expect(summary.codes).toEqual(expect.arrayContaining([
+      'MINIMUM_DEPARTURE_MISSING',
+      'ROUND_TRIP_FLIGHT_EVIDENCE_MISSING',
+      'UNPRICED_HIGH_RISK_SURCHARGE',
+    ]));
+    expect(summary.codes).not.toContain('UNKNOWN_BLOCKER');
+  });
+
   it('classifies itinerary entity/card mismatches as a learnable blocker', () => {
     const diagnostics = classifyProductRegistrationFailure(
       'itinerary schedule quality error: ITINERARY_ATTRACTION_REF_ON_NON_ATTRACTION_TEXT: DAY3 "※현지지불옵션 : 백두산5D플라잉 체험 $40/인" — paid optional-tour disclosure must not be rendered as an attraction card',

@@ -12,16 +12,24 @@ const PIXEL_ID = process.env.NEXT_PUBLIC_KAKAO_PIXEL_ID;
  * 카카오 모먼트 픽셀 — NEXT_PUBLIC_KAKAO_PIXEL_ID 없으면 미렌더.
  * PIPA: 마케팅 동의 후에만 스크립트 로드·pageView.
  */
-export default function KakaoMomentPixel() {
+export default function KakaoMomentPixel({
+  runtimeEnabled,
+  expectedHostname,
+}: {
+  runtimeEnabled: boolean;
+  expectedHostname: string;
+}) {
   const marketing = useMarketingConsent();
   const [scriptReady, setScriptReady] = useState(false);
+  const hostAllowed = typeof window !== 'undefined'
+    && window.location.hostname === expectedHostname;
 
   useEffect(() => {
-    if (!PIXEL_ID || !marketing || !scriptReady) return;
+    if (!PIXEL_ID || !marketing || !scriptReady || !runtimeEnabled || !hostAllowed) return;
     trackKakaoPixelPageView();
-  }, [marketing, scriptReady]);
+  }, [hostAllowed, marketing, runtimeEnabled, scriptReady]);
 
-  if (!PIXEL_ID || !marketing) return null;
+  if (!PIXEL_ID || !marketing || !runtimeEnabled || !hostAllowed) return null;
 
   return (
     <Script

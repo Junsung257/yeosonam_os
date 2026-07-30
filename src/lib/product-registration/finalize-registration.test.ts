@@ -141,6 +141,38 @@ describe('finalizeUploadRegistration', () => {
     expect(result.pkgStatus).toBe('pending');
   });
 
+  it('keeps unresolved mobile attraction cards out of customer-visible package status', () => {
+    const registration = baseRegistration();
+    registration.warnings.push('mobile_media:attraction.unmatched_major:지모루시장');
+    const result = finalizeUploadRegistration({
+      registration,
+      rawText: 'Cebu package fixture',
+      title: registration.extractedData.title ?? 'Untitled',
+      netPrice: 859000,
+      internalCode: 'PUS-ETC-CEB-05-0001',
+      policy: DEFAULT_REGISTRATION_POLICY,
+      priceRows: [{
+        target_date: '2026-07-24',
+        day_of_week: null,
+        net_price: 859000,
+        adult_selling_price: 859000,
+        child_price: null,
+        note: null,
+      }],
+      itineraryInput: registration.itinerary.itineraryInput,
+      itineraryDataToSave: registration.itinerary.itineraryDataToSave,
+      scheduleItemCount: 0,
+    });
+
+    expect(result.productStatus).not.toBe('approved');
+    expect(result.pkgStatus).toBe('pending');
+    expect(result.failedChecks).toContainEqual(expect.objectContaining({
+      id: 'customer_mobile_attraction_readiness',
+      passed: false,
+      severity: 'high',
+    }));
+  });
+
   it('builds the write row from the finalized registration data', () => {
     const registration = baseRegistration({ inclusions: ['airfare'], excludes: ['guide tip'] });
     const result = finalizeUploadRegistration({

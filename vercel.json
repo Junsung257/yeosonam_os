@@ -95,11 +95,15 @@
     },
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "30 2 * * *"
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/analytics-delivery",
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/auto-publish-loop",
-      "schedule": "0 4 * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/blog-publisher",
@@ -127,7 +131,11 @@
     },
     {
       "path": "/api/cron/sync-engagement",
-      "schedule": "0 4 * * *"
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/threads-engagement",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/meta-token-refresh",
@@ -282,6 +290,10 @@
       "schedule": "30 21 * * *"
     },
     {
+      "path": "/api/cron/threads-content-autopilot",
+      "schedule": "5 22 * * *"
+    },
+    {
       "path": "/api/cron/ig-trend-miner",
       "schedule": "0 22 * * *"
     },
@@ -369,6 +381,8 @@
     "src/app/api/cron/embed-products/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/ig-trend-miner/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/threads-trend-miner/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/threads-content-autopilot/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/threads-engagement/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/sync-engagement/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/trend-topic-miner/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/topical-rebuild/route.ts": { "maxDuration": 300 },

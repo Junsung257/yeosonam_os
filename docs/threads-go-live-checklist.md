@@ -1,6 +1,6 @@
 # Threads Go-Live Checklist
 
-Last updated: 2026-06-03
+Last updated: 2026-07-28
 
 ## Current Verification
 
@@ -31,7 +31,22 @@ Last updated: 2026-06-03
 - [x] Threads insights failures are classified and persisted in `content_distributions.engagement`.
 - [x] System health checks Threads identity, latest post insights, and learning row counts.
 - [x] Trend miner has `fallback_learning` mode for missing keyword search permission.
-- [ ] `THREADS_KEYWORD_SEARCH_ENABLED=1` is set only after keyword search scope approval.
+- [x] Threads official OAuth code exchange and long-lived token refresh use `graph.threads.net`.
+- [x] DB-refreshed Threads token takes precedence over the immutable deployment env token.
+- [x] `/api/cron/threads-content-autopilot` creates at most one trend-aware Threads draft per KST day.
+- [x] `/api/cron/threads-engagement` scans nested replies, deduplicates by reply ID, and publishes only safe responses.
+- [x] Content generation, live publish, and reply processing use idempotency claims/leases against overlapping cron runs.
+- [x] Dry-run does not consume critic quota or persist live publish decisions.
+- [x] Automatic live publishing is restricted to autopilot-created drafts or explicitly approved rows.
+- [x] Failed/stale reply work retries only while unanswered, with a maximum of 3 attempts.
+- [x] Already-handled recent items cannot starve older unanswered replies, and blocked generated output is moved to the review queue.
+- [x] Threads Graph credentials are sent in authorization headers, not URLs or publish bodies.
+- [x] High-risk replies are routed to `agent_actions.action_type = 'threads_reply_review'`.
+- [x] Comment URLs are never fetched.
+- [x] Cron schedule is 2h content publish / 15m scheduled publish / 5m reply loop / 30m engagement sync.
+- [ ] `/api/admin/marketing/threads-autopilot-readiness` returns `ready = true` after the new token is approved.
+- [ ] New token contains all 7 scopes: `threads_basic`, `threads_content_publish`, `threads_read_replies`, `threads_manage_replies`, `threads_manage_mentions`, `threads_keyword_search`, `threads_manage_insights`.
+- [ ] Readiness reports no `missing_full_automation_scope:*` blocker.
 - [ ] `post_engagement_snapshots(platform='threads')` contains rows from the same Threads account/token as `content_distributions.external_id`.
 - [ ] `trend_style_fingerprints(platform='threads')` contains at least one owned or external learning row.
 
@@ -64,6 +79,9 @@ Last updated: 2026-06-03
 12. Confirm either:
    - `insights_status = synced`
    - or a classified `insights_error_category` explains the failure.
+13. Post one harmless test comment on the new Threads post.
+14. Wait up to 5 minutes and confirm one `threads_auto_reply` action reaches `status = executed` with a provider ID.
+15. Post one test comment containing a fake booking/refund request and confirm no public reply is posted; one `threads_reply_review` action should remain pending.
 
 2026-06-03 smoke-test result:
 
@@ -79,6 +97,8 @@ Last updated: 2026-06-03
 - Confirm `trend_style_fingerprints` refreshes after `sync-engagement`.
 - Confirm low-performance posts create at most one `threads_rewrite_candidate` per distribution.
 - Keep keyword/trend mining in fallback mode until Meta keyword scope is approved.
+- Check `threads_auto_reply` executed/failed counts and `threads_reply_review` pending count.
+- Confirm no reply ID has more than one `threads_engagement:{reply_id}` action.
 
 2026-06-03 learning-loop verification note:
 
@@ -88,7 +108,7 @@ Last updated: 2026-06-03
 
 ## Guard Activation
 
-Use this only after the first dry-run and one live test post succeed.
+The global master switch must remain enabled. The card-news dry-run flag applies to card news; Threads live publishing uses the explicit Threads platform `enabled` switch.
 
 ```sql
 UPDATE card_news_publish_guards

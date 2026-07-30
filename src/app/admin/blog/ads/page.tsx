@@ -320,7 +320,7 @@ export default function BlogAdsPage() {
                 <th className="text-right" style={{ width: 70 }}>상담</th>
                 <th className="text-right" style={{ width: 70 }}>전환</th>
                 <th className="text-center" style={{ width: 100 }}>상태</th>
-                <th style={{ width: 170 }}></th>
+                <th style={{ width: 170 }}><span className="sr-only">작업</span></th>
               </tr>
             </thead>
             <tbody>

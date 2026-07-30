@@ -1,4 +1,4 @@
-const MONEY_RE = /(?:\$\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:\$|달러|USD)|\d[\d,]*\s*(?:원|KRW|동|VND)|USD\s*\d+(?:\.\d+)?)/i;
+const MONEY_RE = /(?:\$\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:\$|달러|USD)|\d[\d,]*\s*(?:원|KRW|동|VND|엔|JPY|위안|CNY)|(?:USD|JPY|CNY)\s*\d+(?:\.\d+)?)/i;
 const TOUR_KEYWORD_RE =
   /(?:선택\s*관광|현지\s*지불\s*옵션|현지지불옵션|강력\s*추천\s*옵션|추천\s*옵션|옵션\s*투어|호핑|투어|마사지|스파|쇼|공연|크루즈|체험|입장권|티켓|케이블카|워터파크|온천|5D|VIP|식사|삼겹살|불고기|양꼬치|송이구이|바나나\s*보트|바나나|파라세일링|패러세일링|파라셀링|패러셀링|제트\s*스키|씨\s*워크|씨\s*워킹|다이빙|parasailling|parasailing|seawalk|diving|massage|spa|show|cruise|ticket|tour)/i;
 const NON_OPTION_FEE_RE =

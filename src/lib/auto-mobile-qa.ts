@@ -25,7 +25,7 @@ import {
   type ImprovementLedgerEvent,
 } from '@/lib/product-registration/improvement-ledger';
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
-import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
+import { buildProofBoundPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 
 export interface QAIncident {
   id: string;
@@ -182,17 +182,9 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     const safeCurrentRevision = Number.isFinite(currentPackageRevision) && currentPackageRevision > 0
       ? currentPackageRevision
       : 1;
-    const proofPackageRevision = isCustomerVisibleStatus((row as { status?: string | null }).status)
-      ? safeCurrentRevision
-      : safeCurrentRevision + 1;
-    const proofSnapshotPkg = {
-      ...row,
-      status: isCustomerVisibleStatus((row as { status?: string | null }).status)
-        ? (row as { status?: string | null }).status
-        : 'active',
-      package_revision: proofPackageRevision,
-    };
-    const proofPublicSnapshotHash = buildPublicPackageSnapshot(proofSnapshotPkg).snapshotHash;
+    const proofCandidate = buildProofBoundPublicPackageSnapshot(row);
+    const proofPackageRevision = proofCandidate.packageRevision;
+    const proofPublicSnapshotHash = proofCandidate.snapshotHash;
     const proofAppBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
 
     return {

@@ -52,6 +52,7 @@ function formatMoney(amount: unknown, currency: unknown): string {
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return `${amount ?? ''}${currencyText}`.trim();
   if (currencyText === '원' && amount >= 10000 && amount % 10000 === 0) return `${amount / 10000}만 원`;
   if (currencyText === 'USD' || currencyText === '$') return `$${amount.toLocaleString('en-US')}`;
+  if (currencyText === 'JPY' || currencyText === '엔') return `${amount.toLocaleString('ko-KR')}엔`;
   return `${amount.toLocaleString('ko-KR')}${currencyText}`;
 }
 
@@ -181,6 +182,13 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     required: [],
     render: () => '쇼핑 방문이 없는 상품입니다.',
   },
+  'shopping.optional_self_directed': {
+    category: 'shopping_visit',
+    risk: 'low',
+    visibility: 'customer_visible',
+    required: [],
+    render: () => '자유시간 중 개별 쇼핑은 선택 사항이며, 필수 쇼핑 일정이 아닙니다.',
+  },
   'shopping.visits_count': {
     category: 'shopping_visit',
     risk: 'medium',
@@ -290,11 +298,18 @@ function parseKrw(textValue: string): { amount: number | null; currency: string 
   if (koreanMan) return { amount: Math.round(Number(koreanMan[1]) * 10000), currency: '원' };
   const koreanWon = textValue.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/);
   if (koreanWon) return { amount: Number(koreanWon[1].replace(/,/g, '')), currency: '원' };
-  const man = textValue.match(/(\d+(?:\.\d+)?)\s*만\s*원?/);
+  const man = textValue.match(/(\d+(?:\.\d+)?)\s*만(?!\s*(?:엔|달러|위안|동))\s*원?/);
   if (man) return { amount: Math.round(Number(man[1]) * 10000), currency: '원' };
   const won = textValue.match(/(\d{2,3}(?:,\d{3})+|\d{5,})\s*원/);
   if (won) return { amount: Number(won[1].replace(/,/g, '')), currency: '원' };
   return { amount: null, currency: null };
+}
+
+function parseJpy(textValue: string): number | null {
+  const tenThousandYen = textValue.match(/(\d+(?:\.\d+)?)\s*만\s*엔/);
+  if (tenThousandYen) return Math.round(Number(tenThousandYen[1]) * 10000);
+  const yen = textValue.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*(?:엔|JPY)/i);
+  return yen ? Number(yen[1].replace(/,/g, '')) : null;
 }
 
 function parseUsd(textValue: string): number | null {
@@ -387,9 +402,10 @@ export function detectStandardNoticeFromLine(
 
   if (/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) {
     const usdAmount = parseUsd(source);
-    const krwAmount = usdAmount == null ? parseKrw(source) : { amount: null, currency: null };
-    const amount = usdAmount ?? krwAmount.amount;
-    const currency = usdAmount ? 'USD' : krwAmount.currency;
+    const jpyAmount = usdAmount == null ? parseJpy(source) : null;
+    const krwAmount = usdAmount == null && jpyAmount == null ? parseKrw(source) : { amount: null, currency: null };
+    const amount = usdAmount ?? jpyAmount ?? krwAmount.amount;
+    const currency = usdAmount != null ? 'USD' : jpyAmount != null ? 'JPY' : krwAmount.currency;
     const explicitlyIncluded = /포함|특전|노팁|노\s*팁|NO\s*TIP/i.test(source);
     const includedByNoAmountCostContext = amount == null
       && /경비/.test(source)

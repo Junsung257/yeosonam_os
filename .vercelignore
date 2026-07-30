@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next-*/
 out/
 build/
 coverage/
@@ -39,6 +40,8 @@ tmp_*
 .tmp-*
 scratch/
 test-results/
+
+data/product-registration/golden-paste-e2e/
 
 public/~partytown/
 public/sw.js

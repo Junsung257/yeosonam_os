@@ -72,7 +72,7 @@ function EmptyReviewsState() {
           ))}
         </div>
         <p className="mb-1 text-[14px] font-semibold text-slate-700">첫 후기를 기다리고 있어요</p>
-        <p className="text-[12px] leading-relaxed text-slate-400">
+        <p className="text-[12px] leading-relaxed text-slate-600">
           다녀오신 분들의 후기가 등록되면 이곳에 표시됩니다.
         </p>
       </div>

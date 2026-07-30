@@ -36,31 +36,37 @@ export default function JarvisQuickAsk({
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const handleAsk = async () => {
-    const text = input.trim()
+  const handleAsk = async (suggestedText?: string) => {
+    const text = (suggestedText ?? input).trim()
     if (!text) return
+
+    if (suggestedText) setInput(suggestedText)
 
     setLoading(true)
     setError(null)
     setResult(null)
 
     try {
-      const res = await fetch('/api/jarvis/chat', {
+      const res = await fetch('/api/jarvis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          agentType: contentType,
+          context: {
+            source: 'admin_quick_ask',
+            requestedAgent: contentType ?? null,
+          },
         }),
       })
-      const data = await res.json()
-      if (data.error) {
-        setError(data.error)
-      } else {
-        setResult(data.response || '처리 완료')
-      }
-    } catch {
-      setError('통신 오류가 발생했습니다.')
+      const data = await res.json().catch(() => null) as {
+        response?: string
+        error?: string
+      } | null
+      if (!res.ok) throw new Error(data?.error || '자비스 응답을 받지 못했습니다.')
+      if (!data?.response?.trim()) throw new Error('자비스 응답이 비어 있습니다.')
+      setResult(data.response)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '통신 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }
@@ -137,7 +143,7 @@ function QuickAskBody({
 }: {
   input: string; setInput: (v: string) => void
   loading: boolean; result: string | null; error: string | null
-  suggestions: string[]; onAsk: () => void; inputRef: React.RefObject<HTMLTextAreaElement | null>
+  suggestions: string[]; onAsk: (message?: string) => void; inputRef: React.RefObject<HTMLTextAreaElement | null>
   showSuggestions?: boolean
 }) {
   return (
@@ -160,7 +166,7 @@ function QuickAskBody({
           {suggestions.map((s) => (
             <button type="button"
               key={s}
-              onClick={() => { setInput(s); onAsk() }}
+              onClick={() => onAsk(s)}
               className="text-[11px] px-2 py-1 rounded-full border border-border text-admin-muted hover:text-brand hover:border-brand/30 transition-colors bg-admin-surface"
             >
               {s}
@@ -186,7 +192,7 @@ function QuickAskBody({
           rows={1}
         />
         <button type="button"
-          onClick={onAsk}
+          onClick={() => onAsk()}
           disabled={loading || !input.trim()}
           className="w-7 h-7 flex items-center justify-center rounded-md bg-brand text-white hover:bg-brand-dark disabled:opacity-40 transition-colors shrink-0"
         >

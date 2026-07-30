@@ -187,7 +187,7 @@ export default function ReviewsAdminPage() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i} className="border-b border-admin-border">
                   {[70, 80, 200, 50, 130].map((w, j) => (
-                    <td key={j} className="px-4 py-3">
+                    <td key={j} className="px-4 py-3" aria-label={`${['작성일', '별점', '내용', '감정 점수', '카테고리 점수'][j]} 불러오는 중`}>
                       <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
                     </td>
                   ))}

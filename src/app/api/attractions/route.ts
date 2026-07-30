@@ -6,6 +6,15 @@ import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-c
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { canCreateAttractionRecord } from '@/lib/attraction-policy';
+import { apiResponse } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import {
+  mergeOfficialVerificationSources,
+  mergeOwnerReviewedAliases,
+  normalizeIdentityVerificationMethod,
+  normalizeOfficialSourceUrl,
+  normalizeOfficialSourceUrls,
+} from '@/lib/attraction-owner-review-import';
 
 // GET /api/attractions — 전체 관광지 목록
 export async function GET(request: NextRequest) {
@@ -108,6 +117,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/attractions — 신규 등록
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {
@@ -158,6 +169,10 @@ export async function POST(request: NextRequest) {
         photos: body.photos || [],
         is_manual_override: isManual,
         last_owner_edited_at: isManual ? new Date().toISOString() : null,
+        customer_publishable: false,
+        auto_created: false,
+        verification_status: 'manual',
+        review_required_reason: 'owner_identity_reviewed_customer_media_pending',
       })
       .select()
       .single();
@@ -210,6 +225,8 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/attractions — 수정
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {
@@ -452,20 +469,56 @@ function sanitizeEmoji(raw: unknown): string | null {
 }
 
 export async function PUT(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {
-    const { items } = await request.json();
-    if (!Array.isArray(items)) return NextResponse.json({ error: 'items 배열 필요' }, { status: 400 });
+    const body = await request.json();
+    const { items } = body;
+    if (!Array.isArray(items)) return apiResponse({ error: 'items 배열 필요' }, { status: 400 });
+    if (body.ownerReviewed !== true || body.reviewSource !== 'admin_csv_owner_confirmed') {
+      return apiResponse({
+        error: '사장님 검수 확인이 없는 CSV는 반영할 수 없습니다.',
+        code: 'ATTRACTION_CSV_OWNER_REVIEW_REQUIRED',
+      }, { status: 403 });
+    }
+    if (items.some((item: Record<string, unknown>) => item?.owner_reviewed !== true)) {
+      return apiResponse({
+        error: 'owner_reviewed=yes가 아닌 행이 포함되어 전체 반영을 중단했습니다.',
+        code: 'ATTRACTION_CSV_HAS_UNREVIEWED_ROWS',
+      }, { status: 400 });
+    }
 
     // 유효 행만 필터 + 정규화
     const sanitizedCount = { prefix: 0 };
-    const normalized = items
+    const invalidRows: Array<{ name: string; error: string }> = [];
+    const normalizedBase = items
       .filter((i: Record<string, unknown>) => typeof i.name === 'string' && (i.name as string).trim())
       .map((i: Record<string, unknown>) => {
         const originalName = (i.name as string).trim();
         const cleanedName = sanitizeName(originalName);
         if (cleanedName && cleanedName !== originalName) sanitizedCount.prefix++;
+        const rawOfficialSourceUrl = String(i.official_source_url ?? '').trim();
+        const officialSourceUrl = normalizeOfficialSourceUrl(rawOfficialSourceUrl);
+        if (rawOfficialSourceUrl && !officialSourceUrl) {
+          invalidRows.push({ name: cleanedName || originalName, error: '공식 근거 URL이 올바르지 않습니다.' });
+        }
+        const supportingSourceUrls = normalizeOfficialSourceUrls(i.supporting_source_urls);
+        if (supportingSourceUrls.invalidValues.length > 0) {
+          invalidRows.push({
+            name: cleanedName || originalName,
+            error: `보조 근거 URL이 올바르지 않습니다: ${supportingSourceUrls.invalidValues[0]}`,
+          });
+        }
+        const rawVerificationMethod = String(i.verification_method ?? '').trim();
+        const verificationMethod = normalizeIdentityVerificationMethod(rawVerificationMethod);
+        if (rawVerificationMethod && !verificationMethod) {
+          invalidRows.push({
+            name: cleanedName || originalName,
+            error: `지원하지 않는 검증 방식입니다: ${rawVerificationMethod}`,
+          });
+        }
         return {
           name: cleanedName,
           short_desc: (i.short_desc as string)?.toString().trim() || null,
@@ -474,16 +527,115 @@ export async function PUT(request: NextRequest) {
           region: (i.region as string)?.toString().trim() || null,
           badge_type: normalizeBadgeType(i.badge_type),
           emoji: sanitizeEmoji(i.emoji),
-          ...(i.aliases ? { aliases: i.aliases } : {}),
+          aliases: mergeOwnerReviewedAliases([], i.aliases),
+          official_source_url: officialSourceUrl,
+          supporting_source_urls: supportingSourceUrls.urls
+            .filter(url => url !== officialSourceUrl),
+          source_phrases: mergeOwnerReviewedAliases([], i.source_phrases),
+          verification_method: verificationMethod,
+          evidence_summary: String(i.evidence_summary ?? '').trim() || null,
           ...(i.photos ? { photos: i.photos } : {}),
         };
       })
       .filter((i) => i.name); // sanitize 후 빈 이름은 제외
+    if (invalidRows.length > 0) {
+      return apiResponse({
+        error: '검수 CSV에 잘못된 공식 근거 URL이 있어 전체 반영을 중단했습니다.',
+        code: 'ATTRACTION_CSV_INVALID_OFFICIAL_SOURCE',
+        errors: invalidRows.slice(0, 20),
+      }, { status: 400 });
+    }
 
     // 배치 내 name 중복 제거 (ON CONFLICT DO UPDATE 2회 동일 row 에러 방지)
-    const byName = new Map<string, typeof normalized[number]>();
-    for (const it of normalized) byName.set(it.name, it);
-    const cleaned = [...byName.values()];
+    const byName = new Map<string, typeof normalizedBase[number]>();
+    for (const it of normalizedBase) byName.set(it.name, it);
+    const deduplicated = [...byName.values()];
+    const existingRows: Array<Record<string, unknown>> = [];
+    for (let offset = 0; offset < deduplicated.length; offset += 100) {
+      const names = deduplicated.slice(offset, offset + 100).map(item => item.name);
+      const { data, error } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name, aliases, customer_publishable, verification_status, auto_created, source_ids, verification_sources, review_required_reason')
+        .in('name', names);
+      if (error) throw error;
+      existingRows.push(...((data ?? []) as Array<Record<string, unknown>>));
+    }
+    const existingByName = new Map(
+      existingRows.map(row => [String(row.name ?? ''), row]),
+    );
+    const incompleteNewMasters = deduplicated
+      .filter(item => !existingByName.has(item.name))
+      .flatMap(item => {
+        const missing = [
+          !item.short_desc ? 'short_desc' : null,
+          !item.long_desc ? 'long_desc' : null,
+          !item.country ? 'country' : null,
+          !item.region ? 'region' : null,
+          !item.official_source_url ? 'official_source_url' : null,
+          item.source_phrases.length === 0 ? 'source_phrases' : null,
+          !item.verification_method ? 'verification_method' : null,
+          !item.evidence_summary ? 'evidence_summary' : null,
+        ].filter((field): field is string => Boolean(field));
+        return missing.length > 0 ? [{ name: item.name, missing }] : [];
+      });
+    if (incompleteNewMasters.length > 0) {
+      return apiResponse({
+        error: '신규 관광지는 설명·국가·지역·공식 URL·원문 문구·검증 방식·근거 요약이 모두 있어야 하며, 누락 시 전체 반영을 중단합니다.',
+        code: 'ATTRACTION_CSV_NEW_MASTER_EVIDENCE_REQUIRED',
+        errors: incompleteNewMasters.slice(0, 20),
+      }, { status: 400 });
+    }
+    const reviewedAt = new Date().toISOString();
+    const cleaned = deduplicated.map(item => {
+      const existing = existingByName.get(item.name);
+      const existingSourceIds = existing?.source_ids
+        && typeof existing.source_ids === 'object'
+        && !Array.isArray(existing.source_ids)
+        ? existing.source_ids as Record<string, unknown>
+        : {};
+      const customerPublishable = existing?.customer_publishable === true;
+      return {
+        name: item.name,
+        short_desc: item.short_desc,
+        long_desc: item.long_desc,
+        country: item.country,
+        region: item.region,
+        badge_type: item.badge_type,
+        emoji: item.emoji,
+        aliases: mergeOwnerReviewedAliases(existing?.aliases, item.aliases)
+          .filter(alias => alias.toLocaleLowerCase('ko-KR') !== item.name.toLocaleLowerCase('ko-KR')),
+        ...(item.photos ? { photos: item.photos } : {}),
+        customer_publishable: existing ? customerPublishable : false,
+        verification_status: String(existing?.verification_status ?? 'manual'),
+        auto_created: existing?.auto_created === true,
+        is_manual_override: true,
+        last_owner_edited_at: reviewedAt,
+        source_ids: {
+          ...existingSourceIds,
+          owner_csv_review: {
+            reviewed_at: reviewedAt,
+            review_source: 'admin_csv_owner_confirmed',
+            source_phrases: item.source_phrases,
+            verification_method: item.verification_method,
+            evidence_summary: item.evidence_summary,
+            official_source_url: item.official_source_url,
+            supporting_source_urls: item.supporting_source_urls,
+          },
+        },
+        verification_sources: mergeOfficialVerificationSources(
+          existing?.verification_sources,
+          item.official_source_url,
+          item.supporting_source_urls,
+          {
+            verificationMethod: item.verification_method,
+            evidenceSummary: item.evidence_summary,
+          },
+        ),
+        review_required_reason: customerPublishable
+          ? (existing?.review_required_reason ?? null)
+          : (existing?.review_required_reason ?? 'owner_identity_reviewed_customer_media_pending'),
+      };
+    });
 
     // 500건씩 배치 upsert + 실패 시 단건 fallback (어느 row 가 문제인지 식별)
     let upserted = 0;
@@ -509,17 +661,53 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    let sweep = null;
+    let reenrich = null;
+    const postProcessErrors: string[] = [];
+    if (upserted > 0) {
+      const { data: savedRows, error: savedRowsError } = await supabaseAdmin
+        .from('attractions')
+        .select('id, name')
+        .in('name', cleaned.map(item => item.name));
+      if (savedRowsError) {
+        postProcessErrors.push(`저장 후 관광지 조회 실패: ${savedRowsError.message}`);
+      } else {
+        const attractionIds = (savedRows ?? [])
+          .map(row => String((row as { id?: unknown }).id ?? ''))
+          .filter(Boolean);
+        if (attractionIds.length > 0) {
+          try {
+            sweep = await resweepUnmatchedActivities(attractionIds);
+          } catch (error) {
+            postProcessErrors.push(`미매칭 재검수 실패: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          try {
+            reenrich = await reEnrichAffectedPackages(attractionIds, { maxPackages: 50 });
+          } catch (error) {
+            postProcessErrors.push(`상품 재연결 실패: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+
+    return apiResponse({
       success: rowErrors.length === 0,
       upserted,
       total: cleaned.length,
-      skippedDuplicates: normalized.length - cleaned.length,
+      skippedDuplicates: normalizedBase.length - cleaned.length,
+      newInternalMasters: cleaned.filter(item => !existingByName.has(item.name)).length,
+      preservedCustomerPublishable: cleaned.filter(item =>
+        existingByName.get(item.name)?.customer_publishable === true
+      ).length,
       errors: rowErrors.slice(0, 20), // 상위 20건만 (알림창 길이 방어)
       totalErrors: rowErrors.length,
+      sweep,
+      reenrich,
+      postProcessErrors,
     });
   } catch (error) {
     console.error('[Attractions API] 일괄 업로드 오류:', sanitizeDbError(error));
-    return NextResponse.json({ error: sanitizeDbError(error, '업로드 실패') }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error, '업로드 실패') }, { status: 500 });
   }
 }
 
@@ -527,6 +715,8 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/attractions?id=&hard=1  → 하드 삭제 (특수 상황만, audit 트레일 손실)
 // PUT 별칭으로 ?id=&restore=1 로 복구도 가능 (PATCH 경로 활용)
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {

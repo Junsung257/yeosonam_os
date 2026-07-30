@@ -1,4 +1,8 @@
 import type { VerifyCheck, VerifyResult } from '@/lib/upload-verify';
+import {
+  buildRegistrationRemediationPlan,
+  type RegistrationRemediationPlan,
+} from '@/lib/product-registration/operator-remediation';
 
 type UploadVerifyUiStatus = VerifyResult['status'] | 'error';
 
@@ -10,6 +14,7 @@ export type UploadVerifyPackageResult = {
   passCount: number;
   warnCount: number;
   failCount: number;
+  remediation: RegistrationRemediationPlan;
   error?: string;
 };
 
@@ -20,6 +25,7 @@ export type UploadVerifyAggregateResult = {
   passCount: number;
   warnCount: number;
   failCount: number;
+  remediation: RegistrationRemediationPlan;
   packageResults: UploadVerifyPackageResult[];
 };
 
@@ -35,6 +41,7 @@ export function toUploadVerifyPackageResult(
     passCount: result.passCount,
     warnCount: result.warnCount,
     failCount: result.failCount,
+    remediation: buildRegistrationRemediationPlan(result.checks),
   };
 }
 
@@ -42,21 +49,23 @@ export function uploadVerifyErrorResult(
   packageId: string,
   error: string,
 ): UploadVerifyPackageResult {
+  const checks: VerifyCheck[] = [
+    {
+      id: 'upload_verify_error',
+      label: '검증 오류',
+      status: 'fail',
+      detail: error,
+    },
+  ];
   return {
     packageId,
     status: 'error',
-    checks: [
-      {
-        id: 'upload_verify_error',
-        label: '검증 오류',
-        status: 'fail',
-        detail: error,
-      },
-    ],
+    checks,
     fixable: [],
     passCount: 0,
     warnCount: 0,
     failCount: 1,
+    remediation: buildRegistrationRemediationPlan(checks),
     error,
   };
 }
@@ -74,6 +83,7 @@ export function aggregateUploadVerifyResults(
   const passCount = packageResults.reduce((sum, result) => sum + result.passCount, 0);
   const warnCount = packageResults.reduce((sum, result) => sum + result.warnCount, 0);
   const failCount = packageResults.reduce((sum, result) => sum + result.failCount, 0);
+  const remediation = buildRegistrationRemediationPlan(checks);
 
   const status: UploadVerifyUiStatus =
     packageResults.some(result => result.status === 'blocked')
@@ -93,6 +103,7 @@ export function aggregateUploadVerifyResults(
     passCount,
     warnCount,
     failCount,
+    remediation,
     packageResults,
   };
 }

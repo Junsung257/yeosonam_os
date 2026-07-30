@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackContentView, trackEngagement } from '@/lib/tracker';
+import { useAnalyticsConsent } from '@/lib/consent';
 
 const LAST_CONTENT_KEY = 'ys_last_content_creative_id';
 const LAST_CONTENT_TS_KEY = 'ys_last_content_creative_ts';
@@ -74,8 +75,9 @@ function clampScroll(pct: number) {
 }
 
 export default function BlogTracker({ contentCreativeId }: { contentCreativeId: string }) {
+  const analyticsConsent = useAnalyticsConsent();
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !analyticsConsent) return;
 
     trackContentView(contentCreativeId);
 
@@ -276,7 +278,7 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
       observer.disconnect();
       sendSummary();
     };
-  }, [contentCreativeId]);
+  }, [analyticsConsent, contentCreativeId]);
 
   return null;
 }

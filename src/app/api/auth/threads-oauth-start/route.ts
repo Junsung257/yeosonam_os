@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
-import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
+import { createOAuthState, isOAuthStateConfigured } from '@/lib/oauth-state';
 
 /**
  * Start Threads OAuth.
@@ -11,35 +11,37 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(_request: NextRequest) {
   const appId = getSecret('THREADS_APP_ID') || getSecret('META_APP_ID');
-  const siteUrl =
+  const siteUrl = (
     process.env.NEXT_PUBLIC_SITE_URL ||
     process.env.NEXT_PUBLIC_BASE_URL ||
-    'https://www.yeosonam.com';
+    'https://www.yeosonam.com'
+  ).replace(/\/+$/, '');
 
-  if (!appId || !siteUrl) {
+  if (!appId || !siteUrl || !isOAuthStateConfigured()) {
     return apiResponse(
-      { error: 'THREADS_APP_ID or NEXT_PUBLIC_SITE_URL is not configured' },
-      { status: 500 },
+      { error: 'Threads OAuth is not configured' },
+      { status: 503 },
     );
   }
 
-  const payload = Buffer.from(
-    JSON.stringify({ tenant_id: 'threads', platform: 'threads', ts: Date.now() }),
-  ).toString('base64url');
-  const sig = createHmac('sha256', getSecret('OAUTH_STATE_SECRET') ?? 'dev')
-    .update(payload)
-    .digest('hex')
-    .slice(0, 16);
-  const state = `${payload}.${sig}`;
+  const state = createOAuthState({ tenantId: 'threads', provider: 'threads' });
 
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: `${siteUrl}/api/auth/meta-callback`,
-    scope: 'threads_basic,threads_manage_posts,threads_read_replies',
+    scope: [
+      'threads_basic',
+      'threads_content_publish',
+      'threads_read_replies',
+      'threads_manage_replies',
+      'threads_manage_mentions',
+      'threads_keyword_search',
+      'threads_manage_insights',
+    ].join(','),
     state,
     response_type: 'code',
   });
 
-  const url = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
+  const url = `https://threads.net/oauth/authorize?${params.toString()}`;
   return apiResponse({ url });
 }

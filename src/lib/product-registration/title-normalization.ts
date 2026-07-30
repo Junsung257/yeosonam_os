@@ -1,4 +1,4 @@
-const NON_PRODUCT_TITLE_RE = /(현금영수증|취소\s*규정|취소수수료|발급\s*안내|주의사항|포함사항|불포함사항)/;
+const NON_PRODUCT_TITLE_RE = /^(?:한정\s*상품|홍보\s*특가|특가\s*상품|행사\s*상품)$|(?:현금영수증|취소\s*규정|취소수수료|발급\s*안내|주의사항|포함사항|불포함사항)/;
 const GARBLED_PLACEHOLDER_TITLE_RE = /^\?{2,}(?:\s+\?{2,})*$/;
 const SOURCE_LABEL_MARKER_RE = /(?:^[[({]\d{3,4}[\])}]|_\d{4,8}$|[-_]\d{4}\s*(?:hwp|txt)?$|\d{1,2}\s*[~-]\s*\d{1,2}\s*\uC6D4|\uBC1C\uAD8C|\.hwp$|\.txt$)/i;
 const KOREAN_DURATION_RE = /[1-9]\d*\s*\uBC15\s*[1-9]\d*\s*\uC77C/u;
@@ -26,7 +26,11 @@ export function shouldReplaceUploadTitle(currentTitle?: string | null, determini
 }
 
 export function normalizeUploadTitle(currentTitle?: string | null, deterministicTitle?: string | null): string | null {
-  return shouldReplaceUploadTitle(currentTitle, deterministicTitle)
+  const selected = shouldReplaceUploadTitle(currentTitle, deterministicTitle)
     ? deterministicTitle?.trim() ?? null
     : currentTitle ?? null;
+  return selected
+    ?.replace(/^\s*(?:상품\s*명(?:칭)?|행사명|product(?:\s*name)?)\s*[:：]?\s*/i, '')
+    .trim()
+    || null;
 }

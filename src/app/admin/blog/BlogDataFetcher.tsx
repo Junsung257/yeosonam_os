@@ -211,7 +211,7 @@ export default async function BlogDataFetcher({
               <th style={{ width: 64 }}>상태</th>
               <th style={{ width: 150 }}>검색 상태</th>
               <th style={{ width: 96 }}>날짜</th>
-              <th style={{ width: 64 }}></th>
+              <th style={{ width: 64 }}><span className="sr-only">작업</span></th>
             </tr>
           </thead>
           <tbody>
@@ -254,7 +254,7 @@ export default async function BlogDataFetcher({
                     {post.status === 'published' ? '발행' : post.status === 'draft' ? '초안' : post.status}
                   </span>
                 </td>
-                <td>
+                <td aria-label={`검색 상태: ${searchStatus?.googleIndexLabel || '구글 대기'}, ${searchStatus?.naverIndexLabel || '네이버 대기'}`}>
                   <div className="flex flex-col gap-1">
                     <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.googleIndexClass || 'bg-admin-surface-2 text-admin-muted'}`}>
                       {searchStatus?.googleIndexLabel || '구글 대기'}

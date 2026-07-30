@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   updateApiOrder: vi.fn(),
   updateTransaction: vi.fn(),
   upsertCart: vi.fn(),
+  recordServerAnalyticsEvent: vi.fn(),
 }));
 
 vi.mock('@/lib/mock-apis', () => ({
@@ -27,6 +28,10 @@ vi.mock('@/lib/supabase', () => ({
   updateApiOrder: mocks.updateApiOrder,
   updateTransaction: mocks.updateTransaction,
   upsertCart: mocks.upsertCart,
+}));
+
+vi.mock('@/lib/analytics/server-events', () => ({
+  recordServerAnalyticsEvent: mocks.recordServerAnalyticsEvent,
 }));
 
 function request(body: unknown) {
@@ -118,6 +123,7 @@ describe('POST /api/checkout/complete', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.recordServerAnalyticsEvent.mockResolvedValue({ id: 'event-1', idempotent: false });
     mocks.bookProduct.mockResolvedValue({ external_ref: 'provider-booking-1' });
     mocks.updateApiOrder.mockResolvedValue(undefined);
     mocks.updateTransaction.mockResolvedValue(undefined);

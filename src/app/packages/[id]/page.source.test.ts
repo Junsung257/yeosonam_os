@@ -14,12 +14,15 @@ describe('package customer detail page publication contract', () => {
   it('checks the source package publication state before rendering a public snapshot', () => {
     const source = pageSourceWithoutComments();
     const snapshotIndex = source.indexOf('const publicSnapshot = allowInternalProof');
-    const pkgIndex = source.indexOf('const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package', snapshotIndex);
+    const proofCandidateIndex = source.indexOf('const proofCandidate = allowInternalProof', snapshotIndex - 300);
+    const pkgIndex = source.indexOf('const pkg = (allowInternalProof ? proofCandidate?.package : publicSnapshot?.package)', snapshotIndex);
     const stateIndex = source.indexOf('const publicationState = (rawPkg as', pkgIndex);
     const nonPublicBlockIndex = source.indexOf('!isPublicPublicationState(publicationState)', stateIndex);
     const renderStartIndex = source.indexOf('let matchQuery = sb.from', nonPublicBlockIndex);
 
     expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+    expect(proofCandidateIndex).toBeGreaterThanOrEqual(0);
+    expect(proofCandidateIndex).toBeLessThan(pkgIndex);
     expect(pkgIndex).toBeGreaterThan(snapshotIndex);
     expect(stateIndex).toBeGreaterThan(pkgIndex);
     expect(nonPublicBlockIndex).toBeGreaterThan(stateIndex);
@@ -27,6 +30,7 @@ describe('package customer detail page publication contract', () => {
     expect(source.slice(nonPublicBlockIndex, renderStartIndex)).toContain('notFound()');
     expect(source.slice(stateIndex, renderStartIndex)).toContain('!publicSnapshot');
     expect(source.slice(stateIndex, renderStartIndex)).not.toContain('publicationState &&');
+    expect(source.slice(proofCandidateIndex, stateIndex)).not.toContain('allowInternalProof ? rawPkg');
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {

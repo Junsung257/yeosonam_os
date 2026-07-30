@@ -1,8 +1,18 @@
 import type { CustomerMobileProofResult } from '@/lib/customer-mobile-proof';
 import { customerCopyQualityIssues } from '@/lib/customer-copy-quality';
 import { isSafeImageSrc } from '@/lib/image-url';
+import {
+  normalizeUploadDestinationDisplayLabel,
+  resolveUploadCode,
+  UPLOAD_DEST_CODE_MAP,
+} from '@/lib/product-registration/destination-resolution';
+import { evaluateOptionalTourSourceEvidence } from '@/lib/product-registration/source-evidence-contract';
 import type { PublishGateResult as LegacyPublishGateResult } from '@/lib/product-publish-gate';
-import { hasRiskyCustomerCopy, isOptionalTourFragment } from './public-snapshot';
+import {
+  evaluateShoppingEvidence,
+  hasRiskyCustomerCopy,
+  isOptionalTourFragment,
+} from './public-snapshot';
 import type { PublicationState, PublishFinding } from './types';
 
 type AnyRecord = Record<string, unknown>;
@@ -55,6 +65,7 @@ const BLOCKING_CUSTOMER_COPY_CODES = new Set([
   'internal_source_copy',
   'customer_forbidden_internal_terms',
 ]);
+const UPLOAD_DEST_CODES = new Set(Object.values(UPLOAD_DEST_CODE_MAP));
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
@@ -244,6 +255,30 @@ function findBlockingCustomerCopy(input: PublicSnapshotGateInput): { code: strin
   return null;
 }
 
+function findDestinationDisplayPollution(
+  input: PublicSnapshotGateInput,
+): { fieldPath: string; destination: string; normalized: string } | null {
+  const surfaces = [
+    { fieldPath: 'destination', value: input.pkg.destination },
+    { fieldPath: 'source.destination', value: input.sourcePkg?.destination },
+  ];
+
+  for (const surface of surfaces) {
+    const destination = compactText(surface.value);
+    if (!destination) continue;
+    const explicitCode = compactText(input.pkg.destination_code ?? input.sourcePkg?.destination_code);
+    const destinationCode = UPLOAD_DEST_CODES.has(explicitCode)
+      ? explicitCode
+      : resolveUploadCode(destination, UPLOAD_DEST_CODE_MAP, 'UNK');
+    if (destinationCode === 'UNK') continue;
+    const normalized = normalizeUploadDestinationDisplayLabel(destination, destinationCode);
+    if (normalized !== destination) {
+      return { fieldPath: surface.fieldPath, destination, normalized };
+    }
+  }
+  return null;
+}
+
 function unsupportedClaimInSurface(surface: CustomerClaimSurface, sourceText: string): string | null {
   const text = surface.text;
   if (!text) return null;
@@ -429,11 +464,22 @@ function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
       case 'audit_query_failed':
         add('감사 쿼리 실패 원인을 먼저 복구하세요. 감사가 실패하면 public snapshot은 fail-closed 상태를 유지합니다.');
         break;
+      case 'optional_tour_source_evidence_missing':
+      case 'optional_tour_source_review_required':
+      case 'raw_source_hash_mismatch':
+        add('원문 해시와 선택관광별 근거(원문 위치·인용·지역)를 다시 검수하고, 검수 완료된 source evidence를 저장한 뒤 publish gate를 재실행하세요.');
+        break;
       case 'stale_audit':
       case 'stale_mobile_proof':
       case 'public_snapshot_hash_mismatch':
       case 'public_snapshot_missing':
         add('public_package_snapshot을 다시 저장하고 현재 package_revision/snapshot_hash 기준으로 /packages와 /lp 모바일 proof를 재생성하세요.');
+        break;
+      case 'destination_display_pollution':
+        add('목적지에는 도시·권역명만 남기고 상품 등급·호텔·골프·관광 코스 문구를 제거한 뒤 public snapshot을 재생성하세요.');
+        break;
+      case 'shopping_evidence_conflict':
+        add('원문 노쇼핑 조건과 일정의 쇼핑 방문이 충돌합니다. 공급사에 쇼핑 횟수와 방문 장소를 확인하고 제목·일정·고객 고지를 같은 근거로 다시 생성하세요.');
         break;
       default:
         add(`${blocker.code} 원인을 source evidence 기준으로 복구한 뒤 public snapshot을 재생성하세요.`);
@@ -461,6 +507,16 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   }
 
   addMobileProofBlockers(input, hard);
+
+  const shoppingEvidence = evaluateShoppingEvidence(sourcePkg);
+  if (shoppingEvidence.conflict) {
+    addBlocker(
+      hard,
+      'shopping_evidence_conflict',
+      `source claims no-shopping but also contains a shopping visit: no-shopping=${shoppingEvidence.noShoppingPaths.join(',')} shopping=${shoppingEvidence.positiveShoppingPaths.join(',')}`,
+      'itinerary_data',
+    );
+  }
 
   if (input.snapshotExists === false) {
     addBlocker(hard, 'public_snapshot_missing', 'approved public package snapshot is missing');
@@ -503,6 +559,34 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   if (hasOptionalTourPollution(sourcePkg)) {
     addBlocker(hard, 'optional_tour_display_pollution', 'optional_tours contains no-option, price-table, inclusion, or header fragments', 'optional_tours');
     addBlocker(hard, 'masked_data_pollution', 'renderer may hide optional_tours pollution, but source DB still contains polluted customer data', 'optional_tours');
+  }
+
+  const destinationPollution = findDestinationDisplayPollution(input);
+  if (destinationPollution) {
+    addBlocker(
+      hard,
+      'destination_display_pollution',
+      `customer destination must be "${destinationPollution.normalized}", not product copy "${destinationPollution.destination}"`,
+      destinationPollution.fieldPath,
+    );
+  }
+
+  const optionalTourEvidence = evaluateOptionalTourSourceEvidence(sourcePkg as unknown as Parameters<typeof evaluateOptionalTourSourceEvidence>[0]);
+  for (const blocker of optionalTourEvidence.blockers) {
+    addBlocker(
+      hard,
+      blocker.startsWith('optional_tour_source_hash_mismatch') ? 'raw_source_hash_mismatch' : 'optional_tour_source_evidence_missing',
+      `optional tour source evidence contract failed: ${blocker}`,
+      'optional_tours',
+    );
+  }
+  for (const review of optionalTourEvidence.review_required) {
+    addBlocker(
+      hard,
+      'optional_tour_source_review_required',
+      `optional tour source evidence requires human review before publication: ${review}`,
+      'optional_tours',
+    );
   }
 
   const maskedCopyPollution = findMaskedCustomerCopyPollution(

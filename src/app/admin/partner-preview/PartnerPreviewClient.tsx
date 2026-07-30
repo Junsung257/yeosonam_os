@@ -96,8 +96,9 @@ export default function PartnerPreviewClient() {
       </div>
 
       <div className="rounded-admin-md border border-admin-border-mid shadow-admin-xs bg-admin-surface p-4 space-y-3">
-        <label className="block text-xs font-semibold text-admin-muted uppercase tracking-wide">추천코드 (슬러그)</label>
+        <label htmlFor="partner-preview-code" className="block text-xs font-semibold text-admin-muted uppercase tracking-wide">추천코드 (슬러그)</label>
         <input
+          id="partner-preview-code"
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -179,7 +180,7 @@ export default function PartnerPreviewClient() {
               className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-800 hover:bg-blue-50"
             >
               <span>파트너 가입 신청 (공개)</span>
-              <span className="text-blue-500 text-xs">↗ /partner-apply</span>
+              <span className="text-blue-700 text-xs">↗ /partner-apply</span>
             </a>
           </li>
           <li>

@@ -71,6 +71,7 @@ async function runAutoPublishLoop(request: NextRequest) {
     threads_published: 0,
     threads_rejected: 0,
     threads_dry_run_logged: 0,
+    threads_live_enabled: false,
     errors,
   };
 
@@ -105,7 +106,19 @@ async function runAutoPublishLoop(request: NextRequest) {
     return { ...summary, message: `anomaly_paused_until=${guard.anomaly_paused_until} → 종료` };
   }
 
-  const threadsResult = await processThreadsCandidates(summary.dry_run);
+  // Threads has its own explicit platform switch. The card-news dry-run flag
+  // must not silently keep a separately enabled Threads account in preview
+  // mode; the global master switch and anomaly pause still apply above.
+  const { data: threadsPlatformConfig, error: threadsConfigError } = await supabaseAdmin
+    .from('social_platform_configs')
+    .select('enabled')
+    .eq('platform', 'threads')
+    .maybeSingle();
+  if (threadsConfigError) {
+    errors.push(`threads config: ${threadsConfigError.message}`);
+  }
+  summary.threads_live_enabled = threadsPlatformConfig?.enabled === true;
+  const threadsResult = await processThreadsCandidates(!summary.threads_live_enabled);
   summary.threads_candidates_evaluated = threadsResult.evaluated;
   summary.threads_approved = threadsResult.approved;
   summary.threads_published = threadsResult.published;
@@ -252,9 +265,10 @@ async function processThreadsCandidates(dryRun: boolean): Promise<{
 
   const { data, error } = await supabaseAdmin
     .from('content_distributions')
-    .select('id, product_id, card_news_id, blog_post_id, platform, payload, scheduled_for, engagement, tenant_id, retry_count, max_retries')
+    .select('id, product_id, card_news_id, blog_post_id, platform, payload, scheduled_for, engagement, tenant_id, retry_count, max_retries, generation_agent')
     .eq('platform', 'threads_post')
     .in('status', ['draft', 'approved'])
+    .or('status.eq.approved,generation_agent.eq.threads-full-autopilot-v1')
     .order('created_at', { ascending: true })
     .limit(MAX_THREADS_PER_RUN);
 
@@ -275,11 +289,20 @@ async function processThreadsCandidates(dryRun: boolean): Promise<{
       });
       if (!gate.approved) {
         result.rejected += 1;
+        const shouldRetryLater =
+          dryRun ||
+          gate.rejected_reason === 'quota_exceeded' ||
+          gate.rejected_reason === 'anomaly_paused';
         await supabaseAdmin
           .from('content_distributions')
           .update({
+            ...(shouldRetryLater ? {} : { status: 'failed' }),
             error_message: `Threads critic gate: ${gate.reason ?? 'rejected'}`,
-            engagement: { ...(row.engagement ?? {}), predicted_er: gate.predicted_er },
+            engagement: {
+              ...(row.engagement ?? {}),
+              predicted_er: gate.predicted_er,
+              ...(dryRun ? { auto_publish_dry_run_rejected_at: new Date().toISOString() } : {}),
+            },
           })
           .eq('id', row.id);
         continue;
@@ -297,9 +320,27 @@ async function processThreadsCandidates(dryRun: boolean): Promise<{
         continue;
       }
 
+      // Claim the row before the external mutation. A concurrent cron/manual
+      // invocation can evaluate the same draft, but only one caller can move
+      // it out of draft/approved. If this process dies after claiming, the
+      // scheduled publisher safely retries it after the short lease.
+      const claimUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const { data: claimed, error: claimError } = await supabaseAdmin
+        .from('content_distributions')
+        .update({ status: 'scheduled', scheduled_for: claimUntil })
+        .eq('id', row.id)
+        .in('status', ['draft', 'approved'])
+        .select('id')
+        .maybeSingle();
+      if (claimError) {
+        result.errors.push(`threads claim ${row.id}: ${claimError.message}`);
+        continue;
+      }
+      if (!claimed?.id) continue;
+
       const publishResult = await publishDistribution({
         ...row,
-        scheduled_for: row.scheduled_for ?? new Date().toISOString(),
+        scheduled_for: claimUntil,
       }, {
         precomputedGate: gate,
       });

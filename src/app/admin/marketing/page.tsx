@@ -14,7 +14,6 @@ import { completionAuditTone, type CompletionAuditView } from '@/lib/ad-os-compl
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { getRoasGrade } from '@/lib/roas-calculator';
 
-const CampaignLinkBuilder = dynamic(() => import('@/components/admin/CampaignLinkBuilder'), { ssr: false });
 const AnalyticsDashboard = dynamic(() => import('@/components/admin/AnalyticsDashboard'), { ssr: false });
 
 const STATUS_LABELS: Record<string, string> = {
@@ -82,7 +81,6 @@ const TAB_BUTTON_BASE = 'min-w-0 rounded-admin-sm px-3 py-2 text-admin-xs font-s
 
 export default function MarketingDashboardPage() {
   const [mainTab, setMainTab] = useState<MainTab>('dashboard');
-  const [builderOpen, setBuilderOpen] = useState(false);
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [optimizing, setOptimizing] = useState(false);
@@ -216,11 +214,6 @@ export default function MarketingDashboardPage() {
               </Link>
             </>
           )}
-          {mainTab === 'links' && (
-            <button type="button" onClick={() => setBuilderOpen(true)} className={PRIMARY_ACTION_CLASS}>
-              + 새 링크 만들기
-            </button>
-          )}
           <Link href="/admin/marketing/command-center" className={ACTION_LINK_CLASS}>
             Command Center
           </Link>
@@ -247,7 +240,7 @@ export default function MarketingDashboardPage() {
         {([
           { key: 'dashboard', label: '통합 대시보드' },
           { key: 'meta', label: 'Meta 광고' },
-          { key: 'links', label: '링크 센터' },
+          { key: 'links', label: '유입 분석' },
         ] as { key: MainTab; label: string }[]).map(tab => (
           <button type="button"
             key={tab.key}
@@ -573,13 +566,10 @@ export default function MarketingDashboardPage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
-          TAB 3: 링크 센터
+          TAB 3: 실제 UTM 유입 분석
          ════════════════════════════════════════════════════════════════════ */}
       {mainTab === 'links' && (
-        <>
-          <AnalyticsDashboard />
-          <CampaignLinkBuilder open={builderOpen} onClose={() => setBuilderOpen(false)} />
-        </>
+        <AnalyticsDashboard />
       )}
     </div>
   );

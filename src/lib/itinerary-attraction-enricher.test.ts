@@ -390,6 +390,80 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(item.attraction_names).toEqual(['빈펄 CC']);
   });
 
+  it('recovers a public canonical attraction after removing an out-of-scope stale id', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 3,
+            schedule: [
+              {
+                activity: '베트남에서 가장 유명한 다딴라 폭포 (레일바이크 탑승)',
+                attraction_ids: ['wrong-nha-trang-id'],
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'wrong-nha-trang-id',
+          name: '호치민 중앙우체국',
+          short_desc: '호치민 중앙우체국',
+          region: '호치민',
+          category: 'sightseeing',
+          is_active: true,
+          customer_publishable: true,
+        },
+        {
+          id: 'datanla',
+          name: '다딴라 폭포',
+          short_desc: '레일바이크로 즐기는 다딴라 폭포',
+          region: '달랏',
+          category: 'sightseeing',
+          is_active: true,
+          customer_publishable: true,
+        },
+      ],
+      '나트랑',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['datanla']);
+    expect(item.attraction_names).toEqual(['다딴라 폭포']);
+    expect(res.unmatchedCandidates).toEqual([]);
+  });
+
+  it('matches a public canonical attraction named in a transfer sentence', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [{
+          day: 2,
+          schedule: [{
+            activity: '지우펀으로 이동하여 지우펀, 옛거리',
+            type: 'normal',
+            entity_kind: 'unknown',
+          }],
+        }],
+      },
+      [{
+        id: 'jiufen',
+        name: '지우펀',
+        short_desc: '홍등이 빛나는 산간 옛거리',
+        region: '타이베이',
+        category: 'cultural',
+        is_active: true,
+        customer_publishable: true,
+      }],
+      '타이페이/예스지',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['jiufen']);
+    expect(item.attraction_names).toEqual(['지우펀']);
+    expect(res.unmatchedCandidates).toEqual([]);
+  });
+
   it('skips generic free-time and transit rows from the attraction denominator', () => {
     expect(shouldAttemptAttractionMatch({ activity: '달랏 시내 자유시간', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '공항 이동', type: 'normal' })).toBe(false);
@@ -626,5 +700,146 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(schedule[0].attraction_ids).toEqual(['heaven-lake']);
     expect(schedule[0].attraction_names).toEqual(['\uBC31\uB450\uC0B0 \uCC9C\uC9C0']);
     expect(schedule[1].attraction_ids).toBeUndefined();
+  });
+
+  it('matches a public canonical name when the supplier destination label is noisy', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [{
+          day: 2,
+          schedule: [{
+            activity: '소원을 비는 스펀 마을 천등 소원 날리기',
+          }],
+        }],
+      },
+      [{
+        id: 'shifen',
+        name: '스펀',
+        region: '타이베이',
+        is_active: true,
+        customer_publishable: true,
+      }],
+      '타이페이/예스지',
+    );
+
+    expect(res.itineraryData?.days?.[0]?.schedule?.[0]?.attraction_ids).toEqual(['shifen']);
+    expect(res.unmatchedCandidates).toEqual([]);
+  });
+
+  it('uses a high-confidence descriptive hint for an existing public master', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [{
+          day: 2,
+          schedule: [{
+            activity: '마카오 상징적 건축물로 유명한 성바울 성당',
+          }],
+        }],
+      },
+      [{
+        id: 'st-paul',
+        name: '성바울성당유적',
+        region: '마카오',
+        country: 'MO',
+        is_active: true,
+        customer_publishable: true,
+      }],
+      '마카오',
+    );
+
+    expect(res.itineraryData?.days?.[0]?.schedule?.[0]?.attraction_ids).toEqual(['st-paul']);
+    expect(res.itineraryData?.days?.[0]?.schedule?.[0]?.attraction_names).toEqual(['성바울성당유적']);
+  });
+
+  it('does not use a polluted alias for the noisy-destination fallback', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [{
+          day: 2,
+          schedule: [{
+            activity: '현대식 야시장 라오허제 야시장',
+          }],
+        }],
+      },
+      [{
+        id: 'polluted-market',
+        name: '달랏야시장',
+        aliases: ['라오허제 야시장'],
+        region: null,
+        is_active: true,
+        customer_publishable: true,
+      }],
+      '타이페이/예스지',
+    );
+
+    expect(res.itineraryData?.days?.[0]?.schedule?.[0]?.attraction_ids).toBeUndefined();
+    expect(res.unmatchedCandidates).toHaveLength(1);
+  });
+
+  it('does not choose between duplicate public canonical names without a valid scope', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [{
+          day: 2,
+          schedule: [{
+            activity: '현지의 중앙공원 산책',
+          }],
+        }],
+      },
+      [
+        {
+          id: 'park-a',
+          name: '중앙공원',
+          region: '도시A',
+          is_active: true,
+          customer_publishable: true,
+        },
+        {
+          id: 'park-b',
+          name: '중앙공원',
+          region: '도시B',
+          is_active: true,
+          customer_publishable: true,
+        },
+      ],
+      '알 수 없는 목적지',
+    );
+
+    expect(res.itineraryData?.days?.[0]?.schedule?.[0]?.attraction_ids).toBeUndefined();
+    expect(res.unmatchedCandidates).toHaveLength(1);
+  });
+
+  it.each([
+    { type: 'notice', activity: '괌 도착 72시간 전 전자세관신고서 작성', query: '괌 도착 72시간 전' },
+    { type: undefined, activity: '성인 등 모든 관광객 인당 신청 필수', query: '관광객 인당 신청 필수' },
+    { type: undefined, activity: '야채절임, 디저트', query: '야채절임' },
+    { type: undefined, activity: '파인이스트 괌 골프장 18홀', query: '파인이스트 괌 골프장' },
+    { type: undefined, activity: '로컬마켓 문화체험 - 재래시장 관람', query: '재래시장' },
+    { type: undefined, activity: '프라이빗한 해변을 가진 비치바 or 핫플카페', query: '프라이빗한 해변' },
+  ])('removes non-attraction query metadata from operational schedule text: $activity', item => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [{
+          day: 2,
+          schedule: [{
+            activity: item.activity,
+            attraction_query: item.query,
+            ...(item.type ? { type: item.type } : {}),
+          }],
+        }],
+      },
+      [{
+        id: 'unrelated',
+        name: '테스트 전망대',
+        is_active: true,
+        customer_publishable: true,
+      }],
+      '괌',
+    );
+
+    const scheduleItem = res.itineraryData?.days?.[0]?.schedule?.[0];
+    expect(scheduleItem?.attraction_query).toBeUndefined();
+    expect(scheduleItem?.attraction_ids).toBeUndefined();
+    expect(res.unmatchedCandidates).toEqual([]);
   });
 });

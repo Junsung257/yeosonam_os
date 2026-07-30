@@ -1,5 +1,10 @@
 'use client';
 
+import {
+  hasAnalyticsConsent,
+  hasMarketingConsent,
+} from '@/lib/analytics/consent';
+
 /**
  * 3대 광고 통합 트래커 — Google / Meta / Naver
  *
@@ -15,7 +20,6 @@
 const SESSION_KEY = 'ys_session_id';
 const UTM_KEY = 'ys_utm_data';
 const USER_KEY = 'ys_user_id';
-const CONSENT_KEY = 'tc_consent'; // 마케팅 동의 여부 ('true' | 'false')
 const UTM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30일
 
 // 365일 first-party 쿠키 — 비로그인 재방문 식별
@@ -111,8 +115,12 @@ function detectDevice(): { type: string; os: string; browser: string } {
 // ── 마케팅 동의 여부 ───────────────────────────────────────────
 
 function isConsentAgreed(): boolean {
-  if (typeof window === 'undefined') return false;
-  return localStorage.getItem(CONSENT_KEY) === 'true';
+  return hasMarketingConsent();
+}
+
+function isAnalyticsRuntimeEnabled(): boolean {
+  return typeof window !== 'undefined'
+    && window.__YS_ANALYTICS_RUNTIME__ === true;
 }
 
 // ── 저장된 사용자 ID ───────────────────────────────────────────
@@ -125,6 +133,7 @@ function getSavedUserId(): string | undefined {
 // ── fire-and-forget POST ───────────────────────────────────────
 
 function post(body: Record<string, unknown>): void {
+  if (!isAnalyticsRuntimeEnabled() || !hasAnalyticsConsent()) return;
   fetch('/api/tracking', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -139,7 +148,7 @@ function post(body: Record<string, unknown>): void {
  * /api/tracking으로 traffic 이벤트를 전송한다.
  */
 export function initTracker(): void {
-  if (typeof window === 'undefined') return;
+  if (!isAnalyticsRuntimeEnabled()) return;
 
   const params = new URLSearchParams(window.location.search);
   const consent = isConsentAgreed();
@@ -217,7 +226,7 @@ export function initTracker(): void {
     // 인플루언서/제휴 추천이면 source에 반영
     ...(referrer && !utmData.source ? { source: referrer, medium: 'affiliate' } : {}),
     consent_agreed: consent,
-    landing_page: window.location.pathname + window.location.search,
+    landing_page: window.location.pathname,
   });
 }
 
@@ -226,7 +235,7 @@ export function initTracker(): void {
  * content_creative_id를 포함한 traffic 이벤트를 전송한다.
  */
 export function trackContentView(contentCreativeId: string): void {
-  if (typeof window === 'undefined') return;
+  if (!isAnalyticsRuntimeEnabled()) return;
   const params = new URLSearchParams(window.location.search);
   const utmSource = params.get('utm_source') ?? undefined;
   const utmMedium = params.get('utm_medium') ?? undefined;
@@ -239,7 +248,7 @@ export function trackContentView(contentCreativeId: string): void {
     session_id: getSessionId(),
     user_id: getSavedUserId(),
     consent_agreed: isConsentAgreed(),
-    landing_page: window.location.pathname + window.location.search,
+    landing_page: window.location.pathname,
     content_creative_id: contentCreativeId,
     source: utmSource || (document.referrer ? new URL(document.referrer).hostname : undefined),
     medium: utmMedium || 'content',
@@ -255,7 +264,7 @@ export function trackContentView(contentCreativeId: string): void {
  * localStorage에 user_id를 저장하고, 서버에서 이전 session 로그들에 user_id를 채운다.
  */
 export function mergeUserId(userId: string): void {
-  if (typeof window === 'undefined') return;
+  if (!isAnalyticsRuntimeEnabled()) return;
   localStorage.setItem(USER_KEY, userId);
   post({
     type: 'merge',
@@ -272,6 +281,7 @@ export function trackSearch(params: {
   result_count?: number;
   lead_time_days?: number;
 }): void {
+  if (!isAnalyticsRuntimeEnabled()) return;
   const { uid: visitor_uid } = getVisitorUid();
   post({
     type: 'search',
@@ -319,6 +329,7 @@ export function trackEngagement(params: {
   selected_products?: string[] | null;
   metadata?: Record<string, unknown>;
 }): void {
+  if (!isAnalyticsRuntimeEnabled()) return;
   const { uid: visitor_uid } = getVisitorUid();
   post({
     type: 'engagement',
@@ -332,6 +343,7 @@ export function trackEngagement(params: {
 
 /** 스크롤 깊이 마일스톤 — 이탈 구간·히트맵 보조용 (ad_engagement_logs.event_type) */
 export function trackScrollMilestone(depthPct: 25 | 50 | 75 | 90, pageUrl: string): void {
+  if (!isAnalyticsRuntimeEnabled()) return;
   const event_type = `scroll_${depthPct}` as EngagementEventType;
   trackEngagement({ event_type, page_url: pageUrl });
 }
@@ -346,6 +358,7 @@ export function trackPageExit(params: {
   max_scroll_pct: number;
   interaction_count: number;
 }): void {
+  if (!isAnalyticsRuntimeEnabled()) return;
   if (typeof window === 'undefined') return;
   const { uid: visitor_uid } = getVisitorUid();
   const body = JSON.stringify({
@@ -381,6 +394,7 @@ export function trackConversion(params: {
   final_sales_price: number;
   base_cost: number;
 }): void {
+  if (!isAnalyticsRuntimeEnabled()) return;
   post({
     type: 'conversion',
     session_id: getSessionId(),

@@ -11,7 +11,16 @@ const BottomTabBar = dynamic(() => import('@/components/customer/BottomTabBar'),
 const LayoutTrackers = dynamic(() => import('@/components/LayoutTrackers'), { ssr: false });
 const JarvisFloatingWidget = dynamic(() => import('@/components/JarvisFloatingWidget'), { ssr: false });
 
-export default function LayoutClientWidgets() {
+export default function LayoutClientWidgets({
+  analytics,
+}: {
+  analytics: {
+    containerId: string | null;
+    measurementId: string | null;
+    runtimeEnabled: boolean;
+    expectedHostname: string;
+  };
+}) {
   const pathname = usePathname();
   const isFocusedLanding = pathname?.startsWith('/lp/');
   const isAdminSurface = pathname?.startsWith('/admin') || pathname?.startsWith('/m/admin');
@@ -20,7 +29,7 @@ export default function LayoutClientWidgets() {
 
   return (
     <>
-      <LayoutTrackers />
+      <LayoutTrackers analytics={analytics} />
       {!isFocusedLanding && <JarvisFloatingWidget />}
       {showCustomerWidgets && (
         isPackageDetail ? (

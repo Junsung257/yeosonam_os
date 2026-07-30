@@ -484,7 +484,19 @@ function TaskCard({
           : 'border-admin-border-mid hover:border-admin-border-strong hover:shadow-admin-xs'
       }`}
     >
-      <div className="p-4 flex items-start gap-4" onClick={onOpen}>
+      <div className="p-4 flex items-start gap-4">
+        <div
+          className="flex flex-1 min-w-0 items-start gap-4"
+          role="button"
+          tabIndex={0}
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onOpen();
+            }
+          }}
+        >
         {/* Priority pill */}
         <div className="pt-0.5">
           <span className={`inline-block px-2 py-0.5 text-[10px] rounded-admin-xs font-bold ${PRIORITY_BADGE_CLASS[task.priority]}`}>
@@ -508,9 +520,10 @@ function TaskCard({
             )}
           </div>
         </div>
+        </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 shrink-0">
           <button type="button"
             onClick={onResolve}
             className="h-8 px-3 text-admin-sm rounded-admin-sm bg-success text-white hover:opacity-90 transition-opacity font-medium"

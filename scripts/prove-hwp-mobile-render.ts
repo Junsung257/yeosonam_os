@@ -11,8 +11,7 @@ import { supabaseAdmin } from '../src/lib/supabase';
 import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
 import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
-import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
-import { isCustomerVisibleStatus } from '../src/lib/visibility-status';
+import { buildProofBoundPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
 
 type PackageRow = {
   [key: string]: unknown;
@@ -43,6 +42,15 @@ type CheckResult = {
   name: string;
   ok: boolean;
   detail?: string;
+  evidence?: AccessibilityEvidence[];
+};
+
+type AccessibilityEvidence = {
+  rule: string;
+  impact: string | null;
+  target: string;
+  html: string;
+  failure_summary: string | null;
 };
 
 type SurfaceName = 'packages' | 'lp';
@@ -79,6 +87,12 @@ type PackageProofResult = {
   error?: string;
 };
 
+type OfflineRenderFixtureFile = {
+  fixtures?: Array<{
+    package?: PackageRow;
+  }>;
+};
+
 const args = process.argv.slice(2);
 
 function sha256(value: string): string {
@@ -92,8 +106,10 @@ if (args.includes('--help') || args.includes('-h')) {
 
 Options:
   --package-ids=...   Comma-separated travel_packages ids.
+  --fixture-file=...  Load offline render-proof package fixtures instead of querying travel_packages.
   --since=...         Load packages created at or after this ISO timestamp when package ids are omitted.
   --limit=...         Max packages to load, default 200.
+  --offset=...        Skip the first N offline fixtures; useful for parallel fixture shards.
   --base=...          Customer site base URL, default NEXT_PUBLIC_BASE_URL or http://127.0.0.1:3000.
   --output-dir=...    Report and screenshot directory.
   --apply             Persist mobile_browser_proof into travel_packages.audit_report.
@@ -133,10 +149,17 @@ const baseUrl = (argValue('base') || process.env.NEXT_PUBLIC_BASE_URL || process
 const packageIds = parseList(argValue('package-ids'));
 const since = argValue('since');
 const limit = Math.max(1, Math.min(Number(argValue('limit') ?? '200') || 200, 500));
+const offset = Math.max(0, Number(argValue('offset') ?? '0') || 0);
 const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/hwp-inbox/reports/mobile-browser-proof');
 const screenshotDir = path.join(outputDir, 'screenshots');
+const fixtureFilePath = argValue('fixture-file');
+const fixtureMode = Boolean(fixtureFilePath);
 const viewport = { width: 390, height: 844 };
 const appBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
+
+if (fixtureMode && apply) {
+  throw new Error('--apply and --apply-pass-only are not available with --fixture-file.');
+}
 
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
@@ -150,23 +173,16 @@ function normalizeText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function currentPackageRevision(pkg: PackageRow): number {
-  const revision = Number(pkg.package_revision ?? 1);
-  return Number.isFinite(revision) && revision > 0 ? revision : 1;
-}
-
 function proofPackageRevision(pkg: PackageRow): number {
-  const current = currentPackageRevision(pkg);
-  return isCustomerVisibleStatus(pkg.status) ? current : current + 1;
+  return buildProofBoundPublicPackageSnapshot(pkg).packageRevision;
 }
 
 function proofSnapshotHash(pkg: PackageRow, revision: number): string {
-  const snapshotPkg = {
-    ...pkg,
-    status: isCustomerVisibleStatus(pkg.status) ? pkg.status : 'active',
-    package_revision: revision,
-  };
-  return buildPublicPackageSnapshot(snapshotPkg).snapshotHash;
+  const candidate = buildProofBoundPublicPackageSnapshot(pkg);
+  if (candidate.packageRevision !== revision) {
+    throw new Error(`proof revision mismatch: expected ${revision}, got ${candidate.packageRevision}`);
+  }
+  return candidate.snapshotHash;
 }
 
 function getItineraryDays(value: unknown): Array<Record<string, unknown>> {
@@ -205,6 +221,40 @@ function containsAny(text: string, markers: string[]): boolean {
   return markers.some(marker => marker && text.includes(marker));
 }
 
+function customerSurfaceUrl(surface: SurfaceName, packageId: string): string {
+  const prefix = fixtureMode ? `/render-proof-local/${surface}` : `/${surface}`;
+  return `${baseUrl}${prefix}/${encodeURIComponent(packageId)}`;
+}
+
+function normalizeProofSearchKey(value: unknown): string {
+  return normalizeText(value)
+    .toLocaleLowerCase('ko-KR')
+    .replace(/[\s+·,./()[\]{}"'`_-]+/g, '');
+}
+
+function customerNoticeTerms(pkg: PackageRow): string[] {
+  if (!Array.isArray(pkg.notices_parsed)) return [];
+  return pkg.notices_parsed.flatMap((item) => {
+    if (typeof item === 'string') return [item.trim()].filter(Boolean);
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const title = typeof record.title === 'string' ? record.title.trim() : '';
+    const text = typeof record.text === 'string' ? record.text.trim() : '';
+    return [title, text].filter(Boolean);
+  });
+}
+
+function provisionalFlightOptions(pkg: PackageRow): Array<Record<string, unknown>> {
+  const itineraryData = pkg.itinerary_data;
+  if (!itineraryData || typeof itineraryData !== 'object') return [];
+  const options = (itineraryData as Record<string, unknown>).flight_schedule_options;
+  return Array.isArray(options)
+    ? options.filter((option): option is Record<string, unknown> => (
+      typeof option === 'object' && option !== null
+    ))
+    : [];
+}
+
 function visibleTextQualityIssues(text: string): string[] {
   const lines = text
     .split(/\n+/)
@@ -232,6 +282,10 @@ function visibleTextQualityIssues(text: string): string[] {
     '자동 생성 설명',
     '사진은 정확한 자료가 확인될 때만 노출합니다',
     '일정에서 소개되는 관광 포인트입니다',
+    '직판 최저가',
+    '24시간 현지 지원',
+    '빠른 상담 응답',
+    '요금표 최고가 대비',
   ];
   const unsafeHits = customerUnsafePhrases.filter(phrase => text.includes(phrase));
   if (unsafeHits.length > 0) {
@@ -308,18 +362,73 @@ async function clickLikelyItinerary(page: Page) {
   }
 }
 
+async function waitForReactClickHandler(page: Page, selector: string) {
+  await page
+    .waitForFunction(
+      candidate => {
+        const element = document.querySelector(candidate);
+        if (!element) return false;
+        return Object.keys(element).some(key => (
+          key.startsWith('__reactProps$')
+          && typeof (element as unknown as Record<string, { onClick?: unknown }>)[key]?.onClick === 'function'
+        ));
+      },
+      selector,
+      { timeout: fixtureMode ? 2_000 : 15_000 },
+    )
+    .catch(() => undefined);
+}
+
+async function clickCustomerCta(page: Page, selector: string, dialogSelector: string) {
+  const cta = page.locator(selector).first();
+  const visible = await cta.isVisible({ timeout: 5_000 }).catch(() => false);
+  if (!visible) return { visible, dialogVisible: false };
+
+  await waitForReactClickHandler(page, selector);
+  await cta.scrollIntoViewIfNeeded().catch(() => undefined);
+  await cta.click({ timeout: 5_000 }).catch(() => undefined);
+
+  const dialog = page.locator(dialogSelector).first();
+  let dialogVisible = await dialog
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!dialogVisible) {
+    await cta.evaluate(element => (element as HTMLElement).click()).catch(() => undefined);
+    dialogVisible = await dialog
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  return { visible, dialogVisible };
+}
+
 async function runAccessibilityCheck(page: Page, surface: SurfaceName): Promise<CheckResult> {
   if (!runAxe) return { name: `${surface}_accessibility_wcag`, ok: true, detail: 'skipped' };
   try {
     const { violations } = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
-    const warningRuleIds = new Set(['color-contrast', 'scrollable-region-focusable']);
+    // Color contrast is a WCAG 2 AA customer-facing failure. It must not be
+    // downgraded to a warning merely because the rest of the page renders.
+    const warningRuleIds = new Set(['scrollable-region-focusable']);
     const serious = violations.filter(violation =>
       ['critical', 'serious'].includes(String(violation.impact ?? '')),
     );
     const blocking = serious.filter(violation => !warningRuleIds.has(violation.id));
     const warnings = serious.filter(violation => warningRuleIds.has(violation.id));
+    const evidence = serious
+      .flatMap(violation =>
+        violation.nodes.map(node => ({
+          rule: violation.id,
+          impact: violation.impact ?? null,
+          target: node.target.join(' > ').slice(0, 500),
+          html: node.html.slice(0, 500),
+          failure_summary: node.failureSummary?.slice(0, 1_000) ?? null,
+        })),
+      )
+      .slice(0, 100);
     return {
       name: `${surface}_accessibility_wcag`,
       ok: blocking.length === 0,
@@ -329,6 +438,7 @@ async function runAccessibilityCheck(page: Page, surface: SurfaceName): Promise<
             blocking.length > 0 ? `blocking=${blocking.slice(0, 8).map(violation => `${violation.id}:${violation.nodes.length}`).join(',')}` : null,
             warnings.length > 0 ? `warnings=${warnings.slice(0, 8).map(violation => `${violation.id}:${violation.nodes.length}`).join(',')}` : null,
           ].filter(Boolean).join(' '),
+      evidence,
     };
   } catch (error) {
     return {
@@ -340,7 +450,7 @@ async function runAccessibilityCheck(page: Page, surface: SurfaceName): Promise<
 }
 
 async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: string, surface: SurfaceName): Promise<SurfaceProofResult> {
-  const url = `${baseUrl}/${surface}/${encodeURIComponent(pkg.id)}`;
+  const url = customerSurfaceUrl(surface, pkg.id);
   const result: SurfaceProofResult = {
     surface,
     url,
@@ -373,7 +483,20 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
     result.customer_visible_hash = sha256(bodyText);
     const days = getItineraryDays(pkg.itinerary_data);
     const expectedTerms = representativeScheduleTerms(pkg);
-    const missingTerms = expectedTerms.filter(term => !bodyText.includes(term));
+    const bodySearchKey = normalizeProofSearchKey(bodyText);
+    const missingTerms = expectedTerms.filter(term => {
+      const termSearchKey = normalizeProofSearchKey(term);
+      return termSearchKey.length > 0 && !bodySearchKey.includes(termSearchKey);
+    });
+    const expectedNoticeTerms = customerNoticeTerms(pkg);
+    const missingNoticeTerms = expectedNoticeTerms.filter(term => {
+      const termSearchKey = normalizeProofSearchKey(term);
+      return termSearchKey.length > 0 && !bodySearchKey.includes(termSearchKey);
+    });
+    const flightOptions = provisionalFlightOptions(pkg);
+    const unconfirmedCarrierNames = flightOptions
+      .map(option => typeof option.carrier_name === 'string' ? option.carrier_name.trim() : '')
+      .filter(Boolean);
     const textQualityIssues = visibleTextQualityIssues(rawBodyText);
 
     result.checks.push(
@@ -417,7 +540,30 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
         ok: textQualityIssues.length === 0,
         detail: textQualityIssues.join(' / ') || 'ok',
       },
+      {
+        name: `${surface}_customer_notices_visible`,
+        ok: expectedNoticeTerms.length === 0 || missingNoticeTerms.length === 0,
+        detail: missingNoticeTerms.length
+          ? `missing: ${missingNoticeTerms.join(' / ')}`
+          : `checked: ${expectedNoticeTerms.length}`,
+      },
     );
+
+    if (flightOptions.length > 0) {
+      result.checks.push(
+        {
+          name: `${surface}_provisional_flight_not_labeled_direct`,
+          ok: !bodyText.includes('직항'),
+        },
+        {
+          name: `${surface}_unconfirmed_carrier_names_hidden`,
+          ok: unconfirmedCarrierNames.every(name => !bodyText.includes(name)),
+          detail: unconfirmedCarrierNames.length > 0
+            ? `checked: ${unconfirmedCarrierNames.join(', ')}`
+            : 'no public carrier names stored',
+        },
+      );
+    }
 
     for (const forbidden of ['supplier_raw_departure_dates', 'net_price', 'internal_memo', 'land_operator']) {
       result.checks.push({
@@ -427,14 +573,16 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
     }
 
     if (surface === 'packages') {
-      const cta = page.locator('[data-analytics-id="mobile_sticky_reservation"]').first();
-      const ctaVisible = await cta.isVisible({ timeout: 3000 }).catch(() => false);
-      result.checks.push({ name: 'packages_reservation_cta_visible', ok: ctaVisible });
-      if (ctaVisible) {
-        await cta.click({ timeout: 3000 }).catch(() => undefined);
-        await page.waitForTimeout(500);
-        const dialog = page.locator('[role="dialog"][aria-labelledby="reservation-inquiry-title"]').first();
-        const dialogVisible = await dialog.isVisible({ timeout: 3000 }).catch(() => false);
+      const dialogSelector = '[role="dialog"][aria-labelledby="reservation-inquiry-title"]';
+      const interaction = await clickCustomerCta(
+        page,
+        '[data-analytics-id="mobile_sticky_reservation"]',
+        dialogSelector,
+      );
+      result.checks.push({ name: 'packages_reservation_cta_visible', ok: interaction.visible });
+      if (interaction.visible) {
+        const dialog = page.locator(dialogSelector).first();
+        const dialogVisible = interaction.dialogVisible;
         const dialogText = dialogVisible ? normalizeText(await dialog.innerText().catch(() => '')) : '';
         const titleNeedle = normalizeText(pkg.display_title || pkg.title).slice(0, 12);
         result.checks.push(
@@ -447,14 +595,16 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
         );
       }
     } else {
-      const cta = page.locator('[data-analytics-id="lp_sticky_lead"]').first();
-      const ctaVisible = await cta.isVisible({ timeout: 3000 }).catch(() => false);
-      result.checks.push({ name: 'lp_lead_cta_visible', ok: ctaVisible });
-      if (ctaVisible) {
-        await cta.click({ timeout: 3000 }).catch(() => undefined);
-        await page.waitForTimeout(500);
-        const sheet = page.locator('[data-testid="lp-lead-bottom-sheet"]').first();
-        const sheetVisible = await sheet.isVisible({ timeout: 3000 }).catch(() => false);
+      const sheetSelector = '[data-testid="lp-lead-bottom-sheet"]';
+      const interaction = await clickCustomerCta(
+        page,
+        '[data-analytics-id="lp_sticky_lead"]',
+        sheetSelector,
+      );
+      result.checks.push({ name: 'lp_lead_cta_visible', ok: interaction.visible });
+      if (interaction.visible) {
+        const sheet = page.locator(sheetSelector).first();
+        const sheetVisible = interaction.dialogVisible;
         const sheetText = sheetVisible ? normalizeText(await sheet.innerText().catch(() => '')) : '';
         result.checks.push(
           { name: 'lp_lead_sheet_opens', ok: sheetVisible },
@@ -491,7 +641,7 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
     id: pkg.id,
     title: pkg.display_title || pkg.title,
     internal_code: pkg.internal_code,
-    url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
+    url: customerSurfaceUrl('packages', pkg.id),
     http_status: null,
     status: 'fail',
     checked_at: checkedAt,
@@ -531,7 +681,7 @@ function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackagePro
     id: pkg.id,
     title: pkg.display_title || pkg.title,
     internal_code: pkg.internal_code,
-    url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
+    url: customerSurfaceUrl('packages', pkg.id),
     http_status: null,
     status: 'fail',
     checked_at: checkedAt,
@@ -553,6 +703,16 @@ function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackagePro
 }
 
 async function loadPackages(): Promise<PackageRow[]> {
+  if (fixtureFilePath) {
+    const fullPath = path.resolve(fixtureFilePath);
+    const parsed = JSON.parse(fs.readFileSync(fullPath, 'utf8')) as OfflineRenderFixtureFile;
+    return (parsed.fixtures ?? [])
+      .map(fixture => fixture.package)
+      .filter((pkg): pkg is PackageRow => Boolean(pkg?.id && pkg?.title))
+      .filter(pkg => packageIds.length === 0 || packageIds.includes(pkg.id))
+      .slice(offset, offset + limit);
+  }
+
   let query = supabaseAdmin
     .from('travel_packages')
     .select('*')
@@ -688,6 +848,27 @@ async function main() {
       deviceScaleFactor: 2,
       userAgent: 'YeosonamHwpMobileProof/1.0 Mobile Safari',
     });
+    if (fixtureMode) {
+      await context.route('**/api/{tracking,tracking/**,web-vitals}', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true }),
+        });
+      });
+      await context.route('**/api/packages/*/review-digest', async route => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            digest_quotes: [],
+            source_count: 0,
+            avg_rating: null,
+            generated_at: null,
+          }),
+        });
+      });
+    }
     const page = await context.newPage();
 
     for (const pkg of packages) {
@@ -731,6 +912,9 @@ async function main() {
     applyMode: applyPassOnly ? 'pass-only' : apply ? 'pass-and-fail' : 'none',
     checkedSurfaces: checkLp ? ['packages', 'lp'] : ['packages'],
     accessibility: runAxe ? 'axe_wcag2a_2aa_21a_21aa' : 'skipped',
+    sourceMode: fixtureMode ? 'offline-render-fixtures' : 'travel_packages',
+    fixtureFile: fixtureFilePath ? path.resolve(fixtureFilePath) : null,
+    offset,
     baseUrl,
     outputDir,
   };

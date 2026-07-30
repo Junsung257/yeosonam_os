@@ -40,7 +40,7 @@ async function runThreadsTrendMiner(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
-  if (!isThreadsSearchConfigured()) {
+  if (!(await isThreadsSearchConfigured())) {
     return { skipped: true, reason: 'Threads access token 미설정', errors: [] as string[] };
   }
 

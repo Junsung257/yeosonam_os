@@ -7,6 +7,7 @@ import { PageHeader, FormRow } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, X } from 'lucide-react';
 import { maskPhone } from '@/lib/pii-mask';
+import { toKstDate } from '@/lib/admin-dashboard-kpi-basis';
 
 interface Tenant {
   id:               string;
@@ -52,36 +53,26 @@ export default function TenantsPage() {
   const [form,    setForm]    = useState(EMPTY_FORM);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
+  const [loadError, setLoadError] = useState('');
 
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = toKstDate(new Date()).slice(0, 7);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res  = await fetch('/api/tenants');
-    const data = await res.json();
-    const list: Tenant[] = data.tenants ?? [];
-    setTenants(list);
-
-    // 각 테넌트 통계 병렬 로드
-    const statsMap: Record<string, TenantStats> = {};
-    await Promise.all(list.map(async (t) => {
-      try {
-        const [prodRes, setRes] = await Promise.all([
-          fetch(`/api/tenant/products?tenant_id=${t.id}`),
-          fetch(`/api/tenant/settlements?tenant_id=${t.id}&month=${thisMonth}`),
-        ]);
-        const [prodData, setData] = await Promise.all([prodRes.json(), setRes.json()]);
-        statsMap[t.id] = {
-          product_count:   (prodData.products ?? []).length,
-          sale_count:      (setData.rows ?? []).length,
-          settlement_cost: setData.total_cost ?? 0,
-        };
-      } catch {
-        statsMap[t.id] = { product_count: 0, sale_count: 0, settlement_cost: 0 };
-      }
-    }));
-    setStats(statsMap);
-    setLoading(false);
+    setLoadError('');
+    try {
+      const res = await fetch(`/api/tenants?include_stats=1&month=${thisMonth}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '테넌트 현황 조회 실패');
+      setTenants(data.tenants ?? []);
+      setStats(data.stats ?? {});
+    } catch (loadFailure) {
+      setTenants([]);
+      setStats({});
+      setLoadError(loadFailure instanceof Error ? loadFailure.message : '테넌트 현황 조회 실패');
+    } finally {
+      setLoading(false);
+    }
   }, [thisMonth]);
 
   useEffect(() => { load(); }, [load]);
@@ -154,6 +145,10 @@ export default function TenantsPage() {
               <div className="h-4 bg-admin-surface-2 rounded animate-pulse w-24" />
             </div>
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="admin-card border-red-200 bg-red-50 p-5 text-sm text-red-700" role="alert">
+          {loadError} · 0건으로 표시하지 않고 확인이 필요합니다.
         </div>
       ) : tenants.length === 0 ? (
         <div className="text-center py-16 text-admin-muted admin-card">
@@ -229,7 +224,12 @@ export default function TenantsPage() {
       {/* 등록/수정 슬라이드 패널 */}
       {panel && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setPanel(false)} />
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/30"
+            onClick={() => setPanel(false)}
+            aria-label="테넌트 편집 패널 닫기"
+          />
           <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
             <div className="p-6">
               <div className="flex items-center justify-between mb-5">

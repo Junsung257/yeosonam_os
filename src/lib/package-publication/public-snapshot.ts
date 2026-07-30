@@ -16,6 +16,7 @@ import { postProcessItineraryData } from '@/lib/package-post-process';
 import { renderPackage } from '@/lib/render-contract';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import {
   composeCustomerPublicSubtitle,
   composeCustomerPublicSummary,
@@ -34,6 +35,7 @@ type PublicNoticeTemplateKey =
   | 'reservation_availability_check'
   | 'cancellation_policy_check'
   | 'shopping_disclosure_check'
+  | 'shopping_none_confirmed'
   | 'passport_validity_check';
 type PublicNoticeCandidate = {
   type: 'INFO' | 'POLICY' | 'CRITICAL';
@@ -121,6 +123,16 @@ const APPROVED_OPERATIONAL_NOTICE_TEMPLATES: Record<PublicNoticeTemplateKey, Pub
     category: 'shopping',
     values: {},
     template_key: 'shopping_disclosure_check',
+    review_status: 'auto_clean',
+    source_line: null,
+  },
+  shopping_none_confirmed: {
+    type: 'INFO',
+    title: '쇼핑 일정 없음',
+    text: '등록된 상품 조건 기준 쇼핑 일정이 없습니다. 최종 일정 변경이 생기면 예약 확정 전에 안내합니다.',
+    category: 'shopping',
+    values: {},
+    template_key: 'shopping_none_confirmed',
     review_status: 'auto_clean',
     source_line: null,
   },
@@ -252,6 +264,57 @@ function walkSourceStrings(
   }
 }
 
+const NO_SHOPPING_EVIDENCE_RE =
+  /노\s*쇼핑|쇼핑\s*(?:일정\s*)?(?:없음|없습니다|미포함|0\s*회)|쇼핑센터\s*(?:미방문|방문\s*없음)/i;
+const POSITIVE_SHOPPING_EVIDENCE_RE =
+  /쇼핑\s*(?:센터|점|일정|방문|[1-9]\d*\s*회)|(?:라텍스|침향|보이차|보석|잡화|농산물)\s*(?:매장|쇼핑|구매|방문)|(?:매장|쇼핑센터)\s*방문/i;
+
+export function evaluateShoppingEvidence(pkg: AnyRecord): {
+  noShopping: boolean;
+  positiveShopping: boolean;
+  conflict: boolean;
+  noShoppingPaths: string[];
+  positiveShoppingPaths: string[];
+} {
+  const noShoppingPaths = new Set<string>();
+  const positiveShoppingPaths = new Set<string>();
+  const sources: Array<{ root: string; value: unknown }> = [
+    { root: 'title', value: pkg.title },
+    { root: 'display_title', value: pkg.display_title },
+    { root: 'raw_text', value: pkg.raw_text },
+    { root: 'product_highlights', value: pkg.product_highlights },
+    { root: 'itinerary_data', value: pkg.itinerary_data },
+  ];
+
+  for (const source of sources) {
+    walkSourceStrings(source.value, (text, path) => {
+      const fullPath = `${source.root}${path ? `.${path}` : ''}`;
+      if (NO_SHOPPING_EVIDENCE_RE.test(text)) {
+        noShoppingPaths.add(fullPath);
+        return;
+      }
+      const isSchedulePath = /itinerary_data\.days\.\d+\.schedule\.\d+/.test(fullPath);
+      const isRawSource = fullPath === 'raw_text';
+      if ((isSchedulePath || isRawSource) && POSITIVE_SHOPPING_EVIDENCE_RE.test(text)) {
+        positiveShoppingPaths.add(fullPath);
+      }
+    });
+  }
+
+  const shoppingCount = Number(pkg.shopping_count);
+  if (Number.isFinite(shoppingCount) && shoppingCount > 0) {
+    positiveShoppingPaths.add('shopping_count');
+  }
+
+  return {
+    noShopping: noShoppingPaths.size > 0,
+    positiveShopping: positiveShoppingPaths.size > 0,
+    conflict: noShoppingPaths.size > 0 && positiveShoppingPaths.size > 0,
+    noShoppingPaths: [...noShoppingPaths],
+    positiveShoppingPaths: [...positiveShoppingPaths],
+  };
+}
+
 function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeTemplateKey[] {
   const keys: PublicNoticeTemplateKey[] = [];
   const isOperationalPath = /itinerary_data\.highlights\.(?:remarks|shopping)/.test(path)
@@ -270,7 +333,9 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
   if (/\uCDE8\uC18C|\uD658\uBD88|\uC218\uC218\uB8CC|\uCC28\uC9C0|\uC704\uC57D/i.test(text)) {
     keys.push('cancellation_policy_check');
   }
-  if (/\uC1FC\uD551|\uB77C\uD14D\uC2A4|\uCE68\uD5A5|\uBCF4\uC774\uCC28|\uBCF4\uC11D|\uC7A1\uD654|\uB18D\uC0B0\uBB3C|\uD734\uAC8C\uC18C/i.test(text)) {
+  if (NO_SHOPPING_EVIDENCE_RE.test(text)) {
+    keys.push('shopping_none_confirmed');
+  } else if (/\uC1FC\uD551|\uB77C\uD14D\uC2A4|\uCE68\uD5A5|\uBCF4\uC774\uCC28|\uBCF4\uC11D|\uC7A1\uD654|\uB18D\uC0B0\uBB3C|\uD734\uAC8C\uC18C/i.test(text)) {
     keys.push('shopping_disclosure_check');
   }
   if (/\uC5EC\uAD8C|\uBE44\uC790|\uC785\uAD6D|\uCD9C\uAD6D/i.test(text)) {
@@ -283,7 +348,9 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
   if (/취소|환불|수수료|차지|위약/i.test(text)) {
     keys.push('cancellation_policy_check');
   }
-  if (/쇼핑|라텍스|침향|보이차|보석|잡화|농산물|휴게소/i.test(text)) {
+  if (NO_SHOPPING_EVIDENCE_RE.test(text)) {
+    keys.push('shopping_none_confirmed');
+  } else if (/쇼핑|라텍스|침향|보이차|보석|잡화|농산물|휴게소/i.test(text)) {
     keys.push('shopping_disclosure_check');
   }
   if (/여권|비자|입국|출국/i.test(text)) {
@@ -1089,5 +1156,33 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     snapshot,
     snapshotHash: hashPublicPackageSnapshot(snapshot),
     optionalTourClassification,
+  };
+}
+
+export function buildProofBoundPublicPackageSnapshot(pkg: AnyRecord): {
+  proofPackage: AnyRecord;
+  packageRevision: number;
+  snapshot: PublicPackageSnapshot;
+  snapshotHash: string;
+} {
+  const currentRevision = Number(pkg.package_revision ?? 1);
+  const safeCurrentRevision = Number.isFinite(currentRevision) && currentRevision > 0
+    ? currentRevision
+    : 1;
+  const currentStatus = typeof pkg.status === 'string' ? pkg.status : null;
+  const packageRevision = isCustomerVisibleStatus(currentStatus)
+    ? safeCurrentRevision
+    : safeCurrentRevision + 1;
+  const proofPackage = {
+    ...pkg,
+    status: isCustomerVisibleStatus(currentStatus) ? currentStatus : 'active',
+    package_revision: packageRevision,
+  };
+  const { snapshot, snapshotHash } = buildPublicPackageSnapshot(proofPackage);
+  return {
+    proofPackage,
+    packageRevision,
+    snapshot,
+    snapshotHash,
   };
 }

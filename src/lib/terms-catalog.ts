@@ -440,9 +440,12 @@ export function normalizeCatalogSurchargeLine(raw: string): NormalizedTermLine {
 
 // ─── 쇼핑 ─────────────────────────────────────────────────────────────────
 
-/** 쇼핑 환불 정책 — 쇼핑 섹션이 아닌 기타 안내에만 노출 */
+/**
+ * 일정 중 쇼핑센터에서 구매한 물품의 환불 정책.
+ * 패키지여행 계약의 취소/환불로 오해하지 않도록 적용 대상을 명시한다.
+ */
 export const SHOPPING_POLICY_NOTE =
-  '교환이나 환불은 구매 후 한 달 이내에만 가능합니다. (수수료 발생)';
+  '일정 중 현지 쇼핑센터에서 구매한 물품의 교환이나 환불은 구매 후 한 달 이내에만 가능합니다. (수수료 발생) 패키지여행 계약의 취소·환불 규정과는 별도입니다.';
 
 const SHOPPING_DISCLAIMER_RE =
   /\*?\s*교환(?:이)?(?:나| 또는)\s*환불(?:은)?[\s\S]*?\(\s*수수료\s*발생\s*\)\s*/gi;
@@ -463,7 +466,10 @@ export function stripShoppingPolicy(text: string): { body: string; policyNote: s
   let policyNote: string | null = null;
   const m = body.match(SHOPPING_DISCLAIMER_RE);
   if (m?.[0]) {
-    policyNote = m[0].replace(/^\*\s*/, '').replace(/\s+/g, ' ').trim();
+    const sourcePolicy = m[0].replace(/^\*\s*/, '').replace(/\s+/g, ' ').trim();
+    policyNote =
+      `일정 중 현지 쇼핑센터에서 구매한 물품 안내: ${sourcePolicy} ` +
+      '패키지여행 계약의 취소·환불 규정과는 별도입니다.';
     body = body.replace(SHOPPING_DISCLAIMER_RE, '').trim();
   }
   if (/교환.*환불.*한\s*달/i.test(text) && !policyNote) {

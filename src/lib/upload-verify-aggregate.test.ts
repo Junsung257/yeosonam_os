@@ -62,6 +62,29 @@ describe('aggregateUploadVerifyResults', () => {
     expect(aggregate.warnCount).toBe(1);
   });
 
+  it('returns an operator remediation plan with the verify response', () => {
+    const verification: VerifyResult = {
+      ...result('blocked'),
+      checks: [
+        {
+          id: 'variant_0.minimum_departure',
+          label: 'minimum departure',
+          status: 'fail',
+          detail: 'minimum departure evidence exists',
+        },
+      ],
+    };
+
+    const packageVerification = toUploadVerifyPackageResult('pkg-1', verification);
+    const aggregate = aggregateUploadVerifyResults([packageVerification]);
+
+    expect(packageVerification.remediation.actions[0]).toMatchObject({
+      kind: 'supplier_confirmation',
+      field: 'minimum_departure',
+    });
+    expect(aggregate.remediation.supplierRequestText).toContain('최소 출발 인원');
+  });
+
   it('surfaces package-level verify errors when no package is blocked', () => {
     const aggregate = aggregateUploadVerifyResults([
       packageResult('pkg-1', 'clean'),

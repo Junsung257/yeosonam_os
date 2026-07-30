@@ -5,7 +5,7 @@
   "minPrice": 969000,
   "specificDate": "2026-07-14",
   "specificDatePrice": 969000,
-  "priceRowsMinCount": 118,
+  "priceRowsMinCount": 113,
   "priceDatesMinCount": 90,
   "forbiddenPrices": [6000, 1100, 2200, 550, 3000, 200000],
   "itineraryDaysValid": true,

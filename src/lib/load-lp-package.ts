@@ -4,9 +4,13 @@ import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import {
+  buildCandidatePublicPackageForProof,
+  fetchLatestPublicPackageSnapshot,
+} from '@/lib/package-publication/repository';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isSafeImageSrc } from '@/lib/image-url';
 
 export async function fetchLpPackageUncached(
   id: string,
@@ -19,11 +23,14 @@ export async function fetchLpPackageUncached(
 
   const { data: rawPkg, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('*, products(internal_code, display_name, departure_region)')
+    .select('*, products(internal_code, display_name, departure_region, thumbnail_urls)')
     .eq(col, id)
     .single();
 
   if (error || !rawPkg) return null;
+  const proofCandidate = options.allowNonPublicProof
+    ? buildCandidatePublicPackageForProof(rawPkg as Record<string, unknown>)
+    : null;
   const publicSnapshot = options.allowNonPublicProof
     ? null
     : await fetchLatestPublicPackageSnapshot(
@@ -31,7 +38,7 @@ export async function fetchLpPackageUncached(
         (rawPkg as { id: string }).id,
         { expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1) },
       ).catch(() => null);
-  const pkg = options.allowNonPublicProof ? rawPkg : publicSnapshot?.package;
+  const pkg = options.allowNonPublicProof ? proofCandidate?.package : publicSnapshot?.package;
   const status = (rawPkg as { status?: string | null }).status;
   const auditStatus = (rawPkg as { audit_status?: string | null }).audit_status;
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
@@ -53,11 +60,22 @@ export async function fetchLpPackageUncached(
     .order('group_size', { ascending: false })
     .order('rank_in_group', { ascending: true });
 
-  let lpHero: string | null = null;
-  try {
-    lpHero = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
-  } catch {
-    // 히어로 실패 시 그라디언트만
+  const frozenHeroCandidates = [
+    (pkg as { lp_hero_image_url?: unknown }).lp_hero_image_url,
+    (pkg as { hero_image_url?: unknown }).hero_image_url,
+    ...(Array.isArray((pkg as { thumbnail_urls?: unknown }).thumbnail_urls)
+      ? (pkg as { thumbnail_urls: unknown[] }).thumbnail_urls
+      : []),
+  ];
+  let lpHero = frozenHeroCandidates.find(
+    (value): value is string => typeof value === 'string' && isSafeImageSrc(value),
+  ) ?? null;
+  if (!lpHero && !publicSnapshot && !proofCandidate) {
+    try {
+      lpHero = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
+    } catch {
+      // 레거시 비스냅샷 경로에서만 목적지 이미지로 보완한다.
+    }
   }
 
   return mapTravelPackageToLandingData(

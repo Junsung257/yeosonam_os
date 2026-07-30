@@ -289,9 +289,10 @@ describe('customer-facing attraction gate', () => {
       .toBeNull();
   });
 
-  it('keeps legacy internal matching broad unless customerFacing is requested', () => {
+  it('keeps valid active internal masters recognizable while excluding polluted product rows', () => {
     const internal = buildAttractionIndex(pollutedCustomerAttractions, '교토');
-    expect(internal.filtered.map(a => a.name)).toContain('[한국어 가이드] 오사카 출발 교토&나라 체험 투어');
+    expect(internal.filtered.map(a => a.name)).toContain('관리자 검수 전 관광지');
+    expect(internal.filtered.map(a => a.name)).not.toContain('[한국어 가이드] 오사카 출발 교토&나라 체험 투어');
   });
 
   it('exposes the customer render predicate for route/API filters', () => {

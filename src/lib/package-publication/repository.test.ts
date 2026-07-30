@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createPublicPackageSnapshotAndDecision, fetchLatestPublicPackageSnapshot } from './repository';
+import {
+  buildCandidatePublicPackageForProof,
+  createPublicPackageSnapshotAndDecision,
+  fetchLatestPublicPackageSnapshot,
+} from './repository';
 import { buildPublicPackageSnapshot } from './public-snapshot';
 
 type RpcResult = {
@@ -169,6 +173,44 @@ function mobileProofForSnapshot(snapshotHash: string) {
 }
 
 describe('createPublicPackageSnapshotAndDecision', () => {
+  it('projects a non-public proof candidate through the same customer snapshot as publication', () => {
+    const raw = publishablePackage({
+      title: '[랜드사 원문] 도쿄 특가',
+      display_title: 'SPECIAL PRICE',
+      destination: '도쿄',
+      trip_style: '3박 4일',
+      duration: 4,
+      nights: 3,
+      product_summary: '도쿄 핵심 일정을 확인할 수 있어요.',
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '도쿄 도착 후 숙소 이동', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '도쿄 시내 핵심 관광', type: 'sightseeing' }] },
+          { day: 3, schedule: [{ activity: '자유 일정', type: 'sightseeing' }] },
+          { day: 4, schedule: [{ activity: '귀국', type: 'flight' }] },
+        ],
+      },
+    });
+
+    const candidate = buildCandidatePublicPackageForProof(raw);
+
+    expect(candidate).not.toBeNull();
+    expect(candidate?.package.title).toBe(candidate?.snapshot.public_title);
+    expect(candidate?.package.display_title).toBe(candidate?.snapshot.public_title);
+    expect(candidate?.package.title).not.toContain('랜드사 원문');
+    expect(candidate?.package.title).not.toContain('SPECIAL PRICE');
+    expect(candidate?.snapshot.package_revision).toBe(4);
+    expect(candidate?.snapshotHash).toBe(buildPublicPackageSnapshot({
+      ...raw,
+      status: 'active',
+      package_revision: 4,
+    }).snapshotHash);
+    expect(candidate?.package._public_snapshot).toMatchObject({
+      snapshot_hash: candidate?.snapshotHash,
+      status: 'proof',
+    });
+  });
+
   it('does not return a latest public snapshot when customer title evidence is missing', async () => {
     const snapshot = await fetchLatestPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({

@@ -58,6 +58,18 @@ function readLandingClient(): string {
   return readFileSync(join(process.cwd(), 'src/app/lp/[id]/LandingClient.tsx'), 'utf8');
 }
 
+function readLpDeferredSections(): string {
+  return readFileSync(join(process.cwd(), 'src/app/lp/[id]/LpDeferSections.tsx'), 'utf8');
+}
+
+function readPackageTermsSection(): string {
+  return readFileSync(join(process.cwd(), 'src/components/package/PackageTermsSection.tsx'), 'utf8');
+}
+
+function readLpPriceSection(): string {
+  return readFileSync(join(process.cwd(), 'src/components/lp/PriceSection.tsx'), 'utf8');
+}
+
 function readPackageDetailClient(): string {
   return readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
 }
@@ -1070,6 +1082,12 @@ describe('upload route registration pipeline boundary', () => {
     expect(mobileCopyAudit).toContain('dbChecks: dbResults.length');
   });
 
+  it('loads the saved source hash for registration quality audits', () => {
+    const readinessAudit = readMobileReadinessAudit();
+
+    expect(readinessAudit).toContain('raw_text, raw_text_hash, notices_parsed');
+  });
+
   it('can audit pre-public package and LP screens with the internal proof header', () => {
     const mobileCopyAudit = readMobileCopyAudit();
 
@@ -1090,6 +1108,30 @@ describe('upload route registration pipeline boundary', () => {
     expect(landingClient).not.toContain("'출발 확정\\n일정 확인'");
     expect(landingClient).not.toContain("'일정 확정\\n출발 표시'");
     expect(landingClient).not.toContain("? '출발 확정' : '상담 가능'");
+  });
+
+  it('does not present unsupported discount, cheapest, or support claims on customer LP', () => {
+    const landingClient = readLandingClient();
+    const priceSection = readLpPriceSection();
+
+    expect(landingClient).toContain('출발일별<br />가격 안내');
+    expect(landingClient).toContain('상담 후<br />확정 안내');
+    expect(landingClient).toContain('카카오<br />문의 가능');
+    expect(landingClient).not.toContain('직판<br />최저가');
+    expect(landingClient).not.toContain('24시간<br />현지 지원');
+    expect(landingClient).not.toContain('요금표 최고가 대비');
+    expect(landingClient).not.toContain('line-through');
+    expect(landingClient).not.toContain('유류세 포함');
+    expect(priceSection).not.toContain('유류할증료 포함');
+  });
+
+  it('clarifies source-backed manner tips when a product title says no-tip', () => {
+    const lpDeferred = readLpDeferredSections();
+    const packageTerms = readPackageTermsSection();
+    const clarification = '상품명의 ‘노팁’ 표기와 별도로, 원문에 명시된 매너팁은 불포함입니다.';
+
+    expect(lpDeferred).toContain(clarification);
+    expect(packageTerms).toContain(clarification);
   });
 
   it('keeps package sticky proof copy away from risky confirmation promises', () => {

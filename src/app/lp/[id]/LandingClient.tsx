@@ -13,12 +13,14 @@ import { useTracking } from '@/hooks/useTracking';
 import { submitLeadPipeline } from '@/lib/submitPipeline';
 import { useChatStore } from '@/lib/chat-store';
 import { getSessionId } from '@/lib/tracker';
-import { trackViewContent, trackLead } from '@/components/MetaPixel';
+import { trackViewContent } from '@/components/MetaPixel';
 import { trackKakaoViewContent } from '@/lib/kakao-moment-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { sanitizeUtmTermForDisplay } from '@/lib/sanitize-ad-copy';
 import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import type { NoticeBlock } from '@/lib/standard-terms';
+import { trackAnalyticsEvent } from '@/lib/analytics';
+import CustomerNoticeCards from '@/components/customer/CustomerNoticeCards';
 
 const PriceSectionCard = dynamic(() => import('@/components/lp/PriceSection'));
 const LeadBottomSheet = dynamic(() => import('@/components/lp/LeadBottomSheet'), { ssr: false });
@@ -78,7 +80,7 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
       <div className="flex flex-col items-center gap-1">
         <Award className="w-6 h-6 text-amber-500" />
         <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-          직판<br />최저가
+          출발일별<br />가격 안내
         </span>
       </div>
       {hasReviewStats ? (
@@ -93,33 +95,48 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
         <div className="flex flex-col items-center gap-1">
           <Clock className="w-6 h-6 text-[var(--brand)]" />
           <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-            빠른<br />상담 응답
+            상담 후<br />확정 안내
           </span>
         </div>
       )}
       <div className="flex flex-col items-center gap-1">
         <Phone className="w-6 h-6 text-[var(--success)]" />
         <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-          24시간<br />현지 지원
+          카카오<br />문의 가능
         </span>
       </div>
     </div>
   );
 }
 
-/** 가격 섹션 — compareAt 은 동일 상품 요금표 내 최고가 대비일 때만 표시 */
-function PriceSection({ priceFrom, compareAtPrice, deadlineDays }: {
+/** 가격 섹션 — 출발일별 가격 차이를 할인율처럼 오인시키지 않는다. */
+function PriceSection({ priceFrom, deadlineDays, packageId, destination }: {
   priceFrom: number;
-  compareAtPrice: number | null;
   deadlineDays: number | null;
+  packageId: string;
+  destination: string;
 }) {
-  const discount =
-    compareAtPrice != null && compareAtPrice > priceFrom
-      ? Math.round((1 - priceFrom / compareAtPrice) * 100)
-      : null;
+  const sectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.intersectionRatio < 0.5) return;
+      trackAnalyticsEvent('ysn_price_view', {
+        package_id: packageId,
+        destination,
+        price_type: priceFrom > 0 ? 'from_price' : 'inquiry',
+        displayed_price: priceFrom > 0 ? priceFrom : undefined,
+        currency: 'KRW',
+      }, { dedupeKey: packageId });
+      observer.disconnect();
+    }, { threshold: 0.5 });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [destination, packageId, priceFrom]);
 
   return (
-    <section className="px-5 py-6 bg-white">
+    <section ref={sectionRef} className="px-5 py-6 bg-white">
       <div className="flex flex-wrap items-center gap-2 mb-1">
         {deadlineDays != null && deadlineDays >= 0 && deadlineDays <= 30 && (
           <span
@@ -130,22 +147,14 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays }: {
             예약 마감 D-{deadlineDays}
           </span>
         )}
-        {discount != null && discount > 0 && (
-          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--brand-light)] text-[var(--brand-dark)]">
-            요금표 최고가 대비 {discount}%
-          </span>
-        )}
       </div>
       <div className="flex items-end gap-3 mt-2">
         <div>
-          {compareAtPrice != null && compareAtPrice > priceFrom && (
-            <p className="text-sm text-[var(--text-muted)] line-through">{fmt(compareAtPrice)}원</p>
-          )}
           <p className="text-3xl font-extrabold text-[var(--text-primary)]">
             {fmt(priceFrom)}<span className="text-lg font-semibold text-[var(--text-body)]">원~</span>
           </p>
         </div>
-        <p className="text-sm text-[var(--text-muted)] pb-1">1인 기준 · 유류세 포함</p>
+        <p className="text-sm text-[var(--text-muted)] pb-1">1인 기준</p>
       </div>
     </section>
   );
@@ -208,7 +217,7 @@ function Highlights({ items }: { items: string[] }) {
 function FlightSummary({ flight }: { flight: LandingProductData['flightSummary'] }) {
   const legs = [
     { label: '가는편', tone: 'text-[var(--brand)]', data: flight?.outbound },
-    { label: '오는편', tone: 'text-orange-500', data: flight?.inbound },
+    { label: '오는편', tone: 'text-orange-700', data: flight?.inbound },
   ].filter((leg): leg is { label: string; tone: string; data: NonNullable<LandingProductData['flightSummary']>['outbound'] & object } => Boolean(leg.data));
 
   if (legs.length === 0) return null;
@@ -232,7 +241,7 @@ function FlightSummary({ flight }: { flight: LandingProductData['flightSummary']
               <div className="text-right">
                 {data?.code && <p className="text-xs font-semibold text-gray-500">{data.code}</p>}
                 {data?.arrDayOffset === 1 && (
-                  <p className="text-xs font-bold text-orange-600">+1 익일 도착</p>
+                  <p className="text-xs font-bold text-orange-800">+1 익일 도착</p>
                 )}
                 <p className="mt-1 text-sm font-black text-gray-900 tabular-nums">
                   {[data?.depTime, data?.arrTime].filter(Boolean).join(' - ') || '시간 미정'}
@@ -327,12 +336,43 @@ export function LandingClient({
       name: data.customMessage.default.headline,
       value: data.priceFrom,
     });
-  }, [data.customMessage.default.headline, data.priceFrom, data.id]);
+    trackAnalyticsEvent('view_item', {
+      package_id: data.id,
+      package_name: data.customMessage.default.headline,
+      destination: data.destination,
+      departure_date: data.departureFullDate ?? undefined,
+      currency: 'KRW',
+      value: data.priceFrom > 0 ? data.priceFrom : undefined,
+      price_type: data.priceFrom > 0 ? 'from_price' : 'inquiry',
+      items: [{
+        item_id: data.id,
+        item_name: data.customMessage.default.headline,
+        item_category: 'travel_package',
+        item_category2: data.destination,
+        item_variant: data.departureFullDate ?? undefined,
+        price: data.priceFrom > 0 ? data.priceFrom : undefined,
+        quantity: 1,
+      }],
+    }, { dedupeKey: `lp:${data.id}` });
+  }, [
+    data.customMessage.default.headline,
+    data.departureFullDate,
+    data.destination,
+    data.id,
+    data.priceFrom,
+  ]);
 
   // ── Hooks must be called before any early return (react-hooks/rules-of-hooks) ──
   // Intersection Observer → FAB 활성화
   const { itineraryViewed, setItineraryViewed, registerScrollSentinel, getSnapshot } = useTracking();
-  const handleItineraryViewed = useCallback(() => setItineraryViewed(true), [setItineraryViewed]);
+  const handleItineraryViewed = useCallback(() => {
+    setItineraryViewed(true);
+    trackAnalyticsEvent('ysn_schedule_view', {
+      package_id: data.id,
+      package_name: data.customMessage.default.headline,
+      destination: data.destination,
+    }, { dedupeKey: data.id });
+  }, [data.customMessage.default.headline, data.destination, data.id, setItineraryViewed]);
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -424,10 +464,13 @@ export function LandingClient({
             data-analytics-id="lp_hero_kakao"
             className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-text-primary active:scale-[0.98] transition-transform shadow-md"
               onClick={async () => {
-                trackLead({
-                  content_name: data.customMessage.default.headline,
-                  value: data.priceFrom,
-                  content_ids: [data.id],
+                trackAnalyticsEvent('ysn_kakao_click', {
+                  cta_location: 'lp_hero',
+                  page_type: 'campaign_landing',
+                  package_id: data.id,
+                  package_name: data.customMessage.default.headline,
+                  destination: data.destination,
+                  outbound_host: 'pf.kakao.com',
                 });
                 trackKakaoViewContent({
                   id: `lp_kakao_${data.id}`,
@@ -467,13 +510,19 @@ export function LandingClient({
 
       <PriceSection
         priceFrom={data.priceFrom}
-        compareAtPrice={data.compareAtPrice}
         deadlineDays={data.deadlineDays}
+        packageId={data.id}
+        destination={data.destination}
       />
 
       <DepartureDatesSummary priceDates={data.price_dates} />
 
       <FlightSummary flight={data.flightSummary} />
+
+      <CustomerNoticeCards
+        notices={data.itinerary.customerNotices}
+        className="mx-5 my-5"
+      />
 
       {/* ── 상세 요금표 (날짜/조건별 카드 UI) ──────────────────────── */}
       {data.price_list && data.price_list.length > 0 && (
@@ -497,6 +546,7 @@ export function LandingClient({
         onItineraryViewed={handleItineraryViewed}
         includes={data.itinerary.includes}
         excludes={data.itinerary.excludes}
+        productTitle={msg.headline}
         optionalTours={data.itinerary.optionalTours}
         legalNotices={data.itinerary.legalNotices}
         packageId={data.id}
@@ -519,6 +569,14 @@ export function LandingClient({
             data-analytics-id="lp_sticky_lead"
             aria-label="상담 신청 열기"
             onClick={() => {
+              trackAnalyticsEvent('begin_checkout', {
+                package_id: data.id,
+                package_name: data.customMessage.default.headline,
+                destination: data.destination,
+                departure_date: data.departureFullDate ?? undefined,
+                currency: 'KRW',
+                value: data.priceFrom > 0 ? data.priceFrom : undefined,
+              }, { dedupeKey: `lp:${data.id}` });
               setSheetOpen(true);
               fetch('/api/tracking/score-signal', {
                 method: 'POST',
@@ -549,6 +607,13 @@ export function LandingClient({
         onClose={() => setSheetOpen(false)}
         defaultDate={data.departureFullDate ?? undefined}
         priceDates={data.price_dates}
+        onDepartureSelect={(departureDate) => {
+          trackAnalyticsEvent('ysn_departure_select', {
+            package_id: data.id,
+            departure_date: departureDate,
+            destination: data.destination,
+          }, { dedupeKey: `lp:${data.id}:departure:${departureDate}` });
+        }}
         hasSpecialTerms={hasSpecialTerms}
         termsSummary={termsSummary}
         onSubmit={async (form) => {

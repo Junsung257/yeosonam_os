@@ -4,6 +4,7 @@ Allow: /$
 Allow: /_next/static/
 Allow: /_next/image
 Allow: /packages/
+Allow: /lp/
 Allow: /blog/
 Allow: /destinations/
 Allow: /things-to-do/

@@ -10,8 +10,18 @@ import { looksLikeCommaSplitBroken } from '@/lib/parser/deterministic/comma-spli
 import { detectFerry } from '@/lib/parser/deterministic/ferry-classifier';
 import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
-import { runProductRegistrationV3, type V3PipelineResult } from '@/lib/product-registration-v3';
+import {
+  evaluateProductRegistrationV3Gate,
+  ledgerToRenderPackageInputs,
+  runProductRegistrationV3,
+  type V3PipelineResult,
+} from '@/lib/product-registration-v3';
 import { extractExcludedPriceCandidatesFromRawText } from '@/lib/source-price-date-repair';
+import {
+  applySourceDeclaredSalesExclusions,
+  applyUnpricedDateSalesQuarantine,
+} from '@/lib/product-registration/date-sales-quarantine';
+import type { DateSalesQuarantine } from '@/lib/product-registration/date-sales-quarantine';
 import {
   buildSupplierRawDeterministicItinerary,
   extractSupplierRawDeterministicFacts,
@@ -286,6 +296,62 @@ async function runV3Safely(input: RegisterProductFromRawInput, ed: ExtractedData
   }
 }
 
+function inferSinglePriceCalendarYear(
+  priceDates: Array<{ date?: string | null }>,
+): number | undefined {
+  const years = [...new Set(priceDates
+    .map(row => Number(String(row.date ?? '').slice(0, 4)))
+    .filter(year => Number.isInteger(year) && year >= 2000 && year <= 2100))];
+  return years.length === 1 ? years[0] : undefined;
+}
+
+function applyDateSalesQuarantineProofToV3(
+  result: V3PipelineResult | null,
+  quarantines: DateSalesQuarantine[],
+): void {
+  if (!result || quarantines.length === 0) return;
+  const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const quarantineBySource = new Map(
+    quarantines.map(item => [normalize(item.sourceText), item]),
+  );
+  const quarantinedDates = new Set(quarantines.flatMap(item => item.dates));
+
+  for (const variant of result.ledger.variants) {
+    variant.price_calendar = variant.price_calendar.filter(entry => (
+      entry.date == null || !quarantinedDates.has(entry.date)
+    ));
+    for (const fact of variant.structured_facts) {
+      if (
+        fact.category !== 'surcharge'
+        || fact.values.amount != null
+        || fact.values.percent != null
+      ) continue;
+      const quarantine = fact.evidence
+        .map(item => quarantineBySource.get(normalize(item.quote)))
+        .find((item): item is DateSalesQuarantine => Boolean(item));
+      if (!quarantine) continue;
+      fact.values = {
+        ...fact.values,
+        safe_state: quarantine.safeState,
+        quarantine_reason: quarantine.reason,
+        quarantined_date_tokens: quarantine.dateTokens,
+        quarantined_dates: quarantine.dates,
+      };
+      fact.risk_level = 'high';
+      fact.review_status = 'auto_clean';
+      fact.standard_text =
+        `지상비가 확정되지 않은 ${quarantine.dateTokens.join(', ')} 출발일은 판매 대상에서 제외됩니다.`;
+    }
+  }
+
+  result.gate_result = evaluateProductRegistrationV3Gate(
+    result.structure_plan,
+    result.ledger,
+    result.match_summary,
+  );
+  result.render_contract_preview = ledgerToRenderPackageInputs(result.ledger);
+}
+
 function hasValidSequentialDays(input: ItineraryDataLike | null): boolean {
   const days = input?.days ?? [];
   if (days.length === 0) return false;
@@ -346,7 +412,7 @@ function shouldPreferSupplierItinerary(
 }
 
 function applySupplierRawFacts(ed: ExtractedData, rawText: string, documentRawText?: string | null): ItineraryDataLike | null {
-  if (rawText.trim().length < 50) return null;
+  if (rawText.trim().length < 12) return null;
   const rawFacts = extractSupplierRawDeterministicFacts(rawText);
   const flightSource = selectSourceBackedFlightFacts(rawText, documentRawText, rawFacts);
   const flightFacts = flightSource.facts;
@@ -742,6 +808,32 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   if ((!ed.notices_parsed?.length) && v3RenderInput?.notices_parsed?.length) {
     ed.notices_parsed = normalizeParserNoticeItems(v3RenderInput.notices_parsed);
   }
+  const v3SafetyNotices = v3RenderInput?.notices_parsed?.filter(notice => (
+    typeof notice === 'object'
+    && notice !== null
+    && (
+      (notice as Record<string, unknown>).category === 'flight_schedule_options'
+      || (notice as Record<string, unknown>).category === 'prebooking_quote_and_consent'
+    )
+  )) ?? [];
+  for (const v3SafetyNotice of v3SafetyNotices) {
+    const normalizedSafetyNotice = normalizeParserNoticeItems([v3SafetyNotice])[0];
+    const existingNotices = ed.notices_parsed ?? [];
+    const safetyNoticeText = typeof normalizedSafetyNotice === 'object' && normalizedSafetyNotice !== null
+      ? normalizedSafetyNotice.text
+      : null;
+    if (
+      normalizedSafetyNotice
+      && !existingNotices.some(notice => (
+        typeof notice === 'object'
+        && notice !== null
+        && 'text' in notice
+        && notice.text === safetyNoticeText
+      ))
+    ) {
+      ed.notices_parsed = [...existingNotices, normalizedSafetyNotice];
+    }
+  }
 
   const sanitization = sanitizeForCustomer(ed);
   Object.assign(ed, sanitization.cleaned);
@@ -789,6 +881,86 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     }
   }
   priceRecovery.priceRows = ensureCustomerSellingPrices(priceRecovery.priceRows);
+  const dateRestrictionYear = priceYear
+    ?? inferSinglePriceCalendarYear(priceRecovery.priceDates);
+  const sourceSalesExclusions = applySourceDeclaredSalesExclusions({
+    rawText,
+    year: dateRestrictionYear,
+    tiers: priceRecovery.tiers,
+    priceRows: priceRecovery.priceRows,
+    priceDates: priceRecovery.priceDates,
+  });
+  const dateSalesQuarantineFailures: string[] = [];
+  if (sourceSalesExclusions.exclusions.length > 0) {
+    if (!sourceSalesExclusions.ok) {
+      dateSalesQuarantineFailures.push(
+        `Source-declared sales exclusion failed: ${sourceSalesExclusions.failure ?? 'unknown failure'}`,
+      );
+    } else {
+      priceRecovery = {
+        ...priceRecovery,
+        source: `${priceRecovery.source}+source_excluded_dates`,
+        tiers: sourceSalesExclusions.tiers,
+        priceRows: sourceSalesExclusions.priceRows,
+        priceDates: sourceSalesExclusions.priceDates,
+        minPrice: sourceSalesExclusions.minPrice,
+      };
+      ed.excluded_dates = [...new Set([
+        ...(ed.excluded_dates ?? []),
+        ...sourceSalesExclusions.excludedDates,
+      ])].sort();
+    }
+  }
+  const dateSalesQuarantine = applyUnpricedDateSalesQuarantine({
+    rawText,
+    year: dateRestrictionYear,
+    tiers: priceRecovery.tiers,
+    priceRows: priceRecovery.priceRows,
+    priceDates: priceRecovery.priceDates,
+  });
+  let dateSalesQuarantineNotice: {
+    type: 'PAYMENT';
+    title: string;
+    text: string;
+  } | null = null;
+  if (dateSalesQuarantine.quarantines.length > 0) {
+    if (!dateSalesQuarantine.ok) {
+      dateSalesQuarantineFailures.push(
+        `Date sales quarantine failed: ${dateSalesQuarantine.failure ?? 'unknown failure'}`,
+      );
+    } else {
+      priceRecovery = {
+        ...priceRecovery,
+        source: `${priceRecovery.source}+date_sales_quarantine`,
+        tiers: dateSalesQuarantine.tiers,
+        priceRows: dateSalesQuarantine.priceRows,
+        priceDates: dateSalesQuarantine.priceDates,
+        minPrice: dateSalesQuarantine.minPrice,
+      };
+      ed.excluded_dates = [...new Set([
+        ...(ed.excluded_dates ?? []),
+        ...dateSalesQuarantine.quarantinedDates,
+      ])].sort();
+      dateSalesQuarantineNotice = {
+        type: 'PAYMENT' as const,
+        title: '판매 제외일 안내',
+        text: `지상비가 확정되지 않은 ${dateSalesQuarantine.quarantines
+          .flatMap(item => item.dateTokens)
+          .filter((token, index, all) => all.indexOf(token) === index)
+          .join(', ')} 출발일은 판매 대상에서 제외됩니다.`,
+      };
+      const notices = ed.notices_parsed ?? [];
+      if (!notices.some(notice => (
+        typeof notice === 'object'
+        && notice !== null
+        && 'text' in notice
+        && notice.text === dateSalesQuarantineNotice?.text
+      ))) {
+        ed.notices_parsed = [...notices, dateSalesQuarantineNotice];
+      }
+      applyDateSalesQuarantineProofToV3(v3.result, dateSalesQuarantine.quarantines);
+    }
+  }
   ed.price_tiers = priceRecovery.tiers;
   if (priceRecovery.minPrice != null) ed.price = priceRecovery.minPrice;
 
@@ -841,6 +1013,32 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     nights: sourceBackedNights,
     activeAttractions: input.activeAttractions,
   });
+  const sourceBackedFlightOptions = v3.result?.ledger.variants[0]?.flight_options ?? [];
+  if (sourceBackedFlightOptions.length > 0 && itinerary.itineraryDataToSave) {
+    const currentItinerary = itinerary.itineraryDataToSave as ItineraryDataLike & {
+      meta?: Record<string, unknown>;
+      flight_segments?: unknown;
+      flight_schedule_options?: unknown;
+    };
+    itinerary.itineraryDataToSave = {
+      ...currentItinerary,
+      meta: {
+        ...(currentItinerary.meta ?? {}),
+        flight_out: null,
+        flight_in: null,
+        airline: null,
+      },
+      flight_segments: [],
+      flight_schedule_options: sourceBackedFlightOptions.map(option => ({
+        leg: option.leg,
+        dep_time: option.dep_time,
+        arr_time: option.arr_time,
+        dep_location: option.dep_location,
+        arr_location: option.arr_location,
+      })),
+    };
+    ed.airline = undefined;
+  }
   const itineraryBackedDuration = inferSafeDurationFromItinerary(itinerary.itineraryDataToSave);
   if (itineraryBackedDuration && (!ed.duration || ed.duration < 2)) {
     ed.duration = itineraryBackedDuration;
@@ -908,6 +1106,17 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   if (repairedCustomerCopy.customer_notes !== undefined) {
     (ed as { customer_notes?: unknown }).customer_notes = repairedCustomerCopy.customer_notes;
   }
+  if (dateSalesQuarantineNotice) {
+    const notices = ed.notices_parsed ?? [];
+    if (!notices.some(notice => (
+      typeof notice === 'object'
+      && notice !== null
+      && 'text' in notice
+      && notice.text === dateSalesQuarantineNotice?.text
+    ))) {
+      ed.notices_parsed = [...notices, dateSalesQuarantineNotice];
+    }
+  }
   if (repairedCustomerCopy.itinerary_data !== undefined) {
     itinerary.itineraryDataToSave = repairedCustomerCopy.itinerary_data;
   }
@@ -918,11 +1127,15 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     };
   }
 
-  const v3GateFailures = v3.result?.gate_result.status === 'blocked'
-    ? v3.result.gate_result.checks
-      .filter(check => check.status === 'fail')
-      .map(check => `v3:gate:${check.id}:${check.message}`)
-    : [];
+  const v3GateFailures = v3.result?.gate_result.checks
+    .filter(check => check.status === 'fail')
+    .map(check => `v3:gate:${check.id}:${check.message}`)
+    ?? [];
+  const v3UnmatchedAttractions = v3.result?.match_summary.unmatched
+    .map(item => item.raw_text.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .map(label => `v3:unmatched_attraction:${label.slice(0, 240)}`)
+    ?? [];
   const deliverability = evaluateUploadDeliverability({
     priceRows: priceRecovery.priceRows,
     priceDates: priceRecovery.priceDates,
@@ -958,6 +1171,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     extraFailures: [
       ...priceAudit.blockers.map(reason => `Price source audit failed: ${reason}`),
       ...destination.failures.map(reason => `Destination resolution failed: ${reason}`),
+      ...dateSalesQuarantineFailures,
       ...(input.extraFailures ?? []),
     ],
   });
@@ -972,6 +1186,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ...v3.warnings,
     ...priceAudit.warnings.map(reason => `price_source_audit:${reason}`),
     ...v3GateFailures,
+    ...v3UnmatchedAttractions,
     ...itinerary.warnings,
     ...customerCopyRepair.changes.map(change => `customer_copy:${change.action}:${change.fieldPath}:${change.codes.join(',')}`),
     ...attractionMedia.warnings.map(reason => `mobile_media:${reason}`),

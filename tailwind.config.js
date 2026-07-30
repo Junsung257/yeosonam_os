@@ -18,16 +18,16 @@ module.exports = {
       colors: {
         // 브랜드 (공개 사이트 + 어드민 공통)
         brand: {
-          DEFAULT: '#3182F6',
+          DEFAULT: '#1B64DA',
           light:   '#EBF3FE',
-          dark:    '#1B64DA',
+          dark:    '#124AAB',
         },
         // 배경
         'bg-page':    '#FFFFFF',
         'bg-section': '#F2F4F6',
         // 텍스트
         'text-primary':   '#191F28',
-        'text-secondary': '#8B95A1',
+        'text-secondary': '#6B7280',
         'text-body':      '#4E5968',
         // 시스템 색상
         danger: {
@@ -57,10 +57,10 @@ module.exports = {
           // 텍스트 (5단계)
           text:      '#0F172A',  // 본문 (slate-900)
           'text-2':  '#334155',  // 보조 (slate-700)
-          muted:     '#64748B',  // 라벨/캡션 (slate-500)
-          'muted-2': '#94A3B8',  // 비활성 (slate-400)
-          textMuted: '#64748B',  // ← 레거시 alias (점진 deprecate)
-          textSubtle: '#94A3B8', // ← 레거시 alias → muted-2 와 동일
+          muted:     '#475569',  // 라벨/캡션 (slate-600, WCAG AA)
+          'muted-2': '#64748B',  // 비활성 (slate-500, WCAG AA)
+          textMuted: '#475569',  // ← 레거시 alias (점진 deprecate)
+          textSubtle: '#64748B', // ← 레거시 alias → muted-2 와 동일
           'on-brand':'#FFFFFF',  // 브랜드 위 텍스트
           // 회계 (한국 주식 관행: 양수=빨강, 음수=파랑)
           profit:    '#F04452',
@@ -71,11 +71,11 @@ module.exports = {
         },
         // 레거시 status 토큰 (어드민 일부에서 사용 중, 유지)
         status: {
-          successBg: '#E9FAF4', successFg: '#04C584',
-          warningBg: '#FFFBEB', warningFg: '#F59E0B',
-          dangerBg:  '#FFF1F2', dangerFg:  '#F04452',
-          infoBg:    '#EBF3FE', infoFg:    '#3182F6',
-          neutralBg: '#F2F4F6', neutralFg: '#8B95A1',
+          successBg: '#E9FAF4', successFg: '#047857',
+          warningBg: '#FFFBEB', warningFg: '#92400E',
+          dangerBg:  '#FFF1F2', dangerFg:  '#B91C1C',
+          infoBg:    '#EBF3FE', infoFg:    '#1D4ED8',
+          neutralBg: '#F2F4F6', neutralFg: '#475569',
         },
       },
 

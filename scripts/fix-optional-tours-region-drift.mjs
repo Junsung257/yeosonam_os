@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
 const APPLY = process.argv.includes('--apply');
 const JSON_OUT = process.argv.includes('--json');
+const ALLOW_REVIEWED_SOURCE_REPAIR = process.argv.includes('--allow-reviewed-source-repair');
+const ALLOW_PARTIAL_REVIEWED_SOURCE_REPAIR = process.argv.includes('--allow-partial-reviewed-source-repair');
 
 const envPath = path.join(process.cwd(), '.env.local');
 if (fs.existsSync(envPath)) {
@@ -52,16 +55,86 @@ const ambiguousTourKeywords = [
   '\uC2A4\uCE74\uC774\uD2B8\uB809',
 ];
 
-function inferRegionFromPackage(pkg) {
-  const text = [pkg.destination, pkg.title].filter(Boolean).join(' ');
-  for (const rule of regionRules) {
-    if (rule.keywords.some(keyword => text.includes(keyword))) return rule.region;
+function normalizedSource(value) {
+  const normalized = [];
+  const originalIndexes = [];
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.slice(index, index + 6).toLowerCase() === '&nbsp;') {
+      normalized.push(' ');
+      originalIndexes.push(index);
+      index += 5;
+      continue;
+    }
+    const entity = value.slice(index).match(/^&#(?:x[0-9a-f]+|\d+);/i)?.[0];
+    if (entity) {
+      normalized.push(' ');
+      originalIndexes.push(index);
+      index += entity.length - 1;
+      continue;
+    }
+    for (const character of value[index].normalize('NFKC').toLowerCase()) {
+      if (/^[\p{Letter}\p{Number}]$/u.test(character)) {
+        normalized.push(character);
+        originalIndexes.push(index);
+      }
+    }
   }
-  return null;
+  return { value: normalized.join(''), originalIndexes };
+}
+
+function sourceHash(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function findSourceMatch(rawText, name) {
+  const exactIndex = rawText.indexOf(name);
+  if (exactIndex >= 0) return { index: exactIndex, end: exactIndex + name.length, normalized: false };
+  const normalizedName = normalizedSource(name).value;
+  if (!normalizedName) return { index: -1, end: -1, normalized: false };
+  const normalizedRaw = normalizedSource(rawText);
+  const matchIndex = normalizedRaw.value.indexOf(normalizedName);
+  if (matchIndex < 0) return { index: -1, end: -1, normalized: false };
+  const originalStart = normalizedRaw.originalIndexes[matchIndex];
+  const originalEnd = normalizedRaw.originalIndexes[matchIndex + normalizedName.length - 1];
+  return { index: originalStart, end: originalEnd + 1, normalized: true };
+}
+
+function inferRegionFromSource(pkg, tour) {
+  const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+  const suppliedHash = typeof pkg.raw_text_hash === 'string' ? pkg.raw_text_hash.trim() : '';
+  const hashValid = Boolean(rawText && suppliedHash && sourceHash(rawText) === suppliedHash);
+  const name = typeof tour?.name === 'string' ? tour.name : '';
+  const match = rawText && name ? findSourceMatch(rawText, name) : { index: -1, end: -1, normalized: false };
+  if (match.index < 0) {
+    return {
+      region: null,
+      evidence: { raw_text_present: Boolean(rawText), raw_text_hash_present: Boolean(pkg.raw_text_hash), hash_valid: hashValid, name_found: false, context_regions: [] },
+    };
+  }
+  const context = rawText.slice(Math.max(0, match.index - 180), Math.min(rawText.length, match.end + 180)).replace(/\s+/g, ' ').trim();
+  const regions = [...new Set(regionRules.filter(rule => rule.keywords.some(keyword => context.includes(keyword))).map(rule => rule.region))];
+  return {
+    region: regions.length === 1 ? regions[0] : null,
+    evidence: {
+      raw_text_present: true,
+      raw_text_hash_present: Boolean(pkg.raw_text_hash),
+      hash_valid: hashValid,
+      name_found: true,
+      normalized_name_match: match.normalized,
+      context_excerpt: context,
+      context_regions: regions,
+    },
+  };
 }
 
 function isAmbiguousTourName(name) {
   return ambiguousTourKeywords.some(keyword => name.includes(keyword));
+}
+
+function isPublicPackage(pkg) {
+  const status = String(pkg.status ?? '').toLowerCase();
+  const publicationState = String(pkg.publication_state ?? '').toLowerCase();
+  return ['active', 'approved', 'available', 'published'].includes(status) || publicationState === 'published';
 }
 
 async function fetchPackages() {
@@ -70,7 +143,7 @@ async function fetchPackages() {
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase
       .from('travel_packages')
-      .select('id, title, destination, optional_tours')
+      .select('id, title, destination, status, publication_state, raw_text, raw_text_hash, optional_tours')
       .range(offset, offset + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
@@ -82,20 +155,41 @@ async function fetchPackages() {
 
 const packages = await fetchPackages();
 const changes = [];
+const unresolved = [];
+let hashMismatches = 0;
+let sourceBackedCandidates = 0;
+let rawTextPresent = 0;
+let rawNameMatches = 0;
 
 for (const pkg of packages) {
   if (!Array.isArray(pkg.optional_tours) || pkg.optional_tours.length === 0) continue;
-  const inferredRegion = inferRegionFromPackage(pkg);
-  if (!inferredRegion) continue;
-
   let changed = false;
   const nextTours = pkg.optional_tours.map(tour => {
     if (!tour || typeof tour !== 'object') return tour;
     const name = typeof tour.name === 'string' ? tour.name : '';
     const hasRegion = typeof tour.region === 'string' && tour.region.trim().length > 0;
     if (!name || hasRegion || !isAmbiguousTourName(name)) return tour;
+    if (isPublicPackage(pkg)) {
+      unresolved.push({ id: pkg.id, title: pkg.title, destination: pkg.destination, name, evidence: { blocked_reason: 'public_package', status: pkg.status, publication_state: pkg.publication_state } });
+      return tour;
+    }
+    const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+    const suppliedHash = typeof pkg.raw_text_hash === 'string' ? pkg.raw_text_hash.trim() : '';
+    if (!rawText || !suppliedHash || sourceHash(rawText) !== suppliedHash) {
+      hashMismatches++;
+      unresolved.push({ id: pkg.id, title: pkg.title, destination: pkg.destination, name, evidence: { raw_text_present: Boolean(rawText), raw_text_hash_present: Boolean(suppliedHash), hash_valid: false, name_found: false, context_regions: [] } });
+      return tour;
+    }
+    const inferred = inferRegionFromSource(pkg, tour);
+    if (inferred.evidence.raw_text_present) rawTextPresent++;
+    if (inferred.evidence.name_found) rawNameMatches++;
+    if (!inferred.region) {
+      unresolved.push({ id: pkg.id, title: pkg.title, destination: pkg.destination, name, evidence: inferred.evidence });
+      return tour;
+    }
+    sourceBackedCandidates++;
     changed = true;
-    return { ...tour, region: inferredRegion };
+    return { ...tour, region: inferred.region };
   });
 
   if (changed) {
@@ -109,10 +203,12 @@ for (const pkg of packages) {
 }
 
 if (JSON_OUT) {
-  console.log(JSON.stringify({ apply: APPLY, scanned: packages.length, changes }, null, 2));
+  console.log(JSON.stringify({ apply: APPLY, scanned: packages.length, sourceBackedCandidates, rawTextPresent, rawNameMatches, hashMismatches, unresolved: unresolved.length, changes, unresolvedSamples: unresolved.slice(0, 20) }, null, 2));
 } else {
   console.log(`Scanned packages: ${packages.length}`);
   console.log(`Packages to update: ${changes.length}`);
+  console.log(`Source-backed tour candidates: ${sourceBackedCandidates}`);
+  console.log(`Unresolved tour entries: ${unresolved.length}`);
   for (const change of changes.slice(0, 10)) {
     console.log(`- ${change.title} -> ${change.optional_tours.filter(t => t?.region).map(t => `${t.name}:${t.region}`).join(', ')}`);
   }
@@ -120,6 +216,12 @@ if (JSON_OUT) {
 
 if (!APPLY) {
   if (!JSON_OUT) console.log('Dry-run only. Re-run with --apply to update Supabase.');
+} else if (!ALLOW_REVIEWED_SOURCE_REPAIR) {
+  console.error('Refusing to apply: add --allow-reviewed-source-repair after reviewing source evidence.');
+  process.exitCode = 2;
+} else if (unresolved.length > 0 && !ALLOW_PARTIAL_REVIEWED_SOURCE_REPAIR) {
+  console.error(`Refusing to apply while ${unresolved.length} unresolved source-evidence entries remain.`);
+  process.exitCode = 2;
 } else {
   let updated = 0;
   for (const change of changes) {
@@ -135,7 +237,7 @@ if (!APPLY) {
     }
   }
 
-  console.log(`Updated packages: ${updated}/${changes.length}`);
+  console.log(`Updated packages: ${updated}/${changes.length}; unresolved retained: ${unresolved.length}`);
 }
 
 await supabase.removeAllChannels();

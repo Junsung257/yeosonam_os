@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { recordServerAnalyticsEvent } from '@/lib/analytics/server-events';
 
 // ── 수정 허용 필드 화이트리스트 ──────────────────────────────────────────────
 // total_cost / is_manual_cost 는 DB 마이그레이션(manual_cost_override_v1.sql)
@@ -194,6 +195,45 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       },
       { status: 500 },
     );
+  }
+
+  if (body.status === 'confirmed') {
+    const confirmed = data as {
+      package_id?: string | null;
+      package_title?: string;
+      total_price?: number;
+      destination?: string | null;
+      departure_date?: string;
+      attribution_snapshot?: { analytics?: unknown } | null;
+    };
+    try {
+      await recordServerAnalyticsEvent({
+        eventName: 'ysn_booking_confirmed',
+        idempotencyKey: `booking-confirmed:${id}`,
+        sourceType: 'booking',
+        sourceId: id,
+        bookingId: id,
+        productId: confirmed.package_id ?? null,
+        transactionId: `booking:${id}`,
+        valueKrw: Number.isFinite(confirmed.total_price)
+          ? Math.max(0, Math.round(confirmed.total_price ?? 0))
+          : null,
+        attribution: confirmed.attribution_snapshot?.analytics,
+        payload: {
+          transaction_id: `booking:${id}`,
+          currency: 'KRW',
+          value: Number.isFinite(confirmed.total_price)
+            ? Math.max(0, Math.round(confirmed.total_price ?? 0))
+            : undefined,
+          package_id: confirmed.package_id ?? undefined,
+          package_name: confirmed.package_title ?? undefined,
+          destination: confirmed.destination ?? undefined,
+          departure_date: confirmed.departure_date ?? undefined,
+        },
+      });
+    } catch (analyticsError) {
+      console.warn(`[bookings/${id}] confirmation analytics failed:`, analyticsError);
+    }
   }
 
   return NextResponse.json({ booking: data });

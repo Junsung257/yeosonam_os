@@ -494,6 +494,45 @@ ZE982
     expect(result.gate_result.checks.find(check => check.id.endsWith('flight_times_complete'))?.status).toBe('pass');
   });
 
+  it('does not promote an incomplete alternate-flight note over a complete return segment', async () => {
+    const raw = [
+      'Product: Phu Quoc Package 3N5D',
+      'Price: 799,000 KRW / minimum 4',
+      'DAY 1 LJ119',
+      '19:55',
+      '23:25',
+      '김해 국제공항 출발 (목/일 LC119 20:05)',
+      '푸꾸옥 국제공항 도착',
+      'DAY 5 LJ120',
+      '00:25',
+      '07:45',
+      '푸꾸옥 국제공항 출발',
+      '김해 국제공항 도착',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.flight_segments.find(segment => segment.code === 'LJ119')).toMatchObject({
+      leg: 'outbound',
+      dep_time: '19:55',
+      arr_time: '23:25',
+    });
+    expect(variant.flight_segments.find(segment => segment.code === 'LC119')).toMatchObject({
+      leg: 'unknown',
+      dep_time: '20:05',
+      arr_time: null,
+    });
+    expect(variant.flight_segments.find(segment => segment.code === 'LJ120')).toMatchObject({
+      leg: 'inbound',
+      dep_time: '00:25',
+      arr_time: '07:45',
+    });
+    expect(result.gate_result.checks.find(check => check.id.endsWith('flight_times_complete'))?.status).toBe('pass');
+  });
+
   it('classifies itinerary table noise and shopping fragments away from attraction review', async () => {
     const raw = [
       'Product: Da Nang Spot 3N5D',
@@ -595,6 +634,58 @@ ZE982
     expect(result.gate_result.checks.find(check => check.id.endsWith('minimum_departure'))?.status).toBe('pass');
   });
 
+  it('recognizes an explicit minimum-departure label followed by a separated count', async () => {
+    const raw = [
+      'Product: Kunming 4N6D',
+      'Price: 899,000 KRW',
+      '\uCD5C\uC18C\uCD9C\uBC1C',
+      '',
+      '10\uBA85',
+      'DAY 1 LJ111 Busan departure 21:00 Kunming arrival 23:30',
+      'DAY 2 Kunming tour',
+      'DAY 3 Stone Forest tour',
+      'DAY 4 Free time',
+      'DAY 5 Kunming tour',
+      'DAY 6 LJ112 Kunming departure 01:00 Busan arrival 07:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: 'Kunming' });
+    const minimumDeparture = result.ledger.variants[0].minimum_departure;
+
+    expect(minimumDeparture?.value).toBe(10);
+    expect(minimumDeparture?.evidence).toMatchObject({
+      line_start: 3,
+      line_end: 5,
+      quote: '\uCD5C\uC18C\uCD9C\uBC1C\n\n10\uBA85',
+    });
+  });
+
+  it('does not infer minimum departure from recruitment capacity wording', async () => {
+    const raw = [
+      'Product: Kunming allocation 4N6D',
+      'Price: 899,000 KRW',
+      '\uBAA8\uAC1D\uC778\uC6D0',
+      '',
+      '\uAC01\uD56D\uCC28\uBCC4 30\uBA85',
+      '\uC120\uCC29\uC21C\uB9C8\uAC10',
+      'DAY 1 LJ111 Busan departure 21:00 Kunming arrival 23:30',
+      'DAY 2 Kunming tour',
+      'DAY 3 Stone Forest tour',
+      'DAY 4 Free time',
+      'DAY 5 Kunming tour',
+      'DAY 6 LJ112 Kunming departure 01:00 Busan arrival 07:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: 'Kunming' });
+
+    expect(result.ledger.variants[0].minimum_departure).toBeNull();
+    expect(result.gate_result.checks.find(check => check.id.endsWith('minimum_departure'))?.status).toBe('fail');
+  });
+
   it('uses line-level evidence and never whole raw text as fallback evidence', async () => {
     const result = await runProductRegistrationV3(fixtures[0].raw);
     const option = result.ledger.variants[0].options.find(item => item.duration_minutes === 60);
@@ -672,6 +763,33 @@ ZE982
     ]) {
       expect(unmatched).not.toContain(noise);
     }
+  });
+
+  it('keeps schedule placeholders and customs warnings out of attraction and shopping review', async () => {
+    const customsNotice =
+      '* 기내에서 세관 신고서를 작성해야 하며 현지 공항 세관에서 과세가 심하니 면세품을 조심해서 들고 가야 합니다.';
+    const raw = [
+      '상품: 가오슝 골프 3박4일',
+      'Price: 899,000 KRW / minimum 4',
+      'DAY 1 BX123 부산 출발 09:00 가오슝 도착 11:00',
+      'DAY 2 골프 18홀',
+      '(예정)',
+      'DAY 3 골프 18홀',
+      '(예정)',
+      'DAY 4 BX124 가오슝 출발 12:00 부산 도착 15:00',
+      customsNotice,
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: '가오슝',
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).not.toContain('(예정)');
+    expect(result.match_summary.entity_summary.shopping_review_needed_count).toBe(0);
+    expect(result.ledger.variants[0].shopping.map(item => item.value)).not.toContain(customsNotice);
+    expect(events.filter(event => event.raw_text === '(예정)').every(event => event.type === 'notice')).toBe(true);
   });
 
   it('removes price noise events from the render schedule', async () => {
@@ -2262,5 +2380,32 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(notice?.risk_level).toBe('high');
     expect(notice?.visibility).toBe('customer_visible');
     expect(notice?.review_status).toBe('review_needed');
+  });
+
+  it('structures JPY optional tours and a named itinerary shopping stop without review', async () => {
+    const raw = [
+      '상품: 나리타 골프 3박4일',
+      '가격 899,000원 / 최소출발 4명',
+      'DAY 1 BX112 07:50 10:00',
+      '추천옵션',
+      '당일치기온천 (차량:2,000엔+입욕비:1,000엔/1인)',
+      '이온몰 쇼핑 후 골프장 이동',
+      'DAY 4 BX111 10:55 13:15',
+      '포함사항: 왕복항공, 호텔, 골프',
+      '불포함사항: 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.options[0]).toMatchObject({
+      price_amount: 3000,
+      currency: 'JPY',
+    });
+    expect(variant.shopping.map(item => item.value)).toContain('이온몰 쇼핑 후 골프장 이동');
+    expect(result.gate_result.checks.find(check => check.id.endsWith('options_reflected'))?.status).toBe('pass');
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_reflected'))?.status).toBe('pass');
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+    expect(result.match_summary.entity_summary.shopping_review_needed_count).toBe(0);
   });
 });

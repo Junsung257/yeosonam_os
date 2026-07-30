@@ -107,11 +107,67 @@ describe('attraction media readiness', () => {
     expect(result.blockers).toContain('attraction.description_missing:\uC545\uD654\uD3ED\uD3EC');
   });
 
+  it('does not require customer-card copy for a recognized internal-only master', () => {
+    const itineraryData = {
+      days: [{
+        day: 1,
+        schedule: [{
+          activity: '통천협 관광',
+          attraction_ids: ['tongtian'],
+          attraction_names: ['통천협'],
+        }],
+      }],
+    };
+
+    const result = evaluateAttractionMediaReadiness({
+      itineraryData,
+      attractions: [{
+        id: 'tongtian',
+        name: '통천협',
+        is_active: true,
+        customer_publishable: false,
+        short_desc: null,
+        long_desc: null,
+        photos: [],
+      }],
+      blockUnmatchedMajor: true,
+    });
+
+    expect(result.unmatchedCandidates).toEqual([]);
+    expect(result.missingDescriptionCandidates).toEqual([]);
+    expect(result.blockers).toEqual([]);
+  });
+
   it('prefers explicit attraction names when the enrichment layer already resolved them', () => {
     expect(extractCustomerAttractionLabel({
       activity: '산책',
       attraction_names: ['쿠로가와 온천마을'],
     })).toBe('쿠로가와 온천마을');
+  });
+
+  it('prioritizes the compiled entity kind over a legacy normal type for transfers', () => {
+    expect(extractCustomerAttractionLabels({
+      activity: '\uBCF4\uCC9C\uB300\uD611\uACE1\uC73C\uB85C \uC774\uB3D9',
+      type: 'normal',
+      entity_kind: 'transfer',
+    })).toEqual([]);
+  });
+
+  it('does not require attraction media for route mechanics or orphan description fragments', () => {
+    const fragments = [
+      '인 : 야시장자유관람',
+      '200 년 하리푼차이의 역사와 유적지를 재현',
+      '대협곡중 으뜸으로 꼽히는',
+      '협곡 위 높이 625 m',
+      '도보 -전동카 -도보 -유리전망대-전동카',
+      '입구- 셔틀버스-공중버스 -쌍심플래폼- 레일케이블카-전동카',
+      '유리전망대- 전동카-동굴엘리베이터-전동카-셔틀버스 -출구',
+      '완행열차 체험 – 치앙마이에서만 느낄 수 있는 여유와 감성이 있는 열차',
+    ];
+
+    for (const activity of fragments) {
+      expect(extractCustomerAttractionLabels({ activity })).toEqual([]);
+    }
   });
 
   it('splits known Baekdu/Yanji composite attraction phrases into separate customer-visible labels', () => {
@@ -122,5 +178,26 @@ describe('attraction media readiness', () => {
     expect(extractCustomerAttractionLabels({
       activity: '\uC724\uB3D9\uC8FC\uC0DD\uAC00, \uBA85\uB3D9\uAD50\uD68C \uAD00\uAD11',
     })).toEqual(['\uC724\uB3D9\uC8FC\uC0DD\uAC00', '\uBA85\uB3D9\uAD50\uD68C']);
+  });
+
+  it.each([
+    '성인 등 모든 관광객 인당 신청 필수',
+    '성수기의 경우 ETA 승인이 오래 걸릴 수 있으니 여유있는 신청 필수',
+    '괌 도착 72시간 전 전자세관신고서 작성 후 QR 코드 촬영 필수',
+    '야채절임, 디저트',
+    '실제 음식은 조리 과정에 따라 플레이팅이 달라질 수 있습니다.',
+    '파인이스트 괌 골프장 18홀',
+    '피로를 덜어주는 대만식 발맛사지 30분',
+    '로컬마켓 문화체험 - 재래시장 관람',
+    '프라이빗한 해변을 가진 비치바 or 핫플카페',
+    '미슐랭 추천 5성급 호텔 디너쇼 식사 후',
+  ])('does not require attraction media for operational, meal, golf, or generic venue text: %s', activity => {
+    expect(extractCustomerAttractionLabels({ activity })).toEqual([]);
+  });
+
+  it('still requires media for a named cathedral next to descriptive copy', () => {
+    expect(extractCustomerAttractionLabels({
+      activity: '마카오 상징적 건축물로 유명한 성바울 성당',
+    })).toEqual(['마카오 상징적 건축물로 유명한 성바울 성당']);
   });
 });

@@ -336,7 +336,7 @@ export default function IntegrationsPage() {
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-t border-slate-50">
                     {Array.from({ length: 6 }).map((__, j) => (
-                      <td key={j} className="px-3 py-3">
+                      <td key={j} className="px-3 py-3" aria-label={`${['task', 'provider/model', 'fallback', 'timeout', 'enabled', 'action'][j]} 불러오는 중`}>
                         <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: j === 0 ? 80 : j === 5 ? 60 : 48 }} />
                       </td>
                     ))}

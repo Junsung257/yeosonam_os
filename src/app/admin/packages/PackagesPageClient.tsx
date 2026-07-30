@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { useToast } from '@/components/ui/Toast';
 import nextDynamic from 'next/dynamic';
@@ -17,6 +18,11 @@ import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attracti
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { trackEngagement } from '@/lib/tracker';
+import {
+  generatePackageContentChannels,
+  parseAdminPackageStatus,
+  type AdminPackageStatus,
+} from './package-workflow';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
 const ApprovalModal = nextDynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
@@ -234,7 +240,7 @@ const STATUS_OPTIONS = [
   { value: 'selling',        label: '판매 중' },
   { value: 'pending',        label: '검토 대기' },
   { value: 'archived',       label: '아카이브' },
-];
+] as const;
 
 const SORT_OPTIONS = [
   { value: 'created_desc', label: '등록일 최신순' },
@@ -277,7 +283,7 @@ function regionBadgeClass(region?: string): string {
 /** margin_rate(소수) 기준 동적 색상 */
 function marginColor(rate?: number): string {
   if (rate == null) return 'text-admin-muted-2';
-  if (rate >= 0.10) return 'text-emerald-600 font-bold';
+  if (rate >= 0.10) return 'text-emerald-700 font-bold';
   if (rate >= 0.05) return 'text-blue-600';
   return 'text-orange-500';
 }
@@ -781,14 +787,14 @@ const PackageRow = React.memo(function PackageRow({
             <button
               type="button"
               onClick={() => safeOpenNewWindow(`/packages/${pkg.id}`)}
-              className="px-1.5 py-1 border border-orange-300 text-orange-600 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
+              className="px-1.5 py-1 border border-orange-300 text-orange-700 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
               title="모바일 랜딩페이지 (고객용)"
               aria-label={`${pkg.title} 고객용 모바일 페이지 열기`}
             >모바일</button>
             <button
               type="button"
               onClick={() => safeOpenNewWindow(`/admin/packages/${pkg.id}/reviews`)}
-              className="px-1.5 py-1 border border-amber-300 text-amber-600 rounded text-[10px] hover:bg-amber-50 whitespace-nowrap"
+              className="px-1.5 py-1 border border-amber-300 text-amber-700 rounded text-[10px] hover:bg-amber-50 whitespace-nowrap"
               title="고객 후기 관리 (카카오 피드백 등록)"
               aria-label={`${pkg.title} 고객 후기 관리 열기`}
             >후기</button>
@@ -802,7 +808,7 @@ const PackageRow = React.memo(function PackageRow({
             <button
               type="button"
               onClick={() => onStudioOpen()}
-              className="px-1.5 py-1 border border-emerald-300 text-emerald-600 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap"
+              className="px-1.5 py-1 border border-emerald-300 text-emerald-700 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap"
               title="카드뉴스 스튜디오"
               aria-label={`${pkg.title} 카드뉴스 스튜디오 열기`}
             >Studio</button>
@@ -823,7 +829,7 @@ const PackageRow = React.memo(function PackageRow({
             {/* 콘텐츠 현황 미니 배지 */}
             {(() => {
               const ch = contentStatus.get(pkg.id);
-              if (!ch || ch.size === 0) return <span className="text-[9px] text-red-400" title="콘텐츠 없음">0/3</span>;
+              if (!ch || ch.size === 0) return <span className="text-[9px] text-red-700" title="콘텐츠 없음">0/3</span>;
               return (
                 <span className="text-[9px] text-admin-muted-2" title={`${[...ch].join(', ')}`}>
                   {ch.has('naver_blog') ? '블' : '·'}{ch.has('instagram_card') ? '카' : '·'}{ch.has('google_search') ? '광' : '·'}
@@ -905,7 +911,7 @@ const PackageRow = React.memo(function PackageRow({
             <button
               type="button"
               onClick={() => onSetApprovalTarget(pkg)}
-              className="px-2 py-1 bg-amber-500 text-white rounded text-[11px] hover:bg-amber-600"
+              className="px-2 py-1 bg-amber-700 text-white rounded text-[11px] hover:bg-amber-800"
               aria-label={`${pkg.title} 검수 시작`}
             >검수</button>
           )}
@@ -915,14 +921,14 @@ const PackageRow = React.memo(function PackageRow({
                 type="button"
                 onClick={() => onHandleAction(pkg.id, 'approve')}
                 disabled={!!actionLoading}
-                className="px-2 py-1 bg-green-600 text-white rounded text-[11px] hover:bg-green-700 disabled:opacity-50"
+                className="px-2 py-1 bg-green-700 text-white rounded text-[11px] hover:bg-green-800 disabled:opacity-50"
                 aria-label={`${pkg.title} 승인`}
               >승인</button>
               <button
                 type="button"
                 onClick={() => onHandleAction(pkg.id, 'reject')}
                 disabled={!!actionLoading}
-                className="px-2 py-1 bg-red-500 text-white rounded text-[11px] hover:bg-red-600 disabled:opacity-50"
+                className="px-2 py-1 bg-red-700 text-white rounded text-[11px] hover:bg-red-800 disabled:opacity-50"
                 aria-label={`${pkg.title} 거부`}
               >거부</button>
             </>
@@ -966,14 +972,43 @@ const PackageRow = React.memo(function PackageRow({
   );
 });
 
-export default function PackagesPage({ initialPackages }: { initialPackages?: Package[] } = {}) {
+export default function PackagesPage({
+  initialPackages,
+  initialStatus = 'all',
+}: {
+  initialPackages?: Package[];
+  initialStatus?: AdminPackageStatus;
+} = {}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [packages, setPackages] = useState<Package[]>(initialPackages ?? []);
   const [loading, setLoading] = useState(!initialPackages?.length);
   const _skipInitialLoad = useRef(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(initialPackages?.length ?? 0);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<AdminPackageStatus>(() =>
+    parseAdminPackageStatus(searchParams?.get('status') ?? initialStatus),
+  );
+  const packageQueryString = searchParams?.toString() ?? '';
+  const statusParam = searchParams?.get('status') ?? null;
+  const selectStatusFilter = useCallback((nextStatus: AdminPackageStatus) => {
+    setStatusFilter(nextStatus);
+    const params = new URLSearchParams(packageQueryString);
+    if (nextStatus === 'all') params.delete('status');
+    else params.set('status', nextStatus);
+    const query = params.toString();
+    const href = query ? `${pathname}?${query}` : pathname;
+    if (href !== `${pathname}${packageQueryString ? `?${packageQueryString}` : ''}`) {
+      router.push(href, { scroll: false });
+    }
+  }, [packageQueryString, pathname, router]);
+
+  useEffect(() => {
+    const nextStatus = parseAdminPackageStatus(statusParam);
+    setStatusFilter(current => current === nextStatus ? current : nextStatus);
+  }, [statusParam]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_desc');
   const [showExpired, setShowExpired] = useState(false);
@@ -1019,12 +1054,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [brainOpen, setBrainOpen] = useState(false);
   const [metaLiveOpen, setMetaLiveOpen] = useState(false);
 
-  // 콘텐츠 현황 맵 (상품ID → 발행된 채널 Set)
+  // 콘텐츠 현황 맵 (상품ID → 생성된 초안/발행 채널 Set)
   const [contentStatusMap, setContentStatusMap] = useState<Map<string, Set<string>>>(new Map());
 
   // 콘텐츠 현황 로드 — 감사(2026-05-11): limit 500 → 100 + SWR dedup 30s.
-  const { data: contentHubData } = useSWR<{ creatives: { product_id: string; channel: string }[] }>(
-    packages.length ? `/api/content-hub?status=published&limit=100` : null,
+  const { data: contentHubData, mutate: mutateContentStatus } = useSWR<{ creatives: { product_id: string; channel: string }[] }>(
+    packages.length ? `/api/content-hub?limit=100` : null,
   );
   useEffect(() => {
     if (!contentHubData || !packages.length) return;
@@ -1075,24 +1110,31 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   // 전체 콘텐츠 일괄 생성 (블로그 + 카드뉴스 + 광고카피)
   const handleBulkContentGen = useCallback(async (pkg: Package) => {
     showToast('success', `${pkg.title} 전 채널 콘텐츠 생성 시작...`);
-    const channels = ['naver_blog', 'instagram_card', 'google_search'] as const;
-    for (const channel of channels) {
-      try {
-        await fetch('/api/content-hub/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_id: pkg.id, angle: 'value', channel }),
-        });
-      } catch { /* 부분 실패 허용 */ }
-      await new Promise(r => setTimeout(r, 300));
-    }
-    showToast('success', '블로그+카드뉴스+광고카피 생성 완료 → 검수 큐 확인');
+    const result = await generatePackageContentChannels(pkg.id);
     setContentStatusMap(prev => {
       const next = new Map(prev);
-      next.set(pkg.id, new Set(['naver_blog', 'instagram_card', 'google_search']));
+      const channels = new Set(next.get(pkg.id) ?? []);
+      result.successful.forEach(channel => channels.add(channel));
+      next.set(pkg.id, channels);
       return next;
     });
-  }, [showToast]);
+    void mutateContentStatus();
+    if (result.failed.length === 0) {
+      showToast('success', '블로그+카드뉴스+광고카피 생성 완료 → 검수 큐 확인');
+      return;
+    }
+    const channelLabels = {
+      naver_blog: '블로그',
+      instagram_card: '카드뉴스',
+      google_search: '검색광고',
+    } as const;
+    const failedChannels = result.failed.map(item => channelLabels[item.channel]).join(', ');
+    const firstReason = result.failed[0]?.reason;
+    showToast(
+      'error',
+      `${result.successful.length}/3개 채널 생성 완료 · 실패: ${failedChannels}${firstReason ? ` (${firstReason})` : ''}`,
+    );
+  }, [mutateContentStatus, showToast]);
 
   // 랜드사 전역 캐시 훅 (중복 fetch 방지)
   const { vendors: activeVendors, all: allVendors } = useVendors();
@@ -1207,7 +1249,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     data: listData,
     isLoading: swrLoading,
     mutate: mutateList,
-  } = useSWR<{ data: Package[]; count: number; totalPages: number }>(
+  } = useSWR<{
+    data: Package[];
+    count?: number;
+    totalPages?: number;
+    pagination?: { total?: number; totalPages?: number };
+  }>(
     // initialPackages 가 있으면 첫 마운트에서는 SWR fetch 안 함 (RSC 데이터로 대체).
     _skipInitialLoad.current ? null : listKey,
     { fallbackData: initialPackages?.length ? undefined : undefined },
@@ -1215,14 +1262,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   useEffect(() => {
     if (!listData) return;
-    const nextTotalPages = Math.max(1, listData.totalPages || 1);
+    // `/api/packages` uses the shared listResponse contract (`pagination.total`),
+    // while older deployments returned top-level count/totalPages. Accept both
+    // so rows and the pagination summary can never drift to "총 0건".
+    const responseTotal = listData.pagination?.total ?? listData.count ?? listData.data?.length ?? 0;
+    const responseTotalPages = listData.pagination?.totalPages ?? listData.totalPages ?? Math.ceil(responseTotal / 100);
+    const nextTotalPages = Math.max(1, responseTotalPages || 1);
     if (currentPage > nextTotalPages) {
       setCurrentPage(nextTotalPages);
       return;
     }
     setPackages(listData.data || []);
     setTotalPages(nextTotalPages);
-    setTotalCount(listData.count || 0);
+    setTotalCount(responseTotal);
     setLoading(false);
   }, [listData, currentPage]);
 
@@ -1592,17 +1644,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     });
     setSearchQuery('');
     if (queue === 'review' || queue === 'copy') {
-      setStatusFilter('pending');
+      selectStatusFilter('pending');
       setSortBy('created_desc');
     } else if (queue === 'publish') {
-      setStatusFilter('selling');
+      selectStatusFilter('selling');
       setSortBy('created_desc');
     } else if (queue === 'deadline') {
-      setStatusFilter('all');
+      selectStatusFilter('all');
       setSortBy('deadline_asc');
       setShowExpired(true);
     } else {
-      setStatusFilter('all');
+      selectStatusFilter('all');
       setSortBy('created_desc');
     }
   };
@@ -1756,7 +1808,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             key={opt.value}
             type="button"
             aria-pressed={statusFilter === opt.value}
-            onClick={() => setStatusFilter(opt.value)}
+            onClick={() => selectStatusFilter(opt.value)}
             className={`px-3 py-1.5 rounded-lg text-admin-sm font-medium transition ${
               statusFilter === opt.value
                 ? 'bg-blue-600 text-white'

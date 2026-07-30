@@ -1,6 +1,6 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-07-13
+Last updated: 2026-07-29
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -79,6 +79,8 @@ upload route
 New supplier uploads are not "auto published." They become automatic customer-open candidates only after the same repeatable gate passes: registration schema, customer copy V2 safe repair, source-backed date-level price or source-backed applicable-period price/flight/hotel/entity checks, `/packages/{id}` proof, `/lp/{id}` proof, and `customer_open_contract`.
 
 Customer exposure is decided by publication state and public snapshots, not by `status` or `audit_status` alone. `status` remains the sales/operations state, while `publication_state` is the customer-public state. Customer routes must prefer `public_package_snapshots` and must fail closed when a row has `publication_state in ('approved','published')` but no approved/published snapshot exists. The publish gate writes `package_publish_decisions`; hidden DB pollution, stale proof, broken attraction IDs, risky CTA copy, and unsupported title claims remain blockers even when the renderer can hide the affected section.
+
+Customer-facing `destination` is a place label, not a shortened product title. Supplier grade, no-option/no-shopping copy, hotel, golf, duration, and attraction-course fragments must be removed while verified compound regions such as `석가장/태항산`, `장가계/천자산`, and `연길/백두산` remain intact. The upload resolver performs this normalization before persistence, and the final public snapshot gate must independently block `destination_display_pollution` so manual edits or legacy rows cannot bypass the rule.
 
 Final approval must not mark a package customer-active before the immutable public snapshot and publish decision are saved. The approval API must assemble final title/copy/repair data in memory and send it to `publish_package_snapshot_atomic()` as the package patch; the success path must not stage a separate `travel_packages` update before publication. `public_package_snapshots` upsert, `package_publish_decisions` insert, and the final `travel_packages.status='active'`/`publication_state` update happen inside one database RPC transaction. RPC persistence failure must return `PUBLIC_SNAPSHOT_SAVE_FAILED`, record `audit_report.public_snapshot_error`, and move or keep the package at `status='draft'` with `publication_state='blocked'`.
 
@@ -166,6 +168,33 @@ LLM or structured-output repairs may propose fields, but deterministic validatio
 
 `product_prices.note` by itself is not price provenance. Price/date source evidence may be accepted only when the row carries an allowed provenance cue such as `source_`, `pdf_date_price_table`, `human_reader`, `document_raw`, `evidenceSpanId`, `evidenceHash`, or `sourcePriceIrId`, or when the original source text itself contains matching date/amount evidence. Option-sized, local-expense, golf-option, and optional-tour prices must not be promoted into `product_prices`; they should be preserved as excluded price candidates for later structured option handling.
 
+### Operator Remediation Contract
+
+`admin/upload` must turn every non-clean verification result into an explicit operator action. A generic `needs_review`, tooltip-only blocker code, or undifferentiated retry button is not a complete operator handoff.
+
+- Existing or genuinely new attraction candidates go only to the owner-admin unmatched-attraction workflow. Automatic public attraction creation remains forbidden.
+- Missing minimum departure count, source-backed outbound/inbound flight details, and unpriced high-risk surcharges are supplier-confirmation actions. The UI may generate a copyable request, but it must not invent a default, web-derived flight number, zero amount, or vague “문의” safe state.
+- Price, itinerary, hotel, entity classification, and customer-copy mismatches remain system-repair actions unless the source itself is missing the required commercial fact.
+- Customer-visible repair requires new internal proof for both `/packages/{id}` and `/lp/{id}` before opening.
+- Batch audits must report `operatorRemediationComplete=false` when a non-ready product has no action or falls into an unknown action bucket. Strict audit mode must fail in that state.
+
+#### Attraction Owner-Review CSV Contract
+
+The attraction candidate CSV is an owner-review handoff, not an automatic seed file.
+
+- The current CSV schema includes `aliases`, `official_source_url`, `supporting_source_urls`, `source_phrases`, `verification_method`, `evidence_summary`, and `owner_reviewed`. Every exported or generated row defaults to `owner_reviewed=no`; the owner must explicitly change only reviewed rows to `yes`.
+- `/api/attractions` GET remains public for customer rendering, but POST, PATCH, PUT, and DELETE require the route-level admin guard even though the path is on the public-read allow-list.
+- Legacy CSV files without `owner_reviewed`, files containing any malformed row or invalid official URL, and requests without the explicit `admin_csv_owner_confirmed` confirmation are rejected as a whole.
+- A new CSV master requires `short_desc`, `long_desc`, `country`, `region`, an official `http(s)` evidence URL, the exact supplier `source_phrases`, a supported `verification_method`, and a non-empty `evidence_summary`. Missing or malformed evidence rejects the whole upload before any write.
+- `supporting_source_urls` preserves additional official, supplier, or field evidence used for cross-checking. Every URL is validated independently, de-duplicated, and stored in `verification_sources`; a single syntactically valid URL must not erase the supplier phrase or the reasoning that established identity.
+- Supported identity methods are `official_source_review`, `official_and_supplier_crosscheck`, `official_and_supplier_image_crosscheck`, and `owner_direct_confirmation`. A generated candidate is still only a candidate; the method records how it was researched and never substitutes for `owner_reviewed=yes`.
+- Accepted new rows are internal-only: `customer_publishable=false`, `auto_created=false`, `is_manual_override=true`, with owner review evidence and a customer-media review reason. CSV review never activates customer visibility.
+- Existing public rows preserve their visibility state; CSV import must not silently publish a new row or demote an existing row.
+- Candidate generation must compare exact normalized candidate names and aliases against the latest active attraction catalog. Exact existing matches require an `existing_alias` decision rather than a duplicate master.
+- Every source phrase in a batch must receive exactly one decision: `new_master`, `existing_alias`, or `hold`. Unknown, duplicated, or uncovered phrases fail the review-pack build.
+- Exact source phrases already attached to a different active master are reported as catalog conflicts. The owner must correct the bad alias and rerun unmatched review; the generator never mutates or deletes it automatically.
+- Generated candidate CSV files remain `owner_reviewed=no` and perform no DB writes. Photo, description, customer-copy, and both customer-surface browser proof still remain separate approval gates.
+
 ### YSN Standard Markdown Contract
 
 `YSN-PRODUCT-MD v1` is a deterministic structured-input format. When this marker is present, the upload document parsing boundary must bypass LLM/legacy document parsing and call `parseStandardProductMarkdown()`.
@@ -219,6 +248,8 @@ These gates are not optional advisory checks. If any fail, the product can be sa
 Approval requires a separate actual mobile browser proof. A clean source/render-contract audit is not final completion. Before any package can move to `active` or another customer-visible status, `audit_report.mobile_browser_proof.status` must be `pass`, the proof must include both `/packages/{id}` and `/lp/{id}` surfaces, and the proof must have been produced by the internal render-proof path. The proof payload must include `source='hwp-mobile-browser-proof'`, top-level `screen_hash` and `customer_visible_hash`, and the same hashes for each required surface result. The proof must also exercise the customer CTA path enough to confirm the reservation/lead sheet opens with customer-safe context. If this proof is missing, hashless, non-internal, or stale, approval must return `MOBILE_BROWSER_PROOF_REQUIRED` and leave the product non-public/blocked for review.
 
 The internal render-proof path may use the `x-yeosonam-render-proof` header with a server-side secret to render a non-public `/packages/{id}` page for QA only. This does not make the product public to customers. It exists so AutoQA can inspect the exact customer page before approval instead of activating first and demoting after damage.
+
+Offline fixture proof may intercept analytics-only `/api/tracking`, `/api/web-vitals`, and empty review-digest requests so fake fixture IDs do not create DB errors or delay the browser audit. It must not intercept either customer page, images, CTA interaction, itinerary/price text, screenshot capture, or Axe checks. Fixture-mode React-handler pre-wait may be shorter than production proof because the actual click and sheet visibility/content assertions remain mandatory.
 
 Customer opening also requires the unified registration quality scorecard. `src/lib/product-registration/registration-quality-scorecard.ts` scores ten domains: raw source preservation, structured JSON, price/date storage, itinerary/air/hotel parsing, attraction/hotel entity matching, customer copy cleanup, DB consistency, `/packages` mobile render, `/lp` mobile render/CTA, and learning ledger safety. Every domain must score at least 95, the average must be at least 97, blockers must be zero, customer-forbidden text must be zero, and `product_prices` must align with `price_dates`. `runUploadVerify()` persists the scorecard into `audit_report.quality_scorecard`; the package approval API re-evaluates the same scorecard and returns `QUALITY_SCORECARD_BELOW_95` instead of opening the product when the threshold is not met.
 
@@ -436,6 +467,10 @@ The current customer page audit contract covers both `/packages/{packageId}` and
 
 상품 등록 완료 검수의 고객 화면 기준은 `/packages/{packageId}`와 `/lp/{packageId}` 양쪽이다. `/packages`는 상품 원문 대조, 모바일 상세, A4 readiness의 상세 기준이고, `/lp`는 고객 유입 랜딩 surface이므로 가격, 출발 가능일, 일정, CTA, 고객 금지문구, broken text를 별도로 통과해야 한다.
 
+비공개 상품의 내부 브라우저 proof도 원본 `travel_packages` 행을 직접 렌더링하면 안 된다. 다음 공개 revision을 적용해 `buildPublicPackageSnapshot()`으로 만든 candidate snapshot을 `/packages`와 `/lp` 양쪽에서 렌더링해야 한다. proof의 `public_snapshot_hash`는 이 candidate snapshot hash와 같아야 하며, 최종 publish gate가 다시 만든 snapshot hash가 다르면 공개를 차단한다.
+
+LP 히어로 이미지는 proof와 공개 화면 모두 candidate/public snapshot에 고정된 `lp_hero_image_url`, `hero_image_url`, `thumbnail_urls`만 사용한다. 공개 경로에서 관광지 DB의 현재 사진을 다시 골라 snapshot 밖의 이미지로 바꾸면 브라우저 proof가 실제 고객 화면을 증명하지 못하므로 금지한다.
+
 For pasted catalog itinerary tables (`일 자 / 지 역 / 교통편 / 시 간 / 주요 행사 일정 / 식 사`):
 
 - standalone column values such as flight code, time, vehicle, region, meal token, `HOTEL:`, and URL must not be saved as normal schedule activities.
@@ -484,6 +519,22 @@ For shared multi-column price tables, deterministic source-backed column selecti
 For any deterministic price IR where `source !== 'none'` and both `product_prices` and `price_dates` can be built, deterministic IR wins over LLM/normalizer `price_tiers`. LLM output is fallback evidence, not the first persistence source, when the raw table parser is complete.
 
 LLM/Gemini price fallback must pass the strict fallback tier normalizer before it can be evaluated as a candidate. A fallback tier is ignored unless it has an integer KRW `adult_price` in the product price range and usable date evidence (`departure_dates`, `date_range`, or `departure_day_of_week`). Deterministic IR still outranks complete fallback tiers.
+
+### Date-Level Sales Restriction Contract
+
+An unknown high-risk surcharge must not be converted to a guessed amount or a customer-facing “문의” price. When the supplier source gives an exact holiday date list/range for an unpriced Japanese ground-cost surcharge, the central registration path may keep the product sellable only by quarantining every affected departure date.
+
+Required behavior:
+
+- The restriction needs an exact source line, a source-backed year or a single year already established by recovered `price_dates`, and at least one parseable date/range.
+- The affected dates must be removed from both `product_prices` and `price_dates`, added to `price_tiers[].excluded_dates` and `travel_packages.excluded_dates`, and omitted from V3 price calendars.
+- Source-declared `항공제외일`, `비운항`, `출발불가`, or `판매불가` dates use the same restriction layer and always outrank otherwise valid price rows.
+- The registration must retain at least one non-restricted dated price row. If every date is removed, the product remains blocked.
+- Recurring weekday-only rows with `target_date=null` cannot prove a date-level exclusion and remain blocked.
+- A customer-visible payment notice must state that the unpriced holiday dates are not offered for sale.
+- The V3 high-risk fact may become `auto_clean` only with `safe_state=date_sales_quarantined`, source evidence, normalized date tokens, and the final filtered date set.
+
+This safe state applies only to exact date-bounded ground-cost risk. Amountless transport substitutions, hotel replacement charges, minimum departure counts, or missing flight identity remain supplier-confirmation blockers.
 
 ### Price Source Evidence Repair Contract
 

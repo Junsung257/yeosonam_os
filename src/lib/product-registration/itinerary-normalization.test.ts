@@ -282,6 +282,92 @@ describe('normalizeUploadItinerary', () => {
     expect((result.itineraryDataToSave?.days ?? []).map(day => day.day)).toEqual([1, 2, 4]);
   });
 
+  it('expands a source-backed combined day range before customer render', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '방콕',
+      durationDays: 6,
+      activeAttractions: [],
+      productRawText: [
+        '제1일 부산 출발',
+        '제2일 골프 라운딩',
+        '제3일',
+        '~4 일',
+        '골프 라운딩 및 호텔 휴식',
+        '제5일 공항 이동',
+        '제6일 부산 도착',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '골프 라운딩' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '골프 라운딩 및 호텔 휴식' }] },
+          { day: 5, schedule: [{ type: 'transfer', activity: '공항 이동' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    expect((result.itineraryDataToSave?.days ?? []).map(day => day.day)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.itineraryDataToSave?.days?.find(day => day.day === 4)?.schedule?.map(item => item.activity))
+      .toContain('골프 라운딩 및 호텔 휴식 (3~4일 공통 일정)');
+    expect(result.warnings).toContain('source-backed itinerary day range expanded: day 4');
+  });
+
+  it('shifts a repeated range-end header when it is the following trip day', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '방콕',
+      durationDays: 6,
+      activeAttractions: [],
+      productRawText: [
+        '제1일 부산 출발',
+        '제2일 골프 라운딩',
+        '제3일',
+        '~4 일',
+        '골프 라운딩 및 호텔 휴식',
+        '제4일 골프 후 공항 이동',
+        '제6일 부산 도착',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '골프 라운딩' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '골프 라운딩 및 호텔 휴식' }] },
+          { day: 4, schedule: [{ type: 'transfer', activity: '골프 후 공항 이동' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    expect((result.itineraryDataToSave?.days ?? []).map(day => day.day)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.itineraryDataToSave?.days?.find(day => day.day === 5)?.schedule?.map(item => item.activity))
+      .toContain('골프 후 공항 이동');
+    expect(result.warnings).toContain('source-backed repeated range-end day shifted: day 4 -> 5');
+  });
+
+  it('normalizes a single off-by-one source day label when duration and row count agree', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '오사카',
+      durationDays: 3,
+      activeAttractions: [],
+      productRawText: [
+        '오사카 2박3일',
+        '제1일 부산 출발',
+        '제2일 나라 골프',
+        '제4일 오사카 출발 부산 도착',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '나라 골프' }] },
+          { day: 4, schedule: [{ type: 'flight', activity: '오사카 출발 부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    expect((result.itineraryDataToSave?.days ?? []).map(day => day.day)).toEqual([1, 2, 3]);
+    expect(result.warnings).toContain('source-backed itinerary day labels normalized: 1,2,4 -> 1,2,3');
+  });
+
   it('does not trust a one-day duration enough to prune real multi-day schedules', async () => {
     const result = await normalizeUploadItinerary({
       destination: '청도',

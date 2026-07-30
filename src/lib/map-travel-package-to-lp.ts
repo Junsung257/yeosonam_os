@@ -9,6 +9,10 @@ import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import {
+  extractCustomerNoticeCards,
+  type CustomerNoticeCard,
+} from '@/lib/customer-notice-cards';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -32,6 +36,7 @@ export interface ItineraryDay {
   meals: { breakfast: boolean; lunch: boolean; dinner: boolean };
   activities: DayActivity[];
   hotel?: string;
+  hotelDetail?: string;
 }
 
 export interface LandingProductData {
@@ -68,6 +73,7 @@ export interface LandingProductData {
     excludes: string[];
     optionalTours: NormalizedOptionalTour[];
     legalNotices: string[];
+    customerNotices: CustomerNoticeCard[];
   };
 }
 
@@ -173,6 +179,25 @@ function toLpActivities(
       };
     })
     .filter(activity => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames, regions));
+}
+
+function hotelComparisonKey(value: string): string {
+  return compact(value.replace(/^(?:호텔|숙박)\s*[:：-]?\s*/u, ''));
+}
+
+function removeDuplicateHotelActivities(activities: DayActivity[], hotel?: string): DayActivity[] {
+  if (!hotel) return activities;
+  const hotelKey = hotelComparisonKey(hotel);
+  if (!hotelKey) return activities;
+  return activities.filter(activity => {
+    if (activity.type !== 'hotel') return true;
+    const activityKey = hotelComparisonKey(activity.label);
+    return !activityKey || (
+      activityKey !== hotelKey
+      && !activityKey.includes(hotelKey)
+      && !hotelKey.includes(activityKey)
+    );
+  });
 }
 
 function readInternalCode(pkg: Record<string, unknown>): string | undefined {
@@ -291,6 +316,11 @@ export function mapTravelPackageToLandingData(
   const dayRows = normalizeDays(pkg.itinerary_data as Parameters<typeof normalizeDays>[0]) as Record<string, unknown>[];
   const canonicalDays = view.days;
   const legalNotices = extractLegalNoticeLinesFromPkg(pkg, 3).map(line => normalizeCustomerVisibleCopy(line));
+  const customerNotices = extractCustomerNoticeCards(pkg.notices_parsed).map(notice => ({
+    ...notice,
+    title: normalizeCustomerVisibleCopy(notice.title),
+    text: normalizeCustomerVisibleCopy(notice.text),
+  }));
   const duration = formatLandingDuration(pkg);
 
   return {
@@ -374,8 +404,11 @@ export function mapTravelPackageToLandingData(
         note: tour.note ? normalizeCustomerVisibleCopy(tour.note) : null,
       })),
       legalNotices,
+      customerNotices,
       days: canonicalDays.length > 0
-        ? canonicalDays.map((day): ItineraryDay => ({
+        ? canonicalDays.map((day): ItineraryDay => {
+          const hotel = day.hotelCard?.name ? normalizeCustomerVisibleCopy(day.hotelCard.name) : undefined;
+          return {
             day: day.day,
             title: day.regions.length > 0 ? day.regions.map(region => normalizeCustomerVisibleCopy(region)).join(' · ') : '상세 일정',
             regions: day.regions.map(region => normalizeCustomerVisibleCopy(region)).join(' · '),
@@ -384,20 +417,16 @@ export function mapTravelPackageToLandingData(
               lunch: Boolean(day.meals?.lunch),
               dinner: Boolean(day.meals?.dinner),
             },
-            activities: [
-              ...toLpActivities(day.schedule, day.regions),
-              ...(day.hotelCard?.name
-                ? [{
-                    type: 'hotel' as const,
-                    label: `호텔: ${normalizeCustomerVisibleCopy(day.hotelCard.name)}`,
-                    detail: day.hotelCard.note ? normalizeCustomerVisibleCopy(day.hotelCard.note) : undefined,
-                  }]
-                : []),
-            ],
-            hotel: day.hotelCard?.name ? normalizeCustomerVisibleCopy(day.hotelCard.name) : undefined,
-          }))
+            activities: removeDuplicateHotelActivities(toLpActivities(day.schedule, day.regions), hotel),
+            hotel,
+            hotelDetail: day.hotelCard?.note ? normalizeCustomerVisibleCopy(day.hotelCard.note) : undefined,
+          };
+        })
         : dayRows.map((row): ItineraryDay => {
             const regions = asStringArray(row.regions);
+            const hotel = (row.hotel as { name?: string } | null)?.name
+              ? normalizeCustomerVisibleCopy((row.hotel as { name: string }).name)
+              : undefined;
             return {
               day: Number(row.day) || 1,
               title: regions.length > 0 ? regions.join(' · ') : '상세 일정',
@@ -407,7 +436,7 @@ export function mapTravelPackageToLandingData(
                 lunch: false,
                 dinner: false,
               },
-              activities: toLpActivities((row.schedule as {
+              activities: removeDuplicateHotelActivities(toLpActivities((row.schedule as {
                 activity: string;
                 type?: string;
                 note?: string;
@@ -415,9 +444,10 @@ export function mapTravelPackageToLandingData(
                 attraction_names?: string[];
                 entity_kind?: string | null;
                 landing_sentence?: string | null;
-              }[]) || [], regions),
-              hotel: (row.hotel as { name?: string } | null)?.name
-                ? normalizeCustomerVisibleCopy((row.hotel as { name: string }).name)
+              }[]) || [], regions), hotel),
+              hotel,
+              hotelDetail: (row.hotel as { note?: string } | null)?.note
+                ? normalizeCustomerVisibleCopy((row.hotel as { note: string }).note)
                 : undefined,
             };
           }),

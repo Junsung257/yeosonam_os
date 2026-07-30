@@ -64,7 +64,7 @@ function scoreTone(score: number): {
       action: '편하게 출발 가능',
       accent: '#65A30D',
       text: 'text-lime-700',
-      chip: 'bg-lime-600 text-white',
+      chip: 'bg-lime-700 text-white',
     };
   }
   if (score >= 55) {
@@ -252,7 +252,7 @@ export default function TravelFitnessCard({
 
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11px] font-extrabold tracking-[0.14em] text-slate-400">
+              <p className="text-[11px] font-extrabold tracking-[0.14em] text-slate-600">
                 여행 시기 진단
               </p>
               <h3 className="mt-1 text-[19px] font-black leading-tight text-slate-950 break-keep">
@@ -274,7 +274,7 @@ export default function TravelFitnessCard({
               <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ${tone.chip}`}>
                 {tone.label}
               </span>
-              <p className="mt-2 text-[11px] font-extrabold leading-snug text-slate-400 break-keep">
+              <p className="mt-2 text-[11px] font-extrabold leading-snug text-slate-600 break-keep">
                 {actionCopy}
               </p>
             </div>
@@ -286,13 +286,13 @@ export default function TravelFitnessCard({
 
           <div className="mt-3 rounded-2xl bg-slate-50 px-3.5 py-2.5">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[11px] font-extrabold text-slate-400">추천 포인트</span>
+              <span className="text-[11px] font-extrabold text-slate-600">추천 포인트</span>
               <span className="text-[12px] font-extrabold text-slate-900">
                 {sig ? popularityShortCopy(sig.popularity_score) : crowdCopy(selectedMonth)}
               </span>
             </div>
             <div className="mt-1 flex items-center justify-between gap-3">
-              <span className="text-[11px] font-extrabold text-slate-400">준비 포인트</span>
+              <span className="text-[11px] font-extrabold text-slate-600">준비 포인트</span>
               <span className="text-[12px] font-extrabold text-slate-900">
                 {rainDays >= 10 ? '우기 대비' : rainCopy(norm.rain_days)}
               </span>
@@ -428,7 +428,7 @@ export default function TravelFitnessCard({
 function SnapshotMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <div className="min-w-0 px-3 py-3 text-center [&+&]:border-l [&+&]:border-slate-100">
-      <p className="text-[11px] font-bold text-slate-400">{label}</p>
+      <p className="text-[11px] font-bold text-slate-600">{label}</p>
       <p className="mt-0.5 text-[16px] font-black leading-tight text-slate-950 tabular-nums">{value}</p>
       <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">{detail}</p>
     </div>

@@ -1,11 +1,51 @@
 import {
   destinationAllowsAttractionScope,
-  isCustomerRenderableAttraction,
+  isRecognizableAttractionMaster,
   isMatchableAttractionAlias,
   matchAttractions,
   type AttractionData,
 } from '@/lib/attraction-matcher';
+import { inferHighConfidenceAttractionLabels } from '@/lib/attraction-description-canonical';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
+
+const sortedAttractionCache = new WeakMap<AttractionData[], AttractionData[]>();
+type PublicCanonicalNameIndex = {
+  byCompactName: Map<string, AttractionData | null>;
+  lengths: number[];
+};
+const publicCanonicalNameIndexCache = new WeakMap<AttractionData[], PublicCanonicalNameIndex>();
+
+function attractionsByLongestCanonicalName(attractions: AttractionData[]): AttractionData[] {
+  const cached = sortedAttractionCache.get(attractions);
+  if (cached) return cached;
+  const sorted = attractions.slice().sort((a, b) => normalizeDirectTerm(b.name).length - normalizeDirectTerm(a.name).length);
+  sortedAttractionCache.set(attractions, sorted);
+  return sorted;
+}
+
+function publicCanonicalNameIndex(attractions: AttractionData[]): PublicCanonicalNameIndex {
+  const cached = publicCanonicalNameIndexCache.get(attractions);
+  if (cached) return cached;
+  const byCompactName = new Map<string, AttractionData | null>();
+  const lengths = new Set<number>();
+  for (const attraction of attractions) {
+    if (!isDirectScanEligibleTerm(attraction.name, attraction, undefined, '')) continue;
+    const compactName = normalizeDirectTerm(attraction.name);
+    if (compactName.length < 2 || compactName.length > 24) continue;
+    if (byCompactName.has(compactName)) {
+      byCompactName.set(compactName, null);
+      continue;
+    }
+    byCompactName.set(compactName, attraction);
+    lengths.add(compactName.length);
+  }
+  const index = {
+    byCompactName,
+    lengths: [...lengths].sort((a, b) => b - a),
+  };
+  publicCanonicalNameIndexCache.set(attractions, index);
+  return index;
+}
 
 export interface ItineraryScheduleItem {
   activity: string;
@@ -32,7 +72,7 @@ export interface EnrichResult {
   unmatchedCandidates: { activity: string; day_number: number }[];
 }
 
-const SKIP_TYPES = new Set(['flight', 'hotel', 'shopping', 'meal']);
+const SKIP_TYPES = new Set(['flight', 'hotel', 'shopping', 'meal', 'notice', 'free_time', 'option', 'meeting']);
 const DIRECT_SCAN_EXCLUDED_CATEGORIES = new Set(['accommodation', 'hotel', 'mrt_product']);
 const DIRECT_SCAN_STOP_TERMS = new Set([
   '호텔 투숙',
@@ -73,7 +113,7 @@ function destinationAllowsAttraction(attraction: AttractionData, destination?: s
 }
 
 function isSightseeingAttractionRow(attraction: AttractionData): boolean {
-  return isCustomerRenderableAttraction(attraction) && !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
+  return isRecognizableAttractionMaster(attraction) && !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
     attraction.name,
     attraction.category ?? '',
     ...(attraction.aliases ?? []),
@@ -246,7 +286,7 @@ function findRegisteredAttractionTermsInText(
   if (normalizeDirectTerm(text).length < 2) return [];
 
   const found = new Map<string, AttractionData>();
-  const sorted = attractions.slice().sort((a, b) => normalizeDirectTerm(b.name).length - normalizeDirectTerm(a.name).length);
+  const sorted = attractionsByLongestCanonicalName(attractions);
   for (const attraction of sorted) {
     for (const term of [attraction.name, ...(attraction.aliases ?? [])]) {
       if (!isDirectScanEligibleTerm(term, attraction, destination, text)) continue;
@@ -257,6 +297,26 @@ function findRegisteredAttractionTermsInText(
     if (found.size >= 5) break;
   }
 
+  return [...found.values()];
+}
+
+function findPublicCanonicalAttractionNamesInText(
+  text: string,
+  attractions: AttractionData[],
+): AttractionData[] {
+  const compactText = normalizeDirectTerm(text);
+  if (compactText.length < 2) return [];
+  const found = new Map<string, AttractionData>();
+  const index = publicCanonicalNameIndex(attractions);
+  for (const length of index.lengths) {
+    if (length > compactText.length) continue;
+    for (let start = 0; start <= compactText.length - length; start++) {
+      const attraction = index.byCompactName.get(compactText.slice(start, start + length));
+      if (!attraction || !directTermOccurs(text, attraction.name)) continue;
+      found.set(String(attraction.id ?? attraction.name), attraction);
+      if (found.size >= 5) return [...found.values()];
+    }
+  }
   return [...found.values()];
 }
 
@@ -271,6 +331,29 @@ function getAttractionQueries(item: ItineraryScheduleItem): string[] {
     .filter(query => query.length >= 2);
 }
 
+function findUniquePublicAttractionsByInferredLabel(
+  text: string,
+  attractions: AttractionData[],
+): AttractionData[] {
+  const found = new Map<string, AttractionData>();
+  for (const label of inferHighConfidenceAttractionLabels(text)) {
+    const rawExact = attractions.filter(attraction => (
+      isRecognizableAttractionMaster(attraction)
+      && attraction.name.trim() === label
+    ));
+    const normalizedExact = rawExact.length > 0
+      ? rawExact
+      : attractions.filter(attraction => (
+          isRecognizableAttractionMaster(attraction)
+          && normalizeDirectTerm(attraction.name) === normalizeDirectTerm(label)
+        ));
+    if (normalizedExact.length !== 1) continue;
+    const match = normalizedExact[0];
+    found.set(String(match.id ?? match.name), match);
+  }
+  return [...found.values()];
+}
+
 function findMatchesForQueries(
   queries: string[],
   attractions: AttractionData[],
@@ -278,8 +361,14 @@ function findMatchesForQueries(
 ): AttractionData[] {
   const found = new Map<string, AttractionData>();
   for (const query of queries) {
-    for (const direct of findRegisteredAttractionTermsInText(query, attractions, destination)) {
+    const scopedDirectMatches = findRegisteredAttractionTermsInText(query, attractions, destination);
+    for (const direct of scopedDirectMatches) {
       found.set(String(direct.id ?? direct.name), direct);
+    }
+    if (scopedDirectMatches.length === 0) {
+      for (const direct of findPublicCanonicalAttractionNamesInText(query, attractions)) {
+        found.set(String(direct.id ?? direct.name), direct);
+      }
     }
     for (const matched of matchAttractions(query, attractions, destination, { customerFacing: true })) {
       found.set(String(matched.id ?? matched.name), matched);
@@ -300,6 +389,10 @@ function isGenericNonAttractionActivity(activity: string): boolean {
   if (/(?:출발|향발|도착|해산)/.test(text) && /(?:부산|세부|김해|공항)/.test(text)) return true;
   if (/기내박/.test(compact)) return true;
   if (/디스커버리\s*투어|시내관광|스쿠버다이빙|수영장\s*실습|오일마사지|호핑투어|자유시간|선택관광\s*즐기기/i.test(text)) return true;
+  if (/로컬\s*마켓|재래\s*시장|대체될\s*수\s*있|비치바|핫플\s*카페/i.test(text)) return true;
+  if (/(?:ETA|ESTA|필수\s*서류|유효기간|발급\s*(?:승인|후)|세관|전자세관|입국\s*시|입국\s*필수|출입국|신청\s*필수|QR\s*코드|전용\s*키오스크|미국\s*비자)/i.test(text)) return true;
+  if (/(?:御膳|会席|海鮮鍋|焼\s*き|しゃぶしゃぶ|고젠|가이세키|회정식|일본코스요리|야채절임|된장국|해물전골|1인당|예약가능|실제\s*음식|조리\s*과정|플레이팅)/i.test(text)) return true;
+  if (/(?:골프장|CC\b|라운딩|라운드\s*(?:전|후)|\d+\s*홀)/i.test(text)) return true;
   if (/기념품|토산품|건강보조식품|잡화|진주/.test(text)) return true;
   if (/^(?:\uC804\uC6A9\uCC28\uB7C9|\uC804\uC77C|\uACF5\uD56D\uC73C\uB85C\uC774\uB3D9|\uD638\uD154\uD22C\uC219\uBC0F\uD734\uC2DD)$/.test(compact)) return true;
   if (/^(?:\uC870|\uC911|\uC11D)\s*[:-]/.test(text)) return true;
@@ -316,10 +409,10 @@ export function shouldAttemptAttractionMatch(item: ItineraryScheduleItem): boole
   if (item.entity_kind === 'transfer' || item.entity_kind === 'hotel_stay' || item.entity_kind === 'meal') return false;
   if (item.type && SKIP_TYPES.has(item.type)) return false;
   const text = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
+  if (isGenericNonAttractionActivity(item.activity)) return false;
   if (MINIMUM_ACTIVITY_HINT_RE.test(text)) {
     return extractAttractionCandidates(item.activity, item.note).length > 0;
   }
-  if (isGenericNonAttractionActivity(item.activity)) return false;
   return extractAttractionCandidates(item.activity, item.note).length > 0;
 }
 
@@ -347,8 +440,9 @@ export function enrichItineraryWithAttractionReferences(
       ? day.regions.map(region => String(region)).filter(Boolean)
       : [];
     const matchDestination = [destination, ...dayRegions].filter(Boolean).join('/');
-    const schedule = (day.schedule ?? []).map((item) => {
-      if (item.type && SKIP_TYPES.has(item.type)) return item;
+    const schedule = (day.schedule ?? []).map((originalItem) => {
+      let item = originalItem;
+      if (item.type && SKIP_TYPES.has(item.type)) return removeAttractionReferences(item);
       if (shouldStripAttractionReferences(item)) return removeAttractionReferences(item);
       const itemText = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
       const existingIds = Array.isArray(item.attraction_ids)
@@ -385,8 +479,11 @@ export function enrichItineraryWithAttractionReferences(
             attraction_note: customerSafeAttractionNote(item, values[0]),
           };
         }
-        unmatched.push({ activity: item.activity, day_number: day.day ?? 0 });
-        return removeAttractionReferences(item);
+        // A previous parser or enrichment pass can leave a stale/out-of-scope
+        // id on an otherwise valid customer attraction. Strip that reference
+        // and continue through the same evidence-backed matching flow instead
+        // of turning the row into a permanent false negative.
+        item = removeAttractionReferences(item);
       }
 
       let pendingCompiledQueryUnmatched: string | null = null;
@@ -410,13 +507,46 @@ export function enrichItineraryWithAttractionReferences(
         }
       }
 
+      const inferredCanonicalMatches = findUniquePublicAttractionsByInferredLabel(itemText, attractions);
+      if (inferredCanonicalMatches.length > 0) {
+        const values = dedupeAttractionMatches(inferredCanonicalMatches, itemText);
+        if (values.length > 0) {
+          matchedScheduleItemCount++;
+          values.forEach(v => matchedNames.add(v.name));
+          return {
+            ...item,
+            attraction_ids: values.map(v => v.id).filter(Boolean),
+            attraction_names: values.map(v => v.name),
+            attraction_note: customerSafeAttractionNote(item, values[0]),
+          };
+        }
+      }
+
+      const publicCanonicalMatches = findPublicCanonicalAttractionNamesInText(itemText, attractions);
+      if (publicCanonicalMatches.length > 0) {
+        const values = dedupeAttractionMatches(publicCanonicalMatches, itemText);
+        if (values.length > 0) {
+          matchedScheduleItemCount++;
+          values.forEach(v => matchedNames.add(v.name));
+          return {
+            ...item,
+            attraction_ids: values.map(v => v.id).filter(Boolean),
+            attraction_names: values.map(v => v.name),
+            attraction_note: customerSafeAttractionNote(item, values[0]),
+          };
+        }
+      }
+
       const noteHasAttractionHint = /(산|궁|공원|호수|폭포|사원|성당|교회|광장|마을|전망|유적|박물관|시장|민속촌)/.test(item.note ?? '');
       if (isDirectScanUnsafeActivity(item.activity) && !noteHasAttractionHint) return item;
-      const directMatches = findRegisteredAttractionTermsInText(
+      const scopedDirectMatches = findRegisteredAttractionTermsInText(
         itemText,
         attractions,
         matchDestination,
       );
+      const directMatches = scopedDirectMatches.length > 0
+        ? scopedDirectMatches
+        : publicCanonicalMatches;
       if (directMatches.length > 0) {
         const values = dedupeAttractionMatches(directMatches, itemText);
         if (values.length === 0) return removeAttractionReferences(item);
@@ -431,8 +561,7 @@ export function enrichItineraryWithAttractionReferences(
       }
 
       if (!shouldAttemptAttractionMatch(item)) {
-        if (pendingCompiledQueryUnmatched) unmatched.push({ activity: pendingCompiledQueryUnmatched, day_number: day.day ?? 0 });
-        return item;
+        return removeAttractionReferences(item);
       }
       const candidates = extractAttractionCandidates(item.activity, item.note);
       if (candidates.length === 0) {
@@ -442,10 +571,16 @@ export function enrichItineraryWithAttractionReferences(
 
       const found = new Map<string, AttractionData>();
       for (const c of candidates) {
-        const matches = matchAttractions(c, attractions, matchDestination, { customerFacing: true });
+        const matches = matchAttractions(c, attractions, matchDestination);
         for (const m of matches) {
           const key = (m.id ?? m.name).toString();
           found.set(key, m);
+        }
+        if (matches.length === 0) {
+          for (const m of findPublicCanonicalAttractionNamesInText(c, attractions)) {
+            const key = (m.id ?? m.name).toString();
+            found.set(key, m);
+          }
         }
       }
 

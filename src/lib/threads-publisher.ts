@@ -37,6 +37,19 @@ import {
 import { verifyThreadsPostOwnership } from './threads-api';
 
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
+const THREADS_REQUEST_TIMEOUT_MS = 15_000;
+
+function threadsFetch(
+  input: string | URL,
+  accessToken: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: init.signal ?? AbortSignal.timeout(THREADS_REQUEST_TIMEOUT_MS),
+  });
+}
 
 /**
  * Threads 본문 사전 검증 (PR-1 가드).
@@ -96,7 +109,9 @@ export function isThreadsConfigured(): boolean {
  * Phase 7 자동 refresh 크론이 DB 에 최신 값을 유지.
  */
 export async function getThreadsConfig(): Promise<{ threadsUserId: string; accessToken: string } | null> {
-  const userId = getSecret('THREADS_USER_ID');
+  const userId =
+    getSecret('THREADS_USER_ID') ||
+    (await resolveMetaToken('THREADS_USER_ID'));
   if (!userId) return null;
   const token =
     (await resolveMetaToken('THREADS_ACCESS_TOKEN')) ||
@@ -118,6 +133,25 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
   if (replyThreads && replyThreads.length > 4) {
     return { ok: false, step: 'validate', error: `답글 4개 초과 (${replyThreads.length}개)` };
   }
+  for (let index = 0; index < (replyThreads?.length ?? 0); index += 1) {
+    const reply = replyThreads![index].trim();
+    if (!reply) continue;
+    if (reply.length > 500) {
+      return {
+        ok: false,
+        step: 'validate',
+        error: `답글 #${index + 1} 500자 초과 (${reply.length}자)`,
+      };
+    }
+    const bait = detectEngagementBait(reply);
+    if (bait) {
+      return {
+        ok: false,
+        step: 'validate',
+        error: `답글 #${index + 1} engagement-bait 패턴: /${bait}/`,
+      };
+    }
+  }
 
   try {
     // ── 메인 포스트 발행 ──────────────────────────────────
@@ -127,9 +161,12 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
       const form = new URLSearchParams({
         media_type: 'TEXT',
         text,
-        access_token: accessToken,
       });
-      const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+      const res = await threadsFetch(
+        `${GRAPH_API_BASE}/${threadsUserId}/threads`,
+        accessToken,
+        { method: 'POST', body: form },
+      );
       const data = await res.json();
       if (!res.ok || !data.id) {
         return { ok: false, step: 'text_container', error: data?.error?.message || JSON.stringify(data) };
@@ -140,9 +177,12 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
         media_type: 'IMAGE',
         image_url: imageUrls[0],
         text,
-        access_token: accessToken,
       });
-      const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+      const res = await threadsFetch(
+        `${GRAPH_API_BASE}/${threadsUserId}/threads`,
+        accessToken,
+        { method: 'POST', body: form },
+      );
       const data = await res.json();
       if (!res.ok || !data.id) {
         return { ok: false, step: 'image_container', error: data?.error?.message || JSON.stringify(data) };
@@ -158,9 +198,12 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
           media_type: 'IMAGE',
           image_url: imageUrls[i],
           is_carousel_item: 'true',
-          access_token: accessToken,
         });
-        const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: form });
+        const res = await threadsFetch(
+          `${GRAPH_API_BASE}/${threadsUserId}/threads`,
+          accessToken,
+          { method: 'POST', body: form },
+        );
         const data = await res.json();
         if (!res.ok || !data.id) {
           return { ok: false, step: `child_container_${i + 1}`, error: data?.error?.message || JSON.stringify(data) };
@@ -178,9 +221,12 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
         media_type: 'CAROUSEL',
         children: childIds.join(','),
         text,
-        access_token: accessToken,
       });
-      const parentRes = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: parentForm });
+      const parentRes = await threadsFetch(
+        `${GRAPH_API_BASE}/${threadsUserId}/threads`,
+        accessToken,
+        { method: 'POST', body: parentForm },
+      );
       const parentData = await parentRes.json();
       if (!parentRes.ok || !parentData.id) {
         return { ok: false, step: 'carousel_container', error: parentData?.error?.message || JSON.stringify(parentData) };
@@ -209,9 +255,12 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
           media_type: 'TEXT',
           text: replyText,
           reply_to_id: parentId,
-          access_token: accessToken,
         });
-        const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads`, { method: 'POST', body: replyForm });
+        const res = await threadsFetch(
+          `${GRAPH_API_BASE}/${threadsUserId}/threads`,
+          accessToken,
+          { method: 'POST', body: replyForm },
+        );
         const data = await res.json();
         if (!res.ok || !data.id) {
           // 답글 실패는 치명적이지 않음 — main 은 이미 발행됨
@@ -245,9 +294,12 @@ async function publishFromContainer(
 ): Promise<ThreadsPublishResult> {
   const form = new URLSearchParams({
     creation_id: containerId,
-    access_token: accessToken,
   });
-  const res = await fetch(`${GRAPH_API_BASE}/${threadsUserId}/threads_publish`, { method: 'POST', body: form });
+  const res = await threadsFetch(
+    `${GRAPH_API_BASE}/${threadsUserId}/threads_publish`,
+    accessToken,
+    { method: 'POST', body: form },
+  );
   const data = await res.json();
   if (!res.ok || !data.id) {
     return { ok: false, step: 'threads_publish', error: data?.error?.message || JSON.stringify(data) };
@@ -272,9 +324,9 @@ async function pollContainerStatus(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await sleep(intervalMs);
     try {
-      const res = await fetch(
-        `${GRAPH_API_BASE}/${containerId}?fields=status&access_token=${encodeURIComponent(accessToken)}`,
-      );
+      const url = new URL(`${GRAPH_API_BASE}/${containerId}`);
+      url.searchParams.set('fields', 'status');
+      const res = await threadsFetch(url, accessToken);
       const data = await res.json();
       const status = (data.status as string | undefined)?.toUpperCase();
       if (status === 'FINISHED') return { ok: true };
@@ -302,9 +354,9 @@ export async function checkThreadsPublishingLimit(
   accessToken: string,
 ): Promise<{ quotaUsed: number; quotaLimit: number } | null> {
   try {
-    const res = await fetch(
-      `${GRAPH_API_BASE}/${threadsUserId}/threads_publishing_limit?fields=quota_usage,config&access_token=${encodeURIComponent(accessToken)}`,
-    );
+    const url = new URL(`${GRAPH_API_BASE}/${threadsUserId}/threads_publishing_limit`);
+    url.searchParams.set('fields', 'quota_usage,config');
+    const res = await threadsFetch(url, accessToken);
     const data = await res.json();
     const entry = Array.isArray(data?.data) ? data.data[0] : null;
     if (!entry) return null;

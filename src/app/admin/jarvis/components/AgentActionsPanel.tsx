@@ -145,7 +145,7 @@ function DecisionPacketView({ packet }: { packet: AutopilotDecisionPacket }) {
   );
 }
 
-export default function AgentActionsPanel() {
+export default function AgentActionsPanel({ focusedActionId }: { focusedActionId?: string | null }) {
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('pending');
@@ -182,6 +182,12 @@ export default function AgentActionsPanel() {
   useEffect(() => {
     setPage(1);
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (focusedActionId && actions.some((action) => action.id === focusedActionId)) {
+      setExpandedId(focusedActionId);
+    }
+  }, [actions, focusedActionId]);
 
   const showToast = (msg: string, type: 'ok' | 'err') => {
     setToast({ msg, type });

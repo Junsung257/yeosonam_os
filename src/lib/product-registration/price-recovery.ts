@@ -287,10 +287,12 @@ function supplierRawFactsToTiers(rawText: string): PriceTier[] {
   }
 
   const adultPrice = facts.prices.adult;
-  if (!adultPrice || facts.dates.length === 0) return [];
+  if (!adultPrice) return [];
 
   return [{
-    period_label: 'supplier_raw_departure_dates',
+    period_label: facts.dates.length > 0
+      ? 'supplier_raw_departure_dates'
+      : 'supplier_raw_price_without_departure_dates',
     departure_dates: [...new Set(facts.dates)],
     adult_price: adultPrice,
     child_price: facts.prices.child ?? undefined,
@@ -574,6 +576,7 @@ export async function recoverUploadPriceData(
   const rawText = options.rawText ?? ed.rawText ?? '';
   const recoveredDepartureDays = options.departureDays ?? ed.departure_days ?? inferDepartureDaysFromRawText(rawText);
   const ctx = { packageDepartureDays: recoveredDepartureDays, year: options.year };
+  const supplierRawCandidate = evaluateCandidate(ed, supplierRawFactsToTiers(rawText), ctx);
   let deterministicCandidate: (Pick<UploadPriceRecoveryResult, 'tiers' | 'priceRows' | 'priceDates' | 'minPrice'> & { source: string }) | null = null;
 
   const compactCatalogCandidate = evaluateCandidate(ed, compactMacauHongKongCatalogTiers(ed, rawText, options.year), ctx);
@@ -593,6 +596,19 @@ export async function recoverUploadPriceData(
       source: 'supplier_transport_variant_shared_price_table',
       failures,
       ...transportVariantEarlyCandidate,
+    };
+  }
+
+  if (
+    rawText.length < 100
+    && supplierRawCandidate.priceRows.length > 0
+    && supplierRawCandidate.priceDates.length > 0
+  ) {
+    return {
+      ok: true,
+      source: 'supplier_raw_facts',
+      failures,
+      ...supplierRawCandidate,
     };
   }
 
@@ -674,7 +690,6 @@ export async function recoverUploadPriceData(
     }
     failures.push(...explainCandidate('supplier_grouped_departure_price_table', groupedCandidate));
 
-    const supplierRawCandidate = evaluateCandidate(ed, supplierRawFactsToTiers(rawText), ctx);
     if (supplierRawCandidate.priceRows.length > 0 && supplierRawCandidate.priceDates.length > 0) {
       return {
         ok: true,
@@ -685,7 +700,10 @@ export async function recoverUploadPriceData(
     }
     failures.push(...explainCandidate('supplier_raw_facts', supplierRawCandidate));
 
-    const humanReaderCandidate = evaluateCandidate(ed, humanReaderPricePairsToTiers(rawText, options), ctx);
+    const humanReaderCandidate = evaluateCandidate(ed, humanReaderPricePairsToTiers(rawText, {
+      ...options,
+      departureDays: recoveredDepartureDays,
+    }), ctx);
     if (humanReaderCandidate.priceRows.length > 0 && humanReaderCandidate.priceDates.length > 0) {
       return {
         ok: true,
@@ -723,11 +741,11 @@ export async function recoverUploadPriceData(
 
   return {
     ok: false,
-    source: 'none',
-    tiers: llmCandidate.tiers,
-    priceRows: llmCandidate.priceRows,
-    priceDates: llmCandidate.priceDates,
-    minPrice: llmCandidate.minPrice,
+    source: supplierRawCandidate.minPrice != null ? 'supplier_raw_price_without_departure_dates' : 'none',
+    tiers: supplierRawCandidate.minPrice != null ? supplierRawCandidate.tiers : llmCandidate.tiers,
+    priceRows: supplierRawCandidate.minPrice != null ? supplierRawCandidate.priceRows : llmCandidate.priceRows,
+    priceDates: supplierRawCandidate.minPrice != null ? supplierRawCandidate.priceDates : llmCandidate.priceDates,
+    minPrice: supplierRawCandidate.minPrice ?? llmCandidate.minPrice,
     failures: [...new Set(failures)],
   };
 }

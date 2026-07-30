@@ -67,6 +67,25 @@ describe('requireAdminRequest', () => {
     await expect(requireAdminRequest(request('valid-admin-token'))).resolves.toBeNull();
   });
 
+  it('allows a trusted platform_admin app_metadata role without an email allowlist match', async () => {
+    mockedVerify.mockResolvedValue({
+      ok: true,
+      payload: { email: 'owner@example.com', app_metadata: { role: 'platform_admin' } },
+    });
+
+    await expect(requireAdminRequest(request('valid-platform-admin-token'))).resolves.toBeNull();
+  });
+
+  it('does not trust a platform_admin role from user_metadata', async () => {
+    mockedVerify.mockResolvedValue({
+      ok: true,
+      payload: { email: 'owner@example.com', user_metadata: { role: 'platform_admin' } },
+    });
+
+    const response = await requireAdminRequest(request('forged-user-metadata-token'));
+    expect(response?.status).toBe(403);
+  });
+
   it('allows a valid server-to-server admin token', async () => {
     mockedAdminToken.mockReturnValue(true);
 

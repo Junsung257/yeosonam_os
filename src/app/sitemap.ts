@@ -165,6 +165,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
     packageDestinations.filter(isSitemapPublicSnapshotCandidate),
   );
+  for (const pkg of snapshotDestinations) {
+    const id = pkg.id?.trim();
+    if (!id) continue;
+    const encodedId = encodeURIComponent(id);
+    const lastModified = safeLastModified(pkg.updated_at);
+    routes.push(
+      {
+        url: `${BASE_URL}/packages/${encodedId}`,
+        lastModified,
+        changeFrequency: 'daily',
+        priority: 0.85,
+      },
+      {
+        url: `${BASE_URL}/lp/${encodedId}`,
+        lastModified,
+        changeFrequency: 'daily',
+        priority: 0.8,
+      },
+    );
+  }
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {
     const destination = pkg.destination?.trim();

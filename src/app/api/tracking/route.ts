@@ -12,6 +12,7 @@ import {
   mergeSessionToUser,
 } from '@/lib/supabase';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { rateLimit } from '@/lib/rate-limiter';
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -158,13 +159,31 @@ function normalizeSource(value?: string | null): string {
 
 function normalizeMetadata(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
+  const blocked = /^(?:name|full_name|customer_name|phone|phone_number|email|address|passport|birth_date|message|memo|customer_note)$/i;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !blocked.test(key))
+      .filter(([, item]) => item == null || ['string', 'number', 'boolean'].includes(typeof item))
+      .map(([key, item]) => [
+        key,
+        typeof item === 'string' ? item.slice(0, 500) : item,
+      ]),
+  );
 }
 
 function nonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function safePath(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    return new URL(value, 'https://www.yeosonam.com').pathname.slice(0, 500);
+  } catch {
+    return null;
+  }
 }
 
 function isPaidTraffic(traffic?: {
@@ -215,9 +234,16 @@ function isOrganicLikeTraffic(traffic?: { source?: string | null; medium?: strin
   return medium === 'organic' || medium === 'content' || source.includes('google') || source.includes('naver') || !source;
 }
 
+function isClientSubmittedConversion(payload: TrackingPayload): boolean {
+  return payload.type === 'conversion';
+}
+
 // ── POST /api/tracking ────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const limited = await rateLimit(request, { limit: 120, window: 60, prefix: 'rl-tracking' });
+  if (limited) return limited;
+
   let body: TrackingPayload;
   try {
     body = await request.json();
@@ -227,6 +253,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!body?.type || !body?.session_id) {
     return NextResponse.json({ error: 'type and session_id are required' }, { status: 400 });
+  }
+
+  if (isClientSubmittedConversion(body)) {
+    return NextResponse.json(
+      { error: 'client-submitted conversion values are not accepted' },
+      { status: 403 },
+    );
   }
 
   // Supabase 미설정 시 202 즉시 반환 (개발/테스트 환경)
@@ -264,7 +297,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         n_keyword: body.n_keyword ?? null,
         current_cpc: body.current_cpc ?? null,
         consent_agreed: consent,
-        landing_page: body.landing_page ?? null,
+        landing_page: safePath(body.landing_page),
         ad_landing_mapping_id: adLandingMappingId,
         content_creative_id: body.content_creative_id ?? null,
         visitor_uid: body.visitor_uid ?? null,
@@ -336,7 +369,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         destination: nonEmptyString(body.destination),
         metadata,
         cart_added: body.cart_added ?? false,
-        page_url: body.page_url ?? null,
+        page_url: safePath(body.page_url),
         lead_time_days: body.lead_time_days ?? null,
         visitor_uid: body.visitor_uid ?? null,
         time_on_page_ms: body.time_on_page_ms ?? null,

@@ -57,6 +57,7 @@ export default function CustomerDetailPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Customer & { tags_str: string }>>({});
   const [saving, setSaving] = useState(false);
@@ -89,14 +90,23 @@ export default function CustomerDetailPage() {
       setIsLoading(false);
       return;
     }
+    const fetchRequiredJson = async (url: string) => {
+      const response = await fetch(url);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `${url} 조회 실패`);
+      return data;
+    };
+    setLoadError(null);
     Promise.all([
-      fetch(`/api/customers?id=${encodedId}`).then(r => r.json()),
-      fetch(`/api/bookings`).then(r => r.json()),
-      fetch(`/api/customers/${encodedId}/notes`).then(r => r.json()).catch(() => ({ notes: [] })),
+      fetchRequiredJson(`/api/customers?id=${encodedId}`),
+      fetchRequiredJson(`/api/bookings?customerId=${encodedId}`),
+      fetchRequiredJson(`/api/customers/${encodedId}/notes`),
     ]).then(([cd, bd, nd]) => {
       setCustomer(cd.customer);
-      setBookings((bd.bookings || []).filter((b: { lead_customer_id?: string }) => b.lead_customer_id === id));
+      setBookings(bd.bookings || []);
       setNotes(nd.notes || []);
+    }).catch((error) => {
+      setLoadError(error instanceof Error ? error.message : '고객 정보를 조회하지 못했습니다.');
     }).finally(() => setIsLoading(false));
   }, [id, encodedId]);
 
@@ -112,7 +122,7 @@ export default function CustomerDetailPage() {
     setSaving(true);
     try {
       const { tags_str, ...rest } = form;
-      await fetch('/api/customers', {
+      const updateResponse = await fetch('/api/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -121,11 +131,16 @@ export default function CustomerDetailPage() {
           tags: tags_str ? tags_str.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
         }),
       });
+      const updateData = await updateResponse.json().catch(() => ({}));
+      if (!updateResponse.ok) throw new Error(updateData.error || '고객 저장 실패');
       const res = await fetch(`/api/customers?id=${encodedId}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.customer) throw new Error(data.error || '저장 결과 재조회 실패');
       setCustomer(data.customer);
       setEditing(false);
       showToast('저장되었습니다.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '고객 저장 실패');
     } finally {
       setSaving(false);
     }
@@ -138,27 +153,32 @@ export default function CustomerDetailPage() {
     setMileageSaving(true);
     try {
       const newMileage = Math.max(0, (customer?.mileage || 0) + delta);
-      await fetch('/api/customers', {
+      const response = await fetch('/api/customers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, field: 'mileage', value: newMileage }),
       });
+      const responseData = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(responseData.error || '마일리지 조정 실패');
       setCustomer(c => c ? { ...c, mileage: newMileage } : c);
       // 노트에 마일리지 이력 자동 추가
       const noteContent = `[마일리지 ${delta > 0 ? '+' : ''}${delta.toLocaleString()}] ${mileageReason || '수동 조정'} → 잔액 ${newMileage.toLocaleString()}P`;
-      await submitNote(noteContent);
+      const noteSaved = await submitNote(noteContent);
       setMileageModal(false);
       setMileageDelta('');
       setMileageReason('');
-      showToast(`마일리지 ${delta > 0 ? '+' : ''}${delta.toLocaleString()} 적용됨`);
+      showToast(noteSaved
+        ? `마일리지 ${delta > 0 ? '+' : ''}${delta.toLocaleString()} 적용됨`
+        : `마일리지는 적용됐지만 이력 메모 저장에 실패했습니다.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '마일리지 조정 실패');
     } finally {
       setMileageSaving(false);
     }
   };
 
   const submitNote = async (content: string) => {
-    if (!id) return;
-    if (!content.trim()) return;
+    if (!id || !content.trim()) return false;
     setNoteSubmitting(true);
     try {
       const res = await fetch(`/api/customers/${encodedId}/notes`, {
@@ -167,10 +187,14 @@ export default function CustomerDetailPage() {
         body: JSON.stringify({ content }),
       });
       const data = await res.json();
+      if (!res.ok || !data.note) return false;
       if (data.note) {
         setNotes(prev => [...prev, data.note]);
         setTimeout(() => noteEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
       }
+      return true;
+    } catch {
+      return false;
     } finally {
       setNoteSubmitting(false);
     }
@@ -178,13 +202,18 @@ export default function CustomerDetailPage() {
 
   const handleNoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await submitNote(noteInput);
-    setNoteInput('');
+    const saved = await submitNote(noteInput);
+    if (saved) setNoteInput('');
+    else showToast('메모 저장에 실패했습니다.');
   };
 
   const handleDeleteNote = async (noteId: string) => {
     if (!id) return;
-    await fetch(`/api/customers/${encodedId}/notes?noteId=${encodeURIComponent(noteId)}`, { method: 'DELETE' });
+    const response = await fetch(`/api/customers/${encodedId}/notes?noteId=${encodeURIComponent(noteId)}`, { method: 'DELETE' });
+    if (!response.ok) {
+      showToast('메모 삭제에 실패했습니다.');
+      return;
+    }
     setNotes(prev => prev.filter(n => n.id !== noteId));
   };
 
@@ -226,6 +255,13 @@ export default function CustomerDetailPage() {
           ))}
         </div>
       </div>
+    </div>
+  );
+  if (loadError) return (
+    <div className="min-h-screen flex flex-col items-center justify-center text-admin-muted px-4 text-center">
+      <p className="mb-2 font-semibold text-red-700">고객 정보를 불러오지 못했습니다.</p>
+      <p className="mb-4 text-sm">{loadError}</p>
+      <Link href="/admin/customers" className="text-blue-600 hover:underline">목록으로</Link>
     </div>
   );
   if (!customer) return (

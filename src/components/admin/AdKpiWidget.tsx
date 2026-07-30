@@ -23,6 +23,8 @@ interface DailyRow {
 }
 
 interface KeywordStatsResponse {
+  available?: boolean;
+  reason?: string;
   data?: DailyRow[];
   error?: string;
 }
@@ -62,6 +64,10 @@ export default function AdKpiWidget() {
           setError(payload?.error ?? '키워드 성과를 불러오지 못했습니다.');
           return;
         }
+        if (payload?.available === false) {
+          setError(payload.reason ?? '검색광고 데이터 소스가 연결되지 않았습니다.');
+          return;
+        }
         setDaily((payload?.data ?? []).slice().sort((a, b) => a.date.localeCompare(b.date)));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
@@ -83,7 +89,23 @@ export default function AdKpiWidget() {
     );
   }
 
-  if (error || daily.length === 0) return null;
+  if (error || daily.length === 0) {
+    return (
+      <div className="rounded-xl border border-admin-border bg-admin-surface p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-admin-sm font-medium text-admin-text">검색광고 성과</h3>
+            <p className="mt-1 text-admin-xs text-admin-muted-2">
+              {error ?? '최근 30일에 수집된 검색광고 데이터가 없습니다.'}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+            {error ? '연결 확인' : '데이터 없음'}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   // KPI 계산
   const todayTotal = daily.filter(d => d.date === daily[daily.length - 1]?.date);

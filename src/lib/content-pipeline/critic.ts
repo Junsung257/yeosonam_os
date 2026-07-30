@@ -50,6 +50,7 @@ export interface CriticDecisionInput {
   fullText: string;                       // 전체 본문 (caption + slide texts)
   iteration?: number;
   banditArm?: string | null;
+  dryRun?: boolean;
 }
 
 export interface CriticDecisionOutput {
@@ -314,6 +315,7 @@ async function logDecision(
   input: CriticDecisionInput,
   decision: { decision: string; predicted_er: number; bait_match?: string; rejected_reason?: string },
 ): Promise<void> {
+  if (input.dryRun) return;
   try {
     await supabaseAdmin.from('card_news_publish_decisions').insert({
       card_news_id: input.cardNewsId ?? null,

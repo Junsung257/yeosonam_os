@@ -1,0 +1,52 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/types/**/*.d.ts",
+    "src/lib/analytics/**/*.ts",
+    "src/components/analytics/**/*.tsx",
+    "src/components/ConsentBanner.tsx",
+    "src/components/BlogTracker.tsx",
+    "src/components/ChatWidget.tsx",
+    "src/components/KakaoMomentPixel.tsx",
+    "src/components/LayoutClientWidgets.tsx",
+    "src/components/LayoutTrackers.tsx",
+    "src/components/MetaPixel.tsx",
+    "src/components/MsClarity.tsx",
+    "src/components/NaverAnalyticsPixel.tsx",
+    "src/components/ProductCard.tsx",
+    "src/components/TrackerBootstrap.tsx",
+    "src/components/customer/BottomTabBar.tsx",
+    "src/components/customer/GlobalNav.tsx",
+    "src/components/customer/TrackedPhoneLink.tsx",
+    "src/components/customer/TrackedKakaoLink.tsx",
+    "src/components/lp/LeadBottomSheet.tsx",
+    "src/hooks/useTracking.ts",
+    "src/lib/consent.ts",
+    "src/lib/submitPipeline.ts",
+    "src/lib/lead-booking-request.ts",
+    "src/lib/tracker.ts",
+    "src/app/api/leads/route.ts",
+    "src/app/api/cron/analytics-delivery/route.ts",
+    "src/app/api/checkout/complete/route.ts",
+    "src/app/api/bookings/route.ts",
+    "src/app/api/bookings/[id]/route.ts",
+    "src/app/api/tracking/route.ts",
+    "src/app/api/tracking/meta-conversion/route.ts",
+    "src/app/layout.tsx",
+    "src/app/lp/[id]/LandingClient.tsx",
+    "src/app/lp/[id]/LpDeferSections.tsx",
+    "src/app/packages/PackagesClient.tsx",
+    "src/app/packages/[id]/DetailClient.tsx",
+    "src/app/sitemap.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "tests/visual"
+  ]
+}

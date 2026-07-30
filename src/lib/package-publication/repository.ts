@@ -9,7 +9,10 @@ import {
   collectItineraryAttractionIds,
   validateCustomerPublishableAttractionIds,
 } from './attraction-validation';
-import { buildPublicPackageSnapshot } from './public-snapshot';
+import {
+  buildProofBoundPublicPackageSnapshot,
+  buildPublicPackageSnapshot,
+} from './public-snapshot';
 import { evaluatePublicSnapshotPublishGate, type PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
 
@@ -105,6 +108,42 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
     },
   };
   return hasBlockingSnapshotCopy(customerPackage, row) ? null : customerPackage;
+}
+
+export function buildCandidatePublicPackageForProof(
+  pkg: AnyRecord,
+): {
+  package: AnyRecord;
+  snapshot: PublicPackageSnapshot;
+  snapshotHash: string;
+} | null {
+  const {
+    proofPackage,
+    packageRevision,
+    snapshot,
+    snapshotHash,
+  } = buildProofBoundPublicPackageSnapshot(pkg);
+  const packageId = String(proofPackage.id ?? snapshot.package_id ?? '').trim();
+  if (!packageId) return null;
+  const row: SnapshotRow = {
+    id: `proof:${packageId}:${snapshotHash}`,
+    package_id: packageId,
+    package_revision: packageRevision,
+    snapshot_hash: snapshotHash,
+    snapshot_json: snapshot,
+    card_projection: snapshot.card_projection,
+    lp_projection: snapshot.lp_projection,
+    route_text_dump: snapshot.route_text_dump,
+    status: 'proof',
+    created_at: new Date(0).toISOString(),
+  };
+  const projectedPackage = snapshotPackage(row);
+  if (!projectedPackage) return null;
+  return {
+    package: projectedPackage,
+    snapshot,
+    snapshotHash,
+  };
 }
 
 export async function fetchLatestPublicPackageSnapshot(

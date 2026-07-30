@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AttractionData } from '@/lib/attraction-matcher';
+import {
+  isCustomerRenderableAttraction,
+  type AttractionData,
+} from '@/lib/attraction-matcher';
 import { evaluateMasterCandidate } from '@/lib/entity-master-candidates';
 
 type ScheduleItemLike = {
@@ -61,6 +64,8 @@ const ATTRACTION_NOUN_RE =
 
 const DROP_FRAGMENT_RE =
   /^(?:조식|중식|석식|식사|호텔\s*조식|호텔\s*석식|중식\s*후|석식\s*후|조식\s*후|호텔\s*체크인|호텔\s*이동|공항\s*이동|자유시간|휴식|전일)$/;
+const NON_MAJOR_ROUTE_OR_DESCRIPTION_FRAGMENT_RE =
+  /^(?:인\s*:\s*)?야시장\s*자유\s*관람$|^\d+\s*년.*(?:역사|유적).*재현$|^대협곡\s*중.*으뜸|^협곡\s*위\s*높이|^\d+\s*분\).*?(?:도보|하산).*?\d+\s*m$|^(?:입구|도보|유리전망대).*(?:셔틀버스|공중버스|레일케이블카|전동카|동굴엘리베이터|출구)|^완행열차\s*체험/i;
 
 const CUSTOMER_INVISIBLE_RE =
   /(김해|인천|부산|대구|청주|무안|국제공항|입국\s*수속|출국\s*수속|가이드\s*미팅|항공|직항|출발|도착|이동|소요|차창|호텔|조식|중식|석식|식사)/;
@@ -69,7 +74,7 @@ const PRICE_OR_DATE_FRAGMENT_RE =
   /(?:^\d[\d,]*(?:원|만원|만|불|달러|\$)?$|^\d{1,2}[./-]\d{1,2}|^\d{4}[./-]\d{1,2}[./-]\d{1,2})/;
 
 const NON_ATTRACTION_CONTENT_RE =
-  /(마사지|현지\s*지불\s*옵션|현지지불옵션|선택\s*관광|옵션가|추천\s*선택|옵션|자유\s*일정|자유시간|또는\s*동급|호텔\s*또는|기념품|토산품|쇼핑센터|쇼핑\s*센터|5D\s*비행|5D비행|스쿠버다이빙|호핑투어)/i;
+  /(마사지|맛사지|현지\s*지불\s*옵션|현지지불옵션|선택\s*관광|옵션가|추천\s*선택|옵션|자유\s*일정|자유시간|또는\s*동급|호텔\s*또는|기념품|토산품|쇼핑센터|쇼핑\s*센터|5D\s*비행|5D비행|스쿠버다이빙|호핑투어|ETA|ESTA|필수\s*서류|유효기간|발급\s*(?:승인|후)|세관|전자세관|입국\s*시|입국\s*필수|출입국|신청\s*필수|QR\s*코드|전용\s*키오스크|미국\s*비자|야채절임|실제\s*음식|조리\s*과정|플레이팅|골프장|CC\b|라운딩|\d+\s*홀|로컬\s*마켓|재래\s*시장|대체될\s*수\s*있|비치바|핫플\s*카페|호텔.*식사|디너쇼.*식사)/i;
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -210,6 +215,7 @@ function labelFromDescriptiveActivity(activity: string): string {
 function hasEnoughAttractionSignal(label: string, activity: string): boolean {
   if (!label || label.length < 3) return false;
   if (DROP_FRAGMENT_RE.test(label)) return false;
+  if (NON_MAJOR_ROUTE_OR_DESCRIPTION_FRAGMENT_RE.test(label)) return false;
   if (PRICE_OR_DATE_FRAGMENT_RE.test(label)) return false;
   if (NON_ATTRACTION_CONTENT_RE.test(label) || NON_ATTRACTION_CONTENT_RE.test(activity)) return false;
   if (ATTRACTION_NOUN_RE.test(label)) return true;
@@ -223,7 +229,7 @@ export function extractCustomerAttractionLabel(item: ScheduleItemLike): string |
 }
 
 export function extractCustomerAttractionLabels(item: ScheduleItemLike): string[] {
-  const type = text(item.type || item.entity_kind || item.kind).toLowerCase();
+  const type = text(item.entity_kind || item.kind || item.type).toLowerCase();
   if (NON_ATTRACTION_TYPES.has(type)) return [];
 
   const explicitNames = stringArray(item.attraction_names);
@@ -235,6 +241,7 @@ export function extractCustomerAttractionLabels(item: ScheduleItemLike): string[
   const activity = text(item.activity);
   if (!activity) return [];
   if (DROP_FRAGMENT_RE.test(activity)) return [];
+  if (NON_MAJOR_ROUTE_OR_DESCRIPTION_FRAGMENT_RE.test(activity)) return [];
 
   const knownLabels = knownCustomerAttractionLabels(activity);
   if (knownLabels.length > 0) return knownLabels;
@@ -311,6 +318,7 @@ export function evaluateAttractionMediaReadiness(input: {
     : [];
   const missingDescriptionCandidates = candidates.filter(candidate => (
     candidate.matchedIds.length > 0
+    && candidate.matchedIds.some(id => isCustomerRenderableAttraction(byId.get(id)))
     && !candidate.matchedIds.some(id => hasCustomerDescription(byId.get(id)))
   ));
   const warnings = [

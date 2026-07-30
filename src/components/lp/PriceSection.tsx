@@ -145,7 +145,7 @@ export default function PriceSectionCard({
             <span className="text-xs font-extrabold uppercase tracking-widest text-blue-600">
               여소남 요금표
             </span>
-            <p className="mt-0.5 text-xs text-gray-400">1인 기준 · 유류할증료 포함</p>
+            <p className="mt-0.5 text-xs text-gray-400">1인 기준</p>
           </div>
         </div>
 

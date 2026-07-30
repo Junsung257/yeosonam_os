@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import nextDynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
@@ -14,21 +15,13 @@ import {
 } from 'lucide-react';
 import { useAutoRefreshSession } from '@/hooks/useAutoRefreshSession';
 import AdminSwrProvider from './admin/SwrProvider';
-import {
-  DensityProvider,
-  DensityToggle,
-  SearchInput,
-  useDensity,
-  CommandPalette,
-  ShortcutsProvider,
-  KeyboardShortcutsHelp,
-  useShortcuts,
-} from '@/components/admin/ui';
+import { DensityProvider, DensityToggle, useDensity } from '@/components/admin/ui/DensityProvider';
+import { SearchInput } from '@/components/admin/ui/SearchInput';
+import { ShortcutsProvider, KeyboardShortcutsHelp, useShortcuts } from '@/components/admin/ui/KeyboardShortcuts';
 import type { AdminCommand } from '@/lib/admin-commands/registry';
 import AlertsBadge from './admin/AlertsBadge';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useNavLogger, readNavUsage } from '@/hooks/useNavLogger';
-import SidebarAIWidget from './admin/SidebarAIWidget';
 import { IntentRecommendationsBar } from './admin/IntentRecommendations';
 import {
   buildAdminMissionItems,
@@ -47,6 +40,12 @@ import {
   type NavGroup,
   type NavItem,
 } from '@/lib/admin-navigation';
+
+const CommandPalette = nextDynamic(
+  () => import('@/components/admin/ui/CommandPalette').then(module => module.CommandPalette),
+  { ssr: false },
+);
+const SidebarAIWidget = nextDynamic(() => import('./admin/SidebarAIWidget'), { ssr: false });
 
 // ── 역할 기반 접근 제어 타입 ─────────────────────────────
 export type { MenuRoleLevel } from '@/lib/admin-mission-control';
@@ -173,8 +172,8 @@ function MissionControlRail({
               <Icon size={13} className="shrink-0" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{item.label}</span>
-                <span className="block truncate text-[10px] font-normal opacity-80">{item.actionLabel}</span>
-                <span className="block truncate text-[10px] font-normal opacity-70">
+                <span className="block truncate text-[10px] font-normal">{item.actionLabel}</span>
+                <span className="block truncate text-[10px] font-normal">
                   {item.owner} · SLA {formatMissionSlo(item.sloMinutes)}
                 </span>
               </span>
@@ -252,7 +251,7 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, onNavClick, badge,
         title={item.label}
         onClick={() => onNavClick(item.href)}
         className={`relative flex items-center justify-center h-9 w-9 mx-auto rounded-admin-md transition-colors duration-160 ${
-          active ? 'bg-brand-light text-brand' : 'text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text'
+          active ? 'bg-brand-light text-brand-dark' : 'text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text'
         }`}
       >
         <Icon size={16} strokeWidth={2} />
@@ -273,7 +272,7 @@ function SidebarItem({ item, active, isFavorite, onToggleFav, onNavClick, badge,
         onClick={() => onNavClick(item.href)}
         className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-admin-sm text-admin-sm transition-colors duration-160 relative ${
           active
-            ? 'bg-brand-light text-brand font-semibold'
+            ? 'bg-brand-light text-brand-dark font-semibold'
             : 'text-admin-text-2 hover:bg-admin-surface-2 hover:text-admin-text'
         }`}
       >
@@ -380,7 +379,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   // ── 사이드바 배지 통합 fetch (SWR 60초 폴링) ──────────────────────────
   // 감사: docs/audits/2026-05-11-admin-perf-audit.md
   // 기존 5개 fetch + setInterval → 단일 RPC + SWR dedup + 30s 캐시.
-  const { data: badges } = useSWR<AdminBadgeCounts>('/api/admin/badge-counts', {
+  const { data: badges, error: badgeError } = useSWR<AdminBadgeCounts>('/api/admin/badge-counts', {
     refreshInterval: 60_000,
     dedupingInterval: 30_000,
   });
@@ -507,10 +506,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         {/* 로고 */}
         <div className={`h-14 flex items-center border-b border-admin-border ${sidebarMode === 'slim' ? 'justify-center px-2' : 'px-4 gap-2'}`}>
           {sidebarMode === 'slim' ? (
-            <span className="text-brand font-bold text-sm leading-none">OS</span>
+            <span className="text-brand-dark font-bold text-sm leading-none">OS</span>
           ) : (
             <>
-              <span className="text-admin-base font-bold tracking-tight text-brand">여소남 OS</span>
+              <span className="text-admin-base font-bold tracking-tight text-brand-dark">여소남 OS</span>
               <span className="text-admin-2xs text-admin-muted font-medium uppercase tracking-wider">ERP</span>
             </>
           )}
@@ -518,6 +517,14 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* 메뉴 */}
         <nav className={`flex-1 overflow-y-auto py-3 space-y-1 ${sidebarMode === 'slim' ? 'px-1' : 'px-2'}`}>
+          {badgeError && sidebarMode === 'full' && (
+            <div className="mx-1 mb-2 rounded-admin-sm border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] font-medium text-red-700" role="status">
+              업무 건수 조회 실패 · 각 메뉴에서 확인
+            </div>
+          )}
+          {badgeError && sidebarMode === 'slim' && (
+            <div className="mx-auto mb-2 h-2 w-2 rounded-full bg-red-500" title="업무 건수 조회 실패" role="status" />
+          )}
           {sidebarMode === 'full' && (
             <MissionControlRail
               items={missionItems}
@@ -883,7 +890,7 @@ function NavRecommendations({
 
   return (
     <div className="border-t border-admin-border px-2 py-2">
-      <div className="px-2 pb-1 flex items-center gap-1.5 text-admin-2xs font-semibold text-brand uppercase tracking-[0.08em]">
+      <div className="px-2 pb-1 flex items-center gap-1.5 text-admin-2xs font-semibold text-brand-dark uppercase tracking-[0.08em]">
         <Sparkle size={10} />
         추천 메뉴
       </div>
@@ -897,7 +904,7 @@ function NavRecommendations({
                 onClick={() => onNavClick(item.href)}
                 className="flex items-center gap-2.5 px-2.5 py-1 rounded-admin-sm text-admin-xs text-admin-text-2 hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160"
               >
-                <Icon size={12} strokeWidth={2} className="shrink-0 text-brand" />
+                <Icon size={12} strokeWidth={2} className="shrink-0 text-brand-dark" />
                 <span className="truncate">{item.label}</span>
               </Link>
               <button

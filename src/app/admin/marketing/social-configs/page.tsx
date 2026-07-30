@@ -135,8 +135,9 @@ export default function SocialConfigsPage() {
                     {config && (
                       <>
                         <div className="flex items-center gap-2">
-                          <label className="text-[10px] text-gray-400">일일한도</label>
+                          <label htmlFor={`daily-limit-${platform}`} className="text-[10px] text-gray-400">일일한도</label>
                           <input
+                            id={`daily-limit-${platform}`}
                             type="number"
                             defaultValue={config.daily_limit ?? 10}
                             min={1}
@@ -153,6 +154,8 @@ export default function SocialConfigsPage() {
                         <button type="button"
                           onClick={() => toggleEnabled(platform, config?.enabled ?? false)}
                           disabled={saving === platform}
+                          aria-label={`${info.label} 자동 발행 ${config?.enabled ? '끄기' : '켜기'}`}
+                          aria-pressed={config?.enabled ?? false}
                           className={`relative w-11 h-6 rounded-full transition-colors ${
                             config?.enabled ? 'bg-green-500' : 'bg-gray-300'
                           } ${saving === platform ? 'opacity-50' : ''}`}

@@ -56,6 +56,9 @@ export function evaluateProductRegistrationV3Gate(
 
   for (const variant of ledger.variants) {
     const requiresAirTransport = planRequiresAirTransport(plan);
+    const sourceBackedFlightOptions = variant.flight_options ?? [];
+    const hasRoundTripFlightOptions = sourceBackedFlightOptions.some(option => option.leg === 'outbound')
+      && sourceBackedFlightOptions.some(option => option.leg === 'inbound');
     const hasMealEvidence = variant.days.some(day => Object.values(day.meals).some(value => Object.keys(value).length > 0))
       || hasIncludedMealEvidence(variant)
       || variant.standard_notices.some(notice => notice.category === 'meal_plan' && notice.review_status !== 'rejected')
@@ -71,17 +74,20 @@ export function evaluateProductRegistrationV3Gate(
     check(
       checks,
       `${variant.variant_key}.flight`,
-      !requiresAirTransport || variant.flight_segments.length > 0,
+      !requiresAirTransport || variant.flight_segments.length > 0 || hasRoundTripFlightOptions,
       'critical',
       requiresAirTransport ? 'air package has flight evidence' : 'air flight evidence is not required for this transport profile',
     );
     check(
       checks,
       `${variant.variant_key}.flight_times_complete`,
-      !requiresAirTransport || variant.flight_segments
-        .filter(segment => segment.leg === 'outbound' || segment.leg === 'inbound')
-        .filter(segment => Boolean(segment.dep_time || segment.arr_time))
-        .every(segment => Boolean(segment.dep_time && segment.arr_time)),
+      !requiresAirTransport || (
+        variant.flight_segments
+          .filter(segment => segment.leg === 'outbound' || segment.leg === 'inbound')
+          .filter(segment => Boolean(segment.dep_time || segment.arr_time))
+          .every(segment => Boolean(segment.dep_time && segment.arr_time))
+        && sourceBackedFlightOptions.every(option => Boolean(option.dep_time && option.arr_time))
+      ),
       'critical',
       'source-timed outbound/inbound flight segments must include both departure and arrival times',
     );
@@ -146,6 +152,51 @@ export function evaluateProductRegistrationV3Gate(
       highRiskFacts.every(fact => fact.review_status !== 'review_needed'),
       'critical',
       'high-risk structured facts must have values or an explicit safe state',
+    );
+    const dateSalesQuarantineFacts = highRiskFacts.filter(fact =>
+      fact.values.safe_state === 'date_sales_quarantined'
+    );
+    const prebookingQuoteFacts = highRiskFacts.filter(fact =>
+      fact.values.safe_state === 'prebooking_quote_and_consent_required'
+    );
+    const quarantinedDates = new Set(
+      dateSalesQuarantineFacts.flatMap(fact => (
+        Array.isArray(fact.values.quarantined_dates)
+          ? fact.values.quarantined_dates.filter((value): value is string => typeof value === 'string')
+          : []
+      )),
+    );
+    check(
+      checks,
+      `${variant.variant_key}.date_sales_quarantine_evidence`,
+      dateSalesQuarantineFacts.every(fact => (
+        fact.review_status === 'auto_clean'
+        && fact.values.quarantine_reason === 'unpriced_holiday_ground_cost'
+        && Array.isArray(fact.values.quarantined_date_tokens)
+        && fact.values.quarantined_date_tokens.length > 0
+        && Array.isArray(fact.values.quarantined_dates)
+        && fact.values.quarantined_dates.length > 0
+        && fact.evidence.some(item => /일본.*(?:공휴일|휴일|연휴).*지상비\s*(?:추가|인상|할증)/u.test(item.quote))
+      ))
+        && variant.price_calendar.every(entry => entry.date == null || !quarantinedDates.has(entry.date)),
+      'critical',
+      'date-level sales quarantine must have source-backed ranges and exclude those dates from sale',
+    );
+    check(
+      checks,
+      `${variant.variant_key}.prebooking_quote_and_consent_evidence`,
+      prebookingQuoteFacts.every(fact => (
+        fact.review_status === 'auto_clean'
+        && fact.values.charge_timing === 'before_booking_confirmation'
+        && fact.values.consent_required === true
+        && fact.evidence.some(item => (
+          /(?:예약|배정|운영|현지)\s*상황에?\s*따라.*(?:다른\s*곳|대체|변경)/u.test(item.quote)
+          && /(?:송영|차량|교통|이동)\s*(?:요금|비용|추가금).*(?:추가|발생)/u.test(item.quote)
+        ))
+        && /예약\s*확정\s*전에.*동의/u.test(fact.standard_text)
+      )),
+      'critical',
+      'unpriced conditional transport charges require source evidence and a pre-booking quote/consent contract',
     );
   }
 

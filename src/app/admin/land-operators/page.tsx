@@ -114,7 +114,7 @@ export default function LandOperatorsPage() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i}>
                   {[120, 100, 48, 64].map((w, j) => (
-                    <td key={j}>
+                    <td key={j} aria-label={`${['랜드사명', '연락처', '상태', '액션'][j]} 불러오는 중`}>
                       <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
                     </td>
                   ))}
@@ -148,7 +148,7 @@ export default function LandOperatorsPage() {
                   <td className="font-medium text-admin-text">
                     {editingId === v.id ? (
                       <input
-                        autoFocus
+                        aria-label={`${v.name} 랜드사명 수정`}
                         value={editName}
                         onChange={e => setEditName(e.target.value)}
                         onKeyDown={e => {
@@ -190,13 +190,13 @@ export default function LandOperatorsPage() {
                         </Button>
                       </div>
                     ) : (
-                      <span
-                        className="cursor-pointer hover:text-brand transition-colors"
+                      <button type="button"
+                        className="cursor-pointer hover:text-brand transition-colors text-left"
                         onClick={() => startEdit(v)}
                         title="클릭하여 수정"
                       >
                         {v.contact || '—'}
-                      </span>
+                      </button>
                     )}
                   </td>
                   {/* 상태 */}

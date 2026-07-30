@@ -59,6 +59,7 @@ import {
   type RepairFirstOpenabilitySummary,
 } from './repair-first-openability';
 import { hashSourceText } from './improvement-ledger';
+import { sourceEvidenceAuditPayload } from './source-evidence-contract';
 
 const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -4398,6 +4399,13 @@ async function evaluateAndMaybeOpenPackage(input: {
     reasons.push(`source_verify:${sourceVerify.status}`);
   }
 
+  const optionalTourEvidence = sourceEvidenceAuditPayload(pkg);
+  if (optionalTourEvidence.status === 'blocked') {
+    reasons.push(...optionalTourEvidence.blockers);
+  } else if (optionalTourEvidence.status === 'review') {
+    reasons.push(...optionalTourEvidence.review_required);
+  }
+
   const latestV3Draft = await loadLatestV3DraftForPackage(input.supabase, pkg.id);
   const v3Gate = evaluateV3CustomerNoticeGate(pkg.id, latestV3Draft);
   if (v3Gate.blocksApproval) {
@@ -4510,6 +4518,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       mobile_proof: mobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      optional_tour_source_evidence: optionalTourEvidence,
     });
     return {
       id: pkg.id,
@@ -4536,6 +4545,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       mobile_proof: mobileProof.proof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      optional_tour_source_evidence: optionalTourEvidence,
     });
     return {
       id: pkg.id,
@@ -4559,6 +4569,7 @@ async function evaluateAndMaybeOpenPackage(input: {
     ...asRecord(pkg.audit_report),
     ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
     customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    optional_tour_source_evidence: optionalTourEvidence,
     upload_to_open_autopilot: {
       stage: 'opened',
       opened_at: openedAt,
@@ -4570,12 +4581,14 @@ async function evaluateAndMaybeOpenPackage(input: {
       mobile_browser_proof: openedMobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      optional_tour_source_evidence: optionalTourEvidence,
     },
   };
   const blockedPublicSnapshotAuditReport = {
     ...asRecord(pkg.audit_report),
     ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
     customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    optional_tour_source_evidence: optionalTourEvidence,
     upload_to_open_autopilot: {
       stage: 'blocked_after_public_snapshot',
       checked_at: openedAt,
@@ -4586,7 +4599,8 @@ async function evaluateAndMaybeOpenPackage(input: {
       upload_verify: uploadVerifyGate,
       mobile_browser_proof: openedMobileProof,
       quality_scorecard: finalQualityScorecard,
-      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    optional_tour_source_evidence: optionalTourEvidence,
     },
   };
 
@@ -4653,6 +4667,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       mobile_browser_proof: openedMobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      optional_tour_source_evidence: optionalTourEvidence,
       public_snapshot: {
         snapshot_hash: publicSnapshotDecision.snapshotHash,
         publication_state: publicSnapshotDecision.publicationState,

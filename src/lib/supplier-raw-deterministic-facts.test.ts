@@ -46,6 +46,35 @@ afterEach(() => {
 });
 
 describe('applySupplierRawDeterministicFacts', () => {
+  it('recovers a source-backed Korean departure hub from the supplier title', () => {
+    const facts = extractSupplierRawDeterministicFacts(`
+인천출발 천진 진황도 2색 골프 3박4일
+출발일 2026.08.01
+제1일 인천 국제공항 출발 후 천진 국제공항 도착
+제4일 천진 국제공항 출발 후 인천 국제공항 도착
+`);
+
+    expect(facts.departureAirport).toBe('인천');
+  });
+
+  it('stops exclusions when an inline HWP 항공시간 heading begins', () => {
+    const facts = extractSupplierRawDeterministicFacts(`
+인천출발 천진 진황도 2색 골프 3박4일
+불포함사항
+미팅샌딩비용(400위안/인)
+캐디팁(150위안/인/18홀) 항공시간 인천-천진 - 아시아나08:55-09:55
+대한항공10:15-11:15
+제1일
+인천 국제공항 출발
+`);
+
+    expect(facts.excludes).toEqual([
+      '미팅샌딩비용(400위안/인)',
+      '캐디팁(150위안/인/18홀)',
+    ]);
+    expect(facts.excludes.join(' ')).not.toMatch(/항공시간|아시아나|대한항공/);
+  });
+
   it('uses literal HWP 출발일 and 판매가 blocks as source-backed dates and prices', () => {
     const facts = extractSupplierRawDeterministicFacts(`
 PKG
@@ -1027,6 +1056,79 @@ describe('Korean catalog table flight recovery', () => {
 });
 
 describe('supplier raw departure price guards', () => {
+  it('cleans an unlabeled-colon product-name prefix and keeps only the actual destination', () => {
+    const facts = extractSupplierRawDeterministicFacts([
+      '\uC0C1\uD488\uBA85 [PASTE-GOLDEN] \uBC29\uCF55 \uD30C\uD0C0\uC57C 5\uC77C',
+      '\uC131\uC778 699,000\uC6D0',
+    ].join('\n'));
+
+    expect(facts.title).toBe('[PASTE-GOLDEN] \uBC29\uCF55 \uD30C\uD0C0\uC57C 5\uC77C');
+    expect(facts.region).toBe('\uBC29\uCF55');
+    expect(facts.prices.adult).toBe(699000);
+  });
+
+  it('uses the customer selling price instead of NET and reads the lowest weekday grid price', () => {
+    const selling = extractSupplierRawDeterministicFacts([
+      '\uC0C1\uD488\uBA85 \uB098\uD2B8\uB791 \uB9AC\uC870\uD2B8 5\uC77C',
+      '\uB79C\uB4DC NET 620,000\uC6D0 / \uD310\uB9E4\uAC00 799,000\uC6D0 / \uB9C8\uC9C4 \uBCC4\uB3C4',
+      '\uC544\uB3D9 749,000\uC6D0',
+    ].join('\n'));
+    const weekdayGrid = extractSupplierRawDeterministicFacts([
+      '\uC0C1\uD488\uBA85 \uB2E4\uB0AD \uBC14\uB098\uD790 4\uC77C',
+      '\uCD9C\uBC1C\uC6D4 2026\uB144 10\uC6D4',
+      '\uC6D4/\uD654/\uC218/\uBAA9 699,000\uC6D0',
+      '\uAE08/\uD1A0 749,000\uC6D0',
+    ].join('\n'));
+
+    expect(selling.prices).toMatchObject({ adult: 799000, child: 749000 });
+    expect(weekdayGrid.prices.adult).toBe(699000);
+  });
+
+  it('does not include a ticketing deadline in departure dates', () => {
+    const facts = extractSupplierRawDeterministicFacts([
+      '\uC0C1\uD488\uBA85 \uC7A5\uAC00\uACC4 5\uC77C',
+      '\uCD9C\uBC1C\uC77C 2026-11-05',
+      '\uC131\uC778 899,000\uC6D0',
+      '\uBC1C\uAD8C\uB9C8\uAC10 2026-10-15 17:00\uAE4C\uC9C0',
+    ].join('\n'));
+
+    expect(facts.dates).toEqual(['2026-11-05']);
+  });
+
+  it('keeps both inline flight times for an inbound next-day segment', () => {
+    const facts = extractSupplierRawDeterministicFacts([
+      '상품명 나트랑 3박5일',
+      '가는편 BX781 19:20-22:20',
+      '오는편 BX782 23:20-06:20+1 익일도착',
+      '성인 1,099,000원',
+    ].join('\n'));
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX781',
+      departure: { time: '19:20' },
+      arrival: { time: '22:20' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX782',
+      departure: { time: '23:20' },
+      arrival: { time: '06:20' },
+    });
+  });
+
+  it('prefers the destination-and-duration line over a departure-date promotion line', () => {
+    const facts = extractSupplierRawDeterministicFacts([
+      '홍보특가',
+      '곤명+만봉림+황과수+마령하대협곡+석림(옥주동) 5박6일',
+      '출 발 일',
+      '8월 20일, 29일 9월 3일, 12일, 19일, 26일 출발한정',
+      '1인 판매가 : 899,000원',
+    ].join('\n'));
+
+    expect(facts.title).toBe('곤명+만봉림+황과수+마령하대협곡+석림(옥주동) 5박6일');
+    expect(facts.region).toBe('곤명');
+    expect(facts.durationDays).toBe(6);
+  });
+
   it('uses labeled departure dates without polluting product dates with hotel surcharge dates', () => {
     const raw = [
       '[노옵션노팁] 다낭/호이안/바나힐 5일 [진에어]',

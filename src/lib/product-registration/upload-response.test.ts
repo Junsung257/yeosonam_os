@@ -117,6 +117,12 @@ describe('buildUploadResponsePayload learning summary', () => {
         'PRICE_DATE_DISAGREEMENT',
       ]),
     }));
+    expect(payload.remediation).toEqual(expect.objectContaining({
+      ready: false,
+      actions: expect.arrayContaining([
+        expect.objectContaining({ field: 'price', kind: 'system_repair' }),
+      ]),
+    }));
   });
 
   it('marks saved review-only packages as not customer publishable', async () => {

@@ -10,6 +10,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { isValidAdminApiToken } from '@/lib/api-auth';
 import { verifySupabaseAccessToken, legacyJwtExpValid } from '@/lib/supabase-jwt-verify';
+import { inferTrustedAdminRole } from '@/lib/admin-auth-claims';
 
 type AdminAuthorization = {
   authorized: boolean;
@@ -63,8 +64,9 @@ async function resolveAdminAuthorization(req: NextRequest): Promise<AdminAuthori
 
   const email =
     typeof v.payload.email === 'string' ? v.payload.email.toLowerCase() : undefined;
+  const role = inferTrustedAdminRole(v.payload as Record<string, unknown>);
   return {
-    authorized: !!(email && adminEmails.includes(email)),
+    authorized: role === 'platform_admin' || !!(email && adminEmails.includes(email)),
     authenticated: true,
     expired: false,
   };

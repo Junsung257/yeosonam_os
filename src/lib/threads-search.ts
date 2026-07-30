@@ -6,7 +6,7 @@
  *     ?q={keyword}
  *     &search_type=TOP|RECENT
  *     &fields=id,text,timestamp,permalink,media_type,media_url,like_count,reply_count,repost_count,quote_count,share_count,views
- *     &access_token={token}
+ *   Authentication: Authorization: Bearer <token>
  *
  * 제약 (2026-01 기준):
  *   - 호출당 25개 결과
@@ -17,7 +17,6 @@
  */
 
 import { resolveMetaToken } from './meta-token-resolver';
-import { getSecret } from './secret-registry';
 
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
 
@@ -66,8 +65,8 @@ async function getThreadsSearchToken(): Promise<string | null> {
   );
 }
 
-export function isThreadsSearchConfigured(): boolean {
-  return !!(getSecret('THREADS_ACCESS_TOKEN') || getSecret('META_ACCESS_TOKEN'));
+export async function isThreadsSearchConfigured(): Promise<boolean> {
+  return Boolean(await getThreadsSearchToken());
 }
 
 /**
@@ -91,10 +90,12 @@ export async function searchThreadsByKeyword(
   url.searchParams.set('q', keyword);
   url.searchParams.set('search_type', searchType);
   url.searchParams.set('fields', FIELDS);
-  url.searchParams.set('access_token', token);
 
   try {
-    const res = await fetch(url.toString());
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
     const data = await res.json();
     if (!res.ok) {
       return {

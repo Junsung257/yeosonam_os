@@ -133,6 +133,10 @@ describe('Baekdu landing regression guards', () => {
       activity: '\uC5F0\uAE38\uB85C \uC774\uB3D9 (2\uC2DC\uAC04 \uC18C\uC694)',
       type: 'normal',
     });
+    const bracketedMove = compileScheduleItemForLanding({
+      activity: '\uBCF4\uCC9C\uB300\uD611\uACE1 \uC73C\uB85C \uC774\uB3D9 [ \uC57D 40\uBD84 \uC18C\uC694 ]',
+      type: 'normal',
+    });
     const massage = compileScheduleItemForLanding({
       activity: '\uC5EC\uD589\uC758 \uD53C\uB85C\uB97C \uD480\uC5B4\uC8FC\uB294 \uC804\uC2E0+\uBC1C\uB9C8\uC0AC\uC9C0 90\uBD84 (\uB9E4\uB108\uD301 \uBCC4\uB3C4)',
       type: 'normal',
@@ -141,6 +145,8 @@ describe('Baekdu landing regression guards', () => {
     expect(move.entity_kind).toBe('transfer');
     expect(move.attraction_query).toBeNull();
     expect(move.landing_sentence).toBe('\uC5F0\uAE38\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4.');
+    expect(bracketedMove.entity_kind).toBe('transfer');
+    expect(bracketedMove.attraction_query).toBeNull();
     expect(massage.entity_kind).toBe('perk');
     expect(massage.attraction_query).toBeNull();
     expect(massage.service_name).toBe('\uC804\uC2E0+\uBC1C\uB9C8\uC0AC\uC9C0');

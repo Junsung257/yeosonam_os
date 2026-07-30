@@ -29,6 +29,25 @@
 
 `ADMIN_EMAILS`가 비어 있으면 일반 로그인으로는 어드민 API가 거부됩니다. 서버 간 호출은 `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` 로 여전히 가능합니다.
 
+## 📊 마케팅 측정·GTM·GA4
+
+전체 placeholder 예시는 [`docs/analytics/env.example`](./analytics/env.example)을 사용합니다.
+
+| 키 | 공개 여부 | 용도 |
+|---|---|---|
+| `NEXT_PUBLIC_ANALYTICS_ENABLED` | 공개 | `true`일 때만 측정 runtime 후보 활성화 |
+| `NEXT_PUBLIC_ANALYTICS_DEBUG` | 공개 | 로컬 명시 디버그. Production에서는 일반 활성화 조건 적용 |
+| `NEXT_PUBLIC_GTM_CONTAINER_ID` | 공개 | `GTM-...` 형식, 유효하지 않으면 로드 안 함 |
+| `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | 공개 | `G-...` 형식 |
+| `NEXT_PUBLIC_GOOGLE_ADS_ID` | 공개 | `AW-...` 형식 |
+| `NEXT_PUBLIC_CLARITY_PROJECT_ID` | 공개 | 선택적 GTM Clarity 설정용 |
+| `NEXT_PUBLIC_SITE_URL` | 공개 | canonical/운영 hostname (`https://www.yeosonam.com`) |
+| `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` | 공개 | Search Console URL-prefix meta 인증 token |
+| `NEXT_PUBLIC_ATTRIBUTION_TTL_DAYS` | 공개 | attribution 보존일, 1~365, 기본 90 |
+| `GA4_MEASUREMENT_PROTOCOL_API_SECRET` | **서버 비밀** | 서버 purchase/refund delivery. 절대 `NEXT_PUBLIC_` 금지 |
+
+운영 전송은 `NODE_ENV=production`, `VERCEL_ENV=production`, 유효한 GTM ID, 운영 hostname, 사용자 동의를 모두 만족해야 한다. Preview에는 Production 변수 scope를 복사하지 않는다.
+
 ## 📨 알림톡 (Solapi) — 배포 시점에 전부 없음, 추후 등록 필요
 
 **⚠️ 현재 `.env.local` 에 Solapi 계열 키 0개.** 없어도 앱은 작동하지만, 알림톡은 skip + DB 로그만 남음.

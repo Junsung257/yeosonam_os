@@ -195,8 +195,14 @@ async function publishDistributionProvider(
   if (row.platform === 'threads_post') {
     const threadsPayload = payload as Record<string, unknown>;
     const text = getThreadsMainText(threadsPayload);
-    const imageUrls = (threadsPayload.image_urls as string[] | undefined) ||
-      (threadsPayload.media_urls as string[] | undefined);
+    const rawImageUrls = Array.isArray(threadsPayload.image_urls)
+      ? threadsPayload.image_urls
+      : Array.isArray(threadsPayload.media_urls)
+        ? threadsPayload.media_urls
+        : [];
+    const imageUrls = rawImageUrls.filter(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    );
 
     if (!text.trim()) {
       return { status: 'failed', error: 'Threads body is empty' };
@@ -221,13 +227,18 @@ async function publishDistributionProvider(
         return { status: 'failed', error: 'Threads config missing', predicted_er: gate.predicted_er };
       }
 
-      const replyThreads = (threadsPayload.thread as string[] | undefined)?.filter(Boolean);
+      const replyThreads = Array.isArray(threadsPayload.thread)
+        ? threadsPayload.thread.filter(
+            (value): value is string =>
+              typeof value === 'string' && value.trim().length > 0,
+          )
+        : [];
       const result = await publishToThreads({
         threadsUserId: cfg.threadsUserId,
         accessToken: cfg.accessToken,
         text,
-        imageUrls: Array.isArray(imageUrls) && imageUrls.length > 0 ? imageUrls : undefined,
-        replyThreads: replyThreads && replyThreads.length > 0 ? replyThreads : undefined,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        replyThreads: replyThreads.length > 0 ? replyThreads : undefined,
       });
       if (!result.ok) {
         return {

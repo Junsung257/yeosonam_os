@@ -1,14 +1,24 @@
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import PackagesPageClient from './PackagesPageClient';
+import { packageDatabaseStatuses, parseAdminPackageStatus } from './package-workflow';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PackagesPage() {
+export default async function PackagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const initialStatus = parseAdminPackageStatus(
+    Array.isArray(params.status) ? params.status[0] : params.status,
+  );
+
   if (!isSupabaseAdminConfigured) {
-    return <PackagesPageClient initialPackages={[]} />;
+    return <PackagesPageClient initialPackages={[]} initialStatus={initialStatus} />;
   }
 
-  const { data } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('travel_packages')
     .select(`
       id, title, destination, category, product_type, trip_style,
@@ -20,7 +30,17 @@ export default async function PackagesPage() {
       products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
     `)
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(100);
 
-  return <PackagesPageClient initialPackages={(data ?? []) as unknown as import('./PackagesPageClient').Package[]} />;
+  const databaseStatuses = packageDatabaseStatuses(initialStatus);
+  if (databaseStatuses) query = query.in('status', [...databaseStatuses]);
+
+  const { data } = await query;
+
+  return (
+    <PackagesPageClient
+      initialPackages={(data ?? []) as unknown as import('./PackagesPageClient').Package[]}
+      initialStatus={initialStatus}
+    />
+  );
 }
