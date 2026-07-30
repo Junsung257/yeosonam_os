@@ -22,7 +22,6 @@ import {
 } from '@/lib/blog-public-catalog';
 
 export const revalidate = 300;
-export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 
 const BASE_URL = resolveBlogCanonicalOrigin();

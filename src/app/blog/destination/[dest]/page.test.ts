@@ -29,13 +29,15 @@ describe('/blog/destination/[dest] public route guard', () => {
     expect(source).toContain('const destination = await resolveDestinationRouteParam(dest);');
   });
 
-  it('renders uncached route shells while retaining the cached catalog', () => {
+  it('uses on-demand ISR while retaining the cached catalog', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/app/blog/destination/[dest]/page.tsx'),
       'utf8',
     );
 
-    expect(source).toContain("export const dynamic = 'force-dynamic';");
+    expect(source).toContain('export const revalidate = 300;');
+    expect(source).toContain('export const dynamicParams = true;');
+    expect(source).not.toContain("export const dynamic = 'force-dynamic';");
     expect(source).toContain('const getCachedDestinationPageData = unstable_cache(');
   });
 });
