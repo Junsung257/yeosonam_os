@@ -40,6 +40,11 @@
   and did not expose the blocked offer candidate at `/lp/efcfd933-4561-4db0-9a35-062b724cf287`.
 - Preview review found an additional `/group` trust finding: mock reception rows, `120+`, and
   unsupported same-day response promises. They are removed in the branch and guarded by a focused test.
+- Post-fix deployment `dpl_2MNjPAuL4hYsGk53PUAt5XQM4ii8` at commit
+  `292f4f708a85826f10dee7d7a2ea2a5db3c1794c` confirmed that `/group` no longer renders those
+  claims while retaining the public quote form and honest manual-review copy.
+- The same preview confirmed `/private-tour` is public and its quote/Kakao CTAs do not point to
+  admin login, `/admin` redirects to application login, and the blocked candidate remains unavailable.
 - `origin/main` advanced to `0afe611c3ac0c21ceaf147e1a4cdf8607bad4359` after the locked baseline.
   The evidence above remains explicitly tied to baseline/deployment SHA
   `eb582cabd6d16b98bd26ca8fca8ddc740fb80845`; production behavior is not inferred from the newer main.

@@ -68,15 +68,20 @@
     "productionBaselineAlreadyCaptured": true
   },
   "previewBrowser": {
-    "status": "PARTIAL_PASS",
+    "status": "PASS",
+    "deploymentId": "dpl_2MNjPAuL4hYsGk53PUAt5XQM4ii8",
+    "deploymentCommit": "292f4f708a85826f10dee7d7a2ea2a5db3c1794c",
     "passed": [
       "anonymous home and packages access",
+      "private-tour quote and Kakao CTAs do not point to admin login",
       "group inquiry public access",
+      "group mock reception, 120+, and same-day response claims absent",
+      "group honest manual-review copy and quote form present",
       "admin login redirect",
       "blocked offer candidate not exposed"
     ],
-    "finding": "The group page exposed mock reception activity, an unsupported 120+ count, and same-day response claims.",
-    "branchResult": "Removed and guarded by src/app/group/public-claims.test.ts; post-push preview recheck required."
+    "finding": "The pre-fix group page exposed mock reception activity, an unsupported 120+ count, and same-day response claims.",
+    "branchResult": "Removed, guarded by src/app/group/public-claims.test.ts, and verified on the post-fix preview."
   },
   "offer": {
     "status": "BLOCKED_OFFER_CANDIDATE",
