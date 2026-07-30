@@ -14,6 +14,7 @@
 | Cron accepts query `?secret=` | 허용 | baseline에서 재현, branch에서 거부 | `src/lib/cron-auth.test.ts` | CONFIRMED_FIXED_IN_BRANCH | high |
 | Private tour shows mock reception feed | `MOCK_FEED` | baseline production 재현, branch에서 제거 | source + browser + focused test | CONFIRMED_FIXED_IN_BRANCH | high |
 | Private tour shows `120+` progress | 고정값 | baseline production 재현, branch에서 제거 | source + browser + focused test | CONFIRMED_FIXED_IN_BRANCH | high |
+| Group page shows mock reception feed, `120+`, and same-day response claims | 보고값 불명 | PR preview에서 재현, branch에서 제거 | preview browser + `src/app/group/public-claims.test.ts` | CONFIRMED_FIXED_IN_BRANCH | high |
 | Predictable JWT/HMAC fallbacks | 보고값 불명 | affiliate JWT/PIN, guidebook, OAuth state에서 재현 | `security-verdicts.md` | CONFIRMED_FIXED_IN_BRANCH | high |
 | Public passport collection is safe | 안전성 불명 | OCR provider 전송·전체 MRZ 응답과 동행자 평문 write 재현 | `security-verdicts.md` | CONFIRMED_FIXED_IN_BRANCH | high |
 | Authenticated users are tenant-isolated | 격리 필요 | 8개 민감 테이블에서 global authenticated policy 확인 | catalog + route review | CONFIRMED_PARTIAL_FIX | high |
@@ -29,3 +30,16 @@
 
 브랜치 수정 검증과 production baseline을 혼동하지 않는다. 상세 finding chain, 회귀 테스트,
 배포 전 환경변수 및 RLS 적용 요구사항은 `security-verdicts.md`에 있다.
+
+## Continuation verification — 2026-07-30
+
+- Production Supabase exact counts remained `travel_packages=919`, `products=792`,
+  `public_package_snapshots=0`, `leads=11`, `bookings=88`, and `customer_events=0`.
+- The latest production migration was `20260730044232`; the PR2/PR3 migrations were not applied.
+- The PR3 preview kept `/`, `/packages`, and `/group-inquiry` public, redirected `/admin` to login,
+  and did not expose the blocked offer candidate at `/lp/efcfd933-4561-4db0-9a35-062b724cf287`.
+- Preview review found an additional `/group` trust finding: mock reception rows, `120+`, and
+  unsupported same-day response promises. They are removed in the branch and guarded by a focused test.
+- `origin/main` advanced to `0afe611c3ac0c21ceaf147e1a4cdf8607bad4359` after the locked baseline.
+  The evidence above remains explicitly tied to baseline/deployment SHA
+  `eb582cabd6d16b98bd26ca8fca8ddc740fb80845`; production behavior is not inferred from the newer main.

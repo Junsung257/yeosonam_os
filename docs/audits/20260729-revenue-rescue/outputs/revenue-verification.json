@@ -1,11 +1,11 @@
 {
-  "observedAt": "2026-07-29T12:14:30Z",
+  "observedAt": "2026-07-30T05:57:57Z",
   "branch": "codex/revenue-rescue-p0-revenue",
   "stackBaseCommit": "80110967",
   "focusedTests": {
-    "command": "node C:\\dev\\yeosonam-os\\node_modules\\vitest\\vitest.mjs run --config vitest.revenue-rescue.config.ts <21 focused P0 test files>",
-    "filesPassed": 21,
-    "testsPassed": 92,
+    "command": "node C:\\dev\\yeosonam-os\\node_modules\\vitest\\vitest.mjs run --config vitest.revenue-rescue.config.ts <22 focused P0 test files>",
+    "filesPassed": 22,
+    "testsPassed": 93,
     "failed": 0
   },
   "revenueSubset": {
@@ -66,6 +66,17 @@
     "testFile": "tests/e2e/revenue-rescue-public-routes.spec.ts",
     "serverResponse": 500,
     "productionBaselineAlreadyCaptured": true
+  },
+  "previewBrowser": {
+    "status": "PARTIAL_PASS",
+    "passed": [
+      "anonymous home and packages access",
+      "group inquiry public access",
+      "admin login redirect",
+      "blocked offer candidate not exposed"
+    ],
+    "finding": "The group page exposed mock reception activity, an unsupported 120+ count, and same-day response claims.",
+    "branchResult": "Removed and guarded by src/app/group/public-claims.test.ts; post-push preview recheck required."
   },
   "offer": {
     "status": "BLOCKED_OFFER_CANDIDATE",
