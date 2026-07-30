@@ -2921,8 +2921,15 @@ async function processQueueItem(
         `[blog-publisher] literal newline repair: ${literalNewlineRepair.replacementCount}`,
       );
     };
+    const applyFinalGateCustomerSurfaceRepair = (): void => {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        console.log(`[blog-publisher] final gate customer surface repair: ${surfaceChanges.join(', ')}`);
+      }
+    };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalResearchStructureRepair();
+      applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       await restoreFinalReusableImages();
       applyFinalLiteralNewlineRepair();
@@ -2934,6 +2941,7 @@ async function processQueueItem(
       // repeated once after generic repair when AI readability is still failing.
       applyFinalResearchStructureRepair();
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
+      applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       await restoreFinalReusableImages();
       applyFinalLiteralNewlineRepair();

@@ -621,6 +621,8 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(prompt).toContain('at least two reviewed official domains');
     expect(prompt).toContain('passport validity, and permitted stay as entry_visa');
     expect(prompt).toContain('biometric collection, declarations, and submission timing as policy');
+    expect(prompt).toContain('one explicit supported claim stating the permitted travel purpose');
+    expect(prompt).toContain('one explicit supported claim stating the permitted stay duration');
     expect(prompt).toContain('Korean passport holders');
   });
 
