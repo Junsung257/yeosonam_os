@@ -608,6 +608,22 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(insurancePrompt).toContain('Exclude signup discounts');
   });
 
+  it('separates entry authorization from mandatory arrival policy claims', () => {
+    const prompt = buildBlogStructuredResearchPrompt({
+      ...base,
+      brief: {
+        intentType: 'entry_requirements',
+        sourcePolicy,
+        plan: { requiredFacts: [] },
+      } as never,
+    });
+
+    expect(prompt).toContain('at least two reviewed official domains');
+    expect(prompt).toContain('passport validity, and permitted stay as entry_visa');
+    expect(prompt).toContain('biometric collection, declarations, and submission timing as policy');
+    expect(prompt).toContain('Korean passport holders');
+  });
+
   it('rejects resident-cost and generic-shopping filler for family, itinerary, and souvenir research', () => {
     const promptFor = (intentType: string) => buildBlogStructuredResearchPrompt({
       ...base,

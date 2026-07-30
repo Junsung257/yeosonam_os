@@ -153,6 +153,22 @@ describe('blog information structured intent contracts', () => {
     expect(report.issues).toContain('hotel_areas:insufficient_unique_values');
   });
 
+  it('counts verified entry dates and durations across the article even when a summary table has one value', () => {
+    const markdown = `${BASE.entry_requirements}
+
+2026-07-15 기준으로 여권 유효기간 6개월과 관광 체류 90일을 각각 확인합니다.
+
+| 확인 항목 | 적용 여부 |
+| --- | --- |
+| 전자 허가 | 1회 |`;
+    const report = validateBlogInformationStructure({
+      intent: 'entry_requirements',
+      markdown,
+    });
+
+    expect(report.issues).not.toContain('entry_requirements:insufficient_unique_values');
+  });
+
   it('preserves mandatory human review for both high-risk intents', () => {
     for (const intent of ['entry_requirements', 'travel_insurance'] as const) {
       const contract = buildBlogInformationContract({

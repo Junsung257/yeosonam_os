@@ -250,7 +250,12 @@ export function validateBlogInformationStructure(input: {
   }
 
   const meaningfulRows = tables.flatMap((table) => table.rows).filter((row) => row.every(meaningful));
-  const uniqueNumbers = numericValues(meaningfulRows.length > 0 ? meaningfulRows.flat().join(' ') : plain);
+  const tableCentricIntent = input.intent !== 'entry_requirements';
+  const uniqueNumbers = numericValues(
+    meaningfulRows.length > 0 && tableCentricIntent
+      ? meaningfulRows.flat().join(' ')
+      : plain,
+  );
   if (meaningfulRows.length > 0 && uniqueNumbers.length <= 1) issues.push(`${input.intent}:insufficient_unique_values`);
   return {
     passed: issues.length === 0,
