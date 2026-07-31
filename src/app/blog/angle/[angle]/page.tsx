@@ -22,6 +22,7 @@ import {
 } from '@/lib/blog-public-catalog';
 
 export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 
 const BASE_URL = resolveBlogCanonicalOrigin();
@@ -77,10 +78,6 @@ async function getAnglePageData(angle: string): Promise<AnglePageData> {
     if (!isBlogDatabaseUnavailableError(error)) throw error;
     return { posts: [], recommendedPackages: [], unavailable: true };
   }
-}
-
-export function generateStaticParams() {
-  return [];
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ angle?: string | string[] }> }): Promise<Metadata> {
