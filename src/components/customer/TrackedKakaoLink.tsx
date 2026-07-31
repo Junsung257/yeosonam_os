@@ -3,6 +3,7 @@
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
 
@@ -33,6 +34,15 @@ export default function TrackedKakaoLink({
       rel={rel}
       referrerPolicy={referrerPolicy}
       onClick={() => {
+        trackAnalyticsEvent('ysn_kakao_click', {
+          cta_location: source,
+          page_type: typeof window !== 'undefined'
+            ? (window.location.pathname.startsWith('/packages/') ? 'package_detail' : 'content')
+            : 'content',
+          package_id: productId ?? undefined,
+          destination: destination ?? undefined,
+          outbound_host: 'pf.kakao.com',
+        });
         trackEngagement({
           event_type: ANALYTICS_EVENTS.kakaoClicked,
           product_id: productId ?? undefined,

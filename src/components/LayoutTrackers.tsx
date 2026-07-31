@@ -12,10 +12,26 @@ import KakaoMomentPixel from '@/components/KakaoMomentPixel';
 import NaverAnalyticsPixel from '@/components/NaverAnalyticsPixel';
 import MsClarity from '@/components/MsClarity';
 import WebVitalsReporter from '@/components/WebVitalsReporter';
+import AnalyticsProvider from '@/components/analytics/AnalyticsProvider';
 
-export default function LayoutTrackers() {
+export default function LayoutTrackers({
+  analytics,
+}: {
+  analytics: {
+    containerId: string | null;
+    measurementId: string | null;
+    runtimeEnabled: boolean;
+    expectedHostname: string;
+  };
+}) {
   return (
     <>
+      <AnalyticsProvider
+        containerId={analytics.containerId}
+        measurementId={analytics.measurementId}
+        runtimeEnabled={analytics.runtimeEnabled}
+        expectedHostname={analytics.expectedHostname}
+      />
       <TrackerBootstrap />
       <GA4Tracker />
       <MetaPixel />

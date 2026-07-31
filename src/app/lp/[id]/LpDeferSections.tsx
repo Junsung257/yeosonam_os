@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { ItineraryDay, DayActivity, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 function fmt(n: number) {
   return n.toLocaleString('ko-KR');
@@ -32,9 +33,33 @@ const ACTIVITY_ICON: Record<DayActivity['type'], ReactNode> = {
   shopping: <span className="text-sm" aria-hidden="true">🛍</span>,
 };
 
-function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: string[] }) {
+function IncludeExclude({
+  includes,
+  excludes,
+  packageId,
+}: {
+  includes: string[];
+  excludes: string[];
+  packageId: string;
+}) {
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.intersectionRatio < 0.5) return;
+      trackAnalyticsEvent('ysn_inclusions_view', {
+        package_id: packageId,
+      }, { dedupeKey: `lp:${packageId}:inclusions` });
+      observer.disconnect();
+    }, { threshold: 0.5 });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [packageId]);
+
   return (
-    <section className="border-t border-gray-100 bg-white px-5 py-5">
+    <section ref={sectionRef} className="border-t border-gray-100 bg-white px-5 py-5">
       <h3 className="mb-4 text-base font-bold uppercase tracking-wider text-gray-500">포함 / 불포함</h3>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <div className="space-y-2">
@@ -306,7 +331,7 @@ export function LpDeferSections({
     <>
       <ItinerarySection days={days} onViewed={onItineraryViewed} />
       <OptionalToursSection tours={optionalTours} />
-      <IncludeExclude includes={includes} excludes={excludes} />
+      <IncludeExclude includes={includes} excludes={excludes} packageId={packageId} />
       <LegalNotice legalNotices={legalNotices} />
       <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} recommendation={recommendation} />
     </>

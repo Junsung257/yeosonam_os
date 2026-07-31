@@ -15,6 +15,7 @@ import { buildQaChatHistory } from '@/lib/qa-chat-history';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getReferrer, trackEngagement } from '@/lib/tracker';
 import { MessageCircle, X, Send } from 'lucide-react';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 export default function ChatWidget() {
   const pathname = usePathname();
@@ -60,6 +61,10 @@ export default function ChatWidget() {
       conversationSummary: conversationSummary || undefined,
     });
     if (action === 'phone') {
+      trackAnalyticsEvent('ysn_phone_click', {
+        cta_location: 'chat_widget_escalation',
+        page_type: pathname?.startsWith('/packages/') ? 'package_detail' : 'content',
+      });
       openConsultPhone();
       return;
     }

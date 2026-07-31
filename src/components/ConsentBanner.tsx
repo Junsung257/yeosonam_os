@@ -1,218 +1,175 @@
 'use client';
 
-/**
- * PIPA(2026-09 개정) + GDPR 호환 동의 배너.
- *
- * 두 카테고리:
- *   - analytics: 자체 트래커, GA, PostHog (체류시간/스크롤)
- *   - marketing: Meta Pixel, gclid/fbclid, 어필리에이트 30일 쿠키(aff_ref)
- *
- * 미동의 시:
- *   - aff_ref 가 30분 세션 쿠키로만 발급 → 어필리에이터 어트리뷰션 윈도우 매우 짧음
- *   - 동의 시 30일 (여행업 리드타임 대응)
- *
- * 표시 조건: localStorage에 동의/거부 결정이 한 번도 없을 때만 표시.
- * 한 번 결정 후에는 사용자가 우측 하단 ⚙️ 버튼으로 재설정 가능.
- */
-
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
-  hasAnalyticsConsent,
-  hasMarketingConsent,
-  setAnalyticsConsent,
-  setMarketingConsent,
-} from '@/lib/consent';
-
-const DECIDED_KEY = 'ys_consent_decided';
+  consentStateToPreferences,
+  readConsentState,
+  setConsentPreferences,
+} from '@/lib/analytics/consent';
 
 export default function ConsentBanner() {
   const pathname = usePathname();
-  const [show, setShow] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [analyticsOn, setAnalyticsOn] = useState(true);
-  const [marketingOn, setMarketingOn] = useState(true);
+  const [visible, setVisible] = useState(false);
+  const [customizing, setCustomizing] = useState(false);
+  const [analytics, setAnalytics] = useState(false);
+  const [advertising, setAdvertising] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const decided = localStorage.getItem(DECIDED_KEY);
-      if (!decided) {
-        setShow(true);
-      }
-      setAnalyticsOn(hasAnalyticsConsent());
-      setMarketingOn(hasMarketingConsent());
-    } catch { /* */ }
+    const state = readConsentState();
+    const preferences = consentStateToPreferences(state);
+    setAnalytics(preferences.analytics);
+    setAdvertising(preferences.advertising);
+    setVisible(!state.decided);
   }, []);
-
-  const finalize = (analytics: boolean, marketing: boolean) => {
-    setAnalyticsConsent(analytics);
-    setMarketingConsent(marketing);
-    try { localStorage.setItem(DECIDED_KEY, '1'); } catch { /* */ }
-    setShow(false);
-    setOpen(false);
-  };
-
-  const acceptAll = () => finalize(true, true);
-  const rejectAll = () => finalize(false, false);
-  const saveCustom = () => finalize(analyticsOn, marketingOn);
 
   if (pathname?.startsWith('/admin') || pathname?.startsWith('/m/admin')) return null;
 
-  // 우측 하단 재설정 버튼 (배너 닫힌 후에도 항상 노출)
-  if (!show && !open) {
+  const save = (nextAnalytics: boolean, nextAdvertising: boolean) => {
+    setConsentPreferences({
+      analytics: nextAnalytics,
+      advertising: nextAdvertising,
+    });
+    setAnalytics(nextAnalytics);
+    setAdvertising(nextAdvertising);
+    setVisible(false);
+    setCustomizing(false);
+  };
+
+  if (!visible && !customizing) {
     return (
-      <button type="button"
-        onClick={() => setOpen(true)}
-        aria-label="쿠키 동의 설정"
-        className="fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-slate-200 shadow-md text-slate-500 hover:text-slate-900 hover:border-slate-300 transition-colors flex items-center justify-center text-sm"
+      <button
+        type="button"
+        onClick={() => setCustomizing(true)}
+        aria-label="쿠키 설정 열기"
+        className="fixed bottom-4 left-4 z-40 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-md hover:bg-slate-50"
       >
-        🍪
+        쿠키 설정
       </button>
     );
   }
 
   return (
     <>
-      {/* 백드롭 (open=true: 상세 설정 모달) */}
-      {open && (
+      {customizing && (
         <button
           type="button"
-          aria-label="Close cookie settings"
-          className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
+          aria-label="쿠키 설정 닫기"
+          className="fixed inset-0 z-[60] bg-black/30"
+          onClick={() => setCustomizing(false)}
         />
       )}
-
-      {/* 배너 */}
-      <div className="fixed bottom-0 inset-x-0 z-[70] flex justify-center px-3 pb-3 sm:pb-4">
-        <div
+      <div className="fixed inset-x-0 bottom-0 z-[70] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <section
           role="dialog"
-          tabIndex={-1}
-          aria-label="Cookie consent"
-          className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+          aria-modal={customizing}
+          aria-labelledby="consent-title"
+          className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
         >
-          <div className="px-5 py-4">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">🍪</span>
-              <div className="flex-1 min-w-0">
-                <h2 className="font-bold text-slate-900 text-sm">쿠키 사용 동의 (PIPA)</h2>
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                  더 나은 서비스를 위해 쿠키를 사용합니다. 마케팅 쿠키 동의 시 추천 링크를 30일간 추적하여 정상적인 어필리에이트 정산이 가능합니다. 미동의 시에도 핵심 기능은 정상 작동합니다.
-                </p>
-              </div>
-            </div>
+          <h2 id="consent-title" className="text-base font-bold text-slate-900">
+            분석·광고 쿠키 설정
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            필수 쿠키는 상담·예약 등 서비스 기능에만 사용합니다. 분석 및 광고 쿠키는 선택이며,
+            거부해도 사이트를 이용할 수 있습니다. 자세한 내용은{' '}
+            <Link href="/privacy" className="font-semibold text-blue-700 underline">
+              개인정보처리방침
+            </Link>
+            에서 확인할 수 있습니다.
+          </p>
 
-            {open && (
-              <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-4">
-                {/* 필수 */}
-                <ConsentRow
-                  title="필수"
-                  desc="로그인·예약·세션 유지 (거부 불가)"
-                  checked={true}
-                  disabled
-                />
-                {/* 분석 */}
-                <ConsentRow
-                  title="분석"
-                  desc="체류시간·스크롤 등 비식별 통계 (자체 트래커)"
-                  checked={analyticsOn}
-                  onChange={setAnalyticsOn}
-                />
-                {/* 마케팅 */}
-                <ConsentRow
-                  title="마케팅 (어필리에이트)"
-                  desc="Meta Pixel · 추천 링크 30일 쿠키. 미동의 시 30분 세션 쿠키만 발급됩니다."
-                  checked={marketingOn}
-                  onChange={setMarketingOn}
-                />
-              </div>
+          {customizing && (
+            <div className="mt-4 space-y-3 border-y border-slate-100 py-4">
+              <ConsentOption
+                title="필수 쿠키"
+                description="보안, 세션, 상담·예약 기능에 필요합니다."
+                checked
+                disabled
+              />
+              <ConsentOption
+                title="분석 쿠키"
+                description="방문 및 상품 이용 흐름을 익명 통계로 확인합니다."
+                checked={analytics}
+                onChange={setAnalytics}
+              />
+              <ConsentOption
+                title="광고 쿠키"
+                description="광고 유입과 전환 측정, 맞춤 광고에 사용될 수 있습니다."
+                checked={advertising}
+                onChange={setAdvertising}
+              />
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {!customizing && (
+              <button
+                type="button"
+                onClick={() => setCustomizing(true)}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                선택 설정
+              </button>
             )}
-
-            <div className="mt-4 flex flex-wrap gap-2 justify-end">
-              {!open ? (
-                <>
-                  <button type="button"
-                    onClick={() => setOpen(true)}
-                    className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
-                  >
-                    상세 설정
-                  </button>
-                  <button type="button"
-                    onClick={rejectAll}
-                    className="px-3 py-2 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium"
-                  >
-                    필수만 허용
-                  </button>
-                  <button type="button"
-                    onClick={acceptAll}
-                    className="px-4 py-2 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-bold"
-                  >
-                    모두 동의
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button"
-                    onClick={() => setOpen(false)}
-                    className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
-                  >
-                    취소
-                  </button>
-                  <button type="button"
-                    onClick={saveCustom}
-                    className="px-4 py-2 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-bold"
-                  >
-                    선택 저장
-                  </button>
-                </>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => save(false, false)}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-200"
+            >
+              필수만 허용
+            </button>
+            {customizing ? (
+              <button
+                type="button"
+                onClick={() => save(analytics, advertising)}
+                className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
+              >
+                선택 저장
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => save(true, true)}
+                className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
+              >
+                모두 허용
+              </button>
+            )}
           </div>
-        </div>
+        </section>
       </div>
     </>
   );
 }
 
-function ConsentRow({
+function ConsentOption({
   title,
-  desc,
+  description,
   checked,
   onChange,
-  disabled,
+  disabled = false,
 }: {
   title: string;
-  desc: string;
+  description: string;
   checked: boolean;
-  onChange?: (v: boolean) => void;
+  onChange?: (value: boolean) => void;
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-3 py-2">
-      <button
-        type="button"
-        onClick={() => !disabled && onChange?.(!checked)}
+    <label className="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span className="block text-sm font-bold text-slate-900">{title}</span>
+        <span className="mt-0.5 block text-xs text-slate-600">{description}</span>
+      </span>
+      <input
+        type="checkbox"
+        aria-label={title}
+        checked={checked}
         disabled={disabled}
-        aria-pressed={checked}
-        aria-label={`${title} cookie consent`}
-        className={`mt-0.5 shrink-0 w-9 h-5 rounded-full transition-colors relative ${
-          disabled ? 'bg-slate-300' : checked ? 'bg-blue-600' : 'bg-slate-200'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
-            checked ? 'left-4' : 'left-0.5'
-          }`}
-        />
-      </button>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-slate-800">
-          {title}
-          {disabled && <span className="ml-1.5 text-[10px] text-slate-400 font-normal">필수</span>}
-        </p>
-        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
-      </div>
-    </div>
+        onChange={event => onChange?.(event.target.checked)}
+        className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-700"
+      />
+    </label>
   );
 }

@@ -7,11 +7,13 @@ import useSWR from 'swr';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
+import TrackedPhoneLink from '@/components/customer/TrackedPhoneLink';
 import PackageCard from '@/components/customer/PackageCard';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import {
   type DepartureHubId,
@@ -381,6 +383,11 @@ export default function PackagesClient() {
     if (intent === 'budget') setSortBy('price_asc');
     if (selectedIntent === 'budget' && intent === 'budget') setSortBy('recommended');
     if (intent === 'consult') {
+      trackAnalyticsEvent('ysn_kakao_click', {
+        cta_location: 'packages_intent_consult_chip',
+        page_type: 'package_list',
+        outbound_host: 'pf.kakao.com',
+      });
       trackEngagement({
         event_type: ANALYTICS_EVENTS.kakaoClicked,
         page_url: '/packages',
@@ -435,6 +442,24 @@ export default function PackagesClient() {
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
 
   useEffect(() => {
+    if (visiblePackages.length === 0) return;
+    const itemIds = visiblePackages.map(pkg => pkg.id).join(',');
+    trackAnalyticsEvent('view_item_list', {
+      item_list_id: 'package_search_results',
+      item_list_name: '패키지 검색 결과',
+      items: visiblePackages.map((pkg, index) => ({
+        item_id: pkg.id,
+        item_name: getCustomerPackageTitle(pkg),
+        item_category: 'travel_package',
+        item_category2: pkg.destination || pkg.country || undefined,
+        item_category3: pkg.departure_airport || undefined,
+        price: packageMinPrice(pkg) || undefined,
+        index,
+      })),
+    }, { dedupeKey: `${apiQuery}:${itemIds}` });
+  }, [apiQuery, visiblePackages]);
+
+  useEffect(() => {
     for (const pkg of visiblePackages) {
       const score = scoreByPkgId[pkg.id];
       if (!score?.hasComparison || trackedRecommendViewsRef.current.has(pkg.id)) continue;
@@ -471,12 +496,27 @@ export default function PackagesClient() {
   }, [initialPackages]);
 
   const trackClick = useCallback((id: string) => {
+    const selected = initialPackages.find(pkg => pkg.id === id);
+    if (selected) {
+      trackAnalyticsEvent('select_item', {
+        item_list_id: 'package_search_results',
+        item_list_name: '패키지 검색 결과',
+        items: [{
+          item_id: selected.id,
+          item_name: getCustomerPackageTitle(selected),
+          item_category: 'travel_package',
+          item_category2: selected.destination || selected.country || undefined,
+          item_category3: selected.departure_airport || undefined,
+          price: packageMinPrice(selected) || undefined,
+        }],
+      });
+    }
     fetch('/api/tracking/click', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ package_id: id, source: 'list' }),
     }).catch(() => {});
-  }, []);
+  }, [initialPackages]);
 
   const trackPackageFilter = useCallback((filterName: string, value: string) => {
     trackEngagement({
@@ -589,12 +629,14 @@ export default function PackagesClient() {
                 다시 불러오기
               </button>
               {consultTelHref && (
-                <a
+                <TrackedPhoneLink
                   href={consultTelHref}
+                  ctaLocation="package_list_error"
+                  pageType="package_list"
                   className="rounded-full border border-red-200 bg-white px-5 py-2.5 text-[13px] font-bold text-red-700 transition hover:bg-red-50"
                 >
                   상담으로 문의하기
-                </a>
+                </TrackedPhoneLink>
               )}
             </div>
           </div>
@@ -850,12 +892,14 @@ export default function PackagesClient() {
                   </button>
                 )}
                 {consultTelHref && (
-                  <a
+                  <TrackedPhoneLink
                     href={consultTelHref}
+                    ctaLocation="package_list_empty"
+                    pageType="package_list"
                     className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
                   >
                     📞 직접 문의
-                  </a>
+                  </TrackedPhoneLink>
                 )}
               </div>
             </div>
@@ -930,15 +974,22 @@ export default function PackagesClient() {
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
         <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex items-center gap-3">
           {consultTelHref ? (
-            <a
+            <TrackedPhoneLink
               href={consultTelHref}
+              ctaLocation="package_list_sticky_bottom"
+              pageType="package_list"
               className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0"
             >
               <span className="text-lg">📞</span>
-            </a>
+            </TrackedPhoneLink>
           ) : null}
           <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade"
             onClick={() => {
+              trackAnalyticsEvent('ysn_kakao_click', {
+                cta_location: 'package_list_sticky_bottom',
+                page_type: 'package_list',
+                outbound_host: 'pf.kakao.com',
+              });
               trackEngagement({
                 event_type: ANALYTICS_EVENTS.kakaoClicked,
                 page_url: '/packages',
