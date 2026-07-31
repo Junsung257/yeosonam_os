@@ -62,8 +62,9 @@ export async function POST(request: NextRequest) {
     let mcp: {
       toolName: string | null;
       toolNames: string[];
-      attempts: Array<{ toolName: string; extracted: number; resultKeys: string[]; contentTypes: string[]; error?: string }>;
-    } = { toolName: null, toolNames: [], attempts: [] };
+      bankToolAvailable: boolean;
+      attempts: Array<{ toolName: string; extracted: number; normalized: number; resultKeys: string[]; contentTypes: string[]; error?: string }>;
+    } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [] };
 
     if (!Array.isArray(rawPayload)) {
       if (!tenantId) {
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
       }
       const fetched = await fetchClobeMcpBankTransactions({ from, to, accountNumber, limit, accessToken: token.accessToken });
       rawPayload = fetched.transactions;
-      mcp = { toolName: fetched.toolName, toolNames: fetched.toolNames, attempts: fetched.attempts };
+      mcp = { toolName: fetched.toolName, toolNames: fetched.toolNames, bankToolAvailable: fetched.bankToolAvailable, attempts: fetched.attempts };
     }
 
     const fetched = Array.isArray(rawPayload) ? rawPayload.length : 0;
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Clobe sync failed';
-    const status = /Clobe OAuth connection|No Clobe MCP transaction tool|401|403/i.test(message)
+    const status = /Clobe OAuth connection|No Clobe MCP .*transaction tool|401|403/i.test(message)
       ? 503
       : 500;
     return NextResponse.json({ success: false, error: message }, { status });

@@ -47,9 +47,11 @@ interface ClobeSyncResult {
   mcp?: {
     toolName?: string | null;
     toolNames?: string[];
+    bankToolAvailable?: boolean;
     attempts?: Array<{
       toolName: string;
       extracted: number;
+      normalized?: number;
       resultKeys?: string[];
       contentTypes?: string[];
       error?: string;
@@ -1408,7 +1410,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         const hasRows = fetched > 0 || normalized > 0;
         const hasMappedRows = normalized > 0;
         const attempts = clobeSyncResult.mcp?.attempts ?? [];
-        const attemptedTools = attempts.map(attempt => `${attempt.toolName}(${attempt.extracted})`).join(', ');
+        const attemptedTools = attempts.map(attempt => `${attempt.toolName}(${attempt.extracted}/${attempt.normalized ?? 0})`).join(', ');
         const tone = hasRows && !hasMappedRows
           ? 'border-amber-200 bg-amber-50 text-amber-900'
           : hasRows
@@ -1423,7 +1425,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </div>
             {!hasRows && (
               <div className="mt-1">
-                Clobe 연결은 되었지만, 이 기간에 MCP가 OS로 넘긴 입출금 원본이 0건입니다. 클로브 메모가 일반 메모장에만 있고 입출금/통장 목록 도구로 노출되지 않았거나, 클로브 쪽 기간·계좌 필터 결과가 비어있는 상태입니다.
+                {clobeSyncResult.mcp?.bankToolAvailable === false
+                  ? 'Clobe 로그인은 정상이나 통장/입출금 조회 도구가 OS에 공개되지 않았습니다. Clobe 쪽에서 은행 거래 데이터 연결 또는 해당 MCP 도구 권한을 먼저 활성화해야 합니다.'
+                  : 'Clobe 연결은 되었지만, 이 기간에 MCP가 OS로 넘긴 입출금 원본이 0건입니다. 클로브 메모가 일반 메모장에만 있고 입출금/통장 목록 도구로 노출되지 않았거나, 클로브 쪽 기간·계좌 필터 결과가 비어있는 상태입니다.'}
               </div>
             )}
             {hasRows && !hasMappedRows && (
@@ -1434,9 +1438,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             {(attemptedTools || clobeSyncResult.mcp?.toolName) && (
               <div className="mt-1 opacity-80">
                 MCP tool: {clobeSyncResult.mcp?.toolName ?? '-'}
-                {attemptedTools ? ` / attempts: ${attemptedTools}` : ''}
+                {attemptedTools ? ` / attempts(raw/OS): ${attemptedTools}` : ''}
               </div>
             )}
+            {clobeSyncResult.mcp?.bankToolAvailable === false && clobeSyncResult.mcp.toolNames?.length ? (
+              <div className="mt-1 opacity-80">
+                Clobe 공개 도구: {clobeSyncResult.mcp.toolNames.join(', ')}
+              </div>
+            ) : null}
             {clobeSyncResult.rawSampleKeys?.length ? (
               <div className="mt-1 opacity-80">
                 raw keys: {clobeSyncResult.rawSampleKeys.map(keys => keys.join('|')).join(' / ')}
