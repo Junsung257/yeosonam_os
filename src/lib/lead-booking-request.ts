@@ -3,6 +3,7 @@ import { createBooking, findOrCreateCustomerByPhone, supabaseAdmin } from '@/lib
 import { getEffectivePriceDates } from '@/lib/price-dates';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
 import { enqueueSeatCheckRequiredTask } from '@/lib/booking-workflow-tasks';
+import type { AttributionSnapshot } from '@/lib/analytics/types';
 
 export interface LandingBookingForm {
   desiredDate: string;
@@ -35,6 +36,7 @@ export interface CreateLandingBookingRequestInput {
   leadId?: string | null;
   affiliateRef?: string | null;
   idempotencyKey?: string | null;
+  attribution?: AttributionSnapshot | null;
 }
 
 export type LandingBookingReplay = {
@@ -290,10 +292,11 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
           source: 'landing_lead',
         }
       : null,
-    attribution_snapshot: input.affiliateRef
+    attribution_snapshot: input.attribution || input.affiliateRef
       ? {
           source: 'landing_lead',
           captured_at: new Date().toISOString(),
+          analytics: input.attribution ?? null,
           affiliate_id: affiliateCommission?.affiliateId ?? null,
           referral_code: input.affiliateRef,
           utm_source: input.affiliateRef || input.tracking?.utmSource || null,

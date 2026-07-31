@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 import { trackEngagement } from '@/lib/tracker';
 
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
@@ -61,6 +62,13 @@ export default function BottomTabBar() {
   if (excluded) return null;
 
   const trackKakaoClick = () => {
+    trackAnalyticsEvent('ysn_kakao_click', {
+      cta_location: 'bottom_tab_bar',
+      page_type: pathname === '/packages' ? 'package_list'
+        : pathname?.startsWith('/blog/') ? 'blog_article'
+          : pathname === '/' ? 'home' : 'content',
+      outbound_host: 'pf.kakao.com',
+    });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       page_url: pathname ?? '/',

@@ -13,12 +13,13 @@ import { useTracking } from '@/hooks/useTracking';
 import { submitLeadPipeline } from '@/lib/submitPipeline';
 import { useChatStore } from '@/lib/chat-store';
 import { getSessionId } from '@/lib/tracker';
-import { trackViewContent, trackLead } from '@/components/MetaPixel';
+import { trackViewContent } from '@/components/MetaPixel';
 import { trackKakaoViewContent } from '@/lib/kakao-moment-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { sanitizeUtmTermForDisplay } from '@/lib/sanitize-ad-copy';
 import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import type { NoticeBlock } from '@/lib/standard-terms';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 const PriceSectionCard = dynamic(() => import('@/components/lp/PriceSection'));
 const LeadBottomSheet = dynamic(() => import('@/components/lp/LeadBottomSheet'), { ssr: false });
@@ -108,18 +109,39 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
 }
 
 /** 가격 섹션 — compareAt 은 동일 상품 요금표 내 최고가 대비일 때만 표시 */
-function PriceSection({ priceFrom, compareAtPrice, deadlineDays }: {
+function PriceSection({ priceFrom, compareAtPrice, deadlineDays, packageId, destination }: {
   priceFrom: number;
   compareAtPrice: number | null;
   deadlineDays: number | null;
+  packageId: string;
+  destination: string;
 }) {
+  const sectionRef = useRef<HTMLElement>(null);
   const discount =
     compareAtPrice != null && compareAtPrice > priceFrom
       ? Math.round((1 - priceFrom / compareAtPrice) * 100)
       : null;
 
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.intersectionRatio < 0.5) return;
+      trackAnalyticsEvent('ysn_price_view', {
+        package_id: packageId,
+        destination,
+        price_type: priceFrom > 0 ? 'from_price' : 'inquiry',
+        displayed_price: priceFrom > 0 ? priceFrom : undefined,
+        currency: 'KRW',
+      }, { dedupeKey: `lp:${packageId}:price` });
+      observer.disconnect();
+    }, { threshold: 0.5 });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [destination, packageId, priceFrom]);
+
   return (
-    <section className="px-5 py-6 bg-white">
+    <section ref={sectionRef} className="px-5 py-6 bg-white">
       <div className="flex flex-wrap items-center gap-2 mb-1">
         {deadlineDays != null && deadlineDays >= 0 && deadlineDays <= 30 && (
           <span
@@ -327,12 +349,43 @@ export function LandingClient({
       name: data.customMessage.default.headline,
       value: data.priceFrom,
     });
-  }, [data.customMessage.default.headline, data.priceFrom, data.id]);
+    trackAnalyticsEvent('view_item', {
+      package_id: data.id,
+      package_name: data.customMessage.default.headline,
+      destination: data.destination,
+      departure_date: data.departureFullDate ?? undefined,
+      currency: 'KRW',
+      value: data.priceFrom > 0 ? data.priceFrom : undefined,
+      price_type: data.priceFrom > 0 ? 'from_price' : 'inquiry',
+      items: [{
+        item_id: data.id,
+        item_name: data.customMessage.default.headline,
+        item_category: 'travel_package',
+        item_category2: data.destination,
+        item_variant: data.departureFullDate ?? undefined,
+        price: data.priceFrom > 0 ? data.priceFrom : undefined,
+        quantity: 1,
+      }],
+    }, { dedupeKey: `lp:${data.id}` });
+  }, [
+    data.customMessage.default.headline,
+    data.departureFullDate,
+    data.destination,
+    data.priceFrom,
+    data.id,
+  ]);
 
   // ── Hooks must be called before any early return (react-hooks/rules-of-hooks) ──
   // Intersection Observer → FAB 활성화
   const { itineraryViewed, setItineraryViewed, registerScrollSentinel, getSnapshot } = useTracking();
-  const handleItineraryViewed = useCallback(() => setItineraryViewed(true), [setItineraryViewed]);
+  const handleItineraryViewed = useCallback(() => {
+    setItineraryViewed(true);
+    trackAnalyticsEvent('ysn_schedule_view', {
+      package_id: data.id,
+      package_name: data.customMessage.default.headline,
+      destination: data.destination,
+    }, { dedupeKey: `lp:${data.id}:schedule` });
+  }, [data.customMessage.default.headline, data.destination, data.id, setItineraryViewed]);
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -424,10 +477,13 @@ export function LandingClient({
             data-analytics-id="lp_hero_kakao"
             className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-text-primary active:scale-[0.98] transition-transform shadow-md"
               onClick={async () => {
-                trackLead({
-                  content_name: data.customMessage.default.headline,
-                  value: data.priceFrom,
-                  content_ids: [data.id],
+                trackAnalyticsEvent('ysn_kakao_click', {
+                  cta_location: 'lp_hero',
+                  page_type: 'campaign_landing',
+                  package_id: data.id,
+                  package_name: data.customMessage.default.headline,
+                  destination: data.destination,
+                  outbound_host: 'pf.kakao.com',
                 });
                 trackKakaoViewContent({
                   id: `lp_kakao_${data.id}`,
@@ -469,6 +525,8 @@ export function LandingClient({
         priceFrom={data.priceFrom}
         compareAtPrice={data.compareAtPrice}
         deadlineDays={data.deadlineDays}
+        packageId={data.id}
+        destination={data.destination}
       />
 
       <DepartureDatesSummary priceDates={data.price_dates} />
@@ -519,6 +577,14 @@ export function LandingClient({
             data-analytics-id="lp_sticky_lead"
             aria-label="상담 신청 열기"
             onClick={() => {
+              trackAnalyticsEvent('begin_checkout', {
+                package_id: data.id,
+                package_name: data.customMessage.default.headline,
+                destination: data.destination,
+                departure_date: data.departureFullDate ?? undefined,
+                currency: 'KRW',
+                value: data.priceFrom > 0 ? data.priceFrom : undefined,
+              }, { dedupeKey: `lp:${data.id}:lead-open` });
               setSheetOpen(true);
               fetch('/api/tracking/score-signal', {
                 method: 'POST',
@@ -564,6 +630,14 @@ export function LandingClient({
             },
             useChatStore.getState().sessionId,
           );
+          trackAnalyticsEvent('generate_lead', {
+            lead_source: 'website',
+            lead_type: 'package_inquiry',
+            package_id: data.id,
+            package_name: data.customMessage.default.headline,
+            destination: data.destination,
+            departure_date: form.desiredDate ?? data.departureFullDate ?? undefined,
+          }, { dedupeKey: `lp:${data.id}:${form.desiredDate ?? data.departureFullDate ?? 'unknown'}` });
           setSheetOpen(false);
         }}
       />

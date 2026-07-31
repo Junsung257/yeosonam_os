@@ -17,7 +17,7 @@ import PackageTermsSection from '@/components/package/PackageTermsSection';
 import PackageTermsBottomSheet from '@/components/customer/PackageTermsBottomSheet';
 import type { NoticeBlock } from '@/lib/standard-terms-client';
 import { hasSpecialTermsBanner, shouldSuppressStandardCancelTable } from '@/lib/standard-terms-client';
-import { trackViewContent, trackLead } from '@/components/MetaPixel';
+import { trackViewContent } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
@@ -37,6 +37,7 @@ import {
 import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { trackAnalyticsEvent } from '@/lib/analytics';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -574,7 +575,20 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const priceSectionRef = useRef<HTMLDivElement | null>(null);
+  const scheduleSectionRef = useRef<HTMLDivElement | null>(null);
+  const termsSectionRef = useRef<HTMLDivElement | null>(null);
   const openInquiryForm = useCallback((source: string) => {
+    trackAnalyticsEvent('begin_checkout', {
+      package_id: id,
+      package_name: pkg?.title ?? undefined,
+      destination: pkg?.destination ?? undefined,
+      departure_date: selectedDate || selectedTier?.period_label,
+      currency: 'KRW',
+      value: selectedTier?.adult_price && selectedTier.adult_price > 0
+        ? selectedTier.adult_price
+        : undefined,
+    }, { dedupeKey: `${id}:${selectedDate || selectedTier?.period_label || 'none'}` });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
       product_id: id,
@@ -609,7 +623,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     setReservationSubmitError('');
     setReservationConsent(false);
     setShowForm(true);
-  }, [id, pkg?.title, selectedDate, selectedTier?.period_label]);
+  }, [
+    id,
+    pkg?.destination,
+    pkg?.title,
+    selectedDate,
+    selectedTier?.adult_price,
+    selectedTier?.period_label,
+  ]);
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -627,6 +648,22 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         value: initialPackage.price || 0,
         content_ids: [id],
       });
+      trackAnalyticsEvent('view_item', {
+        package_id: id,
+        package_name: initialPackage.title || undefined,
+        destination: initialPackage.destination || undefined,
+        currency: 'KRW',
+        value: initialPackage.price && initialPackage.price > 0 ? initialPackage.price : undefined,
+        price_type: initialPackage.price && initialPackage.price > 0 ? 'from_price' : 'inquiry',
+        items: [{
+          item_id: id,
+          item_name: initialPackage.title || id,
+          item_category: 'travel_package',
+          item_category2: initialPackage.destination || undefined,
+          price: initialPackage.price && initialPackage.price > 0 ? initialPackage.price : undefined,
+          quantity: 1,
+        }],
+      }, { dedupeKey: id });
       setIsLoading(false);
       return;
     }
@@ -641,6 +678,22 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           value: p.price || 0,
           content_ids: [String(p.id ?? id)],
         });
+        trackAnalyticsEvent('view_item', {
+          package_id: String(p.id ?? id),
+          package_name: p.title || undefined,
+          destination: p.destination || undefined,
+          currency: 'KRW',
+          value: p.price && p.price > 0 ? p.price : undefined,
+          price_type: p.price && p.price > 0 ? 'from_price' : 'inquiry',
+          items: [{
+            item_id: String(p.id ?? id),
+            item_name: p.title || String(p.id ?? id),
+            item_category: 'travel_package',
+            item_category2: p.destination || undefined,
+            price: p.price && p.price > 0 ? p.price : undefined,
+            quantity: 1,
+          }],
+        }, { dedupeKey: String(p.id ?? id) });
       }
     }).catch(console.error).finally(() => setIsLoading(false));
     // initialAttractions가 비어 있을 때만 폴백 fetch (불필요 중복 호출 방지)
@@ -686,6 +739,54 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       window.removeEventListener('resize', onScroll);
     };
   }, [pkg, updateActiveSection]);
+
+  useEffect(() => {
+    if (!pkg) return;
+
+    const observeOnce = (
+      element: Element | null,
+      threshold: number,
+      callback: () => void,
+    ) => {
+      if (!element) return () => {};
+      const observer = new IntersectionObserver(([entry]) => {
+        if (entry.intersectionRatio < threshold) return;
+        callback();
+        observer.disconnect();
+      }, { threshold });
+      observer.observe(element);
+      return () => observer.disconnect();
+    };
+
+    const cleanups = [
+      observeOnce(priceSectionRef.current, 0.5, () => {
+        trackAnalyticsEvent('ysn_price_view', {
+          package_id: id,
+          package_name: pkg.title ?? undefined,
+          destination: pkg.destination ?? undefined,
+          price_type: pkg.price && pkg.price > 0 ? 'from_price' : 'inquiry',
+          displayed_price: pkg.price && pkg.price > 0 ? pkg.price : undefined,
+          currency: 'KRW',
+        }, { dedupeKey: `detail:${id}:price` });
+      }),
+      observeOnce(scheduleSectionRef.current, 0.1, () => {
+        trackAnalyticsEvent('ysn_schedule_view', {
+          package_id: id,
+          package_name: pkg.title ?? undefined,
+          destination: pkg.destination ?? undefined,
+        }, { dedupeKey: `detail:${id}:schedule` });
+      }),
+      observeOnce(termsSectionRef.current, 0.3, () => {
+        trackAnalyticsEvent('ysn_inclusions_view', {
+          package_id: id,
+          package_name: pkg.title ?? undefined,
+          destination: pkg.destination ?? undefined,
+        }, { dedupeKey: `detail:${id}:inclusions` });
+      }),
+    ];
+
+    return () => cleanups.forEach(cleanup => cleanup());
+  }, [id, pkg]);
 
   /** 한 번 이상 스크롤한 뒤 멈춤 → 상담 힌트만 준비, 화면을 자동으로 덮지는 않음 */
   const proactiveDisplayCopy = pkg ? buildCustomerPackageDisplayCopy({
@@ -997,6 +1098,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         }),
       });
       ok = res.ok;
+      if (ok) {
+        trackAnalyticsEvent('generate_lead', {
+          lead_source: 'website',
+          lead_type: 'package_inquiry',
+          package_id: id,
+          package_name: pkg?.title ?? undefined,
+          destination: pkg?.destination ?? undefined,
+          departure_date: formData.date || selectedTier?.period_label || undefined,
+        }, {
+          dedupeKey: `${id}:${formData.date || selectedTier?.period_label || 'unknown'}`,
+        });
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         errMsg = (data as { error?: string }).error || `요청 실패 (${res.status})`;
@@ -1581,7 +1694,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 요금표 ═══ */}
       {(tiers.length > 0 || allPriceDates.length > 0) && (
-        <div ref={el => { sectionRefs.current['요금표'] = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-[108px]">
+        <div ref={el => { sectionRefs.current['요금표'] = el; priceSectionRef.current = el; }} data-section="요금표" className="px-4 py-8 scroll-mt-[108px]">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">출발일 선택</h2>
           {allPriceDates.length === 0 ? (
             // price_dates / departure_dates 둘 다 없는 경우 → tier 카드 폴백
@@ -1590,7 +1703,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 const isSelected = selectedTier === t;
                 const isMin = t.adult_price === minPrice;
                 return (
-                  <button key={i} type="button" onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
+                  <button key={i} type="button" onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); if (!isSelected) trackAnalyticsEvent('ysn_departure_select', { package_id: id, destination: pkg.destination ?? undefined, departure_date: t.period_label }, { dedupeKey: `detail:${id}:departure:${t.period_label}` }); }}
                     className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-brand bg-brand-light ring-1 ring-brand' : 'border-gray-200 bg-white'}`}>
                     <div>
                       <p className="text-sm font-medium text-gray-800">
@@ -1625,6 +1738,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const m = parseInt(date.split('-')[1]);
                   const d = parseInt(date.split('-')[2]);
                   setFormData(f => ({ ...f, date: `${m}/${d}` }));
+                  trackAnalyticsEvent('ysn_departure_select', {
+                    package_id: id,
+                    destination: pkg.destination ?? undefined,
+                    departure_date: date,
+                  }, { dedupeKey: `detail:${id}:departure:${date}` });
                 }}
               />
               {selectedDateInfo && (
@@ -1691,7 +1809,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 포함/불포함/써차지/쇼핑 — CRC + terms-catalog ═══ */}
-      {view && <PackageTermsSection view={view} />}
+      {view && (
+        <div ref={termsSectionRef}>
+          <PackageTermsSection view={view} />
+        </div>
+      )}
 
       <section className="px-4 py-6" aria-label="추천 대상과 확인할 점">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
@@ -1749,7 +1871,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 일정표 ═══ */}
       {days.length > 0 && (
-        <div ref={el => { sectionRefs.current['일정표'] = el; }} data-section="일정표" className="px-4 py-8 scroll-mt-[108px]">
+        <div ref={el => { sectionRefs.current['일정표'] = el; scheduleSectionRef.current = el; }} data-section="일정표" className="px-4 py-8 scroll-mt-[108px]">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">여행 일정</h2>
 
           {/* Day 탭 (Voyager 스타일 pill) — 클릭 시 해당 day로 스크롤 */}
@@ -2430,10 +2552,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   selectedTier: selectedTier?.period_label ?? null,
                 },
               });
-              trackLead({
-                content_name: displayCopy.cardTitle || '',
-                value: displayPrice || 0,
-                content_ids: [id],
+              trackAnalyticsEvent('ysn_kakao_click', {
+                cta_location: 'detail_mobile_sticky',
+                page_type: 'package_detail',
+                package_id: id,
+                package_name: displayCopy.cardTitle,
+                destination: pkg.destination ?? undefined,
+                departure_date: selectedDate || selectedTier?.period_label,
+                outbound_host: 'pf.kakao.com',
               });
               // recommendation_outcomes inquiry 트래킹 (점수 시스템 funnel)
               fetch('/api/tracking/recommendation', {

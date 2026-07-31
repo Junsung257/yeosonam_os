@@ -29,6 +29,25 @@
 
 `ADMIN_EMAILS`가 비어 있으면 일반 로그인으로는 어드민 API가 거부됩니다. 서버 간 호출은 `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` 로 여전히 가능합니다.
 
+## 📊 마케팅 측정·GTM·GA4
+
+전체 placeholder 예시는 [`docs/analytics/env.example`](./analytics/env.example)을 사용합니다.
+
+| 키 | 공개 여부 | 용도 |
+|---|---|---|
+| `NEXT_PUBLIC_ANALYTICS_ENABLED` | 공개 | `true`일 때만 측정 runtime 후보 활성화 |
+| `NEXT_PUBLIC_ANALYTICS_DEBUG` | 공개 | 로컬 명시 디버그. Production에서는 일반 활성화 조건 적용 |
+| `NEXT_PUBLIC_GTM_CONTAINER_ID` | 공개 | `GTM-...` 형식, 유효하지 않으면 로드 안 함 |
+| `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | 공개 | `G-...` 형식 |
+| `NEXT_PUBLIC_GOOGLE_ADS_ID` | 공개 | `AW-...` 형식 |
+| `NEXT_PUBLIC_CLARITY_PROJECT_ID` | 공개 | 선택적 GTM Clarity 설정용 |
+| `NEXT_PUBLIC_SITE_URL` | 공개 | canonical/운영 hostname (`https://www.yeosonam.com`) |
+| `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` | 공개 | Search Console URL-prefix meta 인증 token |
+| `NEXT_PUBLIC_ATTRIBUTION_TTL_DAYS` | 공개 | attribution 보존일, 1~365, 기본 90 |
+| `GA4_MEASUREMENT_PROTOCOL_API_SECRET` | **서버 비밀** | 서버 purchase/refund delivery. 절대 `NEXT_PUBLIC_` 금지 |
+
+운영 전송은 `NODE_ENV=production`, `VERCEL_ENV=production`, 유효한 GTM ID, 운영 hostname, 사용자 동의를 모두 만족해야 한다. Preview에는 Production 변수 scope를 복사하지 않는다.
+
 ## 📨 알림톡 (Solapi) — 배포 시점에 전부 없음, 추후 등록 필요
 
 **⚠️ 현재 `.env.local` 에 Solapi 계열 키 0개.** 없어도 앱은 작동하지만, 알림톡은 skip + DB 로그만 남음.
@@ -150,7 +169,6 @@
 
 | 키 | 용도 |
 |---|---|
-| `NEXT_PUBLIC_GA4_ID` | GA4 웹 데이터 스트림의 측정 ID (`G-`로 시작). **Production에만 설정**하며, 미설정·형식 오류 시 GA4는 로드되지 않음 |
 | `NEXT_PUBLIC_PARTYTOWN` | `1`이면 Meta·카카오 모먼트·Clarity 스크립트를 Partytown(웹 워커)로 격리. 미설정·그 외 값이면 메인 스레드에서 기존과 동일하게 로드 | `1` (성능 검증 후 켜기 권장) |
 | `META_ACCESS_TOKEN` | Meta Ads 광고 API (배포 상태) |
 | `META_AD_ACCOUNT_ID` | Meta 광고 계정 |
@@ -160,18 +178,6 @@
 | `THREADS_KEYWORD_SEARCH_ENABLED` | `1`이면 keyword search scope 승인 완료로 간주해 운영 health에 표시. 승인 전에는 trend miner를 fallback/dry-run으로 운영 |
 | `GOOGLE_ADS_*` | Google Ads API. Developer Token/Customer ID/OAuth 값은 서버 전용 값이며 `NEXT_PUBLIC_*`로 노출 금지 |
 | `NAVER_ADS_*` | 네이버 검색광고 API. 서버 전용 값이며 `NEXT_PUBLIC_*`로 노출 금지 |
-
-### GA4 유입 분석 운영 계약
-
-- GA4 속성의 웹 데이터 스트림 URL은 `https://www.yeosonam.com`으로 등록한다.
-- 웹 스트림의 **향상된 측정 > 페이지 조회 > 고급 설정**에서 `브라우저 기록 이벤트에 따른 페이지 변경`을 끈다. 앱이 고객 화면 이동마다 `page_view`를 직접 보내므로, 켜두면 조회수가 중복된다.
-- `NEXT_PUBLIC_GA4_ID`는 Vercel Production에만 넣는다. Preview/Development에 넣으면 테스트 방문이 운영 통계에 섞인다.
-- 외부 캠페인 링크에는 `utm_source`, `utm_medium`, `utm_campaign`을 모두 넣고 영문 소문자로 통일한다.
-- 권장 `utm_source`: `naver`, `google`, `instagram`, `threads`, `kakao`, `email`, `affiliate`.
-- 권장 `utm_medium`: `organic_search`, `organic_social`, `cpc`, `email`, `referral`, `affiliate`.
-- `utm_campaign`은 캠페인 단위의 안정적인 영문 소문자 슬러그, `utm_content`는 배치·소재 구분값으로 쓴다.
-- 유입 확인은 GA4의 `보고서 > 획득 > 트래픽 획득`에서 `세션 소스/매체`, `세션 캠페인`, `랜딩 페이지` 순으로 본다.
-- 배포 직후 운영 도메인에 UTM 테스트 링크로 접속하고 Realtime에서 수분 내 방문을 확인한다. 일반 보고서 반영은 최대 24~48시간을 허용한다.
 
 ### 성능 — 서드파티 스크립트 격리 (선택)
 
