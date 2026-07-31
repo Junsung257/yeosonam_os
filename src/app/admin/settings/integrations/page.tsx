@@ -194,7 +194,12 @@ export default function IntegrationsPage() {
                       범위: {item.scopes.slice(0, 2).join(', ')}{item.scopes.length > 2 ? ' 외' : ''}
                     </p>
                   )}
-                  {item.connected && item.expires_at && (
+                  {item.connected && item.renewable && (
+                    <p className="text-[11px] text-emerald-700">
+                      자동 갱신: access token 만료 전 새로 발급됩니다.
+                    </p>
+                  )}
+                  {item.connected && item.expires_at && !item.renewable && (
                     <p className="text-[11px] text-admin-muted-2">
                       만료: {fmtDate(item.expires_at)}
                     </p>
