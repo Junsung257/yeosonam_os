@@ -36,8 +36,9 @@ describe('/blog/destination/[dest] public route guard', () => {
     );
 
     expect(source).toContain('export const revalidate = 300;');
+    expect(source).toContain("export const dynamic = 'force-dynamic';");
     expect(source).toContain('export const dynamicParams = true;');
-    expect(source).not.toContain("export const dynamic = 'force-dynamic';");
+    expect(source).not.toContain('generateStaticParams');
     expect(source).toContain('const getCachedDestinationPageData = unstable_cache(');
   });
 });

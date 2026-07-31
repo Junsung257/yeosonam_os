@@ -5,7 +5,7 @@ import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
-import { encodeDestinationPathSegment, destinationSlugMatches, destinationToSlug } from '@/lib/regions';
+import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
@@ -30,11 +30,8 @@ import {
 } from '@/lib/blog-public-catalog';
 
 export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
-const BLOG_DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
-  0,
-  Number(process.env.BLOG_DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,
-);
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 
@@ -229,24 +226,6 @@ async function getDestinationPageData(dest: string): Promise<DestinationPageData
       packages: [],
       unavailable: true,
     };
-  }
-}
-
-export async function generateStaticParams() {
-  if (BLOG_DESTINATION_STATIC_PRERENDER_LIMIT <= 0) return [];
-  if (!isSupabaseConfigured) return [];
-  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
-
-  try {
-    const destinations = new Set<string>();
-    for (const row of (await loadPublicBlogCatalog()).slice(0, BLOG_DESTINATION_STATIC_PRERENDER_LIMIT)) {
-      const destination = row.destination?.trim();
-      if (destination) destinations.add(destinationToSlug(destination));
-    }
-
-    return [...destinations].slice(0, BLOG_DESTINATION_STATIC_PRERENDER_LIMIT).map(dest => ({ dest }));
-  } catch {
-    return [];
   }
 }
 

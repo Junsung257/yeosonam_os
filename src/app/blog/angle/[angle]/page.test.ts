@@ -10,8 +10,9 @@ describe('/blog/angle/[angle] rendering contract', () => {
     );
 
     expect(source).toContain('export const revalidate = 300;');
+    expect(source).toContain("export const dynamic = 'force-dynamic';");
     expect(source).toContain('export const dynamicParams = true;');
-    expect(source).not.toContain("export const dynamic = 'force-dynamic';");
+    expect(source).not.toContain('generateStaticParams');
     expect(source).toContain('const getCachedAnglePageData = unstable_cache(');
   });
 });
