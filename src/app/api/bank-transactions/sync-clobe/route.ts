@@ -12,6 +12,14 @@ export const runtime = 'nodejs';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function getRawSampleKeys(payload: unknown): string[][] {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .slice(0, 3)
+    .map(item => (item && typeof item === 'object' && !Array.isArray(item) ? Object.keys(item as Record<string, unknown>).slice(0, 20) : []))
+    .filter(keys => keys.length > 0);
+}
+
 function defaultDateWindow() {
   const to = new Date();
   const from = new Date(to.getTime() - 90 * 24 * 60 * 60_000);
@@ -51,7 +59,11 @@ export async function POST(request: NextRequest) {
     const tenantId = await resolveTenantId(body.tenant_id ?? body.tenantId);
 
     let rawPayload: unknown = body.transactions;
-    let mcp: { toolName: string | null; toolNames: string[] } = { toolName: null, toolNames: [] };
+    let mcp: {
+      toolName: string | null;
+      toolNames: string[];
+      attempts: Array<{ toolName: string; extracted: number; resultKeys: string[]; contentTypes: string[]; error?: string }>;
+    } = { toolName: null, toolNames: [], attempts: [] };
 
     if (!Array.isArray(rawPayload)) {
       if (!tenantId) {
@@ -74,15 +86,37 @@ export async function POST(request: NextRequest) {
       }
       const fetched = await fetchClobeMcpBankTransactions({ from, to, accountNumber, limit, accessToken: token.accessToken });
       rawPayload = fetched.transactions;
-      mcp = { toolName: fetched.toolName, toolNames: fetched.toolNames };
+      mcp = { toolName: fetched.toolName, toolNames: fetched.toolNames, attempts: fetched.attempts };
     }
 
+    const fetched = Array.isArray(rawPayload) ? rawPayload.length : 0;
     const normalized = normalizeClobeBankTransactions(rawPayload);
+    const rawSampleKeys = normalized.rows.length === 0 ? getRawSampleKeys(rawPayload) : [];
     const result = await processBankTransactionImportRows(normalized.rows, {
       source: 'clobe_mcp',
       preview,
       actor: 'clobe_sync',
       createMissingBookings: !preview,
+    });
+    console.info('[clobe-bank-sync]', {
+      from,
+      to,
+      limit,
+      preview,
+      fetched,
+      normalized: normalized.rows.length,
+      normalizeErrors: normalized.errors.length,
+      inserted: result.inserted,
+      matched: result.matched,
+      mcpToolName: mcp.toolName,
+      mcpToolCount: mcp.toolNames.length,
+      mcpAttempts: mcp.attempts.map(attempt => ({
+        toolName: attempt.toolName,
+        extracted: attempt.extracted,
+        resultKeys: attempt.resultKeys,
+        contentTypes: attempt.contentTypes,
+        error: attempt.error,
+      })),
     });
 
     return NextResponse.json({
@@ -95,6 +129,8 @@ export async function POST(request: NextRequest) {
       limit,
       tenantId,
       mcp,
+      fetched,
+      rawSampleKeys,
       normalized: normalized.rows.length,
       normalizeErrors: normalized.errors,
       ...result,

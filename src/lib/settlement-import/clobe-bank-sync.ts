@@ -19,6 +19,15 @@ export interface ClobeMcpFetchResult {
   transactions: Record<string, unknown>[];
   toolName: string | null;
   toolNames: string[];
+  attempts: ClobeMcpFetchAttempt[];
+}
+
+export interface ClobeMcpFetchAttempt {
+  toolName: string;
+  extracted: number;
+  resultKeys: string[];
+  contentTypes: string[];
+  error?: string;
 }
 
 interface McpTool {
@@ -221,20 +230,45 @@ export function extractTransactionArray(payload: unknown): unknown[] {
   return [];
 }
 
-function chooseTransactionTool(tools: McpTool[], preferred?: string | null): string | null {
-  if (preferred && tools.some(tool => tool.name === preferred)) return preferred;
+function summarizeMcpResult(payload: unknown): Pick<ClobeMcpFetchAttempt, 'resultKeys' | 'contentTypes'> {
+  const record = asRecord(payload);
+  const content = Array.isArray(record.content) ? record.content : [];
+  return {
+    resultKeys: Object.keys(record).slice(0, 20),
+    contentTypes: content
+      .map(part => {
+        const value = asRecord(part).type;
+        return typeof value === 'string' ? value : 'unknown';
+      })
+      .slice(0, 10),
+  };
+}
+
+function rankTransactionTools(tools: McpTool[], preferred?: string | null): McpTool[] {
   const candidates = tools
     .map(tool => ({
       tool,
       text: `${tool.name} ${tool.description ?? ''}`.toLowerCase(),
     }))
-    .filter(({ text }) => /(bank|account|transaction|ledger|cash|통장|거래|입출금)/.test(text))
+    .filter(({ text }) => {
+      const relevant = /(bank|account|transaction|ledger|cash|payment|deposit|withdraw|memo|note|message|slack|통장|거래|입출금|입금|출금|메모)/.test(text);
+      const unsafe = /(create|update|delete|remove|write|send|post|생성|수정|삭제|등록|전송)/.test(text);
+      return relevant && !unsafe;
+    })
     .sort((a, b) => {
-      const aExact = /(transaction|거래|입출금)/.test(a.text) ? 1 : 0;
-      const bExact = /(transaction|거래|입출금)/.test(b.text) ? 1 : 0;
-      return bExact - aExact;
+      const aPreferred = preferred && a.tool.name === preferred ? 100 : 0;
+      const bPreferred = preferred && b.tool.name === preferred ? 100 : 0;
+      const aExact = /(transaction|ledger|payment|deposit|withdraw|거래|입출금|입금|출금)/.test(a.text) ? 10 : 0;
+      const bExact = /(transaction|ledger|payment|deposit|withdraw|거래|입출금|입금|출금)/.test(b.text) ? 10 : 0;
+      const aRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(a.text) ? 1 : 0;
+      const bRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(b.text) ? 1 : 0;
+      return (bPreferred + bExact + bRead) - (aPreferred + aExact + aRead);
     });
-  return candidates[0]?.tool.name ?? null;
+  return candidates.map(({ tool }) => tool);
+}
+
+function chooseTransactionTool(tools: McpTool[], preferred?: string | null): string | null {
+  return rankTransactionTools(tools, preferred)[0]?.name ?? null;
 }
 
 async function parseMcpResponse(response: Response): Promise<unknown> {
@@ -286,12 +320,14 @@ async function initializeMcp(ctx: McpCallContext) {
   await mcpCall(ctx, 'notifications/initialized', {}, true);
 }
 
-function buildToolArguments(options: ClobeMcpFetchOptions): Record<string, unknown> {
+function buildToolArguments(options: ClobeMcpFetchOptions, toolName?: string): Record<string, unknown> {
+  const text = toolName?.toLowerCase() ?? '';
   return {
     ...(options.from ? { from: options.from, startDate: options.from, start_date: options.from } : {}),
     ...(options.to ? { to: options.to, endDate: options.to, end_date: options.to } : {}),
     ...(options.accountNumber ? { accountNumber: options.accountNumber, account_number: options.accountNumber } : {}),
     ...(options.limit ? { limit: options.limit } : {}),
+    ...(/memo|note|message|slack|메모/.test(text) ? { query: '통장 입금 출금 입출금 정산 여행 메모' } : {}),
   };
 }
 
@@ -316,15 +352,44 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   const toolsResult = asRecord(await mcpCall(ctx, 'tools/list'));
   const tools = (Array.isArray(toolsResult.tools) ? toolsResult.tools : []) as McpTool[];
   const toolNames = tools.map(tool => tool.name);
-  const toolName = chooseTransactionTool(tools, getSecret('CLOBE_MCP_TRANSACTIONS_TOOL') ?? undefined);
-  if (!toolName) {
+  const preferred = getSecret('CLOBE_MCP_TRANSACTIONS_TOOL') ?? undefined;
+  const rankedTools = rankTransactionTools(tools, preferred);
+  const selectedToolName = chooseTransactionTool(tools, preferred);
+  if (!selectedToolName) {
     throw new Error(`No Clobe MCP transaction tool found. Available tools: ${toolNames.join(', ') || 'none'}`);
   }
 
-  const callResult = await mcpCall(ctx, 'tools/call', {
-    name: toolName,
-    arguments: buildToolArguments(options),
-  });
-  const transactions = extractTransactionArray(callResult).filter(item => typeof item === 'object' && item !== null) as Record<string, unknown>[];
-  return { transactions, toolName, toolNames };
+  const attempts: ClobeMcpFetchAttempt[] = [];
+  let lastError: Error | null = null;
+  for (const tool of rankedTools.slice(0, 5)) {
+    try {
+      const callResult = await mcpCall(ctx, 'tools/call', {
+        name: tool.name,
+        arguments: buildToolArguments(options, tool.name),
+      });
+      const transactions = extractTransactionArray(callResult).filter(item => typeof item === 'object' && item !== null) as Record<string, unknown>[];
+      attempts.push({
+        toolName: tool.name,
+        extracted: transactions.length,
+        ...summarizeMcpResult(callResult),
+      });
+      if (transactions.length > 0) {
+        return { transactions, toolName: tool.name, toolNames, attempts };
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Clobe MCP tool call failed');
+      attempts.push({
+        toolName: tool.name,
+        extracted: 0,
+        resultKeys: [],
+        contentTypes: [],
+        error: lastError.message,
+      });
+    }
+  }
+
+  if (lastError && attempts.every(attempt => attempt.error)) {
+    throw lastError;
+  }
+  return { transactions: [], toolName: attempts[0]?.toolName ?? selectedToolName, toolNames, attempts };
 }
