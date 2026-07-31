@@ -7,14 +7,14 @@ ALTER TABLE public.bank_transactions
   ADD COLUMN IF NOT EXISTS transaction_fingerprint TEXT,
   ADD COLUMN IF NOT EXISTS source_metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_bank_transactions_fingerprint
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_bank_transactions_fingerprint
   ON public.bank_transactions (
     COALESCE(tenant_id::text, 'platform'),
     transaction_fingerprint
   )
   WHERE transaction_fingerprint IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_bank_transactions_fingerprint_lookup
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bank_transactions_fingerprint_lookup
   ON public.bank_transactions (transaction_fingerprint)
   WHERE transaction_fingerprint IS NOT NULL;
 
@@ -68,6 +68,9 @@ CREATE INDEX IF NOT EXISTS idx_ops_events_customer_created
 CREATE INDEX IF NOT EXISTS idx_ops_events_bank_tx_created
   ON public.ops_events(bank_transaction_id, created_at DESC)
   WHERE bank_transaction_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ops_events_ledger_entry_created
+  ON public.ops_events(ledger_entry_id, created_at DESC)
+  WHERE ledger_entry_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ops_events_open_queue
   ON public.ops_events(status, severity, created_at DESC)
   WHERE status = 'open';
