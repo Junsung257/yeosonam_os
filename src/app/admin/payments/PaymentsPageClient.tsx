@@ -30,6 +30,21 @@ interface ClobeIntegrationState {
   tenantId: string | null;
 }
 
+const CLOBE_SYNC_DEFAULT_DAYS = 90;
+
+function formatDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getDefaultClobeSyncWindow() {
+  const to = new Date();
+  const from = new Date(to.getTime() - CLOBE_SYNC_DEFAULT_DAYS * 24 * 60 * 60_000);
+  return {
+    from: formatDateInput(from),
+    to: formatDateInput(to),
+  };
+}
+
 export interface BankTransaction {
   id: string; raw_message: string;
   transaction_type: '입금' | '출금';
@@ -520,7 +535,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importResult, setImportResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; firstError?: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const [clobeSyncing, setClobeSyncing] = useState(false);
-  const [clobeSyncResult, setClobeSyncResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; memoUpdated?: number; memoChangedReview?: number; normalized?: number; firstError?: string | null } | null>(null);
+  const [clobeSyncWindow, setClobeSyncWindow] = useState(() => getDefaultClobeSyncWindow());
+  const [clobeSyncResult, setClobeSyncResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; memoUpdated?: number; memoChangedReview?: number; normalized?: number; firstError?: string | null; from?: string; to?: string } | null>(null);
   const [clobeIntegration, setClobeIntegration] = useState<ClobeIntegrationState>({
     loading: true,
     connected: false,
@@ -977,12 +993,21 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       handleClobeConnect();
       return;
     }
+    if (clobeSyncWindow.from && clobeSyncWindow.to && clobeSyncWindow.from > clobeSyncWindow.to) {
+      showToast('Clobe 동기화 기간을 확인해주세요. 시작일이 종료일보다 늦습니다.', 'err');
+      return;
+    }
     setClobeSyncing(true);
     try {
       const res = await fetch('/api/bank-transactions/sync-clobe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 200, tenant_id: clobeIntegration.tenantId }),
+        body: JSON.stringify({
+          from: clobeSyncWindow.from,
+          to: clobeSyncWindow.to,
+          limit: 1000,
+          tenant_id: clobeIntegration.tenantId,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1300,7 +1325,32 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 : 'Clobe에 로그인해 연결하면 메모에 적은 여행 입출금 내역을 정산 화면에서 바로 동기화할 수 있습니다.'}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-admin-xs font-medium text-admin-text-2">
+              시작일
+              <input
+                type="date"
+                value={clobeSyncWindow.from}
+                onChange={event => setClobeSyncWindow(prev => ({ ...prev, from: event.target.value }))}
+                className="mt-1 block rounded border border-admin-border-strong bg-white px-2 py-1.5 text-admin-sm text-admin-text-2"
+              />
+            </label>
+            <label className="text-admin-xs font-medium text-admin-text-2">
+              종료일
+              <input
+                type="date"
+                value={clobeSyncWindow.to}
+                onChange={event => setClobeSyncWindow(prev => ({ ...prev, to: event.target.value }))}
+                className="mt-1 block rounded border border-admin-border-strong bg-white px-2 py-1.5 text-admin-sm text-admin-text-2"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setClobeSyncWindow(getDefaultClobeSyncWindow())}
+              className="rounded border border-admin-border-strong bg-white px-3 py-2 text-admin-sm text-admin-text-2 transition hover:bg-admin-bg"
+            >
+              최근 90일
+            </button>
             {!clobeIntegration.connected && (
               <button
                 type="button"
@@ -1326,7 +1376,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {clobeSyncResult && (
         <div className="mb-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-          Clobe sync result: normalized {clobeSyncResult.normalized ?? 0}, new {clobeSyncResult.inserted}, matched {clobeSyncResult.matched}, memo updated {clobeSyncResult.memoUpdated ?? 0}, memo review {clobeSyncResult.memoChangedReview ?? 0}, merged {clobeSyncResult.merged ?? 0}, duplicates {clobeSyncResult.duplicates}, skipped {clobeSyncResult.skipped ?? 0}, errors {clobeSyncResult.errors}
+          Clobe sync result: range {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to}, normalized {clobeSyncResult.normalized ?? 0}, new {clobeSyncResult.inserted}, matched {clobeSyncResult.matched}, memo updated {clobeSyncResult.memoUpdated ?? 0}, memo review {clobeSyncResult.memoChangedReview ?? 0}, merged {clobeSyncResult.merged ?? 0}, duplicates {clobeSyncResult.duplicates}, skipped {clobeSyncResult.skipped ?? 0}, errors {clobeSyncResult.errors}
           {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
         </div>
       )}

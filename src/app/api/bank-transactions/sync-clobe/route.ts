@@ -14,7 +14,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 
 function defaultDateWindow() {
   const to = new Date();
-  const from = new Date(to.getTime() - 14 * 24 * 60 * 60_000);
+  const from = new Date(to.getTime() - 90 * 24 * 60 * 60_000);
   return {
     from: from.toISOString().slice(0, 10),
     to: to.toISOString().slice(0, 10),
