@@ -13,6 +13,7 @@ export interface IntegrationStatus {
   connected: boolean;
   connected_at: string | null;
   expires_at: string | null;
+  renewable: boolean;
   scopes: string[];
 }
 
@@ -33,6 +34,7 @@ function emptyIntegrations(): IntegrationStatus[] {
     connected: p === 'naver' ? isNaverAdsConfigured() : false,
     connected_at: null,
     expires_at: null,
+    renewable: false,
     scopes: p === 'naver' && isNaverAdsConfigured() ? ['searchad-api-key'] : [],
   }));
 }
@@ -58,7 +60,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const { data, error } = await supabaseAdmin
       .from('tenant_api_tokens')
-      .select('provider, is_active, expires_at, scopes, created_at, updated_at')
+      .select('provider, is_active, expires_at, encrypted_refresh_token, scopes, created_at, updated_at')
       .eq('tenant_id', tenantId)
       .in('provider', SUPPORTED_PLATFORMS.filter((p) => p !== 'naver'));
 
@@ -68,6 +70,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       provider: string;
       is_active: boolean;
       expires_at: string | null;
+      encrypted_refresh_token?: string | null;
       scopes: string[];
       updated_at: string | null;
     };
@@ -81,6 +84,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
           connected: isNaverAdsConfigured(),
           connected_at: null,
           expires_at: null,
+          renewable: false,
           scopes: isNaverAdsConfigured() ? ['searchad-api-key'] : [],
         };
       }
@@ -91,6 +95,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
         connected: !!(row?.is_active),
         connected_at: row?.updated_at ?? null,
         expires_at: row?.expires_at ?? null,
+        renewable: !!row?.encrypted_refresh_token,
         scopes: row?.scopes ?? [],
       };
     });
