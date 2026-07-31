@@ -18,6 +18,7 @@
 | CTA 통합 Vitest | PASS | 2026-07-31 clean branch 기준 1 file / 1 test PASS |
 | 전체 Vitest | PASS | 2026-07-31 clean branch `npm run test` 기준 630 files / 4,889 tests PASS |
 | 분석 E2E | PASS | clean branch에서 분석 debug 서버 1회 정상 종료 확인. 재현 로그 확보용 백그라운드 서버 실행은 현재 로컬 정책에 의해 차단되어 운영 브라우저 검증으로 보강 |
+| Migration safety | PASS | `node scripts/migration-safety-checker.js supabase/migrations/20260729085109_analytics_measurement_foundation.sql` 기준 issues 0 |
 | Production build | PASS | 2026-07-31 clean branch `npm run build` 통과. 로컬 sitemap 생성 중 blog DB 미연결 경고는 기존 환경성 경고이며 build 결과는 PASS |
 | Production deploy build | PASS | 기존 운영 배포 기준 Vercel production deployment Ready |
 

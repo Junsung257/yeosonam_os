@@ -43,6 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_analytics_server_events_source
 CREATE INDEX IF NOT EXISTS idx_analytics_server_events_event_time
   ON public.analytics_server_events(event_name, occurred_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_analytics_server_events_product_id
+  ON public.analytics_server_events(product_id);
+
 ALTER TABLE public.analytics_server_events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "analytics_server_events_service" ON public.analytics_server_events;
 CREATE POLICY "analytics_server_events_service"
@@ -82,6 +85,9 @@ CREATE TABLE IF NOT EXISTS public.analytics_delivery_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_analytics_delivery_jobs_ready
   ON public.analytics_delivery_jobs(destination, status, next_attempt_at, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_delivery_jobs_server_event_id
+  ON public.analytics_delivery_jobs(server_event_id);
 
 ALTER TABLE public.analytics_delivery_jobs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "analytics_delivery_jobs_service" ON public.analytics_delivery_jobs;
