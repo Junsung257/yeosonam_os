@@ -30,6 +30,34 @@ interface ClobeIntegrationState {
   tenantId: string | null;
 }
 
+interface ClobeSyncResult {
+  inserted: number;
+  skipped?: number;
+  duplicates: number;
+  merged?: number;
+  errors: number;
+  matched: number;
+  memoUpdated?: number;
+  memoChangedReview?: number;
+  fetched?: number;
+  normalized?: number;
+  firstError?: string | null;
+  from?: string;
+  to?: string;
+  mcp?: {
+    toolName?: string | null;
+    toolNames?: string[];
+    attempts?: Array<{
+      toolName: string;
+      extracted: number;
+      resultKeys?: string[];
+      contentTypes?: string[];
+      error?: string;
+    }>;
+  };
+  rawSampleKeys?: string[][];
+}
+
 const CLOBE_SYNC_DEFAULT_DAYS = 90;
 
 function formatDateInput(date: Date): string {
@@ -536,7 +564,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importing, setImporting] = useState(false);
   const [clobeSyncing, setClobeSyncing] = useState(false);
   const [clobeSyncWindow, setClobeSyncWindow] = useState(() => getDefaultClobeSyncWindow());
-  const [clobeSyncResult, setClobeSyncResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; memoUpdated?: number; memoChangedReview?: number; normalized?: number; firstError?: string | null; from?: string; to?: string } | null>(null);
+  const [clobeSyncResult, setClobeSyncResult] = useState<ClobeSyncResult | null>(null);
   const [clobeIntegration, setClobeIntegration] = useState<ClobeIntegrationState>({
     loading: true,
     connected: false,
@@ -1021,7 +1049,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         return;
       }
       setClobeSyncResult(data);
-      showToast(`Clobe sync: new ${data.inserted || 0}, matched ${data.matched || 0}, memo review ${data.memoChangedReview || 0}`);
+      showToast(`Clobe sync: source ${data.fetched || 0}, recognized ${data.normalized || 0}, new ${data.inserted || 0}, matched ${data.matched || 0}`);
       load(); loadErp(); loadOpsQueue(); loadClobeIntegration();
     } catch {
       showToast('Clobe sync failed', 'err');
@@ -1374,12 +1402,49 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         </div>
       </div>
 
-      {clobeSyncResult && (
-        <div className="mb-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-          Clobe sync result: range {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to}, normalized {clobeSyncResult.normalized ?? 0}, new {clobeSyncResult.inserted}, matched {clobeSyncResult.matched}, memo updated {clobeSyncResult.memoUpdated ?? 0}, memo review {clobeSyncResult.memoChangedReview ?? 0}, merged {clobeSyncResult.merged ?? 0}, duplicates {clobeSyncResult.duplicates}, skipped {clobeSyncResult.skipped ?? 0}, errors {clobeSyncResult.errors}
-          {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
-        </div>
-      )}
+      {clobeSyncResult && (() => {
+        const fetched = clobeSyncResult.fetched ?? 0;
+        const normalized = clobeSyncResult.normalized ?? 0;
+        const hasRows = fetched > 0 || normalized > 0;
+        const hasMappedRows = normalized > 0;
+        const attempts = clobeSyncResult.mcp?.attempts ?? [];
+        const attemptedTools = attempts.map(attempt => `${attempt.toolName}(${attempt.extracted})`).join(', ');
+        const tone = hasRows && !hasMappedRows
+          ? 'border-amber-200 bg-amber-50 text-amber-900'
+          : hasRows
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-amber-200 bg-amber-50 text-amber-900';
+
+        return (
+          <div className={`mb-3 rounded border px-3 py-2 text-[11px] ${tone}`}>
+            <div className="font-semibold">
+              Clobe sync result: range {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to}, Clobe 원본 {fetched}건, OS 인식 {normalized}건, new {clobeSyncResult.inserted}, matched {clobeSyncResult.matched}, memo updated {clobeSyncResult.memoUpdated ?? 0}, memo review {clobeSyncResult.memoChangedReview ?? 0}, merged {clobeSyncResult.merged ?? 0}, duplicates {clobeSyncResult.duplicates}, skipped {clobeSyncResult.skipped ?? 0}, errors {clobeSyncResult.errors}
+              {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
+            </div>
+            {!hasRows && (
+              <div className="mt-1">
+                Clobe 연결은 되었지만, 이 기간에 MCP가 OS로 넘긴 입출금 원본이 0건입니다. 클로브 메모가 일반 메모장에만 있고 입출금/통장 목록 도구로 노출되지 않았거나, 클로브 쪽 기간·계좌 필터 결과가 비어있는 상태입니다.
+              </div>
+            )}
+            {hasRows && !hasMappedRows && (
+              <div className="mt-1">
+                Clobe 원본은 왔지만 OS 필드 매핑에 실패했습니다. 날짜, 금액, 입금/출금, 메모 필드명이 클로브 응답과 달라서 매핑 보강이 필요합니다.
+              </div>
+            )}
+            {(attemptedTools || clobeSyncResult.mcp?.toolName) && (
+              <div className="mt-1 opacity-80">
+                MCP tool: {clobeSyncResult.mcp?.toolName ?? '-'}
+                {attemptedTools ? ` / attempts: ${attemptedTools}` : ''}
+              </div>
+            )}
+            {clobeSyncResult.rawSampleKeys?.length ? (
+              <div className="mt-1 opacity-80">
+                raw keys: {clobeSyncResult.rawSampleKeys.map(keys => keys.join('|')).join(' / ')}
+              </div>
+            ) : null}
+          </div>
+        );
+      })()}
 
       <PaymentOpsQueue
         activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
