@@ -20,11 +20,13 @@ export interface ClobeMcpFetchResult {
   toolName: string | null;
   toolNames: string[];
   attempts: ClobeMcpFetchAttempt[];
+  bankToolAvailable: boolean;
 }
 
 export interface ClobeMcpFetchAttempt {
   toolName: string;
   extracted: number;
+  normalized: number;
   resultKeys: string[];
   contentTypes: string[];
   error?: string;
@@ -33,6 +35,9 @@ export interface ClobeMcpFetchAttempt {
 interface McpTool {
   name: string;
   description?: string;
+  inputSchema?: {
+    properties?: Record<string, unknown>;
+  };
 }
 
 interface McpCallContext {
@@ -199,6 +204,7 @@ export function normalizeClobeBankTransactions(payload: unknown): ClobeNormalize
 export function extractTransactionArray(payload: unknown): unknown[] {
   if (payload == null) return [];
   if (Array.isArray(payload)) return payload;
+  if (typeof payload === 'string') return extractTabSeparatedRows(payload);
   const record = asRecord(payload);
   if (record.structuredContent != null) {
     const structured = extractTransactionArray(record.structuredContent);
@@ -213,21 +219,52 @@ export function extractTransactionArray(payload: unknown): unknown[] {
           const rows = extractTransactionArray(parsed);
           if (rows.length > 0) return rows;
         } catch {
-          // Ignore non-JSON MCP text content.
+          const rows = extractTabSeparatedRows(text);
+          if (rows.length > 0) return rows;
         }
       }
     }
   }
-  for (const key of ['transactions', 'data', 'items', 'rows', 'results']) {
+  for (const key of [
+    'transactions',
+    'bankTransactions',
+    'bank_transactions',
+    'entries',
+    'records',
+    'ledgerEntries',
+    'journalEntries',
+    'data',
+    'items',
+    'rows',
+    'results',
+  ]) {
     const value = record[key];
     if (Array.isArray(value)) return value;
     const nested = asRecord(value);
-    for (const nestedKey of ['transactions', 'items', 'rows', 'results']) {
+    for (const nestedKey of ['transactions', 'bankTransactions', 'bank_transactions', 'entries', 'records', 'items', 'rows', 'results']) {
       const nestedValue = nested[nestedKey];
       if (Array.isArray(nestedValue)) return nestedValue;
     }
   }
   return [];
+}
+
+function extractTabSeparatedRows(text: string): Record<string, unknown>[] {
+  return text
+    .replace(/```(?:text|tsv|csv)?/gi, '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => /^\d{4}[-/.]\d{2}[-/.]\d{2}[ T]\d{2}:\d{2}/.test(line) && /\t/.test(line))
+    .map(line => {
+      const parts = line.split('\t').map(part => part.trim());
+      return {
+        transactionDate: parts[0],
+        accountNumber: parts[1] || undefined,
+        counterpartyName: parts[3] || parts[2] || '',
+        amount: parts[4] || undefined,
+        memo: parts[5] || '',
+      };
+    });
 }
 
 function summarizeMcpResult(payload: unknown): Pick<ClobeMcpFetchAttempt, 'resultKeys' | 'contentTypes'> {
@@ -244,30 +281,39 @@ function summarizeMcpResult(payload: unknown): Pick<ClobeMcpFetchAttempt, 'resul
   };
 }
 
-function rankTransactionTools(tools: McpTool[], preferred?: string | null): McpTool[] {
+function toolText(tool: McpTool): string {
+  return `${tool.name} ${tool.description ?? ''}`.toLowerCase();
+}
+
+function isExplicitBankTool(tool: McpTool): boolean {
+  const text = toolText(tool);
+  return /(bank|bank_account|account_statement|statement|transaction_history|transactions|deposit|withdraw|cash_flow|cashflow|입출금|통장|거래내역|입금|출금|은행)/.test(text);
+}
+
+export function rankTransactionTools(tools: McpTool[], preferred?: string | null): McpTool[] {
   const candidates = tools
     .map(tool => ({
       tool,
-      text: `${tool.name} ${tool.description ?? ''}`.toLowerCase(),
+      text: toolText(tool),
     }))
     .filter(({ text }) => {
-      const relevant = /(bank|account|transaction|ledger|cash|payment|deposit|withdraw|memo|note|message|slack|통장|거래|입출금|입금|출금|메모)/.test(text);
+      const irrelevant = /(tax|invoice|revenue|card_billing|credit_card|세금|계산서|매출|카드|청구)/.test(text);
       const unsafe = /(create|update|delete|remove|write|send|post|생성|수정|삭제|등록|전송)/.test(text);
-      return relevant && !unsafe;
+      return isExplicitBankTool({ name: text }) && !irrelevant && !unsafe;
     })
     .sort((a, b) => {
       const aPreferred = preferred && a.tool.name === preferred ? 100 : 0;
       const bPreferred = preferred && b.tool.name === preferred ? 100 : 0;
-      const aExact = /(transaction|ledger|payment|deposit|withdraw|거래|입출금|입금|출금)/.test(a.text) ? 10 : 0;
-      const bExact = /(transaction|ledger|payment|deposit|withdraw|거래|입출금|입금|출금)/.test(b.text) ? 10 : 0;
-      const aRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(a.text) ? 1 : 0;
-      const bRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(b.text) ? 1 : 0;
+      const aExact = isExplicitBankTool(a.tool) ? 50 : 0;
+      const bExact = isExplicitBankTool(b.tool) ? 50 : 0;
+      const aRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(a.text) ? 5 : 0;
+      const bRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(b.text) ? 5 : 0;
       return (bPreferred + bExact + bRead) - (aPreferred + aExact + aRead);
     });
   return candidates.map(({ tool }) => tool);
 }
 
-function chooseTransactionTool(tools: McpTool[], preferred?: string | null): string | null {
+export function chooseTransactionTool(tools: McpTool[], preferred?: string | null): string | null {
   return rankTransactionTools(tools, preferred)[0]?.name ?? null;
 }
 
@@ -320,15 +366,32 @@ async function initializeMcp(ctx: McpCallContext) {
   await mcpCall(ctx, 'notifications/initialized', {}, true);
 }
 
-function buildToolArguments(options: ClobeMcpFetchOptions, toolName?: string): Record<string, unknown> {
-  const text = toolName?.toLowerCase() ?? '';
-  return {
-    ...(options.from ? { from: options.from, startDate: options.from, start_date: options.from } : {}),
-    ...(options.to ? { to: options.to, endDate: options.to, end_date: options.to } : {}),
-    ...(options.accountNumber ? { accountNumber: options.accountNumber, account_number: options.accountNumber } : {}),
-    ...(options.limit ? { limit: options.limit } : {}),
-    ...(/memo|note|message|slack|메모/.test(text) ? { query: '통장 입금 출금 입출금 정산 여행 메모' } : {}),
+function buildToolArguments(options: ClobeMcpFetchOptions, tool?: McpTool): Record<string, unknown> {
+  const text = toolText(tool ?? { name: '' });
+  const properties = Object.keys(tool?.inputSchema?.properties ?? {});
+  const args: Record<string, unknown> = {};
+  const setAliases = (aliases: string[], value: string | number | undefined) => {
+    if (value == null) return;
+    const alias = properties.find(property => aliases.includes(property));
+    if (alias) args[alias] = value;
   };
+
+  if (properties.length === 0) {
+    if (options.from) Object.assign(args, { from: options.from, startDate: options.from, start_date: options.from });
+    if (options.to) Object.assign(args, { to: options.to, endDate: options.to, end_date: options.to });
+    if (options.accountNumber) Object.assign(args, { accountNumber: options.accountNumber, account_number: options.accountNumber });
+    if (options.limit) args.limit = options.limit;
+  } else {
+    setAliases(['from', 'startDate', 'start_date', 'dateFrom', 'date_from', 'since'], options.from);
+    setAliases(['to', 'endDate', 'end_date', 'dateTo', 'date_to', 'until'], options.to);
+    setAliases(['accountNumber', 'account_number', 'accountNo', 'account_no'], options.accountNumber);
+    setAliases(['limit', 'pageSize', 'page_size'], options.limit);
+  }
+
+  if (/(memo|note|message|slack|메모|노트|메시지)/.test(text)) {
+    setAliases(['query', 'search', 'q', 'keyword', 'text'], '통장 입출금 거래내역 입금 출금 정산 메모');
+  }
+  return args;
 }
 
 export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOptions = {}): Promise<ClobeMcpFetchResult> {
@@ -356,31 +419,42 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   const rankedTools = rankTransactionTools(tools, preferred);
   const selectedToolName = chooseTransactionTool(tools, preferred);
   if (!selectedToolName) {
-    throw new Error(`No Clobe MCP transaction tool found. Available tools: ${toolNames.join(', ') || 'none'}`);
+    return {
+      transactions: [],
+      toolName: null,
+      toolNames,
+      attempts: [],
+      bankToolAvailable: false,
+    };
   }
 
   const attempts: ClobeMcpFetchAttempt[] = [];
   let lastError: Error | null = null;
-  for (const tool of rankedTools.slice(0, 5)) {
+  let firstRawTransactions: Record<string, unknown>[] = [];
+  for (const tool of rankedTools.slice(0, 12)) {
     try {
       const callResult = await mcpCall(ctx, 'tools/call', {
         name: tool.name,
-        arguments: buildToolArguments(options, tool.name),
+        arguments: buildToolArguments(options, tool),
       });
       const transactions = extractTransactionArray(callResult).filter(item => typeof item === 'object' && item !== null) as Record<string, unknown>[];
+      const normalized = transactions.filter(item => normalizeClobeBankTransaction(item) != null);
+      if (transactions.length > 0 && firstRawTransactions.length === 0) firstRawTransactions = transactions;
       attempts.push({
         toolName: tool.name,
         extracted: transactions.length,
+        normalized: normalized.length,
         ...summarizeMcpResult(callResult),
       });
-      if (transactions.length > 0) {
-        return { transactions, toolName: tool.name, toolNames, attempts };
+      if (normalized.length > 0) {
+        return { transactions: normalized, toolName: tool.name, toolNames, attempts, bankToolAvailable: true };
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Clobe MCP tool call failed');
       attempts.push({
         toolName: tool.name,
         extracted: 0,
+        normalized: 0,
         resultKeys: [],
         contentTypes: [],
         error: lastError.message,
@@ -391,5 +465,11 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   if (lastError && attempts.every(attempt => attempt.error)) {
     throw lastError;
   }
-  return { transactions: [], toolName: attempts[0]?.toolName ?? selectedToolName, toolNames, attempts };
+  return {
+    transactions: firstRawTransactions,
+    toolName: attempts[0]?.toolName ?? selectedToolName,
+    toolNames,
+    attempts,
+    bankToolAvailable: true,
+  };
 }

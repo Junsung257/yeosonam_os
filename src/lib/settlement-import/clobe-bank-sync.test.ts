@@ -3,6 +3,8 @@ import {
   extractTransactionArray,
   normalizeClobeBankTransaction,
   normalizeClobeBankTransactions,
+  chooseTransactionTool,
+  rankTransactionTools,
 } from './clobe-bank-sync';
 
 describe('clobe bank sync normalization', () => {
@@ -44,7 +46,38 @@ describe('clobe bank sync normalization', () => {
   it('extracts transaction arrays from common MCP result envelopes', () => {
     expect(extractTransactionArray({ data: { transactions: [{ id: 'a' }] } })).toEqual([{ id: 'a' }]);
     expect(extractTransactionArray({ items: [{ id: 'b' }] })).toEqual([{ id: 'b' }]);
+    expect(extractTransactionArray({ entries: [{ id: 'entry-1' }] })).toEqual([{ id: 'entry-1' }]);
     expect(extractTransactionArray({ content: [{ type: 'text', text: '{"transactions":[{"id":"c"}]}' }] })).toEqual([{ id: 'c' }]);
+  });
+
+  it('parses tab-separated bank rows returned as MCP text', () => {
+    const rows = extractTransactionArray({
+      content: [{
+        type: 'text',
+        text: '2026-07-09 10:12:48\t100038454128\t\t정지해\t698000\t260715_정지해_투어폰',
+      }],
+    });
+
+    expect(normalizeClobeBankTransaction(rows[0])).toMatchObject({
+      accountNumber: '100038454128',
+      counterpartyName: '정지해',
+      depositAmount: 698000,
+      memo: '260715_정지해_투어폰',
+    });
+  });
+
+  it('prioritizes bank transaction tools over general ledger tools', () => {
+    const tools = [
+      { name: 'get_journal_ledger', description: 'Read accounting journal ledger' },
+      { name: 'get_monthly_revenue', description: 'Read monthly revenue' },
+      { name: 'get_bank_transactions', description: 'Read bank account transactions' },
+    ];
+
+    expect(chooseTransactionTool(tools)).toBe('get_bank_transactions');
+    expect(rankTransactionTools(tools).map(tool => tool.name)).toEqual([
+      'get_bank_transactions',
+    ]);
+    expect(chooseTransactionTool(tools.filter(tool => tool.name !== 'get_bank_transactions'))).toBeNull();
   });
 
   it('returns normalization errors for incomplete rows without throwing', () => {
