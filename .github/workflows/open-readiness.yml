@@ -55,6 +55,7 @@ jobs:
       OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT: '50'
       OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS: '20000'
       OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS: '240000'
+      OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS: '90000'
       MARKETING_AUTOMATION_TIMEOUT_MS: '120000'
       MARKETING_RUNTIME_HARD_TIMEOUT_MS: '300000'
     steps:
@@ -217,4 +218,10 @@ jobs:
             .tmp/operational-readiness-apply-inputs.mjs
             .tmp/operational-readiness-vercel-env.mjs
             .tmp/blog-search-quality-daily-*.json
+            !.tmp/operational-readiness-discovered.env
+            !.tmp/operational-readiness-apply-inputs.sh
+            !.tmp/operational-readiness-vercel-env.sh
+            !.tmp/operational-readiness-apply-inputs.mjs
+            !.tmp/operational-readiness-vercel-env.mjs
           if-no-files-found: ignore
+          include-hidden-files: true
