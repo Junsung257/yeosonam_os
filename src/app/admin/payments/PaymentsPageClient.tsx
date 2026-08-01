@@ -54,8 +54,17 @@ interface ClobeSyncResult {
       normalized?: number;
       resultKeys?: string[];
       contentTypes?: string[];
+      resultShape?: unknown;
       error?: string;
     }>;
+    scrapingStatus?: Array<{
+      assetType: string | null;
+      status: string | null;
+      scrapedAt: string | null;
+      failureCategory: string | null;
+      failureMessage: string | null;
+    }>;
+    scrapingStatusError?: string;
   };
   rawSampleKeys?: string[][];
 }
@@ -1410,6 +1419,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         const hasRows = fetched > 0 || normalized > 0;
         const hasMappedRows = normalized > 0;
         const attempts = clobeSyncResult.mcp?.attempts ?? [];
+        const scrapingStatus = clobeSyncResult.mcp?.scrapingStatus ?? [];
         const attemptedTools = attempts.map(attempt => `${attempt.toolName}(${attempt.extracted}/${attempt.normalized ?? 0})`).join(', ');
         const tone = hasRows && !hasMappedRows
           ? 'border-amber-200 bg-amber-50 text-amber-900'
@@ -1429,6 +1439,22 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   ? 'Clobe 로그인은 정상이나 통장/입출금 조회 도구가 OS에 공개되지 않았습니다. Clobe 쪽에서 은행 거래 데이터 연결 또는 해당 MCP 도구 권한을 먼저 활성화해야 합니다.'
                   : 'Clobe 연결은 되었지만, 이 기간에 MCP가 OS로 넘긴 입출금 원본이 0건입니다. 클로브 메모가 일반 메모장에만 있고 입출금/통장 목록 도구로 노출되지 않았거나, 클로브 쪽 기간·계좌 필터 결과가 비어있는 상태입니다.'}
               </div>
+            )}
+            {!hasRows && scrapingStatus.length > 0 && (
+              <div className="mt-1">
+                Clobe 수집 상태: {scrapingStatus.map(item => {
+                  const asset = item.assetType ?? '자산';
+                  const collectedAt = item.scrapedAt ? ` · 마지막 수집 ${item.scrapedAt}` : '';
+                  const failure = item.failureCategory || item.failureMessage
+                    ? ` · 오류 ${item.failureCategory ?? item.failureMessage}`
+                    : '';
+                  return `${asset} ${item.status ?? '상태 미확인'}${collectedAt}${failure}`;
+                }).join(' / ')}
+                {' · 데이터가 오래됐거나 오류라면 Clobe 앱에서 데이터 최신화 후 다시 동기화하세요.'}
+              </div>
+            )}
+            {!hasRows && clobeSyncResult.mcp?.scrapingStatusError && (
+              <div className="mt-1">Clobe 수집 상태 확인 실패: {clobeSyncResult.mcp.scrapingStatusError}</div>
             )}
             {hasRows && !hasMappedRows && (
               <div className="mt-1">

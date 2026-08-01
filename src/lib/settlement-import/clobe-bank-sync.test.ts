@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractTransactionArray,
+  extractClobeScrapingStatus,
   normalizeClobeBankTransaction,
   normalizeClobeBankTransactions,
   chooseTransactionTool,
@@ -67,6 +68,30 @@ describe('clobe bank sync normalization', () => {
     expect(normalizeClobeAccountId(456)).toBe(456);
     expect(normalizeClobeAccountId(null)).toBeNull();
     expect(() => normalizeClobeAccountId('account-123')).toThrow('positive integer');
+  });
+
+  it('extracts safe Clobe scraping freshness diagnostics', () => {
+    const statuses = extractClobeScrapingStatus({
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          assets: [{
+            assetType: 'BANK_ACCOUNT',
+            status: 'ERROR',
+            scrapedAt: '2026-07-30T01:00:00Z',
+            failureCategory: 'CERTIFICATE_EXPIRED',
+          }],
+        }),
+      }],
+    });
+
+    expect(statuses).toEqual([{
+      assetType: 'BANK_ACCOUNT',
+      status: 'ERROR',
+      scrapedAt: '2026-07-30T01:00:00Z',
+      failureCategory: 'CERTIFICATE_EXPIRED',
+      failureMessage: null,
+    }]);
   });
 
   it('extracts transaction arrays from common MCP result envelopes', () => {
