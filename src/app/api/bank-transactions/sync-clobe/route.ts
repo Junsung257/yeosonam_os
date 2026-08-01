@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     const window = defaultDateWindow();
     const from = typeof body.from === 'string' && body.from ? body.from : window.from;
     const to = typeof body.to === 'string' && body.to ? body.to : window.to;
-    const accountNumber = await resolveAccountNumber(body.accountNumber);
+    let accountNumber = await resolveAccountNumber(body.accountNumber);
     const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(1000, Number(body.limit))) : 200;
     const tenantId = await resolveTenantId(body.tenant_id ?? body.tenantId);
 
@@ -129,6 +129,9 @@ export async function POST(request: NextRequest) {
           },
           { status: 409 },
         );
+      }
+      if (!accountNumber && typeof token.metadata?.bankAccountNumber === 'string') {
+        accountNumber = token.metadata.bankAccountNumber.trim() || undefined;
       }
       const fetched = await fetchClobeMcpBankTransactions({
         from,
