@@ -101,6 +101,43 @@ describe('clobe bank sync normalization', () => {
     expect(extractTransactionArray({ content: [{ type: 'text', text: '{"transactions":[{"id":"c"}]}' }] })).toEqual([{ id: 'c' }]);
   });
 
+  it('extracts and normalizes the live Clobe content-array response', () => {
+    const payload = {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          content: [{
+            transactionId: 987,
+            accountId: 123,
+            transactionAt: '2026-07-09 10:12:48',
+            transactionName: '',
+            transactionDescription: 'payer-a',
+            transactionType: 'IN',
+            inAmount: 698000,
+            outAmount: 0,
+            accountNumber: '100038454128',
+            memo: '260715_customer_tourphone',
+          }],
+          totalElements: 1,
+          hasNext: false,
+          nextCursor: null,
+        }),
+      }],
+      isError: false,
+    };
+
+    const rows = extractTransactionArray(payload);
+    expect(rows).toHaveLength(1);
+    expect(normalizeClobeBankTransaction(rows[0])).toMatchObject({
+      receivedAt: '2026-07-09T10:12:48+09:00',
+      counterpartyName: 'payer-a',
+      depositAmount: 698000,
+      withdrawAmount: 0,
+      memo: '260715_customer_tourphone',
+      externalTransactionId: '987',
+    });
+  });
+
   it('parses tab-separated bank rows returned as MCP text', () => {
     const rows = extractTransactionArray({
       content: [{
