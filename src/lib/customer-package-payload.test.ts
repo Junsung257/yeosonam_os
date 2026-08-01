@@ -25,6 +25,7 @@ describe('customer package client payload', () => {
       net_price: 900_000,
       usd_cost: 700,
       margin_rate: 0.2,
+      expected_contribution_margin: 120000,
       selling_price: 1_290_000,
       departing_location_id: 'dep-1',
       catalog_id: 'catalog-1',
@@ -64,6 +65,7 @@ describe('customer package client payload', () => {
     expect(sanitized).not.toHaveProperty('net_price');
     expect(sanitized).not.toHaveProperty('usd_cost');
     expect(sanitized).not.toHaveProperty('margin_rate');
+    expect(sanitized).not.toHaveProperty('expected_contribution_margin');
     expect(sanitized).not.toHaveProperty('selling_price');
     expect(sanitized).not.toHaveProperty('departing_location_id');
     expect(sanitized).not.toHaveProperty('catalog_id');

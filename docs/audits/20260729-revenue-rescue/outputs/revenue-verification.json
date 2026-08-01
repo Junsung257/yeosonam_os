@@ -1,0 +1,99 @@
+{
+  "observedAt": "2026-07-30T05:57:57Z",
+  "branch": "codex/revenue-rescue-p0-revenue",
+  "stackBaseCommit": "80110967",
+  "focusedTests": {
+    "command": "node C:\\dev\\yeosonam-os\\node_modules\\vitest\\vitest.mjs run --config vitest.revenue-rescue.config.ts <22 focused P0 test files>",
+    "filesPassed": 22,
+    "testsPassed": 93,
+    "failed": 0
+  },
+  "revenueSubset": {
+    "filesPassed": 10,
+    "testsPassed": 46,
+    "coverage": [
+      "canonical offer readiness",
+      "attribution validation and dedupe",
+      "lead submission and response unwrapping",
+      "operator action priority",
+      "public payload margin isolation",
+      "landing projection"
+    ]
+  },
+  "changedFileLint": {
+    "command": "eslint <changed JS/TS files> --max-warnings=0",
+    "exitCode": 0
+  },
+  "changedAreaTypecheck": {
+    "command": "node C:\\dev\\yeosonam-os\\node_modules\\typescript\\bin\\tsc -p tsconfig.revenue-rescue.json --pretty false",
+    "exitCode": 0
+  },
+  "productionDependencyAudit": {
+    "command": "npm audit --omit=dev --json",
+    "total": 0,
+    "high": 0,
+    "critical": 0
+  },
+  "migrationSafety": {
+    "command": "node scripts/migration-safety-checker.js supabase/migrations/20260729112950_extend_customer_events_for_revenue_funnel.sql supabase/migrations/20260729114849_add_offer_verification_fields.sql",
+    "filesChecked": 2,
+    "issues": 0,
+    "exitCode": 0
+  },
+  "databaseIntegration": {
+    "status": "BLOCKED",
+    "reason": "Local Supabase/Docker runtime is unavailable; no production DDL was applied.",
+    "contractTests": [
+      "supabase/tests/revenue_funnel_events.sql",
+      "supabase/tests/revenue_offer_verification.sql"
+    ]
+  },
+  "adminDashboardReview": {
+    "status": "PARTIAL",
+    "passed": [
+      "no revenue KPI was added or recomputed",
+      "one-action queue has a skeleton, actionable empty state, inline error, and admin guard",
+      "resolved workflow tasks are excluded from the active queue"
+    ],
+    "blocked": [
+      "audit:api-drift and audit:drift skipped because Supabase URL/service-role credentials are not configured",
+      "visual regression could not run because the shared Next.js dependency junction is inconsistent"
+    ]
+  },
+  "publicRoutePlaywright": {
+    "status": "BLOCKED",
+    "reason": "The shared worktree node_modules/next junction resolves to another worktree and produced a mixed-version MODULE_NOT_FOUND during local Next.js route compilation.",
+    "testFile": "tests/e2e/revenue-rescue-public-routes.spec.ts",
+    "serverResponse": 500,
+    "productionBaselineAlreadyCaptured": true
+  },
+  "previewBrowser": {
+    "status": "PASS",
+    "deploymentId": "dpl_2MNjPAuL4hYsGk53PUAt5XQM4ii8",
+    "deploymentCommit": "292f4f708a85826f10dee7d7a2ea2a5db3c1794c",
+    "passed": [
+      "anonymous home and packages access",
+      "private-tour quote and Kakao CTAs do not point to admin login",
+      "group inquiry public access",
+      "group mock reception, 120+, and same-day response claims absent",
+      "group honest manual-review copy and quote form present",
+      "admin login redirect",
+      "blocked offer candidate not exposed"
+    ],
+    "finding": "The pre-fix group page exposed mock reception activity, an unsupported 120+ count, and same-day response claims.",
+    "branchResult": "Removed, guarded by src/app/group/public-claims.test.ts, and verified on the post-fix preview."
+  },
+  "productionReadiness": {
+    "status": "PASS_AFTER_PRODUCTION_RECOVERY",
+    "workflowRun": 30519118372,
+    "completedAt": "2026-07-30T10:01:16Z",
+    "productionDeploymentId": "dpl_96r5cJHbvztb2ZUeEwV6VBhWpsej",
+    "productionCommit": "c3d2e97c514ba8ddce65883dc281a652ea58b602",
+    "notes": "Two earlier attempts failed on unrelated production blog collection HTTP 500s. Blog fixes #1000 and #1001 replaced production; the rerun passed."
+  },
+  "offer": {
+    "status": "BLOCKED_OFFER_CANDIDATE",
+    "publicSnapshotCreated": false,
+    "productionMutation": false
+  }
+}

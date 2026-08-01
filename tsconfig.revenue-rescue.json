@@ -33,6 +33,21 @@
       ],
       "@opentelemetry/api": [
         "C:/dev/yeosonam-os/node_modules/@opentelemetry/api"
+      ],
+      "@playwright/test": [
+        "C:/dev/yeosonam-os/node_modules/@playwright/test"
+      ],
+      "html2canvas": [
+        "C:/dev/yeosonam-os/node_modules/html2canvas"
+      ],
+      "zustand": [
+        "C:/dev/yeosonam-os/node_modules/zustand"
+      ],
+      "@upstash/ratelimit": [
+        "C:/dev/yeosonam-os/node_modules/@upstash/ratelimit"
+      ],
+      "@upstash/redis": [
+        "C:/dev/yeosonam-os/node_modules/@upstash/redis"
       ]
     }
   },
@@ -66,12 +81,37 @@
     "src/app/api/join/[token]/route.ts",
     "src/app/api/leads/route.ts",
     "src/app/api/leads/error-boundary.test.ts",
+    "src/app/api/leads/route.test.ts",
     "src/app/api/passport/ocr/route.ts",
+    "src/app/api/revenue-events/route.ts",
+    "src/app/api/revenue-events/route.test.ts",
     "src/app/api/public-pii-boundary.test.ts",
     "src/app/join/[token]/page.tsx",
     "src/app/passport-assist/page.tsx",
+    "src/app/group/page.tsx",
+    "src/app/group/GroupLandingClient.tsx",
+    "src/app/group/public-claims.test.ts",
     "src/app/private-tour/page.tsx",
-    "src/app/private-tour/public-claims.test.ts"
+    "src/app/private-tour/public-claims.test.ts",
+    "src/app/admin/leads/LeadsPageClient.tsx",
+    "src/app/api/admin/leads/route.ts",
+    "src/app/lp/[id]/LandingClient.tsx",
+    "src/app/lp/[id]/revenue-funnel-boundary.test.ts",
+    "src/lib/canonical-revenue-offer.ts",
+    "src/lib/canonical-revenue-offer.test.ts",
+    "src/lib/customer-package-payload.ts",
+    "src/lib/customer-package-payload.test.ts",
+    "src/lib/map-travel-package-to-lp.ts",
+    "src/lib/map-travel-package-to-lp.test.ts",
+    "src/lib/map-travel-package-to-lp-p1.test.ts",
+    "src/lib/operator-action-queue.ts",
+    "src/lib/operator-action-queue.test.ts",
+    "src/lib/revenue-funnel-client.ts",
+    "src/lib/revenue-funnel-events.ts",
+    "src/lib/revenue-funnel-events.test.ts",
+    "src/lib/submitPipeline.ts",
+    "tests/unit/lib/submit-pipeline.spec.ts",
+    "tests/e2e/revenue-rescue-public-routes.spec.ts"
   ],
   "exclude": [
     "node_modules.partial-*",

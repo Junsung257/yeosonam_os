@@ -72,9 +72,9 @@ async function postLead(payload: LeadPayload): Promise<LeadSubmitResult> {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(body?.error ?? `HTTP ${res.status}`);
+    throw new Error(body?.error?.message ?? body?.error ?? `HTTP ${res.status}`);
   }
-  return body as LeadSubmitResult;
+  return (body?.data ?? body) as LeadSubmitResult;
 }
 
 export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Promise<LeadSubmitResult> {

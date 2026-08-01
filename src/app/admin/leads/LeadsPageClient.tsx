@@ -19,7 +19,7 @@ export default function LeadsPageClient() {
     try {
       const res = await fetch('/api/admin/leads', { cache: 'no-store' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? '조회 실패');
+      if (!res.ok) throw new Error(data?.error?.message ?? data?.error ?? '조회 실패');
       setRows(data.rows ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 실패');
@@ -54,8 +54,10 @@ export default function LeadsPageClient() {
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">예약문의 / 상담신청</h1>
-          <p className="text-sm text-gray-500 mt-1">모바일 랜딩 + 챗봇 문의 통합 노출 (최신순, 500건 한도)</p>
+          <h1 className="text-2xl font-bold text-gray-900">오늘 처리할 일</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            신규 상담부터 입금 확인까지, 우선순위와 다음 행동을 한 화면에 표시합니다.
+          </p>
         </div>
         <button type="button"
           onClick={load}
@@ -81,7 +83,13 @@ export default function LeadsPageClient() {
         ))}
       </div>
 
-      {loading && <div className="py-12 text-center text-gray-500">불러오는 중…</div>}
+      {loading && (
+        <div className="rounded-lg border border-gray-100 bg-white p-4 space-y-3" aria-label="업무 큐 불러오는 중">
+          {[0, 1, 2, 3].map(row => (
+            <div key={row} className="h-12 animate-pulse rounded-lg bg-gray-100" />
+          ))}
+        </div>
+      )}
       {error && (
         <div className="py-6 text-center text-red-600 bg-red-50 rounded-lg">
           <p className="font-semibold">조회 실패</p>
@@ -95,6 +103,7 @@ export default function LeadsPageClient() {
            filter === 'qa' ? '아직 QA 챗봇 문의가 없습니다.' :
            filter === 'rfq' ? '아직 단체 RFQ가 없습니다.' :
            '예약문의가 없습니다.'}
+          <p className="text-sm mt-2">공개 상품의 상담 CTA와 리드 저장 상태를 먼저 확인해 주세요.</p>
         </div>
       )}
 
@@ -104,13 +113,14 @@ export default function LeadsPageClient() {
             <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-3 py-3 text-left">구분</th>
+                <th className="px-3 py-3 text-left">우선순위</th>
                 <th className="px-3 py-3 text-left">접수시간</th>
                 <th className="px-3 py-3 text-left">이름</th>
                 <th className="px-3 py-3 text-left">연락처</th>
                 <th className="px-3 py-3 text-left">상품/문의</th>
                 <th className="px-3 py-3 text-left">희망일</th>
                 <th className="px-3 py-3 text-left">유입</th>
-                <th className="px-3 py-3 text-left">상태</th>
+                <th className="px-3 py-3 text-left">다음 행동</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -126,6 +136,10 @@ export default function LeadsPageClient() {
                     }`}>
                       {r.source === 'lead' ? '폼' : r.source === 'qa' ? 'QA' : 'RFQ'}
                     </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="font-semibold text-gray-900">{r.queue_label}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{r.waiting_minutes}분 경과</div>
                   </td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
                   <td className="px-3 py-3 font-medium text-gray-900">{r.name ?? '-'}</td>
@@ -151,9 +165,18 @@ export default function LeadsPageClient() {
                     {r.channel && !r.utm_source && <div>{r.channel}</div>}
                   </td>
                   <td className="px-3 py-3">
-                    {r.status ? (
-                      <span className="inline-block px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">{r.status}</span>
-                    ) : '-'}
+                    {r.action_href ? (
+                      <a
+                        href={r.action_href}
+                        className="inline-flex min-w-24 items-center justify-center rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+                      >
+                        {r.next_action}
+                      </a>
+                    ) : (
+                      <span className="inline-flex min-w-24 items-center justify-center rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-500">
+                        {r.next_action}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

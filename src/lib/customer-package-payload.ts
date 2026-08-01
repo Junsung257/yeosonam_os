@@ -26,6 +26,7 @@ const INTERNAL_PACKAGE_KEYS = new Set([
   'cost_price',
   'usd_cost',
   'margin_rate',
+  'expected_contribution_margin',
   'selling_price',
   'departing_location_id',
   'catalog_id',

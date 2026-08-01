@@ -69,3 +69,69 @@ Empty-table 관측 시각은 `2026-07-29T09:58:31.699888Z`다. `public` 367개 �
 
 따라서 과거 login redirect finding은 현재 production에서 재현되지 않지만, 공개 상품 부재와
 허위 사회적 증거 finding은 현재도 재현된다.
+
+## Continuation deployment observation
+
+`2026-07-30T06:12:37.2540342Z`에 다시 조회한 결과, 시작 시점의 locked baseline 이후
+production 배포가 변경됐다.
+
+| Item | Continuation value |
+|---|---|
+| Current `origin/main` | `8b5ba2515714ca4545ddf43f16e98b040850ed77` |
+| Latest production target deployment | `dpl_Eh6dNToTFKkg85dwoEvpEW7dTRoc` |
+| Latest production target SHA | `62e08bc9dcb876a9f3cec8973f2b9f840cec3e13` |
+| Deployment source ref | `codex/ai-operations-office-source-20260728` |
+| Deployment metadata | `gitDirty=1` |
+| Main/production divergence | 있음 |
+
+이 continuation 관측은 시작 시점 baseline을 덮어쓰지 않는다. 현재 production 동작은
+`origin/main` 또는 revenue-rescue PR 코드로 추정하지 않으며, production 배포 출처를 먼저
+확정하기 전에는 이 PR을 production에 적용하지 않는다.
+
+### Deployment drift resolution
+
+`2026-07-30T10:01:03.8040443Z` 재확인 시 production은 다시 `main` 배포로 교체됐다.
+
+| Item | Resolved value |
+|---|---|
+| Current `origin/main` | `c3d2e97c514ba8ddce65883dc281a652ea58b602` |
+| Current production deployment | `dpl_96r5cJHbvztb2ZUeEwV6VBhWpsej` |
+| Current production SHA | `c3d2e97c514ba8ddce65883dc281a652ea58b602` |
+| Main/production divergence | 없음 |
+| Recent production 5xx logs | 최근 30분 0건 |
+
+블로그 복구 PR `#1000`, `#1001` 반영 뒤 revenue PR의 Open Readiness 재실행도
+`2026-07-30T10:01:16Z`에 성공했다. 앞선 dirty non-main production 배포 사실은 시점
+증거로 보존하되, 현재 blocker에서는 해제한다.
+
+### Production recheck — 2026-08-01
+
+읽기 전용으로 다시 확인한 결과는 `outputs/production-recheck-20260801.json`에 보관했다.
+
+| Item | Recheck value |
+|---|---|
+| Production migration head | `20260731123649 destination_media_approval_audit` |
+| Revenue Rescue migrations applied | 없음 |
+| `travel_packages` / `products` | 919 / 792 |
+| `public_package_snapshots` | 0 |
+| `leads` / `bookings` | 11 / 127 |
+| `content_attribution_events` / `customer_events` | 2 / 0 |
+| Security advisors | 52 (INFO 50, WARN 2) |
+| Non-production Supabase branch | 없음 (main only) |
+
+예약 수가 locked baseline의 88건에서 127건으로 증가한 것은 현재 시점 차이로 기록한다.
+이 숫자만으로 기존 예약 데이터의 삭제 여부를 단정하지 않는다. 현재 production의 `bookings_access`,
+`customers_access`, `customer_events_tenant_select` 정책은 그대로 확인되었고, Revenue Rescue
+RLS migration이 적용되기 전에는 tenant isolation 완료로 판정하지 않는다.
+
+Advisor WARN 두 건은 별도 운영 조치가 필요하다. `public.match_bank_transaction_allocations`는
+Supabase CLI로 생성한 `supabase/migrations/20260801133734_pin_bank_transaction_allocations_search_path.sql`
+로 search_path를 고정할 수 있다. 이 migration은 production에 아직 적용하지 않았다. Auth
+leaked-password protection은 Supabase Auth 보안 설정에서 활성화한 뒤 재검증해야 한다.
+
+로컬 migration 검증 명령은 Docker/Postgres 부재로 `ECONNREFUSED 127.0.0.1:54322`가 발생했다.
+따라서 이 forward migration은 아직 `PARTIALLY_VERIFIED` 상태이며, 적용 전 staging DB에서
+`supabase migration list`와 RLS 회귀 테스트를 다시 실행해야 한다.
+
+search_path migration 회귀 테스트는 `supabase/tests/revenue_rescue_function_search_path.sql`에
+추가했으며, staging DB가 생기면 이 테스트를 migration 적용 직후 실행한다.

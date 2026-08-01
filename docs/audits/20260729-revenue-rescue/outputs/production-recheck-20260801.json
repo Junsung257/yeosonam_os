@@ -1,0 +1,79 @@
+{
+  "observedAt": "2026-08-01T12:44:41.6065572Z",
+  "projectRef": "ixaxnvbmhzjvupissmly",
+  "productionMainSha": "c3d2e97c514ba8ddce65883dc281a652ea58b602",
+  "query": "queries/12-production-recheck.sql",
+  "migrationHead": {
+    "version": "20260731123649",
+    "name": "destination_media_approval_audit",
+    "revenueRescueMigrationsApplied": false,
+    "developmentBranches": [
+      {
+        "name": "main",
+        "projectRef": "ixaxnvbmhzjvupissmly",
+        "status": "FUNCTIONS_DEPLOYED",
+        "withData": false
+      }
+    ],
+    "nonProductionBranchAvailable": false
+  },
+  "counts": {
+    "travel_packages": 919,
+    "products": 792,
+    "public_package_snapshots": 0,
+    "leads": 11,
+    "bookings": 127,
+    "content_attribution_events": 2,
+    "customer_events": 0
+  },
+  "countDeltaFromLockedBaseline": {
+    "travel_packages": 0,
+    "products": 0,
+    "public_package_snapshots": 0,
+    "leads": 0,
+    "bookings": 39,
+    "content_attribution_events": 2,
+    "customer_events": 0
+  },
+  "securityAdvisors": {
+    "total": 52,
+    "info": 50,
+    "warn": 2,
+    "byName": {
+      "rls_enabled_no_policy": 50,
+      "function_search_path_mutable": 1,
+      "auth_leaked_password_protection": 1
+    },
+    "warnDetails": [
+      {
+        "name": "function_search_path_mutable",
+        "target": "public.match_bank_transaction_allocations",
+        "action": "Create a forward migration that pins the function search_path after reviewing callers."
+      },
+      {
+        "name": "auth_leaked_password_protection",
+        "target": "Supabase Auth",
+        "action": "Enable leaked-password protection in the Auth security settings and verify the resulting policy."
+      }
+    ],
+    "interpretation": "RLS enabled/no-policy findings remain informational until the actual route and policy boundary is reviewed. The two warnings require a separate security change; they are not silently marked fixed by this revenue PR."
+  },
+  "functionSearchPathRecheck": {
+    "observedAt": "2026-08-01T13:35:05.6671401Z",
+    "query": "queries/13-function-search-path-recheck.sql",
+    "signature": "match_bank_transaction_allocations(uuid,jsonb,numeric,text,text)",
+    "proconfig": null,
+    "verdict": "WARN_CONFIRMED_FORWARD_MIGRATION_REQUIRED",
+    "forwardMigrationCandidate": "supabase/migrations/20260801133734_pin_bank_transaction_allocations_search_path.sql",
+    "productionApplied": false
+  },
+  "revenueBoundaryPolicies": {
+    "bookings": "bookings_access is still global for authenticated users or platform admin/tenant predicate; the stacked RLS migration is not applied.",
+    "customers": "customers_access is still global for authenticated users or platform admin/tenant predicate; the stacked RLS migration is not applied.",
+    "customer_events": "customer_events_tenant_select still permits tenant_id IS NULL rows; the stacked migration is not applied.",
+    "leads": "service_role only",
+    "public_package_snapshots": "service_role only"
+  },
+  "productionMutation": false,
+  "verdict": "RECHECK_RECORDED_MIGRATION_PENDING"
+}

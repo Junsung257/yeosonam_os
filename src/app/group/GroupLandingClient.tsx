@@ -328,7 +328,7 @@ export default function GroupLandingClient() {
       <div className="max-w-2xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-3">견적 요청하기</h2>
         <p className="text-center text-slate-600 mb-10 text-sm">
-          접수 즉시 담당자가 확인하고 당일 내 회신드립니다
+          접수 후 담당자가 내용을 확인하고 순서대로 연락드립니다
         </p>
 
         <form

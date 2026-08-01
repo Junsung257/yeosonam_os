@@ -16,6 +16,10 @@ import { getSessionId } from '@/lib/tracker';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { trackKakaoViewContent } from '@/lib/kakao-moment-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
+import {
+  getRevenueConsentState,
+  trackRevenueFunnelEvent,
+} from '@/lib/revenue-funnel-client';
 import { sanitizeUtmTermForDisplay } from '@/lib/sanitize-ad-copy';
 import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import type { NoticeBlock } from '@/lib/standard-terms';
@@ -42,6 +46,18 @@ const LpDeferSectionsDyn = dynamic(
 
 function fmt(n: number) {
   return n.toLocaleString('ko-KR');
+}
+
+function fmtCheckedAt(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '확인 시각 오류';
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +94,7 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
       <div className="flex flex-col items-center gap-1">
         <Award className="w-6 h-6 text-amber-500" />
         <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-          직판<br />최저가
+          판매 조건<br />상담 확인
         </span>
       </div>
       {hasReviewStats ? (
@@ -333,8 +349,23 @@ export function LandingClient({
   // Intersection Observer → FAB 활성화
   const { itineraryViewed, setItineraryViewed, registerScrollSentinel, getSnapshot } = useTracking();
   const handleItineraryViewed = useCallback(() => setItineraryViewed(true), [setItineraryViewed]);
+  const offerViewTrackedRef = useRef(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (offerViewTrackedRef.current) return;
+    offerViewTrackedRef.current = true;
+    const tracking = getSnapshot();
+    const sessionId = tracking.sessionId || getSessionId();
+    void trackRevenueFunnelEvent({
+      eventType: 'offer_viewed',
+      offerId: data.id,
+      tracking: { ...tracking, sessionId },
+      consentState: getRevenueConsentState(),
+      dedupeKey: `offer_viewed:${sessionId}:${data.id}`,
+    });
+  }, [data.id, getSnapshot]);
 
   // 스크롤 깊이 센티널 refs
   const sentinel25Ref = useRef<HTMLDivElement>(null);
@@ -424,6 +455,8 @@ export function LandingClient({
             data-analytics-id="lp_hero_kakao"
             className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-text-primary active:scale-[0.98] transition-transform shadow-md"
               onClick={async () => {
+                const tracking = getSnapshot();
+                const sessionId = tracking.sessionId || getSessionId();
                 trackLead({
                   content_name: data.customMessage.default.headline,
                   value: data.priceFrom,
@@ -434,6 +467,16 @@ export function LandingClient({
                   name: 'LP_카카오바로문의',
                   value: data.priceFrom,
                 });
+                await Promise.race([
+                  trackRevenueFunnelEvent({
+                    eventType: 'kakao_clicked',
+                    offerId: data.id,
+                    tracking: { ...tracking, sessionId },
+                    consentState: getRevenueConsentState(),
+                    dedupeKey: `kakao_clicked:${sessionId}:${data.id}`,
+                  }),
+                  new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 900)),
+                ]);
                 await openKakaoChannel({
                   internalCode: data.internalCode,
                   productTitle: data.customMessage.default.headline,
@@ -470,6 +513,24 @@ export function LandingClient({
         compareAtPrice={data.compareAtPrice}
         deadlineDays={data.deadlineDays}
       />
+
+      {data.verification?.priceCheckedAt && data.verification.inventoryCheckedAt && (
+        <section className="border-y border-[var(--border-mid)] bg-white px-5 py-4 text-sm text-[var(--text-body)]">
+          <h2 className="font-bold text-[var(--text-primary)]">판매 조건 확인 시각</h2>
+          <p className="mt-1 leading-relaxed">
+            가격 {fmtCheckedAt(data.verification.priceCheckedAt)}
+            {' · '}
+            좌석 {fmtCheckedAt(data.verification.inventoryCheckedAt)}
+          </p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
+            {data.verification.inventoryStatus === 'available'
+              ? '확인 시점 판매 가능'
+              : data.verification.inventoryStatus === 'reconfirm_required'
+                ? '예약 전 좌석 재확인 필요'
+                : '현재 판매 가능 여부를 다시 확인해 주세요.'}
+          </p>
+        </section>
+      )}
 
       <DepartureDatesSummary priceDates={data.price_dates} />
 
@@ -520,6 +581,15 @@ export function LandingClient({
             aria-label="상담 신청 열기"
             onClick={() => {
               setSheetOpen(true);
+              const tracking = getSnapshot();
+              const sessionId = tracking.sessionId || getSessionId();
+              void trackRevenueFunnelEvent({
+                eventType: 'lead_started',
+                offerId: data.id,
+                tracking: { ...tracking, sessionId },
+                consentState: getRevenueConsentState(),
+                dedupeKey: `lead_started:${sessionId}:${data.id}`,
+              });
               fetch('/api/tracking/score-signal', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildKakaoMessage, buildPayload } from '@/lib/submitPipeline';
+import { buildKakaoMessage, buildPayload, submitWithRetry } from '@/lib/submitPipeline';
 import type { TrackingData } from '@/hooks/useTracking';
 
 vi.mock('@/components/MetaPixel', () => ({
@@ -68,5 +68,27 @@ describe('submitPipeline', () => {
     expect(message).toContain('인원: 성인 2명, 아동 1명');
     expect(message).toContain('이름: 홍길동');
     expect(message).toContain('연락처: 010-1234-5678');
+  });
+
+  it('unwraps the standardized API response without losing lead and booking ids', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      ok: true,
+      data: {
+        ok: true,
+        lead_id: 'lead-1',
+        booking: { id: 'booking-1', booking_no: 'B202607290001', status: 'pending' },
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    const result = await submitWithRetry(buildPayload('pkg-123', form, tracking), 1);
+
+    expect(result).toMatchObject({
+      lead_id: 'lead-1',
+      booking: { id: 'booking-1', booking_no: 'B202607290001' },
+    });
+    fetchMock.mockRestore();
   });
 });

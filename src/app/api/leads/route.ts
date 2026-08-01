@@ -4,6 +4,7 @@ import { apiResponse, successResponse, ApiErrors } from '@/lib/api-response';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { createLandingBookingRequest, findExistingLandingBookingReplay } from '@/lib/lead-booking-request';
+import { persistRevenueFunnelEvent } from '@/lib/revenue-funnel-events';
 
 const PLACEHOLDER_NAMES = new Set([
   '-',
@@ -145,6 +146,31 @@ export async function POST(req: NextRequest) {
       idempotencyKey,
     });
 
+    const leadId = insertedLead?.id ?? null;
+    if (leadId) {
+      const eventResult = await persistRevenueFunnelEvent({
+        eventType: 'lead_submitted',
+        source: affRef || tracking?.utmSource || channel || 'direct',
+        offerId: productId,
+        leadId,
+        bookingId: bookingResult.booking?.id ?? null,
+        sessionId: tracking?.sessionId ?? null,
+        consentState: 'granted',
+        dedupeKey: `lead_submitted:${leadId}`,
+        medium: tracking?.utmMedium ?? null,
+        campaign: tracking?.utmCampaign ?? null,
+        content: tracking?.utmContent ?? null,
+        term: tracking?.utmTerm ?? null,
+        referrer: tracking?.referrer ?? null,
+        landingPath: tracking?.landingUrl ?? null,
+        firstTouch: tracking?.landingUrl ?? null,
+        lastTouch: tracking?.landingUrl ?? null,
+      });
+      if (!eventResult.ok) {
+        console.warn('[leads] attribution event failed:', { requestId, error: eventResult.error });
+      }
+    }
+
     try {
       const customerId = bookingResult.customerId;
       if (customerId && chatSessionId) {
@@ -166,7 +192,7 @@ export async function POST(req: NextRequest) {
 
     return successResponse({
       ok: true,
-      lead_id: insertedLead?.id ?? null,
+      lead_id: leadId,
       booking: bookingResult.booking,
       idempotent_replay: bookingResult.idempotentReplay,
     });

@@ -53,6 +53,11 @@ export interface LandingProductData {
   singleSupplement?: string;
   guideTrip?: string;
   kakaoChannelUrl: string;
+  verification?: {
+    priceCheckedAt: string | null;
+    inventoryCheckedAt: string | null;
+    inventoryStatus: 'available' | 'reconfirm_required' | 'sold_out' | 'unknown';
+  };
   reviewCount: number;
   reviewScore: number;
   departureGuaranteed: boolean;
@@ -310,8 +315,8 @@ export function mapTravelPackageToLandingData(
         subline: displayCopy.cardTitle,
       },
       kakao: {
-        headline: `${displayCopy.cardTitle}\n상담 문의가 많습니다`,
-        subline: '전 일정 확인 · 항공/호텔 조건 상담 · 직판가 안내',
+        headline: `${displayCopy.cardTitle}\n판매 조건을 확인해 보세요`,
+        subline: '전 일정 확인 · 항공/호텔 조건 상담 · 판매가 안내',
       },
       default: {
         headline: projectionString(lpProjection, 'title') ?? displayCopy.heroHeadline,
@@ -336,6 +341,16 @@ export function mapTravelPackageToLandingData(
           : normalizeCustomerVisibleCopy(String(pkg.single_supplement)),
     guideTrip: pkg.guide_tip ? `$${pkg.guide_tip}/인` : '별도문의',
     kakaoChannelUrl: getKakaoChannelChatUrl(),
+    verification: {
+      priceCheckedAt: typeof pkg.price_checked_at === 'string' ? pkg.price_checked_at : null,
+      inventoryCheckedAt: typeof pkg.inventory_checked_at === 'string' ? pkg.inventory_checked_at : null,
+      inventoryStatus:
+        pkg.inventory_status === 'available'
+        || pkg.inventory_status === 'reconfirm_required'
+        || pkg.inventory_status === 'sold_out'
+          ? pkg.inventory_status
+          : 'unknown',
+    },
     reviewCount: typeof pkg.review_count === 'number' ? pkg.review_count : 0,
     reviewScore: typeof pkg.avg_rating === 'number' ? pkg.avg_rating : 0,
     departureGuaranteed: effectiveDates.some(row => row.confirmed),
