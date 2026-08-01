@@ -13,6 +13,14 @@ export interface ClobeMcpFetchOptions {
   accountNumber?: string;
   limit?: number;
   accessToken?: string;
+  diagnosticsOnly?: boolean;
+}
+
+export interface ClobeMcpToolSummary {
+  name: string;
+  description: string | null;
+  required: string[];
+  properties: string[];
 }
 
 export interface ClobeMcpFetchResult {
@@ -21,6 +29,7 @@ export interface ClobeMcpFetchResult {
   toolNames: string[];
   attempts: ClobeMcpFetchAttempt[];
   bankToolAvailable: boolean;
+  tools: ClobeMcpToolSummary[];
 }
 
 export interface ClobeMcpFetchAttempt {
@@ -37,6 +46,7 @@ interface McpTool {
   description?: string;
   inputSchema?: {
     properties?: Record<string, unknown>;
+    required?: string[];
   };
 }
 
@@ -415,9 +425,26 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   const toolsResult = asRecord(await mcpCall(ctx, 'tools/list'));
   const tools = (Array.isArray(toolsResult.tools) ? toolsResult.tools : []) as McpTool[];
   const toolNames = tools.map(tool => tool.name);
+  const toolSummaries: ClobeMcpToolSummary[] = tools.map(tool => ({
+    name: tool.name,
+    description: tool.description?.trim() || null,
+    required: Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : [],
+    properties: Object.keys(tool.inputSchema?.properties ?? {}),
+  }));
   const preferred = getSecret('CLOBE_MCP_TRANSACTIONS_TOOL') ?? undefined;
   const rankedTools = rankTransactionTools(tools, preferred);
   const selectedToolName = chooseTransactionTool(tools, preferred);
+
+  if (options.diagnosticsOnly) {
+    return {
+      transactions: [],
+      toolName: selectedToolName,
+      toolNames,
+      attempts: [],
+      bankToolAvailable: Boolean(selectedToolName),
+      tools: toolSummaries,
+    };
+  }
   if (!selectedToolName) {
     return {
       transactions: [],
@@ -425,6 +452,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
       toolNames,
       attempts: [],
       bankToolAvailable: false,
+      tools: toolSummaries,
     };
   }
 
@@ -447,7 +475,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
         ...summarizeMcpResult(callResult),
       });
       if (normalized.length > 0) {
-        return { transactions: normalized, toolName: tool.name, toolNames, attempts, bankToolAvailable: true };
+        return { transactions: normalized, toolName: tool.name, toolNames, attempts, bankToolAvailable: true, tools: toolSummaries };
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Clobe MCP tool call failed');
@@ -471,5 +499,6 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
     toolNames,
     attempts,
     bankToolAvailable: true,
+    tools: toolSummaries,
   };
 }

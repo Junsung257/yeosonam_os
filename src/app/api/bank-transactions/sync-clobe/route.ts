@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const preview = body.preview === true || body.dryRun === true;
+    const diagnosticsOnly = body.diagnosticsOnly === true;
     const window = defaultDateWindow();
     const from = typeof body.from === 'string' && body.from ? body.from : window.from;
     const to = typeof body.to === 'string' && body.to ? body.to : window.to;
@@ -64,7 +65,8 @@ export async function POST(request: NextRequest) {
       toolNames: string[];
       bankToolAvailable: boolean;
       attempts: Array<{ toolName: string; extracted: number; normalized: number; resultKeys: string[]; contentTypes: string[]; error?: string }>;
-    } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [] };
+      tools: Array<{ name: string; description: string | null; required: string[]; properties: string[] }>;
+    } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [], tools: [] };
 
     if (!Array.isArray(rawPayload)) {
       if (!tenantId) {
@@ -85,9 +87,22 @@ export async function POST(request: NextRequest) {
           { status: 409 },
         );
       }
-      const fetched = await fetchClobeMcpBankTransactions({ from, to, accountNumber, limit, accessToken: token.accessToken });
+      const fetched = await fetchClobeMcpBankTransactions({
+        from,
+        to,
+        accountNumber,
+        limit,
+        accessToken: token.accessToken,
+        diagnosticsOnly,
+      });
       rawPayload = fetched.transactions;
-      mcp = { toolName: fetched.toolName, toolNames: fetched.toolNames, bankToolAvailable: fetched.bankToolAvailable, attempts: fetched.attempts };
+      mcp = {
+        toolName: fetched.toolName,
+        toolNames: fetched.toolNames,
+        bankToolAvailable: fetched.bankToolAvailable,
+        attempts: fetched.attempts,
+        tools: fetched.tools,
+      };
     }
 
     const fetched = Array.isArray(rawPayload) ? rawPayload.length : 0;
@@ -95,15 +110,16 @@ export async function POST(request: NextRequest) {
     const rawSampleKeys = normalized.rows.length === 0 ? getRawSampleKeys(rawPayload) : [];
     const result = await processBankTransactionImportRows(normalized.rows, {
       source: 'clobe_mcp',
-      preview,
+      preview: preview || diagnosticsOnly,
       actor: 'clobe_sync',
-      createMissingBookings: !preview,
+      createMissingBookings: !preview && !diagnosticsOnly,
     });
     console.info('[clobe-bank-sync]', {
       from,
       to,
       limit,
       preview,
+      diagnosticsOnly,
       fetched,
       normalized: normalized.rows.length,
       normalizeErrors: normalized.errors.length,
@@ -124,6 +140,7 @@ export async function POST(request: NextRequest) {
       success: true,
       source: 'clobe_mcp',
       preview,
+      diagnosticsOnly,
       from,
       to,
       accountNumber: accountNumber ?? null,
