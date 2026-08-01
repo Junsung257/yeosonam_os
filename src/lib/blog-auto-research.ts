@@ -264,6 +264,8 @@ export function extractReviewedPageTextForResearch(value: string): string {
     /republic of korea/gi,
     /forty-five/gi,
     /electronic travel authorization/gi,
+    /\bbusiness\b|\btouris(?:m|t)\b|\bpleasure\b/gi,
+    /\b(?:stay|admission).{0,80}(?:90|ninety)\s*days?\b/gi,
     /괌/gi,
     /\bGIAA\b/gi,
     /\bairport\b/gi,
@@ -3284,10 +3286,24 @@ export async function researchBlogInformationAutomatically(input: {
       reputableRegistry,
       now,
     });
+    const finalReadiness = built.bundle
+      ? evaluateBlogGenerationResearchReadiness({
+          meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: built.bundle },
+          expectedContentKey: input.contentKey,
+          destination: input.destination,
+          intent: input.brief.intentType,
+          locale: input.locale,
+          sourcePolicy: input.brief.sourcePolicy,
+          now,
+        })
+      : null;
     return {
-      passed: Boolean(built.bundle),
+      passed: Boolean(built.bundle && finalReadiness?.passed),
       bundle: built.bundle,
-      issues: built.issues,
+      issues: [...new Set([
+        ...built.issues,
+        ...(finalReadiness?.issues ?? []),
+      ])],
       model: AUTO_RESEARCH_MODEL,
       searchQueries,
       groundingSourceCount,

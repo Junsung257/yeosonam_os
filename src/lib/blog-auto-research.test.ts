@@ -111,6 +111,20 @@ describe('extractReviewedPageTextForResearch', () => {
     expect(extracted).toContain('GTA Upper Tumon 6:03');
     expect(extracted).toContain('fare one ride USD 1.50');
   });
+
+  it('keeps permitted travel purpose and stay evidence from late in a long entry document', () => {
+    const text = [
+      'general visa program context '.repeat(1_000),
+      'The program permits eligible travelers to visit for business or tourism.',
+      'The permitted stay is up to 90 days.',
+    ].join('\n');
+
+    const extracted = extractReviewedPageTextForResearch(text);
+
+    expect(extracted.length).toBeLessThanOrEqual(12_000);
+    expect(extracted).toContain('business or tourism');
+    expect(extracted).toContain('stay is up to 90 days');
+  });
 });
 
 describe('fetchReviewedDirectPages', () => {
