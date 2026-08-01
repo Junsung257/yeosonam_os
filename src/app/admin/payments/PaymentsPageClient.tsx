@@ -16,12 +16,19 @@ import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 import { parseBankStatementRows } from '@/lib/settlement-import/bank-statement-parser';
 import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window';
+import { matchesPaymentPeriod, type PaymentPeriodFilter } from '@/lib/payment-period-filter';
+import { calculatePaymentKpis } from '@/lib/payment-kpi';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
 export interface ErpStats {
   totalPrice: number; totalCost: number; totalPaid: number; totalPaidOut: number;
   remaining: number; margin: number; bookingCount: number;
+  pricedPaid?: number;
+  unpricedPaid?: number;
+  unpricedBookingCount?: number;
+  uncostedSales?: number;
+  uncostedBookingCount?: number;
 }
 
 interface ClobeIntegrationState {
@@ -531,7 +538,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [tab, setTab] = useState<PaymentTab>(initialTab);
   // 출금·환불 탭 내 sub-필터: 기본 '미매칭만' (사장님이 처리해야 할 것 우선)
   const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>('unmatched');
-  const [dateFilter, setDateFilter] = useState<string>('이번 달');
+  const [dateFilter, setDateFilter] = useState<PaymentPeriodFilter>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
   const DATE_FILTERS = ['이번 달', '지난 달', '3개월', '전체'] as const;
   const [trashOpen, setTrashOpen] = useState(false);
@@ -596,15 +603,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     try {
       const res = await fetch('/api/bookings');
       const data = await res.json();
-      type B = { status?: string; total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number };
-      const active: B[] = (data.bookings || []).filter((b: B) => b.status !== 'cancelled');
-      const totalPrice = active.reduce((s, b) => s + (b.total_price || 0), 0);
-      const totalCost  = active.reduce((s, b) => s + (b.total_cost  || 0), 0);
-      const totalPaid  = active.reduce((s, b) => s + (b.paid_amount || 0), 0);
-      const totalPaidOut = active.reduce((s, b) => s + (b.total_paid_out || 0), 0);
-      setErp({ totalPrice, totalCost, totalPaid, totalPaidOut, remaining: totalPrice - totalPaid, margin: totalPrice - totalCost, bookingCount: active.length });
+      type B = { status?: string; departure_date?: string; total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number };
+      const active: B[] = (data.bookings || []).filter((b: B) =>
+        b.status !== 'cancelled' && matchesPaymentPeriod(b.departure_date, dateFilter),
+      );
+      setErp(calculatePaymentKpis(active));
     } catch { /* non-critical */ }
-  }, []);
+  }, [dateFilter]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -659,6 +664,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   useEffect(() => {
     if (_skipInitialFetch.current) {
       _skipInitialFetch.current = false;
+      loadErp();
+      loadOpsQueue();
       return;
     }
     load();
@@ -685,6 +692,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
 
     const result = transactions.filter(tx => {
+      if (tab !== 'unmatched' && !matchesPaymentPeriod(tx.received_at, dateFilter)) return false;
       if (tab === 'outflow') {
         if (!isOutflow(tx)) return false;
         // sub-필터로 매칭 상태별 분리
@@ -715,22 +723,27 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
     }
     return result;
-  }, [transactions, tab, outflowSubTab]);
+  }, [transactions, tab, outflowSubTab, dateFilter]);
 
   const isOutflowTx = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
-  const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
+  const periodTransactions = transactions.filter(t => matchesPaymentPeriod(t.received_at, dateFilter));
+  const reviewCount    = periodTransactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
   const unmatchedCount = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
-  const matchedCount   = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
-  const outflowCount   = transactions.filter(isOutflowTx).length;
-  const outflowUnmatchedCount = transactions.filter(t => isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
-  const outflowMatchedCount   = transactions.filter(t => isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const matchedCount   = periodTransactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const outflowCount   = periodTransactions.filter(isOutflowTx).length;
+  const outflowUnmatchedCount = periodTransactions.filter(t => isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review')).length;
+  const outflowMatchedCount   = periodTransactions.filter(t => isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const allOutflowUnmatchedCount = transactions.filter(t =>
+    isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review'),
+  ).length;
+  const allReviewCount = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
 
   const collectionRate = useMemo(() =>
-    erp ? Math.min(100, Math.round((erp.totalPaid / Math.max(erp.totalPrice, 1)) * 100)) : 0,
+    erp ? Math.min(100, Math.round(((erp.pricedPaid ?? Math.min(erp.totalPaid, erp.totalPrice)) / Math.max(erp.totalPrice, 1)) * 100)) : 0,
     [erp]
   );
   const safeRemaining = useMemo(() =>
-    erp ? Math.max(0, erp.totalPrice - erp.totalPaid) : 0,
+    erp ? Math.max(0, erp.remaining) : 0,
     [erp]
   );
   const paidOutRate = useMemo(() =>
@@ -761,19 +774,21 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
     const queueCounts: Record<PaymentQueueKey, number> = {
-      review: reviewCount,
+      review: allReviewCount,
       unmatched: unmatchedCount,
       stale: staleCount,
-      outflow: outflowUnmatchedCount,
+      outflow: allOutflowUnmatchedCount,
       trash: trashTxs.length,
     };
     if (queue === 'review') {
+      setDateFilter('전체');
       setTab('review');
       setOutflowSubTab('unmatched');
     } else if (queue === 'unmatched' || queue === 'stale') {
       setTab('unmatched');
       setOutflowSubTab('unmatched');
     } else if (queue === 'outflow') {
+      setDateFilter('전체');
       setTab('outflow');
       setOutflowSubTab('unmatched');
     } else if (queue === 'trash') {
@@ -791,7 +806,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         has_waiting_work: queueCounts[queue] > 0,
       },
     });
-  }, [outflowUnmatchedCount, reviewCount, staleCount, trashTxs.length, unmatchedCount]);
+  }, [allOutflowUnmatchedCount, allReviewCount, staleCount, trashTxs.length, unmatchedCount]);
 
   // ── 입금액 재동기화 ─────────────────────────────────────────────────────────
 
@@ -1541,10 +1556,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       <PaymentOpsQueue
         activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
         counts={{
-          review: reviewCount,
+          review: allReviewCount,
           unmatched: unmatchedCount,
           stale: staleCount,
-          outflow: outflowUnmatchedCount,
+          outflow: allOutflowUnmatchedCount,
           trash: trashTxs.length,
         }}
         onSelect={handlePaymentQueueSelect}
@@ -1596,7 +1611,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <div className="mt-3 h-1.5 bg-admin-surface-2 rounded-full overflow-hidden">
                 <div className="h-full bg-blue-600 rounded-full" style={{ width: `${collectionRate}%` }} />
               </div>
-              <p className="mt-1 text-[11px] text-admin-muted-2">전체 상품가 {erp ? fmt만(erp.totalPrice) : '—'} 중 {collectionRate}%</p>
+              <p className="mt-1 text-[11px] text-admin-muted-2">
+                가격 확정 수금 {erp ? fmt만(erp.pricedPaid ?? Math.min(erp.totalPaid, erp.totalPrice)) : '—'} / 상품가 {erp ? fmt만(erp.totalPrice) : '—'} · {collectionRate}%
+              </p>
             </div>
             <div className="border border-admin-border-mid rounded-admin-md p-4 bg-white">
               <p className="text-[11px] text-admin-muted font-medium">랜드사에 보낸 돈</p>
@@ -1614,6 +1631,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="mt-3 text-[11px] text-admin-muted-2">받은 돈 - 랜드사 송금액</p>
             </div>
           </div>
+
+          {erp && (erp.unpricedBookingCount ?? 0) > 0 && (
+            <div className="mt-3 rounded-admin-sm border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              가격 미입력 예약 {erp.unpricedBookingCount}건에 수금 {fmt만(erp.unpricedPaid ?? 0)}이 있습니다. 현금 잔액에는 포함되지만 상품가·미수·예상수익 계산에서는 제외됩니다.
+            </div>
+          )}
+
+          {erp && (erp.uncostedBookingCount ?? 0) > 0 && (
+            <div className="mt-2 rounded-admin-sm border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] text-orange-800">
+              랜드사 예정원가가 비어 있는 가격 확정 예약 {erp.uncostedBookingCount}건(상품가 {fmt만(erp.uncostedSales ?? 0)})이 있습니다. 원가 입력 전에는 예상 우리수익이 실제보다 크게 보일 수 있습니다.
+            </div>
+          )}
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
             {[
