@@ -266,6 +266,8 @@ export function extractReviewedPageTextForResearch(value: string): string {
     /electronic travel authorization/gi,
     /\bbusiness\b|\btouris(?:m|t)\b|\bpleasure\b/gi,
     /\b(?:stay|admission).{0,80}(?:90|ninety)\s*days?\b/gi,
+    /귀국\s*(?:일정|편|항공권)|체류지|숙소\s*(?:예약|정보)?|여행\s*경비|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b|\bsufficient\s+funds?\b|\blodging\b/gi,
+    /세관|신고|면세|농산물|현금|\b(?:declare|declaration|customs|duty[- ]free|agricultur(?:e|al)|monetary instruments?)\b/gi,
     /괌/gi,
     /\bGIAA\b/gi,
     /\bairport\b/gi,
@@ -1288,9 +1290,11 @@ export function buildBlogStructuredResearchPrompt(input: {
               'ENTRY REQUIREMENTS PRIORITY:',
               'Use facts from at least two reviewed official domains; do not let one authority satisfy the cross-domain requirement.',
               'Classify visa exemption, visa or electronic travel authorization eligibility, passport validity, and permitted stay as entry_visa.',
-              'Classify mandatory arrival registration, entry forms, biometric collection, declarations, and submission timing as policy.',
+              'Classify return/onward travel, lodging or stay details, financial means, mandatory arrival registration, entry forms, biometric collection, declarations, and submission timing as policy.',
               'Select at least two independently supported entry_visa claims and two policy claims with at least three distinct normalized values.',
               'Include one explicit supported claim stating the permitted travel purpose or purposes and one explicit supported claim stating the permitted stay duration.',
+              'Include explicit supported claims for a return or onward ticket, U.S. lodging or stay details, and proof of funds or travel expenses.',
+              'Include an explicit supported customs-declaration claim naming at least one declaration category or threshold.',
               'Prefer rules that explicitly apply to Korean passport holders and short tourist visits; do not generalize another nationality or residence status.',
             ]
         : [];

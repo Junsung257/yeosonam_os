@@ -125,6 +125,22 @@ describe('extractReviewedPageTextForResearch', () => {
     expect(extracted).toContain('business or tourism');
     expect(extracted).toContain('stay is up to 90 days');
   });
+
+  it('keeps supporting-document and customs evidence from late in a long entry document', () => {
+    const text = [
+      'general border program context '.repeat(1_000),
+      'Visa Waiver Program travelers must have a return or onward ticket.',
+      'Visitors should have sufficient funds for travel, lodging, and meals.',
+      'Travelers must declare agriculture products and monetary instruments to customs.',
+    ].join('\n');
+
+    const extracted = extractReviewedPageTextForResearch(text);
+
+    expect(extracted.length).toBeLessThanOrEqual(12_000);
+    expect(extracted).toContain('return or onward ticket');
+    expect(extracted).toContain('sufficient funds for travel, lodging, and meals');
+    expect(extracted).toContain('declare agriculture products and monetary instruments');
+  });
 });
 
 describe('fetchReviewedDirectPages', () => {
@@ -637,6 +653,8 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(prompt).toContain('biometric collection, declarations, and submission timing as policy');
     expect(prompt).toContain('one explicit supported claim stating the permitted travel purpose');
     expect(prompt).toContain('one explicit supported claim stating the permitted stay duration');
+    expect(prompt).toContain('return or onward ticket, U.S. lodging or stay details');
+    expect(prompt).toContain('customs-declaration claim naming at least one declaration category');
     expect(prompt).toContain('Korean passport holders');
   });
 

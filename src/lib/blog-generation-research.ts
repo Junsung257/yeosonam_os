@@ -124,6 +124,22 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
       key: 'permitted_stay',
       pattern: /체류\s*(?:가능\s*)?(?:기간|일수)|\d+\s*일|permitted\s*stay|stay\s*(?:of|up\s*to)|\bdays?\b/i,
     },
+    {
+      key: 'supporting_return',
+      pattern: /귀국\s*(?:일정|편|항공권)|왕복\s*항공권|출국\s*항공권|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b/i,
+    },
+    {
+      key: 'supporting_lodging',
+      pattern: /체류지|숙소\s*(?:예약|정보)?|숙박비|\blodging\b|accommodation/i,
+    },
+    {
+      key: 'supporting_financial',
+      pattern: /여행\s*경비|경비\s*미지참|재정\s*증빙|충분한\s*자금|\bsufficient\s+funds?\b|financial\s+(?:means|support|solvency)/i,
+    },
+    {
+      key: 'customs_declaration',
+      pattern: /세관[^\n]{0,100}(?:신고|면세|반입|품목|농산|현금)|(?:식품|농산물|현금|통화)[^\n]{0,100}신고|\b(?:declare|declaration|duty[- ]free|agricultur(?:e|al)|monetary instruments?)\b/i,
+    },
   ],
   travel_insurance: [
     { key: 'medical', pattern: /의료비|병원|질병|상해|medical|illness|injury/ },
@@ -1494,15 +1510,38 @@ function repairEntryRequirementsResearchStructure(input: {
   const needsPurposeStay = structureReport.issues.includes(
     'entry_requirements:purpose_stay_required',
   ) || informationReport.missingSlots.includes('purpose_stay');
-  if (!needsDestination && !needsPurposeStay) return unchanged();
+  const needsSupportingDocuments = informationReport.missingSlots.includes('supporting_documents');
+  const needsCustomsAllowance = informationReport.missingSlots.includes('customs_allowance');
+  const needsExactOfficialItem = informationReport.missingSlots.includes('exact_official_item');
+  if (
+    !needsDestination
+    && !needsPurposeStay
+    && !needsSupportingDocuments
+    && !needsCustomsAllowance
+    && !needsExactOfficialItem
+  ) return unchanged();
 
   const supportedClaims = input.readiness.bundle.claims;
   const purposeClaim = supportedClaims.find((claim) =>
     /관광|출장|상용|(?:여행|방문|입국)\s*목적|\b(?:touris(?:m|t)|business)\b|travel\s+purpose/i.test(claim.claimText));
   const stayClaim = supportedClaims.find((claim) =>
     /체류\s*(?:가능\s*)?(?:기간|일수)|\d+\s*일|permitted\s*stay|stay\s*(?:of|up\s*to)|\bdays?\b/i.test(claim.claimText));
+  const supportingDocumentClaims = [
+    supportedClaims.find((claim) =>
+      /귀국\s*(?:일정|편|항공권)|왕복\s*항공권|출국\s*항공권|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b/i.test(claim.claimText)),
+    supportedClaims.find((claim) =>
+      /체류지|숙소\s*(?:예약|정보)?|숙박비|\blodging\b|accommodation/i.test(claim.claimText)),
+    supportedClaims.find((claim) =>
+      /여행\s*경비|경비\s*미지참|재정\s*증빙|충분한\s*자금|\bsufficient\s+funds?\b|financial\s+(?:means|support|solvency)/i.test(claim.claimText)),
+  ];
+  const customsClaim = supportedClaims.find((claim) =>
+    /세관[^\n]{0,100}(?:신고|면세|반입|품목|농산|현금)|(?:식품|농산물|현금|통화)[^\n]{0,100}신고|\b(?:declare|declaration|duty[- ]free|agricultur(?:e|al)|monetary instruments?)\b/i.test(claim.claimText));
   const canRepairPurposeStay = Boolean(purposeClaim && stayClaim);
-  if (!needsDestination && !canRepairPurposeStay) return unchanged();
+  if (
+    (!needsDestination && needsPurposeStay && !canRepairPurposeStay)
+    || (needsSupportingDocuments && supportingDocumentClaims.some((claim) => !claim))
+    || (needsCustomsAllowance && !customsClaim)
+  ) return unchanged();
 
   const lines = input.markdown.split('\n');
   const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
@@ -1530,10 +1569,47 @@ function repairEntryRequirementsResearchStructure(input: {
     );
     changes.push('entry_requirements_verified_purpose_stay_context');
   }
+  if (needsSupportingDocuments && supportingDocumentClaims.every(Boolean)) {
+    const uniqueSupportingClaims = [...new Map(supportingDocumentClaims
+      .filter((claim): claim is BlogInformationResearchBundle['claims'][number] => Boolean(claim))
+      .map((claim) => [claim.claimFingerprint, claim])).values()];
+    contextBlock.push(
+      '',
+      '귀국편·숙소·재정증빙 확인 (공식 근거):',
+      ...uniqueSupportingClaims.map((claim) => `- ${claim.claimText}`),
+    );
+    approvedClaims.push(...uniqueSupportingClaims);
+    changes.push('entry_requirements_verified_supporting_documents_context');
+  }
+  if (needsCustomsAllowance && customsClaim) {
+    contextBlock.push(
+      '',
+      '세관·면세 범위 확인 (공식 근거):',
+      `- ${customsClaim.claimText}`,
+    );
+    approvedClaims.push(customsClaim);
+    changes.push('entry_requirements_verified_customs_context');
+  }
+  if (needsExactOfficialItem) {
+    const officialUrls = [...new Set(input.readiness.bundle.sources
+      .map((source) => source.sourceUrl)
+      .filter((url): url is string => Boolean(url)))];
+    contextBlock.push(
+      '',
+      '공식 안내에서 최종 확인할 세부 조건:',
+      ...officialUrls.map((url, index) => `- [공식 확인 링크 ${index + 1}](${url})`),
+      '- 출발 직전에는 여권·전자여행허가·귀국편·세관 신고의 적용 조건을 공식 안내에서 다시 확인하세요.',
+    );
+    changes.push('entry_requirements_exact_official_items_context');
+  }
   if (contextBlock.length === 0) return unchanged();
 
-  if (h1Index >= 0) {
-    lines.splice(h1Index + 1, 0, '', ...contextBlock, '');
+  const firstSectionIndex = lines.findIndex((line, index) =>
+    index > h1Index && /^##\s+\S/.test(line.trim()));
+  if (firstSectionIndex >= 0) {
+    lines.splice(firstSectionIndex, 0, ...contextBlock, '');
+  } else if (h1Index >= 0) {
+    lines.push('', ...contextBlock);
   } else {
     lines.unshift(...contextBlock, '');
   }

@@ -214,7 +214,45 @@ function readiness(bundle: BlogInformationResearchBundle | null) {
 function entryRequirementsReadiness(destination: string): BlogGenerationResearchReadiness {
   const purposeClaimText = `${destination} 비자면제 입국은 관광 또는 상용 목적의 단기 방문에 적용됩니다.`;
   const stayClaimText = `${destination} 비자면제 입국의 체류 기간은 최대 90일입니다.`;
-  const snapshotContent = `${purposeClaimText}\n${stayClaimText}`;
+  const supportingClaimText = `${destination} 비자면제 여행자는 귀국편, 숙소, 재정증빙을 준비해야 합니다.`;
+  const customsClaimText = `${destination} 입국 시 식품·농산물과 신고 대상 현금은 세관에 신고해야 합니다.`;
+  const claimRecords = [
+    { key: 'purpose', text: purposeClaimText, type: 'entry_visa' as const, value: '관광 또는 상용 목적', unit: null },
+    { key: 'stay', text: stayClaimText, type: 'entry_visa' as const, value: '90일', unit: '일' },
+    { key: 'supporting', text: supportingClaimText, type: 'policy' as const, value: '귀국편·숙소·재정증빙', unit: null },
+    { key: 'customs', text: customsClaimText, type: 'policy' as const, value: '세관 신고 대상', unit: null },
+  ];
+  const snapshotContent = claimRecords.map((record) => record.text).join('\n');
+  let spanStart = 0;
+  const evidence = claimRecords.map((record) => {
+    const evidenceKey = `${destination}-entry-${record.key}`;
+    const spanEnd = spanStart + Array.from(record.text).length;
+    const item = {
+      evidenceKey,
+      sourceKey: `${destination}-immigration`,
+      excerpt: record.text,
+      spanStart,
+      spanEnd,
+      claimType: record.type,
+      riskLevel: 'HIGH' as const,
+      observedAt: CHECKED_AT,
+      scope: {
+        country: destination,
+        destination,
+        applicableTo: '대한민국 여권 여행자',
+        locale: 'ko-KR',
+        claimType: record.type,
+        normalizedValue: record.value,
+        unit: record.unit,
+        currency: null,
+        verifiedAt: CHECKED_AT,
+        nextReviewAt: '2026-08-18T00:00:00.000Z',
+        conditions: ['비자면제 입국 기준'],
+      },
+    };
+    spanStart = spanEnd + 1;
+    return item;
+  });
   return {
     passed: true,
     issues: [],
@@ -231,93 +269,31 @@ function entryRequirementsReadiness(destination: string): BlogGenerationResearch
         contentHash: createBlogInformationSourceContentHash(snapshotContent),
         destination,
         country: destination,
-        claimTypes: ['entry_visa'],
+        claimTypes: ['entry_visa', 'policy'],
         riskLevel: 'LOW',
       }],
-      evidence: [
-        {
-          evidenceKey: `${destination}-entry-purpose`,
-          sourceKey: `${destination}-immigration`,
-          excerpt: purposeClaimText,
-          spanStart: 0,
-          spanEnd: Array.from(purposeClaimText).length,
-          claimType: 'entry_visa',
-          riskLevel: 'HIGH',
-          observedAt: CHECKED_AT,
-          scope: {
-            country: destination,
-            destination,
-            applicableTo: '대한민국 여권 여행자',
-            locale: 'ko-KR',
-            claimType: 'entry_visa',
-            normalizedValue: '관광 또는 상용 목적',
-            unit: null,
-            currency: null,
-            verifiedAt: CHECKED_AT,
-            nextReviewAt: '2026-08-18T00:00:00.000Z',
-            conditions: ['비자면제 입국 기준'],
-          },
+      evidence,
+      claims: claimRecords.map((record) => ({
+        claimFingerprint: createBlogInformationClaimFingerprint(record.text),
+        claimText: record.text,
+        claimType: record.type,
+        riskLevel: 'HIGH' as const,
+        extractedValue: {
+          normalizedValue: record.value,
+          unit: record.unit,
+          currency: null,
         },
-        {
-          evidenceKey: `${destination}-entry-stay`,
-          sourceKey: `${destination}-immigration`,
-          excerpt: stayClaimText,
-          spanStart: Array.from(`${purposeClaimText}\n`).length,
-          spanEnd: Array.from(snapshotContent).length,
-          claimType: 'entry_visa',
-          riskLevel: 'HIGH',
-          observedAt: CHECKED_AT,
-          scope: {
-            country: destination,
-            destination,
-            applicableTo: '대한민국 여권 여행자',
-            locale: 'ko-KR',
-            claimType: 'entry_visa',
-            normalizedValue: '90일',
-            unit: '일',
-            currency: null,
-            verifiedAt: CHECKED_AT,
-            nextReviewAt: '2026-08-18T00:00:00.000Z',
-            conditions: ['비자면제 입국 기준'],
-          },
-        },
-      ],
-      claims: [
-        {
-          claimFingerprint: createBlogInformationClaimFingerprint(purposeClaimText),
-          claimText: purposeClaimText,
-          claimType: 'entry_visa',
-          riskLevel: 'HIGH',
-          extractedValue: {
-            normalizedValue: '관광 또는 상용 목적',
-            unit: null,
-            currency: null,
-          },
-          requiresEvidence: true,
-          evidenceKeys: [`${destination}-entry-purpose`],
-        },
-        {
-          claimFingerprint: createBlogInformationClaimFingerprint(stayClaimText),
-          claimText: stayClaimText,
-          claimType: 'entry_visa',
-          riskLevel: 'HIGH',
-          extractedValue: {
-            normalizedValue: '90일',
-            unit: '일',
-            currency: null,
-          },
-          requiresEvidence: true,
-          evidenceKeys: [`${destination}-entry-stay`],
-        },
-      ],
+        requiresEvidence: true,
+        evidenceKeys: [`${destination}-entry-${record.key}`],
+      })),
     },
     summary: {
       sourceCount: 1,
-      evidenceCount: 2,
-      claimCount: 2,
-      supportedClaimCount: 2,
+      evidenceCount: 4,
+      claimCount: 4,
+      supportedClaimCount: 4,
       claimSourceCoverage: 1,
-      distinctNormalizedValueCount: 2,
+      distinctNormalizedValueCount: 4,
     },
   };
 }
@@ -524,11 +500,17 @@ describe('blog generation research preflight', () => {
     expect(first.changed).toBe(true);
     expect(first.changes).toContain('entry_requirements_verified_destination_context');
     expect(first.changes).toContain('entry_requirements_verified_purpose_stay_context');
+    expect(first.changes).toContain('entry_requirements_verified_supporting_documents_context');
+    expect(first.changes).toContain('entry_requirements_verified_customs_context');
+    expect(first.changes).toContain('entry_requirements_exact_official_items_context');
     expect(first.markdown).toContain('목적 국가: 미국.');
     expect(first.markdown).toContain('여행 목적과 체류기간 (공식 근거):');
     expect(first.markdown).toContain('관광 또는 상용 목적');
     expect(first.markdown).toContain('체류 기간은 최대 90일');
-    expect(first.approvedClaims).toHaveLength(2);
+    expect(first.markdown).toContain('귀국편·숙소·재정증빙 확인 (공식 근거):');
+    expect(first.markdown).toContain('세관·면세 범위 확인 (공식 근거):');
+    expect(first.markdown).toContain('[공식 확인 링크 1](');
+    expect(first.approvedClaims).toHaveLength(4);
     expect(validateBlogInformationStructure({
       intent: 'entry_requirements',
       markdown: first.markdown,
@@ -537,10 +519,14 @@ describe('blog generation research preflight', () => {
       intentType: 'entry_requirements',
       destination: '미국',
     });
-    expect(inspectBlogInformationMarkdown({
+    const informationReport = inspectBlogInformationMarkdown({
       markdown: first.markdown,
       contract,
-    }).missingSlots).not.toContain('purpose_stay');
+    });
+    expect(informationReport.missingSlots).not.toContain('purpose_stay');
+    expect(informationReport.missingSlots).not.toContain('supporting_documents');
+    expect(informationReport.missingSlots).not.toContain('customs_allowance');
+    expect(informationReport.missingSlots).not.toContain('exact_official_item');
     expect(second.changed).toBe(false);
     expect(second.markdown).toBe(first.markdown);
   });
@@ -565,7 +551,7 @@ describe('blog generation research preflight', () => {
     expect(result.markdown).toBe(markdown);
   });
 
-  it('requires explicit permitted-purpose and permitted-stay claims before entry writing', () => {
+  it('requires the complete entry decision contract before entry writing', () => {
     const complete = entryRequirementsReadiness('미국').bundle!;
     const contract = buildBlogInformationContract({
       intentType: 'entry_requirements',
@@ -589,6 +575,18 @@ describe('blog generation research preflight', () => {
     expect(completeResult.issues).not.toContain(
       'claim_semantic_coverage_missing:entry_requirements:permitted_stay',
     );
+    expect(completeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:supporting_return',
+    );
+    expect(completeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:supporting_lodging',
+    );
+    expect(completeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:supporting_financial',
+    );
+    expect(completeResult.issues).not.toContain(
+      'claim_semantic_coverage_missing:entry_requirements:customs_declaration',
+    );
 
     const missingPurpose = structuredClone(complete);
     missingPurpose.claims[0] = {
@@ -601,6 +599,30 @@ describe('blog generation research preflight', () => {
     );
     expect(missingPurposeResult.issues).not.toContain(
       'claim_semantic_coverage_missing:entry_requirements:permitted_stay',
+    );
+
+    const missingSupportingDocuments = structuredClone(complete);
+    missingSupportingDocuments.claims[2] = {
+      ...missingSupportingDocuments.claims[2]!,
+      claimText: '미국 입국 전 최신 안내를 확인해야 합니다.',
+    };
+    expect(evaluate(missingSupportingDocuments).issues).toContain(
+      'claim_semantic_coverage_missing:entry_requirements:supporting_return',
+    );
+    expect(evaluate(missingSupportingDocuments).issues).toContain(
+      'claim_semantic_coverage_missing:entry_requirements:supporting_lodging',
+    );
+    expect(evaluate(missingSupportingDocuments).issues).toContain(
+      'claim_semantic_coverage_missing:entry_requirements:supporting_financial',
+    );
+
+    const missingCustomsDeclaration = structuredClone(complete);
+    missingCustomsDeclaration.claims[3] = {
+      ...missingCustomsDeclaration.claims[3]!,
+      claimText: '미국 입국 전 최신 안내를 확인해야 합니다.',
+    };
+    expect(evaluate(missingCustomsDeclaration).issues).toContain(
+      'claim_semantic_coverage_missing:entry_requirements:customs_declaration',
     );
   });
 

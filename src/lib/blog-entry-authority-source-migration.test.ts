@@ -10,6 +10,10 @@ const usPurposeMigration = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260801152219_add_us_vwp_purpose_authority.sql'),
   'utf8',
 );
+const usEntryContractMigration = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260801163651_add_us_entry_supporting_and_customs_authority.sql'),
+  'utf8',
+);
 
 describe('retrievable entry authority migration', () => {
   it('registers destination-scoped official Japan and US documents', () => {
@@ -29,5 +33,18 @@ describe('US VWP purpose authority migration', () => {
     expect(usPurposeMigration).toContain('https://www.dhs.gov/visa-waiver-program');
     expect(usPurposeMigration).toContain("array['entry_requirements']");
     expect(usPurposeMigration).toContain("array['미국']");
+  });
+});
+
+describe('US complete entry contract authority migration', () => {
+  it('registers retrievable supporting-document and customs guidance', () => {
+    expect(usEntryContractMigration).toContain("'overseas.mofa.go.kr', 'embassy'");
+    expect(usEntryContractMigration).toContain("'cbp.gov', 'customs'");
+    expect(usEntryContractMigration).toContain('https://overseas.mofa.go.kr/us-seattle-ko/brd/m_4733/view.do?seq=1342928');
+    expect(usEntryContractMigration).toContain('https://www.cbp.gov/travel/us-citizens/know-before-you-go/know-you-go-traveling-abroad');
+    expect(usEntryContractMigration).not.toContain('help.cbp.gov');
+    expect(usEntryContractMigration).not.toContain('esta.cbp.dhs.gov/faq');
+    expect(usEntryContractMigration).toContain("array['entry_requirements']");
+    expect(usEntryContractMigration).toContain("array['미국']");
   });
 });
