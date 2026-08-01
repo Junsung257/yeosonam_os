@@ -97,5 +97,14 @@
     "The supplied execution prompt did not include every original report value, timestamp, project ref, or SQL.",
     "The deep security scan worker runtime failed with spawn EPERM; focused source and runtime validation continued.",
     "No production data or external mutation was performed."
+  ],
+  "continuationEvidence": [
+    {
+      "observedAt": "2026-08-01T12:44:41.6065572Z",
+      "query": "queries/12-production-recheck.sql",
+      "evidenceFile": "outputs/production-recheck-20260801.json",
+      "verdict": "RECHECK_RECORDED_MIGRATION_PENDING",
+      "confidence": "high"
+    }
   ]
 }

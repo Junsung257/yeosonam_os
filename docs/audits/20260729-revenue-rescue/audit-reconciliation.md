@@ -54,3 +54,20 @@
 - The selected Busan candidate remains blocked. A second product-level lookup found no operator or
   operator contact, zero seats, and conflicting customer-price evidence: KRW 749,000 in package/net
   records versus KRW 816,410 in `products.selling_price`.
+
+## Continuation verification — 2026-08-01
+
+- A read-only Supabase recheck at `2026-08-01T12:44:41.6065572Z` confirmed that the production
+  migration head is `20260731123649 destination_media_approval_audit`. The three Revenue Rescue
+  migrations remain unapplied; no production DDL or data mutation was performed.
+- Revenue-core counts are now `travel_packages=919`, `products=792`,
+  `public_package_snapshots=0`, `leads=11`, `bookings=127`,
+  `content_attribution_events=2`, and `customer_events=0`. The booking increase from the locked
+  baseline is recorded as a time-series delta, not treated as data loss or an audit error.
+- Supabase security advisors returned 52 findings: 50 INFO `rls_enabled_no_policy` entries, one
+  WARN `function_search_path_mutable`, and one WARN `auth_leaked_password_protection`. The 50
+  no-policy entries are not automatically vulnerabilities; the two WARN items remain separate
+  security follow-ups.
+- The revenue-boundary policy query still shows the broad `bookings_access` and `customers_access`
+  authenticated policies, plus the NULL-tenant `customer_events_tenant_select` policy. This is the
+  concrete reason the stacked RLS migration remains a production blocker.

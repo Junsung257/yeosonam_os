@@ -103,3 +103,22 @@ production 배포가 변경됐다.
 블로그 복구 PR `#1000`, `#1001` 반영 뒤 revenue PR의 Open Readiness 재실행도
 `2026-07-30T10:01:16Z`에 성공했다. 앞선 dirty non-main production 배포 사실은 시점
 증거로 보존하되, 현재 blocker에서는 해제한다.
+
+### Production recheck — 2026-08-01
+
+읽기 전용으로 다시 확인한 결과는 `outputs/production-recheck-20260801.json`에 보관했다.
+
+| Item | Recheck value |
+|---|---|
+| Production migration head | `20260731123649 destination_media_approval_audit` |
+| Revenue Rescue migrations applied | 없음 |
+| `travel_packages` / `products` | 919 / 792 |
+| `public_package_snapshots` | 0 |
+| `leads` / `bookings` | 11 / 127 |
+| `content_attribution_events` / `customer_events` | 2 / 0 |
+| Security advisors | 52 (INFO 50, WARN 2) |
+
+예약 수가 locked baseline의 88건에서 127건으로 증가했으므로, 기존 예약 데이터가 삭제되지
+않았음을 보여주는 현재 시점 차이로 기록한다. 현재 production의 `bookings_access`,
+`customers_access`, `customer_events_tenant_select` 정책은 그대로 확인되었고, Revenue Rescue
+RLS migration이 적용되기 전에는 tenant isolation 완료로 판정하지 않는다.
