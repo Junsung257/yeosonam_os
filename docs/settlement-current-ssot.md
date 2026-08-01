@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-06-28
+Last updated: 2026-08-01
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -48,12 +48,12 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Overpayment converted to mileage must separate `allocated_amount` from `ledger_delta`: the bank transaction evidence keeps the full amount, while the booking ledger receives only the outstanding booking balance and the remainder is recorded as mileage.
 - Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
 - Manual bank-statement imports must treat memo keys such as `260715_정지해_투어폰` as the booking binding key. Counterparty/depositor name is supporting evidence only because companions can pay separately.
-- Bulk bank import may auto-allocate deposits only after a valid travel memo key resolves to one booking. Outflows must remain review/manual-confirmed even when the memo key resolves.
+- Bulk bank import may auto-allocate deposits after a valid travel memo key resolves to one booking. An outflow may also auto-allocate when the memo key resolves strongly to exactly one booking; ambiguous, fuzzy, or missing memo resolutions remain review/manual-confirmed.
 - Non-travel pasted bank rows without a valid travel memo key should be skipped by default instead of becoming unmatched finance evidence.
 - Clobe bank sync must normalize provider rows into the same bank import contract before touching `bank_transactions`.
 - Clobe MCP authentication is an admin OAuth connection stored in `tenant_api_tokens` with encrypted access/refresh tokens. Do not require operators to paste a static Clobe bearer token into Vercel.
 - Clobe sync dedupe order is provider transaction id first (`external_provider`, `external_transaction_id`), then local `transaction_fingerprint`.
-- Clobe-sourced outflows must stay review/manual-confirmed. Do not auto-confirm land operator payouts from provider sync.
+- Clobe-sourced outflows with a valid, strong one-booking memo resolution may auto-confirm as a payout through `match_bank_transaction_allocations`. Clobe outflows without that resolution must stay review/manual-confirmed.
 - If Clobe memo changes after a transaction is financially matched, do not move ledger allocation automatically. Record an open `ops_events` warning for manual review.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 
