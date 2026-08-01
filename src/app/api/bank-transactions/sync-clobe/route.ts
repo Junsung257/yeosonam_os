@@ -31,6 +31,15 @@ function defaultDateWindow() {
 
 async function resolveTenantId(rawTenantId: unknown): Promise<string | null> {
   if (typeof rawTenantId === 'string' && UUID_RE.test(rawTenantId)) return rawTenantId;
+  const { data: clobeConnections } = await supabaseAdmin
+    .from('tenant_api_tokens')
+    .select('tenant_id')
+    .eq('provider', 'clobe')
+    .eq('is_active', true)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+  if (clobeConnections?.[0]?.tenant_id) return clobeConnections[0].tenant_id;
+
   const { data } = await supabaseAdmin
     .from('tenants')
     .select('id')

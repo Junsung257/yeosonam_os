@@ -14,6 +14,9 @@ export interface ClobeMcpFetchOptions {
   limit?: number;
   accessToken?: string;
   diagnosticsOnly?: boolean;
+  companyId?: string;
+  accountId?: string;
+  cursor?: string;
 }
 
 export interface ClobeMcpToolSummary {
@@ -115,6 +118,8 @@ function inferDirection(raw: Record<string, unknown>): 'deposit' | 'withdraw' | 
     'depositWithdrawal',
   ])?.toLowerCase();
   if (!direction) return null;
+  if (direction === 'in') return 'deposit';
+  if (direction === 'out') return 'withdraw';
   if (/deposit|income|credit|입금|수입|매출/.test(direction)) return 'deposit';
   if (/withdraw|expense|debit|출금|지출|매입/.test(direction)) return 'withdraw';
   return null;
@@ -133,6 +138,12 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'transactionAt',
     'transaction_date',
     'transactionDate',
+    'transacted_at',
+    'transactedAt',
+    'traded_at',
+    'tradedAt',
+    'occurred_at',
+    'occurredAt',
     'date',
   ]));
   if (!receivedAt) return null;
@@ -143,6 +154,7 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'account_no',
     'accountNo',
     'bank_account_number',
+    'bankAccountNumber',
   ]) ?? undefined;
   const counterpartyName = getFirstString(raw, [
     'counterparty_name',
@@ -153,6 +165,12 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'client_name',
     'clientName',
     'transaction_summary',
+    'transactionName',
+    'transaction_name',
+    'bankTransactionName',
+    'bank_transaction_name',
+    'displayName',
+    'transactionContent',
     'summary',
     'description',
   ]) ?? '';
@@ -165,6 +183,8 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'userMemo',
     'description',
     'label',
+    'transactionMemo',
+    'transaction_memo',
   ]) ?? '';
 
   const explicitDeposit = getFirstNumber(raw, ['deposit_amount', 'depositAmount', 'income', 'credit']);
@@ -173,7 +193,15 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
   let withdrawAmount = Math.max(0, explicitWithdraw ?? 0);
 
   if (depositAmount <= 0 && withdrawAmount <= 0) {
-    const signedAmount = getFirstNumber(raw, ['signed_amount', 'signedAmount', 'amount', 'transaction_amount', 'transactionAmount']);
+    const signedAmount = getFirstNumber(raw, [
+      'signed_amount',
+      'signedAmount',
+      'amount',
+      'amountKrw',
+      'amount_krw',
+      'transaction_amount',
+      'transactionAmount',
+    ]);
     if (signedAmount == null || signedAmount === 0) return null;
     const direction = inferDirection(raw);
     if (signedAmount < 0 || direction === 'withdraw') withdrawAmount = Math.abs(signedAmount);
@@ -302,6 +330,81 @@ function toolText(tool: McpTool): string {
   return `${tool.name} ${tool.description ?? ''}`.toLowerCase();
 }
 
+function extractMcpData(payload: unknown): unknown {
+  const record = asRecord(payload);
+  if (record.structuredContent != null) return record.structuredContent;
+  if (Array.isArray(record.content)) {
+    for (const part of record.content) {
+      const text = asRecord(part).text;
+      if (typeof text !== 'string' || !text.trim()) continue;
+      try {
+        return JSON.parse(text);
+      } catch {
+        continue;
+      }
+    }
+  }
+  return payload;
+}
+
+function findValuesByKey(payload: unknown, keys: string[], depth = 0): unknown[] {
+  if (depth > 7 || payload == null) return [];
+  if (Array.isArray(payload)) {
+    return payload.flatMap(item => findValuesByKey(item, keys, depth + 1));
+  }
+  const record = asRecord(payload);
+  const values: unknown[] = [];
+  for (const [key, value] of Object.entries(record)) {
+    if (keys.includes(key)) values.push(value);
+    if (value && typeof value === 'object') {
+      values.push(...findValuesByKey(value, keys, depth + 1));
+    }
+  }
+  return values;
+}
+
+function resolveCompanyId(payload: unknown, configured?: string): string | null {
+  if (configured?.trim()) return configured.trim();
+  const data = extractMcpData(payload);
+  const directIds = findValuesByKey(data, ['companyId']);
+  const companyIds = findValuesByKey(data, ['companies'])
+    .flatMap(value => Array.isArray(value) ? value : [])
+    .map(company => getFirstString(asRecord(company), ['companyId', 'id']))
+    .filter((value): value is string => Boolean(value));
+  const ids = [...directIds, ...companyIds]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map(value => value.trim());
+  const unique = [...new Set(ids)];
+  if (unique.length > 1) {
+    throw new Error('Clobe connection has multiple companies; configure CLOBE_COMPANY_ID');
+  }
+  return unique[0] ?? null;
+}
+
+function resolveAccountId(payload: unknown, accountNumber?: string, configured?: string): string | null {
+  if (configured?.trim()) return configured.trim();
+  if (!accountNumber) return null;
+  const normalizedAccount = accountNumber.replace(/\D/g, '');
+  const candidates = findValuesByKey(extractMcpData(payload), ['accounts', 'bankAccounts'])
+    .flatMap(value => Array.isArray(value) ? value : []);
+  for (const candidate of candidates) {
+    const account = asRecord(candidate);
+    const number = getFirstString(account, ['accountNumber', 'account_number', 'maskedAccountNumber'])?.replace(/\D/g, '');
+    const id = getFirstString(account, ['bankAccountId', 'accountId', 'id']);
+    if (id && number && (number === normalizedAccount || number.endsWith(normalizedAccount) || normalizedAccount.endsWith(number))) {
+      return id;
+    }
+  }
+  return null;
+}
+
+function paginationState(payload: unknown): { hasNext: boolean; nextCursor: string | null } {
+  const data = extractMcpData(payload);
+  const hasNext = findValuesByKey(data, ['hasNext']).find(value => typeof value === 'boolean') === true;
+  const cursor = findValuesByKey(data, ['nextCursor']).find(value => typeof value === 'string' && value.trim());
+  return { hasNext, nextCursor: typeof cursor === 'string' ? cursor : null };
+}
+
 function summarizeInputFields(
   schemaValue: unknown,
   prefix = '',
@@ -337,32 +440,30 @@ function summarizeInputFields(
   return fields.slice(0, 200);
 }
 
-function isExplicitBankTool(tool: McpTool): boolean {
-  const text = toolText(tool);
-  return /(bank|bank_account|account_statement|statement|transaction_history|transactions|deposit|withdraw|cash_flow|cashflow|입출금|통장|거래내역|입금|출금|은행)/.test(text);
-}
-
 export function rankTransactionTools(tools: McpTool[], preferred?: string | null): McpTool[] {
-  const candidates = tools
-    .map(tool => ({
-      tool,
-      text: toolText(tool),
-    }))
-    .filter(({ text }) => {
-      const irrelevant = /(tax|invoice|revenue|card_billing|credit_card|세금|계산서|매출|카드|청구)/.test(text);
-      const unsafe = /(create|update|delete|remove|write|send|post|생성|수정|삭제|등록|전송)/.test(text);
-      return isExplicitBankTool({ name: text }) && !irrelevant && !unsafe;
+  return tools
+    .map(tool => ({ tool, text: toolText(tool), name: tool.name.toLowerCase() }))
+    .filter(({ name, text }) => {
+      const exactClobeReader = name === 'get_labeled_transactions';
+      const readVerb = /^(get|list|search|fetch|query|read)_/.test(name);
+      const transactionReader = /transactions?|transaction_history|account_statement/.test(name);
+      const bankContext = /(bank|account|deposit|withdraw|cash|transaction)/.test(text);
+      const mutation = /(bulk|label_|create|update|delete|remove|write|send|post|apply|assign)/.test(name);
+      const unrelated = /(tax|invoice|revenue|card_billing|credit_card|journal|ledger|payroll)/.test(text);
+      const accountListOnly = /bank_accounts?$/.test(name);
+      const labelCatalog = name === 'get_labels';
+      return (exactClobeReader || (readVerb && transactionReader && bankContext))
+        && !mutation
+        && !unrelated
+        && !accountListOnly
+        && !labelCatalog;
     })
     .sort((a, b) => {
-      const aPreferred = preferred && a.tool.name === preferred ? 100 : 0;
-      const bPreferred = preferred && b.tool.name === preferred ? 100 : 0;
-      const aExact = isExplicitBankTool(a.tool) ? 50 : 0;
-      const bExact = isExplicitBankTool(b.tool) ? 50 : 0;
-      const aRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(a.text) ? 5 : 0;
-      const bRead = /(list|get|search|fetch|query|read|조회|검색|목록|가져)/.test(b.text) ? 5 : 0;
-      return (bPreferred + bExact + bRead) - (aPreferred + aExact + aRead);
-    });
-  return candidates.map(({ tool }) => tool);
+      const aScore = (preferred === a.tool.name ? 100 : 0) + (a.name === 'get_labeled_transactions' ? 50 : 0);
+      const bScore = (preferred === b.tool.name ? 100 : 0) + (b.name === 'get_labeled_transactions' ? 50 : 0);
+      return bScore - aScore;
+    })
+    .map(({ tool }) => tool);
 }
 
 export function chooseTransactionTool(tools: McpTool[], preferred?: string | null): string | null {
@@ -418,32 +519,27 @@ async function initializeMcp(ctx: McpCallContext) {
   await mcpCall(ctx, 'notifications/initialized', {}, true);
 }
 
-function buildToolArguments(options: ClobeMcpFetchOptions, tool?: McpTool): Record<string, unknown> {
-  const text = toolText(tool ?? { name: '' });
-  const properties = Object.keys(tool?.inputSchema?.properties ?? {});
-  const args: Record<string, unknown> = {};
-  const setAliases = (aliases: string[], value: string | number | undefined) => {
-    if (value == null) return;
-    const alias = properties.find(property => aliases.includes(property));
-    if (alias) args[alias] = value;
+interface ClobeTransactionToolArguments {
+  companyId: string;
+  from?: string;
+  to?: string;
+  accountId?: string | null;
+  cursor?: string | null;
+  size: number;
+}
+
+function buildTransactionArguments(options: ClobeTransactionToolArguments): Record<string, unknown> {
+  return {
+    input: {
+      companyId: options.companyId,
+      ...(options.from ? { startDate: options.from } : {}),
+      ...(options.to ? { endDate: options.to } : {}),
+      ...(options.accountId ? { accountId: options.accountId } : {}),
+      ...(options.cursor ? { cursor: options.cursor } : {}),
+      size: Math.max(1, Math.min(100, options.size)),
+      userQuery: 'Yeosonam OS bank transaction settlement sync',
+    },
   };
-
-  if (properties.length === 0) {
-    if (options.from) Object.assign(args, { from: options.from, startDate: options.from, start_date: options.from });
-    if (options.to) Object.assign(args, { to: options.to, endDate: options.to, end_date: options.to });
-    if (options.accountNumber) Object.assign(args, { accountNumber: options.accountNumber, account_number: options.accountNumber });
-    if (options.limit) args.limit = options.limit;
-  } else {
-    setAliases(['from', 'startDate', 'start_date', 'dateFrom', 'date_from', 'since'], options.from);
-    setAliases(['to', 'endDate', 'end_date', 'dateTo', 'date_to', 'until'], options.to);
-    setAliases(['accountNumber', 'account_number', 'accountNo', 'account_no'], options.accountNumber);
-    setAliases(['limit', 'pageSize', 'page_size'], options.limit);
-  }
-
-  if (/(memo|note|message|slack|메모|노트|메시지)/.test(text)) {
-    setAliases(['query', 'search', 'q', 'keyword', 'text'], '통장 입출금 거래내역 입금 출금 정산 메모');
-  }
-  return args;
 }
 
 export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOptions = {}): Promise<ClobeMcpFetchResult> {
@@ -499,46 +595,87 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
     };
   }
 
+  const selectedTool = rankedTools[0];
+  const contextTool = tools.find(tool => tool.name === 'get_my_context');
+  if (!contextTool) throw new Error('Clobe MCP get_my_context tool is unavailable');
+
+  const contextResult = await mcpCall(ctx, 'tools/call', {
+    name: contextTool.name,
+    arguments: { input: { userQuery: 'Yeosonam OS settlement company lookup' } },
+  });
+  const companyId = resolveCompanyId(
+    contextResult,
+    options.companyId || getSecret('CLOBE_COMPANY_ID') || undefined,
+  );
+  if (!companyId) throw new Error('Clobe company could not be resolved from get_my_context');
+
+  let accountId = options.accountId ?? null;
+  if (!accountId && options.accountNumber) {
+    const accountTool = tools.find(tool => tool.name === 'get_bank_accounts');
+    if (!accountTool) throw new Error('Clobe MCP get_bank_accounts tool is unavailable');
+    const accountResult = await mcpCall(ctx, 'tools/call', {
+      name: accountTool.name,
+      arguments: { input: { companyId, userQuery: 'Yeosonam OS settlement bank account lookup' } },
+    });
+    accountId = resolveAccountId(accountResult, options.accountNumber);
+    if (!accountId) throw new Error('Requested Clobe bank account could not be resolved');
+  }
+
   const attempts: ClobeMcpFetchAttempt[] = [];
-  let lastError: Error | null = null;
-  let firstRawTransactions: Record<string, unknown>[] = [];
-  for (const tool of rankedTools.slice(0, 12)) {
+  const transactions: Record<string, unknown>[] = [];
+  const requestedLimit = Math.max(1, Math.min(1000, options.limit ?? 200));
+  const seenCursors = new Set<string>();
+  let cursor = options.cursor ?? null;
+
+  while (transactions.length < requestedLimit) {
+    const size = Math.min(100, requestedLimit - transactions.length);
     try {
       const callResult = await mcpCall(ctx, 'tools/call', {
-        name: tool.name,
-        arguments: buildToolArguments(options, tool),
+        name: selectedTool.name,
+        arguments: buildTransactionArguments({
+          companyId,
+          from: options.from,
+          to: options.to,
+          accountId: accountId ?? undefined,
+          cursor: cursor ?? undefined,
+          size,
+        }),
       });
-      const transactions = extractTransactionArray(callResult).filter(item => typeof item === 'object' && item !== null) as Record<string, unknown>[];
-      const normalized = transactions.filter(item => normalizeClobeBankTransaction(item) != null);
-      if (transactions.length > 0 && firstRawTransactions.length === 0) firstRawTransactions = transactions;
+      const page = extractTransactionArray(callResult)
+        .filter(item => typeof item === 'object' && item !== null) as Record<string, unknown>[];
+      const normalizedCount = page.filter(item => normalizeClobeBankTransaction(item) != null).length;
       attempts.push({
-        toolName: tool.name,
-        extracted: transactions.length,
-        normalized: normalized.length,
+        toolName: selectedTool.name,
+        extracted: page.length,
+        normalized: normalizedCount,
         ...summarizeMcpResult(callResult),
       });
-      if (normalized.length > 0) {
-        return { transactions: normalized, toolName: tool.name, toolNames, attempts, bankToolAvailable: true, tools: toolSummaries };
+      transactions.push(...page.slice(0, requestedLimit - transactions.length));
+
+      const pagination = paginationState(callResult);
+      if (!pagination.hasNext || !pagination.nextCursor || page.length === 0) break;
+      if (seenCursors.has(pagination.nextCursor)) {
+        throw new Error('Clobe transaction pagination returned a repeated cursor');
       }
+      seenCursors.add(pagination.nextCursor);
+      cursor = pagination.nextCursor;
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error('Clobe MCP tool call failed');
+      const failure = error instanceof Error ? error : new Error('Clobe MCP transaction read failed');
       attempts.push({
-        toolName: tool.name,
+        toolName: selectedTool.name,
         extracted: 0,
         normalized: 0,
         resultKeys: [],
         contentTypes: [],
-        error: lastError.message,
+        error: failure.message,
       });
+      throw failure;
     }
   }
 
-  if (lastError && attempts.every(attempt => attempt.error)) {
-    throw lastError;
-  }
   return {
-    transactions: firstRawTransactions,
-    toolName: attempts[0]?.toolName ?? selectedToolName,
+    transactions,
+    toolName: selectedTool.name,
     toolNames,
     attempts,
     bankToolAvailable: true,

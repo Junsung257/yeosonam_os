@@ -527,3 +527,9 @@ commands without changing external settings. The dry-run path is checked by
 `npm run verify:operational-apply-scripts -- --json`. The env-file audit also
 warns on unknown keys, duplicate keys, empty values, and invalid lines so typos
 are visible before applying external configuration.
+
+## Clobe Settlement Selection
+
+| Variable | Purpose |
+|---|---|
+| `CLOBE_COMPANY_ID` | Optional Clobe company ID when one OAuth account exposes multiple companies. Leave unset for a single-company connection. |

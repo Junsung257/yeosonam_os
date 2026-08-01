@@ -43,6 +43,24 @@ describe('clobe bank sync normalization', () => {
     expect(row?.withdrawAmount).toBe(1286700);
   });
 
+  it('recognizes Clobe IN and OUT direction values', () => {
+    const deposit = normalizeClobeBankTransaction({
+      transactionAt: '2026-07-09 10:12:48',
+      direction: 'IN',
+      transactionAmount: 1000000,
+    });
+    const withdraw = normalizeClobeBankTransaction({
+      transactionAt: '2026-07-09 11:12:48',
+      direction: 'OUT',
+      transactionAmount: 900000,
+    });
+
+    expect(deposit?.depositAmount).toBe(1000000);
+    expect(deposit?.withdrawAmount).toBe(0);
+    expect(withdraw?.depositAmount).toBe(0);
+    expect(withdraw?.withdrawAmount).toBe(900000);
+  });
+
   it('extracts transaction arrays from common MCP result envelopes', () => {
     expect(extractTransactionArray({ data: { transactions: [{ id: 'a' }] } })).toEqual([{ id: 'a' }]);
     expect(extractTransactionArray({ items: [{ id: 'b' }] })).toEqual([{ id: 'b' }]);
@@ -78,6 +96,19 @@ describe('clobe bank sync normalization', () => {
       'get_bank_transactions',
     ]);
     expect(chooseTransactionTool(tools.filter(tool => tool.name !== 'get_bank_transactions'))).toBeNull();
+  });
+
+  it('never selects account listings or label mutation tools as transaction readers', () => {
+    const tools = [
+      { name: 'get_bank_accounts', description: 'Read bank account list' },
+      { name: 'bulk_label_transactions', description: 'Apply labels to transactions' },
+      { name: 'get_labels', description: 'Read labels' },
+      { name: 'get_labeled_transactions', description: 'Read actual bank transactions' },
+    ];
+
+    expect(rankTransactionTools(tools).map(tool => tool.name)).toEqual([
+      'get_labeled_transactions',
+    ]);
   });
 
   it('returns normalization errors for incomplete rows without throwing', () => {
