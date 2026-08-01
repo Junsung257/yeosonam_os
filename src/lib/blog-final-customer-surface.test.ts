@@ -4,6 +4,7 @@ import {
   repairBlogFinalInlineSurface,
 } from './blog-final-customer-surface';
 import { checkArticleQualityV2 } from './blog-quality-gate';
+import { stripMarkup } from './blog-text-utils';
 
 describe('repairBlogFinalCustomerSurface', () => {
   it('repairs entry-declaration particles without pruning final evidence blocks', () => {
@@ -30,6 +31,21 @@ describe('repairBlogFinalCustomerSurface', () => {
     expect(result.markdown).toContain('| 세관 | 식품·동식물·현금 신고 여부 |');
     expect(result.markdown).toContain('[미국 세관국경보호국](https://www.cbp.gov/travel)');
     expect(result.markdown).toContain('<!-- /blog_research_structure:entry_requirements:v1 -->');
+  });
+
+  it('repairs particles split from their Korean noun by Markdown emphasis', () => {
+    const cases = [
+      ['**입국신고**을 작성합니다.', '**입국 신고**를 작성합니다.'],
+      ['입국신고**을** 작성합니다.', '입국 신고**를** 작성합니다.'],
+      ['**입국신고을** 작성합니다.', '**입국 신고를** 작성합니다.'],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      expect(result.changed).toBe(true);
+      expect(result.markdown).toBe(expected);
+      expect(stripMarkup(result.markdown)).not.toContain('입국신고을');
+    }
   });
 
   it('removes visible generation instructions and repeated public paragraphs', () => {

@@ -581,13 +581,31 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
     const hasBatchim = ((lastHangul.charCodeAt(0) - 0xac00) % 28) > 0;
     return hasBatchim ? withBatchim : withoutBatchim;
   };
+  const correctSubjectOrObjectParticle = (word: string, particle: string): string => {
+    const normalizedParticle = particleFor(word, '은', '는');
+    if (normalizedParticle !== '는') return particle;
+    return particle === '은' ? '는' : '를';
+  };
   const next = markdown
     .replace(/([가-힣]{2,16})(?:과|와)(?:은|을)(?=\s|$|[.,!?])/g, (match, word: string) => {
       const particle = particleFor(word, '은', '는');
       return particle ? `${word}${particle}` : match;
     })
-    .replace(/입국신고을/g, '입국 신고를')
-    .replace(/입국신고은/g, '입국 신고는')
+    .replace(/(\*\*|__|==|`)([가-힣]{2,12})(은|을)\1(?=\s|$|[.,!?])/g,
+      (match, marker: string, word: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${marker}${word}${corrected}${marker}`;
+      })
+    .replace(/(\*\*|__|==|`)([가-힣]{2,12})\1(은|을)(?=\s|$|[.,!?])/g,
+      (match, marker: string, word: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${marker}${word}${marker}${corrected}`;
+      })
+    .replace(/([가-힣]{2,12})(\*\*|__|==|`)(은|을)\2(?=\s|$|[.,!?])/g,
+      (match, word: string, marker: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${word}${marker}${corrected}${marker}`;
+      })
     .replace(/체크리스트을/g, '체크리스트를')
     .replace(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g, (match, word: string, particle: string) => {
     const normalizedParticle = particleFor(word, '은', '는');
@@ -595,7 +613,8 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
     const hasBatchim = normalizedParticle === '은';
     if (hasBatchim) return match;
     return `${word}${particle === '은' ? '는' : '를'}`;
-  });
+  })
+    .replace(/입국신고(?!서)/g, '입국 신고');
   return { markdown: next, changed: next !== before };
 }
 
