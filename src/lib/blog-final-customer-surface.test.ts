@@ -4,6 +4,7 @@ import {
   repairBlogFinalInlineSurface,
 } from './blog-final-customer-surface';
 import { checkArticleQualityV2 } from './blog-quality-gate';
+import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { stripMarkup } from './blog-text-utils';
 
 describe('repairBlogFinalCustomerSurface', () => {
@@ -46,6 +47,44 @@ describe('repairBlogFinalCustomerSurface', () => {
       expect(result.markdown).toBe(expected);
       expect(stripMarkup(result.markdown)).not.toContain('입국신고을');
     }
+  });
+
+  it('repairs particles attached after a Markdown link', () => {
+    const cases = [
+      [
+        '[세관 신고](https://www.cbp.gov/travel)을 확인합니다.',
+        '[세관 신고](https://www.cbp.gov/travel)를 확인합니다.',
+      ],
+      [
+        '[세관 신고](https://www.cbp.gov/travel)**을** 확인합니다.',
+        '[세관 신고](https://www.cbp.gov/travel)**를** 확인합니다.',
+      ],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      expect(result.markdown).toBe(expected);
+      expect(stripMarkup(result.markdown)).not.toContain('신고을');
+    }
+  });
+
+  it('turns an orphan multi-column prose row into evidence-preserving bullets', async () => {
+    const source = [
+      '<!-- blog_research_structure:entry_requirements:v1 -->',
+      '귀국편 / 귀국 항공권을 준비합니다. | 숙소 정보 / 미국 내 체류지 예약 정보를 준비합니다. | 여행 경비 증빙 / 신용카드와 현금 자료를 준비합니다. | 세관·면세 범위 / 모든 여행자는 신고 대상을 확인합니다.',
+      '<!-- /blog_research_structure:entry_requirements:v1 -->',
+    ].join('\n');
+
+    const result = repairBlogFinalInlineSurface(source);
+    const html = await renderBlogContentToHtml(result.markdown);
+    const integrity = inspectRenderedBlogIntegrity(result.markdown, html);
+
+    expect(result.changes).toContain('repair_orphan_pipe_delimited_rows');
+    expect(result.markdown).toContain('- 귀국편 / 귀국 항공권을 준비합니다.');
+    expect(result.markdown).toContain('- 숙소 정보 / 미국 내 체류지 예약 정보를 준비합니다.');
+    expect(result.markdown).toContain('- 여행 경비 증빙 / 신용카드와 현금 자료를 준비합니다.');
+    expect(result.markdown).toContain('- 세관·면세 범위 / 모든 여행자는 신고 대상을 확인합니다.');
+    expect(integrity.evidence.artifacts).not.toContain('literal_markdown_table_row');
   });
 
   it('removes visible generation instructions and repeated public paragraphs', () => {

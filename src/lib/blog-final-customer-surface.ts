@@ -606,6 +606,18 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
         const corrected = correctSubjectOrObjectParticle(word, particle);
         return corrected === particle ? match : `${word}${marker}${corrected}${marker}`;
       })
+    .replace(/\[([^\]\n]*?)([가-힣]{2,12})\]\(([^)\n]+)\)(은|을)(?=\s|$|[.,!?])/g,
+      (match, prefix: string, word: string, url: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `[${prefix}${word}](${url})${corrected}`;
+      })
+    .replace(/\[([^\]\n]*?)([가-힣]{2,12})\]\(([^)\n]+)\)(\*\*|__|==|`)(은|을)\4(?=\s|$|[.,!?])/g,
+      (match, prefix: string, word: string, url: string, marker: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle
+          ? match
+          : `[${prefix}${word}](${url})${marker}${corrected}${marker}`;
+      })
     .replace(/체크리스트을/g, '체크리스트를')
     .replace(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g, (match, word: string, particle: string) => {
     const normalizedParticle = particleFor(word, '은', '는');
@@ -618,12 +630,30 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
   return { markdown: next, changed: next !== before };
 }
 
+function repairOrphanPipeDelimitedRows(markdown: string): { markdown: string; changed: boolean } {
+  let changed = false;
+  const next = markdown.split('\n').map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('|') || trimmed.startsWith('```')) return line;
+    const segments = trimmed.split(/\s+\|\s+/).map((segment) => segment.trim()).filter(Boolean);
+    if (segments.length < 3 || trimmed.length < 100) return line;
+    changed = true;
+    return segments.map((segment) => `- ${segment}`).join('\n');
+  }).join('\n');
+  return { markdown: next, changed };
+}
+
 export function repairBlogFinalInlineSurface(markdown: string): BlogFinalCustomerSurfaceResult {
   const particleRepair = repairCommonSurfaceParticles(markdown || '');
+  const orphanPipeRepair = repairOrphanPipeDelimitedRows(particleRepair.markdown);
+  const changes = [
+    ...(particleRepair.changed ? ['repair_common_surface_particles'] : []),
+    ...(orphanPipeRepair.changed ? ['repair_orphan_pipe_delimited_rows'] : []),
+  ];
   return {
-    markdown: particleRepair.markdown,
-    changed: particleRepair.changed,
-    changes: particleRepair.changed ? ['repair_common_surface_particles'] : [],
+    markdown: orphanPipeRepair.markdown,
+    changed: changes.length > 0,
+    changes,
   };
 }
 
