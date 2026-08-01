@@ -14,6 +14,10 @@ const usEntryContractMigration = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260801163651_add_us_entry_supporting_and_customs_authority.sql'),
   'utf8',
 );
+const usCustomsPdfMigration = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260801172903_add_us_customs_declaration_pdf.sql'),
+  'utf8',
+);
 
 describe('retrievable entry authority migration', () => {
   it('registers destination-scoped official Japan and US documents', () => {
@@ -46,5 +50,13 @@ describe('US complete entry contract authority migration', () => {
     expect(usEntryContractMigration).not.toContain('esta.cbp.dhs.gov/faq');
     expect(usEntryContractMigration).toContain("array['entry_requirements']");
     expect(usEntryContractMigration).toContain("array['미국']");
+  });
+
+  it('adds the directly parseable CBP Form 6059B declaration PDF', () => {
+    expect(usCustomsPdfMigration).toContain("r.hostname = 'cbp.gov'");
+    expect(usCustomsPdfMigration).toContain("r.source_type = 'customs'");
+    expect(usCustomsPdfMigration).toContain('https://www.cbp.gov/sites/default/files/2025-07/25_0718_cbp_form_6059_sample_ndc_1.pdf');
+    expect(usCustomsPdfMigration).toContain("array['entry_requirements']");
+    expect(usCustomsPdfMigration).toContain("array['미국']");
   });
 });

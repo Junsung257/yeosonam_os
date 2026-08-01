@@ -126,7 +126,7 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
     },
     {
       key: 'supporting_return',
-      pattern: /귀국\s*(?:일정|편|항공권)|왕복\s*항공권|출국\s*항공권|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b/i,
+      pattern: /귀국\s*(?:일정|편|항공편|항공권)|왕복\s*항공권|출국\s*항공권|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b/i,
     },
     {
       key: 'supporting_lodging',
@@ -134,7 +134,7 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
     },
     {
       key: 'supporting_financial',
-      pattern: /여행\s*경비|경비\s*미지참|재정\s*증빙|충분한\s*자금|\bsufficient\s+funds?\b|financial\s+(?:means|support|solvency)/i,
+      pattern: /여행(?:에\s*필요한)?\s*경비|경비\s*미지참|재정\s*증빙|충분한\s*자금|\bsufficient\s+funds?\b|financial\s+(?:means|support|solvency)/i,
     },
     {
       key: 'customs_declaration',
@@ -1528,11 +1528,11 @@ function repairEntryRequirementsResearchStructure(input: {
     /체류\s*(?:가능\s*)?(?:기간|일수)|\d+\s*일|permitted\s*stay|stay\s*(?:of|up\s*to)|\bdays?\b/i.test(claim.claimText));
   const supportingDocumentClaims = [
     supportedClaims.find((claim) =>
-      /귀국\s*(?:일정|편|항공권)|왕복\s*항공권|출국\s*항공권|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b/i.test(claim.claimText)),
+      /귀국\s*(?:일정|편|항공편|항공권)|왕복\s*항공권|출국\s*항공권|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b/i.test(claim.claimText)),
     supportedClaims.find((claim) =>
       /체류지|숙소\s*(?:예약|정보)?|숙박비|\blodging\b|accommodation/i.test(claim.claimText)),
     supportedClaims.find((claim) =>
-      /여행\s*경비|경비\s*미지참|재정\s*증빙|충분한\s*자금|\bsufficient\s+funds?\b|financial\s+(?:means|support|solvency)/i.test(claim.claimText)),
+      /여행(?:에\s*필요한)?\s*경비|경비\s*미지참|재정\s*증빙|충분한\s*자금|\bsufficient\s+funds?\b|financial\s+(?:means|support|solvency)/i.test(claim.claimText)),
   ];
   const customsClaim = supportedClaims.find((claim) =>
     /세관[^\n]{0,100}(?:신고|면세|반입|품목|농산|현금)|(?:식품|농산물|현금|통화)[^\n]{0,100}신고|\b(?:declare|declaration|duty[- ]free|agricultur(?:e|al)|monetary instruments?)\b/i.test(claim.claimText));
