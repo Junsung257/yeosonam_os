@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
+import { checkArticleQualityV2 } from './blog-quality-gate';
 
 describe('repairBlogFinalCustomerSurface', () => {
   it('removes visible generation instructions and repeated public paragraphs', () => {
@@ -155,6 +156,35 @@ describe('repairBlogFinalCustomerSurface', () => {
     expect(beforeFirstSection).toContain('클락');
     expect(beforeFirstSection).toMatch(/날씨|옷차림|준비물|기온|비 예보/);
     expect(beforeFirstSection).not.toContain('같은 가격처럼 보여도');
+  });
+
+  it('keeps a weather-specific lead when pruning multiple opening paragraphs', () => {
+    const result = repairBlogFinalCustomerSurface({
+      destination: '베이징',
+      primaryKeyword: '베이징 월별 날씨',
+      slug: 'beijing-july-weather-packing',
+      markdown: [
+        '# 베이징 7월 날씨와 옷차림',
+        '',
+        '베이징 7월은 낮 기온이 높습니다.',
+        '',
+        '출발 전에는 비 예보와 아침저녁 기온 차이를 함께 확인하세요.',
+        '',
+        '## 월별 날씨 기준',
+        '',
+        '공식 기후 평년값과 출발 직전 예보를 함께 확인합니다.',
+      ].join('\n'),
+    });
+
+    const lead = result.markdown.split('\n## 월별 날씨 기준')[0];
+    expect(lead).toMatch(/날씨|옷차림|준비물|기온|비 예보/);
+    expect(lead).not.toContain('일정, 비용, 이동 조건');
+    expect(checkArticleQualityV2({
+      blog_html: result.markdown,
+      slug: 'beijing-july-weather-packing',
+      blog_type: 'info',
+      primary_keyword: '베이징 월별 날씨',
+    }).evidence?.issues).not.toContain('info_intro_intent_mismatch');
   });
 
   it('rebuilds a weak fragment lead into a customer answer-first paragraph', () => {

@@ -492,7 +492,7 @@ function pruneLeadProse(markdown: string, input: BlogFinalCustomerSurfaceInput):
   const destination = inferDestination(input) || '여행';
   const lead = hasAnswerShape
     ? firstLead
-    : `${destination}, 먼저 무엇을 확인해야 할까요? 일정, 비용, 이동 조건을 함께 비교하면 출발 전 바뀔 수 있는 조건을 줄일 수 있습니다.`;
+    : buildAnswerFirstLead(input, destination);
 
   const next = [
     ...lines.slice(0, h1Index + 1),
