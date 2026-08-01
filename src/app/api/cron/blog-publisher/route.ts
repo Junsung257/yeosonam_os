@@ -2930,21 +2930,20 @@ async function processQueueItem(
       }
     };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
-      applyFinalResearchStructureRepair();
       applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+      applyFinalResearchStructureRepair();
       await restoreFinalReusableImages();
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
     const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> => {
-      // The evidence-backed tables must be final before H2/FAQ normalization.
-      // A later generic repair may replace the body, so this boundary is also
-      // repeated once after generic repair when AI readability is still failing.
-      applyFinalResearchStructureRepair();
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+      // Research-backed structure is the last body mutation so generic surface
+      // cleanup cannot prune high-risk entry evidence from the customer article.
+      applyFinalResearchStructureRepair();
       await restoreFinalReusableImages();
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
