@@ -6,7 +6,16 @@
   "migrationHead": {
     "version": "20260731123649",
     "name": "destination_media_approval_audit",
-    "revenueRescueMigrationsApplied": false
+    "revenueRescueMigrationsApplied": false,
+    "developmentBranches": [
+      {
+        "name": "main",
+        "projectRef": "ixaxnvbmhzjvupissmly",
+        "status": "FUNCTIONS_DEPLOYED",
+        "withData": false
+      }
+    ],
+    "nonProductionBranchAvailable": false
   },
   "counts": {
     "travel_packages": 919,
@@ -35,6 +44,18 @@
       "function_search_path_mutable": 1,
       "auth_leaked_password_protection": 1
     },
+    "warnDetails": [
+      {
+        "name": "function_search_path_mutable",
+        "target": "public.match_bank_transaction_allocations",
+        "action": "Create a forward migration that pins the function search_path after reviewing callers."
+      },
+      {
+        "name": "auth_leaked_password_protection",
+        "target": "Supabase Auth",
+        "action": "Enable leaked-password protection in the Auth security settings and verify the resulting policy."
+      }
+    ],
     "interpretation": "RLS enabled/no-policy findings remain informational until the actual route and policy boundary is reviewed. The two warnings require a separate security change; they are not silently marked fixed by this revenue PR."
   },
   "revenueBoundaryPolicies": {

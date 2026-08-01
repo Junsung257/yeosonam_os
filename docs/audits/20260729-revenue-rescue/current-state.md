@@ -117,8 +117,13 @@ production 배포가 변경됐다.
 | `leads` / `bookings` | 11 / 127 |
 | `content_attribution_events` / `customer_events` | 2 / 0 |
 | Security advisors | 52 (INFO 50, WARN 2) |
+| Non-production Supabase branch | 없음 (main only) |
 
 예약 수가 locked baseline의 88건에서 127건으로 증가한 것은 현재 시점 차이로 기록한다.
 이 숫자만으로 기존 예약 데이터의 삭제 여부를 단정하지 않는다. 현재 production의 `bookings_access`,
 `customers_access`, `customer_events_tenant_select` 정책은 그대로 확인되었고, Revenue Rescue
 RLS migration이 적용되기 전에는 tenant isolation 완료로 판정하지 않는다.
+
+Advisor WARN 두 건은 별도 운영 조치가 필요하다. `public.match_bank_transaction_allocations`는
+forward migration으로 search_path를 고정해야 하며, Auth leaked-password protection은 Supabase
+Auth 보안 설정에서 활성화한 뒤 재검증해야 한다.

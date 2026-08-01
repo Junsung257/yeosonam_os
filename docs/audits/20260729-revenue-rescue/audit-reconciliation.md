@@ -71,3 +71,8 @@
 - The revenue-boundary policy query still shows the broad `bookings_access` and `customers_access`
   authenticated policies, plus the NULL-tenant `customer_events_tenant_select` policy. This is the
   concrete reason the stacked RLS migration remains a production blocker.
+- The Supabase project has only the default `main` branch; no non-production branch exists. A new
+  branch was not created because branch creation may incur cost and is an external project change.
+- The two advisor WARN details are now explicit: mutable search path on
+  `public.match_bank_transaction_allocations`, and disabled Auth leaked-password protection. They
+  remain separate follow-ups and were not silently changed in this PR.
