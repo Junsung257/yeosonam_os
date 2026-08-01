@@ -58,6 +58,13 @@
     ],
     "interpretation": "RLS enabled/no-policy findings remain informational until the actual route and policy boundary is reviewed. The two warnings require a separate security change; they are not silently marked fixed by this revenue PR."
   },
+  "functionSearchPathRecheck": {
+    "observedAt": "2026-08-01T13:35:05.6671401Z",
+    "query": "queries/13-function-search-path-recheck.sql",
+    "signature": "match_bank_transaction_allocations(uuid,jsonb,numeric,text,text)",
+    "proconfig": null,
+    "verdict": "WARN_CONFIRMED_FORWARD_MIGRATION_REQUIRED"
+  },
   "revenueBoundaryPolicies": {
     "bookings": "bookings_access is still global for authenticated users or platform admin/tenant predicate; the stacked RLS migration is not applied.",
     "customers": "customers_access is still global for authenticated users or platform admin/tenant predicate; the stacked RLS migration is not applied.",

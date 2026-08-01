@@ -76,3 +76,6 @@
 - The two advisor WARN details are now explicit: mutable search path on
   `public.match_bank_transaction_allocations`, and disabled Auth leaked-password protection. They
   remain separate follow-ups and were not silently changed in this PR.
+- A direct `pg_proc` read confirmed `match_bank_transaction_allocations(uuid,jsonb,numeric,text,text)`
+  has `proconfig = NULL`; the mutable-search-path warning is therefore reproducible, not a stale
+  advisor cache. A forward migration must pin its search path after caller review.

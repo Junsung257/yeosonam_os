@@ -105,6 +105,13 @@
       "evidenceFile": "outputs/production-recheck-20260801.json",
       "verdict": "RECHECK_RECORDED_MIGRATION_PENDING",
       "confidence": "high"
+    },
+    {
+      "observedAt": "2026-08-01T13:35:05.6671401Z",
+      "query": "queries/13-function-search-path-recheck.sql",
+      "evidenceFile": "outputs/production-recheck-20260801.json",
+      "verdict": "WARN_CONFIRMED_FORWARD_MIGRATION_REQUIRED",
+      "confidence": "high"
     }
   ]
 }
