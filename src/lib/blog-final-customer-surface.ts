@@ -587,6 +587,40 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
     return particle === '은' ? '는' : '를';
   };
   const next = markdown
+    .replace(/(^|[^!])\[([^\]\n]+)\]\(([^)\n]+)\)/gm,
+      (match, prefix: string, label: string, url: string) => {
+        const repairedLabel = repairCommonSurfaceParticles(label).markdown;
+        return repairedLabel === label ? match : `${prefix}[${repairedLabel}](${url})`;
+      })
+    .replace(/\[([^\]\n]+)\]\(([^)\n]+)\)((?:\*{1,3}|_{1,3}|==|`)?)(은|을)\3(?=\s|$|[.,!?])/g,
+      (match, label: string, url: string, marker: string, particle: string) => {
+        const visibleWord = stripMarkup(label).match(/([가-힣]{2,12})\s*$/)?.[1];
+        if (!visibleWord) return match;
+        const corrected = correctSubjectOrObjectParticle(visibleWord, particle);
+        return corrected === particle
+          ? match
+          : `[${label}](${url})${marker}${corrected}${marker}`;
+      })
+    .replace(/([*_=`~]{1,8})([가-힣]{2,12})([*_=`~]{1,8})(은|을)(?=\s|$|[.,!?])/g,
+      (match, opening: string, word: string, closing: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${opening}${word}${closing}${corrected}`;
+      })
+    .replace(/([*_=`~]{1,8})([가-힣]{2,12})(은|을)([*_=`~]{1,8})(?=\s|$|[.,!?])/g,
+      (match, opening: string, word: string, particle: string, closing: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${opening}${word}${corrected}${closing}`;
+      })
+    .replace(/([가-힣]{2,12})([*_=`~]{1,8})(은|을)([*_=`~]{1,8})(?=\s|$|[.,!?])/g,
+      (match, word: string, opening: string, particle: string, closing: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${word}${opening}${corrected}${closing}`;
+      })
+    .replace(/([가-힣]{2,12})(은|을)([*_=`~]{1,8})(?=\s|$|[.,!?])/g,
+      (match, word: string, particle: string, closing: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${word}${corrected}${closing}`;
+      })
     .replace(/([가-힣]{2,16})(?:과|와)(?:은|을)(?=\s|$|[.,!?])/g, (match, word: string) => {
       const particle = particleFor(word, '은', '는');
       return particle ? `${word}${particle}` : match;
