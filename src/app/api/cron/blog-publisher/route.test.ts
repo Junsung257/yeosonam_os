@@ -305,6 +305,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> =>');
     expect(source).toContain('const restoreFinalReusableImages = async (): Promise<void> =>');
     expect(source).toContain('const applyFinalGateCustomerSurfaceRepair = (): void =>');
+    expect(source).toContain('const applyFinalInlineSurfaceRepair = (): void =>');
     expect(source).toContain('await restoreFinalReusableImages();');
     const finalQualityBoundary = source.indexOf(
       'const runQualityWithResearchStructure = async (): Promise<QualityGateReport> =>',
@@ -318,15 +319,20 @@ describe('blog publisher quota recovery contract', () => {
       finalSurfaceRepair,
     );
     const finalImageRestore = source.indexOf('await restoreFinalReusableImages();', finalResearchRepair);
+    const finalInlineSurfaceRepair = source.indexOf(
+      'applyFinalInlineSurfaceRepair();',
+      finalImageRestore,
+    );
     const finalQualityGate = source.indexOf(
       'return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);',
-      finalImageRestore,
+      finalInlineSurfaceRepair,
     );
     expect(finalQualityBoundary).toBeGreaterThan(-1);
     expect(finalSurfaceRepair).toBeGreaterThan(finalQualityBoundary);
     expect(finalResearchRepair).toBeGreaterThan(finalSurfaceRepair);
     expect(finalImageRestore).toBeGreaterThan(finalResearchRepair);
-    expect(finalQualityGate).toBeGreaterThan(finalImageRestore);
+    expect(finalInlineSurfaceRepair).toBeGreaterThan(finalImageRestore);
+    expect(finalQualityGate).toBeGreaterThan(finalInlineSurfaceRepair);
     expect(source).toContain('hasRenderedPageH1: true');
     expect(source).toContain("['title', 'meta_description'].includes(d.name) && d.score < d.maxScore");
     expect(source).toContain('qa = await runQualityWithResearchStructure();');

@@ -109,7 +109,10 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
-import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
+import {
+  repairBlogFinalCustomerSurface,
+  repairBlogFinalInlineSurface,
+} from '@/lib/blog-final-customer-surface';
 import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
 import { repairArticleQualityV2Specifics } from '@/lib/blog-article-quality-v2-repair';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
@@ -2923,6 +2926,14 @@ async function processQueueItem(
         `[blog-publisher] literal newline repair: ${literalNewlineRepair.replacementCount}`,
       );
     };
+    const applyFinalInlineSurfaceRepair = (): void => {
+      const inlineSurfaceRepair = repairBlogFinalInlineSurface(generated.blog_html);
+      if (!inlineSurfaceRepair.changed) return;
+      generated.blog_html = inlineSurfaceRepair.markdown;
+      console.log(
+        `[blog-publisher] final inline surface repair: ${inlineSurfaceRepair.changes.join(', ')}`,
+      );
+    };
     const applyFinalGateCustomerSurfaceRepair = (): void => {
       const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
       if (surfaceChanges.length > 0) {
@@ -2934,6 +2945,7 @@ async function processQueueItem(
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       applyFinalResearchStructureRepair();
       await restoreFinalReusableImages();
+      applyFinalInlineSurfaceRepair();
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
@@ -2941,10 +2953,11 @@ async function processQueueItem(
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-      // Research-backed structure is the last body mutation so generic surface
+      // Research-backed structure is the last structural body mutation so generic
       // cleanup cannot prune high-risk entry evidence from the customer article.
       applyFinalResearchStructureRepair();
       await restoreFinalReusableImages();
+      applyFinalInlineSurfaceRepair();
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
