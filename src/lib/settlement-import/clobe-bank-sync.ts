@@ -182,6 +182,7 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'bank_transaction_name',
     'displayName',
     'transactionContent',
+    'transactionDescription',
     'summary',
     'description',
   ]) ?? '';
@@ -198,8 +199,8 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'transaction_memo',
   ]) ?? '';
 
-  const explicitDeposit = getFirstNumber(raw, ['deposit_amount', 'depositAmount', 'income', 'credit']);
-  const explicitWithdraw = getFirstNumber(raw, ['withdraw_amount', 'withdrawAmount', 'expense', 'debit']);
+  const explicitDeposit = getFirstNumber(raw, ['deposit_amount', 'depositAmount', 'inAmount', 'income', 'credit']);
+  const explicitWithdraw = getFirstNumber(raw, ['withdraw_amount', 'withdrawAmount', 'outAmount', 'expense', 'debit']);
   let depositAmount = Math.max(0, explicitDeposit ?? 0);
   let withdrawAmount = Math.max(0, explicitWithdraw ?? 0);
 
@@ -280,6 +281,14 @@ export function extractTransactionArray(payload: unknown): unknown[] {
         }
       }
     }
+    const transactionRows = record.content.filter(item => {
+      const row = asRecord(item);
+      return Boolean(
+        getFirstString(row, ['transactionId', 'transactionAt', 'transactionDate'])
+        && (getFirstNumber(row, ['inAmount', 'outAmount', 'amount', 'transactionAmount']) != null),
+      );
+    });
+    if (transactionRows.length > 0) return transactionRows;
   }
   for (const key of [
     'transactions',
