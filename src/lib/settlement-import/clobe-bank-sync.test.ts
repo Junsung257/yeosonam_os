@@ -4,6 +4,7 @@ import {
   normalizeClobeBankTransaction,
   normalizeClobeBankTransactions,
   chooseTransactionTool,
+  normalizeClobeAccountId,
   rankTransactionTools,
 } from './clobe-bank-sync';
 
@@ -59,6 +60,13 @@ describe('clobe bank sync normalization', () => {
     expect(deposit?.withdrawAmount).toBe(0);
     expect(withdraw?.depositAmount).toBe(0);
     expect(withdraw?.withdrawAmount).toBe(900000);
+  });
+
+  it('sends Clobe account IDs as positive integers', () => {
+    expect(normalizeClobeAccountId('123')).toBe(123);
+    expect(normalizeClobeAccountId(456)).toBe(456);
+    expect(normalizeClobeAccountId(null)).toBeNull();
+    expect(() => normalizeClobeAccountId('account-123')).toThrow('positive integer');
   });
 
   it('extracts transaction arrays from common MCP result envelopes', () => {

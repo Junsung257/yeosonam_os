@@ -15,7 +15,7 @@ export interface ClobeMcpFetchOptions {
   accessToken?: string;
   diagnosticsOnly?: boolean;
   companyId?: string;
-  accountId?: string;
+  accountId?: string | number;
   cursor?: string;
 }
 
@@ -544,18 +544,28 @@ interface ClobeTransactionToolArguments {
   companyId: string;
   from?: string;
   to?: string;
-  accountId?: string | null;
+  accountId?: string | number | null;
   cursor?: string | null;
   size: number;
 }
 
+export function normalizeClobeAccountId(value: string | number | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const accountId = typeof value === 'number' ? value : Number(value);
+  if (!Number.isSafeInteger(accountId) || accountId <= 0) {
+    throw new Error('Clobe bank account ID must be a positive integer');
+  }
+  return accountId;
+}
+
 function buildTransactionArguments(options: ClobeTransactionToolArguments): Record<string, unknown> {
+  const accountId = normalizeClobeAccountId(options.accountId);
   return {
     input: {
       companyId: options.companyId,
       ...(options.from ? { startDate: options.from } : {}),
       ...(options.to ? { endDate: options.to } : {}),
-      ...(options.accountId ? { accountId: options.accountId } : {}),
+      ...(accountId != null ? { accountId } : {}),
       ...(options.cursor ? { cursor: options.cursor } : {}),
       size: Math.max(1, Math.min(100, options.size)),
       userQuery: 'Yeosonam OS bank transaction settlement sync',
