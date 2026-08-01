@@ -15,6 +15,7 @@ import { calcSettlementAccounting } from '@/lib/settlement-accounting';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 import { parseBankStatementRows } from '@/lib/settlement-import/bank-statement-parser';
+import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -574,6 +575,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importResult, setImportResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; firstError?: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const [clobeSyncing, setClobeSyncing] = useState(false);
+  const [clobeSyncProgress, setClobeSyncProgress] = useState<string | null>(null);
   const [clobeSyncWindow, setClobeSyncWindow] = useState(() => getDefaultClobeSyncWindow());
   const [clobeSyncResult, setClobeSyncResult] = useState<ClobeSyncResult | null>(null);
   const [clobeIntegration, setClobeIntegration] = useState<ClobeIntegrationState>({
@@ -1037,35 +1039,90 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       return;
     }
     setClobeSyncing(true);
+    setClobeSyncProgress(null);
     try {
-      const res = await fetch('/api/bank-transactions/sync-clobe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: clobeSyncWindow.from,
-          to: clobeSyncWindow.to,
-          limit: 1000,
-          tenant_id: clobeIntegration.tenantId,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.code === 'clobe_connection_required' && typeof data.connectUrl === 'string') {
-          showToast('Clobe 연결이 필요합니다. 외부 플랫폼 연동 화면으로 이동합니다.', 'err');
-          setClobeIntegration(prev => ({ ...prev, connected: false }));
-          window.location.href = data.connectUrl;
-          return;
+      const windows = splitClobeSyncWindow(clobeSyncWindow.from, clobeSyncWindow.to);
+      let summary: ClobeSyncResult = {
+        inserted: 0,
+        skipped: 0,
+        duplicates: 0,
+        merged: 0,
+        errors: 0,
+        matched: 0,
+        memoUpdated: 0,
+        memoChangedReview: 0,
+        fetched: 0,
+        normalized: 0,
+        firstError: null,
+        from: clobeSyncWindow.from,
+        to: clobeSyncWindow.to,
+        mcp: { toolNames: [], attempts: [], scrapingStatus: [] },
+        rawSampleKeys: [],
+      };
+
+      for (let index = 0; index < windows.length; index += 1) {
+        const syncWindow = windows[index];
+        setClobeSyncProgress(`${index + 1}/${windows.length} 처리 중`);
+        const res = await fetch('/api/bank-transactions/sync-clobe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: syncWindow.from,
+            to: syncWindow.to,
+            limit: 200,
+            tenant_id: clobeIntegration.tenantId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.code === 'clobe_connection_required' && typeof data.connectUrl === 'string') {
+            showToast('Clobe 연결이 필요합니다. 외부 플랫폼 연동 화면으로 이동합니다.', 'err');
+            setClobeIntegration(prev => ({ ...prev, connected: false }));
+            window.location.href = data.connectUrl;
+            return;
+          }
+          throw new Error(data.error || `Clobe sync failed (${syncWindow.from} ~ ${syncWindow.to})`);
         }
-        showToast(data.error || 'Clobe sync failed', 'err');
-        return;
+
+        if ((data.fetched ?? 0) >= 200) {
+          throw new Error(`${syncWindow.from} ~ ${syncWindow.to} 거래가 200건 이상입니다. 더 짧은 기간으로 다시 동기화해주세요.`);
+        }
+
+        const previousMcp = summary.mcp ?? {};
+        const nextMcp = data.mcp ?? {};
+        summary = {
+          ...summary,
+          inserted: summary.inserted + (data.inserted ?? 0),
+          skipped: (summary.skipped ?? 0) + (data.skipped ?? 0),
+          duplicates: summary.duplicates + (data.duplicates ?? 0),
+          merged: (summary.merged ?? 0) + (data.merged ?? 0),
+          errors: summary.errors + (data.errors ?? 0),
+          matched: summary.matched + (data.matched ?? 0),
+          memoUpdated: (summary.memoUpdated ?? 0) + (data.memoUpdated ?? 0),
+          memoChangedReview: (summary.memoChangedReview ?? 0) + (data.memoChangedReview ?? 0),
+          fetched: (summary.fetched ?? 0) + (data.fetched ?? 0),
+          normalized: (summary.normalized ?? 0) + (data.normalized ?? 0),
+          firstError: summary.firstError ?? data.firstError ?? null,
+          mcp: {
+            toolName: nextMcp.toolName ?? previousMcp.toolName ?? null,
+            toolNames: [...new Set([...(previousMcp.toolNames ?? []), ...(nextMcp.toolNames ?? [])])],
+            bankToolAvailable: nextMcp.bankToolAvailable ?? previousMcp.bankToolAvailable,
+            attempts: [...(previousMcp.attempts ?? []), ...(nextMcp.attempts ?? [])],
+            scrapingStatus: [...(previousMcp.scrapingStatus ?? []), ...(nextMcp.scrapingStatus ?? [])],
+            scrapingStatusError: nextMcp.scrapingStatusError ?? previousMcp.scrapingStatusError,
+          },
+          rawSampleKeys: [...(summary.rawSampleKeys ?? []), ...(data.rawSampleKeys ?? [])],
+        };
+        setClobeSyncResult(summary);
       }
-      setClobeSyncResult(data);
-      showToast(`Clobe sync: source ${data.fetched || 0}, recognized ${data.normalized || 0}, new ${data.inserted || 0}, matched ${data.matched || 0}`);
+
+      showToast(`Clobe sync: source ${summary.fetched || 0}, recognized ${summary.normalized || 0}, new ${summary.inserted || 0}, matched ${summary.matched || 0}`);
       load(); loadErp(); loadOpsQueue(); loadClobeIntegration();
-    } catch {
-      showToast('Clobe sync failed', 'err');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Clobe sync failed', 'err');
     } finally {
       setClobeSyncing(false);
+      setClobeSyncProgress(null);
     }
   }
 
@@ -1328,7 +1385,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           </button>
           <button type="button" onClick={handleClobeSync} disabled={clobeSyncing || clobeIntegration.loading} aria-busy={clobeSyncing || clobeIntegration.loading}
             className="px-3 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition">
-            {clobeSyncing ? 'Clobe syncing...' : clobeIntegration.connected ? 'Clobe sync' : 'Clobe 연결'}
+            {clobeSyncing ? clobeSyncProgress ?? 'Clobe syncing...' : clobeIntegration.connected ? 'Clobe sync' : 'Clobe 연결'}
           </button>
           <button type="button" onClick={() => setShowImport(true)}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
@@ -1407,7 +1464,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               aria-busy={clobeSyncing || clobeIntegration.loading}
               className="rounded border border-admin-border-strong bg-white px-3 py-2 text-admin-sm text-admin-text-2 transition hover:bg-admin-bg disabled:opacity-60"
             >
-              {clobeSyncing ? '동기화 중...' : clobeIntegration.connected ? '지금 동기화' : '연결 후 동기화'}
+              {clobeSyncing ? clobeSyncProgress ?? '동기화 중...' : clobeIntegration.connected ? '지금 동기화' : '연결 후 동기화'}
             </button>
           </div>
         </div>
