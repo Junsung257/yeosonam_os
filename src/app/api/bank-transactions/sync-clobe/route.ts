@@ -49,6 +49,28 @@ async function resolveTenantId(rawTenantId: unknown): Promise<string | null> {
   return data?.[0]?.id ?? null;
 }
 
+async function resolveAccountNumber(rawAccountNumber: unknown): Promise<string | undefined> {
+  if (typeof rawAccountNumber === 'string' && rawAccountNumber.trim()) {
+    return rawAccountNumber.trim();
+  }
+
+  const { data } = await supabaseAdmin
+    .from('bank_transactions')
+    .select('account_number')
+    .not('account_number', 'is', null)
+    .order('received_at', { ascending: false })
+    .limit(500);
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const accountNumber = typeof row.account_number === 'string'
+      ? row.account_number.replace(/\D/g, '')
+      : '';
+    if (accountNumber.length < 6) continue;
+    counts.set(accountNumber, (counts.get(accountNumber) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase is not configured' }, { status: 500 });
@@ -64,7 +86,7 @@ export async function POST(request: NextRequest) {
     const window = defaultDateWindow();
     const from = typeof body.from === 'string' && body.from ? body.from : window.from;
     const to = typeof body.to === 'string' && body.to ? body.to : window.to;
-    const accountNumber = typeof body.accountNumber === 'string' && body.accountNumber ? body.accountNumber : undefined;
+    const accountNumber = await resolveAccountNumber(body.accountNumber);
     const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(1000, Number(body.limit))) : 200;
     const tenantId = await resolveTenantId(body.tenant_id ?? body.tenantId);
 
