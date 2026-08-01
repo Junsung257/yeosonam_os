@@ -18,6 +18,7 @@ import { parseBankStatementRows } from '@/lib/settlement-import/bank-statement-p
 import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window';
 import { matchesPaymentPeriod, type PaymentPeriodFilter } from '@/lib/payment-period-filter';
 import { calculatePaymentKpis } from '@/lib/payment-kpi';
+import { extractBookingsFromApi } from '@/lib/bookings-api-response';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -536,7 +537,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
-  // 출금·환불 탭 내 sub-필터: 기본 '미매칭만' (사장님이 처리해야 할 것 우선)
+  // 출금·환불 탭 내 sub-필터: 기본 '확인 필요' (미매칭 + Clobe 검토 대기)
   const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>('unmatched');
   const [dateFilter, setDateFilter] = useState<PaymentPeriodFilter>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
@@ -602,9 +603,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const loadErp = useCallback(async () => {
     try {
       const res = await fetch('/api/bookings');
+      if (!res.ok) throw new Error(`Bookings API failed: ${res.status}`);
       const data = await res.json();
       type B = { status?: string; departure_date?: string; total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number };
-      const active: B[] = (data.bookings || []).filter((b: B) =>
+      const active = extractBookingsFromApi<B>(data).filter((b: B) =>
         b.status !== 'cancelled' && matchesPaymentPeriod(b.departure_date, dateFilter),
       );
       setErp(calculatePaymentKpis(active));
@@ -683,7 +685,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     Promise.all([
       fetch('/api/bookings?status=pending').then(r => r.json()),
       fetch('/api/bookings?status=confirmed').then(r => r.json()),
-    ]).then(([d1, d2]) => setBookings([...(d1.bookings || []), ...(d2.bookings || [])]));
+    ]).then(([d1, d2]) => setBookings([
+      ...extractBookingsFromApi<BookingFull>(d1),
+      ...extractBookingsFromApi<BookingFull>(d2),
+    ]));
   // eslint-disable-next-line
   }, []);
 
@@ -696,7 +701,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       if (tab === 'outflow') {
         if (!isOutflow(tx)) return false;
         // sub-필터로 매칭 상태별 분리
-        if (outflowSubTab === 'unmatched') return tx.match_status === 'unmatched' || tx.match_status === 'error';
+        if (outflowSubTab === 'unmatched') {
+          return tx.match_status === 'unmatched' || tx.match_status === 'error' || tx.match_status === 'review';
+        }
         if (outflowSubTab === 'matched')   return tx.match_status === 'auto'      || tx.match_status === 'manual';
         return true; // 'all'
       }
@@ -1681,7 +1688,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           >
             <p className="text-[11px] font-semibold text-admin-muted">출금 확인 필요</p>
             <p className="mt-1 text-2xl font-bold text-orange-600 tabular-nums">{outflowUnmatchedCount}건</p>
-            <p className="mt-2 text-[11px] text-admin-muted-2">랜드사 송금/환불 중 아직 예약과 묶지 않은 건</p>
+            <p className="mt-2 text-[11px] text-admin-muted-2">랜드사 송금/환불 중 예약 연결 또는 확인이 필요한 건</p>
           </button>
         </div>
       </div>
@@ -1713,7 +1720,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       {tab === 'outflow' && (
         <div className="flex gap-1.5 mb-4 flex-wrap items-center">
           {([
-            ['unmatched', '⚠️ 미매칭만',  outflowUnmatchedCount, 'red'],
+            ['unmatched', '⚠️ 확인 필요',  outflowUnmatchedCount, 'red'],
             ['matched',   '✅ 매칭완료',  outflowMatchedCount,   'emerald'],
             ['all',       '전체',          outflowCount,          'slate'],
           ] as [typeof outflowSubTab, string, number, string][]).map(([id, label, cnt, color]) => (
