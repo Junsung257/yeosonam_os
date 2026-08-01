@@ -103,7 +103,10 @@ describe('clobe bank sync normalization', () => {
       { name: 'get_bank_accounts', description: 'Read bank account list' },
       { name: 'bulk_label_transactions', description: 'Apply labels to transactions' },
       { name: 'get_labels', description: 'Read labels' },
-      { name: 'get_labeled_transactions', description: 'Read actual bank transactions' },
+      {
+        name: 'get_labeled_transactions',
+        description: 'Read actual bank transactions. Use get_journal_ledger for accounting entries.',
+      },
     ];
 
     expect(rankTransactionTools(tools).map(tool => tool.name)).toEqual([
