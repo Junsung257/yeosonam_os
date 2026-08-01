@@ -1,8 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
+import {
+  repairBlogFinalCustomerSurface,
+  repairBlogFinalInlineSurface,
+} from './blog-final-customer-surface';
 import { checkArticleQualityV2 } from './blog-quality-gate';
 
 describe('repairBlogFinalCustomerSurface', () => {
+  it('repairs entry-declaration particles without pruning final evidence blocks', () => {
+    const markdown = [
+      '<!-- blog_research_structure:entry_requirements:v1 -->',
+      '## 입국 및 세관 신고',
+      '',
+      '입국신고을 작성하고 신고 대상 물품을 확인합니다.',
+      '',
+      '| 확인 항목 | 공식 기준 |',
+      '| --- | --- |',
+      '| 세관 | 식품·동식물·현금 신고 여부 |',
+      '',
+      '[미국 세관국경보호국](https://www.cbp.gov/travel)',
+      '<!-- /blog_research_structure:entry_requirements:v1 -->',
+    ].join('\n');
+
+    const result = repairBlogFinalInlineSurface(markdown);
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(['repair_common_surface_particles']);
+    expect(result.markdown).toContain('입국 신고를 작성하고');
+    expect(result.markdown).not.toContain('입국신고을');
+    expect(result.markdown).toContain('| 세관 | 식품·동식물·현금 신고 여부 |');
+    expect(result.markdown).toContain('[미국 세관국경보호국](https://www.cbp.gov/travel)');
+    expect(result.markdown).toContain('<!-- /blog_research_structure:entry_requirements:v1 -->');
+  });
+
   it('removes visible generation instructions and repeated public paragraphs', () => {
     const repeated =
       '발리 7월은 건기라 비가 적고 낮에는 덥습니다. 반팔 위주로 준비하되, 냉방이 강한 차량과 식당을 대비해 얇은 긴팔을 챙기면 충분합니다.';

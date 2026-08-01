@@ -586,6 +586,8 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
       const particle = particleFor(word, '은', '는');
       return particle ? `${word}${particle}` : match;
     })
+    .replace(/입국신고을/g, '입국 신고를')
+    .replace(/입국신고은/g, '입국 신고는')
     .replace(/체크리스트을/g, '체크리스트를')
     .replace(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g, (match, word: string, particle: string) => {
     const normalizedParticle = particleFor(word, '은', '는');
@@ -595,6 +597,15 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
     return `${word}${particle === '은' ? '는' : '를'}`;
   });
   return { markdown: next, changed: next !== before };
+}
+
+export function repairBlogFinalInlineSurface(markdown: string): BlogFinalCustomerSurfaceResult {
+  const particleRepair = repairCommonSurfaceParticles(markdown || '');
+  return {
+    markdown: particleRepair.markdown,
+    changed: particleRepair.changed,
+    changes: particleRepair.changed ? ['repair_common_surface_particles'] : [],
+  };
 }
 
 function deterministicVariantIndex(seed: string, size: number): number {
