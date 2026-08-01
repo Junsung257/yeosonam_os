@@ -132,3 +132,6 @@ leaked-password protection은 Supabase Auth 보안 설정에서 활성화한 뒤
 로컬 migration 검증 명령은 Docker/Postgres 부재로 `ECONNREFUSED 127.0.0.1:54322`가 발생했다.
 따라서 이 forward migration은 아직 `PARTIALLY_VERIFIED` 상태이며, 적용 전 staging DB에서
 `supabase migration list`와 RLS 회귀 테스트를 다시 실행해야 한다.
+
+search_path migration 회귀 테스트는 `supabase/tests/revenue_rescue_function_search_path.sql`에
+추가했으며, staging DB가 생기면 이 테스트를 migration 적용 직후 실행한다.

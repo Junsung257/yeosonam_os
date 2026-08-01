@@ -82,3 +82,5 @@
   `supabase/migrations/20260801133734_pin_bank_transaction_allocations_search_path.sql`; it is not
   applied to production and still requires non-production validation. `supabase migration list
   --local` could not connect because the local Postgres service at `127.0.0.1:54322` is unavailable.
+- A pgTAP regression contract was added at `supabase/tests/revenue_rescue_function_search_path.sql`
+  to verify the fixed search path and service-role-only execution after migration.
