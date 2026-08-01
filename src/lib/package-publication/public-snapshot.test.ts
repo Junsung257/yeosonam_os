@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import { buildPublicPackageSnapshot } from './public-snapshot';
 import { evaluatePublicSnapshotPublishGate } from './publish-gate';
 
 const VALID_ATTRACTION_ID = '5728e681-636b-42fa-87b5-a2f0b7b0379c';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function yanjiPackage(overrides: Record<string, unknown> = {}) {
   return {
@@ -503,6 +507,8 @@ describe('public package snapshot gate', () => {
   });
 
   it('rebuilds public price rows from source-backed raw date and price evidence', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-01T00:00:00.000Z'));
     const pkg = yanjiPackage({
       optional_tours: [],
       price: 599000,
