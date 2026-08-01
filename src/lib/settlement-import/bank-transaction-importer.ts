@@ -10,6 +10,10 @@ import {
   type ParsedTravelSettlementMemo,
 } from './bank-statement-parser';
 import { resolveSettlementMemoBooking } from './booking-settlement-keys';
+import {
+  canAutoMatchSettlementMemo,
+  type SettlementMemoResolutionSource,
+} from './memo-auto-match-policy';
 
 export type BankTransactionImportSource = 'bulk_import' | 'clobe_mcp' | 'clobe_api';
 export type BankTransactionImportAction =
@@ -403,7 +407,7 @@ export async function processBankTransactionImportRows(
     } | null = null;
     let confidence = 0;
     const matchReasons: string[] = [];
-    let resolutionSource: string | null = null;
+    let resolutionSource: SettlementMemoResolutionSource = null;
 
     if (parsed) {
       const resolution = await resolveSettlementMemoBooking(parsed, {
@@ -423,15 +427,21 @@ export async function processBankTransactionImportRows(
       }
     }
 
+    const memoAutoMatch = canAutoMatchSettlementMemo({
+      bookingId: matchedBooking?.id,
+      source: resolutionSource,
+      confidence,
+    });
     const matchStatus: 'auto' | 'review' | 'unmatched' =
       !parsed ? 'unmatched' :
+      memoAutoMatch ? 'auto' :
       !isDeposit ? 'review' :
       confidence >= 0.85 ? 'auto' : confidence >= 0.5 ? 'review' : 'unmatched';
 
     const eventId = stableEventId(options.source, row, fingerprint);
     const previousMemo = duplicate.row?.memo ?? null;
     const previousMemoKey = normalizedMemoKeyOf(previousMemo);
-    const memoChanged = Boolean(parsed && duplicate.kind === 'exact' && duplicate.row && previousMemoKey !== parsed.normalizedKey);
+    const memoChanged = Boolean(parsed && duplicate.row && previousMemoKey !== parsed.normalizedKey);
     const duplicateProcessed = duplicate.row ? isFinanciallyProcessed(duplicate.row) : false;
     const importAction: BankTransactionImportAction =
       !parsed ? 'ignored_non_travel' :
@@ -503,7 +513,7 @@ export async function processBankTransactionImportRows(
           matchStatus,
           confidence,
         });
-        if (matchStatus === 'auto' && matchedBooking && isDeposit) {
+        if (matchStatus === 'auto' && matchedBooking) {
           await matchTransactionAllocations({
             transactionId: duplicate.row.id,
             allocations: [{ bookingId: matchedBooking.id, amount }],
@@ -517,11 +527,45 @@ export async function processBankTransactionImportRows(
       }
 
       await attachImportEvidence(duplicate.row.id, { source: options.source, fingerprint, row, eventId, parsed });
-      results.push({ ...previewRow, status: 'merged', txId: duplicate.row.id });
+      if (matchStatus === 'auto' && matchedBooking && !duplicateProcessed) {
+        await matchTransactionAllocations({
+          transactionId: duplicate.row.id,
+          allocations: [{ bookingId: matchedBooking.id, amount }],
+          confidence,
+          actor: options.actor,
+          notes: `${options.source} auto-match existing memo ${txType}`,
+        });
+        results.push({ ...previewRow, status: 'matched', txId: duplicate.row.id });
+      } else {
+        results.push({ ...previewRow, status: 'merged', txId: duplicate.row.id });
+      }
       continue;
     }
 
     if (duplicate.row) {
+      if (memoChanged && !duplicateProcessed) {
+        await updateUnprocessedDuplicateFromMemo({
+          existingId: duplicate.row.id,
+          source: options.source,
+          fingerprint,
+          row,
+          parsed,
+          eventId,
+          matchStatus,
+          confidence,
+        });
+        if (matchStatus === 'auto' && matchedBooking) {
+          await matchTransactionAllocations({
+            transactionId: duplicate.row.id,
+            allocations: [{ bookingId: matchedBooking.id, amount }],
+            confidence,
+            actor: options.actor,
+            notes: `${options.source} auto-match probable memo duplicate ${txType}`,
+          });
+        }
+        results.push({ ...previewRow, status: 'memo_updated', txId: duplicate.row.id });
+        continue;
+      }
       results.push({ ...previewRow, status: 'duplicate' });
       continue;
     }
@@ -577,7 +621,7 @@ export async function processBankTransactionImportRows(
       continue;
     }
 
-    if (matchStatus === 'auto' && matchedBooking && isDeposit) {
+    if (matchStatus === 'auto' && matchedBooking) {
       const insertedId = (inserted as { id?: string })?.id;
       if (insertedId) {
         await matchTransactionAllocations({
@@ -599,7 +643,7 @@ export async function processBankTransactionImportRows(
     duplicates: results.filter(r => r.status === 'duplicate').length,
     merged: results.filter(r => r.status === 'merged').length,
     errors: results.filter(r => r.status === 'error').length,
-    matched: results.filter(r => (r.status === 'inserted' || r.status === 'memo_updated') && r.matchStatus === 'auto').length,
+    matched: results.filter(r => (r.status === 'inserted' || r.status === 'memo_updated' || r.status === 'matched') && r.matchStatus === 'auto').length,
     memoUpdated: results.filter(r => r.status === 'memo_updated').length,
     memoChangedReview: results.filter(r => r.status === 'memo_changed_review').length,
     firstError: (results.find(r => r.status === 'error') as { error?: string } | undefined)?.error || null,
