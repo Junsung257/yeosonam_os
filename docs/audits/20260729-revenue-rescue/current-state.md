@@ -125,5 +125,10 @@ production 배포가 변경됐다.
 RLS migration이 적용되기 전에는 tenant isolation 완료로 판정하지 않는다.
 
 Advisor WARN 두 건은 별도 운영 조치가 필요하다. `public.match_bank_transaction_allocations`는
-forward migration으로 search_path를 고정해야 하며, Auth leaked-password protection은 Supabase
-Auth 보안 설정에서 활성화한 뒤 재검증해야 한다.
+Supabase CLI로 생성한 `supabase/migrations/20260801133734_pin_bank_transaction_allocations_search_path.sql`
+로 search_path를 고정할 수 있다. 이 migration은 production에 아직 적용하지 않았다. Auth
+leaked-password protection은 Supabase Auth 보안 설정에서 활성화한 뒤 재검증해야 한다.
+
+로컬 migration 검증 명령은 Docker/Postgres 부재로 `ECONNREFUSED 127.0.0.1:54322`가 발생했다.
+따라서 이 forward migration은 아직 `PARTIALLY_VERIFIED` 상태이며, 적용 전 staging DB에서
+`supabase migration list`와 RLS 회귀 테스트를 다시 실행해야 한다.

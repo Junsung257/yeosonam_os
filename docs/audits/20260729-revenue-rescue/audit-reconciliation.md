@@ -78,4 +78,7 @@
   remain separate follow-ups and were not silently changed in this PR.
 - A direct `pg_proc` read confirmed `match_bank_transaction_allocations(uuid,jsonb,numeric,text,text)`
   has `proconfig = NULL`; the mutable-search-path warning is therefore reproducible, not a stale
-  advisor cache. A forward migration must pin its search path after caller review.
+  advisor cache. A forward migration candidate was generated with the Supabase CLI at
+  `supabase/migrations/20260801133734_pin_bank_transaction_allocations_search_path.sql`; it is not
+  applied to production and still requires non-production validation. `supabase migration list
+  --local` could not connect because the local Postgres service at `127.0.0.1:54322` is unavailable.

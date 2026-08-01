@@ -63,7 +63,9 @@
     "query": "queries/13-function-search-path-recheck.sql",
     "signature": "match_bank_transaction_allocations(uuid,jsonb,numeric,text,text)",
     "proconfig": null,
-    "verdict": "WARN_CONFIRMED_FORWARD_MIGRATION_REQUIRED"
+    "verdict": "WARN_CONFIRMED_FORWARD_MIGRATION_REQUIRED",
+    "forwardMigrationCandidate": "supabase/migrations/20260801133734_pin_bank_transaction_allocations_search_path.sql",
+    "productionApplied": false
   },
   "revenueBoundaryPolicies": {
     "bookings": "bookings_access is still global for authenticated users or platform admin/tenant predicate; the stacked RLS migration is not applied.",
