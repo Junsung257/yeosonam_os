@@ -2,6 +2,8 @@ import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { Suspense } from 'react';
 import PaymentsPageClient from './PaymentsPageClient';
 import type { BankTransaction, BookingFull } from './PaymentsPageClient';
+import { calculatePaymentKpis } from '@/lib/payment-kpi';
+import { matchesPaymentPeriod } from '@/lib/payment-period-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,8 +66,9 @@ export default async function PaymentsPage() {
       .order('received_at', { ascending: false }),
     supabaseAdmin
       .from('bookings')
-      .select('status, total_price, total_cost, paid_amount, total_paid_out')
-      .neq('status', 'cancelled'),
+      .select('status, departure_date, total_price, total_cost, paid_amount, total_paid_out')
+      .neq('status', 'cancelled')
+      .eq('is_deleted', false),
     supabaseAdmin
       .from('bookings')
       .select('id, booking_no, package_title, total_price, total_cost, paid_amount, total_paid_out, departure_date, status, lead_customer_id, customers!lead_customer_id(name)')
@@ -79,17 +82,10 @@ export default async function PaymentsPage() {
   const mergedTxs = [...mainTxs, ...unmatchedTxs.filter((u: { id: string }) => !mainIds.has(u.id))];
 
   // Compute ERP stats server-side
-  const erpRows = erpResult.data ?? [];
-  const totalPrice = erpRows.reduce((s, b) => s + (b.total_price || 0), 0);
-  const totalCost  = erpRows.reduce((s, b) => s + (b.total_cost  || 0), 0);
-  const totalPaid  = erpRows.reduce((s, b) => s + (b.paid_amount || 0), 0);
-  const totalPaidOut = erpRows.reduce((s, b) => s + (b.total_paid_out || 0), 0);
-  const initialErp = {
-    totalPrice, totalCost, totalPaid, totalPaidOut,
-    remaining: totalPrice - totalPaid,
-    margin: totalPrice - totalCost,
-    bookingCount: erpRows.length,
-  };
+  const erpRows = (erpResult.data ?? []).filter(row =>
+    matchesPaymentPeriod(row.departure_date, '이번 달'),
+  );
+  const initialErp = calculatePaymentKpis(erpRows);
 
   return (
     <Suspense fallback={<PaymentsPageFallback />}>
