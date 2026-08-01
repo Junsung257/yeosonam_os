@@ -347,6 +347,20 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
     expect(source).toContain('auto_regeneration_attempts: 0');
     expect(source).toContain('auto_regeneration_limit: 0');
+    expect(source).toContain('const evaluateCurrentInformationClaimValidation = async () =>');
+    expect(source).toContain('const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();');
+    expect(source).toContain('const finalClaimValidation = await evaluateCurrentInformationClaimValidation();');
+    expect(source).toContain('? { auto_research: item.meta.auto_research }');
+    const preSeoClaimValidation = source.indexOf(
+      'const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();',
+    );
+    const seoEvaluation = source.indexOf('let seoScore = computeSeoScore(buildSeoScoreInput());');
+    const finalClaimValidation = source.indexOf(
+      'const finalClaimValidation = await evaluateCurrentInformationClaimValidation();',
+    );
+    expect(preSeoClaimValidation).toBeGreaterThan(-1);
+    expect(seoEvaluation).toBeGreaterThan(preSeoClaimValidation);
+    expect(finalClaimValidation).toBeGreaterThan(seoEvaluation);
     expect(source).toContain("from('content_review_queue')");
     expect(source).toContain(".update({ status: 'skipped' })");
     expect(source).toContain(".in('status', ['queued', 'assigned'])");

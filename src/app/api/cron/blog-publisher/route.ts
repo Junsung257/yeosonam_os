@@ -140,6 +140,7 @@ import { routeBlogContentLane } from '@/lib/blog-content-boundary';
 import {
   evaluateBlogInformationClaimPublishGate,
   persistBlogInformationClaimFindings,
+  toBlogInformationClaimValidationMeta,
 } from '@/lib/blog-information-claim-publish-gate';
 import {
   parseBlogInformationWriterOutput,
@@ -2961,6 +2962,57 @@ async function processQueueItem(
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
+    const evaluateCurrentInformationClaimValidation = async () => {
+      const writerClaimLedgerMeta = generated.generation_meta?.writer_claim_ledger;
+      const writerClaimLedgerRecord = writerClaimLedgerMeta
+        && typeof writerClaimLedgerMeta === 'object'
+        && !Array.isArray(writerClaimLedgerMeta)
+        ? writerClaimLedgerMeta as Record<string, unknown>
+        : null;
+      const writerClaimLedger = Array.isArray(writerClaimLedgerRecord?.claims)
+        ? writerClaimLedgerRecord.claims as BlogInformationClaimLedgerEntry[]
+        : [];
+      const writerClaimLedgerIssues = Array.isArray(writerClaimLedgerRecord?.issues)
+        ? writerClaimLedgerRecord.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 20)
+        : (contentBoundary.lane === 'informational' ? ['claim_ledger_missing'] : []);
+      const generatedPlanBrief = generated.generation_meta?.content_brief;
+      const generatedPlanBriefRecord = generatedPlanBrief
+        && typeof generatedPlanBrief === 'object'
+        && !Array.isArray(generatedPlanBrief)
+        ? generatedPlanBrief as Record<string, unknown>
+        : null;
+      const validation = await evaluateBlogInformationClaimPublishGate({
+        creativeId: promoteDraftId,
+        contentKey: evidenceContentKey,
+        markdown: generated.blog_html,
+        productId: item.product_id ?? null,
+        tenantId: item.tenant_id ?? null,
+        claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
+        claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
+        intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'
+          ? generatedPlanBriefRecord.intent_type
+          : null,
+        expectedScope: contentBoundary.lane === 'informational'
+          ? {
+              destination: item.destination ?? undefined,
+              applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
+                ? generatedPlanBriefRecord.traveler_nationality
+                : undefined,
+              locale: typeof generatedPlanBriefRecord?.locale === 'string'
+                ? generatedPlanBriefRecord.locale
+                : undefined,
+            }
+          : undefined,
+      });
+      return {
+        validation,
+        summary: toBlogInformationClaimValidationMeta(validation),
+        generatedPlanBrief,
+        generatedPlanBriefRecord,
+        writerClaimLedger,
+        writerClaimLedgerIssues,
+      };
+    };
 
     let qa = await runQualityWithResearchStructure();
 
@@ -2994,6 +3046,27 @@ async function processQueueItem(
         topic: item.topic,
         status: failureStatus === 'skipped' ? 'skipped' : 'gate_failed',
         reason: qa.summary,
+      };
+    }
+
+    const preSeoContentBrief = generated.generation_meta?.content_brief;
+    const preSeoContentBriefRecord = preSeoContentBrief
+      && typeof preSeoContentBrief === 'object'
+      && !Array.isArray(preSeoContentBrief)
+      ? preSeoContentBrief as Record<string, unknown>
+      : null;
+    const requiresPreSeoClaimValidation = blogType === 'info'
+      && (preSeoContentBriefRecord?.requires_human_review === true || isHighRiskInformationalTopic({
+        title: generated.seo_title ?? item.topic ?? null,
+        category: item.category ?? null,
+        contentType: item.source === 'pillar' ? 'pillar' : 'guide',
+        topic: item.topic ?? null,
+      }));
+    if (requiresPreSeoClaimValidation) {
+      const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();
+      generated.generation_meta = {
+        ...(generated.generation_meta || {}),
+        information_claim_validation: preSeoClaimValidation.summary,
       };
     }
 
@@ -3310,58 +3383,13 @@ async function processQueueItem(
         canonical_slug: null,
       };
     }
-    const writerClaimLedgerMeta = generated.generation_meta?.writer_claim_ledger;
-    const writerClaimLedgerRecord = writerClaimLedgerMeta
-      && typeof writerClaimLedgerMeta === 'object'
-      && !Array.isArray(writerClaimLedgerMeta)
-      ? writerClaimLedgerMeta as Record<string, unknown>
-      : null;
-    const writerClaimLedger = Array.isArray(writerClaimLedgerRecord?.claims)
-      ? writerClaimLedgerRecord.claims as BlogInformationClaimLedgerEntry[]
-      : [];
-    const writerClaimLedgerIssues = Array.isArray(writerClaimLedgerRecord?.issues)
-      ? writerClaimLedgerRecord.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 20)
-      : (contentBoundary.lane === 'informational' ? ['claim_ledger_missing'] : []);
-    const generatedPlanBrief = generated.generation_meta?.content_brief;
-    const generatedPlanBriefRecord = generatedPlanBrief
-      && typeof generatedPlanBrief === 'object'
-      && !Array.isArray(generatedPlanBrief)
-      ? generatedPlanBrief as Record<string, unknown>
-      : null;
-    const claimValidation = await evaluateBlogInformationClaimPublishGate({
-      creativeId: promoteDraftId,
-      contentKey: evidenceContentKey,
-      markdown: generated.blog_html,
-      productId: item.product_id ?? null,
-      tenantId: item.tenant_id ?? null,
-      claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
-      claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
-      intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'
-        ? generatedPlanBriefRecord.intent_type
-        : null,
-      expectedScope: contentBoundary.lane === 'informational'
-        ? {
-            destination: item.destination ?? undefined,
-            applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
-              ? generatedPlanBriefRecord.traveler_nationality
-              : undefined,
-            locale: typeof generatedPlanBriefRecord?.locale === 'string'
-              ? generatedPlanBriefRecord.locale
-              : undefined,
-          }
-        : undefined,
-    });
-    const claimValidationSummary = {
-      passed: claimValidation.passed,
-      coverage: claimValidation.coverage,
-      claim_count: claimValidation.claims.length,
-      requires_human_review: claimValidation.requiresHumanReview,
-      issues: claimValidation.issues.slice(0, 20),
-      ledger: claimValidation.ledger ?? null,
-      auto_regeneration_attempts: 0,
-      auto_regeneration_limit: 0,
-      ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
-    };
+    const finalClaimValidation = await evaluateCurrentInformationClaimValidation();
+    const claimValidation = finalClaimValidation.validation;
+    const claimValidationSummary = finalClaimValidation.summary;
+    const generatedPlanBrief = finalClaimValidation.generatedPlanBrief;
+    const generatedPlanBriefRecord = finalClaimValidation.generatedPlanBriefRecord;
+    const writerClaimLedger = finalClaimValidation.writerClaimLedger;
+    const writerClaimLedgerIssues = finalClaimValidation.writerClaimLedgerIssues;
     generationMeta.information_claim_validation = claimValidationSummary;
     const plannedHumanReview = generatedPlanBrief
       && typeof generatedPlanBrief === 'object'
@@ -4543,6 +4571,11 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       truncated: writerOutputBoundary.truncated,
     },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
+    ...(item.meta?.auto_research
+      && typeof item.meta.auto_research === 'object'
+      && !Array.isArray(item.meta.auto_research)
+      ? { auto_research: item.meta.auto_research }
+      : {}),
     information_research_structure_repair: {
       applied: researchStructureRepair.changed,
       changes: researchStructureRepair.changes,
