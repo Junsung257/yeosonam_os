@@ -51,6 +51,8 @@ const AGODA_GUAM_HOTEL_GUIDE_PATH = '/ko-kr/travel-guides/guam/where-to-stay-in-
 const USA_GOV_CURRENCY_PATH = '/currency';
 const VISIT_GUAM_PAYMENT_PATH = '/smscormoranguam/sms-diving-in-guam/';
 const VISIT_GUAM_SOUVENIR_PATH = '/blog/post/3376/';
+const US_SEATTLE_ENTRY_GUIDANCE_PATH = '/us-seattle-ko/brd/m_4733/view.do';
+const US_CUSTOMS_DECLARATION_PDF_PATH = '/sites/default/files/2025-07/25_0718_cbp_form_6059_sample_ndc_1.pdf';
 const AUTOMATIC_WEB_SOURCE_TYPES = new Set<BlogInformationSourceType>([
   'reputable_local_source',
   'reputable_price_source',
@@ -264,6 +266,10 @@ export function extractReviewedPageTextForResearch(value: string): string {
     /republic of korea/gi,
     /forty-five/gi,
     /electronic travel authorization/gi,
+    /\bbusiness\b|\btouris(?:m|t)\b|\bpleasure\b/gi,
+    /\b(?:stay|admission).{0,80}(?:90|ninety)\s*days?\b/gi,
+    /귀국\s*(?:일정|편|항공편|항공권)|체류지|숙소\s*(?:예약|정보)?|여행(?:에\s*필요한)?\s*경비|\b(?:return|onward)\s+(?:or\s+onward\s+)?ticket\b|\bsufficient\s+funds?\b|\blodging\b/gi,
+    /세관|신고|면세|농산물|현금|\b(?:declare|declaration|customs|duty[- ]free|agricultur(?:e|al)|monetary instruments?)\b/gi,
     /괌/gi,
     /\bGIAA\b/gi,
     /\bairport\b/gi,
@@ -1286,9 +1292,11 @@ export function buildBlogStructuredResearchPrompt(input: {
               'ENTRY REQUIREMENTS PRIORITY:',
               'Use facts from at least two reviewed official domains; do not let one authority satisfy the cross-domain requirement.',
               'Classify visa exemption, visa or electronic travel authorization eligibility, passport validity, and permitted stay as entry_visa.',
-              'Classify mandatory arrival registration, entry forms, biometric collection, declarations, and submission timing as policy.',
+              'Classify return/onward travel, lodging or stay details, financial means, mandatory arrival registration, entry forms, biometric collection, declarations, and submission timing as policy.',
               'Select at least two independently supported entry_visa claims and two policy claims with at least three distinct normalized values.',
               'Include one explicit supported claim stating the permitted travel purpose or purposes and one explicit supported claim stating the permitted stay duration.',
+              'Include explicit supported claims for a return or onward ticket, U.S. lodging or stay details, and proof of funds or travel expenses.',
+              'Include an explicit supported customs-declaration claim naming at least one declaration category or threshold.',
               'Prefer rules that explicitly apply to Korean passport holders and short tourist visits; do not generalize another nationality or residence status.',
             ]
         : [];
@@ -2905,6 +2913,154 @@ export function augmentGuamShoppingPayload(
   };
 }
 
+export function augmentUsEntryRequirementsPayload(
+  pages: ReviewedDirectPage[],
+  destination: string,
+  payload: GroundedBlogResearchPayload,
+): GroundedBlogResearchPayload {
+  const normalizedDestination = clean(destination).normalize('NFKC').toLowerCase();
+  if (!['미국', 'united states', 'usa', 'u.s.', 'us'].includes(normalizedDestination)) {
+    return payload;
+  }
+
+  const consulatePageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return url.hostname.toLowerCase() === 'overseas.mofa.go.kr'
+        && url.pathname === US_SEATTLE_ENTRY_GUIDANCE_PATH
+        && url.searchParams.get('seq') === '1342928';
+    } catch {
+      return false;
+    }
+  });
+  const customsPageIndex = pages.findIndex((page) => {
+    try {
+      const url = new URL(page.url);
+      return (url.hostname.toLowerCase() === 'cbp.gov' || url.hostname.toLowerCase() === 'www.cbp.gov')
+        && url.pathname === US_CUSTOMS_DECLARATION_PDF_PATH;
+    } catch {
+      return false;
+    }
+  });
+  if (consulatePageIndex < 0 || customsPageIndex < 0) return payload;
+
+  const consulateText = clean(pages[consulatePageIndex]!.text);
+  const customsText = clean(pages[customsPageIndex]!.text);
+  const supportingExcerpt = consulateText.match(
+    /관광목적으로 미국에 입국\(ESTA비자 소지\)한 B는 귀국항공편 미소지, 체류지 미정\(숙소 예약정보 등 미소지\), 여행에 필요한 경비 미지참 등으로 입국거부됨\.?/,
+  )?.[0];
+  const customsExcerpt = customsText.match(
+    /11 I am \(We are\) bringing \(a\) fruits, vegetables, plants, seeds, food, insects: ?Yes No \(b\) meats, animals, animal\/wildlife products: ?Yes No \(c\) disease agents, cell cultures, snails: ?Yes No \(d\) soil or have been on a farm\/ranch\/pasture: ?Yes No/i,
+  )?.[0];
+  if (!supportingExcerpt || !customsExcerpt) return payload;
+
+  const sourceDrafts = [...(payload.sources ?? [])];
+  const takeMatchingSource = (pageIndex: number): GroundedSourceDraft | null => {
+    const index = sourceDrafts.findIndex(
+      (source) => Number(source.groundingChunkIndex) === pageIndex,
+    );
+    return index >= 0 ? sourceDrafts.splice(index, 1)[0] ?? null : null;
+  };
+  const consulateSourceDraft = takeMatchingSource(consulatePageIndex);
+  const customsSourceDraft = takeMatchingSource(customsPageIndex);
+  const consulateSourceKey = clean(consulateSourceDraft?.sourceKey) || 'mofa-us-entry-supporting-documents';
+  const customsSourceKey = clean(customsSourceDraft?.sourceKey) || 'cbp-form-6059b-customs-declaration';
+  const officialSources: GroundedSourceDraft[] = [
+    {
+      ...consulateSourceDraft,
+      sourceKey: consulateSourceKey,
+      groundingChunkIndex: consulatePageIndex,
+      publisher: clean(consulateSourceDraft?.publisher) || '주 시애틀 대한민국 총영사관',
+      sourceType: 'embassy',
+      claimTypes: [...new Set([...normalizeList(consulateSourceDraft?.claimTypes), 'policy'])],
+      country: '미국',
+      destination,
+    },
+    {
+      ...customsSourceDraft,
+      sourceKey: customsSourceKey,
+      groundingChunkIndex: customsPageIndex,
+      publisher: clean(customsSourceDraft?.publisher) || 'U.S. Customs and Border Protection',
+      sourceType: 'customs',
+      claimTypes: [...new Set([...normalizeList(customsSourceDraft?.claimTypes), 'policy'])],
+      country: '미국',
+      destination,
+    },
+  ];
+  const deterministicEvidence: GroundedEvidenceDraft[] = [
+    {
+      evidenceKey: 'mofa-us-entry-return-lodging-funds',
+      sourceKey: consulateSourceKey,
+      excerpt: supportingExcerpt,
+      sourceLocator: '우리 국민의 미국 입국시 입국 거부 주의 안내 > 사례2',
+      claimType: 'policy',
+      riskLevel: 'HIGH',
+      country: '미국',
+      destination,
+      applicableTo: '대한민국 여권으로 미국을 방문하는 ESTA 여행자',
+      normalizedValue: '귀국항공편·숙소 예약정보·여행 경비',
+      conditions: ['입국 허용 여부는 미국 입국심사관이 개별 판단'],
+    },
+    {
+      evidenceKey: 'cbp-6059b-declaration-categories',
+      sourceKey: customsSourceKey,
+      excerpt: customsExcerpt,
+      sourceLocator: 'CBP Form 6059B > question 11',
+      claimType: 'policy',
+      riskLevel: 'HIGH',
+      country: '미국',
+      destination,
+      applicableTo: '미국에 도착하는 여행자 또는 동반 가족 대표',
+      normalizedValue: '식품·동식물·농축산물·토양 신고 항목',
+      conditions: ['해당 품목 소지 여부를 세관 신고서에서 사실대로 표시'],
+    },
+  ];
+  const deterministicClaims: GroundedClaimDraft[] = [
+    {
+      claimText: '주 시애틀 대한민국 총영사관은 미국 입국심사에 대비해 귀국항공편 정보를 준비하도록 안내합니다.',
+      claimType: 'policy',
+      riskLevel: 'HIGH',
+      evidenceKeys: ['mofa-us-entry-return-lodging-funds'],
+      normalizedValue: '귀국항공편·숙소 예약정보·여행 경비',
+    },
+    {
+      claimText: '주 시애틀 대한민국 총영사관은 미국 내 체류지와 숙소 예약정보를 준비하도록 안내합니다.',
+      claimType: 'policy',
+      riskLevel: 'HIGH',
+      evidenceKeys: ['mofa-us-entry-return-lodging-funds'],
+      normalizedValue: '귀국항공편·숙소 예약정보·여행 경비',
+    },
+    {
+      claimText: '주 시애틀 대한민국 총영사관은 미국 여행에 필요한 경비를 준비하도록 안내합니다.',
+      claimType: 'policy',
+      riskLevel: 'HIGH',
+      evidenceKeys: ['mofa-us-entry-return-lodging-funds'],
+      normalizedValue: '귀국항공편·숙소 예약정보·여행 경비',
+    },
+    {
+      claimText: '미국 CBP 세관 신고서 Form 6059B는 과일·채소·식품·육류·동식물 제품·토양 등의 반입 여부를 신고 항목으로 확인합니다.',
+      claimType: 'policy',
+      riskLevel: 'HIGH',
+      evidenceKeys: ['cbp-6059b-declaration-categories'],
+      normalizedValue: '식품·동식물·농축산물·토양 신고 항목',
+    },
+  ];
+  const duplicatePattern = /귀국항공편|숙소 예약정보|여행에 필요한 경비|Form 6059B|세관 신고서/i;
+  const originalEvidence = (payload.evidence ?? []).filter(
+    (evidence) => !duplicatePattern.test(clean(evidence.excerpt)),
+  );
+  const originalClaims = (payload.claims ?? []).filter(
+    (claim) => !duplicatePattern.test(clean(claim.claimText)),
+  );
+
+  return {
+    ...payload,
+    sources: [...officialSources, ...sourceDrafts].slice(0, MAX_GROUNDING_SOURCES),
+    evidence: [...deterministicEvidence, ...originalEvidence].slice(0, MAX_RESEARCH_EVIDENCE),
+    claims: [...deterministicClaims, ...originalClaims].slice(0, MAX_RESEARCH_CLAIMS),
+  };
+}
+
 async function loadOfficialRegistry(
   intent: string,
   destination: string,
@@ -3201,6 +3357,9 @@ export async function researchBlogInformationAutomatically(input: {
       if (input.brief.intentType === 'shopping_souvenirs') {
         payload = augmentGuamShoppingPayload(reviewedPages, input.destination, payload);
       }
+      if (input.brief.intentType === 'entry_requirements') {
+        payload = augmentUsEntryRequirementsPayload(reviewedPages, input.destination, payload);
+      }
       if (input.brief.intentType === 'airport_transport'
         || input.brief.intentType === 'family_budget'
         || input.brief.intentType === 'itinerary') {
@@ -3252,6 +3411,9 @@ export async function researchBlogInformationAutomatically(input: {
           if (input.brief.intentType === 'shopping_souvenirs') {
             payload = augmentGuamShoppingPayload(reviewedPages, input.destination, payload);
           }
+          if (input.brief.intentType === 'entry_requirements') {
+            payload = augmentUsEntryRequirementsPayload(reviewedPages, input.destination, payload);
+          }
           if (input.brief.intentType === 'airport_transport'
             || input.brief.intentType === 'family_budget'
             || input.brief.intentType === 'itinerary') {
@@ -3284,10 +3446,24 @@ export async function researchBlogInformationAutomatically(input: {
       reputableRegistry,
       now,
     });
+    const finalReadiness = built.bundle
+      ? evaluateBlogGenerationResearchReadiness({
+          meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: built.bundle },
+          expectedContentKey: input.contentKey,
+          destination: input.destination,
+          intent: input.brief.intentType,
+          locale: input.locale,
+          sourcePolicy: input.brief.sourcePolicy,
+          now,
+        })
+      : null;
     return {
-      passed: Boolean(built.bundle),
+      passed: Boolean(built.bundle && finalReadiness?.passed),
       bundle: built.bundle,
-      issues: built.issues,
+      issues: [...new Set([
+        ...built.issues,
+        ...(finalReadiness?.issues ?? []),
+      ])],
       model: AUTO_RESEARCH_MODEL,
       searchQueries,
       groundingSourceCount,

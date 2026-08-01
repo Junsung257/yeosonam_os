@@ -1,7 +1,92 @@
 import { describe, expect, it } from 'vitest';
-import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
+import {
+  repairBlogFinalCustomerSurface,
+  repairBlogFinalInlineSurface,
+} from './blog-final-customer-surface';
+import { checkArticleQualityV2 } from './blog-quality-gate';
+import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
+import { stripMarkup } from './blog-text-utils';
 
 describe('repairBlogFinalCustomerSurface', () => {
+  it('repairs entry-declaration particles without pruning final evidence blocks', () => {
+    const markdown = [
+      '<!-- blog_research_structure:entry_requirements:v1 -->',
+      '## 입국 및 세관 신고',
+      '',
+      '입국신고을 작성하고 신고 대상 물품을 확인합니다.',
+      '',
+      '| 확인 항목 | 공식 기준 |',
+      '| --- | --- |',
+      '| 세관 | 식품·동식물·현금 신고 여부 |',
+      '',
+      '[미국 세관국경보호국](https://www.cbp.gov/travel)',
+      '<!-- /blog_research_structure:entry_requirements:v1 -->',
+    ].join('\n');
+
+    const result = repairBlogFinalInlineSurface(markdown);
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(['repair_common_surface_particles']);
+    expect(result.markdown).toContain('입국 신고를 작성하고');
+    expect(result.markdown).not.toContain('입국신고을');
+    expect(result.markdown).toContain('| 세관 | 식품·동식물·현금 신고 여부 |');
+    expect(result.markdown).toContain('[미국 세관국경보호국](https://www.cbp.gov/travel)');
+    expect(result.markdown).toContain('<!-- /blog_research_structure:entry_requirements:v1 -->');
+  });
+
+  it('repairs particles split from their Korean noun by Markdown emphasis', () => {
+    const cases = [
+      ['**입국신고**을 작성합니다.', '**입국 신고**를 작성합니다.'],
+      ['입국신고**을** 작성합니다.', '입국 신고**를** 작성합니다.'],
+      ['**입국신고을** 작성합니다.', '**입국 신고를** 작성합니다.'],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      expect(result.changed).toBe(true);
+      expect(result.markdown).toBe(expected);
+      expect(stripMarkup(result.markdown)).not.toContain('입국신고을');
+    }
+  });
+
+  it('repairs particles attached after a Markdown link', () => {
+    const cases = [
+      [
+        '[세관 신고](https://www.cbp.gov/travel)을 확인합니다.',
+        '[세관 신고](https://www.cbp.gov/travel)를 확인합니다.',
+      ],
+      [
+        '[세관 신고](https://www.cbp.gov/travel)**을** 확인합니다.',
+        '[세관 신고](https://www.cbp.gov/travel)**를** 확인합니다.',
+      ],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      expect(result.markdown).toBe(expected);
+      expect(stripMarkup(result.markdown)).not.toContain('신고을');
+    }
+  });
+
+  it('turns an orphan multi-column prose row into evidence-preserving bullets', async () => {
+    const source = [
+      '<!-- blog_research_structure:entry_requirements:v1 -->',
+      '귀국편 / 귀국 항공권을 준비합니다. | 숙소 정보 / 미국 내 체류지 예약 정보를 준비합니다. | 여행 경비 증빙 / 신용카드와 현금 자료를 준비합니다. | 세관·면세 범위 / 모든 여행자는 신고 대상을 확인합니다.',
+      '<!-- /blog_research_structure:entry_requirements:v1 -->',
+    ].join('\n');
+
+    const result = repairBlogFinalInlineSurface(source);
+    const html = await renderBlogContentToHtml(result.markdown);
+    const integrity = inspectRenderedBlogIntegrity(result.markdown, html);
+
+    expect(result.changes).toContain('repair_orphan_pipe_delimited_rows');
+    expect(result.markdown).toContain('- 귀국편 / 귀국 항공권을 준비합니다.');
+    expect(result.markdown).toContain('- 숙소 정보 / 미국 내 체류지 예약 정보를 준비합니다.');
+    expect(result.markdown).toContain('- 여행 경비 증빙 / 신용카드와 현금 자료를 준비합니다.');
+    expect(result.markdown).toContain('- 세관·면세 범위 / 모든 여행자는 신고 대상을 확인합니다.');
+    expect(integrity.evidence.artifacts).not.toContain('literal_markdown_table_row');
+  });
+
   it('removes visible generation instructions and repeated public paragraphs', () => {
     const repeated =
       '발리 7월은 건기라 비가 적고 낮에는 덥습니다. 반팔 위주로 준비하되, 냉방이 강한 차량과 식당을 대비해 얇은 긴팔을 챙기면 충분합니다.';
@@ -155,6 +240,35 @@ describe('repairBlogFinalCustomerSurface', () => {
     expect(beforeFirstSection).toContain('클락');
     expect(beforeFirstSection).toMatch(/날씨|옷차림|준비물|기온|비 예보/);
     expect(beforeFirstSection).not.toContain('같은 가격처럼 보여도');
+  });
+
+  it('keeps a weather-specific lead when pruning multiple opening paragraphs', () => {
+    const result = repairBlogFinalCustomerSurface({
+      destination: '베이징',
+      primaryKeyword: '베이징 월별 날씨',
+      slug: 'beijing-july-weather-packing',
+      markdown: [
+        '# 베이징 7월 날씨와 옷차림',
+        '',
+        '베이징 7월은 낮 기온이 높습니다.',
+        '',
+        '출발 전에는 비 예보와 아침저녁 기온 차이를 함께 확인하세요.',
+        '',
+        '## 월별 날씨 기준',
+        '',
+        '공식 기후 평년값과 출발 직전 예보를 함께 확인합니다.',
+      ].join('\n'),
+    });
+
+    const lead = result.markdown.split('\n## 월별 날씨 기준')[0];
+    expect(lead).toMatch(/날씨|옷차림|준비물|기온|비 예보/);
+    expect(lead).not.toContain('일정, 비용, 이동 조건');
+    expect(checkArticleQualityV2({
+      blog_html: result.markdown,
+      slug: 'beijing-july-weather-packing',
+      blog_type: 'info',
+      primary_keyword: '베이징 월별 날씨',
+    }).evidence?.issues).not.toContain('info_intro_intent_mismatch');
   });
 
   it('rebuilds a weak fragment lead into a customer answer-first paragraph', () => {

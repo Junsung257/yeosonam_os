@@ -5,6 +5,7 @@ import {
   augmentGuamFamilyMealPayload,
   augmentGuamShoppingPayload,
   augmentGrtaAirportTransportPayload,
+  augmentUsEntryRequirementsPayload,
   buildBlogGroundingResearchPrompt,
   buildGuamCurrencyPaymentPayload,
   buildGuamHotelAreasPayload,
@@ -110,6 +111,36 @@ describe('extractReviewedPageTextForResearch', () => {
     expect(extracted).toContain('GIAA Departures, Airport 5:55');
     expect(extracted).toContain('GTA Upper Tumon 6:03');
     expect(extracted).toContain('fare one ride USD 1.50');
+  });
+
+  it('keeps permitted travel purpose and stay evidence from late in a long entry document', () => {
+    const text = [
+      'general visa program context '.repeat(1_000),
+      'The program permits eligible travelers to visit for business or tourism.',
+      'The permitted stay is up to 90 days.',
+    ].join('\n');
+
+    const extracted = extractReviewedPageTextForResearch(text);
+
+    expect(extracted.length).toBeLessThanOrEqual(12_000);
+    expect(extracted).toContain('business or tourism');
+    expect(extracted).toContain('stay is up to 90 days');
+  });
+
+  it('keeps supporting-document and customs evidence from late in a long entry document', () => {
+    const text = [
+      'general border program context '.repeat(1_000),
+      'Visa Waiver Program travelers must have a return or onward ticket.',
+      'Visitors should have sufficient funds for travel, lodging, and meals.',
+      'Travelers must declare agriculture products and monetary instruments to customs.',
+    ].join('\n');
+
+    const extracted = extractReviewedPageTextForResearch(text);
+
+    expect(extracted.length).toBeLessThanOrEqual(12_000);
+    expect(extracted).toContain('return or onward ticket');
+    expect(extracted).toContain('sufficient funds for travel, lodging, and meals');
+    expect(extracted).toContain('declare agriculture products and monetary instruments');
   });
 });
 
@@ -239,6 +270,155 @@ describe('augmentGuamShoppingPayload', () => {
       groundingChunkIndex: 0,
       sourceType: 'official_tourism',
     });
+  });
+});
+
+describe('augmentUsEntryRequirementsPayload', () => {
+  const pages = [
+    {
+      url: 'https://overseas.mofa.go.kr/us-seattle-ko/brd/m_4733/view.do?seq=1342928',
+      title: '우리 국민의 미국 입국시 입국 거부 주의 안내',
+      text: '사례2 : 관광목적으로 미국에 입국(ESTA비자 소지)한 B는 귀국항공편 미소지, 체류지 미정(숙소 예약정보 등 미소지), 여행에 필요한 경비 미지참 등으로 입국거부됨.',
+    },
+    {
+      url: 'https://www.cbp.gov/sites/default/files/2025-07/25_0718_cbp_form_6059_sample_ndc_1.pdf',
+      title: 'CBP Form 6059B',
+      text: '11 I am (We are) bringing (a) fruits, vegetables, plants, seeds, food, insects: Yes No (b) meats, animals, animal/wildlife products: Yes No (c) disease agents, cell cultures, snails: Yes No (d) soil or have been on a farm/ranch/pasture: Yes No',
+    },
+  ];
+
+  it('promotes exact reviewed supporting-document and customs excerpts', () => {
+    const payload = augmentUsEntryRequirementsPayload(pages, '미국', {
+      sources: [],
+      evidence: [],
+      claims: [],
+    });
+
+    expect(payload.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceType: 'embassy', groundingChunkIndex: 0 }),
+      expect.objectContaining({ sourceType: 'customs', groundingChunkIndex: 1 }),
+    ]));
+    expect(payload.evidence?.map((item) => item.evidenceKey)).toEqual([
+      'mofa-us-entry-return-lodging-funds',
+      'cbp-6059b-declaration-categories',
+    ]);
+    expect(payload.claims?.map((claim) => claim.claimText)).toEqual(expect.arrayContaining([
+      expect.stringContaining('귀국항공편'),
+      expect.stringContaining('숙소 예약정보'),
+      expect.stringContaining('여행에 필요한 경비'),
+      expect.stringContaining('세관 신고서 Form 6059B'),
+    ]));
+    expect(payload.claims).toHaveLength(4);
+    expect(payload.claims?.every((claim) => claim.claimType === 'policy')).toBe(true);
+  });
+
+  it('does not manufacture claims when either reviewed excerpt is absent', () => {
+    const payload = augmentUsEntryRequirementsPayload([
+      pages[0]!,
+      { ...pages[1]!, text: 'Customs declaration form without category text.' },
+    ], '미국', { sources: [], evidence: [], claims: [] });
+
+    expect(payload).toEqual({ sources: [], evidence: [], claims: [] });
+  });
+
+  it('completes the entry research readiness contract with official purpose and stay claims', () => {
+    const dhsText = 'The Visa Waiver Program permits citizens of participating countries to travel to the United States for business or tourism for stays of 90 days or less without obtaining a visa.';
+    const allPages = [
+      ...pages,
+      {
+        url: 'https://www.dhs.gov/visa-waiver-program',
+        title: 'Visa Waiver Program',
+        text: dhsText,
+      },
+    ];
+    const payload = augmentUsEntryRequirementsPayload(allPages, '미국', {
+      sources: [{
+        sourceKey: 'dhs-vwp',
+        groundingChunkIndex: 2,
+        publisher: 'Department of Homeland Security',
+        sourceType: 'government',
+        claimTypes: ['entry_visa'],
+        country: '미국',
+        destination: '미국',
+      }],
+      evidence: [
+        {
+          evidenceKey: 'dhs-vwp-purpose',
+          sourceKey: 'dhs-vwp',
+          excerpt: dhsText,
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          country: '미국',
+          destination: '미국',
+          applicableTo: '대한민국 여권의 단기 관광 또는 상용 여행자',
+          normalizedValue: '관광 또는 상용 목적',
+        },
+        {
+          evidenceKey: 'dhs-vwp-stay',
+          sourceKey: 'dhs-vwp',
+          excerpt: dhsText,
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          country: '미국',
+          destination: '미국',
+          applicableTo: '대한민국 여권의 단기 관광 또는 상용 여행자',
+          normalizedValue: '90일 이하',
+          unit: '일',
+        },
+      ],
+      claims: [
+        {
+          claimText: '미국 비자면제 입국은 관광 또는 상용 목적의 단기 방문에 적용됩니다.',
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          evidenceKeys: ['dhs-vwp-purpose'],
+          normalizedValue: '관광 또는 상용 목적',
+        },
+        {
+          claimText: '미국 비자면제 프로그램의 허용 체류 기간은 90일 이하입니다.',
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          evidenceKeys: ['dhs-vwp-stay'],
+          normalizedValue: '90일 이하',
+          unit: '일',
+        },
+      ],
+    });
+    const policy = {
+      minimumClaimSourceCoverage: 0.9,
+      primarySourcesRequired: true,
+      exactNumbersRequireSource: true,
+      retrievedAtRequired: true,
+      sourceTypes: ['government', 'embassy', 'immigration', 'customs'],
+    };
+    const built = buildBlogResearchBundleFromGrounding({
+      contentKey: 'us-entry-complete',
+      destination: '미국',
+      locale: 'ko-KR',
+      brief: { intentType: 'entry_requirements', sourcePolicy: policy },
+      payload,
+      groundingChunks: allPages.map((page) => ({ web: { uri: page.url, title: page.title } })),
+      directSourceUrls: allPages.map((page) => page.url),
+      officialRegistry: [
+        { id: 'mofa', hostname: 'overseas.mofa.go.kr', sourceType: 'embassy', authorityLevel: 'official_primary', allowSubdomains: true },
+        { id: 'cbp', hostname: 'cbp.gov', sourceType: 'customs', authorityLevel: 'official_primary', allowSubdomains: true },
+        { id: 'dhs', hostname: 'dhs.gov', sourceType: 'government', authorityLevel: 'official_primary', allowSubdomains: true },
+      ],
+      now: new Date('2026-08-01T17:30:00.000Z'),
+    });
+    const readiness = evaluateBlogGenerationResearchReadiness({
+      meta: { information_research_bundle: built.bundle },
+      expectedContentKey: 'us-entry-complete',
+      destination: '미국',
+      intent: 'entry_requirements',
+      locale: 'ko-KR',
+      sourcePolicy: policy,
+      now: new Date('2026-08-01T17:31:00.000Z'),
+    });
+
+    expect(built.issues).toEqual([]);
+    expect(readiness.issues).toEqual([]);
+    expect(readiness.passed).toBe(true);
   });
 });
 
@@ -623,6 +803,8 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(prompt).toContain('biometric collection, declarations, and submission timing as policy');
     expect(prompt).toContain('one explicit supported claim stating the permitted travel purpose');
     expect(prompt).toContain('one explicit supported claim stating the permitted stay duration');
+    expect(prompt).toContain('return or onward ticket, U.S. lodging or stay details');
+    expect(prompt).toContain('customs-declaration claim naming at least one declaration category');
     expect(prompt).toContain('Korean passport holders');
   });
 

@@ -43,7 +43,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('buildRecentInfoDuplicateScope(item)');
     expect(source).toContain("query.contains('generation_meta', { micro_angle: scope.microAngle })");
     const representativePreclaim = source.indexOf('findBlogInformationRepresentative(representativeKey)');
-    const topicGeneration = source.indexOf("topic_generation', () => generateFromTopic(item)");
+    const topicGeneration = source.indexOf("topic_generation', () => generateFromTopic(item, {");
     expect(representativePreclaim).toBeGreaterThanOrEqual(0);
     expect(topicGeneration).toBeGreaterThan(representativePreclaim);
     expect(source).toContain('information_representative_preclaim:');
@@ -135,6 +135,13 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("const reason = 'private_regeneration_target_not_eligible'");
     expect(source).toContain('validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined');
     expect(source).toContain('options.validatedPrivateRegenerationRequest');
+    expect(source).toContain('generateFromTopic(item, {');
+    expect(source).toContain(
+      'const privateRegenerationRequest = options.validatedPrivateRegenerationRequest',
+    );
+    expect(source).toContain(
+      'const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);',
+    );
     expect(source).toContain('privateReplacementDraftId = privateRegenerationRequest.contentCreativeId');
     expect(source).toContain('!publishedAtomicUpgrade && privateRegenerationRequest !== null');
     expect(source).toContain('forced_private_review: !publishedAtomicUpgrade');
@@ -224,7 +231,7 @@ describe('blog publisher quota recovery contract', () => {
   it('avoids duplicate AI and image work during a controlled private regeneration', () => {
     const source = routeSource();
 
-    expect(source).toContain('const privateRegeneration = hasPrivateBlogRegenerationIntent(item)');
+    expect(source).toContain('const privateRegeneration = privateRegenerationRequest !== null');
     expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
     expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
     expect(source).toContain('if (destForImage && !privateRegeneration) {');
@@ -298,21 +305,34 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> =>');
     expect(source).toContain('const restoreFinalReusableImages = async (): Promise<void> =>');
     expect(source).toContain('const applyFinalGateCustomerSurfaceRepair = (): void =>');
+    expect(source).toContain('const applyFinalInlineSurfaceRepair = (): void =>');
     expect(source).toContain('await restoreFinalReusableImages();');
-    const finalResearchRepair = source.indexOf('applyFinalResearchStructureRepair();');
+    const finalQualityBoundary = source.indexOf(
+      'const runQualityWithResearchStructure = async (): Promise<QualityGateReport> =>',
+    );
     const finalSurfaceRepair = source.indexOf(
       'applyFinalGateCustomerSurfaceRepair();',
-      finalResearchRepair,
+      finalQualityBoundary,
+    );
+    const finalResearchRepair = source.indexOf(
+      'applyFinalResearchStructureRepair();',
+      finalSurfaceRepair,
     );
     const finalImageRestore = source.indexOf('await restoreFinalReusableImages();', finalResearchRepair);
-    const finalQualityGate = source.indexOf(
-      'return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);',
+    const finalInlineSurfaceRepair = source.indexOf(
+      'applyFinalInlineSurfaceRepair();',
       finalImageRestore,
     );
-    expect(finalResearchRepair).toBeGreaterThan(-1);
-    expect(finalSurfaceRepair).toBeGreaterThan(finalResearchRepair);
-    expect(finalImageRestore).toBeGreaterThan(finalSurfaceRepair);
-    expect(finalQualityGate).toBeGreaterThan(finalImageRestore);
+    const finalQualityGate = source.indexOf(
+      'return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);',
+      finalInlineSurfaceRepair,
+    );
+    expect(finalQualityBoundary).toBeGreaterThan(-1);
+    expect(finalSurfaceRepair).toBeGreaterThan(finalQualityBoundary);
+    expect(finalResearchRepair).toBeGreaterThan(finalSurfaceRepair);
+    expect(finalImageRestore).toBeGreaterThan(finalResearchRepair);
+    expect(finalInlineSurfaceRepair).toBeGreaterThan(finalImageRestore);
+    expect(finalQualityGate).toBeGreaterThan(finalInlineSurfaceRepair);
     expect(source).toContain('hasRenderedPageH1: true');
     expect(source).toContain("['title', 'meta_description'].includes(d.name) && d.score < d.maxScore");
     expect(source).toContain('qa = await runQualityWithResearchStructure();');
@@ -327,6 +347,20 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
     expect(source).toContain('auto_regeneration_attempts: 0');
     expect(source).toContain('auto_regeneration_limit: 0');
+    expect(source).toContain('const evaluateCurrentInformationClaimValidation = async () =>');
+    expect(source).toContain('const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();');
+    expect(source).toContain('const finalClaimValidation = await evaluateCurrentInformationClaimValidation();');
+    expect(source).toContain('? { auto_research: item.meta.auto_research }');
+    const preSeoClaimValidation = source.indexOf(
+      'const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();',
+    );
+    const seoEvaluation = source.indexOf('let seoScore = computeSeoScore(buildSeoScoreInput());');
+    const finalClaimValidation = source.indexOf(
+      'const finalClaimValidation = await evaluateCurrentInformationClaimValidation();',
+    );
+    expect(preSeoClaimValidation).toBeGreaterThan(-1);
+    expect(seoEvaluation).toBeGreaterThan(preSeoClaimValidation);
+    expect(finalClaimValidation).toBeGreaterThan(seoEvaluation);
     expect(source).toContain("from('content_review_queue')");
     expect(source).toContain(".update({ status: 'skipped' })");
     expect(source).toContain(".in('status', ['queued', 'assigned'])");

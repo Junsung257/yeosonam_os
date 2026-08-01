@@ -512,6 +512,8 @@ function staticChecks() {
     'audit:blog-search-daily',
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
+    'OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS',
+    '--hard-timeout-ms=${PUBLIC_AUDIT_HARD_TIMEOUT_MS}',
     'MARKETING_AUTOMATION_TIMEOUT_MS',
     'MARKETING_RUNTIME_HARD_TIMEOUT_MS',
     'REPORT_PATH',
@@ -594,6 +596,9 @@ function staticChecks() {
     'actions/upload-artifact@v4',
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
+    'OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS',
+    'include-hidden-files: true',
+    '!.tmp/operational-readiness-discovered.env',
   ]);
   requireIncludes('ci:local-release-readiness-wired', '.github/workflows/local-release-readiness.yml', [
     'Local Release Readiness',

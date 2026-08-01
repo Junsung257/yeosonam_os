@@ -492,7 +492,7 @@ function pruneLeadProse(markdown: string, input: BlogFinalCustomerSurfaceInput):
   const destination = inferDestination(input) || '여행';
   const lead = hasAnswerShape
     ? firstLead
-    : `${destination}, 먼저 무엇을 확인해야 할까요? 일정, 비용, 이동 조건을 함께 비교하면 출발 전 바뀔 수 있는 조건을 줄일 수 있습니다.`;
+    : buildAnswerFirstLead(input, destination);
 
   const next = [
     ...lines.slice(0, h1Index + 1),
@@ -581,11 +581,43 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
     const hasBatchim = ((lastHangul.charCodeAt(0) - 0xac00) % 28) > 0;
     return hasBatchim ? withBatchim : withoutBatchim;
   };
+  const correctSubjectOrObjectParticle = (word: string, particle: string): string => {
+    const normalizedParticle = particleFor(word, '은', '는');
+    if (normalizedParticle !== '는') return particle;
+    return particle === '은' ? '는' : '를';
+  };
   const next = markdown
     .replace(/([가-힣]{2,16})(?:과|와)(?:은|을)(?=\s|$|[.,!?])/g, (match, word: string) => {
       const particle = particleFor(word, '은', '는');
       return particle ? `${word}${particle}` : match;
     })
+    .replace(/(\*\*|__|==|`)([가-힣]{2,12})(은|을)\1(?=\s|$|[.,!?])/g,
+      (match, marker: string, word: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${marker}${word}${corrected}${marker}`;
+      })
+    .replace(/(\*\*|__|==|`)([가-힣]{2,12})\1(은|을)(?=\s|$|[.,!?])/g,
+      (match, marker: string, word: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${marker}${word}${marker}${corrected}`;
+      })
+    .replace(/([가-힣]{2,12})(\*\*|__|==|`)(은|을)\2(?=\s|$|[.,!?])/g,
+      (match, word: string, marker: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${word}${marker}${corrected}${marker}`;
+      })
+    .replace(/\[([^\]\n]*?)([가-힣]{2,12})\]\(([^)\n]+)\)(은|을)(?=\s|$|[.,!?])/g,
+      (match, prefix: string, word: string, url: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `[${prefix}${word}](${url})${corrected}`;
+      })
+    .replace(/\[([^\]\n]*?)([가-힣]{2,12})\]\(([^)\n]+)\)(\*\*|__|==|`)(은|을)\4(?=\s|$|[.,!?])/g,
+      (match, prefix: string, word: string, url: string, marker: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle
+          ? match
+          : `[${prefix}${word}](${url})${marker}${corrected}${marker}`;
+      })
     .replace(/체크리스트을/g, '체크리스트를')
     .replace(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g, (match, word: string, particle: string) => {
     const normalizedParticle = particleFor(word, '은', '는');
@@ -593,8 +625,36 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
     const hasBatchim = normalizedParticle === '은';
     if (hasBatchim) return match;
     return `${word}${particle === '은' ? '는' : '를'}`;
-  });
+  })
+    .replace(/입국신고(?!서)/g, '입국 신고');
   return { markdown: next, changed: next !== before };
+}
+
+function repairOrphanPipeDelimitedRows(markdown: string): { markdown: string; changed: boolean } {
+  let changed = false;
+  const next = markdown.split('\n').map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('|') || trimmed.startsWith('```')) return line;
+    const segments = trimmed.split(/\s+\|\s+/).map((segment) => segment.trim()).filter(Boolean);
+    if (segments.length < 3 || trimmed.length < 100) return line;
+    changed = true;
+    return segments.map((segment) => `- ${segment}`).join('\n');
+  }).join('\n');
+  return { markdown: next, changed };
+}
+
+export function repairBlogFinalInlineSurface(markdown: string): BlogFinalCustomerSurfaceResult {
+  const particleRepair = repairCommonSurfaceParticles(markdown || '');
+  const orphanPipeRepair = repairOrphanPipeDelimitedRows(particleRepair.markdown);
+  const changes = [
+    ...(particleRepair.changed ? ['repair_common_surface_particles'] : []),
+    ...(orphanPipeRepair.changed ? ['repair_orphan_pipe_delimited_rows'] : []),
+  ];
+  return {
+    markdown: orphanPipeRepair.markdown,
+    changed: changes.length > 0,
+    changes,
+  };
 }
 
 function deterministicVariantIndex(seed: string, size: number): number {

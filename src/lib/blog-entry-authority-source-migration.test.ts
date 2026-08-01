@@ -6,6 +6,18 @@ const migration = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260730152500_add_retrievable_entry_authorities.sql'),
   'utf8',
 );
+const usPurposeMigration = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260801152219_add_us_vwp_purpose_authority.sql'),
+  'utf8',
+);
+const usEntryContractMigration = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260801163651_add_us_entry_supporting_and_customs_authority.sql'),
+  'utf8',
+);
+const usCustomsPdfMigration = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260801172903_add_us_customs_declaration_pdf.sql'),
+  'utf8',
+);
 
 describe('retrievable entry authority migration', () => {
   it('registers destination-scoped official Japan and US documents', () => {
@@ -16,5 +28,35 @@ describe('retrievable entry authority migration', () => {
     expect(migration).toContain("array['entry_requirements']");
     expect(migration).toContain("array['일본']");
     expect(migration).toContain("array['미국']");
+  });
+});
+
+describe('US VWP purpose authority migration', () => {
+  it('registers destination-scoped DHS purpose and stay guidance', () => {
+    expect(usPurposeMigration).toContain("'dhs.gov'");
+    expect(usPurposeMigration).toContain('https://www.dhs.gov/visa-waiver-program');
+    expect(usPurposeMigration).toContain("array['entry_requirements']");
+    expect(usPurposeMigration).toContain("array['미국']");
+  });
+});
+
+describe('US complete entry contract authority migration', () => {
+  it('registers retrievable supporting-document and customs guidance', () => {
+    expect(usEntryContractMigration).toContain("'overseas.mofa.go.kr', 'embassy'");
+    expect(usEntryContractMigration).toContain("'cbp.gov', 'customs'");
+    expect(usEntryContractMigration).toContain('https://overseas.mofa.go.kr/us-seattle-ko/brd/m_4733/view.do?seq=1342928');
+    expect(usEntryContractMigration).toContain('https://www.cbp.gov/travel/us-citizens/know-before-you-go/know-you-go-traveling-abroad');
+    expect(usEntryContractMigration).not.toContain('help.cbp.gov');
+    expect(usEntryContractMigration).not.toContain('esta.cbp.dhs.gov/faq');
+    expect(usEntryContractMigration).toContain("array['entry_requirements']");
+    expect(usEntryContractMigration).toContain("array['미국']");
+  });
+
+  it('adds the directly parseable CBP Form 6059B declaration PDF', () => {
+    expect(usCustomsPdfMigration).toContain("r.hostname = 'cbp.gov'");
+    expect(usCustomsPdfMigration).toContain("r.source_type = 'customs'");
+    expect(usCustomsPdfMigration).toContain('https://www.cbp.gov/sites/default/files/2025-07/25_0718_cbp_form_6059_sample_ndc_1.pdf');
+    expect(usCustomsPdfMigration).toContain("array['entry_requirements']");
+    expect(usCustomsPdfMigration).toContain("array['미국']");
   });
 });
