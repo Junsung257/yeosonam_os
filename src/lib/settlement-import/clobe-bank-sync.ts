@@ -449,7 +449,7 @@ export function rankTransactionTools(tools: McpTool[], preferred?: string | null
       const transactionReader = /transactions?|transaction_history|account_statement/.test(name);
       const bankContext = /(bank|account|deposit|withdraw|cash|transaction)/.test(text);
       const mutation = /(bulk|label_|create|update|delete|remove|write|send|post|apply|assign)/.test(name);
-      const unrelated = /(tax|invoice|revenue|card_billing|credit_card|journal|ledger|payroll)/.test(text);
+      const unrelated = /(tax|invoice|revenue|card_billing|credit_card|journal|ledger|payroll)/.test(name);
       const accountListOnly = /bank_accounts?$/.test(name);
       const labelCatalog = name === 'get_labels';
       return (exactClobeReader || (readVerb && transactionReader && bankContext))
