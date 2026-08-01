@@ -118,7 +118,7 @@ production 배포가 변경됐다.
 | `content_attribution_events` / `customer_events` | 2 / 0 |
 | Security advisors | 52 (INFO 50, WARN 2) |
 
-예약 수가 locked baseline의 88건에서 127건으로 증가했으므로, 기존 예약 데이터가 삭제되지
-않았음을 보여주는 현재 시점 차이로 기록한다. 현재 production의 `bookings_access`,
+예약 수가 locked baseline의 88건에서 127건으로 증가한 것은 현재 시점 차이로 기록한다.
+이 숫자만으로 기존 예약 데이터의 삭제 여부를 단정하지 않는다. 현재 production의 `bookings_access`,
 `customers_access`, `customer_events_tenant_select` 정책은 그대로 확인되었고, Revenue Rescue
 RLS migration이 적용되기 전에는 tenant isolation 완료로 판정하지 않는다.
