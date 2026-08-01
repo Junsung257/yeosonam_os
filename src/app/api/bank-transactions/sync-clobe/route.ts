@@ -65,7 +65,19 @@ export async function POST(request: NextRequest) {
       toolNames: string[];
       bankToolAvailable: boolean;
       attempts: Array<{ toolName: string; extracted: number; normalized: number; resultKeys: string[]; contentTypes: string[]; error?: string }>;
-      tools: Array<{ name: string; description: string | null; required: string[]; properties: string[] }>;
+      tools: Array<{
+        name: string;
+        description: string | null;
+        required: string[];
+        properties: string[];
+        inputFields: Array<{
+          path: string;
+          type: string | null;
+          required: boolean;
+          description: string | null;
+          values: string[];
+        }>;
+      }>;
     } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [], tools: [] };
 
     if (!Array.isArray(rawPayload)) {

@@ -21,6 +21,13 @@ export interface ClobeMcpToolSummary {
   description: string | null;
   required: string[];
   properties: string[];
+  inputFields: Array<{
+    path: string;
+    type: string | null;
+    required: boolean;
+    description: string | null;
+    values: string[];
+  }>;
 }
 
 export interface ClobeMcpFetchResult {
@@ -295,6 +302,41 @@ function toolText(tool: McpTool): string {
   return `${tool.name} ${tool.description ?? ''}`.toLowerCase();
 }
 
+function summarizeInputFields(
+  schemaValue: unknown,
+  prefix = '',
+  depth = 0,
+): ClobeMcpToolSummary['inputFields'] {
+  if (depth > 5) return [];
+  const schema = asRecord(schemaValue);
+  const properties = asRecord(schema.properties);
+  const required = new Set(Array.isArray(schema.required) ? schema.required.filter(value => typeof value === 'string') : []);
+  const fields: ClobeMcpToolSummary['inputFields'] = [];
+
+  for (const [name, rawProperty] of Object.entries(properties)) {
+    const property = asRecord(rawProperty);
+    const path = prefix ? `${prefix}.${name}` : name;
+    fields.push({
+      path,
+      type: typeof property.type === 'string' ? property.type : null,
+      required: required.has(name),
+      description: typeof property.description === 'string' ? property.description : null,
+      values: Array.isArray(property.enum)
+        ? property.enum.filter(value => typeof value === 'string').slice(0, 30) as string[]
+        : [],
+    });
+    fields.push(...summarizeInputFields(property, path, depth + 1));
+    for (const keyword of ['anyOf', 'oneOf', 'allOf']) {
+      const branches = Array.isArray(property[keyword]) ? property[keyword] : [];
+      branches.slice(0, 10).forEach(branch => {
+        fields.push(...summarizeInputFields(branch, path, depth + 1));
+      });
+    }
+  }
+
+  return fields.slice(0, 200);
+}
+
 function isExplicitBankTool(tool: McpTool): boolean {
   const text = toolText(tool);
   return /(bank|bank_account|account_statement|statement|transaction_history|transactions|deposit|withdraw|cash_flow|cashflow|입출금|통장|거래내역|입금|출금|은행)/.test(text);
@@ -430,6 +472,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
     description: tool.description?.trim() || null,
     required: Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : [],
     properties: Object.keys(tool.inputSchema?.properties ?? {}),
+    inputFields: summarizeInputFields(tool.inputSchema),
   }));
   const preferred = getSecret('CLOBE_MCP_TRANSACTIONS_TOOL') ?? undefined;
   const rankedTools = rankTransactionTools(tools, preferred);
