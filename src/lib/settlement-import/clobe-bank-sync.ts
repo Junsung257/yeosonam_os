@@ -40,6 +40,16 @@ export interface ClobeMcpFetchResult {
   attempts: ClobeMcpFetchAttempt[];
   bankToolAvailable: boolean;
   tools: ClobeMcpToolSummary[];
+  scrapingStatus: ClobeScrapingStatus[];
+  scrapingStatusError?: string;
+}
+
+export interface ClobeScrapingStatus {
+  assetType: string | null;
+  status: string | null;
+  scrapedAt: string | null;
+  failureCategory: string | null;
+  failureMessage: string | null;
 }
 
 export interface ClobeMcpFetchAttempt {
@@ -48,6 +58,7 @@ export interface ClobeMcpFetchAttempt {
   normalized: number;
   resultKeys: string[];
   contentTypes: string[];
+  resultShape: unknown;
   error?: string;
 }
 
@@ -312,7 +323,29 @@ function extractTabSeparatedRows(text: string): Record<string, unknown>[] {
     });
 }
 
-function summarizeMcpResult(payload: unknown): Pick<ClobeMcpFetchAttempt, 'resultKeys' | 'contentTypes'> {
+function summarizeValueShape(value: unknown, depth = 0): unknown {
+  if (depth >= 4) return { type: Array.isArray(value) ? 'array' : typeof value };
+  if (Array.isArray(value)) {
+    return {
+      type: 'array',
+      length: value.length,
+      item: value.length > 0 ? summarizeValueShape(value[0], depth + 1) : null,
+    };
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).slice(0, 30);
+    return {
+      type: 'object',
+      keys,
+      fields: Object.fromEntries(keys.map(key => [key, summarizeValueShape(record[key], depth + 1)])),
+    };
+  }
+  if (typeof value === 'string') return { type: 'string', length: value.length };
+  return { type: value === null ? 'null' : typeof value };
+}
+
+function summarizeMcpResult(payload: unknown): Pick<ClobeMcpFetchAttempt, 'resultKeys' | 'contentTypes' | 'resultShape'> {
   const record = asRecord(payload);
   const content = Array.isArray(record.content) ? record.content : [];
   return {
@@ -323,6 +356,7 @@ function summarizeMcpResult(payload: unknown): Pick<ClobeMcpFetchAttempt, 'resul
         return typeof value === 'string' ? value : 'unknown';
       })
       .slice(0, 10),
+    resultShape: summarizeValueShape(extractMcpData(payload)),
   };
 }
 
@@ -361,6 +395,40 @@ function findValuesByKey(payload: unknown, keys: string[], depth = 0): unknown[]
     }
   }
   return values;
+}
+
+export function extractClobeScrapingStatus(payload: unknown): ClobeScrapingStatus[] {
+  const statuses: ClobeScrapingStatus[] = [];
+
+  function visit(value: unknown, depth = 0) {
+    if (depth > 7 || value == null) return;
+    if (Array.isArray(value)) {
+      value.forEach(item => visit(item, depth + 1));
+      return;
+    }
+    const record = asRecord(value);
+    const status = getFirstString(record, ['status', 'scrapingStatus']);
+    const scrapedAt = getFirstString(record, ['scrapedAt', 'scraped_at', 'lastScrapedAt', 'updatedAt']);
+    const failureCategory = getFirstString(record, ['failureCategory', 'failure_category']);
+    const failureMessage = getFirstString(record, ['failureMessage', 'failure_message']);
+    if (status || scrapedAt || failureCategory || failureMessage) {
+      statuses.push({
+        assetType: getFirstString(record, ['assetType', 'assetName', 'asset', 'serviceType', 'type', 'name']),
+        status,
+        scrapedAt,
+        failureCategory,
+        failureMessage,
+      });
+    }
+    Object.values(record).forEach(child => {
+      if (child && typeof child === 'object') visit(child, depth + 1);
+    });
+  }
+
+  visit(extractMcpData(payload));
+  const unique = [...new Map(statuses.map(item => [JSON.stringify(item), item])).values()];
+  const bankStatuses = unique.filter(item => /bank|account|은행|통장/i.test(item.assetType ?? ''));
+  return (bankStatuses.length > 0 ? bankStatuses : unique).slice(0, 30);
 }
 
 function resolveCompanyIds(payload: unknown, configured?: string): string[] {
@@ -613,6 +681,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
       attempts: [],
       bankToolAvailable: Boolean(selectedToolName),
       tools: toolSummaries,
+      scrapingStatus: [],
     };
   }
   if (!selectedToolName) {
@@ -623,6 +692,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
       attempts: [],
       bankToolAvailable: false,
       tools: toolSummaries,
+      scrapingStatus: [],
     };
   }
 
@@ -726,9 +796,32 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
         normalized: 0,
         resultKeys: [],
         contentTypes: [],
+        resultShape: null,
         error: failure.message,
       });
       throw failure;
+    }
+  }
+
+  let scrapingStatus: ClobeScrapingStatus[] = [];
+  let scrapingStatusError: string | undefined;
+  if (transactions.length === 0) {
+    const statusTool = tools.find(tool => tool.name === 'get_scraping_status');
+    if (statusTool) {
+      try {
+        const statusResult = await mcpCall(ctx, 'tools/call', {
+          name: statusTool.name,
+          arguments: {
+            input: {
+              companyId,
+              userQuery: 'Yeosonam OS empty bank transaction sync freshness check',
+            },
+          },
+        });
+        scrapingStatus = extractClobeScrapingStatus(statusResult);
+      } catch (error) {
+        scrapingStatusError = error instanceof Error ? error.message : 'Clobe scraping status check failed';
+      }
     }
   }
 
@@ -739,5 +832,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
     attempts,
     bankToolAvailable: true,
     tools: toolSummaries,
+    scrapingStatus,
+    ...(scrapingStatusError ? { scrapingStatusError } : {}),
   };
 }

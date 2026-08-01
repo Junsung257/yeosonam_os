@@ -95,7 +95,15 @@ export async function POST(request: NextRequest) {
       toolName: string | null;
       toolNames: string[];
       bankToolAvailable: boolean;
-      attempts: Array<{ toolName: string; extracted: number; normalized: number; resultKeys: string[]; contentTypes: string[]; error?: string }>;
+      attempts: Array<{ toolName: string; extracted: number; normalized: number; resultKeys: string[]; contentTypes: string[]; resultShape: unknown; error?: string }>;
+      scrapingStatus: Array<{
+        assetType: string | null;
+        status: string | null;
+        scrapedAt: string | null;
+        failureCategory: string | null;
+        failureMessage: string | null;
+      }>;
+      scrapingStatusError?: string;
       tools: Array<{
         name: string;
         description: string | null;
@@ -109,7 +117,7 @@ export async function POST(request: NextRequest) {
           values: string[];
         }>;
       }>;
-    } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [], tools: [] };
+    } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [], scrapingStatus: [], tools: [] };
 
     if (!Array.isArray(rawPayload)) {
       if (!tenantId) {
@@ -147,6 +155,8 @@ export async function POST(request: NextRequest) {
         toolNames: fetched.toolNames,
         bankToolAvailable: fetched.bankToolAvailable,
         attempts: fetched.attempts,
+        scrapingStatus: fetched.scrapingStatus,
+        scrapingStatusError: fetched.scrapingStatusError,
         tools: fetched.tools,
       };
     }
