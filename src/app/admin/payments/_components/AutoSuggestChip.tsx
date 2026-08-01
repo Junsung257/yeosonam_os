@@ -10,6 +10,10 @@
  */
 
 import { useState, useEffect } from 'react';
+import {
+  extractPaymentAutoSuggestResponse,
+  getPaymentApiErrorMessage,
+} from '@/lib/payment-auto-suggest-response';
 
 interface InflowSuggestion {
   kind: 'booking_match';
@@ -68,10 +72,12 @@ export default function AutoSuggestChip({ transactionId, onMatched }: Props) {
         const res = await fetch(`/api/payments/auto-suggest?transactionId=${transactionId}`);
         const json = await res.json();
         if (cancelled) return;
-        if (!res.ok) throw new Error(json.error ?? '제안 실패');
-        setData(json);
+        if (!res.ok || json?.ok === false) {
+          throw new Error(getPaymentApiErrorMessage(json, '제안 실패'));
+        }
+        setData(extractPaymentAutoSuggestResponse<AutoSuggestResponse>(json));
       } catch (err: any) {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(err instanceof Error ? err.message : '제안 실패');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -95,10 +101,12 @@ export default function AutoSuggestChip({ transactionId, onMatched }: Props) {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? '확정 실패');
+      if (!res.ok || json?.ok === false) {
+        throw new Error(getPaymentApiErrorMessage(json, '확정 실패'));
+      }
       onMatched();
     } catch (err: any) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : '확정 실패');
       setTimeout(() => setError(null), 3000);
     } finally {
       setConfirming(false);
@@ -120,10 +128,12 @@ export default function AutoSuggestChip({ transactionId, onMatched }: Props) {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? '묶기 실패');
+      if (!res.ok || json?.ok === false) {
+        throw new Error(getPaymentApiErrorMessage(json, '묶기 실패'));
+      }
       onMatched();
     } catch (err: any) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : '묶기 실패');
       setTimeout(() => setError(null), 3000);
     } finally {
       setConfirming(false);
