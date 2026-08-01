@@ -40,6 +40,9 @@ const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_
 const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
 const BLOG_AUDIT_TIMEOUT_MS = Number(argValue('--blog-audit-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || '15000'));
 const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(argValue('--blog-audit-hard-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || '180000'));
+const PUBLIC_AUDIT_HARD_TIMEOUT_MS = Number(
+  argValue('--public-audit-hard-timeout-ms', process.env.OPEN_CHECK_PUBLIC_AUDIT_HARD_TIMEOUT_MS || '90000'),
+);
 const MARKETING_AUTOMATION_TIMEOUT_MS = Number(
   argValue('--marketing-automation-timeout-ms', process.env.MARKETING_AUTOMATION_TIMEOUT_MS || '120000'),
 );
@@ -417,6 +420,7 @@ function checkPublicCriticalAudit() {
     `--base=${BASE_URL}`,
     '--json',
     '--timeout-ms=20000',
+    `--hard-timeout-ms=${PUBLIC_AUDIT_HARD_TIMEOUT_MS}`,
     '--retries=2',
   ];
   if (!LOCAL_MODE || HAS_EXPLICIT_PACKAGE_ID) {
@@ -426,7 +430,7 @@ function checkPublicCriticalAudit() {
   const result = run(
     'npm',
     args,
-    { timeout: 120000 },
+    { timeout: Math.max(PUBLIC_AUDIT_HARD_TIMEOUT_MS + 30000, 120000) },
   );
 
   try {
