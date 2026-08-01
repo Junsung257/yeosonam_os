@@ -519,7 +519,16 @@ async function mcpCall(ctx: McpCallContext, method: string, params?: Record<stri
   const parsed = await parseMcpResponse(response);
   const record = asRecord(parsed);
   if (record.error) throw new Error(`Clobe MCP ${method} error: ${JSON.stringify(record.error)}`);
-  return record.result ?? parsed;
+  const result = record.result ?? parsed;
+  const resultRecord = asRecord(result);
+  if (resultRecord.isError === true) {
+    const content = Array.isArray(resultRecord.content) ? resultRecord.content : [];
+    const detail = content
+      .map(part => asRecord(part).text)
+      .find(value => typeof value === 'string' && value.trim());
+    throw new Error(`Clobe MCP ${method} tool error: ${typeof detail === 'string' ? detail.slice(0, 500) : 'unknown tool error'}`);
+  }
+  return result;
 }
 
 async function initializeMcp(ctx: McpCallContext) {
