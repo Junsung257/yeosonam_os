@@ -35,15 +35,28 @@ function markdownLinkUrls(markdown: string): string[] {
 export function appendPublishReadinessSupport(input: BlogPublishReadinessInput): BlogPublishReadinessRepairResult {
   const trimmed = input.markdown.trimEnd();
   const minLength = input.blogType === 'info' ? 2550 : 1300;
-  if (
-    plainLength(trimmed) >= minLength
-    || /##\s+(?:문의 전 최종 확인|출발 전 다시 확인할 기준)/.test(trimmed)
-  ) {
+  const currentLength = plainLength(trimmed);
+  if (currentLength >= minLength) {
     return { markdown: input.markdown, changed: false, changes: [] };
   }
 
   const destination = input.destination || input.primaryKeyword || input.topic || '여행';
   const topic = input.primaryKeyword || input.topic || destination;
+  const hasSupportHeading = /##\s+(?:문의 전 최종 확인|출발 전 다시 확인할 기준)/.test(trimmed);
+  if (hasSupportHeading) {
+    if (currentLength < minLength - 350) {
+      return { markdown: input.markdown, changed: false, changes: [] };
+    }
+    const extension = input.blogType === 'product'
+      ? `${destination} 상품은 최종 확정 전에 출발일, 인원, 항공 좌석, 객실 가능 여부를 다시 대조해야 합니다. 상담 시에는 원하는 조건과 변경 가능한 조건을 구분해 전달하면 실제 예약 조건을 더 빠르게 확인할 수 있습니다.`
+      : `${topic} 정보는 출발일과 여행자 조건에 따라 적용 범위가 달라질 수 있습니다. 글에서 확인한 기준을 체크리스트로 옮긴 뒤 출발 직전 공식 안내와 예약 문서를 다시 대조하고, 서로 다른 안내가 보이면 최신 확인일과 적용 대상을 우선해 판단하세요.`;
+    return {
+      markdown: `${trimmed}\n\n${extension}`,
+      changed: true,
+      changes: ['extended_publish_readiness_support'],
+    };
+  }
+
   const support = input.blogType === 'product'
     ? [
         '## 문의 전 최종 확인',
