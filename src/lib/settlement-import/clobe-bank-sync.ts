@@ -363,8 +363,8 @@ function findValuesByKey(payload: unknown, keys: string[], depth = 0): unknown[]
   return values;
 }
 
-function resolveCompanyId(payload: unknown, configured?: string): string | null {
-  if (configured?.trim()) return configured.trim();
+function resolveCompanyIds(payload: unknown, configured?: string): string[] {
+  if (configured?.trim()) return [configured.trim()];
   const data = extractMcpData(payload);
   const directIds = findValuesByKey(data, ['companyId']);
   const companyIds = findValuesByKey(data, ['companies'])
@@ -374,24 +374,36 @@ function resolveCompanyId(payload: unknown, configured?: string): string | null 
   const ids = [...directIds, ...companyIds]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .map(value => value.trim());
-  const unique = [...new Set(ids)];
-  if (unique.length > 1) {
-    throw new Error('Clobe connection has multiple companies; configure CLOBE_COMPANY_ID');
-  }
-  return unique[0] ?? null;
+  return [...new Set(ids)];
 }
 
 function resolveAccountId(payload: unknown, accountNumber?: string, configured?: string): string | null {
   if (configured?.trim()) return configured.trim();
   if (!accountNumber) return null;
   const normalizedAccount = accountNumber.replace(/\D/g, '');
-  const candidates = findValuesByKey(extractMcpData(payload), ['accounts', 'bankAccounts'])
-    .flatMap(value => Array.isArray(value) ? value : []);
+  const data = extractMcpData(payload);
+  const candidates = [
+    ...findValuesByKey(data, ['accounts', 'bankAccounts'])
+      .flatMap(value => Array.isArray(value) ? value : []),
+    ...extractTransactionArray(data),
+  ];
   for (const candidate of candidates) {
     const account = asRecord(candidate);
-    const number = getFirstString(account, ['accountNumber', 'account_number', 'maskedAccountNumber'])?.replace(/\D/g, '');
+    const number = getFirstString(account, [
+      'accountNumber',
+      'account_number',
+      'accountNo',
+      'bankAccountNumber',
+      'bankAccountNo',
+      'maskedAccountNumber',
+    ])?.replace(/\D/g, '');
     const id = getFirstString(account, ['bankAccountId', 'accountId', 'id']);
-    if (id && number && (number === normalizedAccount || number.endsWith(normalizedAccount) || normalizedAccount.endsWith(number))) {
+    if (!id || !number) continue;
+    const exact = number === normalizedAccount;
+    const unmaskedPartial = number.length >= 8 && normalizedAccount.length >= 8
+      && number.slice(0, 4) === normalizedAccount.slice(0, 4)
+      && number.slice(-4) === normalizedAccount.slice(-4);
+    if (exact || unmaskedPartial) {
       return id;
     }
   }
@@ -603,15 +615,43 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
     name: contextTool.name,
     arguments: { input: { userQuery: 'Yeosonam OS settlement company lookup' } },
   });
-  const companyId = resolveCompanyId(
+  const companyIds = resolveCompanyIds(
     contextResult,
     options.companyId || getSecret('CLOBE_COMPANY_ID') || undefined,
   );
-  if (!companyId) throw new Error('Clobe company could not be resolved from get_my_context');
+  if (companyIds.length === 0) throw new Error('Clobe company could not be resolved from get_my_context');
 
+  let companyId = companyIds.length === 1 ? companyIds[0] : null;
   let accountId = options.accountId ?? null;
+  const accountTool = tools.find(tool => tool.name === 'get_bank_accounts');
+
+  if (!companyId) {
+    if (!options.accountNumber) {
+      throw new Error('Clobe connection has multiple companies and no OS bank account could be selected');
+    }
+    if (!accountTool) throw new Error('Clobe MCP get_bank_accounts tool is unavailable');
+    const matches: Array<{ companyId: string; accountId: string }> = [];
+    for (const candidateCompanyId of companyIds) {
+      const accountResult = await mcpCall(ctx, 'tools/call', {
+        name: accountTool.name,
+        arguments: {
+          input: {
+            companyId: candidateCompanyId,
+            userQuery: 'Yeosonam OS settlement company bank account lookup',
+          },
+        },
+      });
+      const candidateAccountId = resolveAccountId(accountResult, options.accountNumber);
+      if (candidateAccountId) matches.push({ companyId: candidateCompanyId, accountId: candidateAccountId });
+    }
+    if (matches.length !== 1) {
+      throw new Error('Clobe company could not be uniquely matched to the OS bank account');
+    }
+    companyId = matches[0].companyId;
+    accountId = accountId ?? matches[0].accountId;
+  }
+
   if (!accountId && options.accountNumber) {
-    const accountTool = tools.find(tool => tool.name === 'get_bank_accounts');
     if (!accountTool) throw new Error('Clobe MCP get_bank_accounts tool is unavailable');
     const accountResult = await mcpCall(ctx, 'tools/call', {
       name: accountTool.name,
