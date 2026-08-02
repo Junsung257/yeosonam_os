@@ -31,3 +31,30 @@ export function isUniqueClobeLegacyDuplicate(
 ): boolean {
   return candidate && candidateCount === 1;
 }
+
+export function isClobeBootstrapCandidate(input: {
+  incomingSource?: string;
+  existingSource?: string | null;
+  existingExternalTransactionId?: string | null;
+  sameTransactionType: boolean;
+  sameAmount: boolean;
+  sameCounterparty: boolean;
+  sameMinute: boolean;
+}): boolean {
+  return input.incomingSource === 'clobe_mcp'
+    && input.existingSource === 'clobe_mcp'
+    && !input.existingExternalTransactionId
+    && input.sameTransactionType
+    && input.sameAmount
+    && input.sameCounterparty
+    && input.sameMinute;
+}
+
+export function selectUniqueClobeBootstrapCandidate<T>(
+  candidates: Array<{ value: T; sameMemo: boolean }>,
+): T | null {
+  const sameMemo = candidates.filter(candidate => candidate.sameMemo);
+  if (sameMemo.length === 1) return sameMemo[0].value;
+  if (sameMemo.length > 1) return null;
+  return candidates.length === 1 ? candidates[0].value : null;
+}

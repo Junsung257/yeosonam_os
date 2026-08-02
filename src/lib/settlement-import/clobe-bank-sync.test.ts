@@ -5,11 +5,20 @@ import {
   normalizeClobeBankTransaction,
   normalizeClobeBankTransactions,
   chooseTransactionTool,
+  chooseClobeAccountNumberFromMetadataRows,
   normalizeClobeAccountId,
   rankTransactionTools,
 } from './clobe-bank-sync';
 
 describe('clobe bank sync normalization', () => {
+  it('resolves the bank account from stored Clobe source metadata', () => {
+    expect(chooseClobeAccountNumberFromMetadataRows([
+      { source_metadata: { clobe_mcp: { account_number: '100-038-454128' } } },
+      { source_metadata: { clobe_mcp: { account_number: '100038454128' } } },
+      { source_metadata: { clobe_mcp: { account_number: '999-111' } } },
+    ])).toBe('100038454128');
+  });
+
   it('normalizes signed Clobe transaction rows to import rows', () => {
     const row = normalizeClobeBankTransaction({
       id: 'clobe-tx-1',

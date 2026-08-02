@@ -10,6 +10,7 @@ export {
   processBankTransactionImportRows,
 } from './bank-transaction-importer';
 export {
+  chooseClobeAccountNumberFromMetadataRows,
   fetchClobeMcpBankTransactions,
   normalizeClobeBankTransaction,
   normalizeClobeBankTransactions,

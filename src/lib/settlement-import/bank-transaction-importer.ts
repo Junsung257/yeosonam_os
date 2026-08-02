@@ -16,9 +16,11 @@ import {
   type SettlementMemoResolutionSource,
 } from './memo-auto-match-policy';
 import {
+  isClobeBootstrapCandidate,
   isClobeLegacyDuplicateCandidate,
   isProbableBankTransactionDuplicate,
   isUniqueClobeLegacyDuplicate,
+  selectUniqueClobeBootstrapCandidate,
 } from './bank-transaction-dedupe-policy';
 
 export type BankTransactionImportSource = 'bulk_import' | 'clobe_mcp' | 'clobe_api';
@@ -243,7 +245,7 @@ async function findExistingBankTransaction(input: {
   externalTransactionId?: string | null;
   incomingSource?: BankTransactionImportSource;
   excludedIds?: Set<string>;
-}): Promise<{ kind: 'exact' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
+}): Promise<{ kind: 'exact' | 'reconciled' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
   if (input.externalProvider && input.externalTransactionId) {
     const external = await supabaseAdmin
       .from('bank_transactions')
@@ -291,8 +293,48 @@ async function findExistingBankTransaction(input: {
   let best: ExistingBankTxCandidate | null = null;
   let bestScore = 0;
   const normalizedIncomingName = normalizeBankTransactionText(input.counterpartyName);
-  const crossSourceCandidates = (data ?? []).filter(row => {
-    const candidate = row as ExistingBankTxCandidate;
+  const normalizedIncomingMemo = normalizeBankTransactionText(input.memo);
+  const availableCandidates = ((data ?? []) as ExistingBankTxCandidate[])
+    .filter(candidate => !input.excludedIds?.has(candidate.id));
+  const clobeBootstrapCandidates = availableCandidates
+    .filter(candidate => {
+      const normalizedCandidateName = normalizeBankTransactionText(candidate.counterparty_name);
+      const sameCounterparty = Boolean(
+        normalizedCandidateName
+        && normalizedIncomingName
+        && (normalizedCandidateName === normalizedIncomingName
+          || normalizedCandidateName.includes(normalizedIncomingName)
+          || normalizedIncomingName.includes(normalizedCandidateName)),
+      );
+      const candidateTime = new Date(candidate.received_at).getTime();
+      return isClobeBootstrapCandidate({
+        incomingSource: input.incomingSource,
+        existingSource: candidate.source,
+        existingExternalTransactionId: candidate.external_transaction_id,
+        sameTransactionType: candidate.transaction_type === input.txType,
+        sameAmount: Number(candidate.amount) === Number(input.amount),
+        sameCounterparty,
+        sameMinute: Number.isFinite(candidateTime)
+          && Math.floor(candidateTime / 60_000) === Math.floor(center.getTime() / 60_000),
+      });
+    })
+    .map(candidate => ({
+      value: candidate,
+      sameMemo: Boolean(
+        normalizedIncomingMemo
+        && normalizeBankTransactionText(candidate.memo) === normalizedIncomingMemo
+      ),
+    }));
+  const clobeBootstrapMatch = selectUniqueClobeBootstrapCandidate(clobeBootstrapCandidates);
+  if (clobeBootstrapMatch) {
+    return {
+      kind: 'reconciled',
+      row: clobeBootstrapMatch,
+      confidence: Math.max(scoreBankTransactionSimilarity(clobeBootstrapMatch, input), 0.95),
+    };
+  }
+
+  const crossSourceCandidates = availableCandidates.filter(candidate => {
     const normalizedCandidateName = normalizeBankTransactionText(candidate.counterparty_name);
     const sameCounterparty = Boolean(
       normalizedCandidateName
@@ -313,8 +355,7 @@ async function findExistingBankTransaction(input: {
   const uniqueCrossSourceId = crossSourceCandidates.length === 1
     ? crossSourceCandidates[0]?.id
     : null;
-  for (const row of (data ?? []) as ExistingBankTxCandidate[]) {
-    if (input.excludedIds?.has(row.id)) continue;
+  for (const row of availableCandidates) {
     const score = scoreBankTransactionSimilarity(row, input);
     const adjustedScore = isUniqueClobeLegacyDuplicate(row.id === uniqueCrossSourceId, crossSourceCandidates.length)
       ? Math.max(score, 0.78)
@@ -370,10 +411,11 @@ async function attachImportEvidence(existingId: string, input: {
     patch.external_transaction_id = input.row.externalTransactionId;
   }
 
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from('bank_transactions')
     .update(patch)
     .eq('id', existingId);
+  if (error) throw new Error(`bank transaction evidence update failed: ${sanitizeDbError(error)}`);
 }
 
 async function findExcludedTransactionByFingerprint(
@@ -636,6 +678,7 @@ export async function processBankTransactionImportRows(
       memoChanged ? 'memo_updated' :
       duplicateIsLegacyMatched ? 'legacy_repaired' :
       duplicate.kind === 'exact' ? 'already_processed' :
+      duplicate.kind === 'reconciled' ? 'merge_candidate' :
       duplicate.kind === 'probable' ? 'merge_candidate' :
       duplicate.row && duplicate.confidence >= 0.65 ? 'duplicate_review' :
       'insert';
@@ -675,7 +718,8 @@ export async function processBankTransactionImportRows(
       continue;
     }
 
-    if (duplicate.kind === 'exact' && duplicate.row) {
+    if ((duplicate.kind === 'exact' || duplicate.kind === 'reconciled') && duplicate.row) {
+      if (duplicate.kind === 'reconciled') claimedProbableIds.add(duplicate.row.id);
       if (memoChanged && duplicateProcessed) {
         await flagProcessedMemoChange({
           source: options.source,

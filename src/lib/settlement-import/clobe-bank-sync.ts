@@ -85,6 +85,20 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+export function chooseClobeAccountNumberFromMetadataRows(rows: unknown[]): string | undefined {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const metadata = asRecord(asRecord(row).source_metadata);
+    const clobe = asRecord(metadata.clobe_mcp);
+    const accountNumber = typeof clobe.account_number === 'string'
+      ? clobe.account_number.replace(/\D/g, '')
+      : '';
+    if (accountNumber.length < 6) continue;
+    counts.set(accountNumber, (counts.get(accountNumber) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
 function getFirstString(raw: Record<string, unknown>, keys: string[]): string | null {
   for (const key of keys) {
     const value = raw[key];

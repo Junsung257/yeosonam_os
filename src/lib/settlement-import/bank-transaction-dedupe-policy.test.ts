@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isClobeBootstrapCandidate,
   isClobeLegacyDuplicateCandidate,
   isProbableBankTransactionDuplicate,
   isUniqueClobeLegacyDuplicate,
+  selectUniqueClobeBootstrapCandidate,
 } from './bank-transaction-dedupe-policy';
 
 describe('isProbableBankTransactionDuplicate', () => {
@@ -46,5 +48,50 @@ describe('isProbableBankTransactionDuplicate', () => {
       sameCounterparty: true,
       timeDifferenceMs: 60_001,
     })).toBe(false);
+  });
+
+  it('reconciles an unlinked Clobe bootstrap row only within the same bank minute', () => {
+    expect(isClobeBootstrapCandidate({
+      incomingSource: 'clobe_mcp',
+      existingSource: 'clobe_mcp',
+      existingExternalTransactionId: null,
+      sameTransactionType: true,
+      sameAmount: true,
+      sameCounterparty: true,
+      sameMinute: true,
+    })).toBe(true);
+
+    expect(isClobeBootstrapCandidate({
+      incomingSource: 'clobe_mcp',
+      existingSource: 'clobe_mcp',
+      existingExternalTransactionId: 'provider-1',
+      sameTransactionType: true,
+      sameAmount: true,
+      sameCounterparty: true,
+      sameMinute: true,
+    })).toBe(false);
+  });
+
+  it('uses the memo to separate legitimate same-minute payments', () => {
+    const candidates = [
+      { value: 'booking-a', sameMemo: true },
+      { value: 'booking-b', sameMemo: false },
+    ];
+
+    expect(selectUniqueClobeBootstrapCandidate(candidates)).toBe('booking-a');
+    expect(selectUniqueClobeBootstrapCandidate([
+      { value: 'booking-a', sameMemo: true },
+      { value: 'booking-b', sameMemo: true },
+    ])).toBeNull();
+  });
+
+  it('allows a unique row without the same memo so a later memo edit is flagged', () => {
+    expect(selectUniqueClobeBootstrapCandidate([
+      { value: 'only-row', sameMemo: false },
+    ])).toBe('only-row');
+    expect(selectUniqueClobeBootstrapCandidate([
+      { value: 'row-a', sameMemo: false },
+      { value: 'row-b', sameMemo: false },
+    ])).toBeNull();
   });
 });

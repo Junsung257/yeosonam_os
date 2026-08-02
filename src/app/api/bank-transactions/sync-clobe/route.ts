@@ -3,6 +3,7 @@ import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import {
+  chooseClobeAccountNumberFromMetadataRows,
   fetchClobeMcpBankTransactions,
   normalizeClobeBankTransactions,
   processBankTransactionImportRows,
@@ -56,19 +57,12 @@ async function resolveAccountNumber(rawAccountNumber: unknown): Promise<string |
 
   const { data } = await supabaseAdmin
     .from('bank_transactions')
-    .select('account_number')
-    .not('account_number', 'is', null)
+    .select('source_metadata')
+    .eq('source', 'clobe_mcp')
+    .neq('status', 'excluded')
     .order('received_at', { ascending: false })
     .limit(500);
-  const counts = new Map<string, number>();
-  for (const row of data ?? []) {
-    const accountNumber = typeof row.account_number === 'string'
-      ? row.account_number.replace(/\D/g, '')
-      : '';
-    if (accountNumber.length < 6) continue;
-    counts.set(accountNumber, (counts.get(accountNumber) ?? 0) + 1);
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return chooseClobeAccountNumberFromMetadataRows(data ?? []);
 }
 
 export async function POST(request: NextRequest) {
@@ -181,6 +175,10 @@ export async function POST(request: NextRequest) {
       normalizeErrors: normalized.errors.length,
       inserted: result.inserted,
       matched: result.matched,
+      merged: result.merged,
+      duplicates: result.duplicates,
+      skipped: result.skipped,
+      errors: result.errors,
       mcpToolName: mcp.toolName,
       mcpToolCount: mcp.toolNames.length,
       mcpAttempts: mcp.attempts.map(attempt => ({
