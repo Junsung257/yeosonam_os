@@ -1673,11 +1673,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="mt-1 text-[11px] text-admin-muted-2">남은 송금 예정 {erp ? fmt만(ownerNumbers.payables) : '—'}</p>
             </div>
             <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashProfit < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
-              <p className="text-[11px] text-admin-muted font-medium">현재 남은 돈</p>
+              <p className="text-[11px] text-admin-muted font-medium">통장 실현수익</p>
               <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashProfit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                 {erp ? fmt만(ownerNumbers.cashProfit) : '—'}
               </p>
-              <p className="mt-3 text-[11px] text-admin-muted-2">받은 돈 - 랜드사 송금액</p>
+              <p className="mt-3 text-[11px] text-admin-muted-2">고객 입금 - 랜드사 출금</p>
             </div>
           </div>
 
