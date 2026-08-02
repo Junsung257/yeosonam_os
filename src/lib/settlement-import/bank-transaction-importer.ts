@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import {
   buildBankTransactionFingerprint,
+  normalizeBankTransactionText,
   scoreBankTransactionSimilarity,
 } from '@/lib/bank-transaction-fingerprint';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -14,7 +15,11 @@ import {
   canAutoMatchSettlementMemo,
   type SettlementMemoResolutionSource,
 } from './memo-auto-match-policy';
-import { isProbableBankTransactionDuplicate } from './bank-transaction-dedupe-policy';
+import {
+  isClobeLegacyDuplicateCandidate,
+  isProbableBankTransactionDuplicate,
+  isUniqueClobeLegacyDuplicate,
+} from './bank-transaction-dedupe-policy';
 
 export type BankTransactionImportSource = 'bulk_import' | 'clobe_mcp' | 'clobe_api';
 export type BankTransactionImportAction =
@@ -236,6 +241,7 @@ async function findExistingBankTransaction(input: {
   fingerprint: string;
   externalProvider?: string | null;
   externalTransactionId?: string | null;
+  incomingSource?: BankTransactionImportSource;
   excludedIds?: Set<string>;
 }): Promise<{ kind: 'exact' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
   if (input.externalProvider && input.externalTransactionId) {
@@ -244,6 +250,7 @@ async function findExistingBankTransaction(input: {
       .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
       .eq('external_provider', input.externalProvider)
       .eq('external_transaction_id', input.externalTransactionId)
+      .neq('status', 'excluded')
       .maybeSingle();
 
     if (external.data) {
@@ -255,6 +262,7 @@ async function findExistingBankTransaction(input: {
     .from('bank_transactions')
     .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
     .eq('transaction_fingerprint', input.fingerprint)
+    .neq('status', 'excluded')
     .maybeSingle();
 
   if (exact.data) {
@@ -282,12 +290,38 @@ async function findExistingBankTransaction(input: {
   const { data } = await query;
   let best: ExistingBankTxCandidate | null = null;
   let bestScore = 0;
+  const normalizedIncomingName = normalizeBankTransactionText(input.counterpartyName);
+  const crossSourceCandidates = (data ?? []).filter(row => {
+    const candidate = row as ExistingBankTxCandidate;
+    const normalizedCandidateName = normalizeBankTransactionText(candidate.counterparty_name);
+    const sameCounterparty = Boolean(
+      normalizedCandidateName
+      && normalizedIncomingName
+      && (normalizedCandidateName === normalizedIncomingName
+        || normalizedCandidateName.includes(normalizedIncomingName)
+        || normalizedIncomingName.includes(normalizedCandidateName)),
+    );
+    return isClobeLegacyDuplicateCandidate({
+      incomingSource: input.incomingSource,
+      existingSource: candidate.source,
+      sameTransactionType: candidate.transaction_type === input.txType,
+      sameAmount: Number(candidate.amount) === Number(input.amount),
+      sameCounterparty,
+      timeDifferenceMs: Math.abs(new Date(candidate.received_at).getTime() - center.getTime()),
+    });
+  });
+  const uniqueCrossSourceId = crossSourceCandidates.length === 1
+    ? crossSourceCandidates[0]?.id
+    : null;
   for (const row of (data ?? []) as ExistingBankTxCandidate[]) {
     if (input.excludedIds?.has(row.id)) continue;
     const score = scoreBankTransactionSimilarity(row, input);
-    if (score > bestScore) {
+    const adjustedScore = isUniqueClobeLegacyDuplicate(row.id === uniqueCrossSourceId, crossSourceCandidates.length)
+      ? Math.max(score, 0.78)
+      : score;
+    if (adjustedScore > bestScore) {
       best = row;
-      bestScore = score;
+      bestScore = adjustedScore;
     }
   }
 
@@ -468,6 +502,7 @@ export async function processBankTransactionImportRows(
       fingerprint,
       externalProvider: row.externalProvider,
       externalTransactionId: row.externalTransactionId,
+      incomingSource: options.source,
       excludedIds: claimedProbableIds,
     });
 
