@@ -15,7 +15,6 @@ describe('isProbableBankTransactionDuplicate', () => {
     expect(isProbableBankTransactionDuplicate(0.75)).toBe(true);
     expect(isProbableBankTransactionDuplicate(0.88)).toBe(true);
   });
-
   it('recognizes a unique Clobe-to-legacy cross-source match within one minute', () => {
     const candidate = isClobeLegacyDuplicateCandidate({
       incomingSource: 'clobe_mcp',

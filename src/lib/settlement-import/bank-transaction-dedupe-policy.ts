@@ -6,7 +6,6 @@
 export function isProbableBankTransactionDuplicate(score: number): boolean {
   return Number.isFinite(score) && score >= 0.75;
 }
-
 const LEGACY_BANK_SOURCES = new Set(['slack_webhook', 'slack_gap_fill', 'bulk_import', 'manual']);
 
 export function isClobeLegacyDuplicateCandidate(input: {

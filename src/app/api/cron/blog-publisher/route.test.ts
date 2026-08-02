@@ -155,6 +155,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('published_atomic_upgrade_human_review_required');
     expect(source).toContain('preserved_published_creative_id');
     expect(source).toContain('information_claim_validation: claimValidationSummary');
+    expect(source).toContain('isBlogInformationClaimValidationPendingHumanApprovalOnly');
+    expect(source).toContain('claimValidationPendingHumanApprovalOnly');
     expect(source).toContain('const publicationTimestamp = publishedAtomicUpgrade && originalPublishedAt');
     expect(source).toContain("status: publishedAtomicUpgrade ? 'upgraded' : 'published'");
   });
@@ -345,8 +347,10 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('writer_claim_ledger: {');
     expect(source).toContain("claimLedger: contentBoundary.lane === 'informational'");
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
-    expect(source).toContain('auto_regeneration_attempts: 0');
-    expect(source).toContain('auto_regeneration_limit: 0');
+    expect(source).toContain('toBlogInformationClaimValidationMeta(reviewClaimValidation)');
+    expect(source).toContain(
+      'isBlogInformationClaimValidationPendingHumanApprovalOnly(reviewClaimValidation)',
+    );
     expect(source).toContain('const evaluateCurrentInformationClaimValidation = async () =>');
     expect(source).toContain('const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();');
     expect(source).toContain('const finalClaimValidation = await evaluateCurrentInformationClaimValidation();');
