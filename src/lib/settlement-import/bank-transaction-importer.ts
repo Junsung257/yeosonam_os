@@ -14,6 +14,7 @@ import {
   canAutoMatchSettlementMemo,
   type SettlementMemoResolutionSource,
 } from './memo-auto-match-policy';
+import { isProbableBankTransactionDuplicate } from './bank-transaction-dedupe-policy';
 
 export type BankTransactionImportSource = 'bulk_import' | 'clobe_mcp' | 'clobe_api';
 export type BankTransactionImportAction =
@@ -23,7 +24,8 @@ export type BankTransactionImportAction =
   | 'duplicate_review'
   | 'ignored_non_travel'
   | 'memo_changed_review'
-  | 'memo_updated';
+  | 'memo_updated'
+  | 'legacy_repaired';
 
 export interface BankTransactionImportRow {
   receivedAt: string;
@@ -91,6 +93,7 @@ export interface BankTransactionImportResult {
   merged: number;
   errors: number;
   matched: number;
+  repaired: number;
   memoUpdated: number;
   memoChangedReview: number;
   firstError: string | null;
@@ -109,10 +112,6 @@ function stableEventId(source: BankTransactionImportSource, row: BankTransaction
     ? `${row.externalProvider}:${row.externalTransactionId}`
     : fingerprint;
   return `${source}_${createHash('sha256').update(externalKey).digest('hex')}`;
-}
-
-function isFinanciallyProcessed(row: ExistingBankTxCandidate): boolean {
-  return Boolean(row.booking_id) || row.match_status === 'manual' || row.match_status === 'auto';
 }
 
 function normalizedMemoKeyOf(value: string | null | undefined): string | null {
@@ -162,6 +161,71 @@ async function matchTransactionAllocations(params: {
   return data;
 }
 
+async function hasActiveAllocation(transactionId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from('bank_transaction_allocations')
+    .select('id')
+    .eq('bank_transaction_id', transactionId)
+    .eq('status', 'active')
+    .limit(1);
+  if (error) throw new Error(`bank transaction allocation lookup failed: ${sanitizeDbError(error)}`);
+  return (data ?? []).length > 0;
+}
+
+async function repairLegacyBankTransactionAllocation(params: {
+  transactionId: string;
+  bookingId: string;
+  actor: string;
+  notes: string;
+}) {
+  const { data, error } = await supabaseAdmin.rpc('repair_legacy_bank_transaction_allocation', {
+    p_transaction_id: params.transactionId,
+    p_target_booking_id: params.bookingId,
+    p_matched_by: params.actor,
+    p_notes: params.notes,
+  });
+  if (error) {
+    const code = (error as { code?: string }).code;
+    const status = code === 'P0002' ? 404 : 400;
+    throw Object.assign(new Error(sanitizeDbError(error)), { status });
+  }
+  return data as { already_repaired?: boolean; previous_booking_id?: string | null };
+}
+
+async function allocateExistingTransaction(params: {
+  existing: ExistingBankTxCandidate;
+  hasAllocation: boolean;
+  bookingId: string;
+  amount: number;
+  confidence: number;
+  actor: string;
+  notes: string;
+}): Promise<'matched' | 'legacy_repaired' | 'already_processed'> {
+  if (params.hasAllocation) return 'already_processed';
+
+  const legacyMatched = Boolean(params.existing.booking_id)
+    || params.existing.match_status === 'manual'
+    || params.existing.match_status === 'auto';
+  if (legacyMatched) {
+    await repairLegacyBankTransactionAllocation({
+      transactionId: params.existing.id,
+      bookingId: params.bookingId,
+      actor: params.actor,
+      notes: params.notes,
+    });
+    return 'legacy_repaired';
+  }
+
+  await matchTransactionAllocations({
+    transactionId: params.existing.id,
+    allocations: [{ bookingId: params.bookingId, amount: params.amount }],
+    confidence: params.confidence,
+    actor: params.actor,
+    notes: params.notes,
+  });
+  return 'matched';
+}
+
 async function findExistingBankTransaction(input: {
   tenantId?: string | null;
   receivedAt: string;
@@ -172,6 +236,7 @@ async function findExistingBankTransaction(input: {
   fingerprint: string;
   externalProvider?: string | null;
   externalTransactionId?: string | null;
+  excludedIds?: Set<string>;
 }): Promise<{ kind: 'exact' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
   if (input.externalProvider && input.externalTransactionId) {
     const external = await supabaseAdmin
@@ -218,6 +283,7 @@ async function findExistingBankTransaction(input: {
   let best: ExistingBankTxCandidate | null = null;
   let bestScore = 0;
   for (const row of (data ?? []) as ExistingBankTxCandidate[]) {
+    if (input.excludedIds?.has(row.id)) continue;
     const score = scoreBankTransactionSimilarity(row, input);
     if (score > bestScore) {
       best = row;
@@ -225,7 +291,10 @@ async function findExistingBankTransaction(input: {
     }
   }
 
-  return { kind: bestScore >= 0.75 ? 'probable' : null, row: bestScore >= 0.65 ? best : null, confidence: bestScore };
+  // A weak similarity is only a review hint. It must never suppress the
+  // incoming row because one memo key can legitimately have many payments.
+  const probable = isProbableBankTransactionDuplicate(bestScore);
+  return { kind: probable ? 'probable' : null, row: probable ? best : null, confidence: bestScore };
 }
 
 async function attachImportEvidence(existingId: string, input: {
@@ -375,6 +444,7 @@ export async function processBankTransactionImportRows(
 ): Promise<BankTransactionImportResult> {
   const preview = options.preview === true;
   const results: BankTransactionImportPreviewRow[] = [];
+  const claimedProbableIds = new Set<string>();
 
   for (const row of rows) {
     const isDeposit = row.depositAmount > 0;
@@ -398,6 +468,7 @@ export async function processBankTransactionImportRows(
       fingerprint,
       externalProvider: row.externalProvider,
       externalTransactionId: row.externalTransactionId,
+      excludedIds: claimedProbableIds,
     });
 
     let matchedBooking: {
@@ -442,11 +513,18 @@ export async function processBankTransactionImportRows(
     const previousMemo = duplicate.row?.memo ?? null;
     const previousMemoKey = normalizedMemoKeyOf(previousMemo);
     const memoChanged = Boolean(parsed && duplicate.row && previousMemoKey !== parsed.normalizedKey);
-    const duplicateProcessed = duplicate.row ? isFinanciallyProcessed(duplicate.row) : false;
+    const duplicateHasAllocation = duplicate.row ? await hasActiveAllocation(duplicate.row.id) : false;
+    const duplicateProcessed = duplicateHasAllocation;
+    const duplicateIsLegacyMatched = Boolean(duplicate.row && !duplicateHasAllocation && (
+      duplicate.row.booking_id
+      || duplicate.row.match_status === 'manual'
+      || duplicate.row.match_status === 'auto'
+    ));
     const importAction: BankTransactionImportAction =
       !parsed ? 'ignored_non_travel' :
       memoChanged && duplicateProcessed ? 'memo_changed_review' :
       memoChanged ? 'memo_updated' :
+      duplicateIsLegacyMatched ? 'legacy_repaired' :
       duplicate.kind === 'exact' ? 'already_processed' :
       duplicate.kind === 'probable' ? 'merge_candidate' :
       duplicate.row && duplicate.confidence >= 0.65 ? 'duplicate_review' :
@@ -514,9 +592,11 @@ export async function processBankTransactionImportRows(
           confidence,
         });
         if (matchStatus === 'auto' && matchedBooking) {
-          await matchTransactionAllocations({
-            transactionId: duplicate.row.id,
-            allocations: [{ bookingId: matchedBooking.id, amount }],
+          await allocateExistingTransaction({
+            existing: duplicate.row,
+            hasAllocation: duplicateHasAllocation,
+            bookingId: matchedBooking.id,
+            amount,
             confidence,
             actor: options.actor,
             notes: `${options.source} auto-match after provider memo update`,
@@ -528,14 +608,20 @@ export async function processBankTransactionImportRows(
 
       await attachImportEvidence(duplicate.row.id, { source: options.source, fingerprint, row, eventId, parsed });
       if (matchStatus === 'auto' && matchedBooking && !duplicateProcessed) {
-        await matchTransactionAllocations({
-          transactionId: duplicate.row.id,
-          allocations: [{ bookingId: matchedBooking.id, amount }],
+        const allocationResult = await allocateExistingTransaction({
+          existing: duplicate.row,
+          hasAllocation: duplicateHasAllocation,
+          bookingId: matchedBooking.id,
+          amount,
           confidence,
           actor: options.actor,
           notes: `${options.source} auto-match existing memo ${txType}`,
         });
-        results.push({ ...previewRow, status: 'matched', txId: duplicate.row.id });
+        results.push({
+          ...previewRow,
+          status: allocationResult === 'legacy_repaired' ? 'legacy_repaired' : 'matched',
+          txId: duplicate.row.id,
+        });
       } else {
         results.push({ ...previewRow, status: 'merged', txId: duplicate.row.id });
       }
@@ -555,18 +641,22 @@ export async function processBankTransactionImportRows(
           confidence,
         });
         if (matchStatus === 'auto' && matchedBooking) {
-          await matchTransactionAllocations({
-            transactionId: duplicate.row.id,
-            allocations: [{ bookingId: matchedBooking.id, amount }],
+          await allocateExistingTransaction({
+            existing: duplicate.row,
+            hasAllocation: duplicateHasAllocation,
+            bookingId: matchedBooking.id,
+            amount,
             confidence,
             actor: options.actor,
             notes: `${options.source} auto-match probable memo duplicate ${txType}`,
           });
         }
         results.push({ ...previewRow, status: 'memo_updated', txId: duplicate.row.id });
+        claimedProbableIds.add(duplicate.row.id);
         continue;
       }
       results.push({ ...previewRow, status: 'duplicate' });
+      if (duplicate.kind === 'probable') claimedProbableIds.add(duplicate.row.id);
       continue;
     }
 
@@ -643,7 +733,8 @@ export async function processBankTransactionImportRows(
     duplicates: results.filter(r => r.status === 'duplicate').length,
     merged: results.filter(r => r.status === 'merged').length,
     errors: results.filter(r => r.status === 'error').length,
-    matched: results.filter(r => (r.status === 'inserted' || r.status === 'memo_updated' || r.status === 'matched') && r.matchStatus === 'auto').length,
+    matched: results.filter(r => (r.status === 'inserted' || r.status === 'memo_updated' || r.status === 'matched' || r.status === 'legacy_repaired') && r.matchStatus === 'auto').length,
+    repaired: results.filter(r => r.status === 'legacy_repaired' || r.importAction === 'legacy_repaired').length,
     memoUpdated: results.filter(r => r.status === 'memo_updated').length,
     memoChangedReview: results.filter(r => r.status === 'memo_changed_review').length,
     firstError: (results.find(r => r.status === 'error') as { error?: string } | undefined)?.error || null,

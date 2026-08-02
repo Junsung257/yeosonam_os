@@ -54,6 +54,8 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Clobe MCP authentication is an admin OAuth connection stored in `tenant_api_tokens` with encrypted access/refresh tokens. Do not require operators to paste a static Clobe bearer token into Vercel.
 - Clobe sync dedupe order is provider transaction id first (`external_provider`, `external_transaction_id`), then local `transaction_fingerprint`.
 - Clobe-sourced outflows with a valid, strong one-booking memo resolution may auto-confirm as a payout through `match_bank_transaction_allocations`. Clobe outflows without that resolution must stay review/manual-confirmed.
+- Similarity-based bank dedupe may merge only a strong candidate. A weak candidate is a review hint and must remain as its own imported transaction; one memo key may contain many legitimate rows.
+- Legacy rows that already have `booking_id`/`match_status` but no active `bank_transaction_allocations` evidence must be repaired through `repair_legacy_bank_transaction_allocation`. The repair creates one allocation per source row and preserves existing booking totals, or records an explicit ledger transfer when the memo resolves to a different canonical booking.
 - If Clobe memo changes after a transaction is financially matched, do not move ledger allocation automatically. Record an open `ops_events` warning for manual review.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 
