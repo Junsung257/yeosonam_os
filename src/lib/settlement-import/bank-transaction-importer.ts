@@ -376,6 +376,81 @@ async function attachImportEvidence(existingId: string, input: {
     .eq('id', existingId);
 }
 
+async function findExcludedTransactionByFingerprint(
+  fingerprint: string,
+): Promise<ExistingBankTxCandidate | null> {
+  const { data, error } = await supabaseAdmin
+    .from('bank_transactions')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
+    .eq('transaction_fingerprint', fingerprint)
+    .eq('status', 'excluded')
+    .maybeSingle();
+
+  if (error) throw new Error(`excluded bank transaction lookup failed: ${sanitizeDbError(error)}`);
+  return (data as ExistingBankTxCandidate | null) ?? null;
+}
+
+async function restoreExcludedTransactionAsClobe(input: {
+  existing: ExistingBankTxCandidate;
+  source: BankTransactionImportSource;
+  fingerprint: string;
+  row: BankTransactionImportRow;
+  parsed: ParsedTravelSettlementMemo;
+  eventId: string;
+  txType: string;
+  amount: number;
+}) {
+  const previousMetadata = input.existing.source_metadata ?? {};
+  const clobeMetadata = sourceMetadataFor({
+    source: input.source,
+    eventId: input.eventId,
+    row: input.row,
+    parsed: input.parsed,
+  });
+  const { error } = await supabaseAdmin
+    .from('bank_transactions')
+    .update({
+      slack_event_id: input.eventId,
+      raw_message: `[${input.source}] ${input.row.memo}`,
+      transaction_fingerprint: input.fingerprint,
+      source: input.source,
+      source_metadata: { ...previousMetadata, [input.source]: clobeMetadata },
+      external_provider: input.row.externalProvider ?? null,
+      external_transaction_id: input.row.externalTransactionId ?? null,
+      transaction_type: input.txType,
+      amount: input.amount,
+      counterparty_name: input.row.counterpartyName,
+      memo: input.row.memo,
+      received_at: input.row.receivedAt,
+      booking_id: null,
+      match_status: 'unmatched',
+      match_confidence: 0,
+      matched_by: null,
+      matched_at: null,
+      status: 'active',
+      deleted_at: null,
+    } as Record<string, unknown>)
+    .eq('id', input.existing.id)
+    .eq('status', 'excluded');
+
+  if (error) throw new Error(`excluded bank transaction restore failed: ${sanitizeDbError(error)}`);
+
+  return {
+    ...input.existing,
+    amount: input.amount,
+    transaction_type: input.txType,
+    counterparty_name: input.row.counterpartyName,
+    received_at: input.row.receivedAt,
+    booking_id: null,
+    match_status: 'unmatched',
+    source: input.source,
+    memo: input.row.memo,
+    source_metadata: { ...previousMetadata, [input.source]: clobeMetadata },
+    external_provider: input.row.externalProvider ?? null,
+    external_transaction_id: input.row.externalTransactionId ?? null,
+  } satisfies ExistingBankTxCandidate;
+}
+
 async function updateUnprocessedDuplicateFromMemo(input: {
   existingId: string;
   source: BankTransactionImportSource;
@@ -737,6 +812,47 @@ export async function processBankTransactionImportRows(
       .select('id')
       .single();
 
+    if (insertError?.code === '23505' && options.source === 'clobe_mcp') {
+      const excluded = await findExcludedTransactionByFingerprint(fingerprint);
+      if (excluded) {
+        try {
+          const restored = await restoreExcludedTransactionAsClobe({
+            existing: excluded,
+            source: options.source,
+            fingerprint,
+            row,
+            parsed,
+            eventId,
+            txType,
+            amount,
+          });
+          const allocationResult = matchStatus === 'auto' && matchedBooking
+            ? await allocateExistingTransaction({
+              existing: restored,
+              hasAllocation: false,
+              bookingId: matchedBooking.id,
+              amount,
+              confidence,
+              actor: options.actor,
+              notes: `${options.source} restored excluded transaction ${txType}`,
+            })
+            : 'already_processed';
+          results.push({
+            ...previewRow,
+            status: allocationResult === 'legacy_repaired' ? 'legacy_repaired' : 'matched',
+            txId: restored.id,
+          });
+          continue;
+        } catch (restoreError) {
+          results.push({
+            ...previewRow,
+            status: 'error',
+            error: restoreError instanceof Error ? restoreError.message : 'excluded transaction restore failed',
+          });
+          continue;
+        }
+      }
+    }
     if (insertError?.code === '23505') {
       results.push({ ...previewRow, status: 'duplicate' });
       continue;
