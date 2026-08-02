@@ -467,6 +467,18 @@ type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow';
 type OutflowSubTab = 'unmatched' | 'matched' | 'all';
 type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
 
+function isOutflowTransaction(transaction: BankTransaction): boolean {
+  return transaction.transaction_type === '출금' || transaction.is_refund;
+}
+
+export function getOutflowLandingSubTab(transactions: BankTransaction[]): OutflowSubTab {
+  const hasAttentionItem = transactions.some(transaction =>
+    isOutflowTransaction(transaction)
+    && ['unmatched', 'error', 'review'].includes(transaction.match_status),
+  );
+  return hasAttentionItem ? 'unmatched' : 'all';
+}
+
 function PaymentOpsQueue({
   activeKey,
   counts,
@@ -540,8 +552,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
-  // 출금·환불 탭 내 sub-필터: 기본 '확인 필요' (미매칭 + Clobe 검토 대기)
-  const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>('unmatched');
+  // Show attention items first, but never land on an empty sub-tab when all outflows are matched.
+  const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>(() =>
+    getOutflowLandingSubTab(initialTransactions ?? []),
+  );
   const [dateFilter, setDateFilter] = useState<PaymentPeriodFilter>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
   const DATE_FILTERS = ['이번 달', '지난 달', '3개월', '전체'] as const;
@@ -734,7 +748,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     return result;
   }, [transactions, tab, outflowSubTab]);
 
-  const isOutflowTx = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
+  const isOutflowTx = isOutflowTransaction;
   const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
   const unmatchedCount = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
   const matchedCount   = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
@@ -1730,7 +1744,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           { id: 'unmatched' as const, label: '미매칭',      count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
           { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
         ] as const).map(card => (
-          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab('unmatched'); }}
+          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab(outflowUnmatchedCount > 0 ? 'unmatched' : 'all'); }}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
               ${tab === card.id
                 ? card.active
