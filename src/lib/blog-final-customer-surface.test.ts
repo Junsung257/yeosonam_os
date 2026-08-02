@@ -112,6 +112,32 @@ describe('repairBlogFinalCustomerSurface', () => {
     }
   });
 
+  it('repairs particles before closing HTML emphasis tags', () => {
+    const cases = [
+      ['<strong>세관 신고을</strong> 확인합니다.', '<strong>세관 신고를</strong> 확인합니다.'],
+      ['<mark><strong>신고을</strong></mark> 확인합니다.', '<mark><strong>신고를</strong></mark> 확인합니다.'],
+      [
+        '[<strong>세관 신고을</strong>](https://www.cbp.gov/travel) 확인합니다.',
+        '[<strong>세관 신고를</strong>](https://www.cbp.gov/travel) 확인합니다.',
+      ],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      const intent = inspectBlogIntentQuality({
+        primaryKeyword: '미국 입국 요건과 비자',
+        blogHtml: result.markdown,
+      });
+      expect(result.markdown).toBe(expected);
+      expect(intent.issues).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'awkward_korean_surface',
+          evidence: expect.objectContaining({ sample: '신고을' }),
+        }),
+      ]));
+    }
+  });
+
   it('turns an orphan multi-column prose row into evidence-preserving bullets', async () => {
     const source = [
       '<!-- blog_research_structure:entry_requirements:v1 -->',

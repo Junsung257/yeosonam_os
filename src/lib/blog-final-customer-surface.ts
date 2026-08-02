@@ -621,6 +621,11 @@ function repairCommonSurfaceParticles(markdown: string): { markdown: string; cha
         const corrected = correctSubjectOrObjectParticle(word, particle);
         return corrected === particle ? match : `${word}${corrected}${closing}`;
       })
+    .replace(/([가-힣]{2,12})(은|을)(?=(?:(?:[*_=`~]{1,8})|(?:<\/[A-Za-z][^>]*>)|(?:\]\([^)\n]+\))){1,4}(?:\s|$|[.,!?]))/g,
+      (match, word: string, particle: string) => {
+        const corrected = correctSubjectOrObjectParticle(word, particle);
+        return corrected === particle ? match : `${word}${corrected}`;
+      })
     .replace(/([가-힣]{2,16})(?:과|와)(?:은|을)(?=\s|$|[.,!?])/g, (match, word: string) => {
       const particle = particleFor(word, '은', '는');
       return particle ? `${word}${particle}` : match;
