@@ -2,6 +2,19 @@
 
 Last updated: 2026-08-02
 
+## ERR-CLOBE-ORPHAN-RESET@2026-08-02
+
+- Authoritative Clobe rebuilds must finish with a full booking-to-ledger drift audit, including bookings that receive no replacement Clobe transaction.
+- A reset ledger entry must never be left by itself when the booking field is already zero. Preserve the reset evidence and add an idempotent compensating entry instead of deleting financial history.
+- Do not report a rebuild as healthy until provider IDs, active allocations, booking pointers, transaction amounts, and booking ledger drift all pass independently.
+
+## ERR-CLOBE-EXCLUDED-PROVIDER-ID@2026-08-02
+
+- Excluded historical rows must not block an active Clobe row from claiming the same provider transaction identity.
+- Keep excluded evidence immutable and scope the provider identity unique index to rows whose status is not `excluded`.
+- Apply the same active-only boundary to the local transaction fingerprint unique index; both constraints can otherwise block the same replacement flow in sequence.
+- A full-period sync must be verified by checking that active Clobe rows missing `external_transaction_id` decrease to zero; UI matched counts alone are not sufficient.
+
 정산, ledger, 입금, 은행/SMS 매칭, 세무, 지급 흐름 반복 오류 상세.
 
 ## ERR-LEDGER-drift@2026-04-30

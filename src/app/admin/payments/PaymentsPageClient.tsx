@@ -467,6 +467,18 @@ type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow';
 type OutflowSubTab = 'unmatched' | 'matched' | 'all';
 type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
 
+function isOutflowTransaction(transaction: BankTransaction): boolean {
+  return transaction.transaction_type === '출금' || transaction.is_refund;
+}
+
+export function getOutflowLandingSubTab(transactions: BankTransaction[]): OutflowSubTab {
+  const hasAttentionItem = transactions.some(transaction =>
+    isOutflowTransaction(transaction)
+    && ['unmatched', 'error', 'review'].includes(transaction.match_status),
+  );
+  return hasAttentionItem ? 'unmatched' : 'all';
+}
+
 function PaymentOpsQueue({
   activeKey,
   counts,
@@ -540,8 +552,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
-  // 출금·환불 탭 내 sub-필터: 기본 '확인 필요' (미매칭 + Clobe 검토 대기)
-  const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>('unmatched');
+  // Show attention items first, but never land on an empty sub-tab when all outflows are matched.
+  const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>(() =>
+    getOutflowLandingSubTab(initialTransactions ?? []),
+  );
   const [dateFilter, setDateFilter] = useState<PaymentPeriodFilter>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
   const DATE_FILTERS = ['이번 달', '지난 달', '3개월', '전체'] as const;
@@ -734,7 +748,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     return result;
   }, [transactions, tab, outflowSubTab]);
 
-  const isOutflowTx = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
+  const isOutflowTx = isOutflowTransaction;
   const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
   const unmatchedCount = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
   const matchedCount   = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
@@ -1659,11 +1673,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="mt-1 text-[11px] text-admin-muted-2">남은 송금 예정 {erp ? fmt만(ownerNumbers.payables) : '—'}</p>
             </div>
             <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashProfit < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
-              <p className="text-[11px] text-admin-muted font-medium">현재 남은 돈</p>
+              <p className="text-[11px] text-admin-muted font-medium">통장 실현수익</p>
               <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashProfit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                 {erp ? fmt만(ownerNumbers.cashProfit) : '—'}
               </p>
-              <p className="mt-3 text-[11px] text-admin-muted-2">받은 돈 - 랜드사 송금액</p>
+              <p className="mt-3 text-[11px] text-admin-muted-2">고객 입금 - 랜드사 출금</p>
             </div>
           </div>
 
@@ -1730,7 +1744,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           { id: 'unmatched' as const, label: '미매칭',      count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
           { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
         ] as const).map(card => (
-          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab('unmatched'); }}
+          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab(outflowUnmatchedCount > 0 ? 'unmatched' : 'all'); }}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
               ${tab === card.id
                 ? card.active
@@ -1978,7 +1992,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                               <span className="rounded-admin-sm bg-admin-surface-2 px-1.5 py-0.5 text-admin-muted whitespace-nowrap">상품 {fmt만(price)}</span>
                               <span className="rounded-admin-sm bg-blue-50 px-1.5 py-0.5 text-blue-700 whitespace-nowrap">입금 {fmt만(paid)}</span>
                               <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.receivable > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>미수 {fmt만(bookingNumbers.receivable)}</span>
-                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.grossProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>수익 {fmt만(bookingNumbers.grossProfit)}</span>
+                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.cashProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>실현수익 {fmt만(bookingNumbers.cashProfit)}</span>
                             </div>
                           );
                         })()}
@@ -1999,13 +2013,16 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             {tx.bookings.total_paid_out != null && (
                               <div>랜드사 송금액: {tx.bookings.total_paid_out.toLocaleString()}원</div>
                             )}
+                            <div>통장 실현수익: <strong className={((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                              {((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)).toLocaleString()}원
+                            </strong></div>
                             {tx.bookings.paid_amount != null && tx.bookings.total_price != null && (
                               <div>잔금: <strong className={(tx.bookings.total_price - tx.bookings.paid_amount) > 0 ? 'text-red-600' : 'text-emerald-600'}>
                                 {Math.max(0, tx.bookings.total_price - tx.bookings.paid_amount).toLocaleString()}원
                               </strong></div>
                             )}
                             {tx.bookings.total_price != null && tx.bookings.total_cost != null && (
-                              <div>예상 우리수익: <strong className={(tx.bookings.total_price - tx.bookings.total_cost) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                              <div>장부 예상마진: <strong className={(tx.bookings.total_price - tx.bookings.total_cost) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                                 {(tx.bookings.total_price - tx.bookings.total_cost).toLocaleString()}원
                               </strong></div>
                             )}

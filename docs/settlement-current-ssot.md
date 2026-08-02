@@ -29,6 +29,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `match_bank_transaction_allocations` |
 | Manual bank memo keys | `booking_settlement_keys`, `src/lib/settlement-import/**` |
 | Clobe bank sync | `/api/bank-transactions/sync-clobe`, `src/lib/settlement-import/clobe-bank-sync.ts` |
+| Scheduled Clobe sync | `/api/cron/clobe-bank-sync`, `src/lib/settlement-import/clobe-sync-scheduler.ts` |
 | Admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements` |
 | Drift monitor | `/api/cron/ledger-reconcile` |
 | Error memory | `docs/errors/settlement.md` |
@@ -53,6 +54,8 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Clobe bank sync must normalize provider rows into the same bank import contract before touching `bank_transactions`.
 - Clobe MCP authentication is an admin OAuth connection stored in `tenant_api_tokens` with encrypted access/refresh tokens. Do not require operators to paste a static Clobe bearer token into Vercel.
 - Clobe sync dedupe order is provider transaction id first (`external_provider`, `external_transaction_id`), then local `transaction_fingerprint`.
+- Provider transaction identity is unique among active bank rows. Excluded historical evidence may retain the same provider identity so an authoritative active Clobe row can replace it without deleting audit history.
+- Local transaction fingerprints follow the same active-only uniqueness boundary. Excluded evidence may retain the fingerprint of its authoritative active replacement.
 - When an authoritative Clobe row was initially bootstrapped from an Excel export without a provider transaction id, the first live sync may attach the provider id only to one active `clobe_mcp` row with the same minute, type, amount, counterparty, and memo. If the memo changed, a no-memo fallback is allowed only when exactly one candidate exists; ambiguous rows remain review-only and must not create a second financial allocation.
 - Clobe-sourced outflows with a valid, strong one-booking memo resolution may auto-confirm as a payout through `match_bank_transaction_allocations`. Clobe outflows without that resolution must stay review/manual-confirmed.
 - For the OpenLife 4128 settlement account, Clobe MCP is the authoritative bank source. Slack/SMS rows are audit-only fallback evidence and must be excluded from active settlement totals during an authoritative rebuild.
@@ -64,6 +67,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 - `/admin/payments` must separate booking KPI periods (departure date) from the active bank ledger. Transaction tabs and their counts use the full active bank ledger unless a dedicated transaction-date filter is explicitly shown.
 - Clobe normalization failures must be reported separately from importer failures. A response with `fetched > normalized` must never be presented as `errors 0` without showing the normalization failure count.
+- Scheduled Clobe sync runs daily through Vercel Cron. While active Clobe rows lack provider ids it advances from the oldest missing row in bounded 14-day windows; after backfill completes it re-syncs the latest 30 KST dates. The cron must use the same guarded sync API and import pipeline as the admin button.
 - Excluded Slack/SMS and pre-rebuild Clobe rows are inactive audit evidence, not an operational error queue, and must be labeled as such in admin UI.
 
 ## State Boundary

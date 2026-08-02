@@ -2,6 +2,10 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
+      "path": "/api/cron/clobe-bank-sync",
+      "schedule": "12 19 * * *"
+    },
+    {
       "path": "/api/cron/refresh-registration-mv",
       "schedule": "0 18 * * *"
     },
