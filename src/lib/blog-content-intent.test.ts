@@ -500,6 +500,21 @@ A. 짧은 소나기라면 실내 동선을 섞어 조정하는 편이 안전합�
     expect(report.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(true);
   });
 
+  it('records a redacted raw Markdown context for particle failures', () => {
+    const report = inspectBlogIntentQuality({
+      title: '미국 입국 요건과 비자',
+      primaryKeyword: '미국 입국 요건과 비자',
+      blogHtml: '<strong>세관 신고을</strong> 확인합니다. 공식 링크: https://example.com/tracking?utm_source=test',
+    });
+    const issue = report.issues.find((candidate) =>
+      candidate.code === 'awkward_korean_surface'
+      && candidate.evidence?.sample === '신고을');
+
+    expect(issue?.evidence?.raw_context).toContain('[url]');
+    expect(issue?.evidence?.raw_context).not.toContain('cbp.gov');
+    expect(issue?.evidence?.raw_context).not.toContain('utm_source');
+  });
+
   it('requires product posts to use consultant decision blocks', () => {
     const report = inspectBlogIntentQuality({
       title: '발리 패키지 상품',
