@@ -506,6 +506,30 @@ function findParticleMisuse(plain: string): string | null {
   return null;
 }
 
+function findRawSurfaceContext(source: string, sample: string): string | null {
+  if (!source || !sample) return null;
+  const lines = source.split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const candidates = [
+      lines[index] ?? '',
+      lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 2)).join('\n'),
+    ];
+    for (const candidate of candidates) {
+      const inspectedCandidate = stripMarkup(candidate.replace(/https?:\/\/\S+/gi, ' '))
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!inspectedCandidate.includes(sample)) continue;
+      return candidate
+        .replace(/https?:\/\/[^\s)]+/gi, '[url]')
+        .replace(/(?:utm_|fbclid=|gclid=)[^\s)&]+/gi, '[tracking]')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 240);
+    }
+  }
+  return null;
+}
+
 function duplicateTitleToken(title: string): string | null {
   const tokens = title
     .replace(/[|·ㆍ•,()[\]{}:!?]/g, ' ')
@@ -571,6 +595,9 @@ function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, 
   }
 
   const particleMisuse = findParticleMisuse(plain);
+  const particleRawContext = particleMisuse
+    ? findRawSurfaceContext(input.blogHtml || '', particleMisuse)
+    : null;
   const targetLocation = plain.match(CUSTOMER_TARGET_LOCATION_RE)?.[0];
   const stockProductIntro = plain.match(STOCK_PRODUCT_INTRO_RE)?.[0];
   if (particleMisuse || targetLocation || stockProductIntro) {
@@ -579,7 +606,10 @@ function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, 
       'awkward_korean_surface',
       particleMisuse || targetLocation ? 'critical' : 'warning',
       'Article uses customer-facing Korean that feels mechanical or grammatically unnatural.',
-      { sample: particleMisuse || targetLocation || stockProductIntro },
+      {
+        sample: particleMisuse || targetLocation || stockProductIntro,
+        ...(particleRawContext ? { raw_context: particleRawContext } : {}),
+      },
     );
   }
 
