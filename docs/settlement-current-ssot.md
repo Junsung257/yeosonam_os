@@ -29,6 +29,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `match_bank_transaction_allocations` |
 | Manual bank memo keys | `booking_settlement_keys`, `src/lib/settlement-import/**` |
 | Clobe bank sync | `/api/bank-transactions/sync-clobe`, `src/lib/settlement-import/clobe-bank-sync.ts` |
+| Scheduled Clobe sync | `/api/cron/clobe-bank-sync`, `src/lib/settlement-import/clobe-sync-scheduler.ts` |
 | Admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements` |
 | Drift monitor | `/api/cron/ledger-reconcile` |
 | Error memory | `docs/errors/settlement.md` |
@@ -64,6 +65,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 - `/admin/payments` must separate booking KPI periods (departure date) from the active bank ledger. Transaction tabs and their counts use the full active bank ledger unless a dedicated transaction-date filter is explicitly shown.
 - Clobe normalization failures must be reported separately from importer failures. A response with `fetched > normalized` must never be presented as `errors 0` without showing the normalization failure count.
+- Scheduled Clobe sync runs daily through Vercel Cron. While active Clobe rows lack provider ids it advances from the oldest missing row in bounded 14-day windows; after backfill completes it re-syncs the latest 30 KST dates. The cron must use the same guarded sync API and import pipeline as the admin button.
 - Excluded Slack/SMS and pre-rebuild Clobe rows are inactive audit evidence, not an operational error queue, and must be labeled as such in admin UI.
 
 ## State Boundary
