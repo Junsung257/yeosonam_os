@@ -219,6 +219,8 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('last_seo_score: {');
     expect(source).toContain('details: seoScore.details');
+    expect(source).toContain('last_information_claim_validation:');
+    expect(source).toContain('generated.generation_meta?.information_claim_validation ?? null');
   });
 
   it('normalizes literal newline escapes at every final quality boundary', () => {
