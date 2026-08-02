@@ -10,7 +10,65 @@ vi.mock('./supabase', () => ({
   },
 }));
 
-import { persistBlogInformationClaimFindings } from './blog-information-claim-publish-gate';
+import {
+  isBlogInformationClaimValidationPendingHumanApprovalOnly,
+  persistBlogInformationClaimFindings,
+  toBlogInformationClaimValidationMeta,
+} from './blog-information-claim-publish-gate';
+
+describe('claim validation review readiness', () => {
+  const claim = {
+    claimFingerprint: 'claim-fingerprint',
+    claimText: 'ESTA approval is required before travel.',
+    claimType: 'entry_visa' as const,
+    riskLevel: 'HIGH' as const,
+    candidateKind: 'requirement_prohibition' as const,
+    extractedValue: {
+      normalizedValue: 'ESTA required',
+      unit: null,
+      currency: null,
+    },
+  };
+
+  it('separates evidence-ready human approval from a hard validation failure', () => {
+    const result = {
+      passed: false,
+      coverage: 0,
+      requiresHumanReview: true,
+      claims: [claim],
+      issues: [{
+        code: 'human_approval_required' as const,
+        claimFingerprint: claim.claimFingerprint,
+        claimType: claim.claimType,
+        message: 'Human approval is required.',
+      }],
+    };
+
+    expect(isBlogInformationClaimValidationPendingHumanApprovalOnly(result)).toBe(true);
+    expect(toBlogInformationClaimValidationMeta(result)).toMatchObject({
+      passed: false,
+      pending_human_approval_only: true,
+      requires_human_review: true,
+    });
+  });
+
+  it('does not mark mixed evidence failures as approval-only', () => {
+    const result = {
+      passed: false,
+      coverage: 0,
+      requiresHumanReview: true,
+      claims: [claim],
+      issues: [{
+        code: 'missing_evidence' as const,
+        claimFingerprint: claim.claimFingerprint,
+        claimType: claim.claimType,
+        message: 'Evidence is missing.',
+      }],
+    };
+
+    expect(isBlogInformationClaimValidationPendingHumanApprovalOnly(result)).toBe(false);
+  });
+});
 
 describe('persistBlogInformationClaimFindings', () => {
   beforeEach(() => {
@@ -67,6 +125,53 @@ describe('persistBlogInformationClaimFindings', () => {
         creative_id: 'creative-id',
         claim_fingerprint: 'current-fingerprint',
         validation_status: 'supported',
+      })],
+      { onConflict: 'content_key,claim_fingerprint' },
+    );
+  });
+
+  it('keeps evidence-supported claims supported while human approval is pending', async () => {
+    const selectEq = vi.fn().mockResolvedValue({ data: [], error: null });
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    fromMock.mockReturnValue({
+      select: vi.fn(() => ({ eq: selectEq })),
+      update: vi.fn(),
+      upsert,
+    });
+
+    await persistBlogInformationClaimFindings({
+      creativeId: 'review-draft-id',
+      contentKey: 'us-esta-entry-documents',
+      report: {
+        passed: false,
+        coverage: 0,
+        requiresHumanReview: true,
+        issues: [{
+          code: 'human_approval_required',
+          claimFingerprint: 'esta-claim',
+          claimType: 'entry_visa',
+          message: 'Human approval is required.',
+        }],
+        claims: [{
+          claimFingerprint: 'esta-claim',
+          claimText: 'ESTA approval is required before travel.',
+          claimType: 'entry_visa',
+          riskLevel: 'HIGH',
+          candidateKind: 'requirement_prohibition',
+          extractedValue: {
+            normalizedValue: 'ESTA required',
+            unit: null,
+            currency: null,
+          },
+        }],
+      },
+    });
+
+    expect(upsert).toHaveBeenCalledWith(
+      [expect.objectContaining({
+        creative_id: 'review-draft-id',
+        validation_status: 'supported',
+        validation_reason: null,
       })],
       { onConflict: 'content_key,claim_fingerprint' },
     );

@@ -589,7 +589,11 @@ function scoreInformationFreshness(input: ScorerInput): SeoScoreDetail {
     versioned_preflight: preflight?.version === 'r18-research-first-v1' && preflight?.passed === true,
     official_sources: officialUrls.length > 0,
     supported_claims: claimCount > 0 && evidenceCount > 0 && coverage >= 0.9,
-    claim_validation: claimValidation?.passed === true && claimValidation?.requires_human_review === true,
+    claim_validation: claimValidation?.requires_human_review === true
+      && (
+        claimValidation?.passed === true
+        || claimValidation?.pending_human_approval_only === true
+      ),
     current_review_window: researchAgeMs >= 0 && researchAgeMs <= HIGH_RISK_RESEARCH_MAX_AGE_MS,
   };
   const failed = Object.entries(checks)

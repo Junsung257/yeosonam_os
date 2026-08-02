@@ -203,6 +203,40 @@ describe('computeSeoScore', () => {
       .toMatchObject({ status: 'pass' });
   });
 
+  it('accepts evidence-complete high-risk research that is pending only human approval', () => {
+    const result = computeSeoScore({
+      blogHtml: '# US entry requirements\n\nKorean travelers should check current ESTA and passport rules before departure.',
+      slug: 'us-esta-entry-documents-2026',
+      seoTitle: 'US ESTA and entry documents 2026',
+      primaryKeyword: 'US ESTA',
+      destination: 'United States',
+      blogType: 'info',
+      generationMeta: {
+        content_brief: { intent_type: 'entry_requirements' },
+        auto_research: { completed_at: new Date().toISOString() },
+        information_research_preflight: {
+          version: 'r18-research-first-v1',
+          passed: true,
+          claimCount: 3,
+          evidenceCount: 3,
+          claimSourceCoverage: 1,
+          official_source_urls: ['https://travel.state.gov/content/travel/en/us-visas.html'],
+        },
+        information_claim_validation: {
+          passed: false,
+          claim_count: 3,
+          coverage: 0,
+          requires_human_review: true,
+          pending_human_approval_only: true,
+          issues: [{ code: 'human_approval_required' }],
+        },
+      },
+    });
+
+    expect(result.details.find((item) => item.name === 'information_freshness'))
+      .toMatchObject({ status: 'pass' });
+  });
+
   it('does not count markdown image and link targets as long raw urls', () => {
     const longUrl = 'https://images.pexels.com/photos/123456789/pexels-photo-123456789.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200&utm_source=very-long-tracking-value';
     const result = computeSeoScore({
