@@ -3222,6 +3222,8 @@ async function processQueueItem(
             summary: seoScore.summary,
             details: seoScore.details,
           },
+          last_information_claim_validation:
+            generated.generation_meta?.information_claim_validation ?? null,
         },
       );
       return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
