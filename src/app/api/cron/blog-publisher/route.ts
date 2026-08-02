@@ -139,6 +139,7 @@ import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-poli
 import { routeBlogContentLane } from '@/lib/blog-content-boundary';
 import {
   evaluateBlogInformationClaimPublishGate,
+  isBlogInformationClaimValidationPendingHumanApprovalOnly,
   persistBlogInformationClaimFindings,
   toBlogInformationClaimValidationMeta,
 } from '@/lib/blog-information-claim-publish-gate';
@@ -3411,7 +3412,11 @@ async function processQueueItem(
       && typeof generatedPlanBrief === 'object'
       && !Array.isArray(generatedPlanBrief)
       && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
-    const requiresClaimReview = blogType === 'info' && !claimValidation.passed;
+    const claimValidationPendingHumanApprovalOnly =
+      isBlogInformationClaimValidationPendingHumanApprovalOnly(claimValidation);
+    const requiresClaimReview = blogType === 'info'
+      && !claimValidation.passed
+      && !claimValidationPendingHumanApprovalOnly;
     const requiresHumanReview = blogType === 'info'
       && ((!publishedAtomicUpgrade && privateRegenerationRequest !== null) || requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
@@ -3676,7 +3681,10 @@ async function processQueueItem(
             : undefined,
         },
       });
-      if (!reviewClaimValidation.passed) {
+      if (
+        !reviewClaimValidation.passed
+        && !isBlogInformationClaimValidationPendingHumanApprovalOnly(reviewClaimValidation)
+      ) {
         const reason = 'published_replacement_claim_gate_failed';
         await handleFailure(item, reason, qa, true, {
           replacement_draft_id: creativeId,
@@ -3685,16 +3693,8 @@ async function processQueueItem(
         });
         return { id: item.id, topic: item.topic, status: 'review_handoff_failed', reason };
       }
-      generationMeta.information_claim_validation = {
-        passed: reviewClaimValidation.passed,
-        coverage: reviewClaimValidation.coverage,
-        claim_count: reviewClaimValidation.claims.length,
-        requires_human_review: reviewClaimValidation.requiresHumanReview,
-        issues: reviewClaimValidation.issues.slice(0, 20),
-        ledger: reviewClaimValidation.ledger ?? null,
-        auto_regeneration_attempts: 0,
-        auto_regeneration_limit: 0,
-      };
+      generationMeta.information_claim_validation =
+        toBlogInformationClaimValidationMeta(reviewClaimValidation);
     }
 
     if (blogType === 'info') {

@@ -37,6 +37,17 @@ export interface BlogInformationClaimPublishGateResult extends BlogInformationCl
   lookupError?: string;
 }
 
+export function isBlogInformationClaimValidationPendingHumanApprovalOnly(
+  result: BlogInformationClaimPublishGateResult,
+): boolean {
+  return result.passed === false
+    && result.requiresHumanReview
+    && result.claims.length > 0
+    && result.issues.length > 0
+    && !result.lookupError
+    && result.issues.every((issue) => issue.code === 'human_approval_required');
+}
+
 export function toBlogInformationClaimValidationMeta(
   result: BlogInformationClaimPublishGateResult,
 ): Record<string, unknown> {
@@ -45,6 +56,8 @@ export function toBlogInformationClaimValidationMeta(
     coverage: result.coverage,
     claim_count: result.claims.length,
     requires_human_review: result.requiresHumanReview,
+    pending_human_approval_only:
+      isBlogInformationClaimValidationPendingHumanApprovalOnly(result),
     issues: result.issues.slice(0, 20),
     ledger: result.ledger ?? null,
     auto_regeneration_attempts: 0,
@@ -365,6 +378,7 @@ export async function persistBlogInformationClaimFindings(input: {
   }
   const rows = input.report.claims.map((claim) => {
     const issue = issueByFingerprint.get(claim.claimFingerprint);
+    const evidenceIssue = issue?.code === 'human_approval_required' ? undefined : issue;
     return {
       tenant_id: input.tenantId ?? null,
       content_key: input.contentKey,
@@ -375,8 +389,8 @@ export async function persistBlogInformationClaimFindings(input: {
       risk_level: claim.riskLevel,
       extracted_value: claim.extractedValue,
       requires_evidence: true,
-      validation_status: issue ? 'review_required' : 'supported',
-      validation_reason: issue?.code ?? null,
+      validation_status: evidenceIssue ? 'review_required' : 'supported',
+      validation_reason: evidenceIssue?.code ?? null,
       updated_at: now,
     };
   });
