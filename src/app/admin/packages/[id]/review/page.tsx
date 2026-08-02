@@ -293,7 +293,13 @@ export default function PackageReviewPage() {
         res.json(),
         qualityRes.ok ? qualityRes.json() : Promise.resolve(null),
       ]);
-      const data: PackageData | null = json.package || json.data || (Array.isArray(json.packages) ? json.packages[0] : null);
+      // `/api/packages` follows the standard `{ ok, data: { package } }`
+      // envelope. Keep the legacy direct shapes as fallbacks, but unwrap the
+      // nested package before rendering links and field-level review state.
+      const data: PackageData | null = json.package
+        || json.data?.package
+        || json.data
+        || (Array.isArray(json.packages) ? json.packages[0] : null);
       setPkg(data);
       setQuality(qualityJson?.quality ?? null);
     } finally {
