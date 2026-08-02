@@ -1992,7 +1992,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                               <span className="rounded-admin-sm bg-admin-surface-2 px-1.5 py-0.5 text-admin-muted whitespace-nowrap">상품 {fmt만(price)}</span>
                               <span className="rounded-admin-sm bg-blue-50 px-1.5 py-0.5 text-blue-700 whitespace-nowrap">입금 {fmt만(paid)}</span>
                               <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.receivable > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>미수 {fmt만(bookingNumbers.receivable)}</span>
-                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.grossProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>수익 {fmt만(bookingNumbers.grossProfit)}</span>
+                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.cashProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>실현수익 {fmt만(bookingNumbers.cashProfit)}</span>
                             </div>
                           );
                         })()}
@@ -2013,13 +2013,16 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             {tx.bookings.total_paid_out != null && (
                               <div>랜드사 송금액: {tx.bookings.total_paid_out.toLocaleString()}원</div>
                             )}
+                            <div>통장 실현수익: <strong className={((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                              {((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)).toLocaleString()}원
+                            </strong></div>
                             {tx.bookings.paid_amount != null && tx.bookings.total_price != null && (
                               <div>잔금: <strong className={(tx.bookings.total_price - tx.bookings.paid_amount) > 0 ? 'text-red-600' : 'text-emerald-600'}>
                                 {Math.max(0, tx.bookings.total_price - tx.bookings.paid_amount).toLocaleString()}원
                               </strong></div>
                             )}
                             {tx.bookings.total_price != null && tx.bookings.total_cost != null && (
-                              <div>예상 우리수익: <strong className={(tx.bookings.total_price - tx.bookings.total_cost) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                              <div>장부 예상마진: <strong className={(tx.bookings.total_price - tx.bookings.total_cost) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                                 {(tx.bookings.total_price - tx.bookings.total_cost).toLocaleString()}원
                               </strong></div>
                             )}

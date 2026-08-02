@@ -43,6 +43,18 @@ describe('settlement accounting', () => {
     expect(result.cashProfit).toBe(50_000);
   });
 
+  it('keeps realized cash loss visible when booking prices are not entered', () => {
+    const result = calcSettlementAccounting({
+      totalPrice: 0,
+      totalCost: 0,
+      paidAmount: 1_000_000,
+      totalPaidOut: 2_088_350,
+    });
+
+    expect(result.grossProfit).toBe(0);
+    expect(result.cashProfit).toBe(-1_088_350);
+  });
+
   it('sums booking rows before calculating summary balances', () => {
     const result = sumSettlementAccounting([
       { totalPrice: 400_000, totalCost: 360_000, paidAmount: 200_000, totalPaidOut: 100_000 },
