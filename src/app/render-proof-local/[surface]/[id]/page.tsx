@@ -10,6 +10,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { mapTravelPackageToLandingData } from '@/lib/map-travel-package-to-lp';
 import { buildCandidatePublicPackageForProof } from '@/lib/package-publication/repository';
 import { isSafeImageSrc } from '@/lib/image-url';
+import type { NoticeBlock } from '@/lib/standard-terms-client';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -58,6 +59,17 @@ async function loadFixture(id: string): Promise<OfflineRenderFixture | null> {
   }
 }
 
+function proofNotices(value: unknown): NoticeBlock[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((notice): notice is NoticeBlock => {
+    if (!notice || typeof notice !== 'object' || Array.isArray(notice)) return false;
+    const record = notice as Record<string, unknown>;
+    return typeof record.type === 'string'
+      && typeof record.title === 'string'
+      && typeof record.text === 'string';
+  });
+}
+
 export default async function OfflineRenderProofPage({
   params,
 }: {
@@ -71,6 +83,7 @@ export default async function OfflineRenderProofPage({
   const proofCandidate = buildCandidatePublicPackageForProof(fixture.package);
   if (!proofCandidate) proofNotFound('candidate_snapshot_not_projectable');
   const proofPackage = proofCandidate.package;
+  const initialNotices = proofNotices(proofCandidate.snapshot.public_notices);
 
   if (surface === 'lp') {
     const frozenHeroCandidates = [
@@ -82,7 +95,7 @@ export default async function OfflineRenderProofPage({
       (value): value is string => typeof value === 'string' && isSafeImageSrc(value),
     ) ?? null;
     const data = mapTravelPackageToLandingData(proofPackage, frozenHero);
-    return <LandingClient initialData={data} initialNotices={[]} />;
+    return <LandingClient initialData={data} initialNotices={initialNotices} />;
   }
 
   type DetailProps = ComponentProps<typeof DetailClient>;
@@ -91,7 +104,7 @@ export default async function OfflineRenderProofPage({
       initialPackage={proofPackage as unknown as DetailProps['initialPackage']}
       initialAttractions={fixture.attractions as unknown as DetailProps['initialAttractions']}
       packageId={fixture.id}
-      initialNotices={[]}
+      initialNotices={initialNotices}
       socialProof={{ bookings: 0, interest: 0 }}
     />
   );

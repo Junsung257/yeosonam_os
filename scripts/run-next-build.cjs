@@ -75,8 +75,9 @@ function buildMaxOldSpaceSizeMb() {
   const configured = Number(process.env.NEXT_BUILD_MAX_OLD_SPACE_SIZE);
   if (Number.isFinite(configured) && configured >= 1024) return Math.floor(configured);
   // Vercel's standard builder has 8 GB available and this large Next app needs
-  // a larger heap to avoid SIGKILL/OOM before compilation finishes.
-  return 6144;
+  // a larger heap to finish the type-checking phase without OOM while leaving
+  // headroom for the builder process itself.
+  return 7168;
 }
 
 function cleanDistDir() {

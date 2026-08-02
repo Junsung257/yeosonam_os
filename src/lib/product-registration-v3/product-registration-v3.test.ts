@@ -993,6 +993,30 @@ ZE982
     );
   });
 
+  it('does not attach a Taiwan palace-museum alias to a Hong Kong itinerary fragment', async () => {
+    const raw = [
+      '상품: 홍콩 마카오 3박5일',
+      '가격: 899,000원',
+      'DAY 1 홍콩 도착',
+      'DAY 2 구룡성채-서구룡 M+(외관) 및 고궁박물관내부(#1-7관)',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '홍콩',
+      attractions: [{
+        id: 'taipei-palace-museum',
+        name: '국립고궁박물관',
+        aliases: ['고궁박물관', '고궁박물관내부'],
+        country: 'TW',
+        region: '타이페이',
+      }],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(events.some(event => event.canonical_id === 'taipei-palace-museum')).toBe(false);
+    expect(result.match_summary.attraction_unmatched_count).toBeGreaterThan(0);
+  });
+
   it('uses an explicit city prefix to match an existing attraction without widening globally', async () => {
     const raw = [
       '상품: 다낭 호이안 3박5일',

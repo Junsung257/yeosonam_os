@@ -63,11 +63,13 @@ function intake(overrides: Partial<UploadRequestIntakeSuccess> = {}): UploadRequ
     documentRawText: 'supplier raw text',
     analysisNormalizedText: 'supplier raw text',
     uploadSourceMetadata: {
+      landOperator: '테스트랜드',
       commissionRate: 10,
+      commissionRateWasDefaulted: false,
       marginRate: 0.1,
       cleanSourceLabel: 'upload',
       metadataOnlyLineRemoved: false,
-      source: 'default',
+      source: 'explicit',
       issues: [],
     },
     inputAnalysisForTrust: null,
@@ -193,6 +195,29 @@ describe('runUploadRegistrationPipeline', () => {
     expect(mocks.archiveUploadRawProduct).toHaveBeenCalledTimes(1);
     expect(mocks.parseUploadDocumentForRegistration).not.toHaveBeenCalled();
     expect(mocks.normalizeUploadRegistrationDocument).not.toHaveBeenCalled();
+    expect(mocks.processUploadRegistrationProducts).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before context loading when any caller bypasses commercial intake validation', async () => {
+    const baseIntake = intake();
+    const result = await run(intake({
+      uploadSourceMetadata: {
+        ...baseIntake.uploadSourceMetadata,
+        landOperator: undefined,
+        commissionRateWasDefaulted: true,
+        issues: [{
+          code: 'land_operator_required',
+          message: '랜드사 확인이 필요합니다.',
+          severity: 'error',
+        }],
+      },
+    }));
+
+    expect(result.status).toBe(422);
+    expect(result.payload).toEqual(expect.objectContaining({
+      code: 'UPLOAD_COMMERCIAL_METADATA_REQUIRED',
+    }));
+    expect(mocks.loadUploadRegistrationContext).not.toHaveBeenCalled();
     expect(mocks.processUploadRegistrationProducts).not.toHaveBeenCalled();
   });
 

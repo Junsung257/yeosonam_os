@@ -1,6 +1,7 @@
 import { normalizeOptionalTours } from '@/lib/package-acl';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import type { FinalizeUploadRegistrationResult } from './finalize-registration';
+import type { ApprovedDestinationMedia } from './approved-destination-media';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
 import { extractSourceTicketingDeadline } from './ticketing-deadline';
 import type { ProductRegistrationResult } from './types';
@@ -27,6 +28,7 @@ export type UploadPersistenceRowsInput = {
   marketingCopies: unknown[];
   catalogGroupId: string | null;
   filenameMarginRate?: number | null;
+  approvedDestinationMedia?: ApprovedDestinationMedia | null;
 };
 
 export type UploadPersistenceRows = {
@@ -148,7 +150,9 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
           input.documentRawText,
           input.landOperatorName ?? input.filenameSupplierRaw,
         ).slice(0, 50000),
-        thumbnail_urls: [],
+        thumbnail_urls: input.approvedDestinationMedia
+          ? [input.approvedDestinationMedia.url]
+          : [],
       }
     : null;
 
@@ -215,6 +219,9 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
       marketing_copies: input.marketingCopies,
       internal_code: input.internalCode ?? null,
       catalog_id: input.catalogGroupId,
+      hero_image_url: input.approvedDestinationMedia?.url ?? null,
+      lp_hero_image_url: input.approvedDestinationMedia?.url ?? null,
+      approved_destination_media: input.approvedDestinationMedia ?? null,
     },
   };
 }

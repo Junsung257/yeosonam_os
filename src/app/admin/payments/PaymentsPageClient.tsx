@@ -32,6 +32,13 @@ export interface ErpStats {
   remaining: number; margin: number; bookingCount: number;
 }
 
+interface ClobeIntegrationState {
+  loading: boolean;
+  connected: boolean;
+  connectedAt: string | null;
+  tenantId: string | null;
+}
+
 export interface BankTransaction {
   id: string; raw_message: string;
   transaction_type: '입금' | '출금';
@@ -533,6 +540,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importing, setImporting] = useState(false);
   const [clobeSyncing, setClobeSyncing] = useState(false);
   const [clobeSyncResult, setClobeSyncResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; memoUpdated?: number; memoChangedReview?: number; normalized?: number; firstError?: string | null } | null>(null);
+  const [clobeIntegration, setClobeIntegration] = useState<ClobeIntegrationState>({
+    loading: true,
+    connected: false,
+    connectedAt: null,
+    tenantId: null,
+  });
 
   function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
     setToast({ msg, type });
@@ -587,6 +600,29 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     }
   }, []);
 
+  const loadClobeIntegration = useCallback(async () => {
+    setClobeIntegration((prev) => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/admin/integrations', { cache: 'no-store' });
+      if (!res.ok) {
+        setClobeIntegration((prev) => ({ ...prev, loading: false, connected: false }));
+        return;
+      }
+      const data = await res.json();
+      type Integration = { platform?: string; connected?: boolean; connected_at?: string | null };
+      const clobe = (Array.isArray(data.integrations) ? data.integrations : [])
+        .find((item: Integration) => item.platform === 'clobe') as Integration | undefined;
+      setClobeIntegration({
+        loading: false,
+        connected: Boolean(clobe?.connected),
+        connectedAt: clobe?.connected_at ?? null,
+        tenantId: typeof data.resolvedTenantId === 'string' ? data.resolvedTenantId : null,
+      });
+    } catch {
+      setClobeIntegration((prev) => ({ ...prev, loading: false, connected: false }));
+    }
+  }, []);
+
   useEffect(() => {
     if (_skipInitialFetch.current) {
       _skipInitialFetch.current = false;
@@ -595,11 +631,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     load();
     loadErp();
     loadOpsQueue();
-  }, [load, loadErp, loadOpsQueue]);
+    loadClobeIntegration();
+  }, [load, loadErp, loadOpsQueue, loadClobeIntegration]);
 
   useEffect(() => {
     loadOpsQueue();
-  }, [loadOpsQueue]);
+    loadClobeIntegration();
+  }, [loadOpsQueue, loadClobeIntegration]);
 
   useEffect(() => {
     if (initialBookings?.length) return;
@@ -965,17 +1003,31 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   // ── 소프트 삭제 (5초 Undo) ──────────────────────────────────────────────────
 
+  function handleClobeConnect() {
+    const url = new URL('/api/auth/clobe-oauth-start', window.location.origin);
+    if (clobeIntegration.tenantId) url.searchParams.set('tenant_id', clobeIntegration.tenantId);
+    window.location.href = url.toString();
+  }
+
   async function handleClobeSync() {
+    if (!clobeIntegration.connected) {
+      handleClobeConnect();
+      return;
+    }
     setClobeSyncing(true);
     try {
       const res = await fetch('/api/bank-transactions/sync-clobe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 200 }),
+        body: JSON.stringify({
+          limit: 200,
+          ...(clobeIntegration.tenantId ? { tenant_id: clobeIntegration.tenantId } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         if (data.code === 'clobe_connection_required' && typeof data.connectUrl === 'string') {
+          setClobeIntegration((prev) => ({ ...prev, connected: false, connectedAt: null }));
           showToast('Clobe 연결이 필요합니다. 외부 플랫폼 연동 화면으로 이동합니다.', 'err');
           window.location.href = data.connectUrl;
           return;
@@ -985,7 +1037,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       }
       setClobeSyncResult(data);
       showToast(`Clobe sync: new ${data.inserted || 0}, matched ${data.matched || 0}, memo review ${data.memoChangedReview || 0}`);
-      load(); loadErp(); loadOpsQueue();
+      load(); loadErp(); loadOpsQueue(); loadClobeIntegration();
     } catch {
       showToast('Clobe sync failed', 'err');
     } finally {
@@ -1250,9 +1302,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '일괄 자동 매칭'}
           </button>
-          <button type="button" onClick={handleClobeSync} disabled={clobeSyncing} aria-busy={clobeSyncing}
+          <button type="button" onClick={handleClobeSync} disabled={clobeSyncing || clobeIntegration.loading} aria-busy={clobeSyncing}
             className="px-3 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition">
-            {clobeSyncing ? 'Clobe syncing...' : 'Clobe sync'}
+            {clobeSyncing ? 'Clobe syncing...' : clobeIntegration.connected ? 'Clobe sync' : 'Clobe 연결'}
           </button>
           <button type="button" onClick={() => setShowImport(true)}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
@@ -1262,6 +1314,48 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             className="px-3 py-2 text-admin-sm text-admin-text-2 border border-admin-border-strong rounded bg-white hover:bg-admin-bg transition">
             새로고침
           </button>
+        </div>
+      </div>
+
+      <div className={`mb-4 rounded-lg border px-4 py-3 ${
+        clobeIntegration.connected
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+          : 'border-amber-200 bg-amber-50 text-amber-900'
+      }`}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-admin-sm font-semibold">
+              {clobeIntegration.loading
+                ? 'Clobe 연결 상태 확인 중'
+                : clobeIntegration.connected
+                  ? 'Clobe 연결됨'
+                  : 'Clobe 연결 필요'}
+            </p>
+            <p className="mt-0.5 text-admin-xs">
+              {clobeIntegration.connected
+                ? `Clobe 메모의 여행키를 기준으로 입금/출금 내역을 OS 정산에 동기화합니다.${clobeIntegration.connectedAt ? ` 연결일: ${fmtDate(clobeIntegration.connectedAt)}` : ''}`
+                : 'Clobe에 로그인해 연결하면, 이후 이 정산 화면에서 동기화 버튼만 눌러 입출금 내역을 가져올 수 있습니다.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {!clobeIntegration.connected && (
+              <button type="button"
+                onClick={handleClobeConnect}
+                disabled={clobeIntegration.loading}
+                className="rounded bg-amber-600 px-3 py-2 text-admin-sm font-semibold text-white transition hover:bg-amber-700 disabled:bg-slate-300"
+              >
+                Clobe 연결하기
+              </button>
+            )}
+            <button type="button"
+              onClick={handleClobeSync}
+              disabled={clobeSyncing || clobeIntegration.loading}
+              aria-busy={clobeSyncing}
+              className="rounded bg-emerald-600 px-3 py-2 text-admin-sm font-semibold text-white transition hover:bg-emerald-700 disabled:bg-slate-300"
+            >
+              {clobeSyncing ? '동기화 중...' : clobeIntegration.connected ? '지금 동기화' : '연결 후 동기화'}
+            </button>
+          </div>
         </div>
       </div>
 

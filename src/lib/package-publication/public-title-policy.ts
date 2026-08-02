@@ -6,6 +6,9 @@ const RISKY_TITLE_WORDS =
 const INTERNAL_SUPPLIER_WORDS =
   /\b(?:LJ|BX|TW|ZE|7C|OZ|KE|RS|PKG|TL|NET|RMK|P\.?P\.?)\b|\[[^\]]*\]|\([^)]*(?:발권|스팟|특가|마감|TL)[^)]*\)/gi;
 
+const PAID_CONDITION_CHANGE_CLAUSE =
+  /노\s*(?:옵션|쇼핑)\s*(?:(?:진행|선택|변경|요청)\s*)*시.{0,120}?(?:추가(?:\s*(?:요금|비용|금))?|요금|비용|별도|\d[\d,]*\s*원)/gi;
+
 const KNOWN_DESTINATION_ALIASES: Array<[RegExp, string]> = [
   [/홍콩/, '홍콩'],
   [/마카오/, '마카오'],
@@ -91,6 +94,13 @@ function sourceText(pkg: AnyRecord): string {
     .join(' ');
 }
 
+export function stripConditionalProductConditionClauses(text: string): string {
+  return text
+    .replace(PAID_CONDITION_CHANGE_CLAUSE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function numberValue(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -162,8 +172,9 @@ export function inferPublicTitleDestination(pkg: AnyRecord, text = sourceText(pk
 }
 
 function hasNoOptionEvidence(text: string, optionBadges: string[]): boolean {
-  return optionBadges.some(badge => /노\s*옵션/.test(badge))
-    || /(노\s*옵션|NO\s*OPTION|선택\s*관광\s*[:：-]?\s*(없음|무|노옵션|0))/i.test(text);
+  const defaultConditionText = stripConditionalProductConditionClauses(text);
+  return optionBadges.some(badge => /노\s*옵션/.test(stripConditionalProductConditionClauses(badge)))
+    || /(노\s*옵션|NO\s*OPTION|선택\s*관광\s*[:：-]?\s*(없음|무|노옵션|0))/i.test(defaultConditionText);
 }
 
 function hasNoTipEvidence(text: string, optionBadges: string[]): boolean {
@@ -172,7 +183,8 @@ function hasNoTipEvidence(text: string, optionBadges: string[]): boolean {
 }
 
 function hasNoShoppingEvidence(text: string): boolean {
-  return /(노\s*쇼핑|NO\s*SHOPPING|쇼핑\s*[:：-]?\s*(없음|무|0회))/i.test(text);
+  return /(노\s*쇼핑|NO\s*SHOPPING|쇼핑\s*[:：-]?\s*(없음|무|0회))/i
+    .test(stripConditionalProductConditionClauses(text));
 }
 
 function hasHotelGradeEvidence(text: string): boolean {

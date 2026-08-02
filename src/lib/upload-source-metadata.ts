@@ -1,5 +1,6 @@
 export type UploadSourceMetadataSource =
   | 'explicit'
+  | 'contract_master'
   | 'source_label'
   | 'filename'
   | 'raw_text'
@@ -23,12 +24,22 @@ export interface UploadSourceMetadataInput {
 export interface UploadSourceMetadataResult {
   landOperator?: string;
   commissionRate: number;
+  commissionRateWasDefaulted: boolean;
   marginRate: number;
   cleanSourceLabel: string;
   parserRawText?: string;
   metadataOnlyLineRemoved: boolean;
   source: UploadSourceMetadataSource;
+  contractId?: string;
+  contractEvidence?: string;
   issues: UploadSourceMetadataIssue[];
+}
+
+export interface VerifiedUploadCommercialContract {
+  contractId: string;
+  landOperator: string;
+  commissionRate: number;
+  evidence: string;
 }
 
 interface MetadataCandidate {
@@ -38,7 +49,12 @@ interface MetadataCandidate {
   metadataOnly: boolean;
 }
 
-const DEFAULT_COMMISSION_RATE = 10;
+/**
+ * Platform fallback used when a land-operator commission is omitted.
+ * This is a registration convenience, not evidence of a supplier contract.
+ */
+export const DEFAULT_LAND_OPERATOR_COMMISSION_RATE = 9;
+const DEFAULT_COMMISSION_RATE = DEFAULT_LAND_OPERATOR_COMMISSION_RATE;
 const MAX_COMMISSION_RATE = 50;
 
 function compact(value: string | null | undefined): string {
@@ -53,6 +69,10 @@ function parseRate(value: number | string | null | undefined): number | undefine
   if (value == null || value === '') return undefined;
   const parsed = typeof value === 'number' ? value : Number(String(value).replace('%', '').trim());
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function hasSuppliedRate(value: number | string | null | undefined): boolean {
+  return value != null && (typeof value !== 'string' || value.trim() !== '');
 }
 
 function validateRate(rate: number | undefined, source: UploadSourceMetadataSource): UploadSourceMetadataIssue[] {
@@ -135,6 +155,7 @@ function findRawTextMetadata(rawText: string | null | undefined): {
 export function parseUploadSourceMetadata(input: UploadSourceMetadataInput): UploadSourceMetadataResult {
   const defaultCommissionRate = input.defaultCommissionRate ?? DEFAULT_COMMISSION_RATE;
   const explicitRate = parseRate(input.explicitCommissionRate);
+  const explicitRateWasSupplied = hasSuppliedRate(input.explicitCommissionRate);
   const rawMetadata = findRawTextMetadata(input.rawText);
   const sourceLabelCandidate = parseMetadataCandidate(input.sourceLabel);
   const filenameCandidate = parseMetadataCandidate(input.fileName);
@@ -170,23 +191,74 @@ export function parseUploadSourceMetadata(input: UploadSourceMetadataInput): Upl
   }
 
   const issues = [
+    ...(explicitRateWasSupplied && explicitRate == null ? [{
+      code: 'commission_rate_invalid',
+      message: `Commission rate must be a number. Received: ${String(input.explicitCommissionRate)}`,
+      severity: 'error' as const,
+    }] : []),
     ...validateRate(explicitRate, 'explicit'),
     ...validateRate(sourceLabelCandidate?.commissionRate, 'source_label'),
     ...validateRate(filenameCandidate?.commissionRate, 'filename'),
     ...validateRate(rawMetadata.candidate?.commissionRate, 'raw_text'),
   ];
 
+  const commissionRateWasDefaulted = commissionRate == null;
   const finalCommissionRate = commissionRate ?? defaultCommissionRate;
-  issues.push(...validateRate(finalCommissionRate, source));
+  // The selected value is about to become persistence input, so an invalid
+  // filename/raw-text value must fail just as hard as an invalid form value.
+  issues.push(...validateRate(finalCommissionRate, 'explicit'));
+  if (!landOperator) {
+    issues.push({
+      code: 'land_operator_required',
+      message: '랜드사 확인이 필요합니다. 원문·파일명에서 추정하지 말고 실제 랜드사명을 입력하세요.',
+      severity: 'error',
+    });
+  }
+  if (commissionRateWasDefaulted) {
+    issues.push({
+      code: 'commission_rate_defaulted',
+      message: `Commission was not supplied; ${finalCommissionRate}% was applied as the platform registration default. Confirm the actual supplier contract before settlement.`,
+      severity: 'review',
+    });
+  }
 
   return {
     landOperator,
     commissionRate: finalCommissionRate,
+    commissionRateWasDefaulted,
     marginRate: finalCommissionRate / 100,
     cleanSourceLabel: cleanSourceLabel || 'text-input.txt',
     parserRawText: rawMetadata.parserRawText,
     metadataOnlyLineRemoved: rawMetadata.removed,
     source,
     issues,
+  };
+}
+
+export function applyVerifiedUploadCommercialContract(
+  metadata: UploadSourceMetadataResult,
+  contract: VerifiedUploadCommercialContract,
+): UploadSourceMetadataResult {
+  const blockingNonMissingIssue = metadata.issues.some(issue =>
+    issue.severity === 'error'
+    && issue.code !== 'land_operator_required'
+    && issue.code !== 'commission_rate_required'
+  );
+  if (blockingNonMissingIssue) return metadata;
+
+  return {
+    ...metadata,
+    landOperator: contract.landOperator,
+    commissionRate: contract.commissionRate,
+    commissionRateWasDefaulted: false,
+    marginRate: contract.commissionRate / 100,
+    source: 'contract_master',
+    contractId: contract.contractId,
+    contractEvidence: contract.evidence,
+    issues: metadata.issues.filter(issue =>
+      issue.code !== 'land_operator_required'
+      && issue.code !== 'commission_rate_required'
+      && issue.code !== 'commission_rate_defaulted'
+    ),
   };
 }

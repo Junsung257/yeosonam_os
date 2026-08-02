@@ -586,7 +586,11 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).not.toContain(".from('travel_packages')");
     expect(postTasks).toContain('runProductRegistrationV3(input.rawText');
     expect(postTasks).toContain('runCoVeInBackground(input.packageId)');
-    expect(postTasks).toContain('runAutoPhotoMatch({');
+    expect(postTasks).not.toContain('runAutoPhotoMatch({');
+    expect(runner).toContain('loadApprovedDestinationMedia({');
+    expect(runner.indexOf('loadApprovedDestinationMedia({')).toBeLessThan(
+      runner.indexOf('buildUploadPersistenceRows({'),
+    );
     expect(postTasks).toContain('export async function logUploadPostSaveAuditStatus');
     expect(postTasks).toContain(".from('travel_packages')");
     expect(postTasks).toContain('export function scheduleUploadL3BackfillTasks');
@@ -974,6 +978,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).not.toContain('error_reason.ilike');
     expect(cron).toContain("order('created_at', { ascending: false })");
     expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
+    expect(cron).toContain('const commercialMetadataErrors = metadata.issues.filter');
+    expect(cron).toContain('랜드사와 실제 계약 커미션이 없어 자동 재처리를 보류했습니다.');
     expect(cron).toContain('runUploadRegistrationPipeline({');
   });
 
@@ -981,6 +987,8 @@ describe('upload route registration pipeline boundary', () => {
     const route = readAdminUploadReplayReviewQueueRoute();
 
     expect(route).toContain('extractDuplicateInternalCode');
+    expect(route).toContain('explicitLandOperator: stringValue(body.landOperator)');
+    expect(route).toContain("code: 'UPLOAD_COMMERCIAL_METADATA_REQUIRED'");
     expect(route).toContain('forceReprocess: body.forceReprocess === true');
     expect(route).toContain('savedIds.length > 0 || duplicateInternalCode');
     expect(route).toContain('replayResolved');

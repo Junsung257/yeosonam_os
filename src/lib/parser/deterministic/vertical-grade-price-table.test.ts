@@ -186,4 +186,131 @@ describe('extractVerticalGradePriceTable', () => {
     expect(priceForDate(premium, '2026-07-27')).toBe(729000);
     expect(priceForDate(premium, '2026-07-30')).toBe(849000);
   });
+
+  it('maps six-product spot tables by product and keeps the explicit promotion for duplicate dates', () => {
+    const rawText = `
+♥ 7월 선발 특가 ♥
+날짜
+[수,금 출발 / 패턴 : 3박 5일]
+[월,토 출발 / 패턴 : 4박 6일]
+나달/나판달
+실속
+나트랑/달랏
+라이트
+노팁/노옵션
+나트랑/달랏
+품격
+노팁/노옵션
+나판달
+노팁/노옵션
+나트랑 3박
+노팁/노쇼핑
+1일자유+호핑
+나나달달
+라이트
+노팁/노옵션
+3박5일
+4박6일
+특가
+3박
+7/24,29
+899,000
+999,000
+1,109,000
+1,189,000
+1,379,000
+7/24,29
+999,000
+1,099,000
+1,209,000
+1,289,000
+1,479,000
+4박
+7/25,27
+949,000
+`;
+
+    const products = [
+      ['나트랑/판랑/달랏 전일정 5성 실속 3박5일', 899000],
+      ['나트랑/달랏 전일정 5성 Light 노팁/노옵션 3박5일', 999000],
+      ['나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일', 1109000],
+      ['나트랑/판랑/달랏 전일정 5성 노팁/노옵션 3박5일', 1189000],
+      ['나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일', 1379000],
+    ] as const;
+
+    for (const [title, expectedPrice] of products) {
+      const tiers = extractVerticalGradePriceTable(rawText, {
+        year: 2026,
+        title,
+        durationDays: 5,
+      });
+      expect(priceForDate(tiers, '2026-07-24')).toBe(expectedPrice);
+      expect(tiers.filter(tier => tier.departure_dates?.includes('2026-07-24'))).toHaveLength(1);
+    }
+
+    const fourNight = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '나트랑/달랏 전일정 5성 Light 노팁/노옵션 4박6일',
+      durationDays: 6,
+    });
+    expect(priceForDate(fourNight, '2026-07-24')).toBeNull();
+    expect(priceForDate(fourNight, '2026-07-25')).toBe(949000);
+    expect(priceForDate(fourNight, '2026-07-27')).toBe(949000);
+  });
+
+  it('preserves conflicting same-date prices when the source has no explicit promotional evidence', () => {
+    const rawText = `
+일반 출발 요금
+실속
+라이트
+품격
+나판달
+자유호핑
+3박
+7/24
+899,000
+999,000
+1,109,000
+1,189,000
+1,379,000
+7/24
+999,000
+1,099,000
+1,209,000
+1,289,000
+1,479,000
+`;
+
+    const tiers = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '나트랑/판랑/달랏 전일정 5성 실속 3박5일',
+      durationDays: 5,
+    });
+    const conflictingPrices = tiers
+      .filter(tier => tier.departure_dates?.includes('2026-07-24'))
+      .map(tier => tier.adult_price)
+      .sort((a, b) => (a ?? 0) - (b ?? 0));
+
+    expect(conflictingPrices).toEqual([899000, 999000]);
+  });
+
+  it('does not reuse the Nha Trang column mapping for an unrelated five-column table', () => {
+    const rawText = `
+일반 5열 등급표
+7/24
+899,000
+999,000
+1,109,000
+1,189,000
+1,379,000
+`;
+
+    const tiers = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '1일자유+호핑 노팁/노옵션 3박5일',
+      durationDays: 5,
+    });
+
+    expect(priceForDate(tiers, '2026-07-24')).toBe(899000);
+  });
 });

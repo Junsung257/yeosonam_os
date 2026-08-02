@@ -173,6 +173,35 @@ describe('customer public title policy', () => {
     expect(title).not.toContain('세부');
   });
 
+  it('does not promote paid no-option or no-shopping changes into the default product title', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '보홀',
+      title: '보홀 에스타 디럭스 패키지 3박5일',
+      duration: 5,
+      nights: 3,
+      raw_text: [
+        '선택관광과 쇼핑센터 3회가 포함된 기본 일정입니다.',
+        '노옵션 진행 시 성인 100,000원 추가',
+        '노쇼핑시 추가금 100,000원',
+      ].join('\n'),
+    });
+
+    expect(title).toBe('보홀 핵심관광 3박5일');
+    expect(title).not.toMatch(/노옵션|노쇼핑/);
+  });
+
+  it('keeps a real no-option title claim even when a paid no-shopping change is also described', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '다낭/호이안',
+      title: '다낭 호이안 노옵션 3박5일',
+      duration: 5,
+      nights: 3,
+      raw_text: '노쇼핑 진행 시 성인 100,000원 추가',
+    });
+
+    expect(title).toBe('다낭·호이안 노옵션 휴양관광 3박5일');
+  });
+
   it('keeps Hong Kong as the destination when surrounding copy mentions detailed conditions', () => {
     const title = composeCustomerPublicTitle({
       destination: '홍콩',

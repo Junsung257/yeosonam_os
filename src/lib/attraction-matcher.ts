@@ -24,6 +24,8 @@ export interface AttractionData {
   mrt_gid?: string | null;
   is_active?: boolean | null;
   customer_publishable?: boolean | null;
+  verification_status?: string | null;
+  source?: string | null;
 }
 
 // 매칭 제외 키워드 (일반 이동/휴식 활동)
@@ -128,6 +130,7 @@ export interface AttractionIndex {
   filtered: AttractionData[];                   // destination 필터 통과한 후보
   byLowerName: Map<string, AttractionData>;     // 대소문자 무시 정확 이름 → 즉시 룩업
   byLowerAlias: Map<string, AttractionData>;    // 별칭 정확 룩업
+  globalVerifiedExactAlias: Map<string, AttractionData>; // 근거 승인 공급사 문구의 지역 밖 exact fallback
   substringList: AttractionData[];              // 이름 길이 DESC 정렬 (긴 이름 우선 매칭)
   /** destination 없이 빌드된 인덱스 — keyword split 단계 SKIP 하여 일반어 오매칭 방지 (2026-05-14) */
   degraded: boolean;
@@ -360,6 +363,24 @@ export function buildAttractionIndex(
 
   const byLowerName = new Map<string, AttractionData>();
   const byLowerAlias = new Map<string, AttractionData>();
+  const globalVerifiedExactAlias = new Map<string, AttractionData>();
+  const globalAliasCollisions = new Set<string>();
+  for (const attraction of attractions) {
+    if (
+      attraction.is_active === false
+      || attraction.customer_publishable !== true
+      || attraction.verification_status !== 'published'
+      || !['user_delegated_official_evidence_pack', 'user_delegated_official_evidence']
+        .includes(String(attraction.source ?? ''))
+    ) continue;
+    for (const alias of attraction.aliases ?? []) {
+      const key = alias.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (key.length < 3 || MATCH_STOP_WORDS.has(alias) || ALIAS_NOISE_RE.test(alias)) continue;
+      if (globalVerifiedExactAlias.has(key)) globalAliasCollisions.add(key);
+      else globalVerifiedExactAlias.set(key, attraction);
+    }
+  }
+  for (const key of globalAliasCollisions) globalVerifiedExactAlias.delete(key);
   for (const a of filtered) {
     if (a.name) byLowerName.set(a.name.toLowerCase(), a);
     if (a.aliases) {
@@ -371,7 +392,7 @@ export function buildAttractionIndex(
   // 긴 이름이 짧은 이름보다 먼저 매칭되도록 정렬 (예: "메르데카 광장" > "광장")
   const substringList = filtered.slice().sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0));
 
-  return { filtered, byLowerName, byLowerAlias, substringList, degraded };
+  return { filtered, byLowerName, byLowerAlias, globalVerifiedExactAlias, substringList, degraded };
 }
 
 /**
@@ -382,7 +403,7 @@ export function matchAttractionIndexed(
   activity: string,
   index: AttractionIndex,
 ): AttractionData | null {
-  if (!activity || !index.filtered.length) return null;
+  if (!activity || (!index.filtered.length && !index.globalVerifiedExactAlias.size)) return null;
   if (SKIP_PATTERN.test(activity)) return null;
 
   const actLower = activity.toLowerCase();
@@ -396,6 +417,14 @@ export function matchAttractionIndexed(
   // 2. Alias exact (O(1))
   const aliasExact = index.byLowerAlias.get(actLower);
   if (aliasExact) return aliasExact;
+
+  // Product destination is intentionally conservative and can contain only the
+  // first city of a multi-region route. A globally unique, explicitly evidence-
+  // approved supplier phrase may cross that filter, but only as an exact match.
+  const verifiedGlobalAliasExact = index.globalVerifiedExactAlias.get(
+    activity.replace(/\s+/g, ' ').trim().toLowerCase(),
+  );
+  if (verifiedGlobalAliasExact) return verifiedGlobalAliasExact;
 
   // 3+4. 긴 이름부터 양방향 substring (조기 반환으로 실측 O(log N) 수준)
   for (const a of index.substringList) {

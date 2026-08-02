@@ -18,6 +18,7 @@ import { trackKakaoViewContent } from '@/lib/kakao-moment-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { sanitizeUtmTermForDisplay } from '@/lib/sanitize-ad-copy';
 import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package-to-lp';
+import { publicImageAttributionLabel } from '@/lib/public-image-attribution';
 import type { NoticeBlock } from '@/lib/standard-terms';
 import { trackAnalyticsEvent } from '@/lib/analytics';
 import CustomerNoticeCards from '@/components/customer/CustomerNoticeCards';
@@ -435,6 +436,17 @@ export function LandingClient({
                 : 'bg-gradient-to-b from-gray-900/20 via-transparent to-gray-900/75'
           }`}
         />
+        {data.heroImageAttribution && (
+          <a
+            href={data.heroImageAttribution.sourcePageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute right-2 top-2 z-[2] max-w-[70%] rounded bg-black/55 px-2 py-1 text-[10px] leading-tight text-white/90 backdrop-blur-sm"
+            aria-label={`이미지 출처: ${publicImageAttributionLabel(data.heroImageAttribution)}`}
+          >
+            사진: {publicImageAttributionLabel(data.heroImageAttribution)}
+          </a>
+        )}
         <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 z-[1]">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/20 text-white backdrop-blur-sm">

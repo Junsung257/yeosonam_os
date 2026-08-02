@@ -13,6 +13,10 @@ import {
   extractCustomerNoticeCards,
   type CustomerNoticeCard,
 } from '@/lib/customer-notice-cards';
+import {
+  findPublicHeroAttribution,
+  type PublicImageAttribution,
+} from '@/lib/public-image-attribution';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -46,6 +50,7 @@ export interface LandingProductData {
   duration: string;
   heroImageA: string;
   heroImageB: string;
+  heroImageAttribution: PublicImageAttribution | null;
   scarcityRemaining: number | null;
   departureDateLabel: string;
   departureFullDate: string | null;
@@ -330,6 +335,7 @@ export function mapTravelPackageToLandingData(
     duration,
     heroImageA: lpHeroImageUrl || '',
     heroImageB: lpHeroImageUrl || '',
+    heroImageAttribution: findPublicHeroAttribution(pkg.images_public, lpHeroImageUrl),
     scarcityRemaining,
     departureDateLabel,
     departureFullDate,

@@ -74,6 +74,9 @@ Legacy commands such as `.claude/commands/register-product.md` and `.claude/comm
 
 ## 결정 이력
 
+- **2026-07-31 — 랜드사·계약 커미션 기본값 금지**: `admin/upload`의 텍스트·파일·배치 등록과 수동·자동 검수큐 재처리는 실제 랜드사와 해당 상품의 계약 커미션을 명시적으로 받아야 한다. 파일명은 두 값이 검증 가능한 `[랜드사_커미션%]` 형식이고 해당 상품에 적용됨이 확인될 때만 근거로 인정하며, `15T`, `10T`, `8T`, `TL` 같은 숫자·코드나 과거 관행으로 9%/10%를 추정하지 않는다. 둘 중 하나라도 없으면 저장 전에 보류하고, 공개 게이트에서도 다시 차단한다. 같은 HWP 안의 상품별 조건 차이를 보존하기 위해 다중파일·다중상품 배치 등록은 금지하고 상품 텍스트를 한 건씩 등록한다. 기존 추정 9% 초안 1건은 커미션을 비우고 draft/blocked로 유지했다. 39개 HWP의 71개 상품은 감사 SHA-256과 71/71 일치하는 개별 TXT 묶음으로 생성했으며, 이 해시 증명은 원문 분리 완전성만 뜻하고 저장·모바일 공개 승인을 뜻하지 않는다.
+- **2026-07-31 — 계약 원장·목적지 이미지·등록 후 공개 오토파일럿 연결**: 비공개 `product_commercial_contracts` 원장과 `/admin/commercial-contracts`를 추가했다. 근거와 명시 marker가 있는 계약만 업로드 누락값을 자동 보완하며 충돌은 보류한다. 목적지 이미지 13건은 실제 바이너리·목적지·Commons 원본·라이선스·저작자 게이트를 통과해 운영 승인했고 `/packages`·`/lp`에 출처 표시를 추가했다. 관광지 공식 근거 36건과 연길민속촌 공식 정부 근거를 반영하고, 교차 지역의 근거 승인 공급사 문구는 전역에서 유일한 exact match일 때만 매칭한다. 39 HWP/71상품 재감사는 오프라인 공개 71/71, 이미지 71/71, 고객 준비 68/71(95.8%)이며 나머지 3건은 최소 출발 숫자 확인이 필요하다. `/api/cron/destination-media-approval`과 `/api/cron/upload-to-open-autopilot`을 매일 실행한다.
+
 - **2026-04-27 — 출확인원 모순 시 본문 우선**: 원문 헤더 RMK 와 상품 본문이 충돌할 때 **상품 본문 기준으로 등록**. 헤더 RMK 는 카테고리 통합 표기로 부정확할 수 있고, 본문이 상품별 구체 조건이라 신뢰도 높음. (사장님 결정 / 케이스: 투어비 하노이 5종 — RMK "사파/크루즈 8명" vs 본문 사파·디너크루즈 "6명" → 본문 그대로 유지)
 
 - **2026-04-27 — 유류할증료(N월) 표기 = 발권기한 조건부 포함**: 원문에 "유류할증료(4월)" + "4/29 발권조건" 처럼 월/날짜가 붙어 있으면 **발권기한 전 발권 시 가격 유효**, 발권기한 이후 출발은 유류세 인상분/인하분이 별도 반영된다는 의미. 표준 처리: ① `inclusions` 에 `"왕복항공+TAX+유류할증료(YYYY-MM-DD 발권 기준)"` 명시 ② `excludes` 에 `"유류세 인상분"` 추가 ③ `ticketing_deadline` 정확히 기재. 사장님 결정 / 케이스: W투어 나트랑 카탈로그 — "(4월)" 의 의미가 "4월 출발만 포함" 이 아니라 "4/29 발권 마감 기준" 임을 명확히 함.
@@ -91,5 +94,7 @@ Legacy commands such as `.claude/commands/register-product.md` and `.claude/comm
 - **2026-05-15 — 관광지 매칭 SSOT 통합 + Same-Session Seed-Reflect (PR #68)**: 사장님 비전 "원문→키워드 솔팅→설명 생성→DB 저장→다음번 재사용"의 "다음번"이 같은 등록까지 포함되도록 박제. ① **DB trigger `fn_attractions_normalize`** — attractions INSERT/UPDATE 시 country 한글→ISO 자동 변환 (27개국). page.tsx OR clause 가 ISO 로 필터링하는데 caller 마다 한글/ISO 혼재해서 fetch 누락되던 사고 영구 차단. ② **`extractAttractionCandidates` 30→60자 + 괄호 별칭 + "X 후 Y" 분리** — 도멘 드 마리 성당 / 린푸억사원(달랏 핑크 사원) / 도이인타논 후 몽족시장 모두 양쪽 후보화. ③ **Same-Session Seed-Reflect** — 시드 후 attractions refetch + enrichItinerary 재실행 + travel_packages.itinerary_data UPDATE + revalidatePath ISR 무효화. 사장님이 등록 직후 모바일 새로고침만 하면 신규 시드 카드 즉시 노출. ④ **등록 종료 한 화면 통계** — 응답 message 에 "관광지 매칭 N · 신규 시드 M · 즉시반영 K · 미매칭 X (검수 큐로)". ai_quality_log 에 4-컬럼 박혀 사장님 시각 검증 가능. ⑤ **destination → ISO SSOT (`src/lib/destination-iso.ts`)** — 67개 한글 도시명 매핑 단일 모듈. 사장님 결정 / 케이스: [LJ] 나트랑/달랏 모바일에서 도멘 드 마리·다딴라 폭포 카드 누락.
 
 ---
+
+ - **2026-08-02 — omitted land commission uses a 9% registration fallback**: Central upload intake, replay paths, offline audit, and the admin form now use one `9%` default when no commission is supplied. The default is stored in internal commercial fields and surfaced as a review warning; it never invents a land operator and the actual contract can overwrite it before settlement.
 
 > **신규 결정 추가 시**: 위 형식 (`- **YYYY-MM-DD — 한 줄 제목**: 본문 + 사장님 결정 / 케이스`) 으로 append. 본문(register.md)에 직접 적지 말 것.

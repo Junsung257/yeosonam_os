@@ -4,6 +4,7 @@ import {
   buildUploadBatchOperatorChecklist,
   buildUploadBatchOperatorChecklistCsv,
   buildUploadBatchOperatorChecklistMarkdown,
+  buildUploadCommercialMetadataInputCsv,
   type UploadChecklistSourceReport,
 } from '@/lib/upload-batch-operator-checklist';
 
@@ -15,6 +16,9 @@ function sourceReport(): UploadChecklistSourceReport {
     priceRows: 3,
     priceDates: 3,
     itineraryDays: 4,
+    commercialMetadataReady: true,
+    landOperator: '테스트랜드',
+    commissionRate: 10,
   };
   return {
     generatedAt: '2026-07-29T00:00:00.000Z',
@@ -26,6 +30,27 @@ function sourceReport(): UploadChecklistSourceReport {
         title: '즉시 업로드 검증 대상',
         customerReadyOffline: true,
         remediation: { ready: true, actions: [], supplierRequestText: null },
+      },
+      {
+        ...base,
+        sourceFile: 'commercial.hwp',
+        productIndex: 0,
+        title: '상업조건 입력 대상',
+        customerReadyOffline: true,
+        commercialMetadataReady: false,
+        landOperator: null,
+        commissionRate: null,
+        remediation: {
+          ready: false,
+          actions: [{
+            kind: 'commercial_metadata',
+            field: 'commercial_metadata',
+            title: '랜드사·계약 커미션 확인',
+            instruction: '실제 계약 근거와 일치하는 값을 입력합니다.',
+            sourcePhrases: [],
+          }],
+          supplierRequestText: null,
+        },
       },
       {
         ...base,
@@ -145,7 +170,11 @@ function attractionPack(): AttractionOwnerReviewPack {
     },
     candidateMasters: [],
     existingAliasActions: [],
-    holds: [],
+    holds: [{
+      sourcePhrases: ['모호한 장소'],
+      reason: '공식 장소 식별값이 없습니다.',
+      requiredConfirmation: '공식 중국어명, 주소, 지도 링크를 회신해 주세요.',
+    }],
     activeCatalogConflicts: [],
     productImpact: [
       {
@@ -185,15 +214,16 @@ describe('buildUploadBatchOperatorChecklist', () => {
     );
 
     expect(checklist.summary).toMatchObject({
-      products: 5,
+      products: 6,
       readyForAdminUpload: 1,
+      commercialMetadataRequired: 1,
       customerOpenAllowedWithoutFreshProof: 0,
       supplierConfirmation: 1,
       ownerReviewCandidateOnly: 1,
       ownerAndSupplier: 1,
       attractionIdentityHold: 1,
       systemRepair: 0,
-      minimumProductsFor95Percent: 5,
+      minimumProductsFor95Percent: 6,
     });
     expect(checklist.rows.every(row => row.customerOpenAllowed === false)).toBe(true);
     expect(checklist.rows[0]).toMatchObject({
@@ -202,19 +232,42 @@ describe('buildUploadBatchOperatorChecklist', () => {
       customerOpenAllowed: false,
       sequence: 1,
     });
+    expect(checklist.rows[1]).toMatchObject({
+      phase: 'commercial_metadata_then_reaudit',
+      sourceFile: 'commercial.hwp',
+      commercialMetadataReady: false,
+      landOperator: null,
+      commissionRate: null,
+    });
     expect(checklist.rows[0].postUploadProofRequired).toContain(
       '/lp/{id} 모바일 브라우저 증명 및 CTA 열림',
+    );
+    const identityHold = checklist.rows.find(row => row.sourceFile === 'hold.hwp');
+    expect(identityHold?.requiredActions).toContain(
+      '관광지 공식 정보 확인: 공식 중국어명, 주소, 지도 링크를 회신해 주세요.',
+    );
+    expect(identityHold?.supplierRequestText).toContain('상품:');
+    expect(identityHold?.supplierRequestText).toContain('관광지 공식 정보 확인 요청');
+    expect(identityHold?.supplierRequestText).toContain(
+      '공식 중국어명, 주소, 지도 링크를 회신해 주세요.',
     );
   });
 
   it('emits readable CSV and Markdown for non-technical one-by-one review', () => {
     const checklist = buildUploadBatchOperatorChecklist(sourceReport(), attractionPack());
     const csv = buildUploadBatchOperatorChecklistCsv(checklist);
+    const commercialCsv = buildUploadCommercialMetadataInputCsv(checklist);
     const markdown = buildUploadBatchOperatorChecklistMarkdown(checklist);
 
     expect(csv).toContain('현재_고객공개가능');
+    expect(csv).toContain('계약커미션율_확정값');
     expect(csv).toContain('"아니오"');
+    expect(commercialCsv).toContain('계약_커미션율_퍼센트');
+    expect(commercialCsv).toContain(
+      '"commercial.hwp","1","상업조건 입력 대상","","","입력 필요"',
+    );
     expect(markdown).toContain('# HWP 71개 상품 한 건씩 업로드 체크리스트');
+    expect(markdown).toContain('상품별 상업조건 입력표');
     expect(markdown).toContain('1차 admin/upload 검증 대상');
     expect(markdown).toContain('실제 등록 후 공통 공개 증명');
   });
@@ -237,5 +290,13 @@ describe('buildUploadBatchOperatorChecklist', () => {
 
     expect(() => buildUploadBatchOperatorChecklist(invalidReport, attractionPack()))
       .toThrow('보류 상품에 운영 조치가 없습니다');
+  });
+
+  it('fails closed when an identity hold has no supplier confirmation request', () => {
+    const invalidPack = attractionPack();
+    invalidPack.holds = [];
+
+    expect(() => buildUploadBatchOperatorChecklist(sourceReport(), invalidPack))
+      .toThrow('공식 식별 보류 상품에 공급사 확인 요청이 없습니다');
   });
 });

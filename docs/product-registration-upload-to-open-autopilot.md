@@ -33,6 +33,7 @@ Missing attraction photos are quality warnings when the attraction name and sour
 
 - Automatic after upload: `scheduleUploadToOpenAutopilot`
 - Cron endpoint: `/api/cron/upload-to-open-autopilot`
+- `vercel.json` runs the endpoint daily at `01:48 UTC`; per-upload wakeups remain the fast path.
 - Manual production run: `npm run quality:upload-to-open`
 
 Use small batches while Supabase is under pressure. The cron is resource-saver allowlisted, but it still defaults to a limited batch size.

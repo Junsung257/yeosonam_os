@@ -26,6 +26,21 @@ PKG Bohol direct slim package 5 days / 6 days
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-28', adult_price: 419000 }));
   });
 
+  it('recovers a single source-backed month/day price row after product context lines', () => {
+    const rawText = [
+      '연길·백두산 노옵션 핵심관광 4박5일',
+      '2026년 상품 가격표 안내입니다. 부산 출발 패키지 상품가 표입니다.',
+      '8/1 799,000',
+      '포함내역',
+      '왕복항공료',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-08-01', adult_price: 799000 }));
+  });
+
   it('recovers concatenated day and price tails from month sections', () => {
     const rawText = `
 5${MONTH_CJK}
@@ -790,6 +805,74 @@ describe('extractPriceIR product price vertical date table', () => {
       ['2026-08-23', 999000],
     ]);
     expect(result.rows.find(row => row.date === '2026-08-26')).toBeUndefined();
+  });
+
+  it('recovers duration-specific month/day groups with separate economy and premium prices', () => {
+    const rawText = [
+      '3박5일 [수]',
+      '실 속',
+      '화산·품격(노노노)',
+      '7월',
+      '8, 15일',
+      '22, 29일',
+      '품격확정',
+      '699,000',
+      '1,199,000',
+      '8월',
+      '5, 12일',
+      '19일',
+      '품격확정',
+      '469,000',
+      '999,000',
+      '26일',
+      '품격확정',
+      '469,000',
+      '1,069,000',
+      '4박6일 [토]',
+      '실 속',
+      '화산·품격(노노노)',
+      '7월',
+      '11, 18, 25일',
+      '품격확정',
+      '549,000',
+      '1,249,000',
+      '8월',
+      '1일',
+      '품격확정',
+      '499,000',
+      '1,129,000',
+      '▶ 화산·품격 : 노팁,노옵션,노쇼핑',
+    ].join('\n');
+
+    const fiveDay = extractPriceIR(rawText, {
+      year: 2026,
+      title: '[품격] 서안(병마용,화청지),화산 3박 5일',
+      durationDays: 5,
+    });
+    const sixDay = extractPriceIR(rawText, {
+      year: 2026,
+      title: '[품격] 서안(병마용,화청지), 화산 4박 6일',
+      durationDays: 6,
+    });
+
+    expect(fiveDay.source).toBe('product_price_vertical_date_table');
+    expect(fiveDay.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-07-08', 1199000],
+      ['2026-07-15', 1199000],
+      ['2026-07-22', 1199000],
+      ['2026-07-29', 1199000],
+      ['2026-08-05', 999000],
+      ['2026-08-12', 999000],
+      ['2026-08-19', 999000],
+      ['2026-08-26', 1069000],
+    ]);
+    expect(sixDay.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-07-11', 1249000],
+      ['2026-07-18', 1249000],
+      ['2026-07-25', 1249000],
+      ['2026-08-01', 1129000],
+    ]);
+    expect([...fiveDay.rows, ...sixDay.rows].some(row => row.adult_price < 900000)).toBe(false);
   });
 
   it('recovers Korean HWP hotel month/day matrices with sale-arrow prices', () => {

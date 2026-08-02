@@ -285,6 +285,10 @@ export default function PackagesClient() {
   );
 
   const initialPackages = data?.packages ?? EMPTY_PACKAGES;
+  // An empty API result means the public catalog itself is empty, not that the
+  // current filters missed. Keep that state explicit so customers are not told
+  // that a real product was sold out or that their search was invalid.
+  const hasNoPublicPackages = data !== undefined && initialPackages.length === 0;
   const imageByPkgIdProp = data?.imageByPkgId ?? EMPTY_IMAGE_BY_PKG_ID;
   const recommendedIds = data?.recommendedIds ?? EMPTY_RECOMMENDED_IDS;
   const recommendedReasonMap = data?.recommendedReasonMap ?? EMPTY_RECOMMENDED_REASON_MAP;
@@ -829,39 +833,69 @@ export default function PackagesClient() {
         </div>
       </section>
 
-      <div className="px-4 pt-3 pb-1 md:max-w-7xl md:mx-auto md:px-8">
-        <p className="mb-2 text-[13px] font-bold text-text-primary">어떤 여행을 찾고 계세요?</p>
-        <p className="mb-2 text-[12px] font-medium text-text-secondary">
-          하나만 눌러도 상품 순서가 바로 바뀌어요. 그냥 둘러봐도 괜찮아요.
-        </p>
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {INTENT_OPTIONS.map(opt => (
-            <button
-              key={opt.id}
-              type="button"
-              aria-pressed={selectedIntent === opt.id}
-              onClick={() => handleIntentSelect(opt.id)}
-              className={`shrink-0 h-10 rounded-full border px-3.5 text-[13px] font-bold transition ${
-                selectedIntent === opt.id
-                  ? 'border-brand bg-brand text-white shadow-sm'
-                  : 'border-[#DCE5F0] bg-white text-text-body hover:border-brand/60 hover:text-brand'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {selectedIntentInfo && (
-          <p className="mt-1.5 text-[12px] font-medium text-text-secondary">
-            {selectedIntentInfo.hint}
+      {!hasNoPublicPackages && (
+        <div className="px-4 pt-3 pb-1 md:max-w-7xl md:mx-auto md:px-8">
+          <p className="mb-2 text-[13px] font-bold text-text-primary">어떤 여행을 찾고 계세요?</p>
+          <p className="mb-2 text-[12px] font-medium text-text-secondary">
+            하나만 눌러도 상품 순서가 바로 바뀌어요. 그냥 둘러봐도 괜찮아요.
           </p>
-        )}
-      </div>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            {INTENT_OPTIONS.map(opt => (
+              <button
+                key={opt.id}
+                type="button"
+                aria-pressed={selectedIntent === opt.id}
+                onClick={() => handleIntentSelect(opt.id)}
+                className={`shrink-0 h-10 rounded-full border px-3.5 text-[13px] font-bold transition ${
+                  selectedIntent === opt.id
+                    ? 'border-brand bg-brand text-white shadow-sm'
+                    : 'border-[#DCE5F0] bg-white text-text-body hover:border-brand/60 hover:text-brand'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {selectedIntentInfo && (
+            <p className="mt-1.5 text-[12px] font-medium text-text-secondary">
+              {selectedIntentInfo.hint}
+            </p>
+          )}
+        </div>
+      )}
 
       <div ref={listTopRef} />
       {filteredPackages.length === 0 ? (
         <div className="text-center py-20 px-6">
-          {urgency === '1' ? (
+          {hasNoPublicPackages ? (
+            <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-[24px] border border-blue-100 bg-blue-50/60 px-6 py-12">
+              <span className="text-[32px]" aria-hidden="true">🧳</span>
+              <div className="space-y-1 text-center">
+                <p className="text-[17px] font-bold text-text-primary">현재 판매 중인 상품이 없습니다</p>
+                <p className="text-[13px] leading-6 text-text-secondary">
+                  상품을 준비하고 있습니다. 원하시는 여행 일정은 상담으로 먼저 확인해 드릴게요.
+                </p>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+                {consultTelHref && (
+                  <TrackedPhoneLink
+                    href={consultTelHref}
+                    ctaLocation="package_list_no_public_catalog"
+                    pageType="package_list"
+                    className="rounded-full bg-brand px-4 py-2.5 text-[13px] font-bold text-white transition hover:bg-brand-dark"
+                  >
+                    📞 전화로 일정 상담
+                  </TrackedPhoneLink>
+                )}
+                <Link
+                  href="/group"
+                  className="rounded-full border border-blue-200 bg-white px-4 py-2.5 text-[13px] font-bold text-brand transition hover:bg-blue-50"
+                >
+                  상담 요청 남기기
+                </Link>
+              </div>
+            </div>
+          ) : urgency === '1' ? (
             <>
               <p className="text-[32px] mb-3">🔥</p>
               <p className="text-text-primary font-bold text-[17px] mb-1">현재 마감특가 상품이 모두 매진되었습니다</p>

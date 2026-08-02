@@ -6,7 +6,10 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { postAlert } from '@/lib/admin-alerts';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import {
+  DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+  parseUploadSourceMetadata,
+} from '@/lib/upload-source-metadata';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 
 export const runtime = 'nodejs';
@@ -17,6 +20,7 @@ type ReplayBody = {
   queueId?: unknown;
   forceReprocess?: unknown;
   sourceLabel?: unknown;
+  landOperator?: unknown;
   commissionRate?: unknown;
 };
 
@@ -133,9 +137,23 @@ const postHandler = async (request: NextRequest) => {
   const metadata = parseUploadSourceMetadata({
     rawText: replayOriginalRawText,
     sourceLabel,
+    explicitLandOperator: stringValue(body.landOperator) ?? undefined,
     explicitCommissionRate: Number.isFinite(commissionRate) ? commissionRate : undefined,
-    defaultCommissionRate: 10,
+    defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
   });
+  const commercialMetadataErrors = metadata.issues.filter(issue => issue.severity === 'error');
+  if (commercialMetadataErrors.length > 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: 'UPLOAD_COMMERCIAL_METADATA_REQUIRED',
+        error: '랜드사와 실제 계약 커미션을 확인한 뒤 다시 처리하세요.',
+        issues: commercialMetadataErrors,
+        uploadRequestId: requestId,
+      },
+      { status: 422 },
+    );
+  }
 
   const fileHash = stringValue((queueRow as { file_hash?: unknown }).file_hash) ?? randomUUID();
   const inputAnalysisForTrust = analyzeUploadInputText(replayOriginalRawText);

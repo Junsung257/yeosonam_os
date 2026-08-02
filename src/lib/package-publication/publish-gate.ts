@@ -1,6 +1,5 @@
 import type { CustomerMobileProofResult } from '@/lib/customer-mobile-proof';
 import { customerCopyQualityIssues } from '@/lib/customer-copy-quality';
-import { isSafeImageSrc } from '@/lib/image-url';
 import {
   normalizeUploadDestinationDisplayLabel,
   resolveUploadCode,
@@ -13,6 +12,7 @@ import {
   hasRiskyCustomerCopy,
   isOptionalTourFragment,
 } from './public-snapshot';
+import { hasCustomerReadyPublicImage } from './public-image-quality';
 import type { PublicationState, PublishFinding } from './types';
 
 type AnyRecord = Record<string, unknown>;
@@ -210,19 +210,6 @@ function sourceBackedPriceProblem(pkg: AnyRecord): string | null {
   }
 
   return null;
-}
-
-function hasPublicImageCandidate(pkg: AnyRecord): boolean {
-  const images = Array.isArray(pkg.images_public) ? pkg.images_public : [];
-  for (const item of images) {
-    if (isSafeImageSrc(item)) return true;
-    const image = asRecord(item);
-    if (isSafeImageSrc(image?.url ?? image?.src_large ?? image?.src_medium)) return true;
-  }
-
-  if (isSafeImageSrc(pkg.hero_image_url) || isSafeImageSrc(pkg.lp_hero_image_url)) return true;
-  const thumbnails = Array.isArray(pkg.thumbnail_urls) ? pkg.thumbnail_urls : [];
-  return thumbnails.some(isSafeImageSrc);
 }
 
 function hasInternalEnglishCopy(input: PublicSnapshotGateInput): string | null {
@@ -458,6 +445,10 @@ function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
       case 'public_image_missing':
         add('상품 대표 관광지, 목적지 metadata, 상품 썸네일 중 실제 포함 경험을 암시하지 않는 승인 이미지를 연결하세요.');
         break;
+      case 'commercial_metadata_missing':
+      case 'commercial_metadata_invalid':
+        add('실제 랜드사명과 계약 커미션율 또는 정액 커미션을 확인해 저장한 뒤 공개 게이트를 다시 실행하세요.');
+        break;
       case 'itinerary_duration_mismatch':
         add('원문 일정 섹션을 DAY 단위로 재분리하고 상품 기간과 일정 일수를 맞춘 itinerary_public을 재생성하세요.');
         break;
@@ -506,6 +497,39 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     }
   }
 
+  const landOperator = compactText(sourcePkg.land_operator);
+  const commissionRateRaw = sourcePkg.commission_rate;
+  const commissionRate = commissionRateRaw == null || compactText(commissionRateRaw) === ''
+    ? null
+    : asNumber(commissionRateRaw);
+  const commissionFixedAmountRaw = sourcePkg.commission_fixed_amount;
+  const commissionFixedAmount = commissionFixedAmountRaw == null || compactText(commissionFixedAmountRaw) === ''
+    ? null
+    : asNumber(commissionFixedAmountRaw);
+  const commissionCurrency = compactText(sourcePkg.commission_currency).toUpperCase();
+  const hasValidRate = commissionRate != null && commissionRate > 0 && commissionRate <= 50;
+  const hasValidFixedAmount = commissionFixedAmount != null
+    && commissionFixedAmount > 0
+    && ['KRW', 'USD', 'JPY', 'CNY'].includes(commissionCurrency);
+
+  if (!landOperator) {
+    addBlocker(
+      hard,
+      'commercial_metadata_missing',
+      'supplier land operator is missing; customer publication requires an explicitly confirmed land operator',
+      'land_operator',
+    );
+  }
+  if (!hasValidRate && !hasValidFixedAmount) {
+    const hasCommercialValue = commissionRate != null || commissionFixedAmount != null;
+    addBlocker(
+      hard,
+      hasCommercialValue ? 'commercial_metadata_invalid' : 'commercial_metadata_missing',
+      'contracted commission is missing or invalid; do not publish with a guessed default rate',
+      hasValidRate ? 'commission_rate' : 'commission_fixed_amount',
+    );
+  }
+
   addMobileProofBlockers(input, hard);
 
   const shoppingEvidence = evaluateShoppingEvidence(sourcePkg);
@@ -530,11 +554,11 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'price_source_missing', priceDateProblem, 'price_dates');
   }
 
-  if (!hasPublicImageCandidate(input.pkg)) {
+  if (!hasCustomerReadyPublicImage(input.pkg)) {
     addBlocker(
       hard,
       'public_image_missing',
-      'public package snapshot requires at least one approved customer image candidate',
+      'public package snapshot requires at least one approved product, attraction, or destination image; the brand logo fallback is preview-only',
       'images_public',
     );
   }

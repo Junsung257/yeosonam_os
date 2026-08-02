@@ -17,6 +17,7 @@ interface ParsedVerticalGradeRow {
   premiumPrice: number;
   prices: number[];
   note: string | null;
+  durationNights: number | null;
 }
 
 const DATE_LIST_RE = /^\d{1,2}[./]\d{1,2}(?:\s*,\s*(?:\d{1,2}[./])?\d{1,2})*$/;
@@ -92,7 +93,7 @@ function findFirstVerticalPriceRow(lines: string[]): number {
 function readConsecutivePrices(lines: string[], startIndex: number): { prices: number[]; nextIndex: number } {
   const prices: number[] = [];
   let i = startIndex;
-  for (; i < Math.min(lines.length, startIndex + 5); i++) {
+  for (; i < Math.min(lines.length, startIndex + 8); i++) {
     const price = parsePriceLine(lines[i] ?? '');
     if (price <= 0) break;
     prices.push(price);
@@ -100,7 +101,7 @@ function readConsecutivePrices(lines: string[], startIndex: number): { prices: n
   return { prices, nextIndex: i };
 }
 
-function readPricePair(lines: string[], startIndex: number): {
+function readPricePair(lines: string[], startIndex: number, minPrices = 2): {
   note: string | null;
   economyPrice: number;
   standardPrice: number | null;
@@ -109,12 +110,12 @@ function readPricePair(lines: string[], startIndex: number): {
   nextIndex: number;
 } | null {
   const direct = readConsecutivePrices(lines, startIndex);
-  if (direct.prices.length >= 2) {
+  if (direct.prices.length >= minPrices) {
     return {
       note: null,
       economyPrice: direct.prices[0],
       standardPrice: direct.prices.length >= 3 ? direct.prices[1] : null,
-      premiumPrice: direct.prices.length >= 3 ? direct.prices[2] : direct.prices[1],
+      premiumPrice: direct.prices[2] ?? direct.prices[1] ?? direct.prices[0],
       prices: direct.prices,
       nextIndex: direct.nextIndex,
     };
@@ -122,17 +123,35 @@ function readPricePair(lines: string[], startIndex: number): {
 
   const maybeNote = lines[startIndex];
   const afterNote = readConsecutivePrices(lines, startIndex + 1);
-  if (maybeNote && !looksLikeDateList(maybeNote) && afterNote.prices.length >= 2) {
+  if (maybeNote && !looksLikeDateList(maybeNote) && afterNote.prices.length >= minPrices) {
     return {
       note: maybeNote,
       economyPrice: afterNote.prices[0],
       standardPrice: afterNote.prices.length >= 3 ? afterNote.prices[1] : null,
-      premiumPrice: afterNote.prices.length >= 3 ? afterNote.prices[2] : afterNote.prices[1],
+      premiumPrice: afterNote.prices[2] ?? afterNote.prices[1] ?? afterNote.prices[0],
       prices: afterNote.prices,
       nextIndex: afterNote.nextIndex,
     };
   }
 
+  return null;
+}
+
+function durationNightsFromHeading(line?: string | null): number | null {
+  const match = line?.match(/^(\d{1,2})\s*(?:박|\uBC15)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function durationNightsFromTitle(title?: string | null): number | null {
+  const match = title?.match(/(\d{1,2})\s*(?:박|\uBC15)\s*\d{1,2}\s*(?:일|\uC77C)/);
+  return match ? Number(match[1]) : null;
+}
+
+function nearestDurationNights(lines: string[], startIndex: number): number | null {
+  for (let i = startIndex - 1; i >= Math.max(0, startIndex - 30); i--) {
+    const nights = durationNightsFromHeading(lines[i]);
+    if (nights != null) return nights;
+  }
   return null;
 }
 
@@ -145,17 +164,24 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
   if (start < 0) return [];
 
   const rows: ParsedVerticalGradeRow[] = [];
+  let durationNights = nearestDurationNights(lines, start);
   let i = start;
   while (i < lines.length) {
     const line = lines[i];
     if (!looksLikeDateList(line)) {
+      const nextDurationNights = durationNightsFromHeading(line);
+      if (rows.length > 0 && nextDurationNights != null) {
+        durationNights = nextDurationNights;
+        i += 1;
+        continue;
+      }
       if (rows.length > 0) break;
       i += 1;
       continue;
     }
 
     const dates = parseDateList(line, year);
-    const pair = readPricePair(lines, i + 1);
+    const pair = readPricePair(lines, i + 1, durationNights == null ? 2 : 1);
     if (!pair || dates.length === 0) {
       if (rows.length > 0) break;
       i += 1;
@@ -170,6 +196,7 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
         premiumPrice: pair.premiumPrice,
         prices: pair.prices,
         note: pair.note,
+        durationNights,
       });
     }
     i = pair.nextIndex;
@@ -228,9 +255,13 @@ function targetWeekdays(options: VerticalGradePriceOptions): Set<string> | null 
 }
 
 function filterRowsByDuration(rows: ParsedVerticalGradeRow[], options: VerticalGradePriceOptions): ParsedVerticalGradeRow[] {
-  if (rows.some(row => row.prices.length >= 3)) return rows;
   const durationDays = options.durationDays ?? inferDurationDaysFromText(options.title);
+  const durationNights = durationNightsFromTitle(options.title);
   const weekdays = targetWeekdays(options);
+  if (durationNights != null && rows.some(row => row.durationNights === durationNights)) {
+    return rows.filter(row => row.durationNights === durationNights);
+  }
+  if (rows.some(row => row.prices.length >= 3)) return rows;
   if (!durationDays && !weekdays) return rows;
 
   return rows.filter(row => {
@@ -278,6 +309,62 @@ function priceForGrade(row: ParsedVerticalGradeRow, grade: VerticalGradePriceGra
   return row.economyPrice;
 }
 
+function hasNhaTrangSharedSixProductSchema(rawText: string): boolean {
+  const compact = rawText.replace(/\s+/g, '');
+  return /나달\/나판달/i.test(compact)
+    && /1일자유\+?호핑/i.test(compact)
+    && /나나달달/i.test(compact)
+    && /3박5일/i.test(compact)
+    && /4박6일/i.test(compact);
+}
+
+function productColumnIndex(
+  row: ParsedVerticalGradeRow,
+  options: VerticalGradePriceOptions,
+  rawText: string,
+): number | null {
+  if (row.prices.length < 4) return null;
+  if (!hasNhaTrangSharedSixProductSchema(rawText)) return null;
+
+  const title = options.title ?? '';
+  const durationDays = options.durationDays ?? inferDurationDaysFromText(title);
+  if (durationDays === 6 && row.prices.length >= 6) return 5;
+  if (/1\s*일\s*자유|호핑|노쇼핑/i.test(title)) return 4;
+  if (/나트랑\s*\/?\s*판랑\s*\/?\s*달랏/i.test(title) && /노팁\s*\/?\s*노옵션/i.test(title) && !/실속/i.test(title)) {
+    return 3;
+  }
+  if (/품격/i.test(title)) return 2;
+  if (/light|라이트/i.test(title)) return 1;
+  if (/실속/i.test(title)) return 0;
+  return null;
+}
+
+function priceForProduct(
+  row: ParsedVerticalGradeRow,
+  options: VerticalGradePriceOptions,
+  grade: VerticalGradePriceGrade,
+  rawText: string,
+): number {
+  const columnIndex = productColumnIndex(row, options, rawText);
+  if (columnIndex != null && columnIndex < row.prices.length) return row.prices[columnIndex] ?? 0;
+  return priceForGrade(row, grade);
+}
+
+function hasNearbyPromotionalMarker(rawText: string): boolean {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const firstPriceRow = findFirstVerticalPriceRow(lines);
+  if (firstPriceRow < 0) return false;
+  return lines
+    .slice(Math.max(0, firstPriceRow - 40), firstPriceRow)
+    .some(line => /(?:SPOT|스팟|특가)/i.test(line));
+}
+
+function isUniformlyLowerPriceRow(lower: ParsedVerticalGradeRow, higher: ParsedVerticalGradeRow): boolean {
+  if (lower.prices.length < 2 || lower.prices.length !== higher.prices.length) return false;
+  const deltas = lower.prices.map((price, index) => (higher.prices[index] ?? 0) - price);
+  return deltas[0] > 0 && deltas.every(delta => delta === deltas[0]);
+}
+
 function resolveVerticalGradeStable(options: VerticalGradePriceOptions): VerticalGradePriceGrade {
   const title = options.title ?? '';
   if (/\uD504\uB9AC\uBBF8\uC5C4|premium/i.test(title)) return 'premium';
@@ -299,11 +386,36 @@ export function extractVerticalGradePriceTable(rawText: string, options: Vertica
 
   const grade = resolveVerticalGradeStable(options);
   const gradeLabel = grade === 'premium' ? '고품격' : grade === 'standard' ? '스탠다드' : '실속';
-  const byKey = new Map<string, { price: number; note: string | null; dates: string[] }>();
+  const promotionalTable = hasNearbyPromotionalMarker(rawText);
+  const selectedRows: Array<{ row: ParsedVerticalGradeRow; price: number }> = [];
+  const promotionByDate = new Map<string, number>();
 
   for (const row of rows) {
-    const price = priceForGrade(row, grade);
+    const price = priceForProduct(row, options, grade, rawText);
     if (price <= 0) continue;
+    const existingIndex = promotionByDate.get(row.date);
+    if (existingIndex == null) {
+      promotionByDate.set(row.date, selectedRows.length);
+      selectedRows.push({ row, price });
+      continue;
+    }
+
+    const existing = selectedRows[existingIndex];
+    if (existing.price === price) continue;
+    if (promotionalTable && isUniformlyLowerPriceRow(existing.row, row)) continue;
+    if (promotionalTable && isUniformlyLowerPriceRow(row, existing.row)) {
+      selectedRows[existingIndex] = { row, price };
+      continue;
+    }
+
+    // Preserve genuine source ambiguity so the downstream deliverability gate
+    // blocks publication instead of silently choosing a price.
+    selectedRows.push({ row, price });
+  }
+
+  const byKey = new Map<string, { price: number; note: string | null; dates: string[] }>();
+
+  for (const { row, price } of selectedRows) {
     const key = `${price}|${row.note ?? ''}`;
     const group = byKey.get(key) ?? { price, note: row.note, dates: [] };
     group.dates.push(row.date);

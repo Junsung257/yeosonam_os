@@ -55,7 +55,7 @@ export function evaluateCustomerReadyGate(input: GateInput): GateResult {
 
   // 3) 사진
   if (!input.hasThumbnail) {
-    warnings.push('thumbnail_urls 없음 — auto-photo-match 실패');
+    warnings.push('고객 승인 이미지 없음 — 상품/관광지/목적지 사진 검수 필요');
   }
 
   // 4) ferry/cruise 일관성

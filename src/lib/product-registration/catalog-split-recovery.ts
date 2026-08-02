@@ -222,6 +222,44 @@ function splitReadableRepeatedProductHeaders(rawText: string): { sharedPrefix: s
   };
 }
 
+function splitBadgeThenDayOnlyProductHeaders(rawText: string): { sharedPrefix: string; sections: string[] } | null {
+  const text = rawText.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const starts: number[] = [];
+  for (let index = 0; index < lines.length - 1; index++) {
+    const badge = lines[index]?.trim() ?? '';
+    if (!/^\[[^\]\n]{2,120}\]$/u.test(badge)) continue;
+    const titleIndex = lines[index + 1]?.trim()
+      ? index + 1
+      : lines[index + 2]?.trim()
+        ? index + 2
+        : -1;
+    if (titleIndex < 0) continue;
+    const title = lines[titleIndex]?.trim() ?? '';
+    if (!usableDurationTitle(title) || !KOREAN_DAY_ONLY_DURATION_RE.test(title)) continue;
+
+    const window = lines.slice(titleIndex, Math.min(lines.length, titleIndex + 130)).join('\n');
+    if (/(?:^|\n)\s*제\s*1\s*일(?:$|[\s\n])/u.test(window)
+      && /(?:^|\n)\s*제\s*[2-9]\s*일(?:$|[\s\n])/u.test(window)) {
+      starts.push(offsets[index]);
+    }
+  }
+
+  const sorted = [...new Set(starts)].sort((a, b) => a - b);
+  if (sorted.length < 2) return null;
+  return {
+    sharedPrefix: text.slice(0, sorted[0]).trim(),
+    sections: sorted.map((start, index) => text.slice(start, sorted[index + 1] ?? text.length).trim()),
+  };
+}
+
 function splitExplicitProductSeparators(rawText: string): { sharedPrefix: string; sections: string[] } | null {
   const sections = rawText
     .replace(/\r\n/g, '\n')
@@ -305,6 +343,13 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
     if (readableRepeatedProductSplit) {
       sharedPrefix = readableRepeatedProductSplit.sharedPrefix;
       sections = readableRepeatedProductSplit.sections;
+    }
+  }
+  if (sections.length < 2) {
+    const badgeThenDayOnlySplit = splitBadgeThenDayOnlyProductHeaders(rawText);
+    if (badgeThenDayOnlySplit) {
+      sharedPrefix = badgeThenDayOnlySplit.sharedPrefix;
+      sections = badgeThenDayOnlySplit.sections;
     }
   }
   if (sections.length < 2) {

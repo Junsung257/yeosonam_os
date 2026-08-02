@@ -3,6 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { buildRegistrationRemediationPlan } from './operator-remediation';
 
 describe('buildRegistrationRemediationPlan', () => {
+  it('routes missing land-operator and commission evidence to upload metadata input', () => {
+    const plan = buildRegistrationRemediationPlan([
+      'COMMERCIAL_METADATA: land_operator_required 랜드사 확인이 필요합니다.',
+      'COMMERCIAL_METADATA: commission_rate_required 커미션율 확인이 필요합니다.',
+    ]);
+
+    expect(plan.actions).toEqual([
+      expect.objectContaining({
+        kind: 'commercial_metadata',
+        field: 'commercial_metadata',
+        actionHref: '/admin/upload',
+      }),
+    ]);
+    expect(plan.supplierRequestText).toBeNull();
+  });
+
   it('routes attraction review to the existing owner-admin queue without creating a master', () => {
     const plan = buildRegistrationRemediationPlan([
       'v3:gate:attraction_unmatched_queue_clear:1 unmatched attraction events require review',
@@ -51,6 +67,21 @@ describe('buildRegistrationRemediationPlan', () => {
 
     expect(plan.actions.map(action => action.field)).toEqual(['price', 'itinerary']);
     expect(plan.actions.every(action => action.kind === 'system_repair')).toBe(true);
+    expect(plan.supplierRequestText).toBeNull();
+  });
+
+  it('routes a brand-only landing image to operator media remediation', () => {
+    const plan = buildRegistrationRemediationPlan([
+      'PUBLIC_CUSTOMER_IMAGE_MISSING: brand fallback is preview-only',
+    ]);
+
+    expect(plan.actions).toEqual([
+      expect.objectContaining({
+        kind: 'system_repair',
+        field: 'customer_image',
+        title: '고객 대표 이미지 연결',
+      }),
+    ]);
     expect(plan.supplierRequestText).toBeNull();
   });
 

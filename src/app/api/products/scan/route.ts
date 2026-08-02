@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { DEFAULT_LAND_OPERATOR_COMMISSION_RATE } from '@/lib/upload-source-metadata';
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
 import ExcelJS from 'exceljs';
@@ -85,7 +86,7 @@ const DEST_MAP: Record<string, string> = {
 interface FilenameHints {
   supplierCode: string | null;
   supplierName: string | null;
-  marginRate: number | null;  // 0.10 = 10%
+  marginRate: number | null;  // 0.09 = 9%
 }
 
 function parseFilename(filename: string): FilenameHints {
@@ -331,10 +332,10 @@ export async function POST(request: NextRequest) {
 
     // Step 4. 코드 구성에 필요한 값 최종 결정
     //   - 랜드사: 파일명 힌트 우선, 없으면 'XX'
-    //   - 마진율: 파일명 힌트 우선, 없으면 10%
+    //   - 마진율: 파일명 힌트 우선, 없으면 플랫폼 기본 9%
     const supplierCode  = hints.supplierCode ?? 'XX';
     const supplierName  = hints.supplierName ?? supplierCode;
-    const marginRate    = hints.marginRate    ?? 0.10;
+    const marginRate    = hints.marginRate    ?? DEFAULT_LAND_OPERATOR_COMMISSION_RATE / 100;
 
     // Step 5. DB 시퀀스 조회 → 다음 internal_code 생성
     const internalCode = await getNextInternalCode(

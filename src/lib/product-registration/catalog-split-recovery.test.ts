@@ -332,6 +332,67 @@ ZE917 18:55
     expect(recoverCatalogSplitFromRawText(raw)).toHaveLength(0);
   });
 
+  it('splits repeated badge-only headers followed by separate day-only product titles', () => {
+    const raw = `요일
+날짜
+판매가
+4일
+7/2, 9, 23
+1,149,000
+5일
+7/5, 12, 19
+1,199,000
+
+[★노옵션+노팁★]
+BX증편 연길, 백두산(남파+북파) 4일
+포 함
+항공료, 호텔, 식사
+날 짜
+지 역
+일 정
+제1일
+부산
+연길 도착
+제2일
+백두산 남파 관광
+제3일
+백두산 북파 관광
+제4일
+연길
+부산 도착
+
+[★노옵션+노팁★]
+BX증편 연길, 백두산(남파+북파) 5일
+포 함
+항공료, 호텔, 식사
+날 짜
+지 역
+일 정
+제1일
+부산
+연길 도착
+제2일
+백두산 남파 관광
+제3일
+백두산 북파 관광
+제4일
+연길 시내 관광
+제5일
+연길
+부산 도착`;
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products.map(product => product.extractedData.title)).toEqual([
+      'BX증편 연길, 백두산(남파+북파) 4일',
+      'BX증편 연길, 백두산(남파+북파) 5일',
+    ]);
+    expect(products.map(product => product.extractedData.duration)).toEqual([4, 5]);
+    expect(products[0]?.sectionRawText).not.toContain('연길 시내 관광');
+    expect(products[1]?.sectionRawText).toContain('연길 시내 관광');
+  });
+
   it('splits transport variant detail blocks when price table columns share one catalog prefix', () => {
     const raw = `수요일【3박5일】
 

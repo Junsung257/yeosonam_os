@@ -325,6 +325,24 @@ function rowsFromLine(line: string, fallbackYear: number, currentMonth: number |
   return rows;
 }
 
+function rowFromSimpleDatePriceLine(line: string, fallbackYear: number): MatrixPriceRow | null {
+  if (EXCLUDED_CONTEXT_RE.test(line)) return null;
+  const match = line.match(/^\s*(\d{1,2})\s*[/.]\s*(\d{1,2})\s+((?:\d{1,3}(?:,\d{3})+|\d{5,8}))(?:\s*원)?\s*$/);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const date = isoDate(inferYearForMonth(month, fallbackYear), month, day);
+  const price = parsePrice(match[3]);
+  if (!date || !price) return null;
+  return {
+    date,
+    adult_price: price,
+    child_price: null,
+    note: 'pdf_date_price_table',
+    status: 'available',
+  };
+}
+
 export function extractPdfDatePriceRows(
   rawText: string,
   options: PriceIROptions = {},
@@ -344,7 +362,8 @@ export function extractPdfDatePriceRows(
       continue;
     }
     const extracted = rowsFromLine(line, fallbackYear, currentMonth);
-    for (const row of extracted) {
+    const simpleRow = rowFromSimpleDatePriceLine(line, fallbackYear);
+    for (const row of simpleRow ? [...extracted, simpleRow] : extracted) {
       const key = `${row.date}|${row.adult_price}`;
       if (seen.has(key)) continue;
       seen.add(key);

@@ -9,6 +9,7 @@ import { recordHotelsFromItinerary } from '@/lib/parser/hotel-canonical-learner'
 import { extractProductRawTextSection, stripSharedCatalogPrefixForProductDetail } from '@/lib/parser/catalog-pre-split';
 import type { MultiProductResult, ParsedDocument } from '@/lib/parser';
 import { issueUploadInternalCode } from '@/lib/product-registration/destination-resolution';
+import { loadApprovedDestinationMedia } from '@/lib/product-registration/approved-destination-media';
 import { finalizeUploadRegistration } from '@/lib/product-registration/finalize-registration';
 import { buildUploadPersistenceRows } from '@/lib/product-registration/persistence-rows';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
@@ -401,6 +402,21 @@ export async function processUploadRegistrationProducts(input: {
       }
       console.log(`[Upload API] status finalized: products=${productStatus}, travel_packages=${pkgStatus} (confidence=${(confidenceV3 * 100).toFixed(0)}%)`);
 
+      const approvedDestinationMediaLookup = await loadApprovedDestinationMedia({
+        supabase: input.supabase,
+        isSupabaseConfigured: input.isSupabaseConfigured,
+        destination: ed.destination,
+      });
+      if (
+        approvedDestinationMediaLookup.status === 'invalid'
+        || approvedDestinationMediaLookup.status === 'lookup_error'
+      ) {
+        console.warn(
+          '[Upload API] approved destination media skipped:',
+          approvedDestinationMediaLookup.reason,
+        );
+      }
+
       const persistenceRows = buildUploadPersistenceRows({
         registration: registrationResult,
         finalized: finalizedRegistration,
@@ -423,6 +439,9 @@ export async function processUploadRegistrationProducts(input: {
         marketingCopies: [],
         catalogGroupId: input.catalogGroupId,
         filenameMarginRate: input.filenameRule.marginRate ?? null,
+        approvedDestinationMedia: approvedDestinationMediaLookup.status === 'ready'
+          ? approvedDestinationMediaLookup.media
+          : null,
       });
 
       const persistenceResult = await persistUploadRegistrationRows({

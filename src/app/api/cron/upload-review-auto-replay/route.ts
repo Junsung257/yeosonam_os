@@ -11,7 +11,10 @@ import { buildUploadReviewRegressionReport } from '@/lib/product-registration/up
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import {
+  DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+  parseUploadSourceMetadata,
+} from '@/lib/upload-source-metadata';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -124,8 +127,17 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
   const metadata = parseUploadSourceMetadata({
     rawText,
     sourceLabel,
-    defaultCommissionRate: 10,
+    defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
   });
+  const commercialMetadataErrors = metadata.issues.filter(issue => issue.severity === 'error');
+  if (commercialMetadataErrors.length > 0) {
+    return {
+      id: row.id,
+      title: row.product_title,
+      status: 'skipped',
+      reason: '랜드사와 실제 계약 커미션이 없어 자동 재처리를 보류했습니다.',
+    };
+  }
 
   const shouldUseDuplicateGuard = row.error_reason?.includes('UPLOAD_PIPELINE_SOFT_TIMEOUT') ?? false;
   const result = await runUploadRegistrationPipeline({

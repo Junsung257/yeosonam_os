@@ -26,6 +26,8 @@ const SELECT_COLUMNS = [
   'mrt_gid',
   'is_active',
   'customer_publishable',
+  'verification_status',
+  'source',
 ].join(',');
 
 function argValue(name: string): string | null {

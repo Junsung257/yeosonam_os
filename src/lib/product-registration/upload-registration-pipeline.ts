@@ -60,6 +60,21 @@ export async function runUploadRegistrationPipeline(input: {
     console.log('[Upload API] force=1 duplicate guard bypassed');
   }
 
+  const commercialMetadataErrors = uploadSourceMetadata.issues.filter(
+    issue => issue.severity === 'error',
+  );
+  if (commercialMetadataErrors.length > 0) {
+    return {
+      status: 422,
+      payload: {
+        success: false,
+        code: 'UPLOAD_COMMERCIAL_METADATA_REQUIRED',
+        error: '랜드사와 실제 계약 커미션을 확인한 뒤 등록하세요.',
+        issues: commercialMetadataErrors,
+      },
+    };
+  }
+
   const uploadContext = await loadUploadRegistrationContext({
     supabase: input.supabase,
     isSupabaseConfigured: input.isSupabaseConfigured,

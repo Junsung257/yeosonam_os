@@ -139,6 +139,102 @@ function extractKoreanGradeDatePriceRows(rawText: string, options: PriceIROption
   return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
 }
 
+function extractKoreanDurationGradeMonthRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
+    ? options.durationDays
+    : null;
+  const preferred = selectedGradeIndex(options.title);
+  const rows: MatrixPriceRow[] = [];
+  let active = false;
+  let currentMonth: number | null = null;
+  let pendingDates: string[] = [];
+  let pendingPrices: number[] = [];
+  let gradeLabels: string[] = [];
+
+  const flush = (): void => {
+    if (!active || gradeLabels.length < 2 || pendingDates.length === 0 || pendingPrices.length === 0) {
+      pendingDates = [];
+      pendingPrices = [];
+      return;
+    }
+    const selectedIndexes = preferred != null && pendingPrices[preferred] != null
+      ? [preferred]
+      : pendingPrices.map((_, index) => index);
+    for (const date of [...new Set(pendingDates)]) {
+      for (const index of selectedIndexes) {
+        const price = pendingPrices[index];
+        if (!price) continue;
+        const label = gradeLabels[index] ?? null;
+        rows.push({
+          date,
+          adult_price: price,
+          child_price: null,
+          note: label
+            ? `source_korean_duration_grade_month:${label}`
+            : 'source_korean_duration_grade_month',
+          status: 'available',
+          option_label: label,
+          option_type: label ? 'hotel' : null,
+        });
+      }
+    }
+    pendingDates = [];
+    pendingPrices = [];
+  };
+
+  for (let i = 0; i < Math.min(lines.length, 180); i++) {
+    const duration = parseDurationDays(lines[i]);
+    if (duration != null) {
+      flush();
+      active = wantedDuration == null || duration === wantedDuration;
+      currentMonth = null;
+      gradeLabels = [];
+      continue;
+    }
+    if (!active) continue;
+    if (isKoreanStopSection(lines[i]) || /^▶/.test(lines[i])) {
+      flush();
+      active = false;
+      continue;
+    }
+
+    const month = parseStandaloneKoreanMonth(lines[i]);
+    if (month != null) {
+      flush();
+      currentMonth = month;
+      continue;
+    }
+
+    if (currentMonth == null && pendingDates.length === 0) {
+      const compact = lines[i].replace(/\s+/g, '');
+      if (/실속/.test(compact) && !gradeLabels.includes('실속')) gradeLabels.push('실속');
+      if (/고품격/.test(compact) && !gradeLabels.includes('고품격')) gradeLabels.push('고품격');
+      else if (/품격/.test(compact) && !gradeLabels.includes('품격')) gradeLabels.push('품격');
+      continue;
+    }
+
+    const dates = parseStandaloneKoreanDayList(lines[i], currentMonth, options.year);
+    if (dates.length > 0) {
+      if (pendingPrices.length > 0) flush();
+      pendingDates.push(...dates);
+      continue;
+    }
+
+    const price = parseKoreanWonPrice(lines[i]);
+    if (price > 0 && pendingDates.length > 0) {
+      pendingPrices.push(price);
+      const expectedPriceCount = Math.max(1, gradeLabels.length);
+      if (pendingPrices.length >= expectedPriceCount) flush();
+    }
+  }
+  flush();
+
+  const byKey = new Map<string, MatrixPriceRow>();
+  for (const row of rows) byKey.set(`${row.date}|${row.adult_price}|${row.note ?? ''}`, row);
+  return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+}
+
 function parseKoreanDayList(line: string, month: number | null, yearHint?: number): string[] {
   if (month == null) return [];
   const compact = line.replace(/\s+/g, '');
@@ -602,6 +698,7 @@ export function extractProductPriceVerticalDateRows(
     ...extractKoreanDepartureLinePriceRows(rawText, options),
     ...extractKoreanDurationSectionPriceRows(rawText, options),
     ...extractKoreanGradeDatePriceRows(rawText, options),
+    ...extractKoreanDurationGradeMonthRows(rawText, options),
     ...extractKoreanHotelMonthDayRows(rawText, options),
   ];
   if (sourceKoreanRows.length > 0) {

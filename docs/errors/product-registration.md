@@ -1739,3 +1739,66 @@ Last updated: 2026-06-21
 - **Verification**: `npx vitest run src/lib/customer-mobile-proof.test.ts src/lib/auto-mobile-qa.test.ts src/app/api/packages/[id]/approve/route.test.ts src/lib/product-registration/upload-route-boundary.test.ts` and `npx tsc --noEmit --pretty false`.
 - **Status**: FIXED IN ENGINE
 - **Prevention**: Do not call a product complete from source audit alone. Final completion requires actual `/packages/{id}` mobile proof plus A4 readiness.
+
+# ERR-destination-image-unapproved-auto-match@2026-07-30
+
+- **Discovered**: 2026-07-30
+- **Domain**: product registration / mobile landing image evidence
+- **Symptom**: 상품 등록 후 Pexels 검색 상위 3장을 `products.thumbnail_urls`에 자동 저장했지만 모바일 검증은 그 작업보다 먼저 실행됐다. `/logo.png`도 안전한 URL이라는 이유로 대표 이미지처럼 렌더되어 고객 공개 준비율이 실제보다 높게 보일 수 있었다.
+- **Root cause**: 검색 후보와 고객 승인 이미지를 구분하는 DB 승인 SSOT가 운영 스키마에 없었고, 이미지 선택·저장·모바일 proof의 실행 순서가 분리돼 있었다.
+- **Fix**: `destination_metadata` 승인 SSOT와 RLS를 추가하고, `photo_approved=true + 승인 시각 + 저작자 + 안전한 URL + 목적지 정확 일치`인 경우에만 `travel_packages.approved_destination_media`와 히어로 URL을 등록 전에 동결한다. 기존 자동 Pexels 상위 결과 적용은 제거했다. `/logo.png`는 preview-only이며 고객 이미지 gate를 통과하지 못한다.
+- **Verification**: `destination-media-contract.test.ts`, `approved-destination-media.test.ts`, `persistence-rows.test.ts`, `public-snapshot.test.ts`, 원격 Supabase RLS/constraint 확인, `/packages`와 `/lp` 모바일 재증명.
+- **Status**: ENGINE FIXED; 13개 목적지 사진 승인 및 29개 상품 재증명은 미완료.
+- **Prevention**: 검색 결과는 항상 후보이며 승인 전 고객 데이터가 아니다. 공개 렌더는 목적지 DB를 실시간 조회하지 않고 증명된 상품 snapshot만 사용한다.
+
+# ERR-destination-media-korean-storage-key@2026-07-30
+
+- **Discovered**: 2026-07-30
+- **Domain**: product registration / destination media candidate storage
+- **Symptom**: 시각 검토를 마친 Wikimedia Commons 후보를 저장할 때 한글 목적지 기반 경로가 Supabase Storage의 `Invalid key`로 거부됐다.
+- **Root cause**: URL용 `encodeURIComponent(destination)` 값을 Storage 객체 키에도 그대로 사용할 수 있다고 가정했다. URL 쿼리 인코딩과 Storage 키 허용 규칙은 같지 않다.
+- **Fix**: 목적지 문자열을 NFC로 정규화하고 SHA-256의 앞 24자리로 결정적 ASCII 경로를 만든다. 원본 이미지의 허용 호스트, 리다이렉트 호스트, MIME, 실제 파일 시그니처, 10MB 제한을 확인한 뒤 저장한다.
+- **Verification**: 목적지 후보 13건이 모두 여소남 `destination-photos` Storage에 복사됐고, `photo_approved=false`, 승인 시각 0건, 익명 공개 조회 0건으로 확인됐다. 관련 테스트 64개, 타입 검사, ESLint, diff check를 통과했다.
+- **Status**: FIXED
+- **Prevention**: 외부 식별자·한글 표시명을 Storage 키로 직접 사용하지 않는다. 검색 후보 저장 성공을 고객 승인이나 상품 공개 준비 완료로 계산하지 않는다.
+
+# ERR-destination-media-admin-hidden-candidates@2026-07-30
+
+- **Discovered**: 2026-07-30
+- **Domain**: product registration / destination media owner approval
+- **Symptom**: 운영 DB에는 미승인 목적지 후보 13건이 있었지만 `/admin/destinations`는 `전체 0 / 미승인 0`으로 표시했다. 후보 검색과 저장 API는 표준 성공 응답의 `data` 안에 결과를 넣었는데 UI는 최상위 `photos`, `public_url`을 읽어 실제 성공 결과도 잃을 수 있었다.
+- **Root cause**: 화면 목록을 `active_destinations`에서만 만들고 metadata는 기존 활성 목적지에 붙이는 용도로만 사용했다. 상품이 아직 없는 후보 행은 합집합에 들어가지 않았다. 또한 내부 미승인 목록의 캐시 방지와 라우트 자체 관리자 검증이 부족했고, UI와 API 응답 계약이 어긋났다.
+- **Fix**: 활성 목적지와 모든 metadata 후보를 합집합으로 표시하고 두 목록 요청을 `no-store`로 읽는다. UI는 표준 `data` 봉투를 해석한다. 미승인 목록·검색·저장·승인 변경 API에 라우트 자체 관리자 검증과 비공개 캐시 정책을 추가했다. 승인 버튼은 공급자별 권리 근거가 완전할 때만 활성화하고 저작자·라이선스·원본 링크와 확인창을 제공한다.
+- **Verification**: 새 브라우저 컨텍스트에서 `전체 13 / 미승인 13 / 완료 0`을 확인했다. 클락 후보는 저작자, CC BY-SA 3.0, 원본 링크, 고객 미노출 문구, 활성 승인 버튼을 표시했고 이미지는 1280px로 로드됐다. 후보 13개 전체가 HTTP 200, JPEG, 실제 크기 로딩을 통과했다. 미인증 API 선차단과 미승인 저장 테스트를 포함한 목적지 미디어 테스트 15개가 통과했다.
+
+# ERR-shared-catalog-price-column-duration-collapse@2026-07-31
+
+- **Discovered**: 2026-07-31
+- **Domain**: product registration / source-backed price IR
+- **Symptom**: 나트랑 공용 가격표처럼 `3박5일` 상품 5개와 `4박6일` 상품 1개를 한 표에 둔 원문을 재처리하면 상품별 열이 3단계 등급표로 축약되고, `4박` 구간 전에 파싱이 끝났다. 그 결과 같은 날짜에 두 가격이 생기거나 품격·나판달·자유호핑·4박 상품이 다른 열의 가격을 받을 수 있었다.
+- **Root cause**: `vertical-grade-price-table`이 연속 가격을 최대 5개만 읽고, 3개 이상이면 숙박일수 필터를 건너뛰었으며, 첫 비날짜 행에서 종료했다. 다중 상품 열을 상품명과 연결하지 않았고 원문 어디엔가 `특가`가 있으면 같은 날짜의 뒤 가격을 무조건 버릴 수 있는 위험도 있었다.
+- **Fix**: 최대 8개 가격 열을 읽고, 원문의 정확한 `3박`/`4박` 구간을 행에 보존해 상품 숙박일수와 맞춘다. 현재 검증된 6상품 표는 상품 정체성으로 열을 선택한다. 같은 날짜의 할인 우선은 가격표 바로 앞의 명시적 `특가`/`SPOT` 근거와 모든 열의 동일한 양의 할인 차이가 함께 있을 때만 허용하며, 그 외 가격 충돌은 보존해 공개 게이트가 차단한다.
+- **Verification**: 6상품 열·3박/4박 구간·명시적 특가·비특가 충돌 보존·다른 5열 표 오적용 방지 회귀를 추가했다. 집중 2개 파일 39개 테스트와 실제 저장 원문 20/20 재처리가 통과했다.
+- **Status**: FIXED IN ENGINE; 기존 `pending_review` 저장 행의 공개 상태나 가격은 변경하지 않았다.
+- **Prevention**: 다중 열 가격표를 `실속/스탠다드/품격` 3열로 추정하지 않는다. 상품 열·숙박 구간·특가 근거 중 하나라도 불명확하면 가격 하나를 임의 선택하지 말고 고객 공개를 차단한다.
+- **Status**: FIXED LOCALLY; deployment and owner approval pending
+- **Prevention**: 운영 큐 화면은 활성 상품 집합만으로 만들지 않는다. 대기 행의 SSOT와 합집합을 사용하고, API 응답 봉투·권한·캐시·승인 전이까지 실제 브라우저와 동작 테스트로 증명한다.
+
+# ERR-upload-commercial-metadata-default@2026-07-31
+
+- **Discovered**: 2026-07-31
+- **Domain**: product registration / commercial metadata / publication gate
+- **Symptom**: `admin/upload`가 랜드사와 계약 커미션을 받지 않은 파일도 처리할 수 있었고, 일부 경로는 커미션 9% 또는 10%를 묵시적으로 채웠다. 실제 HWP 39개·상품 71개에는 계약 당사자와 커미션 근거가 없는데도 1개 초안에 9%가 저장돼 있었다.
+- **Root cause**: 파일 업로드 폼이 상업조건 필드를 전송하지 않았고, 메타데이터 파서와 배치 스크립트가 호환용 기본 커미션을 등록 가능한 값처럼 취급했다. 공개 게이트도 랜드사·커미션 누락을 독립 하드 블로커로 검사하지 않았다.
+- **Fix**: 텍스트·파일·배치·수동 검수큐 재처리·자동 재처리 모든 진입점에서 랜드사와 실제 계약 커미션을 필수로 받고, 누락·범위 오류는 DB 저장 전에 422 또는 보류로 종료한다. `admin/upload`에 두 필드를 추가하고 파일명 규칙은 `[랜드사_커미션%]`처럼 두 값이 명시된 경우에만 허용한다. 공개 스냅샷 게이트에도 상업조건 하드 블로커를 추가했으며, 기존 1개 초안의 추정 9%를 `NULL`로 되돌리고 비공개·차단 상태를 유지했다.
+- **Verification**: HWP 전체 재감사에서 콘텐츠·이미지·엔티티 기준 고객 준비 21/71은 유지됐지만 상업조건 확인 0/71, 엄격한 실제 등록 준비 0/71로 분리됐다. 상품별 71행 상업조건 입력 CSV와 71개 운영 체크리스트가 생성됐다. 텍스트·multipart·파일명 메타데이터, 다중상품/다중파일 배치 중단, 재처리 차단, 저장 직전 이중 차단, 공개 게이트, 운영 조치 회귀를 통과해야 한다.
+- **Status**: FIXED LOCALLY; 실제 랜드사·계약 커미션 39개 입력과 재감사 전 고객 공개 불가
+- **Prevention**: 파일명 숫자, 과거 평균, 기본 9%/10%를 커미션 근거로 사용하지 않는다. 상업조건은 사용자가 제공한 명시값 또는 검증된 계약 SSOT만 허용하고, 미확정 상태는 항상 저장·공개를 fail closed 한다.
+
+# ERR-upload-commercial-metadata-9-default-policy@2026-08-02
+
+- **Discovered**: 2026-08-02
+- **Domain**: product registration / commercial metadata / automation
+- **Decision**: The operator explicitly authorized a `9%` platform fallback when a land-operator commission is omitted. The fallback is applied consistently by the central upload intake, admin form, offline HWP audit, manual replay, and automatic replay paths.
+- **Safety boundary**: The fallback never invents or infers the land operator, is marked `commission_rate_defaulted` with review severity, remains internal, and can be overwritten by a verified contract master or an explicit value before settlement. Invalid explicit rates still fail closed.
+- **Verification**: The default is defined once as `DEFAULT_LAND_OPERATOR_COMMISSION_RATE`, and every upload path uses that constant. Customer payload sanitization and publication/mobile gates remain unchanged.

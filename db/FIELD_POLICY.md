@@ -42,6 +42,28 @@
 
 ## ⚠️ 경계 필드 (Conditional)
 
+## 🖼️ 목적지 대표 이미지 승인 경계 (2026-07-30)
+
+| 테이블/필드 | 노출 | 의미 |
+|------|------|------|
+| `destination_metadata.hero_image_url` | 승인 후만 | 사장님 검수 대기 또는 승인된 목적지 대표 이미지 |
+| `destination_metadata.hero_image_provider` | 내부 근거 | `wikimedia_commons`, `pexels`, `supplier_official`, `owner_upload` 중 실제 공급 경로 |
+| `destination_metadata.hero_image_pexels_id` | 내부 근거 | Pexels 원본 자산 ID. 다른 출처면 `null` |
+| `destination_metadata.hero_image_source_page_url` | 내부 근거 | 라이선스·출처를 재확인할 수 있는 원본 상세 페이지 |
+| `destination_metadata.hero_image_source_file_title` | 내부 근거 | Wikimedia Commons 등 원본 파일 제목 |
+| `destination_metadata.hero_image_license`, `hero_image_license_url` | 내부/고객 표시 근거 | 사용 허용 라이선스 이름과 원문 URL |
+| `destination_metadata.hero_photographer` | 내부/저작자 표시 근거 | 승인 시 필수 저작자·권리자 |
+| `destination_metadata.photo_approved` | 승인 경계 | 검색/업로드 후보는 항상 `false`; 사장님이 사진과 목적지 일치를 확인한 뒤만 `true` |
+| `destination_metadata.photo_approved_at` | 내부 감사 | 승인 시각. `photo_approved=true`이면 필수 |
+| `travel_packages.approved_destination_media` | 내부 동결 근거 | 모바일/A4 proof 전에 상품에 복사한 승인 URL·출처·승인 시각 |
+| `travel_packages.hero_image_url`, `lp_hero_image_url` | 고객 노출 | 상품 고유 이미지가 없을 때 승인된 목적지 이미지 URL만 허용 |
+
+- Pexels/검색 결과의 첫 이미지를 자동 선택하거나 `products.thumbnail_urls`에 자동 저장하지 않는다.
+- 외부 검색 이미지는 원본 호스트를 그대로 핫링크하지 않는다. 허용된 원본·실제 이미지 형식·10MB 이하를 확인해 `destination-photos` Storage에 복사하고, 출처 페이지·파일명·저작자·라이선스를 함께 보관한다.
+- 승인된 목적지명과 상품 `destination`은 공백 정리 후 **정확히 같아야** 하며 alias 추측으로 연결하지 않는다.
+- 공개 화면은 `destination_metadata`를 실시간 조회하지 않는다. 승인된 근거를 `travel_packages`에 복사한 뒤 그 revision으로 모바일/A4 proof를 수행하고 public snapshot에 고정한다.
+- `/logo.png`는 레이아웃 미리보기용일 뿐 고객 공개 가능 이미지가 아니다.
+
 ## 🆕 2026-04-27 — `special_notes` deprecation + customer/internal 분리
 
 | 필드 | 노출 | 용도 |

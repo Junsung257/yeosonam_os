@@ -9,9 +9,13 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
+import { recoverCatalogSplitFromRawText } from '@/lib/product-registration/catalog-split-recovery';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 import type { UploadRequestIntakeSuccess } from '@/lib/product-registration/upload-request-intake';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import {
+  DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+  parseUploadSourceMetadata,
+} from '@/lib/upload-source-metadata';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { extractHwpxText } from '@/lib/parser/hwpx-text';
 
@@ -509,8 +513,14 @@ function buildIntake(input: {
     sourceLabel: input.fileName,
     explicitLandOperator: input.options.landOperator ?? undefined,
     explicitCommissionRate: input.options.commissionRate ?? undefined,
-    defaultCommissionRate: 9,
+    defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
   });
+  const metadataErrors = metadata.issues.filter(issue => issue.severity === 'error');
+  if (metadataErrors.length > 0) {
+    throw new Error(
+      `[upload metadata] ${input.fileName}: ${metadataErrors.map(issue => issue.message).join(' ')}`,
+    );
+  }
   const parserRawText = metadata.parserRawText ?? input.rawText;
   const inputAnalysisForTrust = analyzeUploadInputText(input.rawText);
   const buffer = Buffer.from(parserRawText, 'utf8');
@@ -645,6 +655,33 @@ async function main(): Promise<void> {
       report.summary.extractionFailed++;
     }
     report.rows.push(row);
+  }
+
+  if (options.register) {
+    const registrationCandidates = report.rows.filter(
+      candidate => candidate.status === 'extracted' && candidate.extractedTextPath,
+    );
+    const candidateProductCounts = await Promise.all(
+      registrationCandidates.map(async candidate => {
+        const rawText = await readTextFile(candidate.extractedTextPath as string);
+        const recovered = recoverCatalogSplitFromRawText(rawText);
+        return {
+          fileName: candidate.fileName,
+          products: recovered.length > 0 ? recovered.length : 1,
+        };
+      }),
+    );
+    const unsafeBatch = registrationCandidates.length !== 1
+      || candidateProductCounts.some(candidate => candidate.products !== 1);
+    if (unsafeBatch) {
+      report.finishedAt = new Date().toISOString();
+      report.summary.mobileLandingVerificationReason =
+        '상업조건은 상품별 계약값입니다. 여러 파일 또는 다중상품 HWP 배치 등록은 금지하며 admin/upload에서 상품 텍스트를 한 건씩 등록해야 합니다.';
+      await writeJson(reportPath, report);
+      console.error(`[upload-inbox] ${report.summary.mobileLandingVerificationReason}`);
+      console.error(`[upload-inbox] candidates: ${JSON.stringify(candidateProductCounts)}`);
+      process.exit(1);
+    }
   }
 
   report.dbPreflight = await checkDbPreflight(options.register);

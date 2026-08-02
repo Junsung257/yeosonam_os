@@ -29,6 +29,7 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { findPublicHeroAttribution, publicImageAttributionLabel } from '@/lib/public-image-attribution';
 import { useChatStore } from '@/lib/chat-store';
 import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
 import {
@@ -136,6 +137,7 @@ interface Package {
   hero_tagline?: string;
   product_summary?: string;
   lp_hero_image_url?: string | null;
+  images_public?: unknown[] | null;
   thumbnail_urls?: string[] | null;
   products?: { display_name?: string; internal_code?: string };
   _canonical_view?: CanonicalView | null;
@@ -958,6 +960,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       return isSafeImageSrc(src) ? src.trim() : null;
     });
   }, [pkg, attractions]);
+  const heroAttribution = useMemo(
+    () => findPublicHeroAttribution(pkg?.images_public, pkg?.lp_hero_image_url),
+    [pkg?.images_public, pkg?.lp_hero_image_url],
+  );
 
   // Hero 멀티 슬라이드 갤러리
   const heroPhotos = useMemo(() => {
@@ -1246,6 +1252,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/10" />
+        {heroAttribution && (
+          <a
+            href={heroAttribution.sourcePageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute right-3 top-24 z-10 max-w-[70%] rounded bg-black/55 px-2 py-1 text-[10px] leading-tight text-white/90 backdrop-blur-sm"
+            aria-label={`이미지 출처: ${publicImageAttributionLabel(heroAttribution)}`}
+          >
+            사진: {publicImageAttributionLabel(heroAttribution)}
+          </a>
+        )}
 
         {/* 상단 네비 */}
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-12">

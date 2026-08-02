@@ -92,6 +92,7 @@
     "repair:pending-placeholder-attractions": "npx tsx scripts/repair-pending-placeholder-attractions.ts",
     "report:upload-review-fixtures": "npx tsx scripts/export-upload-review-fixture-candidates.ts",
     "quality:upload-to-open": "node scripts/run-with-vercel-env.mjs --environment=production -- node -e \"fetch((process.env.NEXT_PUBLIC_BASE_URL||process.env.NEXT_PUBLIC_SITE_URL||'https://www.yeosonam.com') + '/api/cron/upload-to-open-autopilot?force=true&autoOpen=true&limit=10', {headers: process.env.CRON_SECRET ? {authorization: 'Bearer ' + process.env.CRON_SECRET} : {}}).then(async r => { console.log(await r.text()); process.exit(r.ok ? 0 : 1); })\"",
+    "quality:destination-media-approval": "npx tsx scripts/run-destination-media-approval.ts",
     "audit:publishable-attraction-pollution": "npx tsx scripts/audit-publishable-attraction-pollution.ts",
     "fill:attraction-photos": "npx tsx scripts/fill-attraction-photos.ts",
     "fill:attraction-descriptions": "npx tsx scripts/fill-attraction-descriptions.ts",

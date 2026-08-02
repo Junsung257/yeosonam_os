@@ -2,8 +2,10 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { STANDARD_PRODUCT_MARKDOWN_TEMPLATE } from '@/lib/standard-product-markdown';
+import { DEFAULT_LAND_OPERATOR_COMMISSION_RATE } from '@/lib/upload-source-metadata';
 import type {
   RegistrationRemediationAction,
   RegistrationRemediationPlan,
@@ -28,6 +30,7 @@ interface QueueItem {
   confidence?: number;
   landOperator?: string;
   commissionRate?: number;
+  commissionRateWasDefaulted?: boolean;
   trustScore?: {
     score: number;
     grade: 'perfect' | 'review' | 'blocked';
@@ -412,9 +415,13 @@ export default function UploadPage() {
   // 2026-05-15 박제: 강제 재처리 — 같은 텍스트 hash 가 archived/inactive 상품이 아니어도 재처리
   const [forceReprocess, setForceReprocess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileLandOperator, setFileLandOperator] = useState('');
+  // Keep the field blank so a verified filename/contract marker can win; the
+  // central intake applies the same 9% fallback only when no value is supplied.
+  const [fileCommissionRate, setFileCommissionRate] = useState('');
   const [textInput, setTextInput] = useState('');
   const [textLandOperator, setTextLandOperator] = useState('');
-  const [textCommissionRate, setTextCommissionRate] = useState('10');
+  const [textCommissionRate, setTextCommissionRate] = useState('');
   const [copiedRemediationKey, setCopiedRemediationKey] = useState<string | null>(null);
 
   const activeCountRef = useRef(0);
@@ -443,11 +450,17 @@ export default function UploadPage() {
       return allowed.includes(ext);
     }).slice(0, 50);
 
+    const landOperator = fileLandOperator.trim() || undefined;
+    const commissionRateValue = fileCommissionRate.trim() ? Number(fileCommissionRate) : Number.NaN;
+    const commissionRate = Number.isFinite(commissionRateValue) ? commissionRateValue : undefined;
+
     setQueue(prev => [
       ...prev,
       ...valid.map(f => ({
         id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file: f,
+        landOperator,
+        commissionRate,
         status: 'waiting' as const,
       })),
     ]);
@@ -466,9 +479,12 @@ export default function UploadPage() {
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   };
 
-  const uploadSingle = async (file: File): Promise<Partial<QueueItem>> => {
+  const uploadSingle = async (item: QueueItem): Promise<Partial<QueueItem>> => {
+    const file = item.file;
     const formData = new FormData();
     formData.append('file', file);
+    if (item.landOperator) formData.append('landOperator', item.landOperator);
+    if (item.commissionRate != null) formData.append('commissionRate', String(item.commissionRate));
     const uploadUrl = buildUploadUrl();
     const res = await fetchWithSessionRefresh(uploadUrl, { method: 'POST', body: formData });
     const data = await safeResJson(res);
@@ -485,6 +501,7 @@ export default function UploadPage() {
       confidence: data.finalConfidence ?? data.data?.confidence,
       landOperator: data.uploadMetadata?.landOperator ?? (match ? match[1] : ed?.land_operator),
       commissionRate: data.uploadMetadata?.commissionRate ?? (match ? parseFloat(match[2]) : undefined),
+      commissionRateWasDefaulted: data.uploadMetadata?.commissionRateWasDefaulted ?? false,
       productCount: data.productCount,
       titles: data.titles,
       tokenUsage: data.tokenUsage ?? null,
@@ -508,7 +525,7 @@ export default function UploadPage() {
       setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: 'processing' } : it));
 
       try {
-        const result = await uploadSingle(items[i].file);
+        const result = await uploadSingle(items[i]);
         setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: result.status ?? 'done', ...result } : it));
         if (result.status === 'deferred') {
           pollDeferredReplay(items[i].id, {
@@ -730,6 +747,7 @@ export default function UploadPage() {
         confidence: data.finalConfidence ?? data.data?.confidence,
         landOperator: data.uploadMetadata?.landOperator ?? item.landOperator ?? ed?.land_operator,
         commissionRate: data.uploadMetadata?.commissionRate ?? item.commissionRate,
+        commissionRateWasDefaulted: data.uploadMetadata?.commissionRateWasDefaulted ?? false,
         tokenUsage: data.tokenUsage ?? null,
         gate: data.gate ?? null,
         remediation: data.remediation ?? undefined,
@@ -764,7 +782,8 @@ export default function UploadPage() {
 
     const now = Date.now();
     const landOperator = textLandOperator.trim() || undefined;
-    const commissionRate = Number(textCommissionRate);
+    const commissionRateInput = textCommissionRate.trim();
+    const commissionRate = commissionRateInput ? Number(commissionRateInput) : Number.NaN;
     const safeCommissionRate = Number.isFinite(commissionRate) ? commissionRate : undefined;
     const newItems: QueueItem[] = chunks.map((chunk, i) => {
       itemSeqRef.current++;
@@ -887,6 +906,31 @@ export default function UploadPage() {
         <div className="space-y-4">
           {/* 드래그 존 */}
           <div className="bg-white p-5 rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block">
+                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">랜드사 (자동매칭 시 생략)</span>
+                <input
+                  value={fileLandOperator}
+                  onChange={e => setFileLandOperator(e.target.value)}
+                  placeholder="예: 투어폰"
+                  className="w-full rounded-lg border border-admin-border-mid px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">계약 커미션율(%) (자동매칭 시 생략)</span>
+                <input
+                  value={fileCommissionRate}
+                  onChange={e => setFileCommissionRate(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="예: 9"
+                  className="w-full rounded-lg border border-admin-border-mid px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+              <p className="sm:col-span-2 text-[10px] text-amber-700">
+                검증된 계약 원장 또는 파일명의 [랜드사_커미션%]에서 확정되면 비워도 됩니다. 커미션을 비워두면 기본 {DEFAULT_LAND_OPERATOR_COMMISSION_RATE}%가 자동 입력되고 실제 계약과 다를 때만 수정하면 됩니다.
+                한 파일에 여러 상품이 있고 상품별 조건이 다르면 파일 전체 업로드 대신 상품 텍스트를 한 건씩 등록하세요.
+              </p>
+            </div>
             <div
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
               role="button"
@@ -908,7 +952,10 @@ export default function UploadPage() {
               </svg>
               <p className="text-admin-text-2 text-admin-base font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
               <p className="text-[11px] text-admin-muted mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 10MB</p>
-              <p className="text-[11px] text-blue-600">[랜드사_커미션%]상품명.pdf 형식으로 파일명 작성 시 자동 추출</p>
+              <p className="text-[11px] text-blue-600">입력값 또는 [랜드사_커미션%]상품명.pdf 파일명에서만 확정합니다.</p>
+              <p className="text-[11px] text-admin-muted-2">
+                반복 공급사는 <Link href="/admin/commercial-contracts" className="text-blue-600 underline">검증된 계약 원장</Link>에 한 번 등록하면 다음 업로드부터 자동 입력됩니다.
+              </p>
             </div>
             <input
               ref={fileInputRef}
@@ -936,9 +983,9 @@ export default function UploadPage() {
             </div>
 
             <div className="mt-3 p-3 bg-admin-bg border border-admin-border-mid rounded-lg text-[11px] text-admin-muted">
-              <p className="font-semibold mb-1 text-admin-text-2">파일명 규칙 (선택)</p>
-              <p><span className="font-mono bg-admin-surface-2 px-1 rounded">[모두투어_10%]다낭3박4일.pdf</span> — 랜드사: 모두투어, 커미션: 10%</p>
-              <p className="mt-0.5 text-admin-muted">규칙 없는 파일도 정상 처리됩니다.</p>
+              <p className="font-semibold mb-1 text-admin-text-2">파일명으로 대신 입력하는 방법</p>
+              <p><span className="font-mono bg-admin-surface-2 px-1 rounded">[모두투어_9%]다낭3박4일.pdf</span> — 랜드사: 모두투어, 커미션: 9%</p>
+              <p className="mt-0.5 text-admin-muted">검증된 계약 원장에 없는 일회성 조건만 위 두 값을 입력합니다.</p>
             </div>
           </div>
 
@@ -980,7 +1027,7 @@ export default function UploadPage() {
             </div>
             <div className="mb-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className="block">
-                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">랜드사</span>
+                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">랜드사 (자동매칭 시 생략)</span>
                 <input
                   value={textLandOperator}
                   onChange={e => setTextLandOperator(e.target.value)}
@@ -989,7 +1036,7 @@ export default function UploadPage() {
                 />
               </label>
               <label className="block">
-                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">수수료율(%)</span>
+                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">계약 커미션율(%) (자동매칭 시 생략)</span>
                 <input
                   value={textCommissionRate}
                   onChange={e => setTextCommissionRate(e.target.value)}
@@ -999,7 +1046,7 @@ export default function UploadPage() {
                 />
               </label>
               <p className="sm:col-span-2 text-[10px] text-admin-muted-2">
-                내부 메타 전용입니다. 고객 화면, 모바일 LP, A4, 블로그/카드뉴스에는 노출하지 않습니다.
+                검증된 계약 원장 또는 원문 첫 줄의 명시 조건에서 확정되면 입력하지 않아도 됩니다. 커미션을 비워두면 기본 {DEFAULT_LAND_OPERATOR_COMMISSION_RATE}%가 자동 입력되며 실제 계약과 다르면 저장 전에 수정합니다.
               </p>
             </div>
             <textarea
@@ -1235,6 +1282,14 @@ export default function UploadPage() {
                             )}
                             {item.commissionRate != null && (
                               <span className="text-[11px] text-green-600 font-medium">커미션 {item.commissionRate}%</span>
+                            )}
+                            {item.commissionRateWasDefaulted && (
+                              <span
+                                className="text-[11px] text-amber-700 font-medium"
+                                title="커미션 미입력으로 플랫폼 기본값이 적용됐습니다. 정산 전에 실제 계약율을 확인하세요."
+                              >
+                                기본 9% 적용 · 계약 확인 필요
+                              </span>
                             )}
                             {item.tokenUsage && (
                               <span className="text-[11px] text-admin-muted-2" title={`in:${item.tokenUsage.inputTokens} out:${item.tokenUsage.outputTokens} cache:${item.tokenUsage.cacheHitTokens}`}>

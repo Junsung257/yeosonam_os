@@ -11,6 +11,7 @@ describe('parseUploadSourceMetadata', () => {
     expect(result.landOperator).toBe('투어폰');
     expect(result.commissionRate).toBe(9);
     expect(result.marginRate).toBe(0.09);
+    expect(result.commissionRateWasDefaulted).toBe(false);
     expect(result.source).toBe('raw_text');
     expect(result.metadataOnlyLineRemoved).toBe(true);
     expect(result.parserRawText).not.toContain('투어폰 9%');
@@ -54,15 +55,36 @@ describe('parseUploadSourceMetadata', () => {
     expect(result.source).toBe('explicit');
   });
 
-  it('defaults commission rate to 10 percent when missing', () => {
+  it('applies the 9% fallback while retaining a review warning when metadata is missing', () => {
     const result = parseUploadSourceMetadata({
       rawText: '연길/백두산 상품 원문입니다. 가격표와 일정이 충분히 들어있습니다.',
     });
 
     expect(result.landOperator).toBeUndefined();
-    expect(result.commissionRate).toBe(10);
-    expect(result.marginRate).toBe(0.1);
+    expect(result.commissionRate).toBe(9);
+    expect(result.commissionRateWasDefaulted).toBe(true);
+    expect(result.marginRate).toBe(0.09);
     expect(result.source).toBe('default');
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'land_operator_required', severity: 'error' }),
+      expect.objectContaining({ code: 'commission_rate_defaulted', severity: 'review' }),
+    ]));
+  });
+
+  it('accepts an explicit land operator with the 9% fallback commission', () => {
+    const result = parseUploadSourceMetadata({
+      explicitLandOperator: '투어폰',
+      rawText: '연길/백두산 상품 원문입니다. 가격표와 일정이 충분히 들어있습니다.',
+    });
+
+    expect(result.landOperator).toBe('투어폰');
+    expect(result.commissionRateWasDefaulted).toBe(true);
+    expect(result.commissionRate).toBe(9);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: 'commission_rate_defaulted',
+      severity: 'review',
+    }));
+    expect(result.issues.some(issue => issue.severity === 'error')).toBe(false);
   });
 
   it('flags out-of-range commission rates', () => {
@@ -72,6 +94,23 @@ describe('parseUploadSourceMetadata', () => {
 
     expect(result.landOperator).toBe('투어폰');
     expect(result.commissionRate).toBe(999);
-    expect(result.issues.some(issue => issue.code === 'commission_rate_out_of_range')).toBe(true);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: 'commission_rate_out_of_range',
+      severity: 'error',
+    }));
+  });
+
+  it('does not treat an invalid explicit commission as an omitted value', () => {
+    const result = parseUploadSourceMetadata({
+      explicitLandOperator: '투어폰',
+      explicitCommissionRate: 'not-a-number',
+    });
+
+    expect(result.commissionRate).toBe(9);
+    expect(result.commissionRateWasDefaulted).toBe(true);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: 'commission_rate_invalid',
+      severity: 'error',
+    }));
   });
 });

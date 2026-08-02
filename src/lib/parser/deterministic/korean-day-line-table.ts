@@ -129,6 +129,21 @@ function prependSyntheticDayOneWhenSplitByPdf(lines: string[], headers: DayHeade
   return [{ day: 1, index, tail: lines[index].trim() }, ...headers];
 }
 
+function findItineraryTableHeaderIndex(lines: string[]): number | null {
+  for (let index = 0; index < lines.length; index++) {
+    const compact = lines[index].replace(/\s+/g, '');
+    if (compact !== '날짜' && compact !== '일자') continue;
+    const structuralWindow = lines
+      .slice(index, Math.min(lines.length, index + 12))
+      .map(line => line.replace(/\s+/g, ''));
+    if (!structuralWindow.some(line => line === '일정' || line === '주요일정')) continue;
+    const firstDayWindow = lines.slice(index, Math.min(lines.length, index + 40));
+    if (!firstDayWindow.some(line => /^제\s*1\s*일(?:차)?(?:\s|$)/u.test(line.trim()))) continue;
+    return index;
+  }
+  return null;
+}
+
 function splitByKoreanDayLines(rawText: string): DayBlock[] {
   const lines = rawText.replace(/\r\n/g, '\n').split('\n');
   const headers: DayHeader[] = [];
@@ -153,9 +168,13 @@ function splitByKoreanDayLines(rawText: string): DayBlock[] {
     explicitDays.add(day);
   });
   headers.sort((left, right) => left.index - right.index);
+  const itineraryTableHeaderIndex = findItineraryTableHeaderIndex(lines);
+  const scheduleHeaders = itineraryTableHeaderIndex == null
+    ? headers
+    : headers.filter(header => header.index > itineraryTableHeaderIndex);
   const boundedHeaders = durationBound
-    ? headers.filter(header => header.day <= durationBound)
-    : headers;
+    ? scheduleHeaders.filter(header => header.day <= durationBound)
+    : scheduleHeaders;
   const effectiveHeaders = prependSyntheticDayOneWhenSplitByPdf(lines, boundedHeaders);
 
   if (effectiveHeaders.length === 0) return [];

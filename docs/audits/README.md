@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-24
+Last updated: 2026-07-31
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-31 | `2026-07-31-hwp-mobile-automation-audit.md` | 39 HWP/71상품 콘텐츠 95.8%, 이미지 71/71, 계약 원장 하드 게이트와 자동화 연결 증빙. |
 | 2026-07-06 | `2026-07-06-mobile-landing-copy-audit-smoke/` | Mobile landing copy audit smoke output for shared customer-facing package title/summary logic. |
 | 2026-06-24 | `2026-06-24-upload-function-timeout-queue-first.md` | Queue-first upload timeout prevention and replay-source preservation evidence. |
 | 2026-06-08 | `2026-06-08-product-registration-learning-engine-audit.md` | Self-improving registration engine verification and live readiness evidence. |

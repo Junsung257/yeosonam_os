@@ -242,4 +242,26 @@ describe('public snapshot generation diagnostics', () => {
     expect(itinerary?.evidence.join('\n')).toContain('masked_data_pollution');
     expect(itinerary?.repair_actions.join('\n')).toContain('Rebuild itinerary day rows from the source itinerary section');
   });
+
+  it('reports a brand-only fallback as repairable media instead of a customer-ready image', () => {
+    const pkg = samplePackage({
+      products: {
+        display_name: '\uC5F0\uAE38\u00B7\uBC31\uB450\uC0B0 \uD328\uD0A4\uC9C0',
+        thumbnail_urls: [],
+      },
+    });
+    const { snapshot } = buildPublicPackageSnapshot(pkg);
+    const report = diagnosePublicSnapshotGeneration({ pkg, snapshot });
+    const images = diagnosticByField(report).get('images');
+
+    expect(snapshot.images_public).toEqual([
+      expect.objectContaining({ source: 'brand_fallback', url: '/logo.png' }),
+    ]);
+    expect(images?.status).toBe('repairable');
+    expect(images?.evidence).toEqual(expect.arrayContaining([
+      'customer_ready_images=0',
+      'brand_fallbacks=1',
+    ]));
+    expect(images?.repair_actions.join('\n')).toContain('brand logo fallback');
+  });
 });

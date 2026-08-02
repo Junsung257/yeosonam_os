@@ -310,6 +310,8 @@ export async function buildUploadResponsePayload(input: {
     uploadMetadata: {
       landOperator: input.uploadSourceMetadata?.landOperator ?? input.filenameSupplierRaw ?? null,
       commissionRate: input.uploadSourceMetadata?.commissionRate ?? Math.round(input.marginRate * 10000) / 100,
+      commissionRateWasDefaulted: input.uploadSourceMetadata?.commissionRateWasDefaulted ?? false,
+      commercialMetadataSource: input.uploadSourceMetadata?.source ?? null,
       marginRate: input.marginRate,
       sourceLabel: input.uploadSourceMetadata?.cleanSourceLabel ?? input.fileName,
       metadataOnlyLineRemoved: input.uploadSourceMetadata?.metadataOnlyLineRemoved ?? false,

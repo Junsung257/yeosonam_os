@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
 
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { assessPublicImageReadiness } from '@/lib/package-publication/public-image-quality';
 import { recoverCatalogSplitFromRawText } from '@/lib/product-registration/catalog-split-recovery';
 import { auditA4Payload, auditPackagesPayload, runMicroAutoQA } from '@/lib/product-registration/auto-qa';
 import { extractUploadDestinationFromFilename } from '@/lib/product-registration/destination-resolution';
@@ -21,6 +22,8 @@ import {
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
 import type { StandardProductRegistrationObject } from '@/lib/product-registration/types';
 import type { ExtractedData } from '@/lib/parser';
+import { parseUploadSourceMetadata, type UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import type { ApprovedDestinationMedia } from '@/lib/product-registration/approved-destination-media';
 
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -51,6 +54,13 @@ type OfflineProductAudit = {
   blockerCategory: string | null;
   publishableOffline: boolean;
   customerReadyOffline: boolean;
+  commercialMetadataReady: boolean;
+  commercialMetadataIssues: string[];
+  landOperator: string | null;
+  commissionRate: number | null;
+  registrationReadyOffline: boolean;
+  customerImageReady: boolean;
+  approvedCustomerImageCount: number;
   customerReviewWarnings: string[];
   remediation: RegistrationRemediationPlan;
   blockers: string[];
@@ -78,6 +88,11 @@ type OfflineAuditReport = {
     products: number;
     publishableOffline: number;
     customerReadyOffline: number;
+    commercialMetadataReady: number;
+    commercialMetadataMissing: number;
+    registrationReadyOffline: number;
+    customerImageReady: number;
+    customerImageMissing: number;
     blocked: number;
     blockedByCategory: Record<string, number>;
     attractionCatalogVerified: boolean;
@@ -134,6 +149,49 @@ async function loadActiveAttractions(path: string | null): Promise<AttractionDat
   throw new Error(`active attractions cache has unsupported shape: ${fullPath}`);
 }
 
+async function loadApprovedDestinationMediaMap(): Promise<Map<string, ApprovedDestinationMedia>> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.SUPABASE_SERVICE_KEY
+    || process.env.SUPABASE_SECRET_KEY
+    || process.env.SUPABASE_SECRET_DEFAULT_KEY;
+  if (!url || !key) return new Map();
+  const { createClient } = await import('@supabase/supabase-js');
+  const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await client
+    .from('destination_metadata')
+    .select('destination, hero_image_url, hero_image_pexels_id, hero_photographer, hero_image_provider, hero_image_source_page_url, hero_image_source_file_title, hero_image_license, hero_image_license_url, hero_image_alt, photo_approved_at, photo_approval_source')
+    .eq('photo_approved', true);
+  if (error) throw error;
+
+  const result = new Map<string, ApprovedDestinationMedia>();
+  for (const row of data ?? []) {
+    const destination = String(row.destination ?? '').normalize('NFC').trim();
+    const approvalSource = row.photo_approval_source === 'owner_reviewed'
+      ? 'owner_approved_destination_metadata'
+      : row.photo_approval_source === 'automated_evidence_gate'
+        ? 'automated_evidence_gate'
+        : null;
+    if (!destination || !row.hero_image_url || !row.hero_photographer || !row.hero_image_provider
+      || !row.hero_image_source_page_url || !row.photo_approved_at || !approvalSource) continue;
+    result.set(destination, {
+      destination,
+      url: String(row.hero_image_url),
+      photographer: String(row.hero_photographer),
+      provider: row.hero_image_provider as ApprovedDestinationMedia['provider'],
+      pexels_id: row.hero_image_pexels_id == null ? null : Number(row.hero_image_pexels_id),
+      source_page_url: String(row.hero_image_source_page_url),
+      source_file_title: row.hero_image_source_file_title ? String(row.hero_image_source_file_title) : null,
+      license: row.hero_image_license ? String(row.hero_image_license) : null,
+      license_url: row.hero_image_license_url ? String(row.hero_image_license_url) : null,
+      alt: row.hero_image_alt ? String(row.hero_image_alt) : null,
+      approved_at: String(row.photo_approved_at),
+      approval_source: approvalSource,
+    });
+  }
+  return result;
+}
+
 function productsFromRawText(rawText: string): Array<{
   rawText: string;
   documentRawText: string;
@@ -171,6 +229,7 @@ function classifyBlockerCategory(blockers: string[]): string | null {
   if (/destination_unknown|destination code unresolved|destination_code:UNK/i.test(text)) return 'destination_unresolved';
   if (itineraryMissing) return 'itinerary_missing';
   if (priceMissing) return 'price_missing';
+  if (/PUBLIC_CUSTOMER_IMAGE_MISSING/i.test(text)) return 'customer_image_missing';
   return 'other';
 }
 
@@ -222,6 +281,7 @@ function buildOfflineRenderFixture(input: {
   registration: StandardProductRegistrationObject;
   activeAttractions: AttractionData[];
   customerReadyOffline: boolean;
+  approvedDestinationMedia: ApprovedDestinationMedia | null;
 }): OfflineRenderFixture {
   const registration = input.registration;
   const ed = registration.extractedData;
@@ -236,11 +296,12 @@ function buildOfflineRenderFixture(input: {
   const attractions = input.activeAttractions.filter(attraction => (
     typeof attraction.id === 'string' && referencedIds.has(attraction.id)
   ));
-  const heroImageUrl = attractions
+  const attractionHeroImageUrl = attractions
     .flatMap(attraction => attraction.photos ?? [])
     .map(photo => photo.src_large || photo.src_medium)
     .find(Boolean)
     ?? null;
+  const heroImageUrl = input.approvedDestinationMedia?.url ?? attractionHeroImageUrl;
   const title = registration.identity.title ?? ed.title ?? '상품명 검토 필요';
   const duration = registration.identity.durationDays ?? ed.duration ?? null;
   const id = `offline-${input.rawTextHash.slice(0, 24)}-${input.productIndex}`;
@@ -285,6 +346,9 @@ function buildOfflineRenderFixture(input: {
       guide_tip: ed.guide_tip ?? null,
       single_supplement: ed.single_supplement ?? null,
       lp_hero_image_url: heroImageUrl,
+      hero_image_url: heroImageUrl,
+      thumbnail_urls: heroImageUrl ? [heroImageUrl] : [],
+      approved_destination_media: input.approvedDestinationMedia,
       internal_code: registration.identity.internalCode,
       products: {
         internal_code: registration.identity.internalCode,
@@ -308,6 +372,8 @@ async function auditProduct(input: {
   title: string | null;
   activeAttractions: AttractionData[];
   activeAttractionCatalogVerified: boolean;
+  commercialMetadata: UploadSourceMetadataResult;
+  approvedDestinationMediaByDestination: Map<string, ApprovedDestinationMedia>;
 }): Promise<{ audit: OfflineProductAudit; fixture: OfflineRenderFixture }> {
   const registration = await registerProductFromRaw({
     rawText: input.rawText,
@@ -340,19 +406,51 @@ async function auditProduct(input: {
       ? [ACTIVE_ATTRACTION_CATALOG_UNAVAILABLE]
       : []),
   ];
+  const preliminaryCustomerReadiness = evaluateOfflineCustomerReadiness({
+    publishable: finalRegistration.publishable,
+    blockers,
+    warnings,
+    activeAttractionCatalogVerified: input.activeAttractionCatalogVerified,
+  });
+  const fixture = buildOfflineRenderFixture({
+    sourceFile: input.sourceFile,
+    productIndex: input.productIndex,
+    rawTextHash: hashText(input.rawText),
+    registration: finalRegistration,
+    activeAttractions: input.activeAttractions,
+    customerReadyOffline: preliminaryCustomerReadiness.ready,
+    approvedDestinationMedia: input.approvedDestinationMediaByDestination.get(
+      String(finalRegistration.identity.destination ?? '').normalize('NFC').trim(),
+    ) ?? null,
+  });
+  const imageReadiness = assessPublicImageReadiness(fixture.package);
+  if (!imageReadiness.customerReady) {
+    blockers.push('PUBLIC_CUSTOMER_IMAGE_MISSING: approved product, attraction, or destination image is required; brand fallback is preview-only');
+  }
   const customerReadiness = evaluateOfflineCustomerReadiness({
     publishable: finalRegistration.publishable,
     blockers,
     warnings,
     activeAttractionCatalogVerified: input.activeAttractionCatalogVerified,
   });
+  fixture.customerReadyOffline = customerReadiness.ready;
   const itineraryDays = finalRegistration.itinerary.itineraryDataToSave?.days?.length
     ?? finalRegistration.itinerary.itineraryInput?.days?.length
     ?? 0;
   const remediation = buildRegistrationRemediationPlan(
-    [...customerReadiness.reviewWarnings, ...blockers],
+    [
+      ...customerReadiness.reviewWarnings,
+      ...blockers,
+      ...input.commercialMetadata.issues
+        .filter(issue => issue.severity === 'error')
+        .map(issue => `COMMERCIAL_METADATA: ${issue.code} ${issue.message}`),
+    ],
     { productTitle: finalRegistration.identity.title },
   );
+  const commercialMetadataIssues = input.commercialMetadata.issues
+    .filter(issue => issue.severity === 'error')
+    .map(issue => `${issue.code}: ${issue.message}`);
+  const commercialMetadataReady = commercialMetadataIssues.length === 0;
 
   const audit: OfflineProductAudit = {
     sourceFile: input.sourceFile,
@@ -367,6 +465,13 @@ async function auditProduct(input: {
     blockerCategory: classifyBlockerCategory(blockers),
     publishableOffline: finalRegistration.publishable && blockers.length === 0,
     customerReadyOffline: customerReadiness.ready,
+    commercialMetadataReady,
+    commercialMetadataIssues,
+    landOperator: input.commercialMetadata.landOperator ?? null,
+    commissionRate: input.commercialMetadata.commissionRate,
+    registrationReadyOffline: customerReadiness.ready && commercialMetadataReady,
+    customerImageReady: imageReadiness.customerReady,
+    approvedCustomerImageCount: imageReadiness.approvedImageCount,
     customerReviewWarnings: customerReadiness.reviewWarnings,
     remediation,
     blockers: [...new Set(blockers)].slice(0, 40),
@@ -374,14 +479,7 @@ async function auditProduct(input: {
   };
   return {
     audit,
-    fixture: buildOfflineRenderFixture({
-      sourceFile: input.sourceFile,
-      productIndex: input.productIndex,
-      rawTextHash: audit.rawTextHash,
-      registration: finalRegistration,
-      activeAttractions: input.activeAttractions,
-      customerReadyOffline: audit.customerReadyOffline,
-    }),
+    fixture,
   };
 }
 
@@ -474,6 +572,8 @@ async function main(): Promise<void> {
   const activeAttractionsPath = requestedActiveAttractionsPath
     ?? (existsSync(defaultActiveAttractionsPath) ? defaultActiveAttractionsPath : null);
   const activeAttractions = await loadActiveAttractions(activeAttractionsPath);
+  const approvedDestinationMediaByDestination = await loadApprovedDestinationMediaMap();
+  console.log(`[offline-audit] approved destination media=${approvedDestinationMediaByDestination.size}`);
   const activeAttractionCatalogVerified = activeAttractionsPath !== null;
   if (!activeAttractionCatalogVerified) {
     console.warn(
@@ -488,6 +588,10 @@ async function main(): Promise<void> {
   for (const row of rows) {
     const textPath = resolve(row.extractedTextPath as string);
     const rawText = await readTextFile(textPath);
+    const commercialMetadata = parseUploadSourceMetadata({
+      rawText,
+      fileName: row.fileName ?? row.filePath ?? textPath,
+    });
     const sourceProducts = productsFromRawText(rawText);
     for (let index = 0; index < sourceProducts.length; index++) {
       const sourceProduct = sourceProducts[index];
@@ -501,6 +605,8 @@ async function main(): Promise<void> {
         title: sourceProduct.title,
         activeAttractions,
         activeAttractionCatalogVerified,
+        commercialMetadata,
+        approvedDestinationMediaByDestination,
       });
       products.push(audited.audit);
       renderFixtures.push(audited.fixture);
@@ -517,6 +623,11 @@ async function main(): Promise<void> {
       products: products.length,
       publishableOffline: products.filter(product => product.publishableOffline).length,
       customerReadyOffline: products.filter(product => product.customerReadyOffline).length,
+      commercialMetadataReady: products.filter(product => product.commercialMetadataReady).length,
+      commercialMetadataMissing: products.filter(product => !product.commercialMetadataReady).length,
+      registrationReadyOffline: products.filter(product => product.registrationReadyOffline).length,
+      customerImageReady: products.filter(product => product.customerImageReady).length,
+      customerImageMissing: products.filter(product => !product.customerImageReady).length,
       blocked: products.filter(product => !product.publishableOffline).length,
       blockedByCategory: countBlockedByCategory(products),
       attractionCatalogVerified: activeAttractionCatalogVerified,

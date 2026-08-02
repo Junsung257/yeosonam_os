@@ -2,7 +2,14 @@ import { createHash } from 'crypto';
 import type { NextRequest } from 'next/server';
 
 import { analyzeUploadInputText, normalizePastedSupplierText, type UploadInputAnalysis } from '@/lib/product-registration-input-guard';
-import { parseUploadSourceMetadata, type UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import { resolveVerifiedCommercialContract } from '@/lib/product-registration/commercial-contract-resolver';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import {
+  applyVerifiedUploadCommercialContract,
+  DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+  parseUploadSourceMetadata,
+  type UploadSourceMetadataResult,
+} from '@/lib/upload-source-metadata';
 
 const ALLOWED_UPLOAD_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx', '.txt', '.md'];
 
@@ -64,6 +71,88 @@ function buildUploadInputQualityError(analysis: UploadInputAnalysis, sourceType:
   };
 }
 
+function buildUploadCommercialMetadataError(metadata: UploadSourceMetadataResult) {
+  const issue = metadata.issues.find(candidate => candidate.severity === 'error');
+  if (!issue) return null;
+
+  const code = issue.code === 'commission_rate_out_of_range'
+    ? 'COMMISSION_RATE_OUT_OF_RANGE'
+    : issue.code === 'commission_rate_invalid'
+      ? 'COMMISSION_RATE_INVALID'
+    : issue.code === 'commercial_contract_ambiguous'
+      ? 'COMMERCIAL_CONTRACT_AMBIGUOUS'
+    : issue.code === 'commission_rate_required'
+      ? 'COMMISSION_RATE_REQUIRED'
+      : issue.code === 'land_operator_required'
+        ? 'LAND_OPERATOR_REQUIRED'
+        : 'UPLOAD_COMMERCIAL_METADATA_REQUIRED';
+
+  return {
+    success: false,
+    code,
+    error: issue.message,
+    suggestion: '실제 랜드사명과 계약 커미션율을 입력하거나 파일명을 [랜드사_커미션%]상품명 형식으로 작성하세요.',
+    uploadMetadata: {
+      landOperator: metadata.landOperator ?? null,
+      commissionRate: metadata.commissionRate,
+      commissionRateWasDefaulted: metadata.commissionRateWasDefaulted,
+      source: metadata.source,
+      issues: metadata.issues,
+    },
+  };
+}
+
+async function resolveCommercialMetadata(input: {
+  metadata: UploadSourceMetadataResult;
+  fileName?: string | null;
+  sourceLabel?: string | null;
+  rawText?: string | null;
+}): Promise<UploadSourceMetadataResult> {
+  const missingCommercialMetadata = input.metadata.commissionRateWasDefaulted
+    || input.metadata.issues.some(issue =>
+      issue.code === 'land_operator_required' || issue.code === 'commission_rate_required'
+    );
+  const hasOtherBlockingError = input.metadata.issues.some(issue =>
+    issue.severity === 'error'
+    && issue.code !== 'land_operator_required'
+    && issue.code !== 'commission_rate_required'
+  );
+  if (!missingCommercialMetadata || hasOtherBlockingError || !isSupabaseConfigured) {
+    return input.metadata;
+  }
+
+  const resolution = await resolveVerifiedCommercialContract({
+    supabase: supabaseAdmin,
+    source: {
+      fileName: input.fileName,
+      sourceLabel: input.sourceLabel,
+      rawText: input.rawText,
+    },
+  });
+  if (resolution.status === 'resolved') {
+    return applyVerifiedUploadCommercialContract(input.metadata, {
+      contractId: resolution.contractId,
+      landOperator: resolution.landOperator,
+      commissionRate: resolution.commissionRate,
+      evidence: resolution.evidence,
+    });
+  }
+  if (resolution.status === 'ambiguous') {
+    return {
+      ...input.metadata,
+      issues: [
+        ...input.metadata.issues,
+        {
+          code: 'commercial_contract_ambiguous',
+          message: '둘 이상의 유효한 계약이 같은 우선순위로 일치합니다. 계약 원장의 표식 또는 우선순위를 정리해 주세요.',
+          severity: 'error',
+        },
+      ],
+    };
+  }
+  return input.metadata;
+}
+
 export async function prepareUploadRequestIntake(request: NextRequest): Promise<UploadRequestIntakeResult> {
   const contentType = request.headers.get('content-type') || '';
   const urlParams = new URL(request.url).searchParams;
@@ -81,29 +170,24 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     originalRawText = typeof body.rawText === 'string' ? body.rawText : '';
     directRawText = originalRawText;
     textSourceLabel = typeof body.sourceLabel === 'string' ? body.sourceLabel : null;
-    uploadSourceMetadata = parseUploadSourceMetadata({
+    uploadSourceMetadata = await resolveCommercialMetadata({
+      metadata: parseUploadSourceMetadata({
       rawText: originalRawText,
       sourceLabel: textSourceLabel,
       explicitLandOperator: typeof body.landOperator === 'string' ? body.landOperator : undefined,
       explicitCommissionRate: typeof body.commissionRate !== 'undefined' ? body.commissionRate : undefined,
-      defaultCommissionRate: 10,
+      defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+      }),
+      rawText: originalRawText,
+      sourceLabel: textSourceLabel,
     });
 
-    const invalidCommission = uploadSourceMetadata.issues.find(issue => issue.code === 'commission_rate_out_of_range');
-    if (invalidCommission?.severity === 'error') {
+    const metadataError = buildUploadCommercialMetadataError(uploadSourceMetadata);
+    if (metadataError) {
       return {
         ok: false,
         status: 422,
-        payload: {
-          success: false,
-          code: 'COMMISSION_RATE_OUT_OF_RANGE',
-          error: invalidCommission.message,
-          uploadMetadata: {
-            landOperator: uploadSourceMetadata.landOperator,
-            commissionRate: uploadSourceMetadata.commissionRate,
-            issues: uploadSourceMetadata.issues,
-          },
-        },
+        payload: metadataError,
       };
     }
 
@@ -140,6 +224,25 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
         payload: { error: '파일 크기는 10MB 이하여야 합니다.' },
       };
     }
+    const explicitLandOperator = formData.get('landOperator');
+    const explicitCommissionRate = formData.get('commissionRate');
+    uploadSourceMetadata = await resolveCommercialMetadata({
+      metadata: parseUploadSourceMetadata({
+        fileName: file.name,
+        explicitLandOperator: typeof explicitLandOperator === 'string' ? explicitLandOperator : undefined,
+        explicitCommissionRate: typeof explicitCommissionRate === 'string' ? explicitCommissionRate : undefined,
+        defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+      }),
+      fileName: file.name,
+    });
+    const metadataError = buildUploadCommercialMetadataError(uploadSourceMetadata);
+    if (metadataError) {
+      return {
+        ok: false,
+        status: 422,
+        payload: metadataError,
+      };
+    }
   }
 
   const archiveMode = !directRawText && urlParams.get('mode') === 'archive';
@@ -149,10 +252,21 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
 
   const fileName = file?.name || uploadSourceMetadata?.cleanSourceLabel || textSourceLabel || 'text-input.txt';
   if (!uploadSourceMetadata) {
-    uploadSourceMetadata = parseUploadSourceMetadata({
+    uploadSourceMetadata = await resolveCommercialMetadata({
+      metadata: parseUploadSourceMetadata({
+        fileName,
+        defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+      }),
       fileName,
-      defaultCommissionRate: 10,
     });
+    const metadataError = buildUploadCommercialMetadataError(uploadSourceMetadata);
+    if (metadataError) {
+      return {
+        ok: false,
+        status: 422,
+        payload: metadataError,
+      };
+    }
   }
 
   let buffer: Buffer;

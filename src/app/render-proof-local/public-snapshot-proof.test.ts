@@ -12,6 +12,8 @@ describe('offline render proof public snapshot contract', () => {
 
     expect(source).toContain('buildCandidatePublicPackageForProof(fixture.package)');
     expect(source).toContain('const proofPackage = proofCandidate.package');
+    expect(source).toContain('proofCandidate.snapshot.public_notices');
+    expect(source).toContain('initialNotices={initialNotices}');
     expect(source).toContain('mapTravelPackageToLandingData(proofPackage, frozenHero)');
     expect(source).toContain("initialPackage={proofPackage as unknown as DetailProps['initialPackage']}");
     expect(source).not.toContain('mapTravelPackageToLandingData(fixture.package');

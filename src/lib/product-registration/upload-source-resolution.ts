@@ -1,4 +1,7 @@
-import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import {
+  DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+  type UploadSourceMetadataResult,
+} from '@/lib/upload-source-metadata';
 
 import { extractUploadDestinationFromFilename } from './destination-resolution';
 import {
@@ -30,7 +33,7 @@ export function resolveUploadSourceForRegistration(input: {
     cleanName: input.uploadSourceMetadata.cleanSourceLabel ?? parsedFilenameRule.cleanName,
   };
   const supplierCode = resolveSupplierCode(filenameRule.supplierRaw);
-  const marginRate = filenameRule.marginRate ?? 0.10;
+  const marginRate = filenameRule.marginRate ?? DEFAULT_LAND_OPERATOR_COMMISSION_RATE / 100;
   const tempDestination = extractUploadDestinationFromFilename(input.fileName);
   const prelimLandOperatorId = resolveLandOperatorId(filenameRule.supplierRaw, input.landOperators);
 

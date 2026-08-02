@@ -10,7 +10,10 @@ import { dirname, join, resolve } from 'node:path';
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 import type { UploadRequestIntakeSuccess } from '@/lib/product-registration/upload-request-intake';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import {
+  DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
+  parseUploadSourceMetadata,
+} from '@/lib/upload-source-metadata';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 type ExtractReportRow = {
@@ -32,6 +35,9 @@ type OfflineProductAudit = {
   title: string | null;
   publishableOffline: boolean;
   customerReadyOffline: boolean;
+  commercialMetadataReady?: boolean;
+  commercialMetadataIssues?: string[];
+  registrationReadyOffline?: boolean;
   blockerCategory: string | null;
   blockers: string[];
   warnings: string[];
@@ -273,8 +279,14 @@ function buildIntake(input: {
     sourceLabel: input.fileName,
     explicitLandOperator: input.options.landOperator ?? undefined,
     explicitCommissionRate: input.options.commissionRate ?? undefined,
-    defaultCommissionRate: 9,
+    defaultCommissionRate: DEFAULT_LAND_OPERATOR_COMMISSION_RATE,
   });
+  const metadataErrors = metadata.issues.filter(issue => issue.severity === 'error');
+  if (metadataErrors.length > 0) {
+    throw new Error(
+      `[upload metadata] ${input.fileName}: ${metadataErrors.map(issue => issue.message).join(' ')}`,
+    );
+  }
   const parserRawText = metadata.parserRawText ?? input.rawText;
   const inputAnalysisForTrust = analyzeUploadInputText(input.rawText);
   const buffer = Buffer.from(parserRawText, 'utf8');
@@ -349,6 +361,11 @@ function makeReportRow(input: {
 }): RegistrationReportRow {
   const blockedProducts = input.products.filter(product => !product.publishableOffline);
   const reviewNeededProducts = input.products.filter(product => product.publishableOffline && !product.customerReadyOffline);
+  const commercialMetadataMissing = input.products.filter(product => product.commercialMetadataReady === false);
+  // Commission is optional: the shared intake contract applies the verified
+  // 9% fallback when omitted. The land operator itself is still mandatory;
+  // filenames and shorthand tokens are never safe evidence for guessing it.
+  const hasExplicitLandOperator = Boolean(input.options.landOperator?.trim());
   const base: RegistrationReportRow = {
     sourceFile: input.sourceFile,
     extractedTextPath: input.extractRow?.extractedTextPath ?? null,
@@ -370,6 +387,13 @@ function makeReportRow(input: {
   }
   if (input.options.requireAllProductsPublishable && blockedProducts.length > 0) {
     return { ...base, status: 'skipped_blocked', reason: 'one or more products in this source are blocked by offline audit' };
+  }
+  if (commercialMetadataMissing.length > 0 && !hasExplicitLandOperator) {
+    return {
+      ...base,
+      status: 'skipped_blocked',
+      reason: '실제 랜드사 정보가 없어 차단되었습니다. --land-operator를 지정하면 커미션은 생략 시 기본 9%가 적용됩니다.',
+    };
   }
   if (!input.options.includeReviewNeeded && reviewNeededProducts.length > 0) {
     return { ...base, status: 'skipped_review_needed', reason: 'offline audit has customer-review warnings; pass --include-review-needed to register anyway' };
@@ -444,6 +468,19 @@ async function main(): Promise<void> {
         : 'mobile audit was not requested; this report is not customer-ready proof',
     },
   };
+
+  if (options.register) {
+    const registrationCandidates = report.rows.filter(row => row.status === 'eligible');
+    const unsafeBatch = registrationCandidates.length > 1
+      || registrationCandidates.some(row => row.productCount !== 1);
+    if (unsafeBatch) {
+      report.summary.mobileLandingVerificationReason =
+        '상업조건은 상품별 계약값입니다. 여러 파일 또는 다중상품 HWP 배치 등록은 금지하며 admin/upload에서 상품 텍스트를 한 건씩 등록해야 합니다.';
+      await writeJson(join(outputDir, 'report.json'), report);
+      console.error(`[register-from-report] ${report.summary.mobileLandingVerificationReason}`);
+      process.exit(1);
+    }
+  }
 
   report.dbPreflight = await waitForDbPreflight(options);
   if (options.register && report.dbPreflight.status !== 'pass' && !options.forceDb) {

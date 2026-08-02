@@ -46,6 +46,14 @@
       "schedule": "18 1 * * *"
     },
     {
+      "path": "/api/cron/upload-to-open-autopilot",
+      "schedule": "48 1 * * *"
+    },
+    {
+      "path": "/api/cron/destination-media-approval",
+      "schedule": "38 1 * * *"
+    },
+    {
       "path": "/api/cron/legacy-sections-backfill",
       "schedule": "58 1 * * *"
     },

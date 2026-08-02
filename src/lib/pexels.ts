@@ -151,12 +151,15 @@ const KOREAN_TO_EN_DEST: Record<string, string> = {
   '하롱베이': 'Ha Long Bay Vietnam',
   '사파': 'Sapa Vietnam rice terraces',
   '오사카': 'Osaka Japan city',
+  '나리타': 'Narita Japan city temple',
   '도쿄': 'Tokyo Japan skyline',
   '교토': 'Kyoto Japan temple',
   '후쿠오카': 'Fukuoka Japan',
   '큐슈': 'Kyushu Japan nature',
   '북해도': 'Hokkaido Japan snow',
   '삿포로': 'Sapporo Japan winter',
+  '니세코': 'Niseko Japan mountains',
+  '삿포로/니세코': 'Sapporo Niseko Hokkaido Japan winter mountains',
   '오키나와': 'Okinawa Japan beach',
   '시즈오카': 'Shizuoka Japan Mount Fuji',
   '장가계': 'Zhangjiajie China mountains',
@@ -165,6 +168,11 @@ const KOREAN_TO_EN_DEST: Record<string, string> = {
   '광저우': 'Guangzhou China Canton Tower city skyline',
   '광주 중국': 'Guangzhou China Canton Tower city skyline',
   '북경': 'Beijing China',
+  '석가장': 'Shijiazhuang Hebei China city',
+  '심양': 'Shenyang China city',
+  '천진': 'Tianjin China city skyline',
+  '진황도': 'Qinhuangdao China coast',
+  '천진/진황도': 'Tianjin Qinhuangdao China coast city',
   '청도': 'Qingdao China coast',
   '칭다오': 'Qingdao China coast',
   '연길': 'Yanbian China',
@@ -180,13 +188,16 @@ const KOREAN_TO_EN_DEST: Record<string, string> = {
   '세부': 'Cebu Philippines beach',
   '보홀': 'Bohol Philippines ocean',
   '마닐라': 'Manila Philippines',
+  '클락': 'Clark Pampanga Philippines landscape',
   '마카오': 'Macau cityscape night',
   '홍콩': 'Hong Kong skyline victoria harbour',
   '타이베이': 'Taipei Taiwan night market',
+  '가오슝': 'Kaohsiung Taiwan harbor skyline',
   '울란바토르': 'Mongolia steppe grassland',
   '테를지': 'Terelj Mongolia landscape',
   '제주': 'Jeju Island Korea coastal',
   '부산': 'Busan Korea seaside',
+  '괌': 'Guam island ocean coast',
   '경주': 'Gyeongju Korea heritage',
   '파리': 'Paris France Eiffel Tower',
   '로마': 'Rome Italy Colosseum',
@@ -195,6 +206,8 @@ const KOREAN_TO_EN_DEST: Record<string, string> = {
 };
 
 export function destToEnKeyword(dest: string): string {
+  const exact = KOREAN_TO_EN_DEST[dest.trim()];
+  if (exact) return exact;
   const tokens = dest.split(/[\/,·\s]+/).map(s => s.trim()).filter(Boolean);
   for (const token of tokens) {
     for (const [kr, en] of Object.entries(KOREAN_TO_EN_DEST)) {

@@ -1,10 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import { buildPublicPackageSnapshot } from './public-snapshot';
 import { evaluatePublicSnapshotPublishGate } from './publish-gate';
 
 const VALID_ATTRACTION_ID = '5728e681-636b-42fa-87b5-a2f0b7b0379c';
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-06-01T00:00:00+09:00'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function yanjiPackage(overrides: Record<string, unknown> = {}) {
   return {
@@ -16,6 +25,8 @@ function yanjiPackage(overrides: Record<string, unknown> = {}) {
     duration: 5,
     nights: 4,
     price: 599000,
+    land_operator: '테스트랜드',
+    commission_rate: 9,
     product_prices: [{ target_date: '2026-07-12', adult_selling_price: 599000 }],
     price_dates: [{ date: '2026-07-12', price: 599000, confirmed: false }],
     products: {
@@ -259,6 +270,78 @@ describe('public package snapshot gate', () => {
     expect(snapshot.route_text_dump.join('\n')).not.toContain('쇼핑 일정이 포함될 수 있습니다');
   });
 
+  it('does not mistake a paid no-shopping upgrade for the default package condition', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      title: '세부 에스타 디럭스 패키지',
+      display_title: '세부 에스타 디럭스 패키지',
+      raw_text: '쇼핑센터 3회\n노쇼핑 진행 시 성인 100,000원 추가',
+      itinerary_data: {
+        highlights: {
+          shopping: '쇼핑센터 3회 (잡화점, 토산품점, 라텍스)',
+          remarks: ['노쇼핑 진행 시 성인 100,000원 추가'],
+        },
+        days: [
+          { day: 1, schedule: [{ activity: '세부 도착', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '쇼핑샵 방문', type: 'shopping', entity_kind: 'shopping' }] },
+        ],
+      },
+    }));
+
+    expect(snapshot.public_notices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ template_key: 'shopping_disclosure_check' }),
+    ]));
+    expect(snapshot.public_notices).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ template_key: 'shopping_none_confirmed' }),
+    ]));
+  });
+
+  it('keeps an independent no-shopping claim when a paid condition-change sentence is also present', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      title: '연길·백두산 3박4일',
+      display_title: '연길·백두산 3박4일',
+      raw_text: '본 상품은 노쇼핑 상품입니다.\n노쇼핑 변경 요청 시 별도 비용 100,000원',
+      product_highlights: ['본 상품은 노쇼핑 상품입니다.'],
+      itinerary_data: {
+        highlights: {
+          remarks: ['노쇼핑 변경 요청 시 별도 비용 100,000원'],
+        },
+        days: [
+          { day: 1, schedule: [{ activity: '연길 도착', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광', type: 'sightseeing' }] },
+        ],
+      },
+    }));
+
+    expect(snapshot.public_notices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ template_key: 'shopping_none_confirmed' }),
+    ]));
+  });
+
+  it('does not publish paid no-option or no-shopping changes as default title conditions', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      destination: '보홀',
+      title: '보홀 에스타 디럭스 패키지 3박5일',
+      display_title: '보홀 에스타 디럭스 패키지 3박5일',
+      raw_text: [
+        '선택관광과 쇼핑센터 3회가 포함된 기본 일정입니다.',
+        '노옵션 진행 시 성인 100,000원 추가',
+        '노쇼핑시 추가금 100,000원',
+      ].join('\n'),
+      optional_tours: ['호핑투어 $80'],
+      itinerary_data: {
+        optional_tours: ['호핑투어 $80'],
+        days: [
+          { day: 1, schedule: [{ activity: '보홀 도착', type: 'transfer' }] },
+          { day: 2, schedule: [{ activity: '호핑투어 선택 가능', type: 'optional' }] },
+        ],
+      },
+    }));
+
+    expect(snapshot.public_title).toBe('보홀 휴양관광 3박5일');
+    expect(snapshot.public_title).not.toMatch(/노옵션|노쇼핑/);
+    expect(snapshot.optional_tours_public.length).toBeGreaterThan(0);
+  });
+
   it('blocks publication when no-shopping source evidence conflicts with an actual shopping visit', () => {
     const pkg = yanjiPackage({
       title: '노쇼핑 연길·백두산 3박4일',
@@ -345,6 +428,40 @@ describe('public package snapshot gate', () => {
     expect(snapshot.package.hero_image_url).toBe('/logo.png');
     expect(snapshot.card_projection.hero_image_url).toBe('/logo.png');
     expect(snapshot.route_text_dump.join('\n')).not.toMatch(/logo\.png|사진\s*준비|이미지\s*준비/);
+  });
+
+  it('uses frozen owner-approved destination media ahead of a legacy logo placeholder', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      hero_image_url: '/logo.png',
+      lp_hero_image_url: '/logo.png',
+      thumbnail_urls: ['/logo.png'],
+      approved_destination_media: {
+        destination: '연길',
+        url: 'https://cdn.example.com/yanji.jpg',
+        photographer: 'Photo Owner',
+        provider: 'pexels',
+        pexels_id: 123,
+        source_page_url: 'https://www.pexels.com/photo/123/',
+        source_file_title: null,
+        license: null,
+        license_url: null,
+        alt: '연길 전경',
+        approved_at: '2026-07-30T00:00:00.000Z',
+        approval_source: 'owner_approved_destination_metadata',
+      },
+    }));
+
+    expect(snapshot.images_public[0]).toEqual(expect.objectContaining({
+      url: 'https://cdn.example.com/yanji.jpg',
+      source: 'approved_destination',
+      photographer: 'Photo Owner',
+      approved_at: '2026-07-30T00:00:00.000Z',
+    }));
+    expect(snapshot.package.hero_image_url).toBe('https://cdn.example.com/yanji.jpg');
+    expect(snapshot.images_public).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'brand_fallback' }),
+    ]));
+    expect(snapshot.package).not.toHaveProperty('approved_destination_media');
   });
 
   it('fails closed when a policy title cannot include a verified duration', () => {
@@ -667,7 +784,7 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('price_source_missing');
   });
 
-  it('uses a safe brand fallback instead of failing open to missing or placeholder images', () => {
+  it('uses a safe preview fallback but blocks customer publication until an approved travel image exists', () => {
     const pkg = yanjiPackage({
       optional_tours: [],
       products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
@@ -690,7 +807,8 @@ describe('public package snapshot gate', () => {
     expect(snapshot.images_public).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: 'brand_fallback', url: '/logo.png' }),
     ]));
-    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('public_image_missing');
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('public_image_missing');
+    expect(gate.required_actions.join('\n')).toContain('승인 이미지');
   });
 
   it('blocks publication while polluted optional_tours remain in the DB row', () => {
@@ -736,6 +854,39 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers).toEqual([]);
     expect(gate.publishable).toBe(true);
     expect(gate.publication_state).toBe('published');
+  });
+
+  it('blocks publication when land operator and contracted commission are not confirmed', () => {
+    const pkg = yanjiPackage({
+      display_title: '연길·백두산 노옵션 핵심관광 4박5일',
+      optional_tours: [],
+      land_operator: null,
+      commission_rate: null,
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'commercial_metadata_missing', fieldPath: 'land_operator' }),
+      expect.objectContaining({ code: 'commercial_metadata_missing' }),
+    ]));
+    expect(gate.required_actions).toContain(
+      '실제 랜드사명과 계약 커미션율 또는 정액 커미션을 확인해 저장한 뒤 공개 게이트를 다시 실행하세요.',
+    );
   });
 
   it('fails closed when public snapshot publication has no mobile browser proof', () => {

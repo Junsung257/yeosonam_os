@@ -110,6 +110,8 @@ function publishablePackage(overrides: Record<string, unknown> = {}) {
     duration: 4,
     nights: 3,
     price: 1_099_000,
+    land_operator: '테스트랜드',
+    commission_rate: 9,
     product_prices: [
       { target_date: '2026-08-07', adult_selling_price: 1_099_000, note: 'save fare' },
     ],

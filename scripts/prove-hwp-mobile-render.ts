@@ -11,6 +11,7 @@ import { supabaseAdmin } from '../src/lib/supabase';
 import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
 import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
+import { assessPublicImageReadiness } from '../src/lib/package-publication/public-image-quality';
 import { buildProofBoundPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
 
 type PackageRow = {
@@ -233,8 +234,8 @@ function normalizeProofSearchKey(value: unknown): string {
 }
 
 function customerNoticeTerms(pkg: PackageRow): string[] {
-  if (!Array.isArray(pkg.notices_parsed)) return [];
-  return pkg.notices_parsed.flatMap((item) => {
+  const { snapshot } = buildProofBoundPublicPackageSnapshot(pkg);
+  return snapshot.public_notices.flatMap((item) => {
     if (typeof item === 'string') return [item.trim()].filter(Boolean);
     if (!item || typeof item !== 'object') return [];
     const record = item as Record<string, unknown>;
@@ -498,6 +499,7 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
       .map(option => typeof option.carrier_name === 'string' ? option.carrier_name.trim() : '')
       .filter(Boolean);
     const textQualityIssues = visibleTextQualityIssues(rawBodyText);
+    const imageReadiness = assessPublicImageReadiness(pkg);
 
     result.checks.push(
       { name: `${surface}_http_200`, ok: result.http_status === 200, detail: String(result.http_status ?? 'no response') },
@@ -534,6 +536,13 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
       {
         name: `${surface}_image_present`,
         ok: /<img\b|_next\/image|images\.pexels\.com|supabase\.co\/storage/i.test(html),
+      },
+      {
+        name: `${surface}_customer_ready_image`,
+        ok: imageReadiness.customerReady,
+        detail: imageReadiness.customerReady
+          ? `approved images: ${imageReadiness.approvedImageCount}`
+          : `brand fallback only: ${imageReadiness.brandFallbackCount}`,
       },
       {
         name: `${surface}_visible_text_readable`,

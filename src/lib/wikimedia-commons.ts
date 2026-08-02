@@ -1,160 +1,366 @@
-/**
- * @file wikimedia-commons.ts — Wikimedia Commons 이미지 API.
- *
- * STRICT SSOT (PR #89 Phase 2b):
- *   Pexels 가 한국어 검색 시 false-positive 빈번 (서안 → 한국 서안군 사진).
- *   Wikidata P18 (대표 이미지) → Commons 직접 접근으로 false-match 0.
- *   라이선스: 항목별 CC0/CC-BY/CC-BY-SA 혼재 → 메타로 license 추적, CC-BY-SA 는 reject.
- *
- * 사용 흐름: Wikidata QID → P18 image_filename → Commons FilePath URL + license 메타.
- */
-const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
-const USER_AGENT = 'YeosonamOS/1.0 (https://yeosonam.com; admin@yeosonam.com) attraction-photo-fetch';
+const WIKIMEDIA_API = 'https://commons.wikimedia.org/w/api.php';
+const WIKIMEDIA_USER_AGENT =
+  'YeosonamOS/1.0 (https://yeosonam.com; admin@yeosonam.com) destination-media-review';
 
+type WikimediaMetadataValue = {
+  value?: unknown;
+};
+
+type WikimediaImageInfo = {
+  url?: unknown;
+  thumburl?: unknown;
+  descriptionurl?: unknown;
+  width?: unknown;
+  height?: unknown;
+  mime?: unknown;
+  extmetadata?: Record<string, WikimediaMetadataValue | undefined>;
+};
+
+type WikimediaPage = {
+  pageid?: unknown;
+  title?: unknown;
+  imageinfo?: WikimediaImageInfo[];
+};
+
+export type WikimediaCommonsPhoto = {
+  provider: 'wikimedia_commons';
+  asset_id: string;
+  source_file_title: string;
+  photographer: string;
+  source_page_url: string;
+  license: string;
+  license_url: string;
+  src_large: string;
+  src_medium: string;
+  src_thumb: string;
+  width: number;
+  height: number;
+  alt: string;
+};
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function number(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function stripHtml(value: unknown): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  const stripped = raw
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped || null;
+}
+
+function safeUrl(value: unknown, allowedHost: string): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' && parsed.hostname === allowedHost
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isSupportedCommonsLicense(value: unknown): boolean {
+  const license = stripHtml(value);
+  if (!license) return false;
+  return /^CC BY(?:-SA)?(?: \d(?:\.\d)?)?(?: [a-z]{2,3})?$/i.test(license)
+    || /^CC0(?: \d(?:\.\d)?)?$/i.test(license)
+    || /^Public domain$/i.test(license);
+}
+
+function canonicalLicenseUrl(value: unknown): string | null {
+  const license = stripHtml(value);
+  if (!license) return null;
+  const ccByMatch = license.match(
+    /^CC BY(-SA)?(?: (\d(?:\.\d)?))?(?: [a-z]{2,3})?$/i,
+  );
+  if (ccByMatch) {
+    const family = ccByMatch[1] ? 'by-sa' : 'by';
+    const version = ccByMatch[2] ?? '4.0';
+    return `https://creativecommons.org/licenses/${family}/${version}/`;
+  }
+  if (/^CC0(?: \d(?:\.\d)?)?$/i.test(license)) {
+    return 'https://creativecommons.org/publicdomain/zero/1.0/';
+  }
+  if (/^Public domain$/i.test(license)) {
+    return 'https://creativecommons.org/publicdomain/mark/1.0/';
+  }
+  return null;
+}
+
+function metadata(
+  image: WikimediaImageInfo,
+  key: string,
+): string | null {
+  return stripHtml(image.extmetadata?.[key]?.value);
+}
+
+function photoFromPage(page: WikimediaPage): WikimediaCommonsPhoto | null {
+  const image = page.imageinfo?.[0];
+  if (!image) return null;
+
+  const sourceFileTitle = text(page.title);
+  const pageId = number(page.pageid);
+  const width = number(image.width);
+  const height = number(image.height);
+  const mime = text(image.mime);
+  const sourcePageUrl = safeUrl(image.descriptionurl, 'commons.wikimedia.org');
+  const originalUrl = safeUrl(image.url, 'upload.wikimedia.org');
+  const thumbnailUrl = safeUrl(image.thumburl, 'upload.wikimedia.org') ?? originalUrl;
+  const photographer = metadata(image, 'Artist') ?? metadata(image, 'Credit');
+  const license = metadata(image, 'LicenseShortName');
+  const licenseUrl = safeUrl(metadata(image, 'LicenseUrl'), 'creativecommons.org')
+    ?? safeUrl(metadata(image, 'LicenseUrl'), 'commons.wikimedia.org')
+    ?? canonicalLicenseUrl(license);
+  const alt = metadata(image, 'ObjectName')
+    ?? metadata(image, 'ImageDescription')
+    ?? sourceFileTitle?.replace(/^File:/i, '').replace(/\.[^.]+$/, '')
+    ?? null;
+
+  if (
+    !sourceFileTitle
+    || !pageId
+    || !width
+    || !height
+    || width <= height
+    || width < 1200
+    || !mime
+    || !['image/jpeg', 'image/png', 'image/webp'].includes(mime)
+    || !sourcePageUrl
+    || !originalUrl
+    || !thumbnailUrl
+    || !photographer
+    || !license
+    || !licenseUrl
+    || !isSupportedCommonsLicense(license)
+    || !alt
+  ) {
+    return null;
+  }
+
+  return {
+    provider: 'wikimedia_commons',
+    asset_id: String(pageId),
+    source_file_title: sourceFileTitle,
+    photographer,
+    source_page_url: sourcePageUrl,
+    license,
+    license_url: licenseUrl,
+    // Store the reviewed 1200px derivative rather than an unbounded original.
+    // Commons originals can exceed our 10MB bucket limit; the derivative is
+    // still large enough for the mobile hero and keeps the copied asset stable.
+    src_large: thumbnailUrl,
+    src_medium: thumbnailUrl,
+    src_thumb: thumbnailUrl,
+    width,
+    height,
+    alt,
+  };
+}
+
+export async function searchWikimediaCommonsPhotos(
+  query: string,
+  limit = 8,
+): Promise<WikimediaCommonsPhoto[]> {
+  const normalizedQuery = query.replace(/\s+/g, ' ').trim();
+  if (!normalizedQuery) return [];
+
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    generator: 'search',
+    gsrsearch: `${normalizedQuery} filetype:bitmap`,
+    gsrnamespace: '6',
+    gsrlimit: String(Math.min(Math.max(limit * 2, 6), 20)),
+    prop: 'imageinfo',
+    iiprop: 'url|extmetadata|mime|size',
+    iiurlwidth: '1200',
+    maxlag: '5',
+    origin: '*',
+  });
+  const response = await fetch(`${WIKIMEDIA_API}?${params}`, {
+    headers: {
+      'Api-User-Agent': WIKIMEDIA_USER_AGENT,
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error('Wikimedia Commons search is temporarily rate-limited. Please retry shortly.');
+    }
+    throw new Error(`Wikimedia Commons API failed: ${response.status}`);
+  }
+
+  const payload = await response.json() as { query?: { pages?: WikimediaPage[] } };
+  return (payload.query?.pages ?? [])
+    .map(photoFromPage)
+    .filter((photo): photo is WikimediaCommonsPhoto => Boolean(photo))
+    .slice(0, Math.max(1, limit));
+}
+
+/**
+ * Existing attraction-photo contract. This is intentionally stricter than the
+ * destination hero contract: attraction P18 automation rejects ShareAlike
+ * media, while destination hero candidates remain human-reviewed and preserve
+ * the full attribution/license record.
+ */
 export interface CommonsPhoto {
   filename: string;
   thumb_url: string;
   full_url: string;
   description_url: string;
-  /** 라이선스 short name (예: 'CC0', 'CC-BY-3.0'). 못 받으면 null → 사용 금지 */
   license: string | null;
-  /** 라이선스 URL (Creative Commons 본문 링크) */
   license_url: string | null;
-  /** 저자 (HTML 또는 plain text) */
   author: string | null;
-  /** 우리가 안전하게 사용 가능한가 (CC0/PD/CC-BY 만 true) */
   safe_to_use: boolean;
 }
 
-function classifyLicense(licenseShortName: string | null): boolean {
+function isSafeForAutomatedAttractionUse(licenseShortName: string | null): boolean {
   if (!licenseShortName) return false;
-  const s = licenseShortName.toLowerCase();
-  // CC-BY-SA 는 share-alike 의무로 우리 콘텐츠 라이선스 영향 가능성 → reject
-  if (s.includes('sa')) return false;
-  // CC0, PD, CC-BY 안전
-  if (s.includes('cc0') || s.includes('public domain') || s.includes('cc-by') || s === 'cc by') return true;
-  // GFDL 등은 보수적 reject
-  return false;
+  const normalized = licenseShortName.toLowerCase().replace(/[-_]+/g, ' ');
+  if (normalized.includes('sa')) return false;
+  return normalized.includes('cc0')
+    || normalized.includes('public domain')
+    || normalized.includes('cc by')
+    || normalized === 'cc by';
 }
 
-/**
- * Commons 파일명 → thumb URL + license/author 메타.
- *
- * @param filename Wikidata P18 의 파일명 (예: "Terracotta Army, View of Pit 1.jpg")
- * @param width thumb 너비 (default 800)
- */
 export async function fetchCommonsPhotoMeta(
   filename: string,
   width = 800,
 ): Promise<CommonsPhoto | null> {
   if (!filename) return null;
   const title = filename.startsWith('File:') ? filename : `File:${filename}`;
-  const url =
-    `${COMMONS_API}?action=query` +
-    `&titles=${encodeURIComponent(title)}` +
-    `&prop=imageinfo` +
-    `&iiprop=url%7Cextmetadata%7Cmime` +
-    `&iiurlwidth=${width}` +
-    `&format=json` +
-    `&formatversion=2`;
+  const params = new URLSearchParams({
+    action: 'query',
+    titles: title,
+    prop: 'imageinfo',
+    iiprop: 'url|extmetadata|mime',
+    iiurlwidth: String(width),
+    format: 'json',
+    formatversion: '2',
+  });
+
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-    if (!res.ok) return null;
-    const json = await res.json() as {
+    const response = await fetch(`${WIKIMEDIA_API}?${params}`, {
+      headers: { 'Api-User-Agent': WIKIMEDIA_USER_AGENT },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as {
       query?: {
         pages?: Array<{
           imageinfo?: Array<{
-            url: string;
-            thumburl?: string;
-            descriptionurl?: string;
-            extmetadata?: Record<string, { value: string }>;
+            url?: unknown;
+            thumburl?: unknown;
+            descriptionurl?: unknown;
+            extmetadata?: Record<string, WikimediaMetadataValue | undefined>;
           }>;
         }>;
       };
     };
-    const info = json.query?.pages?.[0]?.imageinfo?.[0];
+    const info = payload.query?.pages?.[0]?.imageinfo?.[0];
     if (!info) return null;
 
-    const meta = info.extmetadata ?? {};
-    const license = meta.LicenseShortName?.value ?? null;
-    const licenseUrl = meta.LicenseUrl?.value ?? null;
-    const author = stripHtml(meta.Artist?.value ?? null);
-    const safe = classifyLicense(license);
+    const fullUrl = safeUrl(info.url, 'upload.wikimedia.org');
+    const thumbUrl = safeUrl(info.thumburl, 'upload.wikimedia.org') ?? fullUrl;
+    const descriptionUrl = safeUrl(info.descriptionurl, 'commons.wikimedia.org')
+      ?? `https://commons.wikimedia.org/wiki/${encodeURIComponent(title)}`;
+    if (!fullUrl || !thumbUrl) return null;
+
+    const license = stripHtml(info.extmetadata?.LicenseShortName?.value);
+    const licenseUrl = safeUrl(
+      info.extmetadata?.LicenseUrl?.value,
+      'creativecommons.org',
+    ) ?? safeUrl(info.extmetadata?.LicenseUrl?.value, 'commons.wikimedia.org')
+      ?? canonicalLicenseUrl(license);
+    const author = stripHtml(info.extmetadata?.Artist?.value);
 
     return {
       filename,
-      thumb_url: info.thumburl ?? info.url,
-      full_url: info.url,
-      description_url: info.descriptionurl ?? `https://commons.wikimedia.org/wiki/${encodeURIComponent(title)}`,
+      thumb_url: thumbUrl,
+      full_url: fullUrl,
+      description_url: descriptionUrl,
       license,
       license_url: licenseUrl,
       author,
-      safe_to_use: safe,
+      safe_to_use: isSafeForAutomatedAttractionUse(license),
     };
   } catch {
     return null;
   }
 }
 
-function stripHtml(s: string | null): string | null {
-  if (!s) return null;
-  return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-}
-
-/**
- * Wikidata QID → P18 image filename 직접 조회.
- *   wikidata-suggest.ts 와 별개로 단독 동작하도록 self-contained 호출.
- *   PR #89 Phase 2b 가 PR #87 (Wikidata 모듈) 머지 대기 없이 박힐 수 있게.
- */
 export async function fetchImageFilenameByQid(qid: string): Promise<string | null> {
-  if (!qid || !/^Q\d+$/.test(qid)) return null;
-  const url =
-    `https://www.wikidata.org/w/api.php?action=wbgetentities` +
-    `&ids=${qid}` +
-    `&props=claims` +
-    `&format=json`;
+  if (!/^Q\d+$/.test(qid)) return null;
+  const params = new URLSearchParams({
+    action: 'wbgetentities',
+    ids: qid,
+    props: 'claims',
+    format: 'json',
+  });
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-    if (!res.ok) return null;
-    const json = await res.json() as {
+    const response = await fetch(`https://www.wikidata.org/w/api.php?${params}`, {
+      headers: { 'Api-User-Agent': WIKIMEDIA_USER_AGENT },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as {
       entities?: Record<string, {
-        claims?: Record<string, Array<{ mainsnak?: { datavalue?: { value: string } } }>>;
+        claims?: Record<string, Array<{
+          mainsnak?: { datavalue?: { value?: unknown } };
+        }>>;
       }>;
     };
-    return json.entities?.[qid]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value ?? null;
+    return text(payload.entities?.[qid]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value);
   } catch {
     return null;
   }
 }
 
-/**
- * 좌표 기반 Commons geosearch — Wikidata P625(coordinate)가 있을 때 반경 검색.
- *
- * @param lat latitude
- * @param lon longitude
- * @param radius_m 반경 (m), default 500m
- * @param limit 최대 결과
- */
 export async function geosearchCommons(
   lat: number,
   lon: number,
-  radius_m = 500,
+  radiusM = 500,
   limit = 10,
 ): Promise<Array<{ title: string }>> {
-  const url =
-    `${COMMONS_API}?action=query` +
-    `&list=geosearch` +
-    `&gscoord=${lat}%7C${lon}` +
-    `&gsradius=${radius_m}` +
-    `&gslimit=${limit}` +
-    `&gsnamespace=6` +  // File: namespace
-    `&format=json` +
-    `&formatversion=2`;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+  const params = new URLSearchParams({
+    action: 'query',
+    list: 'geosearch',
+    gscoord: `${lat}|${lon}`,
+    gsradius: String(radiusM),
+    gslimit: String(limit),
+    gsnamespace: '6',
+    format: 'json',
+    formatversion: '2',
+  });
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-    if (!res.ok) return [];
-    const json = await res.json() as { query?: { geosearch?: Array<{ title: string }> } };
-    return json.query?.geosearch ?? [];
+    const response = await fetch(`${WIKIMEDIA_API}?${params}`, {
+      headers: { 'Api-User-Agent': WIKIMEDIA_USER_AGENT },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json() as {
+      query?: { geosearch?: Array<{ title: string }> };
+    };
+    return payload.query?.geosearch ?? [];
   } catch {
     return [];
   }

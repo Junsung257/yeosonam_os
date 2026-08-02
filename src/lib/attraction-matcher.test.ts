@@ -370,6 +370,41 @@ describe('regional route scope matching', () => {
   });
 });
 
+describe('verified cross-region supplier phrase fallback', () => {
+  const verified: AttractionData[] = [{
+    name: '독극종고성',
+    region: '샹그릴라',
+    country: '중국',
+    aliases: ['샹그릴라의 옛 정취가 살아 숨쉬는 중전고성'],
+    short_desc: '샹그릴라의 차마고도 고성',
+    long_desc: '공식 지명 자료로 확인된 샹그릴라의 역사 고성입니다.',
+    badge_type: 'tour',
+    is_active: true,
+    customer_publishable: true,
+    verification_status: 'published',
+    source: 'user_delegated_official_evidence_pack',
+  }];
+
+  it('matches an exact evidence-approved phrase when the package destination is only the first city', () => {
+    expect(matchAttraction(
+      '샹그릴라의 옛 정취가 살아 숨쉬는 중전고성',
+      verified,
+      '곤명',
+      { customerFacing: true },
+    )?.name).toBe('독극종고성');
+  });
+
+  it('does not use the fallback for partial text or unapproved sources', () => {
+    expect(matchAttraction('중전고성', verified, '곤명', { customerFacing: true })).toBeNull();
+    expect(matchAttraction(
+      '샹그릴라의 옛 정취가 살아 숨쉬는 중전고성',
+      [{ ...verified[0], source: 'legacy_seed' }],
+      '곤명',
+      { customerFacing: true },
+    )).toBeNull();
+  });
+});
+
 describe('scoped customer attraction alias safety', () => {
   const glassBridgeAttraction = attr({
     name: '\uCE60\uC131\uC0B0\uC720\uB9AC\uC794\uB3C4',

@@ -157,4 +157,64 @@ describe('buildUploadPersistenceRows', () => {
     expect(String(rows.travelPackageRow.product_summary)).not.toContain('배포');
     expect(String(rows.travelPackageRow.product_summary)).not.toContain('6/ 까지');
   });
+  it('freezes owner-approved destination media into both persistence surfaces', () => {
+    const approvedDestinationMedia = {
+      destination: '클락',
+      url: 'https://cdn.example.com/clark.jpg',
+      photographer: 'Photo Owner',
+      provider: 'pexels' as const,
+      pexels_id: 123,
+      source_page_url: 'https://www.pexels.com/photo/123/',
+      source_file_title: null,
+      license: null,
+      license_url: null,
+      alt: '클락 전경',
+      approved_at: '2026-07-30T00:00:00.000Z',
+      approval_source: 'owner_approved_destination_metadata' as const,
+    };
+    const rows = buildUploadPersistenceRows({
+      registration: {
+        extractedData: {
+          title: '클락 골프 5일',
+          destination: '클락',
+          duration: 5,
+          price: 1199000,
+          rawText: 'raw',
+        },
+      } as never,
+      finalized: {
+        draftRow: {
+          inclusions: [],
+          excludes: [],
+          notices_parsed: [],
+          itinerary_data: { days: [{ day: 1, schedule: [] }] },
+        },
+        confidenceV3: 0.9,
+        productStatus: 'REVIEW_NEEDED',
+        pkgStatus: 'pending',
+      } as never,
+      title: '클락 골프 5일',
+      internalCode: 'ICN-ETC-CRK-05-0001',
+      departureRegion: 'Incheon',
+      supplierCode: 'ETC',
+      netPrice: 1199000,
+      marginRate: 0.09,
+      sourceFilename: 'clark.txt',
+      landOperatorId: null,
+      departingLocationId: null,
+      fileType: 'txt',
+      productRawText: 'raw',
+      documentRawText: 'raw',
+      priceRows: [],
+      priceDates: [],
+      marketingCopies: [],
+      catalogGroupId: null,
+      approvedDestinationMedia,
+    });
+
+    expect(rows.productRow?.thumbnail_urls).toEqual([approvedDestinationMedia.url]);
+    expect(rows.travelPackageRow.hero_image_url).toBe(approvedDestinationMedia.url);
+    expect(rows.travelPackageRow.lp_hero_image_url).toBe(approvedDestinationMedia.url);
+    expect(rows.travelPackageRow.approved_destination_media).toEqual(approvedDestinationMedia);
+  });
 });

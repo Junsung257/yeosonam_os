@@ -537,7 +537,7 @@ async function processPDF(file, seq, existingSKUs, existingProdFns) {
 function parseFilename(filename) {
   const base = filename.replace(/\.\w+$/, '');
   const pct = filename.match(/(\d+(?:\.\d+)?)%/);
-  const marginRate = pct ? parseFloat(pct[1]) / 100 : 0.10;
+  const marginRate = pct ? parseFloat(pct[1]) / 100 : 0.09;
   const bracket = filename.match(/^\[([^\]]+)\](.+)\.\w+$/);
   if (bracket) return { cleanName: bracket[2].trim(), marginRate };
   return { cleanName: base.replace(/^★/, '').trim(), marginRate };

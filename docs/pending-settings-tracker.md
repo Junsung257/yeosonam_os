@@ -33,6 +33,7 @@
 - 🔑 `GSC_SERVICE_ACCOUNT_JSON` — `/api/cron/gsc-index-rank` 신규 크론 (2026-05-15)이 사용. 미설정 시 `GOOGLE_SERVICE_ACCOUNT_JSON` 으로 자동 fallback. 별도 SA 분리 시에만 신규 키 주입.
 
 ### 외부 API
+- 🔑 `PEXELS_API_KEY` — 로컬 `.env.local` 값이 2026-07-30 `401 Invalid API key`를 반환했다. 새 키로 교체하고 Vercel Production/Preview도 확인해야 한다. 그 전에도 기본 Wikimedia Commons 검색으로 미승인 후보 생성은 가능하지만, 어떤 공급자의 후보도 사장님 승인 전에는 상품 공개 이미지가 될 수 없다.
 - 🔑 `SLACK_SIGNING_SECRET` — Slack 앱 Basic Information의 Signing Secret을 Vercel Production/Preview에 설정
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림
 - 🔑 `NEXT_PUBLIC_CONSULT_PHONE` — QA 채팅 전화 상담 버튼 (없으면 카톡만)

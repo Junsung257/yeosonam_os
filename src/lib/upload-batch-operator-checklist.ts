@@ -11,6 +11,9 @@ export type UploadChecklistSourceProduct = {
   priceDates: number;
   itineraryDays: number;
   customerReadyOffline: boolean;
+  commercialMetadataReady?: boolean;
+  landOperator?: string | null;
+  commissionRate?: number | null;
   remediation: {
     ready: boolean;
     actions: Array<{
@@ -31,6 +34,7 @@ export type UploadChecklistSourceReport = {
 
 export type UploadChecklistPhase =
   | 'ready_for_admin_upload'
+  | 'commercial_metadata_then_reaudit'
   | 'supplier_confirmation_then_reaudit'
   | 'owner_review_then_reaudit'
   | 'owner_and_supplier_then_reaudit'
@@ -52,6 +56,9 @@ export type UploadBatchChecklistRow = {
   priceRows: number;
   priceDates: number;
   itineraryDays: number;
+  commercialMetadataReady: boolean;
+  landOperator: string | null;
+  commissionRate: number | null;
   readyForAdminUpload: boolean;
   customerOpenAllowed: false;
   requiredActions: string[];
@@ -67,6 +74,7 @@ export type UploadBatchOperatorChecklist = {
   summary: {
     products: number;
     readyForAdminUpload: number;
+    commercialMetadataRequired: number;
     customerOpenAllowedWithoutFreshProof: 0;
     supplierConfirmation: number;
     ownerReviewCandidateOnly: number;
@@ -83,16 +91,18 @@ export type UploadBatchOperatorChecklist = {
 
 const PHASE_ORDER: Record<UploadChecklistPhase, number> = {
   ready_for_admin_upload: 1,
-  supplier_confirmation_then_reaudit: 2,
-  owner_review_then_reaudit: 3,
-  owner_and_supplier_then_reaudit: 4,
-  attraction_identity_hold: 5,
-  attraction_and_supplier_hold: 6,
-  system_repair_then_reaudit: 7,
+  commercial_metadata_then_reaudit: 2,
+  supplier_confirmation_then_reaudit: 3,
+  owner_review_then_reaudit: 4,
+  owner_and_supplier_then_reaudit: 5,
+  attraction_identity_hold: 6,
+  attraction_and_supplier_hold: 7,
+  system_repair_then_reaudit: 8,
 };
 
 const PHASE_LABELS: Record<UploadChecklistPhase, string> = {
   ready_for_admin_upload: '1차 업로드 검증 대상',
+  commercial_metadata_then_reaudit: '랜드사·계약 커미션 입력 후 재감사',
   supplier_confirmation_then_reaudit: '랜드사 확정값 수신 후 재감사',
   owner_review_then_reaudit: '관광지 사장님 승인 후 재감사',
   owner_and_supplier_then_reaudit: '관광지 승인 + 랜드사 확정 후 재감사',
@@ -126,10 +136,14 @@ function phaseForProduct(
     return 'ready_for_admin_upload';
   }
 
+  const hasCommercialMetadata = product.remediation.actions.some(
+    action => action.kind === 'commercial_metadata',
+  );
   const hasAttraction = product.remediation.actions.some(action => action.kind === 'attraction_review');
   const hasSupplier = product.remediation.actions.some(action => action.kind === 'supplier_confirmation');
   const hasSystem = product.remediation.actions.some(action => action.kind === 'system_repair');
 
+  if (hasCommercialMetadata) return 'commercial_metadata_then_reaudit';
   if (hasAttraction && attractionDecision === 'held') {
     return hasSupplier ? 'attraction_and_supplier_hold' : 'attraction_identity_hold';
   }
@@ -141,14 +155,52 @@ function phaseForProduct(
   return 'system_repair_then_reaudit';
 }
 
+function heldAttractionConfirmations(
+  sourcePhrases: string[],
+  attractionPack: AttractionOwnerReviewPack,
+): string[] {
+  const sourcePhraseSet = new Set(sourcePhrases);
+  return [...new Set(
+    attractionPack.holds
+      .filter(hold => hold.sourcePhrases.some(phrase => sourcePhraseSet.has(phrase)))
+      .map(hold => hold.requiredConfirmation.trim())
+      .filter(Boolean),
+  )];
+}
+
+function checklistSupplierRequestText(
+  product: UploadChecklistSourceProduct,
+  identityConfirmations: string[],
+): string | null {
+  const existing = product.remediation.supplierRequestText?.trim() ?? '';
+  if (identityConfirmations.length === 0) return existing || null;
+
+  const identitySection = [
+    '관광지 공식 정보 확인 요청',
+    '아래 관광지는 공식 식별값 확인 전 등록하거나 고객에게 공개하지 않습니다.',
+    ...identityConfirmations.map(confirmation => `- ${confirmation}`),
+  ].join('\n');
+
+  if (existing) return `${existing}\n\n${identitySection}`;
+  return [
+    `상품: ${product.title?.trim() || '상품명 확인 필요'}`,
+    '고객 오픈 전 원문 보완 요청',
+    identitySection,
+  ].join('\n');
+}
+
 function validateChecklistInputs(
   report: UploadChecklistSourceReport,
   attractionPack: AttractionOwnerReviewPack,
 ): void {
   const errors: string[] = [];
   const seen = new Set<string>();
-  const attractionImpact = new Set(
-    attractionPack.productImpact.map(item => productKey(item.sourceFile, item.productIndex)),
+  const commercialMetadataByFile = new Map<string, string>();
+  const attractionImpact = new Map(
+    attractionPack.productImpact.map(item => [
+      productKey(item.sourceFile, item.productIndex),
+      item,
+    ]),
   );
 
   for (const product of report.products) {
@@ -158,14 +210,26 @@ function validateChecklistInputs(
 
     if (!product.title?.trim()) errors.push(`상품명이 없습니다: ${key}`);
     if (!product.rawTextHash?.trim()) errors.push(`원문 해시가 없습니다: ${key}`);
-    if (product.customerReadyOffline !== product.remediation.ready) {
-      errors.push(`오프라인 준비 상태와 운영 조치 상태가 다릅니다: ${key}`);
+    const commercialSignature = JSON.stringify({
+      ready: product.commercialMetadataReady === true,
+      landOperator: product.landOperator?.trim() || null,
+      commissionRate: Number.isFinite(product.commissionRate)
+        ? product.commissionRate ?? null
+        : null,
+    });
+    const priorCommercialSignature = commercialMetadataByFile.get(product.sourceFile);
+    if (priorCommercialSignature && priorCommercialSignature !== commercialSignature) {
+      errors.push(`같은 HWP 안의 상업조건 값이 서로 다릅니다: ${product.sourceFile}`);
     }
-    if (!product.customerReadyOffline && product.remediation.actions.length === 0) {
+    commercialMetadataByFile.set(product.sourceFile, commercialSignature);
+    if (product.remediation.ready && !product.customerReadyOffline) {
+      errors.push(`운영 조치는 완료됐지만 오프라인 고객 준비 상태가 아닙니다: ${key}`);
+    }
+    if (!product.remediation.ready && product.remediation.actions.length === 0) {
       errors.push(`보류 상품에 운영 조치가 없습니다: ${key}`);
     }
-    if (product.customerReadyOffline && product.remediation.actions.length > 0) {
-      errors.push(`준비 상품에 보류 조치가 남아 있습니다: ${key}`);
+    if (product.remediation.ready && product.remediation.actions.length > 0) {
+      errors.push(`운영 준비 완료 상품에 보류 조치가 남아 있습니다: ${key}`);
     }
     const hasAttraction = product.remediation.actions.some(action => action.kind === 'attraction_review');
     if (hasAttraction && !attractionImpact.has(key)) {
@@ -173,8 +237,14 @@ function validateChecklistInputs(
     }
   }
 
-  for (const key of attractionImpact) {
+  for (const [key, impact] of attractionImpact) {
     if (!seen.has(key)) errors.push(`현재 감사에 없는 관광지 검수 상품입니다: ${key}`);
+    if (
+      impact.decision === 'held'
+      && heldAttractionConfirmations(impact.sourcePhrases, attractionPack).length === 0
+    ) {
+      errors.push(`공식 식별 보류 상품에 공급사 확인 요청이 없습니다: ${key}`);
+    }
   }
 
   if (errors.length > 0) {
@@ -191,14 +261,18 @@ export function buildUploadBatchOperatorChecklist(
   const attractionByProduct = new Map(
     attractionPack.productImpact.map(item => [
       productKey(item.sourceFile, item.productIndex),
-      item.decision,
+      item,
     ]),
   );
 
   const rowsWithoutSequence = report.products.map(product => {
     const key = productKey(product.sourceFile, product.productIndex);
-    const phase = phaseForProduct(product, attractionByProduct.get(key) ?? null);
-    const requiredActions = product.customerReadyOffline
+    const attractionImpact = attractionByProduct.get(key);
+    const phase = phaseForProduct(product, attractionImpact?.decision ?? null);
+    const identityConfirmations = attractionImpact?.decision === 'held'
+      ? heldAttractionConfirmations(attractionImpact.sourcePhrases, attractionPack)
+      : [];
+    const baseRequiredActions = phase === 'ready_for_admin_upload'
       ? [
           'admin/upload에서 원문 1건 등록',
           '저장 결과와 원문 가격·출발일·일정 대조',
@@ -206,6 +280,12 @@ export function buildUploadBatchOperatorChecklist(
           '모든 공개 게이트 통과 후에만 승인',
         ]
       : product.remediation.actions.map(action => `${action.title}: ${action.instruction}`);
+    const requiredActions = [
+      ...baseRequiredActions,
+      ...identityConfirmations.map(
+        confirmation => `관광지 공식 정보 확인: ${confirmation}`,
+      ),
+    ];
 
     return {
       productKey: key,
@@ -220,13 +300,18 @@ export function buildUploadBatchOperatorChecklist(
       priceRows: product.priceRows,
       priceDates: product.priceDates,
       itineraryDays: product.itineraryDays,
+      commercialMetadataReady: product.commercialMetadataReady === true,
+      landOperator: product.landOperator?.trim() || null,
+      commissionRate: Number.isFinite(product.commissionRate)
+        ? product.commissionRate ?? null
+        : null,
       readyForAdminUpload: phase === 'ready_for_admin_upload',
       customerOpenAllowed: false as const,
       requiredActions,
       sourcePhrases: [...new Set(
         product.remediation.actions.flatMap(action => action.sourcePhrases),
       )],
-      supplierRequestText: product.remediation.supplierRequestText,
+      supplierRequestText: checklistSupplierRequestText(product, identityConfirmations),
       postUploadProofRequired: [...POST_UPLOAD_PROOF],
     };
   });
@@ -247,6 +332,9 @@ export function buildUploadBatchOperatorChecklist(
     summary: {
       products,
       readyForAdminUpload,
+      commercialMetadataRequired: rows.filter(
+        row => row.phase === 'commercial_metadata_then_reaudit',
+      ).length,
       customerOpenAllowedWithoutFreshProof: 0,
       supplierConfirmation: rows.filter(
         row => row.phase === 'supplier_confirmation_then_reaudit',
@@ -270,7 +358,8 @@ export function buildUploadBatchOperatorChecklist(
       currentOfflineReadyRate: percent(readyForAdminUpload, products),
     },
     operatingRule:
-      '오프라인 준비는 admin/upload 검증 시작 자격일 뿐 고객 공개 승인이 아닙니다. '
+      '랜드사와 실제 계약 커미션이 확인되지 않으면 admin/upload 등록을 시작하지 않습니다. '
+      + '오프라인 준비는 admin/upload 검증 시작 자격일 뿐 고객 공개 승인이 아닙니다. '
       + '실제 저장 후 /packages와 /lp 새 브라우저 증명을 모두 통과해야 공개할 수 있습니다.',
     rows,
   };
@@ -295,6 +384,9 @@ export function buildUploadBatchOperatorChecklistCsv(
     '가격행수',
     '출발일수',
     '일정일수',
+    '랜드사_확정값',
+    '계약커미션율_확정값',
+    '상업조건_완료',
     'admin_upload_시작가능',
     '현재_고객공개가능',
     '다음조치',
@@ -313,6 +405,9 @@ export function buildUploadBatchOperatorChecklistCsv(
     row.priceRows,
     row.priceDates,
     row.itineraryDays,
+    row.landOperator ?? '',
+    row.commissionRate ?? '',
+    row.commercialMetadataReady ? '예' : '아니오',
     row.readyForAdminUpload ? '예' : '아니오',
     '아니오',
     row.requiredActions,
@@ -323,10 +418,35 @@ export function buildUploadBatchOperatorChecklistCsv(
   return `\uFEFF${headers.join(',')}\n${rows.join('\n')}\n`;
 }
 
+export function buildUploadCommercialMetadataInputCsv(
+  checklist: UploadBatchOperatorChecklist,
+): string {
+  const headers = [
+    '원본파일',
+    '파일내상품번호',
+    '상품명',
+    '확정_랜드사',
+    '계약_커미션율_퍼센트',
+    '현재_확인상태',
+    '입력주의',
+  ];
+  const rows = checklist.rows.map(row => [
+    row.sourceFile,
+    row.productNumberInFile,
+    row.title,
+    row.landOperator ?? '',
+    row.commissionRate ?? '',
+    row.commercialMetadataReady ? '완료' : '입력 필요',
+    '파일명 숫자로 추정 금지. 실제 계약 근거와 일치하는 값만 입력',
+  ].map(escapeCsv).join(','));
+  return `\uFEFF${headers.join(',')}\n${rows.join('\n')}\n`;
+}
+
 export function buildUploadBatchOperatorChecklistMarkdown(
   checklist: UploadBatchOperatorChecklist,
 ): string {
   const summary = checklist.summary;
+  const commercialInputRows = checklist.rows;
   const lines = [
     '# HWP 71개 상품 한 건씩 업로드 체크리스트',
     '',
@@ -341,6 +461,7 @@ export function buildUploadBatchOperatorChecklistMarkdown(
     '',
     `- 전체 상품: ${summary.products}`,
     `- 1차 admin/upload 검증 대상: ${summary.readyForAdminUpload}`,
+    `- 랜드사·계약 커미션 입력 필요: ${summary.commercialMetadataRequired}`,
     `- 랜드사 확정값 수신 후 재감사: ${summary.supplierConfirmation}`,
     `- 관광지 사장님 승인 후 재감사: ${summary.ownerReviewCandidateOnly}`,
     `- 관광지 승인 + 랜드사 확정 후 재감사: ${summary.ownerAndSupplier}`,
@@ -348,6 +469,19 @@ export function buildUploadBatchOperatorChecklistMarkdown(
     `- 관광지 공식명 + 랜드사 확정 전 보류: ${summary.attractionAndSupplierHold}`,
     `- 시스템 수정 후 재감사: ${summary.systemRepair}`,
     `- 95% 기준 최소 상품 수: ${summary.minimumProductsFor95Percent}`,
+    '',
+    '## 상품별 상업조건 입력표',
+    '',
+    '- 파일명이나 숫자 표기로 랜드사·계약 커미션을 추정하지 않습니다.',
+    '- 같은 HWP 안에서도 상품별 조건이 다를 수 있으므로 각 상품 행에 실제 계약값을 입력합니다.',
+    '- 아래 두 값이 실제 계약 근거와 일치해야 해당 상품을 다시 감사할 수 있습니다.',
+    '',
+    '| 원본 파일 | 파일 내 상품 | 상품명 | 확정 랜드사 | 계약 커미션율(%) | 확인 상태 |',
+    '|---|---:|---|---|---:|---|',
+    ...commercialInputRows.map(row =>
+      `| ${row.sourceFile} | ${row.productNumberInFile} | ${row.title} | ${row.landOperator ?? ''} | `
+      + `${row.commissionRate ?? ''} | ${row.commercialMetadataReady ? '완료' : '입력 필요'} |`,
+    ),
     '',
     '## 1차 admin/upload 검증 대상',
     '',

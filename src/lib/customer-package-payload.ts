@@ -3,6 +3,7 @@ import type { CustomerProductPriceRow } from './customer-package-price-options';
 const INTERNAL_PACKAGE_KEYS = new Set([
   'raw_text',
   'raw_text_hash',
+  'approved_destination_media',
   'raw_extracted_text',
   'internal_notes',
   'special_notes',

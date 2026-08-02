@@ -1,11 +1,13 @@
 export type RegistrationRemediationKind =
   | 'supplier_confirmation'
+  | 'commercial_metadata'
   | 'attraction_review'
   | 'customer_disclosure_review'
   | 'system_repair'
   | 'mobile_proof';
 
 export type RegistrationRemediationField =
+  | 'commercial_metadata'
   | 'minimum_departure'
   | 'round_trip_flight'
   | 'unpriced_surcharge'
@@ -15,6 +17,7 @@ export type RegistrationRemediationField =
   | 'itinerary'
   | 'hotel'
   | 'customer_copy'
+  | 'customer_image'
   | 'mobile_proof'
   | 'unknown';
 
@@ -83,6 +86,21 @@ function classifyIssue(issue: NormalizedIssue): ActionDefinition | null {
   const normalized = text.toLowerCase();
 
   if (GENERIC_REVIEW_RE.test(text.trim())) return null;
+  if (/commission_rate_defaulted/i.test(text)) return null;
+
+  if (
+    /land_operator_required|commission_rate_required|commercial_metadata/i.test(text)
+    || /랜드사.{0,20}(?:필수|누락|확인)|커미션.{0,20}(?:필수|누락|확인)/.test(text)
+  ) {
+    return {
+      kind: 'commercial_metadata',
+      field: 'commercial_metadata',
+      title: '랜드사·계약 커미션 확인',
+      instruction: '실제 랜드사명과 계약 커미션율 또는 정액 커미션을 입력해야 합니다. 기본값이나 파일명 추정값으로 저장하지 않습니다.',
+      actionHref: '/admin/upload',
+      actionLabel: '업로드 조건 입력',
+    };
+  }
 
   if (
     /\.minimum_departure\b/.test(normalized)
@@ -159,6 +177,20 @@ function classifyIssue(issue: NormalizedIssue): ActionDefinition | null {
       instruction: '쇼핑·선택관광·기타 고객 고지 문구를 원문과 대조해 유형과 금액을 확정합니다. 관광지로 자동 등록하지 않습니다.',
       actionHref: '/admin/attractions/unmatched',
       actionLabel: '고객 고지 검수',
+    };
+  }
+
+  if (
+    /public_customer_image_missing|public_image_missing|customer_ready_image/i.test(text)
+    || /(?:상품|고객|랜딩).{0,20}(?:대표\s*)?이미지.{0,20}(?:누락|없음|보류)/.test(text)
+  ) {
+    return {
+      kind: 'system_repair',
+      field: 'customer_image',
+      title: '고객 대표 이미지 연결',
+      instruction: '출처를 확인할 수 있는 상품·관광지·목적지 이미지를 승인해 연결해야 합니다. 브랜드 로고 대체 이미지는 미리보기 전용이며 공개 근거로 사용할 수 없습니다.',
+      actionHref: null,
+      actionLabel: null,
     };
   }
 

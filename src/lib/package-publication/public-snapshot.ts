@@ -21,15 +21,27 @@ import {
   composeCustomerPublicSubtitle,
   composeCustomerPublicSummary,
 } from './public-summary-policy';
+import { BRAND_FALLBACK_IMAGE, isBrandFallbackImage } from './public-image-quality';
 import { buildPublicTermsPolicy } from './public-terms-policy';
-import { composeCustomerPublicTitle } from './public-title-policy';
+import {
+  composeCustomerPublicTitle,
+  stripConditionalProductConditionClauses,
+} from './public-title-policy';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
 type AnyRecord = Record<string, unknown>;
 type PublicImageCandidate = {
   url: string;
-  source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og' | 'brand_fallback';
+  source: 'approved_destination' | 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og' | 'brand_fallback';
   alt: string | null;
+  photographer?: string | null;
+  provider?: string | null;
+  source_page_url?: string | null;
+  source_file_title?: string | null;
+  license?: string | null;
+  license_url?: string | null;
+  pexels_id?: number | null;
+  approved_at?: string | null;
 };
 type PublicNoticeTemplateKey =
   | 'reservation_availability_check'
@@ -49,7 +61,6 @@ type PublicNoticeCandidate = {
 };
 
 const SNAPSHOT_VERSION = 'public-package-snapshot-v1' as const;
-const BRAND_FALLBACK_IMAGE = '/logo.png';
 
 const OPTIONAL_TOUR_FRAGMENT_PATTERNS = [
   /노옵션/,
@@ -269,6 +280,10 @@ const NO_SHOPPING_EVIDENCE_RE =
 const POSITIVE_SHOPPING_EVIDENCE_RE =
   /쇼핑\s*(?:센터|점|일정|방문|[1-9]\d*\s*회)|(?:라텍스|침향|보이차|보석|잡화|농산물)\s*(?:매장|쇼핑|구매|방문)|(?:매장|쇼핑센터)\s*방문/i;
 
+function isExplicitNoShoppingClaim(text: string): boolean {
+  return NO_SHOPPING_EVIDENCE_RE.test(stripConditionalProductConditionClauses(text));
+}
+
 export function evaluateShoppingEvidence(pkg: AnyRecord): {
   noShopping: boolean;
   positiveShopping: boolean;
@@ -289,13 +304,14 @@ export function evaluateShoppingEvidence(pkg: AnyRecord): {
   for (const source of sources) {
     walkSourceStrings(source.value, (text, path) => {
       const fullPath = `${source.root}${path ? `.${path}` : ''}`;
-      if (NO_SHOPPING_EVIDENCE_RE.test(text)) {
+      if (isExplicitNoShoppingClaim(text)) {
         noShoppingPaths.add(fullPath);
         return;
       }
       const isSchedulePath = /itinerary_data\.days\.\d+\.schedule\.\d+/.test(fullPath);
+      const isShoppingSummaryPath = fullPath === 'itinerary_data.highlights.shopping';
       const isRawSource = fullPath === 'raw_text';
-      if ((isSchedulePath || isRawSource) && POSITIVE_SHOPPING_EVIDENCE_RE.test(text)) {
+      if ((isSchedulePath || isShoppingSummaryPath || isRawSource) && POSITIVE_SHOPPING_EVIDENCE_RE.test(text)) {
         positiveShoppingPaths.add(fullPath);
       }
     });
@@ -333,7 +349,7 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
   if (/\uCDE8\uC18C|\uD658\uBD88|\uC218\uC218\uB8CC|\uCC28\uC9C0|\uC704\uC57D/i.test(text)) {
     keys.push('cancellation_policy_check');
   }
-  if (NO_SHOPPING_EVIDENCE_RE.test(text)) {
+  if (isExplicitNoShoppingClaim(text)) {
     keys.push('shopping_none_confirmed');
   } else if (/\uC1FC\uD551|\uB77C\uD14D\uC2A4|\uCE68\uD5A5|\uBCF4\uC774\uCC28|\uBCF4\uC11D|\uC7A1\uD654|\uB18D\uC0B0\uBB3C|\uD734\uAC8C\uC18C/i.test(text)) {
     keys.push('shopping_disclosure_check');
@@ -348,7 +364,7 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
   if (/취소|환불|수수료|차지|위약/i.test(text)) {
     keys.push('cancellation_policy_check');
   }
-  if (NO_SHOPPING_EVIDENCE_RE.test(text)) {
+  if (isExplicitNoShoppingClaim(text)) {
     keys.push('shopping_none_confirmed');
   } else if (/쇼핑|라텍스|침향|보이차|보석|잡화|농산물|휴게소/i.test(text)) {
     keys.push('shopping_disclosure_check');
@@ -450,12 +466,46 @@ function addPublicImageCandidate(
 ) {
   if (!isSafeImageSrc(rawUrl)) return;
   const url = rawUrl.trim();
+  if (source !== 'brand_fallback' && isBrandFallbackImage(url)) return;
   if (seen.has(url)) return;
   seen.add(url);
   candidates.push({
     url,
     source,
     alt: asString(alt),
+  });
+}
+
+function addApprovedDestinationImage(
+  candidates: PublicImageCandidate[],
+  seen: Set<string>,
+  value: unknown,
+) {
+  const media = asRecord(value);
+  if (
+    !media
+    || !['owner_approved_destination_metadata', 'automated_evidence_gate'].includes(String(media.approval_source))
+  ) return;
+  const url = asString(media.url);
+  const destination = asString(media.destination);
+  const photographer = asString(media.photographer);
+  const provider = asString(media.provider);
+  const approvedAt = asString(media.approved_at);
+  if (!url || !destination || !photographer || !provider || !approvedAt || !isSafeImageSrc(url)) return;
+  if (seen.has(url)) return;
+  seen.add(url);
+  candidates.push({
+    url,
+    source: 'approved_destination',
+    alt: asString(media.alt) ?? `${destination} 여행`,
+    photographer,
+    provider,
+    source_page_url: asString(media.source_page_url),
+    source_file_title: asString(media.source_file_title),
+    license: asString(media.license),
+    license_url: asString(media.license_url),
+    pexels_id: media.pexels_id == null ? null : asNumber(media.pexels_id),
+    approved_at: approvedAt,
   });
 }
 
@@ -539,6 +589,22 @@ function collectPublicImages(pkg: AnyRecord): PublicImageCandidate[] {
   const candidates: PublicImageCandidate[] = [];
   const seen = new Set<string>();
   const title = pkg.display_title ?? pkg.title ?? pkg.destination ?? null;
+  const approvedDestinationMedia = asRecord(pkg.approved_destination_media);
+  const approvedUrl = asString(approvedDestinationMedia?.url);
+  const packageHeroUrls = ['lp_hero_image_url', 'hero_image_url', 'main_image', 'thumbnail_url']
+    .map(key => asString(pkg[key]))
+    .filter((value): value is string => Boolean(value) && !isBrandFallbackImage(value));
+  const approvedDestinationIsPrimary = Boolean(
+    approvedUrl
+    && (
+      packageHeroUrls.length === 0
+      || packageHeroUrls.includes(approvedUrl)
+    ),
+  );
+
+  if (approvedDestinationIsPrimary) {
+    addApprovedDestinationImage(candidates, seen, approvedDestinationMedia);
+  }
 
   for (const key of ['lp_hero_image_url', 'hero_image_url', 'main_image', 'thumbnail_url']) {
     addPublicImageCandidate(candidates, seen, pkg[key], 'package_hero', title);
@@ -553,6 +619,10 @@ function collectPublicImages(pkg: AnyRecord): PublicImageCandidate[] {
   collectNestedPublicPhotos(pkg.matched_attractions, candidates, seen);
   collectNestedPublicPhotos(pkg.destination_attractions, candidates, seen);
   collectNestedPublicPhotos(pkg.itinerary_data, candidates, seen);
+
+  if (!approvedDestinationIsPrimary) {
+    addApprovedDestinationImage(candidates, seen, approvedDestinationMedia);
+  }
 
   if (candidates.length === 0) {
     addPublicImageCandidate(
@@ -570,6 +640,7 @@ function collectPublicImages(pkg: AnyRecord): PublicImageCandidate[] {
 const ROUTE_TEXT_SKIP_KEYS = new Set([
   'admin_note',
   'admin_notes',
+  'approved_at',
   'audit_report',
   'category',
   'commission_rate',
@@ -588,6 +659,10 @@ const ROUTE_TEXT_SKIP_KEYS = new Set([
   'match_method',
   'net_price',
   'operator',
+  'license',
+  'pexels_id',
+  'photographer',
+  'provider',
   'package_id',
   'package_revision',
   'public_snapshot_hash',
@@ -599,6 +674,7 @@ const ROUTE_TEXT_SKIP_KEYS = new Set([
   'source',
   'source_context',
   'source_evidence',
+  'source_file_title',
   'source_line',
   'status',
   'supplier',
@@ -904,9 +980,12 @@ function titleDestination(pkg: AnyRecord, sourceText: string): string | null {
 }
 
 function titleCondition(sourceText: string, optionBadges: string[]): string | null {
-  if (/노팁/.test(sourceText) && (/노옵션/.test(sourceText) || optionBadges.includes('노옵션'))) return '노팁·노옵션';
-  if (/노옵션/.test(sourceText) || optionBadges.includes('노옵션')) return '노옵션';
-  if (/노쇼핑/.test(sourceText)) return '노쇼핑';
+  const defaultConditionText = stripConditionalProductConditionClauses(sourceText);
+  const noOption = /노옵션/.test(defaultConditionText)
+    || optionBadges.some(badge => /노옵션/.test(stripConditionalProductConditionClauses(badge)));
+  if (/노팁/.test(defaultConditionText) && noOption) return '노팁·노옵션';
+  if (noOption) return '노옵션';
+  if (/노쇼핑/.test(defaultConditionText)) return '노쇼핑';
   return null;
 }
 

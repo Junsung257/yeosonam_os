@@ -7,6 +7,7 @@ import {
   buildUploadBatchOperatorChecklist,
   buildUploadBatchOperatorChecklistCsv,
   buildUploadBatchOperatorChecklistMarkdown,
+  buildUploadCommercialMetadataInputCsv,
   type UploadChecklistSourceReport,
 } from '@/lib/upload-batch-operator-checklist';
 
@@ -15,6 +16,7 @@ type CliArgs = {
   attractionPack: string;
   outputJson: string;
   outputCsv: string;
+  outputCommercialCsv: string;
   outputMarkdown: string;
 };
 
@@ -39,6 +41,7 @@ function parseArgs(argv: string[]): CliArgs {
       + '--audit <offline-source-audit.json> '
       + '--attraction-pack <attraction-owner-review-pack.json> '
       + '[--output-json <checklist.json>] [--output-csv <checklist.csv>] '
+      + '[--output-commercial-csv <commercial-input.csv>] '
       + '[--output-markdown <checklist.md>]',
     );
   }
@@ -53,6 +56,10 @@ function parseArgs(argv: string[]): CliArgs {
     ),
     outputCsv: resolve(
       values.get('output-csv') ?? `${outputDir}/upload-one-by-one-checklist.csv`,
+    ),
+    outputCommercialCsv: resolve(
+      values.get('output-commercial-csv')
+      ?? `${outputDir}/upload-commercial-metadata-input.csv`,
     ),
     outputMarkdown: resolve(
       values.get('output-markdown') ?? `${outputDir}/upload-one-by-one-checklist.md`,
@@ -73,22 +80,26 @@ async function main(): Promise<void> {
   ]);
   const checklist = buildUploadBatchOperatorChecklist(audit, attractionPack);
   const csv = buildUploadBatchOperatorChecklistCsv(checklist);
+  const commercialCsv = buildUploadCommercialMetadataInputCsv(checklist);
   const markdown = buildUploadBatchOperatorChecklistMarkdown(checklist);
 
   await Promise.all([
     mkdir(dirname(args.outputJson), { recursive: true }),
     mkdir(dirname(args.outputCsv), { recursive: true }),
+    mkdir(dirname(args.outputCommercialCsv), { recursive: true }),
     mkdir(dirname(args.outputMarkdown), { recursive: true }),
   ]);
   await Promise.all([
     writeFile(args.outputJson, `${JSON.stringify(checklist, null, 2)}\n`, 'utf8'),
     writeFile(args.outputCsv, csv, 'utf8'),
+    writeFile(args.outputCommercialCsv, commercialCsv, 'utf8'),
     writeFile(args.outputMarkdown, markdown, 'utf8'),
   ]);
 
   console.log(JSON.stringify({
     outputJson: args.outputJson,
     outputCsv: args.outputCsv,
+    outputCommercialCsv: args.outputCommercialCsv,
     outputMarkdown: args.outputMarkdown,
     summary: checklist.summary,
   }, null, 2));

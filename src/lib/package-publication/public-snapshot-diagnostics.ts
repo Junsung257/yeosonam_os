@@ -1,4 +1,5 @@
 import type { PublicPackageSnapshot, PublishFinding } from './types';
+import { assessPublicImageReadiness } from './public-image-quality';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -372,17 +373,25 @@ export function diagnosePublicSnapshotGeneration(input: {
     },
   );
 
+  const imageReadiness = assessPublicImageReadiness({
+    ...(asRecord(snapshot.package) ?? {}),
+    images_public: snapshot.images_public,
+  });
   addDiagnostic(
     diagnostics,
     'images',
-    hasArrayItems(snapshot.images_public) ? 'generated' : 'repairable',
-    [hasArrayItems(snapshot.images_public) ? `images=${snapshot.images_public.length}` : 'images_missing'],
-    hasArrayItems(snapshot.images_public)
+    imageReadiness.customerReady ? 'generated' : 'repairable',
+    [
+      `customer_ready_images=${imageReadiness.approvedImageCount}`,
+      `brand_fallbacks=${imageReadiness.brandFallbackCount}`,
+      hasArrayItems(snapshot.images_public) ? `render_images=${snapshot.images_public.length}` : 'render_images_missing',
+    ],
+    imageReadiness.customerReady
       ? []
-      : ['Select source-backed product, attraction, or destination images; use only safe generic fallbacks that do not imply unavailable experiences.'],
+      : ['Connect at least one approved product, attraction, or destination image. The brand logo fallback prevents a broken layout but cannot approve a customer landing page.'],
     {
       processStage: 'public_image_selection',
-      requiredSourceEvidence: ['approved product thumbnail, attraction photo, destination image, or safe generic fallback'],
+      requiredSourceEvidence: ['approved product thumbnail, attraction photo, or destination image with an auditable source'],
     },
   );
 

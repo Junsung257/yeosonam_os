@@ -169,4 +169,41 @@ BX428 00:30 출발
     expect(itinerary?.days[1]?.schedule.some(item => item.activity.includes('백색사원'))).toBe(true);
     expect(itinerary?.days[2]?.schedule.some(item => item.activity.includes('도이수텝'))).toBe(true);
   });
+
+  it('ignores plain day-count rows in a shared price table before the real itinerary header', () => {
+    const rawText = `
+요일
+날짜
+판매가
+5일
+7/5, 12, 19, 8/9
+1,149,000
+4일
+7/2, 9, 23
+1,199,000
+
+BX증편 연길, 백두산(남파+북파) 4일
+날  짜
+지  역
+교 통 편
+시  간
+일                    정
+식  사
+제1일
+부산
+연길 도착 후 가이드 미팅
+제2일
+백두산 남파 관광
+제3일
+백두산 북파 관광
+제4일
+연길 출발
+부산 도착
+`;
+
+    const itinerary = buildKoreanDayLineTableItinerary(rawText);
+
+    expect(itinerary?.days.map(day => day.day)).toEqual([1, 2, 3, 4]);
+    expect(itinerary?.days.some(day => day.schedule.some(item => item.activity.includes('1,149,000')))).toBe(false);
+  });
 });

@@ -4,13 +4,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Sparkles, Search } from 'lucide-react';
+import {
+  destinationMediaApprovalMissingEvidence,
+  isDestinationMediaApprovalReady,
+} from '@/lib/destination-media-approval';
 import { encodeDestinationPathSegment, getDestinationUrl } from '@/lib/regions';
 
 interface DestMeta {
   tagline: string | null;
   hero_tagline: string | null;
   hero_image_url: string | null;
+  hero_image_provider: string | null;
+  hero_image_pexels_id: number | null;
+  hero_image_source_page_url: string | null;
+  hero_image_source_file_title: string | null;
+  hero_image_license: string | null;
+  hero_image_license_url: string | null;
+  hero_photographer: string | null;
   photo_approved: boolean;
+  photo_approved_at: string | null;
 }
 
 interface DestRow {
@@ -21,13 +33,21 @@ interface DestRow {
   metadata: DestMeta | null;
 }
 
-interface PexelsResult {
-  id: number;
+type PhotoProvider = 'wikimedia_commons' | 'pexels';
+
+interface PhotoCandidate {
+  id: string | number;
+  provider: PhotoProvider;
+  asset_id: string;
   photographer: string;
   src_large: string;
   src_medium: string;
   src_thumb: string;
   alt: string;
+  source_page_url: string;
+  source_file_title: string | null;
+  license: string | null;
+  license_url: string | null;
 }
 
 type StatusFilter = 'all' | 'missing' | 'pending' | 'approved';
@@ -38,6 +58,37 @@ function getDestinationApiUrl(destination: string): string {
 
 function getDestinationDomId(destination: string): string {
   return encodeDestinationPathSegment(destination).replace(/[^a-zA-Z0-9_-]/g, '-') || 'destination';
+}
+
+function apiErrorMessage(body: unknown, fallback: string): string {
+  if (!body || typeof body !== 'object') return fallback;
+  const root = body as Record<string, unknown>;
+  if (typeof root.error === 'string' && root.error.trim()) return root.error;
+  if (
+    root.error
+    && typeof root.error === 'object'
+    && typeof (root.error as Record<string, unknown>).message === 'string'
+  ) {
+    return String((root.error as Record<string, unknown>).message);
+  }
+  return fallback;
+}
+
+function emptyDestMeta(): DestMeta {
+  return {
+    tagline: null,
+    hero_tagline: null,
+    hero_image_url: null,
+    hero_image_provider: null,
+    hero_image_pexels_id: null,
+    hero_image_source_page_url: null,
+    hero_image_source_file_title: null,
+    hero_image_license: null,
+    hero_image_license_url: null,
+    hero_photographer: null,
+    photo_approved: false,
+    photo_approved_at: null,
+  };
 }
 
 function statusBadge(meta: DestMeta | null) {
@@ -54,7 +105,12 @@ export default function AdminDestinationsPage() {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, Partial<DestMeta>>>({});
-  const [photoSearch, setPhotoSearch] = useState<Record<string, { keyword: string; results: PexelsResult[]; loading: boolean }>>({});
+  const [photoSearch, setPhotoSearch] = useState<Record<string, {
+    keyword: string;
+    provider: PhotoProvider;
+    results: PhotoCandidate[];
+    loading: boolean;
+  }>>({});
   const [autoGenProgress, setAutoGenProgress] = useState<{ current: number; total: number } | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState('');
@@ -63,8 +119,8 @@ export default function AdminDestinationsPage() {
     setLoading(true);
     try {
       const [destsRes, metaRes] = await Promise.all([
-        fetch('/api/admin/active-destinations'),
-        fetch('/api/destinations/meta-list'),
+        fetch('/api/admin/active-destinations', { cache: 'no-store' }),
+        fetch('/api/destinations/meta-list', { cache: 'no-store' }),
       ]);
       if (!destsRes.ok) {
         setMsg(`❌ 여행지 목록 조회 실패 (${destsRes.status})`);
@@ -80,13 +136,31 @@ export default function AdminDestinationsPage() {
         });
       }
 
-      const combined: DestRow[] = (dests.data || []).map((d: any) => ({
-        destination: d.destination,
-        package_count: d.package_count,
-        min_price: d.min_price,
-        avg_rating: d.avg_rating,
-        metadata: metaMap[d.destination] || null,
-      }));
+      const combinedMap = new Map<string, DestRow>();
+      (dests.data || []).forEach((d: any) => {
+        combinedMap.set(d.destination, {
+          destination: d.destination,
+          package_count: d.package_count,
+          min_price: d.min_price,
+          avg_rating: d.avg_rating,
+          metadata: metaMap[d.destination] || null,
+        });
+      });
+      Object.entries(metaMap).forEach(([destination, metadata]) => {
+        if (!combinedMap.has(destination)) {
+          combinedMap.set(destination, {
+            destination,
+            package_count: 0,
+            min_price: null,
+            avg_rating: null,
+            metadata,
+          });
+        }
+      });
+      const combined = [...combinedMap.values()].sort(
+        (a, b) => b.package_count - a.package_count
+          || a.destination.localeCompare(b.destination, 'ko'),
+      );
 
       setRows(combined);
     } catch (err) {
@@ -115,19 +189,26 @@ export default function AdminDestinationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       });
+      const json = await res.json();
       if (res.ok) {
         setRows(prev =>
           prev.map(r =>
             r.destination === destination
-              ? { ...r, metadata: { tagline: null, hero_tagline: null, hero_image_url: null, photo_approved: false, ...r.metadata, ...patch } }
+              ? {
+                  ...r,
+                  metadata: {
+                    ...emptyDestMeta(),
+                    ...r.metadata,
+                    ...json.data,
+                  },
+                }
               : r
           )
         );
         setEditing(p => { const n = { ...p }; delete n[destination]; return n; });
         setMsg(`✅ ${destination} 저장 완료`);
       } else {
-        const j = await res.json();
-        setMsg(`❌ ${j.error}`);
+        setMsg(`❌ ${apiErrorMessage(json, '목적지 저장 실패')}`);
       }
     } finally {
       setSaving(p => ({ ...p, [destination]: false }));
@@ -146,13 +227,13 @@ export default function AdminDestinationsPage() {
         setRows(prev =>
           prev.map(r =>
             r.destination === destination
-              ? { ...r, metadata: { tagline: null, hero_tagline: null, hero_image_url: null, photo_approved: false, ...r.metadata, ...json.data } }
+              ? { ...r, metadata: { ...emptyDestMeta(), ...r.metadata, ...json.data } }
               : r
           )
         );
         setMsg(`✅ ${destination} 타이틀 생성 완료`);
       } else {
-        setMsg(`❌ ${json.error}`);
+        setMsg(`❌ ${apiErrorMessage(json, '목적지 타이틀 생성 실패')}`);
       }
     } finally {
       setSaving(p => ({ ...p, [destination]: false }));
@@ -172,24 +253,47 @@ export default function AdminDestinationsPage() {
     setAutoGenProgress(null);
   }
 
-  // ── Pexels 검색 ─────────────────────────────────────────────
+  // ── 승인 전 사진 후보 검색 ───────────────────────────────────
   const DEFAULT_KEYWORD = (destination: string) => `${destination} travel landscape`;
 
-  async function searchPexels(destination: string) {
+  async function searchPhotos(destination: string) {
     const state = photoSearch[destination];
     const keyword = state?.keyword || DEFAULT_KEYWORD(destination);
-    setPhotoSearch(p => ({ ...p, [destination]: { ...p[destination], loading: true, keyword } }));
+    const provider = state?.provider ?? 'wikimedia_commons';
+    setPhotoSearch(p => ({
+      ...p,
+      [destination]: {
+        ...p[destination],
+        loading: true,
+        keyword,
+        provider,
+        results: p[destination]?.results ?? [],
+      },
+    }));
     try {
-      const res = await fetch(`/api/destinations/hero-photo?destination=${encodeURIComponent(destination)}&keyword=${encodeURIComponent(keyword)}`);
+      const res = await fetch(`/api/destinations/hero-photo?destination=${encodeURIComponent(destination)}&keyword=${encodeURIComponent(keyword)}&provider=${provider}`);
       const json = await res.json();
-      setPhotoSearch(p => ({ ...p, [destination]: { keyword, results: json.photos || [], loading: false } }));
+      const payload = json?.data ?? json;
+      setPhotoSearch(p => ({
+        ...p,
+        [destination]: {
+          keyword,
+          provider,
+          results: res.ok ? payload.photos || [] : [],
+          loading: false,
+        },
+      }));
+      if (!res.ok) setMsg(`❌ ${apiErrorMessage(json, '사진 후보 검색 실패')}`);
     } catch {
-      setPhotoSearch(p => ({ ...p, [destination]: { keyword, results: [], loading: false } }));
+      setPhotoSearch(p => ({
+        ...p,
+        [destination]: { keyword, provider, results: [], loading: false },
+      }));
     }
   }
 
-  // ── Pexels → Storage 저장 ────────────────────────────────────
-  async function saveHeroPhoto(destination: string, photo: PexelsResult) {
+  // ── 검토 후보 → Storage 미승인 저장 ──────────────────────────
+  async function saveHeroPhoto(destination: string, photo: PhotoCandidate) {
     setSaving(p => ({ ...p, [destination]: true }));
     setMsg(`⏳ ${destination} 사진 Storage 저장 중...`);
     try {
@@ -198,23 +302,49 @@ export default function AdminDestinationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destination,
-          pexels_id: photo.id,
+          provider: photo.provider,
+          asset_id: photo.asset_id,
+          pexels_id: photo.provider === 'pexels' ? Number(photo.asset_id) : null,
           src_large: photo.src_large,
           photographer: photo.photographer,
+          source_page_url: photo.source_page_url,
+          source_file_title: photo.source_file_title,
+          license: photo.license,
+          license_url: photo.license_url,
+          alt: photo.alt,
         }),
       });
       const json = await res.json();
+      const payload = json?.data ?? json;
       if (res.ok) {
         setRows(prev =>
           prev.map(r =>
             r.destination === destination
-              ? { ...r, metadata: { tagline: null, hero_tagline: null, photo_approved: false, ...r.metadata, hero_image_url: json.public_url } }
+              ? {
+                  ...r,
+                  metadata: {
+                    ...emptyDestMeta(),
+                    ...r.metadata,
+                    hero_image_url: payload.public_url,
+                    hero_image_provider: photo.provider,
+                    hero_image_pexels_id: photo.provider === 'pexels'
+                      ? Number(photo.asset_id)
+                      : null,
+                    hero_image_source_page_url: photo.source_page_url,
+                    hero_image_source_file_title: photo.source_file_title,
+                    hero_image_license: photo.license,
+                    hero_image_license_url: photo.license_url,
+                    hero_photographer: photo.photographer,
+                    photo_approved: false,
+                    photo_approved_at: null,
+                  },
+                }
               : r
           )
         );
         setMsg(`✅ ${destination} 사진 저장 완료 (승인 필요)`);
       } else {
-        setMsg(`❌ ${json.error}`);
+        setMsg(`❌ ${apiErrorMessage(json, '사진 후보 저장 실패')}`);
       }
     } finally {
       setSaving(p => ({ ...p, [destination]: false }));
@@ -223,7 +353,21 @@ export default function AdminDestinationsPage() {
   }
 
   // ── 승인 토글 ────────────────────────────────────────────────
-  async function toggleApprove(destination: string, current: boolean) {
+  async function toggleApprove(destination: string, current: boolean, metadata: DestMeta) {
+    if (!current) {
+      const missing = destinationMediaApprovalMissingEvidence(metadata);
+      if (missing.length > 0) {
+        setMsg(`❌ 승인 근거 부족: ${missing.join(', ')}`);
+        return;
+      }
+      const confirmed = window.confirm(
+        `${destination} 사진을 고객 공개용으로 승인하시겠습니까?\n\n`
+        + `저작자: ${metadata.hero_photographer}\n`
+        + `라이선스: ${metadata.hero_image_license || metadata.hero_image_provider}\n`
+        + '승인 후에도 상품별 모바일/A4 재검증을 통과해야 실제 공개됩니다.',
+      );
+      if (!confirmed) return;
+    }
     await patchMeta(destination, { photo_approved: !current });
   }
 
@@ -393,8 +537,18 @@ export default function AdminDestinationsPage() {
                                 {row.metadata.photo_approved ? '✅ 고객 노출 중' : '⚠️ 미승인 (고객 미노출)'}
                               </span>
                               <button type="button"
-                                onClick={() => toggleApprove(row.destination, row.metadata!.photo_approved)}
-                                disabled={saving[row.destination]}
+                                onClick={() => toggleApprove(
+                                  row.destination,
+                                  row.metadata!.photo_approved,
+                                  row.metadata!,
+                                )}
+                                disabled={
+                                  saving[row.destination]
+                                  || (
+                                    !row.metadata.photo_approved
+                                    && !isDestinationMediaApprovalReady(row.metadata)
+                                  )
+                                }
                                 className={`text-sm font-bold px-4 py-1.5 rounded-lg transition disabled:opacity-50 ${
                                   row.metadata.photo_approved
                                     ? 'bg-rose-100 text-rose-700 hover:bg-rose-200'
@@ -403,22 +557,91 @@ export default function AdminDestinationsPage() {
                               >
                                 {row.metadata.photo_approved ? '🔒 승인 취소' : '✅ 승인 (고객 노출)'}
                               </button>
+                              {!row.metadata.photo_approved && (
+                                <div className="text-xs text-admin-muted-2 space-y-1">
+                                  <p>© {row.metadata.hero_photographer || '저작자 확인 필요'}</p>
+                                  <p>
+                                    {row.metadata.hero_image_license
+                                      || row.metadata.hero_image_provider
+                                      || '라이선스 확인 필요'}
+                                  </p>
+                                  {row.metadata.hero_image_source_page_url && (
+                                    <a
+                                      href={row.metadata.hero_image_source_page_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-brand hover:underline"
+                                    >
+                                      원본·권리 근거 확인
+                                    </a>
+                                  )}
+                                  {!isDestinationMediaApprovalReady(row.metadata) && (
+                                    <p className="text-rose-600">
+                                      승인 불가: {
+                                        destinationMediaApprovalMissingEvidence(row.metadata).join(', ')
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
 
-                        {/* Pexels 검색 */}
+                        {/* 출처가 검증되는 사진 후보 검색 */}
+                        <div className="flex flex-wrap items-center gap-2 mb-3">
+                          {([
+                            ['wikimedia_commons', 'Wikimedia Commons (권장)'],
+                            ['pexels', 'Pexels'],
+                          ] as const).map(([provider, label]) => (
+                            <button
+                              key={provider}
+                              type="button"
+                              onClick={() => setPhotoSearch(current => ({
+                                ...current,
+                                [row.destination]: {
+                                  keyword: current[row.destination]?.keyword ?? DEFAULT_KEYWORD(row.destination),
+                                  provider,
+                                  results: [],
+                                  loading: false,
+                                },
+                              }))}
+                              className={`h-8 px-3 rounded-admin-sm text-admin-sm font-medium transition-colors ${
+                                (ps?.provider ?? 'wikimedia_commons') === provider
+                                  ? 'bg-admin-text text-white'
+                                  : 'bg-admin-surface border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                          <span className="text-xs text-admin-muted-2">
+                            검색 결과는 후보일 뿐이며, 저장 후 사장님 승인 전에는 고객에게 노출되지 않습니다.
+                          </span>
+                        </div>
                         <div className="flex gap-2 mb-3">
                           <input
                             id={`destination-${destinationDomId}-photo-keyword`}
                             value={ps?.keyword ?? DEFAULT_KEYWORD(row.destination)}
-                            onChange={e => setPhotoSearch(p => ({ ...p, [row.destination]: { ...p[row.destination], keyword: e.target.value, results: p[row.destination]?.results || [] } }))}
-                            placeholder="Pexels 검색 키워드..."
+                            onChange={e => setPhotoSearch(current => ({
+                              ...current,
+                              [row.destination]: {
+                                keyword: e.target.value,
+                                provider: current[row.destination]?.provider ?? 'wikimedia_commons',
+                                results: current[row.destination]?.results ?? [],
+                                loading: false,
+                              },
+                            }))}
+                            placeholder={
+                              (ps?.provider ?? 'wikimedia_commons') === 'wikimedia_commons'
+                                ? 'Commons 검색 키워드 (영문 권장)'
+                                : 'Pexels 검색 키워드 (영문 권장)'
+                            }
                             className="flex-1 text-sm border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
-                            onKeyDown={e => e.key === 'Enter' && searchPexels(row.destination)}
+                            onKeyDown={e => e.key === 'Enter' && searchPhotos(row.destination)}
                           />
                           <button type="button"
-                            onClick={() => searchPexels(row.destination)}
+                            onClick={() => searchPhotos(row.destination)}
                             disabled={ps?.loading}
                             className="text-sm font-bold bg-brand text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition disabled:opacity-50"
                           >
@@ -426,24 +649,51 @@ export default function AdminDestinationsPage() {
                           </button>
                         </div>
 
-                        {/* Pexels 결과 */}
+                        {/* 공급자별 후보 결과 */}
                         {ps?.results && ps.results.length > 0 && (
-                          <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             {ps.results.map(photo => (
-                              <div key={photo.id} className="relative group">
+                              <div
+                                key={`${photo.provider}:${photo.asset_id}`}
+                                className="overflow-hidden rounded-admin-md border border-admin-border bg-admin-surface shadow-admin-xs"
+                              >
                                 <img
                                   src={photo.src_thumb}
                                   alt={photo.alt}
-                                  className="w-full aspect-video object-cover rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] cursor-pointer group-hover:border-brand transition"
+                                  className="w-full aspect-video object-cover"
                                   title={`© ${photo.photographer}`}
                                 />
-                                <button type="button"
-                                  onClick={() => saveHeroPhoto(row.destination, photo)}
-                                  disabled={saving[row.destination]}
-                                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                                >
-                                  저장
-                                </button>
+                                <div className="p-2 space-y-1.5">
+                                  <p className="text-xs font-semibold text-admin-text truncate" title={photo.alt}>
+                                    {photo.alt || photo.source_file_title || '사진 후보'}
+                                  </p>
+                                  <p className="text-[11px] text-admin-muted-2 truncate" title={photo.photographer}>
+                                    © {photo.photographer}
+                                  </p>
+                                  <p className="text-[11px] text-admin-muted-2 truncate">
+                                    {photo.provider === 'wikimedia_commons'
+                                      ? photo.license
+                                      : 'Pexels License'}
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={photo.source_page_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[11px] text-brand hover:underline"
+                                    >
+                                      원본·권리 확인
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveHeroPhoto(row.destination, photo)}
+                                      disabled={saving[row.destination]}
+                                      className="ml-auto text-[11px] font-bold bg-admin-text text-white px-2.5 py-1.5 rounded-admin-sm hover:opacity-90 disabled:opacity-50"
+                                    >
+                                      미승인 후보 저장
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             ))}
                           </div>
