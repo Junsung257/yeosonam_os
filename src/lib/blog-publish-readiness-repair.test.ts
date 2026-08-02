@@ -42,4 +42,33 @@ describe('blog publish readiness repair', () => {
     expect(result.markdown).toContain('## 출발 전 다시 확인할 기준');
     expect(result.markdown).not.toContain('/packages?');
   });
+
+  it('restores the final length floor after later cleanup trims an existing support section', () => {
+    const prefix = [
+      '# 미국 입국 요건과 비자',
+      '',
+      '미국 입국 조건은 여행자 국적과 방문 목적을 기준으로 공식 안내에서 확인합니다.',
+      '',
+      '## 출발 전 다시 확인할 기준',
+      '',
+    ].join('\n');
+    const targetLength = 2495;
+    const filler = '공식 안내의 확인일과 적용 대상을 비교합니다. ';
+    let source = prefix;
+    while (source.length < targetLength) source += filler;
+
+    const result = repairPublishReadiness({
+      markdown: source,
+      blogType: 'info',
+      hasRuntimeInformationalCta: true,
+      slug: 'us-entry-requirements',
+      destination: '미국',
+      topic: '미국 입국 요건과 비자',
+      primaryKeyword: '미국 입국 요건과 비자',
+    });
+
+    expect(result.changes).toEqual(['extended_publish_readiness_support']);
+    expect(checkLength(result.markdown, 'info').passed).toBe(true);
+    expect(result.markdown.match(/## 출발 전 다시 확인할 기준/g)).toHaveLength(1);
+  });
 });

@@ -3,6 +3,7 @@ import {
   repairBlogFinalCustomerSurface,
   repairBlogFinalInlineSurface,
 } from './blog-final-customer-surface';
+import { inspectBlogIntentQuality } from './blog-content-intent';
 import { checkArticleQualityV2 } from './blog-quality-gate';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { stripMarkup } from './blog-text-utils';
@@ -39,6 +40,8 @@ describe('repairBlogFinalCustomerSurface', () => {
       ['**입국신고**을 작성합니다.', '**입국 신고**를 작성합니다.'],
       ['입국신고**을** 작성합니다.', '입국 신고**를** 작성합니다.'],
       ['**입국신고을** 작성합니다.', '**입국 신고를** 작성합니다.'],
+      ['*신고*을 작성합니다.', '*신고*를 작성합니다.'],
+      ['신고_을_ 작성합니다.', '신고_를_ 작성합니다.'],
     ];
 
     for (const [source, expected] of cases) {
@@ -59,12 +62,79 @@ describe('repairBlogFinalCustomerSurface', () => {
         '[세관 신고](https://www.cbp.gov/travel)**을** 확인합니다.',
         '[세관 신고](https://www.cbp.gov/travel)**를** 확인합니다.',
       ],
+      [
+        '[**세관 신고**](https://www.cbp.gov/travel)을 확인합니다.',
+        '[**세관 신고**](https://www.cbp.gov/travel)를 확인합니다.',
+      ],
+      [
+        '[세관 *신고*](https://www.cbp.gov/travel)**을** 확인합니다.',
+        '[세관 *신고*](https://www.cbp.gov/travel)**를** 확인합니다.',
+      ],
+      [
+        '[세관 신고을](https://www.cbp.gov/travel) 확인합니다.',
+        '[세관 신고를](https://www.cbp.gov/travel) 확인합니다.',
+      ],
+      [
+        '[**세관 신고을**](https://www.cbp.gov/travel) 확인합니다.',
+        '[**세관 신고를**](https://www.cbp.gov/travel) 확인합니다.',
+      ],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      const intent = inspectBlogIntentQuality({
+        primaryKeyword: '미국 입국 요건과 비자',
+        blogHtml: result.markdown,
+      });
+      expect(result.markdown).toBe(expected);
+      expect(stripMarkup(result.markdown)).not.toContain('신고을');
+      expect(intent.issues).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'awkward_korean_surface',
+          evidence: expect.objectContaining({ sample: '신고을' }),
+        }),
+      ]));
+    }
+  });
+
+  it('repairs particles across nested Markdown emphasis markers', () => {
+    const cases = [
+      ['***신고***을 작성합니다.', '***신고***를 작성합니다.'],
+      ['**_신고_**을 작성합니다.', '**_신고_**를 작성합니다.'],
+      ['***신고을*** 작성합니다.', '***신고를*** 작성합니다.'],
+      ['신고***을*** 작성합니다.', '신고***를*** 작성합니다.'],
     ];
 
     for (const [source, expected] of cases) {
       const result = repairBlogFinalInlineSurface(source);
       expect(result.markdown).toBe(expected);
       expect(stripMarkup(result.markdown)).not.toContain('신고을');
+    }
+  });
+
+  it('repairs particles before closing HTML emphasis tags', () => {
+    const cases = [
+      ['<strong>세관 신고을</strong> 확인합니다.', '<strong>세관 신고를</strong> 확인합니다.'],
+      ['<mark><strong>신고을</strong></mark> 확인합니다.', '<mark><strong>신고를</strong></mark> 확인합니다.'],
+      [
+        '[<strong>세관 신고을</strong>](https://www.cbp.gov/travel) 확인합니다.',
+        '[<strong>세관 신고를</strong>](https://www.cbp.gov/travel) 확인합니다.',
+      ],
+    ];
+
+    for (const [source, expected] of cases) {
+      const result = repairBlogFinalInlineSurface(source);
+      const intent = inspectBlogIntentQuality({
+        primaryKeyword: '미국 입국 요건과 비자',
+        blogHtml: result.markdown,
+      });
+      expect(result.markdown).toBe(expected);
+      expect(intent.issues).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'awkward_korean_surface',
+          evidence: expect.objectContaining({ sample: '신고을' }),
+        }),
+      ]));
     }
   });
 

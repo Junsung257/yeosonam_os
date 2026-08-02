@@ -2941,11 +2941,26 @@ async function processQueueItem(
         console.log(`[blog-publisher] final gate customer surface repair: ${surfaceChanges.join(', ')}`);
       }
     };
+    const applyFinalReadinessFloorRepair = (): void => {
+      const readinessRepair = repairPublishReadiness({
+        markdown: generated.blog_html,
+        blogType,
+        hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
+        slug: generated.slug,
+        destination: item.destination,
+        topic: item.topic,
+        primaryKeyword,
+      });
+      if (!readinessRepair.changed) return;
+      generated.blog_html = readinessRepair.markdown;
+      console.log(`[blog-publisher] final readiness floor repair: ${readinessRepair.changes.join(', ')}`);
+    };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       applyFinalResearchStructureRepair();
       await restoreFinalReusableImages();
+      applyFinalReadinessFloorRepair();
       applyFinalInlineSurfaceRepair();
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
@@ -2958,6 +2973,7 @@ async function processQueueItem(
       // cleanup cannot prune high-risk entry evidence from the customer article.
       applyFinalResearchStructureRepair();
       await restoreFinalReusableImages();
+      applyFinalReadinessFloorRepair();
       applyFinalInlineSurfaceRepair();
       applyFinalLiteralNewlineRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
