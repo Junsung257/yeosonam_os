@@ -51,6 +51,7 @@ interface ClobeSyncResult {
   memoChangedReview?: number;
   fetched?: number;
   normalized?: number;
+  normalizeErrors?: Array<{ index: number; reason: string; from?: string; to?: string }>;
   firstError?: string | null;
   from?: string;
   to?: string;
@@ -103,6 +104,7 @@ export interface BankTransaction {
   match_status: 'auto' | 'review' | 'unmatched' | 'manual' | 'error';
   match_confidence: number; created_at: string;
   status?: string; deleted_at?: string | null;
+  source?: string | null;
   bookings?: {
     id: string; booking_no?: string; package_title?: string;
     total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number;
@@ -485,7 +487,7 @@ function PaymentOpsQueue({
     { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', count: counts.unmatched, tone: 'border-red-200 bg-red-50 text-red-700' },
     { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', count: counts.stale, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
     { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', count: counts.outflow, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
-    { key: 'trash', label: '제외 보관함', helper: '복구/영구삭제', count: counts.trash, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { key: 'trash', label: '과거 자료 보관', helper: 'Slack/SMS·이전 Clobe 증빙', count: counts.trash, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
   ];
 
   return (
@@ -698,7 +700,6 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
 
     const result = transactions.filter(tx => {
-      if (tab !== 'unmatched' && !matchesPaymentPeriod(tx.received_at, dateFilter)) return false;
       if (tab === 'outflow') {
         if (!isOutflow(tx)) return false;
         // sub-필터로 매칭 상태별 분리
@@ -731,20 +732,24 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
     }
     return result;
-  }, [transactions, tab, outflowSubTab, dateFilter]);
+  }, [transactions, tab, outflowSubTab]);
 
   const isOutflowTx = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
-  const periodTransactions = transactions.filter(t => matchesPaymentPeriod(t.received_at, dateFilter));
-  const reviewCount    = periodTransactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
+  const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
   const unmatchedCount = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
-  const matchedCount   = periodTransactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
-  const outflowCount   = periodTransactions.filter(isOutflowTx).length;
-  const outflowUnmatchedCount = periodTransactions.filter(t => isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review')).length;
-  const outflowMatchedCount   = periodTransactions.filter(t => isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const matchedCount   = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const outflowCount   = transactions.filter(isOutflowTx).length;
+  const outflowUnmatchedCount = transactions.filter(t => isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review')).length;
+  const outflowMatchedCount   = transactions.filter(t => isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
   const allOutflowUnmatchedCount = transactions.filter(t =>
     isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review'),
   ).length;
   const allReviewCount = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
+  const activeMatchedCount = transactions.filter(t => t.match_status === 'auto' || t.match_status === 'manual').length;
+  const activeAttentionCount = transactions.length - activeMatchedCount;
+  const activeClobeCount = transactions.filter(t => t.source === 'clobe_mcp').length;
+  const archivedSlackSmsCount = trashTxs.filter(t => t.source === 'slack_webhook' || t.source === 'slack_gap_fill' || t.source === 'sms').length;
+  const archivedClobeCount = trashTxs.filter(t => t.source === 'clobe_mcp').length;
 
   const collectionRate = useMemo(() =>
     erp ? Math.min(100, Math.round(((erp.pricedPaid ?? Math.min(erp.totalPaid, erp.totalPrice)) / Math.max(erp.totalPrice, 1)) * 100)) : 0,
@@ -1077,6 +1082,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         memoChangedReview: 0,
         fetched: 0,
         normalized: 0,
+        normalizeErrors: [],
         firstError: null,
         from: clobeSyncWindow.from,
         to: clobeSyncWindow.to,
@@ -1127,6 +1133,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           memoChangedReview: (summary.memoChangedReview ?? 0) + (data.memoChangedReview ?? 0),
           fetched: (summary.fetched ?? 0) + (data.fetched ?? 0),
           normalized: (summary.normalized ?? 0) + (data.normalized ?? 0),
+          normalizeErrors: [
+            ...(summary.normalizeErrors ?? []),
+            ...((data.normalizeErrors ?? []).map((item: { index: number; reason: string }) => ({
+              ...item,
+              from: syncWindow.from,
+              to: syncWindow.to,
+            }))),
+          ],
           firstError: summary.firstError ?? data.firstError ?? null,
           mcp: {
             toolName: nextMcp.toolName ?? previousMcp.toolName ?? null,
@@ -1141,8 +1155,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         setClobeSyncResult(summary);
       }
 
-      showToast(`Clobe sync: source ${summary.fetched || 0}, recognized ${summary.normalized || 0}, new ${summary.inserted || 0}, matched ${summary.matched || 0}`);
-      load(); loadErp(); loadOpsQueue(); loadClobeIntegration();
+      await Promise.all([load(), loadErp(), loadOpsQueue(), loadClobeIntegration()]);
+      const normalizeErrorCount = summary.normalizeErrors?.length ?? 0;
+      showToast(normalizeErrorCount > 0
+        ? `Clobe 동기화 완료: ${summary.normalized || 0}건 반영, 인식 실패 ${normalizeErrorCount}건 확인 필요`
+        : `Clobe 동기화 완료: ${summary.normalized || 0}건 반영, 실제 중복 검토 ${summary.duplicates || 0}건`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Clobe sync failed', 'err');
     } finally {
@@ -1397,7 +1414,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               </span>
             )}
           </div>
-          <p className="text-admin-sm text-admin-muted mt-0.5">Slack(Clobe.ai) 입출금 자동 파싱 및 예약 매칭</p>
+          <p className="text-admin-sm text-admin-muted mt-0.5">Clobe AI 통장 입출금 자동 동기화 및 예약별 정산</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleResync} disabled={bulkProcessing} aria-busy={bulkProcessing}
@@ -1502,8 +1519,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         const hasMappedRows = normalized > 0;
         const attempts = clobeSyncResult.mcp?.attempts ?? [];
         const scrapingStatus = clobeSyncResult.mcp?.scrapingStatus ?? [];
+        const normalizeErrorCount = clobeSyncResult.normalizeErrors?.length ?? 0;
         const attemptedTools = attempts.map(attempt => `${attempt.toolName}(${attempt.extracted}/${attempt.normalized ?? 0})`).join(', ');
-        const tone = hasRows && !hasMappedRows
+        const tone = hasRows && (!hasMappedRows || normalizeErrorCount > 0 || clobeSyncResult.errors > 0 || clobeSyncResult.duplicates > 0)
           ? 'border-amber-200 bg-amber-50 text-amber-900'
           : hasRows
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
@@ -1512,9 +1530,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         return (
           <div className={`mb-3 rounded border px-3 py-2 text-[11px] ${tone}`}>
             <div className="font-semibold">
-              Clobe sync result: range {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to}, Clobe 원본 {fetched}건, OS 인식 {normalized}건, new {clobeSyncResult.inserted}, matched {clobeSyncResult.matched}, memo updated {clobeSyncResult.memoUpdated ?? 0}, memo review {clobeSyncResult.memoChangedReview ?? 0}, merged {clobeSyncResult.merged ?? 0}, duplicates {clobeSyncResult.duplicates}, skipped {clobeSyncResult.skipped ?? 0}, errors {clobeSyncResult.errors}
+              Clobe 동기화: {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to} · 원본 {fetched}건 · OS 인식 {normalized}건 · 신규 {clobeSyncResult.inserted}건 · 새 예약 매칭 {clobeSyncResult.matched}건 · 기존 거래 확인 {clobeSyncResult.merged ?? 0}건 · 메모 수정 {clobeSyncResult.memoUpdated ?? 0}건 · 메모 검토 {clobeSyncResult.memoChangedReview ?? 0}건 · 실제 중복 검토 {clobeSyncResult.duplicates}건 · 여행 메모 없음 {clobeSyncResult.skipped ?? 0}건 · 처리 오류 {clobeSyncResult.errors}건 · 인식 실패 {normalizeErrorCount}건
               {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
             </div>
+            {normalizeErrorCount > 0 && (
+              <div className="mt-1">
+                인식 실패 첫 항목: {clobeSyncResult.normalizeErrors?.[0]?.from} · {clobeSyncResult.normalizeErrors?.[0]?.reason}
+              </div>
+            )}
             {!hasRows && (
               <div className="mt-1">
                 {clobeSyncResult.mcp?.bankToolAvailable === false
@@ -1563,6 +1586,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         );
       })()}
 
+      <div className={`mb-3 rounded-admin-sm border px-3 py-2 text-admin-xs ${activeAttentionCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+        <span className="font-semibold">전체 활성 정산 원장</span>
+        {' · '}Clobe {activeClobeCount}건 · 예약 매칭 {activeMatchedCount}건 · 확인 필요 {activeAttentionCount}건
+        <span className="ml-2 text-admin-muted">아래 거래 탭은 전체 활성 기간 기준입니다.</span>
+      </div>
+
       <PaymentOpsQueue
         activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
         counts={{
@@ -1583,24 +1612,20 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="text-admin-xs text-admin-muted mt-1">취소 제외 {erp?.bookingCount ?? 0}건 기준</p>
             </div>
             <div className="relative flex items-center gap-2">
-              {tab === 'unmatched' && (
-                <span className="px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[11px] font-medium whitespace-nowrap">
-                  전체 기간 미매칭
-                </span>
-              )}
+              <span className="px-2 py-1 bg-admin-surface-2 border border-admin-border-mid text-admin-muted rounded text-[11px] font-medium whitespace-nowrap">
+                예약 출발일 기준
+              </span>
               <button
                 type="button"
-                onClick={() => { if (tab !== 'unmatched') setDateDropdown(o => !o); }}
-                disabled={tab === 'unmatched'}
+                onClick={() => setDateDropdown(o => !o)}
                 aria-haspopup="menu"
                 aria-expanded={dateDropdown}
-                className={`flex items-center gap-1.5 px-3 py-1.5 bg-white border border-admin-border-mid rounded-admin-sm text-admin-sm transition
-                  ${tab === 'unmatched' ? 'opacity-40 cursor-not-allowed text-admin-muted-2' : 'text-admin-text-2 hover:bg-admin-bg'}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-admin-border-mid rounded-admin-sm text-admin-sm text-admin-text-2 transition hover:bg-admin-bg"
               >
-                <span>{tab === 'unmatched' ? '전체' : dateFilter}</span>
+                <span>{dateFilter}</span>
                 <span className="text-admin-muted-2 text-[11px]">▾</span>
               </button>
-              {dateDropdown && tab !== 'unmatched' && (
+              {dateDropdown && (
                 <div role="menu" className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded-admin-sm z-20 py-1 min-w-[110px]">
                   {DATE_FILTERS.map(f => (
                     <button key={f} type="button" role="menuitemradio" aria-checked={dateFilter === f} onClick={() => { setDateFilter(f); setDateDropdown(false); }}
@@ -1697,6 +1722,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       </div>
 
       {/* ── Metric Filter Cards (탭 겸용) ──────────────────────────────────────── */}
+      <p className="mb-2 text-[11px] text-admin-muted">전체 활성 입출금 원장 기준</p>
       <div className="grid grid-cols-4 gap-3 mb-5">
         {([
           { id: 'review'    as const, label: '검토 필요',   count: reviewCount,    active: 'border-amber-400 bg-amber-50', num: 'text-amber-700' },
@@ -2037,7 +2063,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             className="w-full flex items-center justify-between px-4 py-3 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs text-admin-sm text-admin-muted hover:bg-admin-bg transition"
           >
             <span className="flex items-center gap-2">
-              <span>제외된 내역 {trashTxs.length}건 보기</span>
+              <span>과거 비활성 자료 {trashTxs.length}건 보기</span>
+              <span className="text-[11px] text-admin-muted-2">Slack/SMS {archivedSlackSmsCount} · 이전 Clobe {archivedClobeCount} · 정산 합계 제외</span>
             </span>
             <span className={`transition-transform duration-200 ${trashOpen ? 'rotate-180' : ''}`}>▼</span>
           </button>
