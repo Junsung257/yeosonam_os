@@ -515,7 +515,7 @@ function findRawSurfaceContext(source: string, sample: string): string | null {
       lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 2)).join('\n'),
     ];
     for (const candidate of candidates) {
-      const inspectedCandidate = stripMarkup(candidate.replace(/https?:\/\/\S+/gi, ' '))
+      const inspectedCandidate = stripMarkup(candidate.replace(/https?:\/\/[^\s)]+/gi, 'https://redacted.invalid'))
         .replace(/\s+/g, ' ')
         .trim();
       if (!inspectedCandidate.includes(sample)) continue;
@@ -845,7 +845,7 @@ function inspectProductConsultContract(source: string, issues: BlogIntentIssue[]
 export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQualityReport {
   const intent = classifyBlogIntent(input);
   const source = input.blogHtml || '';
-  const sourceWithoutUrls = source.replace(/https?:\/\/\S+/gi, ' ');
+  const sourceWithoutUrls = source.replace(/https?:\/\/[^\s)]+/gi, 'https://redacted.invalid');
   const plain = stripMarkup(sourceWithoutUrls).replace(/\s+/g, ' ').trim();
   const issues: BlogIntentIssue[] = [];
 
