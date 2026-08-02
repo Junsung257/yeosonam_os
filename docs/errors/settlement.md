@@ -12,6 +12,7 @@ Last updated: 2026-08-02
 
 - Excluded historical rows must not block an active Clobe row from claiming the same provider transaction identity.
 - Keep excluded evidence immutable and scope the provider identity unique index to rows whose status is not `excluded`.
+- Apply the same active-only boundary to the local transaction fingerprint unique index; both constraints can otherwise block the same replacement flow in sequence.
 - A full-period sync must be verified by checking that active Clobe rows missing `external_transaction_id` decrease to zero; UI matched counts alone are not sufficient.
 
 정산, ledger, 입금, 은행/SMS 매칭, 세무, 지급 흐름 반복 오류 상세.
