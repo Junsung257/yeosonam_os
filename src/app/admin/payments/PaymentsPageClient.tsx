@@ -46,6 +46,7 @@ interface ClobeSyncResult {
   merged?: number;
   errors: number;
   matched: number;
+  repaired?: number;
   memoUpdated?: number;
   memoChangedReview?: number;
   fetched?: number;
@@ -1071,6 +1072,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         merged: 0,
         errors: 0,
         matched: 0,
+        repaired: 0,
         memoUpdated: 0,
         memoChangedReview: 0,
         fetched: 0,
@@ -1120,6 +1122,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           merged: (summary.merged ?? 0) + (data.merged ?? 0),
           errors: summary.errors + (data.errors ?? 0),
           matched: summary.matched + (data.matched ?? 0),
+          repaired: (summary.repaired ?? 0) + (data.repaired ?? 0),
           memoUpdated: (summary.memoUpdated ?? 0) + (data.memoUpdated ?? 0),
           memoChangedReview: (summary.memoChangedReview ?? 0) + (data.memoChangedReview ?? 0),
           fetched: (summary.fetched ?? 0) + (data.fetched ?? 0),
