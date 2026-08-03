@@ -2849,6 +2849,7 @@ async function processQueueItem(
         intent: finalContentBrief.intentType,
         readiness: finalResearchReadiness,
         plannedTitle: finalContentBrief.title,
+        primaryKeyword: finalContentBrief.primaryKeyword,
         editorialVariation: item.meta?.editorial_variation ?? null,
         forceDeterministicEvidenceArticle:
           finalContentBrief.intentType === 'entry_requirements'
@@ -4510,6 +4511,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     intent: contentBrief.intentType,
     readiness: researchReadiness,
     plannedTitle: contentBrief.title,
+    primaryKeyword: contentBrief.primaryKeyword,
     editorialVariation: item.meta?.editorial_variation ?? null,
     forceDeterministicEvidenceArticle:
       // Entry/visa content is high-risk: a syntactically valid writer ledger
