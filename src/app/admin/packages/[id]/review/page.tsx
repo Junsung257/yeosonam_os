@@ -296,10 +296,19 @@ export default function PackageReviewPage() {
       // `/api/packages` follows the standard `{ ok, data: { package } }`
       // envelope. Keep the legacy direct shapes as fallbacks, but unwrap the
       // nested package before rendering links and field-level review state.
-      const data: PackageData | null = json.package
+      const candidate = json.package
         || json.data?.package
+        || json.data?.data?.package
         || json.data
-        || (Array.isArray(json.packages) ? json.packages[0] : null);
+        || json.result?.package
+        || (Array.isArray(json.packages) ? json.packages[0] : null)
+        || (Array.isArray(json.data?.packages) ? json.data.packages[0] : null);
+      // The review route is always addressed by a validated UUID. Keep that
+      // route id as a last-resort identity so an older/proxy response shape
+      // can never render customer/admin links ending in `/undefined`.
+      const data: PackageData | null = candidate
+        ? { ...candidate, id: candidate.id || packageId }
+        : null;
       setPkg(data);
       setQuality(qualityJson?.quality ?? null);
     } finally {

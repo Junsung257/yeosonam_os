@@ -25,9 +25,22 @@ if (ids.length === 0) { console.error('사용: node db/post_register_audit.js <i
 
 // insert-template의 validatePackage 재사용
 const { validatePackage } = require('./templates/insert-template.js');
-const { aiCrossCheck } = require('./ai_audit_helper.js');
 const { runCoVeAudit } = require('./cove_audit.js');
-const { applyAutoFixes } = require('./auto-fixer.js');
+// These optional helpers were removed from the repository, but the audit must
+// remain runnable for the deterministic DB/render checks. Keep AI and
+// auto-fix opt-in and fail soft when their optional modules are unavailable.
+let aiCrossCheck = async () => ({ available: false, reason: 'optional ai_audit_helper.js is not installed' });
+try {
+  ({ aiCrossCheck } = require('./ai_audit_helper.js'));
+} catch {
+  // Deterministic audit continues without the optional AI cross-check.
+}
+let applyAutoFixes = async () => ({ applied: [], updated: false, error: 'optional auto-fixer.js is not installed' });
+try {
+  ({ applyAutoFixes } = require('./auto-fixer.js'));
+} catch {
+  // Auto-fix remains unavailable unless the optional module is restored.
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  W-final F1 — AI 감사 정책 (2026-04-21 최종)
