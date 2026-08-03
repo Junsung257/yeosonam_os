@@ -11,6 +11,7 @@ import { BookingDrawerOpsTimeline } from '@/components/admin/booking-ops/Booking
 import { BookingDrawerNextActions } from '@/components/admin/booking-ops/BookingDrawerNextActions';
 import LedgerViewer from './LedgerViewer';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
+import { extractBookingFromApi } from '@/lib/bookings-api-response';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -777,6 +778,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
 
 export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSave }: BookingDrawerProps) {
   const [booking, setBooking]               = useState<BookingDetail | null>(null);
+  const [loadError, setLoadError]           = useState<string | null>(null);
   const [logs, setLogs]                     = useState<MessageLog[]>([]);
   const [loading, setLoading]               = useState(false);
   const [transitioning, setTransitioning]   = useState<string | null>(null);
@@ -850,13 +852,21 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
   const fetchAll = useCallback(async (id: string) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [bRes, lRes] = await Promise.all([
         fetch(`/api/bookings?id=${id}`),
         fetch(`/api/bookings/${id}/timeline`),
       ]);
-      if (bRes.ok) { const { booking: b } = await bRes.json(); setBooking(b); }
+      if (!bRes.ok) throw new Error(`booking detail request failed: ${bRes.status}`);
+      const b = extractBookingFromApi<BookingDetail>(await bRes.json());
+      if (!b) throw new Error('booking detail response was empty');
+      setBooking(b);
       if (lRes.ok) { const { logs: l } = await lRes.json(); setLogs(l ?? []); }
+    } catch (error) {
+      console.error('[BookingDrawer] Failed to load booking detail', error);
+      setBooking(null);
+      setLoadError('예약 상세를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     } finally { setLoading(false); }
   }, []);
 
@@ -870,7 +880,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
   useEffect(() => {
     if (bookingId) {
-      setBooking(null); setLogs([]); setTxs([]);
+      setBooking(null); setLogs([]); setTxs([]); setLoadError(null);
       fetchAll(bookingId);
       fetchTxs(bookingId);
     }
@@ -1238,6 +1248,10 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                     <div className="h-10 bg-gray-100 rounded" />
                   </div>
                 ))}
+              </div>
+            ) : loadError ? (
+              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-semibold text-red-700">
+                {loadError}
               </div>
             ) : !booking ? (
               <div className="text-center text-gray-400 text-[14px] py-8">불러오는 중...</div>

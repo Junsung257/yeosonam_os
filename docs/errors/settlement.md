@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-BOOKING-DRAWER-API-ENVELOPE@2026-08-03
+
+- **Symptom:** A booking row showed correct bank totals, but opening its settlement drawer displayed an empty blueprint and no matched bank transactions.
+- **Root cause:** The drawer read the legacy `{ booking }` shape while `/api/bookings?id=...` returns `{ ok, data: { booking } }`.
+- **Permanent rule:** Booking list and detail consumers must use the shared API response extractors; a failed detail request must render an explicit error instead of a false empty settlement.
+- **Required proof:** Open a known memo-created booking and verify its booking identity, matched deposit and withdrawal rows, realized profit, and ledger link.
+
 ## ERR-SETTLEMENT-MOBILE-OUTFLOW-SIGN@2026-08-03
 
 - **Symptom:** A mobile transaction detail displayed a 1,342,700 KRW withdrawal with a plus sign and deposit color.
