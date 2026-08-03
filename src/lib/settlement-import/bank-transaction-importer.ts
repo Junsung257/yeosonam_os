@@ -809,7 +809,9 @@ export async function processBankTransactionImportRows(
 
     if (parsed) {
       const resolution = await resolveSettlementMemoBooking(parsed, {
-        createIfMissing: options.createMissingBookings !== false && !preview,
+        createIfMissing: options.createMissingBookings !== false
+          && parsed.memoFormat === 'canonical'
+          && !preview,
       });
       resolutionSource = resolution.source;
       confidence = resolution.confidence;

@@ -1,6 +1,7 @@
 export interface ParsedTravelSettlementMemo {
   rawMemo: string;
   normalizedKey: string;
+  memoFormat: 'canonical' | 'separator_variant';
   departureDate: string;
   leadCustomerName: string;
   landOperatorName: string;
@@ -32,7 +33,15 @@ export function parseTravelSettlementMemo(memo: string | null | undefined): Pars
   const rawMemo = (memo ?? '').normalize('NFKC').trim();
   if (!rawMemo) return null;
 
-  const parts = rawMemo.split('_').map(part => part.trim()).filter(Boolean);
+  let parts = rawMemo.split('_').map(part => part.trim()).filter(Boolean);
+  let memoFormat: ParsedTravelSettlementMemo['memoFormat'] = 'canonical';
+  if (parts.length === 2) {
+    const variant = rawMemo.match(/^(\d{6})_([^_\-/|]+?)\s*[-/|]\s*(.+)$/);
+    if (variant) {
+      parts = [variant[1], variant[2], variant[3]];
+      memoFormat = 'separator_variant';
+    }
+  }
   if (parts.length < 3) return null;
 
   const [yymmdd, customerName, ...operatorParts] = parts;
@@ -57,6 +66,7 @@ export function parseTravelSettlementMemo(memo: string | null | undefined): Pars
   return {
     rawMemo,
     normalizedKey: normalizeSettlementMemoKey(`${yymmdd}_${leadCustomerName}_${landOperatorName}`),
+    memoFormat,
     departureDate: `${year.toString().padStart(4, '0')}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`,
     leadCustomerName,
     landOperatorName,

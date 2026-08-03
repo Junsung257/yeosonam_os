@@ -1098,7 +1098,9 @@ export async function POST(request: NextRequest) {
       let resolutionSource: string | null = null;
 
       if (parsed) {
-        const resolution = await resolveSettlementMemoBooking(parsed, { createIfMissing: !preview });
+        const resolution = await resolveSettlementMemoBooking(parsed, {
+          createIfMissing: !preview && parsed.memoFormat === 'canonical',
+        });
         resolutionSource = resolution.source;
         confidence = resolution.confidence;
         if (resolution.bookingId) {

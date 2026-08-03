@@ -18,6 +18,7 @@ import {
   RefreshCw, Wallet, Banknote, ArrowDownCircle, ArrowUpCircle,
 } from 'lucide-react';
 import type { BankAccountRealitySummary } from '@/lib/bank-account-reality';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -368,8 +369,8 @@ export default function LedgerPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ── 날짜 포맷 (locale-stable: MM-DD HH:mm) ─────────────────────────────
-  const fmtDate = (s: string) => (s ? s.slice(5, 16).replace('T', ' ') : '');
+  // Bank timestamps are stored as UTC and must always be shown in Korea time.
+  const fmtDate = (s: string) => formatSettlementTimestamp(s);
 
   const CAPITAL_GOAL = 30_000_000;
   const isAssetWarning = actualBankBalance < 0;

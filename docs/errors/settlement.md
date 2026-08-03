@@ -2,6 +2,34 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-REVIEW-TIMEZONE@2026-08-03
+
+- **Symptom:** The `통장 메모 확인` queue showed all non-travel rows instead of the review subset, and ledger timestamps appeared nine hours earlier than Clobe.
+- **Root cause:** The queue changed only the top-level tab without applying the memo-review predicate. Ledger dates also sliced UTC ISO strings instead of converting them to Korea time.
+- **Permanent rule:** Queue counts and drill-down results must use the same predicate. Bank and settlement timestamps must be formatted with an explicit `Asia/Seoul` time zone through the shared formatter.
+- **Required proof:** Verify the queue count equals its rendered rows, the all-non-travel view remains complete, a known UTC timestamp renders as KST, and all settlement tabs load without hydration errors.
+
+## ERR-SETTLEMENT-UNPRICED-NEGATIVE-BALANCE@2026-08-03
+
+- **Symptom:** Memo-created bookings with `total_price = 0` displayed received money as a negative customer balance.
+- **Root cause:** The booking table rendered `total_price - paid_amount` without first checking whether a sales price existed.
+- **Permanent rule:** An unpriced booking has an unknown receivable, not a negative receivable. Continue showing its bank cashflow, but label customer balance as `가격 미입력` until the sales price is entered.
+- **Required proof:** A zero-price booking with a deposit shows `가격 미입력`; priced underpayment and overpayment still show non-negative receivables.
+
+## ERR-SETTLEMENT-FILTERED-VIRTUAL-TABLE-EMPTY@2026-08-03
+
+- **Symptom:** Reservation search reported matching rows, but the virtualized result area was visually empty after switching status tabs.
+- **Root cause:** The table retained the previous scroll offset while the filtered list became shorter, producing a virtual slice beyond the new result range.
+- **Permanent rule:** Search, lifecycle, queue, data-quality, date-target, and sort changes reset the reservation table scroll offset before rendering the new virtual range.
+- **Required proof:** Search a completed booking after viewing a longer list and verify the reported result count and rendered rows agree.
+
+## ERR-SETTLEMENT-MEMO-SEPARATOR-GAP@2026-08-03
+
+- **Symptom:** A real travel payout with memo `260505_서진혜-더투어` stayed in non-travel even though the same booking already had the canonical key.
+- **Root cause:** The parser accepted underscores only, so one customer/operator separator typo hid the payout from booking profit.
+- **Permanent rule:** Normalize a constrained separator variant to the canonical key only when it resolves to an existing key or unambiguous booking. Never auto-create a booking from the variant.
+- **Required proof:** The variant resolves to the canonical key, its existing Clobe row is allocated exactly once, and the booking/ledger drift remains zero after sync.
+
 ## ERR-CLOBE-TRAVEL-NET-AS-BANK-BALANCE@2026-08-03
 
 - **Symptom:** `/admin/payments` labeled matched travel deposits minus matched travel outflows as the current bank balance, while company expenses and memo-less rows were absent.

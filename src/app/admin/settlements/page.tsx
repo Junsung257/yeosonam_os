@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, CheckCircle, Clock, Coins, Copy, ExternalLink, PauseCircle, Receipt, Wallet, X, XCircle } from 'lucide-react';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 
 type SettlementStatus = 'PENDING' | 'READY' | 'COMPLETED' | 'VOID' | 'HOLD';
 
@@ -578,10 +579,7 @@ export default function SettlementsPage() {
 }
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+  return formatSettlementTimestamp(value, { includeYear: true });
 }
 
 function EvidenceCell({ settlement, copied, onCopy }: { settlement: Settlement; copied: boolean; onCopy: () => void }) {

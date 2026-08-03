@@ -14,6 +14,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 
 interface DriftRow {
   booking_id: string;
@@ -39,11 +40,7 @@ interface Status {
 }
 
 function fmtDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  }).format(new Date(iso));
+  return formatSettlementTimestamp(iso) || '—';
 }
 
 export default function LedgerReconcilePage() {
