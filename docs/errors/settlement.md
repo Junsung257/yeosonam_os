@@ -23,6 +23,13 @@ Last updated: 2026-08-03
 - **Permanent rule:** Search, lifecycle, queue, data-quality, date-target, and sort changes reset the reservation table scroll offset before rendering the new virtual range.
 - **Required proof:** Search a completed booking after viewing a longer list and verify the reported result count and rendered rows agree.
 
+## ERR-SETTLEMENT-MEMO-SEPARATOR-GAP@2026-08-03
+
+- **Symptom:** A real travel payout with memo `260505_서진혜-더투어` stayed in non-travel even though the same booking already had the canonical key.
+- **Root cause:** The parser accepted underscores only, so one customer/operator separator typo hid the payout from booking profit.
+- **Permanent rule:** Normalize a constrained separator variant to the canonical key only when it resolves to an existing key or unambiguous booking. Never auto-create a booking from the variant.
+- **Required proof:** The variant resolves to the canonical key, its existing Clobe row is allocated exactly once, and the booking/ledger drift remains zero after sync.
+
 ## ERR-CLOBE-TRAVEL-NET-AS-BANK-BALANCE@2026-08-03
 
 - **Symptom:** `/admin/payments` labeled matched travel deposits minus matched travel outflows as the current bank balance, while company expenses and memo-less rows were absent.

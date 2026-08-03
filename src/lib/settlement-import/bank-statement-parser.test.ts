@@ -65,4 +65,13 @@ describe('bank statement parser', () => {
     expect(normalizeSettlementMemoKey(' 260715 _ 정지해 _ 투어폰 ')).toBe('260715_정지해_투어폰');
     expect(parseTravelSettlementMemo('260715_정지해_투어폰')?.departureDate).toBe('2026-07-15');
   });
+
+  it('normalizes a safe customer-operator separator variant without treating it as canonical', () => {
+    expect(parseTravelSettlementMemo('260505_서진혜-더투어')).toMatchObject({
+      normalizedKey: '260505_서진혜_더투어',
+      leadCustomerName: '서진혜',
+      landOperatorName: '더투어',
+      memoFormat: 'separator_variant',
+    });
+  });
 });

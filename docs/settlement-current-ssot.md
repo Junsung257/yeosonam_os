@@ -50,6 +50,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Overpayment converted to mileage must separate `allocated_amount` from `ledger_delta`: the bank transaction evidence keeps the full amount, while the booking ledger receives only the outstanding booking balance and the remainder is recorded as mileage.
 - Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
 - Manual bank-statement imports must treat memo keys such as `260715_정지해_투어폰` as the booking binding key. Counterparty/depositor name is supporting evidence only because companions can pay separately.
+- Canonical memo keys use `YYMMDD_대표고객_랜드사`. A safe customer/operator separator variant such as `YYMMDD_대표고객-랜드사` may bind to an existing key or unambiguous existing booking, but it must never create a placeholder booking automatically.
 - Bulk bank import may auto-allocate deposits after a valid travel memo key resolves to one booking. An outflow may also auto-allocate when the memo key resolves strongly to exactly one booking; ambiguous, fuzzy, or missing memo resolutions remain review/manual-confirmed.
 - Non-travel rows from manual paste may still be skipped by default, but authoritative Clobe rows must never be discarded. Every Clobe account row is retained exactly once in the bank ledger as either `travel` or `non_travel`.
 - `travel` rows may affect booking allocations and booking realized profit. `non_travel` rows affect actual bank balance only and must never auto-match to a booking.
