@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('/blog/angle/[angle] rendering contract', () => {
-  it('uses on-demand ISR while retaining the cached catalog', () => {
+  it('uses the shared cached catalog without nesting unstable_cache calls', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/app/blog/angle/[angle]/page.tsx'),
       'utf8',
@@ -13,6 +13,7 @@ describe('/blog/angle/[angle] rendering contract', () => {
     expect(source).toContain("export const dynamic = 'force-dynamic';");
     expect(source).toContain('export const dynamicParams = true;');
     expect(source).not.toContain('generateStaticParams');
-    expect(source).toContain('const getCachedAnglePageData = unstable_cache(');
+    expect(source).toContain('loadPublicBlogCatalog()');
+    expect(source).not.toContain('unstable_cache');
   });
 });

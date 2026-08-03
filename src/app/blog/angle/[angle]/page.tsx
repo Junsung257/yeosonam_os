@@ -1,14 +1,12 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { unstable_cache } from 'next/cache';
 
 import { getPackagesByAngle, type AnglePackage } from '@/lib/angle-matcher';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import {
-  BLOG_ANGLE_CACHE_TAG,
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
@@ -63,17 +61,9 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
   }
 }
 
-const getCachedAnglePageData = unstable_cache(
-  async (angle: string) => {
-    return getAnglePageDataUncached(angle);
-  },
-  ['blog-angle-page-v2-public-eligibility'],
-  { revalidate: 300, tags: [BLOG_ANGLE_CACHE_TAG] },
-);
-
 async function getAnglePageData(angle: string): Promise<AnglePageData> {
   try {
-    return await getCachedAnglePageData(angle);
+    return await getAnglePageDataUncached(angle);
   } catch (error) {
     if (!isBlogDatabaseUnavailableError(error)) throw error;
     return { posts: [], recommendedPackages: [], unavailable: true };
