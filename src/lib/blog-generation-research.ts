@@ -1769,6 +1769,13 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
     normalizedLines.push(line);
   }
   const endMarkerIndex = normalizedLines.lastIndexOf(ENTRY_REQUIREMENTS_STRUCTURE_END_MARKER);
+  const contractFloor = [
+    '- 귀국편(왕복 항공권), 숙소, 재정 증빙은 자신의 조건에 맞는지 확인하세요.',
+    '- 공식 안내의 확인 항목과 최종 확인 세부 조건은 출발 전에 다시 확인하세요.',
+    '',
+  ];
+  if (endMarkerIndex >= 0) normalizedLines.splice(endMarkerIndex, 0, ...contractFloor);
+  else normalizedLines.push(...contractFloor);
   const faq = [
     '## FAQ: ?쒖썙 ???덈뒗 寃껄뒗? ?뭐낫?源? ',
     '',
