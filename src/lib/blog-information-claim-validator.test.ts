@@ -294,6 +294,45 @@ describe('blog information claim validator', () => {
     ]);
   });
 
+  it('validates only approved ledger claims in a deterministic entry article', () => {
+    const claimText = '비자 면제 프로그램 여행자는 승인된 ESTA를 받아야 합니다.';
+    const persisted = supportedRecord(claimText, {
+      excerpt: `2026 미국 모든 여행자 ESTA 필요 ${claimText}`,
+      scope: { country: '미국', destination: '미국', applicableTo: '모든 여행자' },
+    });
+    persisted.claimType = 'entry_visa';
+    persisted.evidence[0]!.claimType = 'entry_visa';
+    persisted.evidence[0]!.scope.claimType = 'entry_visa';
+    const ledger = ledgerFor(claimText);
+    ledger[0]!.claimType = 'entry_visa';
+    ledger[0]!.riskLevel = 'HIGH';
+    const markdown = [
+      '<!-- blog_research_structure:entry_requirements:v1 -->',
+      '# 미국 입국 요건',
+      '',
+      '검색 요약이 아니라 공식 원문을 확인하는 순서로 읽으세요.',
+      '',
+      `- ${claimText}`,
+      '<!-- /blog_research_structure:entry_requirements:v1 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [persisted],
+      claimLedger: ledger,
+      intentType: 'entry_requirements',
+      reviewStatus: 'approved',
+      expectedScope: { destination: '미국' },
+      now: NOW,
+    });
+
+    expect(report.issues).toEqual([]);
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.claims).toEqual([
+      expect.objectContaining({ claimText, claimType: 'entry_visa' }),
+    ]);
+  });
+
   it('maps a deterministic monthly-weather row back to its exact persisted climate claim', () => {
     const claimText =
       '1981~2010 평년값: 7월 최고기온 30.6°C, 최저기온 24.8°C, 강수량 308.4mm, 강수일수 26.2일';

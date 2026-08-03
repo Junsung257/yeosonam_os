@@ -193,6 +193,8 @@ const MONTHLY_WEATHER_EVIDENCE_SAFE_INTRO_MARKER = '<!-- blog_research_intro:mon
 const LEGACY_MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v1 -->';
 const LEGACY_MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v1 -->';
 const ENTRY_REQUIREMENTS_CONTEXT_MARKER = '<!-- blog_research_context:entry_requirements:v1 -->';
+const ENTRY_REQUIREMENTS_STRUCTURE_MARKER = '<!-- blog_research_structure:entry_requirements:v1 -->';
+const ENTRY_REQUIREMENTS_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:entry_requirements:v1 -->';
 const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
 const FOOD_BUDGET_DETERMINISTIC_HEADINGS = [
   '근거로 확인한 1인 하루 식비',
@@ -1622,6 +1624,132 @@ function repairEntryRequirementsResearchStructure(input: {
   };
 }
 
+function buildDeterministicEntryRequirementsEvidenceArticle(input: {
+  readiness: BlogGenerationResearchReadiness;
+  plannedTitle?: string | null;
+}): BlogGenerationResearchStructureRepair {
+  const unchanged = (): BlogGenerationResearchStructureRepair => ({
+    markdown: '',
+    changed: false,
+    changes: [],
+    approvedClaims: [],
+  });
+  if (!input.readiness.passed || !input.readiness.bundle) return unchanged();
+
+  const bundle = input.readiness.bundle;
+  const approvedClaims = [...new Map(
+    bundle.claims.map((claim) => [claim.claimFingerprint, claim]),
+  ).values()];
+  const officialSources = bundle.sources.filter((source) =>
+    Boolean(source.sourceUrl) && isOfficialInformationAuthority(source.authorityLevel));
+  if (approvedClaims.length < 4 || officialSources.length < 1) return unchanged();
+
+  const destination = clean(
+    bundle.sources.find((source) => clean(source.destination))?.destination
+      ?? bundle.evidence.find((evidence) => clean(evidence.scope.destination))?.scope.destination,
+  );
+  if (!destination) return unchanged();
+
+  const title = clean(input.plannedTitle) || `${destination} 입국 요건과 비자 확인 가이드`;
+  const verifiedAt = [...bundle.evidence]
+    .map((evidence) => clean(evidence.scope.verifiedAt ?? evidence.observedAt))
+    .filter(Boolean)
+    .sort()
+    .at(-1)
+    ?.slice(0, 10) ?? '확인일 미상';
+  const claimsByType = (types: BlogInformationClaimType[]) => approvedClaims.filter((claim) =>
+    types.includes(claim.claimType));
+  const entryClaims = claimsByType(['entry_visa']);
+  const customsClaims = claimsByType(['customs']);
+  const policyClaims = claimsByType(['policy']);
+  const otherClaims = approvedClaims.filter((claim) =>
+    !['entry_visa', 'customs', 'policy'].includes(claim.claimType));
+  const renderClaims = (claims: typeof approvedClaims) => claims.length > 0
+    ? claims.map((claim) => `- ${claim.claimText}`)
+    : ['- 이 항목은 아래 공식 원문에서 출발 직전에 다시 확인하세요.'];
+
+  const markdown = [
+    ENTRY_REQUIREMENTS_STRUCTURE_MARKER,
+    `# ${title}`,
+    '',
+    `${destination} 여행 준비에서 가장 먼저 정리할 것은 입국 목적, 체류 조건, 준비 자료, 세관 신고 범위입니다. 이 글은 검색 결과를 요약해 단정하는 방식이 아니라, 확인 가능한 공식 자료와 그 자료에 연결된 검증 주장만 모아 판단 순서대로 정리했습니다.`,
+    '',
+    `> 근거 확인 기준일: ${verifiedAt}. 입국 정책은 바뀔 수 있으므로 출발 직전에는 아래 공식 링크에서 다시 확인하세요.`,
+    '',
+    '## 먼저 결론을 확인하세요',
+    '',
+    '여행자는 자신의 국적, 방문 목적, 체류 기간을 먼저 구분한 뒤 아래 검증 항목을 대조해야 합니다. 서로 다른 조건을 한 문장으로 합치지 않았으며, 각 항목은 연결된 공식 근거의 적용 대상과 조건을 그대로 따릅니다.',
+    '',
+    ...renderClaims(entryClaims),
+    '',
+    '## 입국 심사 준비 자료',
+    '',
+    '이 부분은 입국 허가를 보장한다는 뜻이 아닙니다. 공식 안내에서 확인된 준비 항목을 빠뜨리지 않도록 정리한 체크 구간입니다. 자신의 일정과 체류 계획에 맞는 자료만 선택하고, 판단이 애매하면 해당 기관의 최신 안내를 우선하세요.',
+    '',
+    ...renderClaims(policyClaims),
+    '',
+    '## 세관과 신고 범위',
+    '',
+    '세관 항목은 물품 종류와 소지 금액처럼 적용 조건이 달라질 수 있습니다. 아래 문장을 임의로 넓혀 해석하지 말고, 해당되는 항목이 있다면 공식 신고 안내와 서식을 직접 확인하세요.',
+    '',
+    ...renderClaims(customsClaims),
+    '',
+    ...(otherClaims.length > 0 ? [
+      '## 함께 확인할 공식 조건',
+      '',
+      ...renderClaims(otherClaims),
+      '',
+    ] : []),
+    '## 출발 전 확인 순서',
+    '',
+    '1. 여권에 표시된 국적과 실제 방문 목적을 기준으로 해당되는 공식 안내를 고릅니다.',
+    '2. 체류 계획과 귀국 또는 다음 이동 계획을 한 화면에서 확인할 수 있게 정리합니다.',
+    '3. 본문에서 자신에게 해당되는 검증 문장을 찾고 연결된 공식 원문을 엽니다.',
+    '4. 신청이나 신고가 필요한 항목은 대행 사이트가 아니라 공식 도메인인지 확인합니다.',
+    '5. 출발 직전에 같은 공식 페이지를 다시 열어 변경 공지와 적용 날짜를 확인합니다.',
+    '',
+    '## 이 글을 읽는 방법',
+    '',
+    '검증 문장은 편의를 위해 주제별로 나눴지만, 실제 판단에서는 여러 조건이 함께 작동할 수 있습니다. 제목이나 검색 요약만 보고 결론을 내리지 말고, 본문 문장과 공식 링크를 한 쌍으로 확인하세요. 적용 대상이 넓게 적힌 자료와 특정 여행자에게만 적용되는 자료가 섞여 있으므로 자신에게 해당되는 범위를 구분하는 것이 중요합니다.',
+    '',
+    '공식 안내가 서로 다르게 보이면 더 구체적인 기관의 최신 원문을 우선하고, 확인이 끝나지 않은 내용은 여행 계획의 확정 사실처럼 사용하지 마세요. 이 글은 확인 경로를 줄여 주는 편집 자료이며 최종 입국 결정이나 개별 법률 판단을 대신하지 않습니다.',
+    '',
+    '## 조건별 확인 메모',
+    '',
+    '- 국적: 여권에 적힌 국적을 기준으로 공식 안내의 적용 대상을 대조합니다.',
+    '- 방문 목적: 관광, 업무, 환승처럼 실제 목적과 공식 분류가 같은지 확인합니다.',
+    '- 체류 계획: 입국일과 출국일, 다음 이동 계획을 함께 놓고 조건을 읽습니다.',
+    '- 준비 자료: 본문에 나온 항목을 모두 의무라고 단정하지 말고 자신의 조건에 해당하는지 구분합니다.',
+    '- 신고 대상: 물품과 통화 관련 문장은 예외 조건이 있을 수 있으므로 원문과 서식을 함께 확인합니다.',
+    '- 변경 공지: 신청을 마쳤더라도 출발 전 최신 공지와 시행 날짜를 다시 확인합니다.',
+    '',
+    '확인 결과는 단순히 완료 표시만 남기기보다 어떤 공식 페이지를 언제 확인했는지 함께 적어 두세요. 같은 이름의 제도라도 적용 대상이나 방문 목적에 따라 안내가 달라질 수 있으므로, 자신의 조건과 맞는 문장을 근거 링크 옆에 짧게 기록하면 마지막 점검 때 혼동을 줄일 수 있습니다.',
+    '',
+    '## 공식 원문이 바뀌었을 때',
+    '',
+    '링크가 이동했거나 문구가 달라졌다면 이 글의 표현을 기준으로 맞추지 마세요. 새 원문에서 적용 대상, 시행 시점, 예외 조건을 다시 읽고 기존 메모를 갱신해야 합니다. 확인되지 않은 차이는 임의로 해석하지 말고 해당 기관의 문의 채널이나 여행 서류를 담당하는 공식 창구에서 확인하세요.',
+    '',
+    '한 기관의 안내만으로 모든 입국 절차를 설명하려 하지 않는 것도 중요합니다. 비자 또는 여행허가, 입국 심사, 세관 신고는 담당 기관과 확인 페이지가 다를 수 있습니다. 아래 출처 목록에서 현재 확인하려는 항목을 담당하는 기관을 먼저 고른 뒤 원문을 비교하세요.',
+    '',
+    '## 공식 근거',
+    '',
+    ...officialSources.map((source, index) =>
+      `- [${clean(source.publisher) || `공식 출처 ${index + 1}`}](${source.sourceUrl}) - 확인일 ${clean(source.retrievedAt).slice(0, 10)}`),
+    '',
+    '## 마지막 점검',
+    '',
+    '공식 페이지를 열었을 때 본문의 검증 문장과 현재 안내가 같은지 확인하세요. 조건이 달라졌거나 페이지가 이동했다면 현재 원문을 기준으로 판단하고, 이 글의 오래된 부분은 검토 대상으로 남겨야 합니다. 신청 완료 화면, 확인 번호, 필요한 일정 자료는 출발 전에 다시 찾을 수 있는 방식으로 정리해 두는 편이 좋습니다.',
+    ENTRY_REQUIREMENTS_STRUCTURE_END_MARKER,
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return {
+    markdown,
+    changed: true,
+    changes: ['entry_requirements_deterministic_evidence_article'],
+    approvedClaims,
+  };
+}
+
 /**
  * Reuses only preflight-approved claims to make required food-budget tables deterministic.
  * It never calculates a total, converts currencies, or introduces a value outside the bundle.
@@ -1632,6 +1760,7 @@ export function repairBlogGenerationResearchStructure(input: {
   readiness: BlogGenerationResearchReadiness;
   plannedTitle?: string | null;
   editorialVariation?: MonthlyWeatherEditorialVariation | null;
+  forceDeterministicEvidenceArticle?: boolean;
 }): BlogGenerationResearchStructureRepair {
   const unchanged = (approvedClaims: BlogInformationResearchBundle['claims'] = []) => ({
     markdown: input.markdown,
@@ -1646,6 +1775,9 @@ export function repairBlogGenerationResearchStructure(input: {
     return repairLocalTransportResearchStructure(input);
   }
   if (input.intent === 'entry_requirements') {
+    if (input.forceDeterministicEvidenceArticle) {
+      return buildDeterministicEntryRequirementsEvidenceArticle(input);
+    }
     return repairEntryRequirementsResearchStructure(input);
   }
   if (input.intent !== 'food_budget' || !input.readiness.passed || !input.readiness.bundle) {

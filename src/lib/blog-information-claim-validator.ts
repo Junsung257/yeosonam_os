@@ -275,6 +275,8 @@ const FOOD_BUDGET_RESEARCH_BLOCK_START = '<!-- blog_research_structure:food_budg
 const FOOD_BUDGET_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:food_budget:v1 -->';
 const LOCAL_TRANSPORT_RESEARCH_BLOCK_START = '<!-- blog_research_structure:local_transport:v1 -->';
 const LOCAL_TRANSPORT_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:local_transport:v1 -->';
+const ENTRY_REQUIREMENTS_RESEARCH_BLOCK_START = '<!-- blog_research_structure:entry_requirements:v1 -->';
+const ENTRY_REQUIREMENTS_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:entry_requirements:v1 -->';
 const MONTHLY_WEATHER_RESEARCH_BLOCKS = [
   [
     '<!-- blog_research_structure:monthly_weather:v2 -->',
@@ -437,10 +439,14 @@ export function validateBlogInformationClaims(input: {
       input.persistedClaims,
       input.claimLedger,
     );
-    const deterministicLocalTransport = input.markdown.trimStart()
-      .startsWith(LOCAL_TRANSPORT_RESEARCH_BLOCK_START)
-      && input.markdown.includes(LOCAL_TRANSPORT_RESEARCH_BLOCK_END);
-    const claims: ExtractedBlogInformationClaim[] = deterministicLocalTransport
+    const deterministicEvidenceArticle = (
+      input.markdown.trimStart().startsWith(LOCAL_TRANSPORT_RESEARCH_BLOCK_START)
+      && input.markdown.includes(LOCAL_TRANSPORT_RESEARCH_BLOCK_END)
+    ) || (
+      input.markdown.trimStart().startsWith(ENTRY_REQUIREMENTS_RESEARCH_BLOCK_START)
+      && input.markdown.includes(ENTRY_REQUIREMENTS_RESEARCH_BLOCK_END)
+    );
+    const claims: ExtractedBlogInformationClaim[] = deterministicEvidenceArticle
       ? declaredClaims.map((declared) => {
           const persisted = persistedByFingerprint.get(declared.claimFingerprint);
           const candidateKind = candidateKindForClaimType(declared.claimType);

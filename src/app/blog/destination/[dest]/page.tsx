@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
@@ -10,7 +9,6 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import {
-  BLOG_DESTINATION_CACHE_TAG,
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
@@ -145,16 +143,10 @@ async function resolveDestinationRouteParamUncached(value: string): Promise<stri
   }
 }
 
-const getCachedResolvedDestination = unstable_cache(
-  async (value: string) => resolveDestinationRouteParamUncached(value),
-  ['blog-destination-resolve-v1'],
-  { revalidate: 3600, tags: [BLOG_DESTINATION_CACHE_TAG] },
-);
-
 const resolveDestinationRouteParam = cache(async (value: string): Promise<string> => {
   const decoded = safeDecodePathSegment(value).trim();
   try {
-    return await getCachedResolvedDestination(value);
+    return await resolveDestinationRouteParamUncached(value);
   } catch (err) {
     if (isBlogDatabaseUnavailableError(err)) return decoded;
     throw err;
@@ -209,15 +201,9 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
   }
 }
 
-const getCachedDestinationPageData = unstable_cache(
-  async (dest: string) => getDestinationPageDataUncached(dest),
-  ['blog-destination-page-v2-public-eligibility'],
-  { revalidate: 300, tags: [BLOG_DESTINATION_CACHE_TAG] },
-);
-
 async function getDestinationPageData(dest: string): Promise<DestinationPageData> {
   try {
-    return await getCachedDestinationPageData(dest);
+    return await getDestinationPageDataUncached(dest);
   } catch (error) {
     if (!isBlogDatabaseUnavailableError(error)) throw error;
     return {

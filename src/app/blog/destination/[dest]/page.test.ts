@@ -29,7 +29,7 @@ describe('/blog/destination/[dest] public route guard', () => {
     expect(source).toContain('const destination = await resolveDestinationRouteParam(dest);');
   });
 
-  it('uses on-demand ISR while retaining the cached catalog', () => {
+  it('uses the shared cached catalog without nesting unstable_cache calls', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/app/blog/destination/[dest]/page.tsx'),
       'utf8',
@@ -39,6 +39,7 @@ describe('/blog/destination/[dest] public route guard', () => {
     expect(source).toContain("export const dynamic = 'force-dynamic';");
     expect(source).toContain('export const dynamicParams = true;');
     expect(source).not.toContain('generateStaticParams');
-    expect(source).toContain('const getCachedDestinationPageData = unstable_cache(');
+    expect(source).toContain('loadPublicBlogCatalog()');
+    expect(source).not.toContain('unstable_cache');
   });
 });
