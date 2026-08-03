@@ -531,6 +531,27 @@ describe('blog generation research preflight', () => {
     expect(second.markdown).toBe(first.markdown);
   });
 
+  it('replaces an entry draft with a source-backed article when the writer ledger is missing', () => {
+    const researchReadiness = entryRequirementsReadiness('미국');
+    const result = repairBlogGenerationResearchStructure({
+      markdown: '# Untrusted draft\n\nThe model returned prose without a claim ledger.',
+      intent: 'entry_requirements',
+      readiness: researchReadiness,
+      plannedTitle: '미국 입국 요건과 비자',
+      forceDeterministicEvidenceArticle: true,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('entry_requirements_deterministic_evidence_article');
+    expect(result.markdown).toContain('<!-- blog_research_structure:entry_requirements:v1 -->');
+    expect(result.markdown).toContain('# 미국 입국 요건과 비자');
+    expect(result.markdown).not.toContain('Untrusted draft');
+    expect(result.approvedClaims).toEqual(researchReadiness.bundle?.claims);
+    expect(result.approvedClaims.every((claim) => result.markdown.includes(claim.claimText))).toBe(true);
+    expect(result.markdown.match(/^##\s+/gm)?.length).toBeGreaterThanOrEqual(6);
+    expect(result.markdown.length).toBeGreaterThanOrEqual(2500);
+  });
+
   it('does not add an entry destination when passed research contains conflicting destinations', () => {
     const researchReadiness = entryRequirementsReadiness('미국');
     researchReadiness.bundle!.sources.push({

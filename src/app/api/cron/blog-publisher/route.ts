@@ -2873,6 +2873,7 @@ async function processQueueItem(
         [
           'monthly_weather_deterministic_evidence_article',
           'local_transport_deterministic_evidence_article',
+          'entry_requirements_deterministic_evidence_article',
         ].includes(change));
       generated.generation_meta = {
         ...currentMeta,
@@ -3012,9 +3013,6 @@ async function processQueueItem(
         expectedScope: contentBoundary.lane === 'informational'
           ? {
               destination: item.destination ?? undefined,
-              applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
-                ? generatedPlanBriefRecord.traveler_nationality
-                : undefined,
               locale: typeof generatedPlanBriefRecord?.locale === 'string'
                 ? generatedPlanBriefRecord.locale
                 : undefined,
@@ -3675,9 +3673,6 @@ async function processQueueItem(
           : null,
         expectedScope: {
           destination: item.destination ?? undefined,
-          applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
-            ? generatedPlanBriefRecord.traveler_nationality
-            : undefined,
           locale: typeof generatedPlanBriefRecord?.locale === 'string'
             ? generatedPlanBriefRecord.locale
             : undefined,
@@ -4498,6 +4493,8 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     readiness: researchReadiness,
     plannedTitle: contentBrief.title,
     editorialVariation: item.meta?.editorial_variation ?? null,
+    forceDeterministicEvidenceArticle:
+      contentBrief.intentType === 'entry_requirements' && writerOutput.ledgerIssues.length > 0,
   });
   if (researchStructureRepair.changed) {
     blog_html = researchStructureRepair.markdown;
@@ -4511,6 +4508,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       [
         'monthly_weather_deterministic_evidence_article',
         'local_transport_deterministic_evidence_article',
+        'entry_requirements_deterministic_evidence_article',
       ].includes(change));
     writerOutput.claimLedger = replacedWithDeterministicEvidenceArticle
       ? approvedClaims
