@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { operatorScore } from '@/lib/payment-command-resolver';
-import { fmtDate } from '@/lib/admin-utils';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 
 const FEE_TOLERANCE = 5000;
 
@@ -216,7 +216,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             <p className="text-xs text-admin-muted mt-0.5">
               {transaction.is_refund ? '환불' : '출금'} {fmtKRW(txAmountAbs)} ·{' '}
               {transaction.counterparty_name ?? '거래처 미상'} ·{' '}
-              {fmtDate(transaction.received_at)}
+              {formatSettlementTimestamp(transaction.received_at)}
             </p>
           </div>
           <button

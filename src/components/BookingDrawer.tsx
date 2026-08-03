@@ -10,7 +10,7 @@ import { BookingDrawerOpsSummary } from '@/components/admin/booking-ops/BookingD
 import { BookingDrawerOpsTimeline } from '@/components/admin/booking-ops/BookingDrawerOpsTimeline';
 import { BookingDrawerNextActions } from '@/components/admin/booking-ops/BookingDrawerNextActions';
 import LedgerViewer from './LedgerViewer';
-import { fmtMonthDayTime } from '@/lib/admin-utils';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1383,7 +1383,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                             <p className="text-[13px] text-gray-600 mt-0.5 leading-relaxed">{log.content}</p>
                           )}
                           <p className="text-[11px] text-gray-400 mt-1">
-                            {fmtMonthDayTime(log.created_at)}
+                            {formatSettlementTimestamp(log.created_at)}
                             {' · '}{log.created_by}
                           </p>
                         </div>
@@ -1507,7 +1507,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                             <p className="text-[11px] text-gray-400">
                               <span className="font-medium text-gray-500">{meta.label}</span>
                               {' · '}
-                              {fmtMonthDayTime(tx.received_at)}
+                              {formatSettlementTimestamp(tx.received_at)}
                               {tx.memo && ` · ${tx.memo}`}
                             </p>
                           </div>

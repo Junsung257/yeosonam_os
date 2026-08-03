@@ -2,7 +2,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { fmtK, fmtDate, fmtMonthDayTime } from '@/lib/admin-utils';
+import { fmtK, fmtDate } from '@/lib/admin-utils';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
@@ -114,7 +115,7 @@ export default async function MobilePaymentDetail(
             +{fmtK(tx.amount)}
           </div>
           <div className="text-xs text-admin-muted mt-2">
-            {tx.received_at ? fmtMonthDayTime(tx.received_at) : '시각 미상'}
+            {tx.received_at ? formatSettlementTimestamp(tx.received_at) : '시각 미상'}
           </div>
           {tx.memo && (
             <div className="mt-3 pt-3 border-t border-admin-border text-xs text-admin-muted whitespace-pre-wrap">

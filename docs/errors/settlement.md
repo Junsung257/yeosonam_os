@@ -14,7 +14,7 @@ Last updated: 2026-08-03
 - **Symptom:** The `통장 메모 확인` queue showed all non-travel rows instead of the review subset, and ledger timestamps appeared nine hours earlier than Clobe.
 - **Root cause:** The queue changed only the top-level tab without applying the memo-review predicate. Ledger dates also sliced UTC ISO strings instead of converting them to Korea time.
 - **Permanent rule:** Queue counts and drill-down results must use the same predicate. Bank and settlement timestamps must be formatted with an explicit `Asia/Seoul` time zone through the shared formatter.
-- **Required proof:** Verify the queue count equals its rendered rows, the all-non-travel view remains complete, a known UTC timestamp renders as KST, and all settlement tabs load without hydration errors.
+- **Required proof:** Verify the queue count equals its rendered rows, the all-non-travel view remains complete, a known UTC timestamp renders as KST in payments, ledger, booking drawer, mobile detail, and settlement bundle surfaces, and all settlement tabs load without hydration errors.
 
 ## ERR-SETTLEMENT-UNPRICED-NEGATIVE-BALANCE@2026-08-03
 
