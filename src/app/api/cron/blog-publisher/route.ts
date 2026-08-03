@@ -3376,12 +3376,20 @@ async function processQueueItem(
     seoScore = publishQuality.seoScore;
     const readability = publishQuality.readability;
     const now = new Date().toISOString();
-    const successfulQueueMeta = buildBlogQueueSuccessMeta({
-      currentMeta: item.meta,
-      qualityGate: qa,
-      publishQuality,
-      succeededAt: now,
-    });
+    const successfulQueueMeta = {
+      ...buildBlogQueueSuccessMeta({
+        currentMeta: item.meta,
+        qualityGate: qa,
+        publishQuality,
+        succeededAt: now,
+      }),
+      last_seo_score: {
+        score: seoScore.score,
+        max_score: seoScore.maxScore,
+        summary: seoScore.summary,
+        details: seoScore.details,
+      },
+    };
     const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
     const engineEvaluation = engineGate?.evidence && typeof engineGate.evidence === 'object'
       ? (engineGate.evidence as Record<string, unknown>).evaluation as Record<string, unknown> | undefined
