@@ -1,6 +1,14 @@
 # Settlement and Ledger Errors
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
+
+## ERR-CLOBE-TRAVEL-NET-AS-BANK-BALANCE@2026-08-03
+
+- **Symptom:** `/admin/payments` labeled matched travel deposits minus matched travel outflows as the current bank balance, while company expenses and memo-less rows were absent.
+- **Root cause:** the Clobe importer intentionally skipped every row without a valid travel key. In the 4128 statement this retained 263 travel rows but discarded 175 real bank movements, so `34,897,644` KRW travel net was shown instead of the `23,436,327` KRW provider balance.
+- **Permanent rule:** authoritative Clobe sync is lossless. Store every provider transaction exactly once and separate `travel` booking settlement from `non_travel` bank reality with an explicit scope.
+- **Required proof:** full statement count, total inflow, total outflow, provider after-balance, computed closing balance, travel net, non-travel net, provider-id uniqueness, allocation uniqueness, and ledger drift must all pass independently.
+- **Deployment lesson:** a dirty CLI production deployment from a stale feature branch replaced the merged settlement release on 2026-08-03. Production verification must confirm the deployed Git ref/SHA is current `main` before UI results are accepted.
 
 ## ERR-CLOBE-ORPHAN-RESET@2026-08-02
 

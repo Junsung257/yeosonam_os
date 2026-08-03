@@ -120,6 +120,16 @@ function getFirstNumber(raw: Record<string, unknown>, keys: string[]): number | 
   return null;
 }
 
+function getFirstBoolean(raw: Record<string, unknown>, keys: string[]): boolean | null {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === 'boolean') return value;
+    if (value === 'true' || value === '1' || value === 1) return true;
+    if (value === 'false' || value === '0' || value === 0) return false;
+  }
+  return null;
+}
+
 function normalizeReceivedAt(value: string | null): string | null {
   if (!value) return null;
   const normalized = value.normalize('NFKC').trim();
@@ -243,6 +253,25 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     'bank_transaction_id',
     'bankTransactionId',
   ]) ?? undefined;
+  const balanceAfter = getFirstNumber(raw, [
+    'afterBalance',
+    'after_balance',
+    'balanceAfter',
+    'balance_after',
+    'runningBalance',
+    'running_balance',
+  ]);
+  const providerCategory = getFirstString(raw, [
+    'category',
+    'categoryName',
+    'category_name',
+    'label',
+  ]) ?? undefined;
+  const providerIsUnclassified = getFirstBoolean(raw, [
+    'isUnclassified',
+    'is_unclassified',
+    'unclassified',
+  ]);
 
   return {
     receivedAt,
@@ -254,6 +283,9 @@ export function normalizeClobeBankTransaction(rawInput: unknown, index = 0): Ban
     rowIndex: index,
     externalProvider: 'clobe',
     externalTransactionId,
+    balanceAfter: balanceAfter ?? undefined,
+    providerCategory,
+    providerIsUnclassified: providerIsUnclassified ?? undefined,
     rawPayload: raw,
   };
 }

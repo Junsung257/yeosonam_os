@@ -101,6 +101,22 @@ interface BankTransactionAllocationRow {
   idempotency_key: string;
 }
 
+function isClobeSource(row: { source?: string | null; external_provider?: string | null } | null): boolean {
+  return row?.source === 'clobe_mcp' || row?.external_provider === 'clobe';
+}
+
+async function getProtectedClobeTransactionIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await supabaseAdmin
+    .from('bank_transactions')
+    .select('id, source, external_provider')
+    .in('id', ids);
+  if (error) throw error;
+  return new Set(((data ?? []) as Array<{ id: string; source: string | null; external_provider: string | null }>)
+    .filter(isClobeSource)
+    .map(row => row.id));
+}
+
 // ─── 공통 유틸 ────────────────────────────────────────────────────────────────
 
 function nameSim(a: string, b: string): number {
@@ -413,19 +429,28 @@ export async function GET(request: NextRequest) {
   const months       = parseInt(searchParams.get('months') || '6', 10);
   const bookingId    = searchParams.get('booking_id');            // 예약별 입금 필터
   const matchStatus  = searchParams.get('match_status');          // 'unmatched' → 전체 기간 미매칭 조회
+  const requestedScope = searchParams.get('scope');
+  const sourceFilter = searchParams.get('source');
+  const settlementScope = requestedScope === 'all'
+    ? null
+    : requestedScope === 'non_travel' ? 'non_travel' : 'travel';
 
   // ── 월별 집계 (Recharts 차트 데이터용) ────────────────────────────────────
   if (aggregate === 'monthly') {
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - months);
 
-    const { data: txs } = await supabaseAdmin
+    let monthlyQuery = supabaseAdmin
       .from('bank_transactions')
       .select('transaction_type, amount, received_at')
       .neq('status', 'excluded')
       .gte('received_at', cutoff.toISOString())
       .order('received_at', { ascending: true })
       .limit(5000);
+    if (settlementScope) monthlyQuery = monthlyQuery.eq('settlement_scope', settlementScope) as typeof monthlyQuery;
+    if (sourceFilter) monthlyQuery = monthlyQuery.eq('source', sourceFilter) as typeof monthlyQuery;
+
+    const { data: txs } = await monthlyQuery;
 
     const map = new Map<string, { income: number; expense: number }>();
     for (const tx of (txs || []) as Array<Record<string, unknown>>) {
@@ -445,17 +470,21 @@ export async function GET(request: NextRequest) {
   // ── 미매칭 전체 기간 조회 (limit 없음) ────────────────────────────────────
   if (matchStatus === 'unmatched') {
     if (summaryOnly) {
-      const { count, error: countError } = await supabaseAdmin
+      let countQuery = supabaseAdmin
         .from('bank_transactions')
         .select('id', { count: 'exact', head: true })
         .in('match_status', ['unmatched'])
         .neq('status', 'excluded');
+      if (settlementScope) countQuery = countQuery.eq('settlement_scope', settlementScope) as typeof countQuery;
+      if (sourceFilter) countQuery = countQuery.eq('source', sourceFilter) as typeof countQuery;
+
+      const { count, error: countError } = await countQuery;
 
       if (countError) return NextResponse.json({ error: countError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
       return NextResponse.json({ count: count ?? 0, transactions: [] }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
-    const { data: unmatchedData, error: unmatchedError } = await supabaseAdmin
+    let unmatchedQuery = supabaseAdmin
       .from('bank_transactions')
       .select(`
         *,
@@ -468,6 +497,10 @@ export async function GET(request: NextRequest) {
       .in('match_status', ['unmatched'])
       .neq('status', 'excluded')
       .order('received_at', { ascending: false });
+    if (settlementScope) unmatchedQuery = unmatchedQuery.eq('settlement_scope', settlementScope) as typeof unmatchedQuery;
+    if (sourceFilter) unmatchedQuery = unmatchedQuery.eq('source', sourceFilter) as typeof unmatchedQuery;
+
+    const { data: unmatchedData, error: unmatchedError } = await unmatchedQuery;
 
     if (unmatchedError) return NextResponse.json({ error: unmatchedError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
     return NextResponse.json({ transactions: unmatchedData || [] }, { headers: { 'Cache-Control': 'no-store' } });
@@ -494,9 +527,15 @@ export async function GET(request: NextRequest) {
   } else {
     // 기본: active (excluded 제외)
     query = query.neq('status', 'excluded') as typeof query;
+    if (settlementScope) query = query.eq('settlement_scope', settlementScope) as typeof query;
+  }
+
+  if (statusFilter === 'all' && settlementScope) {
+    query = query.eq('settlement_scope', settlementScope) as typeof query;
   }
 
   if (bookingId) query = query.eq('booking_id', bookingId) as typeof query;
+  if (sourceFilter) query = query.eq('source', sourceFilter) as typeof query;
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
@@ -577,6 +616,10 @@ export async function PATCH(request: NextRequest) {
 
     // ── trash: 단건 소프트 삭제 ────────────────────────────────────────────
     if (action === 'trash') {
+      const protectedIds = await getProtectedClobeTransactionIds([transactionId]);
+      if (protectedIds.has(transactionId)) {
+        return NextResponse.json({ error: 'Clobe 원본 거래는 삭제할 수 없습니다. Clobe에서 수정한 뒤 다시 동기화하세요.' }, { status: 409 });
+      }
       const { count: allocationCount } = await supabaseAdmin
         .from('bank_transaction_allocations')
         .select('id', { count: 'exact', head: true })
@@ -604,6 +647,10 @@ export async function PATCH(request: NextRequest) {
 
     // ── restore: 단건 복원 ────────────────────────────────────────────────
     if (action === 'restore') {
+      const protectedIds = await getProtectedClobeTransactionIds([transactionId]);
+      if (protectedIds.has(transactionId)) {
+        return NextResponse.json({ error: 'Clobe 보관 행은 수동 복원할 수 없습니다. 동기화가 원본 상태를 복구합니다.' }, { status: 409 });
+      }
       await supabaseAdmin
         .from('bank_transactions')
         .update({ status: 'active', deleted_at: null })
@@ -613,6 +660,10 @@ export async function PATCH(request: NextRequest) {
 
     // ── hard_delete: 단건 영구 삭제 ──────────────────────────────────────
     if (action === 'hard_delete') {
+      const protectedIds = await getProtectedClobeTransactionIds([transactionId]);
+      if (protectedIds.has(transactionId)) {
+        return NextResponse.json({ error: 'Clobe 원본 증거는 영구 삭제할 수 없습니다.' }, { status: 409 });
+      }
       const { count: allocationCount } = await supabaseAdmin
         .from('bank_transaction_allocations')
         .select('id', { count: 'exact', head: true })
@@ -637,6 +688,8 @@ export async function PATCH(request: NextRequest) {
         .in('bank_transaction_id', ids)
         .eq('status', 'active');
       const blocked = new Set(((allocated ?? []) as Array<{ bank_transaction_id: string }>).map(r => r.bank_transaction_id));
+      const protectedIds = await getProtectedClobeTransactionIds(ids);
+      for (const id of protectedIds) blocked.add(id);
       const allowed = ids.filter(id => !blocked.has(id));
       if (allowed.length === 0) {
         return NextResponse.json({ error: '선택 거래는 모두 배정 원장이 있어 제외할 수 없습니다.' }, { status: 409 });
@@ -652,6 +705,10 @@ export async function PATCH(request: NextRequest) {
     if (action === 'restore_bulk') {
       const ids: string[] = body.ids || [];
       if (ids.length === 0) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      const protectedIds = await getProtectedClobeTransactionIds(ids);
+      if (protectedIds.size > 0) {
+        return NextResponse.json({ error: 'Clobe 보관 행은 수동 복원할 수 없습니다. 동기화를 이용하세요.' }, { status: 409 });
+      }
       await supabaseAdmin
         .from('bank_transactions')
         .update({ status: 'active', deleted_at: null })
@@ -663,6 +720,10 @@ export async function PATCH(request: NextRequest) {
     if (action === 'hard_delete_bulk') {
       const ids: string[] = body.ids || [];
       if (ids.length === 0) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      const protectedIds = await getProtectedClobeTransactionIds(ids);
+      if (protectedIds.size > 0) {
+        return NextResponse.json({ error: 'Clobe 원본 증거가 포함되어 영구 삭제할 수 없습니다.' }, { status: 409 });
+      }
       const { data: allocated } = await supabaseAdmin
         .from('bank_transaction_allocations')
         .select('bank_transaction_id')

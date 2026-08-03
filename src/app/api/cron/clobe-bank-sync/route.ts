@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
     normalized: body.normalized ?? 0,
     inserted: body.inserted ?? 0,
     matched: body.matched ?? 0,
+    nonTravelStored: body.nonTravelStored ?? 0,
     merged: body.merged ?? 0,
     duplicates: body.duplicates ?? 0,
     skipped: body.skipped ?? 0,

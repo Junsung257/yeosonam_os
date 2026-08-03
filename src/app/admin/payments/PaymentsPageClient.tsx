@@ -19,6 +19,7 @@ import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window'
 import { matchesPaymentPeriod, type PaymentPeriodFilter } from '@/lib/payment-period-filter';
 import { calculatePaymentKpis } from '@/lib/payment-kpi';
 import { extractBookingsFromApi } from '@/lib/bookings-api-response';
+import type { BankAccountRealitySummary } from '@/lib/bank-account-reality';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ interface ClobeSyncResult {
   repaired?: number;
   memoUpdated?: number;
   memoChangedReview?: number;
+  nonTravelStored?: number;
   fetched?: number;
   normalized?: number;
   normalizeErrors?: Array<{ index: number; reason: string; from?: string; to?: string }>;
@@ -105,6 +107,11 @@ export interface BankTransaction {
   match_confidence: number; created_at: string;
   status?: string; deleted_at?: string | null;
   source?: string | null;
+  settlement_scope?: 'travel' | 'non_travel';
+  account_number?: string | null;
+  balance_after?: number | null;
+  provider_category?: string | null;
+  provider_is_unclassified?: boolean | null;
   bookings?: {
     id: string; booking_no?: string; package_title?: string;
     total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number;
@@ -153,6 +160,15 @@ function fmtTs(iso: string): string {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
   }).format(new Date(iso));
 }
+
+function fmtWon(value: number): string {
+  return `${Math.round(value).toLocaleString('ko-KR')}원`;
+}
+
+function maskBankAccount(value: string | null | undefined): string {
+  const digits = (value ?? '').replace(/\D/g, '');
+  return digits.length >= 4 ? `신한 ${digits.slice(-4)}` : '신한 계좌';
+}
 /** 거래가 얼마나 오래 방치됐는지 시간 단위로 반환 (24h 이상이면 빨간 뱃지) */
 function hoursSince(iso?: string): number {
   if (!iso) return 0;
@@ -178,6 +194,7 @@ const MATCH_COLORS: Record<string, string> = {
 
 function importActionBadge(action?: ImportRow['importAction']) {
   if (action === 'ignored_non_travel') return { label: '여행 메모 없음', cls: 'bg-slate-100 text-slate-600 border-slate-200' };
+  if (action === 'non_travel_recorded') return { label: '통장 원장 저장', cls: 'bg-cyan-50 text-cyan-800 border-cyan-200' };
   if (action === 'memo_updated') return { label: '메모 수정 반영', cls: 'bg-blue-50 text-blue-700 border-blue-200' };
   if (action === 'memo_changed_review') return { label: '메모 변경 검토', cls: 'bg-red-50 text-red-700 border-red-200' };
   if (action === 'already_processed') return { label: '이미 처리됨', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
@@ -427,7 +444,7 @@ interface ImportRow {
   receivedAt: string; depositAmount: number; withdrawAmount: number;
   counterpartyName: string; memo: string;
   matchStatus?: string; confidence?: number; bookingNo?: string; customerName?: string;
-  importAction?: 'insert' | 'already_processed' | 'merge_candidate' | 'duplicate_review' | 'ignored_non_travel' | 'memo_updated' | 'memo_changed_review';
+  importAction?: 'insert' | 'already_processed' | 'merge_candidate' | 'duplicate_review' | 'ignored_non_travel' | 'non_travel_recorded' | 'memo_updated' | 'memo_changed_review';
   existingTxId?: string | null; existingMatchStatus?: string | null; duplicateConfidence?: number;
   accountNumber?: string; originalLine?: string; rowIndex?: number;
   include?: boolean;
@@ -463,9 +480,9 @@ interface OpsQueueSummary {
   payment_attention: number;
 }
 
-type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow';
+type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow' | 'non_travel';
 type OutflowSubTab = 'unmatched' | 'matched' | 'all';
-type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
+type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'bank_review' | 'trash';
 
 function isOutflowTransaction(transaction: BankTransaction): boolean {
   return transaction.transaction_type === '출금' || transaction.is_refund;
@@ -499,6 +516,7 @@ function PaymentOpsQueue({
     { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', count: counts.unmatched, tone: 'border-red-200 bg-red-50 text-red-700' },
     { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', count: counts.stale, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
     { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', count: counts.outflow, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'bank_review', label: '통장 메모 확인', helper: '빈칸·환불·형식 오류', count: counts.bank_review, tone: 'border-cyan-200 bg-cyan-50 text-cyan-800' },
     { key: 'trash', label: '과거 자료 보관', helper: 'Slack/SMS·이전 Clobe 증빙', count: counts.trash, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
   ];
 
@@ -513,7 +531,7 @@ function PaymentOpsQueue({
           Command queue
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
         {items.map(item => (
           <button
             key={item.key}
@@ -543,13 +561,15 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     const filter = searchParams?.get('filter');
     const tabParam = searchParams?.get('tab');
     if (filter === 'outstanding') return 'unmatched';
-    if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'outflow' || tabParam === 'review') {
+    if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'outflow' || tabParam === 'review' || tabParam === 'non_travel') {
       return tabParam;
     }
     return 'review';
   })();
 
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
+  const [nonTravelTransactions, setNonTravelTransactions] = useState<BankTransaction[]>([]);
+  const [bankReality, setBankReality] = useState<BankAccountRealitySummary | null>(null);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
   // Show attention items first, but never land on an empty sub-tab when all outflows are matched.
@@ -633,13 +653,15 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [res, trashRes, unmatchedRes] = await Promise.all([
-        fetch('/api/bank-transactions?status=active'),
+      const [res, trashRes, unmatchedRes, nonTravelRes, bankRealityRes] = await Promise.all([
+        fetch('/api/bank-transactions?status=active&source=clobe_mcp'),
         fetch('/api/bank-transactions?status=excluded'),
-        fetch('/api/bank-transactions?status=active&match_status=unmatched'),
+        fetch('/api/bank-transactions?status=active&match_status=unmatched&source=clobe_mcp'),
+        fetch('/api/bank-transactions?status=active&scope=non_travel&source=clobe_mcp'),
+        fetch('/api/bank-transactions/account-reality', { cache: 'no-store' }),
       ]);
-      const [data, trashData, unmatchedData] = await Promise.all([
-        res.json(), trashRes.json(), unmatchedRes.json(),
+      const [data, trashData, unmatchedData, nonTravelData, bankRealityData] = await Promise.all([
+        res.json(), trashRes.json(), unmatchedRes.json(), nonTravelRes.json(), bankRealityRes.json(),
       ]);
       // 기존 500건 + 미매칭 전체 기간 병합 (중복 제거)
       const mainTxs: BankTransaction[] = data.transactions || [];
@@ -647,6 +669,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       const mainIds = new Set(mainTxs.map((t: BankTransaction) => t.id));
       const merged = [...mainTxs, ...unmatchedTxs.filter((u: BankTransaction) => !mainIds.has(u.id))];
       setTransactions(merged);
+      setNonTravelTransactions(nonTravelData.transactions || []);
+      setBankReality(bankRealityData.summary ?? null);
       setTrashTxs(trashData.transactions || []);
     } finally { setIsLoading(false); }
   }, []);
@@ -683,6 +707,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   useEffect(() => {
     if (_skipInitialFetch.current) {
       _skipInitialFetch.current = false;
+      load();
       loadErp();
       loadOpsQueue();
       return;
@@ -710,6 +735,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   }, []);
 
   const filtered = useMemo(() => {
+    if (tab === 'non_travel') {
+      return nonTravelTransactions.slice().sort((a, b) =>
+        new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
+      );
+    }
     // B-3: 환불/출금은 입금 탭에서 분리 — 전용 탭(outflow)에서만 노출
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
 
@@ -746,7 +776,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
     }
     return result;
-  }, [transactions, tab, outflowSubTab]);
+  }, [transactions, nonTravelTransactions, tab, outflowSubTab]);
 
   const isOutflowTx = isOutflowTransaction;
   const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
@@ -762,6 +792,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const activeMatchedCount = transactions.filter(t => t.match_status === 'auto' || t.match_status === 'manual').length;
   const activeAttentionCount = transactions.length - activeMatchedCount;
   const activeClobeCount = transactions.filter(t => t.source === 'clobe_mcp').length;
+  const nonTravelCount = nonTravelTransactions.length;
   const archivedSlackSmsCount = trashTxs.filter(t => t.source === 'slack_webhook' || t.source === 'slack_gap_fill' || t.source === 'sms').length;
   const archivedClobeCount = trashTxs.filter(t => t.source === 'clobe_mcp').length;
 
@@ -805,6 +836,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       unmatched: unmatchedCount,
       stale: staleCount,
       outflow: allOutflowUnmatchedCount,
+      bank_review: bankReality?.memoReviewCount ?? 0,
       trash: trashTxs.length,
     };
     if (queue === 'review') {
@@ -818,6 +850,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setDateFilter('전체');
       setTab('outflow');
       setOutflowSubTab('unmatched');
+    } else if (queue === 'bank_review') {
+      setTab('non_travel');
     } else if (queue === 'trash') {
       setTrashOpen(true);
     }
@@ -833,7 +867,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         has_waiting_work: queueCounts[queue] > 0,
       },
     });
-  }, [allOutflowUnmatchedCount, allReviewCount, staleCount, trashTxs.length, unmatchedCount]);
+  }, [allOutflowUnmatchedCount, allReviewCount, bankReality?.memoReviewCount, staleCount, trashTxs.length, unmatchedCount]);
 
   // ── 입금액 재동기화 ─────────────────────────────────────────────────────────
 
@@ -1094,6 +1128,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         repaired: 0,
         memoUpdated: 0,
         memoChangedReview: 0,
+        nonTravelStored: 0,
         fetched: 0,
         normalized: 0,
         normalizeErrors: [],
@@ -1145,6 +1180,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           repaired: (summary.repaired ?? 0) + (data.repaired ?? 0),
           memoUpdated: (summary.memoUpdated ?? 0) + (data.memoUpdated ?? 0),
           memoChangedReview: (summary.memoChangedReview ?? 0) + (data.memoChangedReview ?? 0),
+          nonTravelStored: (summary.nonTravelStored ?? 0) + (data.nonTravelStored ?? 0),
           fetched: (summary.fetched ?? 0) + (data.fetched ?? 0),
           normalized: (summary.normalized ?? 0) + (data.normalized ?? 0),
           normalizeErrors: [
@@ -1281,6 +1317,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   }
 
   const renderTransactionActions = (tx: BankTransaction, layout: 'table' | 'card' = 'table') => {
+    if (tx.settlement_scope === 'non_travel') {
+      return (
+        <span className="text-[11px] font-medium text-cyan-800">
+          예약 건이면 Clobe 메모를 여행키로 수정 후 동기화
+        </span>
+      );
+    }
     const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
     const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
     const compact = layout === 'card';
@@ -1544,7 +1587,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         return (
           <div className={`mb-3 rounded border px-3 py-2 text-[11px] ${tone}`}>
             <div className="font-semibold">
-              Clobe 동기화: {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to} · 원본 {fetched}건 · OS 인식 {normalized}건 · 신규 {clobeSyncResult.inserted}건 · 새 예약 매칭 {clobeSyncResult.matched}건 · 기존 거래 확인 {clobeSyncResult.merged ?? 0}건 · 메모 수정 {clobeSyncResult.memoUpdated ?? 0}건 · 메모 검토 {clobeSyncResult.memoChangedReview ?? 0}건 · 실제 중복 검토 {clobeSyncResult.duplicates}건 · 여행 메모 없음 {clobeSyncResult.skipped ?? 0}건 · 처리 오류 {clobeSyncResult.errors}건 · 인식 실패 {normalizeErrorCount}건
+              Clobe 동기화: {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to} · 원본 {fetched}건 · OS 인식 {normalized}건 · 신규 여행 {clobeSyncResult.inserted}건 · 새 예약 매칭 {clobeSyncResult.matched}건 · 기존 여행 확인 {clobeSyncResult.merged ?? 0}건 · 여행 외 저장 {clobeSyncResult.nonTravelStored ?? 0}건 · 메모 수정 {clobeSyncResult.memoUpdated ?? 0}건 · 메모 검토 {clobeSyncResult.memoChangedReview ?? 0}건 · 실제 중복 검토 {clobeSyncResult.duplicates}건 · 미저장 {clobeSyncResult.skipped ?? 0}건 · 처리 오류 {clobeSyncResult.errors}건 · 인식 실패 {normalizeErrorCount}건
               {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
             </div>
             {normalizeErrorCount > 0 && (
@@ -1600,19 +1643,79 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         );
       })()}
 
+      {bankReality && (
+        <section className="mb-4 overflow-hidden rounded-admin-md border border-sky-200 bg-white shadow-admin-xs">
+          <div className="flex flex-col gap-3 border-b border-sky-100 bg-sky-50 px-5 py-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-700">Bank reality</p>
+              <h2 className="mt-1 text-admin-base font-bold text-admin-text-2">{maskBankAccount(bankReality.accountNumber)} 실제 통장 잔액</h2>
+              <p className="mt-1 text-admin-xs text-admin-muted">
+                Clobe 전체 {bankReality.transactionCount}건 · {bankReality.asOf ? `${fmtTs(bankReality.asOf)} 기준` : '기준 시각 없음'}
+              </p>
+            </div>
+            <div className="text-left md:text-right">
+              <p className="text-2xl font-black tabular-nums text-sky-800">{fmtWon(bankReality.actualBalance)}</p>
+              <p className={`mt-1 text-[11px] font-semibold ${bankReality.reconciliationDifference === 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                {bankReality.reconciliationDifference === 0
+                  ? 'Clobe 거래후잔액과 OS 계산 일치'
+                  : `원본 대사 차이 ${fmtWon(bankReality.reconciliationDifference)}`}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-px bg-admin-border-mid md:grid-cols-4">
+            <div className="bg-white px-4 py-3">
+              <p className="text-[11px] font-medium text-admin-muted">전체 입금</p>
+              <p className="mt-1 text-admin-base font-bold tabular-nums text-brand">{fmtWon(bankReality.totalDeposits)}</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="text-[11px] font-medium text-admin-muted">전체 출금</p>
+              <p className="mt-1 text-admin-base font-bold tabular-nums text-red-600">{fmtWon(bankReality.totalWithdrawals)}</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="text-[11px] font-medium text-admin-muted">여행 실현수익</p>
+              <p className={`mt-1 text-admin-base font-bold tabular-nums ${bankReality.travelNet >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtWon(bankReality.travelNet)}</p>
+              <p className="mt-1 text-[10px] text-admin-muted-2">여행 입금 - 여행 출금 · {bankReality.travelCount}건</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab('non_travel')}
+              className="bg-white px-4 py-3 text-left transition hover:bg-cyan-50"
+              aria-pressed={tab === 'non_travel'}
+            >
+              <p className="text-[11px] font-medium text-admin-muted">여행 외 순변동</p>
+              <p className={`mt-1 text-admin-base font-bold tabular-nums ${bankReality.nonTravelNet >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtWon(bankReality.nonTravelNet)}</p>
+              <p className="mt-1 text-[10px] text-admin-muted-2">경비·세금·광고·이체 포함 · {bankReality.nonTravelCount}건</p>
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-admin-border-mid px-4 py-3 text-[11px] text-admin-muted md:flex-row md:items-center md:justify-between">
+            <p>
+              기초잔액 {fmtWon(bankReality.openingBalance)} + 여행 {fmtWon(bankReality.travelNet)} + 여행 외 {fmtWon(bankReality.nonTravelNet)} = 실제잔액 {fmtWon(bankReality.computedBalance)}
+            </p>
+            <button type="button" onClick={() => setTab('non_travel')} className="font-semibold text-cyan-800 hover:underline">
+              여행 외 거래 {bankReality.nonTravelCount}건 보기{bankReality.memoReviewCount > 0 ? ` · 메모 확인 ${bankReality.memoReviewCount}건` : ''}
+            </button>
+          </div>
+        </section>
+      )}
+
       <div className={`mb-3 rounded-admin-sm border px-3 py-2 text-admin-xs ${activeAttentionCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
-        <span className="font-semibold">전체 활성 정산 원장</span>
-        {' · '}Clobe {activeClobeCount}건 · 예약 매칭 {activeMatchedCount}건 · 확인 필요 {activeAttentionCount}건
-        <span className="ml-2 text-admin-muted">아래 거래 탭은 전체 활성 기간 기준입니다.</span>
+        <span className="font-semibold">예약 정산 원장</span>
+        {' · '}여행키 {activeClobeCount}건 · 예약 매칭 {activeMatchedCount}건 · 확인 필요 {activeAttentionCount}건
+        <span className="ml-2 text-admin-muted">여행 외 통장 거래 {nonTravelCount}건은 예약 수익과 분리됩니다.</span>
       </div>
 
       <PaymentOpsQueue
-        activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
+        activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow'
+          ? tab
+          : tab === 'non_travel' ? 'bank_review' : undefined}
         counts={{
           review: allReviewCount,
           unmatched: unmatchedCount,
           stale: staleCount,
           outflow: allOutflowUnmatchedCount,
+          bank_review: bankReality?.memoReviewCount ?? 0,
           trash: trashTxs.length,
         }}
         onSelect={handlePaymentQueueSelect}
@@ -1673,11 +1776,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="mt-1 text-[11px] text-admin-muted-2">남은 송금 예정 {erp ? fmt만(ownerNumbers.payables) : '—'}</p>
             </div>
             <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashProfit < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
-              <p className="text-[11px] text-admin-muted font-medium">통장 실현수익</p>
+              <p className="text-[11px] text-admin-muted font-medium">선택 기간 여행 실현수익</p>
               <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashProfit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                 {erp ? fmt만(ownerNumbers.cashProfit) : '—'}
               </p>
-              <p className="mt-3 text-[11px] text-admin-muted-2">고객 입금 - 랜드사 출금</p>
+              <p className="mt-3 text-[11px] text-admin-muted-2">예약에 매칭된 고객 입금 - 랜드사 출금</p>
             </div>
           </div>
 
@@ -1737,12 +1840,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {/* ── Metric Filter Cards (탭 겸용) ──────────────────────────────────────── */}
       <p className="mb-2 text-[11px] text-admin-muted">전체 활성 입출금 원장 기준</p>
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-5 lg:grid-cols-5">
         {([
           { id: 'review'    as const, label: '검토 필요',   count: reviewCount,    active: 'border-amber-400 bg-amber-50', num: 'text-amber-700' },
           { id: 'matched'   as const, label: '매칭 완료',   count: matchedCount,   active: 'border-emerald-400 bg-emerald-50', num: 'text-emerald-700' },
           { id: 'unmatched' as const, label: '미매칭',      count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
           { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
+          { id: 'non_travel' as const, label: '여행 외·경비', count: nonTravelCount, active: 'border-cyan-400 bg-cyan-50', num: 'text-cyan-800' },
         ] as const).map(card => (
           <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab(outflowUnmatchedCount > 0 ? 'unmatched' : 'all'); }}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
@@ -1781,6 +1885,15 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         </div>
       )}
 
+      {tab === 'non_travel' && (
+        <div className="mb-4 rounded-admin-md border border-cyan-200 bg-cyan-50 px-4 py-3 text-admin-xs text-cyan-900">
+          <p className="font-bold">회사 경비와 여행키가 없는 입출금도 통장 원장에는 모두 보관됩니다.</p>
+          <p className="mt-1">
+            이 거래들은 실제 통장 잔액에는 포함되지만 예약별 여행 수익에는 포함되지 않습니다. 예약 거래가 섞여 있다면 Clobe 메모를 `YYMMDD_대표고객_랜드사` 형식으로 고친 뒤 동기화하세요.
+          </p>
+        </div>
+      )}
+
       {/* 트랜잭션 테이블 */}
       {isLoading ? (
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-2">
@@ -1802,7 +1915,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         </div>
       ) : (
         <>
-        {checkedTxIds.size > 0 && (
+        {checkedTxIds.size > 0 && tab !== 'non_travel' && (
           <div className="flex items-center gap-3 bg-slate-800 text-white px-4 py-2 rounded-lg mb-2">
             <span className="text-admin-sm font-medium">{checkedTxIds.size}건 선택</span>
             <button
@@ -1839,7 +1952,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
         <div className="space-y-3 md:hidden">
           {filtered.map(tx => {
-            const stale = (tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') && hoursSince(tx.created_at) >= 24;
+            const stale = tx.settlement_scope !== 'non_travel' && (tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') && hoursSince(tx.created_at) >= 24;
             return (
               <article
                 key={`mobile-${tx.id}`}
@@ -1848,8 +1961,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${MATCH_COLORS[tx.match_status] || 'bg-admin-surface-2 text-admin-muted'}`}>
-                        {MATCH_LABELS[tx.match_status] || tx.match_status}
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${tx.settlement_scope === 'non_travel' ? 'bg-cyan-50 text-cyan-800' : MATCH_COLORS[tx.match_status] || 'bg-admin-surface-2 text-admin-muted'}`}>
+                        {tx.settlement_scope === 'non_travel' ? '여행 외 통장거래' : MATCH_LABELS[tx.match_status] || tx.match_status}
                       </span>
                       <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                         tx.transaction_type === '입금'
@@ -1871,7 +1984,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       {tx.bookings?.package_title || tx.memo || '연결된 예약 없음'}
                     </p>
                   </div>
-                  <label className="shrink-0">
+                  {tx.settlement_scope !== 'non_travel' && <label className="shrink-0">
                     <span className="sr-only">{tx.counterparty_name || '거래'} 선택</span>
                     <input
                       type="checkbox"
@@ -1883,7 +1996,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       }}
                       className="rounded border-admin-border-strong"
                     />
-                  </label>
+                  </label>}
                 </div>
 
                 <div className="mt-3 flex items-end justify-between gap-3">
@@ -1912,6 +2025,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <tr>
                 <th className="w-8 px-2 py-2">
                   <input type="checkbox"
+                    disabled={tab === 'non_travel'}
                     checked={filtered.length > 0 && filtered.every(t => checkedTxIds.has(t.id))}
                     onChange={e => {
                       if (e.target.checked) setCheckedTxIds(new Set(filtered.map(t => t.id)));
@@ -1936,6 +2050,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <tr key={tx.id} className={`border-b border-admin-border-mid transition ${tx.match_status === 'error' ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-admin-bg'}`}>
                   <td className="w-8 px-2 py-2">
                     <input type="checkbox"
+                      disabled={tx.settlement_scope === 'non_travel'}
                       checked={checkedTxIds.has(tx.id)}
                       onChange={e => {
                         const next = new Set(checkedTxIds);
@@ -2013,7 +2128,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             {tx.bookings.total_paid_out != null && (
                               <div>랜드사 송금액: {tx.bookings.total_paid_out.toLocaleString()}원</div>
                             )}
-                            <div>통장 실현수익: <strong className={((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                            <div>예약 실현수익: <strong className={((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                               {((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)).toLocaleString()}원
                             </strong></div>
                             {tx.bookings.paid_amount != null && tx.bookings.total_price != null && (
@@ -2029,7 +2144,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                           </div>
                         </div>
                       </>
-                    ) : <span className="text-admin-muted-2">-</span>}
+                    ) : (
+                      <div>
+                        <p className="font-medium text-cyan-800">{tx.memo || '메모 없음'}</p>
+                        <p className="mt-0.5 text-[11px] text-admin-muted-2">{tx.provider_category || 'Clobe 분류 없음'}</p>
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-center">
                     {tx.booking_id && (() => {
@@ -2046,11 +2166,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${MATCH_COLORS[tx.match_status] || 'bg-admin-surface-2 text-admin-muted'}`}>
-                        {MATCH_LABELS[tx.match_status] || tx.match_status}
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${tx.settlement_scope === 'non_travel' ? 'bg-cyan-50 text-cyan-800' : MATCH_COLORS[tx.match_status] || 'bg-admin-surface-2 text-admin-muted'}`}>
+                        {tx.settlement_scope === 'non_travel' ? '예약 정산 제외' : MATCH_LABELS[tx.match_status] || tx.match_status}
                       </span>
                       {/* 24h 이상 미처리 뱃지 (B-2) */}
-                      {(tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') &&
+                      {tx.settlement_scope !== 'non_travel' && (tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') &&
                         hoursSince(tx.created_at) >= 24 && (
                           <span
                             title={`${Math.round(hoursSince(tx.created_at))}시간 방치`}
@@ -2110,14 +2230,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         {tx.deleted_at ? fmtMonthDay(tx.deleted_at) : '-'}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <div className="flex items-center gap-2 justify-end">
-                          <button type="button" onClick={() => handleRestoreSingle(tx)}
-                            aria-label={`${tx.counterparty_name || '거래'} 복원`}
-                            className="text-[11px] text-brand hover:underline">복원</button>
-                          <button type="button" onClick={() => handleHardDeleteSingle(tx)}
-                            aria-label={`${tx.counterparty_name || '거래'} 영구 삭제`}
-                            className="text-[11px] text-red-400 hover:text-red-600 hover:underline">영구삭제</button>
-                        </div>
+                        {tx.source === 'clobe_mcp' ? (
+                          <span className="text-[11px] text-admin-muted-2" title="Clobe 원본 증빙은 동기화가 관리합니다">원본 보존</span>
+                        ) : (
+                          <div className="flex items-center gap-2 justify-end">
+                            <button type="button" onClick={() => handleRestoreSingle(tx)}
+                              aria-label={`${tx.counterparty_name || '거래'} 복원`}
+                              className="text-[11px] text-brand hover:underline">복원</button>
+                            <button type="button" onClick={() => handleHardDeleteSingle(tx)}
+                              aria-label={`${tx.counterparty_name || '거래'} 영구 삭제`}
+                              className="text-[11px] text-red-400 hover:text-red-600 hover:underline">영구삭제</button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

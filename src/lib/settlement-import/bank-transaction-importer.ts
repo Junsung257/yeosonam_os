@@ -30,6 +30,7 @@ export type BankTransactionImportAction =
   | 'merge_candidate'
   | 'duplicate_review'
   | 'ignored_non_travel'
+  | 'non_travel_recorded'
   | 'memo_changed_review'
   | 'memo_updated'
   | 'legacy_repaired';
@@ -45,6 +46,9 @@ export interface BankTransactionImportRow {
   rowIndex?: number;
   externalProvider?: string;
   externalTransactionId?: string;
+  balanceAfter?: number;
+  providerCategory?: string;
+  providerIsUnclassified?: boolean;
   rawPayload?: Record<string, unknown>;
 }
 
@@ -61,6 +65,7 @@ interface ExistingBankTxCandidate {
   source_metadata?: Record<string, unknown> | null;
   external_provider?: string | null;
   external_transaction_id?: string | null;
+  settlement_scope?: 'travel' | 'non_travel' | null;
 }
 
 export interface BankTransactionImportPreviewRow {
@@ -103,6 +108,7 @@ export interface BankTransactionImportResult {
   repaired: number;
   memoUpdated: number;
   memoChangedReview: number;
+  nonTravelStored: number;
   firstError: string | null;
   results: BankTransactionImportPreviewRow[];
 }
@@ -129,7 +135,7 @@ function sourceMetadataFor(input: {
   source: BankTransactionImportSource;
   eventId: string;
   row: BankTransactionImportRow;
-  parsed: ParsedTravelSettlementMemo;
+  parsed?: ParsedTravelSettlementMemo | null;
 }) {
   return {
     event_id: input.eventId,
@@ -139,10 +145,20 @@ function sourceMetadataFor(input: {
     memo: input.row.memo,
     original_line: input.row.originalLine ?? null,
     row_index: input.row.rowIndex ?? null,
-    settlement_key: input.parsed.normalizedKey,
+    settlement_key: input.parsed?.normalizedKey ?? null,
     external_provider: input.row.externalProvider ?? null,
     external_transaction_id: input.row.externalTransactionId ?? null,
     imported_at: new Date().toISOString(),
+  };
+}
+
+function accountFieldsFor(row: BankTransactionImportRow, settlementScope: 'travel' | 'non_travel') {
+  return {
+    settlement_scope: settlementScope,
+    account_number: row.accountNumber?.replace(/\D/g, '') || null,
+    balance_after: row.balanceAfter ?? null,
+    provider_category: row.providerCategory ?? null,
+    provider_is_unclassified: row.providerIsUnclassified ?? null,
   };
 }
 
@@ -389,6 +405,7 @@ async function attachImportEvidence(existingId: string, input: {
   const patch: Record<string, unknown> = {
     transaction_fingerprint: input.fingerprint,
     raw_payload: input.row.rawPayload ?? {},
+    ...accountFieldsFor(input.row, 'travel'),
     source_metadata: {
       ...previousMetadata,
       [input.source]: {
@@ -471,6 +488,7 @@ async function restoreExcludedTransactionAsClobe(input: {
       matched_at: null,
       status: 'active',
       deleted_at: null,
+      ...accountFieldsFor(input.row, 'travel'),
     } as Record<string, unknown>)
     .eq('id', input.existing.id)
     .eq('status', 'excluded');
@@ -490,6 +508,7 @@ async function restoreExcludedTransactionAsClobe(input: {
     source_metadata: { ...previousMetadata, [input.source]: clobeMetadata },
     external_provider: input.row.externalProvider ?? null,
     external_transaction_id: input.row.externalTransactionId ?? null,
+    settlement_scope: 'travel',
   } satisfies ExistingBankTxCandidate;
 }
 
@@ -517,6 +536,7 @@ async function updateUnprocessedDuplicateFromMemo(input: {
     raw_payload: input.row.rawPayload ?? {},
     match_status: input.matchStatus === 'auto' ? 'unmatched' : input.matchStatus,
     match_confidence: input.matchStatus === 'auto' ? 0 : input.confidence,
+    ...accountFieldsFor(input.row, 'travel'),
     source_metadata: {
       ...previousMetadata,
       [input.source]: sourceMetadataFor(input),
@@ -555,6 +575,28 @@ async function flagProcessedMemoChange(input: {
     parsed: input.parsed,
   });
 
+  const { error: reviewUpdateError } = await supabaseAdmin
+    .from('bank_transactions')
+    .update({
+      match_status: 'review',
+      matched_by: 'clobe_memo_change_review',
+      ...accountFieldsFor(input.row, 'travel'),
+    } as Record<string, unknown>)
+    .eq('id', input.existing.id);
+  if (reviewUpdateError) {
+    throw new Error(`bank transaction memo review update failed: ${sanitizeDbError(reviewUpdateError)}`);
+  }
+
+  const { data: existingEvent } = await supabaseAdmin
+    .from('ops_events')
+    .select('id')
+    .eq('bank_transaction_id', input.existing.id)
+    .eq('status', 'open')
+    .eq('event_type', 'payment_imported')
+    .limit(1)
+    .maybeSingle();
+  if (existingEvent) return;
+
   const { error } = await supabaseAdmin
     .from('ops_events')
     .insert({
@@ -587,6 +629,132 @@ async function flagProcessedMemoChange(input: {
   if (error) {
     console.warn('[clobe sync] memo change review event failed:', sanitizeDbError(error));
   }
+}
+
+async function persistNonTravelClobeTransaction(input: {
+  source: BankTransactionImportSource;
+  row: BankTransactionImportRow;
+  eventId: string;
+  fingerprint: string;
+  txType: '입금' | '출금';
+  amount: number;
+  existing?: ExistingBankTxCandidate | null;
+}): Promise<{ id: string | null; inserted: boolean }> {
+  const metadata = sourceMetadataFor({
+    source: input.source,
+    eventId: input.eventId,
+    row: input.row,
+    parsed: null,
+  });
+  const common = {
+    slack_event_id: input.eventId,
+    raw_message: `[${input.source}] ${input.row.memo}`,
+    transaction_fingerprint: input.fingerprint,
+    source: input.source,
+    external_provider: input.row.externalProvider ?? null,
+    external_transaction_id: input.row.externalTransactionId ?? null,
+    raw_payload: input.row.rawPayload ?? {},
+    transaction_type: input.txType,
+    amount: input.amount,
+    counterparty_name: input.row.counterpartyName,
+    memo: input.row.memo,
+    received_at: input.row.receivedAt,
+    booking_id: null,
+    match_status: 'unmatched',
+    match_confidence: 0,
+    matched_by: null,
+    matched_at: null,
+    status: 'active',
+    deleted_at: null,
+    ...accountFieldsFor(input.row, 'non_travel'),
+  };
+
+  if (input.existing) {
+    const previousMetadata = input.existing.source_metadata ?? {};
+    const { error } = await supabaseAdmin
+      .from('bank_transactions')
+      .update({
+        ...common,
+        source_metadata: { ...previousMetadata, [input.source]: metadata },
+      } as Record<string, unknown>)
+      .eq('id', input.existing.id);
+    if (error) throw new Error(`non-travel bank transaction update failed: ${sanitizeDbError(error)}`);
+    return { id: input.existing.id, inserted: false };
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('bank_transactions')
+    .insert({
+      ...common,
+      source_metadata: { [input.source]: metadata },
+      is_refund: false,
+      is_fee: false,
+      fee_amount: 0,
+    } as Record<string, unknown>)
+    .select('id')
+    .single();
+  if (error) throw new Error(`non-travel bank transaction insert failed: ${sanitizeDbError(error)}`);
+  return { id: (data as { id?: string } | null)?.id ?? null, inserted: true };
+}
+
+async function flagTravelTransactionDeclassification(input: {
+  source: BankTransactionImportSource;
+  existing: ExistingBankTxCandidate;
+  row: BankTransactionImportRow;
+  eventId: string;
+  fingerprint: string;
+}) {
+  const previousMetadata = input.existing.source_metadata ?? {};
+  const metadata = sourceMetadataFor({
+    source: input.source,
+    eventId: input.eventId,
+    row: input.row,
+    parsed: null,
+  });
+  const { error: updateError } = await supabaseAdmin
+    .from('bank_transactions')
+    .update({
+      raw_payload: input.row.rawPayload ?? {},
+      source_metadata: { ...previousMetadata, [input.source]: metadata },
+      match_status: 'review',
+      matched_by: 'clobe_memo_change_review',
+      account_number: input.row.accountNumber?.replace(/\D/g, '') || null,
+      balance_after: input.row.balanceAfter ?? null,
+      provider_category: input.row.providerCategory ?? null,
+      provider_is_unclassified: input.row.providerIsUnclassified ?? null,
+    } as Record<string, unknown>)
+    .eq('id', input.existing.id);
+  if (updateError) throw new Error(`travel memo removal review failed: ${sanitizeDbError(updateError)}`);
+
+  const { data: existingEvent } = await supabaseAdmin
+    .from('ops_events')
+    .select('id')
+    .eq('bank_transaction_id', input.existing.id)
+    .eq('status', 'open')
+    .eq('event_type', 'payment_imported')
+    .limit(1)
+    .maybeSingle();
+  if (existingEvent) return;
+
+  await supabaseAdmin.from('ops_events').insert({
+    event_type: 'payment_imported',
+    severity: 'warning',
+    title: 'Clobe travel memo removed after financial match',
+    description: `Provider memo no longer contains a valid travel key. Review the existing booking allocation before reclassifying this transaction.`,
+    booking_id: input.existing.booking_id ?? null,
+    bank_transaction_id: input.existing.id,
+    target_type: 'bank_transactions',
+    target_id: input.existing.id,
+    status: 'open',
+    metadata: {
+      source: input.source,
+      previous_memo: input.existing.memo ?? null,
+      new_memo: input.row.memo,
+      external_provider: input.row.externalProvider ?? null,
+      external_transaction_id: input.row.externalTransactionId ?? null,
+    },
+    created_by: 'clobe_sync',
+  } as Record<string, unknown>);
 }
 
 export async function processBankTransactionImportRows(
@@ -672,7 +840,9 @@ export async function processBankTransactionImportRows(
       || duplicate.row.match_status === 'manual'
       || duplicate.row.match_status === 'auto'
     ));
+    const recordsCompleteClobeLedger = options.source === 'clobe_mcp' || options.source === 'clobe_api';
     const importAction: BankTransactionImportAction =
+      !parsed && recordsCompleteClobeLedger ? 'non_travel_recorded' :
       !parsed ? 'ignored_non_travel' :
       memoChanged && duplicateProcessed ? 'memo_changed_review' :
       memoChanged ? 'memo_updated' :
@@ -713,8 +883,44 @@ export async function processBankTransactionImportRows(
       continue;
     }
 
-    if (!parsed) {
+    if (!parsed && !recordsCompleteClobeLedger) {
       results.push({ ...previewRow, status: 'skipped' });
+      continue;
+    }
+
+    if (!parsed) {
+      if (duplicate.row && (duplicateHasAllocation || duplicateIsLegacyMatched)) {
+        await flagTravelTransactionDeclassification({
+          source: options.source,
+          existing: duplicate.row,
+          row,
+          eventId,
+          fingerprint,
+        });
+        results.push({ ...previewRow, status: 'memo_changed_review', txId: duplicate.row.id });
+        continue;
+      }
+
+      if (duplicate.row && duplicate.kind === 'probable') {
+        results.push({ ...previewRow, status: 'duplicate' });
+        claimedProbableIds.add(duplicate.row.id);
+        continue;
+      }
+
+      const stored = await persistNonTravelClobeTransaction({
+        source: options.source,
+        row,
+        eventId,
+        fingerprint,
+        txType,
+        amount,
+        existing: duplicate.row,
+      });
+      results.push({
+        ...previewRow,
+        status: stored.inserted ? 'non_travel_inserted' : 'non_travel_merged',
+        txId: stored.id ?? undefined,
+      });
       continue;
     }
 
@@ -852,6 +1058,7 @@ export async function processBankTransactionImportRows(
         match_confidence: matchStatus === 'auto' ? 0 : confidence,
         matched_by: null,
         matched_at: null,
+        ...accountFieldsFor(row, 'travel'),
       } as Record<string, unknown>])
       .select('id')
       .single();
@@ -932,6 +1139,7 @@ export async function processBankTransactionImportRows(
     repaired: results.filter(r => r.status === 'legacy_repaired' || r.importAction === 'legacy_repaired').length,
     memoUpdated: results.filter(r => r.status === 'memo_updated').length,
     memoChangedReview: results.filter(r => r.status === 'memo_changed_review').length,
+    nonTravelStored: results.filter(r => r.status === 'non_travel_inserted' || r.status === 'non_travel_merged').length,
     firstError: (results.find(r => r.status === 'error') as { error?: string } | undefined)?.error || null,
     results,
   };
