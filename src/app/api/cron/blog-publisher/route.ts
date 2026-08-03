@@ -3342,6 +3342,12 @@ async function processQueueItem(
     if (!publishQuality.passed) {
       console.log(`[blog-publisher] publish quality blocked (${publishQuality.summary})`);
       const failureStatus = await handleFailure(item, publishQuality.summary, publishQuality.qualityGate, false, {
+        last_seo_score: {
+          score: seoScore.score,
+          max_score: seoScore.maxScore,
+          summary: seoScore.summary,
+          details: seoScore.details,
+        },
         last_publish_quality: {
           score: publishQuality.blogQualityScore.score,
           issues: publishQuality.blogQualityScore.issues.slice(0, 8),

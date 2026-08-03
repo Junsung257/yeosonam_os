@@ -1643,6 +1643,12 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   ).values()];
   const officialSources = bundle.sources.filter((source) =>
     Boolean(source.sourceUrl) && isOfficialInformationAuthority(source.authorityLevel));
+  const renderedOfficialSources = [...new Map(
+    officialSources.map((source) => [
+      `${clean(source.publisher).toLowerCase()}|${clean(source.retrievedAt).slice(0, 10)}`,
+      source,
+    ]),
+  ).values()];
   if (approvedClaims.length < 4 || officialSources.length < 1) return unchanged();
 
   const destination = clean(
@@ -1743,7 +1749,7 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
     '',
     '## 공식 근거',
     '',
-    ...officialSources.map((source, index) =>
+    ...renderedOfficialSources.map((source, index) =>
       `- [${clean(source.publisher) || `공식 출처 ${index + 1}`}](${source.sourceUrl}) - 확인일 ${clean(source.retrievedAt).slice(0, 10)}`),
     '',
     '## 공식 원문에서 정확히 확인할 항목',
@@ -1774,6 +1780,8 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   const contractFloor = [
     '- 귀국편(왕복 항공권), 숙소, 재정 증빙은 자신의 조건에 맞는지 확인하세요.',
     '- 공식 안내의 확인 항목과 최종 확인 세부 조건은 출발 전에 다시 확인하세요.',
+    '- 숙소·호텔 위치와 공항 이동·교통 안내는 별도 공식 페이지에서 확인하세요.',
+    '- 여행 일정과 준비물 체크리스트, 예약·예산·비용은 자신의 조건에 맞게 구분하세요.',
     ...(primaryKeyword ? [
       `- ${primaryKeyword}의 목적과 적용 대상을 공식 원문에서 확인하세요.`,
       `- ${primaryKeyword}의 여권·비자 조건은 여행자 국적과 방문 목적에 따라 구분하세요.`,
@@ -1785,21 +1793,12 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   if (endMarkerIndex >= 0) normalizedLines.splice(endMarkerIndex, 0, ...contractFloor);
   else normalizedLines.push(...contractFloor);
   const faq = [
-    '## FAQ: ?쒖썙 ???덈뒗 寃껄뒗? ?뭐낫?源? ',
-    '',
-    'Q. ?대 湲???뺣낫瑜?臾댁뾿??湲곗??쇰줈 ?묒꽦?섏뿀?섯??',
-    'A. ?꾨옒 怨듭떇 ?먮Ц?먯꽌 ?뺤씤???댁슜留?以묒떒?섏뿬 ?뺣━?덉뒿?덈떎.',
-    '',
-  ];
-  faq.splice(
-    0,
-    faq.length,
     '## FAQ: 출발 전에 무엇을 확인할까요?',
     '',
     `Q. ${primaryKeyword || destination}를 찾을 때 공식 페이지에서 먼저 봐야 하는 것은 무엇인가요?`,
     'A. 아래 공식 원문에서 확인한 내용만 빠짐없이 정리했습니다.',
     '',
-  );
+  ];
   if (endMarkerIndex >= 0) normalizedLines.splice(endMarkerIndex, 0, ...faq);
   else normalizedLines.push(...faq);
   const markdown = normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();

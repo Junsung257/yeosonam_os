@@ -556,7 +556,31 @@ describe('blog generation research preflight', () => {
     expect(result.markdown.match(/^##\s+/gm)?.length).toBeLessThanOrEqual(9);
     expect(result.markdown).toContain('## FAQ: 출발 전에 무엇을 확인할까요?');
     expect(result.markdown).not.toContain('?쒖썙');
+    expect(result.markdown).toContain('숙소·호텔 위치와 공항 이동·교통 안내');
+    expect(result.markdown).toContain('준비물 체크리스트, 예약·예산·비용');
     expect(result.markdown.length).toBeGreaterThanOrEqual(2500);
+  });
+
+  it('deduplicates repeated official publisher/date rows in the public evidence section', () => {
+    const researchReadiness = entryRequirementsReadiness('미국');
+    const bundle = researchReadiness.bundle!;
+    bundle.sources.push(
+      {
+        ...bundle.sources[0]!,
+        sourceKey: 'duplicate-official-source',
+        sourceUrl: 'https://www.uscis.gov/duplicate-official-source',
+      },
+    );
+
+    const result = repairBlogGenerationResearchStructure({
+      markdown: '# Untrusted draft',
+      intent: 'entry_requirements',
+      readiness: researchReadiness,
+      plannedTitle: '미국 입국 요건과 비자',
+      forceDeterministicEvidenceArticle: true,
+    });
+
+    expect(result.markdown.match(/\[Official immigration authority\].*확인일/g)).toHaveLength(1);
   });
 
   it('does not add an entry destination when passed research contains conflicting destinations', () => {
