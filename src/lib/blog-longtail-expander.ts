@@ -43,6 +43,8 @@ const STOP_TOKENS = new Set([
   '방법',
 ]);
 
+const TRAVEL_RELEVANCE_RE = /여행|관광|휴양|날씨|옷차림|기온|준비물|비자|입국|여권|항공|공항|호텔|숙소|맛집|환전|화폐|교통|이동|일정|코스|동선|여행자|관광객|여행지|트립|travel|tour|visa|airport|hotel|weather|packing|itinerary|transport/i;
+
 interface RankHistoryRow {
   slug: string | null;
   query: string | null;
@@ -153,6 +155,15 @@ export function tokenizeKeyword(keyword: string): string[] {
     .split(/\s+/)
     .map((token) => token.trim())
     .filter((token) => token.length >= 2 && !STOP_TOKENS.has(token));
+}
+
+export function isTravelRelevantKeyword(
+  keyword: string,
+  topic?: string | null,
+  destination?: string | null,
+): boolean {
+  if (destination?.trim()) return true;
+  return TRAVEL_RELEVANCE_RE.test(`${keyword} ${topic ?? ''}`);
 }
 
 export function buildKeywordFamilyKey(keyword: string, destination: string | null): string {
@@ -628,6 +639,11 @@ export async function expandGscLongtailTopics(
         priority,
         cannibalizationRisk,
       };
+    })
+    .filter((candidate) => {
+      if (isTravelRelevantKeyword(candidate.keyword, candidate.topic, candidate.destination)) return true;
+      skipped.push({ keyword: candidate.keyword, reason: 'travel_relevance_failed' });
+      return false;
     })
     .filter((candidate) => candidate.tier !== 'head' && candidate.cannibalizationRisk !== 'high')
     .sort((a, b) => {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { keywordSimilarity, normalizeKeyword, tokenizeKeyword } from './blog-longtail-expander';
+import {
+  isTravelRelevantKeyword,
+  keywordSimilarity,
+  normalizeKeyword,
+  tokenizeKeyword,
+} from './blog-longtail-expander';
 
 const osaka = '\uC624\uC0AC\uCE74';
 const june = '6\uC6D4';
@@ -24,5 +29,11 @@ describe('blog longtail keyword helpers', () => {
 
   it('does not merge unrelated destination keywords', () => {
     expect(keywordSimilarity(`${osaka} ${june} ${weather}`, `${danang} ${exchange} ${tip}`)).toBe(0);
+  });
+
+  it('rejects destinationless non-travel search terms before queue insertion', () => {
+    expect(isTravelRelevantKeyword('의학정보', '의학정보 검색 의도 완전 정리', null)).toBe(false);
+    expect(isTravelRelevantKeyword(`${osaka} ${weather}`, `${osaka} 날씨`, null)).toBe(true);
+    expect(isTravelRelevantKeyword('의학정보', '의학정보 검색 의도 완전 정리', '서울')).toBe(true);
   });
 });
