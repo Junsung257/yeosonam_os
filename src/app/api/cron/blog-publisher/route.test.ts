@@ -356,7 +356,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const evaluateCurrentInformationClaimValidation = async () =>');
     expect(source).toContain('const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();');
     expect(source).toContain('const finalClaimValidation = await evaluateCurrentInformationClaimValidation();');
-    expect(source).toContain("contentBrief.intentType === 'entry_requirements' && writerOutput.ledgerIssues.length > 0");
+    expect(source).toContain("contentBrief.intentType === 'entry_requirements'");
+    expect(source).toContain('researchReadiness.passed');
+    expect(source).toContain('forceDeterministicEvidenceArticle:');
     expect(source).toContain('entry_requirements_deterministic_evidence_article');
     expect(source).toContain('? { auto_research: item.meta.auto_research }');
     const preSeoClaimValidation = source.indexOf(
