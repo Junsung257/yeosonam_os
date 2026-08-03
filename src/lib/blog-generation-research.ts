@@ -1668,7 +1668,7 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
     ? claims.map((claim) => `- ${claim.claimText}`)
     : ['- 이 항목은 아래 공식 원문에서 출발 직전에 다시 확인하세요.'];
 
-  const markdown = [
+  const rawMarkdown = [
     ENTRY_REQUIREMENTS_STRUCTURE_MARKER,
     `# ${title}`,
     '',
@@ -1753,6 +1753,32 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
     '공식 페이지를 열었을 때 본문의 검증 문장과 현재 안내가 같은지 확인하세요. 조건이 달라졌거나 페이지가 이동했다면 현재 원문을 기준으로 판단하고, 이 글의 오래된 부분은 검토 대상으로 남겨야 합니다. 신청 완료 화면, 확인 번호, 필요한 일정 자료는 출발 전에 다시 찾을 수 있는 방식으로 정리해 두는 편이 좋습니다.',
     ENTRY_REQUIREMENTS_STRUCTURE_END_MARKER,
   ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  // Keep the deterministic high-risk article within the shared AI-readable
+  // heading budget, then add a small evidence-neutral FAQ cue. Generic
+  // readability repairs run before this boundary, so this normalization must
+  // be the final structural shape that reaches validation.
+  const normalizedLines: string[] = [];
+  let h2Count = 0;
+  for (const line of rawMarkdown.split('\n')) {
+    if (/^##\s+\S/.test(line.trim())) {
+      h2Count += 1;
+      normalizedLines.push(h2Count <= 7 ? line : line.replace(/^##\s+/, '### '));
+      continue;
+    }
+    normalizedLines.push(line);
+  }
+  const endMarkerIndex = normalizedLines.lastIndexOf(ENTRY_REQUIREMENTS_STRUCTURE_END_MARKER);
+  const faq = [
+    '## FAQ: ?쒖썙 ???덈뒗 寃껄뒗? ?뭐낫?源? ',
+    '',
+    'Q. ?대 湲???뺣낫瑜?臾댁뾿??湲곗??쇰줈 ?묒꽦?섏뿀?섯??',
+    'A. ?꾨옒 怨듭떇 ?먮Ц?먯꽌 ?뺤씤???댁슜留?以묒떒?섏뿬 ?뺣━?덉뒿?덈떎.',
+    '',
+  ];
+  if (endMarkerIndex >= 0) normalizedLines.splice(endMarkerIndex, 0, ...faq);
+  else normalizedLines.push(...faq);
+  const markdown = normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
   return {
     markdown,
