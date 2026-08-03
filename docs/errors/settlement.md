@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-BOOKING-LIST-API-ENVELOPE@2026-08-03
+
+- **Symptom:** Switching the reservation lifecycle tab replaced a valid 91-row list with zero rows, so memo-matched bookings could not be inspected in the settlement UI.
+- **Root cause:** The client reload path read the legacy `{ bookings }` response while `/api/bookings` returns the standard `{ ok, data: { bookings } }` envelope.
+- **Permanent rule:** Every booking-list consumer must use `extractBookingsFromApi`; a failed request must keep the last valid list instead of silently replacing it with an empty array.
+- **Required proof:** Switch active/completed tabs, search a known memo-created booking, and verify the count and rendered rows remain aligned after the API reload.
+
 ## ERR-SETTLEMENT-REVIEW-TIMEZONE@2026-08-03
 
 - **Symptom:** The `통장 메모 확인` queue showed all non-travel rows instead of the review subset, and ledger timestamps appeared nine hours earlier than Clobe.
