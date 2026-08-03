@@ -359,6 +359,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("contentBrief.intentType === 'entry_requirements'");
     expect(source).toContain('researchReadiness.passed');
     expect(source).toContain('forceDeterministicEvidenceArticle:');
+    expect(source).toContain('const applyFinalInternalLinkFloor = (): void =>');
     expect(source).toContain('entry_requirements_deterministic_evidence_article');
     expect(source).toContain('? { auto_research: item.meta.auto_research }');
     const preSeoClaimValidation = source.indexOf(

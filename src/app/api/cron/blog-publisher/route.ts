@@ -2961,10 +2961,23 @@ async function processQueueItem(
       generated.blog_html = readinessRepair.markdown;
       console.log(`[blog-publisher] final readiness floor repair: ${readinessRepair.changes.join(', ')}`);
     };
+    const applyFinalInternalLinkFloor = (): void => {
+      if (blogType !== 'info') return;
+      const hasInternalLink = [...generated.blog_html.matchAll(
+        /(?<!!)\[[^\]]+]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
+      )].some((match) => {
+        const href = match[1] || '';
+        return href.startsWith('/') || /yeosonam\.com/i.test(href);
+      });
+      if (hasInternalLink) return;
+      generated.blog_html = `${generated.blog_html.trimEnd()}\n\n### ?⑥젙 ?щ? 媛?대뱶\n\n- [?ы뻾 ?뺣낫 ?꾨줈?ㅻ쒖슜](/blog)`;
+      console.log('[blog-publisher] final internal link floor: appended /blog archive link');
+    };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalGateCustomerSurfaceRepair();
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       applyFinalResearchStructureRepair();
+      applyFinalInternalLinkFloor();
       await restoreFinalReusableImages();
       applyFinalReadinessFloorRepair();
       applyFinalInlineSurfaceRepair();
@@ -2978,6 +2991,7 @@ async function processQueueItem(
       // Research-backed structure is the last structural body mutation so generic
       // cleanup cannot prune high-risk entry evidence from the customer article.
       applyFinalResearchStructureRepair();
+      applyFinalInternalLinkFloor();
       await restoreFinalReusableImages();
       applyFinalReadinessFloorRepair();
       applyFinalInlineSurfaceRepair();
