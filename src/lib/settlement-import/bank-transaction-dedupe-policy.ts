@@ -8,6 +8,28 @@ export function isProbableBankTransactionDuplicate(score: number): boolean {
 }
 const LEGACY_BANK_SOURCES = new Set(['slack_webhook', 'slack_gap_fill', 'bulk_import', 'manual']);
 
+export function canFuzzyMatchProviderTransaction(input: {
+  incomingExternalProvider?: string | null;
+  incomingExternalTransactionId?: string | null;
+  existingExternalProvider?: string | null;
+  existingExternalTransactionId?: string | null;
+}): boolean {
+  const sameProvider = Boolean(
+    input.incomingExternalProvider
+    && input.existingExternalProvider
+    && input.incomingExternalProvider === input.existingExternalProvider,
+  );
+  const hasDistinctProviderIds = Boolean(
+    input.incomingExternalTransactionId
+    && input.existingExternalTransactionId
+    && input.incomingExternalTransactionId !== input.existingExternalTransactionId,
+  );
+
+  // Provider transaction IDs are the authoritative bank-row identity. Similar
+  // timestamps or amounts must not collapse two real rows from the same feed.
+  return !(sameProvider && hasDistinctProviderIds);
+}
+
 export function isClobeLegacyDuplicateCandidate(input: {
   incomingSource?: string;
   existingSource?: string | null;

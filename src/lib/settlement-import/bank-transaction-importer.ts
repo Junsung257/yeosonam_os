@@ -16,6 +16,7 @@ import {
   type SettlementMemoResolutionSource,
 } from './memo-auto-match-policy';
 import {
+  canFuzzyMatchProviderTransaction,
   isClobeBootstrapCandidate,
   isClobeLegacyDuplicateCandidate,
   isProbableBankTransactionDuplicate,
@@ -350,7 +351,13 @@ async function findExistingBankTransaction(input: {
     };
   }
 
-  const crossSourceCandidates = availableCandidates.filter(candidate => {
+  const fuzzyCandidates = availableCandidates.filter(candidate => canFuzzyMatchProviderTransaction({
+    incomingExternalProvider: input.externalProvider,
+    incomingExternalTransactionId: input.externalTransactionId,
+    existingExternalProvider: candidate.external_provider,
+    existingExternalTransactionId: candidate.external_transaction_id,
+  }));
+  const crossSourceCandidates = fuzzyCandidates.filter(candidate => {
     const normalizedCandidateName = normalizeBankTransactionText(candidate.counterparty_name);
     const sameCounterparty = Boolean(
       normalizedCandidateName
@@ -371,7 +378,7 @@ async function findExistingBankTransaction(input: {
   const uniqueCrossSourceId = crossSourceCandidates.length === 1
     ? crossSourceCandidates[0]?.id
     : null;
-  for (const row of availableCandidates) {
+  for (const row of fuzzyCandidates) {
     const score = scoreBankTransactionSimilarity(row, input);
     const adjustedScore = isUniqueClobeLegacyDuplicate(row.id === uniqueCrossSourceId, crossSourceCandidates.length)
       ? Math.max(score, 0.78)

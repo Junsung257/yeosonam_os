@@ -1,11 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canFuzzyMatchProviderTransaction,
   isClobeBootstrapCandidate,
   isClobeLegacyDuplicateCandidate,
   isProbableBankTransactionDuplicate,
   isUniqueClobeLegacyDuplicate,
   selectUniqueClobeBootstrapCandidate,
 } from './bank-transaction-dedupe-policy';
+
+describe('canFuzzyMatchProviderTransaction', () => {
+  it('keeps distinct rows from the same provider even when their bank details are similar', () => {
+    expect(canFuzzyMatchProviderTransaction({
+      incomingExternalProvider: 'clobe',
+      incomingExternalTransactionId: 'transaction-2',
+      existingExternalProvider: 'clobe',
+      existingExternalTransactionId: 'transaction-1',
+    })).toBe(false);
+  });
+
+  it('still allows legacy and provider-less rows to be reconciled', () => {
+    expect(canFuzzyMatchProviderTransaction({
+      incomingExternalProvider: 'clobe',
+      incomingExternalTransactionId: 'transaction-2',
+      existingExternalProvider: null,
+      existingExternalTransactionId: null,
+    })).toBe(true);
+  });
+});
 
 describe('isProbableBankTransactionDuplicate', () => {
   it('does not discard a row on a weak similarity hint', () => {
