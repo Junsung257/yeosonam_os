@@ -554,7 +554,8 @@ describe('blog generation research preflight', () => {
     expect(result.approvedClaims.every((claim) => result.markdown.includes(claim.claimText))).toBe(true);
     expect(result.markdown.match(/^##\s+/gm)?.length).toBeGreaterThanOrEqual(6);
     expect(result.markdown.match(/^##\s+/gm)?.length).toBeLessThanOrEqual(9);
-    expect(result.markdown).toContain('FAQ:');
+    expect(result.markdown).toContain('## FAQ: 출발 전에 무엇을 확인할까요?');
+    expect(result.markdown).not.toContain('?쒖썙');
     expect(result.markdown.length).toBeGreaterThanOrEqual(2500);
   });
 
