@@ -2850,6 +2850,10 @@ async function processQueueItem(
         readiness: finalResearchReadiness,
         plannedTitle: finalContentBrief.title,
         editorialVariation: item.meta?.editorial_variation ?? null,
+        forceDeterministicEvidenceArticle:
+          finalContentBrief.intentType === 'entry_requirements'
+          && finalResearchReadiness.passed
+          && Boolean(finalResearchReadiness.bundle),
       });
       if (!finalResearchRepair.changed) return;
 
@@ -4494,7 +4498,12 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     plannedTitle: contentBrief.title,
     editorialVariation: item.meta?.editorial_variation ?? null,
     forceDeterministicEvidenceArticle:
-      contentBrief.intentType === 'entry_requirements' && writerOutput.ledgerIssues.length > 0,
+      // Entry/visa content is high-risk: a syntactically valid writer ledger
+      // is not enough when final prose can omit one of its claims. Rebuild it
+      // from the reviewed evidence bundle so every claim remains traceable.
+      contentBrief.intentType === 'entry_requirements'
+        && researchReadiness.passed
+        && Boolean(researchReadiness.bundle),
   });
   if (researchStructureRepair.changed) {
     blog_html = researchStructureRepair.markdown;
