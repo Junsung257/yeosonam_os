@@ -3409,6 +3409,12 @@ async function processQueueItem(
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
       ...queueMetaWithoutResearchBundle(successfulQueueMeta),
       ...(generated.generation_meta || {}),
+      last_seo_score: {
+        score: seoScore.score,
+        max_score: seoScore.maxScore,
+        summary: seoScore.summary,
+        details: seoScore.details,
+      },
       engine_version: 'blog-engine-v2',
       writer: typeof generated.generation_meta?.writer === 'string'
         ? generated.generation_meta.writer
