@@ -48,8 +48,17 @@ const ROMAN_MAP: Record<string, string> = {
   // 유럽
   '파리': 'paris', '런던': 'london', '로마': 'rome', '바르셀로나': 'barcelona',
   '프라하': 'prague', '부다페스트': 'budapest', '빈': 'vienna', '이스탄불': 'istanbul',
+  '비엔나': 'vienna', '니스': 'nice', '리옹': 'lyon', '에든버러': 'edinburgh',
+  '스톡홀름': 'stockholm', '오슬로': 'oslo', '아테네': 'athens', '카이로': 'cairo',
+  '산티아고': 'santiago', '부에노스아이레스': 'buenosaires',
+  '리우데자네이루': 'riodejaneiro', '상파울루': 'saopaulo',
   // 오세아니아
-  '멜버른': 'melbourne',
+  '멜버른': 'melbourne', '퍼스': 'perth', '케언스': 'cairns', '골드코스트': 'goldcoast',
+  // 아시아·중동·아프리카
+  '베트남': 'vietnam', '일본': 'japan', '몰디브': 'maldives', '양곤': 'yangon',
+  '비엔티안': 'vientiane', '씨엠립': 'siemreap', '수라바야': 'surabaya',
+  '콜롬보': 'colombo', '조호르바루': 'johorbahru', '아부다비': 'abudhabi',
+  '칸쿤': 'cancun',
   // 한국
   '부산': 'busan', '서울': 'seoul', '제주': 'jeju', '인천': 'incheon',
 };

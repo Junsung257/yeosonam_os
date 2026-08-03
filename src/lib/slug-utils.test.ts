@@ -55,4 +55,14 @@ describe('slug-utils', () => {
     expect(extractDestination('캐나다 로키산맥 7월 여행 대중교통')).toBe('캐나다 로키산맥');
     expect(romanize('캐나다 로키산맥')).toBe('canada-rockies');
   });
+
+  it('keeps current queue destinations distinct when topics share a month and intent', () => {
+    expect(romanize('리옹')).toBe('lyon');
+    expect(romanize('오슬로')).toBe('oslo');
+    expect(romanize('스톡홀름')).toBe('stockholm');
+    expect(slugifyTopic('오슬로 8월 날씨와 옷차림 준비물 체크')).toBe(
+      'oslo-8-weather-preparation',
+    );
+    expect(slugIncludesDestination('weather-checklist-august', '오슬로')).toBe(false);
+  });
 });
