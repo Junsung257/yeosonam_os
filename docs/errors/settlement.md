@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-MOBILE-OUTFLOW-SIGN@2026-08-03
+
+- **Symptom:** A mobile transaction detail displayed a 1,342,700 KRW withdrawal with a plus sign and deposit color.
+- **Root cause:** The amount presentation was hard-coded as positive even though the route already loaded `transaction_type`.
+- **Permanent rule:** Every transaction amount display derives its sign and tone from the transaction direction; never infer direction from the current tab or hard-code a sign.
+- **Required proof:** Open a known deposit and withdrawal in mobile admin and verify their signs, colors, timestamps, and linked booking values.
+
 ## ERR-SETTLEMENT-FREE-TRAVEL-DOUBLE-AUTH@2026-08-03
 
 - **Symptom:** The free-travel OTA settlement page showed `data load failed` for a signed-in administrator.

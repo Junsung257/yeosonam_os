@@ -76,6 +76,7 @@ export default async function MobilePaymentDetail(
     bookings: { id: string; booking_no: string; customers: { name: string } | null; package_title: string; total_price: number; paid_amount: number } | null;
   };
   if (!tx) notFound();
+  const isOutflow = tx.transaction_type === '출금';
 
   // unmatched/review 일 때만 후보 계산
   let candidates: Array<{
@@ -111,8 +112,8 @@ export default async function MobilePaymentDetail(
       <main className="px-4 py-4 space-y-4 pb-8">
         <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-4">
           <div className="text-xs text-admin-muted">금액</div>
-          <div className="text-3xl font-bold tabular-nums text-emerald-700 mt-1">
-            +{fmtK(tx.amount)}
+          <div className={`mt-1 text-3xl font-bold tabular-nums ${isOutflow ? 'text-orange-700' : 'text-emerald-700'}`}>
+            {isOutflow ? '-' : '+'}{fmtK(tx.amount)}
           </div>
           <div className="text-xs text-admin-muted mt-2">
             {tx.received_at ? formatSettlementTimestamp(tx.received_at) : '시각 미상'}
