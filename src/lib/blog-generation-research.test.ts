@@ -545,6 +545,10 @@ describe('blog generation research preflight', () => {
     expect(result.changes).toContain('entry_requirements_deterministic_evidence_article');
     expect(result.markdown).toContain('<!-- blog_research_structure:entry_requirements:v1 -->');
     expect(result.markdown).toContain('# 미국 입국 요건과 비자');
+    expect(result.markdown).toContain('목적 국가(입국 국가)');
+    expect(result.markdown).toContain('여권 유효기간');
+    expect(result.markdown).toContain('비자·전자허가·입국신고');
+    expect(result.markdown).toContain('세관·면세 범위');
     expect(result.markdown).not.toContain('Untrusted draft');
     expect(result.approvedClaims).toEqual(researchReadiness.bundle?.claims);
     expect(result.approvedClaims.every((claim) => result.markdown.includes(claim.claimText))).toBe(true);
