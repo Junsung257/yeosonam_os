@@ -1635,6 +1635,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     totalBalance: bookings.reduce((s, b) => s + Math.max(0, (b.total_price||0)-(b.paid_amount||0)), 0),
   }), [bookings]);
 
+  useLayoutEffect(() => {
+    setScrollTop(0);
+    if (tableContainerRef.current) tableContainerRef.current.scrollTop = 0;
+  }, [rawSearch, lifecycleTab, doneSubTab, activeTab, dqFilter, searchTarget, sortField, sortDir]);
+
   // ── 가상화 ──────────────────────────────────────────────────────────────────
   const vStartIdx  = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
   const vEndIdx    = Math.min(filtered.length - 1, Math.ceil((scrollTop + containerH) / ROW_H) + OVERSCAN);

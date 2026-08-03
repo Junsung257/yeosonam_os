@@ -16,6 +16,13 @@ Last updated: 2026-08-03
 - **Permanent rule:** An unpriced booking has an unknown receivable, not a negative receivable. Continue showing its bank cashflow, but label customer balance as `가격 미입력` until the sales price is entered.
 - **Required proof:** A zero-price booking with a deposit shows `가격 미입력`; priced underpayment and overpayment still show non-negative receivables.
 
+## ERR-SETTLEMENT-FILTERED-VIRTUAL-TABLE-EMPTY@2026-08-03
+
+- **Symptom:** Reservation search reported matching rows, but the virtualized result area was visually empty after switching status tabs.
+- **Root cause:** The table retained the previous scroll offset while the filtered list became shorter, producing a virtual slice beyond the new result range.
+- **Permanent rule:** Search, lifecycle, queue, data-quality, date-target, and sort changes reset the reservation table scroll offset before rendering the new virtual range.
+- **Required proof:** Search a completed booking after viewing a longer list and verify the reported result count and rendered rows agree.
+
 ## ERR-CLOBE-TRAVEL-NET-AS-BANK-BALANCE@2026-08-03
 
 - **Symptom:** `/admin/payments` labeled matched travel deposits minus matched travel outflows as the current bank balance, while company expenses and memo-less rows were absent.
