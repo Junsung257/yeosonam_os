@@ -28,6 +28,7 @@ import CommandPalette from '@/components/CommandPalette';
 import { useVendors } from '@/hooks/useVendors';
 import { useLocations } from '@/hooks/useLocations';
 import { isValidTransition } from '@/lib/booking-state-machine';
+import { getBookingReceivable } from '@/lib/booking-settlement-display';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { maskPhone } from '@/lib/pii-mask';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
@@ -1953,7 +1954,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         <>
         <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pb-4 md:hidden">
           {filtered.slice(0, 60).map(b => {
-            const balance = (b.total_price || 0) - (b.paid_amount || 0);
+            const receivable = getBookingReceivable(b.total_price, b.paid_amount);
             const netCashflow = (b.paid_amount || 0) - (b.total_paid_out || 0);
             const nextAction =
               !isTrash && b.status === 'pending' ? { label: '예약확정', run: () => patchStatus(b.id, 'confirmed'), primary: true } :
@@ -1986,8 +1987,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   </div>
                   <div>
                     <p className="text-admin-xs text-admin-muted-2">{b.status === 'cancelled' ? '환불잔액' : '잔금'}</p>
-                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${(b.status === 'cancelled' ? netCashflow : balance) > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
-                      {fmtK(b.status === 'cancelled' ? netCashflow : Math.max(0, balance))}
+                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${(b.status === 'cancelled' ? netCashflow : (receivable ?? 0)) > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
+                      {b.status === 'cancelled'
+                        ? fmtK(netCashflow)
+                        : receivable === null ? '가격 미입력' : fmtK(receivable)}
                     </p>
                   </div>
                 </div>
@@ -2058,7 +2061,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               {vPadTop > 0 && <tr style={{ height: vPadTop }} aria-hidden="true"><td colSpan={19} aria-hidden="true" /></tr>}
               {filtered.slice(vStartIdx, vEndIdx + 1).map((b, i) => {
                 const ri              = vStartIdx + i;
-                const balance         = (b.total_price||0) - (b.paid_amount||0);
+                const receivable      = getBookingReceivable(b.total_price, b.paid_amount);
+                const balance         = receivable ?? 0;
                 const agencyUnpaid    = (b.total_cost||0) - (b.total_paid_out||0);
                 const isPaid          = balance <= 0 && (b.total_price||0) > 0;
                 // 예상 마진 = 실현 현금 마진 (입금액 − 출금액). 현금 흐름 기반.
@@ -2398,6 +2402,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                             입 {(b.paid_amount ?? 0).toLocaleString()} / 출 {(b.total_paid_out ?? 0).toLocaleString()}
                           </div>
                         </div>
+                      ) : receivable === null ? (
+                        <span className="rounded-full bg-cyan-50 px-3 py-1 text-admin-sm font-bold text-cyan-800">
+                          가격 미입력
+                        </span>
                       ) : isSettled ? (
                         <div>
                           <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full font-bold text-admin-sm">정산완료</span>
@@ -2440,7 +2448,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         ) : (
                           <>
                             <p className="text-blue-300 font-semibold mb-1">고객 미수금</p>
-                            <p>{fmt(Math.max(0, balance))}</p>
+                            <p>{receivable === null ? '판매가 입력 필요' : fmt(receivable)}</p>
                             <p className="text-orange-300 font-semibold mt-2 mb-1">랜드사 미지급금</p>
                             <p>{fmt(Math.max(0, agencyUnpaid))}</p>
                             {isLandBomb && <p className="text-red-400 font-bold mt-1.5 animate-pulse">출발 {dDiff}일 전 미송금</p>}

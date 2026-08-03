@@ -9,6 +9,13 @@ Last updated: 2026-08-03
 - **Permanent rule:** Queue counts and drill-down results must use the same predicate. Bank and settlement timestamps must be formatted with an explicit `Asia/Seoul` time zone through the shared formatter.
 - **Required proof:** Verify the queue count equals its rendered rows, the all-non-travel view remains complete, a known UTC timestamp renders as KST, and all settlement tabs load without hydration errors.
 
+## ERR-SETTLEMENT-UNPRICED-NEGATIVE-BALANCE@2026-08-03
+
+- **Symptom:** Memo-created bookings with `total_price = 0` displayed received money as a negative customer balance.
+- **Root cause:** The booking table rendered `total_price - paid_amount` without first checking whether a sales price existed.
+- **Permanent rule:** An unpriced booking has an unknown receivable, not a negative receivable. Continue showing its bank cashflow, but label customer balance as `가격 미입력` until the sales price is entered.
+- **Required proof:** A zero-price booking with a deposit shows `가격 미입력`; priced underpayment and overpayment still show non-negative receivables.
+
 ## ERR-CLOBE-TRAVEL-NET-AS-BANK-BALANCE@2026-08-03
 
 - **Symptom:** `/admin/payments` labeled matched travel deposits minus matched travel outflows as the current bank balance, while company expenses and memo-less rows were absent.
