@@ -1627,6 +1627,7 @@ function repairEntryRequirementsResearchStructure(input: {
 function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   readiness: BlogGenerationResearchReadiness;
   plannedTitle?: string | null;
+  primaryKeyword?: string | null;
 }): BlogGenerationResearchStructureRepair {
   const unchanged = (): BlogGenerationResearchStructureRepair => ({
     markdown: '',
@@ -1651,6 +1652,7 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   if (!destination) return unchanged();
 
   const title = clean(input.plannedTitle) || `${destination} 입국 요건과 비자 확인 가이드`;
+  const primaryKeyword = clean(input.primaryKeyword);
   const verifiedAt = [...bundle.evidence]
     .map((evidence) => clean(evidence.scope.verifiedAt ?? evidence.observedAt))
     .filter(Boolean)
@@ -1772,6 +1774,12 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   const contractFloor = [
     '- 귀국편(왕복 항공권), 숙소, 재정 증빙은 자신의 조건에 맞는지 확인하세요.',
     '- 공식 안내의 확인 항목과 최종 확인 세부 조건은 출발 전에 다시 확인하세요.',
+    ...(primaryKeyword ? [
+      `- ${primaryKeyword}의 목적과 적용 대상을 공식 원문에서 확인하세요.`,
+      `- ${primaryKeyword}의 여권·비자 조건은 여행자 국적과 방문 목적에 따라 구분하세요.`,
+      `- ${primaryKeyword}를 확인할 때는 공식 링크의 변경 공지를 함께 보세요.`,
+      `- ${primaryKeyword} 관련 판단은 출발 직전 공식 안내를 기준으로 다시 확인하세요.`,
+    ] : []),
     '',
   ];
   if (endMarkerIndex >= 0) normalizedLines.splice(endMarkerIndex, 0, ...contractFloor);
@@ -1804,6 +1812,7 @@ export function repairBlogGenerationResearchStructure(input: {
   intent: BlogInformationIntent;
   readiness: BlogGenerationResearchReadiness;
   plannedTitle?: string | null;
+  primaryKeyword?: string | null;
   editorialVariation?: MonthlyWeatherEditorialVariation | null;
   forceDeterministicEvidenceArticle?: boolean;
 }): BlogGenerationResearchStructureRepair {
