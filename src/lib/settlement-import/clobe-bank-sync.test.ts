@@ -24,6 +24,9 @@ describe('clobe bank sync normalization', () => {
       id: 'clobe-tx-1',
       transactionDate: '2026-07-09 10:12:48',
       accountNumber: '100038454128',
+      afterBalance: 23436327,
+      category: '기타 영업비용',
+      isUnclassified: false,
       counterpartyName: 'payer-a',
       amount: 698000,
       memo: '260715_customer_tourphone',
@@ -38,6 +41,9 @@ describe('clobe bank sync normalization', () => {
       memo: '260715_customer_tourphone',
       externalProvider: 'clobe',
       externalTransactionId: 'clobe-tx-1',
+      balanceAfter: 23436327,
+      providerCategory: '기타 영업비용',
+      providerIsUnclassified: false,
     });
   });
 

@@ -50,6 +50,8 @@ export default async function PaymentsPage() {
       .from('bank_transactions')
       .select(txSelect)
       .neq('status', 'excluded')
+      .eq('settlement_scope', 'travel')
+      .eq('source', 'clobe_mcp')
       .order('received_at', { ascending: false })
       .limit(500),
     supabaseAdmin
@@ -63,6 +65,8 @@ export default async function PaymentsPage() {
       .select(txSelect)
       .in('match_status', ['unmatched'])
       .neq('status', 'excluded')
+      .eq('settlement_scope', 'travel')
+      .eq('source', 'clobe_mcp')
       .order('received_at', { ascending: false }),
     supabaseAdmin
       .from('bookings')
