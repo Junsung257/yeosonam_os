@@ -42,11 +42,11 @@ SET
   )
 WHERE external_provider = 'clobe';
 
-CREATE INDEX IF NOT EXISTS idx_bank_transactions_clobe_account_reality
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bank_transactions_clobe_account_reality
   ON public.bank_transactions (account_number, received_at DESC)
   WHERE status = 'active' AND external_provider = 'clobe';
 
-CREATE INDEX IF NOT EXISTS idx_bank_transactions_active_settlement_scope
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bank_transactions_active_settlement_scope
   ON public.bank_transactions (settlement_scope, received_at DESC)
   WHERE status = 'active';
 
