@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { requireAdminApiToken } from '@/lib/api-auth';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -13,8 +12,6 @@ const ResolveSchema = z.object({
 });
 
 const getHandler = async (request: NextRequest) => {
-  const unauthorized = requireAdminApiToken(request);
-  if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return apiResponse({ unmatched: [] });
   }
@@ -53,8 +50,6 @@ const getHandler = async (request: NextRequest) => {
 }
 
 const postHandler = async (request: NextRequest) => {
-  const unauthorized = requireAdminApiToken(request);
-  if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return apiResponse({ code: 'DB_NOT_CONFIGURED', error: 'DB not configured' }, { status: 503 });
   }

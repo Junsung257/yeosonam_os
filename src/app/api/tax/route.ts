@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { sumSettlementAccounting } from '@/lib/settlement-accounting';
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   const { from, to } = monthRange(month);
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('bookings')
     .select(`
       id, booking_no, package_title, land_operator,

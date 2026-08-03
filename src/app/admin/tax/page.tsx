@@ -76,17 +76,23 @@ export default function TaxPage() {
   const [kpis, setKpis]     = useState<Kpis | null>(null);
   const [todos, setTodos]   = useState<Todos | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const uploadRefs          = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const res  = await fetch(`/api/tax?month=${month}`);
+      const res = await fetch(`/api/tax?month=${month}`);
+      if (!res.ok) throw new Error(`tax fetch failed (${res.status})`);
       const data = await res.json();
       setBookings(data.bookings ?? []);
       setKpis(data.kpis ?? null);
       setTodos(data.todos ?? null);
+    } catch (error) {
+      console.error('[tax] 정산 데이터 로드 실패:', error);
+      setLoadError('세무 정산 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       setLoading(false);
     }
@@ -160,6 +166,12 @@ export default function TaxPage() {
           </div>
         }
       />
+
+      {loadError && (
+        <div role="alert" className="rounded-admin-sm border border-danger/30 bg-danger-light px-4 py-3 text-admin-sm font-medium text-danger">
+          {loadError}
+        </div>
+      )}
 
       {/* KPI 카드 */}
       {kpis && (

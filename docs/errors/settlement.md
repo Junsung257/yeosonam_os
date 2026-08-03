@@ -2,12 +2,33 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-FREE-TRAVEL-DOUBLE-AUTH@2026-08-03
+
+- **Symptom:** The free-travel OTA settlement page showed `data load failed` for a signed-in administrator.
+- **Root cause:** Two browser-facing routes required both the admin session guard and a separate API token that the admin browser does not send.
+- **Permanent rule:** Browser-facing `/api/admin/**` settlement routes use `withAdminGuard`; do not add an internal API-token gate inside the already guarded handler.
+- **Required proof:** Load commissions, reports, and unmatched queues from a signed-in admin browser, then verify upload and manual-resolution routes remain protected by `withAdminGuard`.
+
+## ERR-SETTLEMENT-TAX-RLS-EMPTY@2026-08-03
+
+- **Symptom:** The tax settlement page showed zero July bookings while 22 active July bookings existed in production.
+- **Root cause:** The authenticated admin API queried with the anonymous database client, so RLS hid the booking rows.
+- **Permanent rule:** An API guarded by `requireAdminRequest` must use the server admin client for its protected settlement query, and the UI must not convert a failed request into a false zero state.
+- **Required proof:** Compare the month count with a direct database count, then verify the tax table and KPI cards load without an error state.
+
+## ERR-SETTLEMENT-BOOKING-LIST-API-ENVELOPE@2026-08-03
+
+- **Symptom:** Switching the reservation lifecycle tab replaced a valid 91-row list with zero rows, so memo-matched bookings could not be inspected in the settlement UI.
+- **Root cause:** The client reload path read the legacy `{ bookings }` response while `/api/bookings` returns the standard `{ ok, data: { bookings } }` envelope.
+- **Permanent rule:** Every booking-list consumer must use `extractBookingsFromApi`; a failed request must keep the last valid list instead of silently replacing it with an empty array.
+- **Required proof:** Switch active/completed tabs, search a known memo-created booking, and verify the count and rendered rows remain aligned after the API reload.
+
 ## ERR-SETTLEMENT-REVIEW-TIMEZONE@2026-08-03
 
 - **Symptom:** The `통장 메모 확인` queue showed all non-travel rows instead of the review subset, and ledger timestamps appeared nine hours earlier than Clobe.
 - **Root cause:** The queue changed only the top-level tab without applying the memo-review predicate. Ledger dates also sliced UTC ISO strings instead of converting them to Korea time.
 - **Permanent rule:** Queue counts and drill-down results must use the same predicate. Bank and settlement timestamps must be formatted with an explicit `Asia/Seoul` time zone through the shared formatter.
-- **Required proof:** Verify the queue count equals its rendered rows, the all-non-travel view remains complete, a known UTC timestamp renders as KST, and all settlement tabs load without hydration errors.
+- **Required proof:** Verify the queue count equals its rendered rows, the all-non-travel view remains complete, a known UTC timestamp renders as KST in payments, ledger, booking drawer, mobile detail, and settlement bundle surfaces, and all settlement tabs load without hydration errors.
 
 ## ERR-SETTLEMENT-UNPRICED-NEGATIVE-BALANCE@2026-08-03
 

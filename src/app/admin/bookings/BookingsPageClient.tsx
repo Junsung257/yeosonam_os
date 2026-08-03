@@ -29,6 +29,7 @@ import { useVendors } from '@/hooks/useVendors';
 import { useLocations } from '@/hooks/useLocations';
 import { isValidTransition } from '@/lib/booking-state-machine';
 import { getBookingReceivable } from '@/lib/booking-settlement-display';
+import { extractBookingsFromApi } from '@/lib/bookings-api-response';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { maskPhone } from '@/lib/pii-mask';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
@@ -1114,11 +1115,15 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       const p = new URLSearchParams({ lite: '1' });
       if (lifecycleTab === 'trash') p.set('include_deleted', 'only');
       // 그 외 탭: 전체 로드 후 클라이언트 필터링
-      const res  = await fetch(`/api/bookings?${p}`);
+      const res = await fetch(`/api/bookings?${p}`);
+      if (!res.ok) throw new Error(`bookings fetch failed (${res.status})`);
       const data = await res.json();
-      setBookings(data.bookings ?? []);
+      setBookings(extractBookingsFromApi<Booking>(data));
+    } catch (error) {
+      console.error('[bookings] 목록 새로고침 실패:', error);
+      showToast('예약 목록을 불러오지 못했습니다.', 'err');
     } finally { setIsLoading(false); }
-  }, [lifecycleTab]);
+  }, [lifecycleTab, showToast]);
 
   useEffect(() => { load(); }, [load]);
 
