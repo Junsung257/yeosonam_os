@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-FREE-TRAVEL-DOUBLE-AUTH@2026-08-03
+
+- **Symptom:** The free-travel OTA settlement page showed `data load failed` for a signed-in administrator.
+- **Root cause:** Two browser-facing routes required both the admin session guard and a separate API token that the admin browser does not send.
+- **Permanent rule:** Browser-facing `/api/admin/**` settlement routes use `withAdminGuard`; do not add an internal API-token gate inside the already guarded handler.
+- **Required proof:** Load commissions, reports, and unmatched queues from a signed-in admin browser, then verify upload and manual-resolution routes remain protected by `withAdminGuard`.
+
 ## ERR-SETTLEMENT-TAX-RLS-EMPTY@2026-08-03
 
 - **Symptom:** The tax settlement page showed zero July bookings while 22 active July bookings existed in production.

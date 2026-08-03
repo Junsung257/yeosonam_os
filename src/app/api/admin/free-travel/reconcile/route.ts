@@ -10,7 +10,6 @@ import { z, ZodError } from 'zod';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { reconcileOtaReport } from '@/lib/free-travel/reconcile';
-import { requireAdminApiToken } from '@/lib/api-auth';
 import { withAdminGuard } from '@/lib/admin-guard';
 
 const ItemSchema = z.object({
@@ -28,8 +27,6 @@ const RequestSchema = z.object({
 });
 
 const postHandler = async (request: NextRequest) => {
-  const unauthorized = requireAdminApiToken(request);
-  if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -71,8 +68,6 @@ const postHandler = async (request: NextRequest) => {
 }
 
 const getHandler = async (request: NextRequest) => {
-  const unauthorized = requireAdminApiToken(request);
-  if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
     return NextResponse.json({ reports: [] });
   }
