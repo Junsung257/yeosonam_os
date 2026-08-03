@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-03
 
+## ERR-SETTLEMENT-TAX-RLS-EMPTY@2026-08-03
+
+- **Symptom:** The tax settlement page showed zero July bookings while 22 active July bookings existed in production.
+- **Root cause:** The authenticated admin API queried with the anonymous database client, so RLS hid the booking rows.
+- **Permanent rule:** An API guarded by `requireAdminRequest` must use the server admin client for its protected settlement query, and the UI must not convert a failed request into a false zero state.
+- **Required proof:** Compare the month count with a direct database count, then verify the tax table and KPI cards load without an error state.
+
 ## ERR-SETTLEMENT-BOOKING-LIST-API-ENVELOPE@2026-08-03
 
 - **Symptom:** Switching the reservation lifecycle tab replaced a valid 91-row list with zero rows, so memo-matched bookings could not be inspected in the settlement UI.
