@@ -17,6 +17,7 @@ import {
   PlusCircle, AlertTriangle, Sparkles, X, CheckSquare, Square,
   RefreshCw, Wallet, Banknote, ArrowDownCircle, ArrowUpCircle,
 } from 'lucide-react';
+import type { BankAccountRealitySummary } from '@/lib/bank-account-reality';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,9 @@ interface BankTx {
   is_refund:        boolean;
   status:           string;
   deleted_at:       string | null;
+  source:           string | null;
+  external_provider?: string | null;
+  settlement_scope?: 'travel' | 'non_travel' | null;
   bookings?:        { booking_no: string; package_title: string } | null;
 }
 
@@ -167,15 +171,17 @@ export default function LedgerPage() {
 
   // ── 데이터 로드 (SWR) ──────────────────────────────────────────────────
   const { data: txData, isLoading: txLoading, mutate: mutateTxs } =
-    useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=active');
+    useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=active&scope=all&source=clobe_mcp');
   const { data: trashData, mutate: mutateTrash } =
     useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=excluded');
-  const { data: chartD } =
-    useSWR<{ chartData: MonthlyPoint[] }>('/api/bank-transactions?aggregate=monthly&months=12');
+  const { data: chartD, mutate: mutateChart } =
+    useSWR<{ chartData: MonthlyPoint[] }>('/api/bank-transactions?aggregate=monthly&months=12&scope=all&source=clobe_mcp');
+  const { data: realityData, isLoading: realityLoading, mutate: mutateReality } =
+    useSWR<{ summary: BankAccountRealitySummary }>('/api/bank-transactions/account-reality');
   const { data: capData, mutate: mutateCapital } =
     useSWR<{ entries: CapitalEntry[]; total: number }>('/api/capital');
 
-  const loading = txLoading;
+  const loading = txLoading || realityLoading;
 
   useEffect(() => {
     if (txData?.transactions) setTxs(txData.transactions);
@@ -195,13 +201,18 @@ export default function LedgerPage() {
     mutateTxs();
     mutateTrash();
     mutateCapital();
-  }, [mutateTxs, mutateTrash, mutateCapital]);
+    mutateChart();
+    mutateReality();
+  }, [mutateTxs, mutateTrash, mutateCapital, mutateChart, mutateReality]);
 
   // ── KPI 계산 ───────────────────────────────────────────────────────────
-  const totalIncome  = txs.filter(t => t.transaction_type === '입금' && !t.is_refund).reduce((s, t) => s + t.amount, 0);
-  const totalExpense = txs.filter(t => t.transaction_type === '출금' && !t.is_refund).reduce((s, t) => s + t.amount, 0);
+  const totalIncome  = realityData?.summary.totalDeposits
+    ?? txs.filter(t => t.transaction_type === '입금').reduce((s, t) => s + t.amount, 0);
+  const totalExpense = realityData?.summary.totalWithdrawals
+    ?? txs.filter(t => t.transaction_type === '출금').reduce((s, t) => s + t.amount, 0);
   const totalRefund  = txs.filter(t => t.is_refund).reduce((s, t) => s + t.amount, 0);
-  const availableAssets = totalIncome + capital.total - totalExpense;
+  const actualBankBalance = realityData?.summary.actualBalance ?? totalIncome - totalExpense;
+  const isAuthoritativeClobe = (tx: BankTx) => tx.source === 'clobe_mcp' || tx.external_provider === 'clobe';
 
   // MoM 성장 (최근 2개월 순 현금흐름 비교)
   let momPct = 0;
@@ -217,23 +228,31 @@ export default function LedgerPage() {
     : tab === 'expense'
     ? txs.filter(t => t.transaction_type === '출금')
     : txs;
+  const selectableTxs = (tab === 'trash' ? trashTxs : displayTxs).filter(tx => !isAuthoritativeClobe(tx));
 
   // ── 선택 헬퍼 ─────────────────────────────────────────────────────────
-  const toggleSelect = (id: string) =>
+  const toggleSelect = (id: string) => {
+    const tx = (tab === 'trash' ? trashTxs : displayTxs).find(item => item.id === id);
+    if (!tx || isAuthoritativeClobe(tx)) return;
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  };
 
   const toggleAll = () => {
-    if (selected.size === displayTxs.length) setSelected(new Set());
-    else setSelected(new Set(displayTxs.map(t => t.id)));
+    if (selected.size === selectableTxs.length) setSelected(new Set());
+    else setSelected(new Set(selectableTxs.map(t => t.id)));
   };
 
   // ── 소프트 삭제 (5초 Undo) ─────────────────────────────────────────────
   const handleTrash = (ids: string[]) => {
-    if (ids.length === 0) return;
-    const items = txs.filter(t => ids.includes(t.id));
+    const mutableIds = ids.filter(id => {
+      const tx = txs.find(item => item.id === id);
+      return tx && !isAuthoritativeClobe(tx);
+    });
+    if (mutableIds.length === 0) return;
+    const items = txs.filter(t => mutableIds.includes(t.id));
 
     // 낙관적 UI 업데이트
-    setTxs(prev => prev.filter(t => !ids.includes(t.id)));
+    setTxs(prev => prev.filter(t => !mutableIds.includes(t.id)));
     setSelected(new Set());
 
     // 기존 타이머 해제
@@ -250,7 +269,7 @@ export default function LedgerPage() {
     }
 
     let countdown = 5;
-    setUndoInfo({ ids, items, countdown });
+    setUndoInfo({ ids: mutableIds, items, countdown });
 
     undoTimerRef.current = setInterval(() => {
       countdown -= 1;
@@ -260,7 +279,7 @@ export default function LedgerPage() {
         fetch('/api/bank-transactions', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'trash_bulk', ids }),
+          body: JSON.stringify({ action: 'trash_bulk', ids: mutableIds }),
         }).then(() => {
           setTrashTxs(prev => [...items.map(i => ({ ...i, status: 'excluded' })), ...prev]);
         });
@@ -353,7 +372,7 @@ export default function LedgerPage() {
   const fmtDate = (s: string) => (s ? s.slice(5, 16).replace('T', ' ') : '');
 
   const CAPITAL_GOAL = 30_000_000;
-  const isAssetWarning = availableAssets < 0;
+  const isAssetWarning = actualBankBalance < 0;
 
   // ─── UI ──────────────────────────────────────────────────────────────────
 
@@ -365,7 +384,7 @@ export default function LedgerPage() {
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
           <p className="text-admin-base text-red-600 font-medium">
-            가용 자산이 부족합니다. 현재 <strong>{fmtW(availableAssets)}</strong> 상태입니다.
+            실제 통장 잔액이 부족합니다. 현재 <strong>{fmtW(actualBankBalance)}</strong> 상태입니다.
             미지급 원가 또는 운영비 검토가 필요합니다.
           </p>
         </div>
@@ -375,7 +394,7 @@ export default function LedgerPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-bold text-admin-text-2">AI 재무 대시보드</h1>
-          <p className="text-admin-base text-admin-muted mt-0.5">실계좌 현금흐름 / 자본금 / 가용자산 분석</p>
+          <p className="text-admin-base text-admin-muted mt-0.5">Clobe 4128 계좌 전체 현금흐름 / 여행 정산 / 회사 경비 분리</p>
         </div>
         <div className="flex gap-2">
           <button type="button"
@@ -397,16 +416,18 @@ export default function LedgerPage() {
       {/* ── Hero KPI 카드 3개 ────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-        {/* 가용 자산 */}
+        {/* 실제 통장 잔액 */}
         <div className={`rounded-admin-md p-5 ${
           isAssetWarning ? 'bg-red-600' : 'bg-slate-900'
         } text-white`}>
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="w-4 h-4 opacity-70" />
-            <p className="text-xs font-medium opacity-80">가용 자산</p>
+            <p className="text-xs font-medium opacity-80">실제 통장 잔액</p>
           </div>
-          <p className="text-3xl font-extrabold tracking-tight mt-1">{fmtW(availableAssets)}</p>
-          <p className="text-xs opacity-60 mt-1.5">입금 {fmtW(totalIncome)} + 자본 {fmtW(capital.total)} - 출금 {fmtW(totalExpense)}</p>
+          <p className="text-3xl font-extrabold tracking-tight mt-1">{fmtW(actualBankBalance)}</p>
+          <p className="text-xs opacity-60 mt-1.5">
+            {realityData?.summary.asOf ? `${fmtDate(realityData.summary.asOf)} 거래 후 잔액` : `입금 ${fmtW(totalIncome)} - 출금 ${fmtW(totalExpense)}`}
+          </p>
         </div>
 
         {/* 총 입금 */}
@@ -493,7 +514,8 @@ export default function LedgerPage() {
             <CapitalRing current={capital.total} goal={CAPITAL_GOAL} />
             <div>
               <p className="text-xl font-bold text-admin-text-2">{fmtW(capital.total)}</p>
-              <p className="text-xs text-admin-muted">목표 {fmtW(CAPITAL_GOAL)}</p>
+              <p className="text-xs text-admin-muted">관리 목표 {fmtW(CAPITAL_GOAL)}</p>
+              <p className="text-[10px] text-admin-muted-2 mt-0.5">통장 잔액에는 더하지 않음</p>
               <p className="text-xs text-blue-600 mt-0.5 font-medium">
                 {Math.round(Math.min(100, (capital.total / CAPITAL_GOAL) * 100))}% 달성
               </p>
@@ -644,11 +666,12 @@ export default function LedgerPage() {
                   <th className="px-3 py-3 w-8 bg-admin-bg/80 backdrop-blur-sm" aria-label="거래 선택">
                     <button
                       type="button"
-                      aria-label={selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length ? '전체 거래 선택 해제' : '전체 거래 선택'}
+                      aria-label={selected.size > 0 && selected.size === selectableTxs.length ? '수동 거래 전체 선택 해제' : '수동 거래 전체 선택'}
                       onClick={toggleAll}
+                      disabled={selectableTxs.length === 0}
                       className="text-admin-muted-2 hover:text-admin-text-2"
                     >
-                      {selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length
+                      {selected.size > 0 && selected.size === selectableTxs.length
                         ? <CheckSquare className="w-4 h-4 text-blue-600" />
                         : <Square className="w-4 h-4" />
                       }
@@ -668,9 +691,13 @@ export default function LedgerPage() {
                         type="button"
                         aria-label={`${fmtDate(tx.received_at)} ${tx.counterparty_name || '거래'} 선택`}
                         onClick={() => toggleSelect(tx.id)}
+                        disabled={isAuthoritativeClobe(tx)}
+                        title={isAuthoritativeClobe(tx) ? 'Clobe 원본 거래는 Clobe에서 수정한 뒤 동기화하세요' : '선택'}
                         className="text-admin-muted-2 hover:text-blue-600"
                       >
-                        {selected.has(tx.id)
+                        {isAuthoritativeClobe(tx)
+                          ? <span className="inline-flex w-4 justify-center text-[10px] text-admin-muted-2">원본</span>
+                          : selected.has(tx.id)
                           ? <CheckSquare className="w-4 h-4 text-blue-600" />
                           : <Square className="w-4 h-4" />
                         }
@@ -694,13 +721,15 @@ export default function LedgerPage() {
                     </td>
                     <td className="px-3 py-2">
                       <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                        tx.settlement_scope === 'non_travel' ? 'bg-slate-100 text-slate-700' :
                         tx.match_status === 'auto'      ? 'bg-emerald-50 text-emerald-700'  :
                         tx.match_status === 'manual'    ? 'bg-blue-50 text-blue-700'    :
                         tx.match_status === 'review'    ? 'bg-amber-50 text-amber-700'  :
                         tx.is_fee                       ? 'bg-admin-surface-2 text-admin-muted'    :
                                                           'bg-red-50 text-red-600'
                       }`}>
-                        {tx.is_fee ? '수수료' :
+                        {tx.settlement_scope === 'non_travel' ? '여행 외·경비' :
+                         tx.is_fee ? '수수료' :
                          tx.match_status === 'auto' ? '자동매칭' :
                          tx.match_status === 'manual' ? '수동' :
                          tx.match_status === 'review' ? '검토' : '미매칭'}
@@ -710,7 +739,9 @@ export default function LedgerPage() {
                       {(tx.bookings as Record<string, unknown>)?.booking_no as string ?? '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {tab === 'trash' ? (
+                      {tab === 'trash' && isAuthoritativeClobe(tx) ? (
+                        <span className="text-[10px] text-admin-muted-2" title="Clobe 원본 보관 행은 이 화면에서 변경할 수 없습니다">보호됨</span>
+                      ) : tab === 'trash' ? (
                         <div className="flex gap-1.5 justify-end">
                           <button type="button"
                             onClick={() => handleRestore([tx.id])}
@@ -729,6 +760,8 @@ export default function LedgerPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      ) : isAuthoritativeClobe(tx) ? (
+                        <span className="text-[10px] text-admin-muted-2" title="Clobe 원본은 삭제할 수 없습니다">보호됨</span>
                       ) : (
                         <button type="button"
                           onClick={() => handleTrash([tx.id])}

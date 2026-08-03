@@ -8,6 +8,7 @@ import {
   normalizeClobeBankTransactions,
   processBankTransactionImportRows,
 } from '@/lib/settlement-import';
+import { YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER } from '@/lib/bank-account-reality';
 
 export const runtime = 'nodejs';
 
@@ -62,7 +63,8 @@ async function resolveAccountNumber(rawAccountNumber: unknown): Promise<string |
     .neq('status', 'excluded')
     .order('received_at', { ascending: false })
     .limit(500);
-  return chooseClobeAccountNumberFromMetadataRows(data ?? []);
+  return chooseClobeAccountNumberFromMetadataRows(data ?? [])
+    ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER;
 }
 
 export async function POST(request: NextRequest) {

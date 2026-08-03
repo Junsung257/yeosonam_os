@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -30,6 +30,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Manual bank memo keys | `booking_settlement_keys`, `src/lib/settlement-import/**` |
 | Clobe bank sync | `/api/bank-transactions/sync-clobe`, `src/lib/settlement-import/clobe-bank-sync.ts` |
 | Scheduled Clobe sync | `/api/cron/clobe-bank-sync`, `src/lib/settlement-import/clobe-sync-scheduler.ts` |
+| Complete bank reality | `bank_transactions.settlement_scope`, `/api/bank-transactions/account-reality`, `src/lib/bank-account-reality.ts` |
 | Admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements` |
 | Drift monitor | `/api/cron/ledger-reconcile` |
 | Error memory | `docs/errors/settlement.md` |
@@ -50,7 +51,12 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
 - Manual bank-statement imports must treat memo keys such as `260715_정지해_투어폰` as the booking binding key. Counterparty/depositor name is supporting evidence only because companions can pay separately.
 - Bulk bank import may auto-allocate deposits after a valid travel memo key resolves to one booking. An outflow may also auto-allocate when the memo key resolves strongly to exactly one booking; ambiguous, fuzzy, or missing memo resolutions remain review/manual-confirmed.
-- Non-travel pasted bank rows without a valid travel memo key should be skipped by default instead of becoming unmatched finance evidence.
+- Non-travel rows from manual paste may still be skipped by default, but authoritative Clobe rows must never be discarded. Every Clobe account row is retained exactly once in the bank ledger as either `travel` or `non_travel`.
+- `travel` rows may affect booking allocations and booking realized profit. `non_travel` rows affect actual bank balance only and must never auto-match to a booking.
+- Actual bank balance, travel realized profit, and non-travel cash movement are different metrics. The reconciliation identity is `opening balance + travel net + non-travel net = actual bank balance`; do not label travel net as current bank balance.
+- Provider `afterBalance` is the displayed actual balance when available. The OS must independently compute opening balance plus every inflow minus every outflow and expose a non-zero reconciliation difference as blocking financial drift.
+- Company expenses, taxes, advertising, subscriptions, fees, transfers, and other non-travel transactions remain visible in the non-travel bank tab. They are excluded from booking profit, not deleted from bank reality.
+- A non-travel Clobe row whose memo is later corrected to a valid travel key may move into booking settlement only before allocation, through the normal memo resolution and allocation path. If an allocated travel row loses or changes its travel key, mark it for review and do not move the allocation automatically.
 - Clobe bank sync must normalize provider rows into the same bank import contract before touching `bank_transactions`.
 - Clobe MCP authentication is an admin OAuth connection stored in `tenant_api_tokens` with encrypted access/refresh tokens. Do not require operators to paste a static Clobe bearer token into Vercel.
 - Clobe sync dedupe order is provider transaction id first (`external_provider`, `external_transaction_id`), then local `transaction_fingerprint`.
@@ -66,6 +72,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - If Clobe memo changes after a transaction is financially matched, do not move ledger allocation automatically. Record an open `ops_events` warning for manual review.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 - `/admin/payments` must separate booking KPI periods (departure date) from the active bank ledger. Transaction tabs and their counts use the full active bank ledger unless a dedicated transaction-date filter is explicitly shown.
+- `/admin/payments` must show the complete Clobe row count, actual provider balance/as-of time, full inflow/outflow totals, travel net, non-travel net, and reconciliation difference. A count of zero in booking queues must not imply that non-travel or memo-review rows do not exist.
 - Clobe normalization failures must be reported separately from importer failures. A response with `fetched > normalized` must never be presented as `errors 0` without showing the normalization failure count.
 - Scheduled Clobe sync runs daily through Vercel Cron. While active Clobe rows lack provider ids it advances from the oldest missing row in bounded 14-day windows; after backfill completes it re-syncs the latest 30 KST dates. The cron must use the same guarded sync API and import pipeline as the admin button.
 - Excluded Slack/SMS and pre-rebuild Clobe rows are inactive audit evidence, not an operational error queue, and must be labeled as such in admin UI.
