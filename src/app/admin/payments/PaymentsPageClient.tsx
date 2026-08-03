@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { extractPrimaryName } from '@/lib/customer-name';
-import { fmt만, fmtDate, fmtMonthDay, fmtMonthDayTime, getBalance, nameSim } from '@/lib/admin-utils';
+import { fmt만, fmtDate, getBalance, nameSim } from '@/lib/admin-utils';
 import type { PaymentCommandBarHandle } from './_components/PaymentCommandBar';
 
 const PaymentCommandBar = dynamic(() => import('./_components/PaymentCommandBar'), { ssr: false });
@@ -19,7 +19,11 @@ import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window'
 import { matchesPaymentPeriod, type PaymentPeriodFilter } from '@/lib/payment-period-filter';
 import { calculatePaymentKpis } from '@/lib/payment-kpi';
 import { extractBookingsFromApi } from '@/lib/bookings-api-response';
-import type { BankAccountRealitySummary } from '@/lib/bank-account-reality';
+import {
+  needsNonTravelMemoReview,
+  type BankAccountRealitySummary,
+} from '@/lib/bank-account-reality';
+import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -155,10 +159,7 @@ function fmtBookingAnchor(b: { customers?: { name?: string }; departure_date?: s
   return `${name} / ${date}`;
 }
 function fmtTs(iso: string): string {
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
-  }).format(new Date(iso));
+  return formatSettlementTimestamp(iso, { includeSeconds: true });
 }
 
 function fmtWon(value: number): string {
@@ -572,6 +573,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [bankReality, setBankReality] = useState<BankAccountRealitySummary | null>(null);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
+  const [nonTravelReviewOnly, setNonTravelReviewOnly] = useState(false);
   // Show attention items first, but never land on an empty sub-tab when all outflows are matched.
   const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>(() =>
     getOutflowLandingSubTab(initialTransactions ?? []),
@@ -736,7 +738,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   const filtered = useMemo(() => {
     if (tab === 'non_travel') {
-      return nonTravelTransactions.slice().sort((a, b) =>
+      return nonTravelTransactions
+        .filter(tx => !nonTravelReviewOnly || needsNonTravelMemoReview(tx))
+        .slice()
+        .sort((a, b) =>
         new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
       );
     }
@@ -776,7 +781,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
     }
     return result;
-  }, [transactions, nonTravelTransactions, tab, outflowSubTab]);
+  }, [transactions, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
 
   const isOutflowTx = isOutflowTransaction;
   const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
@@ -852,6 +857,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setOutflowSubTab('unmatched');
     } else if (queue === 'bank_review') {
       setTab('non_travel');
+      setNonTravelReviewOnly(true);
     } else if (queue === 'trash') {
       setTrashOpen(true);
     }
@@ -1679,7 +1685,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </div>
             <button
               type="button"
-              onClick={() => setTab('non_travel')}
+              onClick={() => { setTab('non_travel'); setNonTravelReviewOnly(false); }}
               className="bg-white px-4 py-3 text-left transition hover:bg-cyan-50"
               aria-pressed={tab === 'non_travel'}
             >
@@ -1693,7 +1699,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             <p>
               기초잔액 {fmtWon(bankReality.openingBalance)} + 여행 {fmtWon(bankReality.travelNet)} + 여행 외 {fmtWon(bankReality.nonTravelNet)} = 실제잔액 {fmtWon(bankReality.computedBalance)}
             </p>
-            <button type="button" onClick={() => setTab('non_travel')} className="font-semibold text-cyan-800 hover:underline">
+            <button type="button" onClick={() => { setTab('non_travel'); setNonTravelReviewOnly(false); }} className="font-semibold text-cyan-800 hover:underline">
               여행 외 거래 {bankReality.nonTravelCount}건 보기{bankReality.memoReviewCount > 0 ? ` · 메모 확인 ${bankReality.memoReviewCount}건` : ''}
             </button>
           </div>
@@ -1709,7 +1715,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       <PaymentOpsQueue
         activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow'
           ? tab
-          : tab === 'non_travel' ? 'bank_review' : undefined}
+          : tab === 'non_travel' && nonTravelReviewOnly ? 'bank_review' : undefined}
         counts={{
           review: allReviewCount,
           unmatched: unmatchedCount,
@@ -1848,7 +1854,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
           { id: 'non_travel' as const, label: '여행 외·경비', count: nonTravelCount, active: 'border-cyan-400 bg-cyan-50', num: 'text-cyan-800' },
         ] as const).map(card => (
-          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab(outflowUnmatchedCount > 0 ? 'unmatched' : 'all'); }}
+          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'non_travel') setNonTravelReviewOnly(false); if (card.id === 'outflow') setOutflowSubTab(outflowUnmatchedCount > 0 ? 'unmatched' : 'all'); }}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
               ${tab === card.id
                 ? card.active
@@ -1886,11 +1892,26 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       )}
 
       {tab === 'non_travel' && (
-        <div className="mb-4 rounded-admin-md border border-cyan-200 bg-cyan-50 px-4 py-3 text-admin-xs text-cyan-900">
-          <p className="font-bold">회사 경비와 여행키가 없는 입출금도 통장 원장에는 모두 보관됩니다.</p>
-          <p className="mt-1">
-            이 거래들은 실제 통장 잔액에는 포함되지만 예약별 여행 수익에는 포함되지 않습니다. 예약 거래가 섞여 있다면 Clobe 메모를 `YYMMDD_대표고객_랜드사` 형식으로 고친 뒤 동기화하세요.
-          </p>
+        <div className="mb-4 flex flex-col gap-3 rounded-admin-md border border-cyan-200 bg-cyan-50 px-4 py-3 text-admin-xs text-cyan-900 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-bold">
+              {nonTravelReviewOnly
+                ? `메모 확인이 필요한 ${filtered.length}건만 표시 중입니다.`
+                : '회사 경비와 여행키가 없는 입출금도 통장 원장에는 모두 보관됩니다.'}
+            </p>
+            <p className="mt-1">
+              이 거래들은 실제 통장 잔액에는 포함되지만 예약별 여행 수익에는 포함되지 않습니다. 예약 거래가 섞여 있다면 Clobe 메모를 `YYMMDD_대표고객_랜드사` 형식으로 고친 뒤 동기화하세요.
+            </p>
+          </div>
+          {nonTravelReviewOnly && (
+            <button
+              type="button"
+              onClick={() => setNonTravelReviewOnly(false)}
+              className="shrink-0 rounded-admin-sm border border-cyan-300 bg-white px-3 py-2 font-semibold text-cyan-900 hover:bg-cyan-100"
+            >
+              전체 {nonTravelCount}건 보기
+            </button>
+          )}
         </div>
       )}
 
@@ -1974,6 +1995,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       {stale && (
                         <span className="text-[10px] font-semibold text-red-600">
                           {Math.round(hoursSince(tx.created_at))}h 경과
+                        </span>
+                      )}
+                      {needsNonTravelMemoReview(tx) && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                          메모 확인
                         </span>
                       )}
                     </div>
@@ -2179,6 +2205,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             ⚠ {Math.round(hoursSince(tx.created_at))}h
                           </span>
                         )}
+                      {needsNonTravelMemoReview(tx) && (
+                        <span className="text-[10px] font-semibold text-amber-700">메모 확인</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -2222,12 +2251,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   {trashTxs.map(tx => (
                     <tr key={tx.id} className="border-b border-admin-border-mid hover:bg-admin-bg transition opacity-60">
                       <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
-                        {fmtMonthDayTime(tx.received_at)}
+                        {formatSettlementTimestamp(tx.received_at)}
                       </td>
                       <td className="px-3 py-2 text-admin-muted">{tx.counterparty_name || '-'}</td>
                       <td className="px-3 py-2 text-right font-medium text-admin-text-2">{tx.amount.toLocaleString()}원</td>
                       <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
-                        {tx.deleted_at ? fmtMonthDay(tx.deleted_at) : '-'}
+                        {tx.deleted_at ? formatSettlementTimestamp(tx.deleted_at) : '-'}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         {tx.source === 'clobe_mcp' ? (

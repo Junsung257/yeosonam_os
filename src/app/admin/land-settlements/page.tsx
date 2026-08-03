@@ -14,7 +14,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { LAND_SETTLEMENT_STATUS_COLOR } from '@/lib/status-colors';
-import { fmtNum as fmtKRW, fmtDateISO, fmtDateTime, fmtMonthDay } from '@/lib/admin-utils';
+import { fmtNum as fmtKRW } from '@/lib/admin-utils';
+import { formatSettlementDate, formatSettlementTimestamp } from '@/lib/settlement-date-format';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Download } from 'lucide-react';
@@ -255,14 +256,14 @@ function SettlementRow({
     <>
       <tr>
         <td className="text-admin-xs text-admin-muted admin-num">
-          {fmtMonthDay(s.created_at)}
+          {formatSettlementTimestamp(s.created_at)}
         </td>
         <td className="font-medium text-admin-text">{s.land_operator_name ?? '—'}</td>
         <td className="text-admin-xs text-admin-muted">
           <div>{s.transaction_counterparty ?? '—'}</div>
           {s.transaction_received_at && (
             <div className="text-admin-2xs text-admin-muted-2 admin-num">
-              {fmtDateISO(s.transaction_received_at)}
+              {formatSettlementDate(s.transaction_received_at)}
             </div>
           )}
         </td>
@@ -325,7 +326,7 @@ function SettlementRow({
             {s.reversal_reason && (
               <div className="mt-2 text-admin-xs text-danger">
                 Reverse 사유: {s.reversal_reason} ({s.reversed_by ?? '?'},{' '}
-                {s.reversed_at && fmtDateTime(s.reversed_at)})
+                {s.reversed_at && formatSettlementTimestamp(s.reversed_at, { includeYear: true })})
               </div>
             )}
           </td>

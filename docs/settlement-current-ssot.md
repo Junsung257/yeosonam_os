@@ -73,6 +73,8 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 - `/admin/payments` must separate booking KPI periods (departure date) from the active bank ledger. Transaction tabs and their counts use the full active bank ledger unless a dedicated transaction-date filter is explicitly shown.
 - `/admin/payments` must show the complete Clobe row count, actual provider balance/as-of time, full inflow/outflow totals, travel net, non-travel net, and reconciliation difference. A count of zero in booking queues must not imply that non-travel or memo-review rows do not exist.
+- The non-travel memo-review queue must open only rows that require review; the full non-travel ledger remains a separate explicit view.
+- Every bank and settlement timestamp shown to operators must use `Asia/Seoul` explicitly. UTC slicing and runtime-default locale formatting are prohibited on settlement screens.
 - Clobe normalization failures must be reported separately from importer failures. A response with `fetched > normalized` must never be presented as `errors 0` without showing the normalization failure count.
 - Scheduled Clobe sync runs daily through Vercel Cron. While active Clobe rows lack provider ids it advances from the oldest missing row in bounded 14-day windows; after backfill completes it re-syncs the latest 30 KST dates. The cron must use the same guarded sync API and import pipeline as the admin button.
 - Excluded Slack/SMS and pre-rebuild Clobe rows are inactive audit evidence, not an operational error queue, and must be labeled as such in admin UI.
