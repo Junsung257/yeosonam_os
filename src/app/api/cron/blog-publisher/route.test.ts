@@ -360,6 +360,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('researchReadiness.passed');
     expect(source).toContain('forceDeterministicEvidenceArticle:');
     expect(source).toContain('const applyFinalInternalLinkFloor = (): void =>');
+    expect(source).toContain('여행 정보 아카이브](/blog)');
     expect(source).toContain('entry_requirements_deterministic_evidence_article');
     expect(source).toContain('? { auto_research: item.meta.auto_research }');
     const preSeoClaimValidation = source.indexOf(

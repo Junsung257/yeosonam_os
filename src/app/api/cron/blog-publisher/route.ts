@@ -2971,7 +2971,7 @@ async function processQueueItem(
         return href.startsWith('/') || /yeosonam\.com/i.test(href);
       });
       if (hasInternalLink) return;
-      generated.blog_html = `${generated.blog_html.trimEnd()}\n\n### ?⑥젙 ?щ? 媛?대뱶\n\n- [?ы뻾 ?뺣낫 ?꾨줈?ㅻ쒖슜](/blog)`;
+      generated.blog_html = `${generated.blog_html.trimEnd()}\n\n### 관련 여행 가이드\n\n- [여행 정보 아카이브](/blog)`;
       console.log('[blog-publisher] final internal link floor: appended /blog archive link');
     };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {

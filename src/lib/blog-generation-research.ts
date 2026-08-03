@@ -1652,7 +1652,7 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
   if (!destination) return unchanged();
 
   const title = clean(input.plannedTitle) || `${destination} 입국 요건과 비자 확인 가이드`;
-  const primaryKeyword = clean(input.primaryKeyword);
+  const primaryKeyword = clean(input.primaryKeyword) || clean(input.plannedTitle);
   const verifiedAt = [...bundle.evidence]
     .map((evidence) => clean(evidence.scope.verifiedAt ?? evidence.observedAt))
     .filter(Boolean)
@@ -1791,6 +1791,15 @@ function buildDeterministicEntryRequirementsEvidenceArticle(input: {
     'A. ?꾨옒 怨듭떇 ?먮Ц?먯꽌 ?뺤씤???댁슜留?以묒떒?섏뿬 ?뺣━?덉뒿?덈떎.',
     '',
   ];
+  faq.splice(
+    0,
+    faq.length,
+    '## FAQ: 출발 전에 무엇을 확인할까요?',
+    '',
+    `Q. ${primaryKeyword || destination}를 찾을 때 공식 페이지에서 먼저 봐야 하는 것은 무엇인가요?`,
+    'A. 아래 공식 원문에서 확인한 내용만 빠짐없이 정리했습니다.',
+    '',
+  );
   if (endMarkerIndex >= 0) normalizedLines.splice(endMarkerIndex, 0, ...faq);
   else normalizedLines.push(...faq);
   const markdown = normalizedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
