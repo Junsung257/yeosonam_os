@@ -31,7 +31,8 @@ describe('blog quality backfill publish contract', () => {
     );
 
     expect(source).toContain('preservesEvidenceBackedResearchStructure');
-    expect(source).toContain('const auditedHtml = preservesEvidenceBackedResearchStructure ? originalHtml : nextHtml;');
+    expect(source).toContain('const auditedHtml = preservesEvidenceBackedMonthlyWeather');
+    expect(source).toContain(': preservesEvidenceBackedResearchStructure ? originalHtml : nextHtml;');
     expect(source).toContain('blog_html: auditedHtml');
     expect(source).toContain('generation_meta: auditedGenerationMeta');
   });
