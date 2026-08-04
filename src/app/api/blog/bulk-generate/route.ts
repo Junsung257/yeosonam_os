@@ -342,6 +342,8 @@ ${baseBlog.substring(0, 3000)}
           status: 'draft',
           category: 'product_intro',
           slug: finalSlug,
+          title: seoTitle,
+          description: seoDesc,
           seo_title: seoTitle,
           seo_description: seoDesc,
           // 자가발전용 메타데이터

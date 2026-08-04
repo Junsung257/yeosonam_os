@@ -225,7 +225,13 @@ export async function evaluateBlogGeneratedQualityCanaryReport(input: {
   const failCount = samples.length - passCount;
   const writerTypes = new Set(samples.map((sample) => sample.writer_type));
   const hasWriterMix = !writerMixRequired || requested < 2 || (writerTypes.has('info_writer') && writerTypes.has('product_consultant_writer'));
-  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(candidates.map((post) => ({
+  // Score only the requested canary samples, but inspect the whole recent
+  // body-bearing pool for fleet drift. A five-post canary can otherwise look
+  // clean while the last 20-100 published articles share one template.
+  const fleetPosts = input.posts
+    .filter((post) => typeof post.blog_html === 'string' && post.blog_html.trim().length > 0)
+    .slice(0, 100);
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(fleetPosts.map((post) => ({
     id: post.id ?? null,
     slug: post.slug ?? null,
     title: post.seo_title ?? post.title ?? null,

@@ -399,6 +399,8 @@ export async function POST(request: NextRequest) {
     const insertData: Record<string, unknown> = {
       blog_html: finalBlogHtml,
       slug: cleanSlug,
+      title: seo_title || cleanSlug,
+      description: seo_description || seo_title || cleanSlug,
       seo_title: seo_title || null,
       seo_description: seo_description || null,
       og_image_url: og_image_url || null,
@@ -572,8 +574,14 @@ export async function PATCH(request: NextRequest) {
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (blog_html !== undefined) updateData.blog_html = blog_html;
     if (slug !== undefined) updateData.slug = normalizeSlug(slug);
-    if (seo_title !== undefined) updateData.seo_title = seo_title;
-    if (seo_description !== undefined) updateData.seo_description = seo_description;
+    if (seo_title !== undefined) {
+      updateData.seo_title = seo_title;
+      updateData.title = seo_title;
+    }
+    if (seo_description !== undefined) {
+      updateData.seo_description = seo_description;
+      updateData.description = seo_description;
+    }
     if (og_image_url !== undefined) updateData.og_image_url = og_image_url;
     if (category !== undefined) updateData.category = category;
 

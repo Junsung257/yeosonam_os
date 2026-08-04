@@ -73,6 +73,41 @@ describe('inspectBlogFleetPhraseDrift', () => {
     );
   });
 
+  it('blocks a repeated heading skeleton once four recent posts share it', () => {
+    const post = (slug: string) => [
+      `# ${slug}`,
+      '',
+      `${slug} weather planning starts with the month, the daily range, and the transfer conditions so the reader can pack with confidence.`,
+      '',
+      '## Monthly conditions',
+      '',
+      'The monthly range and rainfall pattern should be checked before departure.',
+      '',
+      '## What to pack',
+      '',
+      'A light layer and a compact rain shell cover most changes.',
+      '',
+      '## Transport notes',
+      '',
+      'Leave room for transfer time when showers are likely.',
+      '',
+      '## Official checks',
+      '',
+      'Confirm the latest destination notice before leaving.',
+    ].join('\n');
+
+    const report = inspectBlogFleetPhraseDrift(
+      ['a', 'b', 'c', 'd'].map((slug) => ({ slug, blog_html: post(slug) })),
+    );
+
+    expect(report.status).toBe('block');
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'repeated_heading_order', count: 4, severity: 'block' }),
+      ]),
+    );
+  });
+
   it('does not collapse varied standard CTA blocks into the same footer signature', () => {
     const post = (slug: string) => [
       `# ${slug}`,

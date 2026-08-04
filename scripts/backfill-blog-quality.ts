@@ -55,6 +55,8 @@ type BlogRow = {
   slug: string | null;
   seo_title: string | null;
   seo_description: string | null;
+  seo_score?: number | { score?: number | null } | null;
+  readability_score?: number | null;
   og_image_url: string | null;
   destination: string | null;
   content_type?: string | null;
@@ -3587,7 +3589,7 @@ function ensureMinimumThreeInlineImagesFinal(
 
 function splitRemainingParagraphWallsFinal(markdown: string): string {
   const splitLongText = (text: string): string => {
-    let next = text
+    const next = text
       .replace(/\s+(?=[가-힣A-Za-z0-9\s]{2,24}:\s+)/g, '\n\n- ')
       .replace(/([.!?。！？])\s+/g, '$1\n\n')
       .replace(/((?:입니다|합니다|됩니다|주세요|하세요|이에요|예요|습니다|니다|세요|해요)[.!?。！？]?)\s+/g, '$1\n\n');
@@ -5420,6 +5422,12 @@ function recordValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function persistedScore(value: BlogRow['seo_score']): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const score = recordValue(value).score;
+  return typeof score === 'number' && Number.isFinite(score) ? score : null;
+}
+
 function resolveAuditCategory(
   row: BlogRow,
   contentType: string,
@@ -5459,7 +5467,7 @@ async function main() {
 
   let query = supabase
     .from('content_creatives')
-    .select('id, slug, status, seo_title, seo_description, og_image_url, destination, content_type, product_id, blog_html, generation_meta, target_ad_keywords')
+    .select('id, slug, status, seo_title, seo_description, seo_score, readability_score, og_image_url, destination, content_type, product_id, blog_html, generation_meta, target_ad_keywords')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .not('slug', 'is', null)
@@ -6281,7 +6289,13 @@ async function main() {
         editorialVariation,
       ).markdown;
     }
-    const auditedHtml = preservesEvidenceBackedResearchStructure ? originalHtml : nextHtml;
+    // Evidence-backed weather articles may still receive the deterministic
+    // editorial variation repair. It only changes the opening and heading
+    // labels/order while retaining the approved claims and source markers;
+    // skipping it leaves the fleet stuck on one template forever.
+    const auditedHtml = preservesEvidenceBackedMonthlyWeather
+      ? nextHtml
+      : preservesEvidenceBackedResearchStructure ? originalHtml : nextHtml;
     const auditedGenerationMeta = preservesEvidenceBackedResearchStructure
       ? recordValue(row.generation_meta)
       : nextGenerationMeta;
@@ -6347,11 +6361,14 @@ async function main() {
       shouldClearInvalidDestination
       || Boolean(normalizedDestinationForWrite && normalizedDestinationForWrite !== row.destination)
     );
+    const storedSeoScore = persistedScore(row.seo_score);
     const changed =
       htmlChanged ||
       nextOg !== originalOg ||
       auditedTitle !== originalTitle ||
       auditedDescription !== originalDescription ||
+      storedSeoScore !== qaReport.seoScore.score ||
+      row.readability_score !== qaReport.readability.score ||
       metaChanged ||
       targetKeywordsChanged ||
       destinationChanged;
@@ -6360,6 +6377,8 @@ async function main() {
       nextOg !== originalOg ? 'og_image_url' : null,
       auditedTitle !== originalTitle ? 'seo_title' : null,
       auditedDescription !== originalDescription ? 'seo_description' : null,
+      storedSeoScore !== qaReport.seoScore.score ? 'seo_score' : null,
+      row.readability_score !== qaReport.readability.score ? 'readability_score' : null,
       metaChanged ? 'generation_meta' : null,
       targetKeywordsChanged ? 'target_ad_keywords' : null,
       destinationChanged ? 'destination' : null,
@@ -6425,6 +6444,8 @@ async function main() {
       .update({
         blog_html: auditedHtml,
         og_image_url: nextOg,
+        title: auditedTitle,
+        description: auditedDescription,
         seo_title: auditedTitle,
         seo_description: auditedDescription,
         quality_gate: qaReport.qualityGate,
