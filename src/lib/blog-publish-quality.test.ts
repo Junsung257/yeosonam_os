@@ -54,6 +54,35 @@ describe('blog publish quality', () => {
     });
   });
 
+  it('uses the same HowTo extraction threshold as public JSON-LD', async () => {
+    await evaluateBlogPublishQuality({
+      blog_html: [
+        '# Weather packing checklist',
+        '',
+        'Use a light layer and a compact rain shell for changing conditions.',
+        '',
+        '## Packing checklist',
+        '',
+        '- light layer',
+        '- compact rain shell',
+        '- waterproof pouch',
+      ].join('\n'),
+      slug: 'weather-packing-checklist',
+      seo_title: 'Weather packing checklist',
+      seo_description: 'A practical packing checklist for changing weather.',
+      destination: 'Bali',
+    });
+
+    expect(computeSeoScoreMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        hasJsonLd: expect.objectContaining({
+          faqPage: false,
+          howTo: false,
+        }),
+      }),
+    );
+  });
+
   it('blocks publishing when SEO fails even if render quality passes', async () => {
     computeSeoScoreMock.mockReturnValueOnce({
       score: 74,

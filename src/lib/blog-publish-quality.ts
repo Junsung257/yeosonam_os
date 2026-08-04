@@ -22,6 +22,7 @@ import {
   sanitizePublicBlogBodyHtml,
   stripPublicDuplicateBodyTitleHeading,
 } from './blog-public-render-normalizer';
+import { extractFaqItems, extractHowToSteps } from './blog-jsonld';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -136,11 +137,13 @@ function extractImages(markdownOrHtml: string): Array<{ alt: string; src: string
 }
 
 function hasFaqBlock(markdownOrHtml: string): boolean {
-  return /(^|\n)#{2,3}\s*(FAQ|자주\s*묻는\s*질문|Q\s*&\s*A)|(^|\n)\s*(?:#{2,4}\s*)?(?:\*\*)?\s*(Q\d{0,2}[.:]|Q\s*&\s*A|질문[:.]?)/i.test(markdownOrHtml);
+  return extractFaqItems(markdownOrHtml).length > 0;
 }
 
 function hasHowToBlock(markdownOrHtml: string): boolean {
-  return /체크리스트|준비물|순서|방법|(^|\n)\s*(?:[-*]|\d+\.)\s+/i.test(markdownOrHtml);
+  // Keep the score aligned with the public page builder: checklist bullets are
+  // not a HowTo schema unless the page contains three or more day/step blocks.
+  return extractHowToSteps(markdownOrHtml).length >= 3;
 }
 
 function buildSummary(report: {

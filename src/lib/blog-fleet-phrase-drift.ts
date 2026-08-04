@@ -181,9 +181,14 @@ export function inspectBlogFleetPhraseDrift(posts: BlogFleetPhraseDriftPost[]): 
     .map((post) => ({ post, signature: genericOpeningFormula(firstParagraph(post.blog_html ?? '')) }))
     .filter((row): row is { post: BlogFleetPhraseDriftPost; signature: string } => Boolean(row.signature));
 
+  const repeatedHeadingIssues = groupedIssues(headingRows, 'repeated_heading_order', 'warn', 3)
+    // Four or more recent posts sharing the same H2 skeleton is a publishing
+    // blocker, not a cosmetic warning: it is the exact failure mode that a
+    // small canary sample misses.
+    .map((issue) => issue.count >= 4 ? { ...issue, severity: 'block' as const } : issue);
   const issues = [
     ...groupedIssues(openingRows, 'repeated_opening_signature', 'warn', 2),
-    ...groupedIssues(headingRows, 'repeated_heading_order', 'warn', 3),
+    ...repeatedHeadingIssues,
     ...groupedIssues(ctaRows, 'repeated_cta_sentence', 'warn', 3),
     ...groupedIssues(genericRows, 'generic_opening_formula', 'block', 2),
   ];
@@ -200,7 +205,7 @@ export function inspectBlogFleetPhraseDrift(posts: BlogFleetPhraseDriftPost[]): 
     next_action: status === 'pass'
       ? 'Keep rotating reader scenarios and writer openings.'
       : status === 'block'
-        ? 'Rewrite or regenerate the repeated opening formula before expanding automatic publishing.'
+        ? 'Rewrite or regenerate the repeated opening, heading, or CTA template before expanding automatic publishing.'
         : 'Add prompt variation or repair rules for repeated openings, heading order, and CTA wording.',
   };
 }

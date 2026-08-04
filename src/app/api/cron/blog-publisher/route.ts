@@ -23,7 +23,7 @@ import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
-import { extractFaqItems } from '@/lib/blog-jsonld';
+import { extractFaqItems, extractHowToSteps } from '@/lib/blog-jsonld';
 import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
 import { buildBlogQueueSuccessMeta } from '@/lib/blog-queue-success-meta';
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
@@ -3154,7 +3154,7 @@ async function processQueueItem(
       hasJsonLd: {
         blogPosting: true,
         faqPage: extractFaqItems(generated.blog_html).length > 0,
-        howTo: generated.blog_html.includes('Day ') || generated.blog_html.includes('일차'),
+        howTo: extractHowToSteps(generated.blog_html).length >= 3,
         breadcrumbList: true,
       },
     });
@@ -3597,6 +3597,8 @@ async function processQueueItem(
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
       slug: reviewedReplacementDraftSlug ?? generated.slug,
+      title: generated.seo_title,
+      description: generated.seo_description,
       seo_title: generated.seo_title,
       seo_description: generated.seo_description,
       og_image_url: generated.og_image_url,

@@ -322,4 +322,38 @@ describe('evaluateBlogGeneratedQualityCanary', () => {
     expect(report.fleet_phrase_drift.status).toBe('warn');
     expect(report.next_action).toContain('repeated openings');
   });
+
+  it('checks the full recent body pool for fleet drift instead of only scored samples', async () => {
+    const markdown = [
+      '# Destination weather guide',
+      '',
+      'This guide answers the month, packing, and transfer questions before departure so the reader can make a practical plan.',
+      '',
+      '## Monthly conditions',
+      '',
+      'Review the monthly range and rainfall pattern.',
+      '',
+      '## What to pack',
+      '',
+      'Use layers and a compact rain shell.',
+      '',
+      '## Transport notes',
+      '',
+      'Leave extra transfer time when showers are likely.',
+      '',
+      '## Official checks',
+      '',
+      'Confirm the latest notice before leaving.',
+    ].join('\n');
+
+    const report = await evaluateBlogGeneratedQualityCanaryReport({
+      requested: 1,
+      writerMixRequired: false,
+      posts: ['a', 'b', 'c', 'd'].map((slug) => ({ slug, blog_html: markdown })),
+    });
+
+    expect(report.checked_count).toBe(1);
+    expect(report.fleet_phrase_drift.checked_count).toBe(4);
+    expect(report.fleet_phrase_drift.status).toBe('block');
+  });
 });
