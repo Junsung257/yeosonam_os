@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { calcSettlementAccounting, sumSettlementAccounting } from './settlement-accounting';
 
 describe('settlement accounting', () => {
-  it('calculates owner-facing payment, receivable, profit, tax, and net profit', () => {
+  it('keeps cash position separate from booked profit', () => {
     const result = calcSettlementAccounting({
       totalPrice: 400_000,
       totalCost: 360_000,
@@ -14,7 +14,7 @@ describe('settlement accounting', () => {
     expect(result.receivable).toBe(200_000);
     expect(result.grossProfit).toBe(40_000);
     expect(result.netProfit).toBe(40_000);
-    expect(result.cashProfit).toBe(200_000);
+    expect(result.cashPosition).toBe(200_000);
   });
 
   it('deducts estimated tax from gross profit', () => {
@@ -40,10 +40,10 @@ describe('settlement accounting', () => {
 
     expect(result.receivable).toBe(0);
     expect(result.payable).toBe(0);
-    expect(result.cashProfit).toBe(50_000);
+    expect(result.cashPosition).toBe(50_000);
   });
 
-  it('keeps realized cash loss visible when booking prices are not entered', () => {
+  it('keeps company prepayments visible when booking prices are not entered', () => {
     const result = calcSettlementAccounting({
       totalPrice: 0,
       totalCost: 0,
@@ -52,7 +52,7 @@ describe('settlement accounting', () => {
     });
 
     expect(result.grossProfit).toBe(0);
-    expect(result.cashProfit).toBe(-1_088_350);
+    expect(result.cashPosition).toBe(-1_088_350);
   });
 
   it('sums booking rows before calculating summary balances', () => {

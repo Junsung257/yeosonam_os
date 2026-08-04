@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-08-03
+Last updated: 2026-08-05
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -53,9 +53,9 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Canonical memo keys use `YYMMDD_대표고객_랜드사`. A safe customer/operator separator variant such as `YYMMDD_대표고객-랜드사` may bind to an existing key or unambiguous existing booking, but it must never create a placeholder booking automatically.
 - Bulk bank import may auto-allocate deposits after a valid travel memo key resolves to one booking. An outflow may also auto-allocate when the memo key resolves strongly to exactly one booking; ambiguous, fuzzy, or missing memo resolutions remain review/manual-confirmed.
 - Non-travel rows from manual paste may still be skipped by default, but authoritative Clobe rows must never be discarded. Every Clobe account row is retained exactly once in the bank ledger as either `travel` or `non_travel`.
-- `travel` rows may affect booking allocations and booking realized profit. `non_travel` rows affect actual bank balance only and must never auto-match to a booking.
-- Actual bank balance, travel realized profit, and non-travel cash movement are different metrics. The reconciliation identity is `opening balance + travel net + non-travel net = actual bank balance`; do not label travel net as current bank balance.
-- A memo-created booking with no sales price may show received money and realized cash profit, but it has no computable customer receivable. Show `가격 미입력` instead of a negative balance until `total_price` is entered.
+- `travel` rows may affect booking allocations and booking cash position. `non_travel` rows affect actual bank balance only and must never auto-match to a booking.
+- Actual bank balance, travel cash position, settlement-confirmed profit, and non-travel cash movement are different metrics. The reconciliation identity is `opening balance + travel net + non-travel net = actual bank balance`; do not label travel net as current bank balance or realized profit.
+- A memo-created booking with no sales price may show received money and its cash position, but it has no computable customer receivable or profit. Show `가격 미입력` instead of a negative balance until `total_price` is entered.
 - Booking settlement search and status filters must reset the virtualized table to its first row. A non-zero count with a visually empty result table is a blocking operations defect.
 - Provider `afterBalance` is the displayed actual balance when available. The OS must independently compute opening balance plus every inflow minus every outflow and expose a non-zero reconciliation difference as blocking financial drift.
 - Company expenses, taxes, advertising, subscriptions, fees, transfers, and other non-travel transactions remain visible in the non-travel bank tab. They are excluded from booking profit, not deleted from bank reality.

@@ -1842,10 +1842,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               </div>
               <p className="mt-1 text-[11px] text-admin-muted-2">남은 송금 예정 {erp ? fmt만(ownerNumbers.payables) : '—'}</p>
             </div>
-            <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashProfit < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
+            <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashPosition < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
               <p className="text-[11px] text-admin-muted font-medium">선택 기간 여행 현금 순포지션</p>
-              <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashProfit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                {erp ? fmt만(ownerNumbers.cashProfit) : '—'}
+              <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashPosition < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                {erp ? fmt만(ownerNumbers.cashPosition) : '—'}
               </p>
               <p className="mt-3 text-[11px] text-admin-muted-2">확정수익 아님 · 예약에 매칭된 고객 입금 - 랜드사 출금</p>
             </div>
@@ -2194,7 +2194,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                               <span className="rounded-admin-sm bg-admin-surface-2 px-1.5 py-0.5 text-admin-muted whitespace-nowrap">상품 {fmt만(price)}</span>
                               <span className="rounded-admin-sm bg-blue-50 px-1.5 py-0.5 text-blue-700 whitespace-nowrap">입금 {fmt만(paid)}</span>
                               <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.receivable > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>미수 {fmt만(bookingNumbers.receivable)}</span>
-                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.cashProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>실현수익 {fmt만(bookingNumbers.cashProfit)}</span>
+                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.cashPosition >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>현금 순포지션 {fmt만(bookingNumbers.cashPosition)}</span>
                             </div>
                           );
                         })()}
@@ -2215,7 +2215,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             {tx.bookings.total_paid_out != null && (
                               <div>랜드사 송금액: {tx.bookings.total_paid_out.toLocaleString()}원</div>
                             )}
-                            <div>예약 실현수익: <strong className={((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                            <div>예약 현금 순포지션: <strong className={((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
                               {((tx.bookings.paid_amount ?? 0) - (tx.bookings.total_paid_out ?? 0)).toLocaleString()}원
                             </strong></div>
                             {tx.bookings.paid_amount != null && tx.bookings.total_price != null && (
