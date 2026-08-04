@@ -1669,7 +1669,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </div>
           </div>
 
-          <div className="grid gap-px bg-admin-border-mid md:grid-cols-4">
+          <div className="grid gap-px bg-admin-border-mid md:grid-cols-5">
             <div className="bg-white px-4 py-3">
               <p className="text-[11px] font-medium text-admin-muted">전체 입금</p>
               <p className="mt-1 text-admin-base font-bold tabular-nums text-brand">{fmtWon(bankReality.totalDeposits)}</p>
@@ -1679,9 +1679,16 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="mt-1 text-admin-base font-bold tabular-nums text-red-600">{fmtWon(bankReality.totalWithdrawals)}</p>
             </div>
             <div className="bg-white px-4 py-3">
-              <p className="text-[11px] font-medium text-admin-muted">여행 실현수익</p>
+              <p className="text-[11px] font-medium text-admin-muted">여행 현금 순포지션</p>
               <p className={`mt-1 text-admin-base font-bold tabular-nums ${bankReality.travelNet >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtWon(bankReality.travelNet)}</p>
-              <p className="mt-1 text-[10px] text-admin-muted-2">여행 입금 - 여행 출금 · {bankReality.travelCount}건</p>
+              <p className="mt-1 text-[10px] text-admin-muted-2">수익 아님 · 여행 입금 - 여행 출금 · {bankReality.travelCount}건</p>
+            </div>
+            <div className="bg-white px-4 py-3">
+              <p className="text-[11px] font-medium text-admin-muted">정산 확정 수익</p>
+              <p className={`mt-1 text-admin-base font-bold tabular-nums ${(bankReality.bookingCash?.settled.cashNet ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                {fmtWon(bankReality.bookingCash?.settled.cashNet ?? 0)}
+              </p>
+              <p className="mt-1 text-[10px] text-admin-muted-2">정산 확정 예약 {bankReality.bookingCash?.settled.bookingCount ?? 0}건만</p>
             </div>
             <button
               type="button"
@@ -1695,10 +1702,64 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </button>
           </div>
 
+          {bankReality.bookingCash && (
+            <div className="grid gap-3 border-t border-sky-100 bg-sky-50/40 px-4 py-4 md:grid-cols-4">
+              <div className="rounded-admin-sm border border-blue-200 bg-white px-3 py-3">
+                <p className="text-[11px] font-semibold text-blue-800">출발 전·당일 고객자금 보관</p>
+                <p className="mt-1 text-admin-base font-bold tabular-nums text-blue-800">{fmtWon(bankReality.bookingCash.preDeparture.customerFundsHeld)}</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-admin-muted-2">
+                  {bankReality.bookingCash.preDeparture.bookingCount}건 · 입금 {fmtWon(bankReality.bookingCash.preDeparture.deposits)} / 선지급 {fmtWon(bankReality.bookingCash.preDeparture.withdrawals)} / 순액 {fmtWon(bankReality.bookingCash.preDeparture.cashNet)}
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-admin-muted-2">
+                  원가 입력분 남은 송금 {fmtWon(bankReality.bookingCash.preDeparture.knownSupplierPayable)} · 원가 미입력 {bankReality.bookingCash.preDeparture.costMissingCount}건
+                </p>
+              </div>
+              <div className="rounded-admin-sm border border-orange-200 bg-white px-3 py-3">
+                <p className="text-[11px] font-semibold text-orange-800">현재 회사 선지급</p>
+                <p className="mt-1 text-admin-base font-bold tabular-nums text-orange-700">{fmtWon(bankReality.bookingCash.openCompanyAdvanceOutstanding)}</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-admin-muted-2">
+                  고객 입금보다 먼저 나간 뒤 아직 회수되지 않은 돈 · 예약별 선투입 누계 {fmtWon(bankReality.bookingCash.openCompanyPrefundingRequired)}
+                </p>
+              </div>
+              <div className="rounded-admin-sm border border-amber-200 bg-white px-3 py-3">
+                <p className="text-[11px] font-semibold text-amber-800">출발 후 정산대기 순액</p>
+                <p className={`mt-1 text-admin-base font-bold tabular-nums ${bankReality.bookingCash.departedUnsettled.cashNet >= 0 ? 'text-amber-800' : 'text-red-600'}`}>
+                  {fmtWon(bankReality.bookingCash.departedUnsettled.cashNet)}
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-admin-muted-2">
+                  {bankReality.bookingCash.departedUnsettled.bookingCount}건 · 보관 {fmtWon(bankReality.bookingCash.departedUnsettled.customerFundsHeld)} / 회사 선지급 {fmtWon(bankReality.bookingCash.departedUnsettled.companyAdvanceOutstanding)}
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-admin-muted-2">
+                  확인된 미수 {fmtWon(bankReality.bookingCash.departedUnsettled.knownCustomerReceivable)} · 남은 송금 {fmtWon(bankReality.bookingCash.departedUnsettled.knownSupplierPayable)}
+                </p>
+              </div>
+              <div className={`rounded-admin-sm border bg-white px-3 py-3 ${bankReality.bookingCash.unallocatedTravelCount > 0 || bankReality.bookingCash.dateMissing.bookingCount > 0 ? 'border-red-200' : 'border-emerald-200'}`}>
+                <p className={`text-[11px] font-semibold ${bankReality.bookingCash.unallocatedTravelCount > 0 || bankReality.bookingCash.dateMissing.bookingCount > 0 ? 'text-red-700' : 'text-emerald-700'}`}>분류 확인 필요</p>
+                <p className="mt-1 text-admin-base font-bold tabular-nums text-admin-text-2">{bankReality.bookingCash.unallocatedTravelCount + bankReality.bookingCash.dateMissing.bookingCount}건</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-admin-muted-2">
+                  미배정 여행거래 {bankReality.bookingCash.unallocatedTravelCount}건 {fmtWon(bankReality.bookingCash.unallocatedTravelNet)} · 출발일 누락 {bankReality.bookingCash.dateMissing.bookingCount}건
+                </p>
+              </div>
+            </div>
+          )}
+
+          {bankReality.bookingCash && bankReality.bookingCash.preDeparture.costMissingCount > 0 && (
+            <div className="border-t border-orange-200 bg-orange-50 px-4 py-2 text-[11px] leading-relaxed text-orange-900">
+              출발 전·당일 예약 {bankReality.bookingCash.preDeparture.costMissingCount}건의 랜드사 예정원가가 비어 있습니다. 앞으로 보낼 돈을 확정할 수 없으므로 현재 고객자금 보관액을 사용 가능한 수익으로 보지 않습니다.
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 border-t border-admin-border-mid px-4 py-3 text-[11px] text-admin-muted md:flex-row md:items-center md:justify-between">
-            <p>
-              기초잔액 {fmtWon(bankReality.openingBalance)} + 여행 {fmtWon(bankReality.travelNet)} + 여행 외 {fmtWon(bankReality.nonTravelNet)} = 실제잔액 {fmtWon(bankReality.computedBalance)}
-            </p>
+            <div>
+              <p>
+                기초잔액 {fmtWon(bankReality.openingBalance)} + 여행 현금 순포지션 {fmtWon(bankReality.travelNet)} + 여행 외 {fmtWon(bankReality.nonTravelNet)} = 실제잔액 {fmtWon(bankReality.computedBalance)}
+              </p>
+              {bankReality.bookingCash && (
+                <p className="mt-1 text-[10px] text-admin-muted-2">
+                  여행 현금 순포지션 = 확정 {fmtWon(bankReality.bookingCash.settled.cashNet)} + 출발 전 {fmtWon(bankReality.bookingCash.preDeparture.cashNet)} + 출발 후 미확정 {fmtWon(bankReality.bookingCash.departedUnsettled.cashNet)} + 날짜 누락 {fmtWon(bankReality.bookingCash.dateMissing.cashNet)} + 미배정 {fmtWon(bankReality.bookingCash.unallocatedTravelNet)}
+                </p>
+              )}
+            </div>
             <button type="button" onClick={() => { setTab('non_travel'); setNonTravelReviewOnly(false); }} className="font-semibold text-cyan-800 hover:underline">
               여행 외 거래 {bankReality.nonTravelCount}건 보기{bankReality.memoReviewCount > 0 ? ` · 메모 확인 ${bankReality.memoReviewCount}건` : ''}
             </button>
@@ -1782,11 +1843,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <p className="mt-1 text-[11px] text-admin-muted-2">남은 송금 예정 {erp ? fmt만(ownerNumbers.payables) : '—'}</p>
             </div>
             <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashProfit < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
-              <p className="text-[11px] text-admin-muted font-medium">선택 기간 여행 실현수익</p>
+              <p className="text-[11px] text-admin-muted font-medium">선택 기간 여행 현금 순포지션</p>
               <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashProfit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                 {erp ? fmt만(ownerNumbers.cashProfit) : '—'}
               </p>
-              <p className="mt-3 text-[11px] text-admin-muted-2">예약에 매칭된 고객 입금 - 랜드사 출금</p>
+              <p className="mt-3 text-[11px] text-admin-muted-2">확정수익 아님 · 예약에 매칭된 고객 입금 - 랜드사 출금</p>
             </div>
           </div>
 
