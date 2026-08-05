@@ -30,6 +30,7 @@ export const ROLE_PERMISSIONS = {
 
   /** 재무담당: 원장·정산·랜드사정산·결제·세금 */
   finance: [
+    '/admin/finance',
     '/admin/ledger',
     '/admin/settlements',
     '/admin/land-settlements',

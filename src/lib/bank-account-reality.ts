@@ -14,6 +14,16 @@ export interface BankAccountRealityRow {
   counterparty_name?: string | null;
   provider_category?: string | null;
   provider_is_unclassified?: boolean | null;
+  resolved_classification?:
+    | 'company_expense'
+    | 'tax'
+    | 'capital'
+    | 'transfer'
+    | 'refund'
+    | 'owner_draw'
+    | 'other_income'
+    | 'review'
+    | null;
 }
 
 export interface BankAccountRealitySummary {
@@ -78,12 +88,19 @@ export interface BookingCashPositionSummary {
   openCustomerFundsHeld: number;
   openCompanyAdvanceOutstanding: number;
   openCompanyPrefundingRequired: number;
+  openKnownSupplierPayable: number;
   openCashReserveRequired: number;
   unallocatedTravelCount: number;
   overallocatedTravelCount: number;
   unallocatedTravelNet: number;
   travelCashNet: number;
   reconciliationDifference: number;
+}
+
+export interface SettlementProfitSnapshot {
+  booking_id: string;
+  departure_date: string;
+  cash_margin: number;
 }
 
 export type NonTravelProfitClass =
@@ -108,6 +125,7 @@ export interface BankProfitErpSummary {
   taxRate: number;
   confirmedTravelProfit: number;
   confirmedBookingCount: number;
+  estimatedTaxLiability: number;
   estimatedTaxReserve: number;
   afterTaxTravelProfit: number;
   classifiedOperatingIncome: number;
@@ -115,6 +133,8 @@ export interface BankProfitErpSummary {
   actualTaxPayments: number;
   provisionalOperatingCashResult: number;
   provisionalAfterTaxOperatingCashResult: number;
+  protectedCustomerFunds: number;
+  unpaidSupplierCost: number;
   protectedTravelCash: number;
   protectedUnallocatedTravelCash: number;
   protectedUnclassifiedInflows: number;
@@ -225,8 +245,9 @@ export function calculateBookingCashPositions(params: {
     dateMissing: emptyBookingCashBucket(),
   };
 
-  for (const [bookingId, events] of eventsByBooking) {
-    const booking = bookingById.get(bookingId);
+  for (const booking of params.bookings) {
+    const bookingId = booking.id;
+    const events = eventsByBooking.get(bookingId) ?? [];
     const sortedEvents = events.slice().sort((a, b) => {
       const timeDiff = new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
       return timeDiff || a.transactionId.localeCompare(b.transactionId);
@@ -294,6 +315,7 @@ export function calculateBookingCashPositions(params: {
     openCustomerFundsHeld: openBuckets.reduce((sum, bucket) => sum + bucket.customerFundsHeld, 0),
     openCompanyAdvanceOutstanding: openBuckets.reduce((sum, bucket) => sum + bucket.companyAdvanceOutstanding, 0),
     openCompanyPrefundingRequired: openBuckets.reduce((sum, bucket) => sum + bucket.companyPrefundingRequired, 0),
+    openKnownSupplierPayable: openBuckets.reduce((sum, bucket) => sum + bucket.knownSupplierPayable, 0),
     openCashReserveRequired: openBuckets.reduce((sum, bucket) => sum + bucket.cashReserveRequired, 0),
     unallocatedTravelCount,
     overallocatedTravelCount,
@@ -335,6 +357,15 @@ function monthSequence(referenceDate: Date | string, count: number): string[] {
 }
 
 export function classifyNonTravelProfitRow(row: BankAccountRealityRow): NonTravelProfitClass {
+  if (row.resolved_classification) {
+    if (row.resolved_classification === 'company_expense') return 'operating_expense';
+    if (row.resolved_classification === 'other_income') return 'operating_income';
+    if (row.resolved_classification === 'tax') return 'tax_payment';
+    if (row.resolved_classification === 'capital' || row.resolved_classification === 'transfer') return 'financing';
+    if (row.resolved_classification === 'refund' || row.resolved_classification === 'owner_draw') return 'pass_through';
+    return 'review';
+  }
+
   const memo = (row.memo ?? '').normalize('NFKC').trim();
   const category = (row.provider_category ?? '').normalize('NFKC').trim();
 
@@ -360,6 +391,7 @@ export function calculateBankProfitErp(params: {
   transactions: BankAccountRealityRow[];
   allocations: BookingCashAllocationRow[];
   bookings: BookingCashBookingRow[];
+  confirmedSettlementItems?: SettlementProfitSnapshot[];
   referenceDate?: Date | string;
   months?: number;
   taxRate?: number;
@@ -381,22 +413,36 @@ export function calculateBankProfitErp(params: {
     .filter(row => row.id && row.settlement_scope === 'travel')
     .map(row => [row.id as string, row]));
   const bookingById = new Map(params.bookings.map(row => [row.id, row]));
-  const profitByBooking = new Map<string, number>();
+  const snapshotItems = params.confirmedSettlementItems;
+  let confirmedTravelProfit = 0;
+  let confirmedBookingCount = 0;
 
-  for (const allocation of params.allocations) {
-    const transaction = transactionById.get(allocation.bank_transaction_id);
-    const booking = bookingById.get(allocation.booking_id);
-    if (!transaction || !booking?.settlement_confirmed_at) continue;
-    const amount = isDeposit(transaction) ? money(allocation.allocated_amount) : -money(allocation.allocated_amount);
-    profitByBooking.set(allocation.booking_id, (profitByBooking.get(allocation.booking_id) ?? 0) + amount);
-  }
-
-  for (const [bookingId, profit] of profitByBooking) {
-    const booking = bookingById.get(bookingId);
-    const basisDate = booking?.departure_date || booking?.settlement_confirmed_at;
-    if (!basisDate) continue;
-    const point = monthlyMap.get(koreaMonth(basisDate));
-    if (point) point.confirmedTravelProfit += profit;
+  if (snapshotItems) {
+    confirmedBookingCount = snapshotItems.length;
+    for (const item of snapshotItems) {
+      const profit = money(item.cash_margin);
+      confirmedTravelProfit += profit;
+      const point = monthlyMap.get(koreaMonth(item.departure_date));
+      if (point) point.confirmedTravelProfit += profit;
+    }
+  } else {
+    const profitByBooking = new Map<string, number>();
+    for (const allocation of params.allocations) {
+      const transaction = transactionById.get(allocation.bank_transaction_id);
+      const booking = bookingById.get(allocation.booking_id);
+      if (!transaction || !booking?.settlement_confirmed_at) continue;
+      const amount = isDeposit(transaction) ? money(allocation.allocated_amount) : -money(allocation.allocated_amount);
+      profitByBooking.set(allocation.booking_id, (profitByBooking.get(allocation.booking_id) ?? 0) + amount);
+    }
+    confirmedBookingCount = profitByBooking.size;
+    for (const [bookingId, profit] of profitByBooking) {
+      const booking = bookingById.get(bookingId);
+      const basisDate = booking?.departure_date || booking?.settlement_confirmed_at;
+      confirmedTravelProfit += profit;
+      if (!basisDate) continue;
+      const point = monthlyMap.get(koreaMonth(basisDate));
+      if (point) point.confirmedTravelProfit += profit;
+    }
   }
 
   let classifiedOperatingIncome = 0;
@@ -441,31 +487,35 @@ export function calculateBankProfitErp(params: {
     }
   }
 
-  let trendTaxReserve = 0;
   for (const point of monthlyMap.values()) {
     point.estimatedTaxReserve = Math.round(Math.max(0, point.confirmedTravelProfit) * taxRate);
     point.afterTaxTravelProfit = point.confirmedTravelProfit - point.estimatedTaxReserve;
     point.provisionalOperatingCashResult = point.confirmedTravelProfit
       + point.classifiedOperatingIncome
       - point.classifiedOperatingExpense;
-    trendTaxReserve += point.estimatedTaxReserve;
   }
 
-  const confirmedTravelProfit = params.bookingCash.settled.cashNet;
-  const estimatedTaxReserve = trendTaxReserve || Math.round(Math.max(0, confirmedTravelProfit) * taxRate);
-  const afterTaxTravelProfit = confirmedTravelProfit - estimatedTaxReserve;
+  const estimatedTaxLiability = Math.round(Math.max(0, confirmedTravelProfit) * taxRate);
+  const estimatedTaxReserve = Math.max(0, estimatedTaxLiability - actualTaxPayments);
+  const afterTaxTravelProfit = confirmedTravelProfit - estimatedTaxLiability;
   const provisionalOperatingCashResult = confirmedTravelProfit
     + classifiedOperatingIncome
     - classifiedOperatingExpense;
-  const provisionalAfterTaxOperatingCashResult = provisionalOperatingCashResult - estimatedTaxReserve;
+  const provisionalAfterTaxOperatingCashResult = provisionalOperatingCashResult - estimatedTaxLiability;
   const protectedUnallocatedTravelCash = Math.max(0, params.bookingCash.unallocatedTravelNet);
-  const protectedTravelCash = params.bookingCash.openCashReserveRequired + protectedUnallocatedTravelCash;
-  const protectedUnclassifiedInflows = Math.max(0, classificationReviewNet) + Math.max(0, passThroughNet);
+  const protectedCustomerFunds = params.bookingCash.openCustomerFundsHeld;
+  const unpaidSupplierCost = params.bookingCash.openKnownSupplierPayable;
+  const protectedTravelCash = protectedCustomerFunds + unpaidSupplierCost + protectedUnallocatedTravelCash;
+  const protectedUnclassifiedInflows = params.transactions
+    .filter(row => row.settlement_scope === 'non_travel'
+      && isDeposit(row)
+      && classifyNonTravelProfitRow(row) === 'review')
+    .reduce((sum, row) => sum + money(row.amount), 0);
   const liquidityAvailableAfterReserves = params.bankSummary.actualBalance
     - protectedTravelCash
     - estimatedTaxReserve
     - protectedUnclassifiedInflows;
-  const earnedProfitAvailable = Math.max(0, provisionalAfterTaxOperatingCashResult);
+  const earnedProfitAvailable = Math.max(0, afterTaxTravelProfit - classifiedOperatingExpense);
   const blockers: string[] = [];
   const openCostMissingCount = params.bookingCash.preDeparture.costMissingCount
     + params.bookingCash.departedUnsettled.costMissingCount
@@ -474,7 +524,6 @@ export function calculateBankProfitErp(params: {
   if (params.bookingCash.unallocatedTravelCount > 0) blockers.push(`미배정 여행거래 ${params.bookingCash.unallocatedTravelCount}건`);
   if (params.bookingCash.reconciliationDifference !== 0) blockers.push('여행 원장 대사 불일치');
   if (params.bankSummary.reconciliationDifference !== 0) blockers.push('통장 잔액 대사 불일치');
-  if (classificationReviewCount > 0) blockers.push(`여행 외 분류대기 ${classificationReviewCount}건`);
   const calculationStatus = blockers.length > 0 ? 'blocked' : 'clear';
   const safeToWithdraw = calculationStatus === 'clear'
     ? Math.max(0, Math.min(liquidityAvailableAfterReserves, earnedProfitAvailable))
@@ -483,7 +532,8 @@ export function calculateBankProfitErp(params: {
   return {
     taxRate,
     confirmedTravelProfit,
-    confirmedBookingCount: params.bookingCash.settled.bookingCount,
+    confirmedBookingCount,
+    estimatedTaxLiability,
     estimatedTaxReserve,
     afterTaxTravelProfit,
     classifiedOperatingIncome,
@@ -491,6 +541,8 @@ export function calculateBankProfitErp(params: {
     actualTaxPayments,
     provisionalOperatingCashResult,
     provisionalAfterTaxOperatingCashResult,
+    protectedCustomerFunds,
+    unpaidSupplierCost,
     protectedTravelCash,
     protectedUnallocatedTravelCash,
     protectedUnclassifiedInflows,

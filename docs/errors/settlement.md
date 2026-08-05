@@ -2,6 +2,20 @@
 
 Last updated: 2026-08-05
 
+## ERR-SETTLEMENT-CLOSE-SILENT-REWRITE@2026-08-05
+
+- **Symptom:** Booking-level confirmation existed, but there was no locked month snapshot. A later Clobe memo or allocation change could alter the displayed confirmed margin without a visible month-level exception.
+- **Root cause:** `bookings.settlement_confirmed_at` represented an operator decision but did not preserve the reviewed transaction set, totals, source fingerprint, month revision, or reopen audit reason.
+- **Permanent rule:** Close exactly one departure month into immutable `settlement_period_items`. Reopening keeps the old revision and requires a super-admin reason. A source change after close creates `post_close_change`; it never rewrites the locked snapshot.
+- **Required proof:** Duplicate close returns the same period, concurrent close is serialized, item update/delete is rejected, conditional close requires owner/reason/due date, reopen is role-gated, and a changed memo or allocation creates one open exception.
+
+## ERR-SETTLEMENT-PROVIDER-CATEGORY-AS-FINAL@2026-08-05
+
+- **Symptom:** Clobe company-transaction labels were treated as final accounting decisions, while owner withdrawals, transfers, capital, and operating expenses could not be corrected without overwriting provider evidence.
+- **Root cause:** Provider classification and OS-confirmed classification shared one field and had no precedence or non-retroactive rule ledger.
+- **Permanent rule:** Preserve the Clobe original label and store the OS decision separately. Resolve in the order manual > OS rule > Clobe > review. New rules affect future transactions only by default; capital, transfers, and owner withdrawals never enter profit.
+- **Required proof:** Manual classification wins over a matching rule, a new rule does not alter old transactions, unresolved company cash blocks safe withdrawal, and source classification remains unchanged after OS confirmation.
+
 ## ERR-SETTLEMENT-CASH-POSITION-AS-PROFIT@2026-08-05
 
 - **Symptom:** Matched booking rows labeled `customer deposits - supplier payouts` as realized profit, including future trips holding customer funds and bookings funded in advance by the company.
@@ -97,8 +111,15 @@ Last updated: 2026-08-05
 
 - **Symptom:** The finance dashboard showed the 4128 account balance and travel cash position without answering how much was earned or safely withdrawable, so customer advances could be mistaken for owner profit.
 - **Root cause:** Raw bank cashflow, settlement-confirmed margin, company operating expenses, tax reserve, financing, refunds, and unresolved classifications were not joined by one owner-facing invariant.
-- **Permanent rule:** Never label bank balance or open-booking net cash as profit. Safe withdrawal is capped by both protected-liquidity cash and classified after-tax earned profit, and any unknown supplier cost or unresolved cash blocks withdrawal.
+- **Permanent rule:** Never label bank balance or open-booking net cash as profit. Safe withdrawal is capped by both protected-liquidity cash and after-tax snapshot profit minus company expense. Unknown supplier cost or reconciliation drift blocks withdrawal; unresolved inflows are fully protected until classified.
 - **Required proof:** Reconcile provider balance, protected open-trip cash, settled travel profit, classified operating expenses, tax reserve, provisional company result, and safe withdrawal; verify the monthly profit chart contains settlement-confirmed bookings only.
+
+## ERR-SETTLEMENT-REOPEN-HIDDEN-BOOKINGS@2026-08-05
+
+- **Symptom:** A closed departure month could be reopened, but its bookings still had `settlement_confirmed_at`, so the reclose preview treated them as already confirmed and could create an empty revision.
+- **Root cause:** Reopening changed only the period status and did not return the compatibility booking fields to the unconfirmed state. The first smoke test invoked the RPC directly and missed the API preview boundary.
+- **Permanent rule:** Reopening must keep the old period items immutable, clear the compatibility settlement fields for exactly that period's bookings, and audit the before/after state. Reclosing creates a new period revision and reconfirms those bookings.
+- **Required proof:** In one rollback transaction, reopen a real closed period, verify every snapshot booking returns to preview, reclose it into a new revision, verify every booking is reconfirmed, and confirm zero test rows remain.
 
 정산, ledger, 입금, 은행/SMS 매칭, 세무, 지급 흐름 반복 오류 상세.
 

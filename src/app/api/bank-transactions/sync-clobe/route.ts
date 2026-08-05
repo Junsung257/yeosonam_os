@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
@@ -9,6 +10,10 @@ import {
   processBankTransactionImportRows,
 } from '@/lib/settlement-import';
 import { YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER } from '@/lib/bank-account-reality';
+import {
+  detectPostCloseSettlementChanges,
+  refreshClobeFinanceClassifications,
+} from '@/lib/finance-center-service';
 
 export const runtime = 'nodejs';
 
@@ -76,6 +81,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   try {
+    const syncStartedAt = new Date().toISOString();
     const body = await request.json().catch(() => ({}));
     const preview = body.preview === true || body.dryRun === true;
     const diagnosticsOnly = body.diagnosticsOnly === true;
@@ -192,6 +198,62 @@ export async function POST(request: NextRequest) {
       })),
     });
 
+    let postCloseChanges = { checked: 0, changed: 0 };
+    let classificationRefresh = { processed: 0, review: 0 };
+    if (!preview && !diagnosticsOnly) {
+      let classificationRefreshError: string | null = null;
+      let postCloseDetectionError: string | null = null;
+      try {
+        classificationRefresh = await refreshClobeFinanceClassifications();
+      } catch (classificationError) {
+        classificationRefreshError = classificationError instanceof Error
+          ? classificationError.message
+          : 'classification refresh failed';
+        Sentry.captureException(classificationError, { tags: { area: 'clobe-finance-classification' } });
+        console.error('[clobe-bank-sync] classification refresh failed:', classificationRefreshError);
+      }
+      try {
+        postCloseChanges = await detectPostCloseSettlementChanges();
+      } catch (detectionError) {
+        postCloseDetectionError = detectionError instanceof Error
+          ? detectionError.message
+          : 'post-close detection failed';
+        Sentry.captureException(detectionError, { tags: { area: 'clobe-post-close-detection' } });
+        console.error('[clobe-bank-sync] post-close detection failed:', postCloseDetectionError);
+      }
+
+      const completedAt = new Date().toISOString();
+      const supplementalErrorCount = Number(Boolean(classificationRefreshError)) + Number(Boolean(postCloseDetectionError));
+      const syncStatus = result.errors > 0 || normalized.errors.length > 0 || supplementalErrorCount > 0
+        ? 'partial'
+        : 'success';
+      const { error: syncRunError } = await supabaseAdmin.from('finance_sync_runs').insert({
+        provider: 'clobe',
+        account_number: accountNumber ?? YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
+        range_from: from,
+        range_to: to,
+        source_count: fetched,
+        recognized_count: normalized.rows.length,
+        inserted_count: result.inserted,
+        matched_count: result.matched,
+        duplicate_count: result.duplicates,
+        error_count: result.errors + normalized.errors.length + supplementalErrorCount,
+        status: syncStatus,
+        details: {
+          tool_name: mcp.toolName,
+          merged: result.merged,
+          skipped: result.skipped,
+          classification_refresh: classificationRefresh,
+          classification_refresh_error: classificationRefreshError,
+          post_close_changes: postCloseChanges,
+          post_close_detection_error: postCloseDetectionError,
+        },
+        started_at: syncStartedAt,
+        completed_at: completedAt,
+      });
+      if (syncRunError) console.error('[clobe-bank-sync] sync run ledger failed:', syncRunError.message);
+    }
+
     return NextResponse.json({
       success: true,
       source: 'clobe_mcp',
@@ -207,9 +269,12 @@ export async function POST(request: NextRequest) {
       rawSampleKeys,
       normalized: normalized.rows.length,
       normalizeErrors: normalized.errors,
+      postCloseChanges,
+      classificationRefresh,
       ...result,
     });
   } catch (error) {
+    Sentry.captureException(error, { tags: { area: 'clobe-bank-sync' } });
     const message = error instanceof Error ? error.message : 'Clobe sync failed';
     const status = /Clobe OAuth connection|No Clobe MCP .*transaction tool|401|403/i.test(message)
       ? 503

@@ -2,6 +2,9 @@ export interface MonthlyCloseTransaction {
   id: string;
   transaction_type: '입금' | '출금' | string;
   amount: number;
+  memo?: string | null;
+  received_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface MonthlyCloseAllocation {
@@ -36,15 +39,19 @@ export interface MonthlyCloseItem {
   withdrawals: number;
   cashNet: number;
   allocationCount: number;
+  transactionIds: string[];
+  transactionFingerprint: string;
   reason?: MonthlyCloseReviewReason;
 }
 
 export interface MonthlySettlementClosePreview {
   month: string;
+  startDate: string;
   throughDate: string;
   candidateFingerprint: string;
   eligible: MonthlyCloseItem[];
   review: MonthlyCloseItem[];
+  priorOmissions: MonthlyCloseItem[];
   summary: {
     eligibleCount: number;
     eligibleProfit: number;
@@ -59,11 +66,29 @@ export interface MonthlySettlementClosePreview {
     negativeCashMarginCount: number;
     negativeCashMargin: number;
     cancelledOrDeletedCount: number;
+    priorOmissionCount: number;
+    priorOmissionProfit: number;
   };
 }
 
 function money(value: number | null | undefined): number {
   return Math.round(Number(value) || 0);
+}
+
+export function monthlyCloseTransactionFingerprint(
+  rows: Array<{ transaction: MonthlyCloseTransaction; allocatedAmount: number }>,
+): string {
+  return rows
+    .map(({ transaction, allocatedAmount }) => [
+      transaction.id,
+      transaction.transaction_type,
+      money(transaction.amount),
+      money(allocatedAmount),
+      transaction.received_at ?? '',
+      (transaction.memo ?? '').normalize('NFKC').trim(),
+    ].join(':'))
+    .sort()
+    .join('|');
 }
 
 export function settlementMonthBounds(month: string): { startDate: string; endDate: string } {
@@ -103,7 +128,7 @@ export function calculateMonthlySettlementClosePreview(params: {
   allocations: MonthlyCloseAllocation[];
   bookings: MonthlyCloseBooking[];
 }): MonthlySettlementClosePreview {
-  const { endDate } = settlementMonthBounds(params.month);
+  const { startDate, endDate } = settlementMonthBounds(params.month);
   const transactionById = new Map(params.transactions.map(row => [row.id, row]));
   const allocatedByTransaction = new Map<string, number>();
   const allocationsByBooking = new Map<string, MonthlyCloseAllocation[]>();
@@ -122,6 +147,7 @@ export function calculateMonthlySettlementClosePreview(params: {
 
   const eligible: MonthlyCloseItem[] = [];
   const review: MonthlyCloseItem[] = [];
+  const priorOmissions: MonthlyCloseItem[] = [];
   let alreadyConfirmedCount = 0;
   let alreadyConfirmedProfit = 0;
   let cancelledOrDeletedCount = 0;
@@ -134,8 +160,11 @@ export function calculateMonthlySettlementClosePreview(params: {
     });
 
   for (const booking of relevantBookings) {
+    const departureDate = String(booking.departure_date).slice(0, 10);
+    const isSelectedMonth = departureDate >= startDate;
+
     if (booking.is_deleted || booking.status === 'cancelled') {
-      cancelledOrDeletedCount += 1;
+      if (isSelectedMonth) cancelledOrDeletedCount += 1;
       continue;
     }
 
@@ -143,6 +172,7 @@ export function calculateMonthlySettlementClosePreview(params: {
     let deposits = 0;
     let withdrawals = 0;
     let hasAllocationDrift = false;
+    const fingerprintRows: Array<{ transaction: MonthlyCloseTransaction; allocatedAmount: number }> = [];
 
     for (const allocation of bookingAllocations) {
       const transaction = transactionById.get(allocation.bank_transaction_id);
@@ -150,6 +180,7 @@ export function calculateMonthlySettlementClosePreview(params: {
       if (allocatedByTransaction.get(transaction.id) !== money(transaction.amount)) {
         hasAllocationDrift = true;
       }
+      fingerprintRows.push({ transaction, allocatedAmount: allocation.allocated_amount });
       if (transaction.transaction_type === '입금') deposits += allocation.allocated_amount;
       else if (transaction.transaction_type === '출금') withdrawals += allocation.allocated_amount;
     }
@@ -158,16 +189,25 @@ export function calculateMonthlySettlementClosePreview(params: {
       bookingId: booking.id,
       bookingNo: booking.booking_no || booking.id,
       packageTitle: booking.package_title ?? null,
-      departureDate: String(booking.departure_date).slice(0, 10),
+      departureDate,
       deposits,
       withdrawals,
       cashNet: deposits - withdrawals,
       allocationCount: bookingAllocations.length,
+      transactionIds: fingerprintRows.map(row => row.transaction.id).sort(),
+      transactionFingerprint: monthlyCloseTransactionFingerprint(fingerprintRows),
     };
 
     if (booking.settlement_confirmed_at) {
-      alreadyConfirmedCount += 1;
-      alreadyConfirmedProfit += item.cashNet;
+      if (isSelectedMonth) {
+        alreadyConfirmedCount += 1;
+        alreadyConfirmedProfit += item.cashNet;
+      }
+      continue;
+    }
+
+    if (!isSelectedMonth) {
+      priorOmissions.push(item);
       continue;
     }
 
@@ -186,13 +226,15 @@ export function calculateMonthlySettlementClosePreview(params: {
 
   return {
     month: params.month,
+    startDate,
     throughDate: endDate,
-    candidateFingerprint: eligible
-      .map(row => `${row.bookingId}:${row.deposits}:${row.withdrawals}`)
+    candidateFingerprint: [...eligible, ...review]
+      .map(row => `${row.bookingId}:${row.reason ?? 'eligible'}:${row.deposits}:${row.withdrawals}:${row.transactionFingerprint}`)
       .sort()
       .join('|'),
     eligible,
     review,
+    priorOmissions,
     summary: {
       eligibleCount: eligible.length,
       eligibleProfit: eligible.reduce((sum, row) => sum + row.cashNet, 0),
@@ -209,6 +251,8 @@ export function calculateMonthlySettlementClosePreview(params: {
         .filter(row => row.reason === 'negative_cash_margin')
         .reduce((sum, row) => sum + row.cashNet, 0),
       cancelledOrDeletedCount,
+      priorOmissionCount: priorOmissions.length,
+      priorOmissionProfit: priorOmissions.reduce((sum, row) => sum + row.cashNet, 0),
     },
   };
 }

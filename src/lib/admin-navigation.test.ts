@@ -36,7 +36,7 @@ describe('admin navigation registry', () => {
   it('keeps task queues discoverable from the route registry', () => {
     expect(findItem('/admin/packages?status=pending').badgeKey).toBe('pendingPackages');
     expect(findItem('/admin/attractions/unmatched').badgeKey).toBe('unmatchedPending');
-    expect(findItem('/admin/payments').badgeKey).toBe('paymentUnmatched');
+    expect(findItem('/admin/finance').badgeKey).toBe('paymentUnmatched');
     expect(findItem('/admin/blog/queue').badgeKey).toBe('blogQueue');
     expect(findItem('/admin/jarvis').badgeKey).toBe('pendingActions');
   });
@@ -44,13 +44,13 @@ describe('admin navigation registry', () => {
   it('resolves nav badges from metadata rather than route-specific conditionals', () => {
     expect(getNavItemBadge(findItem('/admin/packages?status=pending'), counts)).toBe(3);
     expect(getNavItemBadge(findItem('/admin/attractions/unmatched'), counts)).toBe(5);
-    expect(getNavItemBadge(findItem('/admin/payments'), counts)).toBe(7);
+    expect(getNavItemBadge(findItem('/admin/finance'), counts)).toBe(7);
     expect(getNavItemBadge(findItem('/admin/blog/queue'), counts)).toBe(13);
     expect(getNavItemBadge(findItem('/admin/jarvis'), counts)).toBe(2);
   });
 
   it('falls back to ledgerDrift for payment badge during mixed deployments', () => {
-    expect(getNavItemBadge(findItem('/admin/payments'), {
+    expect(getNavItemBadge(findItem('/admin/finance'), {
       ...counts,
       paymentUnmatched: undefined,
     })).toBe(11);
@@ -69,10 +69,10 @@ describe('admin navigation registry', () => {
     const platformHrefs = flattenNavItems(filterNavGroups(adminNavGroups, 'platform_admin')).map((item) => item.href);
 
     expect(staffHrefs).toContain('/admin');
-    expect(staffHrefs).not.toContain('/admin/payments');
+    expect(staffHrefs).not.toContain('/admin/finance');
     expect(staffHrefs).not.toContain('/admin/control-tower');
 
-    expect(tenantHrefs).toContain('/admin/payments');
+    expect(tenantHrefs).toContain('/admin/finance');
     expect(tenantHrefs).toContain('/admin/jarvis');
     expect(tenantHrefs).not.toContain('/admin/control-tower');
 
@@ -81,10 +81,10 @@ describe('admin navigation registry', () => {
   });
 
   it('adds search metadata to operational queue routes', () => {
-    const payment = findItem('/admin/payments');
+    const payment = findItem('/admin/finance');
     const attractions = findItem('/admin/attractions/unmatched');
 
-    expect(payment.primaryAction).toBe('수동 매칭');
+    expect(payment.primaryAction).toBe('정산 검토');
     expect(payment.searchKeywords).toContain('미매칭 입금');
     expect(attractions.primaryAction).toBe('DB 연결');
     expect(attractions.searchKeywords).toContain('미매칭 관광지');

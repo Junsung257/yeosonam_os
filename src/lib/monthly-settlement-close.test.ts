@@ -19,7 +19,7 @@ describe('monthly settlement close', () => {
     );
   });
 
-  it('closes only positive, fully allocated, unconfirmed bookings through the selected month', () => {
+  it('closes only the selected departure month and separates prior omissions', () => {
     const preview = calculateMonthlySettlementClosePreview({
       month: '2026-07',
       transactions: [
@@ -60,19 +60,18 @@ describe('monthly settlement close', () => {
     });
 
     expect(preview.eligible.map(row => row.bookingNo)).toEqual(['BK-OK']);
-    expect(preview.candidateFingerprint).toBe('ok:1000000:900000');
+    expect(preview.candidateFingerprint).toContain('ok:eligible:1000000:900000:');
+    expect(preview.candidateFingerprint).toContain('loss:negative_cash_margin:500000:501000:');
     expect(preview.summary.eligibleProfit).toBe(100_000);
-    expect(preview.summary.alreadyConfirmedCount).toBe(1);
-    expect(preview.summary.alreadyConfirmedProfit).toBe(50_000);
+    expect(preview.summary.alreadyConfirmedCount).toBe(0);
+    expect(preview.summary.alreadyConfirmedProfit).toBe(0);
     expect(preview.summary.negativeCashMarginCount).toBe(1);
     expect(preview.summary.negativeCashMargin).toBe(-1_000);
-    expect(preview.summary.allocationDriftCount).toBe(1);
-    expect(preview.summary.noBankEvidenceCount).toBe(1);
-    expect(preview.summary.cancelledOrDeletedCount).toBe(1);
-    expect(preview.review.map(row => row.reason)).toEqual([
-      'no_bank_evidence',
-      'allocation_drift',
-      'negative_cash_margin',
-    ]);
+    expect(preview.summary.allocationDriftCount).toBe(0);
+    expect(preview.summary.noBankEvidenceCount).toBe(0);
+    expect(preview.summary.cancelledOrDeletedCount).toBe(0);
+    expect(preview.review.map(row => row.reason)).toEqual(['negative_cash_margin']);
+    expect(preview.priorOmissions.map(row => row.bookingNo)).toEqual(['BK-NONE', 'BK-DRIFT']);
+    expect(preview.summary.priorOmissionCount).toBe(2);
   });
 });

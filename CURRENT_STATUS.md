@@ -1,5 +1,7 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
+> **정산센터 V2 (2026-08-05):** `/admin/finance`가 정산 홈·거래 검토·예약별 정산·월 마감·회사 경비·세금·증빙을 통합한다. Clobe 신한 4128만 은행 SSOT로 사용하고 Slack/SMS는 감사 보관으로 제한한다. 월마감은 출발 월별 불변 스냅샷과 조건부 예외를 생성하며, 재개방은 최고 관리자만 사유와 함께 수행한다. 회사 거래 분류 우선순위는 수동 확정 > OS 규칙 > Clobe > 검토다. 상세 계약: `docs/settlement-current-ssot.md`.
+
 > **AI 운영실 V1 (2026-07-28, 로컬 코드):** 기존 `agent_tasks`, `agent_approvals`, `agent_incidents`, `agent_trace_spans`를 `correlation_id` 작업실로 묶는 읽기 전용 통합 스냅샷과 `/admin/agent-mas` 운영 화면을 추가했다. 24시간 미갱신 작업과 7일 이상 지난 무기한 승인을 정체·기한 경과로 분리하며, 버전된 durable resume 상태가 연결되기 전까지 승인 큐는 관찰 전용이다. 실행은 백엔드 durable workflow, 스레드는 증거 타임라인, 외부·금전·고객 변경은 승인 경계라는 하이브리드 모델이며 자동 멀티에이전트 실행은 아직 열지 않았다. 상세 SSOT: `docs/agent-office-current-ssot.md`.
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
@@ -77,6 +79,7 @@
 
 | 메뉴 | 경로 | 세부 기능 |
 |------|------|-----------|
+| **정산센터** | `/admin/finance` | 실제 통장 잔액·여행 보호금·세금 적립·회사 운영손익·사용가능액, Clobe 대사 상태, 거래 검토, 예약별 현금마진, 출발 월 잠금·재개방, 회사거래 분류, 세금·증빙 통합 |
 | **통합 장부** | `/admin/ledger` | 은행거래 매칭, AI 이상탐지(중복·대액·소액), 월별 수입/지출 차트, 자본 항목, match_status |
 | **정산 관리** | `/admin/settlements` | 제휴 정산(기간 선택, PENDING→COMPLETED), 이월잔액, 세금공제(3.3%), PDF |
 | **세무 관리** | `/admin/tax` | 월별 세무(이체상태, 현금영수증 ISSUED/NOT_ISSUED/NOT_REQUIRED, 부가세 추정, 문서 업로드) |
