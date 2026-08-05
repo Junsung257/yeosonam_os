@@ -1,0 +1,19 @@
+{
+  "command": "npm audit --omit=dev --json",
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "dependencies": {
+    "prod": 1149,
+    "dev": 231,
+    "optional": 202,
+    "peer": 54,
+    "total": 1558
+  }
+}

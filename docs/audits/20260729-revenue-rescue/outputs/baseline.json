@@ -1,0 +1,14 @@
+{
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "productionDeploymentId": "dpl_921Z3DpkGB8GK4AWu8MGfgtePoXz",
+  "productionCommitSha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "supabaseProjectRef": "ixaxnvbmhzjvupissmly",
+  "node": "v24.14.0",
+  "npm": "11.9.0",
+  "next": "15.5.21",
+  "packageLockSha256": "244fa2bfb5a2eb7b9d7f81bcd64006cd87b7dbf217fdb63259cacb3e650dbf11",
+  "localLatestMigration": "20260728223500_add_local_transport_information_intent.sql",
+  "productionLatestMigration": "20260728231547 add_local_transport_information_intent",
+  "apiRouteFiles": 664,
+  "pageRouteFiles": 208
+}

@@ -1,0 +1,17 @@
+{
+  "repositorySha": "eb582cabd6d16b98bd26ca8fca8ddc740fb80845",
+  "definitions": {
+    "apiRouteFiles": "Files under src/app matching route.ts or route.tsx.",
+    "pageRouteFiles": "Files under src/app matching page.ts or page.tsx.",
+    "publicMiddlewareRules": "String literals in PUBLIC_EXACT, PUBLIC_EXACT_SHORT, and PUBLIC_PREFIXES. Prefix rules are not one-to-one with route files."
+  },
+  "apiRouteFiles": 664,
+  "pageRouteFiles": 208,
+  "publicMiddlewareRules": {
+    "exact": 146,
+    "exactShort": 28,
+    "prefix": 55,
+    "totalRules": 229
+  },
+  "vercelCronSchedules": 90
+}

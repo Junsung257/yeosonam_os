@@ -1,0 +1,10 @@
+{
+  "mode": "deep",
+  "status": "failed",
+  "reason": "spawn EPERM while creating discovery worker process",
+  "failedWorker": "discovery-0002",
+  "attempts": 4,
+  "discoveryCount": 0,
+  "sourceManifest": "C:\\Users\\admin\\AppData\\Local\\Temp\\codex-security-scans-wUPIbF\\yeosonam-os\\3f5f35406da3edc6971a216a84af6c05231040d9_20260729T085800Z_fjanyhej\\artifacts\\deep_discovery\\coordinator-manifest.json",
+  "fallback": "Preserve failure evidence and continue focused source/runtime validation without repeating the same logical scan."
+}
