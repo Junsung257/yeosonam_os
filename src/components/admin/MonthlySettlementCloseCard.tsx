@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { AlertTriangle, CalendarCheck, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Calendar, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 
 import {
   previousCompletedKoreaMonth,
@@ -109,7 +109,7 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
           <div className="flex items-center gap-2">
-            <CalendarCheck className="h-5 w-5 text-emerald-700" />
+            <Calendar className="h-5 w-5 text-emerald-700" />
             <h2 id="monthly-close-title" className="text-admin-lg font-semibold text-admin-text-2">출발 월 정산 마감</h2>
           </div>
           <p className="mt-1.5 text-xs leading-5 text-admin-muted">
