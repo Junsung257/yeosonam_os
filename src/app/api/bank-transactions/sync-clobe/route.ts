@@ -13,6 +13,7 @@ import { YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER } from '@/lib/bank-account-reality
 import {
   detectPostCloseSettlementChanges,
   refreshClobeFinanceClassifications,
+  syncOpenMonthlySettlementExceptions,
 } from '@/lib/finance-center-service';
 
 export const runtime = 'nodejs';
@@ -200,9 +201,11 @@ export async function POST(request: NextRequest) {
 
     let postCloseChanges = { checked: 0, changed: 0 };
     let classificationRefresh = { processed: 0, review: 0 };
+    let monthlyExceptions = { scanned: 0, candidates: 0, inserted: 0, resolved: 0 };
     if (!preview && !diagnosticsOnly) {
       let classificationRefreshError: string | null = null;
       let postCloseDetectionError: string | null = null;
+      let monthlyExceptionError: string | null = null;
       try {
         classificationRefresh = await refreshClobeFinanceClassifications();
       } catch (classificationError) {
@@ -221,9 +224,20 @@ export async function POST(request: NextRequest) {
         Sentry.captureException(detectionError, { tags: { area: 'clobe-post-close-detection' } });
         console.error('[clobe-bank-sync] post-close detection failed:', postCloseDetectionError);
       }
+      try {
+        monthlyExceptions = await syncOpenMonthlySettlementExceptions();
+      } catch (exceptionError) {
+        monthlyExceptionError = exceptionError instanceof Error
+          ? exceptionError.message
+          : 'monthly settlement exception sync failed';
+        Sentry.captureException(exceptionError, { tags: { area: 'clobe-monthly-exception-sync' } });
+        console.error('[clobe-bank-sync] monthly exception sync failed:', monthlyExceptionError);
+      }
 
       const completedAt = new Date().toISOString();
-      const supplementalErrorCount = Number(Boolean(classificationRefreshError)) + Number(Boolean(postCloseDetectionError));
+      const supplementalErrorCount = Number(Boolean(classificationRefreshError))
+        + Number(Boolean(postCloseDetectionError))
+        + Number(Boolean(monthlyExceptionError));
       const syncStatus = result.errors > 0 || normalized.errors.length > 0 || supplementalErrorCount > 0
         ? 'partial'
         : 'success';
@@ -247,6 +261,8 @@ export async function POST(request: NextRequest) {
           classification_refresh_error: classificationRefreshError,
           post_close_changes: postCloseChanges,
           post_close_detection_error: postCloseDetectionError,
+          monthly_exceptions: monthlyExceptions,
+          monthly_exception_error: monthlyExceptionError,
         },
         started_at: syncStartedAt,
         completed_at: completedAt,
@@ -271,6 +287,7 @@ export async function POST(request: NextRequest) {
       normalizeErrors: normalized.errors,
       postCloseChanges,
       classificationRefresh,
+      monthlyExceptions,
       ...result,
     });
   } catch (error) {

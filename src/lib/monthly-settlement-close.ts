@@ -71,6 +71,13 @@ export interface MonthlySettlementClosePreview {
   };
 }
 
+export const MONTHLY_CLOSE_REASON_TO_EXCEPTION = {
+  no_bank_evidence: 'no_bank_evidence',
+  allocation_drift: 'allocation_drift',
+  zero_cash_margin: 'zero_margin',
+  negative_cash_margin: 'negative_margin',
+} as const satisfies Record<MonthlyCloseReviewReason, string>;
+
 function money(value: number | null | undefined): number {
   return Math.round(Number(value) || 0);
 }
@@ -198,6 +205,17 @@ export function calculateMonthlySettlementClosePreview(params: {
       transactionFingerprint: monthlyCloseTransactionFingerprint(fingerprintRows),
     };
 
+    const reason: MonthlyCloseReviewReason | undefined = bookingAllocations.length === 0
+      ? 'no_bank_evidence'
+      : hasAllocationDrift
+        ? 'allocation_drift'
+        : item.cashNet < 0
+          ? 'negative_cash_margin'
+          : item.cashNet === 0
+            ? 'zero_cash_margin'
+            : undefined;
+    const classifiedItem = reason ? { ...item, reason } : item;
+
     if (booking.settlement_confirmed_at) {
       if (isSelectedMonth) {
         alreadyConfirmedCount += 1;
@@ -207,21 +225,12 @@ export function calculateMonthlySettlementClosePreview(params: {
     }
 
     if (!isSelectedMonth) {
-      priorOmissions.push(item);
+      priorOmissions.push(classifiedItem);
       continue;
     }
 
-    if (bookingAllocations.length === 0) {
-      review.push({ ...item, reason: 'no_bank_evidence' });
-    } else if (hasAllocationDrift) {
-      review.push({ ...item, reason: 'allocation_drift' });
-    } else if (item.cashNet < 0) {
-      review.push({ ...item, reason: 'negative_cash_margin' });
-    } else if (item.cashNet === 0) {
-      review.push({ ...item, reason: 'zero_cash_margin' });
-    } else {
-      eligible.push(item);
-    }
+    if (reason) review.push(classifiedItem);
+    else eligible.push(item);
   }
 
   return {

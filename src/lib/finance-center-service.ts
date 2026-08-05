@@ -4,6 +4,7 @@ import {
   calculateBankAccountReality,
   calculateBankProfitErp,
   calculateBookingCashPositions,
+  countTravelMemoOrAllocationActions,
   YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
   type BankAccountRealityRow,
   type BookingCashAllocationRow,
@@ -18,6 +19,8 @@ import {
 } from '@/lib/finance-classification';
 import {
   calculateMonthlySettlementClosePreview,
+  MONTHLY_CLOSE_REASON_TO_EXCEPTION,
+  previousCompletedKoreaMonth,
   settlementMonthBounds,
   type MonthlyCloseAllocation,
   type MonthlyCloseBooking,
@@ -363,11 +366,19 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
         blockers: profit.blockers,
       },
       actions: {
-        travelMemoOrAllocation: bookingCash.unallocatedTravelCount + bookingCash.overallocatedTravelCount,
+        travelMemoOrAllocation: countTravelMemoOrAllocationActions({
+          transactions: data.transactions,
+          allocations: data.allocations,
+        }),
         unmatchedTravel: bookingCash.unallocatedTravelCount,
         negativeMargin: bookingRows.filter(row => row.state !== 'settled' && row.cashMargin < 0).length,
         unclassifiedCompany: profit.classificationReviewCount,
-        monthCloseWaiting: [...completedBookingMonths].filter(month => !closedMonths.has(month)).length,
+        monthCloseWaiting: new Set([
+          ...bookingRows
+            .filter(row => row.state === 'departed_pending' && row.departureDate)
+            .map(row => row.departureDate!.slice(0, 7)),
+          ...[...completedBookingMonths].filter(month => !closedMonths.has(month)),
+        ]).size,
         postCloseChanges: exceptions.filter(row => row.exception_type === 'post_close_change').length,
       },
       monthly: profit.monthly,
@@ -377,6 +388,97 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
     Sentry.captureException(error, { tags: { area: 'finance-center-summary' } });
     throw error;
   }
+}
+
+export async function syncOpenMonthlySettlementExceptions(
+  referenceDate: Date | string = new Date(),
+): Promise<{ scanned: number; candidates: number; inserted: number; resolved: number }> {
+  const month = previousCompletedKoreaMonth(referenceDate);
+  const preview = await loadMonthlySettlementPreview(month);
+  const candidates = [...preview.review, ...preview.priorOmissions]
+    .filter(item => Boolean(item.reason));
+  const exceptionTypes = Object.values(MONTHLY_CLOSE_REASON_TO_EXCEPTION);
+  const { data: existingRows, error: existingError } = await supabaseAdmin
+    .from('settlement_period_exceptions')
+    .select('id, departure_month, booking_id, exception_type, payload')
+    .eq('status', 'open')
+    .in('exception_type', exceptionTypes)
+    .limit(MAX_ROWS);
+  if (existingError) throw existingError;
+
+  const key = (departureMonth: string, exceptionType: string, bookingId: string) =>
+    `${departureMonth.slice(0, 7)}:${exceptionType}:${bookingId}`;
+  const existingByKey = new Map((existingRows ?? []).map(row => [
+    key(String(row.departure_month), String(row.exception_type), String(row.booking_id)),
+    row,
+  ]));
+  const candidateKeys = new Set<string>();
+  const dueDate = koreaDate(new Date(new Date(referenceDate).getTime() + 7 * 24 * 60 * 60_000));
+  const detectedAt = new Date().toISOString();
+  const missing = candidates.flatMap(item => {
+    const departureMonth = `${item.departureDate.slice(0, 7)}-01`;
+    const exceptionType = MONTHLY_CLOSE_REASON_TO_EXCEPTION[item.reason!];
+    const candidateKey = key(departureMonth, exceptionType, item.bookingId);
+    candidateKeys.add(candidateKey);
+    if (existingByKey.has(candidateKey)) return [];
+    return [{
+      departure_month: departureMonth,
+      booking_id: item.bookingId,
+      exception_type: exceptionType,
+      assigned_to: '재무 담당자',
+      reason: '완료된 출발 월의 미확정 예약 자동 점검',
+      due_date: dueDate,
+      source_fingerprint: item.transactionFingerprint,
+      current_fingerprint: item.transactionFingerprint,
+      payload: {
+        origin: 'automatic_completed_month_scan',
+        booking_no: item.bookingNo,
+        departure_date: item.departureDate,
+        deposits: item.deposits,
+        withdrawals: item.withdrawals,
+        cash_margin: item.cashNet,
+        detected_at: detectedAt,
+      },
+    }];
+  });
+
+  let inserted = 0;
+  for (const row of missing) {
+    const { error } = await supabaseAdmin.from('settlement_period_exceptions').insert(row);
+    if (!error) {
+      inserted += 1;
+      continue;
+    }
+    // An admin sync and the daily cron may scan the same booking together.
+    // The open-exception unique index is the final idempotency guard.
+    if (error.code !== '23505') throw error;
+  }
+
+  const staleAutomaticIds = (existingRows ?? [])
+    .filter(row => {
+      const payload = row.payload as { origin?: unknown } | null;
+      return payload?.origin === 'automatic_completed_month_scan'
+        && !candidateKeys.has(key(String(row.departure_month), String(row.exception_type), String(row.booking_id)));
+    })
+    .map(row => row.id as string);
+  if (staleAutomaticIds.length > 0) {
+    const { error } = await supabaseAdmin
+      .from('settlement_period_exceptions')
+      .update({
+        status: 'resolved',
+        resolved_at: detectedAt,
+        resolved_by: 'system:clobe_sync',
+      })
+      .in('id', staleAutomaticIds);
+    if (error) throw error;
+  }
+
+  return {
+    scanned: preview.review.length + preview.priorOmissions.length,
+    candidates: candidates.length,
+    inserted,
+    resolved: staleAutomaticIds.length,
+  };
 }
 
 export async function refreshClobeFinanceClassifications(): Promise<{

@@ -72,6 +72,7 @@ describe('monthly settlement close', () => {
     expect(preview.summary.cancelledOrDeletedCount).toBe(0);
     expect(preview.review.map(row => row.reason)).toEqual(['negative_cash_margin']);
     expect(preview.priorOmissions.map(row => row.bookingNo)).toEqual(['BK-NONE', 'BK-DRIFT']);
+    expect(preview.priorOmissions.map(row => row.reason)).toEqual(['no_bank_evidence', 'allocation_drift']);
     expect(preview.summary.priorOmissionCount).toBe(2);
   });
 });
