@@ -93,6 +93,13 @@ Last updated: 2026-08-05
 - Apply the same active-only boundary to the local transaction fingerprint unique index; both constraints can otherwise block the same replacement flow in sequence.
 - A full-period sync must be verified by checking that active Clobe rows missing `external_transaction_id` decrease to zero; UI matched counts alone are not sufficient.
 
+## ERR-SETTLEMENT-BANK-BALANCE-AS-SPENDABLE-PROFIT@2026-08-05
+
+- **Symptom:** The finance dashboard showed the 4128 account balance and travel cash position without answering how much was earned or safely withdrawable, so customer advances could be mistaken for owner profit.
+- **Root cause:** Raw bank cashflow, settlement-confirmed margin, company operating expenses, tax reserve, financing, refunds, and unresolved classifications were not joined by one owner-facing invariant.
+- **Permanent rule:** Never label bank balance or open-booking net cash as profit. Safe withdrawal is capped by both protected-liquidity cash and classified after-tax earned profit, and any unknown supplier cost or unresolved cash blocks withdrawal.
+- **Required proof:** Reconcile provider balance, protected open-trip cash, settled travel profit, classified operating expenses, tax reserve, provisional company result, and safe withdrawal; verify the monthly profit chart contains settlement-confirmed bookings only.
+
 정산, ledger, 입금, 은행/SMS 매칭, 세무, 지급 흐름 반복 오류 상세.
 
 ## ERR-LEDGER-drift@2026-04-30

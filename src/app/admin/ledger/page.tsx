@@ -3,19 +3,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import useSWR from 'swr';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
-const AreaChart = dynamic(() => import('recharts').then(m => ({ default: m.AreaChart })), { ssr: false });
-const Area = dynamic(() => import('recharts').then(m => ({ default: m.Area })), { ssr: false });
+const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
+const Bar = dynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
 const XAxis = dynamic(() => import('recharts').then(m => ({ default: m.XAxis })), { ssr: false });
 const YAxis = dynamic(() => import('recharts').then(m => ({ default: m.YAxis })), { ssr: false });
 const CartesianGrid = dynamic(() => import('recharts').then(m => ({ default: m.CartesianGrid })), { ssr: false });
 const Tooltip = dynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
 const ResponsiveContainer = dynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
-const Legend = dynamic(() => import('recharts').then(m => ({ default: m.Legend })), { ssr: false });
 import {
-  TrendingUp, TrendingDown, Minus, Trash2, RotateCcw,
+  TrendingUp, TrendingDown, Trash2, RotateCcw,
   PlusCircle, AlertTriangle, Sparkles, X, CheckSquare, Square,
-  RefreshCw, Wallet, Banknote, ArrowDownCircle, ArrowUpCircle,
+  RefreshCw, Banknote, ArrowDownCircle, ArrowUpCircle, ShieldCheck,
+  FileText,
 } from 'lucide-react';
 import type { BankAccountRealitySummary } from '@/lib/bank-account-reality';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
@@ -45,13 +46,6 @@ interface CapitalEntry {
   amount:     number;
   note:       string | null;
   entry_date: string;
-}
-
-interface MonthlyPoint {
-  month:   string;
-  income:  number;
-  expense: number;
-  net:     number;
 }
 
 interface AnomalyItem {
@@ -105,34 +99,6 @@ function detectAnomalies(txs: BankTx[]): AnomalyItem[] {
   return result;
 }
 
-// ─── SVG 원형 게이지 ─────────────────────────────────────────────────────────
-
-function CapitalRing({ current, goal }: { current: number; goal: number }) {
-  const r = 42;
-  const circ = 2 * Math.PI * r;
-  const pct  = Math.min(1, current / goal);
-  const dash = pct * circ;
-
-  return (
-    <svg width={100} height={100} viewBox="0 0 100 100">
-      <circle cx={50} cy={50} r={r} fill="none" stroke="#e2e8f0" strokeWidth={10} />
-      <circle
-        cx={50} cy={50} r={r}
-        fill="none"
-        stroke={pct >= 1 ? '#10b981' : '#3b82f6'}
-        strokeWidth={10}
-        strokeDasharray={`${dash} ${circ}`}
-        strokeLinecap="round"
-        transform="rotate(-90 50 50)"
-        style={{ transition: 'stroke-dasharray 0.8s ease' }}
-      />
-      <text x={50} y={54} textAnchor="middle" fontSize={14} fontWeight="bold" fill="#334155">
-        {Math.round(pct * 100)}%
-      </text>
-    </svg>
-  );
-}
-
 // ─── 커스텀 Tooltip ───────────────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }: any) {
@@ -155,11 +121,10 @@ export default function LedgerPage() {
   type Tab = 'overview' | 'income' | 'expense' | 'trash';
 
   const [tab,        setTab]        = useState<Tab>('overview');
-  // 감사(2026-05-11 Phase 5-A'): 4 fetch Promise.all → 4 useSWR.
+  // 감사(2026-05-11 Phase 5-A'): fetch waterfall 대신 SWR 키별 병렬 로드.
   // 페이지 재진입 시 dedup, mutation 후 mutate() 로 단일 무효화.
   const [txs,        setTxs]        = useState<BankTx[]>([]);
   const [trashTxs,   setTrashTxs]   = useState<BankTx[]>([]);
-  const [chartData,  setChartData]  = useState<MonthlyPoint[]>([]);
   const [capital,    setCapital]    = useState<{ entries: CapitalEntry[]; total: number }>({ entries: [], total: 0 });
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
   const [undoInfo,   setUndoInfo]   = useState<{ ids: string[]; items: BankTx[]; countdown: number } | null>(null);
@@ -175,8 +140,6 @@ export default function LedgerPage() {
     useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=active&scope=all&source=clobe_mcp');
   const { data: trashData, mutate: mutateTrash } =
     useSWR<{ transactions: BankTx[] }>('/api/bank-transactions?status=excluded');
-  const { data: chartD, mutate: mutateChart } =
-    useSWR<{ chartData: MonthlyPoint[] }>('/api/bank-transactions?aggregate=monthly&months=12&scope=all&source=clobe_mcp');
   const { data: realityData, isLoading: realityLoading, mutate: mutateReality } =
     useSWR<{ summary: BankAccountRealitySummary }>('/api/bank-transactions/account-reality');
   const { data: capData, mutate: mutateCapital } =
@@ -191,37 +154,26 @@ export default function LedgerPage() {
     if (trashData?.transactions) setTrashTxs(trashData.transactions);
   }, [trashData]);
   useEffect(() => {
-    if (chartD?.chartData) setChartData(chartD.chartData);
-  }, [chartD]);
-  useEffect(() => {
     if (capData) setCapital({ entries: capData.entries || [], total: capData.total || 0 });
   }, [capData]);
 
-  // mutation 후 호출용 — 4개 키 일괄 무효화.
+  // mutation 후 호출용 — 관련 키 일괄 무효화.
   const loadAll = useCallback(() => {
     mutateTxs();
     mutateTrash();
     mutateCapital();
-    mutateChart();
     mutateReality();
-  }, [mutateTxs, mutateTrash, mutateCapital, mutateChart, mutateReality]);
+  }, [mutateTxs, mutateTrash, mutateCapital, mutateReality]);
 
   // ── KPI 계산 ───────────────────────────────────────────────────────────
   const totalIncome  = realityData?.summary.totalDeposits
     ?? txs.filter(t => t.transaction_type === '입금').reduce((s, t) => s + t.amount, 0);
   const totalExpense = realityData?.summary.totalWithdrawals
     ?? txs.filter(t => t.transaction_type === '출금').reduce((s, t) => s + t.amount, 0);
-  const totalRefund  = txs.filter(t => t.is_refund).reduce((s, t) => s + t.amount, 0);
   const actualBankBalance = realityData?.summary.actualBalance ?? totalIncome - totalExpense;
+  const profitErp = realityData?.summary.profitErp;
+  const profitChartData = profitErp?.monthly ?? [];
   const isAuthoritativeClobe = (tx: BankTx) => tx.source === 'clobe_mcp' || tx.external_provider === 'clobe';
-
-  // MoM 성장 (최근 2개월 순 현금흐름 비교)
-  let momPct = 0;
-  if (chartData.length >= 2) {
-    const last = chartData[chartData.length - 1];
-    const prev = chartData[chartData.length - 2];
-    if (prev.net !== 0) momPct = ((last.net - prev.net) / Math.abs(prev.net)) * 100;
-  }
 
   // ── 탭별 필터링 목록 ───────────────────────────────────────────────────
   const displayTxs = tab === 'income'
@@ -373,20 +325,22 @@ export default function LedgerPage() {
   const fmtDate = (s: string) => formatSettlementTimestamp(s);
 
   const CAPITAL_GOAL = 30_000_000;
-  const isAssetWarning = actualBankBalance < 0;
+  const isAssetWarning = actualBankBalance < 0 || (profitErp?.liquidityAvailableAfterReserves ?? 0) < 0;
 
   // ─── UI ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5 pb-20">
 
-      {/* ── 경고 배너 (가용 자산 마이너스) ──────────────────────────────────── */}
+      {/* ── 가용 현금 잠금 경고 ───────────────────────────────────────────── */}
       {!loading && isAssetWarning && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
           <p className="text-admin-base text-red-600 font-medium">
-            실제 통장 잔액이 부족합니다. 현재 <strong>{fmtW(actualBankBalance)}</strong> 상태입니다.
-            미지급 원가 또는 운영비 검토가 필요합니다.
+            실제 잔액은 <strong>{fmtW(actualBankBalance)}</strong>이지만 보호할 여행자금과 세금 적립 후
+            {profitErp?.liquidityShortfall
+              ? <> 최소 <strong>{fmtW(profitErp.liquidityShortfall)}</strong> 부족합니다. 지금 인출 가능한 돈은 0원입니다.</>
+              : <> 인출 가능한 여유 현금이 없습니다.</>}
           </p>
         </div>
       )}
@@ -394,8 +348,8 @@ export default function LedgerPage() {
       {/* ── 헤더 ──────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-admin-text-2">AI 재무 대시보드</h1>
-          <p className="text-admin-base text-admin-muted mt-0.5">Clobe 4128 계좌 전체 현금흐름 / 여행 정산 / 회사 경비 분리</p>
+          <h1 className="text-xl font-bold text-admin-text-2">수익 ERP</h1>
+          <p className="text-admin-base text-admin-muted mt-0.5">Clobe 신한 4128 · 여행자금, 회사손익, 인출 가능액을 분리한 현금 기준 대시보드</p>
         </div>
         <div className="flex gap-2">
           <button type="button"
@@ -414,87 +368,124 @@ export default function LedgerPage() {
         </div>
       </div>
 
-      {/* ── Hero KPI 카드 3개 ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-        {/* 실제 통장 잔액 */}
-        <div className={`rounded-admin-md p-5 ${
-          isAssetWarning ? 'bg-red-600' : 'bg-slate-900'
-        } text-white`}>
+      {/* ── Owner KPI ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Link href="/admin/payments" className={`rounded-admin-md p-5 text-white transition hover:-translate-y-0.5 ${
+          (profitErp?.safeToWithdraw ?? 0) > 0 ? 'bg-emerald-700' : 'bg-slate-900'
+        }`}>
           <div className="flex items-center gap-2 mb-1">
-            <Wallet className="w-4 h-4 opacity-70" />
-            <p className="text-xs font-medium opacity-80">실제 통장 잔액</p>
+            <ShieldCheck className="w-4 h-4 opacity-80" />
+            <p className="text-xs font-medium opacity-80">지금 써도 되는 돈</p>
           </div>
-          <p className="text-3xl font-extrabold tracking-tight mt-1">{fmtW(actualBankBalance)}</p>
-          <p className="text-xs opacity-60 mt-1.5">
-            {realityData?.summary.asOf ? `${fmtDate(realityData.summary.asOf)} 거래 후 잔액` : `입금 ${fmtW(totalIncome)} - 출금 ${fmtW(totalExpense)}`}
+          <p className="text-3xl font-extrabold tracking-tight mt-1">
+            {loading ? '—' : fmtW(profitErp?.safeToWithdraw ?? 0)}
+          </p>
+          <p className="text-xs opacity-65 mt-1.5">
+            {profitErp?.calculationStatus === 'blocked'
+              ? `보수적 잠금 · ${profitErp.blockers[0] ?? '확인 필요'}`
+              : '여행자금·세금·회사비용 보호 후'}
+          </p>
+        </Link>
+
+        <Link href="/admin/payments" className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 transition hover:border-emerald-300">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
+            <p className="text-xs text-admin-muted font-medium">여행 정산확정 이익</p>
+          </div>
+          <p className="text-2xl font-bold text-emerald-700 mt-1">{loading ? '—' : fmtW(profitErp?.confirmedTravelProfit ?? 0)}</p>
+          <p className="text-xs text-admin-muted mt-1">입금 - 출금 · 확정 예약 {profitErp?.confirmedBookingCount ?? 0}건만</p>
+        </Link>
+
+        <Link href="/admin/tax" className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 transition hover:border-blue-300">
+          <div className="flex items-center gap-2 mb-1">
+            <FileText className="w-4 h-4 text-blue-600" />
+            <p className="text-xs text-admin-muted font-medium">세금 적립 후 여행이익</p>
+          </div>
+          <p className="text-2xl font-bold text-blue-700 mt-1">{loading ? '—' : fmtW(profitErp?.afterTaxTravelProfit ?? 0)}</p>
+          <p className="text-xs text-admin-muted mt-1">보수적 세금 적립 {fmtW(profitErp?.estimatedTaxReserve ?? 0)} · 단순 10%</p>
+        </Link>
+
+        <Link href="/admin/payments" className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 transition hover:border-red-300">
+          <div className="flex items-center gap-2 mb-1">
+            {(profitErp?.provisionalOperatingCashResult ?? 0) >= 0
+              ? <TrendingUp className="w-4 h-4 text-emerald-600" />
+              : <TrendingDown className="w-4 h-4 text-red-500" />}
+            <p className="text-xs text-admin-muted font-medium">회사 운영비 반영 잠정손익</p>
+          </div>
+          <p className={`text-2xl font-bold mt-1 ${(profitErp?.provisionalOperatingCashResult ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+            {loading ? '—' : fmtW(profitErp?.provisionalOperatingCashResult ?? 0)}
+          </p>
+          <p className="text-xs text-admin-muted mt-1">확정 경비 {fmtW(profitErp?.classifiedOperatingExpense ?? 0)} · 분류 {profitErp?.classificationCoveragePercent ?? 0}%</p>
+        </Link>
+      </div>
+
+      {/* ── 통장 잔액 대사 ──────────────────────────────────────────────── */}
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between mb-4">
+          <div>
+            <h2 className="text-admin-lg font-semibold text-admin-text-2">통장잔액에서 인출 가능액까지</h2>
+            <p className="text-xs text-admin-muted mt-1">잔액 자체를 이익으로 보지 않고 보호자금과 누적손익을 함께 확인합니다.</p>
+          </div>
+          <p className="text-[11px] text-admin-muted-2">
+            {realityData?.summary.asOf ? `${fmtDate(realityData.summary.asOf)} 거래 후` : 'Clobe 최신 거래 기준'}
           </p>
         </div>
-
-        {/* 총 입금 */}
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <ArrowDownCircle className="w-4 h-4 text-emerald-500" />
-            <p className="text-xs text-admin-muted font-medium">총 입금액</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-admin-sm bg-admin-bg px-4 py-3">
+            <p className="text-[11px] text-admin-muted">실제 신한 4128 잔액</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-admin-text-2">{fmtW(actualBankBalance)}</p>
           </div>
-          <p className="text-2xl font-bold text-admin-text-2 mt-1">{fmtW(totalIncome)}</p>
-          {totalRefund > 0 && (
-            <p className="text-xs text-red-500 mt-1">환불 {fmtW(totalRefund)} 포함</p>
-          )}
-          <p className="text-xs text-admin-muted mt-0.5">{txs.filter(t => t.transaction_type === '입금').length}건</p>
-        </div>
-
-        {/* MoM 성장 */}
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
-          <div className="flex items-center gap-2 mb-1">
-            {momPct > 0
-              ? <TrendingUp className="w-4 h-4 text-emerald-500" />
-              : momPct < 0
-              ? <TrendingDown className="w-4 h-4 text-red-400" />
-              : <Minus className="w-4 h-4 text-admin-muted-2" />}
-            <p className="text-xs text-admin-muted font-medium">전월 대비 순 현금흐름</p>
+          <div className="rounded-admin-sm bg-blue-50 px-4 py-3">
+            <p className="text-[11px] text-blue-700">건드리면 안 되는 여행자금</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-blue-900">-{fmtW(profitErp?.protectedTravelCash ?? 0)}</p>
           </div>
-          <p className={`text-2xl font-bold mt-1 ${
-            momPct > 0 ? 'text-emerald-600' : momPct < 0 ? 'text-red-500' : 'text-admin-muted'
-          }`}>
-            {momPct > 0 ? '+' : ''}{momPct.toFixed(1)}%
-          </p>
-          <p className="text-xs text-admin-muted mt-0.5">총 출금 {fmtW(totalExpense)}</p>
+          <div className="rounded-admin-sm bg-amber-50 px-4 py-3">
+            <p className="text-[11px] text-amber-700">세금·미분류 입금 보호액</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-amber-900">
+              -{fmtW((profitErp?.estimatedTaxReserve ?? 0) + (profitErp?.protectedUnclassifiedInflows ?? 0))}
+            </p>
+          </div>
+          <div className={`rounded-admin-sm px-4 py-3 ${(profitErp?.liquidityAvailableAfterReserves ?? 0) >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+            <p className={`text-[11px] ${(profitErp?.liquidityAvailableAfterReserves ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>보호액 차감 후 현금</p>
+            <p className={`mt-1 text-lg font-bold tabular-nums ${(profitErp?.liquidityAvailableAfterReserves ?? 0) >= 0 ? 'text-emerald-900' : 'text-red-700'}`}>
+              {fmtW(profitErp?.liquidityAvailableAfterReserves ?? 0)}
+            </p>
+          </div>
         </div>
+        {profitErp && profitErp.blockers.length > 0 ? (
+          <p className="mt-3 text-xs text-red-600">인출 잠금 사유: {profitErp.blockers.join(' · ')}</p>
+        ) : null}
       </div>
 
       {/* ── 차트 + 자본금 카드 ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Recharts AreaChart */}
+        {/* 정산확정 여행이익 성장 */}
         <div className="lg:col-span-2 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
-          <h2 className="text-admin-lg font-semibold text-admin-text-2 mb-4">12개월 현금흐름 추이</h2>
-          {chartData.length === 0 ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
+            <div>
+              <h2 className="text-admin-lg font-semibold text-admin-text-2">월별 실제 번 여행이익</h2>
+              <p className="text-xs text-admin-muted mt-1">출발월 기준 · 정산확정 예약만 · 단순 세금 적립 10%</p>
+            </div>
+            <div className="flex gap-3 text-[11px] text-admin-muted">
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />정산확정</span>
+              <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-blue-500" />세금 적립 후</span>
+            </div>
+          </div>
+          {profitChartData.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-admin-muted text-admin-base">
               {loading ? '로딩 중...' : '데이터 없음'}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <BarChart data={profitChartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="#eef1f4" />
                 <XAxis dataKey="month" tickFormatter={m => m.slice(5)} tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={v => fmtW(v)} tick={{ fontSize: 10 }} width={60} />
                 <Tooltip content={<ChartTooltip />} />
-                <Legend formatter={v => v === 'income' ? '입금' : v === 'expense' ? '출금' : '순현금'} />
-                <Area type="monotone" dataKey="income"  name="income"  stroke="#3b82f6" fill="url(#gIncome)"  strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="expense" name="expense" stroke="#f97316" fill="url(#gExpense)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="net"     name="net"     stroke="#10b981" fill="none"           strokeWidth={2} dot={false} strokeDasharray="4 2" />
-              </AreaChart>
+                <Bar dataKey="confirmedTravelProfit" name="정산확정 이익" fill="#047857" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="afterTaxTravelProfit" name="세금 적립 후" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -511,15 +502,21 @@ export default function LedgerPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-4 mb-3">
-            <CapitalRing current={capital.total} goal={CAPITAL_GOAL} />
-            <div>
-              <p className="text-xl font-bold text-admin-text-2">{fmtW(capital.total)}</p>
-              <p className="text-xs text-admin-muted">관리 목표 {fmtW(CAPITAL_GOAL)}</p>
-              <p className="text-[10px] text-admin-muted-2 mt-0.5">통장 잔액에는 더하지 않음</p>
-              <p className="text-xs text-blue-600 mt-0.5 font-medium">
-                {Math.round(Math.min(100, (capital.total / CAPITAL_GOAL) * 100))}% 달성
+          <div className="mb-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xl font-bold text-admin-text-2">{fmtW(capital.total)}</p>
+                <p className="text-xs text-admin-muted mt-0.5">관리 목표 {fmtW(CAPITAL_GOAL)} · 통장잔액/수익에 더하지 않음</p>
+              </div>
+              <p className="text-xs text-blue-700 font-semibold">
+                {Math.round(Math.min(100, (capital.total / CAPITAL_GOAL) * 100))}%
               </p>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-admin-surface-2">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-[width] duration-500"
+                style={{ width: `${Math.min(100, (capital.total / CAPITAL_GOAL) * 100)}%` }}
+              />
             </div>
           </div>
 
