@@ -71,5 +71,7 @@ export async function GET(request: NextRequest) {
     skipped: body.skipped ?? 0,
     errors: body.errors ?? 0,
     normalizeErrors: Array.isArray(body.normalizeErrors) ? body.normalizeErrors.length : 0,
+    classificationRefresh: body.classificationRefresh ?? { processed: 0, review: 0 },
+    postCloseChanges: body.postCloseChanges ?? { checked: 0, changed: 0 },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

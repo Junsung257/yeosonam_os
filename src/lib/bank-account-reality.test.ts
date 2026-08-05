@@ -119,6 +119,7 @@ describe('bank account reality', () => {
       openCustomerFundsHeld: 140,
       openCompanyAdvanceOutstanding: 10,
       openCompanyPrefundingRequired: 90,
+      openKnownSupplierPayable: 0,
       openCashReserveRequired: 140,
       unallocatedTravelCount: 1,
       unallocatedTravelNet: 10,
@@ -186,15 +187,18 @@ describe('bank account reality', () => {
     expect(summary).toMatchObject({
       confirmedTravelProfit: 20,
       confirmedBookingCount: 1,
+      estimatedTaxLiability: 2,
       estimatedTaxReserve: 2,
       afterTaxTravelProfit: 18,
       classifiedOperatingIncome: 5,
       classifiedOperatingExpense: 25,
       provisionalOperatingCashResult: 0,
       provisionalAfterTaxOperatingCashResult: -2,
+      protectedCustomerFunds: 100,
+      unpaidSupplierCost: 0,
       protectedTravelCash: 100,
-      protectedUnclassifiedInflows: 30,
-      liquidityAvailableAfterReserves: 88,
+      protectedUnclassifiedInflows: 0,
+      liquidityAvailableAfterReserves: 118,
       earnedProfitAvailable: 0,
       safeToWithdraw: 0,
       classificationReviewCount: 1,
@@ -208,12 +212,114 @@ describe('bank account reality', () => {
     });
     expect(summary.blockers).toEqual(expect.arrayContaining([
       '원가 미입력 예약 1건',
-      '여행 외 분류대기 1건',
     ]));
     expect(summary.monthly.find(point => point.month === '2026-06')).toMatchObject({
       confirmedTravelProfit: 20,
       estimatedTaxReserve: 2,
       afterTaxTravelProfit: 18,
+    });
+  });
+
+  it('uses immutable settlement snapshots instead of silently recomputing closed profit', () => {
+    const transactions: BankAccountRealityRow[] = [
+      { id: 'in', transaction_type: '입금', amount: 150, received_at: '2026-07-01T09:00:00+09:00', settlement_scope: 'travel' },
+      { id: 'out', transaction_type: '출금', amount: 40, received_at: '2026-07-02T09:00:00+09:00', settlement_scope: 'travel' },
+    ];
+    const allocations = transactions.map(transaction => ({
+      bank_transaction_id: transaction.id as string,
+      booking_id: 'closed-booking',
+      allocated_amount: transaction.amount,
+    }));
+    const bookings = [{
+      id: 'closed-booking',
+      departure_date: '2026-07-15',
+      settlement_confirmed_at: '2026-08-01T00:00:00+09:00',
+    }];
+    const bankSummary = calculateBankAccountReality(transactions);
+    const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings });
+
+    const summary = calculateBankProfitErp({
+      bankSummary,
+      bookingCash,
+      transactions,
+      allocations,
+      bookings,
+      confirmedSettlementItems: [{
+        booking_id: 'closed-booking',
+        departure_date: '2026-07-15',
+        cash_margin: 60,
+      }],
+      referenceDate: '2026-08-03T10:30:15+09:00',
+    });
+
+    expect(summary.confirmedTravelProfit).toBe(60);
+    expect(summary.monthly.find(point => point.month === '2026-07')?.confirmedTravelProfit).toBe(60);
+  });
+
+  it('calculates safe cash from bank liquidity and earned profit using the smaller cap', () => {
+    const transactions: BankAccountRealityRow[] = [
+      { id: 'closed-in', transaction_type: '입금', amount: 1_000, received_at: '2026-07-01T09:00:00+09:00', settlement_scope: 'travel' },
+      { id: 'closed-out', transaction_type: '출금', amount: 600, received_at: '2026-07-02T09:00:00+09:00', settlement_scope: 'travel' },
+      { id: 'open-in', transaction_type: '입금', amount: 500, received_at: '2026-08-01T09:00:00+09:00', settlement_scope: 'travel' },
+      { transaction_type: '출금', amount: 50, received_at: '2026-08-02T09:00:00+09:00', settlement_scope: 'non_travel', resolved_classification: 'company_expense' },
+      { transaction_type: '입금', amount: 70, received_at: '2026-08-02T10:00:00+09:00', settlement_scope: 'non_travel', resolved_classification: 'review' },
+      { transaction_type: '출금', amount: 20, received_at: '2026-08-02T11:00:00+09:00', settlement_scope: 'non_travel', resolved_classification: 'tax' },
+    ];
+    const allocations = [
+      { bank_transaction_id: 'closed-in', booking_id: 'closed', allocated_amount: 1_000 },
+      { bank_transaction_id: 'closed-out', booking_id: 'closed', allocated_amount: 600 },
+      { bank_transaction_id: 'open-in', booking_id: 'open', allocated_amount: 500 },
+    ];
+    const bookings = [
+      { id: 'closed', departure_date: '2026-07-15', settlement_confirmed_at: '2026-08-01T00:00:00+09:00', total_cost: 600 },
+      { id: 'open', departure_date: '2026-09-15', total_cost: 300 },
+    ];
+    const bankSummary = calculateBankAccountReality(transactions);
+    const bookingCash = calculateBookingCashPositions({
+      transactions,
+      allocations,
+      bookings,
+      referenceDate: '2026-08-03T10:30:15+09:00',
+    });
+    const summary = calculateBankProfitErp({
+      bankSummary,
+      bookingCash,
+      transactions,
+      allocations,
+      bookings,
+      confirmedSettlementItems: [{ booking_id: 'closed', departure_date: '2026-07-15', cash_margin: 400 }],
+      referenceDate: '2026-08-03T10:30:15+09:00',
+    });
+
+    expect(summary).toMatchObject({
+      confirmedTravelProfit: 400,
+      estimatedTaxLiability: 40,
+      actualTaxPayments: 20,
+      estimatedTaxReserve: 20,
+      protectedCustomerFunds: 500,
+      unpaidSupplierCost: 300,
+      protectedTravelCash: 800,
+      protectedUnclassifiedInflows: 70,
+      liquidityAvailableAfterReserves: 10,
+      earnedProfitAvailable: 310,
+      safeToWithdraw: 10,
+      calculationStatus: 'clear',
+    });
+  });
+
+  it('counts open bookings with no bank allocation so missing supplier cost cannot disappear', () => {
+    const summary = calculateBookingCashPositions({
+      transactions: [],
+      allocations: [],
+      bookings: [{ id: 'not-paid', departure_date: '2026-09-01', total_price: 500, total_cost: null }],
+      referenceDate: '2026-08-03T10:30:15+09:00',
+    });
+
+    expect(summary.preDeparture).toMatchObject({
+      bookingCount: 1,
+      priceMissingCount: 0,
+      costMissingCount: 1,
+      knownCustomerReceivable: 500,
     });
   });
 });

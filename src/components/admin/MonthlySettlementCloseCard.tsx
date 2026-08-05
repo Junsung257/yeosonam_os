@@ -51,6 +51,7 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
   const previousMonth = previousCompletedKoreaMonth();
   const [month, setMonth] = useState(previousMonth);
   const [confirming, setConfirming] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const { data, error, isLoading, isValidating, mutate } = useSWR<PreviewResponse>(
     `/api/payments/monthly-settlement-close?month=${month}`,
@@ -61,15 +62,6 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
 
   const confirmClose = async () => {
     if (!preview || preview.eligible.length === 0 || confirming) return;
-    const accepted = window.confirm(
-      `${formatMonth(month)}까지 현금기준 정산을 확정합니다.\n\n`
-      + `확정 대상: ${summary?.eligibleCount ?? 0}건\n`
-      + `확정 여행수익: ${formatWon(summary?.eligibleProfit ?? 0)}\n`
-      + `계산: Clobe 입금 - Clobe 출금\n\n`
-      + `출금 초과·통장내역 없음 등 검토 ${summary?.reviewCount ?? 0}건은 확정하지 않습니다.`,
-    );
-    if (!accepted) return;
-
     setConfirming(true);
     setNotice(null);
     try {
@@ -93,6 +85,7 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
         ok: true,
         text: `${formatMonth(month)}까지 ${payload.result?.confirmed ?? 0}건, ${formatWon(payload.result?.confirmedProfit ?? 0)} 정산확정 완료`,
       });
+      setShowConfirm(false);
       onClosed();
     } catch (closeError) {
       setNotice({
@@ -105,6 +98,7 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
   };
 
   return (
+    <>
     <section className="rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs p-5" aria-labelledby="monthly-close-title">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
@@ -182,7 +176,7 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
             </div>
             <button
               type="button"
-              onClick={confirmClose}
+              onClick={() => setShowConfirm(true)}
               disabled={confirming || summary.eligibleCount === 0}
               className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-admin-base font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-admin-surface-2 disabled:text-admin-muted"
             >
@@ -237,5 +231,26 @@ export default function MonthlySettlementCloseCard({ onClosed }: { onClosed: () 
         </>
       )}
     </section>
+    {showConfirm && preview ? (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <button type="button" className="absolute inset-0 bg-slate-950/40" onClick={() => setShowConfirm(false)} aria-label="월 마감 확인 닫기" />
+        <section role="dialog" aria-modal="true" aria-labelledby="legacy-close-dialog-title" className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+          <h3 id="legacy-close-dialog-title" className="text-lg font-semibold text-slate-950">{formatMonth(month)} 현금기준 정산 확정</h3>
+          <p className="mt-1 text-xs text-slate-600">Clobe 입금 - 출금 기준으로 확정하며, 검토 항목은 확정하지 않습니다.</p>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">확정 예약</span><strong className="block text-lg">{summary?.eligibleCount ?? 0}건</strong></div>
+            <div className="rounded-lg bg-emerald-50 p-3"><span className="text-xs text-emerald-700">확정 여행수익</span><strong className="block text-lg text-emerald-900">{formatWon(summary?.eligibleProfit ?? 0)}</strong></div>
+            <div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">입금</span><strong className="block">{formatWon(summary?.eligibleDeposits ?? 0)}</strong></div>
+            <div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">출금</span><strong className="block">{formatWon(summary?.eligibleWithdrawals ?? 0)}</strong></div>
+          </div>
+          {(summary?.reviewCount ?? 0) > 0 ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">검토 {summary?.reviewCount}건은 제외됩니다. 새 정산센터의 월 마감 탭에서 조건부 마감할 수 있습니다.</p> : null}
+          <div className="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4">
+            <button type="button" onClick={() => setShowConfirm(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">취소</button>
+            <button type="button" onClick={confirmClose} disabled={confirming} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{confirming ? '확정 중' : '정산 확정'}</button>
+          </div>
+        </section>
+      </div>
+    ) : null}
+    </>
   );
 }
