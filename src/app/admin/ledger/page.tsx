@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { BankAccountRealitySummary } from '@/lib/bank-account-reality';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
+import MonthlySettlementCloseCard from '@/components/admin/MonthlySettlementCloseCard';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -456,6 +457,8 @@ export default function LedgerPage() {
           <p className="mt-3 text-xs text-red-600">인출 잠금 사유: {profitErp.blockers.join(' · ')}</p>
         ) : null}
       </div>
+
+      <MonthlySettlementCloseCard onClosed={loadAll} />
 
       {/* ── 차트 + 자본금 카드 ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

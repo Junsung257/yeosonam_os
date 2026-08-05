@@ -25,6 +25,7 @@ const guardedInternalRoutes = [
   'src/app/api/payments/export/route.ts',
   'src/app/api/payments/match-confirm/route.ts',
   'src/app/api/payments/match-intent/route.ts',
+  'src/app/api/payments/monthly-settlement-close/route.ts',
   'src/app/api/payments/operator-alias/route.ts',
   'src/app/api/payments/settlement-bundle/route.ts',
   'src/app/api/payments/settlement-confirm/route.ts',
