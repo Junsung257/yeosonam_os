@@ -13,7 +13,7 @@ export interface SettlementAccountingSummary {
   totalPaidOut: number;
   receivable: number;
   payable: number;
-  cashProfit: number;
+  cashPosition: number;
   grossProfit: number;
   taxEstimate: number;
   netProfit: number;
@@ -39,7 +39,7 @@ export function calcSettlementAccounting(input: SettlementAccountingInput): Sett
     totalPaidOut,
     receivable: Math.max(0, totalPrice - paidAmount),
     payable: Math.max(0, totalCost - totalPaidOut),
-    cashProfit: paidAmount - totalPaidOut,
+    cashPosition: paidAmount - totalPaidOut,
     grossProfit,
     taxEstimate,
     netProfit: grossProfit - taxEstimate,

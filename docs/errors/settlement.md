@@ -1,6 +1,13 @@
 # Settlement and Ledger Errors
 
-Last updated: 2026-08-03
+Last updated: 2026-08-05
+
+## ERR-SETTLEMENT-CASH-POSITION-AS-PROFIT@2026-08-05
+
+- **Symptom:** Matched booking rows labeled `customer deposits - supplier payouts` as realized profit, including future trips holding customer funds and bookings funded in advance by the company.
+- **Root cause:** The shared accounting result named the cash difference `cashProfit`, allowing presentation code to treat a reconciled cash position as earned profit.
+- **Permanent rule:** Name this value `cashPosition` throughout code and label it `현금 순포지션`. Only a booking with `settlement_confirmed_at` may contribute to settlement-confirmed profit.
+- **Required proof:** A future booking with a deposit, a company-prefunded booking, and a settled booking all show cash position in transaction rows; only the settled booking contributes to the separate confirmed-profit KPI.
 
 ## ERR-SETTLEMENT-BOOKING-DRAWER-API-ENVELOPE@2026-08-03
 
