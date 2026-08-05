@@ -12,7 +12,7 @@ import FinanceBookingsTable from '@/components/admin/finance/FinanceBookingsTabl
 import FinanceClassifications from '@/components/admin/finance/FinanceClassifications';
 import FinanceCenterHome from '@/components/admin/finance/FinanceCenterHome';
 import FinancePeriods from '@/components/admin/finance/FinancePeriods';
-import PaymentsPage from '@/app/admin/payments/page';
+import FinanceTransactionReview from '@/components/admin/finance/FinanceTransactionReview';
 import TaxPage from '@/app/admin/tax/page';
 
 export const dynamic = 'force-dynamic';
@@ -78,7 +78,7 @@ export default async function FinanceCenterPage({
       </nav>
 
       {activeTab === 'home' ? <FinanceCenterHome /> : null}
-      {activeTab === 'review' ? <PaymentsPage /> : null}
+      {activeTab === 'review' ? <FinanceTransactionReview /> : null}
       {activeTab === 'bookings' ? <FinanceBookingsTable /> : null}
       {activeTab === 'periods' ? <FinancePeriods /> : null}
       {activeTab === 'expenses' ? <FinanceClassifications /> : null}
