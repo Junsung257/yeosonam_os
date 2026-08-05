@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   calculateBankAccountReality,
+  calculateBankProfitErp,
   calculateBookingCashPositions,
+  classifyNonTravelProfitRow,
   needsNonTravelMemoReview,
   type BankAccountRealityRow,
 } from './bank-account-reality';
@@ -117,10 +119,101 @@ describe('bank account reality', () => {
       openCustomerFundsHeld: 140,
       openCompanyAdvanceOutstanding: 10,
       openCompanyPrefundingRequired: 90,
+      openCashReserveRequired: 140,
       unallocatedTravelCount: 1,
       unallocatedTravelNet: 10,
       travelCashNet: 160,
       reconciliationDifference: 0,
+    });
+  });
+
+  it('keeps refunds and financing out of company profit classification', () => {
+    const row = (overrides: Partial<BankAccountRealityRow>): BankAccountRealityRow => ({
+      transaction_type: '입금',
+      amount: 1_000,
+      received_at: '2026-08-01T00:00:00+09:00',
+      settlement_scope: 'non_travel',
+      ...overrides,
+    });
+
+    expect(classifyNonTravelProfitRow(row({ memo: '자본금', provider_is_unclassified: true }))).toBe('financing');
+    expect(classifyNonTravelProfitRow(row({ memo: '취소환불', provider_category: '매출' }))).toBe('pass_through');
+    expect(classifyNonTravelProfitRow(row({ provider_category: '이자수익' }))).toBe('operating_income');
+    expect(classifyNonTravelProfitRow(row({ transaction_type: '출금', provider_category: '지급수수료' }))).toBe('operating_expense');
+    expect(classifyNonTravelProfitRow(row({ provider_category: '계정 없는 입금', provider_is_unclassified: true }))).toBe('review');
+  });
+
+  it('caps withdrawable cash by both protected trip money and earned after-tax profit', () => {
+    const travelTransactions: BankAccountRealityRow[] = [
+      { id: 'open-in', transaction_type: '입금', amount: 100, received_at: '2026-07-01T09:00:00+09:00', settlement_scope: 'travel' },
+      { id: 'settled-in', transaction_type: '입금', amount: 100, received_at: '2026-05-02T09:00:00+09:00', settlement_scope: 'travel' },
+      { id: 'settled-out', transaction_type: '출금', amount: 80, received_at: '2026-05-01T09:00:00+09:00', settlement_scope: 'travel' },
+    ];
+    const nonTravelTransactions: BankAccountRealityRow[] = [
+      { transaction_type: '입금', amount: 5, received_at: '2026-07-03T09:00:00+09:00', settlement_scope: 'non_travel', provider_category: '이자수익' },
+      { transaction_type: '출금', amount: 25, received_at: '2026-07-04T09:00:00+09:00', settlement_scope: 'non_travel', provider_category: '지급수수료' },
+      { transaction_type: '입금', amount: 100, received_at: '2026-07-05T09:00:00+09:00', settlement_scope: 'non_travel', memo: '자본금', provider_is_unclassified: true },
+      { transaction_type: '입금', amount: 30, received_at: '2026-07-06T09:00:00+09:00', settlement_scope: 'non_travel', memo: '취소환불' },
+      { transaction_type: '출금', amount: 10, received_at: '2026-07-07T09:00:00+09:00', settlement_scope: 'non_travel', provider_is_unclassified: true },
+    ];
+    const transactions = [...travelTransactions, ...nonTravelTransactions];
+    const allocations = travelTransactions.map(transaction => ({
+      bank_transaction_id: transaction.id as string,
+      booking_id: transaction.id?.startsWith('open') ? 'open' : 'settled',
+      allocated_amount: transaction.amount,
+    }));
+    const bookings = [
+      { id: 'open', departure_date: '2026-09-01' },
+      { id: 'settled', departure_date: '2026-06-01', settlement_confirmed_at: '2026-06-10T00:00:00+09:00' },
+    ];
+    const bankSummary = calculateBankAccountReality(transactions);
+    const bookingCash = calculateBookingCashPositions({
+      transactions,
+      allocations,
+      bookings,
+      referenceDate: '2026-08-03T10:30:15+09:00',
+    });
+
+    const summary = calculateBankProfitErp({
+      bankSummary,
+      bookingCash,
+      transactions,
+      allocations,
+      bookings,
+      referenceDate: '2026-08-03T10:30:15+09:00',
+    });
+
+    expect(summary).toMatchObject({
+      confirmedTravelProfit: 20,
+      confirmedBookingCount: 1,
+      estimatedTaxReserve: 2,
+      afterTaxTravelProfit: 18,
+      classifiedOperatingIncome: 5,
+      classifiedOperatingExpense: 25,
+      provisionalOperatingCashResult: 0,
+      provisionalAfterTaxOperatingCashResult: -2,
+      protectedTravelCash: 100,
+      protectedUnclassifiedInflows: 30,
+      liquidityAvailableAfterReserves: 88,
+      earnedProfitAvailable: 0,
+      safeToWithdraw: 0,
+      classificationReviewCount: 1,
+      classificationReviewGross: 10,
+      classificationReviewNet: -10,
+      financingCount: 1,
+      financingNet: 100,
+      passThroughCount: 1,
+      passThroughNet: 30,
+      calculationStatus: 'blocked',
+    });
+    expect(summary.blockers).toEqual(expect.arrayContaining([
+      '원가 미입력 예약 1건',
+      '여행 외 분류대기 1건',
+    ]));
+    expect(summary.monthly.find(point => point.month === '2026-06')).toMatchObject({
+      confirmedTravelProfit: 20,
+      estimatedTaxReserve: 2,
+      afterTaxTravelProfit: 18,
     });
   });
 });
