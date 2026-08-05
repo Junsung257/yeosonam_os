@@ -37,6 +37,15 @@ describe('middleware cron resource saver', () => {
     });
   });
 
+  it('lets the Clobe bank sync reach its route-local cron bearer guard', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/cron/clobe-bank-sync',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('returns a hard noindex tombstone for archived blog slugs', async () => {
     const response = await middleware(new NextRequest(
       'https://www.yeosonam.com/blog/july-family-travel-weather-clothes-checklist-2026',

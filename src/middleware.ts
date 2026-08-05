@@ -141,6 +141,7 @@ const PUBLIC_EXACT = new Set([
   // ISR 캐시 무효화
   '/api/revalidate',
   // 크론 (서버-to-서버)
+  '/api/cron/clobe-bank-sync',
   '/api/cron/meta-optimize',
   '/api/cron/visual-baseline-monitor',
   '/api/cron/journey-scheduler',
