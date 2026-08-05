@@ -54,8 +54,8 @@ export default async function FinanceCenterPage({
         </div>
       </header>
 
-      <nav aria-label="정산센터 메뉴" className="overflow-x-auto rounded-admin-md border border-admin-border-mid bg-admin-surface p-1 shadow-admin-xs">
-        <div className="flex min-w-max gap-1">
+      <nav aria-label="정산센터 메뉴" className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-1 shadow-admin-xs">
+        <div className="grid grid-cols-3 gap-1 sm:flex sm:min-w-max">
           {TABS.map(tab => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
@@ -64,7 +64,7 @@ export default async function FinanceCenterPage({
                 key={tab.id}
                 href={`/admin/finance?tab=${tab.id}`}
                 aria-current={selected ? 'page' : undefined}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors ${
+                className={`inline-flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-xs font-medium transition-colors sm:gap-2 sm:px-3.5 sm:text-sm ${
                   selected
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-admin-muted hover:bg-admin-bg hover:text-admin-text-2'
@@ -84,7 +84,8 @@ export default async function FinanceCenterPage({
       {activeTab === 'expenses' ? <FinanceClassifications /> : null}
       {activeTab === 'tax' ? (
         <div className="space-y-4">
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col gap-3 rounded-admin-md border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-950 sm:flex-row sm:items-center sm:justify-between">
+            <p><strong>수치 기준 안내</strong> 아래 예상 수익은 예약 판매가와 예정 원가 기준입니다. 실제 확정 수익은 정산 홈·월 마감의 Clobe 현금 마진을 기준으로 확인합니다.</p>
             <Link href="/admin/invoice" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-xs font-semibold text-admin-text-2 hover:bg-admin-bg">증빙 파일 파싱</Link>
           </div>
           <TaxPage />

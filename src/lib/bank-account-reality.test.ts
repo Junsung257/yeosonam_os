@@ -5,6 +5,7 @@ import {
   calculateBankProfitErp,
   calculateBookingCashPositions,
   classifyNonTravelProfitRow,
+  countTravelMemoOrAllocationActions,
   needsNonTravelMemoReview,
   type BankAccountRealityRow,
 } from './bank-account-reality';
@@ -54,6 +55,24 @@ describe('bank account reality', () => {
     expect(needsNonTravelMemoReview(row('260505_서진혜-더투어'))).toBe(true);
     expect(needsNonTravelMemoReview(row('메타 광고'))).toBe(false);
     expect(needsNonTravelMemoReview(row('기타', true))).toBe(true);
+  });
+
+  it('counts each travel transaction needing memo or allocation review once', () => {
+    const transactions: BankAccountRealityRow[] = [
+      { id: 'review-full', transaction_type: '입금', amount: 100, received_at: '2026-08-01', settlement_scope: 'travel', match_status: 'review' },
+      { id: 'auto-full', transaction_type: '입금', amount: 200, received_at: '2026-08-01', settlement_scope: 'travel', match_status: 'auto' },
+      { id: 'review-short', transaction_type: '출금', amount: 300, received_at: '2026-08-01', settlement_scope: 'travel', match_status: 'review' },
+      { id: 'auto-short', transaction_type: '출금', amount: 400, received_at: '2026-08-01', settlement_scope: 'travel', match_status: 'matched' },
+      { id: 'company-review', transaction_type: '출금', amount: 500, received_at: '2026-08-01', settlement_scope: 'non_travel', match_status: 'review' },
+    ];
+    const allocations = [
+      { bank_transaction_id: 'review-full', booking_id: 'a', allocated_amount: 100 },
+      { bank_transaction_id: 'auto-full', booking_id: 'b', allocated_amount: 200 },
+      { bank_transaction_id: 'review-short', booking_id: 'c', allocated_amount: 200 },
+      { bank_transaction_id: 'auto-short', booking_id: 'd', allocated_amount: 399 },
+    ];
+
+    expect(countTravelMemoOrAllocationActions({ transactions, allocations })).toBe(3);
   });
 
   it('separates held customer cash, company prefunding, pending settlement, and settled profit', () => {

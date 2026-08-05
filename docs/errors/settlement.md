@@ -2,6 +2,20 @@
 
 Last updated: 2026-08-05
 
+## ERR-SETTLEMENT-REVIEW-QUEUE-FALSE-ZERO@2026-08-05
+
+- **Symptom:** The transaction-review tab showed one fully allocated Clobe memo-change warning while the finance home showed `여행 메모·배분 오류 0건`.
+- **Root cause:** The home action count checked allocation remainder only and ignored `bank_transactions.match_status`. It also added over-allocation to a count that already included it, allowing future double counting.
+- **Permanent rule:** Count source transactions requiring attention by the union of review statuses and allocation mismatch, never by adding overlapping counters.
+- **Required proof:** A fully allocated `review` row counts once, a reviewed under-allocation still counts once, a fully allocated confirmed row counts zero, and non-travel rows do not enter the travel action count.
+
+## ERR-SETTLEMENT-EXCEPTION-AUDIT-FIELDS-ERASED@2026-08-05
+
+- **Symptom:** Resolving a monthly settlement exception removed its assignee, reason, and due date from the permanent record.
+- **Root cause:** The PATCH route converted omitted request fields to `null` instead of distinguishing “not supplied” from “clear this field”. Completed-month preview exceptions also remained transient until an operator performed a new conditional close.
+- **Permanent rule:** Exception updates are patch semantics. Preserve responsibility fields unless explicitly supplied, and materialize completed-month financial exceptions after authoritative Clobe sync. Auto-resolve system-created rows with audit evidence; never delete them.
+- **Required proof:** A status-only resolution retains responsibility fields, all completed-month no-evidence/drift/zero/negative rows appear in the persistent queue, and a repaired automatic exception moves to resolved without disappearing from history.
+
 ## ERR-SETTLEMENT-CLOSE-SILENT-REWRITE@2026-08-05
 
 - **Symptom:** Booking-level confirmation existed, but there was no locked month snapshot. A later Clobe memo or allocation change could alter the displayed confirmed margin without a visible month-level exception.

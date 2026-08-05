@@ -78,19 +78,38 @@ function Dialog({
   children: React.ReactNode;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-slate-950/40" onClick={onClose} aria-label="대화상자 닫기" />
-      <section role="dialog" aria-modal="true" aria-labelledby="finance-dialog-title" aria-describedby="finance-dialog-description" className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <button type="button" tabIndex={-1} className="absolute inset-0 bg-slate-950/40" onClick={onClose} aria-label="대화상자 닫기" />
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="finance-dialog-title" aria-describedby="finance-dialog-description" className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div><h3 id="finance-dialog-title" className="text-lg font-semibold text-slate-950">{title}</h3><p id="finance-dialog-description" className="mt-1 text-xs leading-5 text-slate-600">{description}</p></div>
           <button ref={closeRef} type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="닫기"><X className="h-4 w-4" /></button>
@@ -234,7 +253,7 @@ export default function FinancePeriods() {
 
           {preview?.review.length ? <details className="rounded-admin-md border border-amber-200 bg-amber-50/50 p-4"><summary className="cursor-pointer text-sm font-semibold text-amber-900"><span className="inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> 이번 달 예외 {preview.review.length}건</span></summary><div className="mt-3 overflow-x-auto"><table className="min-w-full text-xs"><thead><tr className="border-b border-amber-200 text-left text-amber-800"><th className="py-2 pr-4">예약</th><th className="py-2 pr-4">입금</th><th className="py-2 pr-4">출금</th><th className="py-2 pr-4">차액</th><th className="py-2">이유</th></tr></thead><tbody>{preview.review.map(row => <tr key={row.bookingId} className="border-b border-amber-100 last:border-0"><td className="py-2 pr-4 font-semibold">{row.bookingNo}</td><td className="py-2 pr-4">{won(row.deposits)}</td><td className="py-2 pr-4">{won(row.withdrawals)}</td><td className={`py-2 pr-4 font-semibold ${row.cashNet < 0 ? 'text-red-700' : ''}`}>{won(row.cashNet)}</td><td className="py-2">{row.reason ? REASON_LABELS[row.reason] : '확인 필요'}</td></tr>)}</tbody></table></div></details> : null}
 
-          {preview?.priorOmissions.length ? <details className="rounded-admin-md border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-800">과거 누락 {preview.priorOmissions.length}건 · 이번 달 마감에는 포함되지 않음</summary><div className="mt-3 grid gap-2 sm:grid-cols-2">{preview.priorOmissions.map(row => <div key={row.bookingId} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><strong>{row.departureDate} · {row.bookingNo}</strong><span className="mt-1 block text-slate-600">입금 {won(row.deposits)} - 출금 {won(row.withdrawals)} = {won(row.cashNet)}</span></div>)}</div></details> : null}
+          {preview?.priorOmissions.length ? <details className="rounded-admin-md border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-800">과거 누락 {preview.priorOmissions.length}건 · 이번 달 마감에는 포함되지 않음</summary><div className="mt-3 grid gap-2 sm:grid-cols-2">{preview.priorOmissions.map(row => <button type="button" key={row.bookingId} onClick={() => { setMonth(row.departureDate.slice(0, 7)); setNotice(null); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400 hover:bg-slate-50"><strong>{row.departureDate} · {row.bookingNo}</strong><span className="mt-1 block text-slate-600">입금 {won(row.deposits)} - 출금 {won(row.withdrawals)} = {won(row.cashNet)}</span><span className="mt-1 block font-semibold text-emerald-700">해당 출발 월 열기</span></button>)}</div></details> : null}
         </>
       )}
 

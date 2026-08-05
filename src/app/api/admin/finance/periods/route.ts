@@ -8,18 +8,15 @@ import {
   loadFinanceCenterSummary,
   loadMonthlySettlementPreview,
 } from '@/lib/finance-center-service';
-import { assertCompletedSettlementMonth, type MonthlyCloseReviewReason } from '@/lib/monthly-settlement-close';
+import { buildSettlementExceptionUpdate } from '@/lib/finance-settlement-exceptions';
+import {
+  assertCompletedSettlementMonth,
+  MONTHLY_CLOSE_REASON_TO_EXCEPTION,
+} from '@/lib/monthly-settlement-close';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const REASON_TO_EXCEPTION: Record<MonthlyCloseReviewReason, string> = {
-  no_bank_evidence: 'no_bank_evidence',
-  allocation_drift: 'allocation_drift',
-  zero_cash_margin: 'zero_margin',
-  negative_cash_margin: 'negative_margin',
-};
 
 function readMonth(value: unknown): string {
   if (typeof value !== 'string') throw new Error('마감할 출발 월을 선택해주세요.');
@@ -162,7 +159,7 @@ export async function POST(request: NextRequest) {
     const exceptions = closeStatus === 'conditional'
       ? preview.review.map(row => ({
         booking_id: row.bookingId,
-        exception_type: REASON_TO_EXCEPTION[row.reason ?? 'no_bank_evidence'],
+        exception_type: MONTHLY_CLOSE_REASON_TO_EXCEPTION[row.reason ?? 'no_bank_evidence'],
         assigned_to: exceptionOwner,
         reason: exceptionReason,
         due_date: exceptionDueDate,
@@ -233,24 +230,14 @@ export async function PATCH(request: NextRequest) {
 
     const exceptionId = typeof body.exceptionId === 'string' ? body.exceptionId : '';
     if (!exceptionId) return NextResponse.json({ error: '처리할 예외를 선택해주세요.' }, { status: 400 });
-    const status = body.status === 'resolved' || body.status === 'waived' ? body.status : 'open';
     const context = getAdminContext(request);
-    const update: Record<string, unknown> = {
-      status,
-      assigned_to: typeof body.assignedTo === 'string' ? body.assignedTo.trim() || null : null,
-      reason: typeof body.reason === 'string' ? body.reason.trim() || null : null,
-      due_date: typeof body.dueDate === 'string' && body.dueDate ? body.dueDate : null,
-    };
-    if (status !== 'open') {
-      update.resolved_at = new Date().toISOString();
-      update.resolved_by = context.actor;
-    }
+    const update = buildSettlementExceptionUpdate(body, context.actor);
     const { error } = await supabaseAdmin
       .from('settlement_period_exceptions')
       .update(update)
       .eq('id', exceptionId);
     if (error) throw error;
-    return NextResponse.json({ success: true, exceptionId, status });
+    return NextResponse.json({ success: true, exceptionId, status: update.status });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '정산 예외를 저장하지 못했습니다.' },

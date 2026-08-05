@@ -14,6 +14,7 @@ export interface BankAccountRealityRow {
   counterparty_name?: string | null;
   provider_category?: string | null;
   provider_is_unclassified?: boolean | null;
+  match_status?: string | null;
   resolved_classification?:
     | 'company_expense'
     | 'tax'
@@ -323,6 +324,32 @@ export function calculateBookingCashPositions(params: {
     travelCashNet,
     reconciliationDifference: travelCashNet - allocatedCashNet - unallocatedTravelNet,
   };
+}
+
+const TRAVEL_ACTION_STATUSES = new Set(['review', 'unmatched', 'error']);
+
+/**
+ * Counts transaction rows that need an operator's attention. A row is counted
+ * once even when it has both a review status and an allocation mismatch.
+ */
+export function countTravelMemoOrAllocationActions(params: {
+  transactions: BankAccountRealityRow[];
+  allocations: BookingCashAllocationRow[];
+}): number {
+  const allocatedByTransaction = new Map<string, number>();
+  for (const allocation of params.allocations) {
+    allocatedByTransaction.set(
+      allocation.bank_transaction_id,
+      (allocatedByTransaction.get(allocation.bank_transaction_id) ?? 0) + money(allocation.allocated_amount),
+    );
+  }
+
+  return params.transactions.filter(transaction => {
+    if (!transaction.id || transaction.settlement_scope !== 'travel' || money(transaction.amount) <= 0) return false;
+    const needsStatusReview = TRAVEL_ACTION_STATUSES.has(transaction.match_status ?? '');
+    const hasAllocationMismatch = (allocatedByTransaction.get(transaction.id) ?? 0) !== money(transaction.amount);
+    return needsStatusReview || hasAllocationMismatch;
+  }).length;
 }
 
 const OPERATING_INCOME_CATEGORIES = new Set([
