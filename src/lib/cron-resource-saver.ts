@@ -4,6 +4,9 @@ import { apiResponse } from '@/lib/api-response';
 const OFF_VALUES = new Set(['0', 'false', 'off', 'disabled', 'no']);
 const ON_VALUES = new Set(['1', 'true', 'on', 'enabled', 'yes']);
 const PRODUCT_CRON_ALLOW_VALUES = new Set(['product', 'product-crons', 'product_crons']);
+const ESSENTIAL_CRONS = new Set([
+  'clobe-bank-sync',
+]);
 const CRITICAL_CRONS = new Set([
   'blog-publisher',
   'blog-scheduler',
@@ -86,6 +89,7 @@ const RESOURCE_SAVER_ALLOWED_CRONS = new Set([
 ]);
 
 export function maybeSkipCronForResourceSaver(request: NextRequest, cronName: string): Response | null {
+  if (ESSENTIAL_CRONS.has(cronName)) return null;
   if (CRITICAL_CRONS.has(cronName) && isDbResourceSaverCriticalCronAllowlistEnabled()) return null;
   if (RESOURCE_SAVER_ALLOWED_CRONS.has(cronName) && isDbResourceSaverProductCronAllowlistEnabled()) return null;
   return maybeSkipNonCriticalCron(request, cronName);
