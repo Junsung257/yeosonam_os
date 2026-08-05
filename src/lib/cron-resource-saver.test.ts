@@ -73,6 +73,17 @@ describe('cron resource saver', () => {
     expect(maybeSkipCronForResourceSaver(cronRequest(), 'entity-resolution')).toBeNull();
   });
 
+  it('always runs the daily Clobe bank SSOT sync during resource saver mode', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+
+    expect(
+      maybeSkipCronForResourceSaver(
+        cronRequest('https://www.yeosonam.com/api/cron/clobe-bank-sync'),
+        'clobe-bank-sync',
+      ),
+    ).toBeNull();
+  });
+
   it('keeps heavy product enrichment crons closed even when product crons are allowed', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
     vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS', '1');
