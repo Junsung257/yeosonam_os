@@ -2,7 +2,7 @@
 
 Date: 2026-08-06 KST
 
-Status: production schema and application deployed; authenticated Chrome verification pending browser-extension tab control.
+Status: production schema and application deployed; authenticated Chrome, database reconciliation, and runtime verification complete.
 
 This file is historical evidence. Current operating rules remain in `docs/settlement-current-ssot.md`.
 
@@ -17,6 +17,9 @@ This file is historical evidence. Current operating rules remain in `docs/settle
 - Production index replay migration: `finance_review_reviewer_index_replay`
 - Allocation-conservation pull request: `#1075`
 - Production allocation migration: `finance_non_travel_allocation_conservation`
+- Final tax hydration pull request: `#1079`
+- Final production application commit: `9cd76c4bc4c43df2a6947878da1f98e362b7cc63`
+- Final Vercel production deployment: `dpl_5bTazi5aJ7nTLogTRWo7ZmCzmDr7`
 
 ## Implemented Controls
 
@@ -80,25 +83,26 @@ Migration `finance_non_travel_allocation_conservation` closed that gap by adding
 
 ## Automated Verification
 
-- Production build passed for all 387 pages and API routes.
-- Test suite passed: 648 files and 5,016 tests.
+- Production build passed for all pages and API routes.
+- Final test suite passed: 649 files and 5,025 tests.
 - TypeScript, ESLint, migration safety, dependency, security, bundle, visual-regression, and readiness checks passed.
 - The migration compiled from a clean production-schema dump before production application.
 - Post-DDL Supabase security advisors reported no finance-related findings.
 - Post-DDL performance advisors found one missing reviewer foreign-key index. It was created concurrently and verified valid on production before the replay-safe migration `20260806041405_finance_review_reviewer_index_replay.sql` was recorded.
 - Newly deployed settlement-period unused-index notices are expected until production query history accumulates.
 
-## Manual Browser Checklist
+## Final Production Verification
 
-The logged-in Chrome tab was discovered, but extension control of that existing tab did not complete. The extension, native host, selected profile, and Chrome process checks all passed. Complete the following before marking this audit final:
+Authenticated Chrome verification completed against `www.yeosonam.com` after the final production alias switched to deployment `dpl_5bTazi5aJ7nTLogTRWo7ZmCzmDr7`.
 
-- Finance home totals and drill-downs
-- Clobe sync and memo-change counts
-- Booking detail drawers for BK-0017, BK-0124, and BK-0126
-- BK-0080 through BK-0090 absence from normal finance and tax views
-- BK-0109 and BK-0110 pending owner-classification state
-- June and July revalidation close flow
-- Company expense memo and 500 KRW bank-fee display
-- Tax common-ledger values and cancellation/test exclusions
-- Legacy route compatibility for payments, ledger, and tax
-- Console, network, runtime, mobile 390 px, and desktop 1440 px checks
+- Finance home showed bank balance 16,571,884 KRW, OS balance 16,571,884 KRW, and difference 0 KRW.
+- Transaction review showed 465 active Clobe rows, deposits 156,956,220 KRW, withdrawals 140,384,336 KRW, unallocated travel transactions 0, and one review-only memo candidate.
+- Booking settlement showed 78 real pending reviews. BK-0017, BK-0124, BK-0109, BK-0110, BK-0131, and BK-0133 displayed the expected pending values without automatic confirmation.
+- July close showed 16 pending owner reviews. Six legacy periods and 48 immutable legacy items remain marked for revalidation.
+- Company expenses showed 190 rows, 34 unclassified rows, and dedicated Clobe memo values.
+- Tax evidence defaulted to the KST month `2026-08`; the browser/server hydration mismatch no longer occurs.
+- BK-0080 through BK-0090 were absent from normal finance and tax views. Production SQL confirmed 11 quarantined rows and zero finance-visible test rows.
+- Legacy routes redirect as intended: `/admin/payments` to transaction review, `/admin/ledger` to finance home, and `/admin/tax` to tax evidence.
+- Browser console warnings/errors were zero across finance home, review, bookings, periods, expenses, tax, and legacy-route navigation.
+- Vercel reported no `/admin/finance` or `/api/admin/finance` runtime errors in the final verification window.
+- Desktop Chrome was verified directly. The external Chrome viewport override did not change the visible window to 390 px; mobile coverage is therefore supported by the passing visual-regression gate rather than claimed as a direct manual 390 px check.
