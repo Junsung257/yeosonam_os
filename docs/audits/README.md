@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-29
+Last updated: 2026-08-06
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -74,6 +74,12 @@ These audits contain recent evidence for the current product-registration engine
 | 2026-05-30 | `2026-05-30-live-domain-page-audit.json` | Live domain page audit output. |
 | 2026-05-30 | `2026-05-30-live-domain-customer-cta-audit.json` | Live domain CTA audit output. |
 | 2026-05-30 | `2026-05-30-live-domain-customer-journey-audit.md` | Live customer journey audit. |
+
+## Finance And Settlement
+
+| Date | File | Use |
+|---|---|---|
+| 2026-08-06 | `2026-08-06-finance-v3-revalidation.md` | Settlement Center V3 split allocation, owner review, legacy revalidation, production reconciliation, and case-correction evidence. |
 
 ## Marketing, Blog, And Ad OS
 

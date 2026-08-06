@@ -1,6 +1,19 @@
 {
   "version": 1,
   "approvals": {
+    "20260806041405_finance_review_reviewer_index_replay.sql": {
+      "sha256": "9a1f1879399e23bdb534e2f9c56bb21e46aa777dc9d8b50efe7316674fabdc0b",
+      "status": "A",
+      "rationale": "The reviewer foreign-key index was created concurrently and verified valid and ready on the 81-row production review table before this replay-safe migration was recorded. Supabase remote migrations cannot execute CREATE INDEX CONCURRENTLY; fresh databases have no production traffic while bootstrap migrations run.",
+      "evidence": "docs/audits/2026-08-06-finance-v3-revalidation.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    },
     "20260730063000_lock_active_blog_quality_upgrade_representatives.sql": {
       "sha256": "881088fa8f1b97fa44cbafe7ec2193156473c59616d00763a06bbcde4648f69c",
       "status": "M",
