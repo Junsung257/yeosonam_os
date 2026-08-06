@@ -43,36 +43,69 @@ describe('monthly settlement close', () => {
         { bank_transaction_id: 'deposit-future', booking_id: 'future', allocated_amount: 700_000 },
       ],
       bookings: [
-        { id: 'ok', booking_no: 'BK-OK', departure_date: '2026-07-15', status: 'confirmed' },
-        { id: 'loss', booking_no: 'BK-LOSS', departure_date: '2026-07-19', status: 'confirmed' },
-        { id: 'drift', booking_no: 'BK-DRIFT', departure_date: '2026-06-01', status: 'confirmed' },
-        { id: 'none', booking_no: 'BK-NONE', departure_date: '2026-05-01', status: 'completed' },
+        { id: 'ok', booking_no: 'BK-OK', departure_date: '2026-07-15', status: 'confirmed', review_status: 'confirmed', review_fingerprint: 'review-ok', reviewed_by_label: 'owner' },
+        { id: 'loss', booking_no: 'BK-LOSS', departure_date: '2026-07-19', status: 'confirmed', review_status: 'pending', review_fingerprint: 'review-loss' },
+        { id: 'drift', booking_no: 'BK-DRIFT', departure_date: '2026-06-01', status: 'confirmed', review_status: 'confirmed', review_fingerprint: 'review-drift' },
+        { id: 'none', booking_no: 'BK-NONE', departure_date: '2026-05-01', status: 'completed', review_status: 'pending', review_fingerprint: 'review-none' },
         {
           id: 'confirmed',
           booking_no: 'BK-DONE',
           departure_date: '2026-04-01',
           status: 'completed',
           settlement_confirmed_at: '2026-04-10T00:00:00Z',
+          review_status: 'confirmed',
+          review_fingerprint: 'review-confirmed',
         },
-        { id: 'future', booking_no: 'BK-FUTURE', departure_date: '2026-08-01', status: 'confirmed' },
+        { id: 'future', booking_no: 'BK-FUTURE', departure_date: '2026-08-01', status: 'confirmed', review_status: 'pending', review_fingerprint: 'review-future' },
         { id: 'cancelled', booking_no: 'BK-CANCEL', departure_date: '2026-03-01', status: 'cancelled' },
       ],
     });
 
     expect(preview.eligible.map(row => row.bookingNo)).toEqual(['BK-OK']);
-    expect(preview.candidateFingerprint).toContain('ok:eligible:1000000:900000:');
-    expect(preview.candidateFingerprint).toContain('loss:negative_cash_margin:500000:501000:');
+    expect(preview.candidateFingerprint).toContain('ok:eligible:review-ok:1000000:900000:');
+    expect(preview.candidateFingerprint).toContain('loss:review_required:review-loss:500000:501000:');
     expect(preview.summary.eligibleProfit).toBe(100_000);
     expect(preview.summary.alreadyConfirmedCount).toBe(0);
     expect(preview.summary.alreadyConfirmedProfit).toBe(0);
-    expect(preview.summary.negativeCashMarginCount).toBe(1);
-    expect(preview.summary.negativeCashMargin).toBe(-1_000);
+    expect(preview.summary.negativeCashMarginCount).toBe(0);
+    expect(preview.summary.negativeCashMargin).toBe(0);
+    expect(preview.summary.pendingReviewCount).toBe(1);
     expect(preview.summary.allocationDriftCount).toBe(0);
     expect(preview.summary.noBankEvidenceCount).toBe(0);
     expect(preview.summary.cancelledOrDeletedCount).toBe(0);
-    expect(preview.review.map(row => row.reason)).toEqual(['negative_cash_margin']);
-    expect(preview.priorOmissions.map(row => row.bookingNo)).toEqual(['BK-NONE', 'BK-DRIFT']);
-    expect(preview.priorOmissions.map(row => row.reason)).toEqual(['no_bank_evidence', 'allocation_drift']);
-    expect(preview.summary.priorOmissionCount).toBe(2);
+    expect(preview.review.map(row => row.reason)).toEqual(['review_required']);
+    expect(preview.priorOmissions.map(row => row.bookingNo)).toEqual(['BK-NONE']);
+    expect(preview.priorOmissions.map(row => row.reason)).toEqual(['review_required']);
+    expect(preview.summary.priorOmissionCount).toBe(1);
+  });
+
+  it('keeps bank fees outside confirmed travel margin while fingerprinting the full split', () => {
+    const preview = calculateMonthlySettlementClosePreview({
+      month: '2026-07',
+      transactions: [
+        { id: 'in', transaction_type: '입금', amount: 1_000_000 },
+        { id: 'out', transaction_type: '출금', amount: 900_500 },
+      ],
+      allocations: [
+        { bank_transaction_id: 'in', booking_id: 'booking', allocated_amount: 1_000_000, target_type: 'booking' },
+        { bank_transaction_id: 'out', booking_id: 'booking', allocated_amount: 900_000, target_type: 'booking' },
+        { bank_transaction_id: 'out', booking_id: 'booking', allocated_amount: 500, target_type: 'bank_fee' },
+      ],
+      bookings: [{
+        id: 'booking',
+        booking_no: 'BK-FEE',
+        departure_date: '2026-07-20',
+        review_status: 'confirmed',
+        review_fingerprint: 'review-fee',
+      }],
+    });
+
+    expect(preview.eligible[0]).toMatchObject({
+      deposits: 1_000_000,
+      withdrawals: 900_000,
+      cashNet: 100_000,
+      allocationCount: 3,
+    });
+    expect(preview.summary.eligibleProfit).toBe(100_000);
   });
 });

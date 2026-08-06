@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import useSWR from 'swr';
 import { AlertTriangle, Calendar, CheckCircle2, RefreshCw, RotateCcw, ShieldCheck, X } from 'lucide-react';
 
@@ -14,7 +15,7 @@ interface PeriodRow {
   id: string;
   departure_month: string;
   revision: number;
-  status: 'open' | 'conditional' | 'closed' | 'reopened' | 'superseded';
+  status: 'open' | 'conditional' | 'closed' | 'reopened' | 'superseded' | 'needs_revalidation';
   is_current: boolean;
   confirmed_booking_count: number;
   confirmed_deposits: number;
@@ -38,6 +39,8 @@ const EXCEPTION_LABELS: Record<string, string> = {
   no_bank_evidence: '통장 근거 없음',
   allocation_drift: '거래 배분 불일치',
   zero_margin: '현금 마진 0원',
+  review_required: '운영자 재검토 필요',
+  deferred_review: '담당자 지정 보류',
   post_close_change: '마감 후 변경',
   unclassified_company_transaction: '회사 거래 미분류',
   missing_receipt: '증빙 없음',
@@ -48,6 +51,17 @@ const REASON_LABELS: Record<MonthlyCloseReviewReason, string> = {
   allocation_drift: '거래 배분 불일치',
   zero_cash_margin: '입금과 출금 동일',
   negative_cash_margin: '출금이 입금보다 큼',
+  review_required: '운영자 재검토 필요',
+  deferred_review: '담당자 지정 보류',
+};
+
+const PERIOD_STATUS_LABELS: Record<PeriodRow['status'], string> = {
+  open: '마감 전',
+  conditional: '조건부 마감',
+  closed: '마감 완료',
+  reopened: '재개방',
+  superseded: '이전 버전',
+  needs_revalidation: '과거 자동확정 · 재검토 필요',
 };
 
 async function fetcher(url: string): Promise<PeriodResponse> {
@@ -141,7 +155,7 @@ export default function FinancePeriods() {
   const isLocked = currentPeriod?.status === 'closed' || currentPeriod?.status === 'conditional';
 
   const openCloseDialog = () => {
-    setCloseStatus((summary?.reviewCount ?? 0) > 0 ? 'conditional' : 'closed');
+    setCloseStatus((summary?.deferredReviewCount ?? 0) > 0 ? 'conditional' : 'closed');
     setNotice(null);
     setShowClose(true);
   };
@@ -238,20 +252,28 @@ export default function FinancePeriods() {
       {notice ? <div className={`rounded-admin-md border p-4 text-sm ${notice.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`} role="status">{notice.text}</div> : null}
       {isLoading || !summary ? <div className="h-64 animate-pulse rounded-admin-md bg-admin-surface-2" role="status" aria-label="월 마감 계산 중" /> : (
         <>
+          <ol className="grid gap-2 sm:grid-cols-4" aria-label="월 마감 단계">
+            {[
+              ['1', 'Clobe·통장 차이 확인'],
+              ['2', `예약 검토 ${summary.pendingReviewCount > 0 ? `${summary.pendingReviewCount}건 남음` : '완료'}`],
+              ['3', `보류·예외 ${summary.deferredReviewCount}건`],
+              ['4', '합계 확인 후 잠금'],
+            ].map(([step, label]) => <li key={step} className="rounded-lg border border-admin-border-mid bg-admin-surface px-3 py-2 text-xs"><span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 font-bold text-white">{step}</span>{label}</li>)}
+          </ol>
           <div className={`flex flex-col gap-3 rounded-admin-md border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${isLocked ? 'border-emerald-200 bg-emerald-50' : currentPeriod?.status === 'reopened' ? 'border-amber-200 bg-amber-50' : 'border-admin-border-mid bg-admin-surface'}`}>
-            <div className="flex items-center gap-3">{isLocked ? <ShieldCheck className="h-5 w-5 text-emerald-700" /> : <Calendar className="h-5 w-5 text-admin-muted" />}<div><strong className="block text-sm text-admin-text-2">{monthLabel(month)} {isLocked ? `마감 잠김 · v${currentPeriod?.revision}` : currentPeriod?.status === 'reopened' ? '재개방됨' : '마감 전'}</strong><span className="text-xs text-admin-muted">{isLocked ? `${currentPeriod?.confirmed_booking_count}건 · ${won(currentPeriod?.confirmed_cash_margin ?? 0)}` : '최신 Clobe 거래 기준으로 마감할 수 있습니다.'}</span></div></div>
-            {isLocked ? <button type="button" onClick={() => setShowReopen(true)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"><RotateCcw className="h-3.5 w-3.5" /> 최고 관리자 재개방</button> : <button type="button" onClick={openCloseDialog} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-800"><CheckCircle2 className="h-4 w-4" /> 월 마감 확인</button>}
+            <div className="flex items-center gap-3">{isLocked ? <ShieldCheck className="h-5 w-5 text-emerald-700" /> : <Calendar className="h-5 w-5 text-admin-muted" />}<div><strong className="block text-sm text-admin-text-2">{monthLabel(month)} {currentPeriod ? `${PERIOD_STATUS_LABELS[currentPeriod.status]} · v${currentPeriod.revision}` : '마감 전'}</strong><span className="text-xs text-admin-muted">{isLocked ? `${currentPeriod?.confirmed_booking_count}건 · ${won(currentPeriod?.confirmed_cash_margin ?? 0)}` : currentPeriod?.status === 'needs_revalidation' ? '과거 자동확정 수치는 감사용이며 새 검토완료 수익에는 포함되지 않습니다.' : '최신 Clobe 거래와 건별 확인 결과로 마감합니다.'}</span></div></div>
+            {isLocked ? <button type="button" onClick={() => setShowReopen(true)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"><RotateCcw className="h-3.5 w-3.5" /> 최고 관리자 재개방</button> : <button type="button" onClick={openCloseDialog} disabled={summary.pendingReviewCount > 0} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"><CheckCircle2 className="h-4 w-4" /> {summary.pendingReviewCount > 0 ? `예약 ${summary.pendingReviewCount}건 검토 필요` : '월 마감 확인'}</button>}
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">마감 대상</p><p className="mt-1 text-xl font-bold">{summary.eligibleCount}건</p></div>
+            <Link href={`/admin/finance?tab=bookings&month=${month}`} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 hover:border-slate-400"><p className="text-xs text-admin-muted">확인 완료·마감 대상</p><p className="mt-1 text-xl font-bold">{summary.eligibleCount}건</p></Link>
             <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">고객 입금</p><p className="mt-1 text-xl font-bold">{won(summary.eligibleDeposits)}</p></div>
             <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">랜드사 출금</p><p className="mt-1 text-xl font-bold">{won(summary.eligibleWithdrawals)}</p></div>
             <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs text-emerald-700">확정 현금 마진</p><p className="mt-1 text-xl font-bold text-emerald-900">{won(summary.eligibleProfit)}</p></div>
-            <div className={`rounded-admin-md border p-4 ${summary.reviewCount > 0 ? 'border-amber-200 bg-amber-50' : 'border-admin-border-mid bg-admin-surface'}`}><p className="text-xs text-admin-muted">조건부 예외</p><p className="mt-1 text-xl font-bold">{summary.reviewCount}건</p></div>
+            <div className={`rounded-admin-md border p-4 ${summary.reviewCount > 0 ? 'border-amber-200 bg-amber-50' : 'border-admin-border-mid bg-admin-surface'}`}><p className="text-xs text-admin-muted">재검토·보류</p><p className="mt-1 text-xl font-bold">{summary.reviewCount}건</p></div>
           </div>
 
-          {preview?.review.length ? <details className="rounded-admin-md border border-amber-200 bg-amber-50/50 p-4"><summary className="cursor-pointer text-sm font-semibold text-amber-900"><span className="inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> 이번 달 예외 {preview.review.length}건</span></summary><div className="mt-3 overflow-x-auto"><table className="min-w-full text-xs"><thead><tr className="border-b border-amber-200 text-left text-amber-800"><th className="py-2 pr-4">예약</th><th className="py-2 pr-4">입금</th><th className="py-2 pr-4">출금</th><th className="py-2 pr-4">차액</th><th className="py-2">이유</th></tr></thead><tbody>{preview.review.map(row => <tr key={row.bookingId} className="border-b border-amber-100 last:border-0"><td className="py-2 pr-4 font-semibold">{row.bookingNo}</td><td className="py-2 pr-4">{won(row.deposits)}</td><td className="py-2 pr-4">{won(row.withdrawals)}</td><td className={`py-2 pr-4 font-semibold ${row.cashNet < 0 ? 'text-red-700' : ''}`}>{won(row.cashNet)}</td><td className="py-2">{row.reason ? REASON_LABELS[row.reason] : '확인 필요'}</td></tr>)}</tbody></table></div></details> : null}
+          {preview?.review.length ? <details open className="rounded-admin-md border border-amber-200 bg-amber-50/50 p-4"><summary className="cursor-pointer text-sm font-semibold text-amber-900"><span className="inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> 이번 달 재검토·보류 {preview.review.length}건</span></summary><div className="mt-3 overflow-x-auto"><table className="min-w-full text-xs"><thead><tr className="border-b border-amber-200 text-left text-amber-800"><th className="py-2 pr-4">예약</th><th className="py-2 pr-4">입금</th><th className="py-2 pr-4">출금</th><th className="py-2 pr-4">차액</th><th className="py-2">이유·작업</th></tr></thead><tbody>{preview.review.map(row => <tr key={row.bookingId} className="border-b border-amber-100 last:border-0"><td className="py-2 pr-4 font-semibold">{row.bookingNo}</td><td className="py-2 pr-4">{won(row.deposits)}</td><td className="py-2 pr-4">{won(row.withdrawals)}</td><td className={`py-2 pr-4 font-semibold ${row.cashNet < 0 ? 'text-red-700' : ''}`}>{won(row.cashNet)}</td><td className="py-2"><span className="mr-2">{row.reason ? REASON_LABELS[row.reason] : '확인 필요'}</span><Link href={`/admin/finance?tab=bookings&q=${encodeURIComponent(row.bookingNo)}`} className="font-semibold text-emerald-700 underline">건별 확인 열기</Link></td></tr>)}</tbody></table></div></details> : null}
 
           {preview?.priorOmissions.length ? <details className="rounded-admin-md border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-800">과거 누락 {preview.priorOmissions.length}건 · 이번 달 마감에는 포함되지 않음</summary><div className="mt-3 grid gap-2 sm:grid-cols-2">{preview.priorOmissions.map(row => <button type="button" key={row.bookingId} onClick={() => { setMonth(row.departureDate.slice(0, 7)); setNotice(null); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400 hover:bg-slate-50"><strong>{row.departureDate} · {row.bookingNo}</strong><span className="mt-1 block text-slate-600">입금 {won(row.deposits)} - 출금 {won(row.withdrawals)} = {won(row.cashNet)}</span><span className="mt-1 block font-semibold text-emerald-700">해당 출발 월 열기</span></button>)}</div></details> : null}
         </>
@@ -271,7 +293,7 @@ export default function FinancePeriods() {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface"><header className="border-b border-admin-border px-4 py-3"><h3 className="text-sm font-semibold text-admin-text">월 마감 이력</h3></header><div className="overflow-x-auto"><table className="min-w-full text-xs"><thead className="bg-admin-bg text-left text-admin-muted"><tr><th className="px-4 py-2">출발 월</th><th className="px-4 py-2">버전·상태</th><th className="px-4 py-2 text-right">예약</th><th className="px-4 py-2 text-right">입금</th><th className="px-4 py-2 text-right">출금</th><th className="px-4 py-2 text-right">마진</th><th className="px-4 py-2">확정자</th></tr></thead><tbody className="divide-y divide-admin-border">{(data?.periods ?? []).map(period => <tr key={period.id} className={period.is_current ? '' : 'text-admin-muted opacity-70'}><td className="px-4 py-2 font-semibold">{String(period.departure_month).slice(0, 7)}</td><td className="px-4 py-2">v{period.revision} · {period.status}</td><td className="px-4 py-2 text-right">{period.confirmed_booking_count}</td><td className="px-4 py-2 text-right">{won(period.confirmed_deposits)}</td><td className="px-4 py-2 text-right">{won(period.confirmed_withdrawals)}</td><td className="px-4 py-2 text-right font-semibold">{won(period.confirmed_cash_margin)}</td><td className="px-4 py-2">{period.closed_by_label || '-'}</td></tr>)}{!data?.periods.length ? <tr><td colSpan={7} className="px-4 py-10 text-center text-admin-muted">마감 이력이 없습니다.</td></tr> : null}</tbody></table></div></section>
+      <section className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface"><header className="border-b border-admin-border px-4 py-3"><h3 className="text-sm font-semibold text-admin-text">월 마감 이력</h3></header><div className="overflow-x-auto"><table className="min-w-full text-xs"><thead className="bg-admin-bg text-left text-admin-muted"><tr><th className="px-4 py-2">출발 월</th><th className="px-4 py-2">버전·상태</th><th className="px-4 py-2 text-right">예약</th><th className="px-4 py-2 text-right">입금</th><th className="px-4 py-2 text-right">출금</th><th className="px-4 py-2 text-right">마진</th><th className="px-4 py-2">확정자</th></tr></thead><tbody className="divide-y divide-admin-border">{(data?.periods ?? []).map(period => <tr key={period.id} className={period.is_current ? '' : 'text-admin-muted opacity-70'}><td className="px-4 py-2 font-semibold">{String(period.departure_month).slice(0, 7)}</td><td className="px-4 py-2">v{period.revision} · {PERIOD_STATUS_LABELS[period.status]}</td><td className="px-4 py-2 text-right">{period.confirmed_booking_count}</td><td className="px-4 py-2 text-right">{won(period.confirmed_deposits)}</td><td className="px-4 py-2 text-right">{won(period.confirmed_withdrawals)}</td><td className="px-4 py-2 text-right font-semibold">{won(period.confirmed_cash_margin)}</td><td className="px-4 py-2">{period.closed_by_label === 'legacy_booking_confirmation' ? '과거 자동확정' : period.closed_by_label || '-'}</td></tr>)}{!data?.periods.length ? <tr><td colSpan={7} className="px-4 py-10 text-center text-admin-muted">마감 이력이 없습니다.</td></tr> : null}</tbody></table></div></section>
 
       {showClose && preview ? <Dialog title={`${monthLabel(month)} 월 마감`} description="아래 금액과 예외를 확인한 뒤 확정합니다. 확정 후에는 최고 관리자 재개방 전까지 잠깁니다." onClose={() => setShowClose(false)}><div className="space-y-4 p-5"><div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">예약</span><strong className="block text-lg">{summary?.eligibleCount ?? 0}건</strong></div><div className="rounded-lg bg-emerald-50 p-3"><span className="text-xs text-emerald-700">현금 마진</span><strong className="block text-lg text-emerald-900">{won(summary?.eligibleProfit ?? 0)}</strong></div><div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">입금</span><strong className="block">{won(summary?.eligibleDeposits ?? 0)}</strong></div><div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">출금</span><strong className="block">{won(summary?.eligibleWithdrawals ?? 0)}</strong></div></div>{(summary?.reviewCount ?? 0) > 0 ? <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">예외 {summary?.reviewCount}건이 남아 조건부 마감만 가능합니다.</p><input value={exceptionOwner} onChange={event => setExceptionOwner(event.target.value)} aria-label="예외 담당자" placeholder="담당자" className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" /><input value={exceptionReason} onChange={event => setExceptionReason(event.target.value)} aria-label="조건부 마감 사유" placeholder="사유" className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" /><label className="block text-xs text-amber-800">처리기한<input type="date" value={exceptionDueDate} onChange={event => setExceptionDueDate(event.target.value)} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900" /></label></div> : null}<div className="flex justify-end gap-2 border-t border-slate-200 pt-4"><button type="button" onClick={() => setShowClose(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">취소</button><button type="button" onClick={closePeriod} disabled={busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? '확정 중' : (summary?.reviewCount ?? 0) > 0 ? '조건부 마감 확정' : '월 마감 확정'}</button></div></div></Dialog> : null}
 

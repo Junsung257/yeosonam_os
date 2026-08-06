@@ -17,6 +17,7 @@ export interface BankAccountRealityRow {
   match_status?: string | null;
   resolved_classification?:
     | 'company_expense'
+    | 'company_travel'
     | 'tax'
     | 'capital'
     | 'transfer'
@@ -53,8 +54,21 @@ export interface BankAccountRealitySummary {
 
 export interface BookingCashAllocationRow {
   bank_transaction_id: string;
-  booking_id: string;
+  booking_id: string | null;
   allocated_amount: number;
+  target_type?:
+    | 'booking'
+    | 'customer_refund'
+    | 'bank_fee'
+    | 'company_expense'
+    | 'company_travel'
+    | 'tax'
+    | 'capital'
+    | 'transfer'
+    | 'owner_draw'
+    | 'other_income'
+    | 'unassigned'
+    | null;
 }
 
 export interface BookingCashBookingRow {
@@ -63,6 +77,9 @@ export interface BookingCashBookingRow {
   settlement_confirmed_at?: string | null;
   total_price?: number | null;
   total_cost?: number | null;
+  status?: string | null;
+  is_deleted?: boolean | null;
+  finance_excluded?: boolean | null;
 }
 
 export interface BookingCashBucket {
@@ -94,6 +111,7 @@ export interface BookingCashPositionSummary {
   unallocatedTravelCount: number;
   overallocatedTravelCount: number;
   unallocatedTravelNet: number;
+  classifiedNonBookingNet: number;
   travelCashNet: number;
   reconciliationDifference: number;
 }
@@ -208,6 +226,7 @@ export function calculateBookingCashPositions(params: {
   const transactionById = new Map(transactions.map(row => [row.id as string, row]));
   const bookingById = new Map(params.bookings.map(row => [row.id, row]));
   const allocatedByTransaction = new Map<string, number>();
+  let classifiedNonBookingNet = 0;
   const eventsByBooking = new Map<string, Array<{
     transactionId: string;
     receivedAt: string;
@@ -225,6 +244,13 @@ export function calculateBookingCashPositions(params: {
       allocation.bank_transaction_id,
       (allocatedByTransaction.get(allocation.bank_transaction_id) ?? 0) + amount,
     );
+    const targetType = allocation.target_type ?? 'booking';
+    const booking = allocation.booking_id ? bookingById.get(allocation.booking_id) : null;
+    const isBookingCash = targetType === 'booking' || targetType === 'customer_refund';
+    if (!isBookingCash || !allocation.booking_id || !booking) {
+      classifiedNonBookingNet += isDeposit(transaction) ? amount : -amount;
+      continue;
+    }
     const deposit = isDeposit(transaction) ? amount : 0;
     const withdrawal = isDeposit(transaction) ? 0 : amount;
     const event = {
@@ -262,6 +288,11 @@ export function calculateBookingCashPositions(params: {
       withdrawals += event.withdrawal;
       runningNet += event.signedAmount;
       minimumRunningNet = Math.min(minimumRunningNet, runningNet);
+    }
+
+    if (booking.finance_excluded || booking.is_deleted || booking.status === 'cancelled') {
+      classifiedNonBookingNet += runningNet;
+      continue;
     }
 
     const bucket = booking?.settlement_confirmed_at
@@ -307,7 +338,7 @@ export function calculateBookingCashPositions(params: {
   }
 
   const allocatedCashNet = Object.values(buckets)
-    .reduce((sum, bucket) => sum + bucket.cashNet, 0);
+    .reduce((sum, bucket) => sum + bucket.cashNet, 0) + classifiedNonBookingNet;
   const openBuckets = [buckets.preDeparture, buckets.departedUnsettled, buckets.dateMissing];
 
   return {
@@ -321,6 +352,7 @@ export function calculateBookingCashPositions(params: {
     unallocatedTravelCount,
     overallocatedTravelCount,
     unallocatedTravelNet,
+    classifiedNonBookingNet,
     travelCashNet,
     reconciliationDifference: travelCashNet - allocatedCashNet - unallocatedTravelNet,
   };
@@ -385,7 +417,7 @@ function monthSequence(referenceDate: Date | string, count: number): string[] {
 
 export function classifyNonTravelProfitRow(row: BankAccountRealityRow): NonTravelProfitClass {
   if (row.resolved_classification) {
-    if (row.resolved_classification === 'company_expense') return 'operating_expense';
+    if (row.resolved_classification === 'company_expense' || row.resolved_classification === 'company_travel') return 'operating_expense';
     if (row.resolved_classification === 'other_income') return 'operating_income';
     if (row.resolved_classification === 'tax') return 'tax_payment';
     if (row.resolved_classification === 'capital' || row.resolved_classification === 'transfer') return 'financing';
@@ -403,6 +435,18 @@ export function classifyNonTravelProfitRow(row: BankAccountRealityRow): NonTrave
   if (TAX_CATEGORIES.has(category) && !isDeposit(row)) return 'tax_payment';
   if (OPERATING_INCOME_CATEGORIES.has(category) && isDeposit(row)) return 'operating_income';
   if (OPERATING_EXPENSE_CATEGORIES.has(category) && !isDeposit(row)) return 'operating_expense';
+  return 'review';
+}
+
+function classifyAllocationTarget(
+  target: BookingCashAllocationRow['target_type'],
+): NonTravelProfitClass | null {
+  if (!target || target === 'booking') return null;
+  if (target === 'bank_fee' || target === 'company_expense' || target === 'company_travel') return 'operating_expense';
+  if (target === 'other_income') return 'operating_income';
+  if (target === 'tax') return 'tax_payment';
+  if (target === 'capital' || target === 'transfer') return 'financing';
+  if (target === 'customer_refund' || target === 'owner_draw') return 'pass_through';
   return 'review';
 }
 
@@ -436,6 +480,9 @@ export function calculateBankProfitErp(params: {
     provisionalOperatingCashResult: 0,
   }]));
 
+  const allTransactionsById = new Map(params.transactions
+    .filter(row => row.id)
+    .map(row => [row.id as string, row]));
   const transactionById = new Map(params.transactions
     .filter(row => row.id && row.settlement_scope === 'travel')
     .map(row => [row.id as string, row]));
@@ -456,6 +503,7 @@ export function calculateBankProfitErp(params: {
     const profitByBooking = new Map<string, number>();
     for (const allocation of params.allocations) {
       const transaction = transactionById.get(allocation.bank_transaction_id);
+      if (!allocation.booking_id || !['booking', 'customer_refund'].includes(allocation.target_type ?? 'booking')) continue;
       const booking = bookingById.get(allocation.booking_id);
       if (!transaction || !booking?.settlement_confirmed_at) continue;
       const amount = isDeposit(transaction) ? money(allocation.allocated_amount) : -money(allocation.allocated_amount);
@@ -483,15 +531,17 @@ export function calculateBankProfitErp(params: {
   let passThroughCount = 0;
   let passThroughNet = 0;
   let nonTravelGross = 0;
+  let protectedUnclassifiedInflows = 0;
+  const allocatedByTransaction = new Map<string, number>();
 
-  for (const row of params.transactions) {
-    if (row.settlement_scope !== 'non_travel') continue;
-    const amount = money(row.amount);
-    if (amount <= 0) continue;
+  const applyClassification = (
+    classification: NonTravelProfitClass,
+    amount: number,
+    signed: number,
+    receivedAt: string,
+  ) => {
     nonTravelGross += amount;
-    const signed = signedAmount(row);
-    const classification = classifyNonTravelProfitRow(row);
-    const point = monthlyMap.get(koreaMonth(row.received_at));
+    const point = monthlyMap.get(koreaMonth(receivedAt));
 
     if (classification === 'operating_income') {
       classifiedOperatingIncome += amount;
@@ -511,7 +561,39 @@ export function calculateBankProfitErp(params: {
       classificationReviewCount += 1;
       classificationReviewGross += amount;
       classificationReviewNet += signed;
+      if (signed > 0) protectedUnclassifiedInflows += signed;
     }
+  };
+
+  for (const allocation of params.allocations) {
+    const transaction = allTransactionsById.get(allocation.bank_transaction_id);
+    const amount = money(allocation.allocated_amount);
+    if (!transaction || amount <= 0) continue;
+    allocatedByTransaction.set(
+      allocation.bank_transaction_id,
+      (allocatedByTransaction.get(allocation.bank_transaction_id) ?? 0) + amount,
+    );
+    const classification = classifyAllocationTarget(allocation.target_type);
+    if (!classification) continue;
+    applyClassification(
+      classification,
+      amount,
+      isDeposit(transaction) ? amount : -amount,
+      transaction.received_at,
+    );
+  }
+
+  for (const row of params.transactions) {
+    if (row.settlement_scope !== 'non_travel') continue;
+    const allocated = row.id ? (allocatedByTransaction.get(row.id) ?? 0) : 0;
+    const amount = Math.max(0, money(row.amount) - allocated);
+    if (amount <= 0) continue;
+    applyClassification(
+      classifyNonTravelProfitRow(row),
+      isDeposit(row) ? amount : amount,
+      isDeposit(row) ? amount : -amount,
+      row.received_at,
+    );
   }
 
   for (const point of monthlyMap.values()) {
@@ -533,11 +615,6 @@ export function calculateBankProfitErp(params: {
   const protectedCustomerFunds = params.bookingCash.openCustomerFundsHeld;
   const unpaidSupplierCost = params.bookingCash.openKnownSupplierPayable;
   const protectedTravelCash = protectedCustomerFunds + unpaidSupplierCost + protectedUnallocatedTravelCash;
-  const protectedUnclassifiedInflows = params.transactions
-    .filter(row => row.settlement_scope === 'non_travel'
-      && isDeposit(row)
-      && classifyNonTravelProfitRow(row) === 'review')
-    .reduce((sum, row) => sum + money(row.amount), 0);
   const liquidityAvailableAfterReserves = params.bankSummary.actualBalance
     - protectedTravelCash
     - estimatedTaxReserve

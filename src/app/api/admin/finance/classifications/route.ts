@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getAdminContext } from '@/lib/admin-context';
@@ -12,13 +13,38 @@ import {
   type FinanceClassificationTransaction,
 } from '@/lib/finance-classification';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { loadFinanceTransactionBreakdown } from '@/lib/finance-settlement-v3-service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const CLASSIFICATIONS = new Set<FinanceClassification>([
-  'company_expense', 'tax', 'capital', 'transfer', 'refund', 'owner_draw', 'other_income', 'review',
+  'company_expense', 'company_travel', 'tax', 'capital', 'transfer', 'refund', 'owner_draw', 'other_income', 'review',
 ]);
+
+const ALLOCATION_TO_CLASSIFICATION: Record<string, FinanceClassification> = {
+  customer_refund: 'refund',
+  bank_fee: 'company_expense',
+  company_expense: 'company_expense',
+  company_travel: 'company_travel',
+  tax: 'tax',
+  capital: 'capital',
+  transfer: 'transfer',
+  owner_draw: 'owner_draw',
+  other_income: 'other_income',
+  unassigned: 'review',
+};
+
+const CLASSIFICATION_TO_ALLOCATION: Partial<Record<FinanceClassification, string>> = {
+  company_expense: 'company_expense',
+  company_travel: 'company_travel',
+  tax: 'tax',
+  capital: 'capital',
+  transfer: 'transfer',
+  refund: 'customer_refund',
+  owner_draw: 'owner_draw',
+  other_income: 'other_income',
+};
 
 async function guard(request: NextRequest) {
   const authError = await requireAdminRequest(request);
@@ -34,16 +60,21 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    const [transactionResult, classificationResult, ruleResult] = await Promise.all([
+    const [transactionResult, allocationResult, classificationResult, ruleResult] = await Promise.all([
       supabaseAdmin
         .from('bank_transactions')
-        .select('id, transaction_type, amount, received_at, counterparty_name, memo, provider_category, provider_is_unclassified')
+        .select('id, transaction_type, amount, received_at, counterparty_name, memo, provider_category, provider_is_unclassified, settlement_scope')
         .eq('external_provider', 'clobe')
         .eq('source', 'clobe_mcp')
         .eq('status', 'active')
         .eq('account_number', YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER)
-        .eq('settlement_scope', 'non_travel')
         .order('received_at', { ascending: false })
+        .limit(5000),
+      supabaseAdmin
+        .from('bank_transaction_allocations')
+        .select('id, bank_transaction_id, booking_id, allocated_amount, target_type, target_label, reconciliation_key, metadata')
+        .eq('status', 'active')
+        .is('reversed_at', null)
         .limit(5000),
       supabaseAdmin
         .from('bank_transaction_classifications')
@@ -56,6 +87,7 @@ export async function GET(request: NextRequest) {
         .limit(500),
     ]);
     if (transactionResult.error) throw transactionResult.error;
+    if (allocationResult.error) throw allocationResult.error;
     if (classificationResult.error) throw classificationResult.error;
     if (ruleResult.error) throw ruleResult.error;
 
@@ -64,14 +96,33 @@ export async function GET(request: NextRequest) {
       row,
     ]));
     const rules = (ruleResult.data ?? []) as Array<FinanceClassificationRule & { name: string }>;
-    const rows = ((transactionResult.data ?? []) as FinanceClassificationTransaction[]).map(transaction => {
+    const allocationsByTransaction = new Map<string, Array<{
+      id: string;
+      bank_transaction_id: string;
+      booking_id: string | null;
+      allocated_amount: number;
+      target_type: string | null;
+      target_label: string | null;
+      reconciliation_key: string | null;
+      metadata: Record<string, unknown> | null;
+    }>>();
+    for (const allocation of allocationResult.data ?? []) {
+      const rows = allocationsByTransaction.get(allocation.bank_transaction_id as string) ?? [];
+      rows.push(allocation as typeof rows[number]);
+      allocationsByTransaction.set(allocation.bank_transaction_id as string, rows);
+    }
+
+    const rows = ((transactionResult.data ?? []) as Array<FinanceClassificationTransaction & {
+      amount: number;
+      settlement_scope: 'travel' | 'non_travel';
+    }>).flatMap(transaction => {
       const stored = storedByTransaction.get(transaction.id);
       const resolved = resolveFinanceClassification({
         transaction,
         override: stored as FinanceClassificationOverride | undefined,
         rules,
       });
-      return {
+      const base = {
         ...transaction,
         amount: Number((transaction as FinanceClassificationTransaction & { amount?: number }).amount ?? 0),
         clobeOriginalClassification: transaction.provider_category ?? null,
@@ -85,6 +136,39 @@ export async function GET(request: NextRequest) {
         confirmedBy: stored?.confirmed_by ?? null,
         notes: stored?.notes ?? null,
       };
+      const allocations = allocationsByTransaction.get(transaction.id) ?? [];
+      const nonBookingAllocations = allocations.filter(allocation => allocation.target_type !== 'booking');
+      const splitRows = nonBookingAllocations.map(allocation => {
+        const allocationClassification = ALLOCATION_TO_CLASSIFICATION[allocation.target_type ?? 'unassigned'] ?? 'review';
+        const receiptStatus = typeof allocation.metadata?.receiptStatus === 'string'
+          ? allocation.metadata.receiptStatus
+          : ['company_expense', 'company_travel', 'tax'].includes(allocationClassification)
+            ? 'missing'
+            : 'not_required';
+        return {
+          ...base,
+          id: allocation.id,
+          transactionId: transaction.id,
+          allocationId: allocation.id,
+          amount: Number(allocation.allocated_amount) || 0,
+          targetLabel: allocation.target_label,
+          reconciliationKey: allocation.reconciliation_key,
+          osClassification: allocationClassification === 'review' ? null : allocationClassification,
+          resolvedClassification: allocationClassification,
+          resolutionSource: allocationClassification === 'review' ? 'review' : 'manual',
+          isProfitAndLoss: defaultProfitAndLoss(allocationClassification),
+          receiptStatus,
+          confirmedAt: null,
+          confirmedBy: null,
+          notes: allocation.target_label,
+        };
+      });
+      const allocatedTotal = allocations.reduce((sum, allocation) => sum + Number(allocation.allocated_amount || 0), 0);
+      const remaining = Math.max(0, Number(transaction.amount || 0) - allocatedTotal);
+      const wholeTransactionRows = transaction.settlement_scope === 'non_travel' && remaining > 0
+        ? [{ ...base, amount: remaining, transactionId: transaction.id, allocationId: null, targetLabel: null, reconciliationKey: null }]
+        : [];
+      return [...splitRows, ...wholeTransactionRows];
     });
 
     return NextResponse.json({
@@ -112,10 +196,67 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const transactionId = typeof body.transactionId === 'string' ? body.transactionId : '';
+    const allocationId = typeof body.allocationId === 'string' ? body.allocationId : '';
     const classification = body.classification as FinanceClassification;
     if (!transactionId || !CLASSIFICATIONS.has(classification)) {
       return NextResponse.json({ error: '거래와 확정 분류를 선택해주세요.' }, { status: 400 });
     }
+    const receiptStatus = ['not_required', 'missing', 'attached', 'verified'].includes(body.receiptStatus)
+      ? body.receiptStatus
+      : classification === 'company_expense' || classification === 'company_travel' || classification === 'tax'
+        ? 'missing'
+        : 'not_required';
+    const context = getAdminContext(request);
+
+    if (allocationId) {
+      const targetType = CLASSIFICATION_TO_ALLOCATION[classification];
+      if (!targetType) return NextResponse.json({ error: '분할선의 최종 분류를 선택해주세요.' }, { status: 400 });
+      const current = await loadFinanceTransactionBreakdown(transactionId);
+      if (!current) return NextResponse.json({ error: 'Clobe 원본 거래를 찾지 못했습니다.' }, { status: 404 });
+      if (!current.allocations.some(allocation => allocation.id === allocationId)) {
+        return NextResponse.json({ error: '변경할 분할선을 찾지 못했습니다. 최신 내역을 다시 확인해주세요.' }, { status: 409 });
+      }
+      const lines = current.allocations.map(allocation => {
+        const selected = allocation.id === allocationId;
+        const nextTarget = selected ? targetType : allocation.target_type;
+        const metadata = {
+          ...(allocation.metadata ?? {}),
+          ...(selected ? { receiptStatus, classificationSource: 'company_expense_tab' } : {}),
+        };
+        return {
+          targetType: nextTarget,
+          amount: Number(allocation.allocated_amount),
+          bookingId: nextTarget === 'booking'
+            || nextTarget === 'customer_refund'
+            || nextTarget === 'bank_fee'
+            ? allocation.booking_id
+            : null,
+          targetLabel: selected
+            ? (typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim().slice(0, 240) : allocation.target_label)
+            : allocation.target_label,
+          reconciliationKey: allocation.reconciliation_key,
+          metadata,
+        };
+      });
+      const reason = `회사 경비 분할선 분류 변경: ${classification}`;
+      const { data, error } = await supabaseAdmin.rpc('save_bank_transaction_breakdown', {
+        p_transaction_id: transactionId,
+        p_lines: lines,
+        p_expected_fingerprint: current.fingerprint,
+        p_idempotency_key: `finance-classification:${allocationId}:${randomUUID()}`,
+        p_actor: context.userId,
+        p_actor_label: context.actor,
+        p_reason: reason,
+      });
+      if (error) {
+        const stale = /stale breakdown fingerprint/i.test(error.message);
+        return NextResponse.json({
+          error: stale ? '거래 분할이 방금 변경되었습니다. 최신 내역을 다시 확인해주세요.' : error.message,
+        }, { status: stale ? 409 : 400 });
+      }
+      return NextResponse.json({ success: true, transactionId, allocationId, classification, result: data });
+    }
+
     const { data: transactions, error: transactionError } = await supabaseAdmin
       .from('bank_transactions')
       .select('id, provider_category')
@@ -129,12 +270,6 @@ export async function PATCH(request: NextRequest) {
     if (transactionError) throw transactionError;
     if (!transactions?.length) return NextResponse.json({ error: '회사 거래를 찾지 못했습니다.' }, { status: 404 });
 
-    const receiptStatus = ['not_required', 'missing', 'attached', 'verified'].includes(body.receiptStatus)
-      ? body.receiptStatus
-      : classification === 'company_expense' || classification === 'tax'
-        ? 'missing'
-        : 'not_required';
-    const context = getAdminContext(request);
     const now = new Date().toISOString();
     const { error } = await supabaseAdmin.from('bank_transaction_classifications').upsert({
       bank_transaction_id: transactionId,

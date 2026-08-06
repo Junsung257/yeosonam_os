@@ -132,6 +132,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    if (preview.summary.pendingReviewCount > 0) {
+      return NextResponse.json({
+        error: `운영자 확인이 끝나지 않은 예약 ${preview.summary.pendingReviewCount}건이 있어 월 마감을 진행할 수 없습니다.`,
+        preview,
+      }, { status: 400 });
+    }
+    if (closeStatus === 'conditional'
+      && preview.review.some(row => row.reason !== 'deferred_review')) {
+      return NextResponse.json({
+        error: '조건부 마감은 담당자·사유·기한이 지정된 보류 예약만 남았을 때 가능합니다.',
+        preview,
+      }, { status: 400 });
+    }
+
     const exceptionOwner = typeof body.exceptionOwner === 'string' ? body.exceptionOwner.trim() : '';
     const exceptionReason = typeof body.exceptionReason === 'string' ? body.exceptionReason.trim() : '';
     const exceptionDueDate = typeof body.exceptionDueDate === 'string' ? body.exceptionDueDate : '';
@@ -154,7 +168,16 @@ export async function POST(request: NextRequest) {
       allocation_count: row.allocationCount,
       transaction_ids: row.transactionIds,
       transaction_fingerprint: row.transactionFingerprint,
-      snapshot: { close_basis: 'clobe_cash', source: 'clobe_mcp', account_number: summary.accountNumber, fingerprint_version: 2 },
+      snapshot: {
+        close_basis: 'clobe_cash',
+        source: 'clobe_mcp',
+        account_number: summary.accountNumber,
+        fingerprint_version: 3,
+        review_status: row.reviewStatus,
+        review_fingerprint: row.reviewFingerprint,
+        reviewed_by: row.reviewedBy,
+        reviewed_at: row.reviewedAt,
+      },
     }));
     const exceptions = closeStatus === 'conditional'
       ? preview.review.map(row => ({

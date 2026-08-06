@@ -29,6 +29,8 @@ const reasonLabels: Record<MonthlyCloseReviewReason, string> = {
   allocation_drift: '거래 배분 금액 불일치',
   zero_cash_margin: '입금과 출금이 같음',
   negative_cash_margin: '출금이 입금보다 큼',
+  review_required: '운영자 재검토 필요',
+  deferred_review: '담당자 지정 보류',
 };
 
 function formatWon(value: number): string {
