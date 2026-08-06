@@ -47,6 +47,12 @@ The migration created 81 pending reviews containing all 48 legacy auto-confirmed
 
 The calculated 16,571,884 KRW balance exactly matches the latest Clobe transaction's `balance_after` value.
 
+### Allocation-conservation follow-up
+
+The first V3 audit proved that travel allocations were exact and that no source transaction was over-allocated. A subsequent all-source check found that 186 non-travel rows had classifications but no corresponding allocation evidence, leaving 16,390,694 KRW outside the unified allocation ledger. This did not change the bank balance or booking margins, but it failed the stricter requirement that every Clobe 4128 source row be represented exactly once in the common allocation ledger.
+
+Migration `finance_non_travel_allocation_conservation` closes that gap by adding only the missing non-travel remainder, representing unresolved rows as explicit `unassigned` allocations, and preserving exact operator-created splits. A transaction-scoped production dry run completed inside `BEGIN ... ROLLBACK` with 188 source rows, 186 inserts, and 0 non-exact rows. Final production application and the resulting 465-of-465 exact-allocation count are recorded after deployment verification.
+
 ## Clobe Sync Verification
 
 - The scheduled sync completed successfully at 2026-08-06 04:14:49 KST with 129 source and 129 recognized transactions, 2 matches, and 0 errors.

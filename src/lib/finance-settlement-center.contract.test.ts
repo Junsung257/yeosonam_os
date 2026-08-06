@@ -19,6 +19,14 @@ const v3Migration = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260806002511_finance_settlement_center_v3_revalidation.sql'),
   'utf8',
 );
+const nonTravelConservationMigration = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260806045208_finance_non_travel_allocation_conservation.sql'),
+  'utf8',
+);
+const financeCenterService = readFileSync(
+  join(process.cwd(), 'src/lib/finance-center-service.ts'),
+  'utf8',
+);
 const periodApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/periods/route.ts'),
   'utf8',
@@ -89,6 +97,19 @@ describe('finance settlement center contracts', () => {
     expect(classificationApi).toContain('nonBookingAllocations');
     expect(classificationApi).toContain(".rpc('save_bank_transaction_breakdown'");
     expect(classificationApi).toContain('allocationId');
+  });
+
+  it('conserves every non-travel transaction without overwriting manual splits', () => {
+    expect(nonTravelConservationMigration).toContain('sync_non_travel_classification_allocations');
+    expect(nonTravelConservationMigration).toContain("p_classification = 'review'");
+    expect(nonTravelConservationMigration).toContain("THEN 'unassigned'");
+    expect(nonTravelConservationMigration).toContain('summary.allocated_amount < summary.source_amount');
+    expect(nonTravelConservationMigration).toContain("allocation.metadata->>'origin' = 'finance_classification_auto'");
+    expect(nonTravelConservationMigration).toContain("allocation.created_by = 'system:finance_classification'");
+    expect(nonTravelConservationMigration).toContain("matched_by = COALESCE(transaction.matched_by, 'system:finance_classification')");
+    expect(nonTravelConservationMigration).toContain('allocated_amount <> source_amount');
+    expect(financeCenterService).toContain(".rpc('sync_non_travel_classification_allocations'");
+    expect(classificationApi).toContain(".rpc('sync_non_travel_classification_allocations'");
   });
 
   it('preserves legacy confirmations as versioned period snapshots', () => {
