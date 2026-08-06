@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER } from '@/lib/bank-account-reality';
 import {
+  clobeSettlementKeyFromSourceMetadata,
   summarizeBookingCashBreakdown,
   type BookingSettlementReviewStatus,
   type FinanceAllocationTarget,
@@ -69,7 +70,7 @@ interface TransactionRecord extends FinanceV3Transaction {
   updated_at: string | null;
   counterparty_name: string | null;
   memo: string | null;
-  settlement_key: string | null;
+  source_metadata: unknown;
   raw_message: string | null;
   match_status: string | null;
 }
@@ -129,7 +130,7 @@ async function loadTransactions(ids: string[]): Promise<TransactionRecord[]> {
     if (batch.length === 0) continue;
     const { data, error } = await supabaseAdmin
       .from('bank_transactions')
-      .select('id, transaction_type, amount, received_at, updated_at, counterparty_name, memo, settlement_key, raw_message, match_status')
+      .select('id, transaction_type, amount, received_at, updated_at, counterparty_name, memo, source_metadata, raw_message, match_status')
       .in('id', batch)
       .eq('external_provider', 'clobe')
       .eq('source', 'clobe_mcp')
@@ -155,7 +156,9 @@ function buildRow(params: {
   });
   const transactionById = new Map(params.transactions.map(row => [row.id, row]));
   const travelKey = params.settlementKey
-    ?? params.allocations.map(row => transactionById.get(row.bank_transaction_id)?.settlement_key).find(Boolean)
+    ?? params.allocations
+      .map(row => clobeSettlementKeyFromSourceMetadata(transactionById.get(row.bank_transaction_id)?.source_metadata))
+      .find(Boolean)
     ?? null;
 
   return {
@@ -343,7 +346,7 @@ export async function loadFinanceBookingReviewDetail(bookingId: string): Promise
         sourceAmount: Math.round(Number(transaction.amount) || 0),
         memo: transaction.memo,
         previousMemo: previousMemoByTransaction.get(transaction.id) ?? null,
-        settlementKey: transaction.settlement_key,
+        settlementKey: clobeSettlementKeyFromSourceMetadata(transaction.source_metadata),
         allocationId: allocation.id,
         targetType: allocation.target_type,
         allocatedAmount: Math.round(Number(allocation.allocated_amount) || 0),
@@ -362,7 +365,7 @@ export async function loadFinanceTransactionBreakdown(transactionId: string) {
   const [transactionResult, allocationResult, fingerprintResult] = await Promise.all([
     supabaseAdmin
       .from('bank_transactions')
-      .select('id, transaction_type, amount, received_at, counterparty_name, memo, settlement_key, match_status')
+      .select('id, transaction_type, amount, received_at, counterparty_name, memo, source_metadata, match_status')
       .eq('id', transactionId)
       .eq('external_provider', 'clobe')
       .eq('source', 'clobe_mcp')
@@ -385,8 +388,12 @@ export async function loadFinanceTransactionBreakdown(transactionId: string) {
   if (!transaction) return null;
   const allocations = allocationResult.data ?? [];
   const allocated = allocations.reduce((sum, row) => sum + Math.round(Number(row.allocated_amount) || 0), 0);
+  const { source_metadata: sourceMetadata, ...transactionFields } = transaction;
   return {
-    transaction,
+    transaction: {
+      ...transactionFields,
+      settlement_key: clobeSettlementKeyFromSourceMetadata(sourceMetadata),
+    },
     allocations,
     fingerprint: String(fingerprintResult.data ?? ''),
     allocated,

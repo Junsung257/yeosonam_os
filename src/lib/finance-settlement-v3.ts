@@ -71,6 +71,14 @@ export interface BookingCashBreakdown {
   transactionCount: number;
 }
 
+export function clobeSettlementKeyFromSourceMetadata(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const clobe = (value as { clobe_mcp?: unknown }).clobe_mcp;
+  if (!clobe || typeof clobe !== 'object' || Array.isArray(clobe)) return null;
+  const settlementKey = (clobe as { settlement_key?: unknown }).settlement_key;
+  return typeof settlementKey === 'string' && settlementKey.trim() ? settlementKey.trim() : null;
+}
+
 function money(value: unknown): number {
   return Math.round(Number(value) || 0);
 }
