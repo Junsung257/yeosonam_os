@@ -200,7 +200,13 @@ export async function POST(request: NextRequest) {
     });
 
     let postCloseChanges = { checked: 0, changed: 0 };
-    let classificationRefresh = { processed: 0, review: 0 };
+    let classificationRefresh = {
+      processed: 0,
+      review: 0,
+      allocationInserted: 0,
+      allocationUpdated: 0,
+      allocationNonExact: 0,
+    };
     let monthlyExceptions = { scanned: 0, candidates: 0, inserted: 0, resolved: 0 };
     if (!preview && !diagnosticsOnly) {
       let classificationRefreshError: string | null = null;

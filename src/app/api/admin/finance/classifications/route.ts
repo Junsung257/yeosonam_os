@@ -289,6 +289,10 @@ export async function PATCH(request: NextRequest) {
     }, { onConflict: 'bank_transaction_id' });
     if (error) throw error;
 
+    const { error: allocationSyncError } = await supabaseAdmin
+      .rpc('sync_non_travel_classification_allocations', { p_transaction_id: transactionId });
+    if (allocationSyncError) throw allocationSyncError;
+
     await supabaseAdmin.from('audit_logs').insert({
       user_id: context.userId,
       action: 'FINANCE_TRANSACTION_CLASSIFIED',

@@ -483,6 +483,9 @@ export async function syncOpenMonthlySettlementExceptions(
 export async function refreshClobeFinanceClassifications(): Promise<{
   processed: number;
   review: number;
+  allocationInserted: number;
+  allocationUpdated: number;
+  allocationNonExact: number;
 }> {
   const [transactionResult, classificationResult, ruleResult] = await Promise.all([
     supabaseAdmin
@@ -545,9 +548,21 @@ export async function refreshClobeFinanceClassifications(): Promise<{
     if (error) throw error;
   }
 
+  const { data: allocationSyncData, error: allocationSyncError } = await supabaseAdmin
+    .rpc('sync_non_travel_classification_allocations', { p_transaction_id: null });
+  if (allocationSyncError) throw allocationSyncError;
+  const allocationSync = (allocationSyncData ?? {}) as {
+    inserted?: number;
+    updated?: number;
+    nonExact?: number;
+  };
+
   return {
     processed: rows.length,
     review: rows.filter(row => row.resolved_classification === 'review').length,
+    allocationInserted: Number(allocationSync.inserted ?? 0),
+    allocationUpdated: Number(allocationSync.updated ?? 0),
+    allocationNonExact: Number(allocationSync.nonExact ?? 0),
   };
 }
 

@@ -15,6 +15,8 @@ This file is historical evidence. Current operating rules remain in `docs/settle
 - Supabase project: `ixaxnvbmhzjvupissmly`
 - Production migration: `finance_settlement_center_v3_revalidation`
 - Production index replay migration: `finance_review_reviewer_index_replay`
+- Allocation-conservation pull request: `#1075`
+- Production allocation migration: `finance_non_travel_allocation_conservation`
 
 ## Implemented Controls
 
@@ -37,7 +39,10 @@ Snapshot after migration and audited corrections:
 | Total deposits | 156,956,220 KRW |
 | Total withdrawals | 140,384,336 KRW |
 | Calculated balance | 16,571,884 KRW |
+| Source transactions with exact active allocations | 465 / 465 |
+| Under-allocated source transactions | 0 |
 | Over-allocated source transactions | 0 |
+| Unallocated source amount | 0 KRW |
 | Legacy periods marked for revalidation | 6 |
 | Preserved legacy period items | 48 |
 | Pending real bookings after BK-0126 cancellation review | 80 |
@@ -46,6 +51,12 @@ Snapshot after migration and audited corrections:
 The migration created 81 pending reviews containing all 48 legacy auto-confirmed items plus other active real bookings. BK-0126 was then reviewed as a customer cancellation, leaving 80 pending. This intentionally prevents unreviewed profit from becoming confirmed or spendable.
 
 The calculated 16,571,884 KRW balance exactly matches the latest Clobe transaction's `balance_after` value.
+
+### Allocation-conservation follow-up
+
+The first V3 audit proved that travel allocations were exact and that no source transaction was over-allocated. A subsequent all-source check found that 186 non-travel rows had classifications but no corresponding allocation evidence, leaving 16,390,694 KRW outside the unified allocation ledger. This did not change the bank balance or booking margins, but it failed the stricter requirement that every Clobe 4128 source row be represented exactly once in the common allocation ledger.
+
+Migration `finance_non_travel_allocation_conservation` closed that gap by adding only the missing non-travel remainder, representing unresolved rows as explicit `unassigned` allocations, and preserving exact operator-created splits. A production dry run completed inside `BEGIN ... ROLLBACK` with 188 source rows, 186 inserts, and 0 non-exact rows. The production migration then created 186 system classification lines and finished with 465 of 465 active source rows exactly allocated, 0 under-allocated rows, 0 over-allocated rows, and 0 KRW unallocated. Bank totals and all audited booking margins remained unchanged.
 
 ## Clobe Sync Verification
 
