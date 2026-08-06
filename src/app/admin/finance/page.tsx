@@ -12,8 +12,8 @@ import FinanceBookingsTable from '@/components/admin/finance/FinanceBookingsTabl
 import FinanceClassifications from '@/components/admin/finance/FinanceClassifications';
 import FinanceCenterHome from '@/components/admin/finance/FinanceCenterHome';
 import FinancePeriods from '@/components/admin/finance/FinancePeriods';
+import FinanceTaxPanel from '@/components/admin/finance/FinanceTaxPanel';
 import FinanceTransactionReview from '@/components/admin/finance/FinanceTransactionReview';
-import TaxPage from '@/app/admin/tax/page';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,7 +88,7 @@ export default async function FinanceCenterPage({
             <p><strong>수치 기준 안내</strong> 아래 예상 수익은 예약 판매가와 예정 원가 기준입니다. 실제 확정 수익은 정산 홈·월 마감의 Clobe 현금 마진을 기준으로 확인합니다.</p>
             <Link href="/admin/invoice" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-xs font-semibold text-admin-text-2 hover:bg-admin-bg">증빙 파일 파싱</Link>
           </div>
-          <TaxPage />
+          <FinanceTaxPanel />
         </div>
       ) : null}
     </div>
