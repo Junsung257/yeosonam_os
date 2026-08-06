@@ -798,6 +798,7 @@ BEGIN
       finance_excluded_by = p_actor_label, updated_at = now()
     WHERE id = p_booking_id;
   END IF;
+  SELECT * INTO v_booking FROM public.bookings WHERE id = p_booking_id FOR UPDATE;
   v_current_fingerprint := public.finance_booking_review_fingerprint(p_booking_id);
 
   SELECT
