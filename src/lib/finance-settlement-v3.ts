@@ -83,6 +83,28 @@ function money(value: unknown): number {
   return Math.round(Number(value) || 0);
 }
 
+export function isFinanceBookingVisible(params: {
+  financeExcluded?: boolean | null;
+  isDeleted?: boolean | null;
+  bookingStatus?: string | null;
+  includeExcluded?: boolean;
+}): boolean {
+  if (params.includeExcluded) return true;
+  return !params.financeExcluded
+    && !params.isDeleted
+    && params.bookingStatus !== 'cancelled';
+}
+
+export function needsCustomerCashReceipt(params: {
+  paidAmount: unknown;
+  receiptTargetAmount: unknown;
+  receiptStatus: string | null | undefined;
+}): boolean {
+  return money(params.paidAmount) > 0
+    && money(params.receiptTargetAmount) > 0
+    && params.receiptStatus === 'NOT_ISSUED';
+}
+
 export function summarizeBookingCashBreakdown(params: {
   bookingId: string;
   transactions: FinanceV3Transaction[];

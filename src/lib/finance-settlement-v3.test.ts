@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   canCloseSettlementMonth,
   clobeSettlementKeyFromSourceMetadata,
+  isFinanceBookingVisible,
+  needsCustomerCashReceipt,
   summarizeBookingCashBreakdown,
   validateBreakdownTotal,
 } from './finance-settlement-v3';
@@ -64,5 +66,31 @@ describe('finance settlement v3', () => {
     expect(canCloseSettlementMonth(['confirmed', 'pending'])).toMatchObject({ normal: false, conditional: false });
     expect(canCloseSettlementMonth(['confirmed', 'deferred'])).toMatchObject({ normal: false, conditional: true });
     expect(canCloseSettlementMonth(['confirmed', 'customer_cancelled', 'invalid_booking'])).toMatchObject({ normal: true, conditional: false });
+  });
+
+  it('keeps deleted and cancelled bookings out of the normal finance queue', () => {
+    expect(isFinanceBookingVisible({ isDeleted: true })).toBe(false);
+    expect(isFinanceBookingVisible({ bookingStatus: 'cancelled' })).toBe(false);
+    expect(isFinanceBookingVisible({ financeExcluded: true })).toBe(false);
+    expect(isFinanceBookingVisible({ isDeleted: true, includeExcluded: true })).toBe(true);
+    expect(isFinanceBookingVisible({ bookingStatus: 'confirmed' })).toBe(true);
+  });
+
+  it('does not create a cash-receipt task before the receipt target price is confirmed', () => {
+    expect(needsCustomerCashReceipt({
+      paidAmount: 719_000,
+      receiptTargetAmount: 0,
+      receiptStatus: 'NOT_ISSUED',
+    })).toBe(false);
+    expect(needsCustomerCashReceipt({
+      paidAmount: 719_000,
+      receiptTargetAmount: 719_000,
+      receiptStatus: 'NOT_ISSUED',
+    })).toBe(true);
+    expect(needsCustomerCashReceipt({
+      paidAmount: 0,
+      receiptTargetAmount: 719_000,
+      receiptStatus: 'NOT_ISSUED',
+    })).toBe(false);
   });
 });
