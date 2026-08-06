@@ -18,4 +18,10 @@ describe('AdminLayout hydration safety', () => {
     expect(code).toContain('buildAdminMissionItems(visibleBadges)');
     expect(code).toContain('getNavItemBadge(item, visibleBadges)');
   });
+
+  it('renders mission timestamps in the same timezone on the server and browser', () => {
+    const code = source();
+
+    expect(code).toContain("timeZone: 'Asia/Seoul'");
+  });
 });
