@@ -7,6 +7,7 @@ import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Download, Wallet, Coins, TrendingUp, Receipt, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { calcSettlementAccounting } from '@/lib/settlement-accounting';
+import { buildFinanceTaxMonthOptions } from '@/lib/finance-tax-months';
 
 interface TaxBooking {
   id:                      string;
@@ -55,16 +56,6 @@ interface Todos {
 }
 
 // 최근 12개월 목록 생성
-function getMonthOptions(): string[] {
-  const months: string[] = [];
-  const now = new Date();
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(d.toISOString().slice(0, 7));
-  }
-  return months;
-}
-
 const RECEIPT_LABEL: Record<string, string> = {
   ISSUED:       'O 발행',
   NOT_ISSUED:   'X 미발행',
@@ -77,9 +68,9 @@ const RECEIPT_COLOR: Record<string, string> = {
   NOT_REQUIRED: 'text-admin-muted bg-admin-bg',
 };
 
-export default function FinanceTaxPanel() {
-  const monthOptions        = getMonthOptions();
-  const [month, setMonth]   = useState(monthOptions[0]);
+export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string }) {
+  const monthOptions        = buildFinanceTaxMonthOptions(initialMonth);
+  const [month, setMonth]   = useState(initialMonth);
   const [bookings, setBookings] = useState<TaxBooking[]>([]);
   const [kpis, setKpis]     = useState<Kpis | null>(null);
   const [todos, setTodos]   = useState<Todos | null>(null);
