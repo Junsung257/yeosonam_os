@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER } from '@/lib/bank-account-reality';
 import {
   clobeSettlementKeyFromSourceMetadata,
+  isFinanceBookingVisible,
   summarizeBookingCashBreakdown,
   type BookingSettlementReviewStatus,
   type FinanceAllocationTarget,
@@ -235,6 +236,12 @@ export async function loadFinanceBookingReviews(filters: {
 
   const normalizedQuery = filters.query?.normalize('NFKC').trim().toLowerCase() ?? '';
   const rows = bookings
+    .filter(booking => isFinanceBookingVisible({
+      financeExcluded: booking.finance_excluded,
+      isDeleted: booking.is_deleted,
+      bookingStatus: booking.status,
+      includeExcluded: filters.includeExcluded,
+    }))
     .map(booking => buildRow({
       booking,
       review: reviewByBooking.get(booking.id),
@@ -243,7 +250,6 @@ export async function loadFinanceBookingReviews(filters: {
       settlementKey: keyByBooking.get(booking.id),
     }))
     .filter(row => {
-      if (!filters.includeExcluded && row.financeExcluded) return false;
       if (filters.month && row.departureDate?.slice(0, 7) !== filters.month) return false;
       if (filters.status && filters.status !== 'all' && row.reviewStatus !== filters.status) return false;
       if (!normalizedQuery) return true;

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { needsCustomerCashReceipt } from '@/lib/finance-settlement-v3';
 import { loadFinanceBookingReviews } from '@/lib/finance-settlement-v3-service';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -65,8 +66,11 @@ export async function GET(request: NextRequest) {
     const pendingTransfers = bookings.filter(row => money(row.total_cost) > 0
       && money(row.total_paid_out) < money(row.total_cost)
       && row.transfer_status === 'PENDING');
-    const notIssuedReceipts = bookings.filter(row => money(row.paid_amount) > 0
-      && row.customer_receipt_status === 'NOT_ISSUED');
+    const notIssuedReceipts = bookings.filter(row => needsCustomerCashReceipt({
+      paidAmount: row.paid_amount,
+      receiptTargetAmount: row.total_price,
+      receiptStatus: row.customer_receipt_status,
+    }));
 
     return NextResponse.json({
       basis: {
