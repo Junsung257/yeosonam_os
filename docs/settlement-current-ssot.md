@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-08-05
+Last updated: 2026-08-06
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -26,12 +26,13 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Settlement accounting | `src/lib/settlement-accounting.ts` |
 | Affiliate settlement math | `src/lib/affiliate/settlement-calc.ts` |
 | Payment/settlement APIs | `/api/payments/**`, `/api/settlements/**`, `/api/tenant/settlements` |
-| Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `match_bank_transaction_allocations` |
+| Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `save_bank_transaction_breakdown` |
 | Manual bank memo keys | `booking_settlement_keys`, `src/lib/settlement-import/**` |
 | Clobe bank sync | `/api/bank-transactions/sync-clobe`, `src/lib/settlement-import/clobe-bank-sync.ts` |
 | Scheduled Clobe sync | `/api/cron/clobe-bank-sync`, `src/lib/settlement-import/clobe-sync-scheduler.ts` |
 | Complete bank reality | `bank_transactions.settlement_scope`, `/api/bank-transactions/account-reality`, `src/lib/bank-account-reality.ts` |
-| Finance center | `/admin/finance`, `/api/admin/finance/summary`, `/api/admin/finance/periods`, `/api/admin/finance/classifications` |
+| Finance center | `/admin/finance`, `/api/admin/finance/summary`, `/api/admin/finance/periods`, `/api/admin/finance/classifications`, `/api/admin/finance/bookings/**`, `/api/admin/finance/transactions/**`, `/api/admin/finance/tax` |
+| Booking settlement review | `booking_settlement_reviews`, `save_booking_settlement_review` |
 | Month close snapshots | `settlement_periods`, `settlement_period_items`, `settlement_period_exceptions` |
 | Company transaction classification | `bank_transaction_classifications`, `bank_classification_rules` |
 | Legacy admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements`, `/admin/tax` |
@@ -49,7 +50,10 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Customer-visible payment status and internal finance status may differ, but the difference must be explicit in data, not hidden in UI-only labels.
 - Drift is blocking. If ledger totals and booking totals disagree, settlement automation must pause or quarantine affected records until reconciliation evidence is created.
 - Bank transaction matching must go through `match_bank_transaction_allocations` for new manual/auto paths. The RPC writes allocation evidence, booking ledger updates, operational events, and audit evidence in one transaction.
-- A general bank transaction may be allocated to multiple bookings, but the allocated total may not exceed the transaction amount. Under-allocation is only tolerated up to 500 KRW unless a future schema explicitly accounts for the remainder. The authoritative Clobe 4128 ledger is stricter: each statement row may have one active booking only and its active allocation may never exceed the source amount.
+- A Clobe 4128 transaction may be split across bookings, refunds, fees, company expenses, company travel, tax, capital, transfers, owner draws, other income, and an explicit unassigned remainder. Active allocations may never exceed the source amount; a confirmed breakdown must equal the source amount exactly to the won.
+- `bank_transactions.booking_id` is compatibility metadata only. Finance calculations use active `bank_transaction_allocations` and their `target_type` values.
+- Breakdown writes must use `save_bank_transaction_breakdown`. The RPC locks the source transaction and affected bookings, replaces the active breakdown atomically, reconciles booking ledger entries, verifies exact conservation, and records idempotent audit evidence.
+- Non-booking allocation targets do not write booking ledger entries. Customer refunds and bank fees can retain a booking reference for reconciliation, but only booking/customer-refund cash affects that booking's travel cash result; bank fees remain company expense.
 - Overpayment converted to mileage must separate `allocated_amount` from `ledger_delta`: the bank transaction evidence keeps the full amount, while the booking ledger receives only the outstanding booking balance and the remainder is recorded as mileage.
 - Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
 - Manual bank-statement imports must treat memo keys such as `260715_정지해_투어폰` as the booking binding key. Counterparty/depositor name is supporting evidence only because companions can pay separately.
@@ -66,7 +70,10 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - `Safe to withdraw` is the lower of (a) `actual bank balance - open customer funds - unpaid supplier cost - remaining tax reserve - unclassified inflows` and (b) `after-tax settlement-snapshot profit - classified company expense`. Missing supplier cost, an unallocated/overallocated travel row, or ledger/bank drift blocks withdrawal. Unclassified inflows are fully protected until classified; unclassified outflows already reduce bank liquidity and remain in the review queue.
 - Open-trip cash protection is deliberately conservative: refundable customer cash currently held and known unpaid supplier cost are both protected, then any positive unallocated travel cash is added. Missing supplier cost keeps the booking blocked and the displayed shortfall is only a minimum, never an exact final liability.
 - Monthly realized-profit growth uses departure month and settlement-confirmed bookings only. Raw bank deposits, customer advances, financing, and unsettled booking cash must not appear in the realized-profit series.
-- Departure-month cash close is an explicit owner approval, not an automatic date transition. A close handles only the selected completed departure month. Earlier unconfirmed bookings appear in a separate prior-omission queue and never enter the selected month silently. Positive, fully allocated Clobe 4128 cash margins may close without `total_price` or `total_cost`; zero/negative margin, missing evidence, and allocation drift require review. Recompute immediately before applying and require the reviewed fingerprint to match.
+- Departure-month cash close is an explicit owner approval, not an automatic date transition. A close handles only the selected completed departure month. Earlier unconfirmed bookings appear in a separate prior-omission queue and never enter the selected month silently. A positive cash margin never auto-confirms a booking: every included booking must have a current `confirmed` review created through `save_booking_settlement_review`.
+- Review decisions are `pending`, `confirmed`, `customer_cancelled`, `invalid_booking`, `reclassified`, `deferred`, or `superseded`. A source transaction, Clobe memo, allocation, booking state, departure date, or exclusion change invalidates the current review fingerprint and returns the booking to review.
+- `customer_cancelled`, `invalid_booking`, `reclassified`, and `finance_excluded` bookings are operationally resolved but excluded from travel profit. `pending` blocks a normal close. `deferred` requires an assignee, reason, and due date and is allowed only in a conditional close.
+- Existing `legacy_booking_confirmation` periods are historical estimates only. They remain immutable as audit evidence, use `needs_revalidation`, and do not contribute to safe-to-withdraw cash or realized-profit charts until owner-reviewed V3 snapshots supersede them.
 - Every close creates a versioned `settlement_periods` row and immutable `settlement_period_items` snapshots containing booking deposits, withdrawals, cash margin, transaction ids, and a source fingerprint. Reopening never edits or deletes old items; the next close creates a new revision.
 - A normal close cannot contain unresolved exceptions. A conditional close requires an assignee, reason, and due date for every exception. Reopening is restricted to `super_admin` and requires an audit reason.
 - After every authoritative Clobe sync, completed departure-month bookings that still have no bank evidence, allocation drift, zero margin, or negative margin must be materialized in `settlement_period_exceptions` with an assignee and due date. When the underlying issue clears, an automatically created exception is resolved with system audit evidence rather than deleted.
@@ -92,7 +99,9 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 - `travel deposits - travel withdrawals` is a booking-linked cash position, not realized profit. It includes customer advances held for future departures, supplier prepayments, and departed bookings still awaiting final settlement.
 - A positive balance on an unconfirmed booking is customer cash held for that trip. A negative balance is company cash advanced to that booking. Neither amount may be presented as available profit.
-- Realized cash profit may be shown only for bookings with `settlement_confirmed_at`. Future/departure-day bookings, departed-but-unconfirmed bookings, missing-departure bookings, and unallocated travel transactions must remain separate buckets that reconcile exactly to the total travel cash position.
+- Realized cash profit may be shown only from immutable, current V3 month-close snapshots backed by a current confirmed booking review and review fingerprint. `settlement_confirmed_at` is compatibility metadata and cannot independently establish realized profit. Future/departure-day bookings, departed-but-unconfirmed bookings, missing-departure bookings, and unallocated travel transactions remain separate buckets that reconcile exactly to the total travel cash position.
+- Finance-excluded bookings are never hard-deleted as a correction mechanism. Test data, invalid bookings, and duplicates remain recoverable and are excluded from finance, tax, evidence tasks, protected cash, and operating metrics.
+- Production E2E data must use a finance-excluded test tenant or an explicitly finance-excluded booking. Tests must never create ordinary bookings in a real finance tenant.
 - Company prefunding is calculated per booking from the lowest time-ordered cumulative cash balance. The current outstanding advance is the absolute value of a booking's negative current cash balance; the historical prefunding requirement is the absolute value of its lowest cumulative balance.
 - `/admin/payments` must separate booking KPI periods (departure date) from the active bank ledger. Transaction tabs and their counts use the full active bank ledger unless a dedicated transaction-date filter is explicitly shown.
 - `/admin/payments` must show the complete Clobe row count, actual provider balance/as-of time, full inflow/outflow totals, travel net, non-travel net, and reconciliation difference. A count of zero in booking queues must not imply that non-travel or memo-review rows do not exist.

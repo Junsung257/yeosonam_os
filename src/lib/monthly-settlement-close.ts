@@ -9,9 +9,23 @@ export interface MonthlyCloseTransaction {
 
 export interface MonthlyCloseAllocation {
   bank_transaction_id: string;
-  booking_id: string;
+  booking_id: string | null;
   allocated_amount: number;
+  target_type?: BookingCashAllocationTarget | null;
 }
+
+type BookingCashAllocationTarget =
+  | 'booking'
+  | 'customer_refund'
+  | 'bank_fee'
+  | 'company_expense'
+  | 'company_travel'
+  | 'tax'
+  | 'capital'
+  | 'transfer'
+  | 'owner_draw'
+  | 'other_income'
+  | 'unassigned';
 
 export interface MonthlyCloseBooking {
   id: string;
@@ -22,13 +36,20 @@ export interface MonthlyCloseBooking {
   is_deleted?: boolean | null;
   settlement_confirmed_at?: string | null;
   settlement_mode?: string | null;
+  finance_excluded?: boolean | null;
+  review_status?: 'pending' | 'confirmed' | 'customer_cancelled' | 'invalid_booking' | 'reclassified' | 'deferred' | 'superseded' | null;
+  review_fingerprint?: string | null;
+  reviewed_by_label?: string | null;
+  reviewed_at?: string | null;
 }
 
 export type MonthlyCloseReviewReason =
   | 'no_bank_evidence'
   | 'allocation_drift'
   | 'zero_cash_margin'
-  | 'negative_cash_margin';
+  | 'negative_cash_margin'
+  | 'review_required'
+  | 'deferred_review';
 
 export interface MonthlyCloseItem {
   bookingId: string;
@@ -41,6 +62,10 @@ export interface MonthlyCloseItem {
   allocationCount: number;
   transactionIds: string[];
   transactionFingerprint: string;
+  reviewStatus: MonthlyCloseBooking['review_status'];
+  reviewFingerprint: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
   reason?: MonthlyCloseReviewReason;
 }
 
@@ -65,6 +90,8 @@ export interface MonthlySettlementClosePreview {
     zeroCashMarginCount: number;
     negativeCashMarginCount: number;
     negativeCashMargin: number;
+    pendingReviewCount: number;
+    deferredReviewCount: number;
     cancelledOrDeletedCount: number;
     priorOmissionCount: number;
     priorOmissionProfit: number;
@@ -76,6 +103,8 @@ export const MONTHLY_CLOSE_REASON_TO_EXCEPTION = {
   allocation_drift: 'allocation_drift',
   zero_cash_margin: 'zero_margin',
   negative_cash_margin: 'negative_margin',
+  review_required: 'review_required',
+  deferred_review: 'deferred_review',
 } as const satisfies Record<MonthlyCloseReviewReason, string>;
 
 function money(value: number | null | undefined): number {
@@ -147,6 +176,7 @@ export function calculateMonthlySettlementClosePreview(params: {
       allocation.bank_transaction_id,
       (allocatedByTransaction.get(allocation.bank_transaction_id) ?? 0) + amount,
     );
+    if (!allocation.booking_id) continue;
     const bookingAllocations = allocationsByBooking.get(allocation.booking_id) ?? [];
     bookingAllocations.push({ ...allocation, allocated_amount: amount });
     allocationsByBooking.set(allocation.booking_id, bookingAllocations);
@@ -155,8 +185,8 @@ export function calculateMonthlySettlementClosePreview(params: {
   const eligible: MonthlyCloseItem[] = [];
   const review: MonthlyCloseItem[] = [];
   const priorOmissions: MonthlyCloseItem[] = [];
-  let alreadyConfirmedCount = 0;
-  let alreadyConfirmedProfit = 0;
+  const alreadyConfirmedCount = 0;
+  const alreadyConfirmedProfit = 0;
   let cancelledOrDeletedCount = 0;
 
   const relevantBookings = params.bookings
@@ -170,7 +200,8 @@ export function calculateMonthlySettlementClosePreview(params: {
     const departureDate = String(booking.departure_date).slice(0, 10);
     const isSelectedMonth = departureDate >= startDate;
 
-    if (booking.is_deleted || booking.status === 'cancelled') {
+    if (booking.is_deleted || booking.finance_excluded || booking.status === 'cancelled'
+      || ['customer_cancelled', 'invalid_booking', 'reclassified'].includes(booking.review_status ?? '')) {
       if (isSelectedMonth) cancelledOrDeletedCount += 1;
       continue;
     }
@@ -188,8 +219,9 @@ export function calculateMonthlySettlementClosePreview(params: {
         hasAllocationDrift = true;
       }
       fingerprintRows.push({ transaction, allocatedAmount: allocation.allocated_amount });
-      if (transaction.transaction_type === '입금') deposits += allocation.allocated_amount;
-      else if (transaction.transaction_type === '출금') withdrawals += allocation.allocated_amount;
+      const targetType = allocation.target_type ?? 'booking';
+      if (targetType === 'booking' && transaction.transaction_type === '입금') deposits += allocation.allocated_amount;
+      else if (['booking', 'customer_refund'].includes(targetType) && transaction.transaction_type === '출금') withdrawals += allocation.allocated_amount;
     }
 
     const item: MonthlyCloseItem = {
@@ -203,29 +235,23 @@ export function calculateMonthlySettlementClosePreview(params: {
       allocationCount: bookingAllocations.length,
       transactionIds: fingerprintRows.map(row => row.transaction.id).sort(),
       transactionFingerprint: monthlyCloseTransactionFingerprint(fingerprintRows),
+      reviewStatus: booking.review_status ?? 'pending',
+      reviewFingerprint: booking.review_fingerprint ?? '',
+      reviewedBy: booking.reviewed_by_label ?? null,
+      reviewedAt: booking.reviewed_at ?? null,
     };
 
-    const reason: MonthlyCloseReviewReason | undefined = bookingAllocations.length === 0
-      ? 'no_bank_evidence'
-      : hasAllocationDrift
+    const reason: MonthlyCloseReviewReason | undefined = hasAllocationDrift
         ? 'allocation_drift'
-        : item.cashNet < 0
-          ? 'negative_cash_margin'
-          : item.cashNet === 0
-            ? 'zero_cash_margin'
+        : booking.review_status === 'deferred'
+          ? 'deferred_review'
+          : booking.review_status !== 'confirmed'
+            ? 'review_required'
             : undefined;
     const classifiedItem = reason ? { ...item, reason } : item;
 
-    if (booking.settlement_confirmed_at) {
-      if (isSelectedMonth) {
-        alreadyConfirmedCount += 1;
-        alreadyConfirmedProfit += item.cashNet;
-      }
-      continue;
-    }
-
     if (!isSelectedMonth) {
-      priorOmissions.push(classifiedItem);
+      if (booking.review_status !== 'confirmed') priorOmissions.push(classifiedItem);
       continue;
     }
 
@@ -238,7 +264,7 @@ export function calculateMonthlySettlementClosePreview(params: {
     startDate,
     throughDate: endDate,
     candidateFingerprint: [...eligible, ...review]
-      .map(row => `${row.bookingId}:${row.reason ?? 'eligible'}:${row.deposits}:${row.withdrawals}:${row.transactionFingerprint}`)
+      .map(row => `${row.bookingId}:${row.reason ?? 'eligible'}:${row.reviewFingerprint}:${row.deposits}:${row.withdrawals}:${row.transactionFingerprint}`)
       .sort()
       .join('|'),
     eligible,
@@ -259,6 +285,8 @@ export function calculateMonthlySettlementClosePreview(params: {
       negativeCashMargin: review
         .filter(row => row.reason === 'negative_cash_margin')
         .reduce((sum, row) => sum + row.cashNet, 0),
+      pendingReviewCount: review.filter(row => row.reason === 'review_required').length,
+      deferredReviewCount: review.filter(row => row.reason === 'deferred_review').length,
       cancelledOrDeletedCount,
       priorOmissionCount: priorOmissions.length,
       priorOmissionProfit: priorOmissions.reduce((sum, row) => sum + row.cashNet, 0),

@@ -45,16 +45,16 @@ export async function GET(request: NextRequest) {
   }
 
   const transactions = (data ?? []) as BankAccountRealityRow[];
-  const travelTransactionIds = transactions
-    .filter(row => row.id && row.settlement_scope === 'travel')
+  const transactionIds = transactions
+    .filter(row => row.id)
     .map(row => row.id as string);
   const allocations: BookingCashAllocationRow[] = [];
   let bookings: BookingCashBookingRow[] = [];
 
-  if (travelTransactionIds.length > 0) {
-    const allocationResults = await Promise.all(chunkIds(travelTransactionIds).map(ids => supabaseAdmin
+  if (transactionIds.length > 0) {
+    const allocationResults = await Promise.all(chunkIds(transactionIds).map(ids => supabaseAdmin
       .from('bank_transaction_allocations')
-      .select('bank_transaction_id, booking_id, allocated_amount')
+      .select('bank_transaction_id, booking_id, allocated_amount, target_type')
       .in('bank_transaction_id', ids)
       .eq('status', 'active')
       .is('reversed_at', null)));
@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
       allocations.push(...((result.data ?? []) as BookingCashAllocationRow[]));
     }
 
-    const bookingIds = [...new Set(allocations.map(allocation => allocation.booking_id))];
+    const bookingIds = [...new Set(allocations.flatMap(allocation => allocation.booking_id ? [allocation.booking_id] : []))];
     if (bookingIds.length > 0) {
       const { data: bookingData, error: bookingError } = await supabaseAdmin
         .from('bookings')
-        .select('id, departure_date, settlement_confirmed_at, total_price, total_cost')
+        .select('id, departure_date, settlement_confirmed_at, total_price, total_cost, status, is_deleted, finance_excluded')
         .in('id', bookingIds);
       if (bookingError) {
         return NextResponse.json({ error: bookingError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });

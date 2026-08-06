@@ -133,7 +133,7 @@ async function loadAllocations(transactionIds: string[]): Promise<BookingCashAll
   for (const ids of chunks(transactionIds)) {
     const { data, error } = await supabaseAdmin
       .from('bank_transaction_allocations')
-      .select('bank_transaction_id, booking_id, allocated_amount')
+      .select('bank_transaction_id, booking_id, allocated_amount, target_type')
       .in('bank_transaction_id', ids)
       .eq('status', 'active')
       .is('reversed_at', null);
@@ -185,15 +185,13 @@ async function loadFinanceData(): Promise<LoadedFinanceData> {
       return { ...row, resolved_classification: resolved.classification };
     });
 
-  const travelIds = transactions
-    .filter(row => row.id && row.settlement_scope === 'travel')
+  const transactionIds = transactions
+    .filter(row => row.id)
     .map(row => row.id as string);
-  const allocations = await loadAllocations(travelIds);
+  const allocations = await loadAllocations(transactionIds);
   const { data: bookingData, error: bookingError } = await supabaseAdmin
     .from('bookings')
-    .select('id, booking_no, package_title, departure_date, settlement_confirmed_at, total_price, total_cost, customers!lead_customer_id(name)')
-    .or('is_deleted.is.null,is_deleted.eq.false')
-    .or('status.is.null,status.neq.cancelled')
+    .select('id, booking_no, package_title, departure_date, settlement_confirmed_at, total_price, total_cost, status, is_deleted, finance_excluded, customers!lead_customer_id(name)')
     .limit(MAX_ROWS);
   if (bookingError) throw bookingError;
   const bookings = (bookingData ?? []) as LoadedFinanceData['bookings'];
@@ -235,15 +233,16 @@ function buildBookingRows(
   const totals = new Map<string, { deposits: number; withdrawals: number; ids: Set<string> }>();
   for (const allocation of data.allocations) {
     const transaction = transactionById.get(allocation.bank_transaction_id);
-    if (!transaction) continue;
+    if (!transaction || !allocation.booking_id) continue;
     const current = totals.get(allocation.booking_id) ?? { deposits: 0, withdrawals: 0, ids: new Set<string>() };
-    if (transaction.transaction_type === '입금') current.deposits += Math.round(Number(allocation.allocated_amount) || 0);
-    else current.withdrawals += Math.round(Number(allocation.allocated_amount) || 0);
+    const targetType = allocation.target_type ?? 'booking';
+    if (targetType === 'booking' && transaction.transaction_type === '입금') current.deposits += Math.round(Number(allocation.allocated_amount) || 0);
+    else if (['booking', 'customer_refund'].includes(targetType) && transaction.transaction_type === '출금') current.withdrawals += Math.round(Number(allocation.allocated_amount) || 0);
     current.ids.add(allocation.bank_transaction_id);
     totals.set(allocation.booking_id, current);
   }
 
-  return data.bookings.map(booking => {
+  return data.bookings.filter(booking => !booking.finance_excluded && !booking.is_deleted && booking.status !== 'cancelled').map(booking => {
     const cash = totals.get(booking.id) ?? { deposits: 0, withdrawals: 0, ids: new Set<string>() };
     const snapshot = snapshotByBooking.get(booking.id);
     const departureDate = booking.departure_date?.slice(0, 10) ?? null;
@@ -554,7 +553,7 @@ export async function refreshClobeFinanceClassifications(): Promise<{
 
 export async function loadMonthlySettlementPreview(month: string): Promise<MonthlySettlementClosePreview> {
   const { endDate } = settlementMonthBounds(month);
-  const [transactionResult, bookingResult] = await Promise.all([
+  const [transactionResult, bookingResult, reviewResult] = await Promise.all([
     supabaseAdmin
       .from('bank_transactions')
       .select('id, transaction_type, amount, memo, received_at, updated_at')
@@ -566,20 +565,37 @@ export async function loadMonthlySettlementPreview(month: string): Promise<Month
       .limit(MAX_ROWS),
     supabaseAdmin
       .from('bookings')
-      .select('id, booking_no, package_title, departure_date, status, is_deleted, settlement_confirmed_at, settlement_mode')
+      .select('id, booking_no, package_title, departure_date, status, is_deleted, finance_excluded, settlement_confirmed_at, settlement_mode')
       .lte('departure_date', endDate)
+      .limit(MAX_ROWS),
+    supabaseAdmin
+      .from('booking_settlement_reviews')
+      .select('booking_id, status, review_fingerprint, reviewed_by_label, reviewed_at')
+      .eq('is_current', true)
       .limit(MAX_ROWS),
   ]);
   if (transactionResult.error) throw transactionResult.error;
   if (bookingResult.error) throw bookingResult.error;
+  if (reviewResult.error) throw reviewResult.error;
 
   const transactions = (transactionResult.data ?? []) as MonthlyCloseTransaction[];
   const allocations = await loadAllocations(transactions.map(row => row.id)) as MonthlyCloseAllocation[];
+  const reviewByBooking = new Map((reviewResult.data ?? []).map(row => [row.booking_id as string, row]));
+  const bookings = ((bookingResult.data ?? []) as MonthlyCloseBooking[]).map(booking => {
+    const review = reviewByBooking.get(booking.id);
+    return {
+      ...booking,
+      review_status: review?.status as MonthlyCloseBooking['review_status'],
+      review_fingerprint: review?.review_fingerprint as string | null,
+      reviewed_by_label: review?.reviewed_by_label as string | null,
+      reviewed_at: review?.reviewed_at as string | null,
+    };
+  });
   return calculateMonthlySettlementClosePreview({
     month,
     transactions,
     allocations,
-    bookings: (bookingResult.data ?? []) as MonthlyCloseBooking[],
+    bookings,
   });
 }
 
@@ -601,12 +617,12 @@ export async function detectPostCloseSettlementChanges(): Promise<{ checked: num
     .limit(MAX_ROWS);
   if (itemError) throw itemError;
 
-  const comparableItems = (items ?? []).filter(row => Number((row.snapshot as { fingerprint_version?: number } | null)?.fingerprint_version) === 2);
+  const comparableItems = (items ?? []).filter(row => Number((row.snapshot as { fingerprint_version?: number } | null)?.fingerprint_version) >= 2);
   const bookingIds = [...new Set(comparableItems.map(row => row.booking_id as string))];
   if (bookingIds.length === 0) return { checked: 0, changed: 0 };
   const { data: allocations, error: allocationError } = await supabaseAdmin
     .from('bank_transaction_allocations')
-    .select('bank_transaction_id, booking_id, allocated_amount')
+    .select('bank_transaction_id, booking_id, allocated_amount, target_type')
     .in('booking_id', bookingIds)
     .eq('status', 'active')
     .is('reversed_at', null)
@@ -629,6 +645,7 @@ export async function detectPostCloseSettlementChanges(): Promise<{ checked: num
   const txById = new Map(transactions.map(row => [row.id, row]));
   const allocationByBooking = new Map<string, MonthlyCloseAllocation[]>();
   for (const allocation of (allocations ?? []) as MonthlyCloseAllocation[]) {
+    if (!allocation.booking_id) continue;
     const list = allocationByBooking.get(allocation.booking_id) ?? [];
     list.push(allocation);
     allocationByBooking.set(allocation.booking_id, list);

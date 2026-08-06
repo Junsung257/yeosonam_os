@@ -1,5 +1,6 @@
 export type FinanceClassification =
   | 'company_expense'
+  | 'company_travel'
   | 'tax'
   | 'capital'
   | 'transfer'
@@ -46,7 +47,7 @@ export interface ResolvedFinanceClassification {
   ruleId: string | null;
 }
 
-const NON_PROFIT_CLASSES = new Set<FinanceClassification>(['capital', 'transfer', 'refund', 'owner_draw']);
+const NON_PROFIT_CLASSES = new Set<FinanceClassification>(['capital', 'transfer', 'refund', 'owner_draw', 'review']);
 
 function normalized(value: string | null | undefined): string {
   return (value ?? '').normalize('NFKC').trim().toLowerCase();
@@ -134,6 +135,7 @@ export function resolveFinanceClassification(params: {
 export function toProfitErpCategory(classification: FinanceClassification): string {
   switch (classification) {
     case 'company_expense': return '기타 영업비용';
+    case 'company_travel': return '출장비';
     case 'tax': return '세금과공과';
     case 'capital': return '자본금';
     case 'transfer': return '내부 이체';

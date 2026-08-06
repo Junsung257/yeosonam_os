@@ -163,6 +163,48 @@ describe('bank account reality', () => {
     expect(classifyNonTravelProfitRow(row({ provider_category: '계정 없는 입금', provider_is_unclassified: true }))).toBe('review');
   });
 
+  it('reconciles a cancelled booking while treating its bank fee as company expense', () => {
+    const transactions: BankAccountRealityRow[] = [
+      { id: 'cancel-in', transaction_type: '입금', amount: 600_000, received_at: '2026-06-20T10:00:00+09:00', settlement_scope: 'travel' },
+      { id: 'cancel-out', transaction_type: '출금', amount: 600_500, received_at: '2026-06-23T10:00:00+09:00', settlement_scope: 'travel' },
+    ];
+    const allocations = [
+      { bank_transaction_id: 'cancel-in', booking_id: 'cancelled', allocated_amount: 600_000, target_type: 'booking' as const },
+      { bank_transaction_id: 'cancel-out', booking_id: 'cancelled', allocated_amount: 600_000, target_type: 'customer_refund' as const },
+      { bank_transaction_id: 'cancel-out', booking_id: 'cancelled', allocated_amount: 500, target_type: 'bank_fee' as const },
+    ];
+    const bookings = [{
+      id: 'cancelled',
+      departure_date: '2026-06-23',
+      status: 'cancelled',
+      finance_excluded: true,
+    }];
+    const bankSummary = calculateBankAccountReality(transactions);
+    const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings });
+    const profit = calculateBankProfitErp({
+      bankSummary,
+      bookingCash,
+      transactions,
+      allocations,
+      bookings,
+      confirmedSettlementItems: [],
+      referenceDate: '2026-08-06T00:00:00+09:00',
+    });
+
+    expect(bookingCash).toMatchObject({
+      openCustomerFundsHeld: 0,
+      classifiedNonBookingNet: -500,
+      travelCashNet: -500,
+      reconciliationDifference: 0,
+    });
+    expect(profit).toMatchObject({
+      confirmedTravelProfit: 0,
+      classifiedOperatingExpense: 500,
+      passThroughCount: 1,
+      passThroughNet: -600_000,
+    });
+  });
+
   it('caps withdrawable cash by both protected trip money and earned after-tax profit', () => {
     const travelTransactions: BankAccountRealityRow[] = [
       { id: 'open-in', transaction_type: '입금', amount: 100, received_at: '2026-07-01T09:00:00+09:00', settlement_scope: 'travel' },

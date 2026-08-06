@@ -35,7 +35,7 @@ function isFinanceTab(value: string | undefined): value is FinanceTab {
 export default async function FinanceCenterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; month?: string; q?: string }>;
 }) {
   const params = await searchParams;
   const activeTab: FinanceTab = isFinanceTab(params.tab) ? params.tab : 'home';
@@ -79,7 +79,7 @@ export default async function FinanceCenterPage({
 
       {activeTab === 'home' ? <FinanceCenterHome /> : null}
       {activeTab === 'review' ? <FinanceTransactionReview /> : null}
-      {activeTab === 'bookings' ? <FinanceBookingsTable /> : null}
+      {activeTab === 'bookings' ? <FinanceBookingsTable initialMonth={params.month} initialQuery={params.q} /> : null}
       {activeTab === 'periods' ? <FinancePeriods /> : null}
       {activeTab === 'expenses' ? <FinanceClassifications /> : null}
       {activeTab === 'tax' ? (

@@ -8,11 +8,14 @@ import type { FinanceClassification } from '@/lib/finance-classification';
 
 interface ClassificationRow {
   id: string;
+  transactionId: string;
+  allocationId: string | null;
   transaction_type: string;
   amount: number;
   received_at: string;
   counterparty_name: string | null;
   memo: string | null;
+  targetLabel: string | null;
   clobeOriginalClassification: string | null;
   osClassification: FinanceClassification | null;
   resolvedClassification: FinanceClassification;
@@ -27,7 +30,8 @@ interface ClassificationResponse {
 }
 
 const LABELS: Record<FinanceClassification, string> = {
-  company_expense: '회사 경비',
+  company_expense: '회사 일반경비',
+  company_travel: '회사 출장경비',
   tax: '세금',
   capital: '자본금·차입금',
   transfer: '계좌 이체',
@@ -63,7 +67,7 @@ export default function FinanceClassifications() {
   const rows = (data?.rows ?? []).filter(row => {
     if (filter === 'review' && row.resolvedClassification !== 'review') return false;
     if (!deferredQuery) return true;
-    return [row.counterparty_name, row.memo, row.clobeOriginalClassification]
+    return [row.counterparty_name, row.memo, row.targetLabel, row.clobeOriginalClassification]
       .filter(Boolean)
       .some(value => String(value).toLowerCase().includes(deferredQuery));
   });
@@ -74,7 +78,7 @@ export default function FinanceClassifications() {
       setNotice('검토 필요가 아닌 최종 분류를 선택해주세요.');
       return;
     }
-    const requiresReceipt = classification === 'company_expense' || classification === 'tax';
+    const requiresReceipt = classification === 'company_expense' || classification === 'company_travel' || classification === 'tax';
     const receiptStatus = receiptDrafts[row.id]
       ?? (requiresReceipt && row.receiptStatus === 'not_required' ? 'missing' : row.receiptStatus);
     setSavingId(row.id);
@@ -83,7 +87,7 @@ export default function FinanceClassifications() {
       const response = await fetch('/api/admin/finance/classifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId: row.id, classification, receiptStatus }),
+        body: JSON.stringify({ transactionId: row.transactionId, allocationId: row.allocationId, classification, receiptStatus }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || '분류를 저장하지 못했습니다.');
@@ -144,12 +148,12 @@ export default function FinanceClassifications() {
               <tbody className="divide-y divide-admin-border">
                 {rows.map(row => {
                   const selected = drafts[row.id] ?? row.resolvedClassification;
-                  const requiresReceipt = selected === 'company_expense' || selected === 'tax';
+                  const requiresReceipt = selected === 'company_expense' || selected === 'company_travel' || selected === 'tax';
                   const receiptStatus = receiptDrafts[row.id]
                     ?? (requiresReceipt && row.receiptStatus === 'not_required' ? 'missing' : row.receiptStatus);
                   return (
                     <tr key={row.id} className="align-top hover:bg-admin-bg/60">
-                      <td className="px-4 py-3"><span className="block text-xs text-admin-muted">{new Date(row.received_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span><strong className="block text-admin-text-2">{row.counterparty_name || '거래처 없음'}</strong><span className="block max-w-xs truncate text-xs text-admin-muted">{row.memo || '메모 없음'}</span></td>
+                      <td className="px-4 py-3"><span className="block text-xs text-admin-muted">{new Date(row.received_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span><strong className="block text-admin-text-2">{row.counterparty_name || '거래처 없음'}</strong><span className="block max-w-xs truncate text-xs text-admin-muted">{row.memo || '메모 없음'}</span>{row.targetLabel ? <span className="mt-1 block max-w-xs truncate text-xs font-medium text-sky-700">분할: {row.targetLabel}</span> : null}</td>
                       <td className="px-4 py-3 text-xs text-admin-muted">{row.clobeOriginalClassification || '미분류'}</td>
                       <td className="px-4 py-3"><select value={selected} onChange={event => setDrafts(current => ({ ...current, [row.id]: event.target.value as FinanceClassification }))} aria-label={`${row.counterparty_name || '거래'} OS 분류`} className="rounded-lg border border-admin-border-strong bg-white px-2.5 py-2 text-xs"><option value="review">검토 필요</option>{OPTIONS.filter(([value]) => value !== 'review').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
                       <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${row.transaction_type === '출금' ? 'text-red-700' : 'text-emerald-700'}`}>{row.transaction_type === '출금' ? '-' : '+'}{won(row.amount)}</td>
