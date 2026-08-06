@@ -2,11 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canCloseSettlementMonth,
+  clobeSettlementKeyFromSourceMetadata,
   summarizeBookingCashBreakdown,
   validateBreakdownTotal,
 } from './finance-settlement-v3';
 
 describe('finance settlement v3', () => {
+  it('reads the Clobe settlement key from the persisted source metadata', () => {
+    expect(clobeSettlementKeyFromSourceMetadata({
+      clobe_mcp: { settlement_key: ' 260806_\uc774\ub098\uc724_\ud22c\uc5b4\ud3f0 ' },
+    })).toBe('260806_\uc774\ub098\uc724_\ud22c\uc5b4\ud3f0');
+    expect(clobeSettlementKeyFromSourceMetadata({ clobe_mcp: {} })).toBeNull();
+    expect(clobeSettlementKeyFromSourceMetadata(null)).toBeNull();
+  });
+
   it('splits the 9.14m transfer without using the Kim Doyeon refund as Changwon University cost', () => {
     const summary = summarizeBookingCashBreakdown({
       bookingId: 'changwon',

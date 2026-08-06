@@ -27,6 +27,10 @@ const financeCenterService = readFileSync(
   join(process.cwd(), 'src/lib/finance-center-service.ts'),
   'utf8',
 );
+const financeSettlementV3Service = readFileSync(
+  join(process.cwd(), 'src/lib/finance-settlement-v3-service.ts'),
+  'utf8',
+);
 const periodApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/periods/route.ts'),
   'utf8',
@@ -110,6 +114,12 @@ describe('finance settlement center contracts', () => {
     expect(nonTravelConservationMigration).toContain('allocated_amount <> source_amount');
     expect(financeCenterService).toContain(".rpc('sync_non_travel_classification_allocations'");
     expect(classificationApi).toContain(".rpc('sync_non_travel_classification_allocations'");
+  });
+
+  it('reads Clobe travel keys from persisted metadata instead of a nonexistent bank column', () => {
+    expect(financeSettlementV3Service).toContain('clobeSettlementKeyFromSourceMetadata');
+    expect(financeSettlementV3Service).toContain('memo, source_metadata');
+    expect(financeSettlementV3Service).not.toContain('memo, settlement_key');
   });
 
   it('preserves legacy confirmations as versioned period snapshots', () => {
