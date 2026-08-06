@@ -10,11 +10,6 @@ ALTER TABLE public.bookings
   ADD COLUMN IF NOT EXISTS finance_excluded_at timestamptz,
   ADD COLUMN IF NOT EXISTS finance_excluded_by text;
 
-CREATE INDEX IF NOT EXISTS idx_bookings_finance_included_departure
-  ON public.bookings(departure_date, booking_no)
-  WHERE COALESCE(finance_excluded, false) = false
-    AND COALESCE(is_deleted, false) = false;
-
 ALTER TABLE public.settlement_periods
   DROP CONSTRAINT IF EXISTS settlement_periods_status_check;
 ALTER TABLE public.settlement_periods
@@ -92,13 +87,6 @@ SET target_type = CASE WHEN allocation_type = 'refund' THEN 'customer_refund' EL
 WHERE target_type = 'booking'
   AND (confirmed_at IS NULL OR allocation_type = 'refund');
 
-CREATE INDEX IF NOT EXISTS idx_bank_tx_alloc_active_target
-  ON public.bank_transaction_allocations(bank_transaction_id, target_type, booking_id)
-  WHERE status = 'active' AND reversed_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_bank_tx_alloc_reconciliation
-  ON public.bank_transaction_allocations(reconciliation_key)
-  WHERE reconciliation_key IS NOT NULL AND status = 'active' AND reversed_at IS NULL;
-
 CREATE OR REPLACE FUNCTION public.assert_bank_transaction_allocation_conservation(
   p_bank_transaction_id uuid,
   p_require_exact boolean DEFAULT false
@@ -166,6 +154,8 @@ CREATE TABLE IF NOT EXISTS public.bank_transaction_breakdown_requests (
   created_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
+CREATE INDEX IF NOT EXISTS idx_bank_transaction_breakdown_requests_transaction
+  ON public.bank_transaction_breakdown_requests(bank_transaction_id);
 
 CREATE TABLE IF NOT EXISTS public.booking_settlement_reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -211,6 +201,8 @@ CREATE TABLE IF NOT EXISTS public.booking_settlement_review_requests (
   created_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
 );
+CREATE INDEX IF NOT EXISTS idx_booking_settlement_review_requests_booking
+  ON public.booking_settlement_review_requests(booking_id);
 
 CREATE TABLE IF NOT EXISTS public.finance_migration_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
