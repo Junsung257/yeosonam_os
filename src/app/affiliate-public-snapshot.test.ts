@@ -43,6 +43,17 @@ describe('affiliate and embed public package data boundary', () => {
     expect(fallbackIndex).toBeGreaterThan(helperIndex);
   });
 
+  it('does not render unsupported affiliate discount, scarcity, or verification claims', () => {
+    const text = source('src/app/with/[slug]/page.tsx');
+
+    expect(text).not.toContain('price * 0.95');
+    expect(text).not.toContain('72 * 60 * 60');
+    expect(text).not.toContain('직접 검증한 팬 전용');
+    expect(text).not.toContain('팬 전용가');
+    expect(text).toContain('추천 보상이 지급될 수 있습니다');
+    expect(text).toContain('고객 결제 가격과 적용 조건은 각 상품 상세에서 확인');
+  });
+
   it('serves affiliate public API packages only from public snapshots', () => {
     const text = source('src/app/api/affiliate/public/[referral_code]/route.ts');
     const packageQueryIndex = text.indexOf(".from('travel_packages')");

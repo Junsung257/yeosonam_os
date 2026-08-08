@@ -125,7 +125,10 @@ export async function authAffiliate(request: NextRequest, options: {
   const token = request.cookies.get('inf_token')?.value;
   if (token) {
     const jwt = await verifyAffiliateToken(token);
-    if (jwt.ok && (!expectedCode || jwt.code === expectedCode)) {
+    if (jwt.ok && expectedCode && jwt.code !== expectedCode) {
+      return { ok: false, error: '다른 파트너의 데이터에는 접근할 수 없습니다.', status: 403, code: 'CROSS_TENANT' };
+    }
+    if (jwt.ok) {
       const affiliate = await loadAffiliateById(jwt.affiliateId);
       if (affiliate) {
         const inactive = ensureActive(affiliate);

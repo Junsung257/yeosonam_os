@@ -22,6 +22,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { buildPublicUrl, resolvePublicAppOrigin } from '@/lib/public-app-origin';
+import { apiResponse } from '@/lib/api-response';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -117,8 +120,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Co-branding 메타 + 광고 표시 주입
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
-    const shareUrl = `${baseUrl}/packages/${body.product_id}?ref=${affiliate.referral_code}`;
+    const baseUrl = resolvePublicAppOrigin();
+    const shareUrl = buildPublicUrl(
+      `/packages/${encodeURIComponent(body.product_id)}?ref=${encodeURIComponent(affiliate.referral_code)}`,
+      baseUrl,
+    );
 
     const cobrand = {
       affiliate_id: affiliate.id,
@@ -223,34 +229,30 @@ export async function POST(request: NextRequest) {
 
 // 어필리에이터의 콘텐츠 목록 조회
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ contents: [] });
+  if (!isSupabaseConfigured) return apiResponse({ error: '콘텐츠 서비스를 사용할 수 없습니다.' }, { status: 503 });
   try {
     const { supabaseAdmin } = await import('@/lib/supabase');
+    const { authInfluencer } = await import('@/lib/affiliate/jwt-or-pin-auth');
     const { searchParams } = request.nextUrl;
     const code = normalizeAffiliateReferralCode(searchParams.get('code') || '');
-    if (!code) return NextResponse.json({ error: 'code 필수' }, { status: 400 });
+    if (!code) return apiResponse({ error: 'code 필수' }, { status: 400 });
 
-    const { data: aff } = await supabaseAdmin
-      .from('affiliates')
-      .select('id')
-      .eq('referral_code', code)
-      .maybeSingle();
-
-    if (!aff) return NextResponse.json({ contents: [] });
+    const auth = await authInfluencer(request, code);
+    if (!auth.ok) return apiResponse({ error: auth.error }, { status: auth.status });
+    const affiliateId = typeof auth.affiliate.id === 'string' ? auth.affiliate.id : '';
+    if (!affiliateId) return apiResponse({ error: '파트너 인증 정보를 확인할 수 없습니다.' }, { status: 401 });
 
     const { data, error } = await supabaseAdmin
       .from('content_distributions')
       .select('id, product_id, platform, status, payload, generation_agent, created_at, updated_at, published_at, external_url')
-      .eq('affiliate_id', (aff as { id: string }).id)
+      .eq('affiliate_id', affiliateId)
       .order('updated_at', { ascending: false })
       .limit(50);
 
     if (error) throw error;
-    return NextResponse.json({ contents: data ?? [] });
+    return apiResponse({ contents: data ?? [] });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '조회 실패' },
-      { status: 500 },
-    );
+    logAndSanitize('influencer-content-get', error, '콘텐츠 조회에 실패했습니다.');
+    return apiResponse({ error: '콘텐츠 조회에 실패했습니다.' }, { status: 500 });
   }
 }

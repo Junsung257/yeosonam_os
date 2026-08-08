@@ -42,6 +42,7 @@
 | `NEXT_PUBLIC_GOOGLE_ADS_ID` | 공개 | `AW-...` 형식 |
 | `NEXT_PUBLIC_CLARITY_PROJECT_ID` | 공개 | 선택적 GTM Clarity 설정용 |
 | `NEXT_PUBLIC_SITE_URL` | 공개 | canonical/운영 hostname (`https://www.yeosonam.com`) |
+| `PUBLIC_APP_ORIGIN` | 서버 전용 | 공개 링크 생성의 단일 기준 origin (`https://www.yeosonam.com`). 다른 운영 host는 시작/링크 생성 시 거부 |
 | `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` | 공개 | Search Console URL-prefix meta 인증 token |
 | `NEXT_PUBLIC_ATTRIBUTION_TTL_DAYS` | 공개 | attribution 보존일, 1~365, 기본 90 |
 | `GA4_MEASUREMENT_PROTOCOL_API_SECRET` | **서버 비밀** | 서버 purchase/refund delivery. 절대 `NEXT_PUBLIC_` 금지 |

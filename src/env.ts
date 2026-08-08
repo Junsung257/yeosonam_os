@@ -35,6 +35,7 @@ export const env = createEnv({
     SUPABASE_SERVICE_KEY: z.string().min(1).optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SUPABASE_JWT_SECRET: z.string().min(1).optional(),
+    PUBLIC_APP_ORIGIN: z.string().url().optional(),
 
     // ── LLM Providers ──
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
@@ -87,6 +88,7 @@ export const env = createEnv({
     SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET,
+    PUBLIC_APP_ORIGIN: process.env.PUBLIC_APP_ORIGIN,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,

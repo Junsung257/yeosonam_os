@@ -12,6 +12,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { buildPublicUrl, resolvePublicAppOrigin } from '@/lib/public-app-origin';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
   if (!input) return null;
@@ -32,12 +33,11 @@ interface PageProps {
 }
 
 function siteBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
-    .replace(/\/+$/, '');
+  return resolvePublicAppOrigin();
 }
 
 function socialImageUrl(): string {
-  return `${siteBaseUrl()}/og-image.png`;
+  return buildPublicUrl('/og-image.png', siteBaseUrl());
 }
 
 function safeDecodePathSegment(value: string): string {
@@ -112,7 +112,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const socialTitle = `${name} x Yeosonam`;
   return {
     title,
-    description: `${name}님과 함께하는 여소남 패키지 여행. 제휴 혜택이 적용됩니다.`,
+    description: `${name}님이 추천하는 여소남 패키지 여행입니다. 추천 예약에는 파트너 보상이 포함될 수 있습니다.`,
     robots: { index: false, follow: false },
     alternates: { canonical },
     openGraph: {
@@ -232,9 +232,8 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   const refQ = encodeURIComponent(row.referral_code);
   const intro =
     row.landing_intro?.trim() ||
-    `안녕하세요, ${row.name}입니다. 여소남과 함께 엄선한 패키지를 소개합니다. 아래 상품은 이 링크로 예약 시 제휴 혜택이 적용됩니다.`;
+    `안녕하세요, ${row.name}입니다. 여소남에서 살펴볼 수 있는 패키지 여행을 소개합니다.`;
   const youtubeEmbedUrl = extractYoutubeEmbedUrl(row.landing_video_url || row.landing_intro);
-  const campaignEndsAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -244,8 +243,8 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         <section className="border-b border-gray-200 bg-white">
           <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-900">
-              <strong>{row.name}</strong>님이 직접 검증한 팬 전용 추천 상품입니다. 기간 한정 혜택은{' '}
-              <span className="font-semibold">{campaignEndsAt.slice(0, 10)}</span>까지 적용됩니다.
+              이 페이지의 링크로 예약하면 <strong>{row.name}</strong>님에게 추천 보상이 지급될 수 있습니다.
+              고객 결제 가격과 적용 조건은 각 상품 상세에서 확인해 주세요.
             </div>
             <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-center">
               <div className="flex shrink-0 items-center gap-4">
@@ -344,12 +343,9 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
                       ) : null}
                       {typeof pkg.price === 'number' ? (
                         <div className="mt-4">
-                          <p className="text-sm text-gray-500 line-through">
-                            일반가 {pkg.price.toLocaleString('ko-KR')}원
-                          </p>
-                          <p className="text-lg font-bold text-rose-600">
-                            팬 전용가 {Math.max(0, Math.floor(pkg.price * 0.95)).toLocaleString('ko-KR')}
-                            <span className="text-sm font-medium text-rose-500">원~</span>
+                          <p className="text-lg font-bold text-gray-900">
+                            {pkg.price.toLocaleString('ko-KR')}
+                            <span className="text-sm font-medium text-gray-600">원~</span>
                           </p>
                         </div>
                       ) : null}

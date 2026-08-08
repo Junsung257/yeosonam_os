@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 
 const CHANNEL_TYPES = [
@@ -21,10 +21,13 @@ export default function PartnerApplyPage() {
     intro: '',
     business_type: 'individual' as 'individual' | 'business',
     business_number: '',
+    terms_accepted: false,
+    disclosure_ack: false,
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,12 +35,20 @@ export default function PartnerApplyPage() {
       setError('이름, 연락처, 채널 URL은 필수입니다.');
       return;
     }
+    if (!form.terms_accepted || !form.disclosure_ack) {
+      setError('파트너 정책과 광고 표시 의무를 모두 확인해 주세요.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
+      idempotencyKeyRef.current ||= crypto.randomUUID();
       const res = await fetch('/api/partner-apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKeyRef.current,
+        },
         body: JSON.stringify({
           ...form,
           follower_count: form.follower_count ? +form.follower_count : null,
@@ -161,6 +172,33 @@ export default function PartnerApplyPage() {
                   className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>
             )}
+
+            <fieldset className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <legend className="px-1 text-sm font-semibold text-gray-800">필수 확인</legend>
+              <label className="flex items-start gap-3 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.terms_accepted}
+                  onChange={e => setForm(f => ({ ...f, terms_accepted: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span>
+                  <Link href="/legal/partner-attribution" target="_blank" className="font-medium text-blue-700 underline">
+                    제휴·추천 링크 안내
+                  </Link>
+                  와 신청 정보 처리 내용을 확인했습니다.
+                </span>
+              </label>
+              <label className="flex items-start gap-3 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.disclosure_ack}
+                  onChange={e => setForm(f => ({ ...f, disclosure_ack: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span>외부 게시물에 광고·추천 보상 관계를 명확히 표시할 의무를 확인했습니다.</span>
+              </label>
+            </fieldset>
 
             <button
               type="submit"
