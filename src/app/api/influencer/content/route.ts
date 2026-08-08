@@ -4,7 +4,7 @@
  * 어필리에이터 포털 전용 콘텐츠 생성 API.
  *
  * Body:
- *   referral_code:  string  (PIN 인증 통과한 어필리에이터)
+ *   referral_code:  string  (partner_session 인증 파트너)
  *   product_id:     uuid
  *   platform:       'blog_body' | 'instagram_caption' | 'threads_post'
  *
@@ -25,6 +25,7 @@ import { loadPublicContentPackageForGeneration } from '@/lib/content-public-pack
 import { buildPublicUrl, resolvePublicAppOrigin } from '@/lib/public-app-origin';
 import { apiResponse } from '@/lib/api-response';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { isAllowedPartnerWriteOrigin } from '@/lib/affiliate/write-origin';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -48,6 +49,9 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
+  if (!isAllowedPartnerWriteOrigin(request)) {
+    return NextResponse.json({ error: 'ORIGIN_REJECTED' }, { status: 403 });
+  }
 
   try {
     const body = (await request.json()) as RequestBody;
@@ -62,8 +66,8 @@ export async function POST(request: NextRequest) {
     const { supabaseAdmin } = await import('@/lib/supabase');
     const { authInfluencer } = await import('@/lib/affiliate/jwt-or-pin-auth');
 
-    // 1. JWT 우선 인증, 없으면 PIN
-    const auth = await authInfluencer(request, refCanon, body.pin);
+    // 1. 폐기 가능한 서버 세션 인증
+    const auth = await authInfluencer(request, refCanon);
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }

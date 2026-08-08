@@ -2,6 +2,8 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
+import { isAllowedPartnerWriteOrigin } from '@/lib/affiliate/write-origin';
+import { buildPublicUrl } from '@/lib/public-app-origin';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
@@ -29,20 +31,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAllowedPartnerWriteOrigin(req)) {
+    return apiResponse({ error: 'ORIGIN_REJECTED' }, { status: 403 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
-    const { referral_code, package_id, package_title, pin, sub_id } = body as {
+    const { referral_code, package_id, package_title, sub_id } = body as {
       referral_code?: string;
       package_id?: string;
       package_title?: string;
-      pin?: string;
       sub_id?: string;
     };
     if (!referral_code || !package_id) {
       return apiResponse({ error: '필수 필드 누락' }, { status: 400 });
     }
 
-    const auth = await authInfluencer(req, referral_code, pin);
+    const auth = await authInfluencer(req, referral_code);
     if (!auth.ok) {
       return apiResponse({ error: auth.error }, { status: auth.status });
     }
@@ -52,10 +56,9 @@ export async function POST(req: NextRequest) {
     const normalizedSub = typeof sub_id === 'string'
       ? sub_id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
       : '';
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
     const shortUrl = normalizedSub
-      ? `${baseUrl}/r/${encodeURIComponent(canon)}/${package_id}?sub=${encodeURIComponent(normalizedSub)}`
-      : `${baseUrl}/r/${encodeURIComponent(canon)}/${package_id}`;
+      ? buildPublicUrl(`/r/${encodeURIComponent(canon)}/${package_id}?sub=${encodeURIComponent(normalizedSub)}`)
+      : buildPublicUrl(`/r/${encodeURIComponent(canon)}/${package_id}`);
 
     const { data: existing, error: existingError } = await supabaseAdmin
       .from('influencer_links')

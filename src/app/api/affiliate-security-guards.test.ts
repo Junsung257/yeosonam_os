@@ -34,13 +34,13 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(updateBody).toContain('attribution_split: split');
   });
 
-  it('blocks influencer promo code takeover instead of upserting by code blindly', () => {
+  it('pauses ambiguous influencer promotion creation until contract V2', () => {
     const route = source('src/app/api/influencer/promo-codes/route.ts');
 
     expect(route).not.toContain('.upsert(');
-    expect(route).toContain(".select('id, affiliate_id')");
-    expect(route).toContain('existingRow.affiliate_id !== affiliate.id');
-    expect(route).toContain('{ status: 409 }');
+    expect(route).toContain('PROMOTION_CREATION_PAUSED');
+    expect(route).toContain('{ status: 423 }');
+    expect(route).toContain('isAllowedPartnerWriteOrigin');
   });
 
   it('increments promo uses through the atomic RPC', () => {
@@ -233,7 +233,7 @@ describe('affiliate admin/attribution/promo security guards', () => {
     const handlerStart = route.indexOf('export async function GET');
     const handler = route.slice(handlerStart);
     const adminCheck = handler.indexOf('await isAdminRequest(request)');
-    const affiliateTokenCheck = handler.indexOf("request.cookies.get('inf_token')");
+    const affiliateTokenCheck = handler.indexOf('await authAffiliate(request)');
     const settlementQuery = handler.indexOf(".from('settlements')");
 
     expect(route).toContain("import { isAdminRequest } from '@/lib/admin-guard'");
@@ -274,33 +274,37 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS application_risk_score');
   });
 
-  it('approves partners with generated portal PIN, pin_hash, and lifecycle status', () => {
+  it('approves partners with atomic one-time invitations and no static PIN', () => {
     const route = source('src/app/api/admin/applications/route.ts');
     const setPin = source('src/app/api/admin/affiliates/set-pin/route.ts');
+    const migration = source('supabase/migrations/20260808135026_affiliate_auth_sessions_v2.sql');
 
-    expect(route).toContain('generatePortalPin');
-    expect(route).toContain('portal_pin: pin');
-    expect(route).toContain('pin_hash: hashAffiliatePin(pin)');
-    expect(route).toContain("partner_status: 'approved_not_onboarded'");
-    expect(route).not.toContain("slice(-4) || '0000'");
-    expect(setPin).toContain('pin_hash: hashAffiliatePin(pin)');
+    expect(route).toContain("rpc('approve_affiliate_application_v2'");
+    expect(route).toContain('generateInvitationToken');
+    expect(route).not.toContain('generatePortalPin');
+    expect(route).not.toContain('portal_pin: pin');
+    expect(setPin).toContain("rpc('rotate_affiliate_credentials_v2'");
+    expect(setPin).toContain("error: 'STATIC_PIN_RETIRED'");
+    expect(migration).toContain("'approved_not_onboarded'");
+    expect(migration).toContain('portal_pin = NULL');
+    expect(migration).toContain('pin_hash = NULL');
   });
 
-  it('uses affiliate jwt-auth service instead of legacy AFFILIATE_TOKEN_SECRET login tokens', () => {
+  it('uses a revocable partner_session instead of browser bearer tokens', () => {
     const route = source('src/app/api/affiliate/auth/login/route.ts');
     const dashboard = source('src/app/api/affiliate/dashboard/route.ts');
     const cardNews = source('src/app/api/affiliate/card-news/route.ts');
     const cardNewsDetail = source('src/app/api/affiliate/card-news/[id]/route.ts');
+    const sessionRoute = source('src/app/api/partner/auth/session/route.ts');
 
-    expect(route).toContain("authAffiliate(request");
-    expect(route).toContain("cookies.set('inf_token'");
+    expect(route).toContain('PIN_LOGIN_RETIRED');
+    expect(sessionRoute).toContain('authAffiliate(request)');
+    expect(sessionRoute).toContain('clearPartnerSessionCookie');
     expect(route).not.toContain('AFFILIATE_TOKEN_SECRET');
-    expect(route).not.toContain('createHmac');
     for (const api of [dashboard, cardNews, cardNewsDetail]) {
-      expect(api).toContain('verifyAffiliateToken');
+      expect(api).toContain('authAffiliate(request)');
       expect(api).not.toContain('AFFILIATE_TOKEN_SECRET');
-      expect(api).not.toContain('createHmac');
-      expect(api).not.toContain('verifyToken(');
+      expect(api).not.toContain("headers.get('authorization')");
     }
   });
 
@@ -321,7 +325,7 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(service).toContain('metric_definitions');
 
     expect(affiliateDashboard).toContain('buildAffiliateDashboardById');
-    expect(affiliateDashboard).toContain('verifyAffiliateToken');
+    expect(affiliateDashboard).toContain('authAffiliate');
     expect(affiliateDashboard).not.toContain("from('settlements')");
     expect(affiliateDashboard).not.toContain("from('bookings')");
 
@@ -354,36 +358,34 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(page).not.toContain("['READY', 'PENDING'].includes(s.status)");
   });
 
-  it('exposes partner dashboard filters, preset sub IDs, and promo stock warnings', () => {
-    const page = source('src/app/affiliate/dashboard/page.tsx');
+  it('redirects the legacy dashboard into the canonical onboarding home', () => {
+    const legacyPage = source('src/app/affiliate/dashboard/page.tsx');
+    const partnerPage = source('src/app/partner/page.tsx');
 
-    expect(page).toContain('예약 기간 필터');
-    expect(page).toContain('정산 상태 필터');
-    expect(page).toContain("['instagram', 'kakao', 'blog', 'youtube', 'dm']");
-    expect(page).toContain('프로모코드가 모두 소진되었습니다.');
-    expect(page).toContain('잔여 사용량이 10개 이하입니다.');
-    expect(page).toContain('customSubId');
+    expect(legacyPage).toContain("redirect('/partner')");
+    expect(partnerPage).toContain('다음 할 일');
+    expect(partnerPage).toContain('첫 상품 찾기');
+    expect(partnerPage).toContain('첫 게시 링크 테스트');
   });
 
-  it('removes phone-last-4 PIN fallback from affiliate PIN verifiers', () => {
-    const pdfAuth = source('src/lib/affiliate-influencer-auth.ts');
+  it('removes PIN fallback from affiliate compatibility auth', () => {
     const bridge = source('src/lib/affiliate/jwt-or-pin-auth.ts');
+    const pdf = source('src/app/api/settlements/[id]/pdf/route.ts');
 
-    expect(pdfAuth).not.toContain('phone');
-    expect(pdfAuth).not.toContain('slice(-4)');
     expect(bridge).toContain("authAffiliate(req");
+    expect(bridge).not.toContain('pin:');
+    expect(pdf).not.toContain("headers.get('x-pin')");
+    expect(pdf).not.toContain("cookies.get('inf_token')");
   });
 
-  it('connects pin_attempts lockout to shared affiliate auth service', () => {
+  it('connects sessions to lifecycle and token-version revocation', () => {
     const service = source('src/lib/affiliate/auth-service.ts');
-    const migration = source('supabase/migrations/20260603064727_affiliate_application_auth_phase2.sql');
+    const migration = source('supabase/migrations/20260808135026_affiliate_auth_sessions_v2.sql');
 
-    expect(service).toContain("from('pin_attempts')");
-    expect(service).toContain('PIN_MAX_ATTEMPTS');
-    expect(service).toContain('recordFailure');
-    expect(service).toContain('clearFailures');
-    expect(service).toContain("code: 'PIN_LOCKED'");
-    expect(migration).toContain('idx_pin_attempts_identifier_attempted');
-    expect(migration).toContain('pin_attempts_service_role_all');
+    expect(service).toContain("from('affiliate_sessions')");
+    expect(service).toContain('token_version');
+    expect(service).toContain('revoked_at');
+    expect(migration).toContain('affiliates_revoke_sessions_security_change');
+    expect(migration).toContain("'token_version_rotated'");
   });
 });

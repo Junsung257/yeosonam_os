@@ -53,7 +53,7 @@ function isSolapiConfigured() {
   ]);
 }
 
-type AlimtalkSendResult = Record<string, unknown> & {
+export type SolapiSendResult = Record<string, unknown> & {
   skipped?: boolean;
   reason?: string;
   mode?: string;
@@ -95,7 +95,7 @@ async function sendAlimtalk(params: {
   to: string;
   templateId: string;
   variables: Record<string, string>;
-}): Promise<AlimtalkSendResult> {
+}): Promise<SolapiSendResult> {
   const emptyKeys = Object.entries(params.variables)
     .filter(([, value]) => !String(value ?? '').trim())
     .map(([key]) => key);
@@ -157,7 +157,56 @@ async function sendAlimtalk(params: {
     throw new Error(message);
   }
 
-  return result as AlimtalkSendResult;
+  return result as SolapiSendResult;
+}
+
+/**
+ * Security and transactional messages that cannot depend on a pre-approved
+ * Kakao template use Solapi SMS. The caller must treat `skipped` as a failed
+ * delivery; verification codes are never returned to the browser as fallback.
+ */
+export async function sendTransactionalSms(params: {
+  to: string;
+  text: string;
+}): Promise<SolapiSendResult> {
+  if (!isSolapiConfigured()) {
+    console.warn('[SMS] Solapi 미설정 - 발송 건너뜀', { to: maskPhoneForLog(params.to) });
+    return { skipped: true, reason: 'missing_solapi_config', mode: 'manual' };
+  }
+
+  const apiKey = getSecret('SOLAPI_API_KEY');
+  const apiSecret = getSecret('SOLAPI_API_SECRET');
+  const senderNumber = getSecret('KAKAO_SENDER_NUMBER');
+  if (!apiKey || !apiSecret || !senderNumber) {
+    return { skipped: true, reason: 'missing_solapi_config', mode: 'manual' };
+  }
+
+  const response = await fetch('https://api.solapi.com/messages/v4/send-many/detail', {
+    method: 'POST',
+    headers: {
+      Authorization: await createSolapiAuthorization(apiKey, apiSecret),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: [{
+        to: params.to,
+        from: senderNumber,
+        type: params.text.length > 90 ? 'LMS' : 'SMS',
+        text: params.text,
+      }],
+      allowDuplicates: false,
+      showMessageList: true,
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = typeof result === 'object' && result && 'message' in result
+      ? String(result.message)
+      : `Solapi SMS request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return result as SolapiSendResult;
 }
 
 /** 어필리에이터 예약 전환 축하 알림

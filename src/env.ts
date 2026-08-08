@@ -55,6 +55,7 @@ export const env = createEnv({
 
     // ── Crypto ──
     ENCRYPTION_SECRET_KEY: z.string().min(32).optional(),
+    AFFILIATE_AUTH_SECRET: z.string().min(32).optional(),
 
     // ── Telemetry ──
     SENTRY_DSN: z.string().url().optional(),
@@ -100,6 +101,7 @@ export const env = createEnv({
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
     ENCRYPTION_SECRET_KEY: process.env.ENCRYPTION_SECRET_KEY,
+    AFFILIATE_AUTH_SECRET: process.env.AFFILIATE_AUTH_SECRET,
     SENTRY_DSN: process.env.SENTRY_DSN,
     OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,

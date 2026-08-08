@@ -1,36 +1,21 @@
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { buildAffiliateDashboardById } from '@/lib/affiliate/dashboard-service';
-import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { authAffiliate } from '@/lib/affiliate/auth-service';
+import { isSupabaseAdminConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
-function resolveToken(request: NextRequest): string {
-  const cookieToken = request.cookies.get('inf_token')?.value || '';
-  if (cookieToken) return cookieToken;
-
-  const auth = request.headers.get('authorization') || '';
-  return auth.startsWith('Bearer ') ? auth.slice(7) : '';
-}
-
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return apiResponse({ error: 'DB is not configured' }, { status: 503 });
   }
 
-  const rawToken = resolveToken(request);
-  if (!rawToken) {
-    return apiResponse({ error: 'Authentication required' }, { status: 401 });
-  }
-
-  const token = await verifyAffiliateToken(rawToken);
-  if (!token.ok) {
-    return apiResponse({ error: 'Invalid token' }, { status: 401 });
-  }
+  const auth = await authAffiliate(request);
+  if (!auth.ok) return apiResponse({ error: auth.error, code: auth.code }, { status: auth.status });
 
   try {
-    const dashboard = await buildAffiliateDashboardById(token.affiliateId);
+    const dashboard = await buildAffiliateDashboardById(String(auth.affiliate.id));
     if (!dashboard) {
       return apiResponse({ error: 'Affiliate not found' }, { status: 404 });
     }

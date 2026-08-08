@@ -7,10 +7,11 @@
  * - 생성 후 사용량 증가
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { checkAffiliateContentQuota, incrementAffiliateContentUsage, logAffiliateMonthlyUsage } from '@/lib/card-news/affiliate-quota';
 import { getAffiliateBrandKit, buildBrandOverrides } from '@/lib/card-news/brand-kit';
-import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
+import { authAffiliate } from '@/lib/affiliate/auth-service';
+import { isAllowedPartnerWriteOrigin } from '@/lib/affiliate/write-origin';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -28,21 +29,17 @@ interface RequestBody {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
 
-  // 토큰 인증
-  const auth = request.headers.get('authorization');
-  if (!auth?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  if (!isAllowedPartnerWriteOrigin(request)) {
+    return NextResponse.json({ error: '허용되지 않은 요청입니다.' }, { status: 403 });
   }
-  const token = await verifyAffiliateToken(auth.slice(7));
-  if (!token.ok) {
-    return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
-  }
+  const auth = await authAffiliate(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error, code: auth.code }, { status: auth.status });
 
-  const affiliateId = token.affiliateId;
+  const affiliateId = String(auth.affiliate.id);
   try {
     const body = (await request.json()) as RequestBody;
     const effectiveTitle = body.title || body.topic || '';
@@ -122,22 +119,14 @@ export async function POST(request: NextRequest) {
  * 어필리에이터의 카드뉴스 목록 조회 (토큰 기반 인증)
  */
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
 
-  const auth = request.headers.get('authorization');
-  if (!auth?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
-  }
+  const auth = await authAffiliate(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error, code: auth.code }, { status: auth.status });
 
-  // 토큰에서 affiliate_id 추출
-  const token = await verifyAffiliateToken(auth.slice(7));
-  if (!token.ok) {
-    return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
-  }
-
-  const affiliateId = token.affiliateId;
+  const affiliateId = String(auth.affiliate.id);
   const { data, error } = await supabaseAdmin
     .from('card_news')
     .select('id, title, title_slides, status, created_at, updated_at, views, clicks, scheduled_at')

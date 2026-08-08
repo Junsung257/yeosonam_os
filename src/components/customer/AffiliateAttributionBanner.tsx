@@ -13,6 +13,9 @@ const HIDDEN_PREFIXES = [
   '/auth/',
   '/api/',
   '/influencer',
+  '/affiliate',
+  '/partner',
+  '/partner-apply',
   '/with/',
   '/embed/',
   '/legal/',
@@ -35,8 +38,9 @@ export default function AffiliateAttributionBanner() {
       role="status"
       className="sticky top-0 z-[100] border-b border-emerald-800/40 bg-gradient-to-r from-emerald-900 to-teal-900 px-3 py-2.5 text-center text-sm text-white shadow-md"
     >
-      <span className="font-medium">제휴 전용 혜택이 적용 중입니다.</span>
+      <span className="font-medium">파트너 추천 링크로 접속했습니다.</span>
       <span className="ml-2 opacity-90">(추천 코드: {refCode})</span>
+      <span className="ml-2 opacity-90">예약 시 추천 파트너에게 수수료가 지급될 수 있습니다.</span>
       <Link href="/legal/partner-attribution" className="ml-2 text-xs underline opacity-90 hover:opacity-100">
         안내
       </Link>

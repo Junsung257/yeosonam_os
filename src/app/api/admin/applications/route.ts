@@ -1,151 +1,157 @@
+import crypto from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
-import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
-import { withAdminGuard } from '@/lib/admin-guard';
-import { logWarning } from '@/lib/sentry-logger';
-import { hashAffiliatePin } from '@/lib/affiliate/auth-service';
 import { apiResponse } from '@/lib/api-response';
+import { resolveAdminActorLabel, withAdminGuard } from '@/lib/admin-guard';
+import {
+  assertAffiliateAuthConfigured,
+  encryptAffiliateOutboxPayload,
+  generateInvitationToken,
+  hashOpaqueValue,
+} from '@/lib/affiliate/auth-crypto';
+import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
+import { deliverAffiliateNotification } from '@/lib/affiliate/notification-outbox';
+import { logAndSanitize, sanitizeDbError } from '@/lib/error-sanitizer';
+import { buildPublicUrl } from '@/lib/public-app-origin';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 
-function generatePortalPin(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+const REFERRAL_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const INVITATION_TTL_MS = 30 * 60_000;
+
+function secureReferralSuffix(length = 6): string {
+  return Array.from({ length }, () => REFERRAL_ALPHABET[crypto.randomInt(REFERRAL_ALPHABET.length)]).join('');
 }
 
-// GET: 파트너 신청 목록
+async function generateUniqueReferralCode(name: string): Promise<string> {
+  const prefix = name.replace(/[^a-zA-Z가-힣]/g, '').slice(0, 4).toUpperCase() || 'YSN';
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = normalizeAffiliateReferralCode(`${prefix}_${secureReferralSuffix()}`);
+    const { count, error } = await supabaseAdmin
+      .from('affiliates')
+      .select('id', { count: 'exact', head: true })
+      .eq('referral_code', candidate);
+    if (error) throw error;
+    if (!count) return candidate;
+  }
+  throw new Error('REFERRAL_CODE_EXHAUSTED');
+}
+
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return apiResponse({ applications: [] });
-
-  const { searchParams } = request.nextUrl;
-  const status = searchParams.get('status') || undefined;
-
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: 'DB_UNAVAILABLE', applications: [] }, { status: 503 });
+  }
+  const status = request.nextUrl.searchParams.get('status') || undefined;
   let query = supabaseAdmin
     .from('affiliate_applications')
     .select('*')
     .order('applied_at', { ascending: false });
-
   if (status) query = query.eq('status', status);
-
   const { data, error } = await query;
   if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
-
   return apiResponse({ applications: data || [] });
-}
+};
 
-// POST: 승인 또는 거절
 const postHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseAdminConfigured) return apiResponse({ error: 'DB_UNAVAILABLE' }, { status: 503 });
 
   try {
-    const body = await request.json();
-    const { applicationId, action, reject_reason } = body;
-
-    if (!applicationId || !action) {
-      return apiResponse({ error: 'applicationId, action 필수' }, { status: 400 });
+    const body = await request.json() as {
+      applicationId?: unknown;
+      action?: unknown;
+      reject_reason?: unknown;
+    };
+    const applicationId = typeof body.applicationId === 'string' ? body.applicationId : '';
+    const action = typeof body.action === 'string' ? body.action : '';
+    if (!applicationId || !['approve', 'reject'].includes(action)) {
+      return apiResponse({ error: 'INVALID_REVIEW_REQUEST' }, { status: 400 });
     }
 
-    // 신청 조회
-    const { data: app, error: appErr } = await supabaseAdmin
+    const { data: application, error: appError } = await supabaseAdmin
       .from('affiliate_applications')
-      .select('*')
+      .select('id, name, phone, status')
       .eq('id', applicationId)
-      .single();
+      .maybeSingle();
+    const app = application as Record<string, unknown> | null;
+    if (appError || !app) return apiResponse({ error: 'APPLICATION_NOT_FOUND' }, { status: 404 });
+    if (app.status !== 'PENDING') return apiResponse({ error: 'APPLICATION_ALREADY_REVIEWED' }, { status: 409 });
 
-    if (appErr || !app) return apiResponse({ error: '신청을 찾을 수 없습니다.' }, { status: 404 });
-    if (app.status !== 'PENDING') return apiResponse({ error: '이미 처리된 신청입니다.' }, { status: 409 });
-
-    if (action === 'approve') {
-      // PIN 생성 (전화번호 뒷 4자리)
-      const pin = generatePortalPin();
-
-      // 추천코드 생성 (혼동 문자 제외 6자리 + DB 중복 체크)
-      const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 0,O,1,I 제외
-      let code = '';
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const suffix = Array.from({ length: 6 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
-        const candidate = normalizeAffiliateReferralCode(
-          `${app.name.replace(/[^a-zA-Z가-힣]/g, '').slice(0, 4).toUpperCase()}_${suffix}`,
-        );
-        const { count } = await supabaseAdmin
-          .from('affiliates')
-          .select('*', { count: 'exact', head: true })
-          .eq('referral_code', candidate);
-        if (!count || count === 0) { code = candidate; break; }
-      }
-      if (!code) code = normalizeAffiliateReferralCode(`YSN_${Date.now().toString(36).toUpperCase().slice(-6)}`);
-      else code = normalizeAffiliateReferralCode(code);
-
-      // affiliates 테이블에 생성
-      const { data: affiliate, error: affErr } = await supabaseAdmin
-        .from('affiliates')
-        .insert({
-          name: app.name,
-          phone: app.phone,
-          referral_code: code,
-          portal_pin: pin,
-          pin_hash: hashAffiliatePin(pin),
-          payout_type: app.business_type === 'business' ? 'BUSINESS' : 'PERSONAL',
-          business_number: app.business_number || null,
-          commission_rate: getDefaultAffiliateCommissionRate(),
-          is_active: true,
-          partner_status: 'approved_not_onboarded',
-          memo: `채널: ${app.channel_type} / ${app.channel_url}${app.intro ? ` / ${app.intro}` : ''}`,
-        } as never)
-        .select()
-        .single();
-
-      if (affErr) throw affErr;
-
-      // 신청 상태 업데이트
-      await supabaseAdmin
-        .from('affiliate_applications')
-        .update({
-          status: 'APPROVED',
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', applicationId);
-
-      // 승인 알림 발송 (알림톡 or SMS)
-      try {
-        const { getNotificationAdapter } = await import('@/lib/notification-adapter');
-        const adapter = getNotificationAdapter();
-        const portalUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.co.kr'}/influencer/${code}`;
-        await adapter.send({
-          bookingId: affiliate.id,
-          eventType: 'PARTNER_APPROVED' as const,
-          title: '파트너 승인 완료',
-          content: `[여소남] ${app.name}님, 파트너 승인이 완료되었습니다!\n추천코드: ${code}\nPIN: ${pin}\n포털: ${portalUrl}`,
-          customerName: app.name,
-          customerPhone: app.phone,
-        });
-      } catch (notifyErr) {
-        logWarning('[admin/applications] approval notification failed', notifyErr);
-      }
-
-      return apiResponse({ affiliate: { ...(affiliate as Record<string, unknown>), pin }, message: '승인 완료' });
-
-    } else if (action === 'reject') {
-      await supabaseAdmin
+    if (action === 'reject') {
+      const rejectReason = typeof body.reject_reason === 'string' ? body.reject_reason.trim() : '';
+      const { data: rejected, error } = await supabaseAdmin
         .from('affiliate_applications')
         .update({
           status: 'REJECTED',
-          reject_reason: reject_reason || null,
+          reject_reason: rejectReason || null,
           reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', applicationId);
-
+        } as never)
+        .eq('id', applicationId)
+        .eq('status', 'PENDING')
+        .select('id')
+        .maybeSingle();
+      if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+      if (!rejected) return apiResponse({ error: 'APPLICATION_ALREADY_REVIEWED' }, { status: 409 });
       return apiResponse({ message: '거절 완료' });
     }
 
-    return apiResponse({ error: 'action은 approve 또는 reject' }, { status: 400 });
+    assertAffiliateAuthConfigured();
+    const actor = await resolveAdminActorLabel(request);
+    const referralCode = await generateUniqueReferralCode(String(app.name));
+    const rawToken = generateInvitationToken();
+    const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+    const activationUrl = buildPublicUrl(`/partner/activate?token=${encodeURIComponent(rawToken)}`);
+    const recipientHash = hashOpaqueValue(String(app.phone).replace(/\D/g, ''));
+    const encryptedPayload = encryptAffiliateOutboxPayload({
+      kind: 'affiliate_invitation',
+      phone: String(app.phone),
+      name: String(app.name),
+      activationUrl,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    const { data, error } = await supabaseAdmin.rpc('approve_affiliate_application_v2', {
+      p_application_id: applicationId,
+      p_referral_code: referralCode,
+      p_token_hash: hashOpaqueValue(rawToken),
+      p_recipient_hash: recipientHash,
+      p_invitation_expires_at: expiresAt.toISOString(),
+      p_encrypted_payload: encryptedPayload,
+      p_created_by: actor,
+      p_commission_rate: getDefaultAffiliateCommissionRate(),
+    });
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('APPLICATION_ALREADY_REVIEWED')) {
+        return apiResponse({ error: 'APPLICATION_ALREADY_REVIEWED' }, { status: 409 });
+      }
+      throw error;
+    }
+
+    const approved = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+    if (!approved?.affiliate_id || !approved.outbox_id) throw new Error('APPROVAL_RESULT_INVALID');
+
+    const delivery = await deliverAffiliateNotification(String(approved.outbox_id));
+    return apiResponse({
+      affiliate: {
+        id: approved.affiliate_id,
+        name: approved.affiliate_name,
+        referral_code: approved.referral_code,
+      },
+      invitation: {
+        id: approved.invitation_id,
+        expires_at: expiresAt.toISOString(),
+        delivery_status: delivery.ok ? delivery.status : 'queued_for_retry',
+      },
+      message: delivery.ok ? '승인 및 초대 발송 완료' : '승인 완료, 초대 발송 재시도 대기',
+    });
   } catch (error) {
-    return apiResponse(
-      { error: logAndSanitize('admin-applications', error, '처리 실패') },
-      { status: 500 }
-    );
+    const authMisconfigured = error instanceof Error && error.message.includes('AFFILIATE_AUTH_SECRET');
+    return apiResponse({
+      error: authMisconfigured
+        ? 'AFFILIATE_AUTH_NOT_CONFIGURED'
+        : logAndSanitize('admin-applications', error, '처리 실패'),
+    }, { status: authMisconfigured ? 503 : 500 });
   }
-}
+};
 
 export const GET = withAdminGuard(getHandler);
-
 export const POST = withAdminGuard(postHandler);

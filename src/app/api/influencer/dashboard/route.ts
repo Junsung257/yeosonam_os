@@ -1,12 +1,16 @@
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { buildAffiliateDashboardByCode } from '@/lib/affiliate/dashboard-service';
+import { isAllowedPartnerWriteOrigin } from '@/lib/affiliate/write-origin';
 
 export const runtime = 'nodejs';
 
 // POST /api/influencer/dashboard
-// Auth: inf_token cookie first, otherwise referral_code + PIN through the shared affiliate auth service.
+// Auth: revocable partner_session cookie through the shared affiliate auth service.
 export async function POST(request: NextRequest) {
+  if (!isAllowedPartnerWriteOrigin(request)) {
+    return apiResponse({ error: 'ORIGIN_REJECTED' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const referralCode = typeof body.referral_code === 'string' ? body.referral_code : '';
@@ -15,7 +19,7 @@ export async function POST(request: NextRequest) {
       return apiResponse({ error: 'referral_code is required' }, { status: 400 });
     }
 
-    const dashboard = await buildAffiliateDashboardByCode(referralCode, request, body.pin);
+    const dashboard = await buildAffiliateDashboardByCode(referralCode, request);
     if ('authError' in dashboard) {
       return apiResponse({ error: dashboard.authError.error }, { status: dashboard.authError.status });
     }

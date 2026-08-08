@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
+import { authAffiliate } from '@/lib/affiliate/auth-service';
 
 export const runtime = 'nodejs';
 
@@ -8,24 +8,17 @@ export async function GET(
   request: NextRequest,
   props: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
 
   const { id } = await props.params;
 
-  const auth = request.headers.get('authorization');
-  if (!auth?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
-  }
-
-  const token = await verifyAffiliateToken(auth.slice(7));
-  if (!token.ok) {
-    return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
-  }
+  const auth = await authAffiliate(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error, code: auth.code }, { status: auth.status });
 
   // 카드뉴스 조회 + 권한 확인 (created_by_affiliate_id가 일치해야 함)
-  const affiliateId = token.affiliateId;
+  const affiliateId = String(auth.affiliate.id);
   const { data: cardNews, error } = await supabaseAdmin
     .from('card_news')
     .select('*')

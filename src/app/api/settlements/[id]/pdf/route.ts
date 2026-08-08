@@ -1,47 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
 import { renderToStream } from '@react-pdf/renderer';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
-import { verifyInfluencerPinForReferral } from '@/lib/affiliate-influencer-auth';
-import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
+import { authAffiliate } from '@/lib/affiliate/auth-service';
 import { SettlementPdfDocument } from '@/lib/affiliate/settlement-pdf';
 import { errorResponse } from '@/lib/api-response';
 
 // GET /api/settlements/[id]/pdf — 정산 내역서 PDF 다운로드
 // 인증: (1) 어드민 Supabase 세션 또는
-//       (2) JWT 쿠키(inf_token) 또는
-//       (3) 헤더 x-referral-code + x-pin(4자리) — 하위호환
+//       (2) 폐기 가능한 partner_session 쿠키
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  if (!isSupabaseConfigured) return errorResponse('SERVICE_UNAVAILABLE', 'DB 미설정', 503);
+  if (!isSupabaseAdminConfigured) return errorResponse('SERVICE_UNAVAILABLE', 'DB 미설정', 503);
 
   const { id } = params;
 
   const isAdmin = await isAdminRequest(request);
-  let pinAffiliateId: string | null = null;
+  let partnerAffiliateId: string | null = null;
 
   if (!isAdmin) {
-    // (A) JWT 쿠키 우선 확인
-    const token = request.cookies.get('inf_token')?.value;
-    if (token) {
-      const jwtResult = await verifyAffiliateToken(token);
-      if (jwtResult.ok) {
-        pinAffiliateId = jwtResult.affiliateId;
-      }
-    }
-
-    // (B) JWT 없으면 PIN 헤더 확인 (하위호환)
-    if (!pinAffiliateId) {
-      const code = request.headers.get('x-referral-code')?.trim() || '';
-      const pin = request.headers.get('x-pin')?.trim() || '';
-      if (!code || !/^\d{4}$/.test(pin)) {
-        return errorResponse('UNAUTHORIZED', '어드민 로그인 또는 파트너 인증이 필요합니다.', 401);
-      }
-      const v = await verifyInfluencerPinForReferral(code, pin);
-      if (!v.ok) return errorResponse('AUTH_FAILED', '파트너 인증 실패', 401);
-      pinAffiliateId = v.affiliateId;
-    }
+    const auth = await authAffiliate(request);
+    if (!auth.ok) return errorResponse(auth.code, auth.error, auth.status);
+    partnerAffiliateId = String(auth.affiliate.id);
   }
 
   // 정산 + 어필리에이트 조회
@@ -56,7 +37,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   }
 
   if (!isAdmin) {
-    if (!pinAffiliateId || (settlement as { affiliate_id: string }).affiliate_id !== pinAffiliateId) {
+    if (!partnerAffiliateId || (settlement as { affiliate_id: string }).affiliate_id !== partnerAffiliateId) {
       return errorResponse('FORBIDDEN', '권한 없음', 403);
     }
   }

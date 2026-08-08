@@ -24,13 +24,20 @@ export default function LayoutClientWidgets({
   const pathname = usePathname();
   const isFocusedLanding = pathname?.startsWith('/lp/');
   const isAdminSurface = pathname?.startsWith('/admin') || pathname?.startsWith('/m/admin');
+  const isPartnerSurface = [
+    '/partner',
+    '/partner-apply',
+    '/affiliate',
+    '/influencer',
+    '/embed',
+  ].some(prefix => pathname?.startsWith(prefix));
   const isPackageDetail = /^\/packages\/[^/]+/.test(pathname || '');
-  const showCustomerWidgets = !isFocusedLanding && !isAdminSurface;
+  const showCustomerWidgets = !isFocusedLanding && !isAdminSurface && !isPartnerSurface;
 
   return (
     <>
       <LayoutTrackers analytics={analytics} />
-      {!isFocusedLanding && <JarvisFloatingWidget />}
+      {!isFocusedLanding && !isAdminSurface && !isPartnerSurface && <JarvisFloatingWidget />}
       {showCustomerWidgets && (
         isPackageDetail ? (
           <div className="hidden md:block">

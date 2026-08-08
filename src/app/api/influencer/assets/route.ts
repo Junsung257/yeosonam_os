@@ -32,7 +32,7 @@ function publicMarketingCopies(value: unknown): Array<{ type?: string; title?: s
     .filter(item => Boolean(item.title || item.body));
 }
 
-// GET: 마케팅 소재 — JWT 쿠키 또는 PIN 헤더(x-influencer-pin)
+// GET: 마케팅 소재 — 폐기 가능한 partner_session 쿠키
 export async function GET(req: NextRequest) {
   try {
     const referral_code = req.nextUrl.searchParams.get('code');
