@@ -5,7 +5,7 @@
  *
  * 사용:
  *   <iframe
- *     src="https://yeosonam.co.kr/embed/pkg/abc123?ref=PARTNER"
+ *     src="https://www.yeosonam.com/embed/pkg/abc123?ref=PARTNER"
  *     width="100%" height="280" frameborder="0"
  *     allow="clipboard-write" loading="lazy">
  *   </iframe>
@@ -22,6 +22,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { resolvePublicAppOrigin } from '@/lib/public-app-origin';
 
 interface Params {
   params: Promise<{ id?: string | string[] }>;
@@ -54,8 +55,7 @@ interface AffiliateRow {
 }
 
 function siteBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
-    .replace(/\/+$/, '');
+  return resolvePublicAppOrigin();
 }
 
 function getRouteParam(value: string | string[] | undefined): string {

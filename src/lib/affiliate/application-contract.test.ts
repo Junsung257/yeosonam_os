@@ -48,5 +48,11 @@ describe('affiliate application contract', () => {
     }
     expect(migration).toContain('affiliate_applications_active_phone_uq');
     expect(migration).toContain('affiliate_applications_idempotency_key_uq');
+    const portalMigration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260808145303_affiliate_partner_portal_v2.sql'),
+      'utf8',
+    );
+    expect(portalMigration).toContain('invitation_id uuid NULL');
+    expect(portalMigration).toContain('link_affiliate_application_invitation_v2');
   });
 });

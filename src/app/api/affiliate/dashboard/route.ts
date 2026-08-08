@@ -20,10 +20,7 @@ export async function GET(request: NextRequest) {
       return apiResponse({ error: 'Affiliate not found' }, { status: 404 });
     }
     return apiResponse(dashboard);
-  } catch (err) {
-    return apiResponse(
-      { error: err instanceof Error ? err.message : 'Dashboard fetch failed' },
-      { status: 500 },
-    );
+  } catch {
+    return apiResponse({ error: 'AFFILIATE_DASHBOARD_UNAVAILABLE', state: 'data_unavailable' }, { status: 503 });
   }
 }

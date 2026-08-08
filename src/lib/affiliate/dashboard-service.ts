@@ -1,26 +1,25 @@
-import { NextRequest } from 'next/server';
-import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
-import { supabaseAdmin } from '@/lib/supabase';
+import { NextRequest } from "next/server";
+import { authInfluencer } from "@/lib/affiliate/jwt-or-pin-auth";
+import { buildPublicUrl } from "@/lib/public-app-origin";
+import { supabaseAdmin } from "@/lib/supabase";
 
 type AffiliateRow = Record<string, unknown>;
-
 type SettlementRow = {
   id: string;
-  settlement_period?: string | null;
-  qualified_booking_count?: number | null;
-  total_amount?: number | null;
-  carryover_balance?: number | null;
-  final_total?: number | null;
-  tax_deduction?: number | null;
-  final_payout?: number | null;
   status?: string | null;
-  settled_at?: string | null;
+  settlement_period?: string | null;
+  gross_commission_krw?: number | null;
+  adjustment_krw?: number | null;
+  withholding_krw?: number | null;
+  net_payout_krw?: number | null;
+  qualified_booking_count?: number | null;
+  completed_at?: string | null;
   created_at?: string | null;
+  total_amount?: number | null;
+  final_payout?: number | null;
 };
-
 type BookingRow = {
   id: string;
-  product_name?: string | null;
   package_title?: string | null;
   booking_date?: string | null;
   status?: string | null;
@@ -32,92 +31,99 @@ type BookingRow = {
   attribution_model?: string | null;
   attribution_split?: Record<string, unknown> | null;
   attribution_snapshot?: Record<string, unknown> | null;
+  commission_status?: string | null;
+  commission_policy_version?: string | null;
+  attribution_decision_id?: string | null;
   created_at?: string | null;
 };
-
-type DashboardQueryResult<T> = {
+type QueryResult<T> = {
   data: T[] | null;
   error: { message?: string } | null;
   count?: number | null;
 };
 
-const GRADE_MAP: Record<number, { label: string; rate: string; next: string }> = {
-  1: { label: 'Bronze', rate: '0%', next: '10 bookings to Silver' },
-  2: { label: 'Silver', rate: '0.1%', next: '30 bookings to Gold' },
-  3: { label: 'Gold', rate: '0.2%', next: '50 bookings to Platinum' },
-  4: { label: 'Platinum', rate: '0.3%', next: '100 bookings to Diamond' },
-  5: { label: 'Diamond', rate: '0.5%', next: 'Top tier' },
+const GRADE_MAP: Record<number, { label: string; next: string }> = {
+  1: { label: "Bronze", next: "예약 10건 달성 시 Silver" },
+  2: { label: "Silver", next: "예약 30건 달성 시 Gold" },
+  3: { label: "Gold", next: "예약 50건 달성 시 Platinum" },
+  4: { label: "Platinum", next: "예약 100건 달성 시 Diamond" },
+  5: { label: "Diamond", next: "최고 등급" },
 };
 
 const METRIC_DEFINITIONS = {
-  funnel_30d_clicks: 'Recent 30-day non-bot, non-duplicate affiliate_touchpoints for the partner referral code.',
-  funnel_30d_bookings: 'Bookings created in the recent 30-day window and attributed to the partner affiliate_id.',
-  funnel_30d_settlements_krw: 'Current settlement-period READY or COMPLETED final_payout total, not a rolling 30-day payout.',
-  link_clicks: 'Historical influencer_links click_count total for partner-owned links.',
-  content_clicks: 'Historical card_news clicks total for partner-created content.',
-  content_views: 'Historical card_news views total for partner-created content.',
-  commission_summary: 'Settlement totals grouped by settlement status using total_amount and final_payout.',
+  funnel_30d_clicks:
+    "최근 30일 동안 봇·중복으로 분류되지 않은 affiliate_touchpoints.",
+  funnel_30d_bookings: "최근 30일 동안 affiliate_id로 귀속된 실제 bookings.",
+  settlement_ready_krw: "현재 KST 정산월의 READY 또는 PAYOUT_PENDING 실지급액.",
+  publication_clicks: "파트너 소유 affiliate_publications의 누적 클릭 수.",
+  content_clicks: "파트너가 만든 카드뉴스의 누적 클릭 수. 예약과는 별도 지표.",
+  content_views: "파트너가 만든 카드뉴스의 누적 조회 수. 예약과는 별도 지표.",
+  payout_completed_krw:
+    "지급 증빙까지 완료된 settlement_runs.net_payout_krw 합계.",
+  unsettled_commission_krw:
+    "아직 settlement_lines에 포함되지 않은 커미션 원장 순액.",
 } as const;
 
 function numberValue(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
-
 function stringValue(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  return typeof value === "string" ? value : "";
 }
-
-export function buildSubIdTrackingUrl(siteBase: string, referralCode: string, subId: string): string {
-  return `${siteBase || ''}/with/${encodeURIComponent(referralCode)}?sub_id=${encodeURIComponent(subId)}`;
+function queryFailure(source: string, error: { message?: string } | null) {
+  console.error(`[affiliate-dashboard:${source}]`, {
+    code: "DATA_UNAVAILABLE",
+    detail: error?.message || "query failed",
+  });
+  return new Error(`AFFILIATE_DASHBOARD_DATA_UNAVAILABLE:${source}`);
 }
-
-export function calculateClickToBookingRate(clicks: number, bookings: number): number {
-  return clicks > 0 ? Number(((bookings / Math.max(1, clicks)) * 100).toFixed(2)) : 0;
-}
-
-function queryErrorMessage(source: string, error: { message?: string } | null) {
-  return `[affiliate-dashboard:${source}] ${error?.message || 'query failed'}`;
-}
-
-function requireRows<T>(source: string, result: DashboardQueryResult<T>): T[] {
-  if (result.error) throw new Error(queryErrorMessage(source, result.error));
+function rows<T>(source: string, result: QueryResult<T>): T[] {
+  if (result.error) throw queryFailure(source, result.error);
   return result.data || [];
 }
-
-function requireCount(source: string, result: DashboardQueryResult<unknown>): number {
-  if (result.error) throw new Error(queryErrorMessage(source, result.error));
+function count(source: string, result: QueryResult<unknown>): number {
+  if (result.error) throw queryFailure(source, result.error);
   return result.count || 0;
 }
-
-function optionalRows<T>(source: string, result: DashboardQueryResult<T>): T[] {
-  if (result.error) {
-    console.warn(queryErrorMessage(source, result.error));
-    return [];
-  }
-  return result.data || [];
+function currentKstPeriod() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return `${year}-${month}`;
 }
 
-function optionalCount(source: string, result: DashboardQueryResult<unknown>): number {
-  if (result.error) {
-    console.warn(queryErrorMessage(source, result.error));
-    return 0;
-  }
-  return result.count || 0;
+export function buildSubIdTrackingUrl(
+  siteBase: string,
+  referralCode: string,
+  subId: string,
+): string {
+  return `${siteBase || ""}/with/${encodeURIComponent(referralCode)}?sub_id=${encodeURIComponent(subId)}`;
+}
+export function calculateClickToBookingRate(
+  clicks: number,
+  bookings: number,
+): number {
+  return clicks > 0
+    ? Number(((bookings / Math.max(1, clicks)) * 100).toFixed(2))
+    : 0;
 }
 
 function normalizeAffiliate(affiliate: AffiliateRow) {
   const grade = Math.min(Math.max(numberValue(affiliate.grade) || 1, 1), 5);
-  const gradeInfo = GRADE_MAP[grade] || GRADE_MAP[1];
-
+  const info = GRADE_MAP[grade] || GRADE_MAP[1];
   return {
     id: stringValue(affiliate.id),
     name: stringValue(affiliate.name),
     referral_code: stringValue(affiliate.referral_code),
     grade,
-    grade_label: stringValue(affiliate.grade_label) || gradeInfo.label,
-    grade_rate: gradeInfo.rate,
-    next_grade: gradeInfo.next,
+    grade_label: stringValue(affiliate.grade_label) || info.label,
+    grade_rate: numberValue(affiliate.grade_rate),
+    next_grade: info.next,
     bonus_rate: numberValue(affiliate.bonus_rate),
     booking_count: numberValue(affiliate.booking_count),
     total_commission: numberValue(affiliate.total_commission),
@@ -133,62 +139,85 @@ function normalizeAffiliate(affiliate: AffiliateRow) {
 
 export function resolveAttributionMethod(booking: BookingRow) {
   const snapshot = booking.attribution_snapshot || {};
-  const snapshotMethod = typeof snapshot.method === 'string' ? snapshot.method : '';
-  const snapshotSource = typeof snapshot.source === 'string' ? snapshot.source : '';
-  const splitModel = typeof booking.attribution_split?.model === 'string' ? booking.attribution_split.model : '';
-
-  if (booking.promo_code && booking.promo_affiliate_id) {
+  const snapshotMethod =
+    typeof snapshot.method === "string" ? snapshot.method : "";
+  const snapshotSource =
+    typeof snapshot.source === "string" ? snapshot.source : "";
+  const splitModel =
+    typeof booking.attribution_split?.model === "string"
+      ? booking.attribution_split.model
+      : "";
+  if (booking.promo_code && booking.promo_affiliate_id)
     return {
-      method: 'promo_code',
-      label: 'Promo code',
+      method: "promo_code",
+      label: "Promo code",
       detail: booking.promo_code,
-      model: booking.attribution_model || splitModel || snapshotMethod || 'last_touch',
+      model:
+        booking.attribution_model ||
+        splitModel ||
+        snapshotMethod ||
+        "last_touch",
     };
-  }
-
-  if (snapshotSource) {
+  if (snapshotSource)
     return {
       method: snapshotSource,
-      label: snapshotSource === 'cookie' ? 'Cookie' : 'Snapshot',
+      label: snapshotSource === "cookie" ? "Cookie" : "Snapshot",
       detail: snapshotMethod || snapshotSource,
-      model: booking.attribution_model || splitModel || snapshotMethod || 'last_touch',
+      model:
+        booking.attribution_model ||
+        splitModel ||
+        snapshotMethod ||
+        "last_touch",
     };
-  }
-
-  if (booking.referral_code) {
+  if (booking.referral_code)
     return {
-      method: 'referral_link',
-      label: 'Referral link',
+      method: "referral_link",
+      label: "Referral link",
       detail: booking.referral_code,
-      model: booking.attribution_model || splitModel || 'last_touch',
+      model: booking.attribution_model || splitModel || "last_touch",
     };
-  }
-
   return {
-    method: 'manual',
-    label: 'Manual attribution',
-    detail: '',
-    model: booking.attribution_model || splitModel || 'last_touch',
+    method: "manual",
+    label: "Manual attribution",
+    detail: "",
+    model: booking.attribution_model || splitModel || "last_touch",
   };
 }
 
 export function summarizeCommissions(settlements: SettlementRow[]) {
   const empty = { count: 0, total_amount: 0, final_payout: 0 };
-  const byStatus = settlements.reduce<Record<string, typeof empty>>((acc, row) => {
-    const status = row.status || 'UNKNOWN';
-    const cur = acc[status] || { ...empty };
-    cur.count += 1;
-    cur.total_amount += numberValue(row.total_amount);
-    cur.final_payout += numberValue(row.final_payout);
-    acc[status] = cur;
-    return acc;
-  }, {});
-
+  const byStatus = settlements.reduce<Record<string, typeof empty>>(
+    (acc, row) => {
+      const status = row.status || "UNKNOWN";
+      const current = acc[status] || { ...empty };
+      current.count += 1;
+      current.total_amount += numberValue(
+        row.gross_commission_krw ?? row.total_amount,
+      );
+      current.final_payout += numberValue(
+        row.net_payout_krw ?? row.final_payout,
+      );
+      acc[status] = current;
+      return acc;
+    },
+    {},
+  );
   return {
-    total_gross: settlements.reduce((sum, row) => sum + numberValue(row.total_amount), 0),
-    total_payout: settlements.reduce((sum, row) => sum + numberValue(row.final_payout), 0),
-    pending_amount: (byStatus.PENDING?.total_amount || 0) + (byStatus.HOLD?.total_amount || 0),
-    ready_payout: byStatus.READY?.final_payout || 0,
+    total_gross: settlements.reduce(
+      (sum, row) =>
+        sum + numberValue(row.gross_commission_krw ?? row.total_amount),
+      0,
+    ),
+    total_payout: settlements.reduce(
+      (sum, row) => sum + numberValue(row.net_payout_krw ?? row.final_payout),
+      0,
+    ),
+    pending_amount:
+      (byStatus.PENDING?.total_amount || 0) +
+      (byStatus.HOLD?.total_amount || 0),
+    ready_payout:
+      (byStatus.READY?.final_payout || 0) +
+      (byStatus.PAYOUT_PENDING?.final_payout || 0),
     completed_payout: byStatus.COMPLETED?.final_payout || 0,
     by_status: byStatus,
   };
@@ -196,323 +225,342 @@ export function summarizeCommissions(settlements: SettlementRow[]) {
 
 async function loadAffiliateById(affiliateId: string) {
   const { data, error } = await supabaseAdmin
-    .from('affiliates')
-    .select('id, name, referral_code, grade, grade_label, bonus_rate, booking_count, total_commission, payout_type, logo_url, created_at, branding_level, content_quota, content_used, last_conversion_at')
-    .eq('id', affiliateId)
+    .from("affiliates")
+    .select(
+      "id, name, referral_code, grade, grade_label, grade_rate, bonus_rate, booking_count, total_commission, payout_type, logo_url, created_at, branding_level, content_quota, content_used, last_conversion_at",
+    )
+    .eq("id", affiliateId)
     .maybeSingle();
-
-  if (error) throw error;
+  if (error) throw queryFailure("affiliate", error);
   return data as AffiliateRow | null;
 }
 
-async function buildDashboard(affiliateRow: AffiliateRow, authenticated = true) {
+async function buildDashboard(
+  affiliateRow: AffiliateRow,
+  authenticated = true,
+) {
   const affiliate = normalizeAffiliate(affiliateRow);
-  const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-  const siteBase = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '');
-
+  const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const kstPeriod = currentKstPeriod();
   const [
     settlementsRes,
     recentBookingsRes,
-    linkStatsRes,
-    contentsRes,
-    landingViewsRes,
+    trendBookingsRes,
+    publicationsRes,
     clicksRes,
-    bookingsRes,
-    monthSettlementsRes,
-    rewardEventsRes,
-    subTouchpointsRes,
-    promoCodesRes,
+    bookingsCountRes,
+    ledgerRes,
+    settledLinesRes,
+    contentsRes,
     cardNewsRes,
-    cardPerfRes,
     insightsRes,
-    recentNewsRes,
+    rewardsRes,
+    creatorCodesRes,
+    subTouchpointsRes,
   ] = await Promise.all([
     supabaseAdmin
-      .from('settlements')
-      .select('id, settlement_period, qualified_booking_count, total_amount, carryover_balance, final_total, tax_deduction, final_payout, status, settled_at, created_at')
-      .eq('affiliate_id', affiliate.id)
-      .order('settlement_period', { ascending: false })
+      .from("settlement_runs")
+      .select(
+        "id, settlement_period, status, qualified_booking_count, gross_commission_krw, adjustment_krw, withholding_krw, net_payout_krw, completed_at, created_at",
+      )
+      .eq("affiliate_id", affiliate.id)
+      .order("period_start_utc", { ascending: false })
       .limit(12),
     supabaseAdmin
-      .from('bookings')
-      .select('id, package_title, booking_date, status, total_price, influencer_commission, referral_code, promo_code, promo_affiliate_id, attribution_model, attribution_split, attribution_snapshot, created_at')
-      .eq('affiliate_id', affiliate.id)
-      .order('created_at', { ascending: false })
-      .limit(10),
-    supabaseAdmin
-      .from('influencer_links')
-      .select('id, click_count, conversion_count')
-      .eq('affiliate_id', affiliate.id),
-    supabaseAdmin
-      .from('content_distributions')
-      .select('id, product_id, platform, status, generation_agent, created_at, published_at')
-      .eq('affiliate_id', affiliate.id)
-      .order('updated_at', { ascending: false })
+      .from("bookings")
+      .select(
+        "id, package_title, booking_date, status, total_price, influencer_commission, referral_code, commission_status, commission_policy_version, attribution_decision_id, created_at",
+      )
+      .eq("affiliate_id", affiliate.id)
+      .order("created_at", { ascending: false })
       .limit(20),
     supabaseAdmin
-      .from('affiliate_touchpoints')
-      .select('id', { count: 'exact', head: true })
-      .eq('referral_code', affiliate.referral_code)
-      .eq('sub_id', 'co_brand_landing')
-      .gte('clicked_at', since30),
+      .from("bookings")
+      .select("id, total_price, influencer_commission, created_at")
+      .eq("affiliate_id", affiliate.id)
+      .gte("created_at", since7)
+      .order("created_at"),
     supabaseAdmin
-      .from('affiliate_touchpoints')
-      .select('id', { count: 'exact', head: true })
-      .eq('referral_code', affiliate.referral_code)
-      .eq('is_bot', false)
-      .eq('is_duplicate', false)
-      .gte('clicked_at', since30),
+      .from("affiliate_publications")
+      .select(
+        "id, placement_name, sub_id, channel_type, status, click_count, unique_visitor_count, conversion_count, health_status, created_at",
+      )
+      .eq("affiliate_id", affiliate.id),
     supabaseAdmin
-      .from('bookings')
-      .select('id', { count: 'exact', head: true })
-      .eq('affiliate_id', affiliate.id)
-      .gte('created_at', since30),
+      .from("affiliate_touchpoints")
+      .select("id", { count: "exact", head: true })
+      .eq("affiliate_id", affiliate.id)
+      .eq("is_bot", false)
+      .eq("is_duplicate", false)
+      .gte("clicked_at", since30),
     supabaseAdmin
-      .from('settlements')
-      .select('final_payout, status, settlement_period')
-      .eq('affiliate_id', affiliate.id)
-      .eq('settlement_period', new Date().toISOString().slice(0, 7))
-      .in('status', ['READY', 'COMPLETED']),
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("affiliate_id", affiliate.id)
+      .gte("created_at", since30),
     supabaseAdmin
-      .from('affiliate_reward_events')
-      .select('id, event_type, points, reward_amount, payload, created_at')
-      .eq('affiliate_id', affiliate.id)
-      .order('created_at', { ascending: false })
+      .from("commission_ledger_entries")
+      .select("id, amount_krw, hold_reason")
+      .eq("affiliate_id", affiliate.id)
+      .limit(5000),
+    supabaseAdmin
+      .from("settlement_lines")
+      .select("ledger_entry_id, settlement_runs!inner(affiliate_id)")
+      .eq("settlement_runs.affiliate_id", affiliate.id)
+      .limit(5000),
+    supabaseAdmin
+      .from("content_distributions")
+      .select(
+        "id, product_id, platform, status, generation_agent, created_at, published_at",
+      )
+      .eq("affiliate_id", affiliate.id)
+      .order("updated_at", { ascending: false })
       .limit(20),
     supabaseAdmin
-      .from('affiliate_touchpoints')
-      .select('sub_id, session_id, package_id, is_bot, is_duplicate, clicked_at')
-      .eq('referral_code', affiliate.referral_code)
-      .gte('clicked_at', since30)
-      .eq('is_bot', false)
-      .eq('is_duplicate', false),
-    supabaseAdmin
-      .from('affiliate_promo_codes')
-      .select('id, code, discount_type, discount_value, is_active, starts_at, ends_at, max_uses, uses_count, created_at')
-      .eq('affiliate_id', affiliate.id)
-      .order('created_at', { ascending: false })
+      .from("card_news")
+      .select("id, title_slides, created_at, views, clicks, status")
+      .eq("created_by_affiliate_id", affiliate.id)
+      .order("created_at", { ascending: false })
       .limit(100),
     supabaseAdmin
-      .from('card_news')
-      .select('id, title_slides, created_at, views, clicks, status')
-      .eq('created_by_affiliate_id', affiliate.id)
-      .order('created_at', { ascending: false })
-      .limit(10),
-    supabaseAdmin
-      .from('card_news')
-      .select('views, clicks')
-      .eq('created_by_affiliate_id', affiliate.id),
-    supabaseAdmin
-      .from('affiliate_content_insights')
-      .select('id, insight_type, title, content, is_read, created_at')
-      .eq('affiliate_id', affiliate.id)
-      .order('created_at', { ascending: false })
+      .from("affiliate_content_insights")
+      .select("id, insight_type, title, content, is_read, created_at")
+      .eq("affiliate_id", affiliate.id)
+      .order("created_at", { ascending: false })
       .limit(5),
     supabaseAdmin
-      .from('card_news')
-      .select('id, created_at')
-      .eq('created_by_affiliate_id', affiliate.id)
-      .gte('created_at', new Date(Date.now() - 7 * 86400000).toISOString())
-      .order('created_at', { ascending: true }),
+      .from("affiliate_reward_events")
+      .select("id, event_type, points, reward_amount, payload, created_at")
+      .eq("affiliate_id", affiliate.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabaseAdmin
+      .from("creator_codes")
+      .select("id, code, status, source, created_at")
+      .eq("affiliate_id", affiliate.id)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("affiliate_touchpoints")
+      .select("sub_id, session_id, package_id, publication_id, clicked_at")
+      .eq("affiliate_id", affiliate.id)
+      .eq("is_bot", false)
+      .eq("is_duplicate", false)
+      .gte("clicked_at", since30),
   ]);
 
-  const settlementsRows = requireRows('settlements', settlementsRes as DashboardQueryResult<SettlementRow>);
-  const recentBookingRows = requireRows('recent-bookings', recentBookingsRes as DashboardQueryResult<BookingRow>);
-  const linkStatsRows = requireRows(
-    'influencer-links',
-    linkStatsRes as DashboardQueryResult<{ id: string; click_count?: number | null; conversion_count?: number | null }>,
+  const settlements = rows(
+    "settlement-runs",
+    settlementsRes as QueryResult<SettlementRow>,
   );
-  const landingViews30 = optionalCount('landing-views-30d', landingViewsRes as DashboardQueryResult<unknown>);
-  const clicks30 = requireCount('clicks-30d', clicksRes as DashboardQueryResult<unknown>);
-  const bookings30 = requireCount('bookings-30d', bookingsRes as DashboardQueryResult<unknown>);
-  const monthSettlementRows = requireRows(
-    'current-month-settlements',
-    monthSettlementsRes as DashboardQueryResult<{ final_payout?: number | null }>,
+  const recentBookings = rows(
+    "recent-bookings",
+    recentBookingsRes as QueryResult<BookingRow>,
   );
-  const contentRows = optionalRows('content-distributions', contentsRes as DashboardQueryResult<{ id: string }>);
-  const rewardRows = optionalRows('reward-events', rewardEventsRes as DashboardQueryResult<Record<string, unknown>>);
-  const subTouchpointRows = optionalRows(
-    'sub-touchpoints',
-    subTouchpointsRes as DashboardQueryResult<{ sub_id?: string | null; session_id?: string | null; package_id?: string | null }>,
+  const trendBookings = rows(
+    "booking-trend",
+    trendBookingsRes as QueryResult<Record<string, unknown>>,
   );
-  const promoCodeRows = optionalRows('promo-codes', promoCodesRes as DashboardQueryResult<Record<string, unknown>>);
-  const cardNewsRows = optionalRows(
-    'card-news',
-    cardNewsRes as DashboardQueryResult<{ id: string; title_slides?: unknown; created_at?: string | null; views?: number | null; clicks?: number | null; status?: string | null }>,
+  const publications = rows(
+    "publications",
+    publicationsRes as QueryResult<Record<string, unknown>>,
   );
-  const cardPerfRows = optionalRows('card-news-performance', cardPerfRes as DashboardQueryResult<{ views?: number | null; clicks?: number | null }>);
-  const insightRows = optionalRows('content-insights', insightsRes as DashboardQueryResult<Record<string, unknown>>);
-  const recentNewsRows = optionalRows('recent-card-news-trend', recentNewsRes as DashboardQueryResult<{ created_at?: string | null }>);
+  const clicks30 = count("clicks-30d", clicksRes as QueryResult<unknown>);
+  const bookings30 = count(
+    "bookings-30d",
+    bookingsCountRes as QueryResult<unknown>,
+  );
+  const ledger = rows(
+    "commission-ledger",
+    ledgerRes as QueryResult<Record<string, unknown>>,
+  );
+  const settledLines = rows(
+    "settlement-lines",
+    settledLinesRes as QueryResult<Record<string, unknown>>,
+  );
+  const contents = rows(
+    "content-distributions",
+    contentsRes as QueryResult<Record<string, unknown>>,
+  );
+  const cardNews = rows(
+    "card-news",
+    cardNewsRes as QueryResult<Record<string, unknown>>,
+  );
+  const insights = rows(
+    "content-insights",
+    insightsRes as QueryResult<Record<string, unknown>>,
+  );
+  const rewards = rows(
+    "reward-events",
+    rewardsRes as QueryResult<Record<string, unknown>>,
+  );
+  const creatorCodes = rows(
+    "creator-codes",
+    creatorCodesRes as QueryResult<Record<string, unknown>>,
+  );
+  const subTouchpoints = rows(
+    "sub-touchpoints",
+    subTouchpointsRes as QueryResult<Record<string, unknown>>,
+  );
 
-  const settlements = settlementsRows.map((s) => ({
-    id: s.id,
-    settlement_period: s.settlement_period || '',
-    period: s.settlement_period || '',
-    gross_amount: numberValue(s.total_amount),
-    total_amount: numberValue(s.total_amount),
-    tax_amount: numberValue(s.tax_deduction),
-    tax_deduction: numberValue(s.tax_deduction),
-    net_payout: numberValue(s.final_payout),
-    final_payout: numberValue(s.final_payout),
-    status: s.status || 'UNKNOWN',
-    settled_at: s.settled_at || null,
-    qualified_booking_count: numberValue(s.qualified_booking_count),
-    carryover_balance: numberValue(s.carryover_balance),
-    final_total: numberValue(s.final_total),
-    created_at: s.created_at || null,
-  }));
-
-  const recent_bookings = recentBookingRows.map((b) => ({
-    id: b.id,
-    product_name: b.product_name || b.package_title || 'Untitled booking',
-    booking_date: b.booking_date || null,
-    status: b.status || '',
-    total_price: numberValue(b.total_price),
-    influencer_commission: numberValue(b.influencer_commission),
-    created_at: b.created_at || '',
-    attribution: resolveAttributionMethod(b),
-    promo_code: b.promo_code || null,
-  }));
-
-  const totalLinkClicks = linkStatsRows.reduce((sum, l) => sum + numberValue(l.click_count), 0);
-  const totalConversions = linkStatsRows.reduce((sum, l) => sum + numberValue(l.conversion_count), 0);
-
-  const currentTier = affiliate.grade;
-  const tierSteps = [0, 10, 30, 50, 100];
-  const currentStep = tierSteps[currentTier - 1] || 0;
-  const nextStep = tierSteps[Math.min(currentTier, tierSteps.length - 1)] || currentStep;
-  const tierProgressPct = nextStep > currentStep
-    ? Math.min(100, Math.round(((affiliate.booking_count - currentStep) / Math.max(1, nextStep - currentStep)) * 100))
-    : 100;
-
-  const monthPayout = monthSettlementRows.reduce((sum, row) => sum + numberValue(row.final_payout), 0);
-
-  const subAgg = new Map<string, { clicks: number; uniqueSessions: Set<string>; packageHits: Set<string> }>();
-  for (const t of subTouchpointRows) {
-    const key = (t.sub_id || 'default').trim() || 'default';
-    if (!subAgg.has(key)) {
-      subAgg.set(key, { clicks: 0, uniqueSessions: new Set<string>(), packageHits: new Set<string>() });
-    }
-    const cur = subAgg.get(key)!;
-    cur.clicks += 1;
-    if (t.session_id) cur.uniqueSessions.add(t.session_id);
-    if (t.package_id) cur.packageHits.add(t.package_id);
-  }
-
-  const sub_id_stats = [...subAgg.entries()]
-    .map(([sub_id, v]) => ({
-      sub_id,
-      clicks_30d: v.clicks,
-      unique_sessions_30d: v.uniqueSessions.size,
-      touched_packages_30d: v.packageHits.size,
-      tracking_url: buildSubIdTrackingUrl(siteBase, affiliate.referral_code, sub_id),
-    }))
-    .sort((a, b) => b.clicks_30d - a.clicks_30d);
-
-  const contentIds = contentRows.map((c) => c.id);
-  let contentRevenue: Array<{ content_id: string; bookings: number; revenue: number; commission: number }> = [];
-  if (contentIds.length > 0) {
-    const { data, error } = await supabaseAdmin
-      .from('bookings')
-      .select('id, content_creative_id, total_price, influencer_commission, status')
-      .eq('affiliate_id', affiliate.id)
-      .in('content_creative_id', contentIds);
-    if (error) throw error;
-
-    const byContent = new Map<string, { bookings: number; revenue: number; commission: number }>();
-    for (const b of (data || []) as Array<{ content_creative_id?: string | null; total_price?: number | null; influencer_commission?: number | null }>) {
-      if (!b.content_creative_id) continue;
-      const cur = byContent.get(b.content_creative_id) || { bookings: 0, revenue: 0, commission: 0 };
-      cur.bookings += 1;
-      cur.revenue += numberValue(b.total_price);
-      cur.commission += numberValue(b.influencer_commission);
-      byContent.set(b.content_creative_id, cur);
-    }
-
-    contentRevenue = contentIds.map((id) => ({
-      content_id: id,
-      ...(byContent.get(id) || { bookings: 0, revenue: 0, commission: 0 }),
-    }));
-  }
-
-  const dailyMap = new Map<string, { bookings: number; revenue: number }>();
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    dailyMap.set(d.toISOString().slice(0, 10), { bookings: 0, revenue: 0 });
-  }
-  for (const cn of recentNewsRows) {
-    const key = (cn.created_at || '').slice(0, 10);
-    if (dailyMap.has(key)) dailyMap.get(key)!.bookings += 1;
-  }
-
-  const totalViews = cardPerfRows.reduce((sum, c) => sum + numberValue(c.views), 0);
-  const contentClicks = cardPerfRows.reduce((sum, c) => sum + numberValue(c.clicks), 0);
+  const settledIds = new Set(
+    settledLines.map((line) => stringValue(line.ledger_entry_id)),
+  );
+  const unsettled = ledger.filter(
+    (entry) => !settledIds.has(stringValue(entry.id)),
+  );
+  const unsettledCommission = unsettled.reduce(
+    (sum, entry) => sum + numberValue(entry.amount_krw),
+    0,
+  );
+  const commissionHold = unsettled
+    .filter((entry) => Boolean(entry.hold_reason))
+    .reduce((sum, entry) => sum + numberValue(entry.amount_krw), 0);
   const commissionSummary = summarizeCommissions(settlements);
+  const monthReady = settlements
+    .filter(
+      (run) =>
+        run.settlement_period === kstPeriod &&
+        ["READY", "PAYOUT_PENDING"].includes(String(run.status)),
+    )
+    .reduce((sum, run) => sum + numberValue(run.net_payout_krw), 0);
+
+  const daily = new Map<
+    string,
+    { bookings: number; booking_amount_krw: number; commission_krw: number }
+  >();
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date(Date.now() - offset * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    daily.set(date, { bookings: 0, booking_amount_krw: 0, commission_krw: 0 });
+  }
+  for (const booking of trendBookings) {
+    const bucket = daily.get(stringValue(booking.created_at).slice(0, 10));
+    if (!bucket) continue;
+    bucket.bookings += 1;
+    bucket.booking_amount_krw += numberValue(booking.total_price);
+    bucket.commission_krw += numberValue(booking.influencer_commission);
+  }
+
+  const publicationClicks = publications.reduce(
+    (sum, row) => sum + numberValue(row.click_count),
+    0,
+  );
+  const publicationConversions = publications.reduce(
+    (sum, row) => sum + numberValue(row.conversion_count),
+    0,
+  );
+  const contentViews = cardNews.reduce(
+    (sum, row) => sum + numberValue(row.views),
+    0,
+  );
+  const contentClicks = cardNews.reduce(
+    (sum, row) => sum + numberValue(row.clicks),
+    0,
+  );
+  const subAggregation = new Map<
+    string,
+    { clicks: number; sessions: Set<string>; products: Set<string> }
+  >();
+  for (const touchpoint of subTouchpoints) {
+    const subId = stringValue(touchpoint.sub_id) || "default";
+    const current = subAggregation.get(subId) || {
+      clicks: 0,
+      sessions: new Set<string>(),
+      products: new Set<string>(),
+    };
+    current.clicks += 1;
+    if (touchpoint.session_id)
+      current.sessions.add(stringValue(touchpoint.session_id));
+    if (touchpoint.package_id)
+      current.products.add(stringValue(touchpoint.package_id));
+    subAggregation.set(subId, current);
+  }
 
   return {
     authenticated,
+    state: "ready",
     affiliate,
     stats: {
-      total_links: linkStatsRows.length,
-      total_clicks: totalLinkClicks,
-      total_conversions: totalConversions,
-      conversion_rate: totalLinkClicks > 0 ? `${((totalConversions / totalLinkClicks) * 100).toFixed(1)}%` : '0%',
-      link_clicks: totalLinkClicks,
+      total_publications: publications.length,
+      publication_clicks: publicationClicks,
+      publication_conversions: publicationConversions,
+      conversion_rate: `${calculateClickToBookingRate(publicationClicks, publicationConversions).toFixed(2)}%`,
       content_clicks: contentClicks,
-      content_views: totalViews,
+      content_views: contentViews,
     },
     funnel_30d: {
       clicks: clicks30,
       bookings: bookings30,
-      settlements_krw: monthPayout,
+      settlement_ready_krw: monthReady,
       click_to_booking_rate: calculateClickToBookingRate(clicks30, bookings30),
     },
     commission_summary: commissionSummary,
-    tier_progress: {
-      current_tier: currentTier,
-      current_label: affiliate.grade_label,
-      current_booking_count: affiliate.booking_count,
-      current_step: currentStep,
-      next_step: nextStep,
-      progress_pct: Math.max(0, tierProgressPct),
-    },
-    reward_events: rewardRows,
+    payout_completed_krw: commissionSummary.completed_payout,
+    unsettled_commission_krw: unsettledCommission,
+    commission_hold_krw: commissionHold,
     settlements,
-    recent_bookings,
-    promo_codes: promoCodeRows,
-    contents: contentRows,
-    content_revenue: contentRevenue,
-    recent_card_news: cardNewsRows,
-    insights: insightRows,
-    booking_trend: Array.from(dailyMap.entries()).map(([date, data]) => ({ date, ...data })),
-    total_views: totalViews,
-    total_clicks: totalLinkClicks,
-    content_clicks: contentClicks,
-    total_revenue: commissionSummary.completed_payout,
-    pending_revenue: commissionSummary.pending_amount + commissionSummary.ready_payout,
+    recent_bookings: recentBookings.map((booking) => ({
+      ...booking,
+      attribution: resolveAttributionMethod(booking),
+    })),
+    publications,
+    creator_codes: creatorCodes,
+    contents,
+    recent_card_news: cardNews.slice(0, 10),
+    insights,
+    reward_events: rewards,
+    booking_trend: [...daily.entries()].map(([date, value]) => ({
+      date,
+      ...value,
+    })),
     co_brand: {
       path: `/with/${encodeURIComponent(affiliate.referral_code)}`,
-      full_url: siteBase ? `${siteBase}/with/${encodeURIComponent(affiliate.referral_code)}` : '',
-      landing_views_30d: landingViews30,
+      full_url: buildPublicUrl(
+        `/with/${encodeURIComponent(affiliate.referral_code)}`,
+      ),
     },
-    sub_id_stats,
-    attribution_notice:
-      '정산은 여행 귀속일, 예약 상태, 지급 증빙에 따라 월별로 반영됩니다. 표시 금액은 시스템 기록 기준이며 검수 결과에 따라 변동될 수 있습니다.',
+    sub_id_stats: [...subAggregation.entries()]
+      .map(([sub_id, value]) => ({
+        sub_id,
+        clicks_30d: value.clicks,
+        unique_sessions_30d: value.sessions.size,
+        touched_packages_30d: value.products.size,
+        tracking_url: buildSubIdTrackingUrl(
+          "",
+          affiliate.referral_code,
+          sub_id,
+        ),
+      }))
+      .sort((a, b) => b.clicks_30d - a.clicks_30d),
     metric_definitions: METRIC_DEFINITIONS,
+    metric_periods: {
+      funnel: "rolling_30_days",
+      booking_trend: "rolling_7_days",
+      settlement: `KST_${kstPeriod}`,
+    },
+    data_availability: "available",
+    updated_at: new Date().toISOString(),
+    deprecated_metrics: {
+      total_revenue: "removed_use_payout_completed_krw",
+      booking_trend_card_news: "removed_use_actual_bookings",
+    },
   };
 }
 
 export async function buildAffiliateDashboardById(affiliateId: string) {
   const affiliate = await loadAffiliateById(affiliateId);
-  if (!affiliate) return null;
-  return buildDashboard(affiliate, true);
+  return affiliate ? buildDashboard(affiliate, true) : null;
 }
 
-export async function buildAffiliateDashboardByCode(referralCode: string, request: NextRequest, pin?: string | null) {
+export async function buildAffiliateDashboardByCode(
+  referralCode: string,
+  request: NextRequest,
+  pin?: string | null,
+) {
   const auth = await authInfluencer(request, referralCode, pin);
-  if (!auth.ok) {
+  if (!auth.ok)
     return { authError: { error: auth.error, status: auth.status } };
-  }
   return buildDashboard(auth.affiliate, true);
 }

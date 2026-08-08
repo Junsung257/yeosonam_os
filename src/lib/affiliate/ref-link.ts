@@ -7,7 +7,7 @@ export function buildAffiliateUrl(
   try {
     const url = basePath.startsWith('http')
       ? new URL(basePath)
-      : new URL(basePath, process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr');
+      : new URL(basePath, resolvePublicAppOrigin());
     url.searchParams.set('ref', referralCode);
     if (sub) url.searchParams.set('sub', sub);
     return basePath.startsWith('http') ? url.toString() : `${url.pathname}${url.search}`;
@@ -23,9 +23,10 @@ export function buildTrackerUrl(
   packageId?: string,
   sub?: string,
 ): string {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || '';
+  const base = resolvePublicAppOrigin();
   const params = new URLSearchParams({ ref: referralCode });
   if (packageId) params.set('pkg', packageId);
   if (sub) params.set('sub', sub);
-  return `${base}/api/influencer/track?${params.toString()}`;
+  return `${buildPublicUrl(`/api/influencer/track?${params.toString()}`)}`;
 }
+import { buildPublicUrl, resolvePublicAppOrigin } from '@/lib/public-app-origin';

@@ -20,7 +20,7 @@ function resolvePublicSiteOrigin(): string {
     || getSecret('NEXT_PUBLIC_BASE_URL')
     || getSecret('NEXT_PUBLIC_APP_URL')
   if (explicit) return explicit.replace(/\/$/, '')
-  return 'https://yeosonam.co.kr'
+  return 'https://www.yeosonam.com'
 }
 
 function readRequiredString(args: Record<string, unknown>, key: string): string {

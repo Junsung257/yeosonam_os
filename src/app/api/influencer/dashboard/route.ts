@@ -25,10 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     return apiResponse(dashboard);
-  } catch (err) {
-    return apiResponse(
-      { error: err instanceof Error ? err.message : 'Dashboard fetch failed' },
-      { status: 500 },
-    );
+  } catch {
+    return apiResponse({ error: 'AFFILIATE_DASHBOARD_UNAVAILABLE', state: 'data_unavailable' }, { status: 503 });
   }
 }

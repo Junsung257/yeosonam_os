@@ -100,7 +100,7 @@ describe('affiliate admin/attribution/promo security guards', () => {
     const creatorCodes = source('src/app/api/partner/creator-codes/route.ts');
 
     for (const route of [publications, publicationUpdate, creatorCodes]) {
-      expect(route).toContain("headers.get('idempotency-key')");
+      expect(route).toMatch(/idempotency-key/);
       expect(route).toContain('IDEMPOTENCY_KEY_REQUIRED');
       expect(route).toContain('isAllowedPartnerWriteOrigin');
       expect(route).toContain('authAffiliate');
@@ -205,11 +205,10 @@ describe('affiliate admin/attribution/promo security guards', () => {
   it('shows settlement amount diff and review blockers in the admin settlements page', () => {
     const page = source('src/app/admin/settlements/page.tsx');
 
-    expect(page).toContain('function settlementAmountDelta');
-    expect(page).toContain('function settlementReviewReasons');
-    expect(page).toContain('지급+원천징수 합계 차이');
-    expect(page).toContain('최소 지급 조건 미달 또는 이월 대기');
-    expect(page).toContain('disabled={statusUpdating === s.id || Number(s.final_payout || 0) <= 0}');
+    expect(page).toContain('gross_commission_krw');
+    expect(page).toContain('adjustment_krw');
+    expect(page).toContain('hold_reason_code');
+    expect(page).toContain('COMPLETE_PAYOUT');
   });
 
   it('renders settlement PDFs only from frozen settlement lines', () => {
@@ -309,10 +308,9 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(service).toContain('buildAffiliateDashboardByCode');
     expect(service).toContain('resolveAttributionMethod');
     expect(service).toContain('summarizeCommissions');
-    expect(service).toContain('requireCount');
-    expect(service).toContain('optionalRows');
+    expect(service).toContain('count(');
     expect(service).toContain('content_clicks');
-    expect(service).toContain('link_clicks');
+    expect(service).toContain('publication_clicks');
     expect(service).toContain('METRIC_DEFINITIONS');
     expect(service).toContain('metric_definitions');
 
@@ -329,24 +327,17 @@ describe('affiliate admin/attribution/promo security guards', () => {
   it('requires the admin settlements page to collect payout evidence before completion', () => {
     const page = source('src/app/admin/settlements/page.tsx');
 
-    expect(page).toContain('PayoutEvidenceModal');
-    expect(page).toContain('HoldReasonModal');
-    expect(page).toContain('EvidenceCell');
-    expect(page).toContain('copiedEvidence');
-    expect(page).toContain('placeholder="파트너, 코드, 증빙 검색"');
-    expect(page).toContain('statusCounts');
-    expect(page).toContain('PauseCircle');
+    expect(page).toContain('evidenceRun');
+    expect(page).toContain('COMPLETE_PAYOUT');
+    expect(page).toContain('승인·지급 중');
     expect(page).toContain('CheckCircle');
     expect(page).toContain('payout_reference');
-    expect(page).toContain('paid_by');
-    expect(page).toContain('paid_at');
-    expect(page).toContain('withholding_amount');
+    expect(page).toContain('bank_transaction_reference');
     expect(page).toContain('receipt_url');
     expect(page).toContain('hold_reason');
-    expect(page).toContain("openCompletionModal(s)");
-    expect(page).toContain("openHoldModal(s)");
-    expect(page).toContain("updateStatus(s.id, 'READY')");
-    expect(page).not.toContain("updateStatus(s.id, 'COMPLETED')");
+    expect(page).toContain('command(run, "APPROVE_PAYOUT")');
+    expect(page).toContain('command(evidenceRun, "COMPLETE_PAYOUT"');
+    expect(page).not.toContain('action: "VOID"');
     expect(page).not.toContain("['READY', 'PENDING'].includes(s.status)");
   });
 

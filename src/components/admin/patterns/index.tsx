@@ -18,17 +18,20 @@ import { ChevronRight, X as CloseIcon, type LucideIcon } from 'lucide-react';
  * PageHeader — 페이지 상단 (제목 + breadcrumb + 액션)
  * ────────────────────────────────────────────────────────── */
 interface PageHeaderProps {
+  eyebrow?: ReactNode;
   title: string;
+  description?: ReactNode;
   subtitle?: ReactNode;
   breadcrumb?: { label: string; href?: string }[];
   actions?: ReactNode;
   badge?: ReactNode;
 }
 
-export function PageHeader({ title, subtitle, breadcrumb, actions, badge }: PageHeaderProps) {
+export function PageHeader({ eyebrow, title, description, subtitle, breadcrumb, actions, badge }: PageHeaderProps) {
   return (
     <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0 flex-1">
+        {eyebrow && <p className="mb-1 text-admin-xs font-semibold uppercase tracking-wide text-brand">{eyebrow}</p>}
         {breadcrumb && breadcrumb.length > 0 && (
           <div className="flex items-center gap-1 text-admin-xs text-admin-muted mb-1.5">
             {breadcrumb.map((b, i) => (
@@ -49,7 +52,7 @@ export function PageHeader({ title, subtitle, breadcrumb, actions, badge }: Page
           <h1 className="text-admin-h1 text-admin-text truncate">{title}</h1>
           {badge}
         </div>
-        {subtitle && <p className="mt-1 text-admin-sm text-admin-muted">{subtitle}</p>}
+        {(description || subtitle) && <p className="mt-1 text-admin-sm text-admin-muted">{description || subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">{actions}</div>}
     </div>
