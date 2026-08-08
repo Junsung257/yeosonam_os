@@ -162,30 +162,24 @@ async function resolveAffiliateCommission(input: {
   if (!affiliate) return null;
 
   const affiliateRow = affiliate as AffiliateRow;
-  const { applyCommissionPolicies } = await import('@/lib/policy-engine');
-  const productRate = Number(input.packageRow.affiliate_commission_rate);
-  const baseRate = Number.isFinite(productRate) && productRate >= 0 ? productRate : 0.02;
-  const daysSinceSignup = affiliateRow.created_at
-    ? Math.max(0, Math.floor((Date.now() - new Date(affiliateRow.created_at).getTime()) / 86400000))
-    : 0;
-
-  const breakdown = await applyCommissionPolicies({
-    product_id: input.packageRow.id,
-    destination: input.packageRow.destination ?? undefined,
-    affiliate_id: affiliateRow.id,
-    affiliate_grade: affiliateRow.grade ?? 1,
-    days_since_signup: daysSinceSignup,
-    base_rate: baseRate,
-    tier_bonus: Math.max(0, Number(affiliateRow.bonus_rate ?? 0)),
-  });
   const commissionBase = input.adultCount * input.adultPrice + input.childCount * input.childPrice;
+  const { calculateCommissionQuote } = await import('@/lib/affiliate/commission-policy-service');
+  const quote = await calculateCommissionQuote({
+    productId: input.packageRow.id,
+    affiliateId: affiliateRow.id,
+    commissionBaseKrw: commissionBase,
+  });
 
   return {
     affiliateId: affiliateRow.id,
-    influencerCommission: Math.round(commissionBase * breakdown.final_rate),
-    appliedTotalCommissionRate: breakdown.final_rate,
+    influencerCommission: quote.commissionAmountKrw,
+    appliedTotalCommissionRate: quote.finalRate,
+    commissionStatus: quote.status,
+    commissionBaseAmountKrw: quote.commissionBaseKrw,
+    commissionPolicySetVersion: quote.status === 'CALCULATED' ? quote.policySetVersion : null,
+    commissionCalculationTraceId: quote.traceId,
     commissionBreakdown: {
-      ...breakdown,
+      ...quote.breakdown,
       source: 'landing_lead',
       referral_code: input.affiliateRef,
     } satisfies Record<string, unknown>,
@@ -273,6 +267,10 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
           influencerCommission: affiliateCommission.influencerCommission,
           appliedTotalCommissionRate: affiliateCommission.appliedTotalCommissionRate,
           commissionBreakdown: affiliateCommission.commissionBreakdown,
+          commissionStatus: affiliateCommission.commissionStatus,
+          commissionBaseAmountKrw: affiliateCommission.commissionBaseAmountKrw,
+          commissionPolicySetVersion: affiliateCommission.commissionPolicySetVersion,
+          commissionCalculationTraceId: affiliateCommission.commissionCalculationTraceId,
         }
       : {}),
     idempotencyKey,

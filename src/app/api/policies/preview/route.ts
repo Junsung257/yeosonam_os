@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { applyCommissionPolicies, summarizeBreakdown } from '@/lib/policy-engine';
+import { calculateCommissionQuote } from '@/lib/affiliate/commission-policy-service';
 import { isAdminRequest } from '@/lib/admin-guard';
 
 // 어필리에이트 커미션 정책 미리보기:
@@ -58,36 +58,27 @@ export async function GET(request: NextRequest) {
     const samples: Array<{
       affiliate: string;
       product: string;
-      breakdown: Awaited<ReturnType<typeof applyCommissionPolicies>>;
-      summary: string;
+      quote: Awaited<ReturnType<typeof calculateCommissionQuote>>;
     }> = [];
 
     for (const aff of affiliates.slice(0, 5)) {
       for (const pkg of packages.slice(0, 3)) {
-        const daysSinceSignup = aff.created_at
-          ? Math.max(0, Math.floor((Date.now() - new Date(aff.created_at).getTime()) / 86400000))
-          : 0;
-        const breakdown = await applyCommissionPolicies({
-          product_id: pkg.id,
-          destination: pkg.destination,
-          affiliate_id: aff.id,
-          affiliate_grade: aff.grade ?? 1,
-          days_since_signup: daysSinceSignup,
-          base_rate: Number(pkg.affiliate_commission_rate) || 0.02,
-          tier_bonus: aff.bonus_rate || 0,
+        const quote = await calculateCommissionQuote({
+          productId: pkg.id,
+          affiliateId: aff.id,
+          commissionBaseKrw: 1_000_000,
         });
         samples.push({
           affiliate: aff.name,
           product: pkg.title,
-          breakdown,
-          summary: summarizeBreakdown(breakdown),
+          quote,
         });
       }
     }
 
     const avgFinal =
       samples.length > 0
-        ? samples.reduce((s, x) => s + x.breakdown.final_rate, 0) / samples.length
+        ? samples.reduce((s, x) => s + x.quote.finalRate, 0) / samples.length
         : 0;
 
     return NextResponse.json({
@@ -96,7 +87,7 @@ export async function GET(request: NextRequest) {
       sample_size: samples.length,
       avg_final_rate: Math.round(avgFinal * 10000) / 10000,
       avg_final_pct: `${(avgFinal * 100).toFixed(2)}%`,
-      capped_count: samples.filter(s => s.breakdown.capped).length,
+      held_count: samples.filter(s => s.quote.status === 'CALCULATION_HOLD').length,
       samples: samples.slice(0, 10),
     });
   } catch (error) {

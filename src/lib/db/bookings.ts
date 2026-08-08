@@ -96,6 +96,10 @@ export async function createBooking(data: {
   influencerCommission?: number;
   appliedTotalCommissionRate?: number;
   commissionBreakdown?: Record<string, unknown>;
+  commissionStatus?: 'NOT_APPLICABLE' | 'CALCULATION_HOLD' | 'CALCULATED' | 'BLOCKED_SELF_REFERRAL' | 'REVERSED';
+  commissionBaseAmountKrw?: number;
+  commissionPolicySetVersion?: string | null;
+  commissionCalculationTraceId?: string;
   contentCreativeId?: string;
   idempotencyKey?: string;
   conversationId?: string;
@@ -128,6 +132,10 @@ export async function createBooking(data: {
     const fuelSurcharge = Number(data.fuelSurcharge) || 0;
     const totalPrice = adultCount * adultPrice + childCount * childPrice + fuelSurcharge;
     const totalCost = adultCount * adultCost + childCount * childCost + infantCount * infantCost;
+    const commissionBaseAmountKrw = adultCount * adultPrice + childCount * childPrice;
+    const effectiveCommissionStatus = data.affiliateId
+      ? (data.commissionStatus ?? 'CALCULATION_HOLD')
+      : 'NOT_APPLICABLE';
     let selfReferralFlag = false;
     let selfReferralReason: string | null = null;
     if (data.affiliateId) {
@@ -190,11 +198,35 @@ export async function createBooking(data: {
               self_referral_reason: selfReferralReason,
               computed_at: new Date().toISOString(),
             },
+            commission_status: 'BLOCKED_SELF_REFERRAL',
+            commission_base_amount_krw: commissionBaseAmountKrw,
           }
         : {
             ...(data.influencerCommission !== undefined ? { influencer_commission: data.influencerCommission } : {}),
             ...(data.appliedTotalCommissionRate !== undefined ? { applied_total_commission_rate: data.appliedTotalCommissionRate } : {}),
-            ...(data.commissionBreakdown ? { commission_breakdown: data.commissionBreakdown } : {}),
+            ...(data.commissionBreakdown
+              ? { commission_breakdown: data.commissionBreakdown }
+              : effectiveCommissionStatus === 'CALCULATION_HOLD'
+                ? {
+                    commission_breakdown: {
+                      status: 'CALCULATION_HOLD',
+                      hold_reason: 'COMMISSION_QUOTE_MISSING',
+                      computed_at: new Date().toISOString(),
+                    },
+                    influencer_commission: 0,
+                    applied_total_commission_rate: 0,
+                  }
+                : {}),
+            commission_status: effectiveCommissionStatus,
+            ...(data.commissionBaseAmountKrw !== undefined
+              ? { commission_base_amount_krw: data.commissionBaseAmountKrw }
+              : data.affiliateId ? { commission_base_amount_krw: commissionBaseAmountKrw } : {}),
+            ...(data.commissionPolicySetVersion
+              ? { commission_policy_set_version: data.commissionPolicySetVersion }
+              : {}),
+            ...(data.commissionCalculationTraceId
+              ? { commission_calculation_trace_id: data.commissionCalculationTraceId }
+              : {}),
           }),
       ...(data.contentCreativeId ? { content_creative_id: data.contentCreativeId } : {}),
       ...(data.idempotencyKey ? { idempotency_key: data.idempotencyKey } : {}),

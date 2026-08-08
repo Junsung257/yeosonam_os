@@ -105,7 +105,7 @@ function matchesTrigger(policy: Policy, context: Record<string, unknown>): boole
   const operator = config.operator as string;
   const value = config.value;
 
-  if (!field || !operator) return true; // 필드 없으면 무조건 적용
+  if (!field || !operator) return false; // malformed trigger는 전역 적용 금지
 
   const actual = context[field];
   if (actual === undefined || actual === null) return false;

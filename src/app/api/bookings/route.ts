@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { successResponse, ApiErrors } from '@/lib/api-response';
+import crypto from 'node:crypto';
+import { successResponse, ApiErrors, errorResponse } from '@/lib/api-response';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
@@ -304,20 +305,12 @@ export async function POST(request: NextRequest) {
         ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
         : null;
 
-    const pkgQuery = body.packageId
-      ? supabaseAdmin.from('travel_packages').select('affiliate_commission_rate, destination').eq('id', body.packageId).maybeSingle()
-      : null;
-
-    // 두 쿼리가 있으면 동시에 실행
-    const safeExecute = async (q: any): Promise<{ data: unknown }> => {
-      if (!q) return { data: null };
-      try { const r = await q; return { data: r.data ?? null }; }
-      catch { return { data: null }; }
-    };
-    const [affResult, pkgResult] = await Promise.all([
-      safeExecute(affQuery),
-      safeExecute(pkgQuery),
-    ]);
+    const affResult = affQuery
+      ? await affQuery
+      : { data: null, error: null };
+    if (affResult.error) {
+      return errorResponse('AFFILIATE_LOOKUP_UNAVAILABLE', '추천 파트너 정보를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.', 503);
+    }
 
     if (affResult.data) {
       affData = affResult.data as AffRow;
@@ -399,7 +392,11 @@ export async function POST(request: NextRequest) {
       if (selfReferralBlocked) {
         body.influencerCommission = 0;
         body.appliedTotalCommissionRate = 0;
+        body.commissionStatus = 'BLOCKED_SELF_REFERRAL';
+        body.commissionBaseAmountKrw = commissionBase;
+        body.commissionCalculationTraceId = crypto.randomUUID();
         body.commissionBreakdown = {
+          status: 'BLOCKED_SELF_REFERRAL',
           base: 0,
           tier: 0,
           campaigns: [],
@@ -411,39 +408,23 @@ export async function POST(request: NextRequest) {
           `[Affiliate] 셀프 리퍼럴 커미션 차단: affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`
         );
       } else {
-        const { applyCommissionPolicies } = await import('@/lib/policy-engine');
-
-        let baseRate = 0.02;
-        let destination: string | undefined;
-        const pkg = pkgResult.data as { affiliate_commission_rate: number | null; destination: string | null } | null;
-        if (pkg) {
-          const r = Number(pkg.affiliate_commission_rate);
-          if (Number.isFinite(r) && r >= 0) baseRate = r;
-          destination = pkg.destination ?? undefined;
-        }
-
-        const daysSinceSignup = affData.created_at
-          ? Math.max(0, Math.floor((Date.now() - new Date(affData.created_at).getTime()) / 86400000))
-          : 0;
-
-        const breakdown = await applyCommissionPolicies({
-          product_id: body.packageId,
-          destination,
-          affiliate_id: affData.id,
-          affiliate_grade: affData.grade ?? 1,
-          days_since_signup: daysSinceSignup,
-          base_rate: baseRate,
-          tier_bonus: affData.bonus_rate ?? 0,
+        const { calculateCommissionQuote } = await import('@/lib/affiliate/commission-policy-service');
+        const quote = await calculateCommissionQuote({
+          productId: String(body.packageId || ''),
+          affiliateId: affData.id,
+          commissionBaseKrw: commissionBase,
         });
+        body.influencerCommission = quote.commissionAmountKrw;
+        body.appliedTotalCommissionRate = quote.finalRate;
+        body.commissionBreakdown = quote.breakdown;
+        body.commissionStatus = quote.status;
+        body.commissionBaseAmountKrw = quote.commissionBaseKrw;
+        body.commissionPolicySetVersion = quote.status === 'CALCULATED' ? quote.policySetVersion : null;
+        body.commissionCalculationTraceId = quote.traceId;
 
-        body.influencerCommission = Math.round(commissionBase * breakdown.final_rate);
-        body.appliedTotalCommissionRate = breakdown.final_rate;
-        body.commissionBreakdown = breakdown;
-
-        console.log(
-          `[Affiliate] 커미션 자동계산(가산식): base=${commissionBase} × ${breakdown.final_rate} = ${body.influencerCommission} ` +
-          `[${breakdown.base}+${breakdown.tier}+캠페인${breakdown.campaigns.length}건${breakdown.capped ? '(캡적용)' : ''}]`
-        );
+        if (quote.status === 'CALCULATION_HOLD') {
+          console.warn(`[Affiliate] 커미션 계산 보류: affiliate=${affData.id}, reason=${quote.reason}, trace=${quote.traceId}`);
+        }
       }
     }
 

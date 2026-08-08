@@ -23,9 +23,9 @@ function parseRate(envKey: string, fallback: number): number {
   return clamp01(parseFloat(raw), fallback);
 }
 
-/** 신규 파트너 신청 승인 시 기본 commission_rate (0.09 = 9%) */
+/** 신규 파트너 레거시 표시 필드 기본값. 실제 계산은 상품 기본률 SSOT를 사용. */
 export function getDefaultAffiliateCommissionRate(): number {
-  return parseRate('DEFAULT_AFFILIATE_COMMISSION_RATE', 0.09);
+  return parseRate('DEFAULT_AFFILIATE_COMMISSION_RATE', 0.02);
 }
 
 /** lifetime_0_5 실험 그룹의 평생 커미션 비율 (0.005 = 0.5%) */
