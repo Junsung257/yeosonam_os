@@ -114,7 +114,7 @@ export interface SettlementPdfProps {
   }>;
   breakdownTotals: { base: number; tier: number; campaigns: number; capped: number };
   totalAmount: number;
-  carryoverBalance: number;
+  adjustmentAmount: number;
   finalTotal: number;
   taxDeduction: number;
   finalPayout: number;
@@ -125,7 +125,7 @@ export function SettlementPdfDocument(props: SettlementPdfProps) {
     affiliateName, referralCode, phone, payoutType,
     year, month, periodLabel,
     bookings, breakdownTotals,
-    totalAmount, carryoverBalance, finalTotal, taxDeduction, finalPayout,
+    totalAmount, adjustmentAmount, finalTotal, taxDeduction, finalPayout,
   } = props;
 
   return (
@@ -230,8 +230,8 @@ export function SettlementPdfDocument(props: SettlementPdfProps) {
               <Text style={styles.summaryValue}>{totalAmount.toLocaleString()}원</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>전월 이월</Text>
-              <Text style={styles.summaryValue}>{carryoverBalance.toLocaleString()}원</Text>
+              <Text style={styles.summaryLabel}>조정·역분개</Text>
+              <Text style={styles.summaryValue}>{adjustmentAmount.toLocaleString()}원</Text>
             </View>
             <View style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>합계 (세전)</Text>

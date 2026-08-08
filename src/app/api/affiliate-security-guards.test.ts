@@ -148,98 +148,58 @@ describe('affiliate admin/attribution/promo security guards', () => {
   it('guards settlement GET/POST/PATCH with explicit admin auth', () => {
     const route = source('src/app/api/settlements/route.ts');
 
-    expect(route).toContain("import { requireAdminRequest } from '@/lib/admin-guard'");
+    expect(route).toContain('requireAdminRequest');
     expect(route).not.toContain('requireAuthenticatedRoute');
 
     for (const handler of ['GET', 'POST', 'PATCH']) {
       const start = route.indexOf(`export async function ${handler}`);
-      const body = route.slice(start, route.indexOf('if (!isSupabaseConfigured)', start));
+      const body = route.slice(start, route.indexOf('if (!isSupabaseAdminConfigured)', start));
       expect(start).toBeGreaterThanOrEqual(0);
       expect(body).toContain('await requireAdminRequest(request)');
       expect(body).toContain('if (guard) return guard');
     }
   });
 
-  it('uses the shared settlement engine for manual settlement close', () => {
+  it('uses the atomic ledger V2 run function for manual settlement calculation', () => {
     const route = source('src/app/api/settlements/route.ts');
     const postStart = route.indexOf('export async function POST');
     const patchStart = route.indexOf('export async function PATCH');
     const postBody = route.slice(postStart, patchStart);
 
-    expect(postBody).toContain('calculateDraftForAffiliate');
-    expect(postBody).toContain('applySettlementApproval');
-    expect(postBody).not.toContain(".gte('departure_date'");
-    expect(postBody).not.toContain('.upsert({');
-    expect(postBody).not.toContain('PERSONAL_TAX_RATE');
+    expect(postBody).toContain("rpc('create_affiliate_settlement_run_v2'");
+    expect(postBody).toContain('IDEMPOTENCY_KEY_REQUIRED');
+    expect(postBody).toContain('resolveSettlementPeriodKst');
+    expect(postBody).not.toContain("from('settlements')");
   });
 
-  it('blocks manual settlement close when the affiliate is missing', () => {
-    const route = source('src/app/api/settlements/route.ts');
-    const postStart = route.indexOf('export async function POST');
-    const patchStart = route.indexOf('export async function PATCH');
-    const postBody = route.slice(postStart, patchStart);
-
-    expect(postBody).toContain(".from('affiliates')");
-    expect(postBody).toContain(".select('id, name, payout_type')");
-    expect(postBody).toContain("return errorResponse('NOT_FOUND', '어필리에이트를 찾을 수 없습니다.', 404)");
-    expect(postBody).not.toContain('applySettlementApproval(draft);\\n\\n    const { data: affiliate');
-  });
-
-  it('keeps affiliate settlement draft cron idempotent by affiliate and period', () => {
+  it('pauses both legacy settlement cron paths during ledger V2 migration', () => {
     const route = source('src/app/api/cron/affiliate-settlement-draft/route.ts');
-
-    expect(route).toContain('function settlementActionKey(period: string, affiliateId: string): string');
-    expect(route).toContain('affiliate-settlement:${period}:${affiliateId}');
-    expect(route).toContain(".eq('idempotency_key', idempotencyKey)");
-    expect(route).toContain('idempotency_key: idempotencyKey');
-    expect(route).toContain("insertError.code === '23505'");
-    expect(route).toContain('failed: failed.length');
+    const direct = source('src/app/api/cron/settlement-auto/route.ts');
+    expect(route).toContain('LEGACY_SETTLEMENT_DRAFT_PAUSED');
+    expect(route).toContain('{ status: 423 }');
+    expect(direct).toContain('DIRECT_SETTLEMENT_DISABLED');
+    expect(direct).toContain('{ status: 423 }');
+    expect(route).not.toContain('applySettlementApproval');
+    expect(direct).not.toContain('applySettlementApproval');
   });
 
-  it('keeps legacy direct settlement cron on the shared settlement engine', () => {
-    const route = source('src/app/api/cron/settlement-auto/route.ts');
-
-    expect(route).toContain('calculateDraftForAffiliate');
-    expect(route).toContain('applySettlementApproval');
-    expect(route).toContain('resolvePreviousPeriod');
-    expect(route).toContain('locked_or_finalized');
-    expect(route).not.toContain("gte('departure_date'");
-    expect(route).not.toContain('PERSONAL_TAX_RATE');
-    expect(route).not.toContain(".from('settlements')\n          .upsert");
-  });
-
-  it('requires payout evidence before marking affiliate settlement completed', () => {
+  it('requires maker-checker payout commands and removes mutable VOID', () => {
     const route = source('src/app/api/settlements/route.ts');
     const patchStart = route.indexOf('export async function PATCH');
     const patchBody = route.slice(patchStart);
+    const migration = source('supabase/migrations/20260808143735_affiliate_settlement_ledger_v2.sql');
 
-    expect(route).toContain('ALLOWED_TRANSITIONS');
-    expect(route).toContain("READY: ['HOLD', 'COMPLETED', 'VOID']");
-    expect(route).toContain("HOLD: ['READY']");
-    expect(route).toContain("COMPLETED: ['VOID']");
-    expect(patchBody).toContain('INVALID_SETTLEMENT_TRANSITION');
-    expect(patchBody).toContain('SETTLEMENT_RECALC_REQUIRED');
-    expect(patchBody).toContain("current.status === 'PENDING' && status === 'READY'");
-    expect(patchBody).toContain("status === 'COMPLETED'");
+    expect(patchBody).toContain('VOID_REMOVED_USE_REVERSAL');
+    expect(patchBody).toContain('PAYOUT_WORKFLOW_REQUIRED');
+    expect(patchBody).toContain("rawAction === 'REQUEST_PAYOUT'");
+    expect(patchBody).toContain("rawAction === 'APPROVE_PAYOUT'");
+    expect(patchBody).toContain("rawAction === 'COMPLETE_PAYOUT'");
     expect(patchBody).toContain('payout_reference');
-    expect(patchBody).toContain('paid_by');
-    expect(patchBody).toContain('paid_at');
-    expect(patchBody).toContain('withholding_amount');
     expect(patchBody).toContain('receipt_url');
-    expect(patchBody).toContain('!isValidIsoDate(paidAt)');
-    expect(patchBody).toContain('!isValidEvidenceUrl(receiptUrl)');
-    expect(patchBody).not.toContain("requiredText(body.paid_at) || new Date().toISOString()");
     expect(patchBody).toContain('PAYOUT_EVIDENCE_REQUIRED');
-    expect(patchBody).toContain('HOLD_REASON_REQUIRED');
-    expect(patchBody).toContain('INVALID_WITHHOLDING_AMOUNT');
-    expect(patchBody).toContain('PAYOUT_AMOUNT_MISMATCH');
-    expect(patchBody).toContain('amountDelta(finalPayout + withholdingAmount, finalTotal)');
-    expect(patchBody).toContain('payload.payout_reference = null');
-    expect(patchBody).toContain('payload.withholding_amount = 0');
-    expect(patchBody).toContain('before_value');
-    expect(patchBody).toContain('receipt_url: (current as Record<string, unknown>).receipt_url');
-    expect(patchBody).toContain('paid_by: payload.paid_by');
-    expect(patchBody).toContain('hold_reason: payload.hold_reason');
+    expect(migration).toContain("IF v_payout.requested_by = p_actor THEN RAISE EXCEPTION 'PAYOUT_SEPARATION_REQUIRED'");
+    expect(migration).toContain("IF OLD.status = 'COMPLETED' THEN RAISE EXCEPTION 'COMPLETED_SETTLEMENT_IMMUTABLE'");
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION public.create_commission_reversal_v2');
   });
 
   it('shows settlement amount diff and review blockers in the admin settlements page', () => {
@@ -252,16 +212,12 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(page).toContain('disabled={statusUpdating === s.id || Number(s.final_payout || 0) <= 0}');
   });
 
-  it('keeps settlement PDF bookings aligned to return_date period', () => {
+  it('renders settlement PDFs only from frozen settlement lines', () => {
     const route = source('src/app/api/settlements/[id]/pdf/route.ts');
-    const bookingQueryStart = route.indexOf(".from('bookings')");
-    const bookingQuery = route.slice(bookingQueryStart, route.indexOf('const qualifiedBookings', bookingQueryStart));
-
-    expect(bookingQuery).toContain(".gte('return_date', periodStart)");
-    expect(bookingQuery).toContain(".lte('return_date', periodEnd)");
-    expect(bookingQuery).toContain(".order('return_date'");
-    expect(bookingQuery).not.toContain(".gte('departure_date', periodStart)");
-    expect(bookingQuery).not.toContain(".lte('departure_date', periodEnd)");
+    expect(route).toContain("from('settlement_lines')");
+    expect(route).toContain("from('settlement_runs')");
+    expect(route).not.toContain("from('bookings')");
+    expect(route).toContain("'X-Settlement-Contract': 'settlement-lines-v2'");
   });
 
   it('treats only explicit admin auth as settlement PDF admin access', () => {
@@ -270,7 +226,7 @@ describe('affiliate admin/attribution/promo security guards', () => {
     const handler = route.slice(handlerStart);
     const adminCheck = handler.indexOf('await isAdminRequest(request)');
     const affiliateTokenCheck = handler.indexOf('await authAffiliate(request)');
-    const settlementQuery = handler.indexOf(".from('settlements')");
+    const settlementQuery = handler.indexOf(".from('settlement_runs')");
 
     expect(route).toContain("import { isAdminRequest } from '@/lib/admin-guard'");
     expect(route).not.toContain('requireAuthenticatedRoute');

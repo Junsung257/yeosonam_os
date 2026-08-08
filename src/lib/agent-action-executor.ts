@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '@/lib/supabase'
-import { applySettlementApproval, type SettlementDraft } from '@/lib/affiliate/settlement-calc'
 import { executeGenerateVariantsJob } from '@/lib/card-news-html/variant-job'
 import { getSecret } from '@/lib/secret-registry'
 import { executeOperationsTool } from '@/lib/jarvis/agents/operations'
@@ -471,18 +470,10 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
   },
 
   approve_monthly_settlement: async (args) => {
-    const draft = args as SettlementDraft
-    if (!draft?.affiliate_id || !draft?.period) {
+    if (!args?.affiliate_id || !args?.period) {
       throw new Error('approve_monthly_settlement: affiliate_id/period 필수')
     }
-    await applySettlementApproval(draft)
-    return {
-      settled: true,
-      affiliate_id: draft.affiliate_id,
-      period: draft.period,
-      status: draft.qualified ? 'READY' : 'PENDING(이월)',
-      final_payout: draft.final_payout,
-    }
+    throw new Error('LEGACY_SETTLEMENT_APPROVAL_PAUSED_USE_LEDGER_V2')
   },
 
   notify_affiliate_anomaly: async (args) => {

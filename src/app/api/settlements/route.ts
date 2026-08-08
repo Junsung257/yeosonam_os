@@ -1,377 +1,195 @@
 import { NextRequest } from 'next/server';
-import { requireAdminRequest } from '@/lib/admin-guard';
+import { requireAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 import { errorResponse, successResponse } from '@/lib/api-response';
 import {
-  applySettlementApproval,
-  calculateDraftForAffiliate,
-} from '@/lib/affiliate/settlement-calc';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-
-type AffiliateForSettlement = {
-  id: string;
-  name: string;
-  payout_type: string;
-};
-
-type SettlementWithAffiliate = {
-  id: string;
-  affiliate_id: string;
-  settlement_period: string;
-  status: string | null;
-  qualified_booking_count: number | null;
-  total_amount: number | null;
-  carryover_balance: number | null;
-  final_total: number | null;
-  tax_deduction: number | null;
-  final_payout: number | null;
-  affiliates: { id: string; name: string; booking_count: number | null } | null;
-};
-
-const SETTLEMENT_STATUSES = ['COMPLETED', 'VOID', 'PENDING', 'READY', 'HOLD'] as const;
-type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
-
-const ALLOWED_TRANSITIONS: Record<SettlementStatus, SettlementStatus[]> = {
-  PENDING: ['READY'],
-  READY: ['HOLD', 'COMPLETED', 'VOID'],
-  HOLD: ['READY'],
-  COMPLETED: ['VOID'],
-  VOID: [],
-};
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function resolveSettlementPeriodRange(period: string) {
-  const match = /^(\d{4})-(\d{2})$/.exec(period);
-  if (!match) return null;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return null;
-  }
-
-  return {
-    periodStart: `${year}-${String(month).padStart(2, '0')}-01`,
-    periodEnd: new Date(Date.UTC(year, month, 0)).toISOString().split('T')[0],
-    todayIso: new Date().toISOString().split('T')[0],
-  };
-}
+  mapSettlementRpcError,
+  resolveSettlementPeriodKst,
+  settlementCommandHash,
+} from '@/lib/affiliate/settlement-v2';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isValidUuid } from '@/lib/supabase-filter-safe';
 
 function requiredText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function isValidIsoDate(value: string): boolean {
-  const time = Date.parse(value);
-  return Number.isFinite(time);
+function idempotencyKey(request: NextRequest): string | null {
+  const key = request.headers.get('idempotency-key')?.trim() || '';
+  return /^[A-Za-z0-9:_-]{8,100}$/.test(key) ? key : null;
 }
 
-function isValidEvidenceUrl(value: string): boolean {
+function sameOriginWrite(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+  return !origin || origin === request.nextUrl.origin;
+}
+
+function safeHttpsUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
   try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' && !url.username && !url.password ? url.toString() : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function isSettlementStatus(value: string): value is SettlementStatus {
-  return SETTLEMENT_STATUSES.includes(value as SettlementStatus);
-}
-
-function canTransition(from: string | null, to: SettlementStatus): boolean {
-  const current = isSettlementStatus(from || '') ? (from as SettlementStatus) : 'PENDING';
-  return ALLOWED_TRANSITIONS[current].includes(to);
-}
-
-function amountDelta(a: number, b: number): number {
-  return Math.abs(Number(a || 0) - Number(b || 0));
+function rpcFailure(error: unknown) {
+  const message = String((error as { message?: string } | null)?.message || '');
+  const mapped = mapSettlementRpcError(message);
+  return errorResponse(mapped.code, '정산 명령을 처리할 수 없습니다. 상태와 정책을 확인해 주세요.', mapped.status);
 }
 
 export async function GET(request: NextRequest) {
   const guard = await requireAdminRequest(request);
   if (guard) return guard;
+  if (!isSupabaseAdminConfigured) return errorResponse('SERVICE_UNAVAILABLE', 'DB 미설정', 503);
 
-  if (!isSupabaseConfigured) {
-    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
-  }
+  const affiliateId = request.nextUrl.searchParams.get('affiliateId') || '';
+  const period = request.nextUrl.searchParams.get('period') || '';
+  if (affiliateId && !isValidUuid(affiliateId)) return errorResponse('INVALID_AFFILIATE_ID', '잘못된 파트너 ID입니다.', 400);
+  if (period && !resolveSettlementPeriodKst(period)) return errorResponse('INVALID_PERIOD', 'period는 YYYY-MM 형식이어야 합니다.', 400);
 
-  const { searchParams } = new URL(request.url);
-  const affiliateId = searchParams.get('affiliateId');
-  const period = searchParams.get('period');
-
-  try {
-    if (affiliateId && !UUID_RE.test(affiliateId)) {
-      return successResponse({ settlements: [] });
-    }
-
-    let query = supabaseAdmin
-      .from('settlements')
-      .select('*, affiliates(id, name, referral_code, grade, payout_type)')
-      .order('settlement_period', { ascending: false });
-
-    if (affiliateId) query = query.eq('affiliate_id', affiliateId);
-    if (period) query = query.eq('settlement_period', period);
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    return successResponse({ settlements: data || [] });
-  } catch (err) {
-    return errorResponse('FETCH_FAILED', err instanceof Error ? err.message : '조회 실패', 500);
-  }
+  let query = supabaseAdmin
+    .from('settlement_runs')
+    .select('*, affiliates(id, name, referral_code, grade, payout_type), payouts(id, status, amount_krw, payout_reference, receipt_url, requested_by, approved_by, executed_by, completed_at)')
+    .order('period_start_utc', { ascending: false });
+  if (affiliateId) query = query.eq('affiliate_id', affiliateId);
+  if (period) query = query.eq('settlement_period', period);
+  const { data, error } = await query;
+  if (error) return errorResponse('SETTLEMENTS_UNAVAILABLE', '정산 목록을 불러올 수 없습니다.', 503);
+  return successResponse({
+    settlements: data || [],
+    contract_version: 'settlement-ledger-v2',
+    updated_at: new Date().toISOString(),
+  });
 }
 
 export async function POST(request: NextRequest) {
   const guard = await requireAdminRequest(request);
   if (guard) return guard;
+  if (!sameOriginWrite(request)) return errorResponse('ORIGIN_REJECTED', '허용되지 않은 요청입니다.', 403);
+  if (!isSupabaseAdminConfigured) return errorResponse('SERVICE_UNAVAILABLE', 'DB 미설정', 503);
 
-  if (!isSupabaseConfigured) {
-    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
-  }
+  const commandKey = idempotencyKey(request);
+  if (!commandKey) return errorResponse('IDEMPOTENCY_KEY_REQUIRED', '멱등 키가 필요합니다.', 400);
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const affiliateId = requiredText(body.affiliateId ?? body.affiliate_id);
+  const period = requiredText(body.period ?? body.settlement_period);
+  if (!isValidUuid(affiliateId)) return errorResponse('INVALID_AFFILIATE_ID', '잘못된 파트너 ID입니다.', 400);
+  const range = resolveSettlementPeriodKst(period);
+  if (!range) return errorResponse('INVALID_PERIOD', 'period는 YYYY-MM 형식이어야 합니다.', 400);
 
-  try {
-    const body = await request.json();
-    const affiliateId = requiredText(body.affiliateId);
-    const period = requiredText(body.period);
-
-    if (!affiliateId) return errorResponse('MISSING_FIELD', 'affiliateId가 필요합니다.', 400);
-    if (!period) return errorResponse('MISSING_FIELD', 'period가 필요합니다. 예: 2026-03', 400);
-
-    const range = resolveSettlementPeriodRange(period);
-    if (!range) return errorResponse('INVALID_PERIOD', 'period는 YYYY-MM 형식이어야 합니다.', 400);
-
-    const { data: affiliate, error: affiliateErr } = await supabaseAdmin
-      .from('affiliates')
-      .select('id, name, payout_type')
-      .eq('id', affiliateId)
-      .single();
-    if (affiliateErr || !affiliate) {
-      return errorResponse('NOT_FOUND', '어필리에이트를 찾을 수 없습니다.', 404);
-    }
-
-    const draft = await calculateDraftForAffiliate(
-      affiliate as AffiliateForSettlement,
-      period,
-      range.periodStart,
-      range.periodEnd,
-      range.todayIso,
-    );
-    if (!draft) {
-      return errorResponse('ALREADY_FINALIZED', '이미 READY/COMPLETED 상태인 정산입니다.', 409);
-    }
-
-    await applySettlementApproval(draft);
-
-    const { data: settlement, error: settlementErr } = await supabaseAdmin
-      .from('settlements')
-      .select('*')
-      .eq('affiliate_id', affiliateId)
-      .eq('settlement_period', period)
-      .single();
-    if (settlementErr) throw settlementErr;
-
-    return successResponse({
-      settlement,
-      qualified: draft.qualified,
-      qualifiedCount: draft.qualified_booking_count,
-      totalAmount: draft.total_amount,
-    });
-  } catch (err) {
-    return errorResponse('SETTLEMENT_FAILED', err instanceof Error ? err.message : '정산 처리 실패', 500);
-  }
+  const actor = await resolveAdminActorLabel(request);
+  const requestHash = settlementCommandHash({ affiliate_id: affiliateId, period });
+  const { data, error } = await supabaseAdmin.rpc('create_affiliate_settlement_run_v2', {
+    p_affiliate_id: affiliateId,
+    p_period: period,
+    p_actor: actor,
+    p_idempotency_key: commandKey,
+    p_request_hash: requestHash,
+  });
+  if (error) return rpcFailure(error);
+  return successResponse({
+    settlement: Array.isArray(data) ? data[0] : data,
+    period_range: range,
+    idempotent: true,
+  });
 }
 
 export async function PATCH(request: NextRequest) {
   const guard = await requireAdminRequest(request);
   if (guard) return guard;
+  if (!sameOriginWrite(request)) return errorResponse('ORIGIN_REJECTED', '허용되지 않은 요청입니다.', 403);
+  if (!isSupabaseAdminConfigured) return errorResponse('SERVICE_UNAVAILABLE', 'DB 미설정', 503);
 
-  if (!isSupabaseConfigured) {
-    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
+  const commandKey = idempotencyKey(request);
+  if (!commandKey) return errorResponse('IDEMPOTENCY_KEY_REQUIRED', '멱등 키가 필요합니다.', 400);
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const id = requiredText(body.id ?? body.settlement_run_id);
+  const rawAction = requiredText(body.action || body.status).toUpperCase();
+  if (!isValidUuid(id)) return errorResponse('INVALID_SETTLEMENT_ID', '잘못된 정산 ID입니다.', 400);
+  if (rawAction === 'VOID') {
+    return errorResponse(
+      'VOID_REMOVED_USE_REVERSAL',
+      '완료 정산은 취소할 수 없습니다. 원본을 유지하고 역분개를 생성해야 합니다.',
+      410,
+    );
+  }
+  if (rawAction === 'COMPLETED') {
+    return errorResponse(
+      'PAYOUT_WORKFLOW_REQUIRED',
+      '지급 요청 → 다른 관리자 승인 → 지급 증빙 등록 순서로 처리해 주세요.',
+      409,
+    );
   }
 
-  try {
-    const body = await request.json();
-    const id = requiredText(body.id);
-    const status = requiredText(body.status);
-
-    if (!id) return errorResponse('MISSING_FIELD', 'id가 필요합니다.', 400);
-    if (!isSettlementStatus(status)) {
-      return errorResponse('INVALID_STATUS', '유효하지 않은 상태값입니다.', 400);
-    }
-
-    const { data: rawCurrent, error: fetchErr } = await supabaseAdmin
-      .from('settlements')
-      .select('*, affiliates(id, name, booking_count)')
-      .eq('id', id)
-      .single();
-
-    if (fetchErr || !rawCurrent) {
-      return errorResponse('NOT_FOUND', '정산을 찾을 수 없습니다.', 404);
-    }
-    const current = rawCurrent as SettlementWithAffiliate;
-
-    if (!canTransition(current.status, status)) {
-      return errorResponse(
-        'INVALID_SETTLEMENT_TRANSITION',
-        `${current.status || 'UNKNOWN'} 상태에서 ${status} 상태로 변경할 수 없습니다.`,
-        409,
-      );
-    }
-    if (current.status === 'PENDING' && status === 'READY' && Number(current.final_payout || 0) <= 0) {
-      return errorResponse(
-        'SETTLEMENT_RECALC_REQUIRED',
-        '실지급액이 0원인 이월 정산은 바로 지급 대기로 전환할 수 없습니다. 재정산 또는 조정 후 처리하세요.',
-        409,
-      );
-    }
-
-    const payload: Record<string, unknown> = { status };
-
-    if (status === 'COMPLETED') {
-      const payoutReference = requiredText(body.payout_reference);
-      const paidBy = requiredText(body.paid_by);
-      const paidAt = requiredText(body.paid_at);
-      const receiptUrl = requiredText(body.receipt_url);
-      const withholdingAmount = Number(body.withholding_amount);
-
-      if (
-        !payoutReference ||
-        !paidBy ||
-        !paidAt ||
-        !isValidIsoDate(paidAt) ||
-        !receiptUrl ||
-        !isValidEvidenceUrl(receiptUrl) ||
-        !Number.isFinite(withholdingAmount) ||
-        withholdingAmount < 0
-      ) {
-        return errorResponse(
-          'PAYOUT_EVIDENCE_REQUIRED',
-          'COMPLETED 전환에는 payout_reference, paid_by, 유효한 paid_at, withholding_amount, http(s) receipt_url이 필요합니다.',
-          400,
-        );
-      }
-
-      const finalTotal = Number(current.final_total || 0);
-      const finalPayout = Number(current.final_payout || 0);
-      if (withholdingAmount > finalTotal) {
-        return errorResponse('INVALID_WITHHOLDING_AMOUNT', '원천징수액은 이월 포함 정산액보다 클 수 없습니다.', 400);
-      }
-      if (amountDelta(finalPayout + withholdingAmount, finalTotal) > 1) {
-        return errorResponse(
-          'PAYOUT_AMOUNT_MISMATCH',
-          '실지급액과 원천징수액의 합이 이월 포함 정산액과 일치해야 합니다.',
-          400,
-        );
-      }
-
-      payload.settled_at = paidAt;
-      payload.payout_reference = payoutReference;
-      payload.paid_by = paidBy;
-      payload.paid_at = paidAt;
-      payload.withholding_amount = withholdingAmount;
-      payload.receipt_url = receiptUrl;
-    }
-
-    if (status === 'HOLD') {
-      const holdReason = requiredText(body.hold_reason);
-      if (!holdReason) {
-        return errorResponse('HOLD_REASON_REQUIRED', 'HOLD 전환에는 hold_reason이 필요합니다.', 400);
-      }
-      payload.hold_reason = holdReason;
-      payload.held_at = new Date().toISOString();
-    }
-
-    if (status === 'READY' && current.status === 'HOLD') {
-      payload.released_at = new Date().toISOString();
-      payload.hold_reason = null;
-    }
-
-    if (status === 'VOID') {
-      const affBookingCount = Number(current.affiliates?.booking_count ?? 0);
-
-      if (current.affiliate_id && Number(current.qualified_booking_count || 0) > 0) {
-        const newCount = Math.max(0, affBookingCount - Number(current.qualified_booking_count || 0));
-        await supabaseAdmin
-          .from('affiliates')
-          .update({ booking_count: newCount })
-          .eq('id', current.affiliate_id);
-      }
-
-      if (Number(current.carryover_balance || 0) > 0) {
-        const range = resolveSettlementPeriodRange(current.settlement_period);
-        if (range) {
-          const [yearRaw, monthRaw] = current.settlement_period.split('-').map(Number);
-          const prevMonth = monthRaw === 1 ? 12 : monthRaw - 1;
-          const prevYear = monthRaw === 1 ? yearRaw - 1 : yearRaw;
-          const prevPeriod = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
-
-          await supabaseAdmin
-            .from('settlements')
-            .update({ carryover_balance: current.carryover_balance })
-            .eq('affiliate_id', current.affiliate_id)
-            .eq('settlement_period', prevPeriod);
-        }
-      }
-
-      payload.final_total = 0;
-      payload.tax_deduction = 0;
-      payload.final_payout = 0;
-      payload.settled_at = null;
-      payload.payout_reference = null;
-      payload.paid_by = null;
-      payload.paid_at = null;
-      payload.withholding_amount = 0;
-      payload.receipt_url = null;
-      payload.carryover_balance = Number(current.carryover_balance || 0) + Number(current.total_amount || 0);
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('settlements')
-      .update(payload)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    const logName = current.affiliates?.name ?? '';
-    await supabaseAdmin.from('audit_logs').insert([{
-      action: status === 'VOID' ? 'SETTLEMENT_VOID_ROLLBACK' : `SETTLEMENT_${status}`,
-      target_type: 'settlement',
-      target_id: id,
-      description: status === 'VOID'
-        ? `${logName} ${current.settlement_period} 정산 롤백`
-        : `정산 상태 ${status}`,
-      before_value: {
-        status: current.status,
-        total_amount: current.total_amount,
-        final_total: current.final_total,
-        final_payout: current.final_payout,
-        payout_reference: (current as Record<string, unknown>).payout_reference ?? null,
-        paid_by: (current as Record<string, unknown>).paid_by ?? null,
-        paid_at: (current as Record<string, unknown>).paid_at ?? null,
-        withholding_amount: (current as Record<string, unknown>).withholding_amount ?? null,
-        receipt_url: (current as Record<string, unknown>).receipt_url ?? null,
-        hold_reason: (current as Record<string, unknown>).hold_reason ?? null,
-        held_at: (current as Record<string, unknown>).held_at ?? null,
-        released_at: (current as Record<string, unknown>).released_at ?? null,
-        booking_count: current.affiliates?.booking_count,
-      },
-      after_value: {
-        status,
-        final_payout: data?.final_payout,
-        payout_reference: payload.payout_reference ?? null,
-        paid_by: payload.paid_by ?? null,
-        paid_at: payload.paid_at ?? null,
-        withholding_amount: payload.withholding_amount ?? null,
-        receipt_url: payload.receipt_url ?? null,
-        hold_reason: payload.hold_reason ?? null,
-      },
-    }]);
-
-    return successResponse({ settlement: data });
-  } catch (err) {
-    return errorResponse('PATCH_FAILED', err instanceof Error ? err.message : '상태 변경 실패', 500);
+  const actor = await resolveAdminActorLabel(request);
+  if (rawAction === 'HOLD' || rawAction === 'READY') {
+    const holdReason = rawAction === 'HOLD' ? requiredText(body.hold_reason ?? body.hold_reason_code) : '';
+    const requestHash = settlementCommandHash({ id, action: rawAction, hold_reason_code: holdReason });
+    const { data, error } = await supabaseAdmin.rpc('transition_affiliate_settlement_run_v2', {
+      p_run_id: id,
+      p_status: rawAction,
+      p_hold_reason_code: holdReason || null,
+      p_actor: actor,
+      p_idempotency_key: commandKey,
+      p_request_hash: requestHash,
+    });
+    if (error) return rpcFailure(error);
+    return successResponse({ settlement: Array.isArray(data) ? data[0] : data });
   }
+
+  if (rawAction === 'REQUEST_PAYOUT') {
+    const requestHash = settlementCommandHash({ id, action: rawAction });
+    const { data, error } = await supabaseAdmin.rpc('request_affiliate_payout_v2', {
+      p_run_id: id,
+      p_actor: actor,
+      p_idempotency_key: commandKey,
+      p_request_hash: requestHash,
+    });
+    if (error) return rpcFailure(error);
+    return successResponse({ payout: Array.isArray(data) ? data[0] : data, approval_required: true });
+  }
+
+  const payoutId = requiredText(body.payout_id);
+  if (!isValidUuid(payoutId)) return errorResponse('INVALID_PAYOUT_ID', '잘못된 지급 ID입니다.', 400);
+  if (rawAction === 'APPROVE_PAYOUT') {
+    const requestHash = settlementCommandHash({ id, payout_id: payoutId, action: rawAction });
+    const { data, error } = await supabaseAdmin.rpc('approve_affiliate_payout_v2', {
+      p_payout_id: payoutId,
+      p_actor: actor,
+      p_idempotency_key: commandKey,
+      p_request_hash: requestHash,
+    });
+    if (error) return rpcFailure(error);
+    return successResponse({ payout: Array.isArray(data) ? data[0] : data, approved: true });
+  }
+
+  if (rawAction === 'COMPLETE_PAYOUT') {
+    const payoutReference = requiredText(body.payout_reference);
+    const receiptUrl = safeHttpsUrl(body.receipt_url);
+    const bankReference = requiredText(body.bank_transaction_reference);
+    const completedAt = requiredText(body.completed_at ?? body.paid_at);
+    if (!payoutReference || !receiptUrl || !completedAt || !Number.isFinite(Date.parse(completedAt))) {
+      return errorResponse('PAYOUT_EVIDENCE_REQUIRED', '지급 참조번호, HTTPS 증빙 URL, 지급 시각이 필요합니다.', 400);
+    }
+    const requestHash = settlementCommandHash({
+      id, payout_id: payoutId, action: rawAction, payout_reference: payoutReference,
+      receipt_url: receiptUrl, bank_transaction_reference: bankReference, completed_at: completedAt,
+    });
+    const { data, error } = await supabaseAdmin.rpc('complete_affiliate_payout_v2', {
+      p_payout_id: payoutId,
+      p_actor: actor,
+      p_payout_reference: payoutReference,
+      p_receipt_url: receiptUrl,
+      p_bank_transaction_reference: bankReference,
+      p_completed_at: completedAt,
+      p_idempotency_key: commandKey,
+      p_request_hash: requestHash,
+    });
+    if (error) return rpcFailure(error);
+    return successResponse({ payout: Array.isArray(data) ? data[0] : data, completed: true });
+  }
+
+  return errorResponse('INVALID_SETTLEMENT_ACTION', '지원하지 않는 정산 명령입니다.', 400);
 }
