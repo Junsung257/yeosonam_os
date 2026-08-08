@@ -1,59 +1,54 @@
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
-import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 
+/**
+ * Compatibility route. A code returned here is attribution-only and never
+ * changes the customer price. Approved discounts have a separate contract.
+ */
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) {
-    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: 'DB_UNAVAILABLE' }, { status: 503 });
   }
 
-  const codeRaw = request.nextUrl.searchParams.get('code') || '';
-  const code = normalizeAffiliateReferralCode(codeRaw);
+  const code = normalizeAffiliateReferralCode(request.nextUrl.searchParams.get('code') || '');
   if (!code) return apiResponse({ valid: false, reason: 'INVALID_CODE' }, { status: 400 });
 
-  const nowIso = new Date().toISOString();
   const { data, error } = await supabaseAdmin
-    .from('affiliate_promo_codes')
-    .select('id, code, affiliate_id, discount_type, discount_value, is_active, starts_at, ends_at, uses_count, max_uses')
+    .from('creator_codes')
+    .select('id, code, affiliate_id, status')
     .eq('code', code)
     .maybeSingle();
-
-  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error), code: 'CODE_LOOKUP_UNAVAILABLE' }, { status: 503 });
   if (!data) return apiResponse({ valid: false, reason: 'NOT_FOUND' });
+  if (data.status !== 'ACTIVE') return apiResponse({ valid: false, reason: 'INACTIVE' });
 
-  const row = data as {
-    id: string;
-    code: string;
-    affiliate_id: string;
-    discount_type: 'percent' | 'fixed';
-    discount_value: number;
-    is_active: boolean;
-    starts_at: string | null;
-    ends_at: string | null;
-    uses_count: number;
-    max_uses: number | null;
-  };
-
-  if (!row.is_active) return apiResponse({ valid: false, reason: 'INACTIVE' });
-  if (row.starts_at && row.starts_at > nowIso) return apiResponse({ valid: false, reason: 'NOT_STARTED' });
-  if (row.ends_at && row.ends_at < nowIso) return apiResponse({ valid: false, reason: 'EXPIRED' });
-  if (typeof row.max_uses === 'number' && row.max_uses >= 0 && row.uses_count >= row.max_uses) {
-    return apiResponse({ valid: false, reason: 'MAX_USES_REACHED' });
+  const { data: affiliate, error: affiliateError } = await supabaseAdmin
+    .from('affiliates')
+    .select('id, is_active, partner_status')
+    .eq('id', data.affiliate_id)
+    .maybeSingle();
+  if (affiliateError) {
+    return apiResponse({ error: sanitizeDbError(affiliateError), code: 'PARTNER_LOOKUP_UNAVAILABLE' }, { status: 503 });
+  }
+  if (
+    !affiliate
+    || affiliate.is_active !== true
+    || ['suspended', 'terminated'].includes(String(affiliate.partner_status || 'active'))
+  ) {
+    return apiResponse({ valid: false, reason: 'PARTNER_RESTRICTED' });
   }
 
   return apiResponse({
     valid: true,
-    promo: {
-      id: row.id,
-      code: row.code,
-      affiliate_id: row.affiliate_id,
-      discount_type: row.discount_type,
-      discount_value: row.discount_value,
-      uses_count: row.uses_count,
-      max_uses: row.max_uses,
+    kind: 'creator_code',
+    changes_customer_price: false,
+    creator_code: {
+      id: data.id,
+      code: data.code,
+      affiliate_id: data.affiliate_id,
     },
   });
 }
-

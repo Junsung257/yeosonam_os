@@ -43,15 +43,18 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(route).toContain('isAllowedPartnerWriteOrigin');
   });
 
-  it('increments promo uses through the atomic RPC', () => {
+  it('separates attribution-only creator codes from atomic real-discount reservations', () => {
     const route = source('src/app/api/bookings/route.ts');
-    const promoBlockStart = route.indexOf('if (body.promo_code && booking?.id)');
-    const promoBlock = route.slice(promoBlockStart, route.indexOf('// Lifetime', promoBlockStart));
+    const validateRoute = source('src/app/api/affiliate/promo/validate/route.ts');
+    const migration = source('supabase/migrations/20260808141909_affiliate_publication_attribution_v2.sql');
 
-    expect(promoBlockStart).toBeGreaterThanOrEqual(0);
-    expect(promoBlock).toContain('increment_affiliate_promo_uses');
-    expect(promoBlock).not.toContain('uses_count: (');
-    expect(promoBlock).not.toContain('.update({ uses_count');
+    expect(route).toContain("from('creator_codes')");
+    expect(route).not.toContain('increment_affiliate_promo_uses');
+    expect(validateRoute).toContain("kind: 'creator_code'");
+    expect(validateRoute).toContain('changes_customer_price: false');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS public.discount_campaigns');
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION public.reserve_discount_redemption_v2');
+    expect(migration).toContain("RAISE EXCEPTION 'DISCOUNT_BUDGET_EXHAUSTED'");
   });
 
   it('freezes booking attribution snapshots before booking creation', () => {
@@ -67,8 +70,41 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(beforeCreate).toContain('promo_affiliate_id: body.promo_affiliate_id || null');
     expect(beforeCreate).toContain('self_referral_blocked: context.selfReferralBlocked');
     expect(beforeCreate).toContain('promo_owner_mismatch: context.promoOwnerMismatch');
+    expect(beforeCreate).toContain('createAttributionDecision');
+    expect(beforeCreate).toContain('attribution_decision_id: context.attributionDecision?.id || null');
     expect(db).toContain('attribution_snapshot?: Record<string, unknown> | null');
     expect(db).toContain('attribution_snapshot: data.attribution_snapshot');
+    expect(db).toContain('attribution_decision_id?: string | null');
+  });
+
+  it('tracks and converts the exact publication through atomic V2 functions', () => {
+    const tracking = source('src/app/api/influencer/track/route.ts');
+    const booking = source('src/app/api/bookings/route.ts');
+    const migration = source('supabase/migrations/20260808141909_affiliate_publication_attribution_v2.sql');
+
+    expect(tracking).toContain("rpc('record_affiliate_touchpoint_v2'");
+    expect(tracking).toContain("cookies.set('aff_touchpoint'");
+    expect(tracking).toContain("cookies.set('aff_publication'");
+    expect(tracking).toContain("cookies.set('aff_sub', '',");
+    expect(booking).not.toContain("from('influencer_links').select('id, conversion_count')");
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS public.affiliate_publications');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS public.attribution_decisions');
+    expect(migration).toContain('click_count = click_count + 1');
+    expect(migration).toContain('conversion_count = conversion_count + 1');
+    expect(migration).toContain('bookings_finalize_affiliate_attribution_v2');
+  });
+
+  it('requires idempotency for partner publication and creator-code writes', () => {
+    const publications = source('src/app/api/partner/publications/route.ts');
+    const publicationUpdate = source('src/app/api/partner/publications/[id]/route.ts');
+    const creatorCodes = source('src/app/api/partner/creator-codes/route.ts');
+
+    for (const route of [publications, publicationUpdate, creatorCodes]) {
+      expect(route).toContain("headers.get('idempotency-key')");
+      expect(route).toContain('IDEMPOTENCY_KEY_REQUIRED');
+      expect(route).toContain('isAllowedPartnerWriteOrigin');
+      expect(route).toContain('authAffiliate');
+    }
   });
 
   it('records affiliate anomaly events for booking and cron findings', () => {

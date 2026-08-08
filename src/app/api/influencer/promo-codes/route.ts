@@ -4,7 +4,7 @@ import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 import { isAllowedPartnerWriteOrigin } from '@/lib/affiliate/write-origin';
 
 export async function GET(req: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ promo_codes: [] });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB_UNAVAILABLE' }, { status: 503 });
   const code = req.nextUrl.searchParams.get('code');
   if (!code) return NextResponse.json({ error: 'code 필요' }, { status: 400 });
 
@@ -12,13 +12,18 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const { data, error } = await supabaseAdmin
-    .from('affiliate_promo_codes')
-    .select('id, code, discount_type, discount_value, is_active, starts_at, ends_at, max_uses, uses_count, created_at')
+    .from('creator_codes')
+    .select('id, code, status, source, created_at, updated_at')
     .eq('affiliate_id', (auth.affiliate as { id: string }).id)
     .order('created_at', { ascending: false })
     .limit(100);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ promo_codes: data || [] });
+  if (error) return NextResponse.json({ error: 'CREATOR_CODES_UNAVAILABLE' }, { status: 503 });
+  return NextResponse.json({
+    creator_codes: data || [],
+    promo_codes: [],
+    changes_customer_price: false,
+    canonical_endpoint: '/api/partner/creator-codes',
+  });
 }
 
 export async function POST(req: NextRequest) {

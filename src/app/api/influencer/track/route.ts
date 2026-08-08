@@ -1,151 +1,155 @@
-/**
- * 어필리에이트 클릭 추적 API
- * GET /api/influencer/track?ref=CODE&pkg=PACKAGE_ID&sub=YOUTUBE
- *
- * P0 개편 (2026-04-15):
- *  - aff_ref 쿠키 수명 7일 → 30일 (여행업 리드타임 고려)
- *  - User-Agent 봇 필터: 봇이면 쿠키 미설정, touchpoint에만 is_bot=true 기록
- *  - aff_sid 세션 쿠키 + is_duplicate_click RPC: 같은 세션+ref+pkg 10분 내 재클릭은 click_count 증가 안 함
- *  - unique_visitor_count: 해당 세션이 ref+pkg 조합에 처음 유입된 경우에만 증가
- *  - affiliate_touchpoints: 모든 요청(봇/중복 포함) 플래그 달아 기록 → 멀티터치 분석 기반
- */
+import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isBot } from '@/lib/affiliate/bot-filter';
 import {
+  getClientIp,
   getOrCreateAffiliateSid,
   hashIp,
   hashUserAgent,
-  getClientIp,
 } from '@/lib/affiliate/session';
 import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isValidUuid } from '@/lib/supabase-filter-safe';
+
+type TrackingOutcome = 'accepted' | 'filtered_bot' | 'duplicate';
+
+interface TouchpointResult {
+  touchpoint_id: string;
+  affiliate_id: string;
+  publication_id: string | null;
+  link_id: string | null;
+  referral_code: string;
+  outcome: TrackingOutcome;
+}
 
 function getSafeInternalNext(request: NextRequest): string | null {
   const next = request.nextUrl.searchParams.get('next');
-  if (!next || !next.startsWith('/')) return null;
-  if (next.startsWith('//')) return null;
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
   return next;
 }
 
-function jsonOrRedirect(request: NextRequest, response: NextResponse, body: Record<string, unknown>) {
+function responseWithNavigation(
+  request: NextRequest,
+  response: NextResponse,
+  body: Record<string, unknown>,
+  status = 200,
+): NextResponse {
   const next = getSafeInternalNext(request);
-  if (!next) return NextResponse.json(body, { headers: response.headers });
+  const result = next
+    ? NextResponse.redirect(new URL(next, request.nextUrl.origin), { status: 302 })
+    : NextResponse.json(body, { status });
+  for (const cookie of response.cookies.getAll()) result.cookies.set(cookie);
+  return result;
+}
 
-  const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = next.split('?')[0] || '/';
-  redirectUrl.search = next.includes('?') ? `?${next.split('?').slice(1).join('?')}` : '';
-  return NextResponse.redirect(redirectUrl, { headers: response.headers });
+function refererDomain(request: NextRequest): string | null {
+  const referer = request.headers.get('referer');
+  if (!referer) return null;
+  try {
+    return new URL(referer).hostname.toLowerCase().slice(0, 253);
+  } catch {
+    return null;
+  }
+}
+
+function trackingErrorCode(message: string): 'invalid_partner' | 'invalid_publication' | 'tracking_failed' {
+  if (message.includes('INVALID_PARTNER')) return 'invalid_partner';
+  if (message.includes('INVALID_PUBLICATION')) return 'invalid_publication';
+  return 'tracking_failed';
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
+  if (!isSupabaseAdminConfigured) {
+    return NextResponse.json({ ok: false, outcome: 'tracking_failed' }, { status: 503 });
+  }
 
-  const { searchParams } = request.nextUrl;
-  const refRaw = searchParams.get('ref');
-  const ref = refRaw ? normalizeAffiliateReferralCode(refRaw) : '';
-  const pkg = searchParams.get('pkg');
-  const sub = searchParams.get('sub') || '';
+  const ref = normalizeAffiliateReferralCode(request.nextUrl.searchParams.get('ref') || '');
+  const publicationRaw = request.nextUrl.searchParams.get('publication') || '';
+  const publicationId = isValidUuid(publicationRaw) ? publicationRaw : null;
+  const packageRaw = request.nextUrl.searchParams.get('pkg') || '';
+  const packageId = isValidUuid(packageRaw) ? packageRaw : null;
+  const sub = (request.nextUrl.searchParams.get('sub') || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 40);
 
-  if (!ref) return NextResponse.json({ error: 'ref 필요' }, { status: 400 });
+  if (!publicationId && !ref) {
+    return NextResponse.json({ ok: false, outcome: 'invalid_partner' }, { status: 400 });
+  }
 
-  const response = NextResponse.json({ ok: true });
-  const { sid } = getOrCreateAffiliateSid(request, response);
-  const userAgent = request.headers.get('user-agent');
-  const botDetected = isBot(userAgent);
+  const cookieCarrier = NextResponse.next();
+  const { sid } = getOrCreateAffiliateSid(request, cookieCarrier);
+  const marketingConsent = request.cookies.get('ys_marketing_consent')?.value === 'true';
+  const consentState = marketingConsent ? 'MARKETING_CONSENT' : 'SESSION_ONLY';
+  const eventIdRaw = request.nextUrl.searchParams.get('event') || '';
+  const eventId = isValidUuid(eventIdRaw) ? eventIdRaw : crypto.randomUUID();
 
   try {
-    const { data: affiliate } = await supabaseAdmin
-      .from('affiliates')
-      .select('id, name, referral_code')
-      .eq('referral_code', ref)
-      .maybeSingle();
-
-    if (!affiliate) {
-      return NextResponse.json({ error: '유효하지 않은 추천 코드' }, { status: 404 });
-    }
-
-    const ipHash = hashIp(getClientIp(request));
-    const uaHash = hashUserAgent(userAgent);
-
-    let isDuplicate = false;
-    if (!botDetected) {
-      const { data: dupCheck } = await supabaseAdmin.rpc('is_duplicate_click', {
-        p_session: sid,
-        p_ref: ref, // canonical uppercase
-        p_pkg: pkg,
-      });
-      isDuplicate = !!dupCheck;
-    }
-
-    await supabaseAdmin.from('affiliate_touchpoints').insert({
-      session_id: sid,
-      referral_code: ref,
-      package_id: pkg,
-      sub_id: sub || null,
-      ip_hash: ipHash,
-      user_agent_hash: uaHash,
-      is_bot: botDetected,
-      is_duplicate: isDuplicate,
+    const { data, error } = await supabaseAdmin.rpc('record_affiliate_touchpoint_v2', {
+      p_event_id: eventId,
+      p_session_id: sid,
+      p_referral_code: ref || null,
+      p_publication_id: publicationId,
+      p_package_id: packageId,
+      p_sub_id: sub || null,
+      p_ip_hash: hashIp(getClientIp(request)),
+      p_user_agent_hash: hashUserAgent(request.headers.get('user-agent')),
+      p_is_bot: isBot(request.headers.get('user-agent')),
+      p_consent_state: consentState,
+      p_landing_url: getSafeInternalNext(request),
+      p_referer_domain: refererDomain(request),
     });
 
-    if (botDetected) {
-      return jsonOrRedirect(request, response, { ok: true, affiliate_id: affiliate.id, filtered: 'bot' });
-    }
-
-    if (pkg && !isDuplicate) {
-      const { data: link } = await supabaseAdmin
-        .from('influencer_links')
-        .select('id, click_count, unique_visitor_count')
-        .eq('referral_code', ref)
-        .eq('package_id', pkg)
-        .maybeSingle();
-
-      if (link) {
-        const { data: priorSessionHit } = await supabaseAdmin
-          .from('affiliate_touchpoints')
-          .select('id')
-          .eq('session_id', sid)
-          .eq('referral_code', ref)
-          .eq('package_id', pkg)
-          .eq('is_duplicate', false)
-          .eq('is_bot', false)
-          .lt('clicked_at', new Date().toISOString())
-          .limit(2);
-
-        const isFirstVisit = !priorSessionHit || priorSessionHit.length <= 1;
-
-        await supabaseAdmin
-          .from('influencer_links')
-          .update({
-            click_count: (link.click_count || 0) + 1,
-            unique_visitor_count: (link.unique_visitor_count || 0) + (isFirstVisit ? 1 : 0),
-          })
-          .eq('id', link.id);
-      }
+    if (error) throw error;
+    const result = (Array.isArray(data) ? data[0] : data) as TouchpointResult | null;
+    if (!result?.touchpoint_id || !result.affiliate_id) {
+      throw new Error('TRACKING_RESULT_MISSING');
     }
 
     const maxAge = getAffiliateRefCookieMaxAgeSec(request);
-    const cookieBase = {
+    const attributionCookie = {
       path: '/',
-      httpOnly: false,
+      httpOnly: true,
       sameSite: 'lax' as const,
       secure: process.env.NODE_ENV === 'production',
       ...(maxAge !== undefined ? { maxAge } : {}),
     };
-    response.cookies.set('aff_ref', ref, cookieBase);
-
+    cookieCarrier.cookies.set('aff_ref', result.referral_code, { ...attributionCookie, httpOnly: false });
+    cookieCarrier.cookies.set('aff_touchpoint', result.touchpoint_id, attributionCookie);
+    if (result.publication_id) {
+      cookieCarrier.cookies.set('aff_publication', result.publication_id, attributionCookie);
+    } else {
+      cookieCarrier.cookies.set('aff_publication', '', { ...attributionCookie, maxAge: 0 });
+    }
     if (sub) {
-      response.cookies.set('aff_sub', sub, cookieBase);
+      cookieCarrier.cookies.set('aff_sub', sub, { ...attributionCookie, httpOnly: false });
+    } else {
+      cookieCarrier.cookies.set('aff_sub', '', { ...attributionCookie, httpOnly: false, maxAge: 0 });
     }
 
-    return jsonOrRedirect(
+    return responseWithNavigation(request, cookieCarrier, {
+      ok: true,
+      outcome: result.outcome,
+      event_id: eventId,
+      affiliate_id: result.affiliate_id,
+      publication_id: result.publication_id,
+      touchpoint_id: result.touchpoint_id,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const outcome = trackingErrorCode(message);
+    console.error('[Affiliate tracking]', { outcome, eventId, publicationId, packageId });
+    cookieCarrier.cookies.set('aff_ref', '', { path: '/', maxAge: 0 });
+    cookieCarrier.cookies.set('aff_sub', '', { path: '/', maxAge: 0 });
+    cookieCarrier.cookies.set('aff_publication', '', { path: '/', maxAge: 0 });
+    cookieCarrier.cookies.set('aff_touchpoint', '', { path: '/', maxAge: 0 });
+    return responseWithNavigation(
       request,
-      response,
-      { ok: true, affiliate_id: affiliate.id, affiliate_name: affiliate.name, duplicate: isDuplicate },
+      cookieCarrier,
+      { ok: false, outcome, event_id: eventId },
+      outcome === 'tracking_failed' ? 503 : 422,
     );
-  } catch (err) {
-    console.error('[Affiliate Track]', err);
-    return NextResponse.json({ ok: true });
   }
 }

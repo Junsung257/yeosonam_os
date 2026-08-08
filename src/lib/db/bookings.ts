@@ -118,6 +118,8 @@ export async function createBooking(data: {
   attribution_model?: string | null;
   attribution_split?: Record<string, unknown> | null;
   attribution_snapshot?: Record<string, unknown> | null;
+  attribution_decision_id?: string | null;
+  creator_code_id?: string | null;
 }) {
   try {
     const { initialDepositNoticeBlockedForNewBooking } = await import('@/lib/booking-automation-policy');
@@ -249,6 +251,8 @@ export async function createBooking(data: {
       ...(data.attribution_model ? { attribution_model: data.attribution_model } : {}),
       ...(data.attribution_split ? { attribution_split: data.attribution_split } : {}),
       ...(data.attribution_snapshot ? { attribution_snapshot: data.attribution_snapshot } : {}),
+      ...(data.attribution_decision_id ? { attribution_decision_id: data.attribution_decision_id } : {}),
+      ...(data.creator_code_id ? { creator_code_id: data.creator_code_id } : {}),
     }] as unknown[]).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;

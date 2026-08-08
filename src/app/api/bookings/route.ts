@@ -12,6 +12,10 @@ import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { recordServerAnalyticsEvent } from '@/lib/analytics/server-events';
+import {
+  createAttributionDecision,
+  type AttributionDecision,
+} from '@/lib/affiliate/attribution-service';
 
 function buildAttributionSnapshot(
   body: Record<string, any>,
@@ -23,6 +27,7 @@ function buildAttributionSnapshot(
     selfReferralReason: string | null;
     promoOwnerMismatch: boolean;
     promoOwnerAffiliateId: string | null;
+    attributionDecision: AttributionDecision | null;
   },
 ) {
   return {
@@ -44,6 +49,13 @@ function buildAttributionSnapshot(
     self_referral_reason: context.selfReferralReason,
     promo_owner_mismatch: context.promoOwnerMismatch,
     promo_owner_affiliate_id: context.promoOwnerAffiliateId,
+    attribution_decision_id: context.attributionDecision?.id || null,
+    attribution_trace_id: context.attributionDecision?.traceId || null,
+    publication_id: context.attributionDecision?.publicationId || null,
+    touchpoint_id: context.attributionDecision?.touchpointId || null,
+    link_id: context.attributionDecision?.linkId || null,
+    creator_code_id: context.attributionDecision?.creatorCodeId || null,
+    attribution_policy_version: context.attributionDecision?.policyVersion || null,
   };
 }
 
@@ -292,17 +304,21 @@ export async function POST(request: NextRequest) {
       created_at: string | null;
       phone: string | null;
       email: string | null;
+      is_active: boolean;
+      partner_status: string | null;
     };
     let affData: AffRow | null = null;
     let selfReferralBlocked = false;
     let selfReferralReason: string | null = null;
     let promoOwnerMismatch = false;
     let promoOwnerAffiliateId: string | null = null;
+    let creatorCodeId: string | null = null;
+    let attributionDecision: AttributionDecision | null = null;
 
     const affQuery = affRef && !body.affiliateId
-      ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
+      ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email, is_active, partner_status').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
       : body.affiliateId
-        ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
+        ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email, is_active, partner_status').eq('id', body.affiliateId).eq('is_active', true).maybeSingle()
         : null;
 
     const affResult = affQuery
@@ -314,6 +330,9 @@ export async function POST(request: NextRequest) {
 
     if (affResult.data) {
       affData = affResult.data as AffRow;
+      if (['suspended', 'terminated'].includes(String(affData.partner_status || 'active'))) {
+        return errorResponse('AFFILIATE_RESTRICTED', '현재 추천 귀속을 사용할 수 없습니다.', 403);
+      }
       if (affRef && !body.affiliateId) {
         body.affiliateId = affData.id;
         body.bookingType = 'AFFILIATE';
@@ -323,48 +342,66 @@ export async function POST(request: NextRequest) {
 
     // 프로모코드 귀속: 쿠키 ref가 없어도 할인코드로 affiliate 귀속
     if (promoCode) {
-      const nowIso = new Date().toISOString();
-      const { data: promoRow } = await supabaseAdmin
-        .from('affiliate_promo_codes')
-        .select('id, affiliate_id, code, is_active, starts_at, ends_at, max_uses, uses_count')
+      const { data: promoRow, error: creatorCodeError } = await supabaseAdmin
+        .from('creator_codes')
+        .select('id, affiliate_id, code, status')
         .eq('code', promoCode)
         .maybeSingle();
+      if (creatorCodeError) {
+        return errorResponse(
+          'CREATOR_CODE_LOOKUP_UNAVAILABLE',
+          '추천인 코드를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+          503,
+        );
+      }
+      if (!promoRow || promoRow.status !== 'ACTIVE') {
+        return ApiErrors.badRequest('유효하지 않은 추천인 코드입니다.');
+      }
       if (promoRow) {
         const p = promoRow as {
           id: string;
           affiliate_id: string;
           code: string;
-          is_active: boolean;
-          starts_at: string | null;
-          ends_at: string | null;
-          max_uses: number | null;
-          uses_count: number;
+          status: string;
         };
+        creatorCodeId = p.id;
         promoOwnerAffiliateId = p.affiliate_id;
-        const activeWindow =
-          p.is_active &&
-          (!p.starts_at || p.starts_at <= nowIso) &&
-          (!p.ends_at || p.ends_at >= nowIso) &&
-          (p.max_uses === null || p.uses_count < p.max_uses);
         if (body.affiliateId && body.affiliateId !== p.affiliate_id) {
           promoOwnerMismatch = true;
         }
-        if (!body.affiliateId && activeWindow) {
+        if (!body.affiliateId) {
           body.affiliateId = p.affiliate_id;
           body.bookingType = 'AFFILIATE';
           body.promo_code = p.code;
           body.promo_affiliate_id = p.affiliate_id;
-          console.log(`[Affiliate] 프로모코드 귀속: ${p.code} → ${p.affiliate_id}`);
+          body.creator_code_id = p.id;
+          console.log(`[Affiliate] creator code attribution: ${p.code} -> ${p.affiliate_id}`);
           const { data: affFromPromo } = await supabaseAdmin
             .from('affiliates')
-            .select('id, grade, bonus_rate, created_at, phone, email')
+            .select('id, grade, bonus_rate, created_at, phone, email, is_active, partner_status')
             .eq('id', p.affiliate_id)
             .eq('is_active', true)
             .maybeSingle();
-          if (affFromPromo) affData = affFromPromo as AffRow;
+          if (
+            affFromPromo
+            && !['suspended', 'terminated'].includes(String(affFromPromo.partner_status || 'active'))
+          ) {
+            affData = affFromPromo as AffRow;
+          } else {
+            return ApiErrors.badRequest('현재 사용할 수 없는 추천인 코드입니다.');
+          }
         }
       }
     }
+
+    if (promoOwnerMismatch) {
+      return errorResponse(
+        'ATTRIBUTION_OWNER_CONFLICT',
+        '추천 링크와 추천인 코드의 소유자가 다릅니다. 코드 또는 링크를 다시 확인해 주세요.',
+        409,
+      );
+    }
+    if (creatorCodeId) body.creator_code_id = creatorCodeId;
 
     // 셀프 리퍼럴 방어: 예약자 연락처와 파트너 연락처가 같으면 커미션만 차단
     if (affData && body.leadCustomerId) {
@@ -448,6 +485,28 @@ export async function POST(request: NextRequest) {
         sub_id: affSub,
       };
     }
+    if (body.affiliateId) {
+      if (!affData) {
+        return errorResponse('AFFILIATE_NOT_ELIGIBLE', '추천 귀속 대상을 확인할 수 없습니다.', 409);
+      }
+      try {
+        attributionDecision = await createAttributionDecision({
+          request,
+          affiliateId: String(body.affiliateId),
+          productId: body.packageId ? String(body.packageId) : null,
+          creatorCodeId,
+          referralCode: body.referral_code || affRef || null,
+        });
+        body.attribution_decision_id = attributionDecision.id;
+      } catch (error) {
+        console.error('[Affiliate attribution decision]', error instanceof Error ? error.message : error);
+        return errorResponse(
+          'ATTRIBUTION_DECISION_UNAVAILABLE',
+          '추천 귀속 근거를 저장할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+          503,
+        );
+      }
+    }
     body.attribution_snapshot = buildAttributionSnapshot(body, {
       affRef,
       affSub,
@@ -456,6 +515,7 @@ export async function POST(request: NextRequest) {
       selfReferralReason,
       promoOwnerMismatch,
       promoOwnerAffiliateId,
+      attributionDecision,
     });
 
     const booking = await createBooking(body);
@@ -533,28 +593,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 어필리에이트 링크 conversion_count 증가
-    if (affRef && booking?.id) {
-      ff(supabaseAdmin
-        .from('influencer_links')
-        .select('id, conversion_count')
-        .eq('referral_code', affRef)
-        .then(({ data: links }: { data: { id: string; conversion_count: number }[] | null }) => {
-          if (links?.length) {
-            const link = links[0];
-            ff(supabaseAdmin
-              .from('influencer_links')
-              .update({ conversion_count: (link.conversion_count || 0) + 1 })
-              .eq('id', link.id), 'influencer_links.conversion_count_update');
-          }
-        }), 'influencer_links.conversion_count_select');
-    }
+    // Exact publication/link conversion counters are incremented by the
+    // booking attribution trigger in the same database transaction.
 
     // 프로모코드 사용량 증가 (예약 생성 성공 후)
-    if (body.promo_code && booking?.id) {
-      ff(supabaseAdmin.rpc('increment_affiliate_promo_uses', {
-        p_promo_code: body.promo_code,
-      }), 'affiliate_promo_codes.uses_count');
-    }
 
     // Lifetime 귀속 실험군: 신규 고객이 제휴로 첫 예약하면 실험군 할당
     if (booking?.id && body.leadCustomerId && body.affiliateId) {
