@@ -25,6 +25,7 @@ Detailed attribution notes remain in `docs/affiliate-attribution.md`. Repeated f
 | Session/cookie attribution | `src/lib/affiliate/session.ts`, middleware, `/api/influencer/track` |
 | Affiliate DB reads | `src/lib/db/affiliate.ts`, `src/lib/affiliate/dashboard-service.ts`, `/api/partner/**` |
 | Session/auth | `src/lib/affiliate/auth-service.ts`, `affiliate_sessions`, `partner_session` |
+| Onboarding evidence | `affiliate_terms_acceptances`, `affiliate_payout_profiles`, `affiliate_tax_profiles`, `/api/partner/terms`, `/api/partner/*-profile` |
 | Publication/attribution | `affiliate_publications`, `attribution_decisions`, `/go/[publicationId]` |
 | Settlement math | `commission_ledger_entries`, `settlement_runs`, `settlement_lines`, `payouts` |
 | Public/partner surfaces | `/partner/**` (canonical), legacy `/affiliate/**` redirects |
@@ -43,6 +44,9 @@ Detailed attribution notes remain in `docs/affiliate-attribution.md`. Repeated f
 - Query failure is `data_unavailable`, never an empty array or zero amount.
 - A publication is the stable placement identity. Conversion counters never increment on a partner's first link merely because the referral code matches.
 - Plaintext PINs are not an authentication factor. Production rotation is a release gate.
+- Policy acceptance is an immutable document-version evidence row; the partner cannot choose the document hash.
+- Payout and tax submissions are encrypted payloads with masked read models. Submission only creates `PENDING_REVIEW`; an admin review must set `VERIFIED` before payout eligibility.
+- Creator codes are attribution-only. Customer discounts require a separate approved discount campaign and matching quote/payment/refund/ledger amounts.
 
 ## Publish And Payout Boundary
 

@@ -23,6 +23,9 @@
 | 정산 | ledger/run/line/payout/revision/dispute, KST 기간, advisory lock, maker-checker, 역분개 | `20260808143735_affiliate_settlement_ledger_v2.sql` |
 | 레거시 정산 | 자동 완료·VOID·레거시 쓰기 차단, 검증 전 읽기 전용 | settlements API/DB trigger |
 | 포털 | `/partner` 단일 경험, 온보딩 8단계, 카탈로그·게시·성과·예약·정산·설정 | `src/app/partner/**` |
+| 약관·지급·세금 온보딩 | 필수 약관 동의 API/불변 증거, 암호화 프로필 제출, 관리자 검토 큐와 `VERIFIED` 게이트 | `20260808232441_affiliate_partner_profile_submissions.sql`, partner/admin profile APIs |
+| 관리자 상세·분석 | 구형 이월/VOID/직접 커미션 편집 제거, publication·ledger 기반 지표, 크론 `never_run` 구분 | admin affiliate detail/analytics |
+| 코드 의미 | 관리자 프로모션 보고서를 creator code 기준으로 분리해 추천 귀속과 실제 할인 혼동 제거 | `affiliate-promo-report` |
 | 지표 | 실제 bookings 기반 추이, `data_unavailable`와 빈 결과 분리, `total_revenue` 오표기 제거 | dashboard service/overview API |
 
 ## 데이터 흐름
@@ -50,6 +53,8 @@ flowchart LR
 - 운영 파트너 7건의 평문 PIN 회전 및 기존 세션 폐기
 - 실제 정책 담당자가 정산 정책 버전을 승인하기 전까지 정산 생성은 HOLD/실패가 정상
 - 계좌·세금 제출 보안 절차와 약관 문서 버전 발행
+- 법무 원문이 확정되면 현재 안정 식별자 해시를 원문 바이트 해시로 교체하고 문서 레지스트리를 승인
+- 관리자에서 지급·세금 `PENDING_REVIEW → VERIFIED/CHANGES_REQUIRED` 처리 및 검토자 분리 확인
 - DNS TXT 전파 및 실제 외부 게시 URL 등록
 - Playwright 로그인 → 상품 저장 → 테스트 클릭 → 게시 URL 등록 수동 확인
 - Supabase CLI lint/dry-run은 로컬 Docker/Postgres가 실행 가능한 환경에서 재실행

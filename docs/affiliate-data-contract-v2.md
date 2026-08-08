@@ -6,6 +6,7 @@
 `affiliate_sessions`: 발급 → 사용 → 만료/로그아웃/정지/토큰 회전 폐기
 `affiliate_publications`: `DRAFT → TESTED → PUBLISHED → PAUSED/RETIRED`
 `settlement_runs`: `HOLD → READY → PAYOUT_PENDING → COMPLETED`
+`affiliate_payout_profiles` / `affiliate_tax_profiles`: `PENDING_REVIEW → VERIFIED/CHANGES_REQUIRED/LOCKED`
 
 완료된 정산과 지급 증빙은 UPDATE/DELETE하지 않는다. 정정은 새 `commission_ledger_entries(REVERSAL|ADJUSTMENT)`와 `settlement_revisions`로만 연결한다.
 
@@ -22,6 +23,10 @@ affiliate_id
   + settlement_runs.id
   + payouts.id
 ```
+
+온보딩 증거는 `affiliate_terms_acceptances`(문서별 immutable row)와
+`affiliate_payout_profiles`·`affiliate_tax_profiles`(암호화 payload + 마스킹값 + 관리자 검토 상태)로 분리한다.
+파트너 API는 원문 계좌·식별번호를 반환하지 않는다.
 
 ## 금액 규칙
 
