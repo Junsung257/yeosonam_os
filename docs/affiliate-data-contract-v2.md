@@ -2,9 +2,9 @@
 
 ## 상태 경계
 
-`affiliate_applications`: `PENDING → NEEDS_INFO → APPROVED/REJECTED/WITHDRAWN/EXPIRED`  
-`affiliate_sessions`: 발급 → 사용 → 만료/로그아웃/정지/토큰 회전 폐기  
-`affiliate_publications`: `DRAFT → TESTED → PUBLISHED → PAUSED/RETIRED`  
+`affiliate_applications`: `PENDING → NEEDS_INFO → APPROVED/REJECTED/WITHDRAWN/EXPIRED`
+`affiliate_sessions`: 발급 → 사용 → 만료/로그아웃/정지/토큰 회전 폐기
+`affiliate_publications`: `DRAFT → TESTED → PUBLISHED → PAUSED/RETIRED`
 `settlement_runs`: `HOLD → READY → PAYOUT_PENDING → COMPLETED`
 
 완료된 정산과 지급 증빙은 UPDATE/DELETE하지 않는다. 정정은 새 `commission_ledger_entries(REVERSAL|ADJUSTMENT)`와 `settlement_revisions`로만 연결한다.

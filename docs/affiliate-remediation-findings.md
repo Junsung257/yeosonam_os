@@ -1,7 +1,7 @@
 # 어필리에이터 종단 계약 보완 결과
 
-작성일: 2026-08-09  
-브랜치: `affiliate-critical-remediation`  
+작성일: 2026-08-09
+브랜치: `affiliate-critical-remediation`
 범위: 신청 → 승인/초대 → 세션 → 상품 → 게시 위치 → 클릭 → 예약 귀속 → 커미션 → 정산 → 지급 → 정정
 
 ## 판정
