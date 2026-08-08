@@ -8,6 +8,7 @@ import {
   hashOpaqueValue,
 } from '@/lib/affiliate/auth-crypto';
 import { PARTNER_SESSION_COOKIE } from '@/lib/affiliate/auth-service';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 import { issueAffiliateToken } from '@/lib/affiliate/jwt-auth';
 import { sendTransactionalSms } from '@/lib/kakao';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -192,6 +193,17 @@ export async function activateAffiliateInvitation(
       tokenVersion,
       expiresAt,
     });
+    await recordAffiliateFunnelEvent({
+      eventName: 'affiliate_session_created',
+      affiliateId: String(result?.affiliate_id),
+      actorType: 'affiliate',
+      traceId: jti,
+      idempotencyKey: `affiliate-session-created:${sessionId}`,
+      payload: {
+        session_id: sessionId,
+        invitation_id: String(result?.invitation_id || ''),
+      },
+    });
     return {
       ok: true,
       token,
@@ -234,4 +246,3 @@ export function clearPartnerSessionCookie(response: NextResponse): void {
     maxAge: 0,
   });
 }
-

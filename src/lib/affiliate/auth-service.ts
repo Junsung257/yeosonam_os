@@ -10,6 +10,8 @@ const AFFILIATE_PROFILE_SELECT = [
   'bonus_rate', 'booking_count', 'total_commission', 'payout_type', 'logo_url',
   'created_at', 'is_active', 'partner_status', 'token_version',
   'portal_login_count', 'onboarded_at', 'branding_level', 'content_quota', 'content_used',
+  'payout_profile_status', 'tax_profile_status', 'onboarding_progress',
+  'suspended_reason', 'terminated_reason',
 ].join(', ');
 
 type AuthAffiliateFailure = { ok: false; error: string; status: number; code: string };

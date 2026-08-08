@@ -11,6 +11,7 @@ import {
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
 import { deliverAffiliateNotification } from '@/lib/affiliate/notification-outbox';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 import { logAndSanitize, sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildPublicUrl } from '@/lib/public-app-origin';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -130,6 +131,27 @@ const postHandler = async (request: NextRequest) => {
     if (!approved?.affiliate_id || !approved.outbox_id) throw new Error('APPROVAL_RESULT_INVALID');
 
     const delivery = await deliverAffiliateNotification(String(approved.outbox_id));
+    await recordAffiliateFunnelEvent({
+      eventName: 'affiliate_application_approved',
+      affiliateId: String(approved.affiliate_id),
+      actorType: 'admin',
+      traceId: String(approved.invitation_id),
+      idempotencyKey: `application-approved:${applicationId}`,
+      payload: {
+        application_id: applicationId,
+        invitation_id: approved.invitation_id,
+      },
+    });
+    await recordAffiliateFunnelEvent({
+      eventName: 'affiliate_invitation_sent',
+      affiliateId: String(approved.affiliate_id),
+      actorType: 'system',
+      traceId: String(approved.invitation_id),
+      idempotencyKey: `invitation-sent:${approved.invitation_id}`,
+      payload: {
+        delivery_status: delivery.ok ? delivery.status : 'queued_for_retry',
+      },
+    });
     return apiResponse({
       affiliate: {
         id: approved.affiliate_id,

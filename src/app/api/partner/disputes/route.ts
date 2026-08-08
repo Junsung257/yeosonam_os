@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { authAffiliate } from '@/lib/affiliate/auth-service';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 import { isAllowedPartnerWriteOrigin } from '@/lib/affiliate/write-origin';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -109,5 +110,18 @@ export async function POST(request: NextRequest) {
     if (replay) return apiResponse({ dispute: replay, idempotent_replay: true });
     return apiResponse({ error: sanitizeDbError(error), code: 'DISPUTE_CREATE_FAILED' }, { status: 500 });
   }
+  await recordAffiliateFunnelEvent({
+    eventName: 'affiliate_dispute_opened',
+    affiliateId,
+    bookingId,
+    settlementRunId: runId,
+    actorType: 'affiliate',
+    traceId: idempotencyKey,
+    idempotencyKey: `dispute-opened:${data.id}`,
+    payload: {
+      dispute_type: disputeType,
+      has_evidence: urls.length > 0,
+    },
+  });
   return apiResponse({ dispute: data, idempotent_replay: false }, { status: 201 });
 }

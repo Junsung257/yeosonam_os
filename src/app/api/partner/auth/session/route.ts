@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
       branding_level: affiliate.branding_level,
       content_quota: affiliate.content_quota,
       content_used: affiliate.content_used,
+      payout_profile_status: affiliate.payout_profile_status,
+      tax_profile_status: affiliate.tax_profile_status,
     },
   });
   response.headers.set('Cache-Control', 'private, no-store');
@@ -48,4 +50,3 @@ export async function DELETE(request: NextRequest) {
   response.headers.set('Cache-Control', 'private, no-store');
   return response;
 }
-

@@ -16,6 +16,7 @@ import {
   createAttributionDecision,
   type AttributionDecision,
 } from '@/lib/affiliate/attribution-service';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 
 function buildAttributionSnapshot(
   body: Record<string, any>,
@@ -498,6 +499,21 @@ export async function POST(request: NextRequest) {
           referralCode: body.referral_code || affRef || null,
         });
         body.attribution_decision_id = attributionDecision.id;
+        await recordAffiliateFunnelEvent({
+          eventName: 'affiliate_attribution_decided',
+          affiliateId: String(body.affiliateId),
+          publicationId: attributionDecision.publicationId,
+          bookingId: null,
+          policyVersion: attributionDecision.policyVersion,
+          actorType: 'system',
+          traceId: attributionDecision.traceId,
+          idempotencyKey: `attribution-decision:${attributionDecision.id}`,
+          payload: {
+            reason_code: attributionDecision.reasonCode,
+            touchpoint_id: attributionDecision.touchpointId,
+            link_id: attributionDecision.linkId,
+          },
+        });
       } catch (error) {
         console.error('[Affiliate attribution decision]', error instanceof Error ? error.message : error);
         return errorResponse(
@@ -521,6 +537,22 @@ export async function POST(request: NextRequest) {
     const booking = await createBooking(body);
 
     if (booking?.id) {
+      if (affData && attributionDecision) {
+        await recordAffiliateFunnelEvent({
+          eventName: 'affiliate_booking_attributed',
+          affiliateId: affData.id,
+          publicationId: attributionDecision.publicationId,
+          bookingId: String(booking.id),
+          policyVersion: attributionDecision.policyVersion,
+          actorType: 'system',
+          traceId: attributionDecision.traceId,
+          idempotencyKey: `booking-attributed:${booking.id}`,
+          payload: {
+            commission_status: body.commissionStatus || null,
+            self_referral_blocked: selfReferralBlocked,
+          },
+        });
+      }
       ff(supabaseAdmin.from('ops_events').insert({
         event_type: 'booking_created',
         severity: 'info',

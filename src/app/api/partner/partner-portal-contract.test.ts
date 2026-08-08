@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+
+function source(relativePath: string) {
+  return fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8');
+}
+
+describe('affiliate partner portal V2 contracts', () => {
+  it('uses the customer visibility SSOT and distinguishes empty from unavailable catalog', () => {
+    const catalog = source('src/app/api/partner/catalog/route.ts');
+    expect(catalog).toContain('CUSTOMER_VISIBLE_STATUSES');
+    expect(catalog).toContain('data_unavailable');
+    expect(catalog).toContain('products.length > 0');
+    expect(catalog).not.toContain('status === "approved"');
+  });
+
+  it('requires the shared partner session for the content boundary', () => {
+    const content = source('src/app/api/influencer/content/route.ts');
+    expect(content).toContain('authInfluencer');
+    expect(content).toContain(".eq('affiliate_id', affiliateId)");
+    expect(content).toContain('콘텐츠 조회에 실패했습니다.');
+  });
+
+  it('keeps publication, touchpoint, attribution and settlement on the same identifier chain', () => {
+    const publication = source('src/app/api/partner/publications/route.ts');
+    const tracking = source('supabase/migrations/20260808141909_affiliate_publication_attribution_v2.sql');
+    expect(publication).toContain('affiliate_publications');
+    expect(publication).toContain('channel_id');
+    expect(tracking).toContain('publication_id uuid');
+    expect(tracking).toContain('conversion_count = conversion_count + 1');
+    expect(tracking).toContain('attribution_decision_id');
+  });
+
+  it('records PII-free funnel evidence at the critical boundaries', () => {
+    const events = source('src/lib/affiliate/funnel-events.ts');
+    const migration = source('supabase/migrations/20260808145303_affiliate_partner_portal_v2.sql');
+    const application = source('src/app/api/partner-apply/route.ts');
+    const booking = source('src/app/api/bookings/route.ts');
+    expect(events).toContain('affiliate_application_submitted');
+    expect(events).toContain('affiliate_publication_created');
+    expect(events).toContain('affiliate_touchpoint_validated');
+    expect(migration).toContain('affiliate_funnel_events');
+    expect(migration).toContain('commission_ledger_entry_created');
+    expect(application).toContain('recordAffiliateFunnelEvent');
+    expect(booking).toContain('affiliate_booking_attributed');
+    expect(events).toContain('No raw phone, email, bank, customer');
+    expect(events).toContain('normalizeTraceId');
+  });
+
+  it('does not label card-news generation as bookings or payout as revenue', () => {
+    const dashboard = source('src/lib/affiliate/dashboard-service.ts');
+    expect(dashboard).toContain('trendBookingsRes');
+    expect(dashboard).toContain('payout_completed_krw');
+    expect(dashboard).toContain('deprecated_metrics');
+    expect(dashboard).not.toContain('recentNewsRows');
+    expect(dashboard).not.toContain('total_revenue: commissionSummary.completed_payout');
+  });
+
+  it('keeps the partner layout isolated from customer widgets and includes mobile navigation', () => {
+    const widgets = source('src/components/LayoutClientWidgets.tsx');
+    const shell = source('src/components/partner/PartnerShell.tsx');
+    expect(widgets).toContain("'/partner'");
+    expect(widgets).toContain('showCustomerWidgets');
+    expect(shell).toContain('파트너 모바일 메뉴');
+    expect(shell).toContain('pb-28');
+  });
+
+  it('exposes only immutable settlement evidence to partners', () => {
+    const settlement = source('supabase/migrations/20260808143735_affiliate_settlement_ledger_v2.sql');
+    const pdf = source('src/app/api/settlements/[id]/pdf/route.ts');
+    expect(settlement).toContain('settlement_lines');
+    expect(settlement).toContain('COMPLETED');
+    expect(settlement).toContain('source_entry_id');
+    expect(pdf).toContain("from('settlement_lines')");
+    expect(pdf).toContain('partnerAffiliateId');
+    expect(pdf).not.toContain("from('bookings')");
+  });
+});

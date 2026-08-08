@@ -9,6 +9,7 @@ import {
   isPostgresUniqueViolation,
   normalizeAffiliatePhone,
 } from '@/lib/affiliate/application-contract';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 
 function normalizeChannelUrl(raw: unknown): string {
   const value = String(raw || '').trim();
@@ -155,6 +156,18 @@ export async function POST(request: NextRequest) {
       }
       throw error;
     }
+
+    await recordAffiliateFunnelEvent({
+      eventName: 'affiliate_application_submitted',
+      actorType: 'customer',
+      traceId: idempotencyKey,
+      idempotencyKey: `application-submitted:${data.id}`,
+      payload: {
+        application_status: data.status,
+        terms_bundle_version: AFFILIATE_TERMS_BUNDLE_VERSION,
+        has_invite_code: !!submittedCode,
+      },
+    });
 
     return apiResponse({ application: data }, { status: 201 });
   } catch (error) {

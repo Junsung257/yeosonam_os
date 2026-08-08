@@ -9,6 +9,7 @@ import {
 } from '@/lib/affiliate/session';
 import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidUuid } from '@/lib/supabase-filter-safe';
 
@@ -107,6 +108,21 @@ export async function GET(request: NextRequest) {
     if (!result?.touchpoint_id || !result.affiliate_id) {
       throw new Error('TRACKING_RESULT_MISSING');
     }
+
+    await recordAffiliateFunnelEvent({
+      eventName: result.outcome === 'accepted'
+        ? 'affiliate_touchpoint_validated'
+        : 'affiliate_touchpoint_received',
+      affiliateId: result.affiliate_id,
+      publicationId: result.publication_id,
+      actorType: 'customer',
+      traceId: eventId,
+      idempotencyKey: `touchpoint:${result.touchpoint_id}`,
+      payload: {
+        outcome: result.outcome,
+        consent_state: consentState,
+      },
+    });
 
     const maxAge = getAffiliateRefCookieMaxAgeSec(request);
     const attributionCookie = {

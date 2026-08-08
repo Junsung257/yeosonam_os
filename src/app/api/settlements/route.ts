@@ -6,6 +6,7 @@ import {
   resolveSettlementPeriodKst,
   settlementCommandHash,
 } from '@/lib/affiliate/settlement-v2';
+import { recordAffiliateFunnelEvent } from '@/lib/affiliate/funnel-events';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidUuid } from '@/lib/supabase-filter-safe';
 
@@ -89,8 +90,25 @@ export async function POST(request: NextRequest) {
     p_request_hash: requestHash,
   });
   if (error) return rpcFailure(error);
+  const settlement = Array.isArray(data) ? data[0] : data;
+  if (settlement?.id) {
+    await recordAffiliateFunnelEvent({
+      eventName: 'settlement_run_created',
+      affiliateId: affiliateId,
+      settlementRunId: settlement.id,
+      actorType: 'admin',
+      traceId: commandKey,
+      idempotencyKey: `settlement-run-created:${settlement.id}`,
+      policyVersion: settlement.policy_version_id || null,
+      payload: {
+        period: settlement.settlement_period || period,
+        status: settlement.status,
+        hold_reason_code: settlement.hold_reason_code || null,
+      },
+    });
+  }
   return successResponse({
-    settlement: Array.isArray(data) ? data[0] : data,
+    settlement,
     period_range: range,
     idempotent: true,
   });
@@ -136,7 +154,23 @@ export async function PATCH(request: NextRequest) {
       p_request_hash: requestHash,
     });
     if (error) return rpcFailure(error);
-    return successResponse({ settlement: Array.isArray(data) ? data[0] : data });
+    const settlement = Array.isArray(data) ? data[0] : data;
+    if (settlement?.id) {
+      await recordAffiliateFunnelEvent({
+        eventName: rawAction === 'READY' ? 'settlement_ready' : 'settlement_held',
+        affiliateId: settlement.affiliate_id || null,
+        settlementRunId: settlement.id,
+        actorType: 'admin',
+        traceId: commandKey,
+        idempotencyKey: `settlement-${rawAction.toLowerCase()}:${settlement.id}:${commandKey}`,
+        policyVersion: settlement.policy_version_id || null,
+        payload: {
+          status: settlement.status,
+          hold_reason_code: settlement.hold_reason_code || null,
+        },
+      });
+    }
+    return successResponse({ settlement });
   }
 
   if (rawAction === 'REQUEST_PAYOUT') {
@@ -188,7 +222,22 @@ export async function PATCH(request: NextRequest) {
       p_request_hash: requestHash,
     });
     if (error) return rpcFailure(error);
-    return successResponse({ payout: Array.isArray(data) ? data[0] : data, completed: true });
+    const payout = Array.isArray(data) ? data[0] : data;
+    if (payout?.id) {
+      await recordAffiliateFunnelEvent({
+        eventName: 'payout_completed',
+        settlementRunId: payout.settlement_run_id || id,
+        actorType: 'admin',
+        traceId: commandKey,
+        idempotencyKey: `payout-completed:${payout.id}`,
+        payload: {
+          payout_status: payout.status,
+          amount_krw: payout.amount_krw,
+          has_receipt: Boolean(payout.receipt_url),
+        },
+      });
+    }
+    return successResponse({ payout, completed: true });
   }
 
   return errorResponse('INVALID_SETTLEMENT_ACTION', '지원하지 않는 정산 명령입니다.', 400);
