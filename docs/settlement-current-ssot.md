@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-08-06
+Last updated: 2026-08-09
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -24,7 +24,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Ledger utilities | `src/lib/ledger-utils.ts` |
 | Payment matching | `src/lib/payment-matcher.ts`, `src/lib/payment-command-resolver.ts` |
 | Settlement accounting | `src/lib/settlement-accounting.ts` |
-| Affiliate settlement math | `src/lib/affiliate/settlement-calc.ts` |
+| Affiliate settlement math | `supabase/migrations/20260808143735_affiliate_settlement_ledger_v2.sql`, `src/lib/affiliate/settlement-v2.ts` |
 | Payment/settlement APIs | `/api/payments/**`, `/api/settlements/**`, `/api/tenant/settlements` |
 | Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `save_bank_transaction_breakdown` |
 | Manual bank memo keys | `booking_settlement_keys`, `src/lib/settlement-import/**` |
@@ -38,6 +38,8 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Legacy admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements`, `/admin/tax` |
 | Drift monitor | `/api/cron/ledger-reconcile` |
 | Error memory | `docs/errors/settlement.md` |
+
+Affiliate V2-specific evidence and rollout rules live in `docs/affiliate-data-contract-v2.md` and `docs/affiliate-rollout-rollback.md`. The legacy `settlements` table is read-only until an operator-reviewed reconciliation explicitly creates V2 ledger rows.
 
 ## Required Invariants
 

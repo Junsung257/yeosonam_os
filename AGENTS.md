@@ -52,10 +52,12 @@
 |------|------|
 | **프로젝트 헌법·최상위 제품 원칙** | **`docs/yeosonam-os-constitution.md`**, `docs/yeosonam-os-constitution-evidence-map.md` |
 | **제휴 현재 SSOT·추천코드·커미션 계약** | **`docs/affiliate-current-ssot.md`** |
+| 제휴 V2 remediation findings·data contract·rollout | `docs/affiliate-remediation-findings.md`, `docs/affiliate-data-contract-v2.md`, `docs/affiliate-rollout-rollback.md` |
 | 제휴 추적·쿠키·코브랜딩 세부 | `docs/affiliate-attribution.md` |
 | **블로그 자동발행 현재 SSOT·품질 계약** | **`docs/blog-autopublish-contract.md`** |
 | 블로그 운영 런북 | `docs/blog-system-runbook.md`, `docs/blog-ops-runbook.md` |
 | **정산 현재 SSOT·ledger·지급 계약** | **`docs/settlement-current-ssot.md`** |
+| 제휴 V2 검증·백필 후보 SQL | `db/validate_affiliate_portal_v2.sql`, `db/validate_affiliate_settlement_v2.sql`, `db/propose_affiliate_v2_backfill.sql` |
 | **마케팅 현재 SSOT·Ad OS·외부발행 계약** | **`docs/marketing-current-ssot.md`** |
 | **AI Ops 현재 SSOT·자비스·RAG·모델 라우팅** | **`docs/ai-ops-current-ssot.md`** |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |

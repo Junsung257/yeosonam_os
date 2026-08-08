@@ -1,5 +1,7 @@
 # Affiliate Marketing Machine 실행 플랜 (2026-05-03)
 
+> Historical plan. The fan-price and 72-hour claim items below are not current behavior; V2 disables them unless persisted campaign/verification evidence exists. Use `docs/affiliate-current-ssot.md` and `docs/affiliate-data-contract-v2.md` for current rules.
+
 여소남 코드베이스 기준으로 제휴(인플루언서) 매출 머신을 순차 구축하기 위한 실행 문서입니다.
 
 ## 목표
@@ -92,4 +94,3 @@
 - [x] 주요 어필리에이트 크론 성공/실패 감사로그(`AFFILIATE_CRON_SUCCEEDED/FAILED`) 적재
 - [x] 주요 어필리에이트 크론 `CRON_SECRET` 검증 적용(무단 호출 차단)
 - [x] 휴면 비활성 크론의 `force` 인증 우회 제거(인증 강제)
-

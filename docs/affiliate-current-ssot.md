@@ -1,6 +1,6 @@
 # Affiliate Current SSOT
 
-Last updated: 2026-06-23
+Last updated: 2026-08-09
 
 This is the current operating contract for affiliate, influencer, referral, co-branding, attribution, and commission evidence. Historical plans and audits are not the source of truth for current behavior.
 
@@ -23,9 +23,11 @@ Detailed attribution notes remain in `docs/affiliate-attribution.md`. Repeated f
 |---|---|
 | Referral code format | `src/lib/affiliate-ref-code.ts`, `src/lib/affiliate-ref-cookie-policy.ts` |
 | Session/cookie attribution | `src/lib/affiliate/session.ts`, middleware, `/api/influencer/track` |
-| Affiliate DB reads | `src/lib/db/affiliate.ts`, `src/lib/affiliate/dashboard-service.ts` |
-| Settlement math | `src/lib/affiliate/settlement-calc.ts` and `docs/settlement-current-ssot.md` |
-| Public/partner surfaces | `/affiliate/**`, `/influencer/[code]/**`, `/with/[code]` |
+| Affiliate DB reads | `src/lib/db/affiliate.ts`, `src/lib/affiliate/dashboard-service.ts`, `/api/partner/**` |
+| Session/auth | `src/lib/affiliate/auth-service.ts`, `affiliate_sessions`, `partner_session` |
+| Publication/attribution | `affiliate_publications`, `attribution_decisions`, `/go/[publicationId]` |
+| Settlement math | `commission_ledger_entries`, `settlement_runs`, `settlement_lines`, `payouts` |
+| Public/partner surfaces | `/partner/**` (canonical), legacy `/affiliate/**` redirects |
 | Error memory | `docs/errors/affiliate.md` |
 
 ## Required Invariants
@@ -37,10 +39,14 @@ Detailed attribution notes remain in `docs/affiliate-attribution.md`. Repeated f
 - Booking-time commission inputs must be snapshotted. Later tier/rate changes must not rewrite historical booking economics unless an explicit recalculation job records evidence.
 - Partner dashboards must read server-side filtered data. Do not expose cross-affiliate booking, customer, payment, or PII data through client-side filtering.
 - Self-referral, bot traffic, suspicious repeated touchpoints, and operator-created test bookings must be excluded or marked before commission approval.
+- A partner catalog must use `CUSTOMER_VISIBLE_STATUSES`; `approved` alone is not a valid visibility contract.
+- Query failure is `data_unavailable`, never an empty array or zero amount.
+- A publication is the stable placement identity. Conversion counters never increment on a partner's first link merely because the referral code matches.
+- Plaintext PINs are not an authentication factor. Production rotation is a release gate.
 
 ## Publish And Payout Boundary
 
-Affiliate attribution is not the same as payable commission.
+Affiliate attribution is not the same as payable commission. The V2 contract is documented in `docs/affiliate-data-contract-v2.md`.
 
 Correct sequence:
 
