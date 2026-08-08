@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiResponse } from "@/lib/api-response";
 import { authAffiliate } from "@/lib/affiliate/auth-service";
+import {
+  AFFILIATE_REQUIRED_DOCUMENTS,
+  affiliateDocumentHash,
+  affiliateDocumentVersion,
+} from "@/lib/affiliate/policy-documents";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
@@ -57,6 +62,16 @@ export async function GET(request: NextRequest) {
     channels: channels.data || [],
     domains: domains.data || [],
     terms: terms.data || [],
+    terms_requirements: AFFILIATE_REQUIRED_DOCUMENTS.map((document_type) => ({
+      document_type,
+      document_version: affiliateDocumentVersion(document_type),
+      document_hash: affiliateDocumentHash(document_type),
+      accepted: (terms.data || []).some(
+        (row) =>
+          row.document_type === document_type &&
+          row.document_version === affiliateDocumentVersion(document_type),
+      ),
+    })),
     active_sessions: sessions.data || [],
     policy_blockers: {
       terms_document_publication_required: (terms.data || []).length === 0,

@@ -76,4 +76,42 @@ describe('affiliate partner portal V2 contracts', () => {
     expect(pdf).toContain('partnerAffiliateId');
     expect(pdf).not.toContain("from('bookings')");
   });
+
+  it('gives onboarding a real immutable terms-acceptance action', () => {
+    const terms = source('src/app/api/partner/terms/route.ts');
+    const settings = source('src/app/partner/settings/page.tsx');
+    expect(terms).toContain('affiliate_terms_acceptances');
+    expect(terms).toContain('ignoreDuplicates: true');
+    expect(terms).toContain('TERMS_ACCEPTANCE_REQUIRED');
+    expect(settings).toContain('/api/partner/terms');
+    expect(settings).toContain('필수 정책 모두 동의');
+  });
+
+  it('keeps payout and tax submissions encrypted and review-gated', () => {
+    const helper = source('src/lib/affiliate/profile-submission.ts');
+    const payout = source('src/app/api/partner/payout-profile/route.ts');
+    const tax = source('src/app/api/partner/tax-profile/route.ts');
+    const migration = source('supabase/migrations/20260808232441_affiliate_partner_profile_submissions.sql');
+    expect(helper).toContain('encryptAffiliateOutboxPayload');
+    expect(payout).toContain('PENDING_REVIEW');
+    expect(tax).toContain('PENDING_REVIEW');
+    expect(migration).toContain('encrypted_payload text NOT NULL');
+    expect(migration).toContain('service_role');
+  });
+
+  it('requires admin review before partner payout or tax status becomes verified', () => {
+    const review = source('src/app/api/admin/affiliate-profiles/route.ts');
+    expect(review).toContain('requireAdminRequest');
+    expect(review).toContain('PROFILE_STATUS_SYNC_FAILED');
+    expect(review).toContain('VERIFIED');
+  });
+
+  it('does not present creator attribution codes as customer discounts', () => {
+    const report = source('src/app/api/admin/affiliate-promo-report/route.ts');
+    const detail = source('src/app/admin/affiliates/[id]/page.tsx');
+    expect(report).toContain("from('creator_codes')");
+    expect(report).toContain("code_type: 'CREATOR_ATTRIBUTION'");
+    expect(report).not.toContain("from('affiliate_promo_codes')");
+    expect(detail).toContain('추천 귀속만');
+  });
 });
