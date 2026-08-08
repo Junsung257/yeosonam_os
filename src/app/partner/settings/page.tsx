@@ -32,6 +32,12 @@ type Settings = {
     document_version: string;
     accepted_at: string;
   }>;
+  terms_requirements: Array<{
+    document_type: string;
+    document_version: string;
+    document_hash: string;
+    accepted: boolean;
+  }>;
   active_sessions: Array<{
     id: string;
     issued_at: string;
@@ -70,6 +76,9 @@ export default function PartnerSettingsPage() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [payoutProfile, setPayoutProfile] = useState({ payout_type: "PERSONAL", account_holder: "", bank_name: "", account_number: "" });
+  const [taxProfile, setTaxProfile] = useState({ tax_type: "PERSONAL", identifier: "", legal_name: "" });
+  const [profileBusy, setProfileBusy] = useState(false);
 
   async function load() {
     const response = await fetch("/api/partner/settings", {
@@ -111,6 +120,44 @@ export default function PartnerSettingsPage() {
       setMessage("채널을 등록하지 못했습니다. https 주소를 확인해 주세요.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function acceptTerms() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/partner/terms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey("terms") },
+        body: JSON.stringify({ accept: true }),
+      });
+      if (!response.ok) throw new Error("failed");
+      setMessage("필수 정책 동의가 저장되었습니다.");
+      await load();
+    } catch {
+      setMessage("정책 동의를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitProfile(kind: "payout" | "tax") {
+    setProfileBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/partner/${kind}-profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey(kind) },
+        body: JSON.stringify(kind === "payout" ? payoutProfile : taxProfile),
+      });
+      if (!response.ok) throw new Error("failed");
+      setMessage(`${kind === "payout" ? "지급" : "세금"} 정보가 제출되었습니다. 운영 검토 후 상태가 갱신됩니다.`);
+      await load();
+    } catch {
+      setMessage(`${kind === "payout" ? "지급" : "세금"} 정보 제출에 실패했습니다. 입력값을 확인해 주세요.`);
+    } finally {
+      setProfileBusy(false);
     }
   }
   async function addDomain(event: React.FormEvent) {
@@ -249,6 +296,65 @@ export default function PartnerSettingsPage() {
       </section>
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+          <h2 className="text-xl font-black">필수 정책 동의</h2>
+          <ul className="mt-4 space-y-2 text-sm">
+            {data.terms_requirements.map((term) => (
+              <li key={term.document_type} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                <span className="font-bold">{term.document_type}</span>
+                <span className={term.accepted ? "text-emerald-700" : "text-amber-700"}>
+                  {term.accepted ? "동의 완료" : "동의 필요"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => void acceptTerms()}
+            disabled={busy || data.terms_requirements.every((term) => term.accepted)}
+            className="mt-4 min-h-12 w-full rounded-xl bg-slate-950 px-4 font-bold text-white disabled:bg-slate-300"
+          >
+            {data.terms_requirements.every((term) => term.accepted) ? "필수 정책 동의 완료" : "필수 정책 모두 동의"}
+          </button>
+          <p className="mt-3 text-xs leading-5 text-slate-500">동의 증거는 버전·문서 식별자·접속 지문과 함께 변경 불가로 보관됩니다.</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+          <h2 className="text-xl font-black">지급·세금 정보 검토 상태</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">정보는 암호화되어 저장되고, 운영 검토가 끝나야 정산 지급이 가능합니다. 화면에는 마스킹된 값만 표시됩니다.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <span className="rounded-xl bg-slate-50 p-3 text-sm font-bold">지급: {STATUS_LABEL[data.profile.payout_profile_status] || data.profile.payout_profile_status}</span>
+            <span className="rounded-xl bg-slate-50 p-3 text-sm font-bold">세금: {STATUS_LABEL[data.profile.tax_profile_status] || data.profile.tax_profile_status}</span>
+          </div>
+        </div>
+      </section>
+      <section className="grid gap-6 xl:grid-cols-2">
+        <form className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" onSubmit={(event) => { event.preventDefault(); void submitProfile("payout"); }}>
+          <h2 className="text-xl font-black">지급 계좌 제출</h2>
+          <div className="mt-4 space-y-3">
+            <select value={payoutProfile.payout_type} onChange={(event) => setPayoutProfile((prev) => ({ ...prev, payout_type: event.target.value }))} className="min-h-12 w-full rounded-xl border border-slate-300 px-3">
+              <option value="PERSONAL">개인</option>
+              <option value="BUSINESS">사업자</option>
+            </select>
+            <input required minLength={2} maxLength={80} value={payoutProfile.account_holder} onChange={(event) => setPayoutProfile((prev) => ({ ...prev, account_holder: event.target.value }))} placeholder="예금주" className="min-h-12 w-full rounded-xl border border-slate-300 px-3" />
+            <input required minLength={2} maxLength={80} value={payoutProfile.bank_name} onChange={(event) => setPayoutProfile((prev) => ({ ...prev, bank_name: event.target.value }))} placeholder="은행명" className="min-h-12 w-full rounded-xl border border-slate-300 px-3" />
+            <input required inputMode="numeric" value={payoutProfile.account_number} onChange={(event) => setPayoutProfile((prev) => ({ ...prev, account_number: event.target.value }))} placeholder="계좌번호" className="min-h-12 w-full rounded-xl border border-slate-300 px-3" />
+            <button type="submit" disabled={profileBusy} className="min-h-12 w-full rounded-xl bg-slate-950 px-4 font-bold text-white disabled:bg-slate-300">지급 정보 제출</button>
+          </div>
+        </form>
+        <form className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" onSubmit={(event) => { event.preventDefault(); void submitProfile("tax"); }}>
+          <h2 className="text-xl font-black">세금 정보 제출</h2>
+          <div className="mt-4 space-y-3">
+            <select value={taxProfile.tax_type} onChange={(event) => setTaxProfile((prev) => ({ ...prev, tax_type: event.target.value }))} className="min-h-12 w-full rounded-xl border border-slate-300 px-3">
+              <option value="PERSONAL">개인</option>
+              <option value="BUSINESS">사업자</option>
+            </select>
+            <input required inputMode="numeric" value={taxProfile.identifier} onChange={(event) => setTaxProfile((prev) => ({ ...prev, identifier: event.target.value }))} placeholder="식별번호" className="min-h-12 w-full rounded-xl border border-slate-300 px-3" />
+            <input required minLength={2} maxLength={120} value={taxProfile.legal_name} onChange={(event) => setTaxProfile((prev) => ({ ...prev, legal_name: event.target.value }))} placeholder="법적 이름" className="min-h-12 w-full rounded-xl border border-slate-300 px-3" />
+            <button type="submit" disabled={profileBusy} className="min-h-12 w-full rounded-xl bg-slate-950 px-4 font-bold text-white disabled:bg-slate-300">세금 정보 제출</button>
+          </div>
+        </form>
+      </section>
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
           <h2 className="text-xl font-black">채널</h2>
           <ul className="mt-4 space-y-2">
             {data.channels.map((channel) => (
@@ -314,6 +420,7 @@ export default function PartnerSettingsPage() {
               />
             </label>
             <button
+              type="submit"
               disabled={busy}
               className="min-h-12 w-full rounded-xl bg-slate-950 px-4 font-bold text-white disabled:bg-slate-300"
             >
@@ -369,6 +476,7 @@ export default function PartnerSettingsPage() {
               />
             </label>
             <button
+              type="submit"
               disabled={busy}
               className="min-h-12 w-full rounded-xl bg-slate-950 px-4 font-bold text-white disabled:bg-slate-300"
             >

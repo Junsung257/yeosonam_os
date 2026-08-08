@@ -91,10 +91,13 @@ export default function AffiliatesPageClient({
         title="어필리에이트 관리"
         subtitle="인플루언서/파트너 등급 및 수수료 관리"
         actions={
-          <Button variant="primary" size="sm" onClick={() => setShowPanel(true)}>
-            <Plus size={14} />
-            파트너 등록
-          </Button>
+          <div className="flex gap-2">
+            <Link href="/admin/affiliate-profiles" className="inline-flex items-center rounded-lg border border-admin-border-mid px-3 py-2 text-sm font-bold text-admin-text-2">지급·세금 검토</Link>
+            <Button variant="primary" size="sm" onClick={() => setShowPanel(true)}>
+              <Plus size={14} />
+              파트너 등록
+            </Button>
+          </div>
         }
       />
 

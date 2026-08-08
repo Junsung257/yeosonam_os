@@ -22,7 +22,6 @@ interface Partner {
   referral_code: string;
   grade: number;
   is_active: boolean;
-  commission_rate: number;
   clicks: number;
   conversions: number;
   conversion_rate: number;
@@ -69,7 +68,8 @@ interface CronHealth {
   cron: string;
   success_count_7d: number;
   failure_count_7d: number;
-  success_rate_7d: number;
+  success_rate_7d: number | null;
+  state: 'observed' | 'never_run';
   last_failure_at: string | null;
   last_failure_message: string | null;
 }
@@ -221,8 +221,8 @@ export default function AffiliateAnalyticsPage() {
                       <td className="px-4 py-2 font-mono text-admin-text-2">{c.cron}</td>
                       <td className="px-3 py-2 text-right text-emerald-700">{c.success_count_7d.toLocaleString()}</td>
                       <td className="px-3 py-2 text-right text-rose-700">{c.failure_count_7d.toLocaleString()}</td>
-                      <td className={`px-3 py-2 text-right font-semibold ${c.success_rate_7d >= 95 ? 'text-emerald-700' : c.success_rate_7d >= 80 ? 'text-amber-700' : 'text-rose-700'}`}>
-                        {c.success_rate_7d.toFixed(1)}%
+                      <td className={`px-3 py-2 text-right font-semibold ${c.state === 'never_run' ? 'text-admin-muted-2' : c.success_rate_7d !== null && c.success_rate_7d >= 95 ? 'text-emerald-700' : c.success_rate_7d !== null && c.success_rate_7d >= 80 ? 'text-amber-700' : 'text-rose-700'}`}>
+                        {c.state === 'never_run' || c.success_rate_7d === null ? '미실행' : `${c.success_rate_7d.toFixed(1)}%`}
                       </td>
                       <td className="px-4 py-2 text-admin-muted">
                         {c.last_failure_at
@@ -272,7 +272,7 @@ export default function AffiliateAnalyticsPage() {
             <KpiCard
               label={`커미션 · ${basisMeta.shortLabel} 기준`}
               value={`₩${(kpi.totalCommission / 10000).toFixed(0)}만`}
-              sub="지급 총액"
+              sub="원장 합계(역분개 포함)"
               color="text-purple-600"
             />
           </div>

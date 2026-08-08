@@ -200,7 +200,6 @@ export async function PATCH(request: NextRequest) {
       bank_info,
       memo,
       booking_count,
-      commission_rate,
       business_number,
       is_active,
       landing_intro,
@@ -218,10 +217,6 @@ export async function PATCH(request: NextRequest) {
     if (memo !== undefined) payload.memo = memo;
     if (bank_info !== undefined) payload.encrypted_bank_info = bank_info ? encrypt(bank_info) : null;
     if (booking_count !== undefined) payload.booking_count = booking_count; // 트리거로 grade 자동 갱신
-    if (commission_rate !== undefined) {
-      const n = Number(commission_rate);
-      if (Number.isFinite(n) && n >= 0 && n <= 0.5) payload.commission_rate = n;
-    }
     if (business_number !== undefined) payload.business_number = business_number || null;
     if (is_active !== undefined) payload.is_active = !!is_active;
     if (landing_intro !== undefined) {

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiResponse } from "@/lib/api-response";
 import { authAffiliate } from "@/lib/affiliate/auth-service";
 import { supabaseAdmin } from "@/lib/supabase";
+import { formatKstDate } from "@/lib/kst-date";
 
 function amount(value: unknown): number {
   const parsed = Number(value);
@@ -130,9 +131,7 @@ export async function GET(request: NextRequest) {
     { bookings: number; booking_amount_krw: number; commission_krw: number }
   >();
   for (let offset = 6; offset >= 0; offset--) {
-    const day = new Date(Date.now() - offset * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
+    const day = formatKstDate(new Date(Date.now() - offset * 86_400_000));
     trend.set(day, { bookings: 0, booking_amount_krw: 0, commission_krw: 0 });
   }
   for (const booking of bookings.data || []) {

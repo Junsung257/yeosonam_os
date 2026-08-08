@@ -34,13 +34,13 @@ const getHandler = async (request: NextRequest) => {
     // 코호트 결정(첫 예약 채널)에 모든 행이 필요하지만 affiliate booking 은 보통 < 1만건.
     const BOOKING_LIMIT = 20000;
 
-    const [affiliatesRes, linksRes, bookingsRes] = await Promise.all([
+    const [affiliatesRes, linksRes, bookingsRes, ledgerRes] = await Promise.all([
       supabaseAdmin
         .from('affiliates')
-        .select('id, name, referral_code, grade, bonus_rate, commission_rate, booking_count, total_commission, is_active')
-        .order('total_commission', { ascending: false }),
+        .select('id, name, referral_code, grade, is_active')
+        .order('name', { ascending: true }),
       supabaseAdmin
-        .from('influencer_links')
+        .from('affiliate_publications')
         .select('affiliate_id, click_count, conversion_count'),
       supabaseAdmin
         .from('bookings')
@@ -49,10 +49,14 @@ const getHandler = async (request: NextRequest) => {
         .or('is_deleted.is.null,is_deleted.eq.false')
         .order('created_at', { ascending: false })
         .limit(BOOKING_LIMIT),
+      supabaseAdmin
+        .from('commission_ledger_entries')
+        .select('affiliate_id, amount_krw, entry_type, hold_reason'),
     ]);
     const affiliates = affiliatesRes.data as unknown as Array<Record<string, unknown>>;
     const links = linksRes.data as unknown as Array<Record<string, unknown>>;
     const bookings = bookingsRes.data as unknown as Array<Record<string, unknown>>;
+    const ledgerEntries = ledgerRes.data as unknown as Array<Record<string, unknown>>;
 
     // 파트너별 집계
     const linkMap = new Map<string, { clicks: number; conversions: number }>();
@@ -62,6 +66,13 @@ const getHandler = async (request: NextRequest) => {
         clicks: prev.clicks + (l.click_count || 0),
         conversions: prev.conversions + (l.conversion_count || 0),
       });
+    });
+
+    const ledgerMap = new Map<string, number>();
+    (ledgerEntries || []).forEach((entry: any) => {
+      const affiliateId = String(entry.affiliate_id || '');
+      if (!affiliateId) return;
+      ledgerMap.set(affiliateId, (ledgerMap.get(affiliateId) || 0) + (Number(entry.amount_krw) || 0));
     });
 
     // basis 필터 적용한 예약만 집계 (취소건 등)
@@ -95,7 +106,8 @@ const getHandler = async (request: NextRequest) => {
     // 전체 KPI
     let totalClicks = 0, totalConversions = 0, totalRevenue = 0, totalCommission = 0;
     linkMap.forEach(v => { totalClicks += v.clicks; totalConversions += v.conversions; });
-    bookingMap.forEach(v => { totalRevenue += v.revenue; totalCommission += v.commission; });
+    bookingMap.forEach(v => { totalRevenue += v.revenue; });
+    ledgerMap.forEach(v => { totalCommission += v; });
 
     // 파트너별 데이터
     const partners = (affiliates || []).map((a: any) => {
@@ -107,14 +119,15 @@ const getHandler = async (request: NextRequest) => {
         referral_code: a.referral_code,
         grade: a.grade,
         is_active: a.is_active,
-        commission_rate: a.commission_rate,
+        commission_rate: null,
+        commission_policy_source: 'commission_ledger_entries',
         clicks: linkStats.clicks,
         conversions: linkStats.conversions,
         conversion_rate: linkStats.clicks > 0 ? Math.round((linkStats.conversions / linkStats.clicks) * 1000) / 10 : 0,
         revenue: bookingStats.revenue,
-        commission: bookingStats.commission,
+        commission: ledgerMap.get(a.id) || 0,
         booking_count: bookingStats.count,
-        avg_commission: bookingStats.count > 0 ? Math.round(bookingStats.commission / bookingStats.count) : 0,
+        avg_commission: bookingStats.count > 0 ? Math.round((ledgerMap.get(a.id) || 0) / bookingStats.count) : 0,
       };
     });
 
@@ -299,12 +312,13 @@ const getHandler = async (request: NextRequest) => {
     const cronHealth = cronNames.map((name) => {
       const v = cronMap.get(name)!;
       const total = v.success + v.failure;
-      const success_rate = total > 0 ? Math.round((v.success / total) * 1000) / 10 : 100;
+      const success_rate = total > 0 ? Math.round((v.success / total) * 1000) / 10 : null;
       return {
         cron: name,
         success_count_7d: v.success,
         failure_count_7d: v.failure,
         success_rate_7d: success_rate,
+        state: total > 0 ? 'observed' : 'never_run',
         last_failure_at: v.last_failure_at,
         last_failure_message: v.last_failure_message,
       };
@@ -334,6 +348,12 @@ const getHandler = async (request: NextRequest) => {
         sub_trend: subTrend,
         model_compare: modelCompare,
         cron_health: cronHealth,
+        contract_version: 'affiliate-analytics-v2',
+        data_sources: {
+          clicks: 'affiliate_publications',
+          commission: 'commission_ledger_entries',
+          revenue: `bookings:${basis}`,
+        },
       },
       // 어필리에이트 분석은 실시간성 낮음 — analytics 프리셋(2분/5분/10분).
       { headers: ADMIN_CACHE.analytics },

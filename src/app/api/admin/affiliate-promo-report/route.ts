@@ -12,9 +12,9 @@ async function getHandler(request: NextRequest) {
   const since = new Date(Date.now() - Math.max(1, sinceDays) * 24 * 60 * 60 * 1000).toISOString();
 
   let promoQuery = supabaseAdmin
-    .from('affiliate_promo_codes')
-    .select('id, affiliate_id, code, discount_type, discount_value, uses_count, is_active, max_uses')
-    .order('uses_count', { ascending: false })
+    .from('creator_codes')
+    .select('id, affiliate_id, code, status, created_at')
+    .order('created_at', { ascending: false })
     .limit(500);
   if (affiliateId) promoQuery = promoQuery.eq('affiliate_id', affiliateId);
   const { data: promoRows, error } = await promoQuery;
@@ -34,6 +34,20 @@ async function getHandler(request: NextRequest) {
     .not('promo_code', 'is', null)
     .limit(5000);
 
+  const bookingIds = (bookings || []).map((booking: any) => booking.id).filter(Boolean);
+  const { data: ledgerEntries } = bookingIds.length
+    ? await supabaseAdmin
+      .from('commission_ledger_entries')
+      .select('booking_id, amount_krw')
+      .in('booking_id', bookingIds)
+    : { data: [] };
+  const ledgerByBooking = new Map<string, number>();
+  (ledgerEntries || []).forEach((entry: any) => {
+    const bookingId = String(entry.booking_id || '');
+    if (!bookingId) return;
+    ledgerByBooking.set(bookingId, (ledgerByBooking.get(bookingId) || 0) + (Number(entry.amount_krw) || 0));
+  });
+
   const byCode = new Map<string, { bookings: number; revenue: number; commission: number }>();
   (bookings || []).forEach((b: any) => {
     const code = String(b.promo_code || '').trim();
@@ -41,7 +55,7 @@ async function getHandler(request: NextRequest) {
     const cur = byCode.get(code) || { bookings: 0, revenue: 0, commission: 0 };
     cur.bookings += 1;
     cur.revenue += Number(b.total_price) || 0;
-    cur.commission += Number(b.influencer_commission) || 0;
+    cur.commission += ledgerByBooking.get(String(b.id)) || 0;
     byCode.set(code, cur);
   });
 
@@ -53,19 +67,19 @@ async function getHandler(request: NextRequest) {
       affiliate_id: p.affiliate_id,
       affiliate_name: aff?.name || '-',
       referral_code: aff?.referral_code || '-',
-      discount_type: p.discount_type,
-      discount_value: p.discount_value,
-      uses_count: p.uses_count,
-      max_uses: p.max_uses,
-      is_active: p.is_active,
+      code_type: 'CREATOR_ATTRIBUTION',
+      discount_type: null,
+      discount_value: null,
+      uses_count: perf.bookings,
+      max_uses: null,
+      is_active: p.status === 'ACTIVE',
       bookings: perf.bookings,
       revenue: perf.revenue,
       commission: perf.commission,
     };
   });
 
-  return apiResponse({ rows });
+  return apiResponse({ rows, contract_version: 'creator-code-report-v2' });
 }
 
 export const GET = withAdminGuard(getHandler);
-

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { maskEmail, maskPhone } from '@/lib/pii-mask';
+import { formatKstDate } from '@/lib/kst-date';
 
 interface Affiliate {
   id: string; name: string; phone?: string; email?: string;
@@ -14,23 +15,24 @@ interface Affiliate {
   landing_intro?: string | null;
   landing_pick_package_ids?: string[] | null;
   landing_video_url?: string | null;
-  commission_rate?: number;
   is_active?: boolean;
   business_number?: string;
 }
 
 interface Settlement {
   id: string; settlement_period: string; qualified_booking_count: number;
-  total_amount: number; carryover_balance: number; final_total: number;
-  tax_deduction: number; final_payout: number;
-  status: 'PENDING' | 'READY' | 'COMPLETED' | 'VOID';
-  settled_at?: string; created_at: string;
+  gross_commission_krw: number; adjustment_krw: number;
+  withholding_krw: number; net_payout_krw: number;
+  tax_type: string; tax_rate: number; hold_reason_code?: string | null;
+  status: 'HOLD' | 'READY' | 'PAYOUT_PENDING' | 'COMPLETED';
+  completed_at?: string | null; created_at: string;
 }
 
 interface PromoPerformance {
   code: string;
-  discount_type: 'percent' | 'fixed';
-  discount_value: number;
+  code_type: 'CREATOR_ATTRIBUTION' | 'DISCOUNT_CAMPAIGN';
+  discount_type: 'percent' | 'fixed' | null;
+  discount_value: number | null;
   uses_count: number;
   bookings: number;
   revenue: number;
@@ -52,14 +54,14 @@ const GRADE_NEXT: Record<number, { label: string; target: number; prevTarget: nu
 };
 
 const STATUS_BADGES: Record<string, string> = {
-  PENDING: 'bg-admin-surface-2 text-admin-muted',
+  HOLD: 'bg-amber-100 text-amber-800',
   READY: 'bg-blue-100 text-blue-700',
+  PAYOUT_PENDING: 'bg-purple-100 text-purple-700',
   COMPLETED: 'bg-green-100 text-green-700',
-  VOID: 'bg-red-100 text-red-700',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: '이월 대기', READY: '지급 대기', COMPLETED: '지급 완료', VOID: '취소됨',
+  HOLD: '검토 보류', READY: '지급 승인 대기', PAYOUT_PENDING: '지급 처리 중', COMPLETED: '지급 완료',
 };
 
 function getRouteParam(value: string | string[] | undefined): string {
@@ -74,7 +76,7 @@ export default function AffiliateDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showBankInfo, setShowBankInfo] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', memo: '', payout_type: 'PERSONAL' as 'PERSONAL'|'BUSINESS', commission_rate: 0.09, business_number: '', is_active: true });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', memo: '', payout_type: 'PERSONAL' as 'PERSONAL'|'BUSINESS', business_number: '', is_active: true });
   const [saving, setSaving] = useState(false);
   const [landingIntro, setLandingIntro] = useState('');
   const [landingVideoUrl, setLandingVideoUrl] = useState('');
@@ -114,14 +116,13 @@ export default function AffiliateDetailPage() {
       setSettlements(sJson.settlements || []);
       setPromoRows(pJson.rows || []);
       if (aJson.affiliate) {
-        const a = aJson.affiliate as Affiliate & { commission_rate?: number; business_number?: string; is_active?: boolean };
+        const a = aJson.affiliate as Affiliate & { business_number?: string; is_active?: boolean };
         setForm({
           name: a.name,
           phone: a.phone || '',
           email: a.email || '',
           memo: a.memo || '',
           payout_type: a.payout_type,
-          commission_rate: a.commission_rate ?? 0.09,
           business_number: a.business_number || '',
           is_active: a.is_active ?? true,
         });
@@ -175,7 +176,7 @@ export default function AffiliateDetailPage() {
         const res = await fetch(`/api/packages?q=${encodeURIComponent(q)}&limit=40`);
         const j = await res.json();
         const rows = (j.data || []) as Array<{ id: string; title?: string; display_title?: string; destination?: string; status?: string }>;
-        setPkgResults(rows.filter(p => ['active', 'approved'].includes(String(p.status || ''))));
+        setPkgResults(rows.filter(p => ['active', 'approved', 'selling', 'available'].includes(String(p.status || '').toLowerCase())));
       } catch {
         setPkgResults([]);
       }
@@ -255,7 +256,7 @@ export default function AffiliateDetailPage() {
   };
 
   // 이번 달 정산 예정액 계산
-  const thisMonth = new Date().toISOString().substring(0, 7);
+  const thisMonth = formatKstDate(new Date()).substring(0, 7);
   const thisMonthSettlement = settlements.find(s => s.settlement_period === thisMonth);
 
   if (loading) return (
@@ -345,14 +346,9 @@ export default function AffiliateDetailPage() {
                 <option value="BUSINESS">사업자</option>
               </select>
             </div>
-            <div className="flex items-center gap-3">
-              <label htmlFor="affiliate-detail-commission-rate" className="w-16 text-xs text-admin-muted">커미션율</label>
-              <input id="affiliate-detail-commission-rate" type="number" step="0.01" min={0} max={0.5}
-                value={form.commission_rate}
-                onChange={e => setForm(prev => ({ ...prev, commission_rate: +e.target.value }))}
-                className="w-24 border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm" />
-              <span className="text-xs text-admin-muted-2">({(form.commission_rate * 100).toFixed(1)}%)</span>
-            </div>
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              커미션율은 정책 엔진에서 예약 시점 스냅샷으로 결정됩니다. 이 화면에서 직접 수정할 수 없습니다.
+            </p>
             {form.payout_type === 'BUSINESS' && (
               <div className="flex items-center gap-3">
                 <label htmlFor="affiliate-detail-business-number" className="w-16 text-xs text-admin-muted">사업자번호</label>
@@ -396,7 +392,7 @@ export default function AffiliateDetailPage() {
             <div><span className="text-admin-muted-2">정산유형 </span>
               {affiliate.payout_type === 'PERSONAL' ? '개인 (원천세 3.3%)' : '사업자'}
             </div>
-            <div><span className="text-admin-muted-2">커미션율 </span>{((affiliate.commission_rate ?? 0.09) * 100).toFixed(1)}%</div>
+            <div><span className="text-admin-muted-2">커미션 정책 </span>정책 버전·예약 스냅샷 기준</div>
             <div><span className="text-admin-muted-2">상태 </span>
               {affiliate.is_active !== false
                 ? <span className="text-green-600">활성</span>
@@ -570,17 +566,17 @@ export default function AffiliateDetailPage() {
           {thisMonthSettlement ? (
             <>
               <p className="text-xl font-bold text-admin-text">
-                ₩{thisMonthSettlement.final_total.toLocaleString()}
+                ₩{(thisMonthSettlement.gross_commission_krw + thisMonthSettlement.adjustment_krw).toLocaleString()}
               </p>
               <p className="text-xs text-admin-muted-2 mt-1">
                 세전 · 이월 포함
               </p>
               <p className="text-sm font-medium text-green-600 mt-2">
-                실지급 ₩{thisMonthSettlement.final_payout.toLocaleString()}
+                실지급 ₩{thisMonthSettlement.net_payout_krw.toLocaleString()}
               </p>
-              {thisMonthSettlement.tax_deduction > 0 && (
+              {thisMonthSettlement.withholding_krw > 0 && (
                 <p className="text-xs text-red-400">
-                  원천세 -₩{thisMonthSettlement.tax_deduction.toLocaleString()}
+                  원천세 -₩{thisMonthSettlement.withholding_krw.toLocaleString()}
                 </p>
               )}
             </>
@@ -610,7 +606,7 @@ export default function AffiliateDetailPage() {
         <table className="w-full text-sm">
           <thead className="bg-admin-bg">
             <tr>
-              {['기간', '건수', '발생 수수료', '이월', '합계(세전)', '원천세', '실지급액', '상태'].map(h => (
+              {['기간', '건수', '발생 수수료', '조정', '합계(세전)', '원천세', '실지급액', '상태'].map(h => (
                 <th key={h} className="text-left px-4 py-2 text-xs text-admin-muted">{h}</th>
               ))}
             </tr>
@@ -622,15 +618,15 @@ export default function AffiliateDetailPage() {
               <tr key={s.id} className="hover:bg-admin-bg">
                 <td className="px-4 py-3 font-mono text-xs">{s.settlement_period}</td>
                 <td className="px-4 py-3">{s.qualified_booking_count}건</td>
-                <td className="px-4 py-3">₩{s.total_amount.toLocaleString()}</td>
+                <td className="px-4 py-3">₩{s.gross_commission_krw.toLocaleString()}</td>
                 <td className="px-4 py-3 text-orange-600">
-                  {s.carryover_balance > 0 ? `+₩${s.carryover_balance.toLocaleString()}` : '-'}
+                  {s.adjustment_krw !== 0 ? `${s.adjustment_krw > 0 ? '+' : ''}₩${s.adjustment_krw.toLocaleString()}` : '-'}
                 </td>
-                <td className="px-4 py-3 font-medium">₩{s.final_total.toLocaleString()}</td>
+                <td className="px-4 py-3 font-medium">₩{(s.gross_commission_krw + s.adjustment_krw).toLocaleString()}</td>
                 <td className="px-4 py-3 text-red-500">
-                  {s.tax_deduction > 0 ? `-₩${s.tax_deduction.toLocaleString()}` : '-'}
+                  {s.withholding_krw > 0 ? `-₩${s.withholding_krw.toLocaleString()}` : '-'}
                 </td>
-                <td className="px-4 py-3 font-bold text-green-700">₩{s.final_payout.toLocaleString()}</td>
+                <td className="px-4 py-3 font-bold text-green-700">₩{s.net_payout_krw.toLocaleString()}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded text-xs ${STATUS_BADGES[s.status]}`}>
                     {STATUS_LABELS[s.status]}
@@ -659,7 +655,7 @@ export default function AffiliateDetailPage() {
         <table className="w-full text-sm">
           <thead className="bg-admin-bg">
             <tr>
-              {['코드', '할인', '사용', '예약', '매출', '커미션'].map(h => (
+              {['코드', '유형', '사용', '예약', '매출', '커미션'].map(h => (
                 <th key={h} className="text-left px-4 py-2 text-xs text-admin-muted">{h}</th>
               ))}
             </tr>
@@ -671,7 +667,7 @@ export default function AffiliateDetailPage() {
               <tr key={`${r.code}_${idx}`} className="hover:bg-admin-bg">
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{r.code}</td>
                 <td className="px-4 py-3">
-                  {r.discount_type === 'percent' ? `${r.discount_value}%` : `₩${Number(r.discount_value).toLocaleString()}`}
+                  {r.code_type === 'CREATOR_ATTRIBUTION' ? '추천 귀속만' : r.discount_type === 'percent' ? `${r.discount_value}%` : `₩${Number(r.discount_value || 0).toLocaleString()}`}
                 </td>
                 <td className="px-4 py-3">{r.uses_count}</td>
                 <td className="px-4 py-3">{r.bookings}</td>
