@@ -236,6 +236,14 @@ const PUBLIC_EXACT = new Set([
   '/api/partner/packages',
   '/api/partner/bookings',
   '/partner',
+  // Partner authentication must remain reachable before a partner session exists.
+  // This also prevents a stale admin refresh cookie from turning the activation
+  // challenge into the generic `token expired` middleware response.
+  '/partner/login',
+  '/partner/activate',
+  '/api/partner/auth/session',
+  '/api/partner/auth/challenge',
+  '/api/partner/auth/activate',
   // Phase 2-F: 환율 스냅샷 크론
   '/api/cron/fx-rate-sync',
   // Phase 2-G: B2B 도매 API (자체 Bearer 인증)

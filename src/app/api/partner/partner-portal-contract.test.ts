@@ -29,6 +29,19 @@ describe('affiliate partner portal V2 contracts', () => {
     }
   });
 
+  it('keeps unauthenticated partner activation reachable through middleware', () => {
+    const middleware = source('src/middleware.ts');
+    for (const path of [
+      "'/partner/login'",
+      "'/partner/activate'",
+      "'/api/partner/auth/session'",
+      "'/api/partner/auth/challenge'",
+      "'/api/partner/auth/activate'",
+    ]) {
+      expect(middleware).toContain(path);
+    }
+  });
+
   it('keeps dynamic public routes as explicit server functions for Vercel packaging', () => {
     const destination = source('src/app/destinations/[city]/page.tsx');
     const thingsToDo = source('src/app/things-to-do/[region]/page.tsx');
