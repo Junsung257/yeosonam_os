@@ -121,6 +121,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-10 | `2026-08-10-affiliate-production-cutover.md` | Affiliate V2 schema cutover, credential retirement, live domain alias, and Chrome smoke evidence. |
 | 2026-08-09 | `2026-08-09-affiliate-open-gate.md` | Affiliate remediation open-gate evidence, environment secret readiness, local checks, and remaining staging/Chrome gates. |
 | 2026-07-05 | `2026-07-05-jarvis-customer-inquiry-research.md` | Research-backed Jarvis customer inquiry answer-quality gate mapping for grounding, uncertainty, handoff, no-dead-end, and bounded-empathy checks. |
 | 2026-07-05 | `2026-07-05-secret-surface-audit.md` | Secret/env surface audit covering local env files, tracked `.env.prod`, command-output risk, rotation priorities, and existing prevention checks. |
