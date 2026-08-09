@@ -29,6 +29,15 @@ describe('affiliate partner portal V2 contracts', () => {
     }
   });
 
+  it('keeps dynamic public routes as explicit server functions for Vercel packaging', () => {
+    const destination = source('src/app/destinations/[city]/page.tsx');
+    const thingsToDo = source('src/app/things-to-do/[region]/page.tsx');
+    const packages = source('src/app/packages/[id]/page.tsx');
+    expect(destination).toContain("export const dynamic = 'force-dynamic'");
+    expect(thingsToDo).toContain("export const dynamic = 'force-dynamic'");
+    expect(packages).toContain("export const dynamic = 'force-dynamic'");
+  });
+
   it('uses the customer visibility SSOT and distinguishes empty from unavailable catalog', () => {
     const catalog = source('src/app/api/partner/catalog/route.ts');
     expect(catalog).toContain('CUSTOMER_VISIBLE_STATUSES');

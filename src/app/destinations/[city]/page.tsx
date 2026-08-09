@@ -32,6 +32,11 @@ import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
+// Vercel's Build Output packaging can omit a lambda when this route has an
+// empty generateStaticParams result. Keep the destination detail route
+// explicitly request-rendered so preview and production builds always emit
+// its server function; public snapshot gating still controls the response.
+export const dynamic = 'force-dynamic';
 const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
   0,
   Number(process.env.DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,

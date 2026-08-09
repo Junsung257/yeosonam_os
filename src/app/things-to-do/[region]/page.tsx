@@ -27,6 +27,10 @@ import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
+// Keep on-demand region pages as explicit server functions when the build has
+// no static region data; this prevents Vercel Build Output from dropping the
+// lambda while preserving the public eligibility checks below.
+export const dynamic = 'force-dynamic';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
