@@ -40,6 +40,8 @@ describe('affiliate partner portal V2 contracts', () => {
     ]) {
       expect(middleware).toContain(path);
     }
+    expect(middleware).toContain("'/partner/'");
+    expect(middleware).toContain("'/api/partner/'");
   });
 
   it('keeps dynamic public routes as explicit server functions for Vercel packaging', () => {

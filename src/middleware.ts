@@ -309,6 +309,11 @@ const PUBLIC_PREFIXES = [
   '/embed/',
   '/partner-apply/',
   '/api/partner-apply/',
+  // Partner pages and APIs enforce their own partner-session authorization.
+  // Keeping the namespace out of the generic Supabase/admin gate is required
+  // so first-time activation and authenticated partner cookies can reach them.
+  '/partner/',
+  '/api/partner/',
   '/api/recommendations/',
   '/destinations/',
   '/review/',
