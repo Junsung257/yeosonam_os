@@ -2,7 +2,7 @@
 
 ## Scope
 
-This record covers the V2 schema cutover, credential retirement, live domain alias, and browser smoke checks for the affiliate portal. Existing booking, commission, settlement, and payout amounts were not recalculated or backfilled.
+This record covers the V2 schema cutover, credential retirement, live domain alias, browser smoke checks, and a disposable synthetic partner E2E. Existing booking, commission, settlement, and payout amounts were not recalculated or backfilled.
 
 ## Database
 
@@ -10,12 +10,14 @@ This record covers the V2 schema cutover, credential retirement, live domain ali
 - Migration history was repaired for versions `20260808133613`, `20260808135026`, `20260808141133`, `20260808141909`, `20260808143735`, `20260808145303`, `20260808150100`, and `20260808232441`.
 - Post-cutover checks: 7 affiliate rows, 0 plaintext `portal_pin` rows, 0 `pin_hash` rows, 0 active sessions, and 7 credential-rotation audit rows.
 - Legacy credentials were retired in one transaction. `token_version` was incremented, sessions were revoked, and no PIN values were written to the audit log.
+- The synthetic E2E used deterministic IDs `00000000-0000-4000-8000-000000000810` (affiliate), `00000000-0000-4000-8000-000000000811` (package), and `00000000-0000-4000-8000-000000000812` (invitation). Cleanup verification returned zero rows for every ID, zero active sessions, and zero legacy PIN credentials.
 
 ## Deployment
 
-- The Ready remediation preview artifact `os-6fs8cyxzu-zzbaa0317-4596s-projects.vercel.app` was assigned to `www.yeosonam.com` using a Vercel alias.
+- The current Ready remediation preview artifact `os-gskg0vzu2-zzbaa0317-4596s-projects.vercel.app` (branch `affiliate-critical-remediation`) is assigned to `www.yeosonam.com` using a Vercel alias. It includes the partner middleware fixes below.
 - The live domain now serves the canonical `/partner` portal. The old token-only partner page is no longer returned.
-- Two CLI production attempts were left blocked by Vercel commit-email collaboration checks; they are not serving traffic. The live alias uses the already-built, tested preview artifact.
+- `AFFILIATE_AUTH_SECRET` was rotated to a new sensitive value and applied to both the production and `affiliate-critical-remediation` preview environments before the synthetic activation run. The raw value was not committed and its temporary file was deleted after cleanup.
+- A middleware defect was fixed: `/partner/*` and `/api/partner/*` now reach route-local partner-session authorization, while activation and OTP endpoints remain reachable before a session exists. This prevents stale administrator refresh cookies from returning the generic `token expired` response.
 
 ## Chrome smoke checks
 
@@ -28,7 +30,22 @@ Verified in the authenticated Chrome session:
 5. `/api/partner/catalog` returns `SESSION_REQUIRED` without a session.
 6. `/api/influencer/content?code=DEMO` returns an authentication error rather than exposing content.
 
+## Synthetic partner E2E
+
+The disposable sample was created and exercised against `www.yeosonam.com` with a known OTP (`123456`) and then removed.
+
+1. Activation API issued an HTTP-only `partner_session` (`200`).
+2. Partner session endpoint returned the seeded affiliate (`200`).
+3. Partner catalog returned the synthetic product as `state=ready` and sellable (`200`).
+4. Publication creation returned `201`; replaying the same `Idempotency-Key` returned the same publication (`200`, idempotent replay).
+5. `/go/{publication_id}` returned a tracking redirect (`302`) to `/api/influencer/track`.
+6. Tracking returned a redirect to the exact synthetic package (`302`), created one accepted touchpoint, and incremented the publication click counter atomically to `1`.
+7. Logout returned `200`; reuse of the partner session returned `401`.
+8. Funnel evidence contained three events (session creation, publication creation, accepted touchpoint).
+
+The Chrome tab was used to verify the live activation page and the OTP delivery path. The configured SMS provider is not available in the current environment, so the UI challenge correctly displayed a delivery failure. The authenticated API E2E above used the same live origin and seeded invitation to verify the remaining session/catalog/publication/tracking contract without exposing or sending a real message.
+
 ## Not executed against production
 
 - No real partner application, approval, invitation delivery, booking, commission, settlement, payout, or refund was created.
-- Full authenticated partner E2E still requires a dedicated staging project or an operator-provided test affiliate/invitation; using a live financial tenant for synthetic transactions would contaminate production records.
+- Booking-to-settlement financial writes remain intentionally unexecuted in production. They require a disposable staging database or an explicit operator-approved financial fixture because those writes create customer, booking, ledger, tax, and payout evidence that should not be deleted from a live tenant.

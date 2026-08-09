@@ -92,10 +92,6 @@ SELECT (jsonb_populate_record(
     'confirmed_dates', '[{"departure_date":"2026-09-10"}]'::jsonb,
     'price_dates', '[{"date":"2026-09-10","price":100000,"confirmed":true}]'::jsonb,
     'audit_status', 'clean',
-    'audit_report', '{}'::jsonb,
-    'created_at', now(),
-    'updated_at', now(),
-    'package_revision', 1,
     'is_stub', false
   )
 )).*
