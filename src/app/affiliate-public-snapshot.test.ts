@@ -33,14 +33,16 @@ describe('affiliate and embed public package data boundary', () => {
   it('builds affiliate landing picks from public snapshots only', () => {
     const text = source('src/app/with/[slug]/page.tsx');
     const helperIndex = text.indexOf('async function toPublicAffiliatePicks');
-    const pickedIndex = text.indexOf('picks = await toPublicAffiliatePicks(pickedRows)');
-    const fallbackIndex = text.indexOf('picks = await toPublicAffiliatePicks(');
+    const pickedIndex = text.indexOf('const result = await toPublicAffiliatePicks(pickedRows)');
+    const fallbackIndex = text.indexOf('const result = await toPublicAffiliatePicks(', pickedIndex + 1);
 
     expect(text).toContain('function isWithPublicSnapshotCandidate');
     expect(text).toContain(".in('publication_state', ['approved', 'published'])");
     expect(helperIndex).toBeGreaterThan(0);
     expect(pickedIndex).toBeGreaterThan(helperIndex);
     expect(fallbackIndex).toBeGreaterThan(helperIndex);
+    expect(text).toContain("picksState: 'ready' | 'empty' | 'data_unavailable'");
+    expect(text).toContain('상품 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
   });
 
   it('does not render unsupported affiliate discount, scarcity, or verification claims', () => {

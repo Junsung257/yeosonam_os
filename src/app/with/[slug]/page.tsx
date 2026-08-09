@@ -57,13 +57,21 @@ function isWithPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
   return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
-async function toPublicAffiliatePicks<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
-  if (rows.length === 0) return [];
+type AffiliatePicksResult<T> = {
+  rows: T[];
+  unavailable: boolean;
+};
+
+async function toPublicAffiliatePicks<T extends Record<string, unknown>>(rows: T[]): Promise<AffiliatePicksResult<T>> {
+  if (rows.length === 0) return { rows: [], unavailable: false };
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return {
+      rows: await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows),
+      unavailable: false,
+    };
   } catch (error) {
     console.warn('[with] public snapshot merge failed; hiding affiliate package picks', error);
-    return [];
+    return { rows: [], unavailable: true };
   }
 }
 
@@ -185,6 +193,7 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
     product_summary?: string | null;
     product_highlights?: string[] | null;
   }> = [];
+  let picksState: 'ready' | 'empty' | 'data_unavailable' = 'empty';
 
   if (pickIds.length > 0) {
     try {
@@ -204,13 +213,16 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
             return (order.get(aId) ?? 99) - (order.get(bId) ?? 99);
           },
         );
-      picks = await toPublicAffiliatePicks(pickedRows) as typeof picks;
+      const result = await toPublicAffiliatePicks(pickedRows);
+      picks = result.rows as typeof picks;
+      picksState = result.unavailable ? 'data_unavailable' : picks.length > 0 ? 'ready' : 'empty';
     } catch {
       picks = [];
+      picksState = 'data_unavailable';
     }
   }
 
-  if (picks.length === 0) {
+  if (picks.length === 0 && picksState !== 'data_unavailable') {
     try {
       const { data: fallback } = await supabaseAdmin
         .from('travel_packages')
@@ -219,13 +231,16 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         .in('publication_state', ['approved', 'published'])
         .order('created_at', { ascending: false })
         .limit(100);
-      picks = await toPublicAffiliatePicks(
+      const result = await toPublicAffiliatePicks(
         ((fallback || []) as Array<Record<string, unknown>>)
           .filter(isWithPublicSnapshotCandidate)
           .slice(0, 6),
-      ) as typeof picks;
+      );
+      picks = result.rows as typeof picks;
+      picksState = result.unavailable ? 'data_unavailable' : picks.length > 0 ? 'ready' : 'empty';
     } catch {
       picks = [];
+      picksState = 'data_unavailable';
     }
   }
 
@@ -319,7 +334,11 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
               전체 상품 보기 →
             </Link>
           </div>
-          {picks.length === 0 ? (
+          {picksState === 'data_unavailable' ? (
+            <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 py-12 text-center text-amber-900">
+              상품 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+            </p>
+          ) : picks.length === 0 ? (
             <p className="rounded-lg border border-dashed border-gray-300 bg-white py-12 text-center text-gray-500">
               노출 가능한 상품이 아직 없습니다. 잠시 후 다시 확인해 주세요.
             </p>
