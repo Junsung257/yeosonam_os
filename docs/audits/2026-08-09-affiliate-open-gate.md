@@ -3,8 +3,8 @@
 ## Current state
 
 - Branch: `affiliate-critical-remediation`
-- Latest source commit: `29a5eaee`
-- Vercel preview build: Ready at `https://os-c8345qmuy-zzbaa0317-4596s-projects.vercel.app`
+- Latest source commit: `aa28b0a5`
+- Vercel preview build: Ready at `https://os-385kbzy74-zzbaa0317-4596s-projects.vercel.app`
 - `AFFILIATE_AUTH_SECRET`: configured as a sensitive Vercel variable for the remediation preview branch and Production
 
 ## Verified locally
@@ -16,9 +16,12 @@
 
 ## Remaining external gates
 
-1. Supabase migrations must be applied to a non-production staging database and validated before Production.
-2. Chrome must complete an authenticated partner smoke test: invitation/OTP, catalog, publication, test click, published URL, attribution, earnings, and settlement PDF.
-3. Production promotion remains blocked until those two gates pass. No production data or settlement rows were changed during this audit.
+The co-brand landing now distinguishes `data_unavailable` from a real empty product result.
+
+1. The linked Supabase project has eight local affiliate V2 migrations pending and seven remote-only migration versions that are not present in this branch. A `db push --dry-run --linked` is therefore blocked by migration-history drift; no repair or production schema mutation was performed.
+2. A temporary Supabase preview branch was created without production data for validation, but its automatic migration run failed because the repository does not contain the remote migration history. The branch was deleted immediately after the read-only test.
+3. Chrome must complete an authenticated partner smoke test: invitation/OTP, catalog, publication, test click, published URL, attribution, earnings, and settlement PDF. The current preview is protected by Vercel SSO and the connected Chrome session did not have an authenticated tab.
+4. Production promotion remains blocked until those three gates pass. No production data or settlement rows were changed during this audit.
 
 ## Security note
 
