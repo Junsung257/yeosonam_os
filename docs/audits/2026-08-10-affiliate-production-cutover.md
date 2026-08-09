@@ -14,9 +14,10 @@ This record covers the V2 schema cutover, credential retirement, live domain ali
 
 ## Deployment
 
-- The current Ready remediation preview artifact `os-gskg0vzu2-zzbaa0317-4596s-projects.vercel.app` (branch `affiliate-critical-remediation`) is assigned to `www.yeosonam.com` using a Vercel alias. It includes the partner middleware fixes below.
+- The remediation artifact was promoted to formal Production as `os-7cbb1gv1a-zzbaa0317-4596s-projects.vercel.app` and is assigned to `www.yeosonam.com`, `yeosonam.com`, and the project production alias. It includes the partner middleware fixes below.
 - The live domain now serves the canonical `/partner` portal. The old token-only partner page is no longer returned.
 - `AFFILIATE_AUTH_SECRET` was rotated to a new sensitive value and applied to both the production and `affiliate-critical-remediation` preview environments before the synthetic activation run. The raw value was not committed and its temporary file was deleted after cleanup.
+- Production Solapi settings were connected as encrypted Vercel variables from the existing project configuration (`SOLAPI_API_KEY`, `SOLAPI_API_SECRET`, `KAKAO_CHANNEL_ID`, and `KAKAO_SENDER_NUMBER`). A read-only `GET /messages/v4/list?limit=1` credential check returned HTTP 200; no message was sent. The production deployment was rebuilt after the change.
 - A middleware defect was fixed: `/partner/*` and `/api/partner/*` now reach route-local partner-session authorization, while activation and OTP endpoints remain reachable before a session exists. This prevents stale administrator refresh cookies from returning the generic `token expired` response.
 
 ## Chrome smoke checks
@@ -43,7 +44,7 @@ The disposable sample was created and exercised against `www.yeosonam.com` with 
 7. Logout returned `200`; reuse of the partner session returned `401`.
 8. Funnel evidence contained three events (session creation, publication creation, accepted touchpoint).
 
-The Chrome tab was used to verify the live activation page and the OTP delivery path. The configured SMS provider is not available in the current environment, so the UI challenge correctly displayed a delivery failure. The authenticated API E2E above used the same live origin and seeded invitation to verify the remaining session/catalog/publication/tracking contract without exposing or sending a real message.
+The Chrome tab was used to verify the live activation page and the OTP delivery path before the production Solapi configuration was connected. The authenticated API E2E above used the same live origin and seeded invitation to verify the remaining session/catalog/publication/tracking contract without exposing or sending a real message. A real-phone OTP send was intentionally not executed; the provider credentials were validated through the read-only API check above.
 
 ## Verification commands
 
