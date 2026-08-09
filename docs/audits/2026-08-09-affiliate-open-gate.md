@@ -3,8 +3,8 @@
 ## Current state
 
 - Branch: `affiliate-critical-remediation`
-- Latest source commit: `aa28b0a5`
-- Vercel preview build: Ready at `https://os-385kbzy74-zzbaa0317-4596s-projects.vercel.app`
+- Latest source commit: `f634eac6`
+- Vercel preview build: Ready at `https://os-kbwh60ffa-zzbaa0317-4596s-projects.vercel.app`
 - `AFFILIATE_AUTH_SECRET`: configured as a sensitive Vercel variable for the remediation preview branch and Production
 
 ## Verified locally
