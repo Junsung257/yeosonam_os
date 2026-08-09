@@ -32,6 +32,10 @@
 4. 승인 → 활성화 → 상품 선택 → publication 생성 → 테스트 클릭 → 예약 귀속 → ledger → 정산서 PDF 순서로 실행한다.
 5. 동일한 URL 목록을 운영에서 재확인하고, 404·테스트 배너·레거시 PIN·인증 없는 콘텐츠 응답이 없을 때만 출시 판정을 갱신한다.
 
+## 미리보기 배포 게이트
+
+로컬 `npm run build`는 성공했고 정본 파트너 라우트가 산출물에 포함됐다. 다만 Windows에서 실행한 Vercel Build Output 패키징은 `Unable to find lambda for route: /destinations/[city]`로 실패했다. 최신 CLI에서도 동일하므로, 이는 제휴 라우트 컴파일 오류가 아니라 프로젝트의 기존 목적지 동적 라우트·Vercel 패키저 조합 문제다. 운영 배포 전에 Git 연동 Linux 빌드 또는 해당 목적지 라우트의 별도 패키징 수정으로 이 게이트를 해소해야 한다.
+
 ## 변경 사항
 
 - 관리자 파트너 미리보기의 포털 링크를 `/influencer/{code}`에서 세션 기반 `/partner`로 변경했다.
