@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   eq: vi.fn(),
   queryError: null as { code?: string; message: string } | null,
+  loadPackage: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -15,13 +16,24 @@ vi.mock('@/lib/supabase', () => ({
 
 vi.mock('@/lib/affiliate/jwt-or-pin-auth', () => ({ authInfluencer: mocks.auth }));
 vi.mock('@/lib/content-public-package', () => ({
-  loadPublicContentPackageForGeneration: vi.fn(),
+  loadPublicContentPackageForGeneration: mocks.loadPackage,
 }));
 
-import { GET } from './route';
+import { GET, POST } from './route';
 
 function request(code = 'OWNER') {
   return new NextRequest(`http://localhost/api/influencer/content?code=${code}`);
+}
+
+function postRequest(body: Record<string, unknown>) {
+  return new NextRequest('http://localhost/api/influencer/content', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: 'http://localhost',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('GET /api/influencer/content', () => {
@@ -30,6 +42,7 @@ describe('GET /api/influencer/content', () => {
     mocks.from.mockReset();
     mocks.eq.mockReset();
     mocks.queryError = null;
+    mocks.loadPackage.mockReset();
 
     const limit = vi.fn(async () => ({
       data: [{ id: 'content-1', affiliate_id: 'affiliate-owner' }],

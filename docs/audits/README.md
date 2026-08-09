@@ -121,6 +121,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-09 | `2026-08-09-affiliate-open-gate.md` | Affiliate remediation open-gate evidence, environment secret readiness, local checks, and remaining staging/Chrome gates. |
 | 2026-07-05 | `2026-07-05-jarvis-customer-inquiry-research.md` | Research-backed Jarvis customer inquiry answer-quality gate mapping for grounding, uncertainty, handoff, no-dead-end, and bounded-empathy checks. |
 | 2026-07-05 | `2026-07-05-secret-surface-audit.md` | Secret/env surface audit covering local env files, tracked `.env.prod`, command-output risk, rotation priorities, and existing prevention checks. |
 | 2026-06-26 | `2026-06-26-project-readiness-audit.md` | Pre-development local, Vercel, Supabase, MCP, docs, and build readiness audit after workspace consolidation. |

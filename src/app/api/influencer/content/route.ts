@@ -225,9 +225,13 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[influencer/content] 실패:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Never expose provider/database errors from the legacy compatibility
+    // endpoint. Keep this bridge fail-closed like the canonical partner APIs.
+    logAndSanitize('influencer-content-post', err, '콘텐츠 생성에 실패했습니다.');
+    return NextResponse.json(
+      { error: '콘텐츠 생성에 실패했습니다.', code: 'CONTENT_GENERATION_FAILED' },
+      { status: 500 },
+    );
   }
 }
 
