@@ -144,7 +144,10 @@ export async function GET(request: NextRequest) {
     trend.set(day, { bookings: 0, booking_amount_krw: 0, commission_krw: 0 });
   }
   for (const booking of bookings.data || []) {
-    const day = String(booking.created_at || "").slice(0, 10);
+    const createdAt = String(booking.created_at || "");
+    const parsedCreatedAt = new Date(createdAt);
+    if (Number.isNaN(parsedCreatedAt.getTime())) continue;
+    const day = formatKstDate(parsedCreatedAt);
     const bucket = trend.get(day);
     if (!bucket) continue;
     bucket.bookings += 1;

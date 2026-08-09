@@ -88,6 +88,13 @@ describe('affiliate partner portal V2 contracts', () => {
     expect(dashboard).not.toContain('total_revenue: commissionSummary.completed_payout');
   });
 
+  it('buckets partner booking trends by KST rather than UTC string slicing', () => {
+    const overview = source('src/app/api/partner/overview/route.ts');
+    expect(overview).toContain('const day = formatKstDate(parsedCreatedAt);');
+    expect(overview).not.toContain('String(booking.created_at || "").slice(0, 10)');
+    expect(overview).toContain('state: "data_unavailable"');
+  });
+
   it('keeps the partner layout isolated from customer widgets and includes mobile navigation', () => {
     const widgets = source('src/components/LayoutClientWidgets.tsx');
     const shell = source('src/components/partner/PartnerShell.tsx');
