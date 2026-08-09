@@ -45,6 +45,12 @@ The disposable sample was created and exercised against `www.yeosonam.com` with 
 
 The Chrome tab was used to verify the live activation page and the OTP delivery path. The configured SMS provider is not available in the current environment, so the UI challenge correctly displayed a delivery failure. The authenticated API E2E above used the same live origin and seeded invitation to verify the remaining session/catalog/publication/tracking contract without exposing or sending a real message.
 
+## Verification commands
+
+- `npm test -- --testTimeout=15000`: 662 test files, 5,095 tests passed.
+- `npm run type-check`: passed.
+- `npm run lint`: passed with zero warnings.
+
 ## Not executed against production
 
 - No real partner application, approval, invitation delivery, booking, commission, settlement, payout, or refund was created.
