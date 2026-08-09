@@ -715,13 +715,13 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       departureDays: depDays,
       accommodations: pkg.accommodations ?? [],
     });
-    const today = todayKstDateKey();
     const expectedRows = filterSourceBackedPriceRowsForPublicEvidence(
       pkg,
       selectSourceBackedPriceRows(pkg, expected.rows),
-    ).filter(row => row.date >= today);
+      { includePast: true },
+    );
     const dbPriceDates = Array.isArray(pkg.price_dates)
-      ? pkg.price_dates.filter(row => typeof row.date === 'string' && row.date >= today)
+      ? pkg.price_dates.filter(row => typeof row.date === 'string' && isIsoDateKey(row.date))
       : [];
     if (expectedRows.length === 0) {
       checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });
