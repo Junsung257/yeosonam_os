@@ -55,6 +55,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-09 | `2026-08-09-affiliate-live-chrome-verification.md` | 라이브 Chrome에서 확인한 제휴 운영 빌드·라우트·인증·배너 배포 차이와 스테이징 재검증 게이트. |
 | 2026-07-20 | `2026-07-20-launch-readiness-continuation-audit.md` | Continuation evidence for Git/PR cleanup, public package/blog readiness hardening, merged #824-#830 work, and remaining launch blockers. |
 | 2026-07-19 | `2026-07-19-release-readiness-full-audit.md` | Customer launch HOLD evidence, completed P0 remediations, open gates, Git/PR cleanup, and parallel closure lanes. |
 | 2026-07-06 | `2026-07-06-destinations-full-audit/` | Public destinations full audit output: desktop/mobile screenshots, route matrix, image/placeholder/climate/attraction checks. |

@@ -72,7 +72,9 @@ export default function PartnerPreviewClient() {
 
   const safeCode = useMemo(() => sanitizeCode(code), [code]);
   const withUrl = safeCode ? `/with/${encodeURIComponent(safeCode)}` : '';
-  const portalUrl = safeCode ? `/influencer/${encodeURIComponent(safeCode)}` : '';
+  // Referral codes identify public landing pages only. The partner portal is
+  // session-based and must be entered through the canonical invitation flow.
+  const portalUrl = safeCode ? '/partner' : '';
 
   const absolute = useCallback(
     (path: string) => (siteOrigin && path ? `${siteOrigin}${path}` : ''),
@@ -155,14 +157,14 @@ export default function PartnerPreviewClient() {
             <button
               type="button"
               disabled={!safeCode}
-              onClick={() => onCopy('인플루언서 포털', absolute(portalUrl))}
+              onClick={() => onCopy('파트너 포털', absolute(portalUrl))}
               className={`text-left text-xs px-3 py-2 rounded-md border ${
                 safeCode
                   ? 'bg-white border-admin-border-mid hover:bg-admin-bg text-admin-text-2'
                   : 'bg-admin-surface-2 border-admin-border text-admin-muted-2 cursor-not-allowed'
               }`}
             >
-              인플루언서 포털 URL (/influencer/…)
+              파트너 포털 URL (/partner · 초대 인증 필요)
             </button>
           </div>
         </div>

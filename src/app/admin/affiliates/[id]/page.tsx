@@ -1009,11 +1009,11 @@ function PortalSettingsSection({
           <p className="text-xs text-amber-800">
             <strong>포털 주소:</strong>{' '}
             <a
-              href="/affiliate/login"
+              href="/partner/login"
               target="_blank"
               className="underline hover:text-amber-900"
             >
-              /affiliate/login
+              /partner/login
             </a>
           </p>
           <p className="text-[10px] text-amber-700 mt-1">

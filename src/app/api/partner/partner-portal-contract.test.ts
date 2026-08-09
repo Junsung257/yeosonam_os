@@ -7,6 +7,28 @@ function source(relativePath: string) {
 }
 
 describe('affiliate partner portal V2 contracts', () => {
+  it('keeps the canonical route surfaces present for production builds', () => {
+    const routes = [
+      'src/app/partner/page.tsx',
+      'src/app/partner/login/page.tsx',
+      'src/app/partner/activate/page.tsx',
+      'src/app/partner/products/page.tsx',
+      'src/app/partner/publish/page.tsx',
+      'src/app/partner/publications/page.tsx',
+      'src/app/partner/performance/page.tsx',
+      'src/app/partner/bookings/page.tsx',
+      'src/app/partner/earnings/page.tsx',
+      'src/app/partner/settings/page.tsx',
+      'src/app/api/partner/catalog/route.ts',
+      'src/app/api/partner/terms/route.ts',
+      'src/app/admin/affiliate-profiles/page.tsx',
+      'src/app/with/[slug]/page.tsx',
+    ];
+    for (const route of routes) {
+      expect(fs.existsSync(path.join(process.cwd(), route)), route).toBe(true);
+    }
+  });
+
   it('uses the customer visibility SSOT and distinguishes empty from unavailable catalog', () => {
     const catalog = source('src/app/api/partner/catalog/route.ts');
     expect(catalog).toContain('CUSTOMER_VISIBLE_STATUSES');
@@ -64,6 +86,16 @@ describe('affiliate partner portal V2 contracts', () => {
     expect(widgets).toContain('showCustomerWidgets');
     expect(shell).toContain('파트너 모바일 메뉴');
     expect(shell).toContain('pb-28');
+  });
+
+  it('keeps admin partner previews on the canonical session-based portal', () => {
+    const preview = source('src/app/admin/partner-preview/PartnerPreviewClient.tsx');
+    const legacyLogin = source('src/app/affiliate/login/page.tsx');
+    const legacyDashboard = source('src/app/affiliate/dashboard/page.tsx');
+    expect(preview).toContain("const portalUrl = safeCode ? '/partner' : ''");
+    expect(preview).not.toContain('/influencer/${encodeURIComponent(safeCode)}');
+    expect(legacyLogin).toContain("redirect('/partner/login')");
+    expect(legacyDashboard).toContain("redirect('/partner')");
   });
 
   it('exposes only immutable settlement evidence to partners', () => {
