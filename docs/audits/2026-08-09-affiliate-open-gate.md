@@ -3,14 +3,15 @@
 ## Current state
 
 - Branch: `affiliate-critical-remediation`
-- Latest source commit: `990f7c04` plus the legacy content error-sanitization fix in the working tree
-- Vercel preview build: Ready after the dynamic-route packaging fix
+- Latest source commit: `29a5eaee`
+- Vercel preview build: Ready at `https://os-c8345qmuy-zzbaa0317-4596s-projects.vercel.app`
 - `AFFILIATE_AUTH_SECRET`: configured as a sensitive Vercel variable for the remediation preview branch and Production
 
 ## Verified locally
 
 - `npm run type-check -- --pretty false` — passed
 - `npm run lint` — passed with zero warnings
+- `npm test -- --run` — 662 files / 5,093 tests passed
 - Affiliate security/portal/content contract tests — passed
 
 ## Remaining external gates
