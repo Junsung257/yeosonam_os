@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     supabaseAdmin
       .from("bookings")
       .select(
-        "id, created_at, total_price, influencer_commission, commission_status, status",
+        "id, created_at, total_price, commission_status, status",
       )
       .eq("affiliate_id", affiliateId)
       .gte("created_at", since30),
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       .eq("affiliate_id", affiliateId),
     supabaseAdmin
       .from("commission_ledger_entries")
-      .select("id, amount_krw, hold_reason, eligible_at")
+      .select("id, booking_id, amount_krw, hold_reason, eligible_at")
       .eq("affiliate_id", affiliateId),
     supabaseAdmin
       .from("settlement_lines")
@@ -119,6 +119,15 @@ export async function GET(request: NextRequest) {
   const heldCommission = unsettledEntries
     .filter((entry) => Boolean(entry.hold_reason))
     .reduce((sum, entry) => sum + amount(entry.amount_krw), 0);
+  const ledgerByBooking = new Map<string, number>();
+  for (const entry of ledger.data || []) {
+    const bookingId = String(entry.booking_id || "");
+    if (!bookingId) continue;
+    ledgerByBooking.set(
+      bookingId,
+      (ledgerByBooking.get(bookingId) || 0) + amount(entry.amount_krw),
+    );
+  }
   const readyPayout = (runs.data || [])
     .filter((run) => ["READY", "PAYOUT_PENDING"].includes(String(run.status)))
     .reduce((sum, run) => sum + amount(run.net_payout_krw), 0);
@@ -140,7 +149,7 @@ export async function GET(request: NextRequest) {
     if (!bucket) continue;
     bucket.bookings += 1;
     bucket.booking_amount_krw += amount(booking.total_price);
-    bucket.commission_krw += amount(booking.influencer_commission);
+    bucket.commission_krw += ledgerByBooking.get(String(booking.id)) || 0;
   }
 
   const acceptedTerms = new Set(

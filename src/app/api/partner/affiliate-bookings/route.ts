@@ -8,6 +8,11 @@ function money(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function signedMoney(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await authAffiliate(request);
   if (!auth.ok)
@@ -19,7 +24,7 @@ export async function GET(request: NextRequest) {
   const { data: bookings, error } = await supabaseAdmin
     .from("bookings")
     .select(
-      "id, booking_no, package_id, package_title, departure_date, return_date, status, payment_status, total_price, influencer_commission, commission_status, commission_policy_version, commission_calculation_trace_id, attribution_decision_id, created_at, updated_at",
+      "id, booking_no, package_id, package_title, departure_date, return_date, status, payment_status, total_price, commission_status, commission_policy_version, commission_calculation_trace_id, attribution_decision_id, created_at, updated_at",
     )
     .eq("affiliate_id", affiliateId)
     .order("created_at", { ascending: false })
@@ -29,6 +34,31 @@ export async function GET(request: NextRequest) {
       { error: "AFFILIATE_BOOKINGS_UNAVAILABLE", state: "data_unavailable" },
       { status: 503 },
     );
+
+  const bookingIds = (bookings || []).map((booking) => booking.id).filter(Boolean);
+  const { data: ledgerEntries, error: ledgerError } = bookingIds.length
+    ? await supabaseAdmin
+        .from("commission_ledger_entries")
+        .select("booking_id, amount_krw, hold_reason, policy_set_version, calculation_trace_id")
+        .eq("affiliate_id", affiliateId)
+        .in("booking_id", bookingIds)
+    : { data: [], error: null };
+  if (ledgerError)
+    return apiResponse(
+      { error: "COMMISSION_LEDGER_UNAVAILABLE", state: "data_unavailable" },
+      { status: 503 },
+    );
+  const ledgerByBooking = new Map<string, { amount: number; hold: boolean; policy: string | null; trace: string | null }>();
+  (ledgerEntries || []).forEach((entry) => {
+    const bookingId = String(entry.booking_id || "");
+    if (!bookingId) return;
+    const current = ledgerByBooking.get(bookingId) || { amount: 0, hold: false, policy: null, trace: null };
+    current.amount += Number(entry.amount_krw) || 0;
+    current.hold = current.hold || Boolean(entry.hold_reason);
+    current.policy = current.policy || entry.policy_set_version || null;
+    current.trace = current.trace || entry.calculation_trace_id || null;
+    ledgerByBooking.set(bookingId, current);
+  });
 
   const decisionIds = (bookings || [])
     .map((row) => row.attribution_decision_id)
@@ -88,10 +118,16 @@ export async function GET(request: NextRequest) {
         booking_status: booking.status,
         payment_status: booking.payment_status,
         booking_amount_krw: money(booking.total_price),
-        commission_amount_krw: money(booking.influencer_commission),
-        commission_status: booking.commission_status || "CALCULATION_HOLD",
-        commission_policy_version: booking.commission_policy_version,
-        commission_trace_id: booking.commission_calculation_trace_id,
+        commission_amount_krw: ledgerByBooking.has(booking.id)
+          ? signedMoney(ledgerByBooking.get(booking.id)?.amount)
+          : null,
+        commission_status: ledgerByBooking.get(booking.id)?.hold
+          ? "CALCULATION_HOLD"
+          : booking.commission_status || "CALCULATION_HOLD",
+        commission_policy_version:
+          ledgerByBooking.get(booking.id)?.policy || booking.commission_policy_version,
+        commission_trace_id:
+          ledgerByBooking.get(booking.id)?.trace || booking.commission_calculation_trace_id,
         attribution: decision
           ? {
               decision_id: decision.id,
@@ -109,7 +145,7 @@ export async function GET(request: NextRequest) {
     }),
     definitions: {
       booking_amount_krw: "예약에 저장된 고객 총 결제 예정 금액",
-      commission_amount_krw: "예약 시점 정책 버전으로 고정된 파트너 커미션",
+      commission_amount_krw: "commission_ledger_entries에 기록된 예약별 원장 순액",
       attribution: "예약 귀속 결정과 실제 게시 위치를 연결한 감사 근거",
     },
     updated_at: new Date().toISOString(),

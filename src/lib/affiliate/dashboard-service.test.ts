@@ -55,10 +55,10 @@ describe('affiliate dashboard service helpers', () => {
   describe('summarizeCommissions', () => {
     it('summarizes totals and status buckets', () => {
       const summary = summarizeCommissions([
-        { id: 's1', status: 'READY', total_amount: 100000, final_payout: 90000 },
-        { id: 's2', status: 'COMPLETED', total_amount: 50000, final_payout: 45000 },
-        { id: 's3', status: 'PENDING', total_amount: 20000, final_payout: 0 },
-        { id: 's4', status: 'HOLD', total_amount: 30000, final_payout: 0 },
+        { id: 's1', status: 'READY', gross_commission_krw: 100000, net_payout_krw: 90000 },
+        { id: 's2', status: 'COMPLETED', gross_commission_krw: 50000, net_payout_krw: 45000 },
+        { id: 's3', status: 'HOLD', gross_commission_krw: 20000, net_payout_krw: 0 },
+        { id: 's4', status: 'HOLD', gross_commission_krw: 30000, net_payout_krw: 0 },
       ]);
 
       expect(summary.total_gross).toBe(200000);

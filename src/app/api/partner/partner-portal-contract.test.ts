@@ -114,4 +114,14 @@ describe('affiliate partner portal V2 contracts', () => {
     expect(report).not.toContain("from('affiliate_promo_codes')");
     expect(detail).toContain('추천 귀속만');
   });
+
+  it('keeps public leaderboard and booking restore on immutable settlement evidence', () => {
+    const leaderboard = source('src/app/api/affiliates/leaderboard/route.ts');
+    const restore = source('src/app/api/bookings/[id]/restore/route.ts');
+    expect(leaderboard).toContain("from('settlement_runs')");
+    expect(leaderboard).toContain('net_payout_krw');
+    expect(leaderboard).not.toContain("from('settlements')");
+    expect(restore).toContain('BOOKING_SETTLEMENT_REVIEW_REQUIRED');
+    expect(restore).not.toContain("from('settlements')");
+  });
 });

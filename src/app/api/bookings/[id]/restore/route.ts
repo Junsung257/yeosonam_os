@@ -9,7 +9,7 @@ import { requireAdminRequest } from '@/lib/admin-guard';
  * - status = 'pending' (paid_amount > 0 이면 'confirmed' 권장)
  * - voided_at, void_reason 클리어 (활성 행으로 복귀)
  * - cancelled_at, cancel_reason, refund_amount, penalty_fee 는 보존 (이력 추적)
- * - settlements VOID → PENDING 복원 (현재 정산 기간 한정)
+ * - 정산 원장에 포함된 예약은 자동 복원하지 않고 재무 검토로 보낸다.
  * - message_logs RESTORATION 이벤트
  * - audit_logs BOOKING_RESTORE
  *
@@ -50,6 +50,41 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     };
     if (cur.status !== 'cancelled') {
       return NextResponse.json({ error: '취소 상태인 예약만 복구할 수 있습니다.' }, { status: 422 });
+    }
+
+    // A cancelled booking may already be present in an immutable settlement
+    // line. Never mutate a completed/ready settlement to make a restore look
+    // correct; an operator must create the appropriate adjustment/reversal.
+    if (cur.affiliate_id) {
+      const { data: ledgerRows, error: ledgerError } = await supabaseAdmin
+        .from('commission_ledger_entries')
+        .select('id')
+        .eq('booking_id', params.id)
+        .limit(50);
+      if (ledgerError) {
+        return NextResponse.json({ error: '정산 원장 확인에 실패했습니다.' }, { status: 503 });
+      }
+      const ledgerIds = (ledgerRows || []).map((row: { id: string }) => row.id);
+      if (ledgerIds.length > 0) {
+        const { data: settlementLines, error: linesError } = await supabaseAdmin
+          .from('settlement_lines')
+          .select('ledger_entry_id, settlement_run_id, settlement_runs!inner(status)')
+          .in('ledger_entry_id', ledgerIds)
+          .limit(50);
+        if (linesError) {
+          return NextResponse.json({ error: '정산 라인 확인에 실패했습니다.' }, { status: 503 });
+        }
+        if ((settlementLines || []).length > 0) {
+          return NextResponse.json(
+            {
+              error: 'BOOKING_SETTLEMENT_REVIEW_REQUIRED',
+              message: '정산 원장에 포함된 예약은 자동 복구할 수 없습니다. 조정 또는 역분개를 먼저 검토하세요.',
+              settlement_line_ids: (settlementLines || []).map((line: { settlement_run_id: string }) => line.settlement_run_id),
+            },
+            { status: 409 },
+          );
+        }
+      }
     }
 
     // 복구 status 결정: 명시 > 입금이 있으면 'confirmed' > 없으면 'pending'
@@ -95,20 +130,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       is_mock:    false,
       created_by: 'admin',
     });
-
-    // settlements VOID → PENDING (해당 affiliate, 현재 정산 기간)
-    (async () => {
-      try {
-        if (!cur.affiliate_id) return;
-        const currentPeriod = new Date().toISOString().slice(0, 7);
-        await supabaseAdmin
-          .from('settlements')
-          .update({ status: 'PENDING' } as never)
-          .eq('affiliate_id', cur.affiliate_id)
-          .eq('settlement_period', currentPeriod)
-          .eq('status', 'VOID');
-      } catch (e) { console.warn('[settlements 복구 실패]', e); }
-    })();
 
     // audit_logs
     (async () => {

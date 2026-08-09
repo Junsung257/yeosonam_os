@@ -15,8 +15,6 @@ type SettlementRow = {
   qualified_booking_count?: number | null;
   completed_at?: string | null;
   created_at?: string | null;
-  total_amount?: number | null;
-  final_payout?: number | null;
 };
 type BookingRow = {
   id: string;
@@ -192,10 +190,10 @@ export function summarizeCommissions(settlements: SettlementRow[]) {
       const current = acc[status] || { ...empty };
       current.count += 1;
       current.total_amount += numberValue(
-        row.gross_commission_krw ?? row.total_amount,
+        row.gross_commission_krw,
       );
       current.final_payout += numberValue(
-        row.net_payout_krw ?? row.final_payout,
+        row.net_payout_krw,
       );
       acc[status] = current;
       return acc;
@@ -205,16 +203,15 @@ export function summarizeCommissions(settlements: SettlementRow[]) {
   return {
     total_gross: settlements.reduce(
       (sum, row) =>
-        sum + numberValue(row.gross_commission_krw ?? row.total_amount),
+        sum + numberValue(row.gross_commission_krw),
       0,
     ),
     total_payout: settlements.reduce(
-      (sum, row) => sum + numberValue(row.net_payout_krw ?? row.final_payout),
+      (sum, row) => sum + numberValue(row.net_payout_krw),
       0,
     ),
     pending_amount:
-      (byStatus.PENDING?.total_amount || 0) +
-      (byStatus.HOLD?.total_amount || 0),
+      byStatus.HOLD?.total_amount || 0,
     ready_payout:
       (byStatus.READY?.final_payout || 0) +
       (byStatus.PAYOUT_PENDING?.final_payout || 0),
@@ -301,7 +298,7 @@ async function buildDashboard(
       .gte("created_at", since30),
     supabaseAdmin
       .from("commission_ledger_entries")
-      .select("id, amount_krw, hold_reason")
+      .select("id, booking_id, amount_krw, hold_reason")
       .eq("affiliate_id", affiliate.id)
       .limit(5000),
     supabaseAdmin
@@ -403,6 +400,16 @@ async function buildDashboard(
     subTouchpointsRes as QueryResult<Record<string, unknown>>,
   );
 
+  const ledgerByBooking = new Map<string, number>();
+  for (const entry of ledger) {
+    const bookingId = stringValue(entry.booking_id);
+    if (!bookingId) continue;
+    ledgerByBooking.set(
+      bookingId,
+      (ledgerByBooking.get(bookingId) || 0) + numberValue(entry.amount_krw),
+    );
+  }
+
   const settledIds = new Set(
     settledLines.map((line) => stringValue(line.ledger_entry_id)),
   );
@@ -440,7 +447,7 @@ async function buildDashboard(
     if (!bucket) continue;
     bucket.bookings += 1;
     bucket.booking_amount_krw += numberValue(booking.total_price);
-    bucket.commission_krw += numberValue(booking.influencer_commission);
+    bucket.commission_krw += ledgerByBooking.get(stringValue(booking.id)) || 0;
   }
 
   const publicationClicks = publications.reduce(

@@ -2,6 +2,8 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { formatKstDate } from '@/lib/kst-date';
+import { resolveSettlementPeriodKst } from '@/lib/affiliate/settlement-v2';
 
 function maskName(name: string, code: string): string {
   if (!name) return `ref_${code.slice(-4).toUpperCase()}`;
@@ -14,7 +16,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = request.nextUrl;
-    const period = searchParams.get('period') || new Date().toISOString().slice(0, 7);
+    const period = searchParams.get('period') || formatKstDate().slice(0, 7);
+    if (!resolveSettlementPeriodKst(period)) {
+      return apiResponse({ error: 'INVALID_PERIOD' }, { status: 400 });
+    }
     const anonymized = searchParams.get('anonymized') === 'true';
     const requestedLimit = Number(searchParams.get('limit') || '10');
     const limit = Number.isFinite(requestedLimit)
@@ -22,11 +27,11 @@ export async function GET(request: NextRequest) {
       : 10;
 
     const { data: settlements, error } = await supabaseAdmin
-      .from('settlements')
-      .select('affiliate_id, final_payout, qualified_booking_count, total_amount, status')
+      .from('settlement_runs')
+      .select('affiliate_id, net_payout_krw, qualified_booking_count, gross_commission_krw, status')
       .eq('settlement_period', period)
-      .in('status', ['READY', 'COMPLETED'])
-      .order('final_payout', { ascending: false })
+      .in('status', ['READY', 'PAYOUT_PENDING', 'COMPLETED'])
+      .order('net_payout_krw', { ascending: false })
       .limit(limit);
     if (error) throw error;
 
@@ -54,12 +59,12 @@ export async function GET(request: NextRequest) {
         grade: aff?.grade || null,
         logo_url: anonymized ? null : aff?.logo_url || null,
         booking_count: s.qualified_booking_count,
-        total_amount: s.total_amount,
-        final_payout: s.final_payout,
+        total_amount: s.gross_commission_krw,
+        final_payout: s.net_payout_krw,
       };
     });
 
-    return apiResponse({ period, anonymized, data: rows });
+    return apiResponse({ period, anonymized, data: rows, contract_version: 'settlement-ledger-v2' });
   } catch (err) {
     return apiResponse(
       { error: sanitizeDbError(err, '조회 실패') },

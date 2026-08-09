@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { formatKstDate } from '@/lib/kst-date';
 
 interface LeaderboardRow {
   rank: number;
@@ -39,7 +40,7 @@ export function Leaderboard({
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<string>(
-    period || new Date().toISOString().slice(0, 7),
+    period || formatKstDate().slice(0, 7),
   );
 
   useEffect(() => {

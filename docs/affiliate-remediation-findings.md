@@ -26,6 +26,7 @@
 | 약관·지급·세금 온보딩 | 필수 약관 동의 API/불변 증거, 암호화 프로필 제출, 관리자 검토 큐와 `VERIFIED` 게이트 | `20260808232441_affiliate_partner_profile_submissions.sql`, partner/admin profile APIs |
 | 관리자 상세·분석 | 구형 이월/VOID/직접 커미션 편집 제거, publication·ledger 기반 지표, 크론 `never_run` 구분 | admin affiliate detail/analytics |
 | 코드 의미 | 관리자 프로모션 보고서를 creator code 기준으로 분리해 추천 귀속과 실제 할인 혼동 제거 | `affiliate-promo-report` |
+| 잔여 레거시 경계 | 공개 리더보드·파트너 예약·홈 추이도 `settlement_runs`와 `commission_ledger_entries`를 사용, 정산 포함 예약 복구는 자동 처리하지 않고 재무 검토로 전환 | leaderboard/partner bookings/restore/dashboard service |
 | 지표 | 실제 bookings 기반 추이, `data_unavailable`와 빈 결과 분리, `total_revenue` 오표기 제거 | dashboard service/overview API |
 
 ## 데이터 흐름
