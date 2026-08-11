@@ -11,6 +11,55 @@ import {
 } from './bank-account-reality';
 
 describe('bank account reality', () => {
+  it('splits a refund and bank fee between travel cash and company expense', () => {
+    const summary = calculateBankAccountReality([
+      {
+        id: 'cancel-deposit',
+        transaction_type: '입금',
+        amount: 600_000,
+        received_at: '2026-06-20T10:00:00+09:00',
+        settlement_scope: 'travel',
+      },
+      {
+        id: 'cancel-refund',
+        transaction_type: '출금',
+        amount: 600_500,
+        received_at: '2026-06-23T10:00:00+09:00',
+        settlement_scope: 'travel',
+      },
+    ], [
+      { bank_transaction_id: 'cancel-deposit', booking_id: 'booking-1', allocated_amount: 600_000, target_type: 'booking' },
+      { bank_transaction_id: 'cancel-refund', booking_id: 'booking-1', allocated_amount: 600_000, target_type: 'customer_refund' },
+      { bank_transaction_id: 'cancel-refund', booking_id: null, allocated_amount: 500, target_type: 'bank_fee' },
+    ]);
+
+    expect(summary.travelDeposits).toBe(600_000);
+    expect(summary.travelWithdrawals).toBe(600_000);
+    expect(summary.travelNet).toBe(0);
+    expect(summary.nonTravelWithdrawals).toBe(500);
+    expect(summary.nonTravelNet).toBe(-500);
+    expect(summary.computedBalance).toBe(-500);
+  });
+
+  it('uses a confirmed company allocation instead of a stale transaction scope', () => {
+    const summary = calculateBankAccountReality([{
+      id: 'company-expense',
+      transaction_type: '출금',
+      amount: 55_060,
+      received_at: '2026-08-07T05:38:08+09:00',
+      settlement_scope: 'travel',
+    }], [{
+      bank_transaction_id: 'company-expense',
+      booking_id: null,
+      allocated_amount: 55_060,
+      target_type: 'company_expense',
+    }]);
+
+    expect(summary.travelCount).toBe(0);
+    expect(summary.nonTravelCount).toBe(1);
+    expect(summary.nonTravelNet).toBe(-55_060);
+  });
+
   it('separates booking settlement cash from non-travel bank movements', () => {
     const summary = calculateBankAccountReality([
       {

@@ -175,6 +175,7 @@ Last updated: 2026-08-05
 - **Root cause:** The shared evidence-refresh helper always wrote `settlement_scope = travel`, including the path that only records the latest provider memo observation.
 - **Permanent rule:** Updating provider evidence may refresh account number, balance, category, raw payload, and source metadata, but it must never change settlement scope. Scope changes are allowed only for a new import or an explicit reclassification path.
 - **Required proof:** Repeating the same full sync must return zero memo reviews, preserve 286 travel and 195 non-travel transactions, keep all 481 allocations exact, and leave booking review fingerprints unchanged.
+- **Split rule:** Dashboard travel/company cash totals come from allocation lines, not a transaction-wide scope. A refund-plus-fee transaction contributes the refund to travel cash and the fee to company cash without duplicating any amount.
 
 ## ERR-CLOBE-memo-review-repeat@2026-08-12
 

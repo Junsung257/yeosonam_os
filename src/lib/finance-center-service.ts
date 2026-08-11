@@ -277,7 +277,7 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
       loadFinanceData(),
       loadConfirmedSettlementSnapshots(),
     ]);
-    const bankSummary = calculateBankAccountReality(data.transactions);
+    const bankSummary = calculateBankAccountReality(data.transactions, data.allocations);
     const bookingCash = calculateBookingCashPositions({
       transactions: data.transactions,
       allocations: data.allocations,

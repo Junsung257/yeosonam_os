@@ -1703,7 +1703,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             <div className="bg-white px-4 py-3">
               <p className="text-[11px] font-medium text-admin-muted">여행 현금 순포지션</p>
               <p className={`mt-1 text-admin-base font-bold tabular-nums ${bankReality.travelNet >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtWon(bankReality.travelNet)}</p>
-              <p className="mt-1 text-[10px] text-admin-muted-2">수익 아님 · 여행 입금 - 여행 출금 · {bankReality.travelCount}건</p>
+              <p className="mt-1 text-[10px] text-admin-muted-2">
+                수익 아님 · 여행 배분 입금 - 여행 배분 출금 · {bankReality.travelCount}건
+                {bankReality.travelCount + bankReality.nonTravelCount > bankReality.transactionCount ? ' · 분할 포함' : ''}
+              </p>
             </div>
             <div className="bg-white px-4 py-3">
               <p className="text-[11px] font-medium text-admin-muted">정산 확정 수익</p>
@@ -1720,7 +1723,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             >
               <p className="text-[11px] font-medium text-admin-muted">여행 외 순변동</p>
               <p className={`mt-1 text-admin-base font-bold tabular-nums ${bankReality.nonTravelNet >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtWon(bankReality.nonTravelNet)}</p>
-              <p className="mt-1 text-[10px] text-admin-muted-2">경비·세금·광고·이체 포함 · {bankReality.nonTravelCount}건</p>
+              <p className="mt-1 text-[10px] text-admin-muted-2">
+                경비·세금·광고·이체 배분 · {bankReality.nonTravelCount}건
+                {bankReality.travelCount + bankReality.nonTravelCount > bankReality.transactionCount ? ' · 분할 포함' : ''}
+              </p>
             </button>
           </div>
 
@@ -1779,6 +1785,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               {bankReality.bookingCash && (
                 <p className="mt-1 text-[10px] text-admin-muted-2">
                   여행 현금 순포지션 = 확정 {fmtWon(bankReality.bookingCash.settled.cashNet)} + 출발 전 {fmtWon(bankReality.bookingCash.preDeparture.cashNet)} + 출발 후 미확정 {fmtWon(bankReality.bookingCash.departedUnsettled.cashNet)} + 날짜 누락 {fmtWon(bankReality.bookingCash.dateMissing.cashNet)} + 미배정 {fmtWon(bankReality.bookingCash.unallocatedTravelNet)}
+                </p>
+              )}
+              {bankReality.travelCount + bankReality.nonTravelCount > bankReality.transactionCount && (
+                <p className="mt-1 text-[10px] text-admin-muted-2">
+                  한 거래를 여행 환불과 은행 수수료처럼 나눈 경우 여행·회사 건수에 각각 한 번씩 표시됩니다. 금액은 배분선 기준으로 한 번만 합산됩니다.
                 </p>
               )}
             </div>
