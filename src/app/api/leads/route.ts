@@ -134,6 +134,8 @@ export async function POST(req: NextRequest) {
       itinerary_viewed: tracking?.itineraryViewed || false,
       submitted_at: submittedAt || new Date().toISOString(),
       attribution_snapshot: normalizedAttribution,
+      assisting_content_creative_id: normalizedAssistId,
+      search_query_hash: searchQueryHash,
     }).select('id').single();
 
     if (error) {

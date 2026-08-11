@@ -382,13 +382,6 @@ async function getPost(slug: string): Promise<BlogPost | null> {
 }
 
 async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
-    throw createBlogDatabaseUnavailableError();
-  }
-  if (shouldSkipPublicDbReadsForResourceSaver()) {
-    throw createBlogDatabaseUnavailableError();
-  }
-
   const dbSlug = safeDecodeSlug(slug);
   const snapshot = await loadBlogPublicDetailSnapshotV3(dbSlug).catch(() => null);
   if (snapshot) {
@@ -436,6 +429,12 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
       quality_gate: snapshot.quality_gate,
       travel_packages: null,
     };
+  }
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    throw createBlogDatabaseUnavailableError();
+  }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    throw createBlogDatabaseUnavailableError();
   }
   const postResult = await runBlogDetailQuery(
     'postFast',

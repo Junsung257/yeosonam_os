@@ -12,6 +12,9 @@
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
+| `BLOG_DETAIL_BUNDLE_MAX_AGE_HOURS` | `72` | DB 장애 시 선별 상세 본문 번들의 최대 허용 나이; 만료 시 fail-closed |
+| `BLOG_IMAGE_PHASH_APPLY_CONFIRM` | 없음 | pHash DB backfill 이중 확인값; 평소 환경 변수로 저장 금지 |
+| `BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM` | 없음 | 로컬 임시 DB reset 전용 확인값; preview/production 설정 금지 |
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 

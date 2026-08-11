@@ -123,7 +123,7 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 
 ## 11. 아직 운영에 적용하지 않은 작업
 
-- 4개 migration과 rollback/backfill SQL
+- 5개 migration과 rollback/backfill SQL
 - public snapshot refresh RPC 및 최초 snapshot 생성
 - corpus quarantine/noindex/redirect/status 변경
 - Naver/GSC search performance import
@@ -137,7 +137,7 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - 운영 200건의 147건 merge 후보는 자동 적용할 수 없고, 대표 문서 및 301/410을 편집자가 확인해야 한다.
 - pHash/embedding threshold는 labeled fixture로 시작했지만 실제 코퍼스 label로 재보정해야 한다.
 - 모델 credential 없이 실행한 offline canary는 source 진위와 실제 문장 품질을 보증하지 않는다.
-- bundled snapshot은 catalog metadata만 포함한다. 상세 full-body의 cold-start DB 전면 장애 fallback은 후속 운영 snapshot export가 필요하다.
+- 상세 full-body 번들 경로는 구현됐지만 현재 artifact는 0건이다. 운영 read-only snapshot export에서 핵심 URL을 선별하기 전까지 cold-start DB 전면 장애에서 본문 fallback은 발생하지 않는다.
 - 첫 production build는 high-core worker fan-out으로 실패했다. 4-worker build artifact는 통과했지만 전체 빌드 시간이 15분을 넘으므로 CI timeout/캐시 정책을 확인해야 한다.
 - 과거 검색엔진 캐시의 review-blocked 문서는 운영 disposition 적용과 Google/Naver removal 절차가 끝날 때까지 남을 수 있다.
 
@@ -145,7 +145,7 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 
 1. branch diff와 migration SQL을 review하고 `draft_only` 환경 변수를 준비한다.
 2. staging DB 백업/restore point를 만들고 rollback SQL을 별도 보관한다.
-3. migration을 staging에 순서대로 적용한다: policy -> demand/evidence -> snapshots/media -> measurement.
+3. migration을 staging에 순서대로 적용한다: policy -> demand/evidence -> snapshots/media -> measurement -> reliability follow-up.
 4. backfill dry-run과 SQL/TS parity fixture를 실행하고 row count/review 분포를 baseline과 비교한다.
 5. public snapshot을 staging에서 생성하고 catalog/detail/RSS/sitemap/image sitemap을 검증한다.
 6. 24개 이상의 provider-backed canary를 `draft_only`로 생성해 claim citation, duplicate, image license/pHash, review UI를 수동 확인한다.
@@ -154,3 +154,18 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 9. 앱을 production에 배포하되 mode는 `draft_only`로 유지한다. `/blog`, known slug, DB fault injection, sitemap/RSS/indexing exclusion, analytics consent를 검증한다.
 10. 24~72시간 오류율·field RUM·server event 유입을 관찰한다. 데이터가 0이면 성공이 아니라 readiness 오류로 처리한다.
 11. approved high-risk fixture와 실제 demand import가 통과한 뒤에만 `reviewed_only`를 검토한다. `live`는 별도 변경 승인 없이는 사용하지 않는다.
+
+## 14. 2026-08-12 reliability follow-up
+
+- 리드 분석 이벤트 손실 지점을 `analytics_server_event_outbox`와 lead INSERT trigger로 보강했다. 1차 타깃 테스트는 7 files / 22 tests가 통과했다.
+- 상세 페이지는 DB 장애 때 최대 20개 선별 full-body bundle을 사용할 수 있다. 번들이 비어 있거나 72시간을 넘으면 fail-closed이며, 현재 저장소 번들은 운영 SELECT 자격 증명이 없어 의도적으로 0건이다.
+- 기존 64-bit image dHash를 사용하는 dry-run backfill/중복 리포트 도구를 추가했다. 실제 pHash DB backfill은 실행하지 않았다.
+- zero-data readiness는 search 30d, engagement/RUM 7d, server event 30d, current snapshot, outbox를 검사한다. 0건과 query 실패는 critical이다.
+- Supabase CLI 2.113.0을 확인했다. `supabase status`는 Docker Desktop Linux engine이 실행 중이지 않아 실패했으므로 local migration reset/pgTAP은 실행하지 않았다.
+- migration rehearsal 스크립트는 local-only이며 `--linked`, `--db-url`, `--apply`를 거부한다. 이 follow-up에서도 운영 배포, 운영 DB write, migration apply는 0건이다.
+- working tree의 V3 migration 5개를 migration safety checker에 직접 입력한 결과 5 files / 0 issues였다. 결과는 `docs/audits/blog-quality-v3-migration-safety-report.json`에 저장했다.
+- 최종 regression은 blog 관련 184 files / 1,346 tests 전부 PASS, `npm run type-check` 오류 0, 전체 `npm run lint` 경고·오류 0이었다.
+- production build는 Next.js 15.5.21에서 재배치 전 672.8초, 최신 main 재배치 후 675.3초에 각각 PASS했고 389 static pages 생성 및 `.next` manifest/postbuild 검증까지 통과했다.
+- offline canary 재실행은 24 drafts, 24 destinations, 12 intents, 12 archetypes, duplicate title/opening 및 unsupported numeric/stale HIGH claim 모두 0으로 PASS했다.
+- pHash read-only 실행은 `.env.prod`의 placeholder key 때문에 `corpus_read_failed:Invalid API key`로 중단됐다. 따라서 실제 이미지 hash 수와 duplicate cluster는 아직 측정하지 않았고 DB update는 0건이다.
+- 작업 중 `origin/main`은 시작 commit `2ab65ef0`에서 finance 변경을 포함한 `8543d6d2`로 전진했다. blog 파일 직접 변경은 없었고, 5개 블로그 커밋을 최신 main 위에 충돌 없이 재배치했다. 재배치 후 typecheck, 1,346 tests, 전체 lint, production build를 모두 다시 통과했다.

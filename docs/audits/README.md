@@ -1,8 +1,9 @@
 # Audit Archive Index
 
 - 2026-08-11 — Blog Quality Engine V3 baseline, canary, corpus disposition/redirect preview, verification: `blog-quality-engine-v3-baseline-2026-08-11.md`
+- 2026-08-12 — Blog Quality Engine V3 reliability follow-up migration safety (5 files, 0 issues): `blog-quality-v3-migration-safety-report.json`
 
-Last updated: 2026-08-06
+Last updated: 2026-08-12
 
 This folder is an evidence archive, not the current operating playbook.
 

@@ -25,6 +25,10 @@ create table if not exists public.blog_publication_decisions (
   unique (creative_id, policy_version, decided_at)
 );
 
+create index if not exists idx_blog_publication_decisions_queue
+  on public.blog_publication_decisions(queue_id)
+  where queue_id is not null;
+
 create table if not exists public.blog_url_dispositions (
   id uuid primary key default gen_random_uuid(),
   creative_id uuid not null references public.content_creatives(id) on delete cascade,

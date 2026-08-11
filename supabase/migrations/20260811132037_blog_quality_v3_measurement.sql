@@ -1,5 +1,6 @@
 -- Consent-aware, non-PII content funnel and field performance dimensions.
-begin;
+-- This migration intentionally runs without an explicit transaction because
+-- the three existing high-volume tables require concurrent indexes.
 
 alter table public.blog_engagement_logs
   drop constraint if exists blog_engagement_logs_event_type_check;
@@ -31,12 +32,10 @@ alter table public.analytics_server_events
     references public.content_creatives(id) on delete set null,
   add column if not exists search_query_hash char(64) null;
 
-create index if not exists idx_blog_engagement_funnel on public.blog_engagement_logs(content_creative_id, event_type, created_at desc);
-create index if not exists idx_web_vitals_route_metric on public.web_vitals(route, name, created_at desc);
-create index if not exists idx_analytics_assisting_content on public.analytics_server_events(assisting_content_creative_id, occurred_at desc)
+create index concurrently if not exists idx_blog_engagement_funnel on public.blog_engagement_logs(content_creative_id, event_type, created_at desc);
+create index concurrently if not exists idx_web_vitals_route_metric on public.web_vitals(route, name, created_at desc);
+create index concurrently if not exists idx_analytics_assisting_content on public.analytics_server_events(assisting_content_creative_id, occurred_at desc)
   where assisting_content_creative_id is not null;
 
 comment on column public.blog_engagement_logs.search_query_hash is 'Optional one-way hash of an observed query; raw search terms are not collected from visitors.';
 comment on column public.analytics_server_events.assisting_content_creative_id is 'Article that assisted the server-side qualified lead, purchase, or booking event.';
-
-commit;

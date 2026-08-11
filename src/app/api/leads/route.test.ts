@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   findReplay: vi.fn(),
   createBooking: vi.fn(),
   recordServerAnalyticsEvent: vi.fn(),
+  leadInsert: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -47,6 +48,7 @@ describe('POST /api/leads customer identity boundary', () => {
     mocks.findReplay.mockReset();
     mocks.createBooking.mockReset();
     mocks.recordServerAnalyticsEvent.mockReset();
+    mocks.leadInsert.mockReset();
     mocks.findReplay.mockResolvedValue(null);
     mocks.createBooking.mockResolvedValue({
       booking: { id: 'booking-1' },
@@ -57,7 +59,7 @@ describe('POST /api/leads customer identity boundary', () => {
     mocks.from.mockImplementation((table: string) => {
       if (table !== 'leads') throw new Error(`unexpected table: ${table}`);
       return {
-        insert: vi.fn(() => ({
+        insert: mocks.leadInsert.mockImplementation(() => ({
           select: vi.fn(() => ({
             single: vi.fn(async () => ({ data: { id: 'lead-1' }, error: null })),
           })),
@@ -133,5 +135,9 @@ describe('POST /api/leads customer identity boundary', () => {
       payload: expect.objectContaining({ assisted_by_blog: true }),
     }));
     expect(mocks.recordServerAnalyticsEvent.mock.calls[0]?.[0]?.payload).not.toHaveProperty('search_query');
+    expect(mocks.leadInsert).toHaveBeenCalledWith(expect.objectContaining({
+      assisting_content_creative_id: assistingContentCreativeId,
+      search_query_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
   });
 });

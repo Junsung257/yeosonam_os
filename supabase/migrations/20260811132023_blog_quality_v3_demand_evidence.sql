@@ -131,9 +131,13 @@ left join public.blog_information_source_versions v on v.id = e.source_version_i
 create index if not exists idx_blog_search_performance_query_date on public.blog_search_performance(query, metric_date desc);
 create index if not exists idx_blog_search_performance_page_date on public.blog_search_performance(page_url, metric_date desc);
 create index if not exists idx_blog_demand_signals_queue on public.blog_demand_signals(queue_id, observed_at desc);
+create index if not exists idx_blog_demand_signals_creative on public.blog_demand_signals(creative_id, observed_at desc) where creative_id is not null;
 create index if not exists idx_blog_content_signatures_title on public.blog_content_signatures(normalized_title);
 create index if not exists idx_blog_content_signatures_intent on public.blog_content_signatures(intent_key, corpus_state);
+create index if not exists idx_blog_content_signatures_creative on public.blog_content_signatures(creative_id) where creative_id is not null;
+create index if not exists idx_blog_content_signatures_queue on public.blog_content_signatures(queue_id) where queue_id is not null;
 create index if not exists idx_blog_quality_evaluations_creative on public.blog_quality_evaluations(creative_id, evaluated_at desc);
+create index if not exists idx_blog_quality_evaluations_queue on public.blog_quality_evaluations(queue_id, evaluated_at desc) where queue_id is not null;
 
 alter table public.blog_search_performance enable row level security;
 alter table public.blog_demand_signals enable row level security;

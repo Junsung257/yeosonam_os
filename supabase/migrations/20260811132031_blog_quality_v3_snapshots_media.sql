@@ -14,13 +14,6 @@ create table if not exists public.blog_author_profiles (
   updated_at timestamptz not null default now()
 );
 
-alter table public.content_creatives
-  drop constraint if exists content_creatives_author_profile_id_fkey;
-alter table public.content_creatives
-  add constraint content_creatives_author_profile_id_fkey
-  foreign key (author_profile_id) references public.blog_author_profiles(id) on delete set null
-  not valid;
-
 create table if not exists public.blog_media_assets (
   id uuid primary key default gen_random_uuid(),
   asset_id text not null unique,
@@ -116,6 +109,7 @@ create table if not exists public.blog_public_catalog_facets (
 
 create index if not exists idx_blog_media_phash on public.blog_media_assets(perceptual_hash) where perceptual_hash is not null;
 create index if not exists idx_blog_media_location on public.blog_media_assets(location_entity_id, image_type);
+create index if not exists idx_blog_content_media_asset on public.blog_content_media(asset_id);
 create index if not exists idx_blog_snapshots_published on public.blog_public_snapshots(published_at desc) where is_current;
 create index if not exists idx_blog_snapshots_destination on public.blog_public_snapshots(destination, published_at desc) where is_current;
 
