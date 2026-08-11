@@ -76,6 +76,11 @@ interface TransactionRecord extends FinanceV3Transaction {
   match_status: string | null;
 }
 
+interface LiveReviewSnapshot {
+  booking_id: string;
+  review_fingerprint: string;
+}
+
 export interface FinanceBookingReviewRow {
   id: string;
   bookingNo: string;
@@ -86,6 +91,7 @@ export interface FinanceBookingReviewRow {
   financeExcluded: boolean;
   financeExclusionReason: string | null;
   travelKey: string | null;
+  transactionMemos: string[];
   totalPrice: number;
   totalCost: number;
   deposits: number;
@@ -96,6 +102,8 @@ export interface FinanceBookingReviewRow {
   transactionCount: number;
   reviewStatus: BookingSettlementReviewStatus;
   reviewFingerprint: string | null;
+  storedReviewFingerprint: string | null;
+  hasReviewDrift: boolean;
   decisionReason: string | null;
   assignedTo: string | null;
   dueDate: string | null;
@@ -143,9 +151,24 @@ async function loadTransactions(ids: string[]): Promise<TransactionRecord[]> {
   return rows;
 }
 
+async function loadLiveReviewSnapshots(ids: string[]): Promise<Map<string, LiveReviewSnapshot>> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return new Map();
+  const rows: LiveReviewSnapshot[] = [];
+  for (const batch of chunks(uniqueIds)) {
+    const { data, error } = await supabaseAdmin.rpc('finance_booking_review_live_snapshots', {
+      p_booking_ids: batch,
+    });
+    if (error) throw error;
+    rows.push(...((data ?? []) as LiveReviewSnapshot[]));
+  }
+  return new Map(rows.map(row => [row.booking_id, row]));
+}
+
 function buildRow(params: {
   booking: BookingRecord;
   review?: ReviewRecord;
+  liveSnapshot?: LiveReviewSnapshot;
   allocations: AllocationRecord[];
   transactions: TransactionRecord[];
   settlementKey?: string | null;
@@ -161,6 +184,9 @@ function buildRow(params: {
       .map(row => clobeSettlementKeyFromSourceMetadata(transactionById.get(row.bank_transaction_id)?.source_metadata))
       .find(Boolean)
     ?? null;
+  const transactionMemos = [...new Set(params.allocations
+    .map(row => transactionById.get(row.bank_transaction_id)?.memo?.trim())
+    .filter((memo): memo is string => Boolean(memo)))];
 
   return {
     id: params.booking.id,
@@ -172,11 +198,18 @@ function buildRow(params: {
     financeExcluded: Boolean(params.booking.finance_excluded),
     financeExclusionReason: params.booking.finance_exclusion_reason,
     travelKey,
+    transactionMemos,
     totalPrice: Math.round(Number(params.booking.total_price) || 0),
     totalCost: Math.round(Number(params.booking.total_cost) || 0),
     ...breakdown,
     reviewStatus: params.review?.status ?? 'pending',
-    reviewFingerprint: params.review?.review_fingerprint ?? null,
+    reviewFingerprint: params.liveSnapshot?.review_fingerprint ?? params.review?.review_fingerprint ?? null,
+    storedReviewFingerprint: params.review?.review_fingerprint ?? null,
+    hasReviewDrift: Boolean(
+      params.review?.review_fingerprint
+      && params.liveSnapshot?.review_fingerprint
+      && params.review.review_fingerprint !== params.liveSnapshot.review_fingerprint,
+    ),
     decisionReason: params.review?.decision_reason ?? null,
     assignedTo: params.review?.assigned_to ?? null,
     dueDate: params.review?.due_date ?? null,
@@ -224,6 +257,7 @@ export async function loadFinanceBookingReviews(filters: {
   const allocations = (allocationResult.data ?? []) as AllocationRecord[];
   const reviews = (reviewResult.data ?? []) as ReviewRecord[];
   const transactions = await loadTransactions(allocations.map(row => row.bank_transaction_id));
+  const liveSnapshotByBooking = await loadLiveReviewSnapshots(bookings.map(row => row.id));
   const reviewByBooking = new Map(reviews.map(row => [row.booking_id, row]));
   const keyByBooking = new Map((keyResult.data ?? []).map(row => [row.booking_id as string, row.normalized_key as string]));
   const allocationsByBooking = new Map<string, AllocationRecord[]>();
@@ -245,6 +279,7 @@ export async function loadFinanceBookingReviews(filters: {
     .map(booking => buildRow({
       booking,
       review: reviewByBooking.get(booking.id),
+      liveSnapshot: liveSnapshotByBooking.get(booking.id),
       allocations: allocationsByBooking.get(booking.id) ?? [],
       transactions,
       settlementKey: keyByBooking.get(booking.id),
@@ -253,7 +288,7 @@ export async function loadFinanceBookingReviews(filters: {
       if (filters.month && row.departureDate?.slice(0, 7) !== filters.month) return false;
       if (filters.status && filters.status !== 'all' && row.reviewStatus !== filters.status) return false;
       if (!normalizedQuery) return true;
-      return [row.bookingNo, row.customerName, row.packageTitle, row.travelKey, row.departureDate]
+      return [row.bookingNo, row.customerName, row.packageTitle, row.travelKey, row.departureDate, ...row.transactionMemos]
         .filter(Boolean)
         .some(value => String(value).normalize('NFKC').toLowerCase().includes(normalizedQuery));
     })
@@ -311,6 +346,7 @@ export async function loadFinanceBookingReviewDetail(bookingId: string): Promise
 
   const allocations = (allocationResult.data ?? []) as AllocationRecord[];
   const transactions = await loadTransactions(allocations.map(row => row.bank_transaction_id));
+  const liveSnapshotByBooking = await loadLiveReviewSnapshots([booking.id]);
   const transactionById = new Map(transactions.map(row => [row.id, row]));
   const reviews = (reviewResult.data ?? []) as ReviewRecord[];
   const currentReview = reviews.find(row => row.is_current) ?? reviews[0];
@@ -335,6 +371,7 @@ export async function loadFinanceBookingReviewDetail(bookingId: string): Promise
   const row = buildRow({
     booking,
     review: currentReview,
+    liveSnapshot: liveSnapshotByBooking.get(booking.id),
     allocations,
     transactions,
     settlementKey: keyResult.data?.[0]?.normalized_key as string | undefined,

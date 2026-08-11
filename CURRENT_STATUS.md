@@ -1,28 +1,17 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
-## 2026-08-11 상품등록 V6 기준선
-- 통합 hardening 단계에서 분석 결과(`verified/degraded/blocked`)와 공개 결과(`frozen/proof/pointer/convergence`)를 분리했다. publication freeze는 더 이상 상품 분석 실패로 기록되지 않는다.
-- 운영 읽기 전용 preflight에서 `travel_packages 989 / products 862 / revisions 2 / snapshots 14 / pointers 1`을 확인했다. legacy package 989건의 tenant가 비어 있고, 공개 package 1건은 pointer가 없어서 현재 kernel 전환은 차단 상태다.
-- 기존 internal-code backfill은 tenant를 비교하지 않아 813건을 다른 tenant identity에 연결할 위험이 있었다. 새 순방향 migration은 동일 tenant의 유일한 코드만 연결하고, 중복·충돌은 별도 catalog identity로 격리한다.
-- 기존 989건은 기능 플래그가 켜진 shadow에서 10건씩 같은 durable workflow로 자동 재처리한다. 백필은 고객 pointer를 변경하지 않으며, 시작 후 ledger bind가 끊겨도 operation key로 회복한다.
-- OAG/Cirium 호출에는 tenant-scoped idempotency ledger, 10분 lease, 결과 재사용, 최대 3회 제한을 추가했다. 같은 실행의 완료 결과는 다시 과금 호출하지 않지만, D-90·D-30·D-7은 서로 다른 freshness scope라 반드시 새 조회한다.
-- 현재 검증: 새 migration 5개/87 SQL 문장 parse, TypeScript·변경 파일 lint 통과, authority `authorized=1 legacy=143 unapproved=0`, 통합 핵심 133 tests와 전체 683 files/5,149 tests 통과, production build(정적 페이지 389개) 통과. 로컬 build의 blog DB 미연결 sitemap 경고는 fail-closed fallback이며 build 자체는 성공했다.
-- 운영 DB migration history가 저장소와 갈라져 있어 이번 작업에서는 schema·고객 pointer를 변경하지 않았다. migration reconciliation → freeze 상태 schema finalizer → shadow backfill → live RLS/provider/Chrome proof → 제한 cohort 순으로만 연다.
-- 로컬 통합 구현은 IR·Band·재추출·정정 입력을 동일 private source 저장소와 durable workflow로 연결했고, kernel 모드에서는 구형 stub/review/CRUD/승인 writer를 fail-closed 처리한다. scan 계열은 preview 전용이다.
-- kernel 고객 목록 API와 sitemap은 publication pointer와 immutable snapshot만으로 공개 상품을 찾는다. 목적지·홈·일부 블로그 추천 discovery는 아직 순차 전환 대상이며, 142개 legacy writer 코드는 운영 shadow/canary 롤백 기간 동안 명시적 baseline으로 남아 있다.
-- 로컬 검증은 SQL 2,695줄/221문장 parse, authority `authorized=1 legacy=142 unapproved=0`, 타입·린트·프로덕션 빌드, 등록 도메인 612개 테스트, 전체 5,140개 테스트까지 통과했다. 운영 DB 적용·989개 shadow backfill·live RLS/OAG/Cirium·실제 모바일 Chrome proof는 아직 수행하지 않았다.
+## 2026-08-11 상품등록 통합 권한 기준선
 
-- 로컬 통합 브랜치에서 같은 원문을 구형 파이프라인으로 재해석하던 V6 compatibility 단계를 제거했다. 신규 흐름은 EvidenceIR → immutable revision → compatibility projection 순서이며, revision 이전 `travel_packages` 생성은 없다.
-- `catalog_products`, tenant-scoped source blob/upload history, correction revision, terms/media/hotel/golf/profile/cohort/availability/schedule-revalidation 계약과 DB authority trigger를 순방향 마이그레이션으로 추가했다.
-- DB `kernel` 모드에서는 승인된 registration/projection/publication RPC 외 상품 사실·revision·pointer 직접 변경을 거부한다. 현재 142개 legacy writer는 전환 원장에 남아 있으며 kernel 전환 후에는 사실 변경 권한이 없다.
-- 공개 상품 항공편은 publish·D-90·D-30·D-7에 OAG/Cirium으로 재검증한다. 두 공급자가 동일한 변경을 확인하면 고객 판매 overlay를 즉시 `suspended`로 바꾸고 원문 기반 correction revision을 요구한다.
-- 이 변경 세트는 로컬 구현 상태다. `20260811074521_product_registration_authority_convergence.sql`의 운영 적용, 989개 shadow backfill, live RLS/Chrome proof/cohort 판정, 배포는 아직 수행하지 않았다. migration 기본값은 `shadow + publication_freeze=true`다.
-- V5 immutable revision·claim·proof·publication pointer를 권위 원천으로 재사용하고 V6 durable workflow와 typed domain projection을 연결했다.
-- 운영 DB에 `internal_product_registration` private schema와 V6 stage·provider·transport·golf·copy·dead-letter 원장을 추가했다. anon/authenticated의 V6 RPC 실행권은 없다.
-- 40개 HWP 고정 corpus는 `rhwp 0.8.2`로 40/40 추출, 66개 segment, 602개 claim의 evidence coverage 100%, render contract 66/66을 재현했다.
-- 신규 자동 공개는 아직 flag OFF다. 운영 Chrome/CDP, OAG·Cirium, OCR 인증·비용 값과 cohort canary가 확인되기 전에는 그림자 처리만 한다.
+- 신규 흐름은 `EvidenceIR → immutable revision → compatibility projection → immutable snapshot → private proof → CAS pointer` 순서다. `products`와 `travel_packages`는 권위 원천이 아니라 revision 이후 생성되는 호환 projection이다.
+- 운영 Supabase에는 상품등록 순방향 migration 18개를 저장소 순서대로 적용했고, tenant/catalog/revision/snapshot/pointer의 null·placeholder 차단 수는 모두 0이다. schema finalizer `product-registration-authority-hardened-1`도 통과해 tenant FK 검증이 끝났고 구형 공개 RPC 실행권은 회수됐다.
+- 운영 모드는 `shadow`, 전역 `publication_freeze=true`를 유지한다. 따라서 스키마는 강화됐지만 검증되지 않은 신규 상품을 자동 공개하지 않는다.
+- 고객 `/api/packages`, 홈, 목적지, sitemap은 authority mode와 무관하게 publication pointer와 immutable snapshot만 사용한다. mutable `travel_packages`의 `active/published` 표지만으로는 고객 상품이 되지 않는다.
+- 라이브 감사에서 기존 코타키나발루·후쿠오카 표시 상품 2건을 모두 권위 체인 실패로 차단했다. 후쿠오카는 저장 가격 85건과 snapshot 84건이 달랐고 모바일 proof가 현재 상태보다 오래됐으며 customer-open contract도 blocked였다.
+- 기존 internal-code backfill은 tenant를 비교하지 않아 813건을 다른 tenant identity에 연결할 위험이 있었다. 현재 migration은 동일 tenant의 유일한 코드만 연결하고 중복·충돌은 별도 catalog identity로 격리한다.
+- 기존 989건 shadow backfill, 실 OAG/Cirium/OCR provider, 실제 HWP canary, Chrome 모바일 proof, surface convergence가 남아 있다. 이 항목을 통과하기 전 전역 freeze 해제나 전량 공개는 금지한다.
+- 현재 코드 검증은 authority `authorized=1 legacy=143 unapproved=0`, 전체 684개 파일·5,154개 테스트, production build(정적 페이지 389개) 통과다. 로컬 production build는 약 14분 38초가 걸렸고 Supabase/blog env가 없는 sitemap은 빈 목록으로 fail-closed했다.
 
-> **정산센터 V3 (2026-08-06):** `/admin/finance`는 Clobe 신한 4128 거래를 분할 원장으로 관리한다. 거래 한 건을 예약·고객환불·은행수수료·회사경비·출장·세금·자본·이체·대표자인출 등으로 1원 단위 분할할 수 있고, 사장님의 예약별 `정산 확인` 없이는 양수 마진도 월마감·확정수익에 포함하지 않는다. 기존 자동확정 48건은 감사 스냅샷을 보존한 채 전부 재검토하며, 취소·오예약·테스트 예약은 복원 가능한 재무 제외 상태로 보관한다. 상세 계약: `docs/settlement-current-ssot.md`.
+> **정산센터 V3 무결성·UX 보강 (2026-08-11):** `/admin/finance`는 Clobe 신한 4128 거래를 분할 원장으로 관리하며 사장님의 예약별 `정산 확인` 없이는 월 확정수익에 포함하지 않는다. Clobe no-op 동기화는 결정을 무효화하지 않고 실제 메모·금액·배분 변경만 재검토를 만든다. 열린 여행 보호금은 예약별 고객 보유금과 남은 원가 중 큰 금액으로 계산해 이중 차감하지 않으며, 동기화는 4시간마다 최대 1,000건을 페이지로 읽고 초과 시 누락 없이 차단한다. 모바일 예약 검토, 예외 예약 식별, 회사 메모 전체 표시, 판매가·원가·검토 세금 할 일도 통합했다. 상세 계약: `docs/settlement-current-ssot.md`.
 
 > **AI 운영실 V1 (2026-07-28, 로컬 코드):** 기존 `agent_tasks`, `agent_approvals`, `agent_incidents`, `agent_trace_spans`를 `correlation_id` 작업실로 묶는 읽기 전용 통합 스냅샷과 `/admin/agent-mas` 운영 화면을 추가했다. 24시간 미갱신 작업과 7일 이상 지난 무기한 승인을 정체·기한 경과로 분리하며, 버전된 durable resume 상태가 연결되기 전까지 승인 큐는 관찰 전용이다. 실행은 백엔드 durable workflow, 스레드는 증거 타임라인, 외부·금전·고객 변경은 승인 경계라는 하이브리드 모델이며 자동 멀티에이전트 실행은 아직 열지 않았다. 상세 SSOT: `docs/agent-office-current-ssot.md`.
 

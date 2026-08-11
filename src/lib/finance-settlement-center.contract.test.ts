@@ -23,6 +23,14 @@ const nonTravelConservationMigration = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260806045208_finance_non_travel_allocation_conservation.sql'),
   'utf8',
 );
+const fingerprintIntegrityMigration = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260811113000_finance_review_fingerprint_integrity.sql'),
+  'utf8',
+);
+const resolvedFingerprintBackfillMigration = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260811121000_finance_review_fingerprint_v4_resolved_backfill.sql'),
+  'utf8',
+);
 const financeCenterService = readFileSync(
   join(process.cwd(), 'src/lib/finance-center-service.ts'),
   'utf8',
@@ -126,5 +134,23 @@ describe('finance settlement center contracts', () => {
     expect(migration).toContain("'legacy_booking_confirmation'");
     expect(migration).toContain("'migrated_from', 'bookings.settlement_confirmed_at'");
     expect(migration).toContain('ON CONFLICT (settlement_period_id, booking_id) DO NOTHING');
+  });
+
+  it('keeps no-op Clobe refreshes from invalidating owner settlement decisions', () => {
+    expect(fingerprintIntegrityMigration).toContain("'v4'");
+    expect(fingerprintIntegrityMigration).not.toContain("COALESCE(t.updated_at::text, '')");
+    expect(fingerprintIntegrityMigration).toContain('v_current.review_fingerprint = v_fingerprint');
+    expect(fingerprintIntegrityMigration).toContain("v_current.status = 'pending'");
+    expect(fingerprintIntegrityMigration).toContain('finance_booking_review_live_snapshots');
+    expect(financeSettlementV3Service).toContain(".rpc('finance_booking_review_live_snapshots'");
+    expect(financeSettlementV3Service).toContain('params.liveSnapshot?.review_fingerprint');
+    expect(resolvedFingerprintBackfillMigration).toContain('review.review_fingerprint IS DISTINCT FROM live.review_fingerprint');
+    expect(resolvedFingerprintBackfillMigration).not.toContain("SET status = 'pending'");
+  });
+
+  it('reconciles cancelled bookings instead of leaving hidden pending reviews', () => {
+    expect(fingerprintIntegrityMigration).toContain("WHERE status = 'cancelled'");
+    expect(fingerprintIntegrityMigration).toContain("SET status = 'customer_cancelled'");
+    expect(fingerprintIntegrityMigration).toContain('finance_excluded = true');
   });
 });

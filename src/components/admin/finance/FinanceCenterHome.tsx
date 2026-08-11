@@ -69,9 +69,18 @@ export default function FinanceCenterHome() {
     return <div className="h-72 animate-pulse rounded-admin-md bg-admin-surface-2" role="status" aria-label="정산 수치 계산 중" />;
   }
 
+  const syncAgeHours = summary.status.lastSyncAt
+    ? (Date.now() - new Date(summary.status.lastSyncAt).getTime()) / 3_600_000
+    : Number.POSITIVE_INFINITY;
+  const syncHealthy = summary.status.connected
+    && summary.status.lastSyncStatus === 'success'
+    && summary.status.sourceCount === summary.status.recognizedCount
+    && summary.status.difference === 0
+    && syncAgeHours <= 8;
+
   const metrics = [
     { label: '실제 통장 잔액', value: summary.metrics.actualBankBalance, icon: Banknote, hint: 'Clobe 최종 잔액', href: '/admin/finance?tab=review', tone: 'neutral' },
-    { label: '여행 보호금', value: summary.metrics.protectedTravelCash, icon: ShieldCheck, hint: `고객 돈 ${compactWon(summary.metrics.protectedCustomerFunds)} + 미지급 원가 ${compactWon(summary.metrics.unpaidSupplierCost)}`, href: '/admin/finance?tab=bookings', tone: 'warning' },
+    { label: '보수적 여행 필요액', value: summary.metrics.protectedTravelCash, icon: ShieldCheck, hint: `예약별 고객 돈·남은 원가 중 큰 금액 + 미배정`, href: '/admin/finance?tab=bookings', tone: 'warning' },
     { label: '세금 남은 적립금', value: summary.metrics.estimatedTaxReserve, icon: Coins, hint: `예상 ${compactWon(summary.metrics.estimatedTaxLiability)} · 납부 ${compactWon(summary.metrics.actualTaxPayments)}`, href: '/admin/finance?tab=tax', tone: 'warning' },
     { label: '회사 운영손익', value: summary.metrics.companyOperatingResult, icon: Building2, hint: '확정 여행수익 + 영업수입 - 회사경비', href: '/admin/finance?tab=expenses', tone: summary.metrics.companyOperatingResult >= 0 ? 'positive' : 'negative' },
     { label: '지금 써도 되는 돈', value: summary.metrics.safeToWithdraw, icon: Wallet, hint: summary.metrics.calculationStatus === 'clear' ? '보호금·세금 차감 후' : '검토 완료 전 출금 차단', href: '/admin/finance?tab=expenses', tone: summary.metrics.calculationStatus === 'clear' ? 'positive' : 'negative' },
@@ -81,15 +90,17 @@ export default function FinanceCenterHome() {
 
   return (
     <div className="space-y-5">
-      <section className={`flex flex-col gap-3 rounded-admin-md border px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between ${summary.status.difference === 0 ? 'border-emerald-200 bg-emerald-50/70' : 'border-red-200 bg-red-50'}`}>
+      <section className={`flex flex-col gap-3 rounded-admin-md border px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between ${syncHealthy ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-300 bg-amber-50'}`} role="status">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="font-semibold text-admin-text-2">Clobe {summary.status.connected ? '연결됨' : '연결 확인 필요'}</span>
+          <span className={`font-semibold ${syncHealthy ? 'text-emerald-800' : 'text-amber-900'}`}>Clobe {syncHealthy ? '자동 동기화 정상' : '동기화 확인 필요'}</span>
           <span>최근 동기화 {summary.status.lastSyncAt ? formatSettlementTimestamp(summary.status.lastSyncAt) : '기록 없음'}</span>
+          <span>상태 {summary.status.lastSyncStatus ?? '기록 없음'}</span>
           <span>원본 {summary.status.sourceCount}건</span>
           <span>OS 인식 {summary.status.recognizedCount}건</span>
           <span>통장 {won(summary.status.bankBalance)}</span>
           <span>OS {won(summary.status.osBalance)}</span>
           <strong className={summary.status.difference === 0 ? 'text-emerald-800' : 'text-red-700'}>차이 {won(summary.status.difference)}</strong>
+          {!syncHealthy ? <strong className="text-amber-900">실패·누락·8시간 초과 여부를 확인하세요.</strong> : null}
         </div>
         <div className="flex items-end gap-2 self-start sm:self-auto">
           <label className="text-[10px] font-semibold text-admin-muted">예상 세금률

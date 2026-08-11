@@ -53,6 +53,9 @@ interface Kpis {
 interface Todos {
   pending_transfers:  TaxBooking[];
   not_issued_receipts: TaxBooking[];
+  price_unconfirmed: TaxBooking[];
+  cost_unconfirmed: TaxBooking[];
+  review_pending: TaxBooking[];
 }
 
 // 최근 12개월 목록 생성
@@ -102,11 +105,12 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
   async function updateField(id: string, fields: Partial<TaxBooking>) {
     setSaving(s => ({ ...s, [id]: true }));
     try {
-      await fetch(`/api/tax/${id}`, {
+      const response = await fetch(`/api/tax/${id}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(fields),
       });
+      if (!response.ok) throw new Error(`tax update failed (${response.status})`);
       // 낙관적 업데이트
       setBookings(prev =>
         prev.map(b => b.id === id ? { ...b, ...fields } : b)
@@ -140,6 +144,16 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
     a.download = `세무기장_${month}.csv`;
     a.click();
   }
+
+  const additionalTodoGroups: Array<{
+    label: string;
+    items: TaxBooking[];
+    amount: (booking: TaxBooking) => number;
+  }> = todos ? [
+    { label: '판매가 미확정', items: todos.price_unconfirmed, amount: booking => booking.total_price },
+    { label: '랜드사 예정원가 미확정', items: todos.cost_unconfirmed, amount: booking => booking.total_cost },
+    { label: '예약 정산 재검토', items: todos.review_pending, amount: booking => booking.cash_margin },
+  ] : [];
 
   return (
     <div className="space-y-5">
@@ -206,7 +220,7 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
       )}
 
       {/* To-Do 경고 알림 */}
-      {todos && (todos.pending_transfers.length > 0 || todos.not_issued_receipts.length > 0) && (
+      {todos && !loading && (todos.pending_transfers.length > 0 || todos.not_issued_receipts.length > 0 || todos.price_unconfirmed.length > 0 || todos.cost_unconfirmed.length > 0 || todos.review_pending.length > 0) && (
         <div className="admin-card p-4 space-y-3 border-danger/30">
           <h2 className="text-admin-base font-semibold text-danger flex items-center gap-2">
             <AlertTriangle size={16} />
@@ -248,12 +262,19 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
               </div>
             </div>
           )}
+          {additionalTodoGroups.map(group => {
+            if (group.items.length === 0) return null;
+            return <div key={group.label}><p className="mb-2 text-admin-xs font-semibold text-danger">{group.label} <span className="admin-num">{group.items.length}</span>건</p><div className="flex flex-wrap gap-1.5">{group.items.map(booking => <Link key={booking.id} href={`/admin/finance?tab=bookings&q=${encodeURIComponent(booking.booking_no)}`} className="rounded-full border border-danger/30 bg-admin-surface px-2.5 py-1 text-admin-xs text-danger transition-colors hover:bg-danger-light">{booking.booking_no} ({booking.customers?.name ?? '?'}, ₩{fmt(group.amount(booking))})</Link>)}</div></div>;
+          })}
         </div>
       )}
 
-      {todos &&
+      {todos && !loading &&
        todos.pending_transfers.length === 0 &&
        todos.not_issued_receipts.length === 0 &&
+       todos.price_unconfirmed.length === 0 &&
+       todos.cost_unconfirmed.length === 0 &&
+       todos.review_pending.length === 0 &&
        bookings.length > 0 && (
         <div className="bg-status-successBg border border-success/20 rounded-admin-sm p-3 flex items-center gap-2">
           <CheckCircle2 size={16} className="text-status-successFg" />

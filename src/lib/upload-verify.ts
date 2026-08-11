@@ -487,48 +487,11 @@ function isIsoDateKey(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function sourceMonthDayDatesForYear(rawText: string, year: number): Date[] {
-  const dates: Date[] = [];
-  const seen = new Set<string>();
-  const monthDayRe = /(^|[^\d])(\d{1,2})\s*\/\s*(\d{1,2})(?!\s*\/?\d)/g;
-  const addDate = (month: number, day: number) => {
-    if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) return;
-    const date = new Date(Date.UTC(year, month - 1, day));
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return;
-    const key = date.toISOString().slice(0, 10);
-    if (seen.has(key)) return;
-    seen.add(key);
-    dates.push(date);
-  };
-  for (const line of rawText.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!/^\d{1,2}\s*\/\s*\d{1,2}/.test(trimmed)) continue;
-    for (const match of trimmed.matchAll(monthDayRe)) {
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      addDate(month, day);
-      const tail = trimmed.slice((match.index ?? 0) + match[0].length);
-      for (const tailMatch of tail.matchAll(/[,，]\s*(\d{1,2})(?!\s*\/)/g)) {
-        addDate(month, Number(tailMatch[1]));
-      }
-    }
-  }
-  return dates;
-}
-
-function shouldPreferFutureDbPriceYear(pkg: PackageRow, rawText: string, sourceYear: number, dbYear: number): boolean {
-  if (dbYear <= sourceYear) return false;
-
-  const now = new Date();
-  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const existingRows = (pkg.price_dates ?? [])
-    .map(row => (typeof row.date === 'string' && isIsoDateKey(row.date) ? new Date(`${row.date}T00:00:00Z`) : null))
-    .filter((date): date is Date => date instanceof Date && Number.isFinite(date.getTime()));
-  const allExistingFuture = existingRows.length > 0 && existingRows.every(date => date.getTime() >= todayUtc);
-  if (!allExistingFuture || sourceYear > now.getUTCFullYear()) return false;
-
-  const sourceDates = sourceMonthDayDatesForYear(rawText, sourceYear);
-  return sourceDates.length > 0 && sourceDates.every(date => date.getTime() < todayUtc);
+function hasExplicitSourcePriceYearCue(rawText: string, year: number): boolean {
+  const priceYearCue = /(fare|price|rate|tariff|distributed|effective|상품|요금|판매가|출발|적용|배포|기간)/i;
+  return rawText
+    .split(/\r?\n/)
+    .some(line => line.includes(String(year)) && priceYearCue.test(line));
 }
 
 function inferPriceVerifyYear(pkg: PackageRow, rawText: string): number {
@@ -536,12 +499,13 @@ function inferPriceVerifyYear(pkg: PackageRow, rawText: string): number {
   const dbYear = (pkg.price_dates ?? [])
     .map(row => (typeof row.date === 'string' ? Number(row.date.slice(0, 4)) : NaN))
     .find(year => Number.isFinite(year) && year >= 2000);
-  if (sourceYear && dbYear && dbYear > sourceYear) {
-    if (shouldPreferFutureDbPriceYear(pkg, rawText, sourceYear, dbYear)) return dbYear;
+  if (sourceYear && (!dbYear || dbYear <= sourceYear || hasExplicitSourcePriceYearCue(rawText, sourceYear))) {
+    return sourceYear;
   }
-  if (sourceYear) return sourceYear;
 
   if (dbYear) return dbYear;
+
+  if (sourceYear) return sourceYear;
 
   const rawYear = Number(rawText.match(/\b(20\d{2})\b/)?.[1] ?? 0);
   if (rawYear >= 2000) return rawYear;
@@ -716,14 +680,13 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       departureDays: depDays,
       accommodations: pkg.accommodations ?? [],
     });
-    const today = todayKstDateKey();
     const expectedRows = filterSourceBackedPriceRowsForPublicEvidence(
       pkg,
       selectSourceBackedPriceRows(pkg, expected.rows),
       { includePast: true },
     );
     const dbPriceDates = Array.isArray(pkg.price_dates)
-      ? pkg.price_dates.filter(row => typeof row.date === 'string')
+      ? pkg.price_dates.filter(row => isIsoDateKey(row.date))
       : [];
     if (expectedRows.length === 0) {
       checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });

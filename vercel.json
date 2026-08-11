@@ -27,7 +27,7 @@
     },
     {
       "path": "/api/cron/clobe-bank-sync",
-      "schedule": "12 19 * * *"
+      "schedule": "12 3,7,11,15,19,23 * * *"
     },
     {
       "path": "/api/cron/refresh-registration-mv",

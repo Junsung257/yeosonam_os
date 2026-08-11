@@ -17,6 +17,7 @@ import {
 } from '@/lib/finance-center-service';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
     const from = typeof body.from === 'string' && body.from ? body.from : window.from;
     const to = typeof body.to === 'string' && body.to ? body.to : window.to;
     let accountNumber = await resolveAccountNumber(body.accountNumber);
-    const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(1000, Number(body.limit))) : 200;
+    const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(1000, Number(body.limit))) : 1000;
     const tenantId = await resolveTenantId(body.tenant_id ?? body.tenantId);
 
     let rawPayload: unknown = body.transactions;
@@ -98,6 +99,8 @@ export async function POST(request: NextRequest) {
       toolName: string | null;
       toolNames: string[];
       bankToolAvailable: boolean;
+      truncated: boolean;
+      nextCursor: string | null;
       attempts: Array<{ toolName: string; extracted: number; normalized: number; resultKeys: string[]; contentTypes: string[]; resultShape: unknown; error?: string }>;
       scrapingStatus: Array<{
         assetType: string | null;
@@ -120,7 +123,7 @@ export async function POST(request: NextRequest) {
           values: string[];
         }>;
       }>;
-    } = { toolName: null, toolNames: [], bankToolAvailable: false, attempts: [], scrapingStatus: [], tools: [] };
+    } = { toolName: null, toolNames: [], bankToolAvailable: false, truncated: false, nextCursor: null, attempts: [], scrapingStatus: [], tools: [] };
 
     if (!Array.isArray(rawPayload)) {
       if (!tenantId) {
@@ -157,11 +160,21 @@ export async function POST(request: NextRequest) {
         toolName: fetched.toolName,
         toolNames: fetched.toolNames,
         bankToolAvailable: fetched.bankToolAvailable,
+        truncated: fetched.truncated,
+        nextCursor: fetched.nextCursor,
         attempts: fetched.attempts,
         scrapingStatus: fetched.scrapingStatus,
         scrapingStatusError: fetched.scrapingStatusError,
         tools: fetched.tools,
       };
+      if (fetched.truncated) {
+        return NextResponse.json({
+          success: false,
+          code: 'clobe_sync_window_too_dense',
+          error: `${from} ~ ${to} 기간에 ${limit}건을 초과하는 거래가 있습니다. 누락 방지를 위해 기간을 나눠 다시 동기화해주세요.`,
+          mcp,
+        }, { status: 409 });
+      }
     }
 
     const fetched = Array.isArray(rawPayload) ? rawPayload.length : 0;

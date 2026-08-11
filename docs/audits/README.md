@@ -86,6 +86,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-11 | `2026-08-11-finance-integrity-and-ux.md` | Clobe review fingerprint integrity, reserve math, booking/month-close UX, production DB reconciliation, and release evidence. |
 | 2026-08-06 | `2026-08-06-finance-v3-revalidation.md` | Settlement Center V3 split allocation, owner review, legacy revalidation, production reconciliation, and case-correction evidence. |
 
 ## Marketing, Blog, And Ad OS
