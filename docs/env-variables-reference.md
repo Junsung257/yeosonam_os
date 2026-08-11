@@ -9,10 +9,12 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 | 변수 | 용도 | 안전한 기본값 |
 |---|---|---|
 | `PRODUCT_REGISTRATION_AUTHORITY_MODE` | `legacy`, `shadow`, `kernel` 중 등록 writer 권위 선택. `shadow`와 `kernel`은 V6 durable workflow를 사용하며 고객 공개는 `kernel`에서만 가능 | `legacy` |
-| `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | `/api/upload`을 Vercel Workflow V6에 연결 | `0` |
+| `PRODUCT_REGISTRATION_PLATFORM_TENANT_ID` | 플랫폼 자체 업로드·공개 surface의 명시적 tenant UUID. 신규 kernel 업로드에서는 필수 | 미설정 |
+| `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | 과거 호환 변수. 현재 workflow 권위는 `PRODUCT_REGISTRATION_AUTHORITY_MODE=shadow|kernel`에서만 결정하며 이 값만으로 켜지지 않음 | `0` |
 | `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
 | `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |
 | `PRODUCT_REGISTRATION_PUBLICATION_FREEZE` | `1`이면 모든 신규 V6 공개 차단 | `1` |
+| `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED` | 기존 `travel_packages`를 같은 Kernel로 비공개 재처리. migration·schema finalizer 이후 shadow에서만 켬 | `0` |
 | `PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED` | 고객 면에서 pointer로 지정된 immutable snapshot만 읽기 | canary 전 `0`, 전환 후 `1` |
 | `PRODUCT_REGISTRATION_PROOF_SECRET` | snapshot·hash·package에 귀속된 proof URL HMAC secret | 무작위 32바이트 이상 |
 | `PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT` | 운영 Chrome/CDP 원격 엔드포인트. 없으면 proof는 fail-closed | 미설정 |

@@ -22,11 +22,25 @@ Implemented in branch `codex/product-registration-engine-v6-20260811`:
 
 Deployment truth:
 
-- The forward migration `20260811074521_product_registration_authority_convergence.sql` and this branch are locally implemented and syntax/type/unit verified, but this change set has not been applied to the production database or deployed from this task.
-- The migration defaults DB authority to `shadow` and publication freeze to `true`. Runtime defaults remain `legacy` unless `PRODUCT_REGISTRATION_AUTHORITY_MODE` is explicitly set. Customer auto-publication therefore remains fail-closed.
-- The authority audit currently records 142 legacy writers as an explicit retirement baseline. They cannot mutate product facts after DB authority changes to `kernel`; their code remains during staged rollback and must be retired only after live shadow/canary evidence.
-- Local verification passes SQL parsing (2,695 lines, 221 statements), authority audit (`authorized=1 legacy=142 unapproved=0`), type check, lint, production build, 100 registration-domain files / 612 tests, and the full 681 files / 5,140 tests. These checks do not replace live DB, corpus, provider, cache, or browser proof.
-- Existing 989 products have not yet been run through the new production shadow backfill in this task. Cohort metrics, live RLS tests, real Chrome proof, and a controlled migration/deployment packet are required before changing `shadow` to `kernel` or releasing publication freeze.
+- The authority-convergence migration and five additive hardening migrations are implemented locally, but this task has **not** mutated the production schema or customer publication pointers. The linked migration history is divergent, so applying files out of order is prohibited.
+- A read-only live preflight saw `travel_packages=989`, `products=862`, V5 revisions `2`, snapshots `14`, and publication pointers `1`. It also found all 989 legacy package rows without tenant lineage, four duplicate/ambiguous package-code groups, one unbound revision, and one currently public package without a pointer.
+- The old code-only identity backfill would have linked 813 product/package pairs across different tenants. `20260811115754_product_registration_tenant_identity_reconciliation.sql` now rejects those links, matches only same-tenant unique identities, and creates quarantined separate identities instead of guessing.
+- Registration completion and customer publication are separate state axes. A source can remain `verified` or `degraded` while publication is `frozen`; freeze is no longer recorded as a false analysis failure.
+- OAG/Cirium calls are protected by a durable operation ledger, request-hash conflict checks, a ten-minute lease, stored-result reuse, and a three-attempt ceiling. Reuse is scoped to one registration or one schedule checkpoint, so D-90 data is never reused as D-30/D-7 freshness evidence. Provider charging is recorded only for the call that owns the reservation.
+- Existing inventory backfill is now a feature-flagged shadow workflow. It claims at most 25 packages, binds each run to the existing tenant/catalog identity, never publishes, and automatically heals a lost follow-up bind from a deterministic operation key. It is disabled unless `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED=1`.
+- Runtime authority defaults to `legacy` unless `PRODUCT_REGISTRATION_AUTHORITY_MODE` is explicitly set. DB finalization must occur while publication is frozen; it validates tenant/catalog foreign keys and only then revokes legacy publication RPC execution.
+- The current authority scan is `authorized=1 legacy=143 unapproved=0`. The 143 legacy writers are a measured retirement ledger, not extra authorities: kernel database guards prevent them from changing canonical facts or publication.
+- The latest hardening verification passes TypeScript, changed-file lint, SQL parsing for all five new migrations (87 statements), authority/registration contracts, 133 focused tests, the full 683-file/5,149-test suite, and a production Next.js build (389 static pages). The build's local sitemap reported the expected unavailable blog database warning but completed successfully.
+- Customer opening remains blocked until migrations are reconciled and applied in a controlled packet, schema finalization passes, 989 legacy rows reach terminal shadow outcomes, the public package without a pointer is rebuilt, live RLS/provider/browser proof passes, and cohort error thresholds permit canary publication.
+
+Safe deployment order:
+
+1. Keep application mode `legacy`, publication frozen, and backfill disabled.
+2. Reconcile remote migration history; apply authority convergence and additive hardening migrations in repository order.
+3. Run `npm run preflight:product-registration-authority:strict`, then call the explicit schema finalizer while freeze remains on.
+4. Deploy `shadow`, enable the workflow and legacy backfill, and classify all 989 package rows without moving customer pointers.
+5. Pass live tenant/RLS, provider, private Chrome proof, and surface-convergence tests.
+6. Promote a bounded cohort to `kernel`; only after its error budget holds may publication freeze be removed for that cohort.
 
 ## V6 통합 자동화 계약 (2026-08-11)
 

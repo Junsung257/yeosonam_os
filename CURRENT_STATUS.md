@@ -1,6 +1,13 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
 ## 2026-08-11 상품등록 V6 기준선
+- 통합 hardening 단계에서 분석 결과(`verified/degraded/blocked`)와 공개 결과(`frozen/proof/pointer/convergence`)를 분리했다. publication freeze는 더 이상 상품 분석 실패로 기록되지 않는다.
+- 운영 읽기 전용 preflight에서 `travel_packages 989 / products 862 / revisions 2 / snapshots 14 / pointers 1`을 확인했다. legacy package 989건의 tenant가 비어 있고, 공개 package 1건은 pointer가 없어서 현재 kernel 전환은 차단 상태다.
+- 기존 internal-code backfill은 tenant를 비교하지 않아 813건을 다른 tenant identity에 연결할 위험이 있었다. 새 순방향 migration은 동일 tenant의 유일한 코드만 연결하고, 중복·충돌은 별도 catalog identity로 격리한다.
+- 기존 989건은 기능 플래그가 켜진 shadow에서 10건씩 같은 durable workflow로 자동 재처리한다. 백필은 고객 pointer를 변경하지 않으며, 시작 후 ledger bind가 끊겨도 operation key로 회복한다.
+- OAG/Cirium 호출에는 tenant-scoped idempotency ledger, 10분 lease, 결과 재사용, 최대 3회 제한을 추가했다. 같은 실행의 완료 결과는 다시 과금 호출하지 않지만, D-90·D-30·D-7은 서로 다른 freshness scope라 반드시 새 조회한다.
+- 현재 검증: 새 migration 5개/87 SQL 문장 parse, TypeScript·변경 파일 lint 통과, authority `authorized=1 legacy=143 unapproved=0`, 통합 핵심 133 tests와 전체 683 files/5,149 tests 통과, production build(정적 페이지 389개) 통과. 로컬 build의 blog DB 미연결 sitemap 경고는 fail-closed fallback이며 build 자체는 성공했다.
+- 운영 DB migration history가 저장소와 갈라져 있어 이번 작업에서는 schema·고객 pointer를 변경하지 않았다. migration reconciliation → freeze 상태 schema finalizer → shadow backfill → live RLS/provider/Chrome proof → 제한 cohort 순으로만 연다.
 - 로컬 통합 구현은 IR·Band·재추출·정정 입력을 동일 private source 저장소와 durable workflow로 연결했고, kernel 모드에서는 구형 stub/review/CRUD/승인 writer를 fail-closed 처리한다. scan 계열은 preview 전용이다.
 - kernel 고객 목록 API와 sitemap은 publication pointer와 immutable snapshot만으로 공개 상품을 찾는다. 목적지·홈·일부 블로그 추천 discovery는 아직 순차 전환 대상이며, 142개 legacy writer 코드는 운영 shadow/canary 롤백 기간 동안 명시적 baseline으로 남아 있다.
 - 로컬 검증은 SQL 2,695줄/221문장 parse, authority `authorized=1 legacy=142 unapproved=0`, 타입·린트·프로덕션 빌드, 등록 도메인 612개 테스트, 전체 5,140개 테스트까지 통과했다. 운영 DB 적용·989개 shadow backfill·live RLS/OAG/Cirium·실제 모바일 Chrome proof는 아직 수행하지 않았다.
