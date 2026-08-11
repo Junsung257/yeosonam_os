@@ -681,6 +681,7 @@ export function needsNonTravelMemoReview(row: BankAccountRealityRow): boolean {
 
 export function calculateBankAccountReality(
   inputRows: BankAccountRealityRow[],
+  allocations: BookingCashAllocationRow[] = [],
 ): BankAccountRealitySummary {
   const rows = inputRows
     .filter(row => Number.isFinite(Number(row.amount)) && Number(row.amount) > 0)
@@ -695,6 +696,14 @@ export function calculateBankAccountReality(
       + (isDeposit(earliestWithBalance) ? 0 : money(earliestWithBalance.amount))
     : 0;
 
+  const allocationsByTransaction = new Map<string, BookingCashAllocationRow[]>();
+  for (const allocation of allocations) {
+    if (!allocation.bank_transaction_id || money(allocation.allocated_amount) <= 0) continue;
+    const current = allocationsByTransaction.get(allocation.bank_transaction_id) ?? [];
+    current.push(allocation);
+    allocationsByTransaction.set(allocation.bank_transaction_id, current);
+  }
+
   const totals = rows.reduce((result, row) => {
     const amount = money(row.amount);
     const deposit = isDeposit(row) ? amount : 0;
@@ -702,15 +711,38 @@ export function calculateBankAccountReality(
     result.totalDeposits += deposit;
     result.totalWithdrawals += withdrawal;
 
-    if (row.settlement_scope === 'non_travel') {
+    let remaining = amount;
+    let travelAmount = 0;
+    let nonTravelAmount = 0;
+    for (const allocation of row.id ? (allocationsByTransaction.get(row.id) ?? []) : []) {
+      if (remaining <= 0) break;
+      const allocated = Math.min(remaining, money(allocation.allocated_amount));
+      if (allocated <= 0) continue;
+      remaining -= allocated;
+      const target = allocation.target_type
+        ?? (allocation.booking_id ? 'booking' : null);
+      const isTravel = target === 'booking'
+        || target === 'customer_refund'
+        || (target === 'unassigned' && row.settlement_scope !== 'non_travel')
+        || (target == null && row.settlement_scope !== 'non_travel');
+      if (isTravel) travelAmount += allocated;
+      else nonTravelAmount += allocated;
+    }
+    if (remaining > 0) {
+      if (row.settlement_scope === 'non_travel') nonTravelAmount += remaining;
+      else travelAmount += remaining;
+    }
+
+    if (nonTravelAmount > 0) {
       result.nonTravelCount += 1;
-      result.nonTravelDeposits += deposit;
-      result.nonTravelWithdrawals += withdrawal;
+      result.nonTravelDeposits += isDeposit(row) ? nonTravelAmount : 0;
+      result.nonTravelWithdrawals += isDeposit(row) ? 0 : nonTravelAmount;
       if (needsNonTravelMemoReview(row)) result.memoReviewCount += 1;
-    } else {
+    }
+    if (travelAmount > 0) {
       result.travelCount += 1;
-      result.travelDeposits += deposit;
-      result.travelWithdrawals += withdrawal;
+      result.travelDeposits += isDeposit(row) ? travelAmount : 0;
+      result.travelWithdrawals += isDeposit(row) ? 0 : travelAmount;
     }
     return result;
   }, {

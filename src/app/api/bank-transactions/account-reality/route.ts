@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const bankSummary = calculateBankAccountReality(transactions);
+  const bankSummary = calculateBankAccountReality(transactions, allocations);
   const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings });
   const profitErp = calculateBankProfitErp({
     bankSummary,

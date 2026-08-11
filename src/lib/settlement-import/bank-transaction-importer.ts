@@ -24,6 +24,10 @@ import {
   selectUniqueClobeBootstrapCandidate,
 } from './bank-transaction-dedupe-policy';
 import { evaluateProviderMemoChange } from './provider-memo-change';
+import {
+  accountEvidenceFieldsFor,
+  accountFieldsFor,
+} from './bank-transaction-account-evidence';
 
 export type BankTransactionImportSource = 'bulk_import' | 'clobe_mcp' | 'clobe_api';
 export type BankTransactionImportAction =
@@ -151,16 +155,6 @@ function sourceMetadataFor(input: {
     external_provider: input.row.externalProvider ?? null,
     external_transaction_id: input.row.externalTransactionId ?? null,
     imported_at: new Date().toISOString(),
-  };
-}
-
-function accountFieldsFor(row: BankTransactionImportRow, settlementScope: 'travel' | 'non_travel') {
-  return {
-    settlement_scope: settlementScope,
-    account_number: row.accountNumber?.replace(/\D/g, '') || null,
-    balance_after: row.balanceAfter ?? null,
-    provider_category: row.providerCategory ?? null,
-    provider_is_unclassified: row.providerIsUnclassified ?? null,
   };
 }
 
@@ -413,7 +407,8 @@ async function attachImportEvidence(existingId: string, input: {
   const patch: Record<string, unknown> = {
     transaction_fingerprint: input.fingerprint,
     raw_payload: input.row.rawPayload ?? {},
-    ...accountFieldsFor(input.row, 'travel'),
+    // Provider evidence is not an accounting reclassification.
+    ...accountEvidenceFieldsFor(input.row),
     source_metadata: {
       ...previousMetadata,
       [input.source]: {
