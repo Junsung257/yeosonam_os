@@ -72,6 +72,7 @@ export interface FinanceCenterSummary {
     lastSyncStatus: string | null;
     sourceCount: number;
     recognizedCount: number;
+    ledgerCount: number;
     bankBalance: number;
     osBalance: number;
     difference: number;
@@ -344,6 +345,7 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
         lastSyncStatus: latestSync?.status ?? null,
         sourceCount: latestSync?.source_count ?? bankSummary.transactionCount,
         recognizedCount: latestSync?.recognized_count ?? bankSummary.transactionCount,
+        ledgerCount: bankSummary.transactionCount,
         bankBalance: bankSummary.actualBalance,
         osBalance: bankSummary.computedBalance,
         difference: bankSummary.reconciliationDifference,
