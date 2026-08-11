@@ -6,6 +6,7 @@ do $$
 declare
   v_function_definition text;
   v_old_predicate text := 'and (package_id is null or package_id = p_package_id)';
+  v_hardened_predicate text := 'and package_id = p_package_id';
 begin
   select pg_get_functiondef(p.oid)
     into v_function_definition
@@ -18,10 +19,10 @@ begin
   if v_function_definition is null then
     raise exception 'V5_PUBLICATION_RPC_NOT_FOUND';
   end if;
-  if position(v_old_predicate in v_function_definition) = 0 then
+  if position(v_old_predicate in v_function_definition) > 0 then
+    execute replace(v_function_definition, v_old_predicate, v_hardened_predicate);
+  elsif position(v_hardened_predicate in v_function_definition) = 0 then
     raise exception 'V5_PUBLICATION_RPC_PREDICATE_NOT_FOUND';
   end if;
-
-  execute replace(v_function_definition, v_old_predicate, 'and package_id = p_package_id');
 end;
 $$;

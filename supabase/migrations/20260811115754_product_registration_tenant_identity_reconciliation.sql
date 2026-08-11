@@ -11,11 +11,13 @@ where p.catalog_product_id = cp.id
 
 update public.travel_packages
 set tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
-where tenant_id is null;
+where tenant_id is null
+   or tenant_id = '00000000-0000-0000-0000-000000000000'::uuid;
 
 update public.products
 set tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
-where tenant_id is null;
+where tenant_id is null
+   or tenant_id = '00000000-0000-0000-0000-000000000000'::uuid;
 
 -- The previous additive backfill intentionally preserved legacy matching.
 -- Clear only cross-tenant matches; same-tenant unambiguous links remain valid.

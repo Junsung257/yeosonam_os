@@ -22,6 +22,19 @@ values (
 )
 on conflict (id) do nothing;
 
+-- Older deployments used the all-zero UUID as a platform-owner placeholder.
+-- It is not a real tenants row and must be normalized exactly like NULL before
+-- any tenant-scoped catalog foreign key is created. Real tenant IDs are kept.
+update public.products
+set tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
+where tenant_id is null
+   or tenant_id = '00000000-0000-0000-0000-000000000000'::uuid;
+
+update public.travel_packages
+set tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
+where tenant_id is null
+   or tenant_id = '00000000-0000-0000-0000-000000000000'::uuid;
+
 create table if not exists internal_product_registration.catalog_products (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete restrict,
@@ -148,7 +161,8 @@ alter table public.product_registration_v5_publication_pointers
 alter table public.product_registration_v5_publication_outbox
   add column if not exists catalog_product_id uuid;
 alter table public.public_package_snapshots
-  add column if not exists catalog_product_id uuid;
+  add column if not exists catalog_product_id uuid,
+  add column if not exists tenant_id uuid;
 alter table public.package_publish_decisions
   add column if not exists catalog_product_id uuid,
   add column if not exists tenant_id uuid;
@@ -1419,7 +1433,7 @@ insert into internal_product_registration.catalog_products (
 )
 select
   p.id,
-  coalesce(p.tenant_id, '00000000-0000-0000-0000-000000000001'::uuid),
+  coalesce(nullif(p.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), '00000000-0000-0000-0000-000000000001'::uuid),
   'legacy:travel-package:' || p.id::text,
   case
     when p.internal_code is not null and exists (
@@ -1456,7 +1470,7 @@ insert into internal_product_registration.catalog_products (
   tenant_id, product_key, identity_status, source_channel, metadata
 )
 select
-  coalesce(pr.tenant_id, '00000000-0000-0000-0000-000000000001'::uuid),
+  coalesce(nullif(pr.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), '00000000-0000-0000-0000-000000000001'::uuid),
   'legacy:product:' || pr.internal_code,
   case
     when exists (
@@ -1474,7 +1488,7 @@ update public.products pr
 set catalog_product_id = cp.id
 from internal_product_registration.catalog_products cp
 where pr.catalog_product_id is null
-  and cp.tenant_id = coalesce(pr.tenant_id, '00000000-0000-0000-0000-000000000001'::uuid)
+  and cp.tenant_id = coalesce(nullif(pr.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), '00000000-0000-0000-0000-000000000001'::uuid)
   and cp.product_key = 'legacy:product:' || pr.internal_code;
 
 -- Revisions that already have a compatibility package inherit its stable ID.
@@ -1491,7 +1505,11 @@ insert into internal_product_registration.catalog_products (
 )
 select
   r.id,
-  coalesce(r.tenant_id, s.tenant_id, '00000000-0000-0000-0000-000000000001'::uuid),
+  coalesce(
+    nullif(r.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    nullif(s.tenant_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    '00000000-0000-0000-0000-000000000001'::uuid
+  ),
   'legacy:unbound-revision:' || r.id::text,
   'quarantined',
   'quarantined',
