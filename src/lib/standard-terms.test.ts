@@ -22,6 +22,7 @@ import {
   hasSpecialTermsBanner,
   shouldSuppressStandardCancelTable,
   filterNoticesForSurface,
+  buildRegistrationTermsPolicySnapshot,
   NOTICE_DOT_COLOR,
   NOTICE_CARD_TONE,
 } from './standard-terms';
@@ -32,14 +33,48 @@ const notice = (overrides: Partial<NoticeBlock> & { type: string; text: string }
   ...overrides,
 });
 
+describe('registration terms policy snapshot', () => {
+  it('is deterministic and keeps only customer-readable cancellation copy', () => {
+    const input = {
+      notices: [notice({
+        type: 'AUTO_TICKETING',
+        title: '자동 발권 및 실비 취소 규정',
+        text: '발권 후 실제 위약금(최대 100%)이 청구됩니다.',
+        _source: 'platform-v1',
+        _tier: 1 as const,
+      })],
+      templateRefs: [{
+        id: 'template-1',
+        name: 'platform-v1',
+        tier: 1 as const,
+        version: 2,
+        starts_at: '2026-01-01T00:00:00Z',
+      }],
+      surface: 'mobile' as const,
+    };
+    const first = buildRegistrationTermsPolicySnapshot(input);
+    const second = buildRegistrationTermsPolicySnapshot(input);
+
+    expect(first).toEqual(second);
+    expect(first.policy_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.source_notices_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.has_cancellation_policy).toBe(true);
+    expect(first.notices[0]?.text).not.toContain('최대 100%');
+    expect(first.notices[0]?.title).toBe('발권 후 취소 비용 안내');
+  });
+});
+
 describe('sanitizeNoticeForCustomerSurface', () => {
-  it('keeps product notices but removes verbose generic legal blocks', () => {
+  it('keeps product notices and condenses approved platform cancellation blocks', () => {
     expect(sanitizeNoticeForCustomerSurface({
       type: 'AUTO_TICKETING',
       title: '자동 발권 및 실비 취소 규정',
       text: '이미 발권된 항공권은 실제 위약금이 청구됩니다.',
       _tier: 2,
-    })).toBeNull();
+    })).toEqual(expect.objectContaining({
+      type: 'AUTO_TICKETING',
+      title: '발권 후 취소 비용 안내',
+    }));
 
     expect(sanitizeNoticeForCustomerSurface({
       type: 'BUSINESS_HOURS',

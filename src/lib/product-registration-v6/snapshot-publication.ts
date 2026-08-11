@@ -132,9 +132,11 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
         product_summary: copy.summary ?? revisionPackage.product_summary,
         product_highlights: copy.highlights ?? revisionPackage.product_highlights,
         product_registration_copy: copy,
+        terms_snapshot: input.decision.termsPolicies?.find(policy => policy.revisionId === pair.revisionId),
       }, pair.packageId, input.resolvedTransport ?? []),
       input.decision,
     );
+    if (!source.terms_snapshot) throw new Error('V6_TERMS_POLICY_SNAPSHOT_MISSING');
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot({
       ...source,
       canonical_revision_id: pair.revisionId,

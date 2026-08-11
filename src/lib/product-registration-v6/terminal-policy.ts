@@ -17,6 +17,12 @@ export type ProductRegistrationV6PolicyInput = {
   sharedFactBlockers?: string[];
   sharedFactDegradedReasons?: string[];
   termsTypes?: string[];
+  cancellationCoverage?: Array<{
+    revisionId: string;
+    catalogProductId: string;
+    covered: boolean;
+    policyHash: string;
+  }>;
 };
 
 function asObject(value: unknown): JsonObject | null {
@@ -111,8 +117,14 @@ export function evaluateProductRegistrationV6Policy(
   blockers.push(...priceAndDepartureBlockers(input.canonicalPayload));
   blockers.push(...(input.sharedFactBlockers ?? []));
   degradedReasons.push(...(input.sharedFactDegradedReasons ?? []));
-  if (!hasCancellationEvidence(input)) {
-    blockers.push('CANCELLATION_POLICY_MISSING: 적용할 취소·환불 조건의 원문 근거가 없습니다.');
+  if (input.cancellationCoverage && input.cancellationCoverage.length > 0) {
+    input.cancellationCoverage
+      .filter(item => !item.covered)
+      .forEach(item => blockers.push(
+        `CANCELLATION_POLICY_MISSING:${item.catalogProductId}: 적용할 취소·환불 조건의 원문 또는 승인 정책 근거가 없습니다.`,
+      ));
+  } else if (!hasCancellationEvidence(input)) {
+    blockers.push('CANCELLATION_POLICY_MISSING: 적용할 취소·환불 조건의 원문 또는 승인 정책 근거가 없습니다.');
   }
 
   const finalBlockers = unique(blockers);
@@ -132,6 +144,9 @@ export function evaluateProductRegistrationV6Policy(
   };
   return {
     ...decision,
-    decisionHash: createHash('sha256').update(JSON.stringify(decision)).digest('hex'),
+    decisionHash: createHash('sha256').update(JSON.stringify({
+      decision,
+      cancellationCoverage: input.cancellationCoverage ?? null,
+    })).digest('hex'),
   };
 }

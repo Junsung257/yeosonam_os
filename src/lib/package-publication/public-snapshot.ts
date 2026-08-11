@@ -890,6 +890,7 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     ...collectCustomerVisibleStrings(snapshot.lp_projection),
     ...collectCustomerVisibleStrings(snapshot.itinerary_public),
     ...collectCustomerVisibleStrings(snapshot.public_notices),
+    ...collectCustomerVisibleStrings(asRecord(snapshot.package.terms_snapshot)?.notices),
     ...collectCustomerVisibleStrings(snapshot.optional_tours_public),
     ...collectCustomerVisibleStrings(snapshot.canonical_view),
   ];

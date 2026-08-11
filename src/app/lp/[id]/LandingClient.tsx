@@ -19,6 +19,7 @@ import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { sanitizeUtmTermForDisplay } from '@/lib/sanitize-ad-copy';
 import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import type { NoticeBlock } from '@/lib/standard-terms';
+import { sanitizeNoticeForCustomerSurface } from '@/lib/standard-terms-client';
 import { trackAnalyticsEvent } from '@/lib/analytics';
 
 const PriceSectionCard = dynamic(() => import('@/components/lp/PriceSection'));
@@ -340,6 +341,8 @@ export function LandingClient({
   const hasSpecialTerms = initialNotices.some(n => (n._tier ?? 1) >= 3);
   const termsSummary = initialNotices
     .filter(n => TERMS_SUMMARY_TYPES.includes(n.type))
+    .map(sanitizeNoticeForCustomerSurface)
+    .filter((notice): notice is NoticeBlock => Boolean(notice))
     .map(n => `【${n.title}】\n${n.text}`)
     .join('\n\n') || undefined;
 

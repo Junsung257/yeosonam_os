@@ -1,4 +1,5 @@
 import type { ProductSourceType } from '@/lib/product-registration-v4/types';
+import type { RegistrationTermsPolicySnapshot } from '@/lib/standard-terms-client';
 
 export const PRODUCT_REGISTRATION_V6_POLICY_VERSION = 'product-registration-v6-policy-1';
 export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'product-registration-v6-workflow-1';
@@ -67,6 +68,11 @@ export type ProductRegistrationV6Decision = {
   blockers: string[];
   packageIds: string[];
   revisionIds: string[];
+  termsPolicies?: Array<RegistrationTermsPolicySnapshot & {
+    revisionId: string;
+    catalogProductId: string;
+    sourceCancellationCovered: boolean;
+  }>;
 };
 
 export type ProductRegistrationV6WorkflowResult = ProductRegistrationV6Decision & {

@@ -27,6 +27,7 @@ import {
   loadProductRegistrationRevisionAggregate,
 } from '@/lib/product-registration-authority/revision-aggregate';
 import { projectCompatibilityFromRevisionAtomic } from '@/lib/product-registration-authority/repository';
+import { resolveRegistrationTermsPolicy } from '@/lib/standard-terms';
 import {
   PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
   PRODUCT_REGISTRATION_V6_STAGES,
@@ -433,6 +434,19 @@ async function validateStep(
     loadProductRegistrationRevisionAggregate({ supabase, revisionId })));
   const termsTypes = [...new Set(aggregates.flatMap(aggregate =>
     aggregate.terms.map(row => String(row.terms_type ?? '')).filter(Boolean)))];
+  const termsPolicies = await Promise.all(aggregates.map(async (aggregate, index) => {
+    const revisionId = normalized.revisionIds[index] ?? aggregate.revision.id;
+    const catalogProductId = normalized.packageIds[index] ?? aggregate.revision.catalog_product_id;
+    const pkg = buildPackageProjectionFromRevision({ packageId: catalogProductId, aggregate });
+    const policy = await resolveRegistrationTermsPolicy(pkg, 'mobile');
+    return {
+      ...policy,
+      revisionId,
+      catalogProductId,
+      sourceCancellationCovered: aggregate.terms.some(row =>
+        row.terms_type === 'cancellation' && row.validation_state === 'verified'),
+    };
+  }));
   const decision = evaluateProductRegistrationV6Policy({
     canonicalPayload: normalized.normalization.canonicalPayload,
     packageIds: normalized.packageIds,
@@ -445,13 +459,26 @@ async function validateStep(
     sharedFactBlockers: shared.blockers,
     sharedFactDegradedReasons: shared.degradedReasons,
     termsTypes,
+    cancellationCoverage: termsPolicies.map(policy => ({
+      revisionId: policy.revisionId,
+      catalogProductId: policy.catalogProductId,
+      covered: policy.has_cancellation_policy,
+      policyHash: policy.policy_hash,
+    })),
   });
+  decision.termsPolicies = termsPolicies;
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
     stage: 'validate',
     status: 'succeeded',
-    output: { outcome: decision.outcome, blockers: decision.blockers, degradedReasons: decision.degradedReasons, decisionHash: decision.decisionHash },
+    output: {
+      outcome: decision.outcome,
+      blockers: decision.blockers,
+      degradedReasons: decision.degradedReasons,
+      decisionHash: decision.decisionHash,
+      termsPolicyHashes: termsPolicies.map(policy => policy.policy_hash),
+    },
   });
   return decision;
 }

@@ -83,6 +83,10 @@ export function buildCanonicalTermsRevisions(canonicalPayload: JsonObject): Cano
       for (const rawNotice of array(variant.standard_notices)) {
         const notice = object(rawNotice);
         if (!notice) continue;
+        // Daily meals are typed itinerary facts. Persisting their generated
+        // summaries as legal/commercial terms can turn a breakfast refund note
+        // into a false cancellation-policy signal and create awkward copy.
+        if (text(notice.category) === 'meal_plan') continue;
         const type = noticeType(notice);
         const list = noticesByType.get(type) ?? [];
         list.push(notice);

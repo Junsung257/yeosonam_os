@@ -50,6 +50,37 @@ describe('product registration V6 terminal policy', () => {
     expect(result.blockers.some(reason => reason.includes('CANCELLATION_POLICY_MISSING'))).toBe(true);
   });
 
+  it('accepts an approved, customer-visible cancellation policy snapshot', () => {
+    const payload = canonical();
+    payload.sections[0]!.v3.ledger.variants[0]!.standard_notices = [];
+    const result = evaluateProductRegistrationV6Policy({
+      canonicalPayload: payload,
+      cancellationCoverage: [{
+        revisionId: 'revision-1',
+        catalogProductId: 'product-1',
+        covered: true,
+        policyHash: 'a'.repeat(64),
+      }],
+    });
+
+    expect(result.blockers.some(reason => reason.includes('CANCELLATION_POLICY_MISSING'))).toBe(false);
+    expect(result.terminalOutcome).toBe('published_verified');
+  });
+
+  it('blocks when the frozen policy has no customer-visible cancellation notice', () => {
+    const result = evaluateProductRegistrationV6Policy({
+      canonicalPayload: canonical(),
+      cancellationCoverage: [{
+        revisionId: 'revision-1',
+        catalogProductId: 'product-1',
+        covered: false,
+        policyHash: 'b'.repeat(64),
+      }],
+    });
+
+    expect(result.blockers.some(reason => reason.includes('CANCELLATION_POLICY_MISSING:product-1'))).toBe(true);
+  });
+
   it('does not mistake an unrelated refund notice for cancellation terms', () => {
     const payload = canonical();
     payload.sections[0]!.v3.ledger.variants[0]!.standard_notices = [{

@@ -153,7 +153,9 @@ export default async function LpPage(props: {
 
   let initialNotices: NoticeBlock[] = [];
   try {
-    const resolved = await resolveTermsForPackage({ id: data.id }, 'mobile');
+    const resolved = data.termsPolicyHash
+      ? (data.frozenTermsNotices ?? [])
+      : await resolveTermsForPackage({ id: data.id }, 'mobile');
     initialNotices = formatCancellationDates(resolved, data.departureFullDate ?? null);
   } catch {
     // Keep the landing page renderable even if standard terms are temporarily unavailable.

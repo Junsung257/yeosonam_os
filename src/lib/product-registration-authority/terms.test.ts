@@ -23,4 +23,21 @@ describe('canonical terms revisions', () => {
     const rows = buildCanonicalTermsRevisions({ sections: [{ v3: { ledger: { variants: [{ inclusions: [] }] } } }] });
     expect(rows.some(row => row.termsType === 'cancellation')).toBe(false);
   });
+
+  it('keeps typed meal facts out of commercial and legal terms', () => {
+    const rows = buildCanonicalTermsRevisions({
+      sections: [{
+        v3: { ledger: { variants: [{
+          inclusions: [], exclusions: [], options: [], shopping: [],
+          standard_notices: [{
+            category: 'meal_plan',
+            source_text: '티업 시간 때문에 이용하지 못한 조식 비용은 환불되지 않습니다.',
+            standard_text: '조식 비용은 환불되지 않습니다.',
+          }],
+        }] } },
+      }],
+    });
+
+    expect(rows).toEqual([]);
+  });
 });

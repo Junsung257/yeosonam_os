@@ -26,7 +26,7 @@ describe('product registration V4 canonical worker', () => {
       sourceDocumentId: 'source-1',
       extractionId: 'extraction-1',
     });
-    expect(normalized.version).toBe('v6-canonical-2026-08-12.1');
+    expect(normalized.version).toBe('v6-canonical-2026-08-12.2');
     expect(normalized.sourceDocumentId).toBe('source-1');
     expect(normalized.canonicalPayload.sections).toHaveLength(1);
     expect(normalized.qualityDiagnostics.sectionCount).toBe(1);

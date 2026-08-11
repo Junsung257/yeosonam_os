@@ -13,6 +13,7 @@ import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionI
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { destinationToIsoSet, extractDestinationTokens } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
+import { readRegistrationTermsPolicySnapshot } from '@/lib/standard-terms-client';
 import { POSTPROCESS_VERSION, postProcessPackageRow } from '@/lib/package-post-process';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
@@ -881,7 +882,8 @@ export default async function PackageDetailPage({
   if (normalizedPkg && !skipNonCriticalDbReads) {
     const rawPriceDates = (normalizedPkg as { price_dates?: { date: string }[] }).price_dates ?? [];
     const earliestDate = rawPriceDates.map(d => d.date).filter(Boolean).sort()[0] ?? null;
-    const resolved = await resolveTermsForPackage(
+    const frozenTerms = readRegistrationTermsPolicySnapshot(normalizedPkg.terms_snapshot);
+    const resolved = frozenTerms?.notices ?? await resolveTermsForPackage(
       {
         id: normalizedPkg.id,
         product_type: normalizedPkg.product_type,

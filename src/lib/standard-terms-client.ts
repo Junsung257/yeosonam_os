@@ -17,10 +17,44 @@ export interface NoticeBlock {
   _tier?: 1 | 2 | 3 | 4;
 }
 
+export interface RegistrationTermsTemplateRef {
+  id: string;
+  name: string;
+  tier: 1 | 2 | 3;
+  version: number;
+  starts_at: string;
+}
+
+export interface RegistrationTermsPolicySnapshot {
+  policy_version: 'registration-terms-policy-v1';
+  policy_hash: string;
+  surface: NoticeSurface;
+  notices: NoticeBlock[];
+  template_refs: RegistrationTermsTemplateRef[];
+  source_notices_hash: string;
+  product_notice_hash: string | null;
+  has_cancellation_policy: boolean;
+  has_special_terms: boolean;
+}
+
+/** Reads only the immutable, customer-safe terms contract embedded in a
+ * public package snapshot. Runtime template rows must not override it. */
+export function readRegistrationTermsPolicySnapshot(
+  value: unknown,
+): RegistrationTermsPolicySnapshot | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (row.policy_version !== 'registration-terms-policy-v1') return null;
+  if (typeof row.policy_hash !== 'string' || !/^[0-9a-f]{64}$/i.test(row.policy_hash)) return null;
+  if (!['a4', 'mobile', 'booking_guide'].includes(String(row.surface))) return null;
+  if (!Array.isArray(row.notices) || !Array.isArray(row.template_refs)) return null;
+  return row as unknown as RegistrationTermsPolicySnapshot;
+}
+
 /**
  * Customer surfaces must not present generic operator promises as if they
  * were facts of the uploaded product. Keep product-tier notices intact and
- * reduce platform notices to the one safe operational aid (business hours).
+ * turn approved platform cancellation rules into short customer copy.
  */
 export function sanitizeNoticeForCustomerSurface(notice: NoticeBlock): NoticeBlock | null {
   if ((notice._tier ?? 4) >= 4) return notice;
@@ -30,6 +64,23 @@ export function sanitizeNoticeForCustomerSurface(notice: NoticeBlock): NoticeBlo
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^[•·\-]+\s*/, ''))
     .filter(Boolean);
+  if (notice.type === 'AUTO_TICKETING') {
+    return {
+      ...notice,
+      title: '발권 후 취소 비용 안내',
+      text: '예약 후 항공권 발권이나 숙박 확정이 진행된 뒤 취소하면 실제 발생한 비용이 부과될 수 있습니다. 적용 조건은 결제 전에 다시 안내드립니다.',
+    };
+  }
+  if (notice.type === 'RESERVATION') {
+    const cancellationLines = sourceLines
+      .filter(line => !/(?:실비|최대\s*100%|천재지변|불가항력)/u.test(line));
+    if (cancellationLines.length === 0) return null;
+    return {
+      ...notice,
+      title: '취소·환불 기준',
+      text: cancellationLines.join('\n'),
+    };
+  }
   const blocked = /자동\s*발권|실비\s*취소|천재지변|항공\s*면책|일정\s*이탈|No-Show|쇼핑\s*불참|여권[·ㆍ.]?비자|결제\s*(?:및|\/)?\s*계약|유류할증료|성수기\s*추가|감염병|최소\s*출발\s*인원/iu;
   const safeLines = String(notice.text ?? '')
     .split(/\r?\n/)

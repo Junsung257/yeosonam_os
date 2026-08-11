@@ -11,16 +11,26 @@
  *   - formatCancellationDates(notices, dep) : 출발일 기준 취소일 자동 병기 (하나투어 방식)
  */
 
+import { createHash } from 'node:crypto';
+
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
 import { withPublicQueryFallback } from './public-query-timeout';
-import type { NoticeBlock, NoticeSurface, NoticeSeverity } from './standard-terms-client';
+import type {
+  NoticeBlock,
+  NoticeSurface,
+  NoticeSeverity,
+  RegistrationTermsPolicySnapshot,
+  RegistrationTermsTemplateRef,
+} from './standard-terms-client';
 import {
   hasProductSpecialCancelPolicy,
   hasSpecialTermsBanner,
+  sanitizeNoticeForCustomerSurface,
   shouldSuppressStandardCancelTable,
 } from './standard-terms-client';
 
 export type { NoticeBlock, NoticeSurface, NoticeSeverity } from './standard-terms-client';
+export type { RegistrationTermsPolicySnapshot, RegistrationTermsTemplateRef } from './standard-terms-client';
 export {
   hasProductSpecialCancelPolicy,
   hasSpecialTermsBanner,
@@ -97,6 +107,17 @@ async function loadTemplates(): Promise<TermsTemplate[]> {
 export function invalidateTermsCache(): void {
   cacheExpiry = 0;
   templateCache = [];
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (!value || typeof value !== 'object') return JSON.stringify(value);
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
+}
+
+function hashTermsValue(value: unknown): string {
+  return createHash('sha256').update(stableStringify(value)).digest('hex');
 }
 
 // ── Scope 매칭 ───────────────────────────────────────────────
@@ -290,6 +311,65 @@ export async function buildTermsSnapshot(
     template_ids: templateIds,
     has_special_terms: hasSpecialTerms,
   };
+}
+
+export function buildRegistrationTermsPolicySnapshot(input: {
+  notices: NoticeBlock[];
+  templateRefs: RegistrationTermsTemplateRef[];
+  productNotices?: NoticeBlock[];
+  surface?: NoticeSurface;
+}): RegistrationTermsPolicySnapshot {
+  const surface = input.surface ?? 'mobile';
+  const productNotices = input.productNotices ?? [];
+  const sourceHasCancellationPolicy = input.notices.some(notice => {
+    const combined = `${notice.type} ${notice.title ?? ''} ${notice.text ?? ''}`;
+    return ['RESERVATION', 'AUTO_TICKETING'].includes(notice.type)
+      || /(?:취소|취소료|해약|여행약관|특별약관|위약금|패널티|cancel|cancellation)/iu.test(combined);
+  });
+  const customerNotices = input.notices
+    .map(sanitizeNoticeForCustomerSurface)
+    .filter((notice): notice is NoticeBlock => Boolean(notice));
+  const customerHasCancellationPolicy = customerNotices.some(notice =>
+    ['RESERVATION', 'AUTO_TICKETING'].includes(notice.type)
+      || /(?:취소|취소료|해약|여행약관|특별약관|위약금|cancel|cancellation)/iu
+        .test(`${notice.type} ${notice.title ?? ''} ${notice.text ?? ''}`));
+  const content = {
+    policy_version: 'registration-terms-policy-v1' as const,
+    surface,
+    notices: customerNotices,
+    template_refs: input.templateRefs,
+    source_notices_hash: hashTermsValue(input.notices),
+    product_notice_hash: productNotices.length > 0 ? hashTermsValue(productNotices) : null,
+    has_cancellation_policy: sourceHasCancellationPolicy && customerHasCancellationPolicy,
+    has_special_terms: hasSpecialTermsBanner(customerNotices),
+  };
+  return { ...content, policy_hash: hashTermsValue(content) };
+}
+
+/** Resolves the exact legal/commercial policy that V6 validates and freezes
+ * into its immutable customer snapshot. This removes runtime template drift. */
+export async function resolveRegistrationTermsPolicy(
+  pkg: PackageForTerms,
+  surface: NoticeSurface = 'mobile',
+): Promise<RegistrationTermsPolicySnapshot> {
+  const templates = await loadTemplates();
+  const notices = await resolveTermsForPackage(pkg, surface);
+  const usedSources = new Set(notices.map(notice => notice._source).filter(Boolean));
+  const templateRefs = templates
+    .filter(template => matchesScope(template, pkg) && usedSources.has(template.name))
+    .map(template => ({
+      id: template.id,
+      name: template.name,
+      tier: template.tier,
+      version: template.version,
+      starts_at: template.starts_at,
+    }));
+  return buildRegistrationTermsPolicySnapshot({
+    notices,
+    templateRefs,
+    productNotices: normalizeProductNotices(pkg.notices_parsed),
+    surface,
+  });
 }
 
 // ── 출발일 기준 취소일 자동 병기 (하나투어 방식) ──────────────

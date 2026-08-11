@@ -26,7 +26,7 @@ import type { DocumentIR, ProductRegistrationV4JobRecord } from './types';
 import { buildDocumentIrTableItinerary } from './table-grid-itinerary';
 import { buildDocumentIrTableCommercialTerms } from './table-grid-commercial-terms';
 
-export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-12.1';
+export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-12.2';
 
 export function canonicalNormalizationJobStatus(input: {
   normalizationStatus: CanonicalNormalization['status'];

@@ -9,6 +9,7 @@ import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { readRegistrationTermsPolicySnapshot, type NoticeBlock } from '@/lib/standard-terms-client';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -40,6 +41,8 @@ export interface LandingProductData {
    * They are not rendered in customer copy or exposed as business data. */
   publicSnapshotHash?: string;
   canonicalRevisionId?: string | null;
+  termsPolicyHash?: string;
+  frozenTermsNotices?: NoticeBlock[];
   internalCode?: string;
   destination: string;
   duration: string;
@@ -239,6 +242,7 @@ export function mapTravelPackageToLandingData(
     && publicSnapshot.canonical_revision_id.trim()
     ? publicSnapshot.canonical_revision_id
     : null;
+  const termsPolicy = readRegistrationTermsPolicySnapshot(pkg.terms_snapshot);
   const internalCode = readInternalCode(pkg);
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
   const displayCopy = buildCustomerPackageDisplayCopy({
@@ -316,6 +320,8 @@ export function mapTravelPackageToLandingData(
     id: String(pkg.id),
     publicSnapshotHash,
     canonicalRevisionId,
+    termsPolicyHash: termsPolicy?.policy_hash,
+    frozenTermsNotices: termsPolicy?.notices,
     internalCode: internalCode || undefined,
     destination: cleanDestination,
     duration,
