@@ -1,0 +1,100 @@
+{
+  "baseline_date": "2026-08-11",
+  "timezone": "Asia/Seoul",
+  "read_only": true,
+  "source_of_truth": {
+    "worktree": "C:/dev/yeosonam-os-blog-quality-engine-v3",
+    "branch": "codex/blog-quality-engine-v3-20260811",
+    "head_at_start": "2ab65ef05b4a0f9fff8564a9685de0047bc08860",
+    "origin_main_at_start": "2ab65ef05b4a0f9fff8564a9685de0047bc08860",
+    "production_commit": "2ab65ef05b4a0f9fff8564a9685de0047bc08860",
+    "package_lock": "package-lock.json",
+    "next_version": "15.5.21"
+  },
+  "current_database": {
+    "slugged_corpus_count": 270,
+    "published_count": 200,
+    "published_informational_count": 198,
+    "published_product_linked_count": 2,
+    "public_eligible_count_current_view": 192,
+    "review_status_distribution": {
+      "none": 124,
+      "null": 68,
+      "changes_requested": 8
+    },
+    "exact_duplicate_title": {
+      "groups": 16,
+      "articles": 34
+    },
+    "quality_score_distribution": {
+      "seo_average": 96.74,
+      "seo_95_or_more": 191,
+      "readability_100": 200
+    },
+    "queue": {
+      "count_all_active_states": 16,
+      "queued_only_weather_pattern_count": 11,
+      "missing_monthly_search_volume": 16,
+      "missing_trend_score": 16,
+      "coverage_gap_weather_destinations": [
+        "코펜하겐", "마드리드", "제네바", "크라쿠프", "베를린", "취리히",
+        "더블린", "뮌헨", "브뤼셀", "포르토", "바르샤바"
+      ],
+      "other_active_topics": [
+        "삿포로 식비 예산 현지 맛집 비용 가이드 2026",
+        "미국 입국 요건과 비자",
+        "jeju weather packing",
+        "barcelona weather packing",
+        "busan weather packing"
+      ]
+    },
+    "measurement": {
+      "rank_history_rows": 1334,
+      "blog_search_metrics_rows": 13,
+      "analytics_server_events_rows": 0,
+      "field_vitals_90d": {
+        "LCP": { "samples": 25909, "p75_ms": 3552, "target_ms": 2500, "target_met": false },
+        "INP": { "samples": 2616, "p75_ms": 80, "target_ms": 200, "target_met": true },
+        "CLS": { "samples": 19068, "p75": 0.0075549485206604, "target": 0.1, "target_met": true },
+        "TTFB": { "samples": 51032, "p75_ms": 262.20000000298 }
+      }
+    }
+  },
+  "mission_audit_reference": {
+    "normalized_title_skeleton": { "groups_at_least_3": 16, "articles": 148 },
+    "normalized_h2_tree": {
+      "checklist_h2_articles": 198,
+      "faq_articles": 185,
+      "note": "The complete current signatures are reproducible with scripts/audit-blog-corpus-v3.ts; mission counts are retained as the immutable comparison baseline."
+    },
+    "intro_signature": { "common_formula_articles": 141 },
+    "images": {
+      "occurrences": 596,
+      "host_distribution": { "images.pexels.com": 582, "other": 14 },
+      "known_cross_destination_duplicate": true
+    },
+    "queue_count_at_audit": 11
+  },
+  "read_only_sql": {
+    "published": "select count(*) from content_creatives where channel='naver_blog' and status='published' and slug is not null;",
+    "public_eligible": "select count(*) from public_blog_content_creatives;",
+    "reviews": "select coalesce(review_status::text,'null'), count(*) from content_creatives where channel='naver_blog' and status='published' and slug is not null group by 1;",
+    "duplicates": "select coalesce(seo_title,title), count(*) from content_creatives where channel='naver_blog' and status='published' and slug is not null group by 1 having count(*) > 1;",
+    "queue": "select topic,destination,source,status,monthly_search_volume,trend_score,product_id from blog_topic_queue where status in ('queued','generating','pending_review');",
+    "measurement": "select (select count(*) from rank_history), (select count(*) from blog_search_metrics), (select count(*) from analytics_server_events);",
+    "field_vitals": "select name,count(*),percentile_cont(0.75) within group(order by value) from web_vitals where created_at >= now()-interval '90 days' and name in ('LCP','INP','CLS','TTFB') group by name;"
+  },
+  "commands": [
+    "git status --short --branch",
+    "git rev-parse HEAD",
+    "git rev-parse origin/main",
+    "git diff --stat origin/main...HEAD",
+    "node -p \"require('./package.json').dependencies.next\"",
+    "npx tsx scripts/audit-blog-corpus-v3.ts",
+    "npx tsx scripts/plan-blog-corpus-disposition.ts"
+  ],
+  "historical_documents": {
+    "yeosonam_os_blog_seo_audit_2026-07-15.md": "not_found_after_rg_files_search",
+    "yeosonam_info_engine_v2_goal_master_2026-07-15.md": "not_found_after_rg_files_search"
+  }
+}

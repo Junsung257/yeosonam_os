@@ -6,4 +6,3 @@ export function hashAnalyticsSearchQuery(value: unknown): string | null {
   if (!normalized) return null;
   return createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
-

@@ -1,5 +1,7 @@
 # Blog Autopublish Contract
 
+> 2026-08-11 V3 override: 자동발행의 fail-closed 정책은 `docs/runbooks/blog-publishing-v3.md`가 우선합니다. 누락/잘못된 `BLOG_AUTOPUBLISH_MODE`는 `draft_only`이고, coverage gap만으로 발행하지 않으며, deterministic fallback과 content-creating repair는 공개 불가입니다.
+
 Last updated: 2026-07-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.

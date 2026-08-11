@@ -37,4 +37,3 @@ export function readLastBlogAssist(now = Date.now()): string | null {
   }
   return null;
 }
-

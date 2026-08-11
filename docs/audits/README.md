@@ -1,5 +1,7 @@
 # Audit Archive Index
 
+- 2026-08-11 — Blog Quality Engine V3 baseline, canary, corpus disposition/redirect preview, verification: `blog-quality-engine-v3-baseline-2026-08-11.md`
+
 Last updated: 2026-08-06
 
 This folder is an evidence archive, not the current operating playbook.

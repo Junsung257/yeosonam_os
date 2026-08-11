@@ -1,5 +1,20 @@
 # 여소남 OS 환경변수 레퍼런스
 
+## Blog Quality Engine V3 (2026-08-11)
+
+| 변수 | 기본값 | 설명 |
+|---|---:|---|
+| `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
+| `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
+| `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
+| `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
+| `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
+| `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
+| `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
+| `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
+
+운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
+
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
 ## ⚠️ 시크릿 관리 정책 (중요)

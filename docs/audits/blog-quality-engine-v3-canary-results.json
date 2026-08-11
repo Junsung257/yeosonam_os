@@ -1,0 +1,503 @@
+{
+  "summary": {
+    "generated_at": "2026-08-11T15:01:46.532Z",
+    "mode": "offline_structured_canary_no_publication",
+    "note": "First-party and customer-question IDs are labeled fixtures and are not production evidence.",
+    "count": 24,
+    "destinations": 24,
+    "intents": 12,
+    "archetypes": 12,
+    "exact_duplicate_titles": 0,
+    "maximum_normalized_title_skeleton_count": 2,
+    "duplicate_openings": 0,
+    "unsupported_numeric_claims": 0,
+    "stale_high_risk_claims": 0,
+    "cross_destination_image_reuse": 0,
+    "faq_share": 0.125,
+    "checklist_share": 0.041666666666666664,
+    "broken_korean": 0,
+    "passed": true
+  },
+  "canaries": [
+    {
+      "canary_id": "canary-01",
+      "destination": "오사카",
+      "intent": "숙소 위치 선택",
+      "title": "오사카 숙소 위치를 우메다와 난바 중 고르는 법",
+      "normalized_title_skeleton": "{city} 숙소 위치를 우메다와 난바 중 고르는 법",
+      "opening": "오사카에서 숙소 위치 선택 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 오사카 숙소 위치를 우메다와 난바 중 고르는 법 하나만 답합니다.",
+      "archetype": "neighborhood_selector",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:0:a",
+        "official:0:b",
+        "official:0:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-02",
+      "destination": "도쿄",
+      "intent": "공항 이동",
+      "title": "나리타공항에서 신주쿠까지 이동 경로",
+      "normalized_title_skeleton": "나리타공항에서 신주쿠까지 이동 경로",
+      "opening": "도쿄에서 공항 이동 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 나리타공항에서 신주쿠까지 이동 경로 하나만 답합니다.",
+      "archetype": "route_walkthrough",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:1:a",
+        "official:1:b",
+        "official:1:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-03",
+      "destination": "후쿠오카",
+      "intent": "짧은 답",
+      "title": "후쿠오카 첫날 하카타와 텐진 중 어디에 머물까",
+      "normalized_title_skeleton": "{city} 첫날 하카타와 텐진 중 어디에 머물까",
+      "opening": "후쿠오카에서 짧은 답 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 후쿠오카 첫날 하카타와 텐진 중 어디에 머물까 하나만 답합니다.",
+      "archetype": "direct_answer",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:2:a",
+        "official:2:b",
+        "official:2:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-04",
+      "destination": "교토",
+      "intent": "실수 예방",
+      "title": "교토 버스 이동에서 피해야 할 실수",
+      "normalized_title_skeleton": "{city} 버스 이동에서 피해야 할 실수",
+      "opening": "교토에서 실수 예방 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 교토 버스 이동에서 피해야 할 실수 하나만 답합니다.",
+      "archetype": "route_walkthrough",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:3:a",
+        "official:3:b",
+        "official:3:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-05",
+      "destination": "다낭",
+      "intent": "예산",
+      "title": "다낭 가족여행 예산 시나리오",
+      "normalized_title_skeleton": "{city} 가족여행 예산 시나리오",
+      "opening": "다낭에서 예산 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 다낭 가족여행 예산 시나리오 하나만 답합니다.",
+      "archetype": "traveler_type_plan",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:4:a",
+        "official:4:b",
+        "official:4:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-06",
+      "destination": "나트랑",
+      "intent": "여행자 유형",
+      "title": "부모님과 나트랑에서 무리 없는 일정",
+      "normalized_title_skeleton": "부모님과 {city}에서 무리 없는 일정",
+      "opening": "나트랑에서 여행자 유형 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 부모님과 나트랑에서 무리 없는 일정 하나만 답합니다.",
+      "archetype": "traveler_type_plan",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:5:a",
+        "official:5:b",
+        "official:5:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-07",
+      "destination": "방콕",
+      "intent": "비교",
+      "title": "방콕 수쿰윗과 사톤 숙소 비교",
+      "normalized_title_skeleton": "{city} 수쿰윗과 사톤 숙소 비교",
+      "opening": "방콕에서 비교 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 방콕 수쿰윗과 사톤 숙소 비교 하나만 답합니다.",
+      "archetype": "decision_comparison",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:6:a",
+        "official:6:b",
+        "official:6:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-08",
+      "destination": "치앙마이",
+      "intent": "일정",
+      "title": "치앙마이 올드시티 하루 일정 흐름",
+      "normalized_title_skeleton": "{city} 올드시티 하루 일정 흐름",
+      "opening": "치앙마이에서 일정 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 치앙마이 올드시티 하루 일정 흐름 하나만 답합니다.",
+      "archetype": "itinerary_timeline",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:7:a",
+        "official:7:b",
+        "official:7:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-09",
+      "destination": "싱가포르",
+      "intent": "고객 질문",
+      "title": "싱가포르 환승 중 시내에 나가도 될까",
+      "normalized_title_skeleton": "{city} 환승 중 시내에 나가도 될까",
+      "opening": "싱가포르에서 고객 질문 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 싱가포르 환승 중 시내에 나가도 될까 하나만 답합니다.",
+      "archetype": "real_customer_questions",
+      "faq": true,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:8:a",
+        "official:8:b",
+        "official:8:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-10",
+      "destination": "파리",
+      "intent": "현재 변경",
+      "title": "파리 공항철도 운영 변경 설명",
+      "normalized_title_skeleton": "{city} 공항철도 운영 변경 설명",
+      "opening": "파리에서 현재 변경 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 파리 공항철도 운영 변경 설명 하나만 답합니다.",
+      "archetype": "current_change_explainer",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:9:a",
+        "official:9:b",
+        "official:9:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-11",
+      "destination": "로마",
+      "intent": "계절 선택",
+      "title": "로마 계절별 방문 시기 선택",
+      "normalized_title_skeleton": "{city} 계절별 방문 시기 선택",
+      "opening": "로마에서 계절 선택 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 로마 계절별 방문 시기 선택 하나만 답합니다.",
+      "archetype": "seasonal_calendar",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:10:a",
+        "official:10:b",
+        "official:10:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-12",
+      "destination": "런던",
+      "intent": "공항 이동",
+      "title": "히드로공항에서 패딩턴까지 이동 경로",
+      "normalized_title_skeleton": "히드로공항에서 패딩턴까지 이동 경로",
+      "opening": "런던에서 공항 이동 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 히드로공항에서 패딩턴까지 이동 경로 하나만 답합니다.",
+      "archetype": "route_walkthrough",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:11:a",
+        "official:11:b",
+        "official:11:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-13",
+      "destination": "바르셀로나",
+      "intent": "숙소 위치 선택",
+      "title": "바르셀로나 숙소 지역을 고딕과 에이샴플라 중 고르는 법",
+      "normalized_title_skeleton": "{city} 숙소 지역을 고딕과 에이샴플라 중 고르는 법",
+      "opening": "바르셀로나에서 숙소 위치 선택 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 바르셀로나 숙소 지역을 고딕과 에이샴플라 중 고르는 법 하나만 답합니다.",
+      "archetype": "neighborhood_selector",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:12:a",
+        "official:12:b",
+        "official:12:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-14",
+      "destination": "프라하",
+      "intent": "실수 예방",
+      "title": "프라하 환전에서 피해야 할 실수",
+      "normalized_title_skeleton": "{city} 환전에서 피해야 할 실수",
+      "opening": "프라하에서 실수 예방 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 프라하 환전에서 피해야 할 실수 하나만 답합니다.",
+      "archetype": "mistake_prevention",
+      "faq": false,
+      "checklist": true,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:13:a",
+        "official:13:b",
+        "official:13:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-15",
+      "destination": "비엔나",
+      "intent": "예산",
+      "title": "비엔나 음악 여행 예산 시나리오",
+      "normalized_title_skeleton": "{city} 음악 여행 예산 시나리오",
+      "opening": "비엔나에서 예산 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 비엔나 음악 여행 예산 시나리오 하나만 답합니다.",
+      "archetype": "budget_scenarios",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:14:a",
+        "official:14:b",
+        "official:14:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-16",
+      "destination": "취리히",
+      "intent": "여행자 유형",
+      "title": "아이와 취리히에서 무리 없는 이동 계획",
+      "normalized_title_skeleton": "아이와 {city}에서 무리 없는 이동 계획",
+      "opening": "취리히에서 여행자 유형 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 아이와 취리히에서 무리 없는 이동 계획 하나만 답합니다.",
+      "archetype": "route_walkthrough",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:15:a",
+        "official:15:b",
+        "official:15:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-17",
+      "destination": "뉴욕",
+      "intent": "현재 변경",
+      "title": "ESTA 규정 변경 설명",
+      "normalized_title_skeleton": "esta 규정 변경 설명",
+      "opening": "뉴욕에서 현재 변경 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 ESTA 규정 변경 설명 하나만 답합니다.",
+      "archetype": "current_change_explainer",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:16:a",
+        "official:16:b",
+        "official:16:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-18",
+      "destination": "밴쿠버",
+      "intent": "고객 질문",
+      "title": "밴쿠버 공항 도착 후 교통카드는 어디서 살까",
+      "normalized_title_skeleton": "{city} 공항 도착 후 교통카드는 어디서 살까",
+      "opening": "밴쿠버에서 고객 질문 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 밴쿠버 공항 도착 후 교통카드는 어디서 살까 하나만 답합니다.",
+      "archetype": "real_customer_questions",
+      "faq": true,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:17:a",
+        "official:17:b",
+        "official:17:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-19",
+      "destination": "시드니",
+      "intent": "비교",
+      "title": "시드니 공항철도와 택시 비교",
+      "normalized_title_skeleton": "{city} 공항철도와 택시 비교",
+      "opening": "시드니에서 비교 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 시드니 공항철도와 택시 비교 하나만 답합니다.",
+      "archetype": "decision_comparison",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:18:a",
+        "official:18:b",
+        "official:18:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-20",
+      "destination": "멜버른",
+      "intent": "일정",
+      "title": "멜버른 도심 하루 일정 흐름",
+      "normalized_title_skeleton": "{city} 도심 하루 일정 흐름",
+      "opening": "멜버른에서 일정 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 멜버른 도심 하루 일정 흐름 하나만 답합니다.",
+      "archetype": "itinerary_timeline",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:19:a",
+        "official:19:b",
+        "official:19:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-21",
+      "destination": "타이베이",
+      "intent": "짧은 답",
+      "title": "타이베이 첫 여행에서 어느 야시장을 고를까",
+      "normalized_title_skeleton": "{city} 첫 여행에서 어느 야시장을 고를까",
+      "opening": "타이베이에서 짧은 답 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 타이베이 첫 여행에서 어느 야시장을 고를까 하나만 답합니다.",
+      "archetype": "direct_answer",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:20:a",
+        "official:20:b",
+        "official:20:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-22",
+      "destination": "홍콩",
+      "intent": "계절 선택",
+      "title": "홍콩 계절별 방문 시기 선택",
+      "normalized_title_skeleton": "{city} 계절별 방문 시기 선택",
+      "opening": "홍콩에서 계절 선택 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 홍콩 계절별 방문 시기 선택 하나만 답합니다.",
+      "archetype": "seasonal_calendar",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:21:a",
+        "official:21:b",
+        "official:21:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-23",
+      "destination": "세부",
+      "intent": "현장 기록",
+      "title": "세부 리조트 객실 동선 현장 기록",
+      "normalized_title_skeleton": "{city} 리조트 객실 동선 현장 기록",
+      "opening": "세부에서 현장 기록 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 세부 리조트 객실 동선 현장 기록 하나만 답합니다.",
+      "archetype": "first_party_field_note",
+      "faq": false,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:22:a",
+        "official:22:b",
+        "official:22:c"
+      ],
+      "failure_evidence": []
+    },
+    {
+      "canary_id": "canary-24",
+      "destination": "삿포로",
+      "intent": "고객 질문",
+      "title": "삿포로 겨울 신발은 방수가 꼭 필요할까",
+      "normalized_title_skeleton": "{city} {season} 신발은 방수가 꼭 필요할까",
+      "opening": "삿포로에서 고객 질문 결정을 내릴 때 먼저 확인할 조건은 글마다 다릅니다. 이 초안은 삿포로 겨울 신발은 방수가 꼭 필요할까 하나만 답합니다.",
+      "archetype": "real_customer_questions",
+      "faq": true,
+      "checklist": false,
+      "brief_passed": true,
+      "quality_passed": true,
+      "score": 100,
+      "evidence_ids": [
+        "official:23:a",
+        "official:23:b",
+        "official:23:c"
+      ],
+      "failure_evidence": []
+    }
+  ]
+}
