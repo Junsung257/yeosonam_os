@@ -5,6 +5,7 @@ import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
 import { extractPriceIR } from '../src/lib/parser/deterministic/price-ir/index.ts';
 import { evaluateEntityMasterCandidatePublicGate } from '../src/lib/entity-master-candidate-public-gate.ts';
+import { auditPublicationAuthority } from '../src/lib/product-registration/publication-authority-audit.ts';
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -1661,7 +1662,8 @@ function isBlockingV3NeedsReview(row) {
 }
 
 function hasCurrentReadinessBlocker(row) {
-  return Boolean(row.raw_notice_leak_risk)
+  return (Array.isArray(row.publication_authority_failures) && row.publication_authority_failures.length > 0)
+    || Boolean(row.raw_notice_leak_risk)
     || Boolean(row.code_unk)
     || (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0)
     || Boolean(row.price_storage_mismatch)
@@ -1717,6 +1719,10 @@ function readinessFor(row) {
     || Boolean(row.render_failure)
     || Boolean(row.public_html_failure)
   );
+
+  for (const failure of asArray(row.publication_authority_failures)) {
+    if (typeof failure === 'string' && failure) failures.push(failure);
+  }
 
   if (row.raw_notice_leak_risk) failures.push('raw_notice_leak_risk');
   if (row.code_unk) failures.push('code_unk');
@@ -1785,7 +1791,7 @@ function readinessFor(row) {
 
 let packageQuery = supabase
   .from('travel_packages')
-  .select('id, title, short_code, internal_code, status, audit_status, audit_report, created_at, price, destination, duration, nights, trip_style, price_dates, price_tiers, itinerary, itinerary_data, raw_text, notices_parsed, customer_notes, inclusions, excludes, optional_tours')
+  .select('id, tenant_id, catalog_product_id, canonical_revision_id, title, short_code, internal_code, status, publication_state, package_revision, audit_status, audit_report, created_at, updated_at, price, destination, duration, nights, trip_style, price_dates, price_tiers, itinerary, itinerary_data, raw_text, notices_parsed, customer_notes, inclusions, excludes, optional_tours')
   .gte('created_at', since)
   .order('created_at', { ascending: false })
   .limit(limit);
@@ -1817,13 +1823,79 @@ if (error) {
 }
 
 const allPackageRows = packages ?? [];
+const auditDataErrors = [];
+const publicationPointerByPackageId = new Map();
+const publicationSnapshotById = new Map();
+const publicationRevisionById = new Map();
+for (const chunk of chunks(allPackageRows.map(pkg => pkg.id), 100)) {
+  const { data: pointerRows, error: pointerError } = await runSupabaseQuery(
+    `customer publication pointers ${chunk[0]}`,
+    () => supabase
+      .from('product_registration_v5_publication_pointers')
+      .select('tenant_id,package_id,catalog_product_id,current_revision_id,current_snapshot_id,state,channel,locale,updated_at')
+      .in('package_id', chunk)
+      .eq('channel', 'customer')
+      .eq('locale', 'ko-KR'),
+  );
+  if (pointerError) {
+    auditDataErrors.push({ scope: 'publication_pointers', package_ids: chunk, message: pointerError.message ?? String(pointerError) });
+    continue;
+  }
+  for (const pointer of pointerRows ?? []) publicationPointerByPackageId.set(String(pointer.package_id), pointer);
+}
+
+const currentSnapshotIds = [...new Set([...publicationPointerByPackageId.values()]
+  .map(pointer => pointer.current_snapshot_id)
+  .filter(id => typeof id === 'string' && id.length > 0))];
+for (const chunk of chunks(currentSnapshotIds, 100)) {
+  const { data: snapshotRows, error: snapshotError } = await runSupabaseQuery(
+    `current publication snapshots ${chunk[0]}`,
+    () => supabase
+      .from('public_package_snapshots')
+      .select('id,tenant_id,package_id,catalog_product_id,canonical_revision_id,package_revision,snapshot_hash,status,snapshot_json,created_at')
+      .in('id', chunk),
+  );
+  if (snapshotError) {
+    auditDataErrors.push({ scope: 'publication_snapshots', snapshot_ids: chunk, message: snapshotError.message ?? String(snapshotError) });
+    continue;
+  }
+  for (const snapshot of snapshotRows ?? []) publicationSnapshotById.set(String(snapshot.id), snapshot);
+}
+
+const currentRevisionIds = [...new Set([
+  ...allPackageRows.map(pkg => pkg.canonical_revision_id),
+  ...[...publicationPointerByPackageId.values()].map(pointer => pointer.current_revision_id),
+].filter(id => typeof id === 'string' && id.length > 0))];
+for (const chunk of chunks(currentRevisionIds, 100)) {
+  const { data: revisionRows, error: revisionError } = await runSupabaseQuery(
+    `current canonical revisions ${chunk[0]}`,
+    () => supabase
+      .from('product_registration_v5_revisions')
+      .select('id,tenant_id,package_id,catalog_product_id,source_document_id,extraction_id,payload_hash,lineage_hash,status')
+      .in('id', chunk),
+  );
+  if (revisionError) {
+    auditDataErrors.push({ scope: 'canonical_revisions', revision_ids: chunk, message: revisionError.message ?? String(revisionError) });
+    continue;
+  }
+  for (const revision of revisionRows ?? []) publicationRevisionById.set(String(revision.id), revision);
+}
+
+const publicationAuthorityByPackageId = new Map(allPackageRows.map(pkg => {
+  const pointer = publicationPointerByPackageId.get(String(pkg.id)) ?? null;
+  const snapshot = pointer?.current_snapshot_id
+    ? publicationSnapshotById.get(String(pointer.current_snapshot_id)) ?? null
+    : null;
+  const revisionId = pointer?.current_revision_id ?? pkg.canonical_revision_id;
+  const revision = revisionId ? publicationRevisionById.get(String(revisionId)) ?? null : null;
+  return [String(pkg.id), auditPublicationAuthority({ packageRow: pkg, pointer, snapshot, revision })];
+}));
 const scopedPackageRows = allPackageRows
   .filter(pkg => includeArchived || !isArchivedStatus(pkg.status))
-  .filter(pkg => !publicOnly || isPublicStatus(pkg.status));
+  .filter(pkg => !publicOnly || publicationAuthorityByPackageId.get(String(pkg.id))?.authoritativePublic === true);
 const scopedPackageIds = new Set(scopedPackageRows.map(pkg => pkg.id));
 const packageIds = scopedPackageRows.map(pkg => pkg.id);
 const internalCodes = scopedPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
-const auditDataErrors = [];
 const attractionIds = new Set();
 const malformedAttractionIds = new Set();
 for (const pkg of scopedPackageRows) {
@@ -2543,12 +2615,24 @@ let rows = allPackageRows
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
     const entityCandidateEntities = entityCandidateUnresolvedMap.get(pkg.id) ?? {};
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
+    const publicationAuthority = publicationAuthorityByPackageId.get(String(pkg.id))
+      ?? auditPublicationAuthority({ packageRow: pkg });
     const row = {
       id: pkg.id,
       code: pkg.internal_code ?? pkg.short_code ?? '',
       title: pkg.title,
       status: pkg.status,
-      public: isPublicStatus(pkg.status),
+      public: publicationAuthority.authoritativePublic,
+      legacy_public: isPublicStatus(pkg.status),
+      publication_state: pkg.publication_state ?? null,
+      package_revision: pkg.package_revision ?? null,
+      tenant_id: pkg.tenant_id ?? null,
+      catalog_product_id: pkg.catalog_product_id ?? null,
+      canonical_revision_id: pkg.canonical_revision_id ?? null,
+      publication_authority_failures: publicationAuthority.failures,
+      evidence_pack_status: publicationAuthority.evidencePackStatus,
+      mobile_proof_failure_reason: publicationAuthority.mobileProofReason,
+      snapshot_price_date_count: publicationAuthority.snapshotPriceDateCount,
       audit: pkg.audit_status ?? '',
       audit_report: pkg.audit_report ?? null,
       created_at: pkg.created_at,
@@ -2816,6 +2900,11 @@ const summary = {
   warn: warnedRows.length,
   fail: failedRows.length,
   public_fail: publicRows.filter(row => row.readiness.status === 'fail').length,
+  legacy_public_without_authority: rows.filter(row => row.legacy_public && !row.public).length,
+  publication_authority_fail: rows.filter(row => row.publication_authority_failures.length > 0).length,
+  registration_evidence_pack_blocked: rows.filter(row => row.publication_authority_failures.includes('registration_evidence_pack_blocked')).length,
+  mobile_browser_proof_invalid_or_stale: rows.filter(row => row.publication_authority_failures.includes('mobile_browser_proof_invalid_or_stale')).length,
+  snapshot_price_date_count_mismatch: rows.filter(row => row.publication_authority_failures.includes('snapshot_price_date_count_mismatch')).length,
   raw_notice_leak_risk: rows.filter(row => row.raw_notice_leak_risk).length,
   code_unk: rows.filter(row => row.code_unk).length,
   no_customer_price: rows.filter(row => row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0).length,
@@ -2906,6 +2995,11 @@ const report = {
     code: row.code,
     title: row.title,
     status: row.status,
+    publication_state: row.publication_state,
+    authoritative_public: row.public,
+    publication_authority_failures: row.publication_authority_failures,
+    evidence_pack_status: row.evidence_pack_status,
+    mobile_proof_failure_reason: row.mobile_proof_failure_reason,
     failures: row.readiness.failures,
     warnings: row.readiness.warnings,
     price_storage_mismatch: row.price_storage_mismatch,
@@ -2937,6 +3031,7 @@ if (!jsonOnly) {
   console.table(rows.map(row => ({
     code: row.code,
     status: row.status,
+    authority: row.public ? 'published' : row.legacy_public ? 'legacy_drift' : 'nonpublic',
     v3: row.v3,
     prices: row.price_dates || row.price_tiers || row.product_prices,
     code_ok: row.code_unk ? 'UNK' : 'ok',
@@ -2968,6 +3063,8 @@ if (strict) {
   if (summary.data_query_failures > 0) strictFailures.push('data_query_failures');
   if (summary.fail > 0) strictFailures.push('readiness_fail');
   if (summary.public_fail > 0) strictFailures.push('public_fail');
+  if (summary.legacy_public_without_authority > 0) strictFailures.push('legacy_public_without_authority');
+  if (summary.publication_authority_fail > 0) strictFailures.push('publication_authority_fail');
   if (summary.raw_notice_leak_risk > 0) strictFailures.push('raw_notice_leak_risk');
   if (summary.code_unk > 0) strictFailures.push('code_unk');
   if (summary.no_customer_price > 0) strictFailures.push('no_customer_price');

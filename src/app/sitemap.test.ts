@@ -137,7 +137,7 @@ describe('sitemap', () => {
     expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
-    expect(queriedTables).toContain('travel_packages');
+    expect(queriedTables).not.toContain('travel_packages');
     expect(queriedTables).toContain('product_registration_v5_publication_pointers');
     expect(queriedTables).toContain('public_package_snapshots');
     expect(queriedTables).toContain('public_blog_content_creatives');

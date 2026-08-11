@@ -19,19 +19,21 @@ describe('channel pointer reader convergence', () => {
     expect(helper).not.toContain(".from('travel_packages')");
   });
 
-  it('uses pointer-only list, detail, and aggregate paths in kernel mode', () => {
+  it('uses pointer-only list, detail, and aggregate paths for every customer request', () => {
     const route = source('src/app/api/packages/route.ts');
-    expect(route).toContain("authorityMode === 'kernel'");
+    expect(route).toContain('const pointerOnly = !isAdmin;');
+    expect(route).not.toContain("authorityMode === 'kernel'");
     expect(route).toContain('listCurrentPublicPackageCardSnapshots');
     expect(route).toContain('getCurrentPublicPackage');
     expect(route).toContain('tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID');
     expect(route.indexOf('if (pointerOnly)')).toBeLessThan(route.indexOf("const queryBase = supabaseAdmin.from('travel_packages')"));
   });
 
-  it('builds the kernel sitemap from pointer snapshots', () => {
+  it('builds the sitemap only from pointer snapshots', () => {
     const sitemap = source('src/app/sitemap.ts');
-    expect(sitemap).toContain("authorityMode === 'kernel'");
+    expect(sitemap).not.toContain("authorityMode === 'kernel'");
     expect(sitemap).toContain('listCurrentPublicPackageCardSnapshots');
-    expect(sitemap).toContain('const snapshotDestinations = pointerOnly');
+    expect(sitemap).toContain('const snapshotDestinations = packageDestinations');
+    expect(sitemap).not.toContain(".from('travel_packages')");
   });
 });

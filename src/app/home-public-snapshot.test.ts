@@ -7,21 +7,18 @@ function homeSource(): string {
 }
 
 describe('home public package data boundary', () => {
-  it('builds package-derived home sections only after current public snapshot merge', () => {
+  it('builds package-derived home sections from publication pointers only', () => {
     const source = homeSource();
-    const aggregateQueryIndex = source.indexOf("label: 'home.packages.aggregate'");
-    const rankingQueryIndex = source.indexOf("label: 'home.ranking.packages'");
+    const pointerCatalogIndex = source.indexOf('listCurrentPublicPackageCardSnapshots');
     const aggregateMergeIndex = source.indexOf('const allPkgs =');
     const rankingMergeIndex = source.indexOf('const rankingPkgs =');
     const destinationMapIndex = source.indexOf('const destMap');
     const rankingItemsIndex = source.indexOf('const overseas: RankingItem[]');
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('function isHomePublicSnapshotCandidate');
-    expect(source).toContain('function fetchHomePublicSnapshotRows');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(aggregateMergeIndex).toBeGreaterThan(aggregateQueryIndex);
-    expect(rankingMergeIndex).toBeGreaterThan(rankingQueryIndex);
+    expect(source).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(source).not.toContain("from('travel_packages')");
+    expect(aggregateMergeIndex).toBeGreaterThan(pointerCatalogIndex);
+    expect(rankingMergeIndex).toBeGreaterThan(pointerCatalogIndex);
     expect(destinationMapIndex).toBeGreaterThan(aggregateMergeIndex);
     expect(rankingItemsIndex).toBeGreaterThan(rankingMergeIndex);
   });

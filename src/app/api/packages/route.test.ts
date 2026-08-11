@@ -17,6 +17,13 @@ function sourceWithoutComments(path: string) {
 }
 
 describe('packages bulk/customer publication gate', () => {
+  it('keeps customer reads pointer-only regardless of writer authority mode', () => {
+    const source = routeSourceWithoutComments();
+
+    expect(source).toContain('const pointerOnly = !isAdmin;');
+    expect(source).not.toMatch(/pointerOnly\s*=\s*!isAdmin[\s\S]{0,120}authorityMode/);
+  });
+
   it('serves customer package API responses only from current public snapshots', () => {
     const source = routeSourceWithoutComments();
     const detailIndex = source.indexOf('if (id) {');

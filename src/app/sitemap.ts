@@ -1,28 +1,14 @@
 import type { MetadataRoute } from 'next';
-import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
-import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import {
-  fetchAndMergeCurrentPublicPackageCardSnapshots,
-  listCurrentPublicPackageCardSnapshots,
-} from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
-import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
 const BLOG_LIMIT = 2000;
 const DESTINATION_LIMIT = 500;
-const QUERY_TIMEOUT_MS = 2500;
-
-type SitemapQueryResponse<T> = {
-  data: T[] | null;
-  error: { message?: string } | null;
-};
 
 type ActiveDestinationSitemapRow = {
   destination: string | null;
@@ -68,59 +54,7 @@ function getSafeSitemapDestination(row: ActiveDestinationSitemapRow): string | n
   return destination;
 }
 
-function isAbortLikeError(err: unknown): boolean {
-  if (err instanceof Error) {
-    return err.name === 'AbortError' || /abort|timeout|timed out/i.test(err.message);
-  }
-  return false;
-}
-
-function isSitemapPublicSnapshotCandidate(row: PublicPackageDestinationSitemapRow): boolean {
-  return isPublicPublicationState(row.publication_state)
-    && isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>);
-}
-
-async function fetchSitemapPublicSnapshotRows(rows: PublicPackageDestinationSitemapRow[]): Promise<PublicPackageDestinationSitemapRow[]> {
-  if (rows.length === 0) return [];
-  try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(
-      supabaseAdmin,
-      rows as unknown as Array<Record<string, unknown>>,
-    ) as unknown as PublicPackageDestinationSitemapRow[];
-  } catch (error) {
-    console.warn('[sitemap] public snapshot merge failed; hiding package destination URLs:', error);
-    return [];
-  }
-}
-
-async function runSitemapQuery<T>(
-  label: string,
-  queryFactory: (signal: AbortSignal) => PromiseLike<SitemapQueryResponse<T>>,
-): Promise<T[]> {
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return [];
-  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
-
-  try {
-    const result = await queryFactory(controller.signal);
-    if (result.error) {
-      console.warn(`[sitemap] ${label} query failed:`, result.error.message || result.error);
-      return [];
-    }
-    return Array.isArray(result.data) ? result.data : [];
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`[sitemap] ${label} query ${isAbortLikeError(err) ? 'timed out' : 'failed'}:`, reason);
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const pointerOnly = getProductRegistrationV6RuntimeConfig().authorityMode === 'kernel';
   const routes: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
     { url: `${BASE_URL}/group`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
@@ -135,23 +69,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const [packageDestinations, canonicalPosts] = await Promise.all([
-    pointerOnly
-      ? listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: PACKAGE_LIMIT })
-        .then(rows => rows as unknown as PublicPackageDestinationSitemapRow[])
-        .catch(error => {
-          console.warn('[sitemap] pointer-only package catalog unavailable:', error);
-          return [];
-        })
-      : runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
-        supabaseAdmin
-          .from('travel_packages')
-          .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-          .in('publication_state', ['approved', 'published'])
-          .not('destination', 'is', null)
-          .limit(PACKAGE_LIMIT)
-          .abortSignal(signal),
-      ),
+    listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: PACKAGE_LIMIT })
+      .then(rows => rows as unknown as PublicPackageDestinationSitemapRow[])
+      .catch(error => {
+        console.warn('[sitemap] pointer-only package catalog unavailable:', error);
+        return [];
+      }),
     loadPublicBlogCatalog()
       .then((posts) => posts.slice(0, BLOG_LIMIT))
       .catch((error) => {
@@ -160,11 +83,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }),
   ]);
 
-  const snapshotDestinations = pointerOnly
-    ? packageDestinations
-    : await fetchSitemapPublicSnapshotRows(
-      packageDestinations.filter(isSitemapPublicSnapshotCandidate),
-    );
+  const snapshotDestinations = packageDestinations;
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {
     const destination = pkg.destination?.trim();

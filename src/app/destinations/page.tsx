@@ -8,10 +8,7 @@ import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/Sa
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
@@ -50,20 +47,6 @@ interface AttractionSample {
   photos: GalleryPhoto[] | null;
 }
 
-type DestinationPackageStatsRow = {
-  id?: string | null;
-  destination: string | null;
-  price?: number | null;
-  status?: string | null;
-  publication_state?: string | null;
-  package_revision?: number | null;
-  audit_status?: string | null;
-  audit_report?: unknown;
-  updated_at?: string | null;
-  optional_tours?: unknown;
-  itinerary_data?: unknown;
-};
-
 function normalizeAttractionSample(row: unknown): AttractionSample | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
@@ -88,20 +71,7 @@ async function getDestinations() {
   if (shouldSkipPublicDbReadsForResourceSaver()) return { stats: [], imagesByDest: {} };
 
   try {
-    const { data: stats } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, destination, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .not('destination', 'is', null)
-      .limit(2000);
-
-    const publicStats = await fetchAndMergeCurrentPublicPackageCardSnapshots(
-      supabaseAdmin,
-      ((stats ?? []) as DestinationPackageStatsRow[])
-        .filter((pkg) => isPublicPublicationState(pkg.publication_state))
-        .filter((pkg) => isCustomerPubliclyOpenable(pkg as Record<string, unknown>)) as unknown as Array<Record<string, unknown>>,
-    );
+    const publicStats = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 2_000 });
 
     const statsByDestination = new Map<string, {
       destination: string;

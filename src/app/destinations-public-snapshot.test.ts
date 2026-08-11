@@ -7,32 +7,29 @@ function source(path: string): string {
 }
 
 describe('destination public package data boundary', () => {
-  it('builds the destinations index from current public package snapshots', () => {
+  it('builds the destinations index from publication pointers only', () => {
     const text = source('src/app/destinations/page.tsx');
-    const queryIndex = text.indexOf(".from('travel_packages')");
-    const mergeIndex = text.indexOf('const publicStats = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const mergeIndex = text.indexOf('const publicStats = await listCurrentPublicPackageCardSnapshots');
     const statsIndex = text.indexOf('const statsByDestination');
 
-    expect(text).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(text).toContain('isPublicPublicationState');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(mergeIndex).toBeGreaterThan(queryIndex);
+    expect(text).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(text).not.toContain("from('travel_packages')");
+    expect(mergeIndex).toBeGreaterThan(0);
     expect(statsIndex).toBeGreaterThan(mergeIndex);
   });
 
   it('uses public snapshots for city route inventory and package-derived destination data', () => {
     const text = source('src/app/destinations/[city]/page.tsx');
-    const helperIndex = text.indexOf('async function fetchDestinationPublicSnapshotRows');
+    const helperIndex = text.indexOf('async function listDestinationPublicSnapshotRows');
     const inventoryIndex = text.indexOf('async function destinationHasPublicInventory');
     const packageMatchIndex = text.indexOf('const packageMatch =');
     const departureIndex = text.indexOf('const departureCities =');
 
-    expect(text).toContain('function isDestinationPublicSnapshotCandidate');
-    expect(text).toContain('fetchDestinationPublicSnapshotRows(');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(text.slice(inventoryIndex, packageMatchIndex)).toContain('fetchDestinationPublicSnapshotRows');
-    expect(text.slice(packageMatchIndex - 260, packageMatchIndex)).toContain('fetchDestinationPublicSnapshotRows');
-    expect(text.slice(departureIndex, departureIndex + 450)).toContain('fetchDestinationPublicSnapshotRows');
+    expect(text).toContain('listDestinationPublicSnapshotRows(');
+    expect(text).not.toContain("from('travel_packages')");
+    expect(text.slice(inventoryIndex, packageMatchIndex)).toContain('listDestinationPublicSnapshotRows');
+    expect(text.slice(packageMatchIndex - 260, packageMatchIndex)).toContain('listDestinationPublicSnapshotRows');
+    expect(text.slice(departureIndex, departureIndex + 450)).toContain('alivePackageRows');
     expect(helperIndex).toBeGreaterThan(0);
   });
 });

@@ -15,15 +15,10 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import {
   canonicalizePublicDestination,
   getPublicDestinationQueryNames,
-  mergePublicDestinationStats,
   slugMatchesPublicDestination,
-  type ActiveDestinationLike,
 } from '@/lib/public-destinations';
 import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
@@ -37,18 +32,11 @@ const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
   Number(process.env.DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,
 );
 
-function isDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState)
-    && isCustomerPubliclyOpenable(row);
-}
-
-async function fetchDestinationPublicSnapshotRows<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
-  if (rows.length === 0) return [];
+async function listDestinationPublicSnapshotRows(limit = 5_000): Promise<Record<string, unknown>[]> {
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit });
   } catch (error) {
-    console.warn('[destination] public snapshot merge failed; hiding package-derived destination data', error);
+    console.warn('[destination] pointer-only package catalog unavailable; hiding package-derived destination data', error);
     return [];
   }
 }
@@ -63,16 +51,7 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
   if (!isSupabaseConfigured) return [];
   if (shouldSkipPublicDbReadsForResourceSaver()) return [];
   try {
-    const { data } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .not('destination', 'is', null)
-      .limit(DESTINATION_STATIC_PRERENDER_LIMIT);
-    const publicRows = await fetchDestinationPublicSnapshotRows(
-      ((data ?? []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
-    );
+    const publicRows = await listDestinationPublicSnapshotRows(DESTINATION_STATIC_PRERENDER_LIMIT);
     const unique: string[] = [
       ...new Set(
         (publicRows as Array<{ destination: string | null }>)
@@ -181,18 +160,8 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
 
   try {
     const queryNames = getPublicDestinationQueryNames(city);
-    const { data, error } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('destination', queryNames)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .limit(200);
-    if (error) return null;
-    const publicRows = await fetchDestinationPublicSnapshotRows(
-      ((data ?? []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
-    );
-    return publicRows.length > 0;
+    const publicRows = await listDestinationPublicSnapshotRows();
+    return publicRows.some(row => queryNames.includes(String(row.destination ?? '')));
   } catch {
     return null;
   }
@@ -226,17 +195,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
   }
 
   try {
-    const { data: packageRows, error } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .limit(2000);
-    if (error) return decoded;
-
-    const publicRows = await fetchDestinationPublicSnapshotRows(
-      ((packageRows ?? []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
-    );
+    const publicRows = await listDestinationPublicSnapshotRows(2_000);
     const packageMatch = (publicRows as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
       .find(destination => destination && slugMatchesPublicDestination(destination, decoded));
@@ -485,14 +444,6 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   const region = getRegionForCity(city);
   const queryNames = getPublicDestinationQueryNames(city);
 
-  const siblingQuery = region
-    ? supabaseAdmin
-        .from('active_destinations')
-        .select('destination, package_count')
-        .order('package_count', { ascending: false })
-        .limit(500)
-    : Promise.resolve({ data: null });
-
   // destination_metadata는 테이블이 없을 수 있으므로 별도 try/catch
   const metadataQuery = supabaseAdmin
     .from('destination_metadata')
@@ -507,23 +458,13 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     .in('destination', queryNames)
     .limit(1);
 
-  const departureQuery = supabaseAdmin
-    .from('travel_packages')
-    .select('id, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-    .in('destination', queryNames)
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-    .in('publication_state', ['approved', 'published'])
-    .not('departure_airport', 'is', null);
-
   const [
     { data: attractions },
-    { data: packages },
+    packages,
     { data: posts },
     { data: pillarRow },
-    { data: allDests },
     metadataResult,
     climateResult,
-    { data: departurePkgs },
   ] = await Promise.all([
     supabaseAdmin
       .from('attractions')
@@ -533,14 +474,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .eq('customer_publishable', true)
       .order('mention_count', { ascending: false })
       .limit(8),
-    supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
-      .in('destination', queryNames)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .order('price', { ascending: true })
-      .limit(100),
+    listDestinationPublicSnapshotRows(),
     supabaseAdmin
       .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, seo_title, og_image_url, content_type, angle_type, published_at')
@@ -558,21 +492,19 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .eq('content_type', 'pillar')
       .in('pillar_for', queryNames)
       .limit(1),
-    siblingQuery,
     metadataQuery,
     climateQuery,
-    departureQuery,
   ]);
 
   const alivePackageRows = ((packages as unknown[] | null) ?? [])
     .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && !Array.isArray(p)))
-    .filter(isDestinationPublicSnapshotCandidate)
+    .filter((p) => queryNames.includes(String(p.destination ?? '')))
     .filter((p) => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some((d) => d.date && d.date >= today);
     });
-  const alivePkgs = (await fetchDestinationPublicSnapshotRows(alivePackageRows))
+  const alivePkgs = alivePackageRows
     .map(normalizePackageRow)
     .filter((p): p is PillarData['packages'][number] => p !== null);
 
@@ -589,19 +521,18 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   const fallbackMinPrice = prices.length > 0 ? Math.min(...prices) : null;
 
   let siblingCities: string[] = [];
-  if (region && allDests) {
-    siblingCities = mergePublicDestinationStats((allDests as ActiveDestinationLike[] | null) ?? [])
-      .filter(d => d.destination !== city)
-      .filter(d => cityInRegion(d.destination, region.slug))
-      .map(d => d.destination)
+  if (region) {
+    siblingCities = [...new Set((packages as Array<Record<string, unknown>>)
+      .map(row => String(row.destination ?? '').trim())
+      .filter(Boolean))]
+      .filter(destination => destination !== city)
+      .filter(destination => cityInRegion(destination, region.slug))
       .slice(0, 8);
   }
 
   const departureCities = [
     ...new Set(
-      (await fetchDestinationPublicSnapshotRows(
-        ((departurePkgs || []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
-      ) as Array<{ departure_airport: string | null }>)
+      (alivePackageRows as Array<{ departure_airport?: string | null }>)
         .map(p => p.departure_airport ? extractDepartureCity(p.departure_airport) : null)
         .filter((c): c is string => !!c && c.length > 0)
     ),

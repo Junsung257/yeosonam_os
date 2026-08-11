@@ -13,12 +13,8 @@ import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemot
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import {
   getPublicDestinationQueryNames,
-  mergePublicDestinationStats,
-  type ActiveDestinationLike,
 } from '@/lib/public-destinations';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
@@ -138,14 +134,31 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     return getEmptyRegionData();
   }
 
-  const { data: allDests } = await supabaseAdmin
-    .from('active_destinations')
-    .select('destination, package_count, min_price, avg_rating, total_reviews')
-    .limit(500);
+  const publicCatalog = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 })
+    .catch((error) => {
+      console.warn('[region] pointer-only package catalog unavailable', error);
+      return [];
+    });
+  const regionPackageRows = publicCatalog.filter(row => cityInRegion(String(row.destination ?? ''), slug));
+  const regionStats = new Map<string, RegionDestination>();
+  for (const row of regionPackageRows) {
+    const destination = String(row.destination ?? '').trim();
+    if (!destination) continue;
+    const current = regionStats.get(destination) ?? {
+      destination,
+      package_count: 0,
+      min_price: null,
+      avg_rating: null,
+      total_reviews: null,
+    };
+    current.package_count += 1;
+    const price = Number(row.price);
+    if (Number.isFinite(price) && price > 0 && (current.min_price == null || price < current.min_price)) current.min_price = price;
+    regionStats.set(destination, current);
+  }
 
   // 이 region 에 속하는 도시만 필터 — 토큰화 매칭(cityInRegion)으로 멀티시티 "북경/홍콩" false-positive 방지.
-  const regionDests = mergePublicDestinationStats((allDests as ActiveDestinationLike[] | null) ?? [])
-    .filter((d) => cityInRegion(d.destination, slug));
+  const regionDests = [...regionStats.values()].sort((a, b) => b.package_count - a.package_count);
 
   const dests = regionDests.map(d => d.destination);
   const queryNames = [...new Set(dests.flatMap(getPublicDestinationQueryNames))];
@@ -173,14 +186,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
     queryNames.length > 0
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
-      ? supabaseAdmin
-          .from('travel_packages')
-          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
-          .in('destination', queryNames)
-          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-          .in('publication_state', ['approved', 'published'])
-          .order('price', { ascending: true })
-          .limit(2000)
+      ? Promise.resolve({ data: regionPackageRows })
       : Promise.resolve(emptyResult),
     queryNames.length > 0
       ? supabaseAdmin
@@ -195,8 +201,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
   ]);
   const attrs = attrsRes.data;
-  const pkgs = ((pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [])
-    .filter(isCustomerPubliclyOpenable);
+  const pkgs = (pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [];
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
@@ -227,7 +232,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       if (pd.length === 0) return true;
       return pd.some(d => d.date && d.date >= today);
     });
-  const publicCardRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, alivePackageRows);
+  const publicCardRows = alivePackageRows;
   const alivePkgs = publicCardRows
     .map(p => ({
       ...p,

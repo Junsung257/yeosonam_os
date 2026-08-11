@@ -52,7 +52,6 @@ import {
 } from '@/lib/product-registration/customer-open-contract';
 import { summarizeEvidencePackForApi } from '@/lib/product-registration/registration-evidence-pack';
 import {
-  getProductRegistrationV6RuntimeConfig,
   productRegistrationLegacyWriterBlocker,
 } from '@/lib/product-registration-v6/runtime-config';
 
@@ -443,7 +442,9 @@ const PACKAGE_LIST_FIELDS_LITE = `
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
 export async function GET(request: NextRequest) {
   const isAdmin = await isAdminRequest(request).catch(() => false);
-  const pointerOnly = !isAdmin && getProductRegistrationV6RuntimeConfig().authorityMode === 'kernel';
+  // Writer authority can remain in legacy/shadow mode during migration, but
+  // customer reads must never fall back to mutable travel_packages rows.
+  const pointerOnly = !isAdmin;
 
   if (!isSupabaseConfigured) {
     return applyPackageCache(listResponse([], { total: 0 }), isAdmin);
