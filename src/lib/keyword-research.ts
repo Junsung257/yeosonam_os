@@ -41,6 +41,13 @@ export interface KeywordResearchResult {
   source: string;
   cached: boolean;
   intent?: SearchIntent;       // Task 2.2: 검색 의도 분류
+  observed_search_performance?: {
+    provider: 'google_search_console';
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    average_position: number;
+  };
 }
 
 // ── 검색 의도 분류 휴리스틱 ─────────────────────────────────
@@ -213,8 +220,8 @@ function parseTrendsXml(xml: string): TrendKeyword[] {
  */
 export async function fetchNaverDataLabTrends(
   keywords: string[],
-): Promise<Map<string, { score: number; volume: number }>> {
-  const result = new Map<string, { score: number; volume: number }>();
+): Promise<Map<string, { score: number; volume: null }>> {
+  const result = new Map<string, { score: number; volume: null }>();
   const clientId = getSecret('NAVER_CLIENT_ID');
   const clientSecret = getSecret('NAVER_CLIENT_SECRET');
   if (!clientId || !clientSecret || keywords.length === 0) return result;
@@ -255,10 +262,10 @@ export async function fetchNaverDataLabTrends(
         const ratios = g.data.map(d => d.ratio);
         if (ratios.length === 0) continue;
         const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-        // ratio 평균 0~100 → 추정 월간 검색량 (avg × 200 = 0~20,000 범위)
+        // DataLab is a relative index, not search volume. Never fabricate volume from it.
         result.set(g.title, {
           score: Math.round(avg),
-          volume: Math.round(avg * 200),
+          volume: null,
         });
       }
 
@@ -634,12 +641,6 @@ export async function enrichWithGscData(
 
   if (!gscRow) return baseResult;
 
-  // GSC 데이터로 보강
-  const enrichedVolume = Math.max(
-    baseResult.monthly_search_volume ?? 0,
-    gscRow.impressions,
-  );
-
   // position 보정 competition: position 1-5 = low, 6-15 = medium, 16+ = high
   let enrichedCompetition = baseResult.competition_level;
   if (gscRow.position <= 5) enrichedCompetition = 'low';
@@ -648,9 +649,17 @@ export async function enrichWithGscData(
 
   return {
     ...baseResult,
-    monthly_search_volume: enrichedVolume > 0 ? enrichedVolume : baseResult.monthly_search_volume,
+    // GSC impressions are first-party performance, not market search volume.
+    monthly_search_volume: baseResult.monthly_search_volume,
     competition_level: enrichedCompetition,
     source: 'gsc',
     cached: false,
+    observed_search_performance: {
+      provider: 'google_search_console',
+      clicks: gscRow.clicks,
+      impressions: gscRow.impressions,
+      ctr: gscRow.ctr,
+      average_position: gscRow.position,
+    },
   };
 }
