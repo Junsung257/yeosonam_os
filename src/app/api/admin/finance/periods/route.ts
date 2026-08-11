@@ -58,10 +58,47 @@ export async function GET(request: NextRequest) {
     if (periodsResult.error) throw periodsResult.error;
     if (exceptionsResult.error) throw exceptionsResult.error;
 
+    const exceptions = exceptionsResult.data ?? [];
+    const bookingIds = [...new Set(exceptions.map(row => row.booking_id).filter((id): id is string => Boolean(id)))];
+    const transactionIds = [...new Set(exceptions.map(row => row.bank_transaction_id).filter((id): id is string => Boolean(id)))];
+    const [bookingResult, keyResult, transactionResult] = await Promise.all([
+      bookingIds.length > 0
+        ? supabaseAdmin.from('bookings').select('id, booking_no, package_title, customers!lead_customer_id(name)').in('id', bookingIds)
+        : Promise.resolve({ data: [], error: null }),
+      bookingIds.length > 0
+        ? supabaseAdmin.from('booking_settlement_keys').select('booking_id, normalized_key').in('booking_id', bookingIds).eq('status', 'active')
+        : Promise.resolve({ data: [], error: null }),
+      transactionIds.length > 0
+        ? supabaseAdmin.from('bank_transactions').select('id, counterparty_name, memo, received_at').in('id', transactionIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (bookingResult.error) throw bookingResult.error;
+    if (keyResult.error) throw keyResult.error;
+    if (transactionResult.error) throw transactionResult.error;
+    const bookingById = new Map((bookingResult.data ?? []).map(row => [row.id as string, row]));
+    const keyByBooking = new Map((keyResult.data ?? []).map(row => [row.booking_id as string, row.normalized_key as string]));
+    const transactionById = new Map((transactionResult.data ?? []).map(row => [row.id as string, row]));
+    const enrichedExceptions = exceptions.map(exception => {
+      const booking = exception.booking_id ? bookingById.get(exception.booking_id) : null;
+      const customerRelation = booking?.customers;
+      const customer = Array.isArray(customerRelation) ? customerRelation[0] : customerRelation;
+      const transaction = exception.bank_transaction_id ? transactionById.get(exception.bank_transaction_id) : null;
+      return {
+        ...exception,
+        booking_no: booking?.booking_no ?? null,
+        customer_name: customer && typeof customer === 'object' && 'name' in customer ? String(customer.name ?? '') || null : null,
+        package_title: booking?.package_title ?? null,
+        travel_key: exception.booking_id ? keyByBooking.get(exception.booking_id) ?? null : null,
+        transaction_counterparty: transaction?.counterparty_name ?? null,
+        transaction_memo: transaction?.memo ?? null,
+        transaction_received_at: transaction?.received_at ?? null,
+      };
+    });
+
     return NextResponse.json({
       preview,
       periods: periodsResult.data ?? [],
-      exceptions: exceptionsResult.data ?? [],
+      exceptions: enrichedExceptions,
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     const message = error instanceof Error ? error.message : '월 마감 정보를 불러오지 못했습니다.';
@@ -172,7 +209,7 @@ export async function POST(request: NextRequest) {
         close_basis: 'clobe_cash',
         source: 'clobe_mcp',
         account_number: summary.accountNumber,
-        fingerprint_version: 3,
+        fingerprint_version: 4,
         review_status: row.reviewStatus,
         review_fingerprint: row.reviewFingerprint,
         reviewed_by: row.reviewedBy,

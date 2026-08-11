@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       'Content-Type': 'application/json',
       'x-admin-token': adminToken,
     },
-    body: JSON.stringify({ from: window.from, to: window.to, limit: 200 }),
+    body: JSON.stringify({ from: window.from, to: window.to, limit: 1000 }),
   });
   const response = await syncClobeTransactions(syncRequest);
   const body = await response.json().catch(() => ({}));

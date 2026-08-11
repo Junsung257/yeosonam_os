@@ -359,11 +359,11 @@ describe('bank account reality', () => {
       estimatedTaxReserve: 20,
       protectedCustomerFunds: 500,
       unpaidSupplierCost: 300,
-      protectedTravelCash: 800,
+      protectedTravelCash: 500,
       protectedUnclassifiedInflows: 70,
-      liquidityAvailableAfterReserves: 10,
+      liquidityAvailableAfterReserves: 310,
       earnedProfitAvailable: 310,
-      safeToWithdraw: 10,
+      safeToWithdraw: 310,
       calculationStatus: 'clear',
     });
   });

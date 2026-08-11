@@ -35,6 +35,8 @@ export interface ClobeMcpToolSummary {
 
 export interface ClobeMcpFetchResult {
   transactions: Record<string, unknown>[];
+  truncated: boolean;
+  nextCursor: string | null;
   toolName: string | null;
   toolNames: string[];
   attempts: ClobeMcpFetchAttempt[];
@@ -80,6 +82,14 @@ interface McpCallContext {
 
 const DEFAULT_CLOBE_MCP_URL = 'https://api.clobe.ai/mcp';
 const PROTOCOL_VERSION = '2025-06-18';
+
+export function isClobeFetchTruncated(params: {
+  transactionCount: number;
+  requestedLimit: number;
+  hasNext: boolean;
+}): boolean {
+  return params.transactionCount >= params.requestedLimit && params.hasNext;
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -731,6 +741,8 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   if (options.diagnosticsOnly) {
     return {
       transactions: [],
+      truncated: false,
+      nextCursor: null,
       toolName: selectedToolName,
       toolNames,
       attempts: [],
@@ -742,6 +754,8 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   if (!selectedToolName) {
     return {
       transactions: [],
+      truncated: false,
+      nextCursor: null,
       toolName: null,
       toolNames,
       attempts: [],
@@ -807,9 +821,11 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
 
   const attempts: ClobeMcpFetchAttempt[] = [];
   const transactions: Record<string, unknown>[] = [];
-  const requestedLimit = Math.max(1, Math.min(1000, options.limit ?? 200));
+  const requestedLimit = Math.max(1, Math.min(1000, options.limit ?? 1000));
   const seenCursors = new Set<string>();
   let cursor = options.cursor ?? null;
+  let hasNext = false;
+  let nextCursor: string | null = null;
 
   while (transactions.length < requestedLimit) {
     const size = Math.min(100, requestedLimit - transactions.length);
@@ -837,6 +853,8 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
       transactions.push(...page.slice(0, requestedLimit - transactions.length));
 
       const pagination = paginationState(callResult);
+      hasNext = pagination.hasNext;
+      nextCursor = pagination.nextCursor;
       if (!pagination.hasNext || !pagination.nextCursor || page.length === 0) break;
       if (seenCursors.has(pagination.nextCursor)) {
         throw new Error('Clobe transaction pagination returned a repeated cursor');
@@ -882,6 +900,12 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
 
   return {
     transactions,
+    truncated: isClobeFetchTruncated({
+      transactionCount: transactions.length,
+      requestedLimit,
+      hasNext,
+    }),
+    nextCursor,
     toolName: selectedTool.name,
     toolNames,
     attempts,

@@ -614,7 +614,9 @@ export function calculateBankProfitErp(params: {
   const protectedUnallocatedTravelCash = Math.max(0, params.bookingCash.unallocatedTravelNet);
   const protectedCustomerFunds = params.bookingCash.openCustomerFundsHeld;
   const unpaidSupplierCost = params.bookingCash.openKnownSupplierPayable;
-  const protectedTravelCash = protectedCustomerFunds + unpaidSupplierCost + protectedUnallocatedTravelCash;
+  // A booking can use the customer cash already held to pay its remaining
+  // supplier cost. Reserving both amounts would protect the same cash twice.
+  const protectedTravelCash = params.bookingCash.openCashReserveRequired + protectedUnallocatedTravelCash;
   const liquidityAvailableAfterReserves = params.bankSummary.actualBalance
     - protectedTravelCash
     - estimatedTaxReserve
