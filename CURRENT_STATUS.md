@@ -1,5 +1,12 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
+## 2026-08-11 상품등록 V6 기준선
+
+- V5 immutable revision·claim·proof·publication pointer를 권위 원천으로 재사용하고 V6 durable workflow와 typed domain projection을 연결했다.
+- 운영 DB에 `internal_product_registration` private schema와 V6 stage·provider·transport·golf·copy·dead-letter 원장을 추가했다. anon/authenticated의 V6 RPC 실행권은 없다.
+- 40개 HWP 고정 corpus는 `rhwp 0.8.2`로 40/40 추출, 66개 segment, 602개 claim의 evidence coverage 100%, render contract 66/66을 재현했다.
+- 신규 자동 공개는 아직 flag OFF다. 운영 Chrome/CDP, OAG·Cirium, OCR 인증·비용 값과 cohort canary가 확인되기 전에는 그림자 처리만 한다.
+
 > **정산센터 V3 (2026-08-06):** `/admin/finance`는 Clobe 신한 4128 거래를 분할 원장으로 관리한다. 거래 한 건을 예약·고객환불·은행수수료·회사경비·출장·세금·자본·이체·대표자인출 등으로 1원 단위 분할할 수 있고, 사장님의 예약별 `정산 확인` 없이는 양수 마진도 월마감·확정수익에 포함하지 않는다. 기존 자동확정 48건은 감사 스냅샷을 보존한 채 전부 재검토하며, 취소·오예약·테스트 예약은 복원 가능한 재무 제외 상태로 보관한다. 상세 계약: `docs/settlement-current-ssot.md`.
 
 > **AI 운영실 V1 (2026-07-28, 로컬 코드):** 기존 `agent_tasks`, `agent_approvals`, `agent_incidents`, `agent_trace_spans`를 `correlation_id` 작업실로 묶는 읽기 전용 통합 스냅샷과 `/admin/agent-mas` 운영 화면을 추가했다. 24시간 미갱신 작업과 7일 이상 지난 무기한 승인을 정체·기한 경과로 분리하며, 버전된 durable resume 상태가 연결되기 전까지 승인 큐는 관찰 전용이다. 실행은 백엔드 durable workflow, 스레드는 증거 타임라인, 외부·금전·고객 변경은 승인 경계라는 하이브리드 모델이며 자동 멀티에이전트 실행은 아직 열지 않았다. 상세 SSOT: `docs/agent-office-current-ssot.md`.

@@ -1,5 +1,13 @@
 # /register 변경 이력 (P0~P1 정책 + 결정 이력)
 
+## 2026-08-11 — V6 durable workflow·immutable publication 전환
+
+- `/api/upload`은 V6 flag 활성 시 원본 보존과 fencing claim 후 Vercel Workflow를 시작하고 `202`를 반환한다.
+- 등록은 14개 고정 stage와 append-only stage result, retry, watchdog, dead-letter, terminal outcome을 사용한다.
+- V6 revision에서 출발일·항공·숙박·골프 typed projection과 고객 copy revision을 생성한다.
+- 공개는 exact snapshot의 실제 Chrome mobile proof와 CAS RPC를 통과한 경우에만 수행한다. proof 중 임시 활성화는 금지한다.
+- 신규 V6 공개는 환경변수·DB kill switch 모두에서 fail-closed로 판단한다.
+
 ## 2026-06-05 — Upload registration current contract supersedes legacy manual insert docs
 
 Current SSOT: `docs/product-registration-current-ssot.md`.

@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-08-06
+Last updated: 2026-08-11
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-11 | `2026-08-11-product-registration-v6-implementation.md` | V6 durable workflow, private schema, real HWP 40/40 recheck, production Supabase permission boundary, and remaining launch prerequisites. |
 | 2026-08-10 | `2026-08-10-product-registration-v5-shadow-corpus.md` | 40개 HWP 원문을 고객 비노출 격리 상태에서 V5 정규화·근거·가격·일정·고객 화면 계약까지 전수 검증한 결과. |
 | 2026-08-10 | `2026-08-10-product-registration-live-readiness.md` | Chrome·Vercel·Supabase·고객 `/packages`·`/lp` 실시간 점검과 V5 production open blockers. |
 | 2026-08-10 | `2026-08-10-product-registration-live-shadow.md` | 운영 Supabase shadow 1건의 source→V5 revision→blocked snapshot→동일 hash 모바일 `/packages`·`/lp` proof 결과. |

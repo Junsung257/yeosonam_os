@@ -2,6 +2,33 @@
 
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
+## 상품등록 통합 자동화 엔진 V6 (2026-08-11)
+
+V6는 기본적으로 그림자 처리만 합니다. 운영 판매 정보는 `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`이고 `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`일 때만 CAS 공개를 시도합니다.
+
+| 변수 | 용도 | 안전한 기본값 |
+|---|---|---|
+| `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | `/api/upload`을 Vercel Workflow V6에 연결 | `0` |
+| `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
+| `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |
+| `PRODUCT_REGISTRATION_PUBLICATION_FREEZE` | `1`이면 모든 신규 V6 공개 차단 | `1` |
+| `PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED` | 고객 면에서 pointer로 지정된 immutable snapshot만 읽기 | canary 전 `0`, 전환 후 `1` |
+| `PRODUCT_REGISTRATION_PROOF_SECRET` | snapshot·hash·package에 귀속된 proof URL HMAC secret | 무작위 32바이트 이상 |
+| `PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT` | 운영 Chrome/CDP 원격 엔드포인트. 없으면 proof는 fail-closed | 미설정 |
+| `PRODUCT_REGISTRATION_CHROME_EXECUTABLE_PATH` | 로컬/전용 worker Chrome 경로 | 미설정 |
+| `PRODUCT_REGISTRATION_V6_OCR_ENABLED` | 스캔 PDF·이미지 OCR router 사용 | `0` |
+| `CLOVA_OCR_APIGW_URL`, `CLOVA_OCR_SECRET` | 한국어 표 1차 OCR | 미설정 |
+| `CLOVA_OCR_COST_KRW_PER_CALL` | CLOVA 1회 예상 비용 | `0` |
+| `GOOGLE_DOCUMENT_AI_PROJECT_ID`, `GOOGLE_DOCUMENT_AI_LOCATION`, `GOOGLE_DOCUMENT_AI_PROCESSOR_ID` | critical OCR 교차검증 | 미설정 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Document AI 서비스 계정 JSON | 미설정 |
+| `GOOGLE_DOCUMENT_AI_COST_KRW_PER_CALL` | Google Document AI 1회 예상 비용 | `0` |
+| `OAG_SUBSCRIPTION_KEY`, `OAG_FLIGHT_INFO_URL` | 미래 항공 일정 1차 검증 | 미설정 |
+| `OAG_COST_KRW_PER_CALL` | OAG 1회 예상 비용 | `0` |
+| `CIRIUM_APP_ID`, `CIRIUM_APP_KEY`, `CIRIUM_SCHEDULES_URL` | 항공 시간 독립 2차 검증 | 미설정 |
+| `CIRIUM_COST_KRW_PER_CALL` | Cirium 1회 예상 비용 | `0` |
+
+외부 OCR 합계는 원문 문서당 2,000원을 넘으면 호출 전 차단합니다. 항공 시간은 현재 원문값을 덮어쓰지 않고, 누락값은 날짜·노선이 같은 두 독립 출처가 분 단위로 일치할 때만 보완합니다.
+
 ## ⚠️ 시크릿 관리 정책 (중요)
 
 1. **실제 시크릿 값은 Vercel Environment Variables에서만 관리합니다.**

@@ -1,6 +1,20 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-08-07
+Last updated: 2026-08-11
+
+## V6 통합 자동화 계약 (2026-08-11)
+
+V6의 유일한 종료 결과는 `published_verified`, `published_degraded`, `blocked_action_required`이다. 완전 자동화는 모든 문서를 억지로 공개하는 것이 아니라, 모든 업로드가 검증된 공개·안전 축약 공개·안전 차단 중 하나로 자동 종결되는 상태를 뜻한다.
+
+표준 흐름은 `source blob → EvidenceIR → segment → immutable V5 revision → typed facts → shared facts → policy → copy revision → immutable snapshot → private Chrome proof → CAS pointer → outbox convergence`이다.
+
+- `travel_packages`는 호환 projection이며 신규 공개의 권위 원천이 아니다.
+- 고객 목록·상세·LP·OG·제휴는 같은 publication pointer의 immutable snapshot을 읽어야 한다.
+- proof를 위해 상품을 임시 `ACTIVE`로 바꾸지 않는다. proof는 signed private URL과 `snapshot_hash + renderer_build_id + route + viewport + locale`에 귀속된다.
+- 항공 시간 누락은 두 독립 출처가 일치할 때만 보완하고, 충돌하면 숨기고 최종 확인 문구로 `published_degraded` 처리한다.
+- 가격·출발일 연결, 통화, 취소조건, tenant/source hash가 불명하면 자동 공개하지 않는다.
+- 관광지 master를 자동 생성하지 않으며, 미매칭 원문 일정은 일반 text로만 표시한다.
+- V6 공개 기본값은 OFF다. 40개 HWP corpus, 실제 Chrome proof, 운영 pointer 수렴, 외부 provider 비용·보존 정책을 통과한 cohort만 점진적으로 연다.
 
 ## V4 실행 기준 (2026-08-06)
 
