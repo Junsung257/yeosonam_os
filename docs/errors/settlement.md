@@ -149,3 +149,22 @@ Last updated: 2026-08-05
 - [x] **원인:** Excel bootstrap 시각에는 초가 있었고 Clobe MCP 시각은 분 단위였다. 초를 포함한 fingerprint가 달라 similarity 경로를 탔고, 이미 배분된 probable row는 provider transaction id를 붙이지 않은 채 duplicate로 종료됐다. 화면은 예약 KPI는 출발 월, 거래 탭은 입출금 월, 미매칭은 전체 기간으로 서로 다른 기준을 혼용했다.
 - [x] **수정 계약:** provider id가 없는 기존 `clobe_mcp` 행은 같은 분·유형·금액·상대방·메모로 유일할 때만 provider id를 결합한다. 동일 분 거래가 여럿이면 메모로 구분하며, 메모도 모호하면 새 금융 행을 만들지 않고 검토로 남긴다. 결합 후 재동기화는 provider id exact match로 멱등이어야 한다.
 - [x] **표시 계약:** 정상화 실패는 importer 오류와 별도 표시하고, 거래 탭은 전체 활성 원장 기준임을 명시한다. 제외 422건 같은 과거 Slack/SMS·재구성 전 Clobe 행은 정산 합계에서 빠지는 감사 보관 자료로 표시한다.
+
+## ERR-SETTLEMENT-noop-sync-fingerprint@2026-08-11
+
+- [x] **증상:** 예약 상세에는 최신 Clobe 금액이 보이지만 `정산 확인` 저장은 409로 실패했고, 매일 동기화 뒤 검토 지문 불일치가 누적됐다.
+- [x] **원인:** `finance_booking_review_fingerprint`가 Clobe no-op merge에서도 바뀌는 `bank_transactions.updated_at`을 포함했으며 API는 현재 원장이 아니라 저장된 오래된 지문을 반환했다.
+- [x] **수정 계약:** 정산 지문에는 운영상 의미 있는 필드만 포함한다. API는 `finance_booking_review_live_snapshots`의 현재 지문을 반환한다. 버전 변경 백필은 결정 상태를 유지하고 불변 사전 스냅샷을 남긴다.
+- [x] **검증:** 운영 DB 기준 지문 drift 26건에서 0건, 취소 예약 숨은 pending 2건에서 0건. 통장 479건과 배분 합계는 변경 전후 모두 1원 차이 0건.
+
+## ERR-SETTLEMENT-reserve-double-count@2026-08-11
+
+- [x] **증상:** `지금 써도 되는 돈`에서 출발 전 고객 돈과 같은 예약의 미지급 랜드사 원가를 모두 차감해 실제보다 과도하게 낮게 표시할 수 있었다.
+- [x] **원인:** 예약별 계산은 이미 두 금액 중 큰 값을 구했지만 최종 ERP 요약이 두 합계를 다시 더했다.
+- [x] **수정 계약:** 열린 예약마다 `max(고객 보유금, 남은 예정원가)`만 보호하고 미배정 여행 입금만 추가한다. 원가 미입력은 계속 사용가능액을 차단한다.
+
+## ERR-SETTLEMENT-loading-false-zero@2026-08-11
+
+- [x] **증상:** 거래 API 실패 또는 최초 로딩 중 실제 원장이 있어도 0건·0원처럼 보일 수 있었다.
+- [x] **원인:** 여러 fetch의 HTTP 오류를 검사하지 않았고 실패 상태와 유효한 빈 상태를 분리하지 않았다.
+- [x] **수정 계약:** 최초 로딩에는 skeleton만 표시하고, 하나의 API라도 실패하면 명확한 오류를 표시한다. 기존 정상 데이터가 있으면 유지하면서 마지막 정상 시각을 함께 보여준다.
