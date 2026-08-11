@@ -23,6 +23,7 @@ import {
   isUniqueClobeLegacyDuplicate,
   selectUniqueClobeBootstrapCandidate,
 } from './bank-transaction-dedupe-policy';
+import { evaluateProviderMemoChange } from './provider-memo-change';
 
 export type BankTransactionImportSource = 'bulk_import' | 'clobe_mcp' | 'clobe_api';
 export type BankTransactionImportAction =
@@ -400,7 +401,7 @@ async function attachImportEvidence(existingId: string, input: {
   fingerprint: string;
   row: BankTransactionImportRow;
   eventId: string;
-  parsed: ParsedTravelSettlementMemo;
+  parsed: ParsedTravelSettlementMemo | null;
 }) {
   const { data: existing } = await supabaseAdmin
     .from('bank_transactions')
@@ -423,7 +424,7 @@ async function attachImportEvidence(existingId: string, input: {
         memo: input.row.memo,
         original_line: input.row.originalLine ?? null,
         row_index: input.row.rowIndex ?? null,
-        settlement_key: input.parsed.normalizedKey,
+        settlement_key: input.parsed?.normalizedKey ?? null,
         external_provider: input.row.externalProvider ?? null,
         external_transaction_id: input.row.externalTransactionId ?? null,
         imported_at: new Date().toISOString(),
@@ -840,8 +841,6 @@ export async function processBankTransactionImportRows(
 
     const eventId = stableEventId(options.source, row, fingerprint);
     const previousMemo = duplicate.row?.memo ?? null;
-    const previousMemoKey = normalizedMemoKeyOf(previousMemo);
-    const memoChanged = Boolean(parsed && duplicate.row && previousMemoKey !== parsed.normalizedKey);
     const duplicateHasAllocation = duplicate.row ? await hasActiveAllocation(duplicate.row.id) : false;
     const duplicateProcessed = duplicateHasAllocation;
     const duplicateIsLegacyMatched = Boolean(duplicate.row && !duplicateHasAllocation && (
@@ -849,8 +848,21 @@ export async function processBankTransactionImportRows(
       || duplicate.row.match_status === 'manual'
       || duplicate.row.match_status === 'auto'
     ));
+    const providerMemoDecision = duplicate.row
+      ? evaluateProviderMemoChange({
+          source: options.source,
+          sourceMetadata: duplicate.row.source_metadata,
+          storedMemo: previousMemo,
+          incomingMemo: row.memo,
+          processed: duplicateProcessed || duplicateIsLegacyMatched,
+        })
+      : null;
+    const memoChanged = providerMemoDecision?.memoChanged ?? false;
     const recordsCompleteClobeLedger = options.source === 'clobe_mcp' || options.source === 'clobe_api';
+    const declassificationNeedsReview = !parsed
+      && Boolean(providerMemoDecision?.declassificationNeedsReview);
     const importAction: BankTransactionImportAction =
+      declassificationNeedsReview ? 'memo_changed_review' :
       !parsed && recordsCompleteClobeLedger ? 'non_travel_recorded' :
       !parsed ? 'ignored_non_travel' :
       memoChanged && duplicateProcessed ? 'memo_changed_review' :
@@ -899,14 +911,25 @@ export async function processBankTransactionImportRows(
 
     if (!parsed) {
       if (duplicate.row && (duplicateHasAllocation || duplicateIsLegacyMatched)) {
-        await flagTravelTransactionDeclassification({
-          source: options.source,
-          existing: duplicate.row,
-          row,
-          eventId,
-          fingerprint,
-        });
-        results.push({ ...previewRow, status: 'memo_changed_review', txId: duplicate.row.id });
+        if (declassificationNeedsReview) {
+          await flagTravelTransactionDeclassification({
+            source: options.source,
+            existing: duplicate.row,
+            row,
+            eventId,
+            fingerprint,
+          });
+          results.push({ ...previewRow, status: 'memo_changed_review', txId: duplicate.row.id });
+        } else {
+          await attachImportEvidence(duplicate.row.id, {
+            source: options.source,
+            fingerprint,
+            row,
+            eventId,
+            parsed: null,
+          });
+          results.push({ ...previewRow, status: 'merged', txId: duplicate.row.id });
+        }
         continue;
       }
 
