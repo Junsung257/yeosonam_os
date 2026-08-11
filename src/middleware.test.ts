@@ -170,6 +170,7 @@ describe('middleware backend P0 server-token pass-through', () => {
   it.each([
     '/api/billing/issue-billing-key',
     '/api/voucher',
+    '/api/upload',
   ])('allows a valid server admin token to reach the route-local guard for %s', async (path) => {
     vi.stubEnv('ADMIN_API_TOKEN', 'backend-p0-admin-token');
 
@@ -180,6 +181,17 @@ describe('middleware backend P0 server-token pass-through', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('rejects an invalid server admin token before the upload handler', async () => {
+    vi.stubEnv('ADMIN_API_TOKEN', 'backend-p0-admin-token');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/upload', {
+      method: 'POST',
+      headers: { 'x-admin-token': 'wrong-token' },
+    }));
+
+    expect(response.status).toBe(403);
   });
 });
 
