@@ -306,7 +306,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-1',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -347,7 +347,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-2',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot?.package.title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
@@ -380,7 +380,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-raw-price',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -412,7 +412,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-risky-copy',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -457,7 +457,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         nonCustomerPublishableAttractionIds: [nonPublicAttractionId],
       }) as never,
       'pkg-non-public-attraction',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -493,7 +493,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         attractionLookupError: new Error('attractions unavailable'),
       }) as never,
       'pkg-attraction-lookup-error',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -532,7 +532,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         },
       }) as never,
       'pkg-product-like-attraction',
-      { expectedPackageRevision: 3 },
+      { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();

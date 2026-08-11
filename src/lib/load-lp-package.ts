@@ -5,6 +5,7 @@ import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/ma
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 export async function fetchLpPackageUncached(
   id: string,
@@ -27,7 +28,12 @@ export async function fetchLpPackageUncached(
     ? exactProofSnapshot
     : options.allowNonPublicProof
       ? null
-      : await getCurrentPublicPackage(supabaseAdmin, { packageRef: id, channel: 'customer', locale: 'ko-KR' }).catch(() => null);
+      : await getCurrentPublicPackage(supabaseAdmin, {
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        packageRef: id,
+        channel: 'customer',
+        locale: 'ko-KR',
+      }).catch(() => null);
   let rawProofPackage: Record<string, unknown> | null = null;
   if (options.allowNonPublicProof && !exactProofAllowed) {
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);

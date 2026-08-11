@@ -35,6 +35,7 @@ import {
   listCurrentPublicPackageCardSnapshots,
 } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -524,6 +525,7 @@ export async function GET(request: NextRequest) {
     if (id) {
       if (pointerOnly) {
         const current = await getCurrentPublicPackage(supabaseAdmin, {
+          tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
           packageRef: id,
           channel: 'customer',
           locale: 'ko-KR',
@@ -554,6 +556,7 @@ export async function GET(request: NextRequest) {
       if (pkgErr || !pkg) return applyPackageCache(ApiErrors.notFound('패키지를 찾을 수 없습니다.'), isAdmin);
       const publicSnapshot = !isAdmin
         ? await fetchLatestPublicPackageSnapshot(supabaseAdmin, String(pkg.id), {
+          tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
           expectedPackageRevision: Number(pkg.package_revision ?? 1),
         })
         : null;

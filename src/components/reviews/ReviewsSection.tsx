@@ -2,6 +2,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 import Stars from './Stars';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 /**
  * 상품 상세 페이지 고객 후기 섹션
@@ -96,6 +97,7 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
 
   const stats = pkg?.[0] as { avg_rating: number | null; review_count: number; package_revision?: number | null } | undefined;
   const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, packageId, {
+    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
     expectedPackageRevision: Number(stats?.package_revision ?? 1),
   }).catch(() => null);
   const publicPackage = publicSnapshot?.package as { title?: unknown; product_summary?: unknown } | undefined;

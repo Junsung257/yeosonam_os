@@ -31,6 +31,7 @@ import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-pu
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -245,7 +246,12 @@ export async function generateMetadata({
     const allowInternalProof = Boolean(v6ProofSnapshot) || await isInternalRenderProofRequest();
     let publicSnapshot = v6ProofSnapshot;
     if (!allowInternalProof) {
-      publicSnapshot = await getCurrentPublicPackage(sb, { packageRef: id, channel: 'customer', locale: 'ko-KR' }).catch(() => null);
+      publicSnapshot = await getCurrentPublicPackage(sb, {
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        packageRef: id,
+        channel: 'customer',
+        locale: 'ko-KR',
+      }).catch(() => null);
       rawData = publicSnapshot?.package as MetadataPackageRow | null;
     } else if (!v6ProofSnapshot) {
       const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
@@ -362,7 +368,12 @@ export default async function PackageDetailPage({
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
   const pointerSnapshot = !allowInternalProof
-    ? await getCurrentPublicPackage(sb, { packageRef: id, channel: 'customer', locale: 'ko-KR' }).catch(() => null)
+    ? await getCurrentPublicPackage(sb, {
+      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+      packageRef: id,
+      channel: 'customer',
+      locale: 'ko-KR',
+    }).catch(() => null)
     : null;
   let rawPkgResult: { data: Record<string, unknown> | null; error: unknown } = pointerSnapshot
     ? { data: pointerSnapshot.package, error: null }
@@ -394,7 +405,9 @@ export default async function PackageDetailPage({
 
   const publicSnapshot = v6ProofSnapshot ?? pointerSnapshot ?? (allowInternalProof
     ? null
-    : await fetchLatestPublicPackageSnapshot(sb, id).catch(() => null));
+    : await fetchLatestPublicPackageSnapshot(sb, id, {
+      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+    }).catch(() => null));
   const pkg = (v6ProofSnapshot?.package ?? (allowInternalProof ? rawPkg : publicSnapshot?.package)) as
     | (Record<string, unknown> & {
         destination?: string | null;

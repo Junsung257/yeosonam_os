@@ -94,6 +94,7 @@ function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options:
         const snapshotChain = {
           select: () => snapshotChain,
           in: () => snapshotChain,
+          eq: () => snapshotChain,
           order: () => Promise.resolve({ data: snapshotRows, error: null }),
         };
         return snapshotChain;

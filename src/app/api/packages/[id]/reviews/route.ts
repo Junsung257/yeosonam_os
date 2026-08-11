@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 export async function GET(
   _req: NextRequest,
@@ -15,7 +16,9 @@ export async function GET(
     return NextResponse.json({ data: [] });
   }
 
-  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, id);
+  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, id, {
+    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+  });
   if (!publicSnapshot) {
     return NextResponse.json({ data: [] }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },

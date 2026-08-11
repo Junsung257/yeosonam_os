@@ -6,6 +6,7 @@ import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidUuid } from '@/lib/supabase-filter-safe';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import {
   PosterHeader,
   PosterPrice,
@@ -32,6 +33,7 @@ async function loadPackage(id: string) {
   if (!row?.id) return null;
 
   const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, row.id, {
+    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
     expectedPackageRevision: row.package_revision,
   });
   return publicSnapshot?.package as {

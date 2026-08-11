@@ -11,6 +11,7 @@ import {
   validateCustomerPublishableAttractionIds,
 } from './attraction-validation';
 import { isPublicPublicationState } from './types';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -370,14 +371,16 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
 export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends AnyRecord>(
   supabase: SupabaseClient,
   packages: T[],
-  options: { channel?: string; locale?: string } = {},
+  options: { tenantId?: string; channel?: string; locale?: string } = {},
 ): Promise<T[]> {
   const ids = packages.map(packageId).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
+  const tenantId = options.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID;
 
   const { data: pointers, error: pointerError } = await supabase
     .from('product_registration_v5_publication_pointers')
     .select('package_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
+    .eq('tenant_id', tenantId)
     .in('package_id', ids)
     .eq('channel', options.channel ?? 'customer')
     .eq('locale', options.locale ?? 'ko-KR')
@@ -404,6 +407,7 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
   const { data: activeSwitches, error: switchError } = await supabase
     .from('product_registration_v5_kill_switches')
     .select('scope,scope_key')
+    .eq('tenant_id', tenantId)
     .eq('active', true)
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
   if (switchError) throw switchError;
@@ -430,6 +434,7 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
     .from('public_package_snapshots')
     .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .in('package_id', ids)
+    .eq('tenant_id', tenantId)
     .in('status', ['approved', 'published'])
     .order('created_at', { ascending: false });
 
@@ -461,16 +466,18 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
 export async function listCurrentPublicPackageCardSnapshots(
   supabase: SupabaseClient,
   options: {
-    tenantId?: string | null;
+    tenantId?: string;
     channel?: string;
     locale?: string;
     limit?: number;
   } = {},
 ): Promise<AnyRecord[]> {
   const limit = Math.max(1, Math.min(5_000, options.limit ?? 1_000));
-  let pointerQuery = supabase
+  const tenantId = options.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID;
+  const pointerQuery = supabase
     .from('product_registration_v5_publication_pointers')
     .select('package_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
+    .eq('tenant_id', tenantId)
     .eq('channel', options.channel ?? 'customer')
     .eq('locale', options.locale ?? 'ko-KR')
     .eq('state', 'published')
@@ -479,8 +486,6 @@ export async function listCurrentPublicPackageCardSnapshots(
     .not('current_revision_id', 'is', null)
     .not('current_snapshot_id', 'is', null)
     .limit(limit);
-  if (typeof options.tenantId === 'string') pointerQuery = pointerQuery.eq('tenant_id', options.tenantId);
-  else if (options.tenantId === null) pointerQuery = pointerQuery.is('tenant_id', null);
   const { data: pointers, error } = await pointerQuery;
   if (error) throw error;
   const candidates = (pointers ?? []).map(pointer => ({
@@ -490,6 +495,7 @@ export async function listCurrentPublicPackageCardSnapshots(
     status: 'active',
   }));
   return fetchAndMergeCurrentPublicPackageCardSnapshots(supabase, candidates, {
+    tenantId,
     channel: options.channel,
     locale: options.locale,
   });

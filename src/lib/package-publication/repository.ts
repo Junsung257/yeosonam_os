@@ -14,6 +14,7 @@ import { evaluatePublicSnapshotPublishGate, type PublicSnapshotGateInput } from 
 import type { PublicPackageSnapshot } from './types';
 import { loadProductRegistrationV4PublicationGate } from '@/lib/product-registration-v4/publication-gate';
 import { linkV5ShadowRevisionToSnapshot } from '@/lib/product-registration-v4/snapshot-link';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -127,7 +128,7 @@ export async function fetchPublicPackageSnapshotById(
 export async function getCurrentPublicPackage(
   supabase: SupabaseClient,
   input: {
-    tenantId?: string | null;
+    tenantId: string;
     packageRef: string;
     channel?: string;
     locale?: string;
@@ -138,19 +139,19 @@ export async function getCurrentPublicPackage(
     const { data: identity, error: identityError } = await supabase
       .from('travel_packages')
       .select('id')
+      .eq('tenant_id', input.tenantId)
       .eq('short_code', packageId)
       .maybeSingle();
     if (identityError || !identity?.id) return null;
     packageId = String(identity.id);
   }
-  let pointerQuery = supabase
+  const pointerQuery = supabase
     .from('product_registration_v5_publication_pointers')
     .select('tenant_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
     .eq('package_id', packageId)
+    .eq('tenant_id', input.tenantId)
     .eq('channel', input.channel ?? 'customer')
     .eq('locale', input.locale ?? 'ko-KR');
-  if (typeof input.tenantId === 'string') pointerQuery = pointerQuery.eq('tenant_id', input.tenantId);
-  else if (input.tenantId === null) pointerQuery = pointerQuery.is('tenant_id', null);
   const { data: pointer, error: pointerError } = await pointerQuery.maybeSingle();
   if (pointerError || !pointer || pointer.state !== 'published'
     || !pointer.catalog_product_id || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
@@ -159,6 +160,7 @@ export async function getCurrentPublicPackage(
     .from('public_package_snapshots')
     .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .eq('id', pointer.current_snapshot_id)
+    .eq('tenant_id', input.tenantId)
     .eq('package_id', packageId)
     .eq('catalog_product_id', pointer.catalog_product_id)
     .eq('canonical_revision_id', pointer.current_revision_id)
@@ -173,6 +175,7 @@ export async function getCurrentPublicPackage(
   const { data: switches, error: switchError } = await supabase
     .from('product_registration_v5_kill_switches')
     .select('scope,scope_key')
+    .eq('tenant_id', input.tenantId)
     .eq('active', true)
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
   if (switchError) return null;
@@ -207,9 +210,10 @@ export async function getCurrentPublicPackage(
 export async function fetchLatestPublicPackageSnapshot(
   supabase: SupabaseClient,
   packageId: string,
-  options: { expectedPackageRevision?: number | null } = {},
+  options: { tenantId: string; expectedPackageRevision?: number | null },
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
   const pointerSnapshot = await getCurrentPublicPackage(supabase, {
+    tenantId: options.tenantId,
     packageRef: packageId,
     channel: 'customer',
     locale: 'ko-KR',
@@ -235,6 +239,8 @@ export async function createPublicPackageSnapshotAndDecision(
   blockers: unknown[];
   v5ShadowLink: Awaited<ReturnType<typeof linkV5ShadowRevisionToSnapshot>> | null;
 }> {
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) throw new Error(authorityBlocker);
   const packageId = String(pkg.id ?? '');
   const v4PublicationGate = packageId
     ? await loadProductRegistrationV4PublicationGate({ supabase, packageId })

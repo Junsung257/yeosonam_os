@@ -17,12 +17,12 @@ function hashKey(rawKey: string): string {
 
 async function authenticateB2bKey(
   rawKey: string,
-): Promise<{ ok: boolean; keyId?: string; error?: string }> {
+): Promise<{ ok: boolean; keyId?: string; tenantId?: string; error?: string }> {
   const keyHash = hashKey(rawKey);
 
   const { data, error } = await supabaseAdmin
     .from('b2b_api_keys')
-    .select('id, is_active')
+    .select('id, is_active, tenant_id')
     .eq('key_hash', keyHash)
     .limit(1);
 
@@ -48,7 +48,9 @@ async function authenticateB2bKey(
     // Non-blocking usage counter update.
   }
 
-  return { ok: true, keyId: data[0].id as string };
+  const tenantId = typeof data[0].tenant_id === 'string' ? data[0].tenant_id : '';
+  if (!tenantId) return { ok: false, error: 'B2B_API_KEY_TENANT_REQUIRED' };
+  return { ok: true, keyId: data[0].id as string, tenantId };
 }
 
 export async function GET(
@@ -79,6 +81,7 @@ export async function GET(
 
   try {
     const current = await getCurrentPublicPackage(supabaseAdmin, {
+      tenantId: auth.tenantId!,
       packageRef: id,
       channel: 'b2b',
       locale: 'ko-KR',

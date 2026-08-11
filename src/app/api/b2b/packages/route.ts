@@ -30,12 +30,12 @@ function hashKey(rawKey: string): string {
 /** B2B 인증 + 호출 카운터 증가 */
 async function authenticateB2bKey(
   rawKey: string,
-): Promise<{ ok: boolean; keyId?: string; error?: string }> {
+): Promise<{ ok: boolean; keyId?: string; tenantId?: string; error?: string }> {
   const keyHash = hashKey(rawKey);
 
   const { data, error } = await supabaseAdmin
     .from('b2b_api_keys')
-    .select('id, is_active')
+    .select('id, is_active, tenant_id')
     .eq('key_hash', keyHash)
     .limit(1);
 
@@ -62,7 +62,9 @@ async function authenticateB2bKey(
     // API 키 호출 카운트 실패는 무시
   }
 
-  return { ok: true, keyId: data[0].id as string };
+  const tenantId = typeof data[0].tenant_id === 'string' ? data[0].tenant_id : '';
+  if (!tenantId) return { ok: false, error: 'B2B_API_KEY_TENANT_REQUIRED' };
+  return { ok: true, keyId: data[0].id as string, tenantId };
 }
 
 export async function GET(request: NextRequest) {
@@ -94,6 +96,7 @@ export async function GET(request: NextRequest) {
     const { data: pointers, count, error } = await supabaseAdmin
       .from('product_registration_v5_publication_pointers')
       .select('package_id,catalog_product_id,updated_at', { count: 'exact' })
+      .eq('tenant_id', auth.tenantId!)
       .eq('channel', 'b2b')
       .eq('locale', 'ko-KR')
       .eq('state', 'published')
@@ -110,7 +113,7 @@ export async function GET(request: NextRequest) {
         publication_state: 'published',
         updated_at: pointer.updated_at,
       })),
-      { channel: 'b2b', locale: 'ko-KR' },
+      { tenantId: auth.tenantId!, channel: 'b2b', locale: 'ko-KR' },
     );
 
     return NextResponse.json({

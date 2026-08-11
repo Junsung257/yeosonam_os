@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeSurface } from '@/lib/standard-terms';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 /**
  * GET /api/packages/:id/terms?surface=mobile|a4|booking_guide
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       price_dates: { date: string }[] | null;
     };
     const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, row.id, {
+      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
       expectedPackageRevision: row.package_revision,
     });
     if (!publicSnapshot) return NextResponse.json({ data: [] });
