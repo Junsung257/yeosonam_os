@@ -12,6 +12,7 @@ This audit records the V6 implementation baseline. The operating contract remain
 - Product-registration regression suite passed: 31 files, 177 tests.
 - Targeted ESLint and the strict product-registration contract check passed.
 - Production build passed: 20 durable steps, 1 workflow, and 389 generated pages.
+- Added an admin-only readiness report at `/api/admin/product-registration/v6/readiness`; it reports canary/publication/full-cohort readiness without returning secret values.
 - `rhwp 0.8.2` was installed through the repository installer, not a machine-specific manual path.
 - The 40 HWP files in `C:\Users\admin\Downloads\코덱스테스트` extracted 40/40.
 - Extraction totals: 129 pages, 229 tables, 172,737 characters.

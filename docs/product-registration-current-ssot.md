@@ -15,6 +15,7 @@ V6의 유일한 종료 결과는 `published_verified`, `published_degraded`, `bl
 - 가격·출발일 연결, 통화, 취소조건, tenant/source hash가 불명하면 자동 공개하지 않는다.
 - 관광지 master를 자동 생성하지 않으며, 미매칭 원문 일정은 일반 text로만 표시한다.
 - V6 공개 기본값은 OFF다. 40개 HWP corpus, 실제 Chrome proof, 운영 pointer 수렴, 외부 provider 비용·보존 정책을 통과한 cohort만 점진적으로 연다.
+- 운영 readiness는 관리자 전용 `GET /api/admin/product-registration/v6/readiness`에서 확인한다. 이 응답은 flag·proof·Chrome·provider·DB 계보를 비밀값 없이 판정하며, `readyForCanary`, `readyForPublication`, `readyForFullCohort`를 분리한다.
 
 ## V4 실행 기준 (2026-08-06)
 
