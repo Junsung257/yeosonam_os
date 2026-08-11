@@ -57,6 +57,22 @@ export function inferProductSourceType(filename: string, declaredMime?: string |
   return null;
 }
 
+export function resolveProductSourceStorageMime(input: {
+  sourceType: ProductSourceType;
+  buffer: Buffer;
+  declaredMime?: string | null;
+}): string {
+  const declared = input.declaredMime?.trim().toLowerCase();
+  if (declared && declared !== 'application/octet-stream') return declared;
+  if (input.sourceType === 'hwp') return 'application/x-hwp';
+  if (input.sourceType === 'hwpx') return 'application/vnd.hancom.hwpx';
+  if (input.sourceType === 'pdf') return 'application/pdf';
+  if (input.sourceType === 'text') return 'text/plain';
+  return hasPrefix(input.buffer, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    ? 'image/png'
+    : 'image/jpeg';
+}
+
 export function validateSourceDocumentInput(input: {
   filename: string;
   byteSize: number;
@@ -162,6 +178,11 @@ export async function ensureSourceDocumentStored(input: {
   }
   const sha256 = hashSourceBytes(input.buffer);
   const tenantId = input.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID;
+  const storageContentType = resolveProductSourceStorageMime({
+    sourceType: input.sourceType,
+    buffer: input.buffer,
+    declaredMime: input.declaredMime,
+  });
   const existing = await findSourceDocumentByHash(input.supabase, tenantId, sha256, input.buffer.byteLength);
   if (existing) {
     await recordSourceUploadEvent(input.supabase, {
@@ -177,7 +198,7 @@ export async function ensureSourceDocumentStored(input: {
   const safeFilename = input.filename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'source.bin';
   const storagePath = `${tenantId}/${sha256}/${safeFilename}`;
   const upload = await input.supabase.storage.from(PRODUCT_SOURCE_BUCKET).upload(storagePath, input.buffer, {
-    contentType: declaredMime ?? undefined,
+    contentType: storageContentType,
     upsert: false,
   });
   if (upload.error && !/already exists|duplicate/i.test(upload.error.message)) throw upload.error;

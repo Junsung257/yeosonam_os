@@ -56,6 +56,39 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function describeUploadError(error: unknown): { message: string; code?: string; status?: number | string; stack?: string } {
+  if (error instanceof Error) {
+    const extended = error as Error & { code?: unknown; status?: unknown; statusCode?: unknown };
+    return {
+      message: error.message,
+      code: typeof extended.code === 'string' ? extended.code : undefined,
+      status: typeof extended.status === 'number' || typeof extended.status === 'string'
+        ? extended.status
+        : typeof extended.statusCode === 'number' || typeof extended.statusCode === 'string'
+          ? extended.statusCode
+          : undefined,
+      stack: error.stack,
+    };
+  }
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>;
+    return {
+      message: typeof value.message === 'string'
+        ? value.message
+        : typeof value.error === 'string'
+          ? value.error
+          : 'UNKNOWN_UPLOAD_ERROR',
+      code: typeof value.code === 'string' ? value.code : undefined,
+      status: typeof value.status === 'number' || typeof value.status === 'string'
+        ? value.status
+        : typeof value.statusCode === 'number' || typeof value.statusCode === 'string'
+          ? value.statusCode
+          : undefined,
+    };
+  }
+  return { message: String(error) };
+}
+
 function configuredPlatformRegistrationTenantId(): string | null {
   return parseProductRegistrationTenantId(process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID);
 }
@@ -329,11 +362,11 @@ const postHandler = async (request: NextRequest) => {
       { status: result.status, headers: { 'x-upload-request-id': requestId } },
     );
   } catch (error) {
+    const described = describeUploadError(error);
     console.error('[Upload API] fatal error:', {
       requestId,
       elapsedMs: Date.now() - startedAt,
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      ...described,
     });
     return NextResponse.json(
       {
