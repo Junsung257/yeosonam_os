@@ -80,7 +80,7 @@ describe('public blog surface contract', () => {
   it('invalidates public caches after a review decision changes eligibility', () => {
     const contents = source('src/app/api/content-review/route.ts');
     const decisionIndex = contents.indexOf('await submitReview({');
-    const revalidateIndex = contents.indexOf('revalidatePublicBlogCache();');
+    const revalidateIndex = contents.lastIndexOf('revalidatePublicBlogCache();');
     expect(decisionIndex).toBeGreaterThan(0);
     expect(revalidateIndex).toBeGreaterThan(decisionIndex);
   });

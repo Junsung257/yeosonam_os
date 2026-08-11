@@ -275,7 +275,7 @@ ${baseBlog.substring(0, 3000)}
           primaryKeyword: keyword,
           ogImageUrl: ogImage,
           inlineImageSeedUrl: ogImage,
-          minImages: 3,
+          minImages: 0,
           maxImages: 4,
           fallbackOgImageUrl: `${normalizedBaseUrl}/og-image.png`,
         });

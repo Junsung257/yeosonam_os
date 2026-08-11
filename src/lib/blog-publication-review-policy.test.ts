@@ -28,7 +28,7 @@ describe('informational publication review policy', () => {
     })).toBe('review_not_approved');
   });
 
-  it('allows approved high-risk information and leaves product content unchanged', () => {
+  it('allows approved high-risk information and blocks review-state products too', () => {
     expect(getInformationalReviewBlockReason({
       title: '일본 입국 비자 안내',
       reviewStatus: 'approved',
@@ -37,6 +37,6 @@ describe('informational publication review policy', () => {
       productId: 'product-1',
       title: '비자 포함 상품',
       reviewStatus: 'pending_review',
-    })).toBeNull();
+    })).toBe('review_not_approved');
   });
 });

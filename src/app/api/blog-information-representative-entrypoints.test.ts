@@ -22,7 +22,9 @@ describe('informational representative enforcement across publish entrypoints', 
     const atomicPublish = route.indexOf('await publishBlogInformationAtomically({', insert);
     expect(insert).toBeGreaterThan(0);
     expect(atomicPublish).toBeGreaterThan(insert);
-    expect(route).toContain("contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'");
+    expect(route).toContain("status: publishAllowed ? 'published' : 'draft'");
+    expect(route).toContain('quality_evaluation_v3');
+    expect(route).toContain('blog_publication_decisions');
     expect(route).not.toContain('await activateBlogInformationRepresentative({');
     expect(route).toContain("status: 'skipped_duplicate'");
     expect(route).toContain("proposed_action: 'update_existing'");

@@ -66,7 +66,6 @@ function isExplicitLegacyInformation(row: BlogPublicEligibilityRow): boolean {
     .includes(row.reviewStatus ?? '');
   return Number.isFinite(publishedAt)
     && publishedAt < Date.parse(BLOG_INFORMATION_LEGACY_CUTOFF_AT)
-    && row.qualityGate?.passed === true
     && !reviewBlocked;
 }
 
@@ -91,11 +90,26 @@ export function evaluateBlogPublicEligibility(
   if (hasNoindex(row.generationMeta)) return { eligible: false, lane: null, reason: 'noindex' };
   if (hasRedirect(row.generationMeta)) return { eligible: false, lane: null, reason: 'redirected' };
 
+  const reviewBlock = getInformationalReviewBlockReason({
+    productId: row.productId,
+    reviewStatus: row.reviewStatus,
+    title: row.title,
+    category: row.category,
+    contentType: row.contentType,
+    topic: row.topic,
+  });
+  if (reviewBlock) {
+    return { eligible: false, lane: row.productId ? 'product' : null, reason: 'review_blocked' };
+  }
+
   if (row.productId) {
     return { eligible: true, lane: 'product', reason: 'eligible_product' };
   }
 
   if (isExplicitLegacyInformation(row)) {
+    if (row.qualityGate?.passed !== true) {
+      return { eligible: false, lane: 'information_legacy', reason: 'quality_gate_missing_or_failed' };
+    }
     return {
       eligible: true,
       lane: 'information_legacy',
@@ -116,18 +130,6 @@ export function evaluateBlogPublicEligibility(
     || contentBrief?.intent_type === 'entry_requirements'
     || contentBrief?.intent_type === 'travel_insurance';
   if (requiresHumanReview && row.reviewStatus !== 'approved') {
-    return { eligible: false, lane: 'information_v2', reason: 'review_blocked' };
-  }
-
-  const reviewBlock = getInformationalReviewBlockReason({
-    productId: null,
-    reviewStatus: row.reviewStatus,
-    title: row.title,
-    category: row.category,
-    contentType: row.contentType,
-    topic: row.topic,
-  });
-  if (reviewBlock) {
     return { eligible: false, lane: 'information_v2', reason: 'review_blocked' };
   }
 

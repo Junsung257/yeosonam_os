@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         blog_html: `# ${topic}\n\n안녕하세요, 여소남입니다.\n\n${topic}에 대해 알려드립니다.\n\n## 본문\n\n여기에 내용을 작성하세요.\n\n## 마무리\n\n여소남에서 안심하고 여행을 준비하세요.\n[yeosonam.com](https://yeosonam.com)`,
         seo: {
           slug: slugifyTopic(topic) || topic.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').substring(0, 80),
-          seoTitle: `${topic} | 여소남 여행 가이드`.substring(0, 60),
+          seoTitle: topic.substring(0, 60),
           seoDescription: `${topic}에 대한 완벽 가이드. 여소남에서 확인하세요.`.substring(0, 160),
         },
       });
@@ -110,7 +110,6 @@ ${catName}
     const slugBase = slugifyTopic(topic) || topic.toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
 
-    const year = new Date().getFullYear();
     const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
 
     // Pexels cover image 자동 첨부 (정보성 블로그도 OG/카드뉴스 노출 필요)
@@ -121,7 +120,7 @@ ${catName}
       primaryKeyword: topic,
       ogImageUrl,
       inlineImageSeedUrl: ogImageUrl,
-      minImages: 3,
+      minImages: 0,
       maxImages: 4,
       fallbackOgImageUrl: `${baseUrl}/og-image.png`,
     });
@@ -131,7 +130,7 @@ ${catName}
       og_image_url: finalized.ogImageUrl,
       seo: {
         slug: slugBase,
-        seoTitle: `${topic} | ${year} 여소남 가이드`.substring(0, 60),
+        seoTitle: topic.substring(0, 60),
         seoDescription: `${topic} 완벽 가이드. 실용 정보와 팁을 여소남에서 확인하세요.`.substring(0, 160),
         ogImageUrl: finalized.ogImageUrl,
       },
