@@ -95,8 +95,10 @@ export default function FinanceCenterHome() {
           <span className={`font-semibold ${syncHealthy ? 'text-emerald-800' : 'text-amber-900'}`}>Clobe {syncHealthy ? '자동 동기화 정상' : '동기화 확인 필요'}</span>
           <span>최근 동기화 {summary.status.lastSyncAt ? formatSettlementTimestamp(summary.status.lastSyncAt) : '기록 없음'}</span>
           <span>상태 {summary.status.lastSyncStatus ?? '기록 없음'}</span>
-          <span>원본 {summary.status.sourceCount}건</span>
-          <span>OS 인식 {summary.status.recognizedCount}건</span>
+          <span>전체 통장 원장 {summary.status.ledgerCount}건</span>
+          <span title="대량 동기화는 기간을 여러 구간으로 나눠 처리합니다.">
+            마지막 처리구간 {summary.status.sourceCount}건 / OS {summary.status.recognizedCount}건
+          </span>
           <span>통장 {won(summary.status.bankBalance)}</span>
           <span>OS {won(summary.status.osBalance)}</span>
           <strong className={summary.status.difference === 0 ? 'text-emerald-800' : 'text-red-700'}>차이 {won(summary.status.difference)}</strong>
