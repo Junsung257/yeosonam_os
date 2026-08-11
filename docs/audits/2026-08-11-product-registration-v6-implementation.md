@@ -25,6 +25,7 @@ This audit records the V6 implementation baseline. The operating contract remain
 - Existing V5 revision, claim, proof, pointer, outbox, policy, and kill-switch objects were present.
 - Applied additive `product_registration_v6_automation_core` migration.
 - Created private `internal_product_registration` tables for workflow stages, typed departures/transport/lodging/golf, copy revisions, shared facts, provider cost ledger, and dead letters.
+- All 13 `internal_product_registration` tables have RLS enabled.
 - V6 publication RPC execution is denied to `anon` and `authenticated`; `service_role` retains execution.
 - The existing published pointer count remained 1 after migration.
 
