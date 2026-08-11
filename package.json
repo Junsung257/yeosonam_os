@@ -14,6 +14,7 @@
     "prebuild": "node scripts/copy-partytown-lib.cjs && node db/audit_vercel_functions_count.js --ci",
     "audit:vercel-functions": "node db/audit_vercel_functions_count.js",
     "audit:vercel-functions:ci": "node db/audit_vercel_functions_count.js --ci",
+    "audit:high": "node scripts/audit-high-severity.mjs",
     "build": "node scripts/run-next-build.cjs",
     "postbuild": "node scripts/ensure-next-main-app-js-shim.cjs && node scripts/verify-next-build-output.cjs",
     "analyze": "cross-env ANALYZE=true next build",

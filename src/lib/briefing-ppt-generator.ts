@@ -52,6 +52,51 @@ const FONTS = {
   body: "나눔고딕",
 };
 
+const MAX_BRIEFING_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_BRIEFING_IMAGE_HOSTS = new Set(["images.unsplash.com"]);
+
+export function isAllowedBriefingImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && ALLOWED_BRIEFING_IMAGE_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function detectSafeBriefingImageMime(bytes: Uint8Array): string | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 8
+    && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return "image/png";
+  if (bytes.length >= 6) {
+    const signature = Buffer.from(bytes.subarray(0, 6)).toString("ascii");
+    if (signature === "GIF87a" || signature === "GIF89a") return "image/gif";
+  }
+  if (bytes.length >= 12
+    && Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "RIFF"
+    && Buffer.from(bytes.subarray(8, 12)).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
+async function loadSafeBriefingImageData(imageUrl: string): Promise<string> {
+  if (!isAllowedBriefingImageUrl(imageUrl)) throw new Error("Unsupported briefing image host");
+  const response = await axios.get<ArrayBuffer>(imageUrl, {
+    responseType: "arraybuffer",
+    timeout: 8_000,
+    maxRedirects: 0,
+    maxContentLength: MAX_BRIEFING_IMAGE_BYTES,
+    maxBodyLength: MAX_BRIEFING_IMAGE_BYTES,
+  });
+  const bytes = new Uint8Array(response.data);
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_BRIEFING_IMAGE_BYTES) {
+    throw new Error("Briefing image size is invalid");
+  }
+  const mime = detectSafeBriefingImageMime(bytes);
+  if (!mime) throw new Error("Unsupported briefing image format");
+  return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
 /**
  * Unsplash 무료 이미지 URL 생성
  * @param query 검색 키워드
@@ -232,8 +277,9 @@ async function addTwoColSlide(
   if (briefing.imageKeyword) {
     const imageUrl = IMAGE_LIBRARY[briefing.imageKeyword] || briefing.imageKeyword;
     try {
+      const imageData = await loadSafeBriefingImageData(imageUrl);
       slide.addImage({
-        path: imageUrl,
+        data: imageData,
         x: 0.3,
         y: 0.5,
         w: 4.5,

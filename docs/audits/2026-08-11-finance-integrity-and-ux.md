@@ -32,6 +32,8 @@
 - Added explicit mobile booking review cards, detail buttons, next-pending navigation, exception identity, full Clobe company memo display, and complete tax/evidence todo states.
 - Raised bounded Clobe pagination to 1,000 rows, added a fail-closed truncation guard, and changed scheduled sync to every four hours.
 - Prevented the legacy review page from rendering fetch failures as valid zero values.
+- Repaired the date-dependent product upload C12 regression uncovered by PR CI so historical source rows remain auditable while C14 separately enforces freshness.
+- Updated patched DOMPurify, js-yaml, and nanoid lockfile versions. The upstream-unpatched `image-size` advisories have a time-limited CI waiver through 2026-09-30, backed by an allowlisted HTTPS host, byte cap, and JPEG/PNG/GIF/WebP signature gate in the only PPT ingestion path.
 
 ## Production Evidence After Database Migration
 
@@ -55,7 +57,9 @@
 
 - TypeScript project check: passed.
 - Finance unit, contract, scheduler, loading-state, and migration-safety tests: 67 passed across 12 files.
+- CI-regression follow-up tests for product price audit and PPT image ingress: 55 passed across 3 files.
 - Changed-file ESLint: passed.
+- High/critical dependency gate: passed with only the documented, expiring `image-size` waiver.
 - Next.js production build: passed, including type validation, 387 static pages, server bundles, and final output verification.
 - Production post-migration bank and allocation conservation: passed.
 
