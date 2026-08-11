@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseDocument } from '@/lib/parser';
 
 import { createOcrDocumentIR, createTextDocumentIR, getDocumentIRValidationErrors, sha256Hex } from './document-ir';
-import { parseHwpWithRhwp } from './rhwp';
+import { parseHwpWithRhwpWasm } from './rhwp-wasm';
 import { extractOcrWithCrossValidation } from '@/lib/product-registration-v6/ocr-providers';
 import type { DocumentIR, ProductSourceType } from './types';
 import { getProductRegistrationV4Job, transitionProductRegistrationV4Job } from './jobs';
@@ -19,7 +19,7 @@ export async function extractSourceDocumentToIR(input: {
   disabledOcrProviders?: string[];
 }): Promise<DocumentIR> {
   if (input.sourceType === 'hwp' || input.sourceType === 'hwpx') {
-    return (await parseHwpWithRhwp({
+    return (await parseHwpWithRhwpWasm({
       buffer: input.buffer,
       filename: input.filename,
       sourceType: input.sourceType,

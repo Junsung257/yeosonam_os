@@ -248,6 +248,7 @@
     "@react-pdf/renderer": "^4.5.1",
     "@reduxjs/toolkit": "^2.12.0",
     "@resvg/resvg-js": "^2.6.2",
+    "@rhwp/core": "0.8.2",
     "@sentry/nextjs": "^10.54.0",
     "@serwist/next": "^9.5.11",
     "@supabase/supabase-js": "^2.106.2",
@@ -307,8 +308,8 @@
     "tz-lookup": "^6.1.25",
     "web-push": "^3.6.7",
     "web-vitals": "^4.2.4",
-    "ws": "8.21.0",
     "workflow": "4.8.1",
+    "ws": "8.21.0",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2",
     "zustand": "^5.0.13"

@@ -42,8 +42,11 @@ was used for the live shadow canary. No publication pointer was changed.
 - Retrying the same source exposed `ON CONFLICT DO UPDATE` against append-only source-lineage tables. The production RPC and repository migration now use `DO NOTHING` followed by tenant-scoped resolution and request-key conflict validation.
 - Source ingestion now succeeds idempotently as source document `412bfbd5-572c-475e-b912-2d85679d5aae`.
 - Live job `a2b77fd8-5d98-489a-b2f7-74e45bee5fbc` reached the durable workflow but failed at `extract` after three retries. Build tracing contained the binary, while runtime lookup still depended on `process.cwd()`. Runtime discovery now checks the Lambda task root and bounded parent candidates and records safe path diagnostics on failure. A second live canary is required on the new deployment.
+- Second live job `d174d361-ffb2-48d2-a2ed-be586bb6d375` proved that `/var/task/vendor/rhwp/0.8.2/rhwp` existed but could not be executed by the minimal Vercel runtime loader. The workflow now uses the official pinned `@rhwp/core` 0.8.2 WebAssembly parser, while the native CLI remains a local regression tool.
+- The WASM adapter reconstructs page text, table dimensions, merged-cell coordinates, and evidence hashes from `getPageTextLayout`, `getTableDimensions`, and `getCellInfo`. Against the exact Matsuyama sample it produced 2 pages, 1,544 text characters, 5 tables, 90 cells, the source price grid, and flight numbers `BX134`/`BX133` in about 2.3 seconds locally.
+- A production-mode build passed with 389 static pages. Postbuild verified both the pinned native regression binary and `node_modules/@rhwp/core/rhwp_bg.wasm` in the workflow-step trace.
 
-These failures demonstrate why source upload acceptance and extraction success must be measured separately. The product is not customer-openable until the second canary reaches a terminal registration outcome and its snapshot has exact mobile proof.
+These failures demonstrate why source upload acceptance and extraction success must be measured separately. The product is not customer-openable until the WASM canary reaches a terminal registration outcome and its snapshot has exact mobile proof.
 
 ## Remaining live gate
 

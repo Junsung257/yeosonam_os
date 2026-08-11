@@ -30,10 +30,20 @@ const expectedSuffixes = [
 ];
 const bundled = files.find(file => expectedSuffixes.some(suffix => `/${file}`.endsWith(suffix)));
 
+const wasmSuffix = '/node_modules/@rhwp/core/rhwp_bg.wasm';
+const wasmBundled = files.find(file => `/${file}`.endsWith(wasmSuffix));
+
 if (!bundled) {
   throw new Error(
     `RHWP_RUNTIME_BINARY_NOT_TRACED:${tracePath}:checked=${files.length}:platformSeparator=${sep}`,
   );
 }
 
-console.log(`[rhwp-runtime] traced pinned parser into workflow step: ${bundled}`);
+if (!wasmBundled) {
+  throw new Error(
+    `RHWP_RUNTIME_WASM_NOT_TRACED:${tracePath}:checked=${files.length}:platformSeparator=${sep}`,
+  );
+}
+
+console.log(`[rhwp-runtime] traced pinned native parser into workflow step: ${bundled}`);
+console.log(`[rhwp-runtime] traced pinned WASM parser into workflow step: ${wasmBundled}`);

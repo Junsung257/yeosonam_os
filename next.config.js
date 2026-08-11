@@ -153,6 +153,7 @@ const nextConfig = {
     '/.well-known/workflow/v1/step': [
       './vendor/rhwp/0.8.2/rhwp',
       './vendor/rhwp/0.8.2/rhwp.exe',
+      './node_modules/@rhwp/core/rhwp_bg.wasm',
     ],
   },
   // ESLint 빌드 통합 활성화 (2026-05-11 복원)
@@ -166,6 +167,9 @@ const nextConfig = {
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.
   serverExternalPackages: [
+    // Loads pinned WASM bytes explicitly in the Node workflow. Keep it external
+    // so webpack does not try to parse the .wasm file as JavaScript.
+    '@rhwp/core',
     'isomorphic-dompurify',
     '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
     'satori',          // yoga-wasm 번들 포함 — external 권장
