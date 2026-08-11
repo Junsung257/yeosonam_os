@@ -29,7 +29,12 @@ function customerTitleFromParts(parts: string[], fallback: string): string {
 
 export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackageInput[] {
   return ledger.variants.map(variant => {
-    const publishableNotices = variant.standard_notices.filter(isPublishableStandardNoticeDraft);
+    // Daily meals already render from the typed itinerary. Repeating derived
+    // meal summaries as policy notices produces awkward or contradictory copy
+    // (for example an exclusion line becoming "식사는 중식으로 제공").
+    const publishableNotices = variant.standard_notices
+      .filter(isPublishableStandardNoticeDraft)
+      .filter(notice => notice.category !== 'meal_plan');
     const title = customerTitleFromParts(variant.title_parts, variant.variant_key);
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
@@ -104,9 +109,9 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
         flight_segments: variant.flight_segments.map(segment => ({
           leg: segment.leg === 'inbound' ? 'inbound' as const : 'outbound' as const,
           flight_no: segment.code,
-          dep_airport: null,
+          dep_airport: segment.dep_airport ?? null,
           dep_time: segment.dep_time,
-          arr_airport: null,
+          arr_airport: segment.arr_airport ?? null,
           arr_time: segment.arr_time,
           arr_day_offset: 0 as const,
         })),

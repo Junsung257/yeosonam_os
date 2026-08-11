@@ -83,6 +83,13 @@ export function buildPackageProjectionFromRevision(input: {
   operationalIdentity?: JsonObject;
 }): JsonObject {
   const ledger = canonicalLedger(input.aggregate.revision.canonical_payload);
+  const canonicalSections = Array.isArray(input.aggregate.revision.canonical_payload.sections)
+    ? input.aggregate.revision.canonical_payload.sections
+    : [];
+  const canonicalSection = object(canonicalSections[0]);
+  const destinationHint = typeof canonicalSection?.destinationHint === 'string'
+    ? canonicalSection.destinationHint.trim()
+    : '';
   const renderInputs = ledgerToRenderPackageInputs(ledger);
   if (renderInputs.length !== 1) throw new Error('REVISION_RENDER_PROJECTION_CARDINALITY_MISMATCH');
   const render = renderInputs[0] as unknown as JsonObject;
@@ -122,7 +129,7 @@ export function buildPackageProjectionFromRevision(input: {
     canonical_payload_hash: input.aggregate.revision.payload_hash,
     package_revision: input.aggregate.revision.revision_no,
     display_title: render.title,
-    destination: destinations[0] ?? null,
+    destination: destinationHint || destinations.find(value => !/^[A-Z]{3}$/.test(value)) || destinations[0] || null,
     duration: Number(variant.duration_days ?? days.length) || null,
     days: Number(variant.duration_days ?? days.length) || null,
     nights: Number(variant.nights ?? 0) || null,

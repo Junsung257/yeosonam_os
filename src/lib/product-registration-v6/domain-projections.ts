@@ -35,7 +35,7 @@ function flightIdentity(value: unknown): { carrierCode: string | null; serviceNu
   const serviceNumber = text(value)?.replace(/\s+/g, '').toUpperCase() ?? null;
   return {
     serviceNumber,
-    carrierCode: serviceNumber?.match(/^([A-Z0-9]{2,3})\d/)?.[1] ?? null,
+    carrierCode: serviceNumber?.match(/^([A-Z0-9]{2})(?=\d)/)?.[1] ?? null,
   };
 }
 

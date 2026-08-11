@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createTextDocumentIR } from './document-ir';
-import { buildCanonicalNormalization, segmentDocumentIR } from './canonical-worker';
+import { buildCanonicalNormalization, canonicalNormalizationJobStatus, segmentDocumentIR } from './canonical-worker';
 
 describe('product registration V4 canonical worker', () => {
   const documentIr = createTextDocumentIR({
@@ -31,5 +31,10 @@ describe('product registration V4 canonical worker', () => {
     expect(normalized.canonicalPayload.sections).toHaveLength(1);
     expect(normalized.qualityDiagnostics.sectionCount).toBe(1);
     expect(['complete', 'needs_review']).toContain(normalized.status);
+  });
+
+  it('does not report an active V6 review workflow as a failed legacy job', () => {
+    expect(canonicalNormalizationJobStatus({ normalizationStatus: 'needs_review', workflowEnabled: true })).toBe('processing');
+    expect(canonicalNormalizationJobStatus({ normalizationStatus: 'needs_review', workflowEnabled: false })).toBe('failed');
   });
 });

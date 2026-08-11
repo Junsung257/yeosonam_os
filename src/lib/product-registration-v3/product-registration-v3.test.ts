@@ -2300,4 +2300,37 @@ DAY 3 KE124 출발 13:00 도착 15:00
     ]);
     expect(result.ledger.variants[0]?.flight_segments).toHaveLength(2);
   });
+
+  it('binds stacked IATA cells to flights and reads a split minimum-departure value', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: Matsuyama Golf 3D',
+      'Price: 999,000 KRW / 2026-08-11',
+      '최소출발인원',
+      '4명~ | 조인조건',
+      'PUS',
+      'BX134',
+      '16:30',
+      '부산 김해공항 국제선 출발',
+      'MYJ',
+      '17:35',
+      '일본 마츠야마 국제공항 도착',
+      'DAY 1 호텔 체크인 후 자유일정',
+      'DAY 2 골프 18홀 라운딩',
+      'MYJ',
+      'BX133',
+      '18:30',
+      '마츠야마 국제공항 출발',
+      'PUS',
+      '20:00',
+      'DAY 3 김해국제공항 도착',
+      'Include airfare hotel breakfast',
+      'Exclude lunch dinner personal expense',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.minimum_departure?.value).toBe(4);
+    expect(result.ledger.variants[0]?.flight_segments).toMatchObject([
+      { code: 'BX134', dep_airport: 'PUS', arr_airport: 'MYJ', dep_time: '16:30', arr_time: '17:35' },
+      { code: 'BX133', dep_airport: 'MYJ', arr_airport: 'PUS', dep_time: '18:30', arr_time: '20:00' },
+    ]);
+  });
 });

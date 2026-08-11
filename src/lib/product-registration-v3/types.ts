@@ -55,6 +55,13 @@ export interface V3Evidence {
   char_start: number;
   char_end: number;
   quote: string;
+  node_id?: string;
+  page?: number;
+  table_id?: string;
+  row?: number;
+  column?: number;
+  quote_hash?: string;
+  extraction_method?: 'text_line' | 'document_ir_table_cell';
 }
 
 export interface V3StructurePlan {
@@ -133,6 +140,8 @@ export interface V3LedgerVariant {
   flight_segments: Array<{
     leg: 'outbound' | 'inbound' | 'unknown';
     code: string;
+    dep_airport?: string | null;
+    arr_airport?: string | null;
     dep_time: string | null;
     arr_time: string | null;
     evidence: V3Evidence;

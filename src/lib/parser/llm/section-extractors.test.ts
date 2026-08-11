@@ -7,6 +7,16 @@ import { extractHeroContextL1 } from './section-extractors';
  *   회귀 fixture. PR #125 패턴 (NON_ATTRACTION_PATTERN export + 회귀 차단).
  */
 describe('extractHeroContextL1 — Hero L1 rule (regex)', () => {
+  it('recognizes Matsuyama spelling variants from a supplier title', () => {
+    expect(extractHeroContextL1('#마쓰야마\n[스탠다드] 마쓰야마 시내 다색 골프 3일')).toMatchObject({
+      destination: '마쓰야마',
+      confidence: 'high',
+    });
+    expect(extractHeroContextL1('[스탠다드] 마츠야마 골프 3일')).toMatchObject({
+      destination: '마츠야마',
+      confidence: 'high',
+    });
+  });
   it('명확한 단일 도시 제목 → high confidence', () => {
     const raw = '[LJ] 후쿠오카 3박 4일 - 유후인+벳부+아소\n2026년 6월 출발\n...';
     const r = extractHeroContextL1(raw);

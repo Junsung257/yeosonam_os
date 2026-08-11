@@ -11,7 +11,7 @@ describe('V6 domain projections', () => {
           v3: { ledger: { variants: [{
             variant_key: 'v1',
             price_calendar: [{ date: '2026-10-01', amount: 999000, evidence: { node: 'p1' } }],
-            flight_segments: [{ leg: 'outbound', code: 'BX321', dep_time: '19:00', arr_time: '22:00', evidence: { node: 'f1' } }],
+            flight_segments: [{ leg: 'outbound', code: 'BX321', dep_airport: 'PUS', arr_airport: 'DAD', dep_time: '19:00', arr_time: '22:00', evidence: { node: 'f1' } }],
             days: [{
               day: 1,
               hotel: { raw_text: '다낭 시내 4성급 또는 동급', evidence: { node: 'h1' } },
@@ -22,7 +22,14 @@ describe('V6 domain projections', () => {
       },
     });
     expect(result.departures).toHaveLength(1);
-    expect(result.transportSegments[0]).toMatchObject({ service_number: 'BX321', departure_local_time: '19:00', fact_state: 'source_confirmed' });
+    expect(result.transportSegments[0]).toMatchObject({
+      carrier_code: 'BX',
+      service_number: 'BX321',
+      departure_place_code: 'PUS',
+      arrival_place_code: 'DAD',
+      departure_local_time: '19:00',
+      fact_state: 'source_confirmed',
+    });
     expect(result.lodgingStays[0]).toMatchObject({ lodging_state: 'equivalent' });
     expect(result.golfRounds[0]).toMatchObject({ holes: 18, tee_time: '08:00' });
   });

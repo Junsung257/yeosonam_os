@@ -14,6 +14,8 @@ export const UPLOAD_REGION_CODE_MAP: Record<string, string> = {
 };
 
 export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
+  마쓰야마: 'MYJ',
+  마츠야마: 'MYJ',
   석가장: 'SJW',
   '석가장/태항산': 'SJW',
   태항산: 'SJW',

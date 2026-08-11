@@ -4,6 +4,7 @@ import { runProductRegistrationV3 } from '@/lib/product-registration-v3';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { splitCatalogByItineraryHeaders } from '@/lib/parser/catalog-pre-split';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
+import { extractHeroContextL1 } from '@/lib/parser/llm/section-extractors';
 import { commitCanonicalRevisionAtomic } from '@/lib/product-registration-authority/repository';
 import { describeRegistrationError, registrationErrorCode } from '@/lib/product-registration-authority/errors';
 import { buildProductRegistrationV6DomainProjection } from '@/lib/product-registration-v6/domain-projections';
@@ -18,8 +19,17 @@ import {
 } from './revision';
 import { buildV3V5CriticalDiff } from './shadow-diff';
 import type { DocumentIR, ProductRegistrationV4JobRecord } from './types';
+import { buildDocumentIrTableItinerary } from './table-grid-itinerary';
 
 export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-11';
+
+export function canonicalNormalizationJobStatus(input: {
+  normalizationStatus: CanonicalNormalization['status'];
+  workflowEnabled: boolean;
+}): ProductRegistrationV4JobRecord['status'] {
+  if (input.normalizationStatus === 'complete') return 'processing';
+  return input.workflowEnabled ? 'processing' : 'failed';
+}
 
 export type CanonicalSection = {
   index: number;
@@ -215,6 +225,26 @@ export async function buildCanonicalNormalization(input: {
         destination: section.titleHint ?? undefined,
         attractions: input.attractions ?? [],
       });
+      const tableItinerary = buildDocumentIrTableItinerary({
+        documentIr: input.documentIr,
+        sectionRawText: section.rawText,
+      });
+      if (tableItinerary) {
+        for (const variant of v3.ledger.variants) {
+          variant.days = tableItinerary.days;
+          variant.flight_segments = tableItinerary.flightSegments;
+          variant.duration_days = tableItinerary.days.length;
+          variant.nights = tableItinerary.days.filter(day => (
+            typeof day.hotel.raw_text === 'string' && day.hotel.raw_text.trim().length > 0
+          )).length;
+          variant.evidence_coverage.itinerary = true;
+          variant.evidence_coverage.flight = tableItinerary.flightSegments.length > 0;
+          variant.evidence_coverage.hotel = tableItinerary.days.some(day => Boolean(day.hotel.raw_text));
+          variant.evidence_coverage.meals = tableItinerary.days.some(day => (
+            Boolean(day.meals.breakfast.raw_text || day.meals.lunch.raw_text || day.meals.dinner.raw_text)
+          ));
+        }
+      }
       const gateStatus = String(v3.gate_result.status ?? 'unknown');
       gateStatuses.push(gateStatus);
       if (gateStatus === 'blocked') blockedSectionCount += 1;
@@ -222,6 +252,7 @@ export async function buildCanonicalNormalization(input: {
         index: section.index,
         sectionKey: section.sectionKey,
         titleHint: section.titleHint,
+        destinationHint: extractHeroContextL1(section.rawText).destination ?? null,
         rawTextHash: section.rawTextHash,
         sourceNodeIds: section.sourceNodeIds,
         evidence: section.evidence,
@@ -239,7 +270,20 @@ export async function buildCanonicalNormalization(input: {
             title: section.titleHint ?? preview.title,
           })),
         },
-        deterministicItinerary: buildSupplierRawDeterministicItinerary(section.rawText),
+        deterministicItinerary: tableItinerary
+          ? {
+              meta: {
+                source: 'document_ir_table',
+                table_id: tableItinerary.tableId,
+                days: tableItinerary.days.length,
+              },
+              days: tableItinerary.days,
+              flight_segments: tableItinerary.flightSegments,
+            }
+          : buildSupplierRawDeterministicItinerary(section.rawText),
+        tableGridItinerary: tableItinerary
+          ? { tableId: tableItinerary.tableId, sourceNodeIds: tableItinerary.sourceNodeIds }
+          : null,
       };
       const completeness = evaluateCanonicalCompleteness({
         rawText: section.rawText,
@@ -467,7 +511,10 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       supabase: input.supabase,
       jobId: job.id,
       stage: normalization.status === 'complete' ? 'normalized' : 'needs_review',
-      status: normalization.status === 'complete' ? 'processing' : 'failed',
+      status: canonicalNormalizationJobStatus({
+        normalizationStatus: normalization.status,
+        workflowEnabled: getProductRegistrationV6RuntimeConfig().workflowEnabled,
+      }),
       state: {
         normalizationId,
         normalizationVersion: normalization.version,

@@ -403,6 +403,49 @@ function resolveSeparatedArrivalTime(
   return null;
 }
 
+function resolveAdjacentFlightRoute(
+  sectionLines: V3SourceLine[],
+  sectionIndex: number,
+): {
+  depAirport: string | null;
+  arrAirport: string | null;
+  evidenceStartLine: number | null;
+  evidenceEndLine: number | null;
+} {
+  const airportLine = (line: V3SourceLine | undefined): line is V3SourceLine => (
+    Boolean(line) && /^[A-Z]{3}$/.test(line!.quote.trim().toUpperCase())
+  );
+  let previous: V3SourceLine | undefined;
+  for (let index = sectionIndex - 1; index >= Math.max(0, sectionIndex - 6); index -= 1) {
+    const candidate = sectionLines[index];
+    if (isPrimaryFlightCodeLine(candidate?.quote ?? '')) break;
+    if (airportLine(candidate)) {
+      previous = candidate;
+      break;
+    }
+  }
+  let next: V3SourceLine | undefined;
+  for (let index = sectionIndex + 1; index < Math.min(sectionLines.length, sectionIndex + 11); index += 1) {
+    const candidate = sectionLines[index];
+    if (isPrimaryFlightCodeLine(candidate?.quote ?? '')) break;
+    if (airportLine(candidate)) {
+      next = candidate;
+      break;
+    }
+  }
+  const depAirport = previous?.quote.trim().toUpperCase() ?? null;
+  const arrAirport = next?.quote.trim().toUpperCase() ?? null;
+  if (!depAirport || !arrAirport || depAirport === arrAirport) {
+    return { depAirport: null, arrAirport: null, evidenceStartLine: null, evidenceEndLine: null };
+  }
+  return {
+    depAirport,
+    arrAirport,
+    evidenceStartLine: Math.min(previous!.lineNumber, next!.lineNumber),
+    evidenceEndLine: Math.max(previous!.lineNumber, next!.lineNumber),
+  };
+}
+
 function itineraryLinesBeforePriceEvidenceTail(sectionLines: V3SourceLine[]): V3SourceLine[] {
   let seenItineraryDay = false;
   for (let index = 0; index < sectionLines.length; index++) {
@@ -468,12 +511,19 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       }
     }
     arrTime ??= resolveSeparatedArrivalTime(itinerarySectionLines, sectionIndex);
+    const route = resolveAdjacentFlightRoute(itinerarySectionLines, sectionIndex);
     return {
       leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
       code: `${match[1]}${match[2]}`,
+      dep_airport: route.depAirport,
+      arr_airport: route.arrAirport,
       dep_time: resolvedTimes.depTime,
       arr_time: arrTime,
-      evidence: evidenceFromLines(lines, line.lineNumber),
+      evidence: evidenceFromLines(
+        lines,
+        route.evidenceStartLine ?? line.lineNumber,
+        route.evidenceEndLine ?? line.lineNumber,
+      ),
     };
   });
 
@@ -640,27 +690,37 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     }
     return !hasIncludedGuideTipNotice;
   });
-  const minDepartureLine = sectionLines.find(line =>
+  const minDepartureHeaderIndex = sectionLines.findIndex(line =>
     /minimum|min\.?|\ucd5c\uc18c|\uc778\s*\uc6d0|\d+\s*(?:\uba85|\uc778)\s*(?:\uc774\uc0c1|\ubd80\ud130)\s*\ucd9c\ubc1c/i.test(line.quote)
-    && /\d+/.test(line.quote)
   );
+  const minDepartureHeader = minDepartureHeaderIndex >= 0 ? sectionLines[minDepartureHeaderIndex] : null;
+  const minDepartureValueLine = minDepartureHeader && /\d+/.test(minDepartureHeader.quote)
+    ? minDepartureHeader
+    : minDepartureHeaderIndex >= 0
+      ? sectionLines.slice(minDepartureHeaderIndex + 1, minDepartureHeaderIndex + 4)
+        .find(line => /\d+\s*(?:\uba85|\uc778)(?:\s*(?:\uc774\uc0c1|\ubd80\ud130)|\s*[~+]|\b)/i.test(line.quote)) ?? null
+      : null;
   const structuredMinPaxFact = structured.structuredFacts.find(fact =>
     fact.category === 'min_pax'
     && typeof fact.values.count === 'number'
     && Number.isFinite(fact.values.count)
     && fact.values.count > 0
   );
-  const minimum_departure = minDepartureLine
+  const minimum_departure = minDepartureValueLine
     ? {
         value: Number(
-          minDepartureLine.quote.match(/(?:minimum|min\.?|\ucd5c\uc18c(?:\ucd9c\ubc1c)?)\D*(\d+)/i)?.[1]
-            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/)?.[1]
-            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\ubd80\ud130\s*\ucd9c\ubc1c/)?.[1]
-            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1/)?.[1]
-            ?? minDepartureLine.quote.match(/\d+/)?.[0]
+          minDepartureValueLine.quote.match(/(?:minimum|min\.?|\ucd5c\uc18c(?:\ucd9c\ubc1c)?)\D*(\d+)/i)?.[1]
+            ?? minDepartureValueLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/)?.[1]
+            ?? minDepartureValueLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\ubd80\ud130\s*\ucd9c\ubc1c/)?.[1]
+            ?? minDepartureValueLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)(?:\s*\uc774\uc0c1|\s*[~+])?/)?.[1]
+            ?? minDepartureValueLine.quote.match(/\d+/)?.[0]
             ?? 0,
         ),
-        evidence: evidenceFromLines(lines, minDepartureLine.lineNumber),
+        evidence: evidenceFromLines(
+          lines,
+          minDepartureHeader?.lineNumber ?? minDepartureValueLine.lineNumber,
+          minDepartureValueLine.lineNumber,
+        ),
       }
     : structuredMinPaxFact
       ? {

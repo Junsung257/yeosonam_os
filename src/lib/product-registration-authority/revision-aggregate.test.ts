@@ -12,7 +12,7 @@ function aggregate(): ProductRegistrationRevisionAggregate {
       source_hash: 'b'.repeat(64),
       revision_no: 2,
       canonical_payload: {
-        sections: [{ v3: { ledger: {
+        sections: [{ destinationHint: '다낭', v3: { ledger: {
           document: { type: 'single_product', expected_products: 1, variant_axes: [] },
           variants: [{
             variant_key: 'danang-1',
@@ -64,6 +64,14 @@ describe('revision aggregate package projection', () => {
       nights: 3,
       hero_image_url: null,
     });
+  });
+
+  it('uses the source-backed canonical destination instead of an airport-code route cell', () => {
+    const input = aggregate();
+    const section = (input.revision.canonical_payload.sections as Array<Record<string, any>>)[0];
+    section.v3.ledger.variants[0].days[0].route = ['PUS', 'DAD'];
+    const pkg = buildPackageProjectionFromRevision({ packageId: 'package-1', aggregate: input });
+    expect(pkg.destination).toBe('다낭');
   });
 
   it('fails closed when one revision ambiguously contains multiple variants', () => {

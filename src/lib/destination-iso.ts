@@ -8,6 +8,8 @@
  */
 
 export const KOREAN_DESTINATION_TO_ISO: Readonly<Record<string, string>> = Object.freeze({
+  '마쓰야마': 'JP',
+  '마츠야마': 'JP',
   // 베트남 VN
   '나트랑': 'VN', '다낭': 'VN', '하노이': 'VN', '호치민': 'VN', '푸꾸옥': 'VN',
   '달랏': 'VN', '하롱베이': 'VN', '호이안': 'VN', '판랑': 'VN', '캄란': 'VN',
