@@ -25,7 +25,8 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { fetchLatestPublicPackageSnapshot, fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
@@ -49,6 +50,23 @@ async function isInternalRenderProofRequest(): Promise<boolean> {
   const secret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
   if (!secret) return false;
   return (await headers()).get('x-yeosonam-render-proof') === secret;
+}
+
+async function loadV6ProofSnapshot(
+  sb: SupabaseClient,
+  packageId: string,
+  snapshotId: string | null,
+) {
+  if (!snapshotId) return null;
+  const token = (await headers()).get('x-product-registration-v6-proof-token');
+  if (!token) return null;
+  const snapshot = await fetchPublicPackageSnapshotById(sb, snapshotId).catch(() => null);
+  if (!snapshot || snapshot.row.package_id !== packageId) return null;
+  return verifyProductRegistrationV6ProofToken(token, {
+    snapshotId,
+    snapshotHash: snapshot.row.snapshot_hash,
+    packageId,
+  }) ? snapshot : null;
 }
 
 function getNonEmptyString(value: unknown): string | null {
@@ -173,8 +191,10 @@ const DETAIL_FIELDS = `
 // SEO: dynamic metadata
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ id?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
@@ -219,51 +239,28 @@ export async function generateMetadata({
   let publicSnapshotHash: string | undefined;
   let canonicalRevisionId: string | undefined;
   try {
-    const allowInternalProof = await isInternalRenderProofRequest();
-    const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
-    let result = await runSupabaseQueryWithTimeout(
-      sb
-        .from('travel_packages')
-        .select(metadataSelect)
-        .eq('id', id)
-        .maybeSingle(),
-      { label: 'package.metadata.primary', timeoutMs: 1800 },
-    ).catch(() => ({ data: null, error: null }));
-    if (!result.data) {
-      await waitForPackageDetailRetry(300);
-      result = await runSupabaseQueryWithTimeout(
-        sb
-          .from('travel_packages')
-          .select(metadataSelect)
-          .eq('id', id)
-          .maybeSingle(),
-        { label: 'package.metadata.primary.retry1', timeoutMs: 3500 },
+    const resolvedSearchParams = searchParams ? await searchParams : {};
+    const proofSnapshotId = getRouteParam(resolvedSearchParams.__proof_snapshot);
+    const v6ProofSnapshot = await loadV6ProofSnapshot(sb, id, proofSnapshotId || null);
+    const allowInternalProof = Boolean(v6ProofSnapshot) || await isInternalRenderProofRequest();
+    let publicSnapshot = v6ProofSnapshot;
+    if (!allowInternalProof) {
+      publicSnapshot = await getCurrentPublicPackage(sb, { packageRef: id, channel: 'customer', locale: 'ko-KR' }).catch(() => null);
+      rawData = publicSnapshot?.package as MetadataPackageRow | null;
+    } else if (!v6ProofSnapshot) {
+      const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
+      const result = await runSupabaseQueryWithTimeout(
+        sb.from('travel_packages').select(metadataSelect).eq('id', id).maybeSingle(),
+        { label: 'package.metadata.internal-proof', timeoutMs: 6000 },
       ).catch(() => ({ data: null, error: null }));
+      rawData = result.data as MetadataPackageRow | null;
+    } else {
+      rawData = v6ProofSnapshot.package as MetadataPackageRow;
     }
-    if (!result.data) {
-      await waitForPackageDetailRetry(700);
-      result = await runSupabaseQueryWithTimeout(
-        sb
-          .from('travel_packages')
-          .select(metadataSelect)
-          .eq('id', id)
-          .maybeSingle(),
-        { label: 'package.metadata.primary.retry2', timeoutMs: 6000 },
-      ).catch(() => ({ data: null, error: null }));
-    }
-    if (result.error) {
-      return buildPackageNoindexMetadata(id, canonical);
-    }
-    rawData = result.data as MetadataPackageRow | null;
-    const publicSnapshot = allowInternalProof || !rawData
-      ? null
-      : await fetchLatestPublicPackageSnapshot(sb, id, {
-          expectedPackageRevision: Number(rawData.package_revision ?? 1),
-        }).catch(() => null);
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
     canonicalRevisionId = publicSnapshot?.row.canonical_revision_id ?? undefined;
-    data = allowInternalProof ? rawData : (publicSnapshot?.package as MetadataPackageRow | undefined) ?? null;
+    data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
   } catch {
     return buildPackageNoindexMetadata(id, canonical);
   }
@@ -274,13 +271,13 @@ export async function generateMetadata({
   const allowInternalProof = await isInternalRenderProofRequest();
   const publicationState = rawData?.publication_state;
   const authoritativeV5Snapshot = Boolean(publicSnapshotFound && canonicalRevisionId && publicSnapshotHash);
-  if (!allowInternalProof && !isPublicPublicationState(publicationState)) {
+  if (!allowInternalProof && !authoritativeV5Snapshot && !isPublicPublicationState(publicationState)) {
     notFound();
   }
   if (!allowInternalProof && !publicSnapshotFound) {
     notFound();
   }
-  if (!allowInternalProof && (!isCustomerVisibleStatus(status) || !isCustomerPubliclyOpenable(rawData, {
+  if (!allowInternalProof && !authoritativeV5Snapshot && (!isCustomerVisibleStatus(status) || !isCustomerPubliclyOpenable(rawData, {
     authoritativeV5Snapshot,
     packageRevision: publicSnapshotHash ? rawData?.package_revision : null,
     publicSnapshotHash,
@@ -345,8 +342,10 @@ export async function generateMetadata({
 
 export default async function PackageDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
@@ -355,38 +354,27 @@ export default async function PackageDetailPage({
   if (!sbOrNull) notFound();
   const sb = sbOrNull;
   const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
-  const allowInternalProof = await isInternalRenderProofRequest();
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const proofSnapshotId = getRouteParam(resolvedSearchParams.__proof_snapshot);
+  const v6ProofSnapshot = await loadV6ProofSnapshot(sb, id, proofSnapshotId || null);
+  const allowInternalProof = Boolean(v6ProofSnapshot) || await isInternalRenderProofRequest();
 
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
-  let rawPkgResult = await runSupabaseQueryWithTimeout(
-    sb.from('travel_packages')
-      .select(DETAIL_FIELDS)
-      .eq('id', id)
-      .maybeSingle(),
-    { label: 'package.detail.primary', timeoutMs: 6000 },
-  ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
-
-  if (!rawPkgResult.data) {
-    await waitForPackageDetailRetry(500);
+  const pointerSnapshot = !allowInternalProof
+    ? await getCurrentPublicPackage(sb, { packageRef: id, channel: 'customer', locale: 'ko-KR' }).catch(() => null)
+    : null;
+  let rawPkgResult: { data: Record<string, unknown> | null; error: unknown } = pointerSnapshot
+    ? { data: pointerSnapshot.package, error: null }
+    : { data: null, error: null };
+  if (allowInternalProof) {
     rawPkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
         .select(DETAIL_FIELDS)
         .eq('id', id)
         .maybeSingle(),
-      { label: 'package.detail.primary.retry1', timeoutMs: 10000 },
-    ).catch(() => ({ data: null, error: new Error('package detail retry1 timed out') }));
-  }
-
-  if (!rawPkgResult.data) {
-    await waitForPackageDetailRetry(1_000);
-    rawPkgResult = await runSupabaseQueryWithTimeout(
-      sb.from('travel_packages')
-        .select(DETAIL_FIELDS)
-        .eq('id', id)
-        .maybeSingle(),
-      { label: 'package.detail.primary.retry2', timeoutMs: 15000 },
-    ).catch(() => ({ data: null, error: new Error('package detail retry2 timed out') }));
+      { label: 'package.detail.internal-proof', timeoutMs: 6000 },
+    ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
   }
 
   const rawPkg = rawPkgResult.data;
@@ -404,19 +392,24 @@ export default async function PackageDetailPage({
     notFound();
   }
 
-  const publicSnapshot = allowInternalProof
+  const publicSnapshot = v6ProofSnapshot ?? pointerSnapshot ?? (allowInternalProof
     ? null
-    : await fetchLatestPublicPackageSnapshot(sb, id, {
-        expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1),
-      }).catch(() => null);
-  const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package;
+    : await fetchLatestPublicPackageSnapshot(sb, id).catch(() => null));
+  const pkg = (v6ProofSnapshot?.package ?? (allowInternalProof ? rawPkg : publicSnapshot?.package)) as
+    | (Record<string, unknown> & {
+        destination?: string | null;
+        itinerary_data?: unknown;
+        title?: string | null;
+      })
+    | null
+    | undefined;
   const authoritativeV5Snapshot = Boolean(
     publicSnapshot?.row.canonical_revision_id
     && publicSnapshot.row.snapshot_hash,
   );
 
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
-  if (!allowInternalProof && !isPublicPublicationState(publicationState)) {
+  if (!allowInternalProof && !authoritativeV5Snapshot && !isPublicPublicationState(publicationState)) {
     notFound();
   }
   if (!allowInternalProof && !publicSnapshot) {
@@ -432,8 +425,8 @@ export default async function PackageDetailPage({
   }
 
   // status 寃뚯씠????REVIEW_NEEDED/draft/expired/archived ?깆? 怨좉컼 ?몄텧 李⑤떒
-  const pkgStatus = 'status' in rawPkg ? rawPkg.status : undefined;
-  if (!allowInternalProof && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(rawPkg, {
+  const pkgStatus = 'status' in rawPkg ? getNonEmptyString(rawPkg.status) : undefined;
+  if (!allowInternalProof && !authoritativeV5Snapshot && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(rawPkg, {
     authoritativeV5Snapshot,
     packageRevision: publicSnapshot?.row.package_revision,
     publicSnapshotHash: publicSnapshot?.row.snapshot_hash,
@@ -480,7 +473,7 @@ export default async function PackageDetailPage({
   // 留ㅼ묶??愿愿묒? ?대쫫 紐⑸줉留?異붿텧 (?쒕쾭?ъ씠??1??
   const matchedNames = new Set<string>();
   if (pkg?.itinerary_data && lightAttractions.length) {
-    const index = buildAttractionIndex(lightAttractions, pkg.destination, { customerFacing: true });
+    const index = buildAttractionIndex(lightAttractions, pkg.destination ?? undefined, { customerFacing: true });
     const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
     for (const day of daysData) {
       for (const item of (day.schedule || [])) {
@@ -625,8 +618,14 @@ export default async function PackageDetailPage({
         if (skipPattern.test(item.activity)) return;
         if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') return;
         if (/공항|출발|도착|이동|휴식|탑승|기내|체크인|체크아웃|식사|미팅|조식|중식|석식/.test(item.activity)) return;
-        const attr = matchAttractions(item.activity, lightAttractions, pkg.destination, { customerFacing: true })[0] || null;
-        if (!attr) unmatchedItems.push({ activity: item.activity, package_id: id, package_title: pkg.title, day_number: day.day, country: pkg.destination });
+        const attr = matchAttractions(item.activity, lightAttractions, pkg.destination ?? undefined, { customerFacing: true })[0] || null;
+        if (!attr) unmatchedItems.push({
+          activity: item.activity,
+          package_id: id,
+          package_title: getNonEmptyString(pkg.title) ?? '여행상품',
+          day_number: day.day,
+          country: pkg.destination ?? undefined,
+        });
       });
     }
   }

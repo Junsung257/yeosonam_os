@@ -18,7 +18,7 @@ import { buildV3V5CriticalDiff } from './shadow-diff';
 import { persistV5TypedProjections } from './typed-projections';
 import type { DocumentIR, ProductRegistrationV4JobRecord } from './types';
 
-export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v4-canonical-2026-08-07';
+export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-11';
 
 export type CanonicalSection = {
   index: number;
@@ -57,6 +57,11 @@ export type CanonicalNormalization = {
       conflictingCount: number;
       unavailableCount: number;
       publicReadySectionCount: number;
+      verifiedSectionCount: number;
+      degradedSectionCount: number;
+      blockedSectionCount: number;
+      degradedReasons: string[];
+      blockers: string[];
       fields: CanonicalCompleteness['fields'];
     };
   };
@@ -198,6 +203,7 @@ export async function buildCanonicalNormalization(input: {
   const attractionMasterHash = attractionMasterSnapshotHash(input.attractions);
   const payloadSections: Array<Record<string, unknown>> = [];
   const gateStatuses: string[] = [];
+  const v6GateAccepted: boolean[] = [];
   const completenessResults: CanonicalCompleteness[] = [];
   let blockedSectionCount = 0;
 
@@ -239,11 +245,22 @@ export async function buildCanonicalNormalization(input: {
         canonicalSection: payloadSection,
         sectionIndex: section.index,
       });
+      const failedV3Checks = v3.gate_result.checks.filter(check => check.status === 'fail');
+      const onlySafeDegradedV3Failures = failedV3Checks.length > 0 && failedV3Checks.every(check =>
+        check.id.endsWith('.flight')
+        || check.id.endsWith('.flight_times_complete')
+        || check.id.endsWith('.hotel_or_notice')
+      );
+      v6GateAccepted.push(
+        gateStatus === 'ready_to_publish'
+        || (completeness.publicationOutcome === 'degraded' && onlySafeDegradedV3Failures),
+      );
       completenessResults.push(completeness);
       payloadSections.push({ ...payloadSection, completeness });
     } catch (error) {
       blockedSectionCount += 1;
       gateStatuses.push('error');
+      v6GateAccepted.push(false);
       payloadSections.push({
         index: section.index,
         sectionKey: section.sectionKey,
@@ -257,7 +274,8 @@ export async function buildCanonicalNormalization(input: {
   }
 
   const allSectionsReady = gateStatuses.length === segmented.sections.length
-    && gateStatuses.every(status => status === 'ready_to_publish')
+    && v6GateAccepted.length === segmented.sections.length
+    && v6GateAccepted.every(Boolean)
     && completenessResults.length === segmented.sections.length
     && completenessResults.every(result => result.publicReady);
 
@@ -284,14 +302,17 @@ export async function buildCanonicalNormalization(input: {
         conflictingCount: completenessResults.reduce((sum, item) => sum + item.conflictingCount, 0),
         unavailableCount: completenessResults.reduce((sum, item) => sum + item.unavailableCount, 0),
         publicReadySectionCount: completenessResults.filter(item => item.publicReady).length,
+        verifiedSectionCount: completenessResults.filter(item => item.publicationOutcome === 'verified').length,
+        degradedSectionCount: completenessResults.filter(item => item.publicationOutcome === 'degraded').length,
+        blockedSectionCount: completenessResults.filter(item => item.publicationOutcome === 'blocked').length,
+        degradedReasons: completenessResults.flatMap(item => item.degradedReasons),
+        blockers: completenessResults.flatMap(item => item.blockers),
         fields: completenessResults.flatMap(item => item.fields),
       },
     },
-    // A V3 `needs_review` result is not customer-safe merely because it did
-    // not contain a critical failure.  V4 stays in review until every section
-    // is ready and every completeness field is confirmed (or explicitly not
-    // applicable).  This prevents a missing supplier price or inclusion from
-    // accidentally becoming a publishable canonical normalization.
+    // V6 may accept only a narrow, explicit degraded subset (flight time and
+    // source-marked equivalent/unconfirmed lodging). Every purchase-critical
+    // gap remains fail-closed even if the legacy V3 gate only emitted a warn.
     status: allSectionsReady ? 'complete' : 'needs_review',
   };
 }
@@ -338,7 +359,8 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     const normalizationId = String((data as { id?: unknown }).id);
     const v5RevisionIds: string[] = [];
     let v5ShadowDiffSummary: Record<string, unknown> | null = null;
-    if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1') {
+    if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
+      || process.env.PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED === '1') {
       const { data: legacyDraft, error: legacyDraftError } = await input.supabase
         .from('product_registration_drafts')
         .select('ledger')

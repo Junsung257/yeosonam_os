@@ -63,6 +63,90 @@ export function createTextDocumentIR(input: {
   };
 }
 
+export function createOcrDocumentIR(input: {
+  filename: string;
+  sourceType: ProductSourceType;
+  text: string;
+  parserEngine: string;
+  parserVersion: string;
+  pages: Array<{
+    page: number;
+    text: string;
+    nodes?: Array<{ text: string; confidence?: number | null; boundingBox?: unknown }>;
+    tables?: Array<{ cells: Array<{ row: number; column: number; rowSpan: number; colSpan: number; text: string; confidence?: number | null; boundingBox?: unknown }> }>;
+  }>;
+  providerResults: Array<Record<string, unknown>>;
+  totalCostKrw: number;
+}): DocumentIR {
+  const nodes: DocumentIrNode[] = [];
+  const tables: DocumentIrTable[] = [];
+  let order = 0;
+  for (const page of input.pages) {
+    const pageId = nodeId('page', page.page, page.text);
+    nodes.push({ id: pageId, kind: 'page', page: page.page, order: order++, attributes: { source: 'ocr' } });
+    for (const [index, item] of (page.nodes ?? []).entries()) {
+      const id = nodeId(`ocr-p${page.page}`, index, item.text);
+      nodes.push({
+        id,
+        kind: 'paragraph',
+        text: item.text,
+        page: page.page,
+        parentId: pageId,
+        order: order++,
+        attributes: { confidence: item.confidence ?? null, boundingBox: item.boundingBox ?? null },
+      });
+    }
+    for (const [tableIndex, sourceTable] of (page.tables ?? []).entries()) {
+      const tableId = `ocr-table-p${page.page}-${tableIndex}`;
+      const cells = sourceTable.cells.map((cell, cellIndex) => {
+        const id = nodeId(`${tableId}-cell`, cellIndex, cell.text);
+        nodes.push({
+          id,
+          kind: 'cell',
+          text: cell.text,
+          page: page.page,
+          parentId: tableId,
+          order: order++,
+          attributes: { row: cell.row, column: cell.column, confidence: cell.confidence ?? null, boundingBox: cell.boundingBox ?? null },
+        });
+        return {
+          id: `${tableId}-${cell.row}-${cell.column}`,
+          row: cell.row,
+          column: cell.column,
+          rowSpan: cell.rowSpan,
+          colSpan: cell.colSpan,
+          text: cell.text,
+          nodeId: id,
+          evidence: { page: page.page, quoteHash: sha256Hex(cell.text) },
+        };
+      });
+      tables.push({
+        id: tableId,
+        page: page.page,
+        rows: Math.max(0, ...cells.map(cell => cell.row + cell.rowSpan)),
+        columns: Math.max(0, ...cells.map(cell => cell.column + cell.colSpan)),
+        cells,
+      });
+      nodes.push({ id: tableId, kind: 'table', page: page.page, parentId: pageId, order: order++, attributes: { tableIndex } });
+    }
+  }
+  return {
+    version: 'v4',
+    filename: input.filename,
+    sourceType: input.sourceType,
+    pages: Math.max(1, input.pages.length),
+    text: input.text.replace(/\r\n?/g, '\n').trim(),
+    nodes,
+    tables,
+    assets: [{
+      id: 'ocr-provider-run',
+      kind: input.sourceType === 'pdf' ? 'pdf' : 'image',
+      metadata: { providerResults: input.providerResults, totalCostKrw: input.totalCostKrw },
+    }],
+    parser: { engine: input.parserEngine, version: input.parserVersion },
+  };
+}
+
 export function getDocumentIRValidationErrors(value: unknown): string[] {
   const errors: string[] = [];
   if (!value || typeof value !== 'object') return ['DOCUMENT_IR_NOT_OBJECT'];

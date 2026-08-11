@@ -38,6 +38,7 @@ export async function completeUploadRegistration(input: {
   marginRate: number;
   baseUrl: string;
   requestBaseUrl?: string;
+  deferPublicationAutopilot?: boolean;
 }): Promise<Record<string, unknown>> {
   const result = input.registrationProductsResult;
 
@@ -60,13 +61,15 @@ export async function completeUploadRegistration(input: {
       isSupabaseConfigured: input.isSupabaseConfigured,
       postAlert: input.postAlert,
     });
-    scheduleUploadToOpenAutopilot({
-      safeAfter: input.safeAfter,
-      requestBaseUrl: input.requestBaseUrl || input.baseUrl,
-      packageIds: result.savedIds,
-      isSupabaseConfigured: input.isSupabaseConfigured,
-      postAlert: input.postAlert,
-    });
+    if (!input.deferPublicationAutopilot) {
+      scheduleUploadToOpenAutopilot({
+        safeAfter: input.safeAfter,
+        requestBaseUrl: input.requestBaseUrl || input.baseUrl,
+        packageIds: result.savedIds,
+        isSupabaseConfigured: input.isSupabaseConfigured,
+        postAlert: input.postAlert,
+      });
+    }
   }
 
   if (result.savedInternalCodes.length > 0) {

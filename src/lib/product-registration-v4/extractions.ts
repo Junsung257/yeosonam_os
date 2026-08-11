@@ -2,8 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { parseDocument } from '@/lib/parser';
 
-import { createTextDocumentIR, getDocumentIRValidationErrors, sha256Hex } from './document-ir';
+import { createOcrDocumentIR, createTextDocumentIR, getDocumentIRValidationErrors, sha256Hex } from './document-ir';
 import { parseHwpWithRhwp } from './rhwp';
+import { extractOcrWithCrossValidation } from '@/lib/product-registration-v6/ocr-providers';
 import type { DocumentIR, ProductSourceType } from './types';
 import { getProductRegistrationV4Job, transitionProductRegistrationV4Job } from './jobs';
 import type { ProductRegistrationV4JobRecord, SourceDocumentRecord } from './types';
@@ -15,6 +16,7 @@ export async function extractSourceDocumentToIR(input: {
   buffer: Buffer;
   filename: string;
   sourceType: ProductSourceType;
+  disabledOcrProviders?: string[];
 }): Promise<DocumentIR> {
   if (input.sourceType === 'hwp' || input.sourceType === 'hwpx') {
     return (await parseHwpWithRhwp({
@@ -37,29 +39,53 @@ export async function extractSourceDocumentToIR(input: {
   }
 
   if (input.sourceType === 'pdf') {
-    const parsed = await parseDocument(input.buffer, input.filename);
-    return createTextDocumentIR({
+    try {
+      const parsed = await parseDocument(input.buffer, input.filename);
+      const normalized = parsed.rawText.trim();
+      const replacementRatio = normalized.length > 0 ? (normalized.match(/�/g)?.length ?? 0) / normalized.length : 1;
+      if (normalized.length >= 100 && replacementRatio < 0.02) {
+        return createTextDocumentIR({
+          filename: input.filename,
+          sourceType: input.sourceType,
+          text: normalized,
+          parserEngine: 'pdf-parse',
+          parserVersion: 'existing',
+        });
+      }
+    } catch (error) {
+      if (process.env.PRODUCT_REGISTRATION_V6_OCR_ENABLED !== '1') throw error;
+    }
+    if ((input.disabledOcrProviders ?? []).length > 0) throw new Error('OCR_PROVIDER_KILL_SWITCH_ACTIVE');
+    const ocr = await extractOcrWithCrossValidation({
+      buffer: input.buffer,
+      filename: input.filename,
+      mime: 'application/pdf',
+    });
+    return createOcrDocumentIR({
       filename: input.filename,
       sourceType: input.sourceType,
-      text: parsed.rawText,
-      parserEngine: 'pdf-parse',
-      parserVersion: 'existing',
+      text: ocr.text,
+      parserEngine: ocr.parserEngine,
+      parserVersion: ocr.parserVersion,
+      pages: ocr.pages,
+      providerResults: ocr.providerResults,
+      totalCostKrw: ocr.totalCostKrw,
     });
   }
 
   if (input.sourceType === 'image') {
-    if (process.env.PRODUCT_REGISTRATION_V4_OCR_ENABLED !== '1') {
-      throw new Error('OCR_PROFILE_DISABLED:enable PRODUCT_REGISTRATION_V4_OCR_ENABLED=1 after OCR provider readiness review');
-    }
-    const parsed = await parseDocument(input.buffer, input.filename);
-    const text = parsed.rawText.trim();
-    if (text.length < 10) throw new Error('OCR_TEXT_TOO_SHORT');
-    return createTextDocumentIR({
+    if ((input.disabledOcrProviders ?? []).length > 0) throw new Error('OCR_PROVIDER_KILL_SWITCH_ACTIVE');
+    const mime = input.filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const ocr = await extractOcrWithCrossValidation({ buffer: input.buffer, filename: input.filename, mime });
+    return createOcrDocumentIR({
       filename: input.filename,
       sourceType: input.sourceType,
-      text,
-      parserEngine: 'existing-image-ocr',
-      parserVersion: '1',
+      text: ocr.text,
+      parserEngine: ocr.parserEngine,
+      parserVersion: ocr.parserVersion,
+      pages: ocr.pages,
+      providerResults: ocr.providerResults,
+      totalCostKrw: ocr.totalCostKrw,
     });
   }
 
@@ -162,10 +188,19 @@ export async function processProductRegistrationV4ExtractionJob(input: {
         .eq('id', sourceDocument.id);
       throw new Error(`SOURCE_SIGNATURE_MISMATCH:${signatureErrors.join(',')}`);
     }
+    const { data: ocrSwitches, error: ocrSwitchError } = await input.supabase
+      .from('product_registration_v5_kill_switches')
+      .select('scope_key')
+      .eq('scope', 'ocr_provider')
+      .eq('active', true)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+    if (ocrSwitchError) throw ocrSwitchError;
+    const disabledOcrProviders = (ocrSwitches ?? []).map(row => String(row.scope_key));
     const ir = await extractSourceDocumentToIR({
       buffer,
       filename: sourceDocument.original_filename,
       sourceType: sourceDocument.source_type,
+      disabledOcrProviders,
     });
     const extraction = await persistDocumentExtraction({
       supabase: input.supabase,
@@ -173,6 +208,49 @@ export async function processProductRegistrationV4ExtractionJob(input: {
       documentIr: ir,
       qualityDiagnostics: { pages: ir.pages, nodes: ir.nodes.length, tables: ir.tables.length, chars: ir.text.length },
     });
+    const ocrAsset = ir.assets.find(asset => asset.id === 'ocr-provider-run');
+    const ocrMetadata = ocrAsset?.metadata && typeof ocrAsset.metadata === 'object' ? ocrAsset.metadata : null;
+    const providerResults = Array.isArray(ocrMetadata?.providerResults) ? ocrMetadata.providerResults : [];
+    for (const rawResult of providerResults) {
+      if (!rawResult || typeof rawResult !== 'object' || Array.isArray(rawResult)) continue;
+      const providerResult = rawResult as Record<string, unknown>;
+      const provider = String(providerResult.provider ?? 'unknown');
+      const responseHash = sha256Hex(JSON.stringify(providerResult));
+      const { data: providerCall, error: providerCallError } = await input.supabase.rpc('record_product_registration_v6_provider_call', {
+        p_payload: {
+          tenant_id: sourceDocument.tenant_id,
+          job_id: job.id,
+          product_revision_id: null,
+          provider,
+          operation: 'ocr_extract',
+          operation_key: `${sourceDocument.sha256}:ocr:${provider}:${ir.parser.version}`,
+          request_hash: sha256Hex(`${sourceDocument.sha256}:${provider}:${ir.parser.version}`),
+          response_hash: responseHash,
+          status: 'succeeded',
+          billed_units: ir.pages,
+          cost_krw: Number(providerResult.costKrw ?? 0),
+          source_hash: sourceDocument.sha256,
+          revision_hash: null,
+          result: providerResult,
+        },
+      });
+      if (providerCallError) throw providerCallError;
+      if (!Boolean((providerCall as { inserted?: unknown } | null)?.inserted)) {
+        providerResult.costKrw = 0;
+      }
+    }
+    const ocrCost = providerResults.reduce((sum, item) => {
+      const row = item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {};
+      return sum + Number(row.costKrw ?? 0);
+    }, 0);
+    if (ocrCost > 0 && Number(job.v6_fencing_token ?? 0) > 0) {
+      const { error: costError } = await input.supabase.rpc('add_product_registration_v6_external_cost', {
+        p_job_id: job.id,
+        p_expected_fencing_token: Number(job.v6_fencing_token),
+        p_cost_krw: ocrCost,
+      });
+      if (costError) throw costError;
+    }
     const extractionState = {
       extractionHash: extraction.extractionHash,
       pages: ir.pages,

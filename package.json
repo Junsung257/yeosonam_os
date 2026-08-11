@@ -11,7 +11,7 @@
     "dev:temp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev-temp.ps1",
     "dev:clean": "npm run clean:next && next dev",
     "clean:next": "node -e \"require('child_process').execSync('powershell -c Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue', {stdio:'inherit'})\"",
-    "prebuild": "node scripts/copy-partytown-lib.cjs && node db/audit_vercel_functions_count.js --ci",
+    "prebuild": "node scripts/install-rhwp.mjs && node scripts/copy-partytown-lib.cjs && node db/audit_vercel_functions_count.js --ci",
     "audit:vercel-functions": "node db/audit_vercel_functions_count.js",
     "audit:vercel-functions:ci": "node db/audit_vercel_functions_count.js --ci",
     "build": "node scripts/run-next-build.cjs",
@@ -303,6 +303,7 @@
     "web-push": "^3.6.7",
     "web-vitals": "^4.2.4",
     "ws": "8.21.0",
+    "workflow": "4.8.1",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2",
     "zustand": "^5.0.13"

@@ -16,6 +16,7 @@ import { isPublicPublicationState } from './types';
 type AnyRecord = Record<string, unknown>;
 
 export type SnapshotProjectionRow = {
+  id?: string;
   package_id: string;
   package_revision?: number | null;
   canonical_revision_id?: string | null;
@@ -24,6 +25,7 @@ export type SnapshotProjectionRow = {
   lp_projection?: AnyRecord | null;
   route_text_dump?: string[] | null;
   status?: string | null;
+  snapshot_hash?: string | null;
   created_at?: string | null;
 };
 
@@ -336,7 +338,8 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     const id = packageId(pkg);
     if (!id) continue;
     if (!isPublicPackageRowOpenable(pkg) && !authoritativeV5ByPackage.has(id)) continue;
-    revisionByPackage.set(id, packageRevision(pkg));
+    const authoritative = snapshotRows.find(snapshot => snapshot.package_id === id && snapshot.canonical_revision_id);
+    revisionByPackage.set(id, authoritative ? Number(authoritative.package_revision ?? 1) : packageRevision(pkg));
   }
 
   const snapshotByPackage = new Map<string, SnapshotProjectionRow>();
@@ -366,6 +369,8 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
         ...(projectionPayload ?? {}),
         id,
         _public_snapshot: {
+          id: snapshot.id ?? null,
+          snapshot_hash: snapshot.snapshot_hash ?? null,
           status: snapshot.status ?? null,
           created_at: snapshot.created_at ?? null,
           package_revision: snapshot.package_revision ?? null,
@@ -382,18 +387,55 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
   const ids = packages.map(packageId).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
 
+  const { data: pointers, error: pointerError } = await supabase
+    .from('product_registration_v5_publication_pointers')
+    .select('package_id,current_revision_id,current_snapshot_id,state')
+    .in('package_id', ids)
+    .eq('channel', 'customer')
+    .eq('locale', 'ko-KR')
+    .eq('state', 'published');
+  if (pointerError) throw pointerError;
+  const pointerByPackage = new Map((pointers ?? []).map(pointer => [String(pointer.package_id), pointer]));
+  const { data: activeSwitches, error: switchError } = await supabase
+    .from('product_registration_v5_kill_switches')
+    .select('scope,scope_key')
+    .eq('active', true)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+  if (switchError) throw switchError;
+  if ((activeSwitches ?? []).some(item => item.scope === 'global')) return [];
+  const blockedProducts = new Set((activeSwitches ?? [])
+    .filter(item => item.scope === 'product')
+    .map(item => String(item.scope_key)));
+  const blockedSuppliers = new Set((activeSwitches ?? [])
+    .filter(item => item.scope === 'supplier')
+    .map(item => String(item.scope_key)));
+  const safePackages = packages.filter(pkg => {
+    const id = packageId(pkg);
+    const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
+    return Boolean(id && !blockedProducts.has('*') && !blockedProducts.has(id)
+      && !blockedSuppliers.has('*') && !blockedSuppliers.has(supplier));
+  });
+
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('package_id, package_revision, canonical_revision_id, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .in('package_id', ids)
     .in('status', ['approved', 'published'])
     .order('created_at', { ascending: false });
 
   if (error) throw error;
+  const requirePointer = process.env.PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED === '1';
+  const pointerBoundRows = ((data ?? []) as SnapshotProjectionRow[]).filter(row => {
+    const pointer = pointerByPackage.get(row.package_id);
+    if (!pointer) return !requirePointer;
+    return pointer.current_snapshot_id === row.id
+      && pointer.current_revision_id === row.canonical_revision_id
+      && row.status === 'published';
+  });
   const publishableSnapshotRows = await filterSnapshotsWithPublishableAttractions(
     supabase,
-    (data ?? []) as SnapshotProjectionRow[],
+    pointerBoundRows,
   );
   const v4ReadySnapshotRows = await filterSnapshotsWithReadyV4Lineage(supabase, publishableSnapshotRows);
-  return mergePackageRowsWithCurrentPublicSnapshots(packages, v4ReadySnapshotRows, 'card');
+  return mergePackageRowsWithCurrentPublicSnapshots(safePackages, v4ReadySnapshotRows, 'card');
 }

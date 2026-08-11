@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   packageRow: null as Record<string, unknown> | null,
   packageError: null as { message: string } | null,
   publicSnapshotRow: null as Record<string, unknown> | null,
+  publicationPointerRow: null as Record<string, unknown> | null,
   scores: [] as Record<string, unknown>[],
   mappedInput: null as Record<string, unknown> | null,
 }));
@@ -17,19 +18,40 @@ vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     from(table: string) {
       if (table === 'travel_packages') {
-        return {
+        const query = {
           select() {
-            return {
-              eq() {
-                return {
-                  async single() {
-                    return { data: mocks.packageRow, error: mocks.packageError };
-                  },
-                };
-              },
-            };
+            return query;
+          },
+          eq() {
+            return query;
+          },
+          async single() {
+            return { data: mocks.packageRow, error: mocks.packageError };
+          },
+          async maybeSingle() {
+            return { data: mocks.packageRow, error: mocks.packageError };
           },
         };
+        return query;
+      }
+
+      if (table === 'product_registration_v5_publication_pointers') {
+        const query = {
+          select() { return query; },
+          eq() { return query; },
+          is() { return query; },
+          async maybeSingle() { return { data: mocks.publicationPointerRow, error: null }; },
+        };
+        return query;
+      }
+
+      if (table === 'product_registration_v5_kill_switches') {
+        const query = {
+          select() { return query; },
+          eq() { return query; },
+          async or() { return { data: [], error: null }; },
+        };
+        return query;
       }
 
       if (table === 'package_scores') {
@@ -203,6 +225,7 @@ describe('fetchLpPackageUncached', () => {
       id: 'snap-1',
       package_id: 'pkg-1',
       package_revision: 3,
+      canonical_revision_id: 'rev-1',
       snapshot_hash: 'snapshot-hash',
       snapshot_json: {
         images_public: [
@@ -222,6 +245,12 @@ describe('fetchLpPackageUncached', () => {
       route_text_dump: ['Snapshot customer title', '고객용 요약'],
       status: 'published',
       created_at: '2026-07-10T00:00:00.000Z',
+    };
+    mocks.publicationPointerRow = {
+      tenant_id: null,
+      current_revision_id: 'rev-1',
+      current_snapshot_id: 'snap-1',
+      state: 'published',
     };
     mocks.packageError = null;
     mocks.scores = [];
@@ -361,6 +390,7 @@ premium villa golf package 3n5d
       id: 'snap-1',
       package_id: 'pkg-1',
       package_revision: 3,
+      canonical_revision_id: 'rev-1',
       snapshot_hash: 'snapshot-hash',
       snapshot_json: {
         images_public: [

@@ -65,6 +65,25 @@ function openPackage(overrides: Record<string, unknown> = {}): Record<string, un
 function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options: FetchMockOptions = {}) {
   return {
     from(table: string) {
+      if (table === 'product_registration_v5_publication_pointers') {
+        const response = { data: [], error: null };
+        const pointerChain: any = {
+          select: () => pointerChain,
+          in: () => pointerChain,
+          eq: () => pointerChain,
+          then: (resolve: (value: typeof response) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(response).then(resolve, reject),
+        };
+        return pointerChain;
+      }
+      if (table === 'product_registration_v5_kill_switches') {
+        const response = { data: [], error: null };
+        const switchChain: any = {
+          select: () => switchChain,
+          eq: () => switchChain,
+          or: () => Promise.resolve(response),
+        };
+        return switchChain;
+      }
       if (table === 'public_package_snapshots') {
         const snapshotChain = {
           select: () => snapshotChain,
@@ -190,6 +209,8 @@ describe('public snapshot card projection', () => {
     expect(merged[0].title).toBe('current card title');
     expect(merged[0].destination).toBe('current dest');
     expect((merged[0] as Record<string, unknown>)._public_snapshot).toEqual({
+      id: null,
+      snapshot_hash: null,
       status: 'published',
       created_at: '2026-07-09T00:00:00.000Z',
       package_revision: 3,

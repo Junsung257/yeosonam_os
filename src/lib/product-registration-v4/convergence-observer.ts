@@ -172,15 +172,19 @@ export async function observeProductRegistrationV5ConvergenceBatch(input: {
   baseUrl: string;
   limit?: number;
   timeoutMs?: number;
+  snapshotHashes?: string[];
 }): Promise<ProductRegistrationV5ConvergenceObservation[]> {
   const limit = Math.max(1, Math.min(Math.floor(input.limit ?? 10), 50));
   const baseUrl = input.baseUrl.replace(/\/+$/, '');
-  const { data, error } = await input.supabase
+  let query = input.supabase
     .from('product_registration_v5_cache_convergence_runs')
     .select('id,package_id,snapshot_hash,surface,route,status')
     .in('status', ['pending', 'stale', 'failed'])
     .order('created_at', { ascending: true })
     .limit(limit);
+  const hashes = [...new Set(input.snapshotHashes ?? [])].filter(hash => HASH_RE.test(hash));
+  if (hashes.length > 0) query = query.in('snapshot_hash', hashes);
+  const { data, error } = await query;
   if (error) throw error;
 
   const rows = (data ?? []) as ConvergenceRow[];

@@ -101,6 +101,23 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
   };
   return {
     from(table: string) {
+      if (table === 'travel_packages') {
+        const identityChain: any = {
+          select: () => identityChain,
+          eq: () => identityChain,
+          maybeSingle: () => Promise.resolve({ data: row ? { id: row.package_id } : null, error: null }),
+        };
+        return identityChain;
+      }
+      if (table === 'product_registration_v5_publication_pointers') {
+        const pointerChain: any = {
+          select: () => pointerChain,
+          eq: () => pointerChain,
+          is: () => pointerChain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        };
+        return pointerChain;
+      }
       if (table === 'public_package_snapshots') return snapshotChain;
       if (table === 'product_registration_drafts') {
         const chain: any = {

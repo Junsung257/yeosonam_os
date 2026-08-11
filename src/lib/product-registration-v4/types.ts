@@ -123,6 +123,15 @@ export type ProductRegistrationV4JobRecord = {
   v4_review_reasons: string[];
   v4_last_error_code: string | null;
   v4_last_error_detail: string | null;
+  v6_workflow_run_id?: string | null;
+  v6_outcome?: 'published_verified' | 'published_degraded' | 'blocked_action_required' | null;
+  v6_policy_version?: string | null;
+  v6_last_heartbeat_at?: string | null;
+  v6_terminal_at?: string | null;
+  v6_degraded_reasons?: string[];
+  v6_blockers?: string[];
+  v6_external_cost_krw?: number;
+  v6_fencing_token?: number;
   created_at: string;
   updated_at: string;
 };

@@ -9,6 +9,7 @@ const withSerwist = require('@serwist/next').default({
 const fs = require('fs');
 const path = require('path');
 const { withSentryConfig } = require('@sentry/nextjs');
+const { withWorkflow } = require('workflow/next');
 
 // 번들 분석: ANALYZE=true 환경변수 설정 시 .next/analyze/ 에 트리맵 HTML 생성
 // 사용: ANALYZE=true npm run build  (Windows: $env:ANALYZE='true'; npm run build)
@@ -428,4 +429,4 @@ const composedConfig = enableSentryNextConfig
   ? withSentryConfig(withSerwist(nextConfig), sentryConfig)
   : withSerwist(nextConfig);
 
-module.exports = withBundleAnalyzer(composedConfig);
+module.exports = withWorkflow(withBundleAnalyzer(composedConfig));

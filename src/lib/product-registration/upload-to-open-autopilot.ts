@@ -40,7 +40,6 @@ import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { runUploadVerify, evaluateVerifyChecks, type VerifyResult } from '@/lib/upload-verify';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
-import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { sanitizeBrokenAttractionIdsForPublicEligibility } from '@/lib/package-public-eligibility';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
 import { replaceProductPricesForProduct } from './product-price-replacement';
@@ -4352,40 +4351,8 @@ async function evaluateAndMaybeOpenPackage(input: {
   }
   reasons.push(...scorecardRepairs.blockedReasons);
   const baseUrl = input.baseUrl || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-  const originalStatusBeforeProof = pkg.status;
-  const originalAuditStatusBeforeProof = pkg.audit_status;
-  let originalProductStatusBeforeProof: string | null | undefined;
-  let temporarilyOpenedForProof = false;
-  if (input.autoOpen && !isCustomerVisibleStatus(pkg.status)) {
-    const proofPreviewAt = nowIso();
-    if (pkg.internal_code) {
-      const { data: productBeforeProof } = await input.supabase
-        .from('products')
-        .select('status')
-        .eq('internal_code', pkg.internal_code)
-        .limit(1)
-        .maybeSingle();
-      originalProductStatusBeforeProof = typeof (productBeforeProof as { status?: unknown } | null)?.status === 'string'
-        ? (productBeforeProof as { status: string }).status
-        : null;
-      await input.supabase
-        .from('products')
-        .update({ status: 'ACTIVE', updated_at: proofPreviewAt })
-        .eq('internal_code', pkg.internal_code);
-    }
-    const { error } = await input.supabase
-      .from('travel_packages')
-      .update({
-        status: 'active',
-        audit_status: 'clean',
-        audit_checked_at: proofPreviewAt,
-        updated_at: proofPreviewAt,
-      })
-      .eq('id', pkg.id);
-    if (error) throw error;
-    temporarilyOpenedForProof = true;
-    pkg = await reloadPackage(input.supabase, pkg.id);
-  }
+  // A proof must never mutate a sellable status. The legacy path uses the
+  // authenticated render-proof header; V6 uses an immutable snapshot token.
   await runAutoMobileQA(pkg.id, baseUrl, { includeLpForProof: true });
   pkg = await reloadPackage(input.supabase, pkg.id);
 
@@ -4478,25 +4445,6 @@ async function evaluateAndMaybeOpenPackage(input: {
     finalQualityScorecard,
   }))].filter(Boolean);
   if (uniqueReasons.length > 0) {
-    if (temporarilyOpenedForProof) {
-      const rollbackAt = nowIso();
-      await input.supabase
-        .from('travel_packages')
-        .update({
-          status: originalStatusBeforeProof ?? 'pending_review',
-          audit_status: originalAuditStatusBeforeProof ?? 'blocked',
-          audit_checked_at: rollbackAt,
-          updated_at: rollbackAt,
-        })
-        .eq('id', pkg.id);
-      if (pkg.internal_code && originalProductStatusBeforeProof !== undefined) {
-        await input.supabase
-          .from('products')
-          .update({ status: originalProductStatusBeforeProof ?? 'PENDING', updated_at: rollbackAt })
-          .eq('internal_code', pkg.internal_code);
-      }
-      pkg = await reloadPackage(input.supabase, pkg.id);
-    }
     const reviewActions = classifyReviewReasons(uniqueReasons);
     const summary = repairFirstSummary({ reasons: uniqueReasons, repairs: allRepairs, reviewActions });
     await markAutopilotStage(input.supabase, pkg.id, 'blocked_after_mobile_proof', {

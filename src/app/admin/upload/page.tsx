@@ -22,6 +22,10 @@ interface QueueItem {
   dbIds?: string[];
   sourceDocumentId?: string;
   registrationJobId?: string;
+  workflowRunId?: string;
+  v6Outcome?: 'published_verified' | 'published_degraded' | 'blocked_action_required' | null;
+  v6DegradedReasons?: string[];
+  v6Blockers?: string[];
   v4Stage?: string;
   v4Error?: string | null;
   v5Revision?: {
@@ -438,12 +442,22 @@ export default function UploadPage() {
         const job = body?.job;
         if (!response.ok || !job) throw new Error(body?.error || `V4 job HTTP ${response.status}`);
         const stage = typeof job.v4_stage === 'string' ? job.v4_stage : 'uploaded';
+        const v6Outcome = typeof body?.v6?.outcome === 'string' ? body.v6.outcome as QueueItem['v6Outcome'] : null;
         const latestV5 = body?.v5?.latestRevision;
         const completeness = body?.v5?.latestNormalization?.quality_diagnostics?.completeness;
         setQueue(prev => prev.map(item => item.id === id ? {
           ...item,
           v4Stage: stage,
           v4Error: job.v4_last_error_detail ?? null,
+          workflowRunId: typeof body?.v6?.workflowRunId === 'string' ? body.v6.workflowRunId : item.workflowRunId,
+          v6Outcome,
+          v6DegradedReasons: Array.isArray(body?.v6?.degradedReasons) ? body.v6.degradedReasons.map(String) : [],
+          v6Blockers: Array.isArray(body?.v6?.blockers) ? body.v6.blockers.map(String) : [],
+          status: v6Outcome === 'blocked_action_required'
+            ? 'error'
+            : v6Outcome === 'published_verified' || v6Outcome === 'published_degraded'
+              ? 'done'
+              : item.status,
           v5Revision: latestV5 && typeof latestV5 === 'object'
             ? {
                 revisionCount: Number(body?.v5?.revisionCount ?? 0),
@@ -463,7 +477,8 @@ export default function UploadPage() {
               }
             : null,
         } : item));
-        if (!['published', 'failed', 'quarantined', 'needs_review'].includes(stage) && attempt < 120) {
+        const hasV6Run = typeof body?.v6?.workflowRunId === 'string' && body.v6.workflowRunId.length > 0;
+        if (!v6Outcome && (hasV6Run || !['published', 'failed', 'quarantined', 'needs_review'].includes(stage)) && attempt < 120) {
           pollV4Job(id, jobId, attempt + 1);
         }
       } catch (error) {
@@ -509,6 +524,16 @@ export default function UploadPage() {
     if (!res.ok) throw new Error(uploadFailureMessage(data));
     if (isUploadDeferredForReplay(data)) return deferredUploadResult(data);
     if (data?.success === false) throw new Error(uploadFailureMessage(data));
+
+    if (data?.code === 'PRODUCT_REGISTRATION_V6_ACCEPTED') {
+      return {
+        status: 'processing',
+        sourceDocumentId: v4Source.sourceDocumentId,
+        registrationJobId: v4Source.registrationJobId,
+        workflowRunId: typeof data.workflowRunId === 'string' ? data.workflowRunId : undefined,
+        title: file.name,
+      };
+    }
 
     const ed = data.data?.extractedData;
     const match = file.name.match(/^\[([^_\]]+)_(\d+(?:\.\d+)?)%?\]/);
@@ -725,6 +750,19 @@ export default function UploadPage() {
         return;
       }
       if (data?.success === false) throw new Error(uploadFailureMessage(data));
+
+      if (data?.code === 'PRODUCT_REGISTRATION_V6_ACCEPTED') {
+        setQueue(prev => prev.map(it => it.id === id ? {
+          ...it,
+          status: 'processing',
+          sourceDocumentId: v4Source.sourceDocumentId,
+          registrationJobId: v4Source.registrationJobId,
+          workflowRunId: typeof data.workflowRunId === 'string' ? data.workflowRunId : undefined,
+          title: it.sourceLabel || '자동 처리 중',
+        } : it));
+        pollV4Job(id, v4Source.registrationJobId);
+        return;
+      }
 
       const ed = data.data?.extractedData;
       const count = data.productCount || 1;
@@ -1190,6 +1228,22 @@ export default function UploadPage() {
                     {item.registrationJobId && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px]">
                         <span className="text-slate-500">원문 처리: {item.v4Stage ?? 'uploaded'}</span>
+                        {item.v6Outcome && (
+                          <span
+                            className={item.v6Outcome === 'blocked_action_required'
+                              ? 'text-red-600 font-semibold'
+                              : item.v6Outcome === 'published_degraded'
+                                ? 'text-amber-700 font-semibold'
+                                : 'text-emerald-700 font-semibold'}
+                            title={[...(item.v6DegradedReasons ?? []), ...(item.v6Blockers ?? [])].join('\n')}
+                          >
+                            {item.v6Outcome === 'published_verified'
+                              ? 'V6 검증 공개 완료'
+                              : item.v6Outcome === 'published_degraded'
+                                ? `V6 안전 축약 공개 (${item.v6DegradedReasons?.length ?? 0})`
+                                : `V6 자동 차단 (${item.v6Blockers?.length ?? 0})`}
+                          </span>
+                        )}
                         {item.v5Revision && (
                           <>
                             <span className={item.v5Revision.status === 'needs_review' || item.v5Revision.status === 'blocked' ? 'text-amber-600' : 'text-violet-600'}>

@@ -24,12 +24,22 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-async function safeLoadLpPackage(id: string, allowNonPublicProof = false) {
+async function safeLoadLpPackage(id: string, options: {
+  allowNonPublicProof?: boolean;
+  proofSnapshotId?: string | null;
+  proofToken?: string | null;
+} = {}) {
   const normalizedId = id.trim();
   if (!normalizedId) return null;
 
   try {
-    if (allowNonPublicProof) return await fetchLpPackageUncached(normalizedId, { allowNonPublicProof: true });
+    if (options.proofSnapshotId && options.proofToken) {
+      return await fetchLpPackageUncached(normalizedId, {
+        proofSnapshotId: options.proofSnapshotId,
+        proofToken: options.proofToken,
+      });
+    }
+    if (options.allowNonPublicProof) return await fetchLpPackageUncached(normalizedId, { allowNonPublicProof: true });
     return await loadLpPackageForPage(normalizedId);
   } catch {
     return null;
@@ -43,9 +53,21 @@ async function hasRenderProofAccess(): Promise<boolean> {
   return Boolean(proofHeader && proofSecret && proofHeader === proofSecret);
 }
 
+async function proofLoadOptions(
+  searchParams?: Promise<Record<string, string | string[] | undefined>>,
+) {
+  const resolved = searchParams ? await searchParams : {};
+  const snapshotId = getRouteParam(resolved.__proof_snapshot);
+  const incomingHeaders = await headers();
+  const proofToken = incomingHeaders.get('x-product-registration-v6-proof-token');
+  if (snapshotId && proofToken) return { proofSnapshotId: snapshotId, proofToken };
+  return { allowNonPublicProof: await hasRenderProofAccess() };
+}
+
 export async function generateMetadata(
   props: {
     params: Promise<{ id?: string | string[] }>;
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
   }
 ): Promise<Metadata> {
   const params = await props.params;
@@ -57,7 +79,7 @@ export async function generateMetadata(
   // package before publication. Metadata must use the same access decision as
   // the page body; otherwise Next.js can perform a second public-only lookup,
   // block on a stale snapshot and make an otherwise valid proof time out.
-  const data = await safeLoadLpPackage(id, await hasRenderProofAccess());
+  const data = await safeLoadLpPackage(id, await proofLoadOptions(props.searchParams));
   if (!data) {
     return {
       title: '상품',
@@ -120,10 +142,13 @@ export async function generateMetadata(
   };
 }
 
-export default async function LpPage(props: { params: Promise<{ id?: string | string[] }> }) {
+export default async function LpPage(props: {
+  params: Promise<{ id?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const params = await props.params;
   const id = getRouteParam(params.id);
-  const data = await safeLoadLpPackage(id, await hasRenderProofAccess());
+  const data = await safeLoadLpPackage(id, await proofLoadOptions(props.searchParams));
   if (!data) notFound();
 
   let initialNotices: NoticeBlock[] = [];

@@ -8,12 +8,22 @@ import {
 } from '@/lib/product-registration-v4/jobs';
 import { processProductRegistrationV4ExtractionJob } from '@/lib/product-registration-v4/extractions';
 import { processProductRegistrationV4CanonicalNormalizationJob } from '@/lib/product-registration-v4/canonical-worker';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 async function handler(request: NextRequest): Promise<NextResponse> {
+  if (getProductRegistrationV6RuntimeConfig().workflowEnabled) {
+    return NextResponse.json({
+      success: true,
+      skipped: true,
+      code: 'PRODUCT_REGISTRATION_V4_CRON_DISABLED_BY_V6_WORKFLOW',
+      processed: [],
+      count: 0,
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
   if (!isSupabaseAdminConfigured || !supabaseAdmin) {
     return NextResponse.json({ success: false, code: 'SUPABASE_ADMIN_UNAVAILABLE' }, { status: 503 });
   }

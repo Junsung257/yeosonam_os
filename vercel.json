@@ -14,6 +14,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/product-registration-v6-watchdog",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/clobe-bank-sync",
       "schedule": "12 19 * * *"
     },

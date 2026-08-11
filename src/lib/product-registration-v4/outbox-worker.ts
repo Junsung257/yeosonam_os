@@ -68,15 +68,16 @@ export function buildProductRegistrationV5ConvergenceRows(input: {
   return rows;
 }
 
-async function claimNextOutboxEvent(input: { supabase: SupabaseClient; workerId: string }): Promise<OutboxRow | null> {
-  const { data: candidate, error: candidateError } = await input.supabase
+async function claimNextOutboxEvent(input: { supabase: SupabaseClient; workerId: string; aggregateIds?: string[] }): Promise<OutboxRow | null> {
+  let candidateQuery = input.supabase
     .from('product_registration_v5_publication_outbox')
     .select('id,event_type,dedupe_key,payload,attempts')
     .in('status', ['pending', 'failed'])
     .lte('available_at', new Date().toISOString())
     .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  if (input.aggregateIds && input.aggregateIds.length > 0) candidateQuery = candidateQuery.in('aggregate_id', input.aggregateIds);
+  const { data: candidate, error: candidateError } = await candidateQuery.maybeSingle();
   if (candidateError || !candidate) return null;
 
   const { data: claimed, error: claimError } = await input.supabase
@@ -168,12 +169,12 @@ async function processOutboxEvent(input: { supabase: SupabaseClient; event: Outb
   return { ok: true, packageId: payload.package_id };
 }
 
-export async function processProductRegistrationV5OutboxBatch(input: { supabase: SupabaseClient; limit?: number; workerId?: string }): Promise<Array<{ eventId: string; ok: boolean; reason?: string; packageId?: string }>> {
+export async function processProductRegistrationV5OutboxBatch(input: { supabase: SupabaseClient; limit?: number; workerId?: string; aggregateIds?: string[] }): Promise<Array<{ eventId: string; ok: boolean; reason?: string; packageId?: string }>> {
   const limit = Math.max(1, Math.min(Math.floor(input.limit ?? 5), 20));
   const workerId = input.workerId ?? `v5-outbox-${randomUUID()}`;
   const results: Array<{ eventId: string; ok: boolean; reason?: string; packageId?: string }> = [];
   for (let index = 0; index < limit; index += 1) {
-    const event = await claimNextOutboxEvent({ supabase: input.supabase, workerId });
+    const event = await claimNextOutboxEvent({ supabase: input.supabase, workerId, aggregateIds: input.aggregateIds });
     if (!event) break;
     const result = await processOutboxEvent({ supabase: input.supabase, event, workerId });
     results.push({ eventId: event.id, ...result });

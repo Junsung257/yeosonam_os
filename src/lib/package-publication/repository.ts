@@ -80,7 +80,7 @@ function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
     .some(issue => !issue.safeFixable);
 }
 
-function snapshotPackage(row: SnapshotRow): AnyRecord | null {
+export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
   const cardProjection = asRecord(row.card_projection);
@@ -118,11 +118,105 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   return hasBlockingSnapshotCopy(customerPackage, row) ? null : customerPackage;
 }
 
+/** Loads one exact immutable snapshot for a signed V6 proof request. It does
+ * not require a publication pointer and must never be used by customer reads. */
+export async function fetchPublicPackageSnapshotById(
+  supabase: SupabaseClient,
+  snapshotId: string,
+): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
+  const { data, error } = await supabase
+    .from('public_package_snapshots')
+    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .eq('id', snapshotId)
+    .in('status', ['candidate', 'approved', 'published'])
+    .maybeSingle();
+  if (error || !data) return null;
+  const pkg = snapshotPackage(data as SnapshotRow);
+  return pkg ? { row: data as SnapshotRow, package: pkg } : null;
+}
+
+/** Single pointer-first customer read. Content comes only from one immutable
+ * snapshot; travel_packages may be used only to resolve a legacy short code. */
+export async function getCurrentPublicPackage(
+  supabase: SupabaseClient,
+  input: {
+    tenantId?: string | null;
+    packageRef: string;
+    channel?: string;
+    locale?: string;
+  },
+): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
+  let packageId = input.packageRef;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageId)) {
+    const { data: identity, error: identityError } = await supabase
+      .from('travel_packages')
+      .select('id')
+      .eq('short_code', packageId)
+      .maybeSingle();
+    if (identityError || !identity?.id) return null;
+    packageId = String(identity.id);
+  }
+  let pointerQuery = supabase
+    .from('product_registration_v5_publication_pointers')
+    .select('tenant_id,current_revision_id,current_snapshot_id,state')
+    .eq('package_id', packageId)
+    .eq('channel', input.channel ?? 'customer')
+    .eq('locale', input.locale ?? 'ko-KR');
+  if (typeof input.tenantId === 'string') pointerQuery = pointerQuery.eq('tenant_id', input.tenantId);
+  else if (input.tenantId === null) pointerQuery = pointerQuery.is('tenant_id', null);
+  const { data: pointer, error: pointerError } = await pointerQuery.maybeSingle();
+  if (pointerError || !pointer || pointer.state !== 'published' || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
+
+  const { data, error } = await supabase
+    .from('public_package_snapshots')
+    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .eq('id', pointer.current_snapshot_id)
+    .eq('package_id', packageId)
+    .eq('canonical_revision_id', pointer.current_revision_id)
+    .eq('status', 'published')
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as SnapshotRow;
+  const pkg = snapshotPackage(row);
+  if (!pkg) return null;
+
+  const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
+  const { data: switches, error: switchError } = await supabase
+    .from('product_registration_v5_kill_switches')
+    .select('scope,scope_key')
+    .eq('active', true)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+  if (switchError) return null;
+  if ((switches ?? []).some(item => item.scope === 'global'
+    || (item.scope === 'product' && [packageId, '*'].includes(String(item.scope_key)))
+    || (item.scope === 'supplier' && [supplier, '*'].includes(String(item.scope_key))))) return null;
+
+  const v4PublicationGate = await loadProductRegistrationV4PublicationGate({ supabase, packageId }).catch(() => null);
+  if (!v4PublicationGate || (v4PublicationGate.required && !v4PublicationGate.ok)) return null;
+  const attractionValidation = await validateCustomerPublishableAttractionIds(
+    supabase,
+    collectItineraryAttractionIds(pkg.itinerary_data),
+  );
+  if (attractionValidation.lookupError || attractionValidation.invalidIds.length > 0) return null;
+  return { row, package: pkg };
+}
+
 export async function fetchLatestPublicPackageSnapshot(
   supabase: SupabaseClient,
   packageId: string,
   options: { expectedPackageRevision?: number | null } = {},
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
+  const pointerSnapshot = await getCurrentPublicPackage(supabase, {
+    packageRef: packageId,
+    channel: 'customer',
+    locale: 'ko-KR',
+  });
+  if (pointerSnapshot) {
+    if (Number.isFinite(Number(options.expectedPackageRevision))
+      && pointerSnapshot.row.package_revision !== Number(options.expectedPackageRevision)) return null;
+    return pointerSnapshot;
+  }
+  if (process.env.PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED === '1') return null;
   let query = supabase
     .from('public_package_snapshots')
     .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')

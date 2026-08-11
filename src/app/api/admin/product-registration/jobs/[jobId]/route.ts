@@ -21,7 +21,8 @@ const getHandler = async (_request: NextRequest, context?: { params: Promise<{ j
     const job = await getProductRegistrationV4Job({ supabase: supabaseAdmin, jobId });
     if (!job) return NextResponse.json({ success: false, code: 'JOB_NOT_FOUND' }, { status: 404 });
     let v5: Record<string, unknown> | null = null;
-    if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1') {
+    if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
+      || process.env.PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED === '1') {
       const { data: normalizations, error: normalizationError } = await supabaseAdmin
         .from('product_registration_v4_normalizations')
         .select('id, status, normalization_version, raw_text_hash, quality_diagnostics, created_at')
@@ -51,7 +52,18 @@ const getHandler = async (_request: NextRequest, context?: { params: Promise<{ j
         };
       }
     }
-    return NextResponse.json({ success: true, job, v5 }, { headers: { 'Cache-Control': 'no-store' } });
+    const v6 = {
+      workflowRunId: job.v6_workflow_run_id ?? null,
+      outcome: job.v6_outcome ?? null,
+      policyVersion: job.v6_policy_version ?? null,
+      heartbeatAt: job.v6_last_heartbeat_at ?? null,
+      terminalAt: job.v6_terminal_at ?? null,
+      degradedReasons: job.v6_degraded_reasons ?? [],
+      blockers: job.v6_blockers ?? [],
+      externalCostKrw: Number(job.v6_external_cost_krw ?? 0),
+      currentStage: (job.v4_stage_state?.v6 as Record<string, unknown> | undefined)?.stage ?? null,
+    };
+    return NextResponse.json({ success: true, job, v5, v6 }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('[Product Registration V4] job read failed:', error);
     return NextResponse.json({ success: false, code: 'REGISTRATION_JOB_READ_FAILED' }, { status: 502 });

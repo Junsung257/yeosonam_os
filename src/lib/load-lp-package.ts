@@ -2,56 +2,49 @@ import { unstable_cache } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
-import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 
 export async function fetchLpPackageUncached(
   id: string,
-  options: { allowNonPublicProof?: boolean } = {},
+  options: { allowNonPublicProof?: boolean; proofSnapshotId?: string | null; proofToken?: string | null } = {},
 ): Promise<LandingProductData | null> {
   if (!isSupabaseConfigured || !supabaseAdmin) return null;
 
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-  const col = isUUID ? 'id' : 'short_code';
-
-  const { data: rawPkg, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('*, products(internal_code, display_name, departure_region)')
-    .eq(col, id)
-    .single();
-
-  if (error || !rawPkg) return null;
-  const publicSnapshot = options.allowNonPublicProof
-    ? null
-    : await fetchLatestPublicPackageSnapshot(
-        supabaseAdmin,
-        (rawPkg as { id: string }).id,
-        { expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1) },
-      ).catch(() => null);
-  const pkg = options.allowNonPublicProof ? rawPkg : publicSnapshot?.package;
-  const status = (rawPkg as { status?: string | null }).status;
-  const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
-  if (!options.allowNonPublicProof && !isPublicPublicationState(publicationState)) return null;
-  if (!options.allowNonPublicProof && !publicSnapshot) return null;
-  const authoritativeV5Snapshot = Boolean(
-    publicSnapshot?.row.canonical_revision_id
-    && publicSnapshot.row.snapshot_hash,
-  );
-  if (!options.allowNonPublicProof && (!isCustomerVisibleStatus(status))) return null;
-  if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(rawPkg, {
-    authoritativeV5Snapshot,
-    packageRevision: publicSnapshot?.row.package_revision,
-    publicSnapshotHash: publicSnapshot?.row.snapshot_hash,
-  })) return null;
+  const exactProofSnapshot = options.proofSnapshotId && options.proofToken
+    ? await fetchPublicPackageSnapshotById(supabaseAdmin, options.proofSnapshotId).catch(() => null)
+    : null;
+  const proofClaims = exactProofSnapshot
+    ? verifyProductRegistrationV6ProofToken(options.proofToken, {
+        snapshotId: exactProofSnapshot.row.id,
+        snapshotHash: exactProofSnapshot.row.snapshot_hash,
+        packageId: exactProofSnapshot.row.package_id,
+    })
+    : null;
+  const exactProofAllowed = Boolean(proofClaims && exactProofSnapshot);
+  const publicSnapshot = exactProofAllowed
+    ? exactProofSnapshot
+    : options.allowNonPublicProof
+      ? null
+      : await getCurrentPublicPackage(supabaseAdmin, { packageRef: id, channel: 'customer', locale: 'ko-KR' }).catch(() => null);
+  let rawProofPackage: Record<string, unknown> | null = null;
+  if (options.allowNonPublicProof && !exactProofAllowed) {
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const { data } = await supabaseAdmin
+      .from('travel_packages')
+      .select('*, products(internal_code, display_name, departure_region)')
+      .eq(isUUID ? 'id' : 'short_code', id)
+      .maybeSingle();
+    rawProofPackage = data as Record<string, unknown> | null;
+  }
+  const pkg = exactProofAllowed ? exactProofSnapshot?.package : options.allowNonPublicProof ? rawProofPackage : publicSnapshot?.package;
   if (!pkg) return null;
 
-  const liveVerify = publicSnapshot
+  const liveVerify = publicSnapshot || !rawProofPackage
     ? null
-    : evaluateVerifyChecks(rawPkg as Parameters<typeof evaluateVerifyChecks>[0]);
-  if (!options.allowNonPublicProof && liveVerify?.status === 'blocked') return null;
+    : evaluateVerifyChecks(rawProofPackage as Parameters<typeof evaluateVerifyChecks>[0]);
+  if (!options.allowNonPublicProof && !exactProofAllowed && liveVerify?.status === 'blocked') return null;
 
   const { data: scores } = await supabaseAdmin
     .from('package_scores')

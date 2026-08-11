@@ -29,6 +29,7 @@ export async function runUploadRegistrationPipeline(input: {
   postAlert: PostAlert;
   requestBaseUrl: string;
   publicBaseUrl: string;
+  deferPublicationAutopilot?: boolean;
 }): Promise<UploadRegistrationPipelineResult> {
   const {
     buffer,
@@ -251,6 +252,7 @@ export async function runUploadRegistrationPipeline(input: {
     normalizedCatalogHash,
     baseUrl: input.publicBaseUrl,
     requestBaseUrl: input.requestBaseUrl,
+    deferPublicationAutopilot: input.deferPublicationAutopilot,
   });
 
   if (registrationJobId) {

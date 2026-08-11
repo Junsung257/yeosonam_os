@@ -693,21 +693,25 @@ function looksLikeTransientHiddenPackage(html: string | null): boolean {
   return /NOT_FOUND|패키지를 찾을 수 없습니다|Package not found|not found/i.test(html);
 }
 
-async function fetchSurfaceHtml(pageUrl: string): Promise<string | null> {
+async function fetchSurfaceHtml(pageUrl: string, proofToken?: string): Promise<string | null> {
   const headers: Record<string, string> = { 'User-Agent': 'YeosonamAutoQA/1.0' };
-  const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
-  if (proofSecret) headers['x-yeosonam-render-proof'] = proofSecret;
+  if (proofToken) {
+    headers['x-product-registration-v6-proof-token'] = proofToken;
+  } else {
+    const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
+    if (proofSecret) headers['x-yeosonam-render-proof'] = proofSecret;
+  }
   headers['Cache-Control'] = 'no-cache';
   const res = await fetch(pageUrl, { headers, cache: 'no-store' });
   if (!res.ok) return null;
   return res.text();
 }
 
-async function fetchSurfaceHtmlWithRetry(pageUrl: string): Promise<string | null> {
+async function fetchSurfaceHtmlWithRetry(pageUrl: string, proofToken?: string): Promise<string | null> {
   let lastHtml: string | null = null;
   for (const delayMs of SURFACE_FETCH_RETRY_DELAYS_MS) {
     if (delayMs > 0) await wait(delayMs);
-    lastHtml = await fetchSurfaceHtml(pageUrl);
+    lastHtml = await fetchSurfaceHtml(pageUrl, proofToken);
     if (!looksLikeTransientHiddenPackage(lastHtml)) return lastHtml;
   }
   return lastHtml;
@@ -716,7 +720,11 @@ async function fetchSurfaceHtmlWithRetry(pageUrl: string): Promise<string | null
 export async function runAutoMobileQA(
   packageId: string,
   baseUrl?: string,
-  options: { includeLpForProof?: boolean } = {},
+  options: {
+    includeLpForProof?: boolean;
+    proofToken?: string;
+    surfaceUrls?: Partial<Record<'packages' | 'lp', string>>;
+  } = {},
 ): Promise<void> {
   if (!isSupabaseAdminConfigured) return;
   const url = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yeosonam.com';
@@ -740,9 +748,9 @@ export async function runAutoMobileQA(
     await wait(3_000);
 
     const surfaces: Array<{ surface: 'packages' | 'lp'; pageUrl: string }> = [
-      { surface: 'packages', pageUrl: `${url}/packages/${packageId}` },
+      { surface: 'packages', pageUrl: options.surfaceUrls?.packages ?? `${url}/packages/${packageId}` },
       ...(isCustomerVisibleStatus(expected.status) || options.includeLpForProof
-        ? [{ surface: 'lp' as const, pageUrl: `${url}/lp/${packageId}` }]
+        ? [{ surface: 'lp' as const, pageUrl: options.surfaceUrls?.lp ?? `${url}/lp/${packageId}` }]
         : []),
     ];
 
@@ -755,7 +763,7 @@ export async function runAutoMobileQA(
       customer_visible_hash: string;
     }> = [];
     for (const { surface, pageUrl } of surfaces) {
-      const html = await fetchSurfaceHtmlWithRetry(pageUrl);
+      const html = await fetchSurfaceHtmlWithRetry(pageUrl, options.proofToken);
       if (!html) {
         console.warn(`[AutoQA] ${packageId}: ${surface} fetch fail`);
         incidents.push({
