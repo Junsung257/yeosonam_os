@@ -8,9 +8,15 @@ import {
   chooseClobeAccountNumberFromMetadataRows,
   normalizeClobeAccountId,
   rankTransactionTools,
+  isClobeFetchTruncated,
 } from './clobe-bank-sync';
 
 describe('clobe bank sync normalization', () => {
+  it('blocks a sync window only when the fetch limit hides another page', () => {
+    expect(isClobeFetchTruncated({ transactionCount: 1000, requestedLimit: 1000, hasNext: true })).toBe(true);
+    expect(isClobeFetchTruncated({ transactionCount: 1000, requestedLimit: 1000, hasNext: false })).toBe(false);
+    expect(isClobeFetchTruncated({ transactionCount: 999, requestedLimit: 1000, hasNext: true })).toBe(false);
+  });
   it('resolves the bank account from stored Clobe source metadata', () => {
     expect(chooseClobeAccountNumberFromMetadataRows([
       { source_metadata: { clobe_mcp: { account_number: '100-038-454128' } } },

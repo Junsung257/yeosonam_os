@@ -25,7 +25,7 @@ interface ClassificationRow {
 
 interface ClassificationResponse {
   rows: ClassificationRow[];
-  summary: { total: number; review: number; manual: number; missingReceipt: number };
+  summary: { transactionTotal: number; itemTotal: number; review: number; resolved: number; manual: number; missingReceipt: number };
   error?: string;
 }
 
@@ -120,10 +120,10 @@ export default function FinanceClassifications() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">전체 회사 거래</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.total ?? '...' }건</p></div>
+        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">Clobe 원본 거래</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.transactionTotal ?? '...' }건</p><p className="mt-1 text-[10px] text-admin-muted">분류 항목 {data?.summary.itemTotal ?? '...'}건</p></div>
         <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4"><p className="text-xs text-amber-700">미분류</p><p className="mt-1 text-xl font-bold text-amber-900">{data?.summary.review ?? '...' }건</p></div>
-        <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs text-emerald-700">수동 확정</p><p className="mt-1 text-xl font-bold text-emerald-900">{data?.summary.manual ?? '...' }건</p></div>
-        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">증빙 확인</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.missingReceipt ?? '...' }건</p></div>
+        <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs text-emerald-700">분류 완료</p><p className="mt-1 text-xl font-bold text-emerald-900">{data?.summary.resolved ?? '...' }건</p></div>
+        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">증빙 필요</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.missingReceipt ?? '...' }건</p></div>
       </div>
 
       <div className="flex flex-col gap-2 rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 sm:flex-row">
@@ -153,7 +153,7 @@ export default function FinanceClassifications() {
                     ?? (requiresReceipt && row.receiptStatus === 'not_required' ? 'missing' : row.receiptStatus);
                   return (
                     <tr key={row.id} className="align-top hover:bg-admin-bg/60">
-                      <td className="px-4 py-3"><span className="block text-xs text-admin-muted">{new Date(row.received_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span><strong className="block text-admin-text-2">{row.counterparty_name || '거래처 없음'}</strong><span className="block max-w-xs truncate text-xs text-admin-muted">{row.memo || '메모 없음'}</span>{row.targetLabel ? <span className="mt-1 block max-w-xs truncate text-xs font-medium text-sky-700">분할: {row.targetLabel}</span> : null}</td>
+                      <td className="max-w-sm px-4 py-3"><span className="block text-xs text-admin-muted">{new Date(row.received_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span><strong className="block text-admin-text-2">{row.counterparty_name || '거래처 없음'}</strong><span className="mt-1 block break-all text-xs leading-5 text-admin-muted"><span className="font-semibold text-admin-text-2">Clobe 메모:</span> {row.memo || '메모 없음'}</span>{row.targetLabel ? <span className="mt-1 block break-all text-xs font-medium leading-5 text-sky-700">분할 용도: {row.targetLabel}</span> : null}</td>
                       <td className="px-4 py-3 text-xs text-admin-muted">{row.clobeOriginalClassification || '미분류'}</td>
                       <td className="px-4 py-3"><select value={selected} onChange={event => setDrafts(current => ({ ...current, [row.id]: event.target.value as FinanceClassification }))} aria-label={`${row.counterparty_name || '거래'} OS 분류`} className="rounded-lg border border-admin-border-strong bg-white px-2.5 py-2 text-xs"><option value="review">검토 필요</option>{OPTIONS.filter(([value]) => value !== 'review').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
                       <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${row.transaction_type === '출금' ? 'text-red-700' : 'text-emerald-700'}`}>{row.transaction_type === '출금' ? '-' : '+'}{won(row.amount)}</td>

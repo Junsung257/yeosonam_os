@@ -30,7 +30,21 @@ interface PeriodRow {
 interface PeriodResponse {
   preview: MonthlySettlementClosePreview | null;
   periods: PeriodRow[];
-  exceptions: Array<{ id: string; departure_month: string; exception_type: string; assigned_to: string | null; reason: string | null; due_date: string | null }>;
+  exceptions: Array<{
+    id: string;
+    departure_month: string;
+    exception_type: string;
+    assigned_to: string | null;
+    reason: string | null;
+    due_date: string | null;
+    booking_no: string | null;
+    customer_name: string | null;
+    package_title: string | null;
+    travel_key: string | null;
+    transaction_counterparty: string | null;
+    transaction_memo: string | null;
+    transaction_received_at: string | null;
+  }>;
   error?: string;
 }
 
@@ -279,13 +293,13 @@ export default function FinancePeriods() {
         </>
       )}
 
-      {(data?.exceptions.length ?? 0) > 0 ? (
+      {!isLoading && data && data.exceptions.length > 0 ? (
         <section className="overflow-hidden rounded-admin-md border border-amber-200 bg-white">
           <header className="border-b border-amber-200 bg-amber-50 px-4 py-3"><h3 className="flex items-center gap-2 text-sm font-semibold text-amber-950"><AlertTriangle className="h-4 w-4" /> 열려 있는 정산 예외 {data?.exceptions.length}건</h3><p className="mt-1 text-xs text-amber-800">마감 수치는 유지하고, 근거 확인 후 처리 완료 또는 사유 있는 예외로 승인합니다.</p></header>
           <div className="divide-y divide-admin-border">
             {data?.exceptions.map(item => (
               <div key={item.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1"><strong className="block text-sm text-admin-text-2">{String(item.departure_month).slice(0, 7)} · {EXCEPTION_LABELS[item.exception_type] || item.exception_type}</strong><span className="mt-0.5 block text-xs text-admin-muted">담당 {item.assigned_to || '미지정'} · 기한 {item.due_date || '미지정'}{item.reason ? ` · ${item.reason}` : ''}</span></div>
+                <div className="min-w-0 flex-1"><strong className="block text-sm text-admin-text-2">{item.booking_no ? `${item.booking_no} · ${item.customer_name || '고객명 없음'}` : item.transaction_counterparty || '연결 대상 없음'}</strong><span className="mt-0.5 block break-all text-xs text-admin-muted">{String(item.departure_month).slice(0, 7)} · {EXCEPTION_LABELS[item.exception_type] || item.exception_type}{item.travel_key ? ` · ${item.travel_key}` : item.transaction_memo ? ` · 메모 ${item.transaction_memo}` : ''}</span><span className="mt-0.5 block text-xs text-admin-muted">담당 {item.assigned_to || '미지정'} · 기한 {item.due_date || '미지정'}{item.reason ? ` · ${item.reason}` : ''}</span>{item.booking_no ? <Link href={`/admin/finance?tab=bookings&q=${encodeURIComponent(item.booking_no)}`} className="mt-1 inline-block text-xs font-semibold text-emerald-700 underline">예약 근거 열기</Link> : null}</div>
                 <div className="flex gap-2"><button type="button" onClick={() => completeException(item.id, 'resolved')} disabled={busy} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">처리 완료</button><button type="button" onClick={() => completeException(item.id, 'waived')} disabled={busy} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 disabled:opacity-50">예외 승인</button></div>
               </div>
             ))}
@@ -293,7 +307,7 @@ export default function FinancePeriods() {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface"><header className="border-b border-admin-border px-4 py-3"><h3 className="text-sm font-semibold text-admin-text">월 마감 이력</h3></header><div className="overflow-x-auto"><table className="min-w-full text-xs"><thead className="bg-admin-bg text-left text-admin-muted"><tr><th className="px-4 py-2">출발 월</th><th className="px-4 py-2">버전·상태</th><th className="px-4 py-2 text-right">예약</th><th className="px-4 py-2 text-right">입금</th><th className="px-4 py-2 text-right">출금</th><th className="px-4 py-2 text-right">마진</th><th className="px-4 py-2">확정자</th></tr></thead><tbody className="divide-y divide-admin-border">{(data?.periods ?? []).map(period => <tr key={period.id} className={period.is_current ? '' : 'text-admin-muted opacity-70'}><td className="px-4 py-2 font-semibold">{String(period.departure_month).slice(0, 7)}</td><td className="px-4 py-2">v{period.revision} · {PERIOD_STATUS_LABELS[period.status]}</td><td className="px-4 py-2 text-right">{period.confirmed_booking_count}</td><td className="px-4 py-2 text-right">{won(period.confirmed_deposits)}</td><td className="px-4 py-2 text-right">{won(period.confirmed_withdrawals)}</td><td className="px-4 py-2 text-right font-semibold">{won(period.confirmed_cash_margin)}</td><td className="px-4 py-2">{period.closed_by_label === 'legacy_booking_confirmation' ? '과거 자동확정' : period.closed_by_label || '-'}</td></tr>)}{!data?.periods.length ? <tr><td colSpan={7} className="px-4 py-10 text-center text-admin-muted">마감 이력이 없습니다.</td></tr> : null}</tbody></table></div></section>
+      {!isLoading && data ? <section className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface"><header className="border-b border-admin-border px-4 py-3"><h3 className="text-sm font-semibold text-admin-text">월 마감 이력</h3></header><div className="overflow-x-auto"><table className="min-w-full text-xs"><thead className="bg-admin-bg text-left text-admin-muted"><tr><th className="px-4 py-2">출발 월</th><th className="px-4 py-2">버전·상태</th><th className="px-4 py-2 text-right">예약</th><th className="px-4 py-2 text-right">입금</th><th className="px-4 py-2 text-right">출금</th><th className="px-4 py-2 text-right">마진</th><th className="px-4 py-2">확정자</th></tr></thead><tbody className="divide-y divide-admin-border">{data.periods.map(period => <tr key={period.id} className={period.is_current ? '' : 'text-admin-muted opacity-70'}><td className="px-4 py-2 font-semibold">{String(period.departure_month).slice(0, 7)}</td><td className="px-4 py-2">v{period.revision} · {PERIOD_STATUS_LABELS[period.status]}</td><td className="px-4 py-2 text-right">{period.confirmed_booking_count}</td><td className="px-4 py-2 text-right">{won(period.confirmed_deposits)}</td><td className="px-4 py-2 text-right">{won(period.confirmed_withdrawals)}</td><td className="px-4 py-2 text-right font-semibold">{won(period.confirmed_cash_margin)}</td><td className="px-4 py-2">{period.closed_by_label === 'legacy_booking_confirmation' ? '과거 자동확정' : period.closed_by_label || '-'}</td></tr>)}{data.periods.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-admin-muted">마감 이력이 없습니다.</td></tr> : null}</tbody></table></div></section> : null}
 
       {showClose && preview ? <Dialog title={`${monthLabel(month)} 월 마감`} description="아래 금액과 예외를 확인한 뒤 확정합니다. 확정 후에는 최고 관리자 재개방 전까지 잠깁니다." onClose={() => setShowClose(false)}><div className="space-y-4 p-5"><div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">예약</span><strong className="block text-lg">{summary?.eligibleCount ?? 0}건</strong></div><div className="rounded-lg bg-emerald-50 p-3"><span className="text-xs text-emerald-700">현금 마진</span><strong className="block text-lg text-emerald-900">{won(summary?.eligibleProfit ?? 0)}</strong></div><div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">입금</span><strong className="block">{won(summary?.eligibleDeposits ?? 0)}</strong></div><div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">출금</span><strong className="block">{won(summary?.eligibleWithdrawals ?? 0)}</strong></div></div>{(summary?.reviewCount ?? 0) > 0 ? <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">예외 {summary?.reviewCount}건이 남아 조건부 마감만 가능합니다.</p><input value={exceptionOwner} onChange={event => setExceptionOwner(event.target.value)} aria-label="예외 담당자" placeholder="담당자" className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" /><input value={exceptionReason} onChange={event => setExceptionReason(event.target.value)} aria-label="조건부 마감 사유" placeholder="사유" className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm" /><label className="block text-xs text-amber-800">처리기한<input type="date" value={exceptionDueDate} onChange={event => setExceptionDueDate(event.target.value)} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900" /></label></div> : null}<div className="flex justify-end gap-2 border-t border-slate-200 pt-4"><button type="button" onClick={() => setShowClose(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">취소</button><button type="button" onClick={closePeriod} disabled={busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? '확정 중' : (summary?.reviewCount ?? 0) > 0 ? '조건부 마감 확정' : '월 마감 확정'}</button></div></div></Dialog> : null}
 

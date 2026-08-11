@@ -71,6 +71,9 @@ export async function GET(request: NextRequest) {
       receiptTargetAmount: row.total_price,
       receiptStatus: row.customer_receipt_status,
     }));
+    const priceUnconfirmed = bookings.filter(row => money(row.total_price) === 0);
+    const costUnconfirmed = bookings.filter(row => money(row.total_cost) === 0);
+    const reviewPending = bookings.filter(row => row.review_status === 'pending' || row.review_status === 'deferred');
 
     return NextResponse.json({
       basis: {
@@ -92,7 +95,13 @@ export async function GET(request: NextRequest) {
         vat_estimate: estimatedTax,
         net_profit_estimate: cashMargin - estimatedTax,
       },
-      todos: { pending_transfers: pendingTransfers, not_issued_receipts: notIssuedReceipts },
+      todos: {
+        pending_transfers: pendingTransfers,
+        not_issued_receipts: notIssuedReceipts,
+        price_unconfirmed: priceUnconfirmed,
+        cost_unconfirmed: costUnconfirmed,
+        review_pending: reviewPending,
+      },
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     return NextResponse.json(

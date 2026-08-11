@@ -65,6 +65,8 @@ interface ClobeSyncResult {
     toolName?: string | null;
     toolNames?: string[];
     bankToolAvailable?: boolean;
+    truncated?: boolean;
+    nextCursor?: string | null;
     attempts?: Array<{
       toolName: string;
       extracted: number;
@@ -585,6 +587,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [undoInfo, setUndoInfo] = useState<{ ids: string[]; items: BankTransaction[]; countdown: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isLoading, setIsLoading] = useState(!initialTransactions);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(() => initialTransactions ? new Date().toISOString() : null);
   const [bookings, setBookings] = useState<BookingFull[]>(initialBookings ?? []);
   const [erp, setErp] = useState<ErpStats | null>(initialErp ?? null);
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
@@ -654,6 +658,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       const [res, trashRes, unmatchedRes, nonTravelRes, bankRealityRes] = await Promise.all([
         fetch('/api/bank-transactions?status=active&source=clobe_mcp'),
@@ -662,6 +667,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         fetch('/api/bank-transactions?status=active&scope=non_travel&source=clobe_mcp'),
         fetch('/api/bank-transactions/account-reality', { cache: 'no-store' }),
       ]);
+      const failedResponse = [res, trashRes, unmatchedRes, nonTravelRes, bankRealityRes].find(response => !response.ok);
+      if (failedResponse) throw new Error(`정산 원장 API를 불러오지 못했습니다. (${failedResponse.status})`);
       const [data, trashData, unmatchedData, nonTravelData, bankRealityData] = await Promise.all([
         res.json(), trashRes.json(), unmatchedRes.json(), nonTravelRes.json(), bankRealityRes.json(),
       ]);
@@ -674,6 +681,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setNonTravelTransactions(nonTravelData.transactions || []);
       setBankReality(bankRealityData.summary ?? null);
       setTrashTxs(trashData.transactions || []);
+      setLastLoadedAt(new Date().toISOString());
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : '정산 원장을 불러오지 못했습니다.');
     } finally { setIsLoading(false); }
   }, []);
 
@@ -1154,7 +1164,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           body: JSON.stringify({
             from: syncWindow.from,
             to: syncWindow.to,
-            limit: 200,
+            limit: 1000,
             tenant_id: clobeIntegration.tenantId,
           }),
         });
@@ -1169,8 +1179,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           throw new Error(data.error || `Clobe sync failed (${syncWindow.from} ~ ${syncWindow.to})`);
         }
 
-        if ((data.fetched ?? 0) >= 200) {
-          throw new Error(`${syncWindow.from} ~ ${syncWindow.to} 거래가 200건 이상입니다. 더 짧은 기간으로 다시 동기화해주세요.`);
+        if (data.mcp?.truncated) {
+          throw new Error(`${syncWindow.from} ~ ${syncWindow.to} 거래가 1,000건을 초과합니다. 누락 방지를 위해 기간을 나눠 다시 동기화해주세요.`);
         }
 
         const previousMcp = summary.mcp ?? {};
@@ -1202,6 +1212,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             toolName: nextMcp.toolName ?? previousMcp.toolName ?? null,
             toolNames: [...new Set([...(previousMcp.toolNames ?? []), ...(nextMcp.toolNames ?? [])])],
             bankToolAvailable: nextMcp.bankToolAvailable ?? previousMcp.bankToolAvailable,
+            truncated: Boolean(previousMcp.truncated || nextMcp.truncated),
+            nextCursor: nextMcp.nextCursor ?? previousMcp.nextCursor ?? null,
             attempts: [...(previousMcp.attempts ?? []), ...(nextMcp.attempts ?? [])],
             scrapingStatus: [...(previousMcp.scrapingStatus ?? []), ...(nextMcp.scrapingStatus ?? [])],
             scrapingStatusError: nextMcp.scrapingStatusError ?? previousMcp.scrapingStatusError,
@@ -1444,6 +1456,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     );
   };
 
+  if (isLoading && !lastLoadedAt) {
+    return <section className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-6" role="status" aria-live="polite"><div className="h-6 w-40 animate-pulse rounded bg-admin-surface-2" /><div className="mt-4 h-64 animate-pulse rounded-admin-md bg-admin-surface-2" /><p className="mt-3 text-admin-sm text-admin-muted">Clobe 거래와 정산 원장을 불러오는 중입니다. 수치를 확인하기 전에는 0건으로 표시하지 않습니다.</p></section>;
+  }
+
+  if (loadError && !lastLoadedAt) {
+    return <section className="rounded-admin-md border border-red-200 bg-red-50 p-6 text-red-900" role="alert"><h1 className="text-admin-lg font-semibold">Clobe 거래 검토를 불러오지 못했습니다.</h1><p className="mt-2 text-admin-sm">{loadError}</p><button type="button" onClick={() => load()} className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-admin-sm font-semibold text-white">다시 불러오기</button></section>;
+  }
+
   return (
     <>
       {toast && (
@@ -1460,7 +1480,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-admin-lg font-semibold text-admin-text-2">입금 관리</h1>
+            <h1 className="text-admin-lg font-semibold text-admin-text-2">Clobe 거래 검토</h1>
             <LedgerStatusChip />
             {opsQueueSummary && (
               <span
@@ -1502,6 +1522,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           </button>
         </div>
       </div>
+
+      {loadError ? <div className="mb-4 rounded-admin-md border border-red-200 bg-red-50 px-4 py-3 text-admin-sm text-red-800" role="alert"><strong>마지막 정상 데이터를 유지하고 있습니다.</strong> {loadError}{lastLoadedAt ? ` · 마지막 정상 로드 ${fmtTs(lastLoadedAt)}` : ''}</div> : null}
 
       {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
       <div

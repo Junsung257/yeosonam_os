@@ -28,7 +28,7 @@ jobs:
       - run: npm ci
 
       - name: npm audit (high severity)
-        run: npm audit --audit-level=high
+        run: npm run audit:high
 
       - name: Secret usage lint
         run: npm run lint:secrets:all

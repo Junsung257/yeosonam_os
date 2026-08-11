@@ -313,6 +313,7 @@ export function selectSourceBackedPriceRowsWithExclusions(
 export function filterSourceBackedPriceRowsForPublicEvidence(
   pkg: SourcePriceRepairPackage,
   rows: SourcePriceIRRow[],
+  options: { includePast?: boolean } = {},
 ): SourcePriceIRRow[] {
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
   const strictSourceYear = resolvePriceRecoveryYear({ rawText });
@@ -322,7 +323,7 @@ export function filterSourceBackedPriceRowsForPublicEvidence(
     if (!isIsoDate(row.date)) return false;
     if (requireStrictSourceYear && !row.date.startsWith(`${strictSourceYear}-`)) return false;
     if (strictMonthWindow && (row.date < strictMonthWindow.start || row.date > strictMonthWindow.end)) return false;
-    return isUpcomingSourceDate(row.date);
+    return options.includePast || isUpcomingSourceDate(row.date);
   });
 }
 
