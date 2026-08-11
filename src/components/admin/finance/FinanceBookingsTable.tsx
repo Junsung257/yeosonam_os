@@ -254,11 +254,15 @@ function BreakdownDialog({
 function BookingDrawer({
   bookingId,
   bookingChoices,
+  nextBookingId,
+  onSelectBooking,
   onClose,
   onChanged,
 }: {
   bookingId: string;
   bookingChoices: FinanceBookingReviewRow[];
+  nextBookingId: string | null;
+  onSelectBooking: (bookingId: string) => void;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -370,6 +374,8 @@ function BookingDrawer({
       setDecision(null);
       setReason('');
       await refresh();
+      if (nextBookingId) onSelectBooking(nextBookingId);
+      else onClose();
     } catch (submitError) {
       setNotice(submitError instanceof Error ? submitError.message : '정산 결정을 저장하지 못했습니다.');
     } finally {
@@ -389,7 +395,7 @@ function BookingDrawer({
       <aside role="dialog" aria-modal="true" aria-label="예약 정산 상세" className="relative h-full w-full max-w-3xl overflow-y-auto border-l border-slate-200 bg-white shadow-2xl">
         <header className="sticky top-0 z-20 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
           <div><p className="text-xs font-semibold text-emerald-700">예약별 정산 검토</p><h3 className="mt-1 text-xl font-bold text-slate-950">{booking?.bookingNo ?? '불러오는 중'}</h3><p className="mt-1 text-xs text-slate-600">거래와 Clobe 메모를 확인한 뒤 처리 결정을 남깁니다.</p></div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="닫기"><X className="h-5 w-5" /></button>
+          <div className="flex items-center gap-2">{nextBookingId ? <button type="button" onClick={() => onSelectBooking(nextBookingId)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">다음 미검토 예약</button> : null}<button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="닫기"><X className="h-5 w-5" /></button></div>
         </header>
 
         <div className="space-y-5 p-5">
@@ -397,6 +403,7 @@ function BookingDrawer({
           {error ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error.message}</div> : null}
           {booking ? (
             <>
+              {booking.hasReviewDrift ? <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>저장된 검토값과 현재 Clobe 원장이 달라 최신 원장으로 다시 계산했습니다.</strong><span className="mt-1 block text-xs">아래 현재 거래를 확인하면 최신 지문으로 안전하게 저장됩니다.</span></div> : null}
               <section className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div><span className="block text-xs text-slate-500">고객·출발일</span><strong className="mt-1 block text-sm">{booking.customerName || '-'} · {booking.departureDate || '-'}</strong></div>
                 <div><span className="block text-xs text-slate-500">여행키</span><strong className="mt-1 block break-all text-sm">{booking.travelKey || '메모키 없음'}</strong></div>
@@ -487,6 +494,12 @@ export default function FinanceBookingsTable({ initialMonth = '', initialQuery =
   const { data, error, isLoading, isValidating, mutate } = useSWR<BookingResponse>(url, fetcher, { revalidateOnFocus: false });
   const { data: choicesData } = useSWR<BookingResponse>('/api/admin/finance/bookings?status=all', fetcher, { revalidateOnFocus: false });
   const rows = data?.rows ?? [];
+  const selectedIndex = selectedId ? rows.findIndex(row => row.id === selectedId) : -1;
+  const nextPendingId = selectedIndex >= 0
+    ? rows.slice(selectedIndex + 1).find(row => row.reviewStatus === 'pending')?.id
+      ?? rows.slice(0, selectedIndex).find(row => row.reviewStatus === 'pending')?.id
+      ?? null
+    : rows.find(row => row.reviewStatus === 'pending')?.id ?? null;
 
   const refresh = async () => { await mutate(); };
 
@@ -508,9 +521,12 @@ export default function FinanceBookingsTable({ initialMonth = '', initialQuery =
 
       {error ? <div role="alert" className="rounded-admin-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error.message}</div> : null}
       {isLoading ? <div className="h-80 animate-pulse rounded-admin-md bg-admin-surface-2" /> : null}
-      {!isLoading && !error ? <div className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-admin-bg text-left text-xs text-admin-muted"><tr><th className="px-4 py-3">출발일·예약</th><th className="px-4 py-3">고객·여행키</th><th className="px-4 py-3 text-right">입금</th><th className="px-4 py-3 text-right">여행 출금</th><th className="px-4 py-3 text-right">환불·수수료</th><th className="px-4 py-3 text-right">현금 마진</th><th className="px-4 py-3">검토 상태</th><th className="px-4 py-3"><span className="sr-only">상세</span></th></tr></thead><tbody className="divide-y divide-admin-border">{rows.map(row => <tr key={row.id} className="cursor-pointer hover:bg-admin-bg/70" onClick={() => setSelectedId(row.id)}><td className="whitespace-nowrap px-4 py-3"><span className="block text-xs text-admin-muted">{row.departureDate || '출발일 없음'}</span><strong>{row.bookingNo}</strong></td><td className="max-w-xs px-4 py-3"><span className="block font-medium">{row.customerName || '고객명 없음'}</span><span className="block truncate text-xs text-admin-muted">{row.travelKey || row.packageTitle || '여행키 없음'} · 거래 {row.transactionCount}건</span></td><td className="px-4 py-3 text-right tabular-nums">{won(row.deposits)}</td><td className="px-4 py-3 text-right tabular-nums">{won(row.travelWithdrawals)}</td><td className="px-4 py-3 text-right text-xs tabular-nums">환불 {won(row.customerRefunds)}<span className="block text-admin-muted">수수료 {won(row.bankFees)}</span></td><td className={`px-4 py-3 text-right font-bold tabular-nums ${row.cashMargin < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{won(row.cashMargin)}</td><td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${row.reviewStatus === 'confirmed' ? 'bg-emerald-50 text-emerald-700' : row.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{row.reviewStatus === 'confirmed' ? <CheckCircle2 className="h-3 w-3" /> : row.reviewStatus === 'pending' ? <AlertTriangle className="h-3 w-3" /> : null}{BOOKING_REVIEW_LABELS[row.reviewStatus]}</span>{row.reviewedBy ? <span className="mt-1 block text-[10px] text-admin-muted">{row.reviewedBy}</span> : null}</td><td className="px-4 py-3"><ChevronRight className="h-4 w-4 text-admin-muted" /></td></tr>)}{rows.length === 0 ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-admin-muted"><BadgeDollarSign className="mx-auto mb-2 h-6 w-6" />조건에 맞는 예약이 없습니다.</td></tr> : null}</tbody></table></div></div> : null}
+      {!isLoading && !error ? <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs">
+        <div className="grid gap-3 p-3 lg:hidden">{rows.map(row => <article key={row.id} className="rounded-xl border border-admin-border-mid bg-white p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="text-xs text-admin-muted">{row.departureDate || '출발일 없음'} · {row.bookingNo}</span><h3 className="mt-1 font-semibold text-admin-text">{row.customerName || '고객명 없음'}</h3><p className="mt-1 break-all text-xs text-admin-muted">{row.travelKey || row.packageTitle || '여행키 없음'} · 거래 {row.transactionCount}건</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${row.reviewStatus === 'confirmed' ? 'bg-emerald-50 text-emerald-700' : row.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{BOOKING_REVIEW_LABELS[row.reviewStatus]}</span></div><dl className="mt-4 grid grid-cols-3 gap-2 text-right text-xs"><div><dt className="text-admin-muted">입금</dt><dd className="mt-1 font-semibold tabular-nums">{won(row.deposits)}</dd></div><div><dt className="text-admin-muted">총 출금·환불</dt><dd className="mt-1 font-semibold tabular-nums">{won(row.travelWithdrawals + row.customerRefunds)}</dd></div><div><dt className="text-admin-muted">현금 마진</dt><dd className={`mt-1 font-bold tabular-nums ${row.cashMargin < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{won(row.cashMargin)}</dd></div></dl><button type="button" onClick={() => setSelectedId(row.id)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 py-2.5 text-xs font-semibold text-white">상세 검토 <ChevronRight className="h-4 w-4" /></button></article>)}{rows.length === 0 ? <div className="py-12 text-center text-sm text-admin-muted"><BadgeDollarSign className="mx-auto mb-2 h-6 w-6" />조건에 맞는 예약이 없습니다.</div> : null}</div>
+        <div className="hidden overflow-x-auto lg:block"><table className="min-w-full text-sm"><thead className="bg-admin-bg text-left text-xs text-admin-muted"><tr><th className="px-4 py-3">출발일·예약</th><th className="px-4 py-3">고객·여행키</th><th className="px-4 py-3 text-right">입금</th><th className="px-4 py-3 text-right">여행 출금</th><th className="px-4 py-3 text-right">환불·수수료</th><th className="px-4 py-3 text-right">현금 마진</th><th className="px-4 py-3">검토 상태</th><th className="px-4 py-3">작업</th></tr></thead><tbody className="divide-y divide-admin-border">{rows.map(row => <tr key={row.id} className="hover:bg-admin-bg/70"><td className="whitespace-nowrap px-4 py-3"><span className="block text-xs text-admin-muted">{row.departureDate || '출발일 없음'}</span><strong>{row.bookingNo}</strong></td><td className="max-w-xs px-4 py-3"><span className="block font-medium">{row.customerName || '고객명 없음'}</span><span className="block truncate text-xs text-admin-muted">{row.travelKey || row.packageTitle || '여행키 없음'} · 거래 {row.transactionCount}건</span></td><td className="px-4 py-3 text-right tabular-nums">{won(row.deposits)}</td><td className="px-4 py-3 text-right tabular-nums">{won(row.travelWithdrawals)}</td><td className="px-4 py-3 text-right text-xs tabular-nums">환불 {won(row.customerRefunds)}<span className="block text-admin-muted">수수료 {won(row.bankFees)}</span></td><td className={`px-4 py-3 text-right font-bold tabular-nums ${row.cashMargin < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{won(row.cashMargin)}</td><td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${row.reviewStatus === 'confirmed' ? 'bg-emerald-50 text-emerald-700' : row.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{row.reviewStatus === 'confirmed' ? <CheckCircle2 className="h-3 w-3" /> : row.reviewStatus === 'pending' ? <AlertTriangle className="h-3 w-3" /> : null}{BOOKING_REVIEW_LABELS[row.reviewStatus]}</span>{row.reviewedBy ? <span className="mt-1 block text-[10px] text-admin-muted">{row.reviewedBy}</span> : null}</td><td className="px-4 py-3"><button type="button" onClick={() => setSelectedId(row.id)} className="inline-flex items-center gap-1 rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-xs font-semibold">상세 검토 <ChevronRight className="h-4 w-4" /></button></td></tr>)}{rows.length === 0 ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-admin-muted"><BadgeDollarSign className="mx-auto mb-2 h-6 w-6" />조건에 맞는 예약이 없습니다.</td></tr> : null}</tbody></table></div>
+      </div> : null}
 
-      {selectedId ? <BookingDrawer bookingId={selectedId} bookingChoices={choicesData?.rows ?? rows} onClose={() => setSelectedId(null)} onChanged={refresh} /> : null}
+      {selectedId ? <BookingDrawer bookingId={selectedId} bookingChoices={choicesData?.rows ?? rows} nextBookingId={nextPendingId === selectedId ? null : nextPendingId} onSelectBooking={setSelectedId} onClose={() => setSelectedId(null)} onChanged={refresh} /> : null}
     </section>
   );
 }
