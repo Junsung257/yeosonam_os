@@ -135,7 +135,7 @@ export async function findRelevantBlogPexelsImage(input: {
 }
 
 export async function ensureBlogInlineImages(options: BlogInlineImageOptions): Promise<BlogInlineImageResult> {
-  const minImages = Math.max(1, options.minImages ?? 2);
+  const minImages = Math.max(0, options.minImages ?? 0);
   const maxImages = Math.max(minImages, options.maxImages ?? 3);
   const existingImages = getMarkdownImages(options.markdown);
   if (existingImages.length >= minImages) {

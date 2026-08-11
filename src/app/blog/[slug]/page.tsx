@@ -28,8 +28,6 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
-import { assignVariant } from '@/lib/ab-test-engine';
-import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
@@ -71,6 +69,7 @@ import {
   calculateBlogReadingTimeFromHtml,
   readPersistedBlogReadingTime,
 } from '@/lib/blog-reading-time';
+import { loadBlogPublicDetailSnapshotV3 } from '@/lib/blog-public-snapshot-v3';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -112,23 +111,6 @@ function readInformationalRiskLevel(
   return 'LOW';
 }
 
-/**
- * A/B 테스트용 headline variant 생성 (Power word + 연도 조정)
- * variant 0 = 원본, variant 1 = power word 추가, variant 2 = 연도 앞당김
- */
-function buildHeadlineVariants(original: string): string[] {
-  const powerWords = ['완벽', '최고', '강력 추천', '필수'];
-  const pw = powerWords[Math.floor(Math.random() * powerWords.length)];
-  const yearVariant = original.replace(/\b20\d{2}\b/g, (m) => String(Number(m) + 1));
-  // 이미 power word가 포함된 variant가 있는지 확인
-  const hasPowerWord = powerWords.some(w => original.includes(w));
-  return [
-    original,
-    hasPowerWord ? original : `${pw} ${original}`.trim(),
-    yearVariant !== original ? yearVariant : original,
-  ];
-}
-
 export const revalidate = 0;
 // 자동 발행 글은 계속 늘어나므로 정적 slug 목록을 빌드/개발 서버에 고정하지 않는다.
 // 각 상세 페이지는 첫 요청 시 on-demand ISR로 생성하고, 미존재 slug는 noindex 404로 방어한다.
@@ -148,6 +130,8 @@ interface BlogPost {
   published_at: string;
   created_at: string;
   updated_at: string | null;
+  content_modified_at?: string | null;
+  fact_checked_at?: string | null;
   product_id: string | null;
   tracking_id: string | null;
   destination: string | null;
@@ -300,43 +284,6 @@ function stripMarkdownBold(s: string): string {
   return s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*/g, '').trim();
 }
 
-function charLength(value: string): number {
-  return [...value].length;
-}
-
-function trimTitleToSearchLimit(value: string): string {
-  if (charLength(value) <= 60) return value;
-  const chars = [...value].slice(0, 60).join('');
-  return chars.replace(/\s+\S*$/, '').trim() || chars.trim();
-}
-
-function expandShortBlogSeoTitle(title: string, post: BlogPost): string {
-  const cleanTitle = title.trim();
-  if (charLength(cleanTitle) >= 20) return cleanTitle;
-
-  const isProduct = Boolean(post.product_id || post.travel_packages);
-  const appendix = isProduct
-    ? '예약 전 체크'
-    : /첫날|공항|이동/.test(cleanTitle)
-      ? '공항 이동 체크리스트'
-      : /식비|예산|비용|경비/.test(cleanTitle)
-        ? '비용 체크 2026'
-        : /날씨|옷차림|준비물/.test(cleanTitle)
-          ? '날씨 옷차림 체크리스트'
-          : '여행 가이드 2026';
-
-  return trimTitleToSearchLimit(`${cleanTitle} ${appendix}`.replace(/\s+/g, ' ').trim());
-}
-
-function buildSeoTitleWithSuffix(title: string, suffix: string): string {
-  if (!suffix) return title;
-  const maxBaseLength = Math.max(20, 60 - suffix.length);
-  const base = title.length > maxBaseLength
-    ? title.slice(0, maxBaseLength).replace(/\s+\S*$/, '').trim() || title.slice(0, maxBaseLength).trim()
-    : title;
-  return `${base}${suffix}`;
-}
-
 function buildSeoDescription(post: BlogPost): string {
   const destination = post.travel_packages?.destination || post.destination || '여행';
   const base = (post.seo_description || '').trim()
@@ -349,40 +296,6 @@ function buildSeoDescription(post: BlogPost): string {
       .slice(0, 180);
   }
   return `${base.slice(0, 177).replace(/\s+\S*$/, '').trim()}...`;
-}
-
-async function getDuplicateTitleSuffix(post: BlogPost): Promise<string> {
-  if (!isSupabaseConfigured || !post.seo_title) return '';
-  try {
-    const result = await runBlogDetailQuery(
-      'duplicateTitleSuffix',
-      supabaseAdmin
-        .from(PUBLIC_BLOG_READ_SOURCE)
-        .select('slug, published_at, created_at')
-        .eq('channel', 'naver_blog')
-        .eq('status', 'published')
-        .eq('seo_title', post.seo_title)
-        .not('slug', 'is', null)
-        .order('published_at', { ascending: true }),
-      { data: [] as Array<{ slug: string | null; published_at: string | null; created_at: string | null }>, error: null },
-      2500,
-    );
-    if (isBlogDetailQueryUnavailable(result) || result.error) return '';
-
-    const duplicates = ((result.data || []) as Array<{ slug: string | null; published_at: string | null; created_at: string | null }>)
-      .filter((row) => row.slug)
-      .sort((a, b) => {
-        const ad = a.published_at || a.created_at || '';
-        const bd = b.published_at || b.created_at || '';
-        return ad.localeCompare(bd) || String(a.slug).localeCompare(String(b.slug));
-      });
-    if (duplicates.length <= 1) return '';
-    const index = duplicates.findIndex((row) => row.slug === post.slug);
-    if (index <= 0) return '';
-    return ` (${index + 1}편)`;
-  } catch {
-    return '';
-  }
 }
 
 function extractTldrItems(post: BlogPost): string[] {
@@ -445,7 +358,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, content_modified_at, fact_checked_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -477,12 +390,59 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   }
 
   const dbSlug = safeDecodeSlug(slug);
+  const snapshot = await loadBlogPublicDetailSnapshotV3(dbSlug).catch(() => null);
+  if (snapshot) {
+    return {
+      id: snapshot.creative_id,
+      slug: snapshot.slug,
+      seo_title: snapshot.title,
+      seo_description: snapshot.description,
+      og_image_url: typeof snapshot.hero_image?.url === 'string' ? snapshot.hero_image.url : null,
+      blog_html: snapshot.legacy_markdown
+        || (typeof snapshot.content_document?.markdown === 'string' ? snapshot.content_document.markdown : null),
+      angle_type: snapshot.angle_type || 'value',
+      channel: 'naver_blog',
+      published_at: snapshot.published_at,
+      created_at: snapshot.published_at,
+      updated_at: snapshot.content_modified_at,
+      content_modified_at: snapshot.content_modified_at,
+      fact_checked_at: snapshot.fact_checked_at,
+      product_id: snapshot.product_id,
+      tracking_id: snapshot.tracking_id,
+      destination: snapshot.destination,
+      landing_enabled: snapshot.landing_enabled,
+      landing_headline: snapshot.landing_headline,
+      landing_subtitle: snapshot.landing_subtitle,
+      content_type: snapshot.content_type,
+      pillar_for: null,
+      target_audience: snapshot.target_audience,
+      generation_meta: {
+        ...snapshot.generation_meta,
+        ...(snapshot.author ? {
+          author_profile: {
+            slug: snapshot.author.slug,
+            displayName: snapshot.author.display_name,
+            bio: snapshot.author.bio,
+          },
+        } : {}),
+        ...(snapshot.review ? {
+          reviewer: {
+            displayName: snapshot.review.display_name,
+            reviewedAt: snapshot.review.reviewed_at,
+            scope: snapshot.review.review_scope,
+          },
+        } : {}),
+      },
+      quality_gate: snapshot.quality_gate,
+      travel_packages: null,
+    };
+  }
   const postResult = await runBlogDetailQuery(
     'postFast',
     supabaseAdmin
       .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, content_modified_at, fact_checked_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
       )
       .eq('slug', dbSlug)
       .eq('status', 'published')
@@ -1016,8 +976,9 @@ export async function generateMetadata({
   const cleanedTitle = rawTitle
     .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
     .trim();
-  const duplicateTitleSuffix = await getDuplicateTitleSuffix(post);
-  const metadataTitle = buildSeoTitleWithSuffix(expandShortBlogSeoTitle(cleanedTitle, post), duplicateTitleSuffix);
+  // Duplicate titles must be merged or blocked before publication. Never alter
+  // facts or append numeric "part" suffixes on the public surface.
+  const metadataTitle = cleanedTitle;
 
   const description = buildSeoDescription(post);
   const dbOgImage = toBlogImageDisplaySrc(post.og_image_url, BASE_URL);
@@ -1043,7 +1004,7 @@ export async function generateMetadata({
       description,
       url: `${BASE_URL}/blog/${slug}`,
       publishedTime: post.published_at,
-      modifiedTime: post.updated_at || post.published_at,
+      modifiedTime: post.content_modified_at || post.published_at,
       authors: [BASE_URL],
       section: angleLabel,
       tags: tagSet,
@@ -1180,56 +1141,9 @@ async function renderBlogDetail({
     ? readInformationalRiskLevel(post.generation_meta, informationalIdentity.intent)
     : null;
 
-  // ── A/B 테스트: headline 실험 ────────────────────────────
-  // visitorId = post.id (고유 식별자, 결정론적 할당용)
-  // generateMetadata와의 중복 방지를 위해 페이지 컴포넌트에서만 실행
-  let abTestTitle = title;
-  let abTestExperimentId: string | null = null;
-  let abTestVariantId: string | null = null;
-  let abTestVisitorId: string | null = null;
-  try {
-    abTestVisitorId = `blog_${post.id}`;
-    const variants = buildHeadlineVariants(title);
-    const experimentName = `headline_${post.slug.slice(0, 40)}`;
-
-    // 실험 찾기 또는 생성 (없으면 무시 — 실험은 어드민에서 생성됨)
-    // assignVariant는 experimentId를 받으므로, 실험이 존재해야 함.
-    // 여기서는 기존 실험 ID를 조회하거나, 없으면 조용히 넘어감.
-    const experimentResult = await runBlogDetailQuery(
-      'headlineExperiment',
-      supabaseAdmin
-        .from('ab_experiments')
-        .select('id')
-        .eq('creative_id', post.id)
-        .eq('variant_type', 'headline')
-        .in('status', ['running', 'paused'])
-        .limit(1),
-      { data: [] as Array<{ id: string }>, error: null },
-      1500,
-    );
-    const existingExps = isBlogDetailQueryUnavailable(experimentResult) || experimentResult.error
-      ? []
-      : experimentResult.data;
-
-    if (existingExps && existingExps.length > 0) {
-      const expId = (existingExps[0] as { id: string }).id;
-      const result = await withBlogRenderTimeout('headlineAssign', assignVariant(expId, abTestVisitorId), null, 1500);
-
-      if (result) {
-        abTestExperimentId = expId;
-        abTestVariantId = result.variantId;
-        // variantValue가 있으면 그걸로 타이틀 사용, 없으면 variantLabel로 판단
-        if (result.variantValue && result.variantValue !== title) {
-          // SEO title clean 적용
-          abTestTitle = (result.variantValue ?? '')
-            .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
-            .trim();
-        }
-      }
-    }
-  } catch (abErr) {
-    console.warn('[A/B] headline 실험 할당 실패 (기본 타이틀 사용):', abErr instanceof Error ? abErr.message : abErr);
-  }
+  // Metadata title, H1, and OG title are intentionally identical. Headline
+  // experiments are URL-stable records and must never vary facts per visitor.
+  const abTestTitle = title;
 
   // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
@@ -1337,6 +1251,10 @@ async function renderBlogDetail({
 
   const productDurationDays =
     pkg?.duration != null && !Number.isNaN(Number(pkg.duration)) ? Number(pkg.duration) : null;
+  const contentBriefV3 = post.generation_meta?.content_brief_v3;
+  const contentBriefV3Record = contentBriefV3 && typeof contentBriefV3 === 'object' && !Array.isArray(contentBriefV3)
+    ? contentBriefV3 as Record<string, unknown>
+    : {};
 
   const jsonLd = buildBlogPostPageJsonLd({
     baseUrl: BASE_URL,
@@ -1344,7 +1262,7 @@ async function renderBlogDetail({
     title,
     description: post.seo_description || '',
     publishedAt: post.published_at,
-    modifiedAt: post.updated_at,
+    modifiedAt: post.content_modified_at || null,
     ogImageUrl: toBlogImageDisplaySrc(post.og_image_url, BASE_URL),
     blogHtmlMarkdown: post.blog_html || '',
     bodyHtmlForWordCount: bodyHtml,
@@ -1356,10 +1274,14 @@ async function renderBlogDetail({
           title: pkg.title,
           destination: pkg.destination,
           price: pkg.price,
+          isCurrentlyAvailable: ['active', 'approved'].includes(String(pkg.status || '').toLowerCase()),
         }
       : null,
     durationStr,
     productDurationDays,
+    includeFaqSchema: contentBriefV3Record.includeFaq === true,
+    includeHowToSchema: contentBriefV3Record.archetype === 'route_walkthrough',
+    includeTouristTripSchema: contentBriefV3Record.archetype === 'itinerary_timeline' && Boolean(pkg),
   });
 
   return (
@@ -1414,15 +1336,6 @@ async function renderBlogDetail({
           intent={blogRecommendationIntent}
           placement="primary_product_cta"
           products={[{ package_id: pkg.id, recommended_rank: 1, policy_id: null }]}
-        />
-      )}
-
-      {/* A/B 테스트 전환 추적 (스크롤 50% + CTA 클릭) */}
-      {abTestExperimentId && abTestVariantId && (
-        <AbTestTracker
-          experimentId={abTestExperimentId}
-          visitorId={abTestVisitorId!}
-          variantId={abTestVariantId}
         />
       )}
 
@@ -1681,8 +1594,10 @@ async function renderBlogDetail({
             {/* 저자 박스 */}
             <AuthorBox
               publishedAt={post.published_at}
-              updatedAt={post.updated_at}
-              destination={effectiveDestination}
+              contentModifiedAt={post.content_modified_at || null}
+              factCheckedAt={post.fact_checked_at || null}
+              author={post.generation_meta?.author_profile as { slug: string; displayName: string; bio?: string | null } | null | undefined}
+              reviewer={post.generation_meta?.reviewer as { displayName: string; reviewedAt: string; scope: string } | null | undefined}
             />
 
             {/* 공유 버튼 */}

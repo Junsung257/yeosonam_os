@@ -23,7 +23,7 @@ import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isObviouslyInvalidDestinationRoute } from '../public-route';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import {
-  loadPublicBlogCatalog,
+  loadPublicBlogCatalogPage,
   type PublicBlogCatalogPost,
 } from '@/lib/blog-public-catalog';
 
@@ -133,8 +133,8 @@ async function resolveDestinationRouteParamUncached(value: string): Promise<stri
   if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
 
   try {
-    const match = (await loadPublicBlogCatalog())
-      .map((row) => row.destination?.trim() ?? '')
+    const match = (await loadPublicBlogCatalogPage({ page: 1, pageSize: 1 })).destinations
+      .map((row) => row.destination.trim())
       .find(destination => destination && destinationSlugMatches(destination, decoded));
 
     return match || decoded;
@@ -162,15 +162,11 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
   const destination = await resolveDestinationRouteParam(dest);
 
   try {
-    const posts = (await loadPublicBlogCatalog())
-      .filter(p => {
-        const postDestination = (p.destination || '').trim();
-        return (
-          postDestination.includes(destination) ||
-          destinationSlugMatches(postDestination, destination)
-        );
-      })
-      .slice(0, 60) as BlogPost[];
+    const posts = (await loadPublicBlogCatalogPage({
+      page: 1,
+      pageSize: 50,
+      destination,
+    })).posts as BlogPost[];
 
     if (shouldSkipPublicDbReadsForResourceSaver()) {
       return { destination, posts, packages: [], unavailable: false };

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import type { AttributionSnapshot } from './types';
+import { hashAnalyticsSearchQuery } from './query-hash';
 
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const PHONE_RE = /(?:\+?82[-.\s]?)?0?1[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/;
@@ -72,6 +73,8 @@ export interface RecordServerAnalyticsEventInput {
   bookingId?: string | null;
   productId?: string | null;
   transactionId?: string | null;
+  assistingContentCreativeId?: string | null;
+  searchQueryHash?: string | null;
   valueKrw?: number | null;
   attribution?: unknown;
   payload: Record<string, unknown>;
@@ -86,6 +89,20 @@ function hasAdsClickId(attribution: AttributionSnapshot | null): boolean {
   );
 }
 
+function withoutRawSearchTerms(attribution: AttributionSnapshot | null): AttributionSnapshot | null {
+  if (!attribution) return null;
+  const stripTerm = (touch: AttributionSnapshot['firstTouch']) => {
+    if (!touch) return undefined;
+    const { term: _term, ...safeTouch } = touch;
+    return safeTouch;
+  };
+  return {
+    ...attribution,
+    firstTouch: stripTerm(attribution.firstTouch),
+    lastTouch: stripTerm(attribution.lastTouch),
+  };
+}
+
 export async function recordServerAnalyticsEvent(
   input: RecordServerAnalyticsEventInput,
 ): Promise<{ id: string; idempotent: boolean }> {
@@ -96,7 +113,15 @@ export async function recordServerAnalyticsEvent(
     throw new Error('analytics event valueKrw must be a non-negative integer');
   }
   assertNoPii(input.payload);
-  const attribution = normalizeServerAttribution(input.attribution);
+  const normalizedAttribution = normalizeServerAttribution(input.attribution);
+  const attribution = withoutRawSearchTerms(normalizedAttribution);
+  const derivedSearchQueryHash = hashAnalyticsSearchQuery(
+    normalizedAttribution?.lastTouch?.term ?? normalizedAttribution?.firstTouch?.term,
+  );
+  const searchQueryHash = typeof input.searchQueryHash === 'string'
+    && /^[a-f0-9]{64}$/i.test(input.searchQueryHash)
+    ? input.searchQueryHash.toLowerCase()
+    : derivedSearchQueryHash;
   const row = {
     event_name: input.eventName,
     idempotency_key: input.idempotencyKey,
@@ -106,6 +131,8 @@ export async function recordServerAnalyticsEvent(
     booking_id: input.bookingId ?? null,
     product_id: input.productId ?? null,
     transaction_id: input.transactionId ?? null,
+    assisting_content_creative_id: input.assistingContentCreativeId ?? null,
+    search_query_hash: searchQueryHash,
     currency: input.valueKrw == null ? null : 'KRW',
     value_krw: input.valueKrw ?? null,
     attribution_snapshot: attribution,

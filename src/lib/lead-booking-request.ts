@@ -37,6 +37,8 @@ export interface CreateLandingBookingRequestInput {
   affiliateRef?: string | null;
   idempotencyKey?: string | null;
   attribution?: AttributionSnapshot | null;
+  assistingContentCreativeId?: string | null;
+  searchQueryHash?: string | null;
 }
 
 export type LandingBookingReplay = {
@@ -292,11 +294,13 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
           source: 'landing_lead',
         }
       : null,
-    attribution_snapshot: input.attribution || input.affiliateRef
+    attribution_snapshot: input.attribution || input.affiliateRef || input.assistingContentCreativeId
       ? {
           source: 'landing_lead',
           captured_at: new Date().toISOString(),
           analytics: input.attribution ?? null,
+          assisting_content_creative_id: input.assistingContentCreativeId ?? null,
+          search_query_hash: input.searchQueryHash ?? null,
           affiliate_id: affiliateCommission?.affiliateId ?? null,
           referral_code: input.affiliateRef,
           utm_source: input.affiliateRef || input.tracking?.utmSource || null,

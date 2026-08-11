@@ -62,19 +62,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const optimized = await sharp(sourceBuffer, { animated: false, limitInputPixels: 24_000_000 })
+    const acceptsAvif = /(?:^|,)\s*image\/avif(?:\s*;|,|$)/i.test(request.headers.get('accept') || '');
+    const pipeline = sharp(sourceBuffer, { animated: false, limitInputPixels: 24_000_000 })
       .rotate()
-      .resize({ width, withoutEnlargement: true })
-      .webp({ quality, effort: 4 })
-      .toBuffer();
+      .resize({ width, withoutEnlargement: true });
+    const optimized = acceptsAvif
+      ? await pipeline.avif({ quality, effort: 4 }).toBuffer()
+      : await pipeline.webp({ quality, effort: 4 }).toBuffer();
 
     return new Response(new Uint8Array(optimized), {
       status: 200,
       headers: {
-        'content-type': 'image/webp',
+        'content-type': acceptsAvif ? 'image/avif' : 'image/webp',
         'content-length': String(optimized.byteLength),
         'cache-control': 'public, max-age=604800, s-maxage=2592000, stale-while-revalidate=604800',
         'x-content-type-options': 'nosniff',
+        'content-disposition': 'inline',
         'vary': 'Accept',
       },
     });

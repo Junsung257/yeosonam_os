@@ -23,8 +23,11 @@ function isSafePath(value: unknown): value is string {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!req.cookies.get('ys_consent_v2')?.value.startsWith('a')) {
+      return apiResponse({ ok: true, skipped: true, reason: 'analytics_consent_required' });
+    }
     const body = await req.json();
-    const { name, value, path, pageType, slug } = body;
+    const { name, value, path, pageType, slug, route, device, connectionType, navigationType, consentState } = body;
 
     if (!name || value === undefined || !path) {
       return apiResponse({ error: 'missing fields' }, { status: 400 });
@@ -51,6 +54,11 @@ export async function POST(req: NextRequest) {
       path,
       pageType: normalizedPageType,
       slug: normalizedSlug,
+      route: isSafePath(route) ? route : path,
+      device: typeof device === 'string' ? device.slice(0, 30) : undefined,
+      connectionType: typeof connectionType === 'string' ? connectionType.slice(0, 30) : undefined,
+      navigationType: typeof navigationType === 'string' ? navigationType.slice(0, 30) : undefined,
+      consentState: consentState === 'granted' ? 'granted' as const : 'unknown' as const,
     };
 
     if (shouldSkipPublicDbReadsForResourceSaver()) {

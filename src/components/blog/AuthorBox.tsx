@@ -1,63 +1,46 @@
 import Link from 'next/link';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 interface Props {
   publishedAt: string;
-  updatedAt?: string | null;
-  destination?: string;
+  contentModifiedAt?: string | null;
+  factCheckedAt?: string | null;
+  author?: { slug: string; displayName: string; bio?: string | null } | null;
+  reviewer?: { displayName: string; reviewedAt: string; scope: string } | null;
 }
 
-export default function AuthorBox({ publishedAt, updatedAt, destination }: Props) {
-  const pub = new Date(publishedAt);
-  const upd = updatedAt ? new Date(updatedAt) : null;
-  const hasUpdate =
-    upd &&
-    pub &&
-    Math.abs(upd.getTime() - pub.getTime()) > 1000 * 60 * 60 * 24; // 1일 이상 차이
-
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-
+export default function AuthorBox({
+  publishedAt,
+  contentModifiedAt,
+  factCheckedAt,
+  author,
+  reviewer,
+}: Props) {
   return (
-    <section
-      className="not-prose my-12 rounded-2xl border border-slate-100 bg-slate-50/70 p-5 md:p-6"
-      aria-label="작성자 정보"
-      data-blog-supporting="author"
-    >
+    <section className="not-prose my-12 rounded-2xl border border-slate-200 bg-slate-50 p-5 md:p-6" aria-label="작성 및 검수 정보" data-blog-supporting="author">
       <div className="flex items-start gap-4">
-        <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-lg font-bold text-white shadow-sm before:content-['Y']"
-          aria-hidden="true"
-        />
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand font-bold text-white" aria-hidden="true">
+          {(author?.displayName || '여소남').slice(0, 1)}
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[15px] font-semibold text-slate-900">여소남 에디터</p>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-              운영팀 검증
-            </span>
-          </div>
-          <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
-            여소남 상품 운영팀(OP)이 랜드사와 직접 확인한
-            {destination ? ` ${destination} ` : ' '}
-            여행 일정·가격·포함 항목을 기준으로 작성되었습니다. 현지 사정에 따라 변경될 수
-            있으며, 예약 시점 조건이 최종 기준입니다.
-          </p>
-          <Link
-            href="/about"
-            className="mt-2 inline-block text-xs font-medium text-brand hover:text-brand-dark transition"
-          >
-            여소남 소개 바로가기 →
-          </Link>
-          <p className="mt-2 text-xs text-slate-400">
-            <span>발행 {fmt(pub)}</span>
-            {hasUpdate && upd && (
-              <>
-                <span className="mx-1.5">·</span>
-                <span className="font-medium text-emerald-600">
-                  최종 업데이트 {fmt(upd)}
-                </span>
-              </>
-            )}
-          </p>
+          <p className="text-[15px] font-semibold text-slate-950">{author?.displayName || '여소남 편집부'}</p>
+          {author?.bio && <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{author.bio}</p>}
+          {author?.slug && (
+            <Link href={`/blog/author/${encodeURIComponent(author.slug)}`} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand hover:underline">
+              작성자 프로필
+            </Link>
+          )}
+          <dl className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
+            <div><dt className="inline font-semibold">발행</dt> <dd className="inline">{fmtDateISO(publishedAt)}</dd></div>
+            {contentModifiedAt && <div><dt className="inline font-semibold">내용 수정</dt> <dd className="inline">{fmtDateISO(contentModifiedAt)}</dd></div>}
+            {factCheckedAt && <div><dt className="inline font-semibold">사실 확인</dt> <dd className="inline">{fmtDateISO(factCheckedAt)}</dd></div>}
+          </dl>
+          {reviewer && (
+            <div className="mt-4 border-t border-slate-200 pt-3 text-sm text-slate-600">
+              <p><strong className="text-slate-800">검수:</strong> {reviewer.displayName} · {fmtDateISO(reviewer.reviewedAt)}</p>
+              <p className="mt-1"><strong className="text-slate-800">검토 범위:</strong> {reviewer.scope}</p>
+            </div>
+          )}
         </div>
       </div>
     </section>

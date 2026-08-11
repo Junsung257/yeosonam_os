@@ -207,7 +207,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (isSafeSitemapBlogSlug(post.slug)) {
       routes.push({
         url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,
-        lastModified: safeLastModified(post.updated_at || post.published_at),
+        lastModified: safeLastModified(post.content_modified_at || post.published_at),
         changeFrequency: 'weekly',
         priority: 0.7,
       });

@@ -1,6 +1,9 @@
 import type { TrackingData } from '@/hooks/useTracking';
 import { trackLead } from '@/components/MetaPixel';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
+import { getAttributionSnapshot } from '@/lib/analytics/attribution';
+import { readLastBlogAssist } from '@/lib/analytics/blog-assist';
+import type { AttributionSnapshot } from '@/lib/analytics/types';
 
 export interface KakaoLeadContext {
   productTitle?: string;
@@ -26,6 +29,8 @@ export interface LeadPayload {
   submittedAt: string;
   chatSessionId?: string;
   idempotencyKey?: string;
+  attribution?: AttributionSnapshot | null;
+  assistingContentCreativeId?: string | null;
 }
 
 export interface LeadSubmitResult {
@@ -53,6 +58,8 @@ export function buildPayload(
     tracking,
     submittedAt: new Date().toISOString(),
     chatSessionId,
+    attribution: getAttributionSnapshot(),
+    assistingContentCreativeId: readLastBlogAssist(),
     idempotencyKey: [
       'lp',
       productId,

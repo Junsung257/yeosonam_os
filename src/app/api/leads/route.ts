@@ -3,6 +3,10 @@ import { successResponse, ApiErrors } from '@/lib/api-response';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { createLandingBookingRequest, findExistingLandingBookingReplay } from '@/lib/lead-booking-request';
+import { normalizeServerAttribution, recordServerAnalyticsEvent } from '@/lib/analytics/server-events';
+import { hashAnalyticsSearchQuery } from '@/lib/analytics/query-hash';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const PLACEHOLDER_NAMES = new Set([
   '-',
@@ -43,7 +47,17 @@ function isValidLeadPhone(value: unknown): value is string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { productId, channel, form, tracking, submittedAt, chatSessionId, idempotencyKey } = body;
+    const {
+      productId,
+      channel,
+      form,
+      tracking,
+      submittedAt,
+      chatSessionId,
+      idempotencyKey,
+      attribution,
+      assistingContentCreativeId,
+    } = body;
 
     if (
       typeof productId !== 'string'
@@ -67,6 +81,14 @@ export async function POST(req: NextRequest) {
     const affRaw = req.cookies.get('aff_ref')?.value || null;
     const affCanon = affRaw?.trim() ? normalizeAffiliateReferralCode(affRaw) : '';
     const affRef = affCanon || null;
+    const normalizedAttribution = normalizeServerAttribution(attribution);
+    const normalizedAssistId = typeof assistingContentCreativeId === 'string'
+      && UUID_RE.test(assistingContentCreativeId)
+      ? assistingContentCreativeId
+      : null;
+    const searchQueryHash = hashAnalyticsSearchQuery(
+      normalizedAttribution?.lastTouch?.term ?? normalizedAttribution?.firstTouch?.term,
+    );
 
     const replay = await findExistingLandingBookingReplay({
       productId,
@@ -77,6 +99,9 @@ export async function POST(req: NextRequest) {
       leadId: null,
       affiliateRef: affRef,
       idempotencyKey,
+      attribution: normalizedAttribution,
+      assistingContentCreativeId: normalizedAssistId,
+      searchQueryHash,
     });
     if (replay) {
       return successResponse({
@@ -108,6 +133,7 @@ export async function POST(req: NextRequest) {
       time_on_page_seconds: tracking?.timeOnPageSeconds || 0,
       itinerary_viewed: tracking?.itineraryViewed || false,
       submitted_at: submittedAt || new Date().toISOString(),
+      attribution_snapshot: normalizedAttribution,
     }).select('id').single();
 
     if (error) {
@@ -124,7 +150,35 @@ export async function POST(req: NextRequest) {
       leadId: insertedLead?.id ?? null,
       affiliateRef: affRef,
       idempotencyKey,
+      attribution: normalizedAttribution,
+      assistingContentCreativeId: normalizedAssistId,
+      searchQueryHash,
     });
+
+    if (insertedLead?.id) {
+      try {
+        await recordServerAnalyticsEvent({
+          eventName: 'generate_lead',
+          idempotencyKey: `lead:${insertedLead.id}`,
+          sourceType: 'lead',
+          sourceId: insertedLead.id,
+          leadId: insertedLead.id,
+          bookingId: bookingResult.booking?.id ?? null,
+          productId,
+          assistingContentCreativeId: normalizedAssistId,
+          searchQueryHash,
+          attribution: normalizedAttribution,
+          payload: {
+            lead_type: 'package_inquiry',
+            channel: typeof channel === 'string' ? channel.slice(0, 100) : 'website',
+            package_id: productId,
+            assisted_by_blog: Boolean(normalizedAssistId),
+          },
+        });
+      } catch (analyticsError) {
+        console.warn('[leads] server analytics failed:', analyticsError);
+      }
+    }
 
     try {
       const customerId = bookingResult.customerId;

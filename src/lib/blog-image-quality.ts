@@ -136,7 +136,7 @@ export function inspectBlogImageQuality(
   options: BlogImageQualityOptions = {},
 ): BlogImageQualityReport {
   const images = extractMarkdownImages(markdown);
-  const minImages = Math.max(1, options.minImages ?? (options.blogType === 'product' ? 2 : 3));
+  const minImages = Math.max(0, options.minImages ?? 0);
   const issues: string[] = [];
 
   const missingAlt = images.filter((image) => image.alt.length < 3).length;

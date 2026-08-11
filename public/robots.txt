@@ -36,3 +36,4 @@ Disallow: /tenant/
 Crawl-Delay: 10
 
 Sitemap: https://www.yeosonam.com/sitemap.xml
+Sitemap: https://www.yeosonam.com/blog/image-sitemap.xml

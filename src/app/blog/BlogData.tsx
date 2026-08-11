@@ -17,7 +17,7 @@ import { isBlogDatabaseUnavailableError } from '@/lib/blog-cache';
 import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import {
-  loadPublicBlogCatalog,
+  loadPublicBlogCatalogPage,
   type PublicBlogCatalogPost,
 } from '@/lib/blog-public-catalog';
 
@@ -163,23 +163,20 @@ function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Recor
 }
 
 async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
-  const catalog = stripRawPackageDataFromBlogListPosts(
-    (await loadPublicBlogCatalog()) as BlogPost[],
-  );
-  const offset = (page - 1) * PER_PAGE;
-  const matchingPosts = catalog.filter((post) => {
-    if (filter.angle && post.angle_type !== filter.angle) return false;
-    if (filter.destination && post.destination !== filter.destination) return false;
-    return true;
+  const result = await loadPublicBlogCatalogPage({
+    page,
+    pageSize: PER_PAGE,
+    destination: filter.destination,
+    angle: filter.angle,
   });
-  const exactTotal = matchingPosts.length;
-  const fetchedPosts = matchingPosts.slice(offset, offset + PER_PAGE);
-  const posts = fetchedPosts.slice(0, PER_PAGE);
+  const posts = stripRawPackageDataFromBlogListPosts(result.posts as BlogPost[]);
+  const exactTotal = result.total;
 
   const pageAngleCounts = countAnglesFromPosts(posts);
-  const angleCounts = catalog.length > 0 ? countAnglesFromPosts(catalog) : pageAngleCounts;
-  const destinations = destinationsFromPosts(catalog)
-    .sort((a, b) => b.post_count - a.post_count);
+  const angleCounts = Object.keys(result.angleCounts).length ? result.angleCounts : pageAngleCounts;
+  const destinations = result.destinations.length
+    ? result.destinations
+    : destinationsFromPosts(posts).sort((a, b) => b.post_count - a.post_count);
 
   const featured = posts
     .filter((post) => Boolean(getDisplayImageUrl(post)))

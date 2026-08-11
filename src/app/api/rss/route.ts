@@ -1,11 +1,9 @@
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 
 export const revalidate = 600;
-export const dynamic = 'force-dynamic';
 
 type RssPost = {
   slug?: string | null;
@@ -21,21 +19,9 @@ export async function GET() {
     'Cache-Control': 'public, max-age=600, s-maxage=600, stale-while-revalidate=3600',
   };
 
-  if (!isSupabaseConfigured) {
-    return new Response(buildFeed([]), { headers });
-  }
-
   try {
-    const { data: posts } = await supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select('slug, seo_title, seo_description, published_at, og_image_url')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(50);
-
-    return new Response(buildFeed((posts || []) as RssPost[]), { headers });
+    const posts = await loadPublicBlogCatalog();
+    return new Response(buildFeed(posts.slice(0, 50) as RssPost[]), { headers });
   } catch {
     return new Response(buildFeed([]), { headers });
   }

@@ -15,7 +15,7 @@ import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-ta
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import {
-  loadPublicBlogCatalog,
+  loadPublicBlogCatalogPage,
   type PublicBlogCatalogPost,
 } from '@/lib/blog-public-catalog';
 
@@ -46,9 +46,11 @@ function getRouteParam(value: string | string[] | undefined): string {
 
 async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
   try {
-    const posts = (await loadPublicBlogCatalog())
-      .filter((post) => post.angle_type === angle)
-      .slice(0, 60) as BlogPost[];
+    const posts = (await loadPublicBlogCatalogPage({
+      page: 1,
+      pageSize: 50,
+      angle,
+    })).posts as BlogPost[];
     const recommendedPackages = await getPackagesByAngle(angle, 6).catch(() => []);
 
     return {

@@ -22,6 +22,11 @@ export interface WebVitalPayload {
   pageType: string;
   /** blog slug (blog 페이지인 경우) */
   slug?: string;
+  route?: string;
+  device?: string;
+  connectionType?: string;
+  navigationType?: string;
+  consentState?: 'unknown' | 'granted' | 'denied';
 }
 
 export interface CwvThreshold {
@@ -59,6 +64,11 @@ export async function saveWebVital(payload: WebVitalPayload): Promise<void> {
     page_type: payload.pageType,
     slug: payload.slug || null,
     rating: classifyCwv(payload.name, payload.value),
+    route: payload.route || payload.path,
+    device: payload.device || null,
+    connection_type: payload.connectionType || null,
+    navigation_type: payload.navigationType || null,
+    consent_state: payload.consentState || 'unknown',
   });
   if (error) {
     // 중복 키 또는 rate limit은 silent
