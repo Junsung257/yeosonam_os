@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { createTextDocumentIR, sha256Hex } from './document-ir';
@@ -33,17 +33,51 @@ type RhwpTablePayload = {
   }>;
 };
 
-function resolveRhwpBinary(): string {
+function pushRootAndParents(target: string[], value: string | undefined): void {
+  if (!value) return;
+  let current = resolve(value);
+  for (let depth = 0; depth < 10; depth += 1) {
+    if (!target.includes(current)) target.push(current);
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+}
+
+export function getRhwpBinaryCandidates(input: {
+  cwd?: string;
+  lambdaTaskRoot?: string;
+  vercelProjectDir?: string;
+  pwd?: string;
+  argvEntry?: string;
+  platform?: NodeJS.Platform;
+} = {}): string[] {
+  const roots: string[] = [];
+  pushRootAndParents(roots, input.cwd ?? process.cwd());
+  pushRootAndParents(roots, input.lambdaTaskRoot ?? process.env.LAMBDA_TASK_ROOT);
+  pushRootAndParents(roots, input.vercelProjectDir ?? process.env.VERCEL_PROJECT_DIR);
+  pushRootAndParents(roots, input.pwd ?? process.env.PWD);
+  pushRootAndParents(roots, dirname(input.argvEntry ?? process.argv[1] ?? process.cwd()));
+
+  const binaryName = (input.platform ?? process.platform) === 'win32' ? 'rhwp.exe' : 'rhwp';
+  const relativeBinary = join('vendor', 'rhwp', PRODUCT_REGISTRATION_V4_PARSER_VERSION, binaryName);
+  const candidates: string[] = [];
+  for (const root of roots) {
+    for (const candidate of [
+      join(root, relativeBinary),
+      join(root, '.next', 'server', relativeBinary),
+    ]) {
+      if (!candidates.includes(candidate)) candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
+export function resolveRhwpBinary(): string {
   const configured = process.env.RHWP_BIN?.trim() || process.env.RHWP_PATH?.trim();
   if (configured) return configured;
-  const bundled = join(
-    process.cwd(),
-    'vendor',
-    'rhwp',
-    PRODUCT_REGISTRATION_V4_PARSER_VERSION,
-    process.platform === 'win32' ? 'rhwp.exe' : 'rhwp',
-  );
-  if (existsSync(bundled)) return bundled;
+  const bundled = getRhwpBinaryCandidates().find(candidate => existsSync(candidate));
+  if (bundled) return bundled;
   return process.platform === 'win32' ? 'rhwp.exe' : 'rhwp';
 }
 
@@ -68,7 +102,13 @@ async function runRhwpJson(binary: string, args: string[], label: string): Promi
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/ENOENT|not found|cannot find/i.test(message)) {
-      throw new Error('HWP_PARSER_UNAVAILABLE: configure RHWP_BIN with the pinned rhwp v0.8.2 binary');
+      const diagnostic = {
+        binary,
+        binaryExists: existsSync(binary),
+        cwd: process.cwd(),
+        lambdaTaskRoot: process.env.LAMBDA_TASK_ROOT ?? null,
+      };
+      throw new Error(`HWP_PARSER_UNAVAILABLE:${JSON.stringify(diagnostic)}`);
     }
     throw new Error(`RHWP_${label.toUpperCase()}_FAILED:${message}`);
   }
