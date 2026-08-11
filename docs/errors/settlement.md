@@ -169,6 +169,13 @@ Last updated: 2026-08-05
 - [x] **원인:** 여러 fetch의 HTTP 오류를 검사하지 않았고 실패 상태와 유효한 빈 상태를 분리하지 않았다.
 - [x] **수정 계약:** 최초 로딩에는 skeleton만 표시하고, 하나의 API라도 실패하면 명확한 오류를 표시한다. 기존 정상 데이터가 있으면 유지하면서 마지막 정상 시각을 함께 보여준다.
 
+## ERR-CLOBE-EVIDENCE-SCOPE-OVERWRITE@2026-08-12
+
+- **Symptom:** A no-op Clobe sync kept all amounts and allocations intact but changed 138 manually classified company transactions from `non_travel` to `travel` in the dashboard.
+- **Root cause:** The shared evidence-refresh helper always wrote `settlement_scope = travel`, including the path that only records the latest provider memo observation.
+- **Permanent rule:** Updating provider evidence may refresh account number, balance, category, raw payload, and source metadata, but it must never change settlement scope. Scope changes are allowed only for a new import or an explicit reclassification path.
+- **Required proof:** Repeating the same full sync must return zero memo reviews, preserve 286 travel and 195 non-travel transactions, keep all 481 allocations exact, and leave booking review fingerprints unchanged.
+
 ## ERR-CLOBE-memo-review-repeat@2026-08-12
 
 - [x] **증상:** 실제 Clobe 메모가 바뀌지 않은 재동기화에서도 기존 배분 거래 86건이 매번 `메모 검토`로 다시 집계됐다.
