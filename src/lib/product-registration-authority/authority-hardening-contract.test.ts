@@ -49,6 +49,7 @@ describe('product registration authority hardening contracts', () => {
 
   it('keeps golf facts immutable while permitting atomic aggregate construction', () => {
     const migration = source('supabase/migrations/20260812113000_product_registration_atomic_golf_linkage.sql');
+    const jsonSafeMigration = source('supabase/migrations/20260812123000_product_registration_atomic_golf_linkage_json_safe.sql');
     expect(migration).toContain("v_writer = 'registration-kernel'");
     expect(migration).toContain("tg_table_name = 'golf_rounds'");
     expect(migration).toContain("v_old - 'golf_fact_resolution_id'");
@@ -56,5 +57,9 @@ describe('product registration authority hardening contracts', () => {
     expect(migration).toContain("tg_table_name = 'golf_fact_resolutions'");
     expect(migration).toContain('old.observation_ids <@ new.observation_ids');
     expect(migration).toContain("raise exception '% is append-only");
+    expect(jsonSafeMigration).toContain("(v_new->>'observed_at')::timestamptz");
+    expect(jsonSafeMigration).toContain("v_new->'observation_ids'");
+    expect(jsonSafeMigration).not.toContain('new.observed_at');
+    expect(jsonSafeMigration).not.toContain('old.observation_ids <@ new.observation_ids');
   });
 });
