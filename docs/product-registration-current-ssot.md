@@ -1,8 +1,8 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
-## Registration Kernel authority convergence (local implementation, 2026-08-11)
+## Registration Kernel authority convergence (production schema hardened, 2026-08-12)
 
 The product-registration authority is now defined by role, not by the historical V2/V3/V4/V5/V6 names. File parsers remain adapters, while canonical fact commit and customer publication have one authority boundary.
 
@@ -17,30 +17,33 @@ Implemented in branch `codex/product-registration-engine-v6-20260811`:
 - Terms, hotel observations, golf observations, media rights, supplier profiles, cohort quality, availability overlays, proof, pointer CAS, and outbox records are revision/catalog/tenant scoped. Hotel, golf, and attraction masters are never auto-created from candidates.
 - Customer/B2B/partner snapshot publication is channel-pointer based. Snapshot/proof/revision hashes and renderer build must match exactly, and proof no longer temporarily activates a package.
 - IR, Band, reextract, and correction inputs use one tenant-scoped source store and one durable workflow in `shadow`/`kernel` mode. Supplied IR/preview data is candidate metadata, not evidence. Scan remains preview-only, while old stub/review/CRUD/approval mutation endpoints fail closed in `kernel` mode.
-- Kernel `/api/packages` discovery and sitemap resolve exact publication pointers and immutable snapshots instead of discovering customer products from mutable `travel_packages`. Destination, home, and some blog/recommendation discovery paths still require staged conversion before the pointer-only reader migration is complete.
+- Customer `/api/packages`, home, destination, and sitemap discovery resolve exact publication pointers and immutable snapshots regardless of the configured writer-authority mode. Mutable `travel_packages` rows can no longer become customer-visible through these catalog paths merely because their legacy status says active/published. Remaining blog/recommendation consumers must use the same channel reader before they are treated as publication surfaces.
 - A schedule-drift suspension can be cleared automatically only after every transport segment is independently reverified by current OAG and Cirium consensus. The clear operation is compare-and-set and only removes an overlay whose reason starts with `FLIGHT_SCHEDULE_DRIFT:`; it cannot remove a manual suspension.
 
 Deployment truth:
 
-- The authority-convergence migration and five additive hardening migrations are implemented locally, but this task has **not** mutated the production schema or customer publication pointers. The linked migration history is divergent, so applying files out of order is prohibited.
-- A read-only live preflight saw `travel_packages=989`, `products=862`, V5 revisions `2`, snapshots `14`, and publication pointers `1`. It also found all 989 legacy package rows without tenant lineage, four duplicate/ambiguous package-code groups, one unbound revision, and one currently public package without a pointer.
+- Eighteen product-registration migrations from `20260808172425` through `20260811121526` were applied to the linked production Supabase in repository order and recorded as applied without rewriting unrelated historical migration entries. The production database was not reset or rolled back.
+- Tenant/catalog/revision/snapshot/pointer null-or-placeholder blockers are now zero. The explicit schema finalizer passed as `product-registration-authority-hardened-1`, all tenant foreign keys are validated, and legacy publication RPC execution has been revoked.
+- Production remains `authority_mode=shadow` with `publication_freeze=true`. This separates schema hardening from customer release: no new automatic pointer may be published while the freeze remains active.
+- The pre-migration baseline was `travel_packages=989`, `products=862`, V5 revisions `2`, snapshots `14`, and publication pointers `1`, with four duplicate/ambiguous package-code groups and one unbound revision. These rows are preserved for shadow classification; they were not bulk-published.
 - The old code-only identity backfill would have linked 813 product/package pairs across different tenants. `20260811115754_product_registration_tenant_identity_reconciliation.sql` now rejects those links, matches only same-tenant unique identities, and creates quarantined separate identities instead of guessing.
 - Registration completion and customer publication are separate state axes. A source can remain `verified` or `degraded` while publication is `frozen`; freeze is no longer recorded as a false analysis failure.
 - OAG/Cirium calls are protected by a durable operation ledger, request-hash conflict checks, a ten-minute lease, stored-result reuse, and a three-attempt ceiling. Reuse is scoped to one registration or one schedule checkpoint, so D-90 data is never reused as D-30/D-7 freshness evidence. Provider charging is recorded only for the call that owns the reservation.
 - Existing inventory backfill is now a feature-flagged shadow workflow. It claims at most 25 packages, binds each run to the existing tenant/catalog identity, never publishes, and automatically heals a lost follow-up bind from a deterministic operation key. It is disabled unless `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED=1`.
-- Runtime authority defaults to `legacy` unless `PRODUCT_REGISTRATION_AUTHORITY_MODE` is explicitly set. DB finalization must occur while publication is frozen; it validates tenant/catalog foreign keys and only then revokes legacy publication RPC execution.
+- Runtime authority defaults to `legacy` unless `PRODUCT_REGISTRATION_AUTHORITY_MODE` is explicitly set. The V6 branch preview is explicitly scoped to `shadow`, platform tenant `00000000-0000-0000-0000-000000000001`, shadow enabled, publish disabled, backfill disabled, and publication frozen.
 - The current authority scan is `authorized=1 legacy=143 unapproved=0`. The 143 legacy writers are a measured retirement ledger, not extra authorities: kernel database guards prevent them from changing canonical facts or publication.
-- The latest hardening verification passes TypeScript, changed-file lint, SQL parsing for all five new migrations (87 statements), authority/registration contracts, 133 focused tests, the full 683-file/5,149-test suite, and a production Next.js build (389 static pages). The build's local sitemap reported the expected unavailable blog database warning but completed successfully.
-- Customer opening remains blocked until migrations are reconciled and applied in a controlled packet, schema finalization passes, 989 legacy rows reach terminal shadow outcomes, the public package without a pointer is rebuilt, live RLS/provider/browser proof passes, and cohort error thresholds permit canary publication.
+- The latest verification passes TypeScript, authority/registration contracts, the full 684-file/5,154-test suite, and a production Next.js build with 389 static pages. The local build took about 14 minutes 38 seconds; when Supabase/blog build-time credentials are absent, sitemap generation returns no package/blog entries rather than falling back to mutable rows.
+- The live mobile-readiness audit now treats an authoritative customer pointer as the definition of public. Two legacy active/published samples both failed: the pointerless Kota Kinabalu row, and the Fukuoka row whose 85 saved price dates disagree with its 84-date snapshot and whose mobile proof/customer-open contract are stale or blocked.
+- Customer opening remains blocked until at least one real HWP canary reaches a terminal shadow result, exact source comparison and current-snapshot proof pass, all required surfaces converge, and the cohort error budget permits a bounded CAS publication. The remaining 989 legacy rows must be classified before broad rollout.
 
 Safe deployment order:
 
-1. Keep application mode `legacy`, publication frozen, and backfill disabled.
-2. Reconcile remote migration history; apply authority convergence and additive hardening migrations in repository order.
-3. Run `npm run preflight:product-registration-authority:strict`, then call the explicit schema finalizer while freeze remains on.
-4. Deploy `shadow`, enable the workflow and legacy backfill, and classify all 989 package rows without moving customer pointers.
-5. Pass live tenant/RLS, provider, private Chrome proof, and surface-convergence tests.
-6. Promote a bounded cohort to `kernel`; only after its error budget holds may publication freeze be removed for that cohort.
+1. Keep production publication frozen and the legacy backfill disabled.
+2. Deploy the branch preview in `shadow`; upload the selected HWP corpus and confirm terminal verified/degraded/blocked outcomes without moving customer pointers.
+3. Pass live tenant/RLS, provider, private Chrome proof, and surface-convergence tests for the exact revision/snapshot hashes.
+4. Reprocess the existing 989 rows in bounded shadow batches and retain duplicate/ambiguous identities in quarantine.
+5. Promote one bounded cohort to `kernel`; remove the freeze only for an exact canary operation, then re-enable it until its error budget holds.
+6. Retire remaining legacy writers and direct readers only after the authoritative reader and rollback-pointer path are proven in production.
 
 ## V6 통합 자동화 계약 (2026-08-11)
 
