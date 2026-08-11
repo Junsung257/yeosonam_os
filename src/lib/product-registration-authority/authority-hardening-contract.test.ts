@@ -46,4 +46,15 @@ describe('product registration authority hardening contracts', () => {
     expect(source('src/lib/product-registration-v6/schedule-revalidation.ts'))
       .toContain('operationScope: `revalidation:${input.job.id}:${input.job.checkpoint}:segment:${index}`');
   });
+
+  it('keeps golf facts immutable while permitting atomic aggregate construction', () => {
+    const migration = source('supabase/migrations/20260812113000_product_registration_atomic_golf_linkage.sql');
+    expect(migration).toContain("v_writer = 'registration-kernel'");
+    expect(migration).toContain("tg_table_name = 'golf_rounds'");
+    expect(migration).toContain("v_old - 'golf_fact_resolution_id'");
+    expect(migration).toContain("tg_table_name = 'golf_fact_observations'");
+    expect(migration).toContain("tg_table_name = 'golf_fact_resolutions'");
+    expect(migration).toContain('old.observation_ids <@ new.observation_ids');
+    expect(migration).toContain("raise exception '% is append-only");
+  });
 });

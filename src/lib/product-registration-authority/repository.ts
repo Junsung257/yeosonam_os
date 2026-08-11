@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { buildV5ItineraryItems, buildV5PriceRules } from '@/lib/product-registration-v4/typed-projections';
 import { buildCanonicalTermsRevisions } from './terms';
+import { registrationDatabaseError } from './errors';
 
 import type {
   CommittedCanonicalRevision,
@@ -125,7 +126,7 @@ export async function commitCanonicalRevisionAtomic(input: {
       })),
     },
   });
-  if (error) throw error;
+  if (error) throw registrationDatabaseError('REGISTRATION_REVISION_COMMIT_FAILED', error);
   const result = (data ?? {}) as RpcResult;
   return {
     tenantId: requiredString(result.tenant_id, 'tenant_id'),

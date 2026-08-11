@@ -5,6 +5,7 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { splitCatalogByItineraryHeaders } from '@/lib/parser/catalog-pre-split';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
 import { commitCanonicalRevisionAtomic } from '@/lib/product-registration-authority/repository';
+import { describeRegistrationError, registrationErrorCode } from '@/lib/product-registration-authority/errors';
 import { buildProductRegistrationV6DomainProjection } from '@/lib/product-registration-v6/domain-projections';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
@@ -493,16 +494,16 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     });
     return { job: updatedJob, normalizationId, normalization };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = describeRegistrationError(error);
     await transitionProductRegistrationV4Job({
       supabase: input.supabase,
       jobId: job.id,
       stage: 'failed',
       status: 'failed',
-      errorCode: message.split(':')[0] || 'CANONICAL_NORMALIZATION_FAILED',
+      errorCode: registrationErrorCode(error, 'CANONICAL_NORMALIZATION_FAILED'),
       errorDetail: message,
       reviewReasons: ['CANONICAL_NORMALIZATION_FAILED'],
     }).catch(() => undefined);
-    throw error;
+    throw error instanceof Error ? error : new Error(message, { cause: error });
   }
 }
