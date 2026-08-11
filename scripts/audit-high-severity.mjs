@@ -26,51 +26,8 @@ try {
   process.exit(1);
 }
 
-const waiver = {
-  package: 'image-size',
-  expiresAt: '2026-09-30T00:00:00Z',
-  advisories: new Set([
-    'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
-    'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
-  ]),
-};
-
-const waiverExpired = Date.now() >= Date.parse(waiver.expiresAt);
 const vulnerabilities = Object.values(report.vulnerabilities ?? {});
-const blocking = [];
-const waived = [];
-
-function isAllowedUnpatchedImageSize(entry) {
-  if (waiverExpired || entry.name !== waiver.package) return false;
-  const advisories = (entry.via ?? []).filter(item => item && typeof item === 'object');
-  return advisories.length === waiver.advisories.size
-    && advisories.every(item => waiver.advisories.has(item.url));
-}
-
-function isPptxgenjsPropagation(entry) {
-  return !waiverExpired
-    && entry.name === 'pptxgenjs'
-    && Array.isArray(entry.via)
-    && entry.via.length === 1
-    && entry.via[0] === waiver.package;
-}
-
-for (const entry of vulnerabilities) {
-  if (!['high', 'critical'].includes(entry.severity)) continue;
-  if (isAllowedUnpatchedImageSize(entry) || isPptxgenjsPropagation(entry)) {
-    waived.push(entry);
-  } else {
-    blocking.push(entry);
-  }
-}
-
-if (waived.length > 0) {
-  console.warn(
-    `[audit:high] Temporary waiver until ${waiver.expiresAt.slice(0, 10)}: `
-      + `${waived.map(entry => entry.name).join(', ')}. `
-      + 'PPT image ingestion is restricted to verified JPEG/PNG/GIF/WebP bytes.',
-  );
-}
+const blocking = vulnerabilities.filter(entry => ['high', 'critical'].includes(entry.severity));
 
 if (blocking.length > 0) {
   for (const entry of blocking) {
@@ -79,9 +36,4 @@ if (blocking.length > 0) {
   process.exit(1);
 }
 
-if (waiverExpired && vulnerabilities.some(entry => entry.name === waiver.package || entry.name === 'pptxgenjs')) {
-  console.error(`[audit:high] The ${waiver.package} waiver expired on ${waiver.expiresAt.slice(0, 10)}.`);
-  process.exit(1);
-}
-
-console.log('[audit:high] No unwaived high or critical vulnerabilities.');
+console.log('[audit:high] No high or critical vulnerabilities.');

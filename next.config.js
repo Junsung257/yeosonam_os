@@ -145,6 +145,16 @@ function ensureMissingAppTraceManifests() {
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
+  // rhwp is downloaded and checksum-verified during prebuild. Because it is
+  // executed through a runtime-computed path, Node file tracing cannot infer
+  // the dependency on its own. Keep the native parser only in the durable
+  // workflow step function instead of copying the 15 MB binary to every route.
+  outputFileTracingIncludes: {
+    '/.well-known/workflow/v1/step': [
+      './vendor/rhwp/0.8.2/rhwp',
+      './vendor/rhwp/0.8.2/rhwp.exe',
+    ],
+  },
   // ESLint 빌드 통합 활성화 (2026-05-11 복원)
   // 플러그인 설치 완료 → 빌드 중 lint 오류 즉시 감지
   eslint: {

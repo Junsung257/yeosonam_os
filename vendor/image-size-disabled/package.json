@@ -1,0 +1,21 @@
+{
+  "name": "image-size",
+  "version": "999.0.0-yeosonam-disabled",
+  "description": "Fail-closed compatibility shim for PptxGenJS's unused image-size dependency.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "UNLICENSED",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.js",
+      "default": "./index.js"
+    },
+    "./fromFile": {
+      "types": "./index.d.ts",
+      "require": "./index.js",
+      "default": "./index.js"
+    }
+  }
+}

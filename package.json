@@ -16,7 +16,7 @@
     "audit:vercel-functions:ci": "node db/audit_vercel_functions_count.js --ci",
     "audit:high": "node scripts/audit-high-severity.mjs",
     "build": "node scripts/run-next-build.cjs",
-    "postbuild": "node scripts/ensure-next-main-app-js-shim.cjs && node scripts/verify-next-build-output.cjs",
+    "postbuild": "node scripts/ensure-next-main-app-js-shim.cjs && node scripts/verify-next-build-output.cjs && node scripts/verify-rhwp-runtime-bundle.mjs",
     "analyze": "cross-env ANALYZE=true next build",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:bundle:ci": "node scripts/check-bundle-budget.mjs --fail",
@@ -323,6 +323,7 @@
     "@workflow/core": {
       "nanoid": "5.1.16"
     },
+    "image-size": "file:vendor/image-size-disabled",
     "exceljs": {
       "uuid": "11.1.1"
     }
