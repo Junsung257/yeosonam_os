@@ -106,6 +106,167 @@
           "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
         }
       ]
+    },
+    "20260806090000_product_registration_engine_v4_foundation.sql": {
+      "sha256": "b1ae14e9c621b8ce5eb5988b2a5daf329782084ab084b3dbef8e4605227c2459",
+      "status": "A",
+      "rationale": "The exact replay-safe migration is already applied on production and its indexes were verified before repository reconciliation. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 5
+      }
+    },
+    "20260806123514_product_registration_engine_v4_uploaded_by_index.sql": {
+      "sha256": "b93928e816745bc7a358cbe0ff3aee20d137e7076a992b635e9117fe0c98eef0",
+      "status": "A",
+      "rationale": "The exact replay-safe migration and index are already applied and verified on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260807110000_product_registration_v4_canonical_job_pointer.sql": {
+      "sha256": "94fa71b55fc44f72dc1a9f6ce86d63ba3aea335ad8b1d3c83ee9fb56735c620f",
+      "status": "A",
+      "rationale": "The exact replay-safe migration and index are already applied and verified on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260808084457_product_registration_v5_operations_controls.sql": {
+      "sha256": "0c37d91339afc543a62ad631818201adaceedec234abfe76f27e692d57cf7bf7",
+      "status": "A",
+      "rationale": "This foundation migration is followed in the same reconciled change set by tenant/RLS hardening. Production finalization verified the hardened schema and revoked public DML before this approval was recorded.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "critical:security:New table 'product_registration_v5_kill_switches' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_kill_switches' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_cache_convergence_runs' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_cache_convergence_runs' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_publication_policies' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_publication_policies' has no RLS policy": 1
+      }
+    },
+    "20260808172425_product_registration_v5_revision_publication_foundation.sql": {
+      "sha256": "17ad8995d791e49dc9f8eb3e56b278a1cb7a276ead032407d4bb4e1bf8d9cb7c",
+      "status": "A",
+      "rationale": "This foundation migration is followed in the same reconciled change set by tenant/RLS hardening. Production finalization verified the hardened schema, indexes, and revoked public DML before this approval was recorded.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2,
+        "critical:security:New table 'product_registration_v5_segments' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_segments' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_revisions' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_revisions' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_claims' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_claims' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_claim_evidence' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_claim_evidence' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_proof_runs' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_proof_runs' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_publication_pointers' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_publication_pointers' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_publication_outbox' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_publication_outbox' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_job_stage_runs' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_job_stage_runs' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_idempotency_ledger' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_idempotency_ledger' has no RLS policy": 1
+      }
+    },
+    "20260808175000_product_registration_v5_typed_projections.sql": {
+      "sha256": "ebb73e0eb1f6e4aa8d4e1956518a555bc770beb5103724de05c70a7652323637",
+      "status": "A",
+      "rationale": "This typed-projection foundation is followed in the same reconciled change set by tenant/RLS hardening. Production finalization verified the hardened schema and revoked public DML before approval.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "critical:security:New table 'product_registration_v5_price_rules' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_price_rules' has no RLS policy": 1,
+        "critical:security:New table 'product_registration_v5_itinerary_items' is missing ENABLE ROW LEVEL SECURITY": 1,
+        "high:security:New table 'product_registration_v5_itinerary_items' has no RLS policy": 1
+      }
+    },
+    "20260809090000_product_registration_v5_fk_indexes.sql": {
+      "sha256": "7daafe78e91d25603a02aee90b9710fca047c7966c6785dc52ad2d2b20918ca8",
+      "status": "A",
+      "rationale": "These exact replay-safe foreign-key indexes are already applied and verified on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 12
+      }
+    },
+    "20260809091000_product_registration_v5_proof_snapshot_fk_index.sql": {
+      "sha256": "fa29c77c7ed4bbf84fdda68b3df148bb6a01b0ad6336fc0ced0d42c49678b82d",
+      "status": "A",
+      "rationale": "The exact replay-safe proof/snapshot index is already applied and verified on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260810100000_product_registration_v5_package_bound_revision.sql": {
+      "sha256": "5d2cdfd2ce5f6070bc888264436ba9358d6bf822b591c920aa36eaf5c0507f49",
+      "status": "A",
+      "rationale": "The exact replay-safe package/revision indexes are already applied and verified on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
+    },
+    "20260811030151_product_registration_v6_automation_core.sql": {
+      "sha256": "5a623465e25c86d524a7e85c1568efb22982e287e4fb322a2ca7ea08b02e187b",
+      "status": "A",
+      "rationale": "The exact automation-core migration and indexes are already applied and verified on production while publication remained frozen. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 15
+      }
+    },
+    "20260811074521_product_registration_authority_convergence.sql": {
+      "sha256": "cf5fd73795e97b3b9f61a3922835642209b6498d540da47488104f696733e7da",
+      "status": "A",
+      "rationale": "The exact convergence migration and indexes are already applied and verified on production while authority remained shadow and publication frozen. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 17
+      }
+    },
+    "20260811112045_product_registration_authority_hardening.sql": {
+      "sha256": "b3423f0afa95cc23f5482333902cf38d11a1454e4a2efdfedf1eac46597f067a",
+      "status": "A",
+      "rationale": "The exact hardening migration and indexes are already applied, and the production finalizer verified tenant constraints, RLS posture, and revoked legacy publication execution before approval.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 3
+      }
+    },
+    "20260811115754_product_registration_tenant_identity_reconciliation.sql": {
+      "sha256": "890aa46b21374b9e191e28c55f647642144ca80139f495921980d83f7985f4de",
+      "status": "A",
+      "rationale": "The tenant foreign key is supported by the existing products tenant index in production; the checker only inspects indexes created inside this reconciliation change set. Production finalization verified zero unvalidated tenant foreign keys.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:foreign-key-index:Foreign key 'products.tenant_id' has no supporting index in the change set": 1
+      }
+    },
+    "20260811120558_b2b_snapshot_tenant_scope.sql": {
+      "sha256": "7d4cbc94fdf907d4a97d0cee9aabe5b338c54a822cb93bdc2933e6b904dc2ae9",
+      "status": "A",
+      "rationale": "The exact tenant-scoped B2B snapshot index is already applied and verified on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260811121526_product_registration_legacy_backfill_ledger.sql": {
+      "sha256": "79498184054e4fa9ae0822381dad9e35f9c4afb9228210dbcec5d71548f25ce6",
+      "status": "A",
+      "rationale": "The exact replay-safe backfill-ledger index is already applied and verified on production while backfill remained disabled. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
     }
   }
 }

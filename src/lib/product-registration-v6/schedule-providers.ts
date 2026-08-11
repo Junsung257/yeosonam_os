@@ -1,4 +1,5 @@
 import { TRANSPORT_SOURCE_WEIGHTS, buildTransportObservationHash, type TransportFactObservation } from './transport-facts';
+import { getSecret, type SecretKey } from '@/lib/secret-registry';
 
 export type ScheduleProviderQuery = {
   tenantId: string | null;
@@ -49,21 +50,21 @@ function property(value: unknown, path: string[]): unknown {
   return current;
 }
 
-function estimatedCost(envName: string): number {
-  const value = Number(process.env[envName] ?? 0);
+function estimatedCost(envName: SecretKey): number {
+  const value = Number(getSecret(envName) ?? 0);
   return Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 export function estimatedIndependentScheduleCostKrw(): number {
-  return (process.env.OAG_SUBSCRIPTION_KEY ? estimatedCost('OAG_COST_KRW_PER_CALL') : 0)
-    + (process.env.CIRIUM_APP_ID && process.env.CIRIUM_APP_KEY ? estimatedCost('CIRIUM_COST_KRW_PER_CALL') : 0);
+  return (getSecret('OAG_SUBSCRIPTION_KEY') ? estimatedCost('OAG_COST_KRW_PER_CALL') : 0)
+    + (getSecret('CIRIUM_APP_ID') && getSecret('CIRIUM_APP_KEY') ? estimatedCost('CIRIUM_COST_KRW_PER_CALL') : 0);
 }
 
 export function estimatedScheduleProviderCostKrw(provider: 'oag' | 'cirium'): number {
   if (provider === 'oag') {
-    return process.env.OAG_SUBSCRIPTION_KEY ? estimatedCost('OAG_COST_KRW_PER_CALL') : 0;
+    return getSecret('OAG_SUBSCRIPTION_KEY') ? estimatedCost('OAG_COST_KRW_PER_CALL') : 0;
   }
-  return process.env.CIRIUM_APP_ID && process.env.CIRIUM_APP_KEY
+  return getSecret('CIRIUM_APP_ID') && getSecret('CIRIUM_APP_KEY')
     ? estimatedCost('CIRIUM_COST_KRW_PER_CALL')
     : 0;
 }
@@ -124,13 +125,13 @@ async function fetchJson(url: URL, headers: Record<string, string>): Promise<unk
 }
 
 export async function fetchOagSchedule(input: ScheduleProviderQuery): Promise<ScheduleProviderResult> {
-  const key = process.env.OAG_SUBSCRIPTION_KEY?.trim();
+  const key = getSecret('OAG_SUBSCRIPTION_KEY');
   if (!key) return { provider: 'oag', status: 'unavailable', observations: [], costKrw: 0, error: 'OAG_SUBSCRIPTION_KEY_MISSING' };
   const split = splitFlightNumber(input.serviceNumber);
   if (!split) return { provider: 'oag', status: 'failed', observations: [], costKrw: 0, error: 'FLIGHT_NUMBER_INVALID' };
   const costKrw = estimatedCost('OAG_COST_KRW_PER_CALL');
   if (costKrw > 2_000) return { provider: 'oag', status: 'failed', observations: [], costKrw: 0, error: 'PROVIDER_COST_LIMIT_EXCEEDED' };
-  const url = new URL(process.env.OAG_FLIGHT_INFO_URL ?? 'https://api.oag.com/flight-instances/');
+  const url = new URL(getSecret('OAG_FLIGHT_INFO_URL') ?? 'https://api.oag.com/flight-instances/');
   url.searchParams.set('CarrierCode', input.carrierCode || split.carrier);
   url.searchParams.set('FlightNumber', split.number.replace(/[^0-9]/g, ''));
   url.searchParams.set('DepartureAirport', input.departureAirport);
@@ -165,15 +166,15 @@ export async function fetchOagSchedule(input: ScheduleProviderQuery): Promise<Sc
 }
 
 export async function fetchCiriumSchedule(input: ScheduleProviderQuery): Promise<ScheduleProviderResult> {
-  const appId = process.env.CIRIUM_APP_ID?.trim();
-  const appKey = process.env.CIRIUM_APP_KEY?.trim();
+  const appId = getSecret('CIRIUM_APP_ID');
+  const appKey = getSecret('CIRIUM_APP_KEY');
   if (!appId || !appKey) return { provider: 'cirium', status: 'unavailable', observations: [], costKrw: 0, error: 'CIRIUM_CREDENTIALS_MISSING' };
   const split = splitFlightNumber(input.serviceNumber);
   if (!split) return { provider: 'cirium', status: 'failed', observations: [], costKrw: 0, error: 'FLIGHT_NUMBER_INVALID' };
   const costKrw = estimatedCost('CIRIUM_COST_KRW_PER_CALL');
   if (costKrw > 2_000) return { provider: 'cirium', status: 'failed', observations: [], costKrw: 0, error: 'PROVIDER_COST_LIMIT_EXCEEDED' };
   const [year, month, day] = input.departureDate.split('-');
-  const base = (process.env.CIRIUM_SCHEDULES_URL ?? 'https://api.flightstats.com/flex/schedules/rest/v1/json/flight').replace(/\/$/, '');
+  const base = (getSecret('CIRIUM_SCHEDULES_URL') ?? 'https://api.flightstats.com/flex/schedules/rest/v1/json/flight').replace(/\/$/, '');
   const url = new URL(`${base}/${split.carrier}/${split.number}/${year}/${month}/${day}`);
   url.searchParams.set('appId', appId);
   url.searchParams.set('appKey', appKey);

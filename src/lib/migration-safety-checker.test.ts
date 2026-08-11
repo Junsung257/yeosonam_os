@@ -109,6 +109,31 @@ describe('migration safety checker', () => {
       .toHaveLength(1);
   });
 
+  it('accepts compact approvals only when every issue count matches exactly', () => {
+    const content = [
+      'CREATE INDEX idx_runtime_rows ON public.runtime_rows(id);',
+      'CREATE INDEX idx_runtime_rows_slug ON public.runtime_rows(slug);',
+      '',
+    ].join('\n');
+    const change = { status: 'A', path: 'supabase/migrations/20260101000000_indexes.sql', content, oldContent: null };
+    const raw = checker.analyzeChangeSet([change]);
+    const issueKey = 'high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY';
+    const hash = createRequire(import.meta.url)('node:crypto').createHash('sha256').update(content).digest('hex');
+    const approval = {
+      sha256: hash,
+      status: 'A',
+      rationale: 'verified fixture',
+      evidence: 'test',
+      approvedIssueCounts: { [issueKey]: 2 },
+    };
+
+    expect(checker.analyzeChangeSet([change], { approvals: { '20260101000000_indexes.sql': approval } }).files)
+      .toHaveLength(0);
+    expect(checker.analyzeChangeSet([change], {
+      approvals: { '20260101000000_indexes.sql': { ...approval, approvedIssueCounts: { [issueKey]: 1 } } },
+    }).files).toHaveLength(1);
+  });
+
   it('collects the complete merge range including A/M/D/R and blocks history rewrites', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'migration-safety-'));
     temporaryDirectories.push(cwd);

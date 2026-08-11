@@ -1,5 +1,7 @@
 import { google } from 'googleapis';
 
+import { getSecret, type SecretKey } from '@/lib/secret-registry';
+
 export type OcrLayoutNode = {
   text: string;
   confidence?: number | null;
@@ -50,8 +52,8 @@ function mimeFormat(filename: string, mime: string): string {
   return 'jpg';
 }
 
-function cost(name: string): number {
-  const parsed = Number(process.env[name] ?? 0);
+function cost(name: SecretKey): number {
+  const parsed = Number(getSecret(name) ?? 0);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
@@ -72,8 +74,8 @@ export async function runClovaOcr(input: {
   filename: string;
   mime: string;
 }): Promise<OcrProviderOutput> {
-  const endpoint = process.env.CLOVA_OCR_APIGW_URL?.trim();
-  const secret = process.env.CLOVA_OCR_SECRET?.trim();
+  const endpoint = getSecret('CLOVA_OCR_APIGW_URL');
+  const secret = getSecret('CLOVA_OCR_SECRET');
   if (!endpoint || !secret) throw new Error('CLOVA_OCR_CREDENTIALS_MISSING');
   const costKrw = cost('CLOVA_OCR_COST_KRW_PER_CALL');
   if (costKrw > 2_000) throw new Error('PROVIDER_COST_LIMIT_EXCEEDED');
@@ -142,10 +144,10 @@ export async function runGoogleDocumentAi(input: {
   buffer: Buffer;
   mime: string;
 }): Promise<OcrProviderOutput> {
-  const project = process.env.GOOGLE_DOCUMENT_AI_PROJECT_ID?.trim();
-  const location = process.env.GOOGLE_DOCUMENT_AI_LOCATION?.trim() || 'us';
-  const processor = process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID?.trim();
-  const credentialsRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+  const project = getSecret('GOOGLE_DOCUMENT_AI_PROJECT_ID');
+  const location = getSecret('GOOGLE_DOCUMENT_AI_LOCATION') || 'us';
+  const processor = getSecret('GOOGLE_DOCUMENT_AI_PROCESSOR_ID');
+  const credentialsRaw = getSecret('GOOGLE_SERVICE_ACCOUNT_JSON');
   if (!project || !processor || !credentialsRaw) throw new Error('GOOGLE_DOCUMENT_AI_CREDENTIALS_MISSING');
   const costKrw = cost('GOOGLE_DOCUMENT_AI_COST_KRW_PER_CALL');
   if (costKrw > 2_000) throw new Error('PROVIDER_COST_LIMIT_EXCEEDED');
@@ -219,7 +221,9 @@ export async function extractOcrWithCrossValidation(input: {
   filename: string;
   mime: string;
 }): Promise<CrossValidatedOcrOutput> {
-  if (process.env.PRODUCT_REGISTRATION_V6_OCR_ENABLED !== '1') {
+  const ocrEnabled = getSecret('PRODUCT_REGISTRATION_V6_OCR_ENABLED')
+    ?? getSecret('PRODUCT_REGISTRATION_V4_OCR_ENABLED');
+  if (ocrEnabled !== '1') {
     throw new Error('OCR_PROFILE_DISABLED:PRODUCT_REGISTRATION_V6_OCR_ENABLED is not enabled');
   }
   const estimatedTotal = cost('CLOVA_OCR_COST_KRW_PER_CALL') + cost('GOOGLE_DOCUMENT_AI_COST_KRW_PER_CALL');

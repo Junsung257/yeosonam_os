@@ -318,6 +318,7 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] `AD_FLAG_UP_BID_FACTOR=1.1`
 - [ ] `AD_OFFPEAK_BID_FACTOR=0.85`
 - [ ] `AD_MIN_BID_KRW=70`
+- [ ] `PRODUCT_REGISTRATION_V4_OCR_ENABLED=0` until the OCR provider, cost ceiling, and golden-corpus review are approved
 
 ### Operational input audit
 

@@ -67,16 +67,16 @@ const getHandler = async (_request: NextRequest) => {
     config,
     credentials: {
       proofSecret: Boolean(getSecret('PRODUCT_REGISTRATION_PROOF_SECRET')),
-      browser: Boolean(process.env.PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT?.trim()
-        || process.env.PRODUCT_REGISTRATION_CHROME_EXECUTABLE_PATH?.trim()
-        || process.env.CHROME_EXECUTABLE_PATH?.trim()),
-      oag: Boolean(process.env.OAG_SUBSCRIPTION_KEY?.trim()),
-      cirium: Boolean(process.env.CIRIUM_APP_ID?.trim() && process.env.CIRIUM_APP_KEY?.trim()),
-      clova: Boolean(process.env.CLOVA_OCR_APIGW_URL?.trim() && process.env.CLOVA_OCR_SECRET?.trim()),
-      googleDocumentAi: Boolean(process.env.GOOGLE_DOCUMENT_AI_PROJECT_ID?.trim()
-        && process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID?.trim()
+      browser: Boolean(getSecret('PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT')
+        || getSecret('PRODUCT_REGISTRATION_CHROME_EXECUTABLE_PATH')
+        || getSecret('CHROME_EXECUTABLE_PATH')),
+      oag: Boolean(getSecret('OAG_SUBSCRIPTION_KEY')),
+      cirium: Boolean(getSecret('CIRIUM_APP_ID') && getSecret('CIRIUM_APP_KEY')),
+      clova: Boolean(getSecret('CLOVA_OCR_APIGW_URL') && getSecret('CLOVA_OCR_SECRET')),
+      googleDocumentAi: Boolean(getSecret('GOOGLE_DOCUMENT_AI_PROJECT_ID')
+        && getSecret('GOOGLE_DOCUMENT_AI_PROCESSOR_ID')
         && getSecret('GOOGLE_SERVICE_ACCOUNT_JSON')),
-      ocrEnabled: process.env.PRODUCT_REGISTRATION_V6_OCR_ENABLED === '1',
+      ocrEnabled: getSecret('PRODUCT_REGISTRATION_V6_OCR_ENABLED') === '1',
     },
     database,
   });

@@ -66,6 +66,7 @@ jobs:
       AD_FLAG_UP_BID_FACTOR: ${{ vars.AD_FLAG_UP_BID_FACTOR }}
       AD_OFFPEAK_BID_FACTOR: ${{ vars.AD_OFFPEAK_BID_FACTOR }}
       AD_MIN_BID_KRW: ${{ vars.AD_MIN_BID_KRW }}
+      PRODUCT_REGISTRATION_V4_OCR_ENABLED: ${{ vars.PRODUCT_REGISTRATION_V4_OCR_ENABLED || '0' }}
     steps:
       - uses: actions/checkout@v4
 

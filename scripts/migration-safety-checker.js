@@ -218,6 +218,20 @@ function issueKey(issue) {
   return `${issue.severity}:${issue.type}:${issue.description}`;
 }
 
+function issueCounts(issues) {
+  return issues.reduce((counts, issue) => {
+    const key = typeof issue === 'string' ? issue : issueKey(issue);
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function stableIssueCounts(counts) {
+  return Object.fromEntries(Object.entries(counts || {})
+    .filter(([, count]) => Number.isInteger(count) && count > 0)
+    .sort(([left], [right]) => left.localeCompare(right)));
+}
+
 function applyExactApprovals(result, approvals = {}) {
   const approved = [];
   const remainingFiles = [];
@@ -230,10 +244,20 @@ function applyExactApprovals(result, approvals = {}) {
     const approvedIssues = Array.isArray(approval?.approvedIssues)
       ? approval.approvedIssues.map(issueKey).sort()
       : [];
+    const exactIssueSet = Array.isArray(approval?.approvedIssues)
+      ? JSON.stringify(actualIssues) === JSON.stringify(approvedIssues)
+      : approval?.approvedIssueCounts && typeof approval.approvedIssueCounts === 'object'
+        ? JSON.stringify(stableIssueCounts(issueCounts(actualIssues)))
+          === JSON.stringify(stableIssueCounts(approval.approvedIssueCounts))
+        : false;
     const exactMatch = approval
       && approval.status === fileResult.status
       && approval.sha256 === currentHash
-      && JSON.stringify(actualIssues) === JSON.stringify(approvedIssues);
+      && typeof approval.rationale === 'string'
+      && approval.rationale.trim().length > 0
+      && typeof approval.evidence === 'string'
+      && approval.evidence.trim().length > 0
+      && exactIssueSet;
 
     if (exactMatch) {
       approved.push({

@@ -32,13 +32,36 @@ function changedCodeFiles(base) {
     .filter((file) => /\.(ts|tsx|js|jsx)$/i.test(file));
 }
 
-function fileDiff(base, file) {
-  const args = base ? ['diff', `${base}...HEAD`, '--', file] : ['diff', 'HEAD', '--', file];
-  return git(args);
+function codeDiffs(base) {
+  const range = base ? `${base}...HEAD` : 'HEAD';
+  const output = git([
+    'diff', '--no-ext-diff', '--unified=0', range, '--', '*.ts', '*.tsx', '*.js', '*.jsx',
+  ]);
+  const diffs = new Map();
+  let currentFile = null;
+  let currentLines = [];
+
+  function flush() {
+    if (currentFile) diffs.set(currentFile, currentLines.join('\n'));
+  }
+
+  for (const line of output.split(/\r?\n/)) {
+    const header = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+    if (header) {
+      flush();
+      currentFile = header[2];
+      currentLines = [line];
+      continue;
+    }
+    if (currentFile) currentLines.push(line);
+  }
+  flush();
+  return diffs;
 }
 
 const base = baseRef();
 const files = changedCodeFiles(base);
+const diffs = codeDiffs(base);
 const analysis = {
   baseRef: base || null,
   filesChanged: files.length,
@@ -53,7 +76,7 @@ const analysis = {
 };
 
 for (const file of files) {
-  const diff = fileDiff(base, file);
+  const diff = diffs.get(file.replace(/\\/g, '/')) || '';
   const addedLines = diff.split(/\r?\n/).filter((line) => line.startsWith('+') && !line.startsWith('+++'));
   const removedLines = diff.split(/\r?\n/).filter((line) => line.startsWith('-') && !line.startsWith('---'));
   const stats = {

@@ -38,6 +38,7 @@ const operationalKeys = [
   'AD_FLAG_UP_BID_FACTOR',
   'AD_OFFPEAK_BID_FACTOR',
   'AD_MIN_BID_KRW',
+  'PRODUCT_REGISTRATION_V4_OCR_ENABLED',
 ];
 
 function run(command, commandArgs, options = {}) {
