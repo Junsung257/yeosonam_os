@@ -33,6 +33,8 @@ import {
 import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
 import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publication/repository';
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
+import { transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
+import { loadProductRegistrationV4PublicationGate } from '@/lib/product-registration-v4/publication-gate';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
@@ -98,6 +100,26 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
 
   if (action === 'approve') {
     const force = body.force === true;
+    let v4PublicationGate: Awaited<ReturnType<typeof loadProductRegistrationV4PublicationGate>>;
+    try {
+      v4PublicationGate = await loadProductRegistrationV4PublicationGate({
+        supabase: supabaseAdmin,
+        packageId: id,
+      });
+    } catch (error) {
+      console.error('[Approve API] V4 canonical publication gate failed:', error);
+      return NextResponse.json({
+        error: 'V4 canonical publication gate is unavailable. Customer publication is blocked until the lineage check succeeds.',
+        code: 'V4_CANONICAL_GATE_UNAVAILABLE',
+      }, { status: 503 });
+    }
+    if (v4PublicationGate.required && !v4PublicationGate.ok) {
+      return NextResponse.json({
+        error: 'V4 canonical normalization is not complete. Run the V4 worker and retry approval.',
+        code: 'V4_CANONICAL_NORMALIZATION_REQUIRED',
+        v4_canonical_publication: v4PublicationGate,
+      }, { status: 409 });
+    }
     const sourcePriceDateRepair = buildSourceBackedPriceDateRepair(pkg as Parameters<typeof buildSourceBackedPriceDateRepair>[0]);
     const sourceTermsRepair = buildSourceBackedTermsRepair(pkg);
     const sourceFieldRepair = buildSourceBackedFieldRepair(pkg);
@@ -121,6 +143,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       source_price_date_repair: sourcePriceDateRepair,
       source_terms_repair: sourceTermsRepair,
       source_field_repair: sourceFieldRepair,
+      v4_canonical_publication: v4PublicationGate,
     };
     const sourceRepairUpdates: Record<string, unknown> = {};
     const sourceRepairActions: string[] = [];
@@ -547,6 +570,54 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     }
 
     // products ?뚯씠釉붾룄 active濡??숆린??(FK ?곌껐??寃쎌슦)
+    // Close the V4 lifecycle at the same transaction boundary that created
+    // the customer snapshot. This keeps admin approval, the public card, and
+    // the mobile landing page represented by one completed registration job.
+    try {
+      const { data: v4Jobs, error: v4JobsError } = await supabaseAdmin
+        .from('upload_jobs')
+        .select('id, v4_stage_state')
+        .in('v4_stage', ['normalized', 'verified', 'proofed'])
+        .not('source_document_id', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(200);
+      if (v4JobsError) throw v4JobsError;
+      const matchingV4Jobs = (v4Jobs ?? []).filter(job => {
+        const state = job.v4_stage_state && typeof job.v4_stage_state === 'object'
+          ? job.v4_stage_state as Record<string, unknown>
+          : {};
+        const packageIds = Array.isArray(state.packageIds)
+          ? state.packageIds.filter((value): value is string => typeof value === 'string')
+          : [];
+        return state.packageId === id || packageIds.includes(id);
+      });
+      await Promise.all(matchingV4Jobs.map(async job => {
+        const state = job.v4_stage_state && typeof job.v4_stage_state === 'object'
+          ? job.v4_stage_state as Record<string, unknown>
+          : {};
+        await transitionProductRegistrationV4Job({
+          supabase: supabaseAdmin,
+          jobId: String(job.id),
+          stage: 'published',
+          status: 'done',
+          state: {
+            ...state,
+            packageId: id,
+            publicationState: publicSnapshot.publicationState,
+            publicSnapshotHash: publicSnapshot.snapshotHash,
+            publishedAt: new Date().toISOString(),
+          },
+          reviewReasons: [],
+          errorCode: null,
+          errorDetail: null,
+        });
+      }));
+    } catch (error) {
+      // Approval remains the source of truth; a failed lifecycle update is
+      // surfaced as a warning and can be repaired by the retry API.
+      console.warn('[Approve API] V4 published stage sync failed:', error instanceof Error ? error.message : String(error));
+    }
+
     // Final customer-open travel_packages state is written inside publish_package_snapshot_atomic().
     if (pkg.internal_code) {
       const { error: productError } = await supabaseAdmin

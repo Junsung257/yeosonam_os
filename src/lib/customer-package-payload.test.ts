@@ -185,7 +185,8 @@ describe('customer package client payload', () => {
     const detailSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
 
     expect(detailSource).toContain('_canonical_view?: CanonicalView | null');
-    expect(detailSource).toContain('return pkg._canonical_view ?? renderPackage');
+    expect(detailSource).toContain('const canonicalView = pkg._canonical_view ?? renderPackage');
+    expect(detailSource).toContain('surchargesMerged: resolveSurchargesAndExcludes');
   });
 
   it('passes package detail duration and hero render facts through the customer boundary', () => {

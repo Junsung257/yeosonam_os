@@ -1,6 +1,12 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-07-13
+Last updated: 2026-08-07
+
+## V4 실행 기준 (2026-08-06)
+
+상품등록은 `docs/product-registration-engine-v4-plan.md`의 V4 엔진을 기준으로 확장한다. 업로드 원문은 `product_source_documents`의 비공개 Storage에 먼저 보존하고, `upload_jobs`의 lease 가능한 단계 머신으로 추출·정규화·검수·고객 proof를 이어간다. HWP/HWPX는 구조 보존 `DocumentIR`로 변환하며, parser 버전·추출 hash·evidence를 저장한다.
+
+고객 발행은 `/packages`와 `/lp`가 같은 public snapshot을 사용해야 하며, 카드/랜딩의 상품 ID·제목·목적지·가격·기간·대표 이미지가 다르면 publish gate가 차단한다. V4는 자동 저장과 자동 추출을 제공하지만, source evidence·customer-open contract·실제 모바일 proof가 없는 상품을 고객 공개 상태로 승격하지 않는다.
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -73,6 +79,21 @@ upload route
 ```
 
 `src/app/api/upload/route.ts` is an HTTP adapter only. It must not contain supplier-specific regexes, price table rescue logic, destination rescue logic, itinerary normalization, or persistence decisions.
+
+### V5 canonical entity-master requirement (2026-08-10)
+
+The canonical worker must load the active attraction master before running V3/V5 matching and pass the same snapshot to every product section. An empty attraction array is not a valid fallback: it converts ordinary source-backed attraction lines into false unmatched blockers. If the master cannot be loaded, the job must fail closed with `ATTRACTION_MASTER_UNAVAILABLE`/`ATTRACTION_MASTER_EMPTY`, retain the source evidence, and create a review task. Matching may only resolve existing SSOT records; it must not auto-create attraction rows.
+
+The attraction snapshot version/hash belongs in normalization lineage so that a master update creates a reproducible new revision instead of silently changing an old one.
+
+### V5 strict readiness and price safety (2026-08-10)
+
+- A normalization is `complete` only when every section is `ready_to_publish` and every completeness field is `confirmed` or `not_applicable`. A V3 `needs_review` result must never be promoted merely because it has no critical failure.
+- Comma-formatted million prices are parsed as one token (`1,299,000` → `1_299_000`). Suffix matches (`299,000`) are invalid, and itinerary elevations, foreign-currency options, and local fees must not become base prices.
+- When deterministic price IR yields a dated or ranged calendar, it is authoritative for the V3 ledger; the free-form line scanner is a guarded fallback for explicitly labelled single prices.
+- V5 typed price projections preserve `specific_departure`, `date_range`, `weekday`, and `always` scopes without guessing a missing year.
+- Price freshness and price integrity are separate gates: C14 blocks all-expired departure dates, while C12 still compares every source-backed row (including historical rows) against the DB so a stale product cannot hide a price mismatch behind `skip`.
+- The admin upload queue surfaces V5 completeness counts (`confirmed`, `pending_supplier`, `conflicting`, `unavailable`, and publish-ready sections) beside the shadow status; “registered” is not presented as “customer-openable”.
 
 ### Customer Open Operational Gate
 
@@ -780,8 +801,49 @@ Non-public readiness warnings must name the real hold state. `needs_human_source
 
 When a live data sweep finds customer-invisible rows that fail mobile/A4 readiness, `npx tsx scripts/audit-product-mobile-landing-readiness.mjs --days=3650 --limit=2000 --json --archive-failed-nonpublic` may be used to quarantine those rows as `archived` with `audit_status=blocked` and an `audit_report`. This does not delete source data and must not be used to bypass the public V3 gate; public failures use `--demote-unsafe-public` instead.
 
+## 2026-08-06 V4 하드닝 계약
+
+V4는 원문 저장 뒤 파서 직전에 SHA-256과 파일 매직 바이트를 재검증한다. 불일치 원문은 `quarantined`로 닫고 고객 표면으로 진행하지 않는다. `DocumentIR` 구조 검증, 구형 `/api/upload`의 원문 보관 강제, 파이프라인 예외의 `failed` 종료, bounded retry(최대 5회), 승인 후 `published/done` lifecycle 동기화를 포함한다.
+
 ## Agent/Harness Setup
 
 General AI harness and documentation automation rules live in `docs/ai-agent-doc-automation.md`.
 
 This product-registration SSOT only records product-registration behavior. If a generic AI/prompt/eval/memory rule is needed, update `docs/ai-agent-doc-automation.md` instead of duplicating it here.
+
+## 2026-08-07 V4 canonical normalization and OCR status
+
+- Canonical normalization is now persisted append-only in `product_registration_v4_normalizations`, keyed by source document, extraction, normalization version, and raw-text hash. The record contains deterministic itinerary sections, the V3 customer payload, source evidence references, quality diagnostics, and the gate status.
+- The V4 cron runs the extraction worker and then the canonical segmentation/normalization worker. Extraction completion queues the job at `extracted`; normalization claims it at `segmented` and advances it to `normalized` or `needs_review`/`failed`.
+- The extraction worker is race-safe with the compatibility registration path: once a job has reached a later stage, a late extraction can only attach its extraction lineage and cannot rewind the customer/public lifecycle.
+- Image OCR is supported only through the explicit `PRODUCT_REGISTRATION_V4_OCR_ENABLED=1` profile. The default is disabled; disabled or too-short OCR is fail-closed to `needs_review`, with no automatic customer publication.
+- The canonical snapshot is production-auditable, but the existing package/public-snapshot writer remains the compatibility persistence adapter until a separate rollout gate switches final writes to the V4 canonical payload.
+- V4 lineage packages are now blocked at admin approval unless their job has a complete canonical normalization pointer (`v4_canonical_normalization_id`) whose source/job/extraction lineage matches. The existing writer still formats the final public snapshot, but it can no longer publish a V4 package before the canonical snapshot gate passes.
+- The same gate is enforced inside the central public-snapshot writer and customer readers. Direct `/packages`/`/lp` fetches, list projections, catalog siblings, sitemap candidates, affiliate cards, and affiliate OG details fail closed when a V4 lineage job is incomplete or its canonical sections are empty. A compatibility/legacy package with no V4 lineage keeps the existing contract.
+- Post-registration proof cannot advance a V4 job to `published/done` until the canonical pointer exists. If proof finishes first, the job remains `normalized/processing` so the cron can backfill canonical normalization; approval lifecycle sync accepts `normalized`, `verified`, and `proofed` jobs after the gate passes.
+
+## 2026-08-08 V5 immutable revision shadow foundation
+
+- V5 shadow schema adds immutable `product_registration_v5_revisions` and `product_registration_v5_segments`, with source/extraction/normalization lineage hashes. A correction is represented by a new revision; existing rows are rejected on update/delete.
+- `product_registration_v5_claims` and `product_registration_v5_claim_evidence` keep critical field paths linked to private source nodes. Missing or conflicting evidence remains a publication blocker; no LLM output is promoted by this migration.
+- `product_registration_v5_proof_runs`, `product_registration_v5_publication_pointers`, `product_registration_v5_publication_outbox`, `product_registration_v5_job_stage_runs`, and `product_registration_v5_idempotency_ledger` establish the proof-bound publication and effectively-once foundation. Existing public snapshot/RPC writes remain the compatibility path until dual-write diff and CAS publication are verified.
+- `product_registration_v5_price_rules` and `product_registration_v5_itinerary_items` are append-only typed projections for dated prices, optional charges, ordered days, transport, attractions, meals, lodging, and other source-backed events. They are derived from the revision and never edited as independent truth.
+- `publish_product_registration_v5_snapshot_atomic` is the narrow CAS publication contract. It requires matching revision/snapshot/proof lineage, a passed proof, an expected pointer version, and an idempotency key before it changes the pointer and enqueues surface invalidation.
+- Publication pointers also have a database-level positive allow-list guard: `candidate`, `needs_review`, `blocked`, and `superseded` revisions cannot become current even if a future caller omits an application-level status check.
+- `product_registration_v5_kill_switches`, `product_registration_v5_cache_convergence_runs`, and `product_registration_v5_publication_policies` provide product/supplier/parser/global fail-closed controls, per-surface cache convergence tracking, and versioned publication policy. They are operational controls only; enabling automatic publication still requires the canary gates below.
+- After migration apply, run `npm run verify:product-registration-v5:strict` to confirm every V5 table, critical column set, and CAS RPC lineage guard are reachable through the service-role path. The check intentionally fails when Supabase admin credentials are unavailable; it never treats a missing database as a successful rollout.
+- The canonical worker uses the V4 job's `packageIds` state to attach one revision per package when section/package counts match; otherwise it keeps one document-level revision without guessing package identity. This prevents a multi-product source from silently binding the wrong package.
+- `scripts/prove-hwp-mobile-render.ts` records one immutable V5 proof run per `/packages` and `/lp` surface only when the tested snapshot already points to a V5 canonical revision. Legacy/V4 snapshots continue using the existing audit report until the V5 snapshot writer is enabled.
+- In shadow mode, a successfully published compatibility snapshot is best-effort linked only through the package's explicit `canonical_revision_id` pointer. This enables real proof-run validation without guessing across multiple uploads; the link is skipped when the pointer is missing or review-blocked, and is not authoritative publication.
+- `/api/admin/product-registration/v5/publish` is the controlled canary entrypoint. It defaults to dry-run, requires an enabled publication policy plus exact revision/snapshot/proof/pointer-version lineage, and only calls the CAS RPC when `PRODUCT_REGISTRATION_V5_AUTHORITATIVE=1`; the normal approval route is unchanged.
+- `/api/cron/product-registration-v5-outbox` claims pointer-commit outbox events with a lease, revalidates customer routes, and records each `/packages`, `/lp`, OG, and affiliate surface as `pending` convergence work. It never marks a surface `converged` without a later observation/proof.
+- `/api/cron/product-registration-v5-convergence` performs the later observation with a cache-busting, no-store request. `/packages` and `/lp` expose the immutable snapshot hash only as a technical `<meta>` marker, while the OG route returns the same marker as a response header. The observer records `converged`, `stale`, or `failed`; missing/mismatched markers fail closed and never alter customer copy.
+- `GET /api/admin/product-registration/v5/audit` is a read-only service-role audit surface for convergence, outbox, publication-pointer, and revision status. It returns explicit blockers such as pending/stale/failed surfaces, dead-letter events, non-public pointers, and non-publishable revisions; it never exposes source blobs or raw document text.
+- The remote Supabase project has now applied the V5 foundation, CAS publication, typed projections, fail-closed revision guard, and foreign-key index migrations. A live read-only audit verified 14/14 V5 tables with RLS enabled, the publication RPC, and the proof-snapshot FK index. One real operational HWP shadow sample now exists as a candidate revision, blocked snapshot, and two passed mobile proofs; no pointer or outbox event was created and no customer publication was attempted.
+- `PRODUCT_REGISTRATION_V5_SHADOW=1` enables shadow revision persistence from the canonical worker. The default is off so the current V4/V3 customer behavior remains unchanged during rollout.
+
+## 2026-08-10 V5 customer-open canary completion
+
+The first real HWP sample completed the authoritative V5 path: source/job/extraction/normalization lineage, package-bound immutable revision, claims/evidence, typed price and itinerary projections, public snapshot, browser proof, CAS pointer, outbox delivery, and surface convergence. The current customer pointer is the only health authority; immutable convergence rows for superseded snapshots remain audit history and do not block the current pointer.
+
+The verified sample has one `approved` revision, one `published` customer pointer, and four current converged surfaces (`/packages`, `/lp`, OG, affiliate). Direct mobile browser checks without an internal proof header returned HTTP 200 with the same snapshot marker and customer CTA. New uploads remain fail-closed until they independently satisfy this same contract; “registered” is never treated as “customer-openable”.

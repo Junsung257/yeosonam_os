@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { NoticeBlock } from '@/lib/standard-terms-client';
-import { getSourceBadgeColor } from '@/lib/standard-terms-client';
+import { getSourceBadgeColor, sanitizeNoticeForCustomerSurface } from '@/lib/standard-terms-client';
 import {
   groupNoticesForPresentation,
   splitNoticeLines,
@@ -72,7 +72,13 @@ export default function PackageTermsBottomSheet({
   hasSpecialTerms = false,
   productTitle,
 }: Props) {
-  const groups = useMemo(() => groupNoticesForPresentation(notices), [notices]);
+  const groups = useMemo(
+    () => groupNoticesForPresentation(notices.flatMap(notice => {
+      const sanitized = sanitizeNoticeForCustomerSurface(notice);
+      return sanitized ? [sanitized] : [];
+    })),
+    [notices],
+  );
 
   useEffect(() => {
     if (!open) return;

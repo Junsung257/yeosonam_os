@@ -12,6 +12,7 @@ import {
   renderPackage, getAirlineName,
   parseCityFromActivity, parseFlightActivity, formatFlightLabel,
   type CanonicalView,
+  resolveSurchargesAndExcludes,
 } from '@/lib/render-contract';
 import PackageTermsSection from '@/components/package/PackageTermsSection';
 import PackageTermsBottomSheet from '@/components/customer/PackageTermsBottomSheet';
@@ -876,7 +877,20 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const view: CanonicalView | null = useMemo(
     () => {
       if (!pkg) return null;
-      return pkg._canonical_view ?? renderPackage(pkg as Parameters<typeof renderPackage>[0]);
+      const canonicalView = pkg._canonical_view ?? renderPackage(pkg as Parameters<typeof renderPackage>[0]);
+      if (!pkg._canonical_view) return canonicalView;
+
+      // Published V5 snapshots may contain a legacy surcharge object shape
+      // (`note`/`amount_krw`). Rebuild only this derived section so the
+      // immutable snapshot's source-backed surcharge text is never reduced to
+      // the generic “추가요금” label on the customer detail page.
+      return {
+        ...canonicalView,
+        surchargesMerged: resolveSurchargesAndExcludes({
+          surcharges: pkg.surcharges,
+          excludes: pkg.excludes,
+        }).merged,
+      };
     },
     [pkg],
   );
@@ -978,6 +992,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       .slice(0, 5)
       .map(u => ({ src_large: u, src_medium: u, photographer: '', pexels_id: 0 }));
   }, [attractions, pkg]);
+  // A catalog/destination photo is useful as a visual placeholder, but it is
+  // not evidence that the exact hotel, course, or activity appears in the
+  // uploaded source document. Make that distinction explicit to customers.
+  const heroSourceUrl = pkg?.lp_hero_image_url?.trim() ?? '';
+  const heroIsReferenceImage = !isSafeImageSrc(heroSourceUrl)
+    || /(?:pexels\.com|unsplash\.com|images\.unsplash\.com)/i.test(heroSourceUrl);
   const [heroSlide, setHeroSlide] = useState(0);
   const heroTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startHeroTimer = useCallback(() => {
@@ -994,6 +1014,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const productTypeLabel = formatProductTypeLabel(pkg.product_type);
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
+  // Climate and packing guidance must follow the chosen departure month, not
+  // the product-wide mode month when a customer selects a specific date.
+  const customerClimateMonth = selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)
+    ? Number(selectedDate.slice(5, 7))
+    : representativeMonth;
   // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
   // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
@@ -1195,7 +1220,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 <Image
                   key={idx}
                   src={src.trim()}
-                  alt={pkg.destination || ''}
+                  alt={`${pkg.destination || '여행'}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
                   fill
                   className={`object-cover transition-opacity duration-700 ${idx === heroSlide ? 'opacity-100' : 'opacity-0'}`}
                   sizes="100vw"
@@ -1207,7 +1232,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           ) : heroUrl && !heroImgBroken ? (
             <Image
               src={heroUrl}
-              alt={pkg.destination || ''}
+              alt={`${pkg.destination || '여행'}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
               fill
               className="object-cover"
               sizes="100vw"
@@ -1219,6 +1244,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/10" />
+        {heroIsReferenceImage && heroPhotos.length > 0 && (
+          <span className="absolute top-24 right-4 z-10 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-sm">
+            참고 이미지
+          </span>
+        )}
 
         {/* 상단 네비 */}
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-12">
@@ -1531,7 +1561,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           monthlyNormals={climateData.monthly_normals as MonthlyNormal[]}
           fitnessScores={climateData.fitness_scores as FitnessScore[]}
           seasonalSignals={(climateData.seasonal_signals as SeasonalSignal[]) ?? null}
-          representativeMonth={representativeMonth}
+          representativeMonth={customerClimateMonth}
           departureDistribution={departureDistribution}
         />
       )}
@@ -1811,7 +1841,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 포함/불포함/써차지/쇼핑 — CRC + terms-catalog ═══ */}
       {view && (
         <div ref={termsSectionRef}>
-          <PackageTermsSection view={view} />
+          <PackageTermsSection
+            view={view}
+            notices={initialNotices}
+            extraNotes={Array.isArray(pkg.itinerary_data) ? [] : (pkg.itinerary_data?.highlights?.remarks ?? [])}
+          />
         </div>
       )}
 
@@ -2338,7 +2372,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 짐 꾸리기 팁 (유의사항 위, 토글 접힘 기본) ═══ */}
       {climateData && Array.isArray(climateData.monthly_normals) && (() => {
         const norms = climateData.monthly_normals as MonthlyNormal[];
-        const repNorm = norms.find(n => n.month === representativeMonth);
+        const repNorm = norms.find(n => n.month === customerClimateMonth);
         if (!repNorm) return null;
         return (
           <PackingTipsCard
@@ -2346,7 +2380,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             country={climateData.country}
             lat={Number(climateData.lat)}
             durationDays={pkg.duration ?? 5}
-            monthLabel={`${representativeMonth}월`}
+            monthLabel={`${customerClimateMonth}월`}
             cityLabel={climateData.primary_city || climateData.destination}
           />
         );
@@ -2356,6 +2390,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <PackageFAQ
         destination={pkg.destination ?? ''}
         productType={pkg.product_type ?? null}
+        minParticipants={pkg.min_participants ?? pkg.min_people ?? null}
+        inclusions={pkg.inclusions ?? null}
+        notices={pkg.notices_parsed ?? null}
         kakaoChannel={() => openKakaoChannel({
           internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
           productTitle: displayCopy.cardTitle,

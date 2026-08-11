@@ -257,18 +257,8 @@ export function evaluateCustomerMobileProof(input: {
       };
     }
   }
-  const packageUpdatedAt = input.packageUpdatedAt?.trim();
-  if (packageUpdatedAt && proof.package_updated_at && proof.package_updated_at !== packageUpdatedAt) {
-    if (isAuditOnlyProofStaleness({ auditReport: input.auditReport, packageUpdatedAt, proof })) {
-      return { ok: true, reason: 'actual /packages and /lp mobile browser proof passed', proof };
-    }
-    return {
-      ok: false,
-      reason: 'actual /packages mobile browser proof is stale for the current saved package row',
-      proof,
-    };
-  }
   const expectedRevision = input.packageRevision == null ? null : String(input.packageRevision);
+  let revisionMatches = false;
   if (expectedRevision) {
     if (proof.package_revision == null) {
       return {
@@ -277,13 +267,28 @@ export function evaluateCustomerMobileProof(input: {
         proof,
       };
     }
-    if (String(proof.package_revision) !== expectedRevision) {
+    revisionMatches = String(proof.package_revision) === expectedRevision;
+    if (!revisionMatches) {
       return {
         ok: false,
         reason: 'actual customer mobile browser proof is stale for the current package revision',
         proof,
       };
     }
+  }
+  const packageUpdatedAt = input.packageUpdatedAt?.trim();
+  // package_revision is the content revision. Audit-only writes (verify,
+  // scorecard, proof metadata) may legitimately advance updated_at without
+  // changing the customer payload, so a matching revision is authoritative.
+  if (!revisionMatches && packageUpdatedAt && proof.package_updated_at && proof.package_updated_at !== packageUpdatedAt) {
+    if (isAuditOnlyProofStaleness({ auditReport: input.auditReport, packageUpdatedAt, proof })) {
+      return { ok: true, reason: 'actual /packages and /lp mobile browser proof passed', proof };
+    }
+    return {
+      ok: false,
+      reason: 'actual /packages mobile browser proof is stale for the current saved package row',
+      proof,
+    };
   }
   const expectedSnapshotHash = input.publicSnapshotHash?.trim();
   if (expectedSnapshotHash) {

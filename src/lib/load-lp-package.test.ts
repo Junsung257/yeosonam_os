@@ -51,6 +51,49 @@ vi.mock('@/lib/supabase', () => ({
         return query;
       }
 
+      if (table === 'product_registration_drafts') {
+        const query = {
+          select() {
+            return query;
+          },
+          eq() {
+            return query;
+          },
+          not() {
+            return query;
+          },
+          order() {
+            return query;
+          },
+          limit() {
+            return query;
+          },
+          async maybeSingle() {
+            return { data: null, error: null };
+          },
+        };
+        return query;
+      }
+
+      if (table === 'upload_jobs') {
+        const query = {
+          select() {
+            return query;
+          },
+          in() {
+            return query;
+          },
+          not() {
+            return query;
+          },
+          order() {
+            return query;
+          },
+          limit: async () => ({ data: [], error: null }),
+        };
+        return query;
+      }
+
       if (table === 'public_package_snapshots') {
         const query = {
           select() {

@@ -38,6 +38,12 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-10 | `2026-08-10-product-registration-v5-shadow-corpus.md` | 40개 HWP 원문을 고객 비노출 격리 상태에서 V5 정규화·근거·가격·일정·고객 화면 계약까지 전수 검증한 결과. |
+| 2026-08-10 | `2026-08-10-product-registration-live-readiness.md` | Chrome·Vercel·Supabase·고객 `/packages`·`/lp` 실시간 점검과 V5 production open blockers. |
+| 2026-08-10 | `2026-08-10-product-registration-live-shadow.md` | 운영 Supabase shadow 1건의 source→V5 revision→blocked snapshot→동일 hash 모바일 `/packages`·`/lp` proof 결과. |
+| 2026-08-10 | `2026-08-10-product-registration-v5-final-open.md` | package-bound V5 revision, CAS publication, 4면 convergence, 헤더 없는 모바일 고객 URL 최종 공개 검증. |
+| 2026-08-10 | `2026-08-10-product-registration-live-recheck.md` | Final production browser journey recheck: catalog discovery, detail, mobile LP, inquiry sheets, snapshot parity, and surcharge-copy repair. |
+| 2026-08-10 | `2026-08-10-product-registration-v5-implementation-recheck.md` | Final implementation verification: full tests, type/lint/build, production V5 schema, customer-open gate, live 100-sample decision, and ready preview deployment. |
 | 2026-07-06 | `2026-07-06-mobile-landing-copy-audit-smoke/` | Mobile landing copy audit smoke output for shared customer-facing package title/summary logic. |
 | 2026-06-24 | `2026-06-24-upload-function-timeout-queue-first.md` | Queue-first upload timeout prevention and replay-source preservation evidence. |
 | 2026-06-08 | `2026-06-08-product-registration-learning-engine-audit.md` | Self-improving registration engine verification and live readiness evidence. |

@@ -246,6 +246,41 @@ describe('buildSourceBackedPriceDateRepair', () => {
     expect(JSON.stringify(result.excludedPriceCandidates ?? [])).not.toContain('25000');
   });
 
+  it('keeps cross-year supplier price windows in the source calendar year', () => {
+    const rawText = [
+      '후쿠오카 골프 패키지',
+      '행사 날짜',
+      '2026년 08월 ~ 2027년 03월',
+      '8/8~8/31',
+      '월/화/수',
+      '1,229,000',
+      '목',
+      '1,399,000',
+      '3/1~3/16',
+      '월/화/수',
+      '1,199,000',
+      '목',
+      '1,379,000',
+    ].join('\\n');
+
+    const result = buildSourceBackedPriceDateRepair({
+      title: '후쿠오카 골프 패키지',
+      duration: 3,
+      raw_text: rawText,
+      departure_days: '월,화,수,목',
+      price_dates: [
+        { date: '2027-08-09', price: 1229000, confirmed: false },
+        { date: '2027-03-01', price: 1199000, confirmed: false },
+      ],
+    });
+
+    expect(result.status).toBe('repaired');
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.priceDates.some(row => row.date.startsWith('2026-08-'))).toBe(true);
+    expect(result.priceDates.some(row => row.date.startsWith('2027-03-'))).toBe(true);
+    expect(result.priceDates.some(row => row.date.startsWith('2027-08-'))).toBe(false);
+  });
+
   it('selects duplicate same-date transport prices from the structured variant, not raw table order', () => {
     const rows = [
       { date: '2026-09-02', adult_price: 1179000, child_price: null, status: 'available' },

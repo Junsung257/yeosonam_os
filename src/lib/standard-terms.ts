@@ -161,10 +161,17 @@ function rewriteCustomerFacingB2BTerms(text: string): string {
 }
 
 function sanitizeNoticeForCustomer(notice: NoticeBlock): NoticeBlock {
+  const tier = notice._tier ?? 4;
+  const text = (notice.text ?? '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => tier >= 4 || !/(?:의무 쇼핑센터|랜드사 규정|페널티\s*\(\s*\$?100|\$100\s*~\s*\$150|항공권을 발권|실비 전액|No-Show\s*100%)/i.test(line))
+    .join('\n');
   return {
     ...notice,
     title: rewriteCustomerFacingB2BTerms(notice.title ?? ''),
-    text: rewriteCustomerFacingB2BTerms(notice.text ?? ''),
+    text: rewriteCustomerFacingB2BTerms(text),
   };
 }
 
@@ -249,7 +256,9 @@ export function filterNoticesForSurface(
     filtered = filtered.filter(n => n.type !== 'RESERVATION');
   }
 
-  return filtered.map(sanitizeNoticeForCustomer);
+  return filtered
+    .map(sanitizeNoticeForCustomer)
+    .filter(notice => notice.title.trim().length > 0 || notice.text.trim().length > 0);
 }
 
 // ── 스냅샷: 예약 시점 약관 freeze ────────────────────────────

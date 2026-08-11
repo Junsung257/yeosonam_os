@@ -104,23 +104,33 @@ export async function GET(request: NextRequest) {
     const { data: rawPackages, error: pkgErr } = await query;
     if (pkgErr) throw pkgErr;
 
+    // V5 publishes an immutable, proof-bound snapshot. Resolve that snapshot
+    // before applying the legacy V3 eligibility contract: a package may retain
+    // a historical V3 `audit_report` blocker (for example stale mobile proof)
+    // while its current V5 snapshot is already approved and customer-safe.
+    const projectedV5 = rawPackages?.length
+      ? await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        sb,
+        rawPackages as Array<Record<string, unknown>>,
+      ) as any[]
+      : [];
+    const projectedById = new Map(projectedV5.map((pkg: any) => [String(pkg.id), pkg]));
     const today = new Date().toISOString().slice(0, 10);
-    let aliveRaw = (rawPackages ?? []).filter((p: any) => {
-      if (!isCustomerPubliclyOpenable(p)) return false;
-      const pd = (p.price_dates || []) as Array<{ date?: string }>;
-      if (pd.length === 0) return true;
-      return pd.some(d => d?.date && d.date >= today);
-    });
+    let aliveRaw = (rawPackages ?? [])
+      .map((raw: any) => projectedById.get(String(raw.id)) ?? raw)
+      .filter((p: any) => {
+        const isCurrentV5Projection = projectedById.has(String(p.id));
+        if (!isCurrentV5Projection && !isCustomerPubliclyOpenable(p)) return false;
+        const pd = (p.price_dates || []) as Array<{ date?: string }>;
+        if (pd.length === 0) return true;
+        return pd.some(d => d?.date && d.date >= today);
+      });
 
     if (urgencyOn && hub !== 'all') {
       aliveRaw = aliveRaw.filter((p: any) => hubMatchesDepartureAirport(hub, p.departure_airport));
     }
 
     aliveRaw = aliveRaw.slice(0, 50);
-
-    if (aliveRaw.length > 0) {
-      aliveRaw = await fetchAndMergeCurrentPublicPackageCardSnapshots(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
-    }
 
     const packages = aliveRaw.map((pkg: any) => ({
       ...pkg,

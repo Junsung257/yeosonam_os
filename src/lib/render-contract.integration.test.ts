@@ -154,6 +154,21 @@ describe('resolveSurchargesAndExcludes — 병합 + 분류', () => {
   });
 });
 
+  it('legacy note/amount_krw surcharge objects preserve the source-backed customer line', () => {
+    const r = resolveSurchargesAndExcludes({
+      surcharges: [
+        { note: '2인플레이요금 – 22,000원/인/회', amount_krw: 22000 },
+        { note: '3인송영 추가요금 – 30,000원/인/일', amount_krw: 30000 },
+      ],
+    });
+
+    expect(r.merged.map((item) => item.label)).toEqual([
+      '2인플레이요금 – 22,000원/인/회',
+      '3인송영 추가요금 – 30,000원/인/일',
+    ]);
+    expect(r.merged.every((item) => item.name && item.name !== '추가요금')).toBe(true);
+  });
+
 describe('resolveAirlineHeader', () => {
   it('itinerary_data.meta.flight_out 으로 항공편 정보 채워짐', () => {
     const h = resolveAirlineHeader({
@@ -225,6 +240,56 @@ describe('resolveOptionalTours', () => {
   it('빈 입력 — groups 빈 배열', () => {
     const r = resolveOptionalTours({});
     expect(r.groups).toEqual([]);
+  });
+});
+
+describe('source-backed flight segment alignment', () => {
+  it('keeps header and day-card flight numbers identical', () => {
+    const v = renderPackage({
+      airline: 'BX',
+      destination: '후쿠오카',
+      itinerary_data: {
+        meta: {
+          flight_out: 'BX148',
+          flight_in: 'BX143',
+          airline: 'BX',
+          departure_airport: 'PUS',
+        },
+        flight_segments: [
+          {
+            leg: 'outbound',
+            flight_no: 'BX501',
+            dep_airport: '부산',
+            dep_time: '07:30',
+            arr_airport: '후쿠오카',
+            arr_time: '08:30',
+            arr_day_offset: 0,
+            day_pair: [0, 0],
+          },
+          {
+            leg: 'inbound',
+            flight_no: 'BX516',
+            dep_airport: '후쿠오카',
+            dep_time: '19:55',
+            arr_airport: '부산',
+            arr_time: '21:00',
+            arr_day_offset: 0,
+            day_pair: [2, 2],
+          },
+        ],
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발 → 후쿠오카 도착', transport: 'BX148' }] },
+          { day: 2, schedule: [] },
+          { day: 3, schedule: [{ type: 'flight', activity: '후쿠오카 출발 → 부산 도착', transport: 'BX143' }] },
+        ],
+      },
+    });
+
+    expect(v.airlineHeader.flightNumber).toBe('BX501');
+    expect(v.flightHeader.outbound?.code).toBe('BX501');
+    expect(v.flightHeader.inbound?.code).toBe('BX516');
+    expect(v.days[0]?.schedule[0]?.transport).toBe('BX501');
+    expect(v.days[2]?.schedule[0]?.transport).toBe('BX516');
   });
 });
 

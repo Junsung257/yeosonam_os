@@ -225,6 +225,30 @@ describe('readSupplierDocumentLikeHuman', () => {
     expect(premium.pricePairs.find(row => row.date === '2026-03-06')?.adult_price).toBe(1659000);
   });
 
+  it('keeps only the requested weekday and duration on mixed golf tables', () => {
+    const rawText = [
+      'BX 시즈오카 후지산 품격 다색골프',
+      '7/6~7/29',
+      '월,수 1,079,-',
+      '금(4일) 1,519,-',
+      '7/30~8/31',
+      '월,수 1,179,-',
+      '금(4일) 1,619,-',
+    ].join('\n');
+    const result = readSupplierDocumentLikeHuman({
+      rawText,
+      title: 'BX 시즈오카 후지산 품격 다색골프 3박4일',
+      durationDays: 4,
+      departureDays: '금 출발',
+      year: 2026,
+    });
+
+    expect(result.pricePairs.find(row => row.date === '2026-07-10')?.adult_price).toBe(1519000);
+    expect(result.pricePairs.some(row => row.adult_price === 1079000)).toBe(false);
+    expect(result.pricePairs.find(row => row.date === '2026-07-31')?.adult_price).toBe(1619000);
+    expect(result.pricePairs.some(row => row.adult_price === 1519000 && row.date >= '2026-07-30')).toBe(false);
+  });
+
   it('ignores surcharge dates when building independent product-price evidence', () => {
     const result = readSupplierDocumentLikeHuman({
       rawText: [
@@ -241,5 +265,28 @@ describe('readSupplierDocumentLikeHuman', () => {
     });
 
     expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual(['2026-02-24:619000']);
+  });
+
+  it('recovers a single package price from a Korean month-day departure list', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '출 발 일',
+        '4박 5일',
+        '(화요일)',
+        '9월 5일, 12일, 19일',
+        '849,000원',
+        '일 자',
+        '행 사 일 정',
+      ].join('\n'),
+      title: '장가계 4박5일',
+      durationDays: 5,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual([
+      '2026-09-05:849000',
+      '2026-09-12:849000',
+      '2026-09-19:849000',
+    ]);
   });
 });

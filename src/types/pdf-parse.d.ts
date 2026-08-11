@@ -1,8 +1,13 @@
 declare module 'pdf-parse' {
-  function parse(buffer: Buffer): Promise<{
+  type PdfParseResult = {
     text: string;
-    [key: string]: any;
-  }>;
+    numpages?: number;
+    info?: Record<string, unknown>;
+    metadata?: Record<string, unknown> | null;
+  };
 
-  export default parse;
+  type PdfParse = (buffer: Buffer) => Promise<PdfParseResult>;
+
+  const pdfParse: PdfParse;
+  export default pdfParse;
 }

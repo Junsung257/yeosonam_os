@@ -20,6 +20,24 @@ interface QueueItem {
   status: 'waiting' | 'processing' | 'done' | 'deferred' | 'error';
   dbId?: string;
   dbIds?: string[];
+  sourceDocumentId?: string;
+  registrationJobId?: string;
+  v4Stage?: string;
+  v4Error?: string | null;
+  v5Revision?: {
+    revisionCount: number;
+    status: string | null;
+    revisionNo: number | null;
+    packageId: string | null;
+    payloadHash: string | null;
+    completeness?: {
+      confirmedCount: number;
+      pendingSupplierCount: number;
+      conflictingCount: number;
+      unavailableCount: number;
+      publicReadySectionCount: number;
+    } | null;
+  } | null;
   title?: string;
   confidence?: number;
   landOperator?: string;
@@ -384,11 +402,109 @@ export default function UploadPage() {
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   };
 
+  const archiveV4Source = async (input: { file?: File; rawText?: string; sourceLabel?: string }): Promise<{ sourceDocumentId: string; registrationJobId: string }> => {
+    const sourceBody = input.file
+      ? (() => { const form = new FormData(); form.append('file', input.file!); return { body: form, headers: undefined as Record<string, string> | undefined }; })()
+      : {
+          body: JSON.stringify({ rawText: input.rawText ?? '', sourceLabel: input.sourceLabel ?? 'text-input' }),
+          headers: { 'Content-Type': 'application/json' },
+        };
+    const sourceResponse = await fetchWithSessionRefresh('/api/admin/product-source-documents', {
+      method: 'POST',
+      body: sourceBody.body,
+      ...(sourceBody.headers ? { headers: sourceBody.headers } : {}),
+    });
+    const sourceData = await safeResJson(sourceResponse);
+    if (!sourceResponse.ok || sourceData?.success !== true || typeof sourceData.sourceDocument?.id !== 'string') {
+      throw new Error(uploadFailureMessage(sourceData));
+    }
+    const jobResponse = await fetchWithSessionRefresh('/api/admin/product-registration/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceDocumentId: sourceData.sourceDocument.id, sourceType: input.rawText ? 'text' : 'file' }),
+    });
+    const jobData = await safeResJson(jobResponse);
+    if (!jobResponse.ok || jobData?.success !== true || typeof jobData.job?.id !== 'string') {
+      throw new Error(uploadFailureMessage(jobData));
+    }
+    return { sourceDocumentId: sourceData.sourceDocument.id, registrationJobId: jobData.job.id };
+  };
+
+  const pollV4Job = useCallback((id: string, jobId: string, attempt = 0) => {
+    window.setTimeout(async () => {
+      try {
+        const response = await fetchWithSessionRefresh(`/api/admin/product-registration/jobs/${jobId}`, { cache: 'no-store' });
+        const body = await safeResJson(response);
+        const job = body?.job;
+        if (!response.ok || !job) throw new Error(body?.error || `V4 job HTTP ${response.status}`);
+        const stage = typeof job.v4_stage === 'string' ? job.v4_stage : 'uploaded';
+        const latestV5 = body?.v5?.latestRevision;
+        const completeness = body?.v5?.latestNormalization?.quality_diagnostics?.completeness;
+        setQueue(prev => prev.map(item => item.id === id ? {
+          ...item,
+          v4Stage: stage,
+          v4Error: job.v4_last_error_detail ?? null,
+          v5Revision: latestV5 && typeof latestV5 === 'object'
+            ? {
+                revisionCount: Number(body?.v5?.revisionCount ?? 0),
+                status: typeof latestV5.status === 'string' ? latestV5.status : null,
+                revisionNo: Number.isFinite(Number(latestV5.revision_no)) ? Number(latestV5.revision_no) : null,
+                packageId: typeof latestV5.package_id === 'string' ? latestV5.package_id : null,
+                payloadHash: typeof latestV5.payload_hash === 'string' ? latestV5.payload_hash : null,
+                completeness: completeness && typeof completeness === 'object'
+                  ? {
+                      confirmedCount: Number(completeness.confirmedCount ?? 0),
+                      pendingSupplierCount: Number(completeness.pendingSupplierCount ?? 0),
+                      conflictingCount: Number(completeness.conflictingCount ?? 0),
+                      unavailableCount: Number(completeness.unavailableCount ?? 0),
+                      publicReadySectionCount: Number(completeness.publicReadySectionCount ?? 0),
+                    }
+                  : null,
+              }
+            : null,
+        } : item));
+        if (!['published', 'failed', 'quarantined', 'needs_review'].includes(stage) && attempt < 120) {
+          pollV4Job(id, jobId, attempt + 1);
+        }
+      } catch (error) {
+        if (attempt < 6) pollV4Job(id, jobId, attempt + 1);
+        else setQueue(prev => prev.map(item => item.id === id ? { ...item, v4Error: error instanceof Error ? error.message : String(error) } : item));
+      }
+    }, attempt < 6 ? 2_000 : 5_000);
+  }, []);
+
+  const retryV4Job = useCallback(async (item: QueueItem) => {
+    if (!item.registrationJobId) return;
+    setQueue(prev => prev.map(entry => entry.id === item.id
+      ? { ...entry, status: 'processing', v4Stage: 'uploaded', v4Error: null }
+      : entry));
+    try {
+      const res = await fetchWithSessionRefresh(`/api/admin/product-registration/jobs/${item.registrationJobId}/retry`, {
+        method: 'POST',
+      });
+      const data = await safeResJson(res);
+      if (!res.ok || data?.success === false) throw new Error(data?.error || data?.code || `HTTP ${res.status}`);
+      pollV4Job(item.id, item.registrationJobId);
+    } catch (error) {
+      setQueue(prev => prev.map(entry => entry.id === item.id
+        ? { ...entry, status: 'error', v4Error: error instanceof Error ? error.message : String(error) }
+        : entry));
+    }
+  }, [pollV4Job]);
+
   const uploadSingle = async (file: File): Promise<Partial<QueueItem>> => {
+    const v4Source = await archiveV4Source({ file });
     const formData = new FormData();
     formData.append('file', file);
     const uploadUrl = buildUploadUrl();
-    const res = await fetchWithSessionRefresh(uploadUrl, { method: 'POST', body: formData });
+    const res = await fetchWithSessionRefresh(uploadUrl, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'x-product-source-document-id': v4Source.sourceDocumentId,
+        'x-product-registration-job-id': v4Source.registrationJobId,
+      },
+    });
     const data = await safeResJson(res);
     if (!res.ok) throw new Error(uploadFailureMessage(data));
     if (isUploadDeferredForReplay(data)) return deferredUploadResult(data);
@@ -399,6 +515,8 @@ export default function UploadPage() {
     return {
       dbId: data.dbId,
       dbIds: Array.isArray(data.dbIds) ? data.dbIds : (data.dbId ? [data.dbId] : []),
+      sourceDocumentId: v4Source.sourceDocumentId,
+      registrationJobId: v4Source.registrationJobId,
       title: data.productCount > 1 ? `${data.productCount}개 상품` : (ed?.title || file.name),
       confidence: data.finalConfidence ?? data.data?.confidence,
       landOperator: data.uploadMetadata?.landOperator ?? (match ? match[1] : ed?.land_operator),
@@ -427,6 +545,7 @@ export default function UploadPage() {
       try {
         const result = await uploadSingle(items[i].file);
         setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: result.status ?? 'done', ...result } : it));
+        if (result.registrationJobId) pollV4Job(items[i].id, result.registrationJobId);
         if (result.status === 'deferred') {
           pollDeferredReplay(items[i].id, {
             replayQueueId: result.replayQueueId,
@@ -575,10 +694,15 @@ export default function UploadPage() {
     setQueue(prev => prev.map(it => it.id === id ? { ...it, status: 'processing' } : it));
 
     try {
+      const v4Source = await archiveV4Source({ rawText, sourceLabel: item.sourceLabel });
       const uploadUrl = buildUploadUrl();
       const res = await fetchWithSessionRefresh(uploadUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-product-source-document-id': v4Source.sourceDocumentId,
+          'x-product-registration-job-id': v4Source.registrationJobId,
+        },
         body: JSON.stringify({
           rawText,
           sourceLabel: item.sourceLabel,
@@ -614,10 +738,12 @@ export default function UploadPage() {
         ...it,
         status: 'done',
         title: labelFromReport ?? (count > 1 ? `${count}개 상품 · ${it.sourceLabel ?? titles[0] ?? '상품'}` : (titles[0] || it.sourceLabel || '상품')),
-        productCount: count,
-        titles,
-        dbId,
-        dbIds,
+         productCount: count,
+         titles,
+         dbId,
+         dbIds,
+         sourceDocumentId: v4Source.sourceDocumentId,
+         registrationJobId: v4Source.registrationJobId,
         confidence: data.finalConfidence ?? data.data?.confidence,
         landOperator: data.uploadMetadata?.landOperator ?? item.landOperator ?? ed?.land_operator,
         commissionRate: data.uploadMetadata?.commissionRate ?? item.commissionRate,
@@ -628,6 +754,8 @@ export default function UploadPage() {
         registerReport,
         catalogSplitWarning: data.catalogSplitWarning ?? null,
       } : it));
+
+      pollV4Job(id, v4Source.registrationJobId);
 
       const packageIds = packageIdsForItem({ dbId, dbIds, registerReport });
       if (packageIds.length > 0) runVerify(id, packageIds);
@@ -788,7 +916,7 @@ export default function UploadPage() {
                 <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h24a4 4 0 004-4V20m-18-8v12m0 0l-4-4m4 4l4-4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <p className="text-admin-text-2 text-admin-base font-medium mb-1">파일을 드래그하거나 클릭하여 선택</p>
-              <p className="text-[11px] text-admin-muted mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 10MB</p>
+              <p className="text-[11px] text-admin-muted mb-1">PDF, JPG, PNG, HWP, HWPX — 최대 50개, 파일당 50MB</p>
               <p className="text-[11px] text-blue-600">[랜드사_커미션%]상품명.pdf 형식으로 파일명 작성 시 자동 추출</p>
               <input
                 ref={fileInputRef}
@@ -1059,6 +1187,38 @@ export default function UploadPage() {
                     <p className="text-admin-sm font-medium text-admin-text-2 truncate">
                       {item.status === 'done' ? itemLabel(item) : (item.sourceLabel || item.file.name)}
                     </p>
+                    {item.registrationJobId && (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px]">
+                        <span className="text-slate-500">원문 처리: {item.v4Stage ?? 'uploaded'}</span>
+                        {item.v5Revision && (
+                          <>
+                            <span className={item.v5Revision.status === 'needs_review' || item.v5Revision.status === 'blocked' ? 'text-amber-600' : 'text-violet-600'}>
+                              V5 shadow: {item.v5Revision.status ?? 'candidate'}
+                              {item.v5Revision.revisionCount > 1 ? ` (${item.v5Revision.revisionCount})` : ''}
+                            </span>
+                          {item.v5Revision.completeness && (
+                            <span className="text-slate-500" title="V5 canonical completeness">
+                              확인 {item.v5Revision.completeness.confirmedCount}
+                              · 공급사 대기 {item.v5Revision.completeness.pendingSupplierCount}
+                              · 충돌 {item.v5Revision.completeness.conflictingCount}
+                              · 사용불가 {item.v5Revision.completeness.unavailableCount}
+                              · 공개 준비 섹션 {item.v5Revision.completeness.publicReadySectionCount}
+                            </span>
+                            )}
+                          </>
+                        )}
+                        {item.v4Error && <span className="text-red-600" title={item.v4Error}>V4 오류</span>}
+                      </div>
+                    )}
+                    {item.registrationJobId && ['failed', 'quarantined', 'needs_review'].includes(item.v4Stage ?? '') && (
+                      <button
+                        type="button"
+                        onClick={() => retryV4Job(item)}
+                        className="mt-1 text-[10px] font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50 transition"
+                      >
+                        V4 retry
+                      </button>
+                    )}
                     {item.status === 'done' && (
                       <div className="mt-0.5">
                         {item.productCount && item.productCount > 1 ? (

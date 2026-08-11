@@ -30,7 +30,8 @@ export async function runAutoPhotoMatch(args: {
     // 1) 영문 + 지역어 동시 검색 (2026-05-15 UX-V5 박제)
     //    "Bana Hills Vietnam" + "Bà Nà Hills" 같이 영문/지역어 동시 → 정확도 ↑
     const baseKeyword = destToEnKeyword(dest);
-    const keyword = `${baseKeyword} travel landscape`;
+    const productHint = /골프|golf/i.test(args.title ?? '') ? ' golf course' : '';
+    const keyword = `${baseKeyword}${productHint} travel landscape`;
     const nativeHint = getDestinationNative(dest);
 
     // 2) Pexels 검색 — multilingual fallback

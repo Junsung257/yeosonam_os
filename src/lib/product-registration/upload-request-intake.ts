@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server';
 
 import { analyzeUploadInputText, normalizePastedSupplierText, type UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import { parseUploadSourceMetadata, type UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import { inferProductSourceType } from '@/lib/product-registration-v4/source-documents';
+import { PRODUCT_REGISTRATION_V4_MAX_BYTES, type ProductSourceType } from '@/lib/product-registration-v4/types';
 
 const ALLOWED_UPLOAD_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx', '.txt', '.md'];
 
@@ -15,6 +17,10 @@ export type UploadRequestIntakeResult = {
   originalRawText: string | null;
   parserRawText: string | null;
   documentRawText: string | null;
+  declaredMime?: string | null;
+  sourceType?: ProductSourceType;
+  sourceDocumentId?: string | null;
+  registrationJobId?: string | null;
   analysisNormalizedText: string | null;
   uploadSourceMetadata: UploadSourceMetadataResult;
   inputAnalysisForTrust: UploadInputAnalysis | null;
@@ -67,6 +73,8 @@ function buildUploadInputQualityError(analysis: UploadInputAnalysis, sourceType:
 export async function prepareUploadRequestIntake(request: NextRequest): Promise<UploadRequestIntakeResult> {
   const contentType = request.headers.get('content-type') || '';
   const urlParams = new URL(request.url).searchParams;
+  const sourceDocumentId = request.headers.get('x-product-source-document-id')?.trim() || null;
+  const registrationJobId = request.headers.get('x-product-registration-job-id')?.trim() || null;
   let directRawText: string | null = null;
   let originalRawText: string | null = null;
   let parserRawText: string | null = null;
@@ -75,11 +83,13 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   let textSourceLabel: string | null = null;
   let uploadSourceMetadata: UploadSourceMetadataResult | null = null;
   let file: File | null = null;
+  let declaredMime: string | null = null;
 
   if (contentType.includes('application/json')) {
     const body = await request.json();
     originalRawText = typeof body.rawText === 'string' ? body.rawText : '';
     directRawText = originalRawText;
+    declaredMime = 'text/plain';
     textSourceLabel = typeof body.sourceLabel === 'string' ? body.sourceLabel : null;
     uploadSourceMetadata = parseUploadSourceMetadata({
       rawText: originalRawText,
@@ -133,7 +143,8 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
         payload: { error: '파일이 업로드되지 않았습니다.' },
       };
     }
-    if (file.size > 10 * 1024 * 1024) {
+    declaredMime = file.type || null;
+    if (file.size > PRODUCT_REGISTRATION_V4_MAX_BYTES) {
       return {
         ok: false,
         status: 400,
@@ -148,6 +159,14 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   if (bulkMode) console.log('[Upload API] bulk mode: skip classification/marketing/attractions');
 
   const fileName = file?.name || uploadSourceMetadata?.cleanSourceLabel || textSourceLabel || 'text-input.txt';
+  const sourceType = inferProductSourceType(fileName, declaredMime);
+  if (!sourceType) {
+    return {
+      ok: false,
+      status: 400,
+      payload: { success: false, code: 'SOURCE_TYPE_UNSUPPORTED', error: '지원하지 않는 상품 원본 형식입니다.' },
+    };
+  }
   if (!uploadSourceMetadata) {
     uploadSourceMetadata = parseUploadSourceMetadata({
       fileName,
@@ -197,6 +216,10 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     originalRawText,
     parserRawText,
     documentRawText,
+    declaredMime,
+    sourceType,
+    sourceDocumentId,
+    registrationJobId,
     analysisNormalizedText,
     uploadSourceMetadata,
     inputAnalysisForTrust,

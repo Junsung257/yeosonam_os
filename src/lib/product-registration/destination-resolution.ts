@@ -142,6 +142,14 @@ export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
   광저우: 'CAN',
   광주: 'CAN',
   천저우: 'CAN',
+  천진: 'TSN',
+  톈진: 'TSN',
+  진황도: 'TSN',
+  친황다오: 'TSN',
+  친황도: 'TSN',
+  심양: 'SHE',
+  선양: 'SHE',
+  션양: 'SHE',
 };
 
 const DEST_KEYWORDS = Object.keys(UPLOAD_DEST_CODE_MAP);

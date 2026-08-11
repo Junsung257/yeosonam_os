@@ -136,6 +136,16 @@ describe('evaluateCustomerMobileProof', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('uses the content revision as the authority across audit-only updated_at changes', () => {
+    const result = evaluateCustomerMobileProof({
+      auditReport: { mobile_browser_proof: passingProof({ package_revision: 8 }) },
+      packageUpdatedAt: '2026-06-22T10:30:00.000Z',
+      packageRevision: 8,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('accepts a passing proof after a previous stale-only autopilot audit block', () => {
     const result = evaluateCustomerMobileProof({
       auditReport: {

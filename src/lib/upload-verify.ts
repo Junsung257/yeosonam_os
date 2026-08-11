@@ -100,6 +100,7 @@ type PackageRow = {
   customer_notes?: string | null;
   products?: unknown;
   audit_report?: unknown;
+  package_revision?: string | number | null;
   updated_at?: string | null;
 };
 
@@ -719,9 +720,10 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     const expectedRows = filterSourceBackedPriceRowsForPublicEvidence(
       pkg,
       selectSourceBackedPriceRows(pkg, expected.rows),
-    ).filter(row => row.date >= today);
+      { includePast: true },
+    );
     const dbPriceDates = Array.isArray(pkg.price_dates)
-      ? pkg.price_dates.filter(row => typeof row.date === 'string' && row.date >= today)
+      ? pkg.price_dates.filter(row => typeof row.date === 'string')
       : [];
     if (expectedRows.length === 0) {
       checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });
@@ -986,7 +988,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const { data: rows, error } = await supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, status, audit_status, duration, nights, price, display_title, hero_tagline, product_summary, destination, raw_text, internal_code, trip_style, airline, departure_airport, itinerary_data, accommodations, inclusions, excludes, optional_tours, price_dates, price_list, price_tiers, departure_days, surcharges, notices_parsed, customer_notes, audit_report, updated_at, products(internal_code,display_name,departure_region)',
+        'id, title, status, audit_status, duration, nights, price, display_title, hero_tagline, product_summary, destination, raw_text, internal_code, trip_style, airline, departure_airport, itinerary_data, accommodations, inclusions, excludes, optional_tours, price_dates, price_list, price_tiers, departure_days, surcharges, notices_parsed, customer_notes, audit_report, package_revision, updated_at, products(internal_code,display_name,departure_region)',
       )
       .eq('id', packageId)
       .limit(1);
@@ -1003,6 +1005,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const mobileProof = evaluateCustomerMobileProof({
       auditReport: pkg.audit_report,
       packageUpdatedAt: pkg.updated_at ?? null,
+      packageRevision: pkg.package_revision ?? null,
     });
     const qualityScorecard = evaluateRegistrationQualityScorecard({
       pkg: {
@@ -1013,6 +1016,10 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       productPrices,
       mobileProof,
     });
+    const existingAuditReport =
+      pkg.audit_report && typeof pkg.audit_report === 'object' && !Array.isArray(pkg.audit_report)
+        ? (pkg.audit_report as Record<string, unknown>)
+        : {};
     const scorecardCheck: VerifyCheck = {
       id: 'C19',
       label: 'registration quality scorecard',
@@ -1042,6 +1049,11 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       .update({
         audit_status: mergedStatus,
         audit_report: {
+          // Verification is a partial audit update. Preserve proof and
+          // publication lineage written by the browser-proof/publication
+          // stages; replacing the JSON document here would make a successful
+          // proof disappear on the next C13/C19 verification pass.
+          ...existingAuditReport,
           checks: result.checks,
           fixable: result.fixable,
           source: 'auto-upload-verify',

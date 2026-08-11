@@ -61,9 +61,11 @@ import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 /** Surcharge 객체 — ERR-20260418-03 */
 export interface SurchargeObject {
   name?: string;
+  note?: string;
   start?: string;        // "YYYY-MM-DD"
   end?: string;
   amount?: number;
+  amount_krw?: number;
   currency?: string;     // "USD" | "KRW" | ...
   unit?: string;         // "인/박" 등
 }
@@ -150,6 +152,8 @@ export interface RenderPackageInput {
       arr_airport: string | null;
       arr_time: string | null;
       arr_day_offset: 0 | 1;
+      /** zero-based itinerary day pair when the segment was extracted */
+      day_pair?: [number, number] | null;
     }> | null;
     highlights?: {
       shopping?: string | null;
@@ -412,11 +416,22 @@ export function resolveAirlineHeader(pkg: RenderPackageInput): AirlineHeader {
     return { label: null, airlineLabel: null, flightNumber: null, airlineName: null, departureCity: null, arrivalCity: null };
   }
   const meta = pkg.itinerary_data?.meta ?? null;
-  const flightNumber = meta?.flight_out?.trim() || null;
+  const segments = pkg.itinerary_data?.flight_segments;
+  const outboundSegment = Array.isArray(segments)
+    ? segments.find(segment => segment.leg === 'outbound' && Boolean(segment.flight_no?.trim())) ?? null
+    : null;
+  // flight_segments is the normalized source-backed value. Legacy meta.flight_out
+  // is only a compatibility fallback; preferring it can make the header and
+  // canonical itinerary show different flight numbers on old snapshots.
+  const flightNumber = outboundSegment?.flight_no?.trim() || meta?.flight_out?.trim() || null;
   const airlineRaw = pkg.airline || meta?.airline || null;
   const airlineName = getAirlineName(flightNumber || airlineRaw);
-  const departureCity = airportToDepCity(pkg.departure_airport || meta?.departure_airport);
-  const arrivalCity = pkg.destination?.split(/[\/,]/)[0]?.trim() || null;
+  const departureCity = airportToDepCity(
+    outboundSegment?.dep_airport || pkg.departure_airport || meta?.departure_airport,
+  );
+  const arrivalCity = outboundSegment?.arr_airport?.trim()
+    || pkg.destination?.split(/[\/,]/)[0]?.trim()
+    || null;
 
   // airlineLabel (배지용): flight + airline 조합을 상황별로 포맷
   let airlineLabel: string | null = null;
@@ -518,6 +533,21 @@ export function classifyExcludes(items: string[]): { basic: string[]; surcharges
 
 /** Surcharge 객체 → 렌더용 `MergedSurcharge` */
 function formatSurchargeObject(s: SurchargeObject): MergedSurcharge {
+  const sourceNote = s.note?.trim();
+  if (sourceNote) {
+    const display = normalizeCatalogSurchargeLine(sourceNote);
+    if (!display.slug) display.text = sourceNote;
+    return {
+      label: display.slug ? formatTermLine(display) : sourceNote,
+      display,
+      structured: s,
+      raw: null,
+      name: sourceNote,
+      period: null,
+      priceLabel: null,
+    };
+  }
+
   const name = s.name?.trim() || '추가요금';
   const periodRaw = s.start && s.end ? `${s.start} ~ ${s.end}` : (s.start || '');
   const period = periodRaw
@@ -528,9 +558,10 @@ function formatSurchargeObject(s: SurchargeObject): MergedSurcharge {
   // P0 #3 (2026-04-27): 통화별 한국어 친화 표기. KRW 는 천단위 콤마 + "원" suffix.
   // 외화는 코드 prefix 유지 (USD→$, JPY→¥, CNY→元).
   const fmtAmount = (() => {
-    if (s.amount == null) return null;
+    const amount = s.amount ?? s.amount_krw;
+    if (amount == null) return null;
     const cur = (s.currency || 'KRW').toUpperCase();
-    const num = Number(s.amount);
+    const num = Number(amount);
     if (cur === 'KRW') return `${num.toLocaleString('ko-KR')}원`;
     if (cur === 'USD') return `$${num.toLocaleString('en-US')}`;
     if (cur === 'JPY') return `¥${num.toLocaleString('ja-JP')}`;
@@ -917,6 +948,41 @@ function mergeLegacyFlightPair(schedule: ScheduleItem[]): {
   return { merged: out, flight: primaryFlight };
 }
 
+/**
+ * Keep legacy day rows compatible while using normalized flight_segments as the
+ * single customer-facing flight-number source. Older V3 rows can retain a
+ * different transport code from the V5 segment extraction, which otherwise
+ * makes the header and day cards disagree.
+ */
+function alignScheduleFlightCodes(
+  schedule: ScheduleItem[],
+  dayIndex: number,
+  dayCount: number,
+  pkg: RenderPackageInput,
+): ScheduleItem[] {
+  const segments = pkg.itinerary_data?.flight_segments;
+  if (!Array.isArray(segments) || segments.length === 0) return schedule;
+
+  const daySegments = segments.filter(segment => {
+    const pair = segment.day_pair;
+    if (Array.isArray(pair) && typeof pair[0] === 'number') {
+      return pair[0] === dayIndex;
+    }
+    return (segment.leg === 'outbound' && dayIndex === 0)
+      || (segment.leg === 'inbound' && dayIndex === dayCount - 1);
+  });
+  if (daySegments.length === 0) return schedule;
+
+  let segmentIndex = 0;
+  return schedule.map(item => {
+    if (item?.type !== 'flight') return item;
+    const segment = daySegments[segmentIndex] ?? daySegments[daySegments.length - 1];
+    segmentIndex += 1;
+    const canonicalCode = segment?.flight_no?.trim();
+    return canonicalCode ? { ...item, transport: canonicalCode } : item;
+  });
+}
+
 /** 호텔 activity 분리 → hotelCard 로 흡수. 나머지는 schedule 에 남김. */
 function extractHotelCard(schedule: ScheduleItem[], hotel: HotelInfo | null | undefined, isLastDay: boolean): {
   schedule: ScheduleItem[];
@@ -1019,9 +1085,10 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
 
     // 2) 출발·도착 쌍 → 단일 flight label 로 병합
     const { merged, flight } = mergeLegacyFlightPair(dedupedFlight);
+    const aligned = alignScheduleFlightCodes(merged, idx, days.length, pkg);
 
     // 3) ARRIVAL_MARKER_RE 로 type='normal' 도착 중복 표시 스킵
-    const deArrivaled = merged.filter((item) => {
+    const deArrivaled = aligned.filter((item) => {
       if (item?.type === 'flight') return true;
       return !ARRIVAL_MARKER_RE.test(item?.activity || '');
     });

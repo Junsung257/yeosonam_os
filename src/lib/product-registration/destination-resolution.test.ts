@@ -224,4 +224,30 @@ BX7305 00:40 07:05
     expect(result.destinationCode).toBe('HAN');
     expect(result.failures).toEqual([]);
   });
+
+  it('resolves Tianjin/Qinhuangdao combined golf products to the Tianjin airport group', () => {
+    const result = resolveUploadDestinationAndCodes({
+      destination: '천진/진황도',
+      departureAirport: '인천',
+      durationDays: 4,
+      productRawText: '인천출발 천진/진황도 골프 3박4일\n천진 공항 도착 후 진황도 이동',
+      documentRawText: '',
+    });
+
+    expect(result.destinationCode).toBe('TSN');
+    expect(result.failures).toEqual([]);
+  });
+
+  it('resolves common Shenyang spellings to SHE', () => {
+    expect(resolveUploadDestinationAndCodes({
+      destination: '심양',
+      productRawText: 'CZ 심양 힐튼 도심 3색 골프 4일',
+      durationDays: 4,
+    }).destinationCode).toBe('SHE');
+    expect(resolveUploadDestinationAndCodes({
+      destination: '선양',
+      productRawText: '선양 골프 상품',
+      durationDays: 4,
+    }).destinationCode).toBe('SHE');
+  });
 });

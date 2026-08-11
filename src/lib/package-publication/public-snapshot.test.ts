@@ -92,6 +92,14 @@ function mobileProofForSnapshot(snapshotHash: string) {
 }
 
 describe('public package snapshot gate', () => {
+  it('keeps the public hash stable across audit-only timestamp writes', () => {
+    const first = buildPublicPackageSnapshot(yanjiPackage({ updated_at: '2026-08-10T03:00:00.000Z' }));
+    const second = buildPublicPackageSnapshot(yanjiPackage({ updated_at: '2026-08-10T04:00:00.000Z' }));
+
+    expect(second.snapshotHash).toBe(first.snapshotHash);
+    expect(second.snapshot.package).not.toHaveProperty('updated_at');
+  });
+
   it('generates a customer-safe Yanji title and treats no-option as a policy, not an optional tour', () => {
     const { snapshot, optionalTourClassification } = buildPublicPackageSnapshot(yanjiPackage());
 

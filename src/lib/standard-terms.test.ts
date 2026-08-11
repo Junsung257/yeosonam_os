@@ -25,10 +25,38 @@ import {
   NOTICE_DOT_COLOR,
   NOTICE_CARD_TONE,
 } from './standard-terms';
+import { sanitizeNoticeForCustomerSurface } from './standard-terms-client';
 
 const notice = (overrides: Partial<NoticeBlock> & { type: string; text: string }): NoticeBlock => ({
   title: '취소 안내',
   ...overrides,
+});
+
+describe('sanitizeNoticeForCustomerSurface', () => {
+  it('keeps product notices but removes verbose generic legal blocks', () => {
+    expect(sanitizeNoticeForCustomerSurface({
+      type: 'AUTO_TICKETING',
+      title: '자동 발권 및 실비 취소 규정',
+      text: '이미 발권된 항공권은 실제 위약금이 청구됩니다.',
+      _tier: 2,
+    })).toBeNull();
+
+    expect(sanitizeNoticeForCustomerSurface({
+      type: 'BUSINESS_HOURS',
+      title: '취소 접수 영업시간 기준',
+      text: '취소 접수는 평일 09:00~18:00 기준입니다.',
+      _tier: 2,
+    })).toEqual(expect.objectContaining({
+      text: '취소 접수는 평일 09:00~18:00 기준입니다.',
+    }));
+
+    expect(sanitizeNoticeForCustomerSurface({
+      type: 'POLICY',
+      title: '상품 유의사항',
+      text: '상품별 취소 규정은 예약 단계에서 안내합니다.',
+      _tier: 4,
+    })).not.toBeNull();
+  });
 });
 
 describe('shouldSuppressStandardCancelTable — P0 법적 충돌 방지', () => {
@@ -95,6 +123,26 @@ describe('filterNoticesForSurface — P2 A4·예약안내문·모바일 surface 
     expect(r.some(n => n.type === 'RESERVATION')).toBe(true);
     expect(r.some(n => n.type === 'AUTO_TICKETING')).toBe(true);
     expect(r.some(n => n.type === 'PASSPORT')).toBe(true);
+  });
+
+  it('removes unsupported generic operator promises from customer surfaces', () => {
+    const r = filterNoticesForSurface([
+      notice({
+        type: 'POLICY',
+        _tier: 2,
+        surfaces: ['mobile'],
+        text: [
+          '예약금 확인 즉시 항공권을 발권할 수 있습니다.',
+          '의무 쇼핑센터 불참 시 랜드사 규정에 따른 페널티($100~$150)가 발생합니다.',
+          '취소 접수는 영업시간 기준입니다.',
+        ].join('\n'),
+      }),
+    ], 'mobile');
+
+    expect(r).toHaveLength(1);
+    expect(r[0].text).toContain('취소 접수는 영업시간 기준입니다.');
+    expect(r[0].text).not.toContain('의무 쇼핑센터');
+    expect(r[0].text).not.toContain('항공권을 발권');
   });
 
   it('surface 태그 없는 블록 — mobile·booking_guide 기본', () => {

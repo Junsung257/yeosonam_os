@@ -10,8 +10,11 @@ import {
   validateCustomerPublishableAttractionIds,
 } from './attraction-validation';
 import { buildPublicPackageSnapshot } from './public-snapshot';
+import { evaluateCustomerSurfaceParity } from './customer-surface-parity';
 import { evaluatePublicSnapshotPublishGate, type PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
+import { loadProductRegistrationV4PublicationGate } from '@/lib/product-registration-v4/publication-gate';
+import { linkV5ShadowRevisionToSnapshot } from '@/lib/product-registration-v4/snapshot-link';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -19,6 +22,7 @@ type SnapshotRow = {
   id: string;
   package_id: string;
   package_revision: number;
+  canonical_revision_id?: string | null;
   snapshot_hash: string;
   snapshot_json: PublicPackageSnapshot | AnyRecord;
   card_projection: AnyRecord;
@@ -87,6 +91,12 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   if (!hasPublicImageCandidate(snapshot, pkg)) return null;
   const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
   if (!publicTitle) return null;
+  const surfaceParity = evaluateCustomerSurfaceParity({
+    package: pkg,
+    cardProjection,
+    lpProjection,
+  });
+  if (!surfaceParity.ok) return null;
   const publicSummary = asNonEmptyString(lpProjection?.summary);
   const customerPackage = {
     ...pkg,
@@ -99,6 +109,7 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
       id: row.id,
       package_id: row.package_id,
       package_revision: row.package_revision,
+      canonical_revision_id: row.canonical_revision_id ?? null,
       snapshot_hash: row.snapshot_hash,
       status: row.status,
       created_at: row.created_at,
@@ -114,7 +125,7 @@ export async function fetchLatestPublicPackageSnapshot(
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
   let query = supabase
     .from('public_package_snapshots')
-    .select('id, package_id, package_revision, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .eq('package_id', packageId)
     .in('status', ['approved', 'published']);
 
@@ -128,6 +139,32 @@ export async function fetchLatestPublicPackageSnapshot(
     .maybeSingle();
 
   if (error || !data) return null;
+  try {
+    const v4PublicationGate = await loadProductRegistrationV4PublicationGate({
+      supabase,
+      packageId,
+    });
+    if (v4PublicationGate.required && !v4PublicationGate.ok) return null;
+    if (v4PublicationGate.required) {
+      const { data: pointer, error: pointerError } = await supabase
+        .from('product_registration_v5_publication_pointers')
+        .select('current_revision_id, current_snapshot_id, state')
+        .eq('package_id', packageId)
+        .eq('channel', 'customer')
+        .eq('locale', 'ko-KR')
+        .maybeSingle();
+      if (pointerError || !pointer) return null;
+      if (pointer.state !== 'published'
+        || pointer.current_snapshot_id !== (data as SnapshotRow).id
+        || (Boolean((data as SnapshotRow).canonical_revision_id)
+          && pointer.current_revision_id !== (data as SnapshotRow).canonical_revision_id)) {
+        return null;
+      }
+    }
+  } catch {
+    // A customer read must fail closed when V4 lineage cannot be verified.
+    return null;
+  }
   const pkg = snapshotPackage(data as SnapshotRow);
   if (!pkg) return null;
   const attractionValidation = await validateCustomerPublishableAttractionIds(
@@ -149,7 +186,12 @@ export async function createPublicPackageSnapshotAndDecision(
   publicationState: string;
   publishable: boolean;
   blockers: unknown[];
+  v5ShadowLink: Awaited<ReturnType<typeof linkV5ShadowRevisionToSnapshot>> | null;
 }> {
+  const packageId = String(pkg.id ?? '');
+  const v4PublicationGate = packageId
+    ? await loadProductRegistrationV4PublicationGate({ supabase, packageId })
+    : null;
   const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
   const publicSnapshotPackage = asRecord(snapshot.package) ?? {};
   const gatePackage = {
@@ -176,7 +218,7 @@ export async function createPublicPackageSnapshotAndDecision(
     _card_projection: snapshot.card_projection,
     _lp_projection: snapshot.lp_projection,
   };
-  const packageId = String(pkg.id ?? snapshot.package_id);
+  const resolvedPackageId = packageId || String(snapshot.package_id);
   const packageRevision = Number(pkg.package_revision ?? snapshot.package_revision ?? 1);
   const attractionIds = collectItineraryAttractionIds(pkg.itinerary_data);
   const attractionValidation = await validateCustomerPublishableAttractionIds(supabase, attractionIds);
@@ -195,6 +237,12 @@ export async function createPublicPackageSnapshotAndDecision(
     publicNoticeSourcePaths: snapshot.public_notice_source_paths,
     auditQueryFailed,
     invalidAttractionIds: attractionValidation.invalidIds,
+    customerSurfaceParity: evaluateCustomerSurfaceParity({
+      package: snapshot.package,
+      cardProjection: snapshot.card_projection,
+      lpProjection: snapshot.lp_projection,
+    }),
+    v4PublicationGate,
   });
   const snapshotStatus = gate.publishable ? 'published' : 'blocked';
   const callerPatch = gate.publishable
@@ -212,7 +260,7 @@ export async function createPublicPackageSnapshotAndDecision(
   };
 
   const { error: publishError } = await supabase.rpc('publish_package_snapshot_atomic', {
-    p_package_id: packageId,
+    p_package_id: resolvedPackageId,
     p_package_revision: packageRevision,
     p_package_patch: packagePatch,
     p_snapshot_hash: snapshotHash,
@@ -241,11 +289,30 @@ export async function createPublicPackageSnapshotAndDecision(
 
   if (publishError) throw publishError;
 
+  // During the V5 shadow rollout, bind only a successfully published legacy
+  // snapshot to a source-backed V5 revision. This is intentionally best
+  // effort so a missing V5 migration/revision cannot change legacy customer
+  // publication behavior; the V5 CAS writer will make this atomic later.
+  let v5ShadowLink: Awaited<ReturnType<typeof linkV5ShadowRevisionToSnapshot>> | null = null;
+  if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1' && gate.publishable) {
+    v5ShadowLink = await linkV5ShadowRevisionToSnapshot({
+      supabase,
+      packageId: resolvedPackageId,
+      snapshotHash,
+      revisionId: typeof pkg.canonical_revision_id === 'string' ? pkg.canonical_revision_id : null,
+      rendererBuildId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
+    });
+    if (v5ShadowLink.status === 'unavailable') {
+      console.warn('[Product Registration V5] shadow snapshot lineage link unavailable:', v5ShadowLink.reason);
+    }
+  }
+
   return {
     snapshot,
     snapshotHash,
     publicationState: gate.publication_state,
     publishable: gate.publishable,
     blockers: gate.hard_blockers,
+    v5ShadowLink,
   };
 }

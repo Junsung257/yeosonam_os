@@ -216,6 +216,8 @@ export async function generateMetadata({
   let data: MetadataPackageRow | null = null;
   let rawData: MetadataPackageRow | null = null;
   let publicSnapshotFound = false;
+  let publicSnapshotHash: string | undefined;
+  let canonicalRevisionId: string | undefined;
   try {
     const allowInternalProof = await isInternalRenderProofRequest();
     const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
@@ -259,6 +261,8 @@ export async function generateMetadata({
           expectedPackageRevision: Number(rawData.package_revision ?? 1),
         }).catch(() => null);
     publicSnapshotFound = Boolean(publicSnapshot);
+    publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
+    canonicalRevisionId = publicSnapshot?.row.canonical_revision_id ?? undefined;
     data = allowInternalProof ? rawData : (publicSnapshot?.package as MetadataPackageRow | undefined) ?? null;
   } catch {
     return buildPackageNoindexMetadata(id, canonical);
@@ -267,16 +271,20 @@ export async function generateMetadata({
   // 鍮꾧났媛??곹뭹(REVIEW_NEEDED/draft/blocked ?? ??硫뷀??곗씠?곕뒗 SEO ?몄텧 湲덉?
   if (!data) notFound();
   const status = rawData?.status;
-  const auditStatus = rawData?.audit_status;
   const allowInternalProof = await isInternalRenderProofRequest();
   const publicationState = rawData?.publication_state;
+  const authoritativeV5Snapshot = Boolean(publicSnapshotFound && canonicalRevisionId && publicSnapshotHash);
   if (!allowInternalProof && !isPublicPublicationState(publicationState)) {
     notFound();
   }
   if (!allowInternalProof && !publicSnapshotFound) {
     notFound();
   }
-  if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status) || !isCustomerPubliclyOpenable(rawData))) {
+  if (!allowInternalProof && (!isCustomerVisibleStatus(status) || !isCustomerPubliclyOpenable(rawData, {
+    authoritativeV5Snapshot,
+    packageRevision: publicSnapshotHash ? rawData?.package_revision : null,
+    publicSnapshotHash,
+  }))) {
     notFound();
   }
   const metadataPackage = data as {
@@ -313,6 +321,14 @@ export async function generateMetadata({
   });
   const destination = decodeCustomerHtmlEntities(String(data.destination || '패키지'));
   const description = decodeCustomerHtmlEntities(displayCopy.summaryBody || data.product_summary || `${destination} ${title} - 여소남 패키지 여행`);
+  const lineageMeta = publicSnapshotHash
+    ? {
+        'product-registration-v5-snapshot-hash': publicSnapshotHash,
+        ...(canonicalRevisionId
+          ? { 'product-registration-v5-revision-id': canonicalRevisionId }
+          : {}),
+      }
+    : undefined;
 
   return {
     title: { absolute: `${seoTitle} | 여소남` },
@@ -323,6 +339,7 @@ export async function generateMetadata({
       url: canonical,
     },
     alternates: { canonical },
+    ...(lineageMeta ? { other: lineageMeta } : {}),
   };
 }
 
@@ -393,6 +410,10 @@ export default async function PackageDetailPage({
         expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1),
       }).catch(() => null);
   const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package;
+  const authoritativeV5Snapshot = Boolean(
+    publicSnapshot?.row.canonical_revision_id
+    && publicSnapshot.row.snapshot_hash,
+  );
 
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
   if (!allowInternalProof && !isPublicPublicationState(publicationState)) {
@@ -406,13 +427,17 @@ export default async function PackageDetailPage({
   }
 
   // 媛먯궗 李⑤떒 ?곹뭹? 怨좉컼 ?곸꽭??404 泥섎━ (媛먯궗 寃뚯씠???댁쨷 媛??
-  if ('audit_status' in rawPkg && rawPkg.audit_status === 'blocked') {
+  if ('audit_status' in rawPkg && rawPkg.audit_status === 'blocked' && !authoritativeV5Snapshot) {
     if (!allowInternalProof) notFound();
   }
 
   // status 寃뚯씠????REVIEW_NEEDED/draft/expired/archived ?깆? 怨좉컼 ?몄텧 李⑤떒
   const pkgStatus = 'status' in rawPkg ? rawPkg.status : undefined;
-  if (!allowInternalProof && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(rawPkg))) {
+  if (!allowInternalProof && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(rawPkg, {
+    authoritativeV5Snapshot,
+    packageRevision: publicSnapshot?.row.package_revision,
+    publicSnapshotHash: publicSnapshot?.row.snapshot_hash,
+  }))) {
     notFound();
   }
 
@@ -624,7 +649,12 @@ export default async function PackageDetailPage({
     for (const t of pt) for (const d of (t.departure_dates ?? [])) if (d) dates.push(d);
     if (dates.length > 0) {
       const r = pickRepresentativeMonths(dates);
-      representativeMonth = r.primary;
+      const today = new Date().toISOString().slice(0, 10);
+      const nextDeparture = [...new Set(dates)]
+        .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= today)
+        .sort()[0]
+        ?? [...new Set(dates)].filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort()[0];
+      representativeMonth = nextDeparture ? Number(nextDeparture.slice(5, 7)) : r.primary;
       departureDistribution = r.distribution;
     }
   }
@@ -855,7 +885,7 @@ export default async function PackageDetailPage({
   type CatalogSibling = { id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null };
   let catalogSiblings: CatalogSibling[] = [];
   const currentCatalogId = (pkg as { catalog_id?: string | null }).catalog_id;
-  if (currentCatalogId && !skipNonCriticalDbReads) {
+  if (currentCatalogId && !skipNonCriticalDbReads && process.env.NEXT_PHASE !== 'phase-production-build') {
     const { data: siblings } = await runOptionalSupabaseQuery(
       sb
         .from('travel_packages')
@@ -868,36 +898,31 @@ export default async function PackageDetailPage({
     );
     const siblingRows = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; package_revision?: number | null; status?: string; publication_state?: string | null; audit_status?: string; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>)
       .filter(s => isPublicPublicationState(s.publication_state) && isCustomerPubliclyOpenable(s));
-    const siblingSnapshots = siblingRows.length > 0
+    const siblingPublicPackages = siblingRows.length > 0
       ? await runOptionalSupabaseQuery(
-          sb
-            .from('public_package_snapshots')
-            .select('package_id, package_revision, card_projection, status, created_at')
-            .in('package_id', siblingRows.map(row => row.id))
-            .in('status', ['approved', 'published'])
-            .order('created_at', { ascending: false }),
-          { data: [] },
+          Promise.resolve(fetchAndMergeCurrentPublicPackageCardSnapshots(sb, siblingRows)),
+          [],
           { label: 'package.catalog.sibling-snapshots', timeoutMs: 1200 },
         )
-      : { data: [] };
-    const siblingRevisionByPackage = new Map(siblingRows.map(row => [row.id, Number(row.package_revision ?? 1)]));
-    const siblingSnapshotByPackage = new Map<string, { card_projection?: Record<string, unknown> | null }>();
-    for (const row of ((siblingSnapshots.data ?? []) as Array<{ package_id: string; package_revision?: number | null; card_projection?: Record<string, unknown> | null }>)) {
-      if (Number(row.package_revision ?? 1) !== siblingRevisionByPackage.get(row.package_id)) continue;
-      if (!siblingSnapshotByPackage.has(row.package_id)) siblingSnapshotByPackage.set(row.package_id, row);
-    }
+      : [];
+    const siblingSnapshotByPackage = new Map(
+      (siblingPublicPackages as Array<Record<string, unknown>>)
+        .map(sibling => [String(sibling.id ?? ''), sibling] as const)
+        .filter(([siblingId]) => siblingId.length > 0),
+    );
     catalogSiblings = siblingRows
-      .filter(s => siblingSnapshotByPackage.has(s.id))
-      .flatMap(({ id: sid, product_highlights }) => {
-        const cardProjection = siblingSnapshotByPackage.get(sid)?.card_projection;
+      .flatMap((sibling) => {
+        const sid = getNonEmptyString(sibling.id);
+        const cardProjection = sid ? siblingSnapshotByPackage.get(sid) : null;
         const publicTitle = getNonEmptyString(cardProjection?.title);
+        if (!sid) return [];
         if (!publicTitle) return [];
         return [{
           id: sid,
           title: decodeCustomerHtmlEntities(publicTitle),
           display_title: decodeCustomerHtmlEntities(publicTitle),
           destination: decodeCustomerHtmlEntities(getNonEmptyString(cardProjection?.destination) ?? ''),
-          product_highlights: product_highlights?.map(item => decodeCustomerHtmlEntities(item)) ?? null,
+          product_highlights: getStringList(cardProjection?.product_highlights).map(item => decodeCustomerHtmlEntities(item)),
         }];
       });
   }

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
 import { supabaseAdmin } from '../src/lib/supabase';
@@ -13,6 +13,7 @@ import { renderPackage } from '../src/lib/render-contract';
 import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
 import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
 import { isCustomerVisibleStatus } from '../src/lib/visibility-status';
+import { persistProductRegistrationV5ProofRun } from '../src/lib/product-registration-v4/proof';
 
 type PackageRow = {
   [key: string]: unknown;
@@ -142,6 +143,50 @@ function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+/**
+ * The consent banner is intentionally present on a first-time browser
+ * context.  It sits above the sticky CTA and intercepts pointer events, so a
+ * proof that does not accept the mandatory cookie setting is testing the
+ * banner rather than the customer journey.  Accept only the required cookies
+ * and keep the proof deterministic; analytics/advertising consent is never
+ * granted by the harness.
+ */
+async function dismissCookieConsent(page: Page): Promise<void> {
+  const requiredOnly = page.getByRole('button', { name: /필수만 허용/ }).first();
+  if (await requiredOnly.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await requiredOnly.click({ timeout: 3_000 }).catch(() => undefined);
+    await page.waitForTimeout(250);
+    return;
+  }
+  const allRequired = page.getByRole('button', { name: /모두 허용/ }).first();
+  if (await allRequired.isVisible({ timeout: 500 }).catch(() => false)) {
+    // Legacy copy fallback: this is only reached when the required-only
+    // button was not rendered by the current consent component.
+    await allRequired.click({ timeout: 3_000 }).catch(() => undefined);
+    await page.waitForTimeout(250);
+  }
+}
+
+async function clickUntilVisible(input: {
+  page: Page;
+  trigger: Locator;
+  target: Locator;
+}): Promise<boolean> {
+  // LP lead sheet is a client-only dynamic import. On a cold dev/build cache
+  // it can hydrate after the first click, so a short three-attempt probe was
+  // incorrectly reporting a customer CTA failure. Poll long enough to cover
+  // the dynamic chunk while keeping the proof bounded and deterministic.
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (await input.target.isVisible({ timeout: 700 }).catch(() => false)) return true;
+    await dismissCookieConsent(input.page);
+    if (await input.trigger.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await input.trigger.click({ timeout: 3_000, force: attempt > 0 }).catch(() => undefined);
+    }
+    await input.page.waitForTimeout(500);
+  }
+  return input.target.isVisible({ timeout: 1_000 }).catch(() => false);
+}
+
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
@@ -156,14 +201,21 @@ function currentPackageRevision(pkg: PackageRow): number {
 }
 
 function proofPackageRevision(pkg: PackageRow): number {
-  const current = currentPackageRevision(pkg);
-  return isCustomerVisibleStatus(pkg.status) ? current : current + 1;
+  // The proof is evidence for the saved content revision, not a synthetic
+  // future revision. Publication may change status from pending -> active, but
+  // it must not make the browser proof stale by inventing a different revision
+  // number (the V5 snapshot/CAS uses the actual package_revision).
+  return currentPackageRevision(pkg);
 }
 
 function proofSnapshotHash(pkg: PackageRow, revision: number): string {
   const snapshotPkg = {
     ...pkg,
     status: isCustomerVisibleStatus(pkg.status) ? pkg.status : 'active',
+    // Hash the artifact as it will exist after the CAS publication. Keeping
+    // publication_state stable prevents every post-publish audit write from
+    // creating a different snapshot for the same customer content.
+    publication_state: 'published',
     package_revision: revision,
   };
   return buildPublicPackageSnapshot(snapshotPkg).snapshotHash;
@@ -350,13 +402,16 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
   };
 
   try {
+    const vercelProtectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
     await page.setExtraHTTPHeaders({
       'x-yeosonam-render-proof': proofSecret,
       'Cache-Control': 'no-cache',
+      ...(vercelProtectionBypass ? { 'x-vercel-protection-bypass': vercelProtectionBypass } : {}),
     });
     const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     result.http_status = response?.status() ?? null;
     await page.waitForTimeout(1800);
+    await dismissCookieConsent(page);
 
     if (surface === 'packages') {
       await clickLikelyItinerary(page);
@@ -431,10 +486,8 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
       const ctaVisible = await cta.isVisible({ timeout: 3000 }).catch(() => false);
       result.checks.push({ name: 'packages_reservation_cta_visible', ok: ctaVisible });
       if (ctaVisible) {
-        await cta.click({ timeout: 3000 }).catch(() => undefined);
-        await page.waitForTimeout(500);
         const dialog = page.locator('[role="dialog"][aria-labelledby="reservation-inquiry-title"]').first();
-        const dialogVisible = await dialog.isVisible({ timeout: 3000 }).catch(() => false);
+        const dialogVisible = await clickUntilVisible({ page, trigger: cta, target: dialog });
         const dialogText = dialogVisible ? normalizeText(await dialog.innerText().catch(() => '')) : '';
         const titleNeedle = normalizeText(pkg.display_title || pkg.title).slice(0, 12);
         result.checks.push(
@@ -451,10 +504,8 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
       const ctaVisible = await cta.isVisible({ timeout: 3000 }).catch(() => false);
       result.checks.push({ name: 'lp_lead_cta_visible', ok: ctaVisible });
       if (ctaVisible) {
-        await cta.click({ timeout: 3000 }).catch(() => undefined);
-        await page.waitForTimeout(500);
         const sheet = page.locator('[data-testid="lp-lead-bottom-sheet"]').first();
-        const sheetVisible = await sheet.isVisible({ timeout: 3000 }).catch(() => false);
+        const sheetVisible = await clickUntilVisible({ page, trigger: cta, target: sheet });
         const sheetText = sheetVisible ? normalizeText(await sheet.innerText().catch(() => '')) : '';
         result.checks.push(
           { name: 'lp_lead_sheet_opens', ok: sheetVisible },
@@ -665,6 +716,40 @@ async function persistFailProof(result: PackageProofResult) {
   if (error) throw new Error(error.message);
 }
 
+async function persistV5ProofRunsIfEnabled(result: PackageProofResult) {
+  if (process.env.PRODUCT_REGISTRATION_V5_SHADOW !== '1') return;
+  if (!result.public_snapshot_hash || !result.app_build_id) return;
+  const { data: snapshot, error: snapshotError } = await supabaseAdmin
+    .from('public_package_snapshots')
+    .select('id, canonical_revision_id')
+    .eq('package_id', result.id)
+    .eq('snapshot_hash', result.public_snapshot_hash)
+    .maybeSingle();
+  if (snapshotError) throw new Error(snapshotError.message);
+  if (!snapshot?.id || !snapshot.canonical_revision_id) return;
+
+  for (const surface of result.surface_results) {
+    await persistProductRegistrationV5ProofRun({
+      supabase: supabaseAdmin,
+      proof: {
+        packageId: result.id,
+        revisionId: String(snapshot.canonical_revision_id),
+        publicSnapshotId: String(snapshot.id),
+        snapshotHash: result.public_snapshot_hash,
+        rendererBuildId: result.app_build_id,
+        proofSuiteVersion: 'hwp-mobile-browser-proof-v1',
+        route: `/${surface.surface}/${result.id}`,
+        viewport,
+        deviceProfile: 'mobile-hwp',
+        status: result.status === 'pass' && surface.status === 'pass' ? 'passed' : 'failed',
+        result: surface as unknown as Record<string, unknown>,
+        screenshotHash: surface.screen_hash ?? null,
+        checkedAt: result.checked_at,
+      },
+    });
+  }
+}
+
 async function main() {
   ensureDir(outputDir);
   const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
@@ -701,6 +786,7 @@ async function main() {
             } else if (!applyPassOnly) {
               await persistFailProof(result);
             }
+            await persistV5ProofRunsIfEnabled(result);
           } catch (error) {
             result.status = 'fail';
             result.mobile_checks.push({

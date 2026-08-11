@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { postProcessItineraryData, postProcessCatalogFields } from './package-post-process';
+import { attachSourceBackedGolfRemarks, postProcessItineraryData, postProcessCatalogFields } from './package-post-process';
 import type { FlightSegment } from './parser/normalize-flight-segments';
 
 const DANANG_RAW = `비    고 
@@ -54,6 +54,34 @@ describe('postProcessItineraryData', () => {
     expect(out?.flight_segments ?? []).toEqual([]);
   });
 
+  it('aligns legacy day flight codes to source-backed flight segments', () => {
+    const out = postProcessItineraryData({
+      days: [
+        {
+          day: 1,
+          schedule: [
+            { type: 'flight', activity: '김해공항 국제선 출발', transport: 'BX148' },
+            { type: 'flight', activity: '후쿠오카 국제선 도착', transport: 'BX148' },
+          ],
+        },
+        {
+          day: 2,
+          schedule: [
+            { type: 'flight', activity: '후쿠오카 국제선 출발', transport: 'BX143' },
+            { type: 'flight', activity: '김해공항 국제선 도착', transport: 'BX143' },
+          ],
+        },
+      ],
+      flight_segments: [
+        { leg: 'outbound', flight_no: 'BX501', day_pair: [0, 0] },
+        { leg: 'inbound', flight_no: 'BX516', day_pair: [1, 1] },
+      ],
+    });
+
+    expect(out.days?.[0]?.schedule?.map(item => item.transport)).toEqual(['BX501', 'BX501']);
+    expect(out.days?.[1]?.schedule?.map(item => item.transport)).toEqual(['BX516', 'BX516']);
+  });
+
   it('removes optional-tour fragments from saved schedule rows before public snapshot generation', () => {
     const out = postProcessItineraryData({
       days: [{
@@ -91,6 +119,21 @@ describe('postProcessItineraryData', () => {
 
     expect(out?.days?.[0]?.schedule?.[0]?.attraction_names).toEqual(['\uD63C\uCD1D\uACEF']);
     expect(out?.days?.[0]?.schedule?.[1]).not.toHaveProperty('attraction_names');
+  });
+});
+
+describe('attachSourceBackedGolfRemarks', () => {
+  it('adds source course names and round length without inventing schedule items', () => {
+    const out = attachSourceBackedGolfRemarks({
+      days: [{ day: 1, schedule: [{ activity: '골프장 이동' }] }],
+      highlights: { remarks: [] },
+    }, '예정 골프장\n센트럴 18H/파72/5,954야드\n니조 18H/파72/6,615야드');
+
+    expect(out.highlights?.remarks).toEqual([
+      '일정표 기준 예정 골프장: 센트럴, 니조',
+      '일정표 기준 골프 라운딩은 18홀입니다.',
+    ]);
+    expect(out.days?.[0]?.schedule?.[0]?.activity).toBe('골프장 이동');
   });
 });
 

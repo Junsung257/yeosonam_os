@@ -983,9 +983,10 @@ async function parseTextWithAI(text: string, options?: ParseOptions): Promise<Ex
 
 // ─── HWP / HWPX 파싱 (kordoc 제거됨 → PDF 변환 안내) ──────
 
-export async function parseHWP(_buffer: Buffer, filename: string): Promise<string> {
-  const name = filename.replace(/\.hwp$/i, '').trim();
-  throw new Error(`HWP 파일(.hwp)은 더 이상 지원되지 않습니다. PDF로 변환 후 업로드해 주세요. (파일명: ${name})`);
+export async function parseHWP(buffer: Buffer, filename: string): Promise<string> {
+  const { parseHwpWithRhwp } = await import('@/lib/product-registration-v4/rhwp');
+  const result = await parseHwpWithRhwp({ buffer, filename, sourceType: 'hwp' });
+  return result.text;
 }
 
 export async function parseHWPX(_buffer: Buffer, filename: string): Promise<string> {

@@ -9,7 +9,7 @@
  * 결정적 룰만 — LLM judge 없음. Golden Set 의 가벼운 버전.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { evaluateCustomerRenderContractChecks, evaluateEntityQueueChecks, evaluateVerifyChecks } from './upload-verify';
 import { extractProductRawTextSection } from './parser/catalog-pre-split';
 
@@ -18,6 +18,15 @@ function findCheck(result: ReturnType<typeof evaluateVerifyChecks>, id: string) 
 }
 
 describe('evaluateVerifyChecks — clean baseline (3박 5일 정상 케이스)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00+09:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const result = evaluateVerifyChecks({
     id: 'pkg-clean',
     title: '나트랑 3박 5일',

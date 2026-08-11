@@ -52,6 +52,60 @@ function attachShoppingHighlight<T extends ItineraryDataLike | null>(itineraryDa
   } as unknown as T;
 }
 
+/**
+ * Keep high-value golf facts that are present in the source schedule even
+ * when the deterministic day parser only emits a generic transfer row.
+ * These are deliberately stored as short, source-backed remarks rather than
+ * generated sales copy, so the customer landing can show the actual courses
+ * and round length without inventing a schedule item.
+ */
+function attachGolfSourceHighlights<T extends ItineraryDataLike | null>(
+  itineraryData: T,
+  rawText: string | null | undefined,
+): T {
+  if (!itineraryData || !rawText?.trim() || !/(?:골프|18\s*H|18홀)/i.test(rawText)) return itineraryData;
+
+  const object = itineraryData as ItineraryDataLike & { highlights?: Record<string, unknown> };
+  const highlights = object.highlights && typeof object.highlights === 'object'
+    ? object.highlights
+    : {};
+  const existingRemarks = Array.isArray(highlights.remarks)
+    ? highlights.remarks.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const sourceLines = rawText
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(line => line.length > 0);
+  const courseNames: string[] = [];
+  for (const line of sourceLines) {
+    if (!/18\s*H/i.test(line)) continue;
+    const beforeRound = line.split(/18\s*H/i)[0]
+      .replace(/[|:：·•]+$/g, '')
+      .replace(/^[^가-힣A-Za-z0-9]+/g, '')
+      .trim();
+    if (beforeRound.length < 2 || beforeRound.length > 40) continue;
+    if (/^(?:일정|일자|골프장|예정|총|라운딩)$/i.test(beforeRound)) continue;
+    if (!courseNames.includes(beforeRound)) courseNames.push(beforeRound);
+  }
+
+  const nextRemarks = [...existingRemarks];
+  if (courseNames.length > 0 && !nextRemarks.some(remark => /예정 골프장/.test(remark))) {
+    nextRemarks.push(`예정 골프장: ${courseNames.slice(0, 8).join(', ')}${courseNames.length > 8 ? ' 외' : ''}`);
+  }
+  if (/(?:18\s*H|18홀)/i.test(rawText) && !nextRemarks.some(remark => /18\s*홀|18\s*H/i.test(remark))) {
+    nextRemarks.push('일정표 기준 골프 라운딩은 18홀입니다.');
+  }
+  if (nextRemarks.length === existingRemarks.length) return itineraryData;
+
+  return {
+    ...object,
+    highlights: {
+      ...highlights,
+      remarks: nextRemarks,
+    },
+  } as unknown as T;
+}
+
 function topLevelFlightSegments(itineraryData: ItineraryDataLike | null | undefined): unknown[] | null {
   const segments = (itineraryData as { flight_segments?: unknown } | null | undefined)?.flight_segments;
   return Array.isArray(segments) && segments.length > 0 ? segments : null;
@@ -508,7 +562,8 @@ export async function normalizeUploadItinerary(input: {
       extractCatalogShoppingForRender(input.productRawText),
     ),
   );
-  const postRangeRepair = pruneOutOfRangePollutedDays(postMergePrune.itineraryData, input.durationDays);
+  const postGolfHighlight = attachGolfSourceHighlights(postMergePrune.itineraryData, input.productRawText);
+  const postRangeRepair = pruneOutOfRangePollutedDays(postGolfHighlight, input.durationDays);
   warnings.push(...postRangeRepair.warnings);
   const postOutlierRepair = pruneOutlierPollutedDays(postRangeRepair.itineraryData);
   warnings.push(...postOutlierRepair.warnings);
@@ -522,8 +577,13 @@ export async function normalizeUploadItinerary(input: {
     input.durationDays,
   );
   warnings.push(...finalSourceDayFill.warnings);
+  // The raw-text day filler runs after the earlier pollution passes and can
+  // re-introduce standalone price-table dates into an empty day. Apply one
+  // final deterministic quality pass before any attraction enrichment or
+  // customer snapshot is built; never expose table fragments as itinerary.
+  const finalPollutionRepair = prunePollutedScheduleItems(finalSourceDayFill.itineraryData);
   const finalEnrichment = enrichItineraryWithAttractionReferences(
-    finalSourceDayFill.itineraryData,
+    finalPollutionRepair.itineraryData,
     input.activeAttractions,
     input.destination ?? undefined,
   );

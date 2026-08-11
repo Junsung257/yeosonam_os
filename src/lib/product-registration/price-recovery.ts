@@ -35,6 +35,17 @@ function minPriceFromTiers(tiers: Array<{ adult_price?: number | null }> | null 
   return prices.length > 0 ? Math.min(...prices) : null;
 }
 
+function hasSameDatePriceConflict(rows: ProductPriceRowInput[]): boolean {
+  const pricesByDate = new Map<string, Set<number>>();
+  for (const row of rows) {
+    if (!row.target_date || !Number.isFinite(row.net_price) || row.net_price <= 0) continue;
+    const prices = pricesByDate.get(row.target_date) ?? new Set<number>();
+    prices.add(row.net_price);
+    pricesByDate.set(row.target_date, prices);
+  }
+  return [...pricesByDate.values()].some(prices => prices.size > 1);
+}
+
 function priceDatesToRows(priceDates: PriceDate[]): ProductPriceRowInput[] {
   return priceDates.map((row) => ({
     target_date: row.date,
@@ -489,6 +500,25 @@ function evaluateCandidate(
   };
 }
 
+function candidatePricePairKeys(candidate: Pick<UploadPriceRecoveryResult, 'priceRows'>): Set<string> {
+  return new Set(
+    candidate.priceRows
+      .filter(row => row.target_date && Number.isFinite(row.net_price) && row.net_price > 0)
+      .map(row => `${row.target_date}|${row.net_price}`),
+  );
+}
+
+function candidatesHaveSamePricePairs(
+  left: Pick<UploadPriceRecoveryResult, 'priceRows'>,
+  right: Pick<UploadPriceRecoveryResult, 'priceRows'>,
+): boolean {
+  const leftKeys = candidatePricePairKeys(left);
+  const rightKeys = candidatePricePairKeys(right);
+  if (leftKeys.size === 0 || leftKeys.size !== rightKeys.size) return false;
+  for (const key of leftKeys) if (!rightKeys.has(key)) return false;
+  return true;
+}
+
 function explainCandidate(prefix: string, candidate: Pick<UploadPriceRecoveryResult, 'tiers' | 'priceRows' | 'priceDates'>): string[] {
   const failures: string[] = [];
   if (candidate.tiers.length === 0) failures.push(`${prefix}:price_tiers 없음`);
@@ -608,6 +638,32 @@ export async function recoverUploadPriceData(
     const candidate = evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText), ctx);
     deterministicCandidate = { source: det.source, ...candidate };
 
+    // Golf tables are frequently emitted as weekday/range rows where the
+    // generic matrix parser shifts a weekday by one column or one day. The
+    // human-reader's specialized golf rows retain the raw row boundary and
+    // are authoritative when the two deterministic candidates disagree.
+    const humanReaderCandidate = evaluateCandidate(ed, humanReaderPricePairsToTiers(rawText, options), ctx);
+    const isGolfDocument = /골프|怨⑦봽/.test(rawText);
+    const hasGolfRangeTable = /\d{1,2}\s*\/\s*\d{1,2}\s*~\s*(?:\d{1,2}\s*\/\s*)?\d{1,2}/.test(rawText);
+    const humanCandidateUsable = humanReaderCandidate.priceRows.length > 0
+      && humanReaderCandidate.priceDates.length > 0
+      && !hasSameDatePriceConflict(humanReaderCandidate.priceRows);
+    const golfMatrixSource = det.source === 'period_dow_matrix' || det.source === 'hotel_column_matrix';
+    if (
+      isGolfDocument
+      && hasGolfRangeTable
+      && golfMatrixSource
+      && humanCandidateUsable
+      && !candidatesHaveSamePricePairs(candidate, humanReaderCandidate)
+    ) {
+      return {
+        ok: true,
+        source: 'human_reader_source_backed',
+        failures,
+        ...humanReaderCandidate,
+      };
+    }
+
     if (det.source !== 'none' && candidate.priceRows.length > 0 && candidate.priceDates.length > 0) {
       return {
         ok: true,
@@ -616,6 +672,45 @@ export async function recoverUploadPriceData(
         ...candidate,
       };
     }
+  }
+
+  // The human-reader path is deterministic and retains source-adjacent
+  // evidence (including golf weekday/range tables). Prefer it over persisted
+  // model-hydrated tiers whenever the primary deterministic parser could not
+  // produce a complete candidate. This keeps source-backed dates/prices in
+  // the canonical payload and prevents an LLM fallback from silently winning
+  // the publication race.
+  if (rawText.length >= 100) {
+    // When no structured table parser recognized the section, a supplier's
+    // literal date/price facts are safer than a broad human-reader sweep.
+    // This preserves exact source adjacency for split catalog sections and
+    // leaves the human reader as the fallback for layouts it can prove.
+    if (deterministicCandidate?.source === 'none') {
+      const supplierRawCandidate = evaluateCandidate(ed, supplierRawFactsToTiers(rawText), ctx);
+      if (supplierRawCandidate.priceRows.length > 0 && supplierRawCandidate.priceDates.length > 0) {
+        return {
+          ok: true,
+          source: 'supplier_raw_facts',
+          failures,
+          ...supplierRawCandidate,
+        };
+      }
+    }
+
+    const humanReaderCandidate = evaluateCandidate(ed, humanReaderPricePairsToTiers(rawText, options), ctx);
+    if (
+      humanReaderCandidate.priceRows.length > 0
+      && humanReaderCandidate.priceDates.length > 0
+      && !hasSameDatePriceConflict(humanReaderCandidate.priceRows)
+    ) {
+      return {
+        ok: true,
+        source: 'human_reader_source_backed',
+        failures,
+        ...humanReaderCandidate,
+      };
+    }
+    failures.push(...explainCandidate('human_reader_source_backed', humanReaderCandidate));
   }
 
   const llmCandidate = evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(ed.price_tiers ?? []), rawText), ctx);
@@ -685,16 +780,6 @@ export async function recoverUploadPriceData(
     }
     failures.push(...explainCandidate('supplier_raw_facts', supplierRawCandidate));
 
-    const humanReaderCandidate = evaluateCandidate(ed, humanReaderPricePairsToTiers(rawText, options), ctx);
-    if (humanReaderCandidate.priceRows.length > 0 && humanReaderCandidate.priceDates.length > 0) {
-      return {
-        ok: true,
-        source: 'human_reader_source_backed',
-        failures,
-        ...humanReaderCandidate,
-      };
-    }
-    failures.push(...explainCandidate('human_reader_source_backed', humanReaderCandidate));
   } else {
     failures.push('deterministic:원문 길이 부족');
   }

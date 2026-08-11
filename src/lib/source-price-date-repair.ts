@@ -313,6 +313,7 @@ export function selectSourceBackedPriceRowsWithExclusions(
 export function filterSourceBackedPriceRowsForPublicEvidence(
   pkg: SourcePriceRepairPackage,
   rows: SourcePriceIRRow[],
+  options: { includePast?: boolean } = {},
 ): SourcePriceIRRow[] {
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
   const strictSourceYear = resolvePriceRecoveryYear({ rawText });
@@ -322,7 +323,7 @@ export function filterSourceBackedPriceRowsForPublicEvidence(
     if (!isIsoDate(row.date)) return false;
     if (requireStrictSourceYear && !row.date.startsWith(`${strictSourceYear}-`)) return false;
     if (strictMonthWindow && (row.date < strictMonthWindow.start || row.date > strictMonthWindow.end)) return false;
-    return isUpcomingSourceDate(row.date);
+    return options.includePast === true || isUpcomingSourceDate(row.date);
   });
 }
 
@@ -342,6 +343,62 @@ function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number 
   if (rawYear >= 2000) return rawYear;
 
   return new Date().getFullYear();
+}
+
+type SourceCalendarWindow = {
+  startYear: number;
+  startMonth: number;
+  endYear: number;
+  endMonth: number;
+};
+
+/**
+ * Some land-supplier sheets span two calendar years (for example
+ * "2026년 08월 ~ 2027년 03월"). The deterministic price parser accepts one
+ * year hint, so rows for August–December can otherwise be shifted into the
+ * following year. Keep the parser deterministic, then repair the year from
+ * the source's explicit operating window before public evidence filtering.
+ */
+function sourceCalendarWindow(rawText: string): SourceCalendarWindow | null {
+  const match = rawText.match(
+    /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(?:~|〜|-)\s*(20\d{2})\s*년\s*(\d{1,2})\s*월/u,
+  );
+  if (!match) return null;
+  const startYear = Number(match[1]);
+  const startMonth = Number(match[2]);
+  const endYear = Number(match[3]);
+  const endMonth = Number(match[4]);
+  if (
+    !Number.isInteger(startYear) || !Number.isInteger(endYear)
+    || !Number.isInteger(startMonth) || !Number.isInteger(endMonth)
+    || startYear < 2000 || endYear < 2000
+    || startMonth < 1 || startMonth > 12 || endMonth < 1 || endMonth > 12
+  ) return null;
+  return { startYear, startMonth, endYear, endMonth };
+}
+
+function sourceYearForMonth(window: SourceCalendarWindow, month: number): number | null {
+  if (window.startYear === window.endYear) return window.startYear;
+  if (window.startMonth > window.endMonth) {
+    if (month >= window.startMonth) return window.startYear;
+    if (month <= window.endMonth) return window.endYear;
+    return null;
+  }
+  if (month >= window.startMonth && month <= window.endMonth) {
+    return window.startYear;
+  }
+  return null;
+}
+
+function alignPriceRowsToSourceCalendar(rawText: string, rows: SourcePriceIRRow[]): SourcePriceIRRow[] {
+  const window = sourceCalendarWindow(rawText);
+  if (!window) return rows;
+  return rows.map(row => {
+    const month = Number(row.date.slice(5, 7));
+    const year = sourceYearForMonth(window, month);
+    if (!year || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) return row;
+    return { ...row, date: `${year}-${row.date.slice(5)}` };
+  });
 }
 
 function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
@@ -370,7 +427,8 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
 
   const byDate = new Map<string, PriceDate>();
   const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
-  for (const row of filterSourceBackedPriceRowsForPublicEvidence(pkg, selection.selected)) {
+  const sourceCalendarRows = alignPriceRowsToSourceCalendar(rawText, selection.selected);
+  for (const row of filterSourceBackedPriceRowsForPublicEvidence(pkg, sourceCalendarRows)) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;

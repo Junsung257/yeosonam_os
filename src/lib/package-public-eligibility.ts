@@ -29,6 +29,17 @@ export type PackagePublicEligibilityRow = {
   itinerary_data?: unknown;
 };
 
+export type CustomerPublicEligibilityOptions = {
+  /**
+   * V5 publication has its own immutable snapshot/proof gate. Once that gate
+   * is authoritative, legacy audit fields must not hide the already-approved
+   * customer artifact (they are still retained for audit/history).
+   */
+  authoritativeV5Snapshot?: boolean;
+  packageRevision?: string | number | null;
+  publicSnapshotHash?: string | null;
+};
+
 export type OptionalTourPublicEligibilityClassification =
   | 'valid_paid_option'
   | 'no_option_evidence'
@@ -374,6 +385,7 @@ export function sanitizeBrokenAttractionIdsForPublicEligibility(
 
 export function getPackagePublicEligibilityBlockers(
   row: unknown,
+  options: CustomerPublicEligibilityOptions = {},
 ): PublicEligibilityBlocker[] {
   const blockers: PublicEligibilityBlocker[] = [];
   const pkg = (asRecord(row) ?? {}) as PackagePublicEligibilityRow;
@@ -385,7 +397,7 @@ export function getPackagePublicEligibilityBlockers(
     });
   }
 
-  if (pkg.audit_status === 'blocked') {
+  if (pkg.audit_status === 'blocked' && !options.authoritativeV5Snapshot) {
     blockers.push({
       code: 'audit_status_blocked',
       message: 'audit_status=blocked',
@@ -438,6 +450,8 @@ export function getPackagePublicEligibilityBlockers(
     const currentMobileProof = evaluateCustomerMobileProof({
       auditReport: pkg.audit_report,
       packageUpdatedAt: pkg.updated_at ?? null,
+      packageRevision: options.packageRevision,
+      publicSnapshotHash: options.publicSnapshotHash,
     });
     const proofOnlyBlockResolved = currentMobileProof.ok && isProofOnlyCustomerOpenContractBlock(contract);
     const contractPass = contract.ok === true || contract.status === 'pass';
@@ -476,6 +490,11 @@ export function getPackagePublicEligibilityBlockers(
   return uniqueBlockers(blockers);
 }
 
-export function isCustomerPubliclyOpenable(row: unknown): boolean {
-  return getPackagePublicEligibilityBlockers(row).length === 0;
+export function isCustomerPubliclyOpenable(row: unknown): boolean;
+export function isCustomerPubliclyOpenable(row: unknown, options: CustomerPublicEligibilityOptions): boolean;
+export function isCustomerPubliclyOpenable(
+  row: unknown,
+  options: CustomerPublicEligibilityOptions = {},
+): boolean {
+  return getPackagePublicEligibilityBlockers(row, options).length === 0;
 }

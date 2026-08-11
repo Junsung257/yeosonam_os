@@ -177,12 +177,18 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, packageId, dest
 function formatShortDate(date: string): string {
   const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return date;
-  return `${Number(match[2])}/${Number(match[3])}`;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return year === new Date().getFullYear()
+    ? `${month}/${day}`
+    : `${year}년 ${month}월 ${day}일`;
 }
 
 function DepartureDatesSummary({ priceDates }: { priceDates?: LandingProductData['price_dates'] }) {
-  const rows = (priceDates ?? [])
+  const rows = [...(priceDates ?? [])]
     .filter(row => row.date && row.price > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
   if (rows.length === 0) return null;
   const hiddenCount = Math.max(0, (priceDates?.length ?? 0) - rows.length);
@@ -408,6 +414,7 @@ export function LandingClient({
   const isInsta = validSource === 'insta';
   const isKakao = validSource === 'kakao';
   const heroImage = isInsta ? data.heroImageA : data.heroImageB;
+  const heroIsReferenceImage = /(?:pexels\.com|unsplash\.com|images\.unsplash\.com)/i.test(heroImage || '');
 
   const fabText = '일정·인원 입력하고 상담받기';
 
@@ -433,12 +440,17 @@ export function LandingClient({
       <section className="relative overflow-hidden min-h-[240px]" style={{ height: '72vw', maxHeight: 360 }}>
         <SafeCoverImg
           src={heroImage}
-          alt={data.destination}
+          alt={`${data.destination}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
           className="absolute inset-0 h-full w-full object-cover"
           loading="eager"
           fetchPriority="high"
           fallback={<div className="absolute inset-0 bg-gradient-to-br from-text-primary via-brand-dark to-brand" />}
         />
+        {heroIsReferenceImage && (
+          <span className="absolute top-3 right-4 z-[1] rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-sm">
+            참고 이미지
+          </span>
+        )}
         <div
           className={`absolute inset-0 pointer-events-none ${
             isInsta
@@ -557,6 +569,7 @@ export function LandingClient({
         excludes={data.itinerary.excludes}
         optionalTours={data.itinerary.optionalTours}
         legalNotices={data.itinerary.legalNotices}
+        sourcePreparationNotices={Array.isArray(data.itinerary.sourcePreparationNotices) ? data.itinerary.sourcePreparationNotices : []}
         packageId={data.id}
         reviewScore={data.reviewScore}
         reviewCount={data.reviewCount}

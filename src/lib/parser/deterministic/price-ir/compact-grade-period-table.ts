@@ -287,7 +287,16 @@ export function extractCompactGradePeriodRows(rawText: string, options: PriceIRO
       labels = group.labels.slice(0, group.prices.length);
     }
 
-    const selectedColumn = selectColumn(labels, options);
+    let selectedColumn = selectColumn(labels, options);
+    // Some supplier exports omit the grade labels and only emit two price
+    // columns. In the travel-golf layouts used by this cohort, the first
+    // column is the 3-colour/5-day product and the second is the
+    // 4-colour/6-day product. Use the canonical duration as the explicit
+    // discriminator instead of silently taking the first column for both.
+    if (labels.length === 0 && group.prices.length === 2) {
+      if (options.durationDays === 5) selectedColumn = 0;
+      if (options.durationDays === 6) selectedColumn = 1;
+    }
     const selectedPrice = group.prices[selectedColumn] ?? group.prices[0] ?? 0;
     if (selectedPrice <= 0) continue;
 

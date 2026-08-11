@@ -30,8 +30,27 @@ type RestPackageGateRow = {
 };
 
 type PublicSnapshotRestRow = {
+  snapshot_hash?: string | null;
   snapshot_json?: Record<string, unknown> | null;
   card_projection?: Record<string, unknown> | null;
+};
+
+type RestV4JobRow = {
+  id?: string | null;
+  source_document_id?: string | null;
+  extraction_id?: string | null;
+  v4_stage?: string | null;
+  v4_stage_state?: Record<string, unknown> | null;
+  v4_canonical_normalization_id?: string | null;
+};
+
+type RestV4NormalizationRow = {
+  id?: string | null;
+  job_id?: string | null;
+  source_document_id?: string | null;
+  extraction_id?: string | null;
+  canonical_payload?: { sections?: unknown[] } | null;
+  status?: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -51,6 +70,62 @@ function asNumber(value: unknown): number | null {
 
 function isPublicPackageGateRow(row: RestPackageGateRow | null | undefined): row is RestPackageGateRow {
   return row?.publication_state === 'approved' || row?.publication_state === 'published';
+}
+
+async function isV4PublicationReadyViaRest(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  packageId: string,
+): Promise<boolean> {
+  const draftRes = await fetch(
+    `${supabaseUrl}/rest/v1/product_registration_drafts?package_id=eq.${encodeURIComponent(packageId)}&upload_job_id=not.is.null&select=upload_job_id&order=created_at.desc&limit=1`,
+    { headers, next: { revalidate: 60 } },
+  );
+  if (!draftRes.ok) return false;
+  const drafts = (await draftRes.json()) as Array<{ upload_job_id?: string | null }>;
+  let job: RestV4JobRow | null = null;
+
+  if (drafts?.[0]?.upload_job_id) {
+    const jobRes = await fetch(
+      `${supabaseUrl}/rest/v1/upload_jobs?id=eq.${encodeURIComponent(String(drafts[0].upload_job_id))}&select=id,source_document_id,extraction_id,v4_stage,v4_stage_state,v4_canonical_normalization_id&limit=1`,
+      { headers, next: { revalidate: 60 } },
+    );
+    if (!jobRes.ok) return false;
+    const jobs = (await jobRes.json()) as RestV4JobRow[];
+    job = jobs?.[0] ?? null;
+  } else {
+    // The V4 sidecar draft is asynchronous. Search the bounded job window for
+    // a package id stored in the lifecycle state before treating it as legacy.
+    const jobsRes = await fetch(
+      `${supabaseUrl}/rest/v1/upload_jobs?source_document_id=not.is.null&v4_stage=in.(normalized,verified,proofed,published,needs_review,failed)&select=id,source_document_id,extraction_id,v4_stage,v4_stage_state,v4_canonical_normalization_id&order=updated_at.desc&limit=200`,
+      { headers, next: { revalidate: 60 } },
+    );
+    if (!jobsRes.ok) return false;
+    const jobs = (await jobsRes.json()) as RestV4JobRow[];
+    job = jobs.find((candidate) => {
+      const state = candidate.v4_stage_state ?? {};
+      const packageIds = Array.isArray(state.packageIds) ? state.packageIds : [];
+      return state.packageId === packageId || packageIds.includes(packageId);
+    }) ?? null;
+  }
+
+  if (!job) return true;
+  const normalizationId = typeof job.v4_canonical_normalization_id === 'string'
+    ? job.v4_canonical_normalization_id
+    : null;
+  if (!job.id || !job.source_document_id || !job.extraction_id || !normalizationId
+    || !['normalized', 'verified', 'proofed', 'published'].includes(job.v4_stage ?? '')) {
+    return false;
+  }
+
+  const normalizationRes = await fetch(
+    `${supabaseUrl}/rest/v1/product_registration_v4_normalizations?id=eq.${encodeURIComponent(normalizationId)}&job_id=eq.${encodeURIComponent(job.id)}&source_document_id=eq.${encodeURIComponent(job.source_document_id)}&extraction_id=eq.${encodeURIComponent(job.extraction_id)}&status=eq.complete&select=id,job_id,source_document_id,extraction_id,canonical_payload&limit=1`,
+    { headers, next: { revalidate: 60 } },
+  );
+  if (!normalizationRes.ok) return false;
+  const normalizations = (await normalizationRes.json()) as RestV4NormalizationRow[];
+  return Array.isArray(normalizations?.[0]?.canonical_payload?.sections)
+    && normalizations[0].canonical_payload!.sections!.length > 0;
 }
 
 function publicProductFromSnapshot(row: PublicSnapshotRestRow | null | undefined): {
@@ -91,6 +166,7 @@ export async function GET(request: NextRequest) {
   let productTitle = '여소남 추천 여행';
   let productDestination = '';
   let productPrice: number | null = null;
+  let observedSnapshotHash: string | null = null;
   let affiliateName = '여소남 파트너';
 
   try {
@@ -117,24 +193,30 @@ export async function GET(request: NextRequest) {
         const gateRow = pkgGateRows?.[0];
         const revision = Number(gateRow?.package_revision ?? 1);
 
-        if (isPublicPackageGateRow(gateRow) && Number.isFinite(revision) && revision > 0) {
+        const v4Ready = await isV4PublicationReadyViaRest(supabaseUrl, headers, pkgId);
+        if (v4Ready && isPublicPackageGateRow(gateRow) && Number.isFinite(revision) && revision > 0) {
           const snapshotRes = await fetch(
-            `${supabaseUrl}/rest/v1/public_package_snapshots?package_id=eq.${encodeURIComponent(pkgId)}&package_revision=eq.${revision}&status=in.(approved,published)&select=snapshot_json,card_projection&order=created_at.desc&limit=1`,
+            `${supabaseUrl}/rest/v1/public_package_snapshots?package_id=eq.${encodeURIComponent(pkgId)}&package_revision=eq.${revision}&status=in.(approved,published)&select=snapshot_hash,snapshot_json,card_projection&order=created_at.desc&limit=1`,
             { headers, next: { revalidate: 600 } },
           );
           const snapshotRows = (await snapshotRes.json()) as PublicSnapshotRestRow[];
-          const publicProduct = publicProductFromSnapshot(snapshotRows?.[0]);
+          const snapshotRow = snapshotRows?.[0];
+          const publicProduct = publicProductFromSnapshot(snapshotRow);
           if (publicProduct) {
             productTitle = publicProduct.title;
             productDestination = publicProduct.destination;
             productPrice = publicProduct.price;
+            observedSnapshotHash = typeof snapshotRow?.snapshot_hash === 'string'
+              && /^[0-9a-f]{64}$/i.test(snapshotRow.snapshot_hash)
+              ? snapshotRow.snapshot_hash.toLowerCase()
+              : null;
           }
         }
       }
     }
   } catch { /* fallback to defaults */ }
 
-  return new ImageResponse(
+  const response = new ImageResponse(
     (
       <div
         style={{
@@ -238,4 +320,8 @@ export async function GET(request: NextRequest) {
       height: 630,
     },
   );
+  if (observedSnapshotHash) {
+    response.headers.set('x-product-registration-v5-snapshot-hash', observedSnapshotHash);
+  }
+  return response;
 }

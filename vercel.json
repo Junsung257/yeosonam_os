@@ -2,6 +2,18 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
+      "path": "/api/cron/product-registration-v4",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/product-registration-v5-outbox",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/product-registration-v5-convergence",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/clobe-bank-sync",
       "schedule": "12 19 * * *"
     },

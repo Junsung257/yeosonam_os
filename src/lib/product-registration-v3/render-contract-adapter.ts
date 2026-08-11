@@ -17,10 +17,20 @@ function renderHotel(value: Record<string, unknown>): HotelInfo {
   };
 }
 
+function customerTitleFromParts(parts: string[], fallback: string): string {
+  const candidates = parts.map(part => part.trim()).filter(Boolean);
+  const nonTag = candidates.filter(part => !/^#\s*[^\s#]+(?:\s+#\s*[^\s#]+)*$/u.test(part));
+  const productLike = nonTag.find(part =>
+    part.length >= 5
+    && /(골프|패키지|특가|투어|여행|리조트|크루즈|자유일정|스팟|노팁|노옵션|다색|무제한|박\s*\d+\s*일|\d+\s*박)/u.test(part),
+  );
+  return productLike ?? nonTag[0] ?? candidates[0] ?? fallback;
+}
+
 export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackageInput[] {
   return ledger.variants.map(variant => {
     const publishableNotices = variant.standard_notices.filter(isPublishableStandardNoticeDraft);
-    const title = variant.title_parts[0] || variant.variant_key;
+    const title = customerTitleFromParts(variant.title_parts, variant.variant_key);
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
     const days: DayInput[] = variant.days.map(day => {

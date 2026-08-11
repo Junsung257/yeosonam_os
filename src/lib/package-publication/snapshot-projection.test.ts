@@ -73,6 +73,39 @@ function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options:
         };
         return snapshotChain;
       }
+      if (table === 'product_registration_drafts') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          not: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        };
+        return chain;
+      }
+      if (table === 'upload_jobs') {
+        const response = { data: [], error: null };
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          in: () => chain,
+          not: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          then: (resolve: (value: typeof response) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(response).then(resolve, reject),
+        };
+        return chain;
+      }
+      if (table === 'product_registration_v4_normalizations') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        };
+        return chain;
+      }
       if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
       const requestedIds = new Set<string>();
       const attractionChain = {

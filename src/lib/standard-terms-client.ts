@@ -17,6 +17,52 @@ export interface NoticeBlock {
   _tier?: 1 | 2 | 3 | 4;
 }
 
+/**
+ * Customer surfaces must not present generic operator promises as if they
+ * were facts of the uploaded product. Keep product-tier notices intact and
+ * reduce platform notices to the one safe operational aid (business hours).
+ */
+export function sanitizeNoticeForCustomerSurface(notice: NoticeBlock): NoticeBlock | null {
+  if ((notice._tier ?? 4) >= 4) return notice;
+
+  const title = String(notice.title ?? '').trim();
+  const sourceLines = String(notice.text ?? '')
+    .split(/\r?\n/)
+    .map(line => line.trim().replace(/^[•·\-]+\s*/, ''))
+    .filter(Boolean);
+  const blocked = /자동\s*발권|실비\s*취소|천재지변|항공\s*면책|일정\s*이탈|No-Show|쇼핑\s*불참|여권[·ㆍ.]?비자|결제\s*(?:및|\/)?\s*계약|유류할증료|성수기\s*추가|감염병|최소\s*출발\s*인원/iu;
+  const safeLines = String(notice.text ?? '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/(?:자동\s*발권|실제\s*위약금|최대\s*100%|천재지변|손해배상\s*책임|100%\s*고객|환불\s*의무|당사\s*귀책|계약금|잔금|자동\s*취소|유류할증료|써차지|환율\s*변동|외교부|WHO)/iu.test(line));
+
+  if (blocked.test(title) || safeLines.length === 0) return null;
+  if (notice.type !== 'BUSINESS_HOURS') {
+    const businessHoursLine = sourceLines.find(line =>
+      /(?:영업\s*시간|09\s*:\s*00\s*[~∼-]\s*18\s*:\s*00)/u.test(line),
+    );
+    if (!businessHoursLine) return null;
+    return {
+      ...notice,
+      type: 'BUSINESS_HOURS',
+      title: '상담 가능 시간',
+      text: businessHoursLine,
+    };
+  }
+  const businessHoursLine = sourceLines.find(line =>
+    /(?:영업\s*시간|09\s*:\s*00\s*[~∼-]\s*18\s*:\s*00)/u.test(line),
+  );
+  if (businessHoursLine && sourceLines.length > 1) {
+    return {
+      ...notice,
+      title: '상담 가능 시간',
+      text: businessHoursLine,
+    };
+  }
+  return { ...notice, text: safeLines.join('\n') };
+}
+
 /** tier 3+ · tier 4 상품 특약 — 취소/환불 맥락 (AUTO_TICKETING 제외) */
 export function hasProductSpecialCancelPolicy(notices: readonly NoticeBlock[]): boolean {
   return notices.some(n => {

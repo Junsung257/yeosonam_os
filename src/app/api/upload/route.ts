@@ -7,6 +7,8 @@ import { postAlert } from '@/lib/admin-alerts';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { prepareUploadRequestIntake } from '@/lib/product-registration/upload-request-intake';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
+import { createProductRegistrationV4Job, transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
+import { ensureSourceDocumentStored } from '@/lib/product-registration-v4/source-documents';
 import {
   enqueueUploadTimeoutReplay,
   scheduleImmediateUploadTimeoutReplay,
@@ -131,14 +133,56 @@ const postHandler = async (request: NextRequest) => {
         { status: intake.status, headers: { 'x-upload-request-id': requestId } },
       );
     }
-    if (shouldQueueFirst(intake.directRawText)) {
+    // Keep the legacy endpoint as a safe compatibility surface: callers that
+    // do not use the V4 admin screen are still forced through immutable source
+    // archival and receive a V4 job before any product side effects run.
+    let pipelineIntake = intake;
+    if (isSupabaseConfigured && intake.sourceType && (!intake.sourceDocumentId || !intake.registrationJobId)) {
+      try {
+        const sourceDocument = intake.sourceDocumentId
+          ? null
+          : await ensureSourceDocumentStored({
+            supabase: supabaseAdmin,
+            buffer: intake.buffer,
+            filename: intake.fileName,
+            declaredMime: intake.declaredMime,
+            sourceType: intake.sourceType,
+          });
+        const sourceDocumentId = intake.sourceDocumentId ?? sourceDocument?.id ?? null;
+        const job = intake.registrationJobId
+          ? null
+          : await createProductRegistrationV4Job({
+            supabase: supabaseAdmin,
+            sourceType: intake.sourceType === 'text' ? 'text' : 'file',
+            sourceDocumentId,
+            normalizedHash: intake.fileHash,
+          });
+        pipelineIntake = {
+          ...intake,
+          sourceDocumentId,
+          registrationJobId: intake.registrationJobId ?? job?.id ?? null,
+        };
+      } catch (error) {
+        console.error('[Upload API] V4 lineage bootstrap failed:', error);
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'REGISTRATION_LINEAGE_REQUIRED',
+            error: error instanceof Error ? error.message : String(error),
+            uploadRequestId: requestId,
+          },
+          { status: 502, headers: { 'x-upload-request-id': requestId } },
+        );
+      }
+    }
+    if (shouldQueueFirst(pipelineIntake.directRawText)) {
       console.warn('[Upload API] queue-first replay for heavy upload:', {
         requestId,
         rawTextLength: intake.directRawText?.length ?? 0,
         likelyPackageSections: countLikelyPackageSections(intake.directRawText),
       });
       return deferUploadForReplay({
-        intake,
+        intake: pipelineIntake,
         requestId,
         startedAt,
         requestBaseUrl: request.nextUrl.origin,
@@ -147,13 +191,28 @@ const postHandler = async (request: NextRequest) => {
     }
 
     const pipelinePromise = runUploadRegistrationPipeline({
-      intake,
+      intake: pipelineIntake,
       supabase: supabaseAdmin,
       isSupabaseConfigured,
       safeAfter,
       postAlert,
       requestBaseUrl: request.nextUrl.origin,
       publicBaseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '',
+    }).catch(async error => {
+      if (pipelineIntake.registrationJobId) {
+        await transitionProductRegistrationV4Job({
+          supabase: supabaseAdmin,
+          jobId: pipelineIntake.registrationJobId,
+          stage: 'failed',
+          status: 'failed',
+          errorCode: error instanceof Error ? error.message.split(':')[0] : 'UPLOAD_PIPELINE_FAILED',
+          errorDetail: error instanceof Error ? error.message : String(error),
+          reviewReasons: ['UPLOAD_PIPELINE_FAILED'],
+        }).catch(stageError => {
+          console.warn('[Upload API] V4 failed stage update failed:', stageError instanceof Error ? stageError.message : String(stageError));
+        });
+      }
+      throw error;
     });
     const raced = await Promise.race([
       pipelinePromise.then(result => ({ kind: 'result' as const, result })),
@@ -162,7 +221,7 @@ const postHandler = async (request: NextRequest) => {
 
     if (raced.kind === 'timeout') {
       return deferUploadForReplay({
-        intake,
+        intake: pipelineIntake,
         requestId,
         startedAt,
         requestBaseUrl: request.nextUrl.origin,

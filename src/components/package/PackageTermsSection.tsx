@@ -4,12 +4,15 @@ import { useState } from 'react';
 import type { CanonicalView } from '@/lib/render-contract';
 import { formatTermLine } from '@/lib/terms-catalog';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { sanitizeNoticeForCustomerSurface, type NoticeBlock } from '@/lib/standard-terms-client';
 
 type PackageTermsSectionProps = {
   view: Pick<
     CanonicalView,
     'inclusions' | 'excludes' | 'surchargesMerged' | 'shopping' | 'termsMisc'
   >;
+  notices?: NoticeBlock[];
+  extraNotes?: string[];
   variant?: 'mobile' | 'a4';
 };
 
@@ -31,6 +34,8 @@ function renderCustomerTermLine(item: Parameters<typeof formatTermLine>[0]): str
  */
 export default function PackageTermsSection({
   view,
+  notices = [],
+  extraNotes = [],
   variant = 'mobile',
 }: PackageTermsSectionProps) {
   const [programExpanded, setProgramExpanded] = useState(false);
@@ -46,8 +51,32 @@ export default function PackageTermsSection({
   const hasShopping =
     Boolean(shoppingLine) && !/노쇼핑/.test(shoppingLine ?? '');
   const hasMisc = view.termsMisc.items.length > 0;
+  const customerNotices = notices
+    .filter((notice) => !notice.surfaces || notice.surfaces.includes('mobile'))
+    .map(sanitizeNoticeForCustomerSurface)
+    .filter((notice): notice is NoticeBlock => Boolean(notice))
+    .map((notice) => ({
+      title: normalizeCustomerVisibleCopy(notice.title),
+      lines: notice.text
+        .split(/\r?\n/)
+        .map((line) => normalizeCustomerVisibleCopy(line))
+        .filter(Boolean),
+      tier: notice._tier ?? 1,
+    }))
+    .filter((notice) => notice.title || notice.lines.length > 0);
+  const customerExtraNotes = extraNotes
+    .map((note) => normalizeCustomerVisibleCopy(note))
+    .filter(Boolean)
+    .filter((note, index, all) => all.indexOf(note) === index);
+  const productNotices = customerNotices.filter((notice) => notice.tier >= 4);
+  const commonNotices = customerNotices.filter((notice) => notice.tier < 4);
+  const commonHeading = commonNotices.length > 0
+    && commonNotices.every((notice) => notice.title === '상담 가능 시간')
+    ? '상담 가능 시간'
+    : (variant === 'mobile' ? '공통 예약·취소 안내' : '공통 안내사항');
+  const hasNotices = customerNotices.length > 0 || customerExtraNotes.length > 0;
 
-  if (!hasInclusions && !hasExcludes && !hasSurcharges && !hasShopping && !hasMisc) {
+  if (!hasInclusions && !hasExcludes && !hasSurcharges && !hasShopping && !hasMisc && !hasNotices) {
     return null;
   }
 
@@ -297,6 +326,63 @@ export default function PackageTermsSection({
             ))}
           </ul>
         </div>
+      )}
+
+      {hasNotices && (
+        <>
+          {(productNotices.length > 0 || customerExtraNotes.length > 0) && (
+            <div className={isMobile ? `bg-amber-50/60 ${sectionPad}` : `bg-amber-50/70 ${sectionPad}`}>
+              <h3 className={`${titleCls} ${isMobile ? 'text-amber-900 mb-2' : 'text-amber-900 mb-1'}`}>
+                {isMobile ? '상품 일정표 기준 안내' : '상품별 안내'}
+              </h3>
+              <div className={isMobile ? 'space-y-3' : 'space-y-1.5'}>
+                {productNotices.map((notice, index) => (
+                  <div key={`product-${notice.title}-${index}`} className="space-y-1">
+                    {notice.title && <p className={`${bodyCls} font-semibold text-amber-900`}>{notice.title}</p>}
+                    {notice.lines.map((line, lineIndex) => (
+                      <p key={`product-${index}-${lineIndex}`} className={`${bodyCls} text-amber-900 flex gap-2`}>
+                        <span className="shrink-0 opacity-60">•</span>
+                        <span className="break-keep">{line}</span>
+                      </p>
+                    ))}
+                  </div>
+                ))}
+                {customerExtraNotes.length > 0 && (
+                  <div className="space-y-1">
+                    {customerExtraNotes.map((note, index) => (
+                      <p key={`extra-${index}`} className={`${bodyCls} text-amber-900 flex gap-2`}>
+                        <span className="shrink-0 opacity-60">•</span>
+                        <span className="break-keep">{note}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {commonNotices.length > 0 && (
+            <div className={isMobile ? `bg-gray-50 ${sectionPad}` : `bg-admin-bg ${sectionPad}`}>
+              <h3 className={`${titleCls} ${isMobile ? 'text-gray-700 mb-2' : 'text-admin-text-2 mb-1'}`}>
+                {commonHeading}
+              </h3>
+              <div className={isMobile ? 'space-y-3' : 'space-y-1.5'}>
+                {commonNotices.map((notice, index) => (
+                  <div key={`common-${notice.title}-${index}`} className="space-y-1">
+                    {notice.title && notice.title !== commonHeading && (
+                      <p className={`${bodyCls} font-semibold text-gray-700`}>{notice.title}</p>
+                    )}
+                    {notice.lines.map((line, lineIndex) => (
+                      <p key={`common-${index}-${lineIndex}`} className={`${bodyCls} text-gray-600 flex gap-2`}>
+                        <span className="shrink-0 opacity-50">•</span>
+                        <span className="break-keep">{line}</span>
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

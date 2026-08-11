@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { evaluateVerifyChecks } from './upload-verify';
 
@@ -7,6 +7,15 @@ function findCheck(result: ReturnType<typeof evaluateVerifyChecks>, id: string) 
 }
 
 describe('upload verify price year', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00+09:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('C12 uses source-backed product year before current-year rollover', () => {
     const rawText = `
 regular fare distributed 2026.2.1

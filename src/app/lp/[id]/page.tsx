@@ -53,7 +53,11 @@ export async function generateMetadata(
   const id = getRouteParam(params.id);
   const encodedId = encodeURIComponent(id);
   const canonical = `${base}/lp/${encodedId}`;
-  const data = await safeLoadLpPackage(id);
+  // The browser proof harness is intentionally allowed to render a candidate
+  // package before publication. Metadata must use the same access decision as
+  // the page body; otherwise Next.js can perform a second public-only lookup,
+  // block on a stale snapshot and make an otherwise valid proof time out.
+  const data = await safeLoadLpPackage(id, await hasRenderProofAccess());
   if (!data) {
     return {
       title: '상품',
@@ -86,6 +90,14 @@ export async function generateMetadata(
     (defaultMessage?.subline || fallbackTitle).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
   const socialImage = hero && isSafeImageSrc(hero) ? hero : defaultSocialImage();
+  const lineageMeta = data.publicSnapshotHash
+    ? {
+        'product-registration-v5-snapshot-hash': data.publicSnapshotHash,
+        ...(data.canonicalRevisionId
+          ? { 'product-registration-v5-revision-id': data.canonicalRevisionId }
+          : {}),
+      }
+    : undefined;
 
   return {
     title,
@@ -104,6 +116,7 @@ export async function generateMetadata(
       description: desc,
       images: [socialImage],
     },
+    ...(lineageMeta ? { other: lineageMeta } : {}),
   };
 }
 

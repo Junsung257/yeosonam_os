@@ -11,6 +11,8 @@ type RpcResult = {
   nonCustomerPublishableAttractionIds?: string[];
   attractionNames?: Record<string, string>;
   attractionLookupError?: Error | null;
+  v4Job?: Record<string, unknown> | null;
+  v4Normalization?: Record<string, unknown> | null;
 };
 
 function makeSupabaseMock(result: RpcResult = {}) {
@@ -21,6 +23,40 @@ function makeSupabaseMock(result: RpcResult = {}) {
       return Promise.resolve({ data: { ok: true }, error: result.rpcError ?? null });
     },
     from(table: string) {
+      if (table === 'product_registration_drafts') {
+        const draft = result.v4Job?.id ? { upload_job_id: result.v4Job.id } : null;
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          not: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: draft, error: null }),
+        };
+        return chain;
+      }
+      if (table === 'upload_jobs') {
+        const response = { data: result.v4Job ? [result.v4Job] : [], error: null };
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          in: () => chain,
+          not: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: result.v4Job ?? null, error: null }),
+          then: (resolve: (value: typeof response) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(response).then(resolve, reject),
+        };
+        return chain;
+      }
+      if (table === 'product_registration_v4_normalizations') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: () => Promise.resolve({ data: result.v4Normalization ?? null, error: null }),
+        };
+        return chain;
+      }
       if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
       const requestedIds = new Set<string>();
       const chain = {
@@ -66,6 +102,39 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
   return {
     from(table: string) {
       if (table === 'public_package_snapshots') return snapshotChain;
+      if (table === 'product_registration_drafts') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          not: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        };
+        return chain;
+      }
+      if (table === 'upload_jobs') {
+        const response = { data: [], error: null };
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          in: () => chain,
+          not: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          then: (resolve: (value: typeof response) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(response).then(resolve, reject),
+        };
+        return chain;
+      }
+      if (table === 'product_registration_v4_normalizations') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        };
+        return chain;
+      }
       if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
       const requestedIds = new Set<string>();
       const attractionChain = {
@@ -454,6 +523,39 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         package_revision: 3,
         audit_status: 'clean',
       }),
+    });
+  });
+
+  it('blocks the central snapshot writer when a V4 package lacks canonical normalization', async () => {
+    const { supabase, calls } = makeSupabaseMock({
+      v4Job: {
+        id: 'job-v4-1',
+        source_document_id: 'doc-v4-1',
+        extraction_id: 'ext-v4-1',
+        v4_stage: 'normalized',
+        v4_canonical_normalization_id: null,
+        v4_stage_state: { packageId: '11111111-1111-4111-8111-111111111111' },
+      },
+    });
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      publishablePackage(),
+      {
+        customerOpenContractOk: true,
+        mobileProof: mobileProofForSnapshot(buildPublicPackageSnapshot(publishablePackage()).snapshotHash),
+      },
+    );
+
+    expect(result.publishable).toBe(false);
+    expect(result.publicationState).toBe('blocked');
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'v4_canonical_normalization_required' }),
+    ]));
+    expect(calls[0].payload).toMatchObject({
+      p_snapshot_status: 'blocked',
+      p_publication_state: 'blocked',
+      p_publishable: false,
     });
   });
 

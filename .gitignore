@@ -1,4 +1,6 @@
 node_modules
+/vendor/rhwp/*
+!/vendor/rhwp/README.md
 /.pnp
 .pnp.js
 
@@ -8,6 +10,8 @@ node_modules
 # Next.js
 /.next/
 /.next-dev-*/
+/.next-v4-check*/
+/.next-v4-debug*
 /.next-build.lock
 /out/
 

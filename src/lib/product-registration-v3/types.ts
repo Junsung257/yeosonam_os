@@ -100,6 +100,8 @@ export interface V3LedgerEvent {
 
 export interface V3PriceCalendarEntry {
   date: string | null;
+  date_range?: { start: string; end: string } | null;
+  weekday?: number | null;
   label: string;
   amount: number;
   currency: string;

@@ -12,7 +12,7 @@ import {
 } from '@/lib/customer-copy-quality';
 import { normalizeCustomerAirlineCodeCopy } from '@/lib/airline-display';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { postProcessItineraryData } from '@/lib/package-post-process';
+import { attachSourceBackedGolfRemarks, postProcessItineraryData } from '@/lib/package-post-process';
 import { renderPackage } from '@/lib/render-contract';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
@@ -920,6 +920,13 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   optionalTourClassification: ReturnType<typeof classifyOptionalTours>;
 } {
   const publicPackage = sanitizeCustomerPackageForClient(pkg) ?? {};
+  // Operational timestamps are not customer facts. Keeping them inside the
+  // immutable public payload makes every proof/audit write generate a new
+  // snapshot hash and defeats idempotent publication. The content revision
+  // below remains the authoritative freshness marker.
+  delete publicPackage.created_at;
+  delete publicPackage.updated_at;
+  delete publicPackage.audit_checked_at;
   applySourceBackedPublicPriceRepair(pkg, publicPackage);
   const imagesPublic = collectPublicImages({ ...pkg, ...publicPackage });
   const imageUrls = imagesPublic.map(image => image.url);
@@ -944,7 +951,10 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     rawText: asString(pkg.raw_text),
   });
   const sourceBackedItinerary = postProcessItineraryData(
-    buildSourceBackedItineraryCandidate(pkg, publicPackage.itinerary_data) as Parameters<typeof postProcessItineraryData>[0],
+    attachSourceBackedGolfRemarks(
+      buildSourceBackedItineraryCandidate(pkg, publicPackage.itinerary_data) as Parameters<typeof postProcessItineraryData>[0],
+      asString(pkg.raw_text),
+    ),
   );
   const publicOperationalNotices = buildPublicOperationalNotices({
     ...pkg,

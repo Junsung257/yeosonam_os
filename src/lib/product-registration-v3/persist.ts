@@ -330,6 +330,9 @@ export async function persistProductRegistrationDraftV3(
     destination?: string | null;
     documentType?: string | null;
     result: V3PipelineResult;
+    sourceDocumentId?: string | null;
+    extractionId?: string | null;
+    registrationJobId?: string | null;
   },
 ): Promise<{ id: string | null; error: string | null; queuedUnmatched: number }> {
   try {
@@ -351,6 +354,9 @@ export async function persistProductRegistrationDraftV3(
       match_summary: input.result.match_summary,
       gate_result: input.result.gate_result,
       status,
+      source_document_id: input.sourceDocumentId ?? null,
+      extraction_id: input.extractionId ?? null,
+      upload_job_id: input.registrationJobId ?? null,
     };
     const { data, error } = await sb
       .from('product_registration_drafts')

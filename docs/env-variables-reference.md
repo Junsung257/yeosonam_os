@@ -533,3 +533,16 @@ are visible before applying external configuration.
 | Variable | Purpose |
 |---|---|
 | `CLOBE_COMPANY_ID` | Optional Clobe company ID when one OAuth account exposes multiple companies. Leave unset for a single-company connection. |
+
+## Product Registration V4 OCR
+
+| Variable | Purpose |
+|---|---|
+| `PRODUCT_REGISTRATION_V4_OCR_ENABLED` | Optional, fail-closed image OCR profile. Set to `1` only after the OCR provider, cost ceiling, and golden-corpus review are approved. Unset/other values route image uploads to `needs_review`. |
+
+## Product Registration V5 Shadow
+
+| Variable | Description |
+|---|---|
+| `PRODUCT_REGISTRATION_V5_SHADOW` | Optional. Set to `1` to persist immutable V5 candidate revisions, segments, and claim/evidence links from the V4 canonical worker. Customer publication still uses the existing V4/V3 compatibility writer until the dual-write diff and CAS publication gates are complete. |
+| `PRODUCT_REGISTRATION_V5_AUTHORITATIVE` | Optional and disabled by default. Set to `1` only for a controlled admin canary using the V5 CAS publication endpoint; normal approval remains on the compatibility writer. |

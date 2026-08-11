@@ -107,8 +107,8 @@ function OptionalToursSection({ tours }: { tours: LandingProductData['itinerary'
   );
 }
 
-function LegalNotice({ legalNotices }: { legalNotices: string[] }) {
-  const renderLines = getLegalNoticeLinesOrDefault(legalNotices, 3);
+function LegalNotice({ legalNotices = [] }: { legalNotices?: string[] }) {
+  const renderLines = getLegalNoticeLinesOrDefault(Array.isArray(legalNotices) ? legalNotices : [], 3);
   return (
     <section className="border-t border-orange-100 bg-orange-50 px-5 py-4">
       <h3 className="mb-2 text-sm font-bold text-orange-800">약관 및 취소 수수료 안내</h3>
@@ -116,6 +116,22 @@ function LegalNotice({ legalNotices }: { legalNotices: string[] }) {
         {renderLines.map((line, index) => (
           <p key={`${index}-${line.slice(0, 12)}`} className="text-xs leading-relaxed text-orange-900">
             · {line}
+          </p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SourcePreparationNotice({ lines }: { lines?: string[] }) {
+  if (!lines?.length) return null;
+  return (
+    <section className="border-t border-amber-100 bg-amber-50 px-5 py-4">
+      <h3 className="mb-2 text-sm font-bold text-amber-900">상품 일정표 기준 준비 안내</h3>
+      <div className="space-y-1.5">
+        {lines.map((line, index) => (
+          <p key={`${index}-${line.slice(0, 12)}`} className="text-xs leading-relaxed text-amber-900">
+            • {line}
           </p>
         ))}
       </div>
@@ -309,6 +325,7 @@ export interface LpDeferSectionsProps {
   excludes: string[];
   optionalTours: LandingProductData['itinerary']['optionalTours'];
   legalNotices: string[];
+  sourcePreparationNotices: string[];
   packageId: string;
   reviewScore: number;
   reviewCount: number;
@@ -322,16 +339,21 @@ export function LpDeferSections({
   excludes,
   optionalTours,
   legalNotices,
+  sourcePreparationNotices,
   packageId,
   reviewScore,
   reviewCount,
   recommendation,
 }: LpDeferSectionsProps) {
+  const safeSourcePreparationNotices = Array.isArray(sourcePreparationNotices)
+    ? sourcePreparationNotices
+    : [];
   return (
     <>
       <ItinerarySection days={days} onViewed={onItineraryViewed} />
       <OptionalToursSection tours={optionalTours} />
       <IncludeExclude includes={includes} excludes={excludes} packageId={packageId} />
+      <SourcePreparationNotice lines={safeSourcePreparationNotices} />
       <LegalNotice legalNotices={legalNotices} />
       <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} recommendation={recommendation} />
     </>

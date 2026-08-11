@@ -31,7 +31,8 @@ export type PublishBlockerCode =
   | 'public_snapshot_missing'
   | 'public_title_missing'
   | 'public_snapshot_hash_mismatch'
-  | 'customer_route_reads_unapproved_field';
+  | 'customer_route_reads_unapproved_field'
+  | 'customer_surface_parity_mismatch';
 
 export type PublishFinding = {
   code: PublishBlockerCode | string;

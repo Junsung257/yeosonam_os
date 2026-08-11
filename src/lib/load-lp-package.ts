@@ -33,12 +33,19 @@ export async function fetchLpPackageUncached(
       ).catch(() => null);
   const pkg = options.allowNonPublicProof ? rawPkg : publicSnapshot?.package;
   const status = (rawPkg as { status?: string | null }).status;
-  const auditStatus = (rawPkg as { audit_status?: string | null }).audit_status;
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
   if (!options.allowNonPublicProof && !isPublicPublicationState(publicationState)) return null;
   if (!options.allowNonPublicProof && !publicSnapshot) return null;
-  if (!options.allowNonPublicProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) return null;
-  if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(rawPkg)) return null;
+  const authoritativeV5Snapshot = Boolean(
+    publicSnapshot?.row.canonical_revision_id
+    && publicSnapshot.row.snapshot_hash,
+  );
+  if (!options.allowNonPublicProof && (!isCustomerVisibleStatus(status))) return null;
+  if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(rawPkg, {
+    authoritativeV5Snapshot,
+    packageRevision: publicSnapshot?.row.package_revision,
+    publicSnapshotHash: publicSnapshot?.row.snapshot_hash,
+  })) return null;
   if (!pkg) return null;
 
   const liveVerify = publicSnapshot
@@ -69,6 +76,12 @@ export async function fetchLpPackageUncached(
 /** LP RSC용 — 300초 ISR, 패키지별 인자는 캐시 키에 포함됨 */
 export const loadLpPackageForPage = unstable_cache(
   async (id: string) => fetchLpPackageUncached(id),
-  ['lp-package-v1'],
+  // Bump the cache contract whenever the source changes from mutable
+  // travel_packages to proof-bound V5 public snapshots. A cached null from a
+  // pre-publication read must never hide a newly published package.
+  // Bump when the LP projection adds/removes customer-visible source facts;
+  // otherwise a prior deployment's unstable_cache entry can keep stale legal
+  // and preparation notices on the landing route after a successful publish.
+  ['lp-package-v3-v5-public-snapshot-source-notices'],
   { revalidate: 300, tags: ['lp-packages'] },
 );

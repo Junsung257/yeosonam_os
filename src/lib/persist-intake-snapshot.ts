@@ -21,6 +21,8 @@ export interface PersistIntakeSnapshotInput {
   pkg: Parameters<typeof pkgToIntake>[0];
   landOperatorName?: string | null;
   source?: IntakeSnapshotSource;
+  sourceDocumentId?: string | null;
+  extractionId?: string | null;
 }
 
 export interface PersistIntakeSnapshotResult {
@@ -105,6 +107,8 @@ export async function persistIntakeSnapshot(
     normalizer_version: ir.normalizerVersion,
     status: 'converted' as const,
     canary_mode: input.source === 'ir-register',
+    source_document_id: input.sourceDocumentId ?? null,
+    extraction_id: input.extractionId ?? null,
   };
   const coverage = evidenceCoverage(ir.sourceEvidence, [...REQUIRED_PACKAGE_EVIDENCE_FIELDS]);
   const renderCoverage = evaluateRenderClaimCoverage(input.pkg as Parameters<typeof evaluateRenderClaimCoverage>[0], ir.sourceEvidence);

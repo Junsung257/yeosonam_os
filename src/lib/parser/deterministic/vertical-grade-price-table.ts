@@ -17,6 +17,7 @@ interface ParsedVerticalGradeRow {
   premiumPrice: number;
   prices: number[];
   note: string | null;
+  blockIndex: number;
 }
 
 const DATE_LIST_RE = /^\d{1,2}[./]\d{1,2}(?:\s*,\s*(?:\d{1,2}[./])?\d{1,2})*$/;
@@ -145,6 +146,8 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
   if (start < 0) return [];
 
   const rows: ParsedVerticalGradeRow[] = [];
+  const seenDateLists = new Set<string>();
+  let blockIndex = 0;
   let i = start;
   while (i < lines.length) {
     const line = lines[i];
@@ -162,6 +165,10 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
       continue;
     }
 
+    const dateListKey = dates.join(',');
+    if (seenDateLists.has(dateListKey)) blockIndex += 1;
+    seenDateLists.add(dateListKey);
+
     for (const date of dates) {
       rows.push({
         date,
@@ -170,12 +177,28 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
         premiumPrice: pair.premiumPrice,
         prices: pair.prices,
         note: pair.note,
+        blockIndex,
       });
     }
     i = pair.nextIndex;
   }
 
   return rows;
+}
+
+function selectDurationBlockRows(rows: ParsedVerticalGradeRow[], rawText: string, options: VerticalGradePriceOptions): ParsedVerticalGradeRow[] {
+  const blockIndexes = [...new Set(rows.map(row => row.blockIndex))].sort((a, b) => a - b);
+  if (blockIndexes.length < 2) return rows;
+  // Some supplier sheets print 3박5일 and 4박6일 as adjacent vertical
+  // tables without repeating the duration next to each date row. When both
+  // duration labels are present, the repeated date list marks the next
+  // block. Selecting by the explicit product duration is deterministic and
+  // prevents two products' prices from being merged for one departure date.
+  if (!/3\s*박\s*5\s*일/.test(rawText) || !/4\s*박\s*6\s*일/.test(rawText)) return rows;
+  const durationDays = options.durationDays ?? inferDurationDaysFromText(options.title);
+  const desiredBlock = durationDays === 5 ? blockIndexes[0] : durationDays === 6 ? blockIndexes[1] : undefined;
+  if (desiredBlock == null) return rows;
+  return rows.filter(row => row.blockIndex === desiredBlock);
 }
 
 function weekdayForIso(date: string): string | null {
@@ -267,8 +290,22 @@ function resolveVerticalGrade(options: VerticalGradePriceOptions): VerticalGrade
   return normalizeGrade(grade);
 }
 
-function priceForGrade(row: ParsedVerticalGradeRow, grade: VerticalGradePriceGrade): number {
+function priceForGrade(row: ParsedVerticalGradeRow, grade: VerticalGradePriceGrade, title?: string | null): number {
   if (row.prices.length >= 3) {
+    // Five-column supplier sheets commonly label columns with product
+    // variants (나나달달/라이트/노팁·노옵션) rather than the generic
+    // economy/standard/premium trio. Prefer an explicit title cue when one
+    // exists; otherwise retain the historical three-column mapping.
+    if (row.prices.length >= 4 && title) {
+      const normalizedTitle = title.replace(/\s+/g, '').toLowerCase();
+      let explicitIndex: number | null = null;
+      if (/노팁\/?노옵션|노팁노옵션/.test(normalizedTitle)) explicitIndex = 3;
+      else if (/라이트|light/.test(normalizedTitle)) explicitIndex = 2;
+      else if (/나나달달/.test(normalizedTitle)) explicitIndex = 1;
+      else if (/1일자유|호핑/.test(normalizedTitle)) explicitIndex = 0;
+      else if (/실속|세이브|economy/.test(normalizedTitle)) explicitIndex = 0;
+      if (explicitIndex != null) return row.prices[explicitIndex] ?? row.prices.at(-1) ?? 0;
+    }
     if (grade === 'premium') return row.prices[2] ?? 0;
     if (grade === 'standard') return row.prices[1] ?? 0;
     return row.prices[0] ?? 0;
@@ -294,7 +331,9 @@ function resolveVerticalGradeStable(options: VerticalGradePriceOptions): Vertica
  * two grade prices, usually "economy/basic" then "premium/no-option".
  */
 export function extractVerticalGradePriceTable(rawText: string, options: VerticalGradePriceOptions = {}): PriceTier[] {
-  const rows = filterRowsByDuration(extractRows(rawText, options), options);
+  const parsedRows = extractRows(rawText, options);
+  const durationRows = selectDurationBlockRows(parsedRows, rawText, options);
+  const rows = filterRowsByDuration(durationRows, options);
   if (rows.length === 0) return [];
 
   const grade = resolveVerticalGradeStable(options);
@@ -302,7 +341,7 @@ export function extractVerticalGradePriceTable(rawText: string, options: Vertica
   const byKey = new Map<string, { price: number; note: string | null; dates: string[] }>();
 
   for (const row of rows) {
-    const price = priceForGrade(row, grade);
+    const price = priceForGrade(row, grade, options.title);
     if (price <= 0) continue;
     const key = `${price}|${row.note ?? ''}`;
     const group = byKey.get(key) ?? { price, note: row.note, dates: [] };

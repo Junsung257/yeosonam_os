@@ -92,6 +92,8 @@ export function evaluateCustomerOpenContract(input: {
   const mobileProof = input.mobileProof ?? evaluateCustomerMobileProof({
     auditReport: input.pkg.audit_report ?? null,
     packageUpdatedAt: asString(input.pkg.updated_at),
+    packageRevision: input.pkg.package_revision as string | number | null | undefined,
+    publicSnapshotHash: asString(input.pkg.public_snapshot_hash),
   });
   const qualityScorecard = evaluateRegistrationQualityScorecard({
     pkg: input.pkg,

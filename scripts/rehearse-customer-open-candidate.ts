@@ -172,7 +172,7 @@ function runMobileProofRefresh(options: Options, packageId: string): ProofRefres
 }
 
 async function runSavedPackageRehearsal(options: Options, packageId: string) {
-  const autopilot = await runUploadToOpenAutopilot({
+  const runAutopilot = () => runUploadToOpenAutopilot({
     supabase: supabaseAdmin,
     isSupabaseConfigured: true,
     options: {
@@ -183,6 +183,7 @@ async function runSavedPackageRehearsal(options: Options, packageId: string) {
       limit: 1,
     },
   });
+  let autopilot = await runAutopilot();
   let contract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
   const proofRefresh: ProofRefreshResult = options.refreshProof && shouldRefreshMobileProof(contract.blockers)
     ? runMobileProofRefresh(options, packageId)
@@ -196,6 +197,13 @@ async function runSavedPackageRehearsal(options: Options, packageId: string) {
       };
 
   if (proofRefresh.attempted && proofRefresh.exitCode === 0) {
+    contract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
+    // The first pass intentionally runs before proof refresh so it can decide
+    // whether a refresh is needed. Re-run the full persisted verify/scorecard
+    // after a successful proof; otherwise the report would expose the old
+    // C13/C19 and missing-proof result even though the customer-open contract
+    // now passes.
+    autopilot = await runAutopilot();
     contract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
   }
 

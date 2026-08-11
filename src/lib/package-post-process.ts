@@ -26,6 +26,43 @@ import { customerCopyQualityIssues } from './customer-copy-quality';
 
 export type ItineraryLike = Parameters<typeof enrichItineraryForDisplay>[0];
 
+/** Add only course names and round length explicitly present in the source. */
+export function attachSourceBackedGolfRemarks<T extends ItineraryLike>(
+  itin: T,
+  rawText: string | null | undefined,
+): T {
+  if (!itin || !rawText || !/(?:골프|18\s*H|18홀)/iu.test(rawText)) return itin;
+  const root = asRecord(itin);
+  const highlights = asRecord(root.highlights);
+  const existing = Array.isArray(highlights.remarks)
+    ? highlights.remarks.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const courseNames: string[] = [];
+  for (const rawLine of rawText.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+/g, ' ').trim();
+    if (!/18\s*H|18홀/iu.test(line)) continue;
+    const name = line
+      .replace(/\s*(?:18\s*H|18홀).*$/iu, '')
+      .replace(/[|:·,]+$/g, '')
+      .trim();
+    if (!name || name.length > 40 || /^(?:예정 골프장|골프장|일정|일자)$/iu.test(name)) continue;
+    if (!courseNames.includes(name)) courseNames.push(name);
+  }
+  const cleanedCourseNames = courseNames
+    .map(name => name.replace(/(?:예정\s*골프장|골프장)\s*$/u, '').replace(/[|:쨌,]+$/g, '').trim())
+    .filter(name => name.length > 0);
+  courseNames.splice(0, courseNames.length, ...Array.from(new Set(cleanedCourseNames)));
+  const remarks = [...existing];
+  if (courseNames.length > 0 && !remarks.some(value => /예정 골프장/iu.test(value))) {
+    remarks.push(`일정표 기준 예정 골프장: ${courseNames.slice(0, 8).join(', ')}${courseNames.length > 8 ? ' 외' : ''}`);
+  }
+  if (!remarks.some(value => /18\s*H|18홀/iu.test(value))) {
+    remarks.push('일정표 기준 골프 라운딩은 18홀입니다.');
+  }
+  if (remarks.length === existing.length) return itin;
+  return { ...root, highlights: { ...highlights, remarks } } as unknown as T;
+}
+
 /** itinerary_data — legacy 이중 래핑 해제 + coerce + sanitize + flight_segments SSOT */
 function unwrapItineraryData<T extends ItineraryLike>(itin: T): T {
   if (!itin || typeof itin !== 'object') return itin;
@@ -155,13 +192,75 @@ function sanitizeItineraryScheduleForPublicSource<T extends ItineraryLike>(itin:
   return changed ? next as T : itin;
 }
 
+/**
+ * Legacy day rows can carry an older transport code even when the same
+ * itinerary has source-backed `flight_segments`. Align the persisted
+ * customer snapshot as well as the renderer so every surface shows the same
+ * flight number.
+ */
+function alignItineraryFlightCodes<T extends ItineraryLike>(itin: T): T {
+  const root = asRecord(itin);
+  const segments = Array.isArray(root.flight_segments)
+    ? root.flight_segments.map(asRecord).filter(segment => typeof segment.flight_no === 'string' && segment.flight_no.trim())
+    : [];
+  const days = Array.isArray(root.days) ? root.days : [];
+  if (segments.length === 0 || days.length === 0) return itin;
+
+  const next = cloneItineraryData(root) as Record<string, unknown>;
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  let changed = false;
+
+  // Keep legacy itinerary summary metadata aligned with source-backed flight segments.
+  const nextMeta = asRecord(next.meta);
+  const outbound = segments.find(segment => segment.leg === 'outbound');
+  const inbound = segments.find(segment => segment.leg === 'inbound');
+  if (outbound && nextMeta.flight_out !== outbound.flight_no) {
+    nextMeta.flight_out = outbound.flight_no;
+    changed = true;
+  }
+  if (inbound && nextMeta.flight_in !== inbound.flight_no) {
+    nextMeta.flight_in = inbound.flight_no;
+    changed = true;
+  }
+  if (Object.keys(nextMeta).length > 0) next.meta = nextMeta;
+
+  nextDays.forEach((day, dayIndex) => {
+    const dayRecord = asRecord(day);
+    const schedule = Array.isArray(dayRecord.schedule) ? dayRecord.schedule : [];
+    const daySegments = segments.filter(segment => {
+      const pair = segment.day_pair;
+      if (Array.isArray(pair) && typeof pair[0] === 'number') return pair[0] === dayIndex;
+      return (segment.leg === 'outbound' && dayIndex === 0)
+        || (segment.leg === 'inbound' && dayIndex === nextDays.length - 1);
+    });
+    if (daySegments.length === 0) return;
+
+    const code = String(daySegments[0].flight_no).trim();
+    let dayChanged = false;
+    const aligned = schedule.map(item => {
+      const record = asRecord(item);
+      const activity = typeof record.activity === 'string' ? record.activity : '';
+      const isFlightLike = record.type === 'flight'
+        || record.entity_kind === 'flight'
+        || /(?:국제선\s*(?:출발|도착)|\b(?:PUS|FUK)\s*→)/i.test(activity);
+      if (!isFlightLike || record.transport === code) return item;
+      changed = true;
+      dayChanged = true;
+      return { ...record, transport: code };
+    });
+    if (dayChanged) dayRecord.schedule = aligned;
+  });
+
+  return changed ? next as T : itin;
+}
+
 export function postProcessItineraryData<T extends ItineraryLike>(itin: T): T {
   const unwrapped = unwrapItineraryData(itin);
-  const draft = cloneItineraryData(unwrapped);
+  const draft = alignItineraryFlightCodes(cloneItineraryData(unwrapped));
   const enriched = enrichItineraryForDisplay(draft, data =>
     normalizeFlightSegments(data as Parameters<typeof normalizeFlightSegments>[0]),
   );
-  return sanitizeItineraryScheduleForPublicSource(enriched);
+  return alignItineraryFlightCodes(sanitizeItineraryScheduleForPublicSource(enriched));
 }
 
 export interface PostProcessCatalogInput {

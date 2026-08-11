@@ -17,6 +17,8 @@ describe('customer visible copy quality', () => {
     expect(normalizeCustomerVisibleCopy('TAX(5월기준), 유류할증료(6월 기준), 기사가이드경비')).toBe(
       '항공세 5월 기준, 유류할증료 6월 기준, 가이드/기사 경비',
     );
+    expect(normalizeCustomerVisibleCopy('유류할증료(7월발권)')).toBe('유류할증료 7월 발권 기준');
+    expect(issueCodes(normalizeCustomerVisibleCopy('유류할증료(7월발권)'))).toEqual([]);
   });
 
   it('normalizes Ba Na Hills summit and OR wording without leaving supplier notation', () => {

@@ -3,7 +3,9 @@ import { customerCopyQualityIssues } from '@/lib/customer-copy-quality';
 import { isSafeImageSrc } from '@/lib/image-url';
 import type { PublishGateResult as LegacyPublishGateResult } from '@/lib/product-publish-gate';
 import { hasRiskyCustomerCopy, isOptionalTourFragment } from './public-snapshot';
+import type { CustomerSurfaceParityResult } from './customer-surface-parity';
 import type { PublicationState, PublishFinding } from './types';
+import type { ProductRegistrationV4PublicationGate } from '@/lib/product-registration-v4/publication-gate';
 
 type AnyRecord = Record<string, unknown>;
 type CustomerClaimSurface = {
@@ -27,6 +29,10 @@ export type PublicSnapshotGateInput = {
   auditQueryFailed?: string | null;
   invalidAttractionIds?: string[];
   publicNoticeSourcePaths?: string[];
+  customerSurfaceParity?: CustomerSurfaceParityResult | null;
+  /** When present, a V4 lineage package cannot be published until its
+   * canonical normalization row is complete and lineage-matched. */
+  v4PublicationGate?: ProductRegistrationV4PublicationGate | null;
 };
 
 export type PublicSnapshotGateResult = {
@@ -454,6 +460,15 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'audit_query_failed', input.auditQueryFailed);
   }
 
+  if (input.v4PublicationGate?.required && !input.v4PublicationGate.ok) {
+    addBlocker(
+      hard,
+      'v4_canonical_normalization_required',
+      `V4 canonical normalization is not ready for customer publication (${input.v4PublicationGate.code})`,
+      '_v4_canonical_normalization',
+    );
+  }
+
   if (input.customerOpenContractOk !== true) {
     for (const blocker of input.customerOpenContractBlockers ?? ['customer_open_contract missing or blocked']) {
       addBlocker(hard, 'unsupported_customer_claim', blocker);
@@ -461,6 +476,10 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   }
 
   addMobileProofBlockers(input, hard);
+
+  for (const finding of input.customerSurfaceParity?.findings ?? []) {
+    addBlocker(hard, 'customer_surface_parity_mismatch', finding.message, finding.fieldPath);
+  }
 
   if (input.snapshotExists === false) {
     addBlocker(hard, 'public_snapshot_missing', 'approved public package snapshot is missing');

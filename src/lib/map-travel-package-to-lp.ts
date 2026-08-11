@@ -3,7 +3,7 @@ import { normalizeDays } from '@/lib/attraction-matcher';
 import { getEffectivePriceDates } from '@/lib/price-dates';
 import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
 import { renderPackage, type CanonicalView } from '@/lib/render-contract';
-import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
+import { extractLegalNoticeLinesFromPkg, extractSourcePreparationNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
@@ -36,6 +36,10 @@ export interface ItineraryDay {
 
 export interface LandingProductData {
   id: string;
+  /** Technical lineage markers used by the V5 cache-convergence observer.
+   * They are not rendered in customer copy or exposed as business data. */
+  publicSnapshotHash?: string;
+  canonicalRevisionId?: string | null;
   internalCode?: string;
   destination: string;
   duration: string;
@@ -68,6 +72,7 @@ export interface LandingProductData {
     excludes: string[];
     optionalTours: NormalizedOptionalTour[];
     legalNotices: string[];
+    sourcePreparationNotices: string[];
   };
 }
 
@@ -225,6 +230,15 @@ export function mapTravelPackageToLandingData(
 ): LandingProductData {
   const view = readCanonicalView(pkg);
   const lpProjection = readLpProjection(pkg);
+  const publicSnapshot = asRecord(pkg._public_snapshot);
+  const publicSnapshotHash = typeof publicSnapshot?.snapshot_hash === 'string'
+    && /^[0-9a-f]{64}$/i.test(publicSnapshot.snapshot_hash)
+    ? publicSnapshot.snapshot_hash.toLowerCase()
+    : undefined;
+  const canonicalRevisionId = typeof publicSnapshot?.canonical_revision_id === 'string'
+    && publicSnapshot.canonical_revision_id.trim()
+    ? publicSnapshot.canonical_revision_id
+    : null;
   const internalCode = readInternalCode(pkg);
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
   const displayCopy = buildCustomerPackageDisplayCopy({
@@ -290,11 +304,18 @@ export function mapTravelPackageToLandingData(
 
   const dayRows = normalizeDays(pkg.itinerary_data as Parameters<typeof normalizeDays>[0]) as Record<string, unknown>[];
   const canonicalDays = view.days;
-  const legalNotices = extractLegalNoticeLinesFromPkg(pkg, 3).map(line => normalizeCustomerVisibleCopy(line));
+  const legalNotices = Array.from(new Set([
+    ...extractLegalNoticeLinesFromPkg(pkg, 3),
+    ...extractSourcePreparationNoticeLinesFromPkg(pkg, 12),
+  ])).map(line => normalizeCustomerVisibleCopy(line));
+  const sourcePreparationNotices = extractSourcePreparationNoticeLinesFromPkg(pkg, 12)
+    .map(line => normalizeCustomerVisibleCopy(line));
   const duration = formatLandingDuration(pkg);
 
   return {
     id: String(pkg.id),
+    publicSnapshotHash,
+    canonicalRevisionId,
     internalCode: internalCode || undefined,
     destination: cleanDestination,
     duration,
@@ -374,6 +395,7 @@ export function mapTravelPackageToLandingData(
         note: tour.note ? normalizeCustomerVisibleCopy(tour.note) : null,
       })),
       legalNotices,
+      sourcePreparationNotices,
       days: canonicalDays.length > 0
         ? canonicalDays.map((day): ItineraryDay => ({
             day: day.day,

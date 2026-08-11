@@ -15,6 +15,7 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import type { AlertInput } from '@/lib/admin-alerts';
 import type { LeakIncident } from '@/lib/customer-leak-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
+import { transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 
 export type UploadSafeAfter = (task: () => Promise<void> | void) => void;
 
@@ -179,6 +180,8 @@ export function scheduleUploadPostRegistrationTasks(input: {
   leakIncidents: LeakIncident[];
   irCanaryPrimary: boolean;
   auditBaseUrl: string;
+  sourceDocumentId?: string | null;
+  registrationJobId?: string | null;
 }): void {
   const rawTextHash = createHash('sha256').update(input.rawText).digest('hex');
 
@@ -199,6 +202,8 @@ export function scheduleUploadPostRegistrationTasks(input: {
         destination: input.destination,
         documentType: v3.structure_plan.document_type,
         result: v3,
+        sourceDocumentId: input.sourceDocumentId,
+        registrationJobId: input.registrationJobId,
       });
       if (persisted.error) {
         console.warn('[upload-after] product_registration_drafts V3 save failed:', persisted.error);
@@ -212,11 +217,78 @@ export function scheduleUploadPostRegistrationTasks(input: {
 
   input.safeAfter(async () => {
     try {
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         runCoVeInBackground(input.packageId),
         runUploadVerify(input.packageId),
         runAutoMobileQA(input.packageId, input.auditBaseUrl, { includeLpForProof: true }),
       ]);
+
+      if (input.registrationJobId) {
+        const verifyResult = results[1]?.status === 'fulfilled' ? results[1].value : null;
+        const { data: packageRow } = await input.supabase
+          .from('travel_packages')
+          .select('audit_report, publication_state')
+          .eq('id', input.packageId)
+          .maybeSingle();
+        const { data: registrationJob, error: registrationJobError } = await input.supabase
+          .from('upload_jobs')
+          .select('v4_stage, v4_canonical_normalization_id')
+          .eq('id', input.registrationJobId)
+          .maybeSingle();
+        if (registrationJobError) throw registrationJobError;
+        const auditReport = packageRow?.audit_report && typeof packageRow.audit_report === 'object'
+          ? packageRow.audit_report as Record<string, unknown>
+          : {};
+        const proof = auditReport.mobile_browser_proof && typeof auditReport.mobile_browser_proof === 'object'
+          ? auditReport.mobile_browser_proof as Record<string, unknown>
+          : null;
+        const surfaces = Array.isArray(proof?.surface_results) ? proof.surface_results : [];
+        const hasBothCustomerSurfaces = ['packages', 'lp'].every(surface => surfaces.some(item => (
+          item && typeof item === 'object' && (item as Record<string, unknown>).surface === surface
+        )));
+        const proofed = proof?.status === 'pass' && hasBothCustomerSurfaces;
+        const verified = verifyResult?.status !== 'blocked' && verifyResult?.status !== 'skipped';
+        const canonicalReady = typeof registrationJob?.v4_canonical_normalization_id === 'string'
+          && registrationJob.v4_canonical_normalization_id.trim().length > 0;
+        const canonicalBackfillRequired = !canonicalReady
+          && ['normalized', 'verified', 'proofed'].includes(String(registrationJob?.v4_stage ?? ''));
+        const published = canonicalReady && verified && proofed
+          && (packageRow?.publication_state === 'approved' || packageRow?.publication_state === 'published');
+        const nextStage = published
+          ? 'published'
+          : canonicalBackfillRequired
+            ? 'normalized'
+            : verified && proofed
+              ? 'proofed'
+              : 'needs_review';
+        const nextStatus = published
+          ? 'done'
+          : canonicalBackfillRequired || (verified && proofed)
+            ? 'processing'
+            : 'failed';
+        await transitionProductRegistrationV4Job({
+          supabase: input.supabase,
+          jobId: input.registrationJobId,
+          stage: nextStage,
+          status: nextStatus,
+          reviewReasons: canonicalBackfillRequired || (verified && proofed) ? [
+            ...(canonicalBackfillRequired ? ['CANONICAL_NORMALIZATION_REQUIRED'] : []),
+          ] : [
+            ...(verified ? [] : ['UPLOAD_VERIFY_BLOCKED']),
+            ...(proofed ? [] : ['CUSTOMER_MOBILE_PROOF_MISSING_OR_STALE']),
+          ],
+          state: {
+            packageId: input.packageId,
+            verifyStatus: verifyResult?.status ?? 'unavailable',
+            mobileProofStatus: proof?.status ?? 'missing',
+            publicationState: packageRow?.publication_state ?? null,
+            canonicalNormalizationReady: canonicalReady,
+            publishedAt: published ? new Date().toISOString() : null,
+          },
+        }).catch(error => {
+          console.warn('[upload-after] V4 proof stage update failed:', error instanceof Error ? error.message : String(error));
+        });
+      }
     } catch (e) {
       console.warn('[upload-after] post-audit bundle failed:', e instanceof Error ? e.message : e);
     }
@@ -248,6 +320,7 @@ export function scheduleUploadPostRegistrationTasks(input: {
           pkg: input.packageRow,
           landOperatorName: input.landOperatorName,
           source: 'upload',
+          sourceDocumentId: input.sourceDocumentId,
         });
         if (snap.warnings.length > 0) {
           console.log('[upload-after] intake snapshot:', snap.intakeId ?? 'skip', snap.warnings.slice(0, 2).join('; '));

@@ -1,135 +1,116 @@
 'use client';
 
-/**
- * PackageFAQ — 패키지 상세 페이지 자주 묻는 질문
- *
- * 확장 전략:
- *   현재: 정적 공통 FAQ + 목적지별 분기
- *   미래: DB의 package_faqs 테이블에서 상품별 커스텀 FAQ 오버레이 (JARVIS 자동 생성)
- */
-
 import { useState } from 'react';
 
-interface FaqItem {
+export interface FaqItem {
   question: string;
   answer: string;
+  source?: 'product' | 'policy';
 }
 
-// 2026-05-14 UX-2: product_type 별 FAQ 풀 분기 (사장님 비전 V5)
-//   cruise/ferry → 항공 FAQ 제거, 선실/멀미/차량탑승 FAQ
-//   golf → 그린피/캐디팁 FAQ
-//   theme → 일반 패키지 FAQ
-//   default(package) → 기존 6개
+export type CustomerFaqNotice =
+  | string
+  | { title?: string | null; text?: string | null; type?: string | null };
+
+export interface CustomerFaqInput {
+  destination?: string | null;
+  productType?: string | null;
+  minParticipants?: number | null;
+  inclusions?: string[] | null;
+  notices?: CustomerFaqNotice[] | null;
+}
 
 const BOOKING_FAQ: FaqItem = {
   question: '예약은 어떻게 하나요?',
-  answer: '하단 "예약 문의" 또는 "카톡 상담" 버튼으로 원하시는 출발일과 인원을 알려주시면 바로 안내해드립니다. 상담 후 조건 확인과 입금 확인을 거쳐 예약이 확정됩니다.',
+  answer: '',
+  source: 'policy',
 };
-const SOLO_FAQ: FaqItem = {
-  question: '혼자도 참여할 수 있나요?',
-  answer: '네, 1인 참여 가능합니다. 단, 상품마다 최소 출발 인원이 있으며, 최소 인원 미달 시 출발이 취소될 수 있습니다. 출발 가능 여부는 달력 표시와 상담에서 함께 확인하세요.',
-};
-const GUIDE_FAQ: FaqItem = {
-  question: '현지 가이드는 한국인인가요?',
-  answer: '네, 한국인 가이드가 동행합니다. 언어 걱정 없이 편안하게 여행하실 수 있습니다.',
-};
-const CANCEL_FAQ: FaqItem = {
-  question: '취소 시 환불은 어떻게 되나요?',
-  answer: '출발 30일 전 취소 시 전액 환불, 20일 전 10% 공제, 10일 전 30% 공제, 3일 전 50% 공제됩니다. 전체 약관은 하단 유의사항을 참고해 주세요.',
-};
+
 const WIFI_FAQ: FaqItem = {
   question: '현지 인터넷(유심/포켓와이파이)은 어떻게 준비하나요?',
-  answer: '인천공항 또는 현지 공항에서 유심 구매를 권장합니다. 출국 전 통신사 로밍을 신청하셔도 됩니다. 포켓와이파이는 일행이 여럿이면 편리합니다.',
+  answer: '출발 전에 유심이나 포켓와이파이를 준비할 수 있어요. 상품에 포함되는지 여부는 예약 상담 때 함께 확인해 주세요.',
+  source: 'policy',
 };
 
-const PACKAGE_FAQS: FaqItem[] = [
-  BOOKING_FAQ, SOLO_FAQ, GUIDE_FAQ,
-  {
-    question: '항공 수하물은 몇 kg까지 가능한가요?',
-    answer: '항공사마다 다릅니다. 일반적으로 위탁 수하물 20kg + 기내 수하물 10kg이나, 출발 전 항공사 기준을 확인해 주세요. 추가 수하물은 현장 구매 가능합니다.',
-  },
-  CANCEL_FAQ, WIFI_FAQ,
-];
-
-const CRUISE_FAQS: FaqItem[] = [
-  BOOKING_FAQ, SOLO_FAQ, GUIDE_FAQ,
-  {
-    question: '선실(객실) 등급과 업그레이드는 어떻게 하나요?',
-    answer: '기본 다인실로 안내되며, 1등실·디럭스룸 업그레이드는 대기 조건으로 가능합니다. 업그레이드 비용은 상품별 안내사항을 참고해 주세요. 사전 신청은 카톡 상담으로.',
-  },
-  {
-    question: '선박 멀미가 걱정됩니다. 어떻게 대비하나요?',
-    answer: '출국 전 약국에서 멀미약(키미테 패치 등)을 미리 준비하시기 바랍니다. 선실에서 휴식 + 수분 섭취 + 갑판에서 수평선 응시가 도움이 됩니다. 큰 선박은 흔들림이 적은 편입니다.',
-  },
-  {
-    question: '차량을 가지고 탑승할 수 있나요?',
-    answer: '본 상품은 도보 탑승 패키지입니다. 차량 동반 탑승은 별도 상품이며, 카톡으로 문의해 주세요.',
-  },
-  CANCEL_FAQ, WIFI_FAQ,
-];
-
-const GOLF_FAQS: FaqItem[] = [
-  BOOKING_FAQ, SOLO_FAQ, GUIDE_FAQ,
-  {
-    question: '그린피와 캐디 팁이 포함되나요?',
-    answer: '상품별로 다릅니다. 일정표의 포함/불포함 사항을 확인해 주세요. 미포함 시 현지에서 별도 결제하시며, 캐디 팁은 18홀 기준 현지 시세 안내해드립니다.',
-  },
-  {
-    question: '클럽 대여가 가능한가요?',
-    answer: '대부분의 골프장에서 클럽 대여가 가능합니다. 사전 예약을 권장하며, 비용은 1라운드 기준 50~100 USD입니다.',
-  },
-  CANCEL_FAQ, WIFI_FAQ,
-];
-
-/** product_type → FAQ 풀 선택 */
-function getFaqsByProductType(productType?: string | null): FaqItem[] {
-  if (productType === 'cruise' || productType === 'ferry') return CRUISE_FAQS;
-  if (productType === 'golf') return GOLF_FAQS;
-  return PACKAGE_FAQS;
+function cleanNoticeText(notice: CustomerFaqNotice): string {
+  if (typeof notice === 'string') return notice.trim();
+  return [notice.title, notice.text].filter((value): value is string => Boolean(value?.trim())).join(': ').trim();
 }
 
-const DESTINATION_FAQS: Record<string, FaqItem[]> = {
-  다낭: [
-    {
-      question: '다낭 입국 시 비자가 필요한가요?',
-      answer: '대한민국 여권 소지자는 베트남 무비자 45일 체류 가능합니다 (2023년 8월 확대). 단, 여권 유효기간이 6개월 이상 남아 있어야 합니다.',
-    },
-    {
-      question: '다낭의 날씨는 어떤가요?',
-      answer: '다낭은 연중 더운 열대기후입니다. 5~8월은 맑고 더운 건기, 9~12월은 우기입니다. 자외선 차단제와 얇은 긴팔 준비를 권장합니다.',
-    },
-  ],
-  호이안: [
-    {
-      question: '호이안 구시가지 입장료가 포함되나요?',
-      answer: '여소남 패키지에는 호이안 구시가지 입장료가 포함되어 있습니다. 별도 추가 비용 없이 주요 문화유산을 관람하실 수 있습니다.',
-    },
-  ],
-  방콕: [
-    {
-      question: '태국 입국 시 비자가 필요한가요?',
-      answer: '대한민국 여권 소지자는 태국 무비자 30일 체류 가능합니다. 여권 유효기간 6개월 이상 필요합니다.',
-    },
-  ],
-  세부: [
-    {
-      question: '필리핀 입국 시 필요한 서류가 있나요?',
-      answer: '대한민국 여권 소지자는 무비자 30일 체류 가능합니다. 왕복 항공권 또는 출국 증빙을 입국 심사 시 요청받을 수 있습니다.',
-    },
-  ],
-  오사카: [
-    {
-      question: '일본 입국 시 비자가 필요한가요?',
-      answer: '대한민국 여권 소지자는 일본 무비자 90일 체류 가능합니다. 별도 서류 없이 입국 가능합니다.',
-    },
-  ],
-};
-
-function getDestinationFaqs(destination: string): FaqItem[] {
-  for (const [key, faqs] of Object.entries(DESTINATION_FAQS)) {
-    if (destination.includes(key)) return faqs;
+function findExplicitCancellationNotice(notices: CustomerFaqNotice[] | null | undefined): string | null {
+  for (const notice of notices ?? []) {
+    const text = cleanNoticeText(notice);
+    if (text && /(취소|환불|위약금|수수료)/.test(text)) return text;
   }
-  return [];
+  return null;
+}
+
+function findExplicitBaggageInclusion(inclusions: string[] | null | undefined): string | null {
+  for (const inclusion of inclusions ?? []) {
+    const text = inclusion.trim();
+    if (/수하물/.test(text) && /\d+\s*(?:kg|킬로)/i.test(text)) return text;
+  }
+  return null;
+}
+
+/**
+ * Build customer FAQs only from product facts or safe operational guidance.
+ * Never invents cancellation percentages, baggage allowances, visa rules, or
+ * guide language that is not present in the product payload.
+ */
+export function buildCustomerFaqs(input: CustomerFaqInput): FaqItem[] {
+  const destination = input.destination?.trim() || '이 상품';
+  const minParticipants = Number(input.minParticipants);
+  const items: FaqItem[] = [
+    {
+      ...BOOKING_FAQ,
+      answer: `${destination}의 원하는 출발일과 인원을 알려주시면 상담으로 예약 가능 여부와 조건을 안내해 드립니다.`,
+    },
+    WIFI_FAQ,
+  ];
+
+  if (Number.isFinite(minParticipants) && minParticipants > 1) {
+    items.splice(1, 0, {
+      question: '혼자도 참여할 수 있나요?',
+      answer: `이 상품은 최소 ${minParticipants}명 출발 조건입니다. 혼자 신청을 원하시면 해당 날짜의 출발 가능 여부와 추가 조건을 상담으로 먼저 확인해 주세요.`,
+      source: 'product',
+    });
+  } else if (minParticipants === 1) {
+    items.splice(1, 0, {
+      question: '혼자도 참여할 수 있나요?',
+      answer: '상품 기준상 1명 예약이 가능하지만, 출발 가능 여부는 선택한 날짜와 좌석 상황에 따라 상담으로 확인해 주세요.',
+      source: 'product',
+    });
+  }
+
+  const guideInclusion = (input.inclusions ?? []).find((value) => /한국인\s*가이드/.test(value));
+  if (guideInclusion) {
+    items.splice(2, 0, {
+      question: '현지 가이드는 한국인인가요?',
+      answer: `상품 포함 내역에 “${guideInclusion.trim()}”로 안내되어 있습니다. 세부 동행 범위는 예약 상담에서 확인해 주세요.`,
+      source: 'product',
+    });
+  }
+
+  const baggageInclusion = findExplicitBaggageInclusion(input.inclusions);
+  items.splice(guideInclusion ? 3 : 2, 0, {
+    question: '항공 수하물은 몇 kg까지 가능한가요?',
+    answer: baggageInclusion
+      ? `상품 포함 내역에 “${baggageInclusion}”로 안내되어 있습니다. 항공사별 위탁·기내 수하물 기준은 출발 전에 다시 확인해 주세요.`
+      : '수하물 기준은 항공사와 상품별로 다를 수 있어요. 예약 상담 때 포함 여부와 허용량을 정확히 확인해 주세요.',
+    source: baggageInclusion ? 'product' : 'policy',
+  });
+
+  const cancellationNotice = findExplicitCancellationNotice(input.notices);
+  if (cancellationNotice) {
+    items.splice(items.length - 1, 0, {
+      question: '취소 시 환불은 어떻게 되나요?',
+      answer: `상품 유의사항에는 다음과 같이 안내되어 있습니다: ${cancellationNotice} 출발일과 예약 상태에 따른 최종 환불 기준은 상담 때 확인해 주세요.`,
+      source: 'product',
+    });
+  }
+
+  return items.filter((item, index, all) => all.findIndex((candidate) => candidate.question === item.question) === index);
 }
 
 function FaqRow({ item }: { item: FaqItem }) {
@@ -138,7 +119,7 @@ function FaqRow({ item }: { item: FaqItem }) {
     <div className="border-b border-gray-100 last:border-0">
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((current) => !current)}
         className="w-full flex items-start justify-between py-3.5 text-left gap-3 group"
       >
         <span className="flex items-start gap-2 flex-1 min-w-0">
@@ -165,25 +146,18 @@ function FaqRow({ item }: { item: FaqItem }) {
   );
 }
 
-interface Props {
-  destination: string;
-  /** product_type — cruise/ferry/golf/package — FAQ 풀 분기 (2026-05-14 UX-2) */
-  productType?: string | null;
+interface Props extends CustomerFaqInput {
   kakaoChannel?: () => void;
 }
 
-export default function PackageFAQ({ destination, productType, kakaoChannel }: Props) {
-  const destFaqs = getDestinationFaqs(destination ?? '');
-  const baseFaqs = getFaqsByProductType(productType);
-  const allFaqs = [...destFaqs, ...baseFaqs];
+export default function PackageFAQ({ kakaoChannel, ...input }: Props) {
+  const allFaqs = buildCustomerFaqs(input);
 
   return (
     <section className="px-4 py-8">
       <h2 className="text-lg font-extrabold text-gray-900 mb-4">💬 자주 묻는 질문</h2>
       <div className="bg-white border border-gray-100 rounded-2xl px-4 divide-y divide-gray-100">
-        {allFaqs.map((item, i) => (
-          <FaqRow key={i} item={item} />
-        ))}
+        {allFaqs.map((item, index) => <FaqRow key={`${item.question}-${index}`} item={item} />)}
       </div>
       {kakaoChannel && (
         <button

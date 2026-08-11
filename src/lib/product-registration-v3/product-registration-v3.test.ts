@@ -141,6 +141,20 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.render_contract_preview).toHaveLength(1);
   });
 
+  it('preserves the leading digit in comma-formatted million prices', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: Million Price Regression 4D',
+      'Price: 1,299,000 KRW / minimum 4',
+      'DAY 1 KE123 departure 10:00 arrival 12:00',
+      'DAY 2 City attraction',
+      'DAY 3 KE124 departure 13:00 arrival 15:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.price_calendar[0]?.amount).toBe(1_299_000);
+  });
+
   it('does not block golf notices as optional tours and recovers separated ZE flight times', async () => {
     const raw = `
 상품: 푸꾸옥 2색골프 3박5일
@@ -2262,5 +2276,28 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(notice?.risk_level).toBe('high');
     expect(notice?.visibility).toBe('customer_visible');
     expect(notice?.review_status).toBe('review_needed');
+  });
+
+  it('recovers times across a parenthesized codeshare line without duplicating the segment', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: Codeshare Table 3D',
+      'Price: 599,000 KRW / minimum 2',
+      'DAY 1 BX148',
+      '(BX501)',
+      'departure 07:30',
+      'arrival 08:30',
+      'DAY 3 BX149',
+      '(BX516)',
+      'departure 19:55',
+      'arrival 21:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.flight_segments).toMatchObject([
+      { code: 'BX148', dep_time: '07:30', arr_time: '08:30' },
+      { code: 'BX149', dep_time: '19:55', arr_time: '21:00' },
+    ]);
+    expect(result.ledger.variants[0]?.flight_segments).toHaveLength(2);
   });
 });

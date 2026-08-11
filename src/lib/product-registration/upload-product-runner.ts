@@ -100,6 +100,8 @@ export async function processUploadRegistrationProducts(input: {
   parserRawText?: string | null;
   documentRawText?: string | null;
   analysisNormalizedText?: string | null;
+  sourceDocumentId?: string | null;
+  registrationJobId?: string | null;
 }): Promise<ProcessUploadProductsResult> {
   const savedIds: string[] = [];
   const savedTitles: string[] = [];
@@ -515,6 +517,8 @@ export async function processUploadRegistrationProducts(input: {
           leakIncidents: sanitizeResult.incidents,
           irCanaryPrimary: input.irCanaryPrimary,
           auditBaseUrl: input.requestBaseUrl,
+          sourceDocumentId: input.sourceDocumentId,
+          registrationJobId: input.registrationJobId,
         });
       }
 

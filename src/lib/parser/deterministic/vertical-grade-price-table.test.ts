@@ -186,4 +186,50 @@ describe('extractVerticalGradePriceTable', () => {
     expect(priceForDate(premium, '2026-07-27')).toBe(729000);
     expect(priceForDate(premium, '2026-07-30')).toBe(849000);
   });
+
+  it('separates repeated 3박5일 and 4박6일 blocks on five-column supplier sheets', () => {
+    const rawText = `
+나트랑 1일자유+호핑 나나달달 라이트 노팁/노옵션 3박5일 4박6일 특가
+3박
+7/24,29
+899,000
+999,000
+1,109,000
+1,189,000
+1,379,000
+8/7
+669,000
+769,000
+879,000
+959,000
+1,149,000
+7/24,29
+999,000
+1,099,000
+1,209,000
+1,289,000
+1,479,000
+8/14,10/7
+999,000
+1,099,000
+1,209,000
+1,289,000
+1,479,000`;
+
+    const threeNight = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '나트랑 라이트 노팁/노옵션 3박5일',
+      durationDays: 5,
+    });
+    const fourNight = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '나트랑 라이트 노팁/노옵션 4박6일',
+      durationDays: 6,
+    });
+
+    expect(priceForDate(threeNight, '2026-07-24')).toBe(1_189_000);
+    expect(priceForDate(threeNight, '2026-08-14')).toBeNull();
+    expect(priceForDate(fourNight, '2026-07-24')).toBe(1_289_000);
+    expect(priceForDate(fourNight, '2026-08-14')).toBe(1_289_000);
+  });
 });

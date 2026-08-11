@@ -2,6 +2,58 @@ import { describe, expect, it } from 'vitest';
 import { normalizeUploadItinerary } from './itinerary-normalization';
 
 describe('normalizeUploadItinerary', () => {
+  it('keeps source-backed golf course names and 18-hole facts for the customer landing', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '후쿠오카',
+      durationDays: 3,
+      nights: 2,
+      activeAttractions: [],
+      productRawText: [
+        '예정 골프장',
+        '센트럴 18H/파72/5,954야드',
+        '니조 18H/파72/6,100야드',
+        '일정표 기준 18홀 라운딩',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'activity', activity: '골프장 이동' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '골프장 이동' }] },
+          { day: 3, schedule: [{ type: 'flight', activity: '귀국' }] },
+        ],
+      },
+    });
+
+    const remarks = (result.itineraryDataToSave?.highlights as { remarks?: string[] } | undefined)?.remarks ?? [];
+    expect(remarks).toContain('예정 골프장: 센트럴, 니조');
+    expect(remarks).toContain('일정표 기준 골프 라운딩은 18홀입니다.');
+  });
+
+  it('removes standalone price-table dates leaked into the customer schedule', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '방콕',
+      durationDays: 5,
+      activeAttractions: [],
+      productRawText: '방콕 3박5일 일정표\n출발일 7/22 7/23 7/30 8/3~8/7 8/16~8/29',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '인천 출발' }] },
+          { day: 2, schedule: [{ type: 'normal', activity: '7/22' }, { type: 'activity', activity: '후아힌 관광' }] },
+          { day: 3, schedule: [{ type: 'normal', activity: '8/3~8/7' }] },
+          { day: 4, schedule: [{ type: 'normal', activity: '방콕 시내 관광' }] },
+          { day: 5, schedule: [{ type: 'flight', activity: '인천 도착' }] },
+        ],
+      },
+    });
+
+    const activities = (result.itineraryDataToSave?.days ?? [])
+      .flatMap(day => day.schedule ?? [])
+      .map(item => item.activity);
+    expect(activities).not.toContain('7/22');
+    expect(activities).not.toContain('8/3~8/7');
+    expect(activities).toContain('후아힌 관광');
+    expect(activities).toContain('방콕 시내 관광');
+  });
+
   it('fills empty schedule days from the original day table before customer render', async () => {
     const result = await normalizeUploadItinerary({
       destination: '푸꾸옥',

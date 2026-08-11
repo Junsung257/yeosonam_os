@@ -12,6 +12,7 @@ import { normalizeUploadRegistrationDocument } from './upload-registration-norma
 import { prepareUploadRegistrationProducts } from './upload-registration-preparation';
 import type { UploadRequestIntakeSuccess } from './upload-request-intake';
 import { resolveUploadSourceForRegistration } from './upload-source-resolution';
+import { transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 
 type PostAlert = (input: AlertInput) => Promise<unknown> | unknown;
 
@@ -43,6 +44,8 @@ export async function runUploadRegistrationPipeline(input: {
     archiveMode,
     bulkMode,
     forceReprocess,
+    sourceDocumentId,
+    registrationJobId,
   } = input.intake;
 
   const initialDuplicate = await checkInitialUploadDuplicate({
@@ -138,6 +141,22 @@ export async function runUploadRegistrationPipeline(input: {
     multiCount: parsedDocument.multiProducts?.length ?? 1,
   });
 
+  if (registrationJobId) {
+    await transitionProductRegistrationV4Job({
+      supabase: input.supabase,
+      jobId: registrationJobId,
+      stage: 'segmented',
+      status: 'processing',
+      state: {
+        productCount: parsedDocument.multiProducts?.length ?? 1,
+        documentType: 'package',
+        confidence: parsedDocument.confidence,
+      },
+    }).catch(error => {
+      console.warn('[Upload API] V4 segmented stage update failed:', error instanceof Error ? error.message : String(error));
+    });
+  }
+
   const normalizedRegistrationDocument = await normalizeUploadRegistrationDocument({
     parsedDocument,
     normalizedCatalogHash,
@@ -207,6 +226,8 @@ export async function runUploadRegistrationPipeline(input: {
     parserRawText,
     documentRawText,
     analysisNormalizedText,
+    sourceDocumentId,
+    registrationJobId,
   });
 
   const responsePayload = await completeUploadRegistration({
@@ -231,6 +252,23 @@ export async function runUploadRegistrationPipeline(input: {
     baseUrl: input.publicBaseUrl,
     requestBaseUrl: input.requestBaseUrl,
   });
+
+  if (registrationJobId) {
+    await transitionProductRegistrationV4Job({
+      supabase: input.supabase,
+      jobId: registrationJobId,
+      stage: 'normalized',
+      status: 'processing',
+      clearLease: true,
+      state: {
+        packageIds: registrationProductsResult.savedIds,
+        savedCount: registrationProductsResult.savedIds.length,
+        registrationStatus: responsePayload.status ?? null,
+      },
+    }).catch(error => {
+      console.warn('[Upload API] V4 lineage stage update failed:', error instanceof Error ? error.message : String(error));
+    });
+  }
 
   return { status: 200, payload: responsePayload };
 }

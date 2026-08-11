@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   extractLegalNoticeLines,
   extractLegalNoticeLinesFromPkg,
+  extractSourcePreparationNoticeLinesFromPkg,
   getLegalNoticeLinesOrDefault,
 } from './legal-notice';
 
@@ -56,5 +57,48 @@ describe('getLegalNoticeLinesOrDefault', () => {
     const out = getLegalNoticeLinesOrDefault(lines, 3);
     expect(out).toHaveLength(3);
     expect(out[0]).toContain('예약 확정 후 취소');
+  });
+});
+
+describe('extractSourcePreparationNoticeLinesFromPkg', () => {
+  it('prefers canonical snapshot remarks so LP and package surfaces share source-backed additions', () => {
+    const pkg = {
+      itinerary_data: { highlights: { remarks: ['여권 유효기간 6개월 이상'] } },
+      _canonical_view: {
+        highlights: {
+          remarks: [
+            '일정표 기준 예정 골프장: 센트럴, 니조',
+            '일정표 기준 골프 라운딩은 18홀입니다.',
+          ],
+        },
+      },
+    } as Record<string, unknown>;
+
+    expect(extractSourcePreparationNoticeLinesFromPkg(pkg)).toEqual([
+      '일정표 기준 예정 골프장: 센트럴, 니조',
+      '일정표 기준 골프 라운딩은 18홀입니다.',
+      '여권 유효기간 6개월 이상',
+    ]);
+  });
+
+  it('keeps source-backed preparation facts separate from generic legal terms', () => {
+    const pkg = {
+      itinerary_data: {
+        highlights: {
+          remarks: [
+            '여권 유효기간 6개월 이상',
+            'Visit Japan Web 작성 필요',
+            '호텔 룸타입은 더블 또는 트윈',
+            '일반적인 여행 팁',
+          ],
+        },
+      },
+    } as Record<string, unknown>;
+
+    expect(extractSourcePreparationNoticeLinesFromPkg(pkg)).toEqual([
+      '여권 유효기간 6개월 이상',
+      'Visit Japan Web 작성 필요',
+      '호텔 룸타입은 더블 또는 트윈',
+    ]);
   });
 });

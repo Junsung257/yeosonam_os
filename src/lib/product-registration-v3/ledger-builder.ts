@@ -16,7 +16,12 @@ import { isCustomerOptionalTourCandidate, isNonCustomerOptionText } from '@/lib/
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const FLIGHT_CODE_RE = /\b([A-Z][A-Z0-9]|[0-9][A-Z])\s*(\d{3,4})\b/;
-const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(\uc6d0|KRW|USD|\$)?/i;
+// Keep the first digit of comma-formatted million prices.  The old `{1,2}`
+// prefix required at least two digits before the first comma, so `1,299,000`
+// was matched starting at `299,000` and silently published at one fifth of
+// the source price.  The boundary also prevents a retry from matching the
+// suffix of an already matched token.
+const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*(?<![\d,])([1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{5,})(?![\d,])\s*(\uc6d0|KRW|USD|\$)?/i;
 const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
 const USD_RE = /(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/i;
 const USD_RE_GLOBAL = /(?:USD|US\$|\$)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/gi;
@@ -101,6 +106,21 @@ function normalizePrice(token: string): number {
   const number = Number(token.replace(/[,\s]/g, ''));
   if (!Number.isFinite(number)) return 0;
   return number < 10_000 ? number * 1000 : number;
+}
+
+function weekdayNumber(value: string | null | undefined): number | null {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  const map: Record<string, number> = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
+  return Object.prototype.hasOwnProperty.call(map, normalized) ? map[normalized] : null;
+}
+
+function isPrimaryFlightCodeLine(value: string): boolean {
+  const text = value.trim();
+  // HWP tables commonly put a codeshare/alternate code on its own line,
+  // e.g. `BX148` followed by `(BX501)`. It is not a second flight segment
+  // and must not stop time recovery for the primary code.
+  return FLIGHT_CODE_RE.test(text) && !/^\([^)]*\)$/.test(text);
 }
 
 function eventTypeForLine(line: string): V3EventType | null {
@@ -279,6 +299,11 @@ function buildPriceCalendarFromIR(sectionLines: V3SourceLine[], title: string): 
   const rawText = sectionLines.map(line => line.quote).join('\n');
   const result = extractPriceIR(rawText, { title });
   return result.tiers
+    // An unscoped IR tier is not enough to override the guarded line fallback:
+    // itinerary prose can contain elevations, penalties, or optional fees that
+    // look like prices.  Only accept IR output when it carries a departure
+    // date (or an explicit range) that can be shown to a customer.
+    .filter(tier => (tier.departure_dates?.length ?? 0) > 0 || Boolean(tier.date_range?.start && tier.date_range?.end))
     .filter(tier => typeof tier.adult_price === 'number' && tier.adult_price > 0)
     .map(tier => {
       const evidenceLine = sectionLines.find(line =>
@@ -288,6 +313,8 @@ function buildPriceCalendarFromIR(sectionLines: V3SourceLine[], title: string): 
       ) ?? sectionLines[0];
       return {
         date: tier.departure_dates?.[0] ?? tier.date_range?.start ?? null,
+        date_range: tier.date_range,
+        weekday: weekdayNumber(tier.departure_day_of_week),
         label: tier.period_label || result.source,
         amount: tier.adult_price,
         currency: 'KRW',
@@ -303,8 +330,12 @@ function titleParts(lines: V3SourceLine[], boundary: V3StructurePlan['product_bo
     .map(line => line.quote.trim())
     .filter(Boolean)
     .filter(line => !DAY_HEADER_RE.test(line) && !PRICE_RE.test(line) && !PRICE_HEADER_RE.test(line))
-    .slice(0, 3);
-  return [header || boundary.title_hint, ...body.filter(line => line !== header)].filter(Boolean).slice(0, 3);
+    .slice(0, 8);
+  const productLike = body.find(line =>
+    line.length >= 5
+    && /(골프|패키지|특가|투어|여행|리조트|크루즈|자유일정|스팟|노팁|노옵션|다색|무제한|박\s*\d+\s*일|\d+\s*박)/u.test(line),
+  );
+  return [productLike || header || boundary.title_hint, ...body.filter(line => line !== header && line !== productLike)].filter(Boolean).slice(0, 3);
 }
 
 function buildEvent(line: V3SourceLine, type: V3EventType, rawText = line.quote.trim()): V3LedgerEvent {
@@ -337,9 +368,9 @@ function resolveAdjacentFlightTimes(
 ): { depTime: string | null; arrTime: string | null } {
   let depTime = sameLineTimes[0] ?? null;
   let arrTime = sameLineTimes[1] ?? null;
-  const lookahead = sectionLines.slice(sectionIndex + 1, sectionIndex + 7);
+  const lookahead = sectionLines.slice(sectionIndex + 1, sectionIndex + 16);
   for (const next of lookahead) {
-    if (FLIGHT_CODE_RE.test(next.quote)) break;
+    if (isPrimaryFlightCodeLine(next.quote)) break;
     const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
     if (!nextTime) continue;
     if (!depTime && /\ucd9c\ubc1c/.test(next.quote)) {
@@ -364,7 +395,7 @@ function resolveSeparatedArrivalTime(
   const lookahead = sectionLines.slice(sectionIndex + 1, sectionIndex + 32);
   let previousTime: string | null = null;
   for (const next of lookahead) {
-    if (FLIGHT_CODE_RE.test(next.quote)) break;
+    if (isPrimaryFlightCodeLine(next.quote)) break;
     const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
     if (/\ub3c4\ucc29/.test(next.quote)) return nextTime ?? previousTime;
     if (nextTime) previousTime = nextTime;
@@ -396,20 +427,38 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       currency: match[2] === '$' || match[2]?.toUpperCase() === 'USD' ? 'USD' : 'KRW',
       evidence: evidenceFromLines(lines, line.lineNumber),
     }))
+    .filter(price => {
+      const text = price.label;
+      const explicitPriceCue = /(?:price|가격|요금|판매가|성인|아동|출발일|스팟특가|원|KRW)/i.test(text);
+      if (/\$|\b(?:USD|달러)\b|(?:해발|고도|높이|\b\d+\s*M\b)/i.test(text) && !explicitPriceCue) return false;
+      if (DAY_HEADER_RE.test(text) && !explicitPriceCue) return false;
+      // A bare table cell may be a valid base price, but tiny values are much
+      // more often taxes/fees or dates.  Explicitly labelled prices are kept
+      // for backward compatibility and are gated later by the source facts.
+      if (!explicitPriceCue && price.amount < 250_000) return false;
+      return true;
+    })
     .filter(price => price.amount > 0);
-  const prices = linePrices.length > 0 ? linePrices : buildPriceCalendarFromIR(sectionLines, boundary.title_hint);
+  // Prefer the deterministic price IR whenever it can recover a structured
+  // calendar.  Falling back to the line scanner is still necessary for a
+  // single free-form `Price: ...` fact, but using it first turns every number
+  // in a supplier table (fees, supplements, dates) into an unscoped base
+  // price and loses the date/weekday relationship needed by V5.
+  const structuredPrices = buildPriceCalendarFromIR(sectionLines, boundary.title_hint);
+  const prices = structuredPrices.length > 0 ? structuredPrices : linePrices;
   const itinerarySectionLines = itineraryLinesBeforePriceEvidenceTail(sectionLines);
 
   const flightRows = itinerarySectionLines
     .map((line, sectionIndex) => ({ line, sectionIndex, match: line.quote.match(FLIGHT_CODE_RE) }))
-    .filter((row): row is { line: V3SourceLine; sectionIndex: number; match: RegExpMatchArray } => Boolean(row.match));
+    .filter((row): row is { line: V3SourceLine; sectionIndex: number; match: RegExpMatchArray } =>
+      Boolean(row.match) && !/^\([^)]*\)$/.test(row.line.quote.trim()));
   const flight_segments = flightRows.map(({ line, match, sectionIndex }, index) => {
     const times = [...line.quote.matchAll(TIME_RE_GLOBAL)].map(m => m[0]);
     const resolvedTimes = resolveAdjacentFlightTimes(itinerarySectionLines, sectionIndex, times);
     let arrTime = resolvedTimes.arrTime;
     if (!arrTime) {
       for (const next of itinerarySectionLines.slice(sectionIndex + 1, sectionIndex + 4)) {
-        if (FLIGHT_CODE_RE.test(next.quote)) break;
+        if (isPrimaryFlightCodeLine(next.quote)) break;
         if (!/\ub3c4\ucc29/.test(next.quote)) continue;
         const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
         if (nextTime) {
