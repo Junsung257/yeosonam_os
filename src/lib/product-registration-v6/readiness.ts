@@ -17,6 +17,12 @@ export type ProductRegistrationV6ReadinessReport = {
   recommendations: string[];
   database: {
     v6ColumnAvailable: boolean;
+    authorityMode: 'legacy' | 'shadow' | 'kernel' | null;
+    publicationFrozen: boolean | null;
+    schemaVersion: string | null;
+    schemaVerificationState: string | null;
+    unvalidatedTenantForeignKeys: number | null;
+    legacyPublicationRpcsExecutable: boolean | null;
     publishedPointerCount: number | null;
     passedProofCount: number | null;
     unfinishedJobCount: number | null;
@@ -51,6 +57,33 @@ export function buildProductRegistrationV6ReadinessReport(
     add('V6_SCHEMA_REACHABLE', 'pass', 'upload_jobs의 V6 상태 컬럼을 확인했습니다.');
   } else {
     add('V6_SCHEMA_UNAVAILABLE', 'blocked', '운영 DB에서 V6 상태 컬럼을 확인하지 못했습니다.');
+  }
+
+  const authorityModeMatches = input.database.authorityMode === input.config.authorityMode;
+  if (authorityModeMatches) {
+    add('V6_AUTHORITY_MODE_PARITY', 'pass', `환경과 DB authority mode가 ${input.config.authorityMode}로 일치합니다.`);
+  } else {
+    add('V6_AUTHORITY_MODE_MISMATCH', 'blocked', `환경(${input.config.authorityMode})과 DB(${input.database.authorityMode ?? 'unknown'}) authority mode가 다릅니다.`);
+    recommendations.push('환경변수와 DB authority mode를 같은 배포 단계로 맞추기 전에는 workflow와 공개를 시작하지 마세요.');
+  }
+
+  if (input.database.publicationFrozen === input.config.publicationFrozen) {
+    add('V6_PUBLICATION_FREEZE_PARITY', 'pass', '환경과 DB publication freeze 값이 일치합니다.');
+  } else {
+    add('V6_PUBLICATION_FREEZE_MISMATCH', 'blocked', `환경(${input.config.publicationFrozen})과 DB(${String(input.database.publicationFrozen)}) publication freeze 값이 다릅니다.`);
+  }
+
+  if (input.database.schemaVerificationState === 'verified'
+    && input.database.unvalidatedTenantForeignKeys === 0) {
+    add('V6_SCHEMA_MANIFEST_VERIFIED', 'pass', `${input.database.schemaVersion ?? 'unknown'} schema와 tenant FK가 검증되었습니다.`);
+  } else {
+    add('V6_SCHEMA_MANIFEST_UNVERIFIED', 'blocked', `schema=${input.database.schemaVersion ?? 'unknown'}, state=${input.database.schemaVerificationState ?? 'missing'}, unvalidatedFK=${String(input.database.unvalidatedTenantForeignKeys)}`);
+  }
+
+  if (input.database.legacyPublicationRpcsExecutable === false) {
+    add('V6_LEGACY_PUBLICATION_RPC_RETIRED', 'pass', '구형 공개 RPC의 service-role 실행권한이 회수되었습니다.');
+  } else {
+    add('V6_LEGACY_PUBLICATION_RPC_EXECUTABLE', 'blocked', '구형 공개 RPC가 아직 실행 가능하거나 권한 상태를 확인할 수 없습니다.');
   }
 
   if (input.config.workflowEnabled) {
@@ -113,6 +146,9 @@ export function buildProductRegistrationV6ReadinessReport(
 
   const canaryBlockers = checks.some(check => check.status === 'blocked' && [
     'V6_SCHEMA_UNAVAILABLE',
+    'V6_AUTHORITY_MODE_MISMATCH',
+    'V6_SCHEMA_MANIFEST_UNVERIFIED',
+    'V6_LEGACY_PUBLICATION_RPC_EXECUTABLE',
     'V6_WORKFLOW_DISABLED',
     'V6_PROOF_SECRET_MISSING',
     'V6_BROWSER_PROOF_RUNTIME_MISSING',
@@ -120,6 +156,10 @@ export function buildProductRegistrationV6ReadinessReport(
   ].includes(check.code));
   const publicationBlockers = checks.some(check => check.status === 'blocked' && [
     'V6_PUBLICATION_LOCKED',
+    'V6_PUBLICATION_FREEZE_MISMATCH',
+    'V6_AUTHORITY_MODE_MISMATCH',
+    'V6_SCHEMA_MANIFEST_UNVERIFIED',
+    'V6_LEGACY_PUBLICATION_RPC_EXECUTABLE',
     'V6_AUTHORITY_NOT_KERNEL',
     'V6_SCHEMA_UNAVAILABLE',
     'V6_PROOF_SECRET_MISSING',

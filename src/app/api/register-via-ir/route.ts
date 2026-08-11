@@ -29,10 +29,8 @@ import { validateIntake, NORMALIZER_VERSION, type NormalizedIntake } from '@/lib
 import { getIrCanaryStatus, pickCanaryEngine } from '@/lib/ir-canary';
 import { isSynthesizedRawText } from '@/lib/packages/raw-text';
 import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
-import {
-  PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-  startProductRegistrationTextWorkflow,
-} from '@/lib/product-registration-authority';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { startProductRegistrationTextWorkflow } from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 export const dynamic = 'force-dynamic';

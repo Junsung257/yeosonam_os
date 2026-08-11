@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
-
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { loadProductRegistrationRevisionAggregate } from '@/lib/product-registration-authority';
-import { fetchIndependentSchedules, type ScheduleProviderResult } from './schedule-providers';
+import { loadProductRegistrationRevisionAggregate } from '@/lib/product-registration-authority/revision-aggregate';
+import { estimatedScheduleProviderCostKrw, type ScheduleProviderResult } from './schedule-providers';
+import { executeScheduleProviderEffectivelyOnce } from './provider-call-ledger';
 import { recordTransportObservation } from './transport-facts';
 
 type JsonObject = Record<string, unknown>;
@@ -35,10 +34,6 @@ function text(value: unknown): string | null {
 function time(value: unknown): string | null {
   const match = text(value)?.match(/^(\d{1,2}):(\d{2})/);
   return match ? `${match[1]!.padStart(2, '0')}:${match[2]}` : null;
-}
-
-function hash(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 export function resolveScheduleProviderConsensus(results: ScheduleProviderResult[]): ScheduleConsensus {
@@ -100,42 +95,6 @@ async function disabledProviders(supabase: SupabaseClient): Promise<Array<'oag' 
   return (['oag', 'cirium'] as const).filter(provider => keys.has('*') || keys.has(provider));
 }
 
-async function recordProviderCalls(input: {
-  supabase: SupabaseClient;
-  job: ScheduleRevalidationJob;
-  revisionHash: string;
-  sourceHash: string;
-  operationKey: string;
-  results: ScheduleProviderResult[];
-}): Promise<void> {
-  for (const result of input.results) {
-    const summary = {
-      status: result.status,
-      observationHashes: result.observations.map(item => item.observationHash),
-      error: result.error ?? null,
-    };
-    const { error } = await input.supabase.rpc('record_product_registration_v6_provider_call', {
-      p_payload: {
-        tenant_id: input.job.tenant_id,
-        job_id: null,
-        product_revision_id: input.job.product_revision_id,
-        provider: result.provider,
-        operation: 'schedule_revalidation',
-        operation_key: `${input.operationKey}:${result.provider}`,
-        request_hash: hash({ operationKey: input.operationKey, provider: result.provider }),
-        response_hash: hash(summary),
-        status: result.status === 'succeeded' ? 'succeeded' : result.status === 'unavailable' ? 'skipped' : 'failed',
-        billed_units: 1,
-        cost_krw: result.costKrw,
-        source_hash: input.sourceHash,
-        revision_hash: input.revisionHash,
-        result: summary,
-      },
-    });
-    if (error) throw error;
-  }
-}
-
 async function complete(input: {
   supabase: SupabaseClient;
   jobId: string;
@@ -190,7 +149,7 @@ async function processJob(input: {
         verificationErrors.push(`segment:${index}:FLIGHT_IDENTITY_INCOMPLETE`);
         continue;
       }
-      const provider = await fetchIndependentSchedules({
+      const query = {
         tenantId: input.job.tenant_id,
         carrierCode: text(segment.carrier_code) ?? serviceNumber.match(/^([A-Z0-9]{2,3})/)?.[1] ?? '',
         serviceNumber,
@@ -200,25 +159,52 @@ async function processJob(input: {
         sourceHash: aggregate.revision.source_hash,
         productRevisionId: input.job.product_revision_id,
         packageId: text(segment.package_id),
-      }, { remainingBudgetKrw, disabledProviders: input.disabled });
-      remainingBudgetKrw -= provider.totalCostKrw;
-      await recordProviderCalls({
-        supabase: input.supabase,
-        job: input.job,
-        revisionHash: aggregate.revision.payload_hash,
-        sourceHash: aggregate.revision.source_hash,
-        operationKey: `${input.job.id}:${index}:${serviceNumber}:${input.job.departure_date}`,
-        results: provider.results,
-      });
-      for (const observation of provider.observations) {
+      };
+      const activeProviders = (['oag', 'cirium'] as const)
+        .filter(providerName => !input.disabled.includes(providerName));
+      const estimatedCostKrw = activeProviders.reduce(
+        (sum, providerName) => sum + estimatedScheduleProviderCostKrw(providerName),
+        0,
+      );
+      if (estimatedCostKrw > remainingBudgetKrw) {
+        verificationErrors.push(`segment:${index}:DOCUMENT_EXTERNAL_COST_LIMIT_REACHED`);
+        continue;
+      }
+      const providerResults: ScheduleProviderResult[] = [];
+      for (const providerName of activeProviders) {
+        const execution = await executeScheduleProviderEffectivelyOnce({
+          supabase: input.supabase,
+          tenantId: input.job.tenant_id,
+          jobId: null,
+          revisionId: input.job.product_revision_id,
+          revisionHash: aggregate.revision.payload_hash,
+          sourceHash: aggregate.revision.source_hash,
+          provider: providerName,
+          operationScope: `revalidation:${input.job.id}:${input.job.checkpoint}:segment:${index}`,
+          query,
+        });
+        providerResults.push(execution.result);
+        remainingBudgetKrw -= execution.chargedCostKrw;
+      }
+      for (const providerName of input.disabled) {
+        providerResults.push({
+          provider: providerName,
+          status: 'unavailable',
+          observations: [],
+          costKrw: 0,
+          error: `${providerName.toUpperCase()}_KILL_SWITCH_ACTIVE`,
+        });
+      }
+      const providerObservations = providerResults.flatMap(result => result.observations);
+      for (const observation of providerObservations) {
         observation.revisionHash = aggregate.revision.payload_hash;
         observation.id = await recordTransportObservation({ supabase: input.supabase, observation });
       }
-      const consensus = resolveScheduleProviderConsensus(provider.results.map(result => ({
+      const consensus = resolveScheduleProviderConsensus(providerResults.map(result => ({
         ...result,
         observations: result.observations.map(observation => ({
           ...observation,
-          id: provider.observations.find(item => item.observationHash === observation.observationHash)?.id ?? observation.id,
+          id: providerObservations.find(item => item.observationHash === observation.observationHash)?.id ?? observation.id,
         })),
       })));
       if (consensus.state !== 'agreed') {

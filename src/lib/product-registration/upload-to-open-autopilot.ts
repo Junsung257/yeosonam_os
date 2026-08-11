@@ -58,6 +58,7 @@ import {
   type RepairFirstOpenabilitySummary,
 } from './repair-first-openability';
 import { hashSourceText } from './improvement-ledger';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -4659,6 +4660,21 @@ export async function runUploadToOpenAutopilot(input: {
   errors: string[];
   results: UploadToOpenPackageResult[];
 }> {
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return {
+      ok: false,
+      scanned: 0,
+      opened: 0,
+      ready_not_opened: 0,
+      blocked: 0,
+      openable: 0,
+      auto_fixed_openable: 0,
+      needs_human_source_review: 0,
+      errors: [authorityBlocker],
+      results: [],
+    };
+  }
   if (!input.isSupabaseConfigured) {
     return {
       ok: false,

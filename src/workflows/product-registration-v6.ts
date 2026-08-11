@@ -25,12 +25,13 @@ import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from
 import {
   buildPackageProjectionFromRevision,
   loadProductRegistrationRevisionAggregate,
-  projectCompatibilityFromRevisionAtomic,
-} from '@/lib/product-registration-authority';
+} from '@/lib/product-registration-authority/revision-aggregate';
+import { projectCompatibilityFromRevisionAtomic } from '@/lib/product-registration-authority/repository';
 import {
   PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
   PRODUCT_REGISTRATION_V6_STAGES,
   type ProductRegistrationV6Decision,
+  type ProductRegistrationV6PublicationState,
   type ProductRegistrationV6Stage,
   type ProductRegistrationV6WorkflowInput,
   type ProductRegistrationV6WorkflowResult,
@@ -596,27 +597,27 @@ async function publishSnapshotsStep(
 async function publicationControlStep(
   input: ProductRegistrationV6WorkflowInput,
   decision: ProductRegistrationV6Decision,
-): Promise<ProductRegistrationV6Decision> {
+): Promise<{ allowed: boolean; publicationState: ProductRegistrationV6PublicationState; blockers: string[] }> {
   'use step';
   const blockers = await loadProductRegistrationV6PublicationBlockers({
     supabase: db(),
     packageIds: decision.packageIds,
   });
-  if (blockers.length === 0) return decision;
-  const blocked: ProductRegistrationV6Decision = {
-    ...decision,
-    outcome: 'blocked',
-    terminalOutcome: 'blocked_action_required',
-    blockers: [...new Set([...decision.blockers, ...blockers])],
-  };
+  if (blockers.length === 0) {
+    return { allowed: true, publicationState: 'proof_passed', blockers: [] };
+  }
+  const publicationState: ProductRegistrationV6PublicationState = blockers.includes('PUBLICATION_FREEZE_ACTIVE')
+    || blockers.includes('V6_SHADOW_MODE_PUBLICATION_DISABLED')
+    ? 'frozen'
+    : 'blocked';
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
     stage: 'publish_pointer',
     status: 'succeeded',
-    output: { published: false, blockers: blocked.blockers },
+    output: { published: false, analysisOutcome: decision.outcome, publicationState, blockers },
   });
-  return blocked;
+  return { allowed: false, publicationState, blockers };
 }
 
 async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots: ProductRegistrationV6CandidateSnapshot[]) {
@@ -659,17 +660,25 @@ async function terminalStep(
   input: ProductRegistrationV6WorkflowInput,
   workflowRunId: string,
   decision: ProductRegistrationV6Decision,
+  publicationState: ProductRegistrationV6PublicationState,
+  publicationBlockers: string[] = [],
 ): Promise<ProductRegistrationV6WorkflowResult> {
   'use step';
   const supabase = db();
-  const { error } = await supabase.rpc('record_product_registration_v6_terminal_outcome', {
-    p_job_id: input.jobId,
-    p_workflow_run_id: workflowRunId,
-    p_expected_fencing_token: input.fencingToken,
-    p_outcome: decision.terminalOutcome,
-    p_policy_version: input.policyVersion,
-    p_degraded_reasons: decision.degradedReasons,
-    p_blockers: decision.blockers,
+  const { error } = await supabase.rpc('record_product_registration_v6_terminal_state', {
+    p_payload: {
+      job_id: input.jobId,
+      tenant_id: input.tenantId,
+      workflow_run_id: workflowRunId,
+      expected_fencing_token: input.fencingToken,
+      analysis_outcome: decision.outcome,
+      publication_state: publicationState,
+      compatibility_outcome: decision.terminalOutcome,
+      policy_version: input.policyVersion,
+      degraded_reasons: decision.degradedReasons,
+      blockers: decision.blockers,
+      publication_blockers: publicationBlockers,
+    },
   });
   if (error) throw new FatalError(error.message);
   if (input.correctionJobId) {
@@ -688,9 +697,17 @@ async function terminalStep(
     fencingToken: input.fencingToken,
     stage: 'complete',
     status: 'succeeded',
-    output: { terminalOutcome: decision.terminalOutcome },
+    output: { terminalOutcome: decision.terminalOutcome, analysisOutcome: decision.outcome, publicationState, publicationBlockers },
   });
-  return { ...decision, jobId: input.jobId, workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION, completedAt: new Date().toISOString() };
+  return {
+    ...decision,
+    analysisOutcome: decision.outcome,
+    publicationState,
+    publicationBlockers,
+    jobId: input.jobId,
+    workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
+    completedAt: new Date().toISOString(),
+  };
 }
 
 async function blockFailedWorkflowStep(
@@ -742,14 +759,20 @@ async function blockFailedWorkflowStep(
       payload: { workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
     },
   });
-  const { error: terminalError } = await supabase.rpc('record_product_registration_v6_terminal_outcome', {
-    p_job_id: input.jobId,
-    p_workflow_run_id: workflowRunId,
-    p_expected_fencing_token: input.fencingToken,
-    p_outcome: decision.terminalOutcome,
-    p_policy_version: input.policyVersion,
-    p_degraded_reasons: decision.degradedReasons,
-    p_blockers: decision.blockers,
+  const { error: terminalError } = await supabase.rpc('record_product_registration_v6_terminal_state', {
+    p_payload: {
+      job_id: input.jobId,
+      tenant_id: input.tenantId,
+      workflow_run_id: workflowRunId,
+      expected_fencing_token: input.fencingToken,
+      analysis_outcome: decision.outcome,
+      publication_state: 'blocked',
+      compatibility_outcome: decision.terminalOutcome,
+      policy_version: input.policyVersion,
+      degraded_reasons: decision.degradedReasons,
+      blockers: decision.blockers,
+      publication_blockers: [],
+    },
   });
   if (terminalError) throw new FatalError(terminalError.message);
   if (input.correctionJobId) {
@@ -769,7 +792,15 @@ async function blockFailedWorkflowStep(
     status: 'succeeded',
     output: { terminalOutcome: decision.terminalOutcome, failed: true },
   });
-  return { ...decision, jobId: input.jobId, workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION, completedAt: new Date().toISOString() };
+  return {
+    ...decision,
+    analysisOutcome: decision.outcome,
+    publicationState: 'blocked',
+    publicationBlockers: [],
+    jobId: input.jobId,
+    workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
+    completedAt: new Date().toISOString(),
+  };
 }
 
 export async function productRegistrationV6Workflow(
@@ -783,20 +814,43 @@ export async function productRegistrationV6Workflow(
     await deduplicateStep(input);
     await extractStep(input);
     const canonical = await normalizeStep(input, preflight);
-    const compatibility = await projectCompatibilityStep(input, canonical);
-    const normalized = { ...canonical, packageIds: compatibility.packageIds };
+    const normalized = { ...canonical, packageIds: canonical.catalogProductIds };
     const shared = await resolveSharedFactsStep(input, normalized, preflight);
     const decision = await validateStep(input, normalized, shared, preflight);
-    if (decision.outcome === 'blocked') return await terminalStep(input, workflowRunId, decision);
+    if (decision.outcome === 'blocked') return await terminalStep(input, workflowRunId, decision, 'not_requested');
     const copyDecision = await generateCopyStep(input, decision);
-    if (copyDecision.outcome === 'blocked') return await terminalStep(input, workflowRunId, copyDecision);
-    const snapshots = await buildSnapshotsStep(input, copyDecision, shared);
+    if (copyDecision.outcome === 'blocked') return await terminalStep(input, workflowRunId, copyDecision, 'not_requested');
+    const compatibility = await projectCompatibilityStep(input, canonical);
+    const projectedDecision = { ...copyDecision, packageIds: compatibility.packageIds };
+    const projectedShared: SharedFactJobResult = {
+      ...shared,
+      resolvedTransport: shared.resolvedTransport.map(item => {
+        const catalogIndex = item.packageId
+          ? canonical.catalogProductIds.indexOf(item.packageId)
+          : -1;
+        return {
+          ...item,
+          packageId: catalogIndex >= 0
+            ? compatibility.packageIds[catalogIndex] ?? item.packageId
+            : item.packageId,
+        };
+      }),
+    };
+    const snapshots = await buildSnapshotsStep(input, projectedDecision, projectedShared);
     const proofs = await proveSnapshotsStep(input, snapshots);
-    const publishDecision = await publicationControlStep(input, copyDecision);
-    if (publishDecision.outcome === 'blocked') return await terminalStep(input, workflowRunId, publishDecision);
-    await publishSnapshotsStep(input, copyDecision, proofs);
+    const publication = await publicationControlStep(input, projectedDecision);
+    if (!publication.allowed) {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        projectedDecision,
+        publication.publicationState,
+        publication.blockers,
+      );
+    }
+    await publishSnapshotsStep(input, projectedDecision, proofs);
     await convergeStep(input, snapshots);
-    return await terminalStep(input, workflowRunId, copyDecision);
+    return await terminalStep(input, workflowRunId, projectedDecision, 'converged');
   } catch (error) {
     return await blockFailedWorkflowStep(input, workflowRunId, error instanceof Error ? error.message : String(error));
   }

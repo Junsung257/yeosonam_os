@@ -34,6 +34,14 @@ describe('product registration input adapter convergence', () => {
     expect(route).toContain('reextract_from_immutable_source');
   });
 
+  it('routes legacy inventory through the same kernel as a non-public shadow backfill', () => {
+    const route = source('src/app/api/cron/product-registration-v6-backfill/route.ts');
+    expect(route).toContain('startProductRegistrationTextWorkflow');
+    expect(route).toContain("sourceChannel: 'legacy_backfill'");
+    expect(route).toContain('archiveMode: true');
+    expect(route).toContain('forceReprocess: true');
+  });
+
   it('fails legacy CRUD and forced approval closed in kernel mode', () => {
     for (const path of [
       'src/app/api/products/route.ts',

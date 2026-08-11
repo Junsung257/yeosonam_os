@@ -31,6 +31,8 @@
     "check:product-registration-contract": "node scripts/check-product-registration-contract.mjs --strict && node scripts/check-product-registration-authority.mjs --strict",
     "check:product-registration-authority": "node scripts/check-product-registration-authority.mjs --strict",
     "check:product-registration-authority:kernel-only": "node scripts/check-product-registration-authority.mjs --strict --no-legacy-writers",
+    "preflight:product-registration-authority": "npx tsx scripts/preflight-product-registration-authority.ts --json",
+    "preflight:product-registration-authority:strict": "npx tsx scripts/preflight-product-registration-authority.ts --strict --json",
     "check:deps": "depcruise --config .dependency-cruiser.cjs src",
     "check:deps:circular": "depcruise --config .dependency-cruiser.cjs --output-type err src",
     "prestart": "node scripts/ensure-next-main-app-js-shim.cjs",

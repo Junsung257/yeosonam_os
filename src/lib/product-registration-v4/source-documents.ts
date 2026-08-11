@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { PRODUCT_REGISTRATION_V4_MAX_BYTES, type ProductSourceType, type SourceDocumentRecord } from './types';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 export const PRODUCT_SOURCE_BUCKET = 'product-source-private';
 

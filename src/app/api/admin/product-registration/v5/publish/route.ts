@@ -4,6 +4,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { publishProductRegistrationV5SnapshotAtomic } from '@/lib/product-registration-v4/publication';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -150,6 +151,14 @@ async function postHandler(request: NextRequest) {
     body = await request.json() as V5PublishBody;
   } catch {
     return NextResponse.json({ ok: false, code: 'INVALID_JSON' }, { status: 400 });
+  }
+
+  const authority = getProductRegistrationV6RuntimeConfig();
+  if (authority.authorityMode === 'kernel') {
+    return NextResponse.json({
+      ok: false,
+      code: 'LEGACY_PUBLICATION_AUTHORITY_RETIRED',
+    }, { status: 410, headers: { 'Cache-Control': 'no-store' } });
   }
 
   const preflight = await buildPreflight(body);

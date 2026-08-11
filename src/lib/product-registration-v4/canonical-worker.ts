@@ -4,7 +4,7 @@ import { runProductRegistrationV3 } from '@/lib/product-registration-v3';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { splitCatalogByItineraryHeaders } from '@/lib/parser/catalog-pre-split';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
-import { commitCanonicalRevisionAtomic } from '@/lib/product-registration-authority';
+import { commitCanonicalRevisionAtomic } from '@/lib/product-registration-authority/repository';
 import { buildProductRegistrationV6DomainProjection } from '@/lib/product-registration-v6/domain-projections';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
@@ -370,10 +370,13 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     const correctionProductKey = typeof job.v4_stage_state.correctionProductKey === 'string'
       ? job.v4_stage_state.correctionProductKey
       : null;
+    const authorityBindingKind = job.v4_stage_state.authorityBindingKind === 'legacy_backfill'
+      ? 'legacy_backfill'
+      : 'correction';
     if (correctionCatalogProductId && (
-      !correctionBaseRevisionId
-      || !correctionProductKey
+      !correctionProductKey
       || normalization.sections.length !== 1
+      || (authorityBindingKind === 'correction' && !correctionBaseRevisionId)
     )) {
       throw new Error('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
     }
@@ -447,7 +450,7 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
           commit: {
             tenantId: job.tenant_id,
             productKey: correctionProductKey ?? `source:${job.source_document_id}:section:${section.sectionKey}`,
-            sourceChannel: correctionCatalogProductId ? 'correction' : 'upload',
+            sourceChannel: correctionCatalogProductId ? authorityBindingKind : 'upload',
             operationKey: `kernel:${job.id}:${normalizationId}:${section.sectionKey}:${v5Build.payloadHash}`,
             catalogProductId: correctionCatalogProductId,
             build: v5Build,

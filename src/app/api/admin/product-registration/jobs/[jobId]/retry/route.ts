@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
-import { getProductRegistrationV4Job, transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
+import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
+import { getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_V4_ATTEMPTS = 5;
 
-const postHandler = async (_request: NextRequest, context?: { params: Promise<{ jobId: string }> | { jobId: string } }) => {
+const postHandler = async (request: NextRequest, context?: { params: Promise<{ jobId: string }> | { jobId: string } }) => {
   if (!isSupabaseAdminConfigured) {
     return NextResponse.json({ success: false, code: 'SUPABASE_ADMIN_UNAVAILABLE' }, { status: 503 });
   }
@@ -43,20 +44,27 @@ const postHandler = async (_request: NextRequest, context?: { params: Promise<{ 
       return NextResponse.json({ success: false, code: 'SOURCE_REUPLOAD_REQUIRED', sourceStatus: source.status }, { status: 409 });
     }
 
-    const retried = await transitionProductRegistrationV4Job({
+    const publicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
+      ?? process.env.NEXT_PUBLIC_SITE_URL
+      ?? request.nextUrl.origin;
+    const retried = await startProductRegistrationWorkflowBySourceId({
       supabase: supabaseAdmin,
-      jobId,
-      stage: 'uploaded',
-      status: 'queued',
-      extractionId: null,
-      canonicalNormalizationId: null,
-      clearLease: true,
-      state: { retriedAt: new Date().toISOString(), previousStage: job.v4_stage },
-      reviewReasons: [],
-      errorCode: null,
-      errorDetail: null,
+      sourceDocumentId: job.source_document_id,
+      tenantId: job.tenant_id,
+      requestBaseUrl: request.nextUrl.origin,
+      publicBaseUrl,
+      sourceChannel: 'admin-retry',
+      forceReprocess: false,
     });
-    return NextResponse.json({ success: true, job: retried }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({
+      success: true,
+      code: 'PRODUCT_REGISTRATION_RETRY_ACCEPTED',
+      priorJobId: jobId,
+      jobId: retried.jobId,
+      workflowRunId: retried.workflowRunId,
+      state: 'processing',
+      dedupeHit: retried.dedupeHit,
+    }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('[Product Registration V4] job retry failed:', error);
     return NextResponse.json({ success: false, code: 'REGISTRATION_JOB_RETRY_FAILED', error: error instanceof Error ? error.message : String(error) }, { status: 502 });

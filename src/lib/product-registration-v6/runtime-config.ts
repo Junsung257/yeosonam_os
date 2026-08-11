@@ -9,7 +9,10 @@ export type ProductRegistrationV6RuntimeConfig = {
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
   const configured = process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE?.trim().toLowerCase();
   if (configured === 'legacy' || configured === 'shadow' || configured === 'kernel') return configured;
-  return enabled('PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED') ? 'kernel' : 'legacy';
+  // Authority must never be inferred from a compatibility feature flag. The
+  // database authority mode and the deployment mode are compared separately
+  // by the readiness gate; an unset/invalid value therefore stays fail-closed.
+  return 'legacy';
 }
 
 function enabled(name: string, defaultValue = false): boolean {
@@ -22,7 +25,7 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
   const mode = authorityMode();
   return {
     authorityMode: mode,
-    workflowEnabled: mode !== 'legacy' || enabled('PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED'),
+    workflowEnabled: mode !== 'legacy',
     shadowEnabled: enabled('PRODUCT_REGISTRATION_V6_SHADOW_ENABLED', true),
     publishEnabled: enabled('PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED'),
     publicationFrozen: enabled('PRODUCT_REGISTRATION_PUBLICATION_FREEZE', true),

@@ -27,6 +27,15 @@ export type ProductRegistrationV6TerminalOutcome =
   | 'published_degraded'
   | 'blocked_action_required';
 
+export type ProductRegistrationV6PublicationState =
+  | 'not_requested'
+  | 'frozen'
+  | 'blocked'
+  | 'proof_passed'
+  | 'pointer_committed'
+  | 'converged'
+  | 'convergence_failed';
+
 export type ProductRegistrationV6WorkflowInput = {
   jobId: string;
   tenantId: string;
@@ -61,6 +70,9 @@ export type ProductRegistrationV6Decision = {
 };
 
 export type ProductRegistrationV6WorkflowResult = ProductRegistrationV6Decision & {
+  analysisOutcome: ProductRegistrationV6Decision['outcome'];
+  publicationState: ProductRegistrationV6PublicationState;
+  publicationBlockers: string[];
   jobId: string;
   workflowVersion: string;
   completedAt: string;

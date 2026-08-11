@@ -33,7 +33,9 @@ const GENERATED_SOURCE_PREFIXES = [
   'src/app/.well-known/workflow/',
 ];
 const RETIRED_PUBLICATION_RPCS = new Set([
+  'publish_package_snapshot_atomic',
   'publish_product_registration_v5_snapshot_atomic',
+  'publish_product_registration_v6_snapshot_atomic',
   'publish_product_snapshot_atomic',
 ]);
 const ARCHITECTURE_CONTRACTS = [
@@ -47,6 +49,7 @@ const ARCHITECTURE_CONTRACTS = [
       ['legacy compatibility step', /legacyCompatibilityStep/],
       ['legacy upload pipeline import or execution', /runUploadRegistrationPipeline/],
       ['source re-download after canonical normalization', /storage\.from\([^\n]+\)\.download/],
+      ['authority barrel import cycle', /from ['"]@\/lib\/product-registration-authority['"]/],
     ],
   },
   {
@@ -56,7 +59,31 @@ const ARCHITECTURE_CONTRACTS = [
     ],
     forbidden: [
       ['legacy mobile QA mutation path', /runAutoMobileQA/],
+      ['authority barrel import cycle', /from ['"]@\/lib\/product-registration-authority['"]/],
     ],
+  },
+  {
+    file: 'src/lib/product-registration-v4/canonical-worker.ts',
+    required: [
+      ['single revision authority repository', /product-registration-authority\/repository/],
+    ],
+    forbidden: [
+      ['authority barrel import cycle', /from ['"]@\/lib\/product-registration-authority['"]/],
+    ],
+  },
+  {
+    file: 'src/lib/package-publication/repository.ts',
+    required: [
+      ['kernel legacy-writer runtime blocker', /productRegistrationLegacyWriterBlocker\(\)/],
+    ],
+    forbidden: [],
+  },
+  {
+    file: 'src/lib/product-registration/upload-to-open-autopilot.ts',
+    required: [
+      ['autopilot kernel authority blocker', /productRegistrationLegacyWriterBlocker\(\)/],
+    ],
+    forbidden: [],
   },
 ];
 

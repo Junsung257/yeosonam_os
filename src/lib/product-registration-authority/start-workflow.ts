@@ -20,6 +20,14 @@ type CorrectionBinding = {
   operationKey: string;
 };
 
+type IdentityBinding = {
+  catalogProductId: string;
+  baseRevisionId?: string | null;
+  productKey: string;
+  operationKey: string;
+  bindingKind: 'legacy_backfill';
+};
+
 export type KernelWorkflowStartResult = {
   jobId: string;
   workflowRunId: string;
@@ -27,6 +35,46 @@ export type KernelWorkflowStartResult = {
   sourceHash: string;
   dedupeHit: boolean;
 };
+
+const SOURCE_DOCUMENT_COLUMNS = [
+  'id',
+  'original_filename',
+  'storage_bucket',
+  'storage_path',
+  'sha256',
+  'byte_size',
+  'declared_mime',
+  'detected_mime',
+  'source_type',
+  'status',
+  'security_scan',
+  'metadata',
+  'tenant_id',
+  'uploaded_by',
+  'created_at',
+  'updated_at',
+].join(',');
+
+export async function loadProductRegistrationSource(input: {
+  supabase: SupabaseClient;
+  sourceDocumentId: string;
+  tenantId?: string | null;
+}): Promise<SourceDocumentRecord> {
+  let query = input.supabase
+    .from('product_source_documents')
+    .select(SOURCE_DOCUMENT_COLUMNS)
+    .eq('id', input.sourceDocumentId);
+  if (input.tenantId) query = query.eq('tenant_id', input.tenantId);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('REGISTRATION_SOURCE_DOCUMENT_NOT_FOUND');
+  const source = data as unknown as SourceDocumentRecord;
+  if (!source.tenant_id) throw new Error('REGISTRATION_SOURCE_TENANT_REQUIRED');
+  if (source.status === 'quarantined' || source.status === 'deleted') {
+    throw new Error(`REGISTRATION_SOURCE_NOT_PROCESSABLE:${source.status}`);
+  }
+  return source;
+}
 
 export async function storeProductRegistrationTextSource(input: {
   supabase: SupabaseClient;
@@ -76,7 +124,10 @@ export async function startProductRegistrationWorkflowForSource(input: {
   uploadSourceMetadata: Record<string, unknown>;
   sourceChannel: string;
   forceReprocess?: boolean;
+  archiveMode?: boolean;
+  bulkMode?: boolean;
   correction?: CorrectionBinding;
+  identityBinding?: IdentityBinding;
   dedupeHit?: boolean;
 }): Promise<KernelWorkflowStartResult> {
   const requestId = input.requestId ?? randomUUID();
@@ -91,6 +142,13 @@ export async function startProductRegistrationWorkflowForSource(input: {
       tenantId: input.tenantId,
       initialState: {
         sourceChannel: input.sourceChannel,
+        ...(input.identityBinding ? {
+          authorityBindingKind: input.identityBinding.bindingKind,
+          correctionCatalogProductId: input.identityBinding.catalogProductId,
+          correctionBaseRevisionId: input.identityBinding.baseRevisionId ?? null,
+          correctionProductKey: input.identityBinding.productKey,
+          authorityBindingOperationKey: input.identityBinding.operationKey,
+        } : {}),
         ...(input.correction ? {
           correctionJobId: input.correction.correctionJobId,
           correctionCatalogProductId: input.correction.catalogProductId,
@@ -134,8 +192,8 @@ export async function startProductRegistrationWorkflowForSource(input: {
       parserRawText: null,
       analysisNormalizedText: null,
       uploadSourceMetadata: input.uploadSourceMetadata,
-      archiveMode: false,
-      bulkMode: false,
+      archiveMode: input.archiveMode ?? false,
+      bulkMode: input.bulkMode ?? false,
       forceReprocess: input.forceReprocess ?? false,
       fencingToken,
       policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
@@ -153,14 +211,19 @@ export async function startProductRegistrationWorkflowForSource(input: {
     const detail = error instanceof Error ? error.message : String(error);
     if (jobId != null && fencingToken != null) {
       try {
-        await input.supabase.rpc('record_product_registration_v6_terminal_outcome', {
-          p_job_id: jobId,
-          p_workflow_run_id: `start-failed:${requestId}`,
-          p_expected_fencing_token: fencingToken,
-          p_outcome: 'blocked_action_required',
-          p_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-          p_degraded_reasons: [],
-          p_blockers: [`WORKFLOW_START_FAILED:${detail}`],
+        await input.supabase.rpc('record_product_registration_v6_terminal_state', {
+          p_payload: {
+            job_id: jobId,
+            tenant_id: input.tenantId,
+            workflow_run_id: `start-failed:${requestId}`,
+            expected_fencing_token: fencingToken,
+            analysis_outcome: 'blocked',
+            publication_state: 'not_requested',
+            compatibility_outcome: 'blocked_action_required',
+            policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+            degraded_reasons: [],
+            blockers: [`WORKFLOW_START_FAILED:${detail}`],
+          },
         });
       } catch {
         // The watchdog can recover a claimed job when persistence itself is unavailable.
@@ -184,6 +247,42 @@ export async function startProductRegistrationWorkflowForSource(input: {
   }
 }
 
+export async function startProductRegistrationWorkflowBySourceId(input: {
+  supabase: SupabaseClient;
+  sourceDocumentId: string;
+  tenantId?: string | null;
+  requestId?: string;
+  requestBaseUrl: string;
+  publicBaseUrl: string;
+  uploadSourceMetadata?: Record<string, unknown>;
+  sourceChannel: string;
+  forceReprocess?: boolean;
+  archiveMode?: boolean;
+  bulkMode?: boolean;
+  correction?: CorrectionBinding;
+  identityBinding?: IdentityBinding;
+  dedupeHit?: boolean;
+}): Promise<KernelWorkflowStartResult> {
+  const source = await loadProductRegistrationSource({
+    supabase: input.supabase,
+    sourceDocumentId: input.sourceDocumentId,
+    tenantId: input.tenantId,
+  });
+  const sourceMetadata = source.metadata && typeof source.metadata === 'object'
+    ? source.metadata
+    : {};
+  const embeddedUploadMetadata = sourceMetadata.uploadSourceMetadata;
+  return startProductRegistrationWorkflowForSource({
+    ...input,
+    tenantId: source.tenant_id!,
+    source,
+    uploadSourceMetadata: input.uploadSourceMetadata
+      ?? (embeddedUploadMetadata && typeof embeddedUploadMetadata === 'object' && !Array.isArray(embeddedUploadMetadata)
+        ? embeddedUploadMetadata as Record<string, unknown>
+        : {}),
+  });
+}
+
 export async function startProductRegistrationTextWorkflow(input: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -196,6 +295,9 @@ export async function startProductRegistrationTextWorkflow(input: {
   sourceChannel: string;
   metadata?: Record<string, unknown>;
   forceReprocess?: boolean;
+  archiveMode?: boolean;
+  bulkMode?: boolean;
+  identityBinding?: IdentityBinding;
 }): Promise<KernelWorkflowStartResult> {
   const stored = await storeProductRegistrationTextSource(input);
   return startProductRegistrationWorkflowForSource({

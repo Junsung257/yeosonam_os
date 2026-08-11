@@ -3,9 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 import {
   buildPackageProjectionFromRevision,
-  createCandidateSnapshot,
   loadProductRegistrationRevisionAggregate,
-} from '@/lib/product-registration-authority';
+} from '@/lib/product-registration-authority/revision-aggregate';
+import { createCandidateSnapshot } from '@/lib/product-registration-authority/repository';
 import { persistProductRegistrationV5ProofRun } from '@/lib/product-registration-v4/proof';
 import { runProductRegistrationV6ChromeProof } from './browser-proof';
 import { createProductRegistrationV6ProofToken } from './proof-token';

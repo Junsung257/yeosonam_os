@@ -8,6 +8,7 @@ import { loadProductRegistrationV4PublicationGate } from '@/lib/product-registra
 import { evaluateCustomerSurfaceParity } from '@/lib/package-publication/customer-surface-parity';
 import { collectItineraryAttractionIds, validateCustomerPublishableAttractionIds } from '@/lib/package-publication/attraction-validation';
 import { auditCustomerVisibleScreenText, blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 const packageId = process.argv.find(v => v.startsWith('--package-id='))?.slice('--package-id='.length);
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -64,7 +65,10 @@ const result = {
     attractionIds,
     attractions,
   },
-  helper: await fetchLatestPublicPackageSnapshot(client, packageId, { expectedPackageRevision: Number((row as any).package_revision) }).then(v => v ? { ok: true, hash: v.row.snapshot_hash } : { ok: false }).catch(e => ({ ok: false, error: String(e) })),
+  helper: await fetchLatestPublicPackageSnapshot(client, packageId, {
+    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+    expectedPackageRevision: Number((row as any).package_revision),
+  }).then(v => v ? { ok: true, hash: v.row.snapshot_hash } : { ok: false }).catch(e => ({ ok: false, error: String(e) })),
 };
 console.log(JSON.stringify(result, null, 2));
 }

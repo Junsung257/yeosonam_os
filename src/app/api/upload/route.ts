@@ -9,18 +9,13 @@ import { prepareUploadRequestIntake } from '@/lib/product-registration/upload-re
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 import { createProductRegistrationV4Job, transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 import { ensureSourceDocumentStored } from '@/lib/product-registration-v4/source-documents';
+import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
 import {
   enqueueUploadTimeoutReplay,
   scheduleImmediateUploadTimeoutReplay,
   type UploadTimeoutReplayQueueResult,
 } from '@/lib/product-registration/upload-timeout-replay-queue';
-import { start } from 'workflow/api';
-import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority';
-import {
-  PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-  type ProductRegistrationV6WorkflowInput,
-} from '@/lib/product-registration-v6/types';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 function safeAfter(task: () => Promise<void> | void): void {
@@ -56,6 +51,13 @@ const UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH = Math.max(
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function configuredPlatformRegistrationTenantId(): string | null {
+  const tenantId = process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID?.trim() ?? '';
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)
+    ? tenantId
+    : null;
 }
 
 function countLikelyPackageSections(rawText: string | null): number {
@@ -141,6 +143,75 @@ const postHandler = async (request: NextRequest) => {
         { status: intake.status, headers: { 'x-upload-request-id': requestId } },
       );
     }
+    const runtimeConfig = getProductRegistrationV6RuntimeConfig();
+    if (runtimeConfig.workflowEnabled && isSupabaseConfigured && intake.sourceType) {
+      const configuredTenantId = configuredPlatformRegistrationTenantId();
+      let sourceDocumentId = intake.sourceDocumentId;
+      let dedupeHit = false;
+      if (!sourceDocumentId) {
+        if (!configuredTenantId) {
+          return NextResponse.json({
+            success: false,
+            code: 'REGISTRATION_TENANT_REQUIRED',
+            error: '통합 상품등록에는 PRODUCT_REGISTRATION_PLATFORM_TENANT_ID 설정이 필요합니다.',
+            uploadRequestId: requestId,
+          }, { status: 503, headers: { 'x-upload-request-id': requestId } });
+        }
+        const { data: existing, error: existingError } = await supabaseAdmin
+          .from('product_source_documents')
+          .select('id')
+          .eq('tenant_id', configuredTenantId)
+          .eq('sha256', intake.fileHash)
+          .eq('byte_size', intake.buffer.byteLength)
+          .maybeSingle();
+        if (existingError) throw existingError;
+        dedupeHit = Boolean(existing);
+        const source = await ensureSourceDocumentStored({
+          supabase: supabaseAdmin,
+          buffer: intake.buffer,
+          filename: intake.fileName,
+          declaredMime: intake.declaredMime,
+          sourceType: intake.sourceType,
+          tenantId: configuredTenantId,
+          metadata: {
+            sourceChannel: 'upload',
+            uploadSourceMetadata: intake.uploadSourceMetadata,
+            ownership: 'platform',
+          },
+          requestKey: requestId,
+          sourceChannel: 'upload',
+        });
+        sourceDocumentId = source.id;
+      }
+      const publicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
+        ?? process.env.NEXT_PUBLIC_SITE_URL
+        ?? request.nextUrl.origin;
+      const started = await startProductRegistrationWorkflowBySourceId({
+        supabase: supabaseAdmin,
+        sourceDocumentId,
+        tenantId: intake.sourceDocumentId ? null : configuredTenantId,
+        requestId,
+        requestBaseUrl: request.nextUrl.origin,
+        publicBaseUrl,
+        uploadSourceMetadata: intake.uploadSourceMetadata as unknown as Record<string, unknown>,
+        sourceChannel: 'upload',
+        forceReprocess: intake.forceReprocess,
+        archiveMode: intake.archiveMode,
+        bulkMode: intake.bulkMode,
+        dedupeHit,
+      });
+      return NextResponse.json({
+        success: true,
+        code: 'PRODUCT_REGISTRATION_V6_ACCEPTED',
+        jobId: started.jobId,
+        workflowRunId: started.workflowRunId,
+        sourceDocumentId: started.sourceDocumentId,
+        state: 'processing',
+        dedupeHit: started.dedupeHit,
+        uploadRequestId: requestId,
+      }, { status: 202, headers: { 'x-upload-request-id': requestId } });
+    }
+
     // Keep the legacy endpoint as a safe compatibility surface: callers that
     // do not use the V4 admin screen are still forced through immutable source
     // archival and receive a V4 job before any product side effects run.
@@ -189,89 +260,6 @@ const postHandler = async (request: NextRequest) => {
           },
           { status: 502, headers: { 'x-upload-request-id': requestId } },
         );
-      }
-    }
-    if (getProductRegistrationV6RuntimeConfig().workflowEnabled
-      && isSupabaseConfigured
-      && pipelineIntake.sourceType
-      && pipelineIntake.sourceDocumentId
-      && pipelineIntake.registrationJobId) {
-      const { data: claim, error: claimError } = await supabaseAdmin.rpc('claim_product_registration_v6_workflow', {
-        p_job_id: pipelineIntake.registrationJobId,
-      });
-      if (claimError) {
-        return NextResponse.json({
-          success: false,
-          code: 'PRODUCT_REGISTRATION_V6_CLAIM_FAILED',
-          error: claimError.message,
-          uploadRequestId: requestId,
-        }, { status: 503, headers: { 'x-upload-request-id': requestId } });
-      }
-      const fencingToken = Number((claim as { fencing_token?: unknown } | null)?.fencing_token);
-      if (!Number.isInteger(fencingToken) || fencingToken < 1) {
-        throw new Error('PRODUCT_REGISTRATION_V6_FENCING_TOKEN_INVALID');
-      }
-      const publicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
-        ?? process.env.NEXT_PUBLIC_SITE_URL
-        ?? request.nextUrl.origin;
-      const workflowInput: ProductRegistrationV6WorkflowInput = {
-        jobId: pipelineIntake.registrationJobId,
-        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-        sourceDocumentId: pipelineIntake.sourceDocumentId,
-        requestId,
-        requestBaseUrl: request.nextUrl.origin,
-        publicBaseUrl,
-        sourceType: pipelineIntake.sourceType,
-        fileName: pipelineIntake.fileName,
-        declaredMime: pipelineIntake.declaredMime ?? null,
-        fileHash: pipelineIntake.fileHash,
-        // Source bytes are content-addressed in private Storage. Large source
-        // bodies never enter the durable workflow event log.
-        directRawText: null,
-        originalRawText: null,
-        parserRawText: null,
-        analysisNormalizedText: null,
-        uploadSourceMetadata: pipelineIntake.uploadSourceMetadata as unknown as Record<string, unknown>,
-        archiveMode: pipelineIntake.archiveMode,
-        bulkMode: pipelineIntake.bulkMode,
-        forceReprocess: pipelineIntake.forceReprocess,
-        fencingToken,
-        policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-      };
-      try {
-        const run = await start(productRegistrationV6Workflow, [workflowInput]);
-        return NextResponse.json({
-          success: true,
-          code: 'PRODUCT_REGISTRATION_V6_ACCEPTED',
-          jobId: pipelineIntake.registrationJobId,
-          workflowRunId: run.runId,
-          state: 'processing',
-          dedupeHit: false,
-          uploadRequestId: requestId,
-        }, { status: 202, headers: { 'x-upload-request-id': requestId } });
-      } catch (workflowStartError) {
-        const detail = workflowStartError instanceof Error ? workflowStartError.message : String(workflowStartError);
-        try {
-          await supabaseAdmin.rpc('record_product_registration_v6_terminal_outcome', {
-            p_job_id: pipelineIntake.registrationJobId,
-            p_workflow_run_id: `start-failed:${requestId}`,
-            p_expected_fencing_token: fencingToken,
-            p_outcome: 'blocked_action_required',
-            p_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-            p_degraded_reasons: [],
-            p_blockers: [`WORKFLOW_START_FAILED:${detail}`],
-          });
-        } catch {
-          // The start error is still returned to the caller. A watchdog can
-          // recover a claimed job if the database itself is unavailable.
-        }
-        return NextResponse.json({
-          success: false,
-          code: 'PRODUCT_REGISTRATION_V6_START_FAILED',
-          error: detail,
-          jobId: pipelineIntake.registrationJobId,
-          uploadRequestId: requestId,
-        }, { status: 503, headers: { 'x-upload-request-id': requestId } });
       }
     }
     if (shouldQueueFirst(pipelineIntake.directRawText)) {

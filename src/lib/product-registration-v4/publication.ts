@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 export type ProductRegistrationV5PublicationInput = {
   packageId: string;
@@ -34,6 +35,8 @@ export async function publishProductRegistrationV5SnapshotAtomic(input: {
   supabase: SupabaseClient;
   publication: ProductRegistrationV5PublicationInput;
 }): Promise<ProductRegistrationV5PublicationResult> {
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) throw new Error(authorityBlocker);
   const publication = input.publication;
   if (!publication.packageId || !publication.revisionId || !publication.snapshotId || !publication.proofRunId) {
     throw new Error('V5_PUBLICATION_LINEAGE_REQUIRED');

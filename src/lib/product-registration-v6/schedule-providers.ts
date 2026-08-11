@@ -59,6 +59,15 @@ export function estimatedIndependentScheduleCostKrw(): number {
     + (process.env.CIRIUM_APP_ID && process.env.CIRIUM_APP_KEY ? estimatedCost('CIRIUM_COST_KRW_PER_CALL') : 0);
 }
 
+export function estimatedScheduleProviderCostKrw(provider: 'oag' | 'cirium'): number {
+  if (provider === 'oag') {
+    return process.env.OAG_SUBSCRIPTION_KEY ? estimatedCost('OAG_COST_KRW_PER_CALL') : 0;
+  }
+  return process.env.CIRIUM_APP_ID && process.env.CIRIUM_APP_KEY
+    ? estimatedCost('CIRIUM_COST_KRW_PER_CALL')
+    : 0;
+}
+
 function makeObservation(input: {
   query: ScheduleProviderQuery;
   provider: 'oag' | 'cirium';

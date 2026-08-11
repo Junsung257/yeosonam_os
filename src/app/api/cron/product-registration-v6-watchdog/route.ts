@@ -2,16 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { getRun, start } from 'workflow/api';
+import { getRun } from 'workflow/api';
 
 import { withCronGuard } from '@/lib/cron-auth';
+import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
-import {
-  PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-  type ProductRegistrationV6WorkflowInput,
-} from '@/lib/product-registration-v6/types';
-import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
+import { PRODUCT_REGISTRATION_V6_POLICY_VERSION } from '@/lib/product-registration-v6/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,16 +21,6 @@ type StaleJob = {
   v6_fencing_token: number;
   v6_last_heartbeat_at: string | null;
   created_at: string;
-};
-
-type SourceDocument = {
-  id: string;
-  tenant_id: string;
-  original_filename: string;
-  declared_mime: string | null;
-  source_type: ProductRegistrationV6WorkflowInput['sourceType'];
-  sha256: string;
-  metadata: Record<string, unknown> | null;
 };
 
 async function terminallyQuarantine(input: {
@@ -57,14 +43,19 @@ async function terminallyQuarantine(input: {
       payload: {},
     },
   });
-  const { error } = await input.supabase.rpc('record_product_registration_v6_terminal_outcome', {
-    p_job_id: input.job.id,
-    p_workflow_run_id: input.job.v6_workflow_run_id ?? `watchdog:${randomUUID()}`,
-    p_expected_fencing_token: input.job.v6_fencing_token,
-    p_outcome: 'blocked_action_required',
-    p_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-    p_degraded_reasons: [],
-    p_blockers: ['V6_WORKFLOW_MAX_AGE_EXCEEDED'],
+  const { error } = await input.supabase.rpc('record_product_registration_v6_terminal_state', {
+    p_payload: {
+      job_id: input.job.id,
+      tenant_id: input.job.tenant_id,
+      workflow_run_id: input.job.v6_workflow_run_id ?? `watchdog:${randomUUID()}`,
+      expected_fencing_token: input.job.v6_fencing_token,
+      analysis_outcome: 'blocked',
+      publication_state: 'not_requested',
+      compatibility_outcome: 'blocked_action_required',
+      policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+      degraded_reasons: [],
+      blockers: ['V6_WORKFLOW_MAX_AGE_EXCEEDED'],
+    },
   });
   if (error) throw error;
 }
@@ -72,48 +63,37 @@ async function terminallyQuarantine(input: {
 async function restartStaleJob(input: {
   supabase: SupabaseClient;
   job: StaleJob;
-  source: SourceDocument;
   baseUrl: string;
-}): Promise<string> {
+}): Promise<{ jobId: string; workflowRunId: string }> {
   if (input.job.v6_workflow_run_id) {
     const run = getRun(input.job.v6_workflow_run_id);
     await run.cancel().catch(() => undefined);
   }
-  const { data: claim, error: claimError } = await input.supabase.rpc('claim_product_registration_v6_workflow', {
-    p_job_id: input.job.id,
+  const { error: terminalError } = await input.supabase.rpc('record_product_registration_v6_terminal_state', {
+    p_payload: {
+      job_id: input.job.id,
+      tenant_id: input.job.tenant_id,
+      workflow_run_id: input.job.v6_workflow_run_id ?? `watchdog-restart:${randomUUID()}`,
+      expected_fencing_token: input.job.v6_fencing_token,
+      analysis_outcome: 'blocked',
+      publication_state: 'not_requested',
+      compatibility_outcome: 'blocked_action_required',
+      policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+      degraded_reasons: [],
+      blockers: ['V6_WORKFLOW_REPLACED_BY_WATCHDOG'],
+    },
   });
-  if (claimError) throw claimError;
-  const fencingToken = Number((claim as { fencing_token?: unknown } | null)?.fencing_token);
-  if (!Number.isInteger(fencingToken) || fencingToken <= input.job.v6_fencing_token) {
-    throw new Error('V6_WATCHDOG_FENCING_TOKEN_INVALID');
-  }
-  const uploadMetadata = input.source.metadata?.uploadSourceMetadata;
-  const workflowInput: ProductRegistrationV6WorkflowInput = {
-    jobId: input.job.id,
+  if (terminalError) throw terminalError;
+  const started = await startProductRegistrationWorkflowBySourceId({
+    supabase: input.supabase,
     tenantId: input.job.tenant_id,
-    sourceDocumentId: input.source.id,
-    requestId: randomUUID(),
+    sourceDocumentId: input.job.source_document_id,
     requestBaseUrl: input.baseUrl,
     publicBaseUrl: input.baseUrl,
-    sourceType: input.source.source_type,
-    fileName: input.source.original_filename,
-    declaredMime: input.source.declared_mime,
-    fileHash: input.source.sha256,
-    directRawText: null,
-    originalRawText: null,
-    parserRawText: null,
-    analysisNormalizedText: null,
-    uploadSourceMetadata: uploadMetadata && typeof uploadMetadata === 'object' && !Array.isArray(uploadMetadata)
-      ? uploadMetadata as Record<string, unknown>
-      : parseUploadSourceMetadata({ fileName: input.source.original_filename, defaultCommissionRate: 10 }) as unknown as Record<string, unknown>,
-    archiveMode: false,
-    bulkMode: false,
+    sourceChannel: 'v6-watchdog-recovery',
     forceReprocess: true,
-    fencingToken,
-    policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-  };
-  const run = await start(productRegistrationV6Workflow, [workflowInput]);
-  return run.runId;
+  });
+  return { jobId: started.jobId, workflowRunId: started.workflowRunId };
 }
 
 async function handler(): Promise<NextResponse> {
@@ -142,20 +122,18 @@ async function handler(): Promise<NextResponse> {
         results.push({ jobId: job.id, action: 'quarantined', ok: true });
         continue;
       }
-      const { data: source, error: sourceError } = await supabase
-        .from('product_source_documents')
-        .select('id,tenant_id,original_filename,declared_mime,source_type,sha256,metadata')
-        .eq('id', job.source_document_id)
-        .eq('tenant_id', job.tenant_id)
-        .single();
-      if (sourceError || !source) throw sourceError ?? new Error('V6_WATCHDOG_SOURCE_MISSING');
-      const workflowRunId = await restartStaleJob({
+      const restarted = await restartStaleJob({
         supabase,
         job,
-        source: source as SourceDocument,
         baseUrl,
       });
-      results.push({ jobId: job.id, action: 'restarted', workflowRunId, ok: true });
+      results.push({
+        jobId: job.id,
+        replacementJobId: restarted.jobId,
+        action: 'restarted',
+        workflowRunId: restarted.workflowRunId,
+        ok: true,
+      });
     } catch (jobError) {
       results.push({ jobId: job.id, action: 'error', ok: false, error: jobError instanceof Error ? jobError.message : String(jobError) });
     }

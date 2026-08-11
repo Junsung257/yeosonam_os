@@ -4,6 +4,12 @@ import { buildProductRegistrationV6ReadinessReport } from './readiness';
 
 const database = {
   v6ColumnAvailable: true,
+  authorityMode: 'kernel' as const,
+  publicationFrozen: false,
+  schemaVersion: 'product-registration-authority-hardened-1',
+  schemaVerificationState: 'verified',
+  unvalidatedTenantForeignKeys: 0,
+  legacyPublicationRpcsExecutable: false,
   publishedPointerCount: 1,
   passedProofCount: 2,
   unfinishedJobCount: 0,
@@ -22,7 +28,7 @@ describe('product registration V6 readiness', () => {
         googleDocumentAi: false,
         ocrEnabled: false,
       },
-      database,
+      database: { ...database, authorityMode: 'legacy', publicationFrozen: true },
     });
 
     expect(report.readyForCanary).toBe(false);

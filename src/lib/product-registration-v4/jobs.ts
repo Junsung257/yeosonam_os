@@ -6,7 +6,7 @@ import {
   type ProductRegistrationV4JobRecord,
   type ProductRegistrationV4Stage,
 } from './types';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 const JOB_SELECT = [
   'id',
@@ -27,6 +27,9 @@ const JOB_SELECT = [
   'v4_last_error_detail',
   'v6_workflow_run_id',
   'v6_outcome',
+  'v6_analysis_outcome',
+  'v6_publication_state',
+  'v6_publication_blockers',
   'v6_policy_version',
   'v6_last_heartbeat_at',
   'v6_terminal_at',

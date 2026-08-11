@@ -55,6 +55,9 @@ const getHandler = async (_request: NextRequest, context?: { params: Promise<{ j
     const v6 = {
       workflowRunId: job.v6_workflow_run_id ?? null,
       outcome: job.v6_outcome ?? null,
+      analysisOutcome: job.v6_analysis_outcome ?? null,
+      publicationState: job.v6_publication_state ?? null,
+      publicationBlockers: job.v6_publication_blockers ?? [],
       policyVersion: job.v6_policy_version ?? null,
       heartbeatAt: job.v6_last_heartbeat_at ?? null,
       terminalAt: job.v6_terminal_at ?? null,

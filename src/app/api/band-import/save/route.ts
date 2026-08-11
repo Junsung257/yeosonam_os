@@ -15,10 +15,8 @@ import { BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer'
 import { persistBandImportedProduct } from '@/lib/band-import-persistence';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { withAdminGuard } from '@/lib/admin-guard';
-import {
-  PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-  startProductRegistrationTextWorkflow,
-} from '@/lib/product-registration-authority';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { startProductRegistrationTextWorkflow } from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 interface Preview {

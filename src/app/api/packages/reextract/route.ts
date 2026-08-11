@@ -24,7 +24,7 @@ import type { ItineraryDataLike } from '@/lib/product-registration/itinerary-nor
 import {
   startProductRegistrationWorkflowForSource,
   storeProductRegistrationTextSource,
-} from '@/lib/product-registration-authority';
+} from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 

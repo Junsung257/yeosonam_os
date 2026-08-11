@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { loadProductRegistrationRevisionAggregate } from '@/lib/product-registration-authority';
-import { fetchIndependentSchedules, type ScheduleProviderResult } from './schedule-providers';
+import { loadProductRegistrationRevisionAggregate } from '@/lib/product-registration-authority/revision-aggregate';
+import { estimatedScheduleProviderCostKrw } from './schedule-providers';
+import { executeScheduleProviderEffectivelyOnce } from './provider-call-ledger';
 import {
   TRANSPORT_SOURCE_WEIGHTS,
   buildTransportObservationHash,
@@ -17,7 +18,7 @@ import {
 type JsonObject = Record<string, unknown>;
 
 export type ResolvedTransportForSnapshot = {
-  packageId: string;
+  packageId: string | null;
   leg: string;
   serviceNumber: string;
   departureAirport: string;
@@ -63,7 +64,7 @@ function observationFromSource(input: {
   sourceDocumentId: string;
   revisionId: string;
   revisionHash: string;
-  packageId: string;
+  packageId: string | null;
   sourceHash: string;
   segment: JsonObject;
   date: string;
@@ -122,43 +123,6 @@ async function disabledTransportProviders(supabase: SupabaseClient): Promise<Arr
   return (['oag', 'cirium'] as const).filter(provider => keys.has('*') || keys.has(provider));
 }
 
-async function recordProviderResult(input: {
-  supabase: SupabaseClient;
-  tenantId: string | null;
-  jobId: string;
-  revisionId: string;
-  revisionHash: string;
-  sourceHash: string;
-  operationKey: string;
-  result: ScheduleProviderResult;
-}): Promise<boolean> {
-  const summary = {
-    status: input.result.status,
-    observationHashes: input.result.observations.map(row => row.observationHash),
-    error: input.result.error ?? null,
-  };
-  const { data, error } = await input.supabase.rpc('record_product_registration_v6_provider_call', {
-    p_payload: {
-      tenant_id: input.tenantId,
-      job_id: input.jobId,
-      product_revision_id: input.revisionId,
-      provider: input.result.provider,
-      operation: 'schedule_lookup',
-      operation_key: `${input.operationKey}:${input.result.provider}`,
-      request_hash: resolutionHash({ operationKey: input.operationKey, provider: input.result.provider }),
-      response_hash: resolutionHash(summary),
-      status: input.result.status === 'succeeded' ? 'succeeded' : input.result.status === 'unavailable' ? 'skipped' : 'failed',
-      billed_units: 1,
-      cost_krw: input.result.costKrw,
-      source_hash: input.sourceHash,
-      revision_hash: input.revisionHash,
-      result: summary,
-    },
-  });
-  if (error) throw error;
-  return Boolean((data as { inserted?: unknown } | null)?.inserted);
-}
-
 export async function resolveSharedFactsForJob(input: {
   supabase: SupabaseClient;
   jobId: string;
@@ -214,7 +178,10 @@ export async function resolveSharedFactsForJob(input: {
           sourceDocumentId: input.sourceDocumentId,
           revisionId,
           revisionHash,
-          packageId,
+          // Compatibility rows do not exist until the canonical revision has
+          // passed validation. The revision/catalog lineage is authoritative;
+          // package_id is attached later by the projection RPC.
+          packageId: null,
           sourceHash: input.sourceHash,
           segment,
           date,
@@ -249,7 +216,8 @@ export async function resolveSharedFactsForJob(input: {
         // times. Explicit source facts are never overwritten; a two-provider
         // disagreement becomes a blocker in resolveTransportFact().
         if (!(providerFamilies.has('oag') && providerFamilies.has('cirium'))) {
-          const provider = await fetchIndependentSchedules({
+          if (!input.tenantId) throw new Error('V6_PROVIDER_TENANT_REQUIRED');
+          const query = {
             tenantId: input.tenantId,
             carrierCode: currentObservation.carrierCode ?? '',
             serviceNumber: currentObservation.serviceNumber,
@@ -258,30 +226,44 @@ export async function resolveSharedFactsForJob(input: {
             departureDate: date,
             sourceHash: input.sourceHash,
             productRevisionId: revisionId,
-            packageId,
-          }, {
-            remainingBudgetKrw: Math.max(0, 2_000 - existingExternalCostKrw - result.totalExternalCostKrw),
-            disabledProviders,
-          }).catch(error => {
+            packageId: null,
+          };
+          const activeProviders = (['oag', 'cirium'] as const)
+            .filter(provider => !disabledProviders.includes(provider));
+          const estimatedCostKrw = activeProviders.reduce(
+            (sum, provider) => sum + estimatedScheduleProviderCostKrw(provider),
+            0,
+          );
+          const remainingBudgetKrw = Math.max(
+            0,
+            2_000 - existingExternalCostKrw - result.totalExternalCostKrw,
+          );
+          const providerObservations: TransportFactObservation[] = [];
+          if (estimatedCostKrw > remainingBudgetKrw) {
             result.degradedReasons.push(`package:${packageId}:DOCUMENT_EXTERNAL_COST_LIMIT_REACHED`);
-            return { results: [], observations: [], totalCostKrw: 0, error };
-          });
-          let newlyRecordedCostKrw = 0;
-          for (const providerResult of provider.results) {
-            const inserted = await recordProviderResult({
-              supabase: input.supabase,
-              tenantId: input.tenantId,
-              jobId: input.jobId,
-              revisionId,
-              revisionHash,
-              sourceHash: input.sourceHash,
-              operationKey: `${currentObservation.serviceNumber}:${currentObservation.departureAirport}:${currentObservation.arrivalAirport}:${date}`,
-              result: providerResult,
-            });
-            if (inserted) newlyRecordedCostKrw += providerResult.costKrw;
+          } else {
+            for (const providerName of activeProviders) {
+              const execution = await executeScheduleProviderEffectivelyOnce({
+                supabase: input.supabase,
+                tenantId: input.tenantId,
+                jobId: input.jobId,
+                revisionId,
+                revisionHash,
+                sourceHash: input.sourceHash,
+                provider: providerName,
+                operationScope: `registration:${input.jobId}:${revisionId}`,
+                query,
+              });
+              providerObservations.push(...execution.result.observations);
+              result.totalExternalCostKrw += execution.chargedCostKrw;
+            }
+            for (const providerName of disabledProviders) {
+              result.degradedReasons.push(
+                `package:${packageId}:${providerName.toUpperCase()}_KILL_SWITCH_ACTIVE`,
+              );
+            }
           }
-          result.totalExternalCostKrw += newlyRecordedCostKrw;
-          for (const observation of provider.observations) {
+          for (const observation of providerObservations) {
             const id = await recordTransportObservation({ supabase: input.supabase, observation: { ...observation, revisionHash } });
             observations.push({ ...observation, revisionHash, id });
           }

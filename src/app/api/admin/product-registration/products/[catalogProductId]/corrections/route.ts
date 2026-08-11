@@ -2,14 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
-import { start } from 'workflow/api';
 
 import { withAdminGuard } from '@/lib/admin-guard';
-import { createProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
-import {
-  PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-  type ProductRegistrationV6WorkflowInput,
-} from '@/lib/product-registration-v6/types';
+import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
@@ -101,64 +96,34 @@ const postHandler = async (
 
   let workflowJobId: string | null = null;
   try {
-    const job = await createProductRegistrationV4Job({
-      supabase,
-      sourceType: source.source_type === 'text' ? 'text' : 'file',
-      sourceDocumentId: source.id,
-      normalizedHash: source.sha256,
-      tenantId: baseRevision.tenant_id,
-      initialState: {
-        correctionJobId,
-        correctionCatalogProductId: catalogProductId,
-        correctionBaseRevisionId: body.baseRevisionId,
-        correctionProductKey: productKey,
-        correctionOperationKey: operationKey,
-      },
-    });
-    workflowJobId = job.id;
-    const { error: bindError } = await supabase.rpc('bind_product_registration_correction_workflow', {
-      p_payload: { correction_job_id: correctionJobId, workflow_job_id: job.id },
-    });
-    if (bindError) throw bindError;
-
-    const { data: claim, error: claimError } = await supabase.rpc('claim_product_registration_v6_workflow', { p_job_id: job.id });
-    if (claimError) throw claimError;
-    const fencingToken = Number((claim as { fencing_token?: unknown } | null)?.fencing_token);
-    if (!Number.isInteger(fencingToken) || fencingToken < 1) throw new Error('PRODUCT_REGISTRATION_V6_FENCING_TOKEN_INVALID');
     const sourceMetadata = object(source.metadata);
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
-    const workflowInput: ProductRegistrationV6WorkflowInput = {
-      jobId: job.id,
+    const started = await startProductRegistrationWorkflowBySourceId({
+      supabase,
       tenantId: baseRevision.tenant_id,
       sourceDocumentId: source.id,
-      requestId: randomUUID(),
       requestBaseUrl: request.nextUrl.origin,
       publicBaseUrl: baseUrl,
-      sourceType: source.source_type,
-      fileName: source.original_filename,
-      declaredMime: source.declared_mime,
-      fileHash: source.sha256,
-      directRawText: null,
-      originalRawText: null,
-      parserRawText: null,
-      analysisNormalizedText: null,
       uploadSourceMetadata: object(sourceMetadata.uploadSourceMetadata).landOperator
         ? object(sourceMetadata.uploadSourceMetadata)
         : parseUploadSourceMetadata({ fileName: source.original_filename, defaultCommissionRate: 10 }) as unknown as Record<string, unknown>,
-      archiveMode: false,
-      bulkMode: false,
+      sourceChannel: 'admin-correction',
       forceReprocess: true,
-      fencingToken,
-      policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-      correctionJobId,
-    };
-    const run = await start(productRegistrationV6Workflow, [workflowInput]);
+      correction: {
+        correctionJobId,
+        catalogProductId,
+        baseRevisionId: body.baseRevisionId,
+        productKey,
+        operationKey,
+      },
+    });
+    workflowJobId = started.jobId;
     return NextResponse.json({
       success: true,
       code: 'PRODUCT_REGISTRATION_CORRECTION_ACCEPTED',
       correctionJobId,
-      jobId: job.id,
-      workflowRunId: run.runId,
+      jobId: started.jobId,
+      workflowRunId: started.workflowRunId,
       state: 'processing',
     }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

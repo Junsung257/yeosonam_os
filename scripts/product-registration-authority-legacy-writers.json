@@ -75,6 +75,7 @@
     "src/lib/product-registration/upload-persistence.ts|travel_packages|insert",
     "src/lib/product-registration/upload-to-open-autopilot.ts|products|update",
     "src/lib/product-registration/upload-to-open-autopilot.ts|travel_packages|update",
+    "src/lib/package-publication/repository.ts|rpc|publish_package_snapshot_atomic",
     "src/lib/product-registration-v4/publication.ts|rpc|publish_product_registration_v5_snapshot_atomic",
     "src/lib/product-registration-v4/revision.ts|product_registration_v5_claim_evidence|insert",
     "src/lib/product-registration-v4/revision.ts|product_registration_v5_claims|insert",

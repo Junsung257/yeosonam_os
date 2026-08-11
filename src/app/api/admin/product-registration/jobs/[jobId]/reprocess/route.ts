@@ -1,18 +1,11 @@
-import { randomUUID } from 'node:crypto';
-
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
-import { start } from 'workflow/api';
 
 import { withAdminGuard } from '@/lib/admin-guard';
-import { createProductRegistrationV4Job, getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
-import {
-  PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-  type ProductRegistrationV6WorkflowInput,
-} from '@/lib/product-registration-v6/types';
+import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
+import { getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
-import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,51 +33,28 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
   if (source.status === 'quarantined' || source.status === 'deleted') {
     return NextResponse.json({ success: false, code: 'SOURCE_REUPLOAD_REQUIRED' }, { status: 409 });
   }
-  const job = await createProductRegistrationV4Job({
-    supabase,
-    sourceType: source.source_type === 'text' ? 'text' : 'file',
-    sourceDocumentId: source.id,
-    normalizedHash: source.sha256,
-    tenantId: prior.tenant_id,
-  });
-  const { data: claim, error: claimError } = await supabase.rpc('claim_product_registration_v6_workflow', { p_job_id: job.id });
-  if (claimError) throw claimError;
-  const fencingToken = Number((claim as { fencing_token?: unknown } | null)?.fencing_token);
-  const requestId = randomUUID();
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
   const metadata = source.metadata && typeof source.metadata === 'object'
     ? source.metadata as Record<string, unknown>
     : {};
-  const workflowInput: ProductRegistrationV6WorkflowInput = {
-    jobId: job.id,
+  const started = await startProductRegistrationWorkflowBySourceId({
+    supabase,
     tenantId: prior.tenant_id,
     sourceDocumentId: source.id,
-    requestId,
     requestBaseUrl: request.nextUrl.origin,
     publicBaseUrl: baseUrl,
-    sourceType: source.source_type,
-    fileName: source.original_filename,
-    declaredMime: source.declared_mime,
-    fileHash: source.sha256,
-    directRawText: null,
-    originalRawText: null,
-    parserRawText: null,
-    analysisNormalizedText: null,
     uploadSourceMetadata: (metadata.uploadSourceMetadata as Record<string, unknown> | undefined)
       ?? parseUploadSourceMetadata({ fileName: source.original_filename, defaultCommissionRate: 10 }) as unknown as Record<string, unknown>,
-    archiveMode: false,
-    bulkMode: false,
+    sourceChannel: 'admin-reprocess',
     forceReprocess: true,
-    fencingToken,
-    policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
-  };
-  const run = await start(productRegistrationV6Workflow, [workflowInput]);
+  });
   return NextResponse.json({
     success: true,
     code: 'PRODUCT_REGISTRATION_V6_REPROCESS_ACCEPTED',
     priorJobId,
-    jobId: job.id,
-    workflowRunId: run.runId,
+    jobId: started.jobId,
+    workflowRunId: started.workflowRunId,
+    dedupeHit: started.dedupeHit,
     state: 'processing',
   }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
 };

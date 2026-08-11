@@ -57,6 +57,14 @@ describe('product registration V6 runtime config', () => {
     expect(getProductRegistrationV6RuntimeConfig().workflowEnabled).toBe(true);
   });
 
+  it('never infers kernel authority from the retired workflow flag', () => {
+    delete process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE;
+    process.env.PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED = '1';
+
+    expect(getProductRegistrationV6RuntimeConfig().authorityMode).toBe('legacy');
+    expect(getProductRegistrationV6RuntimeConfig().workflowEnabled).toBe(false);
+  });
+
   it('retires mutable legacy endpoints only after kernel authority is active', () => {
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
     expect(productRegistrationLegacyWriterBlocker()).toBeNull();
