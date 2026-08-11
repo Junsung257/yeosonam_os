@@ -15,7 +15,10 @@ import {
   scheduleImmediateUploadTimeoutReplay,
   type UploadTimeoutReplayQueueResult,
 } from '@/lib/product-registration/upload-timeout-replay-queue';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import {
+  PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+  parseProductRegistrationTenantId,
+} from '@/lib/product-registration-authority/types';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 function safeAfter(task: () => Promise<void> | void): void {
@@ -54,10 +57,7 @@ function delay(ms: number): Promise<void> {
 }
 
 function configuredPlatformRegistrationTenantId(): string | null {
-  const tenantId = process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID?.trim() ?? '';
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)
-    ? tenantId
-    : null;
+  return parseProductRegistrationTenantId(process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID);
 }
 
 function countLikelyPackageSections(rawText: string | null): number {
@@ -146,17 +146,17 @@ const postHandler = async (request: NextRequest) => {
     const runtimeConfig = getProductRegistrationV6RuntimeConfig();
     if (runtimeConfig.workflowEnabled && isSupabaseConfigured && intake.sourceType) {
       const configuredTenantId = configuredPlatformRegistrationTenantId();
+      if (!configuredTenantId) {
+        return NextResponse.json({
+          success: false,
+          code: 'REGISTRATION_TENANT_REQUIRED',
+          error: '통합 상품등록에는 PRODUCT_REGISTRATION_PLATFORM_TENANT_ID 설정이 필요합니다.',
+          uploadRequestId: requestId,
+        }, { status: 503, headers: { 'x-upload-request-id': requestId } });
+      }
       let sourceDocumentId = intake.sourceDocumentId;
       let dedupeHit = false;
       if (!sourceDocumentId) {
-        if (!configuredTenantId) {
-          return NextResponse.json({
-            success: false,
-            code: 'REGISTRATION_TENANT_REQUIRED',
-            error: '통합 상품등록에는 PRODUCT_REGISTRATION_PLATFORM_TENANT_ID 설정이 필요합니다.',
-            uploadRequestId: requestId,
-          }, { status: 503, headers: { 'x-upload-request-id': requestId } });
-        }
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('product_source_documents')
           .select('id')
@@ -189,7 +189,7 @@ const postHandler = async (request: NextRequest) => {
       const started = await startProductRegistrationWorkflowBySourceId({
         supabase: supabaseAdmin,
         sourceDocumentId,
-        tenantId: intake.sourceDocumentId ? null : configuredTenantId,
+        tenantId: configuredTenantId,
         requestId,
         requestBaseUrl: request.nextUrl.origin,
         publicBaseUrl,
