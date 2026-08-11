@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { runProductRegistrationV3 } from '@/lib/product-registration-v3';
+import {
+  evaluateProductRegistrationV3Gate,
+  ledgerToRenderPackageInputs,
+  runProductRegistrationV3,
+} from '@/lib/product-registration-v3';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { splitCatalogByItineraryHeaders } from '@/lib/parser/catalog-pre-split';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
@@ -20,8 +24,9 @@ import {
 import { buildV3V5CriticalDiff } from './shadow-diff';
 import type { DocumentIR, ProductRegistrationV4JobRecord } from './types';
 import { buildDocumentIrTableItinerary } from './table-grid-itinerary';
+import { buildDocumentIrTableCommercialTerms } from './table-grid-commercial-terms';
 
-export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-11';
+export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-12.1';
 
 export function canonicalNormalizationJobStatus(input: {
   normalizationStatus: CanonicalNormalization['status'];
@@ -229,6 +234,10 @@ export async function buildCanonicalNormalization(input: {
         documentIr: input.documentIr,
         sectionRawText: section.rawText,
       });
+      const tableCommercialTerms = buildDocumentIrTableCommercialTerms({
+        documentIr: input.documentIr,
+        sectionRawText: section.rawText,
+      });
       if (tableItinerary) {
         for (const variant of v3.ledger.variants) {
           variant.days = tableItinerary.days;
@@ -245,6 +254,16 @@ export async function buildCanonicalNormalization(input: {
           ));
         }
       }
+      if (tableCommercialTerms) {
+        for (const variant of v3.ledger.variants) {
+          variant.inclusions = tableCommercialTerms.inclusions;
+          variant.exclusions = tableCommercialTerms.exclusions;
+          variant.evidence_coverage.inclusions = true;
+          variant.evidence_coverage.exclusions = true;
+        }
+      }
+      v3.gate_result = evaluateProductRegistrationV3Gate(v3.structure_plan, v3.ledger, v3.match_summary);
+      v3.render_contract_preview = ledgerToRenderPackageInputs(v3.ledger);
       const gateStatus = String(v3.gate_result.status ?? 'unknown');
       gateStatuses.push(gateStatus);
       if (gateStatus === 'blocked') blockedSectionCount += 1;
@@ -283,6 +302,9 @@ export async function buildCanonicalNormalization(input: {
           : buildSupplierRawDeterministicItinerary(section.rawText),
         tableGridItinerary: tableItinerary
           ? { tableId: tableItinerary.tableId, sourceNodeIds: tableItinerary.sourceNodeIds }
+          : null,
+        tableGridCommercialTerms: tableCommercialTerms
+          ? { tableId: tableCommercialTerms.tableId, sourceNodeIds: tableCommercialTerms.sourceNodeIds }
           : null,
       };
       const completeness = evaluateCanonicalCompleteness({

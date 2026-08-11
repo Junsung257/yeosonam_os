@@ -50,6 +50,21 @@ describe('product registration V6 terminal policy', () => {
     expect(result.blockers.some(reason => reason.includes('CANCELLATION_POLICY_MISSING'))).toBe(true);
   });
 
+  it('does not mistake an unrelated refund notice for cancellation terms', () => {
+    const payload = canonical();
+    payload.sections[0]!.v3.ledger.variants[0]!.standard_notices = [{
+      category: 'meal_refund',
+      raw_text: '티업 시간 때문에 이용하지 못한 조식 비용은 환불되지 않습니다.',
+    }];
+    const result = evaluateProductRegistrationV6Policy({
+      canonicalPayload: payload,
+      termsTypes: ['refund'],
+      sourceTexts: ['티업 시간 때문에 이용하지 못한 조식 비용은 환불되지 않습니다.'],
+    });
+
+    expect(result.blockers.some(reason => reason.includes('CANCELLATION_POLICY_MISSING'))).toBe(true);
+  });
+
   it('blocks tenant or source lineage mismatches', () => {
     const result = evaluateProductRegistrationV6Policy({
       canonicalPayload: canonical(),

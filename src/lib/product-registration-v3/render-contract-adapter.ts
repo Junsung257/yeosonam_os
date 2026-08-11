@@ -5,7 +5,10 @@ import type { V3DraftLedger } from './types';
 
 function renderMeal(value: Record<string, unknown>): { enabled: boolean; note: string | null } {
   const raw = typeof value.raw_text === 'string' ? value.raw_text : null;
-  return { enabled: Boolean(raw), note: raw };
+  const explicitlyExcluded = raw
+    ? /(?:\ubd88\s*\ud3ec\ud568|\ubbf8\s*\uc81c\uacf5|\uc5c6\uc74c|N\/?A|:\s*-)\s*$/i.test(raw.trim())
+    : false;
+  return { enabled: Boolean(raw) && !explicitlyExcluded, note: raw };
 }
 
 function renderHotel(value: Record<string, unknown>): HotelInfo {

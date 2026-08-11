@@ -23,6 +23,12 @@ function inclusionValues(variant: V3DraftLedger['variants'][number]): string[] {
   return variant.inclusions.map(inclusion => String(inclusion.value ?? '').trim()).filter(Boolean);
 }
 
+function isSubstantiveCommercialTerm(value: unknown): boolean {
+  const normalized = String(value ?? '').replace(/\s+/g, '').replace(/[:\uff1a]$/, '');
+  return normalized.length >= 2
+    && !/^(?:include|included|exclude|excluded|\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d|\uc870\uac74)?|\ubd88\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d)?|\uc81c\uc678\uc0ac\ud56d)$/i.test(normalized);
+}
+
 function hasIncludedMealEvidence(variant: V3DraftLedger['variants'][number]): boolean {
   return inclusionValues(variant).some(value =>
     /\bmeal\b/i.test(value)
@@ -87,8 +93,20 @@ export function evaluateProductRegistrationV3Gate(
     );
     check(checks, `${variant.variant_key}.days`, variant.days.length > 0, 'critical', 'variant has itinerary days');
     check(checks, `${variant.variant_key}.minimum_departure`, Boolean(variant.minimum_departure), 'high', 'minimum departure evidence exists');
-    check(checks, `${variant.variant_key}.inclusions`, variant.inclusions.length > 0, 'high', 'inclusion evidence exists');
-    check(checks, `${variant.variant_key}.exclusions`, variant.exclusions.length > 0, 'high', 'exclusion evidence exists');
+    check(
+      checks,
+      `${variant.variant_key}.inclusions`,
+      variant.inclusions.some(item => isSubstantiveCommercialTerm(item.value)),
+      'high',
+      'substantive inclusion evidence exists',
+    );
+    check(
+      checks,
+      `${variant.variant_key}.exclusions`,
+      variant.exclusions.some(item => isSubstantiveCommercialTerm(item.value)),
+      'high',
+      'substantive exclusion evidence exists',
+    );
     check(
       checks,
       `${variant.variant_key}.meals_or_notice`,

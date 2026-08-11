@@ -39,6 +39,8 @@ const TABLE_CELL_DECOY_RE =
 const MEAL_CELL_RE = /^(?:\uc870|\uc911|\uc11d)\s*:/;
 const INCLUSION_LINE_RE = /include|\ud3ec\s*\ud568/i;
 const EXCLUSION_LINE_RE = /exclude|\ubd88\s*\ud3ec\s*\ud568/i;
+const COMMERCIAL_TERMS_HEADING_RE = /^(?:include|included|exclude|excluded|\ud3ec\s*\ud568(?:\s*(?:\ub0b4\s*\uc5ed|\uc0ac\ud56d|\uc870\uac74))?|\ubd88\s*\ud3ec\s*\ud568(?:\s*(?:\ub0b4\s*\uc5ed|\uc0ac\ud56d))?|\uc81c\uc678\s*\uc0ac\ud56d)\s*[:\uff1a]?$/i;
+const DAILY_MEAL_EXCLUSION_RE = /^(?:\uc870|\uc911|\uc11d)\s*:\s*(?:\ubd88\ud3ec\ud568|\ubbf8\uc81c\uacf5|\uc5c6\uc74c|N\/?A|-)\s*$/i;
 const MEETING_RE = /meeting|\ubbf8\ud305|\uc9d1\uacb0|\ud53d\uc5c5|\uacf5\ud56d\s*\ubbf8\ud305/i;
 const FLIGHT_WORD_RE = /flight|\ud56d\uacf5|\ucd9c\ubc1c|\ub3c4\ucc29|\uacf5\ud56d/i;
 const TRANSFER_RE = /transfer|\uc774\ub3d9|\ucc28\ub7c9|\ubc84\uc2a4|\uc804\uc6a9\ucc28\ub7c9|\uc1a1\uc601|\ud53d\uc5c5/i;
@@ -607,9 +609,12 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
 
   const inclusions = sectionLines
     .filter(line => INCLUSION_LINE_RE.test(line.quote) && !EXCLUSION_LINE_RE.test(line.quote))
+    .filter(line => !COMMERCIAL_TERMS_HEADING_RE.test(line.quote.trim()))
     .map(line => ({ value: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
   const exclusions = sectionLines
     .filter(line => EXCLUSION_LINE_RE.test(line.quote))
+    .filter(line => !COMMERCIAL_TERMS_HEADING_RE.test(line.quote.trim()))
+    .filter(line => !DAILY_MEAL_EXCLUSION_RE.test(line.quote.trim()))
     .map(line => ({ value: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
   const shopping: V3LedgerVariant['shopping'] = [];
   for (let index = 0; index < sectionLines.length; index++) {

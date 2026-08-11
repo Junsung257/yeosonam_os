@@ -86,4 +86,19 @@ describe('canonical completeness states', () => {
     expect(result.blockers.some(reason => reason.includes('.inclusions'))).toBe(true);
     expect(result.blockers.some(reason => reason.includes('.exclusions'))).toBe(true);
   });
+
+  it('does not accept table headings as commercial facts', () => {
+    const result = evaluateCanonicalCompleteness({
+      rawText: '포 함 내 역\n불포함 내역',
+      sectionIndex: 0,
+      canonicalSection: section({
+        inclusions: [{ value: '포 함 내 역' }],
+        exclusions: [{ value: '불포함 내역' }],
+      }),
+    });
+
+    expect(result.publicationOutcome).toBe('blocked');
+    expect(result.blockers.some(reason => reason.includes('.inclusions'))).toBe(true);
+    expect(result.blockers.some(reason => reason.includes('.exclusions'))).toBe(true);
+  });
 });

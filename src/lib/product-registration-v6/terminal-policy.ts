@@ -36,9 +36,9 @@ function unique(values: string[]): string[] {
 }
 
 function hasCancellationEvidence(input: ProductRegistrationV6PolicyInput): boolean {
-  if (input.termsTypes?.some(type => type === 'cancellation' || type === 'refund')) return true;
+  if (input.termsTypes?.some(type => type === 'cancellation')) return true;
   const raw = input.sourceTexts?.join('\n') ?? '';
-  if (/(?:취소|환불|해약|여행약관|특별약관|취소료|위약금)/u.test(raw)) return true;
+  if (/(?:cancel|cancellation|취소|취소료|해약|여행약관|특별약관|위약금|패널티)/iu.test(raw)) return true;
   return asArray(input.canonicalPayload.sections).some(rawSection => {
     const section = asObject(rawSection);
     const ledger = asObject(asObject(section?.v3)?.ledger);
@@ -48,7 +48,8 @@ function hasCancellationEvidence(input: ProductRegistrationV6PolicyInput): boole
         const notice = asObject(rawNotice);
         const category = text(notice?.category);
         const value = text(notice?.raw_text) || text(notice?.value) || text(notice?.title);
-        return /(?:cancel|refund|penalty|terms)/i.test(category) || /(?:취소|환불|위약금|특별약관)/u.test(value);
+        return /(?:cancel|cancellation|penalty|terms)/i.test(category)
+          || /(?:취소|취소료|해약|여행약관|특별약관|위약금|패널티)/u.test(value);
       });
     });
   });

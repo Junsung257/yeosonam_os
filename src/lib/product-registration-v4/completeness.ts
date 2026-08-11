@@ -42,6 +42,16 @@ function hasText(text: string, pattern: RegExp): boolean {
   return pattern.test(text);
 }
 
+function hasSubstantiveCommercialTerm(values: unknown[]): boolean {
+  return values.some(raw => {
+    const item = asObject(raw);
+    const value = item?.value ?? raw;
+    const normalized = (typeof value === 'string' ? value.trim() : '').replace(/\s+/g, '').replace(/[:\uff1a]$/, '');
+    return normalized.length >= 2
+      && !/^(?:include|included|exclude|excluded|\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d|\uc870\uac74)?|\ubd88\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d)?|\uc81c\uc678\uc0ac\ud56d)$/i.test(normalized);
+  });
+}
+
 function field(
   fieldPath: string,
   state: RegistrationFieldState,
@@ -177,12 +187,12 @@ export function evaluateCanonicalCompleteness(input: {
     const inclusions = asArray(variant.inclusions);
     const exclusions = asArray(variant.exclusions);
     fields.push(
-      inclusions.length > 0
+      hasSubstantiveCommercialTerm(inclusions)
         ? field(`${prefix}.inclusions`, 'confirmed', 'high', '포함사항 근거가 있습니다.')
         : field(`${prefix}.inclusions`, 'unavailable', 'high', '포함사항을 확인할 수 없습니다.'),
     );
     fields.push(
-      exclusions.length > 0
+      hasSubstantiveCommercialTerm(exclusions)
         ? field(`${prefix}.exclusions`, 'confirmed', 'high', '불포함사항 근거가 있습니다.')
         : field(`${prefix}.exclusions`, 'unavailable', 'high', '불포함사항을 확인할 수 없습니다.'),
     );

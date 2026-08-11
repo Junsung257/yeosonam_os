@@ -31,4 +31,34 @@ describe('V3 ledger render adapter', () => {
     expect(rendered?.customer_notes).toBe('');
     expect(rendered?.notices_parsed).toEqual([]);
   });
+
+  it('keeps explicitly excluded daily meals disabled while preserving the source note', () => {
+    const ledger: V3DraftLedger = {
+      document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+      variants: [{
+        variant_key: 'v1', grade: null, course: null, duration_days: 1, nights: 0,
+        title_parts: ['마쓰야마 골프 1일'], price_calendar: [], flight_segments: [],
+        days: [{
+          day: 1, route: [], events: [], hotel: {},
+          meals: {
+            breakfast: { raw_text: '조:호텔식' },
+            lunch: { raw_text: '중:불포함' },
+            dinner: { raw_text: '석:미제공' },
+          },
+        }],
+        inclusions: [], exclusions: [], options: [], shopping: [], structured_facts: [],
+        standard_notices: [], minimum_departure: null, evidence_coverage: {},
+      }],
+    };
+
+    const meals = ledgerToRenderPackageInputs(ledger)[0]?.itinerary_data?.days?.[0]?.meals;
+    expect(meals).toMatchObject({
+      breakfast: true,
+      breakfast_note: '조:호텔식',
+      lunch: false,
+      lunch_note: '중:불포함',
+      dinner: false,
+      dinner_note: '석:미제공',
+    });
+  });
 });
