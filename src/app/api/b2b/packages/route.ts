@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -90,22 +91,27 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * limit;
 
   try {
-    const { data, count, error } = await supabaseAdmin
-      .from('travel_packages')
-      .select(
-        `id, title, destination, duration_nights, duration_days,
-         status, product_summary, product_highlights,
-         display_title, hero_tagline,
-         price_dates, price_tiers,
-         itinerary_data,
-         created_at, updated_at`,
-        { count: 'exact' },
-      )
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false })
+    const { data: pointers, count, error } = await supabaseAdmin
+      .from('product_registration_v5_publication_pointers')
+      .select('package_id,catalog_product_id,updated_at', { count: 'exact' })
+      .eq('channel', 'b2b')
+      .eq('locale', 'ko-KR')
+      .eq('state', 'published')
+      .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
+    const data = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      supabaseAdmin,
+      (pointers ?? []).map(pointer => ({
+        id: pointer.package_id,
+        catalog_product_id: pointer.catalog_product_id,
+        status: 'active',
+        publication_state: 'published',
+        updated_at: pointer.updated_at,
+      })),
+      { channel: 'b2b', locale: 'ko-KR' },
+    );
 
     return NextResponse.json({
       data: data ?? [],

@@ -5,7 +5,6 @@ import {
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
-import { isSafeImageSrc } from '@/lib/image-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import {
   collectItineraryAttractionIds,
@@ -18,6 +17,7 @@ type AnyRecord = Record<string, unknown>;
 export type SnapshotProjectionRow = {
   id?: string;
   package_id: string;
+  catalog_product_id?: string | null;
   package_revision?: number | null;
   canonical_revision_id?: string | null;
   snapshot_json?: AnyRecord | null;
@@ -54,21 +54,6 @@ function hasSourceBackedPriceDates(row: SnapshotProjectionRow): boolean {
     const price = asNumber(priceDate?.adult_selling_price ?? priceDate?.price ?? priceDate?.selling_price);
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
   });
-}
-
-function hasPublicImageCandidate(row: SnapshotProjectionRow): boolean {
-  const snapshot = asRecord(row.snapshot_json);
-  const pkg = asRecord(snapshot?.package);
-  const images = Array.isArray(snapshot?.images_public) ? snapshot.images_public : [];
-  for (const item of images) {
-    if (isSafeImageSrc(item)) return true;
-    const image = asRecord(item);
-    if (isSafeImageSrc(image?.url ?? image?.src_large ?? image?.src_medium)) return true;
-  }
-
-  if (isSafeImageSrc(pkg?.hero_image_url) || isSafeImageSrc(pkg?.lp_hero_image_url)) return true;
-  const thumbnails = Array.isArray(pkg?.thumbnail_urls) ? pkg.thumbnail_urls : [];
-  return thumbnails.some(isSafeImageSrc);
 }
 
 function packageId(row: AnyRecord): string | null {
@@ -121,6 +106,9 @@ const RAW_CUSTOMER_FIELD_KEYS = [
   'airline',
   'departure_airport',
   'product_type',
+  'hero_image_url',
+  'lp_hero_image_url',
+  'thumbnail_urls',
 ];
 
 function stripRawCustomerFields(row: AnyRecord): AnyRecord {
@@ -349,7 +337,6 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     if (Number(row.package_revision ?? 1) !== expectedRevision) continue;
     if (!hasPublicTitle(row, projection)) continue;
     if (!hasSourceBackedPriceDates(row)) continue;
-    if (!hasPublicImageCandidate(row)) continue;
     if (hasBlockingSnapshotCopy(row, projection)) continue;
     if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
   }
@@ -383,19 +370,37 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
 export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends AnyRecord>(
   supabase: SupabaseClient,
   packages: T[],
+  options: { channel?: string; locale?: string } = {},
 ): Promise<T[]> {
   const ids = packages.map(packageId).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
 
   const { data: pointers, error: pointerError } = await supabase
     .from('product_registration_v5_publication_pointers')
-    .select('package_id,current_revision_id,current_snapshot_id,state')
+    .select('package_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
     .in('package_id', ids)
-    .eq('channel', 'customer')
-    .eq('locale', 'ko-KR')
+    .eq('channel', options.channel ?? 'customer')
+    .eq('locale', options.locale ?? 'ko-KR')
     .eq('state', 'published');
   if (pointerError) throw pointerError;
   const pointerByPackage = new Map((pointers ?? []).map(pointer => [String(pointer.package_id), pointer]));
+  const catalogProductIds = [...new Set((pointers ?? [])
+    .map(pointer => String(pointer.catalog_product_id ?? ''))
+    .filter(Boolean))];
+  const { data: overlays, error: overlayError } = await supabase.rpc(
+    'get_product_registration_availability_overlays',
+    {
+      p_catalog_product_ids: catalogProductIds,
+      p_channel: options.channel ?? 'customer',
+    },
+  );
+  if (overlayError || !Array.isArray(overlays)) throw overlayError ?? new Error('PACKAGE_AVAILABILITY_OVERLAY_UNAVAILABLE');
+  const blockedCatalogProducts = new Set(overlays
+    .map(asRecord)
+    .filter((row): row is AnyRecord => Boolean(row
+      && ['closed', 'sold_out', 'suspended'].includes(String(row.sale_state ?? ''))))
+    .map(row => String(row.catalog_product_id ?? ''))
+    .filter(Boolean));
   const { data: activeSwitches, error: switchError } = await supabase
     .from('product_registration_v5_kill_switches')
     .select('scope,scope_key')
@@ -411,24 +416,30 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
     .map(item => String(item.scope_key)));
   const safePackages = packages.filter(pkg => {
     const id = packageId(pkg);
+    const catalogProductId = id
+      ? String(pointerByPackage.get(id)?.catalog_product_id ?? '')
+      : '';
     const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
     return Boolean(id && !blockedProducts.has('*') && !blockedProducts.has(id)
+      && !blockedProducts.has(catalogProductId)
+      && !blockedCatalogProducts.has(catalogProductId)
       && !blockedSuppliers.has('*') && !blockedSuppliers.has(supplier));
   });
 
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .in('package_id', ids)
     .in('status', ['approved', 'published'])
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  const requirePointer = process.env.PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED === '1';
   const pointerBoundRows = ((data ?? []) as SnapshotProjectionRow[]).filter(row => {
     const pointer = pointerByPackage.get(row.package_id);
-    if (!pointer) return !requirePointer;
-    return pointer.current_snapshot_id === row.id
+    if (!pointer) return false;
+    return Boolean(pointer.catalog_product_id)
+      && pointer.catalog_product_id === row.catalog_product_id
+      && pointer.current_snapshot_id === row.id
       && pointer.current_revision_id === row.canonical_revision_id
       && row.status === 'published';
   });
@@ -437,5 +448,49 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
     pointerBoundRows,
   );
   const v4ReadySnapshotRows = await filterSnapshotsWithReadyV4Lineage(supabase, publishableSnapshotRows);
-  return mergePackageRowsWithCurrentPublicSnapshots(safePackages, v4ReadySnapshotRows, 'card');
+  return mergePackageRowsWithCurrentPublicSnapshots(safePackages, v4ReadySnapshotRows, 'card')
+    .filter(pkg => {
+      const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
+      return !blockedSuppliers.has('*') && !blockedSuppliers.has(supplier);
+    });
+}
+
+/** Lists customer/channel packages from publication pointers alone. The
+ * compatibility table is not queried, so this is the required discovery
+ * reader once Registration Kernel authority is active. */
+export async function listCurrentPublicPackageCardSnapshots(
+  supabase: SupabaseClient,
+  options: {
+    tenantId?: string | null;
+    channel?: string;
+    locale?: string;
+    limit?: number;
+  } = {},
+): Promise<AnyRecord[]> {
+  const limit = Math.max(1, Math.min(5_000, options.limit ?? 1_000));
+  let pointerQuery = supabase
+    .from('product_registration_v5_publication_pointers')
+    .select('package_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
+    .eq('channel', options.channel ?? 'customer')
+    .eq('locale', options.locale ?? 'ko-KR')
+    .eq('state', 'published')
+    .not('package_id', 'is', null)
+    .not('catalog_product_id', 'is', null)
+    .not('current_revision_id', 'is', null)
+    .not('current_snapshot_id', 'is', null)
+    .limit(limit);
+  if (typeof options.tenantId === 'string') pointerQuery = pointerQuery.eq('tenant_id', options.tenantId);
+  else if (options.tenantId === null) pointerQuery = pointerQuery.is('tenant_id', null);
+  const { data: pointers, error } = await pointerQuery;
+  if (error) throw error;
+  const candidates = (pointers ?? []).map(pointer => ({
+    id: String(pointer.package_id),
+    catalog_product_id: String(pointer.catalog_product_id),
+    publication_state: 'published',
+    status: 'active',
+  }));
+  return fetchAndMergeCurrentPublicPackageCardSnapshots(supabase, candidates, {
+    channel: options.channel,
+    locale: options.locale,
+  });
 }

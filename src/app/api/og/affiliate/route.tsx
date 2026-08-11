@@ -24,9 +24,11 @@ export const runtime = 'edge';
 // 캐시: 동일 code+pkg 조합은 1시간 동안 같은 이미지 (CDN edge 캐시).
 export const revalidate = 3600;
 
-type RestPackageGateRow = {
-  publication_state?: string | null;
-  package_revision?: number | null;
+type RestPublicationPointerRow = {
+  catalog_product_id?: string | null;
+  current_revision_id?: string | null;
+  current_snapshot_id?: string | null;
+  state?: string | null;
 };
 
 type PublicSnapshotRestRow = {
@@ -68,8 +70,16 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function isPublicPackageGateRow(row: RestPackageGateRow | null | undefined): row is RestPackageGateRow {
-  return row?.publication_state === 'approved' || row?.publication_state === 'published';
+function isPublishedPointer(row: RestPublicationPointerRow | null | undefined): row is {
+  catalog_product_id: string;
+  current_revision_id: string;
+  current_snapshot_id: string;
+  state: 'published';
+} {
+  return row?.state === 'published'
+    && typeof row.catalog_product_id === 'string'
+    && typeof row.current_revision_id === 'string'
+    && typeof row.current_snapshot_id === 'string';
 }
 
 async function isV4PublicationReadyViaRest(
@@ -185,18 +195,17 @@ export async function GET(request: NextRequest) {
 
       // 상품: 공개 상태/리비전만 원본 테이블에서 확인하고, 고객 문구는 public snapshot에서만 읽는다.
       if (pkgId) {
-        const pkgGateRes = await fetch(
-          `${supabaseUrl}/rest/v1/travel_packages?id=eq.${encodeURIComponent(pkgId)}&select=publication_state,package_revision&publication_state=in.(approved,published)&limit=1`,
+        const pointerRes = await fetch(
+          `${supabaseUrl}/rest/v1/product_registration_v5_publication_pointers?package_id=eq.${encodeURIComponent(pkgId)}&channel=eq.customer&locale=eq.ko-KR&state=eq.published&select=catalog_product_id,current_revision_id,current_snapshot_id,state&limit=1`,
           { headers, next: { revalidate: 600 } },
         );
-        const pkgGateRows = (await pkgGateRes.json()) as RestPackageGateRow[];
-        const gateRow = pkgGateRows?.[0];
-        const revision = Number(gateRow?.package_revision ?? 1);
+        const pointerRows = (await pointerRes.json()) as RestPublicationPointerRow[];
+        const pointer = pointerRows?.[0];
 
         const v4Ready = await isV4PublicationReadyViaRest(supabaseUrl, headers, pkgId);
-        if (v4Ready && isPublicPackageGateRow(gateRow) && Number.isFinite(revision) && revision > 0) {
+        if (v4Ready && isPublishedPointer(pointer)) {
           const snapshotRes = await fetch(
-            `${supabaseUrl}/rest/v1/public_package_snapshots?package_id=eq.${encodeURIComponent(pkgId)}&package_revision=eq.${revision}&status=in.(approved,published)&select=snapshot_hash,snapshot_json,card_projection&order=created_at.desc&limit=1`,
+            `${supabaseUrl}/rest/v1/public_package_snapshots?id=eq.${encodeURIComponent(pointer.current_snapshot_id)}&package_id=eq.${encodeURIComponent(pkgId)}&catalog_product_id=eq.${encodeURIComponent(pointer.catalog_product_id)}&canonical_revision_id=eq.${encodeURIComponent(pointer.current_revision_id)}&status=eq.published&select=snapshot_hash,snapshot_json,card_projection&limit=1`,
             { headers, next: { revalidate: 600 } },
           );
           const snapshotRows = (await snapshotRes.json()) as PublicSnapshotRestRow[];

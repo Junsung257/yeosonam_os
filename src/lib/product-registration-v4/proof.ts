@@ -4,6 +4,7 @@ export type ProductRegistrationV5ProofStatus = 'pending' | 'passed' | 'failed' |
 
 export type ProductRegistrationV5ProofInput = {
   tenantId?: string | null;
+  catalogProductId?: string | null;
   packageId: string;
   revisionId: string;
   publicSnapshotId: string;
@@ -33,6 +34,7 @@ export function buildProductRegistrationV5ProofRow(input: ProductRegistrationV5P
   if (!input.route.trim()) throw new Error('V5_PROOF_ROUTE_REQUIRED');
   return {
     tenant_id: input.tenantId ?? null,
+    catalog_product_id: input.catalogProductId ?? null,
     package_id: input.packageId,
     revision_id: input.revisionId,
     public_snapshot_id: input.publicSnapshotId,

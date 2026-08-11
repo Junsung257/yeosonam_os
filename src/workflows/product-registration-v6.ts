@@ -1,19 +1,18 @@
 import { FatalError, getWorkflowMetadata } from 'workflow';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { postAlert } from '@/lib/admin-alerts';
-import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
-import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
-import type { UploadRequestIntakeSuccess } from '@/lib/product-registration/upload-request-intake';
 import { processProductRegistrationV4CanonicalNormalizationJob } from '@/lib/product-registration-v4/canonical-worker';
 import { processProductRegistrationV4ExtractionJob } from '@/lib/product-registration-v4/extractions';
 import { getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 import { observeProductRegistrationV5ConvergenceBatch } from '@/lib/product-registration-v4/convergence-observer';
 import { processProductRegistrationV5OutboxBatch } from '@/lib/product-registration-v4/outbox-worker';
-import { getSupabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { sha256Hex } from '@/lib/product-registration-v4/document-ir';
-import { resolveSharedFactsForJob, type SharedFactJobResult } from '@/lib/product-registration-v6/shared-fact-orchestrator';
+import {
+  catalogProductsEligibleForScheduleDriftClear,
+  resolveSharedFactsForJob,
+  type SharedFactJobResult,
+} from '@/lib/product-registration-v6/shared-fact-orchestrator';
 import {
   buildProductRegistrationV6CandidateSnapshots,
   proveProductRegistrationV6Snapshot,
@@ -22,8 +21,12 @@ import {
 } from '@/lib/product-registration-v6/snapshot-publication';
 import { evaluateProductRegistrationV6Policy } from '@/lib/product-registration-v6/terminal-policy';
 import { loadProductRegistrationV6PublicationBlockers } from '@/lib/product-registration-v6/publication-control';
-import { buildProductRegistrationV6DomainProjection, persistProductRegistrationV6DomainProjection } from '@/lib/product-registration-v6/domain-projections';
 import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from '@/lib/product-registration-v6/copy-revision';
+import {
+  buildPackageProjectionFromRevision,
+  loadProductRegistrationRevisionAggregate,
+  projectCompatibilityFromRevisionAtomic,
+} from '@/lib/product-registration-authority';
 import {
   PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
   PRODUCT_REGISTRATION_V6_STAGES,
@@ -62,7 +65,7 @@ async function recordStage(input: {
   const now = new Date().toISOString();
   const { data: job, error: jobError } = await supabase
     .from('upload_jobs')
-    .select('v4_stage_state,v6_workflow_run_id')
+    .select('tenant_id,v4_stage_state,v6_workflow_run_id')
     .eq('id', input.jobId)
     .eq('v6_fencing_token', input.fencingToken)
     .maybeSingle();
@@ -70,7 +73,7 @@ async function recordStage(input: {
   if (!job) throw new FatalError('V6_WORKFLOW_FENCING_CONFLICT');
   const { error: stageError } = await supabase.rpc('record_product_registration_v6_stage_run', {
     p_payload: {
-      tenant_id: null,
+      tenant_id: job.tenant_id,
       job_id: input.jobId,
       workflow_run_id: job.v6_workflow_run_id,
       fencing_token: input.fencingToken,
@@ -128,11 +131,14 @@ async function preflightStep(input: ProductRegistrationV6WorkflowInput) {
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'preflight', status: 'running' });
   const supabase = db();
   const [{ data: job, error: jobError }, { data: source, error: sourceError }] = await Promise.all([
-    supabase.from('upload_jobs').select('id,source_document_id,v6_fencing_token,v6_outcome').eq('id', input.jobId).single(),
+    supabase.from('upload_jobs').select('id,tenant_id,source_document_id,v6_fencing_token,v6_outcome').eq('id', input.jobId).single(),
     supabase.from('product_source_documents').select('id,sha256,status,source_type,byte_size,tenant_id').eq('id', input.sourceDocumentId).single(),
   ]);
   if (jobError || sourceError || !job || !source) throw new FatalError('V6_PREFLIGHT_LINEAGE_UNAVAILABLE');
-  if (job.source_document_id !== source.id || Number(job.v6_fencing_token) !== input.fencingToken) {
+  if (job.source_document_id !== source.id
+    || job.tenant_id !== input.tenantId
+    || source.tenant_id !== input.tenantId
+    || Number(job.v6_fencing_token) !== input.fencingToken) {
     throw new FatalError('V6_PREFLIGHT_LINEAGE_MISMATCH');
   }
   if (source.status === 'quarantined' || Number(source.byte_size) <= 0) throw new FatalError('V6_SOURCE_QUARANTINED');
@@ -143,7 +149,7 @@ async function preflightStep(input: ProductRegistrationV6WorkflowInput) {
     status: 'succeeded',
     output: { sourceHash: source.sha256, sourceTenantId: source.tenant_id ?? null },
   });
-  return { sourceHash: String(source.sha256), sourceTenantId: typeof source.tenant_id === 'string' ? source.tenant_id : null };
+  return { sourceHash: String(source.sha256), sourceTenantId: input.tenantId };
 }
 
 async function deduplicateStep(input: ProductRegistrationV6WorkflowInput) {
@@ -176,69 +182,77 @@ async function extractStep(input: ProductRegistrationV6WorkflowInput) {
   return { extractionId: result.extraction.id, extractionHash: result.extraction.extractionHash };
 }
 
-async function legacyCompatibilityStep(input: ProductRegistrationV6WorkflowInput) {
+function metadataString(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function metadataNumber(metadata: Record<string, unknown>, key: string): number | null {
+  const value = Number(metadata[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function compatibilitySupplierCode(landOperator: string | null): string {
+  if (!landOperator) return 'KERNEL';
+  const ascii = landOperator.normalize('NFKD').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return ascii.slice(0, 16) || 'KERNEL';
+}
+
+async function projectCompatibilityStep(
+  input: ProductRegistrationV6WorkflowInput,
+  normalized: Awaited<ReturnType<typeof normalizeStep>>,
+) {
   'use step';
-  await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'segment', status: 'running' });
   const supabase = db();
-  const { data: source, error: sourceError } = await supabase
-    .from('product_source_documents')
-    .select('storage_bucket,storage_path,original_filename,declared_mime,source_type')
-    .eq('id', input.sourceDocumentId)
-    .single();
-  if (sourceError || !source) throw new FatalError('V6_SOURCE_DOWNLOAD_METADATA_MISSING');
-  const download = await supabase.storage.from(source.storage_bucket).download(source.storage_path);
-  if (download.error || !download.data) throw download.error ?? new Error('V6_SOURCE_DOWNLOAD_EMPTY');
-  const buffer = Buffer.from(await download.data.arrayBuffer());
-  const directRawText = source.source_type === 'text' ? buffer.toString('utf8') : null;
-  const inputAnalysisForTrust = directRawText ? analyzeUploadInputText(directRawText) : null;
-  const intake: UploadRequestIntakeSuccess = {
-    ok: true,
-    buffer,
-    fileHash: input.fileHash,
-    fileName: input.fileName || source.original_filename,
-    directRawText,
-    originalRawText: directRawText,
-    parserRawText: directRawText,
-    documentRawText: null,
-    declaredMime: input.declaredMime ?? source.declared_mime,
-    sourceType: input.sourceType,
-    sourceDocumentId: input.sourceDocumentId,
-    registrationJobId: input.jobId,
-    analysisNormalizedText: directRawText ? inputAnalysisForTrust?.normalizedText ?? directRawText : null,
-    uploadSourceMetadata: input.uploadSourceMetadata as unknown as UploadSourceMetadataResult,
-    inputAnalysisForTrust,
-    archiveMode: input.archiveMode,
-    bulkMode: input.bulkMode,
-    forceReprocess: input.forceReprocess,
-  };
-  const deferredTasks: Array<() => Promise<void> | void> = [];
-  const pipeline = await runUploadRegistrationPipeline({
-    intake,
-    supabase,
-    isSupabaseConfigured,
-    safeAfter: task => deferredTasks.push(task),
-    postAlert,
-    requestBaseUrl: input.requestBaseUrl,
-    publicBaseUrl: input.publicBaseUrl,
-    deferPublicationAutopilot: true,
-  });
-  const deferredResults = await Promise.allSettled(deferredTasks.map(task => Promise.resolve().then(task)));
-  const deferredFailures = deferredResults.filter(result => result.status === 'rejected').length;
-  if (pipeline.status >= 400 || pipeline.payload.success === false) {
-    throw new FatalError(`V6_COMPATIBILITY_PIPELINE_BLOCKED:${String(pipeline.payload.error ?? pipeline.payload.code ?? pipeline.status)}`);
+  const landOperator = metadataString(input.uploadSourceMetadata, 'landOperator');
+  const commissionRate = metadataNumber(input.uploadSourceMetadata, 'commissionRate');
+  const supplierCode = compatibilitySupplierCode(landOperator);
+  const packageIds: string[] = [];
+
+  for (const [index] of normalized.revisionIds.entries()) {
+    const revisionId = normalized.revisionIds[index];
+    const revisionHash = normalized.revisionHashes[index];
+    const catalogProductId = normalized.catalogProductIds[index];
+    if (!revisionId || !revisionHash || !catalogProductId) throw new FatalError('V6_COMPATIBILITY_LINEAGE_MISSING');
+
+    const aggregate = await loadProductRegistrationRevisionAggregate({ supabase, revisionId });
+    if (aggregate.revision.tenant_id !== input.tenantId
+      || aggregate.revision.catalog_product_id !== catalogProductId
+      || aggregate.revision.payload_hash !== revisionHash
+      || aggregate.revision.source_hash !== input.fileHash) {
+      throw new FatalError(`V6_COMPATIBILITY_REVISION_LINEAGE_MISMATCH:${revisionId}`);
+    }
+    const projection = buildPackageProjectionFromRevision({
+      packageId: catalogProductId,
+      aggregate,
+    });
+    const projected = await projectCompatibilityFromRevisionAtomic({
+      supabase,
+      tenantId: input.tenantId,
+      catalogProductId,
+      revisionId,
+      revisionHash,
+      sourceHash: input.fileHash,
+      operationKey: `${input.jobId}:${catalogProductId}:${revisionHash}:compatibility-project`,
+      projection,
+      supplierCode,
+      landOperator,
+      commissionRate,
+    });
+    packageIds.push(projected.packageId);
   }
-  const job = await getProductRegistrationV4Job({ supabase, jobId: input.jobId });
-  const packageIds = Array.isArray(job?.v4_stage_state.packageIds)
-    ? job!.v4_stage_state.packageIds.map(String).filter(Boolean)
-    : [];
-  await recordStage({
-    jobId: input.jobId,
-    fencingToken: input.fencingToken,
-    stage: 'segment',
-    status: 'succeeded',
-    output: { packageIds, deferredFailures },
-  });
-  return { packageIds, pipelinePayload: pipeline.payload };
+
+  if (packageIds.length !== normalized.revisionIds.length) {
+    throw new FatalError(`V6_COMPATIBILITY_IDENTITY_COUNT_MISMATCH:packages=${packageIds.length}:revisions=${normalized.revisionIds.length}`);
+  }
+  return {
+    packageIds,
+    projectionPayload: {
+      source: 'immutable-revision',
+      supplierCode,
+      projectionCount: packageIds.length,
+    },
+  };
 }
 
 async function normalizeStep(
@@ -246,6 +260,7 @@ async function normalizeStep(
   preflight: { sourceHash: string; sourceTenantId: string | null },
 ) {
   'use step';
+  await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'segment', status: 'running' });
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'normalize', status: 'running' });
   const supabase = db();
   const job = await getProductRegistrationV4Job({ supabase, jobId: input.jobId });
@@ -254,67 +269,47 @@ async function normalizeStep(
   const revisionIds = Array.isArray(result.job.v4_stage_state.v5RevisionIds)
     ? result.job.v4_stage_state.v5RevisionIds.map(String).filter(Boolean)
     : [];
-  const packageIds = Array.isArray(result.job.v4_stage_state.packageIds)
-    ? result.job.v4_stage_state.packageIds.map(String).filter(Boolean)
+  const catalogProductIds = Array.isArray(result.job.v4_stage_state.catalogProductIds)
+    ? result.job.v4_stage_state.catalogProductIds.map(String).filter(Boolean)
     : [];
-  const projectionCounts = { departures: 0, transportSegments: 0, lodgingStays: 0, golfRounds: 0 };
+  if (revisionIds.length !== result.normalization.sections.length
+    || catalogProductIds.length !== revisionIds.length) {
+    throw new FatalError('V6_KERNEL_REVISION_COUNT_MISMATCH');
+  }
   const revisionTenantIds = new Set<string>();
   const lineageBlockers: string[] = [];
-  const projectionRows: Array<{
-    tenantId: string | null;
-    revisionId: string;
-    revisionHash: string;
-    projection: ReturnType<typeof buildProductRegistrationV6DomainProjection>;
-  }> = [];
-  for (const packageId of packageIds) {
+  const revisionHashes: string[] = [];
+  for (const [index, revisionId] of revisionIds.entries()) {
     const { data: revision, error: revisionError } = await supabase
       .from('product_registration_v5_revisions')
-      .select('id,tenant_id,job_id,source_document_id,payload_hash,canonical_payload')
-      .eq('package_id', packageId)
-      .in('id', revisionIds)
-      .order('revision_no', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (revisionError || !revision) throw revisionError ?? new FatalError('V6_DOMAIN_REVISION_NOT_FOUND');
+      .select('id,tenant_id,catalog_product_id,job_id,source_document_id,payload_hash')
+      .eq('id', revisionId)
+      .single();
+    if (revisionError || !revision) throw revisionError ?? new FatalError('V6_KERNEL_REVISION_NOT_FOUND');
     if (typeof revision.tenant_id === 'string') revisionTenantIds.add(revision.tenant_id);
     if (preflight.sourceTenantId && revision.tenant_id !== preflight.sourceTenantId) {
-      lineageBlockers.push(`package:${packageId}:TENANT_LINEAGE_MISMATCH`);
+      lineageBlockers.push(`revision:${revisionId}:TENANT_LINEAGE_MISMATCH`);
     }
     if (revision.job_id !== input.jobId) {
-      lineageBlockers.push(`package:${packageId}:REVISION_JOB_LINEAGE_MISMATCH`);
+      lineageBlockers.push(`revision:${revisionId}:REVISION_JOB_LINEAGE_MISMATCH`);
     }
     if (revision.source_document_id !== input.sourceDocumentId) {
-      lineageBlockers.push(`package:${packageId}:REVISION_SOURCE_LINEAGE_MISMATCH`);
+      lineageBlockers.push(`revision:${revisionId}:REVISION_SOURCE_LINEAGE_MISMATCH`);
     }
-    const projection = buildProductRegistrationV6DomainProjection({
-      canonicalPayload: revision.canonical_payload as JsonObject,
-      packageId,
-    });
-    projectionRows.push({
-      tenantId: typeof revision.tenant_id === 'string' ? revision.tenant_id : null,
-      revisionId: String(revision.id),
-      revisionHash: String(revision.payload_hash),
-      projection,
-    });
+    if (revision.catalog_product_id !== catalogProductIds[index]) {
+      lineageBlockers.push(`revision:${revisionId}:CATALOG_IDENTITY_MISMATCH`);
+    }
+    revisionHashes.push(String(revision.payload_hash));
   }
   if (revisionTenantIds.size > 1) lineageBlockers.push('REVISION_TENANT_LINEAGE_MISMATCH');
-  const tenantId = [...revisionTenantIds][0] ?? null;
-  if (lineageBlockers.length === 0) {
-    for (const row of projectionRows) {
-      await persistProductRegistrationV6DomainProjection({
-        supabase,
-        tenantId: row.tenantId,
-        revisionId: row.revisionId,
-        revisionHash: row.revisionHash,
-        sourceHash: input.fileHash,
-        projection: row.projection,
-      });
-      projectionCounts.departures += row.projection.departures.length;
-      projectionCounts.transportSegments += row.projection.transportSegments.length;
-      projectionCounts.lodgingStays += row.projection.lodgingStays.length;
-      projectionCounts.golfRounds += row.projection.golfRounds.length;
-    }
-  }
+  const tenantId = [...revisionTenantIds][0] ?? input.tenantId;
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'segment',
+    status: 'succeeded',
+    output: { sectionCount: result.normalization.sections.length, catalogProductIds },
+  });
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -323,9 +318,8 @@ async function normalizeStep(
     output: {
       normalizationId: result.normalizationId,
       revisionIds,
-      packageIds,
+      catalogProductIds,
       normalizationStatus: result.normalization.status,
-      projectionCounts,
       tenantId,
       lineageBlockers,
     },
@@ -333,7 +327,9 @@ async function normalizeStep(
   return {
     normalizationId: result.normalizationId,
     revisionIds,
-    packageIds,
+    revisionHashes,
+    catalogProductIds,
+    packageIds: [] as string[],
     normalization: result.normalization,
     tenantId,
     lineageBlockers,
@@ -383,6 +379,24 @@ async function resolveSharedFactsStep(
     p_cost_krw: result.totalExternalCostKrw,
   });
   if (costError) throw costError;
+  const driftClears = catalogProductsEligibleForScheduleDriftClear({
+    packageIds: normalized.packageIds,
+    catalogProductIds: normalized.catalogProductIds,
+    shared: result,
+  });
+  for (const catalogProductId of driftClears) {
+    const { error: overlayError } = await db().rpc('set_product_registration_availability_overlay', {
+      p_payload: {
+        tenant_id: normalized.tenantId ?? preflight.sourceTenantId,
+        catalog_product_id: catalogProductId,
+        channel: 'customer',
+        sale_state: 'available',
+        reason: 'SCHEDULE_REVALIDATED_CURRENT_SOURCE',
+        expected_reason_prefix: 'FLIGHT_SCHEDULE_DRIFT:',
+      },
+    });
+    if (overlayError) throw overlayError;
+  }
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -392,6 +406,7 @@ async function resolveSharedFactsStep(
       blockerCount: result.blockers.length,
       degradedCount: result.degradedReasons.length,
       resolvedTransportCount: result.resolvedTransport.length,
+      scheduleDriftClearCount: driftClears.length,
       totalExternalCostKrw: result.totalExternalCostKrw,
     },
   });
@@ -413,6 +428,10 @@ async function validateStep(
     .eq('job_id', input.jobId)
     .order('segment_index', { ascending: true });
   if (segmentError) throw segmentError;
+  const aggregates = await Promise.all(normalized.revisionIds.map(revisionId =>
+    loadProductRegistrationRevisionAggregate({ supabase, revisionId })));
+  const termsTypes = [...new Set(aggregates.flatMap(aggregate =>
+    aggregate.terms.map(row => String(row.terms_type ?? '')).filter(Boolean)))];
   const decision = evaluateProductRegistrationV6Policy({
     canonicalPayload: normalized.normalization.canonicalPayload,
     packageIds: normalized.packageIds,
@@ -424,6 +443,7 @@ async function validateStep(
     sourceTenantId: preflight.sourceTenantId,
     sharedFactBlockers: shared.blockers,
     sharedFactDegradedReasons: shared.degradedReasons,
+    termsTypes,
   });
   await recordStage({
     jobId: input.jobId,
@@ -449,12 +469,18 @@ async function generateCopyStep(
       blockers.push(`package:${packageId}:COPY_REVISION_MISSING`);
       continue;
     }
-    const [{ data: pkg, error: packageError }, { data: revision, error: revisionError }, { data: claims, error: claimError }] = await Promise.all([
-      supabase.from('travel_packages').select('title,product_summary,product_highlights').eq('id', packageId).single(),
-      supabase.from('product_registration_v5_revisions').select('tenant_id,payload_hash').eq('id', revisionId).eq('package_id', packageId).single(),
+    const [aggregate, { data: claims, error: claimError }] = await Promise.all([
+      loadProductRegistrationRevisionAggregate({ supabase, revisionId }),
       supabase.from('product_registration_v5_claims').select('id,field_path,normalized_value,criticality,evidence_status,conflict_status').eq('revision_id', revisionId),
     ]);
-    if (packageError || revisionError || claimError || !pkg || !revision) throw packageError ?? revisionError ?? claimError ?? new Error('V6_COPY_INPUT_MISSING');
+    if (claimError) throw claimError;
+    let pkg: JsonObject;
+    try {
+      pkg = buildPackageProjectionFromRevision({ packageId, aggregate });
+    } catch (error) {
+      blockers.push(`package:${packageId}:${error instanceof Error ? error.message : 'COPY_REVISION_PROJECTION_FAILED'}`);
+      continue;
+    }
     const built = buildProductRegistrationV6Copy({
       pkg: pkg as JsonObject,
       claims: (claims ?? []) as Array<{ id: string; field_path: string; normalized_value: unknown; criticality: string; evidence_status: string; conflict_status: string }>,
@@ -463,9 +489,9 @@ async function generateCopyStep(
     blockers.push(...built.blockers.map(reason => `package:${packageId}:${reason}`));
     const persisted = await persistProductRegistrationV6Copy({
       supabase,
-      tenantId: typeof revision.tenant_id === 'string' ? revision.tenant_id : null,
+      tenantId: aggregate.revision.tenant_id,
       revisionId,
-      revisionHash: String(revision.payload_hash),
+      revisionHash: aggregate.revision.payload_hash,
       sourceHash: input.fileHash,
       payload: built.payload,
       claimLinks: built.claimLinks,
@@ -540,22 +566,30 @@ async function publishSnapshotsStep(
   'use step';
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'publish_pointer', status: 'running' });
   const supabase = db();
+  const channels = ['customer', 'b2b', 'partner'] as const;
   for (const proof of proofs) {
-    await publishProductRegistrationV6Snapshot({
-      supabase,
-      snapshot: proof.snapshot,
-      proofRunId: proof.proofRunId,
-      outcome: decision.terminalOutcome as 'published_verified' | 'published_degraded',
-      policyVersion: input.policyVersion,
-      idempotencyKey: `${input.jobId}:${proof.snapshot.snapshotHash}:publish-v6`,
-    });
+    for (const channel of channels) {
+      await publishProductRegistrationV6Snapshot({
+        supabase,
+        snapshot: proof.snapshot,
+        proofRunId: proof.proofRunId,
+        outcome: decision.terminalOutcome as 'published_verified' | 'published_degraded',
+        policyVersion: input.policyVersion,
+        idempotencyKey: `${input.jobId}:${proof.snapshot.snapshotHash}:${channel}:publish-v6`,
+        channel,
+        locale: 'ko-KR',
+      });
+    }
   }
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
     stage: 'publish_pointer',
     status: 'succeeded',
-    output: { publishedPackageIds: proofs.map(proof => proof.snapshot.packageId) },
+    output: {
+      publishedPackageIds: proofs.map(proof => proof.snapshot.packageId),
+      channels,
+    },
   });
 }
 
@@ -638,6 +672,17 @@ async function terminalStep(
     p_blockers: decision.blockers,
   });
   if (error) throw new FatalError(error.message);
+  if (input.correctionJobId) {
+    const { error: correctionError } = await supabase.rpc('finalize_product_registration_correction', {
+      p_payload: {
+        correction_job_id: input.correctionJobId,
+        workflow_job_id: input.jobId,
+        status: decision.terminalOutcome === 'blocked_action_required' ? 'blocked' : 'completed',
+        resulting_revision_id: decision.revisionIds[0] ?? null,
+      },
+    });
+    if (correctionError) throw new FatalError(correctionError.message);
+  }
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -686,7 +731,7 @@ async function blockFailedWorkflowStep(
   }
   await supabase.rpc('record_product_registration_v6_dead_letter', {
     p_payload: {
-      tenant_id: null,
+      tenant_id: input.tenantId,
       job_id: input.jobId,
       workflow_run_id: workflowRunId,
       failed_stage: failedStage,
@@ -707,6 +752,16 @@ async function blockFailedWorkflowStep(
     p_blockers: decision.blockers,
   });
   if (terminalError) throw new FatalError(terminalError.message);
+  if (input.correctionJobId) {
+    await supabase.rpc('finalize_product_registration_correction', {
+      p_payload: {
+        correction_job_id: input.correctionJobId,
+        workflow_job_id: input.jobId,
+        status: 'failed',
+        resulting_revision_id: null,
+      },
+    });
+  }
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -727,8 +782,9 @@ export async function productRegistrationV6Workflow(
     const preflight = await preflightStep(input);
     await deduplicateStep(input);
     await extractStep(input);
-    await legacyCompatibilityStep(input);
-    const normalized = await normalizeStep(input, preflight);
+    const canonical = await normalizeStep(input, preflight);
+    const compatibility = await projectCompatibilityStep(input, canonical);
+    const normalized = { ...canonical, packageIds: compatibility.packageIds };
     const shared = await resolveSharedFactsStep(input, normalized, preflight);
     const decision = await validateStep(input, normalized, shared, preflight);
     if (decision.outcome === 'blocked') return await terminalStep(input, workflowRunId, decision);

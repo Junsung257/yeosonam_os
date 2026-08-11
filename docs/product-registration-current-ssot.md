@@ -2,6 +2,32 @@
 
 Last updated: 2026-08-11
 
+## Registration Kernel authority convergence (local implementation, 2026-08-11)
+
+The product-registration authority is now defined by role, not by the historical V2/V3/V4/V5/V6 names. File parsers remain adapters, while canonical fact commit and customer publication have one authority boundary.
+
+Implemented in branch `codex/product-registration-engine-v6-20260811`:
+
+- The durable workflow interprets each source once. It no longer downloads the source and invokes `runUploadRegistrationPipeline()` again after canonical normalization.
+- A canonical immutable revision is committed first. `products` and `travel_packages` are generated afterward by `project_product_registration_compatibility_atomic()` and are compatibility projections only.
+- `catalog_products` is the tenant-scoped stable identity. Source blobs are deduplicated only inside `(tenant_id, sha256, byte_size)`, while every upload remains an append-only `source_document_uploads` event.
+- `kernel` mode installs a database trigger boundary. Direct fact mutations to `products`, `travel_packages`, canonical revisions, and publication pointers are rejected unless the transaction is an approved registration, projection, or publication RPC. View/inquiry counters remain operationally writable.
+- Correction requests require a replacement source document, reason, and requested-change ledger. They enter the same workflow, preserve the catalog identity, and create a new revision that supersedes the selected base revision; no mutable package patch is accepted as a correction.
+- Explicit source flight times are never silently overwritten. If current OAG and Cirium observations independently agree on a different schedule, the registration is blocked. Published departures are rechecked at publish, D-90, D-30, and D-7; confirmed drift writes a `suspended` availability overlay before cached customer content can be served.
+- Terms, hotel observations, golf observations, media rights, supplier profiles, cohort quality, availability overlays, proof, pointer CAS, and outbox records are revision/catalog/tenant scoped. Hotel, golf, and attraction masters are never auto-created from candidates.
+- Customer/B2B/partner snapshot publication is channel-pointer based. Snapshot/proof/revision hashes and renderer build must match exactly, and proof no longer temporarily activates a package.
+- IR, Band, reextract, and correction inputs use one tenant-scoped source store and one durable workflow in `shadow`/`kernel` mode. Supplied IR/preview data is candidate metadata, not evidence. Scan remains preview-only, while old stub/review/CRUD/approval mutation endpoints fail closed in `kernel` mode.
+- Kernel `/api/packages` discovery and sitemap resolve exact publication pointers and immutable snapshots instead of discovering customer products from mutable `travel_packages`. Destination, home, and some blog/recommendation discovery paths still require staged conversion before the pointer-only reader migration is complete.
+- A schedule-drift suspension can be cleared automatically only after every transport segment is independently reverified by current OAG and Cirium consensus. The clear operation is compare-and-set and only removes an overlay whose reason starts with `FLIGHT_SCHEDULE_DRIFT:`; it cannot remove a manual suspension.
+
+Deployment truth:
+
+- The forward migration `20260811074521_product_registration_authority_convergence.sql` and this branch are locally implemented and syntax/type/unit verified, but this change set has not been applied to the production database or deployed from this task.
+- The migration defaults DB authority to `shadow` and publication freeze to `true`. Runtime defaults remain `legacy` unless `PRODUCT_REGISTRATION_AUTHORITY_MODE` is explicitly set. Customer auto-publication therefore remains fail-closed.
+- The authority audit currently records 142 legacy writers as an explicit retirement baseline. They cannot mutate product facts after DB authority changes to `kernel`; their code remains during staged rollback and must be retired only after live shadow/canary evidence.
+- Local verification passes SQL parsing (2,695 lines, 221 statements), authority audit (`authorized=1 legacy=142 unapproved=0`), type check, lint, production build, 100 registration-domain files / 612 tests, and the full 681 files / 5,140 tests. These checks do not replace live DB, corpus, provider, cache, or browser proof.
+- Existing 989 products have not yet been run through the new production shadow backfill in this task. Cohort metrics, live RLS tests, real Chrome proof, and a controlled migration/deployment packet are required before changing `shadow` to `kernel` or releasing publication freeze.
+
 ## V6 통합 자동화 계약 (2026-08-11)
 
 V6의 유일한 종료 결과는 `published_verified`, `published_degraded`, `blocked_action_required`이다. 완전 자동화는 모든 문서를 억지로 공개하는 것이 아니라, 모든 업로드가 검증된 공개·안전 축약 공개·안전 차단 중 하나로 자동 종결되는 상태를 뜻한다.

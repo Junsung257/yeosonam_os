@@ -16,6 +16,12 @@ vi.mock('next/cache', () => ({
 vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
   supabaseAdmin: {
+    rpc(name: string) {
+      if (name === 'get_product_registration_availability_overlays') {
+        return Promise.resolve({ data: [], error: null });
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
     from(table: string) {
       if (table === 'travel_packages') {
         const query = {
@@ -134,7 +140,14 @@ vi.mock('@/lib/supabase', () => ({
             return query;
           },
           async maybeSingle() {
-            return { data: mocks.publicSnapshotRow, error: null };
+            return {
+              data: mocks.publicSnapshotRow ? {
+                catalog_product_id: 'catalog-product-test',
+                canonical_revision_id: 'rev-1',
+                ...mocks.publicSnapshotRow,
+              } : null,
+              error: null,
+            };
           },
         };
         return query;
@@ -248,6 +261,7 @@ describe('fetchLpPackageUncached', () => {
     };
     mocks.publicationPointerRow = {
       tenant_id: null,
+      catalog_product_id: 'catalog-product-test',
       current_revision_id: 'rev-1',
       current_snapshot_id: 'snap-1',
       state: 'published',

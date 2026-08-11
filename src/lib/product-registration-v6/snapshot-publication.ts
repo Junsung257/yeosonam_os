@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
+import {
+  buildPackageProjectionFromRevision,
+  createCandidateSnapshot,
+  loadProductRegistrationRevisionAggregate,
+} from '@/lib/product-registration-authority';
 import { persistProductRegistrationV5ProofRun } from '@/lib/product-registration-v4/proof';
 import { runProductRegistrationV6ChromeProof } from './browser-proof';
 import { createProductRegistrationV6ProofToken } from './proof-token';
@@ -11,6 +15,8 @@ import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
 type JsonObject = Record<string, unknown>;
 
 export type ProductRegistrationV6CandidateSnapshot = {
+  tenantId: string;
+  catalogProductId: string;
   packageId: string;
   revisionId: string;
   snapshotId: string;
@@ -80,19 +86,26 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
   })).filter((pair): pair is { packageId: string; revisionId: string } => Boolean(pair.packageId && pair.revisionId));
   const results: ProductRegistrationV6CandidateSnapshot[] = [];
   for (const pair of pairs) {
-    const { data: pkg, error: packageError } = await input.supabase
+    const [{ data: identity, error: packageError }, aggregate] = await Promise.all([
+      input.supabase
       .from('travel_packages')
-      .select('*, products(internal_code, display_name, departure_region)')
+      .select('id,tenant_id,catalog_product_id,short_code,land_operator,land_operator_id')
       .eq('id', pair.packageId)
-      .single();
-    if (packageError || !pkg) throw packageError ?? new Error('V6_PACKAGE_NOT_FOUND');
-    const { data: revision, error: revisionError } = await input.supabase
-      .from('product_registration_v5_revisions')
-      .select('id,payload_hash,revision_no,package_id')
-      .eq('id', pair.revisionId)
-      .eq('package_id', pair.packageId)
-      .single();
-    if (revisionError || !revision) throw revisionError ?? new Error('V6_REVISION_NOT_FOUND');
+      .single(),
+      loadProductRegistrationRevisionAggregate({ supabase: input.supabase, revisionId: pair.revisionId }),
+    ]);
+    if (packageError || !identity) throw packageError ?? new Error('V6_PACKAGE_NOT_FOUND');
+    const revision = aggregate.revision;
+    const catalogProductId = typeof (identity as JsonObject).catalog_product_id === 'string'
+      ? String((identity as JsonObject).catalog_product_id)
+      : null;
+    if (!catalogProductId || revision.catalog_product_id !== catalogProductId) {
+      throw new Error('V6_SNAPSHOT_CATALOG_IDENTITY_MISMATCH');
+    }
+    const tenantId = typeof (identity as JsonObject).tenant_id === 'string'
+      ? String((identity as JsonObject).tenant_id)
+      : null;
+    if (!tenantId || revision.tenant_id !== tenantId) throw new Error('V6_SNAPSHOT_TENANT_MISMATCH');
 
     const { data: copyResult, error: copyError } = await input.supabase.rpc('get_product_registration_v6_verified_copy', {
       p_revision_id: pair.revisionId,
@@ -107,12 +120,17 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     }
     const copy = copyPayload as JsonObject;
 
+    const revisionPackage = buildPackageProjectionFromRevision({
+      packageId: pair.packageId,
+      aggregate,
+      operationalIdentity: identity as JsonObject,
+    });
     const source = degradedPackageCopy(
       applyResolvedTransport({
-        ...(pkg as JsonObject),
-        title: copy.title ?? pkg.title,
-        product_summary: copy.summary ?? pkg.product_summary,
-        product_highlights: copy.highlights ?? pkg.product_highlights,
+        ...revisionPackage,
+        title: copy.title ?? revisionPackage.title,
+        product_summary: copy.summary ?? revisionPackage.product_summary,
+        product_highlights: copy.highlights ?? revisionPackage.product_highlights,
         product_registration_copy: copy,
       }, pair.packageId, input.resolvedTransport ?? []),
       input.decision,
@@ -128,6 +146,7 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       ?? 'local-v6-renderer';
     const row = {
       package_id: pair.packageId,
+      catalog_product_id: catalogProductId,
       package_revision: Number(revision.revision_no),
       canonical_revision_id: pair.revisionId,
       snapshot_hash: snapshotHash,
@@ -136,7 +155,7 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       card_projection: snapshot.card_projection,
       lp_projection: snapshot.lp_projection,
       route_text_dump: snapshot.route_text_dump,
-      source_raw_text_hash: typeof pkg.raw_text_hash === 'string' ? pkg.raw_text_hash : null,
+      source_raw_text_hash: revision.source_hash,
       parser_revision: 'product-registration-v6',
       renderer_build_id: rendererBuildId,
       locale: 'ko-KR',
@@ -147,25 +166,9 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       app_build_id: rendererBuildId,
       status: 'candidate',
     };
-    const { data: inserted, error: insertError } = await input.supabase
-      .from('public_package_snapshots')
-      .insert(row)
-      .select('id')
-      .maybeSingle();
-    let snapshotId = typeof inserted?.id === 'string' ? inserted.id : null;
-    if (insertError || !snapshotId) {
-      const { data: existing, error: existingError } = await input.supabase
-        .from('public_package_snapshots')
-        .select('id,canonical_revision_id')
-        .eq('package_id', pair.packageId)
-        .eq('snapshot_hash', snapshotHash)
-        .maybeSingle();
-      if (existingError || !existing || existing.canonical_revision_id !== pair.revisionId) {
-        throw insertError ?? existingError ?? new Error('V6_SNAPSHOT_INSERT_FAILED');
-      }
-      snapshotId = String(existing.id);
-    }
-    results.push({ packageId: pair.packageId, revisionId: pair.revisionId, snapshotId, snapshotHash, rendererBuildId });
+    const persistedSnapshot = await createCandidateSnapshot({ supabase: input.supabase, row });
+    const snapshotId = persistedSnapshot.snapshotId;
+    results.push({ tenantId, catalogProductId, packageId: pair.packageId, revisionId: pair.revisionId, snapshotId, snapshotHash, rendererBuildId });
   }
   return results;
 }
@@ -185,38 +188,23 @@ export async function proveProductRegistrationV6Snapshot(input: {
     packages: `${baseUrl}/__proof/packages/${input.snapshot.snapshotId}`,
     lp: `${baseUrl}/__proof/lp/${input.snapshot.snapshotId}`,
   };
-  await runAutoMobileQA(input.snapshot.packageId, baseUrl, {
-    includeLpForProof: true,
-    proofToken: token,
-    surfaceUrls,
-  });
   const chromeProof = await runProductRegistrationV6ChromeProof({
     surfaceUrls,
     proofToken: token,
     expectedSnapshotHash: input.snapshot.snapshotHash,
   });
-  const { data: pkg, error } = await input.supabase
-    .from('travel_packages')
-    .select('audit_report')
-    .eq('id', input.snapshot.packageId)
-    .single();
-  if (error) throw error;
-  const auditReport = pkg?.audit_report && typeof pkg.audit_report === 'object'
-    ? pkg.audit_report as JsonObject
-    : {};
-  const proof = auditReport.mobile_browser_proof && typeof auditReport.mobile_browser_proof === 'object'
-    ? auditReport.mobile_browser_proof as JsonObject
-    : null;
-  const surfaces = Array.isArray(proof?.surface_results) ? proof.surface_results : [];
   const passed = chromeProof.status === 'passed'
-    && proof?.status === 'pass'
-    && ['packages', 'lp'].every(surface => surfaces.some(item =>
-      item && typeof item === 'object' && (item as JsonObject).surface === surface && (item as JsonObject).status === 'pass'
-    ));
+    && chromeProof.surfaces.length === 2
+    && chromeProof.surfaces.every(surface => surface.status === 'passed'
+      && surface.snapshotHash === input.snapshot.snapshotHash
+      && surface.ctaOpened
+      && surface.hydrationErrors.length === 0);
   const persisted = await persistProductRegistrationV5ProofRun({
     supabase: input.supabase,
     proof: {
+      tenantId: input.snapshot.tenantId,
       packageId: input.snapshot.packageId,
+      catalogProductId: input.snapshot.catalogProductId,
       revisionId: input.snapshot.revisionId,
       publicSnapshotId: input.snapshot.snapshotId,
       snapshotHash: input.snapshot.snapshotHash,
@@ -227,7 +215,7 @@ export async function proveProductRegistrationV6Snapshot(input: {
       locale: 'ko-KR',
       deviceProfile: 'mobile-customer',
       status: passed ? 'passed' : 'failed',
-      result: { proof, chromeProof, surfaceUrls, tokenBound: true },
+      result: { chromeProof, surfaceUrls, tokenBound: true, legacyPackageMutation: false },
       checkedAt: new Date().toISOString(),
     },
   });
@@ -242,25 +230,35 @@ export async function publishProductRegistrationV6Snapshot(input: {
   outcome: 'published_verified' | 'published_degraded';
   policyVersion: string;
   idempotencyKey: string;
+  channel?: 'customer' | 'b2b' | 'partner';
+  locale?: string;
 }): Promise<Record<string, unknown>> {
+  const channel = input.channel ?? 'customer';
+  const locale = input.locale ?? 'ko-KR';
   const { data: pointer, error: pointerError } = await input.supabase
     .from('product_registration_v5_publication_pointers')
     .select('pointer_version')
     .eq('package_id', input.snapshot.packageId)
-    .eq('channel', 'customer')
-    .eq('locale', 'ko-KR')
+    .eq('channel', channel)
+    .eq('locale', locale)
     .maybeSingle();
   if (pointerError) throw pointerError;
-  const { data, error } = await input.supabase.rpc('publish_product_registration_v6_snapshot_atomic', {
-    p_package_id: input.snapshot.packageId,
-    p_revision_id: input.snapshot.revisionId,
-    p_snapshot_id: input.snapshot.snapshotId,
-    p_snapshot_hash: input.snapshot.snapshotHash,
-    p_proof_run_id: input.proofRunId,
-    p_expected_pointer_version: Number(pointer?.pointer_version ?? 0),
-    p_idempotency_key: input.idempotencyKey,
-    p_policy_version: input.policyVersion,
-    p_v6_outcome: input.outcome,
+  const { data, error } = await input.supabase.rpc('publish_product_registration_snapshot_atomic', {
+    p_payload: {
+      tenant_id: input.snapshot.tenantId,
+      catalog_product_id: input.snapshot.catalogProductId,
+      package_id: input.snapshot.packageId,
+      revision_id: input.snapshot.revisionId,
+      snapshot_id: input.snapshot.snapshotId,
+      snapshot_hash: input.snapshot.snapshotHash,
+      proof_run_id: input.proofRunId,
+      expected_pointer_version: Number(pointer?.pointer_version ?? 0),
+      operation_key: input.idempotencyKey,
+      policy_version: input.policyVersion,
+      outcome: input.outcome,
+      channel,
+      locale,
+    },
   });
   if (error) throw error;
   return data as Record<string, unknown>;

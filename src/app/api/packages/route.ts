@@ -29,8 +29,11 @@ import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { fetchLatestPublicPackageSnapshot, getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import {
+  fetchAndMergeCurrentPublicPackageCardSnapshots,
+  listCurrentPublicPackageCardSnapshots,
+} from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import {
   evaluateV3CustomerNoticeGate,
@@ -47,6 +50,10 @@ import {
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
 import { summarizeEvidencePackForApi } from '@/lib/product-registration/registration-evidence-pack';
+import {
+  getProductRegistrationV6RuntimeConfig,
+  productRegistrationLegacyWriterBlocker,
+} from '@/lib/product-registration-v6/runtime-config';
 
 const ADMIN_PACKAGE_CACHE_CONTROL = 'private, no-store';
 const PUBLIC_PACKAGE_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=150';
@@ -435,6 +442,7 @@ const PACKAGE_LIST_FIELDS_LITE = `
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
 export async function GET(request: NextRequest) {
   const isAdmin = await isAdminRequest(request).catch(() => false);
+  const pointerOnly = !isAdmin && getProductRegistrationV6RuntimeConfig().authorityMode === 'kernel';
 
   if (!isSupabaseConfigured) {
     return applyPackageCache(listResponse([], { total: 0 }), isAdmin);
@@ -470,18 +478,22 @@ export async function GET(request: NextRequest) {
       // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
       //    travel_packages 가 수만 건으로 늘어나면 메모리 위험. RPC 정상화 우선.
       logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
-      const { data: allPkgs } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+      const allPkgs = pointerOnly
+        ? await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 })
+        : (await supabaseAdmin
+          .from('travel_packages')
+          .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])).data ?? [];
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
       const aggregateRows = isAdmin
-        ? (allPkgs ?? [])
-        : await fetchAndMergeCurrentPublicPackageCardSnapshots(
-          supabaseAdmin,
-          (allPkgs ?? []).filter((p: any) => isCustomerPublicSnapshotCandidate(p)),
-        );
+        ? allPkgs
+        : pointerOnly
+          ? allPkgs
+          : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+            supabaseAdmin,
+            allPkgs.filter((p: any) => isCustomerPublicSnapshotCandidate(p)),
+          );
       aggregateRows.forEach((p: any) => {
         const dest = p.destination;
         if (!dest) return;
@@ -510,6 +522,28 @@ export async function GET(request: NextRequest) {
 
     // 단건 조회 — UUID 또는 short_code로 조회
     if (id) {
+      if (pointerOnly) {
+        const current = await getCurrentPublicPackage(supabaseAdmin, {
+          packageRef: id,
+          channel: 'customer',
+          locale: 'ko-KR',
+        });
+        if (!current) return applyPackageCache(ApiErrors.notFound('패키지를 찾을 수 없습니다.'), isAdmin);
+        const responsePkg: Record<string, unknown> = { ...current.package, id: current.row.package_id };
+        let lp_hero_image_url: string | null = null;
+        try {
+          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, responsePkg);
+        } catch (error) {
+          logWarning('[api/packages] pointer-only LP hero resolve failed', error);
+        }
+        const itineraryData = responsePkg.itinerary_data;
+        return applyPackageCache(successResponse({
+          package: stripPublicPackageFields(responsePkg),
+          lp_hero_image_url,
+          attraction_ids: collectAttractionIds(itineraryData),
+          attraction_preview_names: getAttractionPreviewNamesFromItinerary(itineraryData, 8),
+        }, 200, 300), isAdmin);
+      }
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       const col = isUUID ? 'id' : 'short_code';
       const { data: pkg, error: pkgErr } = await supabaseAdmin
@@ -563,6 +597,53 @@ export async function GET(request: NextRequest) {
     // 목록 조회 — products JOIN 포함
     // count: 'planned' — pg_stat 기반 추정 (수만 행 테이블에서 'exact' 보다 100배+ 빠름).
     //   페이지 네비게이션 UI 목적에는 추정치로 충분. 정확도 필요 시 ?countMode=exact 명시.
+    if (pointerOnly) {
+      let publicRows = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 });
+      if (status && !['all', 'selling', 'approved', 'active', 'published'].includes(status)) publicRows = [];
+      if (category) publicRows = publicRows.filter(row => row.category === category);
+      if (destFilter) publicRows = publicRows.filter(row => row.destination === destFilter);
+      if (landOperatorFilter) publicRows = publicRows.filter(row => row.land_operator === landOperatorFilter);
+      if (q) {
+        const needle = q.toLocaleLowerCase('ko-KR');
+        publicRows = publicRows.filter(row => [
+          row.title,
+          row.display_title,
+          row.short_code,
+          row.destination,
+          row.land_operator,
+        ].some(value => String(value ?? '').toLocaleLowerCase('ko-KR').includes(needle)));
+      }
+      const textCompare = (a: Record<string, unknown>, b: Record<string, unknown>, key: string) =>
+        String(a[key] ?? '').localeCompare(String(b[key] ?? ''), 'ko-KR');
+      publicRows.sort((a, b) => {
+        switch (sort) {
+          case 'created_asc': return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''));
+          case 'title_asc': return textCompare(a, b, 'title');
+          case 'title_desc': return textCompare(b, a, 'title');
+          case 'land_operator_asc': return textCompare(a, b, 'land_operator');
+          case 'land_operator_desc': return textCompare(b, a, 'land_operator');
+          case 'destination_asc': return textCompare(a, b, 'destination');
+          case 'destination_desc': return textCompare(b, a, 'destination');
+          default: return String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''));
+        }
+      });
+      const total = publicRows.length;
+      const enrichedData = publicRows.slice(from, from + limit).map(row => ({
+        ...stripPublicPackageFields(row),
+        has_itinerary_data: Boolean(
+          (row.itinerary_data as { days?: unknown[] } | null)?.days?.length
+          || (Array.isArray(row.itinerary) && row.itinerary.length > 0)
+        ),
+        attraction_preview_names: getAttractionPreviewNamesFromItinerary(row.itinerary_data, 4),
+      }));
+      return applyPackageCache(listResponse(enrichedData, {
+        total,
+        page,
+        limit,
+        cacheSeconds: 300,
+      }), isAdmin);
+    }
+
     const countMode = searchParams.get('countMode') || 'planned';
     const queryBase = supabaseAdmin.from('travel_packages');
     const selected = lite
@@ -660,6 +741,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({ error: '원문 업로드 workflow를 사용해 주세요.', code: authorityBlocker }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
@@ -899,6 +984,10 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({ error: '사실 수정은 correction revision, 판매상태는 availability overlay를 사용해야 합니다.', code: authorityBlocker }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
@@ -1347,6 +1436,10 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({ error: '상품 삭제 대신 lifecycle 또는 판매중단 overlay를 사용해야 합니다.', code: authorityBlocker }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');

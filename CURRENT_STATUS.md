@@ -1,7 +1,15 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
 ## 2026-08-11 상품등록 V6 기준선
+- 로컬 통합 구현은 IR·Band·재추출·정정 입력을 동일 private source 저장소와 durable workflow로 연결했고, kernel 모드에서는 구형 stub/review/CRUD/승인 writer를 fail-closed 처리한다. scan 계열은 preview 전용이다.
+- kernel 고객 목록 API와 sitemap은 publication pointer와 immutable snapshot만으로 공개 상품을 찾는다. 목적지·홈·일부 블로그 추천 discovery는 아직 순차 전환 대상이며, 142개 legacy writer 코드는 운영 shadow/canary 롤백 기간 동안 명시적 baseline으로 남아 있다.
+- 로컬 검증은 SQL 2,695줄/221문장 parse, authority `authorized=1 legacy=142 unapproved=0`, 타입·린트·프로덕션 빌드, 등록 도메인 612개 테스트, 전체 5,140개 테스트까지 통과했다. 운영 DB 적용·989개 shadow backfill·live RLS/OAG/Cirium·실제 모바일 Chrome proof는 아직 수행하지 않았다.
 
+- 로컬 통합 브랜치에서 같은 원문을 구형 파이프라인으로 재해석하던 V6 compatibility 단계를 제거했다. 신규 흐름은 EvidenceIR → immutable revision → compatibility projection 순서이며, revision 이전 `travel_packages` 생성은 없다.
+- `catalog_products`, tenant-scoped source blob/upload history, correction revision, terms/media/hotel/golf/profile/cohort/availability/schedule-revalidation 계약과 DB authority trigger를 순방향 마이그레이션으로 추가했다.
+- DB `kernel` 모드에서는 승인된 registration/projection/publication RPC 외 상품 사실·revision·pointer 직접 변경을 거부한다. 현재 142개 legacy writer는 전환 원장에 남아 있으며 kernel 전환 후에는 사실 변경 권한이 없다.
+- 공개 상품 항공편은 publish·D-90·D-30·D-7에 OAG/Cirium으로 재검증한다. 두 공급자가 동일한 변경을 확인하면 고객 판매 overlay를 즉시 `suspended`로 바꾸고 원문 기반 correction revision을 요구한다.
+- 이 변경 세트는 로컬 구현 상태다. `20260811074521_product_registration_authority_convergence.sql`의 운영 적용, 989개 shadow backfill, live RLS/Chrome proof/cohort 판정, 배포는 아직 수행하지 않았다. migration 기본값은 `shadow + publication_freeze=true`다.
 - V5 immutable revision·claim·proof·publication pointer를 권위 원천으로 재사용하고 V6 durable workflow와 typed domain projection을 연결했다.
 - 운영 DB에 `internal_product_registration` private schema와 V6 stage·provider·transport·golf·copy·dead-letter 원장을 추가했다. anon/authenticated의 V6 RPC 실행권은 없다.
 - 40개 HWP 고정 corpus는 `rhwp 0.8.2`로 40/40 추출, 66개 segment, 602개 claim의 evidence coverage 100%, render contract 66/66을 재현했다.

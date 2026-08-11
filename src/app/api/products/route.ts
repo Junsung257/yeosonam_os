@@ -11,6 +11,7 @@ import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { getSecret } from '@/lib/secret-registry';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
 
@@ -114,6 +115,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({ error: '원문 업로드 workflow를 사용해 주세요.', code: authorityBlocker }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
@@ -201,6 +206,10 @@ const PATCHABLE_FIELDS = [
 export async function PATCH(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({ error: '사실 수정은 correction revision으로 처리해야 합니다.', code: authorityBlocker }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
@@ -244,6 +253,10 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({ error: '상품 삭제 대신 lifecycle 또는 판매중단 overlay를 사용해야 합니다.', code: authorityBlocker }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });

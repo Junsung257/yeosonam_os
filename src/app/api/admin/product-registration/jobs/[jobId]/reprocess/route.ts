@@ -32,8 +32,9 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
   if (!prior?.source_document_id) return NextResponse.json({ success: false, code: 'SOURCE_DOCUMENT_REQUIRED' }, { status: 409 });
   const { data: source, error: sourceError } = await supabase
     .from('product_source_documents')
-    .select('id,original_filename,declared_mime,source_type,sha256,status,metadata')
+    .select('id,tenant_id,original_filename,declared_mime,source_type,sha256,status,metadata')
     .eq('id', prior.source_document_id)
+    .eq('tenant_id', prior.tenant_id)
     .single();
   if (sourceError || !source) return NextResponse.json({ success: false, code: 'SOURCE_DOCUMENT_NOT_FOUND' }, { status: 404 });
   if (source.status === 'quarantined' || source.status === 'deleted') {
@@ -44,6 +45,7 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
     sourceType: source.source_type === 'text' ? 'text' : 'file',
     sourceDocumentId: source.id,
     normalizedHash: source.sha256,
+    tenantId: prior.tenant_id,
   });
   const { data: claim, error: claimError } = await supabase.rpc('claim_product_registration_v6_workflow', { p_job_id: job.id });
   if (claimError) throw claimError;
@@ -55,6 +57,7 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
     : {};
   const workflowInput: ProductRegistrationV6WorkflowInput = {
     jobId: job.id,
+    tenantId: prior.tenant_id,
     sourceDocumentId: source.id,
     requestId,
     requestBaseUrl: request.nextUrl.origin,

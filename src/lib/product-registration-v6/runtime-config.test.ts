@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   getProductRegistrationV6RuntimeConfig,
+  productRegistrationLegacyWriterBlocker,
   productRegistrationV6PublicationBlocker,
 } from './runtime-config';
 
 const ENV_NAMES = [
+  'PRODUCT_REGISTRATION_AUTHORITY_MODE',
   'PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED',
   'PRODUCT_REGISTRATION_V6_SHADOW_ENABLED',
   'PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED',
@@ -29,6 +31,7 @@ describe('product registration V6 runtime config', () => {
     for (const name of ENV_NAMES) delete process.env[name];
 
     expect(getProductRegistrationV6RuntimeConfig()).toEqual({
+      authorityMode: 'legacy',
       workflowEnabled: false,
       shadowEnabled: true,
       publishEnabled: false,
@@ -38,9 +41,27 @@ describe('product registration V6 runtime config', () => {
   });
 
   it('publishes only when publish is enabled and freeze is explicitly disabled', () => {
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'kernel';
     process.env.PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED = '1';
     process.env.PRODUCT_REGISTRATION_PUBLICATION_FREEZE = '0';
 
     expect(productRegistrationV6PublicationBlocker()).toBeNull();
+  });
+
+  it('uses the durable workflow for shadow and kernel authority modes', () => {
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
+    expect(getProductRegistrationV6RuntimeConfig().workflowEnabled).toBe(true);
+    expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
+
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'kernel';
+    expect(getProductRegistrationV6RuntimeConfig().workflowEnabled).toBe(true);
+  });
+
+  it('retires mutable legacy endpoints only after kernel authority is active', () => {
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
+    expect(productRegistrationLegacyWriterBlocker()).toBeNull();
+
+    process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'kernel';
+    expect(productRegistrationLegacyWriterBlocker()).toBe('REGISTRATION_KERNEL_REQUIRES_SOURCE_OR_CORRECTION_REVISION');
   });
 });

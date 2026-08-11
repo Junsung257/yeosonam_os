@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +21,14 @@ interface StubBody {
 export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({
+      error: '통합 등록 모드에서는 근거 원문 없는 stub 상품을 만들 수 없습니다.',
+      code: authorityBlocker,
+    }, { status: 409 });
+  }
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

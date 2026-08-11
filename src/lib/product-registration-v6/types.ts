@@ -29,6 +29,7 @@ export type ProductRegistrationV6TerminalOutcome =
 
 export type ProductRegistrationV6WorkflowInput = {
   jobId: string;
+  tenantId: string;
   sourceDocumentId: string;
   requestId: string;
   requestBaseUrl: string;
@@ -47,6 +48,7 @@ export type ProductRegistrationV6WorkflowInput = {
   forceReprocess: boolean;
   fencingToken: number;
   policyVersion: string;
+  correctionJobId?: string | null;
 };
 
 export type ProductRegistrationV6Decision = {

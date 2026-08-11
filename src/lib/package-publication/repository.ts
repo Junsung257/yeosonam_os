@@ -4,7 +4,6 @@ import {
   auditCustomerVisibleScreenText,
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
-import { isSafeImageSrc } from '@/lib/image-url';
 import {
   collectItineraryAttractionIds,
   validateCustomerPublishableAttractionIds,
@@ -21,6 +20,7 @@ type AnyRecord = Record<string, unknown>;
 type SnapshotRow = {
   id: string;
   package_id: string;
+  catalog_product_id?: string | null;
   package_revision: number;
   canonical_revision_id?: string | null;
   snapshot_hash: string;
@@ -58,19 +58,6 @@ function hasSourceBackedPriceDates(value: unknown): boolean {
   });
 }
 
-function hasPublicImageCandidate(snapshot: AnyRecord, pkg: AnyRecord): boolean {
-  const images = Array.isArray(snapshot.images_public) ? snapshot.images_public : [];
-  for (const item of images) {
-    if (isSafeImageSrc(item)) return true;
-    const image = asRecord(item);
-    if (isSafeImageSrc(image?.url ?? image?.src_large ?? image?.src_medium)) return true;
-  }
-
-  if (isSafeImageSrc(pkg.hero_image_url) || isSafeImageSrc(pkg.lp_hero_image_url)) return true;
-  const thumbnails = Array.isArray(pkg.thumbnail_urls) ? pkg.thumbnail_urls : [];
-  return thumbnails.some(isSafeImageSrc);
-}
-
 function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
   const productIssues = blockingCustomerVisibleTextIssues(pkg);
   if (productIssues.length > 0) return true;
@@ -88,7 +75,6 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   if (!snapshot) return null;
   if (!pkg) return null;
   if (!hasSourceBackedPriceDates(pkg)) return null;
-  if (!hasPublicImageCandidate(snapshot, pkg)) return null;
   const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
   if (!publicTitle) return null;
   const surfaceParity = evaluateCustomerSurfaceParity({
@@ -108,6 +94,7 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
     _public_snapshot: {
       id: row.id,
       package_id: row.package_id,
+      catalog_product_id: row.catalog_product_id ?? null,
       package_revision: row.package_revision,
       canonical_revision_id: row.canonical_revision_id ?? null,
       snapshot_hash: row.snapshot_hash,
@@ -126,7 +113,7 @@ export async function fetchPublicPackageSnapshotById(
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .eq('id', snapshotId)
     .in('status', ['candidate', 'approved', 'published'])
     .maybeSingle();
@@ -158,20 +145,22 @@ export async function getCurrentPublicPackage(
   }
   let pointerQuery = supabase
     .from('product_registration_v5_publication_pointers')
-    .select('tenant_id,current_revision_id,current_snapshot_id,state')
+    .select('tenant_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
     .eq('package_id', packageId)
     .eq('channel', input.channel ?? 'customer')
     .eq('locale', input.locale ?? 'ko-KR');
   if (typeof input.tenantId === 'string') pointerQuery = pointerQuery.eq('tenant_id', input.tenantId);
   else if (input.tenantId === null) pointerQuery = pointerQuery.is('tenant_id', null);
   const { data: pointer, error: pointerError } = await pointerQuery.maybeSingle();
-  if (pointerError || !pointer || pointer.state !== 'published' || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
+  if (pointerError || !pointer || pointer.state !== 'published'
+    || !pointer.catalog_product_id || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
 
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .eq('id', pointer.current_snapshot_id)
     .eq('package_id', packageId)
+    .eq('catalog_product_id', pointer.catalog_product_id)
     .eq('canonical_revision_id', pointer.current_revision_id)
     .eq('status', 'published')
     .maybeSingle();
@@ -188,8 +177,22 @@ export async function getCurrentPublicPackage(
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
   if (switchError) return null;
   if ((switches ?? []).some(item => item.scope === 'global'
-    || (item.scope === 'product' && [packageId, '*'].includes(String(item.scope_key)))
+    || (item.scope === 'product' && [packageId, pointer.catalog_product_id, '*'].includes(String(item.scope_key)))
     || (item.scope === 'supplier' && [supplier, '*'].includes(String(item.scope_key))))) return null;
+  const { data: overlays, error: overlayError } = await supabase.rpc(
+    'get_product_registration_availability_overlays',
+    {
+      p_catalog_product_ids: [pointer.catalog_product_id],
+      p_channel: input.channel ?? 'customer',
+    },
+  );
+  if (overlayError || !Array.isArray(overlays)) return null;
+  if (overlays.some(item => {
+    const overlay = asRecord(item);
+    if (!overlay) return false;
+    return overlay.catalog_product_id === pointer.catalog_product_id
+      && ['closed', 'sold_out', 'suspended'].includes(String(overlay.sale_state ?? ''));
+  })) return null;
 
   const v4PublicationGate = await loadProductRegistrationV4PublicationGate({ supabase, packageId }).catch(() => null);
   if (!v4PublicationGate || (v4PublicationGate.required && !v4PublicationGate.ok)) return null;
@@ -216,57 +219,7 @@ export async function fetchLatestPublicPackageSnapshot(
       && pointerSnapshot.row.package_revision !== Number(options.expectedPackageRevision)) return null;
     return pointerSnapshot;
   }
-  if (process.env.PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED === '1') return null;
-  let query = supabase
-    .from('public_package_snapshots')
-    .select('id, package_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
-    .eq('package_id', packageId)
-    .in('status', ['approved', 'published']);
-
-  if (Number.isFinite(Number(options.expectedPackageRevision))) {
-    query = query.eq('package_revision', Number(options.expectedPackageRevision));
-  }
-
-  const { data, error } = await query
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  try {
-    const v4PublicationGate = await loadProductRegistrationV4PublicationGate({
-      supabase,
-      packageId,
-    });
-    if (v4PublicationGate.required && !v4PublicationGate.ok) return null;
-    if (v4PublicationGate.required) {
-      const { data: pointer, error: pointerError } = await supabase
-        .from('product_registration_v5_publication_pointers')
-        .select('current_revision_id, current_snapshot_id, state')
-        .eq('package_id', packageId)
-        .eq('channel', 'customer')
-        .eq('locale', 'ko-KR')
-        .maybeSingle();
-      if (pointerError || !pointer) return null;
-      if (pointer.state !== 'published'
-        || pointer.current_snapshot_id !== (data as SnapshotRow).id
-        || (Boolean((data as SnapshotRow).canonical_revision_id)
-          && pointer.current_revision_id !== (data as SnapshotRow).canonical_revision_id)) {
-        return null;
-      }
-    }
-  } catch {
-    // A customer read must fail closed when V4 lineage cannot be verified.
-    return null;
-  }
-  const pkg = snapshotPackage(data as SnapshotRow);
-  if (!pkg) return null;
-  const attractionValidation = await validateCustomerPublishableAttractionIds(
-    supabase,
-    collectItineraryAttractionIds(pkg.itinerary_data),
-  );
-  if (attractionValidation.lookupError || attractionValidation.invalidIds.length > 0) return null;
-  return { row: data as SnapshotRow, package: pkg };
+  return null;
 }
 
 export async function createPublicPackageSnapshotAndDecision(

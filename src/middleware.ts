@@ -567,6 +567,76 @@ async function publicDestinationExists(destinationOrSlug: string): Promise<boole
   return packageDestinationExists(destinationOrSlug);
 }
 
+async function getPublicPackageAvailabilityResponse(pathname: string): Promise<NextResponse | null> {
+  const match = pathname.match(/^\/(?:packages|lp)\/([^/]+)\/?$/);
+  if (!match) return null;
+  const config = getSupabaseRestConfig();
+  if (!config) return NextResponse.json(
+    { code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' },
+    { status: 503, headers: { 'Cache-Control': 'no-store' } },
+  );
+  const packageRef = safeDecodePathSegment(match[1]).trim();
+  if (!packageRef) return plainNotFound();
+  const headers = {
+    apikey: config.key,
+    authorization: `Bearer ${config.key}`,
+    accept: 'application/json',
+  };
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    let packageId = packageRef;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageId)) {
+      const identityUrl = new URL(`${config.url}/rest/v1/travel_packages`);
+      identityUrl.searchParams.set('short_code', `eq.${packageRef}`);
+      identityUrl.searchParams.set('select', 'id');
+      identityUrl.searchParams.set('limit', '1');
+      const identityResponse = await fetch(identityUrl, { headers, cache: 'no-store', signal: controller.signal });
+      if (!identityResponse.ok) throw new Error('PACKAGE_IDENTITY_LOOKUP_FAILED');
+      const identities = await identityResponse.json();
+      packageId = Array.isArray(identities) && typeof identities[0]?.id === 'string' ? identities[0].id : '';
+      if (!packageId) return null;
+    }
+    const pointerUrl = new URL(`${config.url}/rest/v1/product_registration_v5_publication_pointers`);
+    pointerUrl.searchParams.set('package_id', `eq.${packageId}`);
+    pointerUrl.searchParams.set('channel', 'eq.customer');
+    pointerUrl.searchParams.set('locale', 'eq.ko-KR');
+    pointerUrl.searchParams.set('state', 'eq.published');
+    pointerUrl.searchParams.set('select', 'catalog_product_id');
+    pointerUrl.searchParams.set('limit', '1');
+    const pointerResponse = await fetch(pointerUrl, { headers, cache: 'no-store', signal: controller.signal });
+    if (!pointerResponse.ok) throw new Error('PACKAGE_POINTER_LOOKUP_FAILED');
+    const pointers = await pointerResponse.json();
+    const catalogProductId = Array.isArray(pointers) && typeof pointers[0]?.catalog_product_id === 'string'
+      ? pointers[0].catalog_product_id
+      : null;
+    if (!catalogProductId) return null;
+    const overlayResponse = await fetch(`${config.url}/rest/v1/rpc/get_product_registration_availability_overlays`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_catalog_product_ids: [catalogProductId], p_channel: 'customer' }),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!overlayResponse.ok) throw new Error('PACKAGE_AVAILABILITY_LOOKUP_FAILED');
+    const overlays = await overlayResponse.json();
+    if (Array.isArray(overlays) && overlays.some(row =>
+      ['closed', 'sold_out', 'suspended'].includes(String(row?.sale_state ?? '')))) {
+      return NextResponse.json(
+        { code: 'PACKAGE_SALE_UNAVAILABLE' },
+        { status: 410, headers: { 'Cache-Control': 'no-store, max-age=0' } },
+      );
+    }
+    return null;
+  } catch {
+    return NextResponse.json(
+      { code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' },
+      { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    );
+  }
+}
+
 async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextResponse | null> {
   const segments = pathname.split('/').filter(Boolean);
 
@@ -782,6 +852,8 @@ export async function middleware(request: NextRequest) {
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(request)) {
+    const availabilityResponse = await getPublicPackageAvailabilityResponse(pathname);
+    if (availabilityResponse) return availabilityResponse;
     return response || NextResponse.next();
   }
 

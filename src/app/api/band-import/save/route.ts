@@ -5,14 +5,21 @@
  * 저장 성공 시 auto-content-trigger 호출 (Phase 3에서 연결)
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer';
 import { persistBandImportedProduct } from '@/lib/band-import-persistence';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { withAdminGuard } from '@/lib/admin-guard';
+import {
+  PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+  startProductRegistrationTextWorkflow,
+} from '@/lib/product-registration-authority';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 interface Preview {
   internal_code: string;
@@ -41,6 +48,46 @@ async function postHandler(request: NextRequest) {
     const netPrice = preview.net_price;
     if (typeof netPrice !== 'number' || !Number.isFinite(netPrice) || netPrice <= 0) {
       return apiResponse({ error: '상품 원가가 필요합니다.' }, { status: 400 });
+    }
+
+    if (getProductRegistrationV6RuntimeConfig().workflowEnabled) {
+      const evidenceText = String(rawText ?? '').trim();
+      if (evidenceText.length < 50) {
+        return apiResponse({
+          error: '통합 등록에는 Band 게시글 전체 원문이 필요합니다.',
+          code: 'BAND_SOURCE_EVIDENCE_REQUIRED',
+        }, { status: 422 });
+      }
+      const requestId = randomUUID();
+      const started = await startProductRegistrationTextWorkflow({
+        supabase: supabaseAdmin,
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        rawText: evidenceText,
+        fileName: `band-${preview.internal_code}-${Date.now()}.txt`,
+        requestId,
+        requestBaseUrl: request.nextUrl.origin,
+        publicBaseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin,
+        sourceChannel: 'band',
+        uploadSourceMetadata: {
+          landOperator: BAND_SUPPLIER_CODE,
+          commissionRate: DEFAULT_MARGIN_RATE * 100,
+          marginRate: DEFAULT_MARGIN_RATE * 100,
+          source: 'explicit',
+          issues: [],
+        },
+        metadata: {
+          bandPostUrl: preview.band_post_url,
+          previewCandidate: preview,
+          previewIsEvidence: false,
+        },
+      });
+      return apiResponse({
+        ok: true,
+        code: 'PRODUCT_REGISTRATION_KERNEL_ACCEPTED',
+        state: 'processing',
+        sourceChannel: 'band',
+        ...started,
+      }, { status: 202 });
     }
 
     const productInternalCode = await persistBandImportedProduct({

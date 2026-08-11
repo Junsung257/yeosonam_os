@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,14 +54,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 해당 랜드사의 여행 패키지 목록 조회
-    const { data: packages, error: pkgError } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, status, price_dates')
-      .eq('land_operator_id', operator.id)
-      .order('created_at', { ascending: false });
+    // Partner-visible facts come only from exact immutable snapshots. The
+    // operator relationship is evaluated from that same snapshot payload.
+    const { data: pointers, error: pkgError } = await supabaseAdmin
+      .from('product_registration_v5_publication_pointers')
+      .select('package_id,catalog_product_id,updated_at')
+      .eq('channel', 'partner')
+      .eq('locale', 'ko-KR')
+      .eq('state', 'published')
+      .order('updated_at', { ascending: false })
+      .limit(1000);
 
     if (pkgError) throw pkgError;
+    const currentPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      supabaseAdmin,
+      (pointers ?? []).map(pointer => ({
+        id: pointer.package_id,
+        catalog_product_id: pointer.catalog_product_id,
+        status: 'active',
+        publication_state: 'published',
+        updated_at: pointer.updated_at,
+      })),
+      { channel: 'partner', locale: 'ko-KR' },
+    );
+    const packages = currentPackages.filter((pkg) => {
+      const snapshotPackage = pkg as Record<string, unknown>;
+      return snapshotPackage.land_operator_id === operator.id
+        || snapshotPackage.land_operator === operator.name;
+    });
 
     return NextResponse.json({
       operator: { id: operator.id, name: operator.name },

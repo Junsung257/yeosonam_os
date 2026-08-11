@@ -95,6 +95,7 @@ export async function extractSourceDocumentToIR(input: {
 export async function persistDocumentExtraction(input: {
   supabase: SupabaseClient;
   sourceDocumentId: string;
+  tenantId: string;
   documentIr: DocumentIR;
   qualityDiagnostics?: Record<string, unknown>;
 }): Promise<PersistedDocumentExtraction> {
@@ -106,6 +107,7 @@ export async function persistDocumentExtraction(input: {
   const { data, error } = await input.supabase
     .from('product_document_extractions')
     .upsert({
+      tenant_id: input.tenantId,
       source_document_id: input.sourceDocumentId,
       parser_engine: input.documentIr.parser.engine,
       parser_version: input.documentIr.parser.version,
@@ -156,6 +158,7 @@ export async function processProductRegistrationV4ExtractionJob(input: {
       .from('product_source_documents')
       .select('*')
       .eq('id', job.source_document_id)
+      .eq('tenant_id', job.tenant_id)
       .single();
     if (sourceError) throw sourceError;
     const sourceDocument = source as SourceDocumentRecord;
@@ -205,6 +208,7 @@ export async function processProductRegistrationV4ExtractionJob(input: {
     const extraction = await persistDocumentExtraction({
       supabase: input.supabase,
       sourceDocumentId: sourceDocument.id,
+      tenantId: job.tenant_id,
       documentIr: ir,
       qualityDiagnostics: { pages: ir.pages, nodes: ir.nodes.length, tables: ir.tables.length, chars: ir.text.length },
     });

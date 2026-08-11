@@ -16,6 +16,7 @@ import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
 import { rawTextHash, safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 const PRODUCT_FAQ_FALLBACK = `
 다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
@@ -160,6 +161,14 @@ type ReviewAction = typeof VALID_ACTIONS[number];
 async function postHandler(req: NextRequest) {
   const limited = await rateLimitAI(req);
   if (limited) return limited;
+
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({
+      error: '통합 등록 모드에서는 기존 mutable 상품 승인·수정 경로를 사용할 수 없습니다.',
+      code: authorityBlocker,
+    }, { status: 409 });
+  }
 
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');

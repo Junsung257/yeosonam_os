@@ -109,6 +109,7 @@ export type SourceDocumentRecord = {
 
 export type ProductRegistrationV4JobRecord = {
   id: string;
+  tenant_id: string;
   source_type: 'text' | 'file';
   status: ProductRegistrationV4JobStatus;
   source_document_id: string | null;

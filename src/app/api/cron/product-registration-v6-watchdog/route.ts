@@ -19,6 +19,7 @@ export const maxDuration = 300;
 
 type StaleJob = {
   id: string;
+  tenant_id: string;
   source_document_id: string;
   v6_workflow_run_id: string | null;
   v6_fencing_token: number;
@@ -28,6 +29,7 @@ type StaleJob = {
 
 type SourceDocument = {
   id: string;
+  tenant_id: string;
   original_filename: string;
   declared_mime: string | null;
   source_type: ProductRegistrationV6WorkflowInput['sourceType'];
@@ -45,7 +47,7 @@ async function terminallyQuarantine(input: {
   }
   await input.supabase.rpc('record_product_registration_v6_dead_letter', {
     p_payload: {
-      tenant_id: null,
+      tenant_id: input.job.tenant_id,
       job_id: input.job.id,
       workflow_run_id: input.job.v6_workflow_run_id,
       failed_stage: 'watchdog',
@@ -88,6 +90,7 @@ async function restartStaleJob(input: {
   const uploadMetadata = input.source.metadata?.uploadSourceMetadata;
   const workflowInput: ProductRegistrationV6WorkflowInput = {
     jobId: input.job.id,
+    tenantId: input.job.tenant_id,
     sourceDocumentId: input.source.id,
     requestId: randomUUID(),
     requestBaseUrl: input.baseUrl,
@@ -121,7 +124,7 @@ async function handler(): Promise<NextResponse> {
   const staleBefore = new Date(now - 30 * 60_000).toISOString();
   const { data, error } = await supabase
     .from('upload_jobs')
-    .select('id,source_document_id,v6_workflow_run_id,v6_fencing_token,v6_last_heartbeat_at,created_at')
+    .select('id,tenant_id,source_document_id,v6_workflow_run_id,v6_fencing_token,v6_last_heartbeat_at,created_at')
     .is('v6_outcome', null)
     .not('source_document_id', 'is', null)
     .lt('v6_last_heartbeat_at', staleBefore)
@@ -141,8 +144,9 @@ async function handler(): Promise<NextResponse> {
       }
       const { data: source, error: sourceError } = await supabase
         .from('product_source_documents')
-        .select('id,original_filename,declared_mime,source_type,sha256,metadata')
+        .select('id,tenant_id,original_filename,declared_mime,source_type,sha256,metadata')
         .eq('id', job.source_document_id)
+        .eq('tenant_id', job.tenant_id)
         .single();
       if (sourceError || !source) throw sourceError ?? new Error('V6_WATCHDOG_SOURCE_MISSING');
       const workflowRunId = await restartStaleJob({

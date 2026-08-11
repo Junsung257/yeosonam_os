@@ -6,9 +6,11 @@ import {
   type ProductRegistrationV4JobRecord,
   type ProductRegistrationV4Stage,
 } from './types';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority';
 
 const JOB_SELECT = [
   'id',
+  'tenant_id',
   'source_type',
   'status',
   'source_document_id',
@@ -41,18 +43,21 @@ export async function createProductRegistrationV4Job(input: {
   sourceType: 'text' | 'file';
   sourceDocumentId?: string | null;
   normalizedHash?: string | null;
+  tenantId?: string | null;
+  initialState?: Record<string, unknown>;
 }): Promise<ProductRegistrationV4JobRecord> {
   const { data, error } = await input.supabase
     .from('upload_jobs')
     .insert({
       source_type: input.sourceType,
+      tenant_id: input.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
       status: 'queued',
       source_document_id: input.sourceDocumentId ?? null,
       normalized_hash: input.normalizedHash ?? null,
       v4_stage: 'uploaded',
       v4_parser_engine: PRODUCT_REGISTRATION_V4_PARSER_ENGINE,
       v4_parser_version: PRODUCT_REGISTRATION_V4_PARSER_VERSION,
-      v4_stage_state: {},
+      v4_stage_state: input.initialState ?? {},
       v4_review_reasons: [],
     })
     .select(JOB_SELECT)

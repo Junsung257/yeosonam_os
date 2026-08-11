@@ -57,6 +57,14 @@ function makeSupabaseMock(result: RpcResult = {}) {
         };
         return chain;
       }
+      if (table === 'product_registration_v5_kill_switches') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          or: () => Promise.resolve({ data: [], error: null }),
+        };
+        return chain;
+      }
       if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
       const requestedIds = new Set<string>();
       const chain = {
@@ -91,21 +99,32 @@ function makeSupabaseMock(result: RpcResult = {}) {
 }
 
 function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, result: RpcResult = {}) {
+  const effectiveRow: Record<string, unknown> | null = row ? {
+    catalog_product_id: row.catalog_product_id ?? 'catalog-product-test',
+    canonical_revision_id: row.canonical_revision_id ?? 'canonical-revision-test',
+    ...row,
+  } : null;
   const snapshotChain = {
     select: () => snapshotChain,
     eq: () => snapshotChain,
     in: () => snapshotChain,
     order: () => snapshotChain,
     limit: () => snapshotChain,
-    maybeSingle: () => Promise.resolve({ data: row, error: null }),
+    maybeSingle: () => Promise.resolve({ data: effectiveRow, error: null }),
   };
   return {
+    rpc(name: string) {
+      if (name === 'get_product_registration_availability_overlays') {
+        return Promise.resolve({ data: [], error: null });
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
     from(table: string) {
       if (table === 'travel_packages') {
         const identityChain: any = {
           select: () => identityChain,
           eq: () => identityChain,
-          maybeSingle: () => Promise.resolve({ data: row ? { id: row.package_id } : null, error: null }),
+          maybeSingle: () => Promise.resolve({ data: effectiveRow ? { id: effectiveRow.package_id } : null, error: null }),
         };
         return identityChain;
       }
@@ -114,7 +133,16 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
           select: () => pointerChain,
           eq: () => pointerChain,
           is: () => pointerChain,
-          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          maybeSingle: () => Promise.resolve({
+            data: effectiveRow ? {
+              tenant_id: null,
+              catalog_product_id: effectiveRow.catalog_product_id,
+              current_revision_id: effectiveRow.canonical_revision_id,
+              current_snapshot_id: effectiveRow.id,
+              state: 'published',
+            } : null,
+            error: null,
+          }),
         };
         return pointerChain;
       }
@@ -149,6 +177,14 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
           select: () => chain,
           eq: () => chain,
           maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        };
+        return chain;
+      }
+      if (table === 'product_registration_v5_kill_switches') {
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          or: () => Promise.resolve({ data: [], error: null }),
         };
         return chain;
       }

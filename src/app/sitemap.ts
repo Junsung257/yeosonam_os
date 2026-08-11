@@ -5,9 +5,13 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import {
+  fetchAndMergeCurrentPublicPackageCardSnapshots,
+  listCurrentPublicPackageCardSnapshots,
+} from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -116,6 +120,7 @@ async function runSitemapQuery<T>(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const pointerOnly = getProductRegistrationV6RuntimeConfig().authorityMode === 'kernel';
   const routes: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
     { url: `${BASE_URL}/group`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
@@ -130,16 +135,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const [packageDestinations, canonicalPosts] = await Promise.all([
-    runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
-      supabaseAdmin
-        .from('travel_packages')
-        .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
-        .not('destination', 'is', null)
-        .limit(PACKAGE_LIMIT)
-        .abortSignal(signal),
-    ),
+    pointerOnly
+      ? listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: PACKAGE_LIMIT })
+        .then(rows => rows as unknown as PublicPackageDestinationSitemapRow[])
+        .catch(error => {
+          console.warn('[sitemap] pointer-only package catalog unavailable:', error);
+          return [];
+        })
+      : runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
+        supabaseAdmin
+          .from('travel_packages')
+          .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+          .in('publication_state', ['approved', 'published'])
+          .not('destination', 'is', null)
+          .limit(PACKAGE_LIMIT)
+          .abortSignal(signal),
+      ),
     loadPublicBlogCatalog()
       .then((posts) => posts.slice(0, BLOG_LIMIT))
       .catch((error) => {
@@ -148,9 +160,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }),
   ]);
 
-  const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
-    packageDestinations.filter(isSitemapPublicSnapshotCandidate),
-  );
+  const snapshotDestinations = pointerOnly
+    ? packageDestinations
+    : await fetchSitemapPublicSnapshotRows(
+      packageDestinations.filter(isSitemapPublicSnapshotCandidate),
+    );
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {
     const destination = pkg.destination?.trim();

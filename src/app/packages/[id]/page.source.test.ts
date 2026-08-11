@@ -11,22 +11,26 @@ function pageSourceWithoutComments() {
 }
 
 describe('package customer detail page publication contract', () => {
-  it('checks the source package publication state before rendering a public snapshot', () => {
+  it('uses the exact pointer snapshot before any customer render and limits raw reads to internal proof', () => {
     const source = pageSourceWithoutComments();
-    const snapshotIndex = source.indexOf('const publicSnapshot = allowInternalProof');
-    const pkgIndex = source.indexOf('const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package', snapshotIndex);
-    const stateIndex = source.indexOf('const publicationState = (rawPkg as', pkgIndex);
-    const nonPublicBlockIndex = source.indexOf('!isPublicPublicationState(publicationState)', stateIndex);
-    const renderStartIndex = source.indexOf('let matchQuery = sb.from', nonPublicBlockIndex);
+    const pointerIndex = source.indexOf('const pointerSnapshot = !allowInternalProof');
+    const rawResultIndex = source.indexOf('let rawPkgResult', pointerIndex);
+    const internalProofIndex = source.indexOf('if (allowInternalProof)', rawResultIndex);
+    const rawQueryIndex = source.indexOf("sb.from('travel_packages')", internalProofIndex);
+    const snapshotIndex = source.indexOf('const publicSnapshot = v6ProofSnapshot ?? pointerSnapshot', rawQueryIndex);
+    const pkgIndex = source.indexOf('const pkg = (v6ProofSnapshot?.package ?? (allowInternalProof ? rawPkg : publicSnapshot?.package))', snapshotIndex);
+    const notFoundIndex = source.indexOf('if (!pkg) {', pkgIndex);
+    const renderStartIndex = source.indexOf('let matchQuery = sb.from', notFoundIndex);
 
-    expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+    expect(pointerIndex).toBeGreaterThanOrEqual(0);
+    expect(rawResultIndex).toBeGreaterThan(pointerIndex);
+    expect(internalProofIndex).toBeGreaterThan(rawResultIndex);
+    expect(rawQueryIndex).toBeGreaterThan(internalProofIndex);
+    expect(snapshotIndex).toBeGreaterThan(rawQueryIndex);
     expect(pkgIndex).toBeGreaterThan(snapshotIndex);
-    expect(stateIndex).toBeGreaterThan(pkgIndex);
-    expect(nonPublicBlockIndex).toBeGreaterThan(stateIndex);
-    expect(renderStartIndex).toBeGreaterThan(nonPublicBlockIndex);
-    expect(source.slice(nonPublicBlockIndex, renderStartIndex)).toContain('notFound()');
-    expect(source.slice(stateIndex, renderStartIndex)).toContain('!publicSnapshot');
-    expect(source.slice(stateIndex, renderStartIndex)).not.toContain('publicationState &&');
+    expect(notFoundIndex).toBeGreaterThan(pkgIndex);
+    expect(renderStartIndex).toBeGreaterThan(notFoundIndex);
+    expect(source.slice(rawResultIndex, internalProofIndex)).toContain('pointerSnapshot.package');
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {

@@ -64,6 +64,12 @@ function openPackage(overrides: Record<string, unknown> = {}): Record<string, un
 
 function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options: FetchMockOptions = {}) {
   return {
+    rpc(name: string) {
+      if (name === 'get_product_registration_availability_overlays') {
+        return Promise.resolve({ data: [], error: null });
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
     from(table: string) {
       if (table === 'product_registration_v5_publication_pointers') {
         const response = { data: [], error: null };
@@ -343,7 +349,7 @@ describe('public snapshot card projection', () => {
     expect(merged).toEqual([]);
   });
 
-  it('drops current snapshots without a public image candidate', () => {
+  it('keeps a source-backed snapshot without media for degraded publication', () => {
     const packages = [
       openPackage({ title: 'raw supplier title' }),
     ];
@@ -364,7 +370,9 @@ describe('public snapshot card projection', () => {
       },
     ]);
 
-    expect(merged).toEqual([]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ id: 'pkg-1' });
+    expect(merged[0]).not.toHaveProperty('hero_image_url');
   });
 
   it('drops current snapshots with risky customer promise copy in projections', () => {

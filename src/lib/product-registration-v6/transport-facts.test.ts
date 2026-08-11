@@ -53,6 +53,21 @@ describe('shared transport fact resolver', () => {
     });
     expect(result.state).toBe('source_confirmed');
     expect(result.fact.departureLocalTime).toBe('20:00');
+    expect(result.verifiedByCurrentProviders).toBe(false);
+  });
+
+  it('blocks explicit source times when OAG and Cirium agree on a different current schedule', () => {
+    const result = resolveTransportFact({
+      source: { ...missingTimes, departureLocalTime: '20:00', arrivalLocalTime: '23:00' },
+      observations: [
+        observation({ id: 'oag-current' }),
+        observation({ id: 'cirium-current', sourceKind: 'cirium', sourceFamily: 'cirium', sourceWeight: TRANSPORT_SOURCE_WEIGHTS.cirium }),
+      ],
+    });
+    expect(result.state).toBe('conflicting');
+    expect(result.fact.departureLocalTime).toBe('20:00');
+    expect(result.blockers).toContain('FLIGHT_SOURCE_PROVIDER_TIME_CONFLICT');
+    expect(result.verifiedByCurrentProviders).toBe(false);
   });
 
   it('fills missing times only when independent high-confidence sources agree', () => {
@@ -65,6 +80,24 @@ describe('shared transport fact resolver', () => {
     });
     expect(result.state).toBe('corroborated');
     expect(result.fact.departureLocalTime).toBe('19:00');
+    expect(result.verifiedByCurrentProviders).toBe(true);
+  });
+
+  it('marks explicit source times verified only when OAG and Cirium agree', () => {
+    const result = resolveTransportFact({
+      source: { ...missingTimes, departureLocalTime: '19:00', arrivalLocalTime: '22:00' },
+      observations: [
+        observation({ id: 'oag-current' }),
+        observation({
+          id: 'cirium-current',
+          sourceKind: 'cirium',
+          sourceFamily: 'cirium',
+          sourceWeight: TRANSPORT_SOURCE_WEIGHTS.cirium,
+        }),
+      ],
+    });
+    expect(result.state).toBe('source_confirmed');
+    expect(result.verifiedByCurrentProviders).toBe(true);
   });
 
   it('does not copy a single historical product time', () => {

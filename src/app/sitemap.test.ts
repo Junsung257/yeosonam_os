@@ -49,7 +49,10 @@ function queryResult(table: string) {
     ],
     public_package_snapshots: [
       {
+        id: 'snapshot-osaka',
         package_id: 'pkg-osaka',
+        catalog_product_id: 'catalog-osaka',
+        canonical_revision_id: 'revision-osaka',
         package_revision: 3,
         status: 'published',
         created_at: '2026-06-03T00:00:00.000Z',
@@ -73,12 +76,22 @@ function queryResult(table: string) {
         },
       },
     ],
+    product_registration_v5_publication_pointers: [
+      {
+        package_id: 'pkg-osaka',
+        catalog_product_id: 'catalog-osaka',
+        current_revision_id: 'revision-osaka',
+        current_snapshot_id: 'snapshot-osaka',
+        state: 'published',
+      },
+    ],
   };
 
   const chain = {
     select: vi.fn(() => chain),
     in: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    or: vi.fn(() => chain),
     not: vi.fn(() => chain),
     order: vi.fn(() => (
       table === 'public_package_snapshots'
@@ -87,6 +100,8 @@ function queryResult(table: string) {
     )),
     limit: vi.fn(() => chain),
     abortSignal: vi.fn(() => Promise.resolve({ data: dataByTable[table] ?? [], error: null })),
+    then: (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
+      Promise.resolve({ data: dataByTable[table] ?? [], error: null }).then(resolve),
   };
 
   return chain;
@@ -100,6 +115,7 @@ vi.mock('@/lib/supabase', () => ({
       queriedTables.push(table);
       return queryResult(table);
     }),
+    rpc: vi.fn(() => Promise.resolve({ data: [], error: null })),
   },
 }));
 
@@ -122,6 +138,7 @@ describe('sitemap', () => {
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).toContain('travel_packages');
+    expect(queriedTables).toContain('product_registration_v5_publication_pointers');
     expect(queriedTables).toContain('public_package_snapshots');
     expect(queriedTables).toContain('public_blog_content_creatives');
   });

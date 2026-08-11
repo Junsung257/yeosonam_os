@@ -35,6 +35,7 @@ import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publicatio
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 import { transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 import { loadProductRegistrationV4PublicationGate } from '@/lib/product-registration-v4/publication-gate';
+import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
@@ -66,6 +67,14 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
 
   if (!id) {
     return NextResponse.json({ error: 'Package id is required.' }, { status: 400 });
+  }
+
+  const authorityBlocker = productRegistrationLegacyWriterBlocker();
+  if (authorityBlocker) {
+    return NextResponse.json({
+      error: '통합 등록 모드에서는 모바일 proof와 CAS pointer를 통과한 자동 공개만 허용됩니다.',
+      code: authorityBlocker,
+    }, { status: 409 });
   }
 
   let body: ApproveBody;

@@ -4,10 +4,11 @@
 
 ## 상품등록 통합 자동화 엔진 V6 (2026-08-11)
 
-V6는 기본적으로 그림자 처리만 합니다. 운영 판매 정보는 `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`이고 `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`일 때만 CAS 공개를 시도합니다.
+V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운영 판매 정보는 앱과 DB authority가 모두 `kernel`이고, `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`, `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`이며 cohort gate가 통과할 때만 CAS 공개를 시도합니다.
 
 | 변수 | 용도 | 안전한 기본값 |
 |---|---|---|
+| `PRODUCT_REGISTRATION_AUTHORITY_MODE` | `legacy`, `shadow`, `kernel` 중 등록 writer 권위 선택. `shadow`와 `kernel`은 V6 durable workflow를 사용하며 고객 공개는 `kernel`에서만 가능 | `legacy` |
 | `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | `/api/upload`을 Vercel Workflow V6에 연결 | `0` |
 | `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
 | `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |

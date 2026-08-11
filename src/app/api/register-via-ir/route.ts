@@ -29,6 +29,11 @@ import { validateIntake, NORMALIZER_VERSION, type NormalizedIntake } from '@/lib
 import { getIrCanaryStatus, pickCanaryEngine } from '@/lib/ir-canary';
 import { isSynthesizedRawText } from '@/lib/packages/raw-text';
 import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
+import {
+  PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+  startProductRegistrationTextWorkflow,
+} from '@/lib/product-registration-authority';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Normalizer LLM 이 수 십 초 걸릴 수 있음
@@ -115,6 +120,57 @@ export async function POST(req: NextRequest) {
   }
 
   const { rawText, landOperator, commissionRate, dryRun, engine, ir: providedIr } = body;
+
+  if (!dryRun && getProductRegistrationV6RuntimeConfig().workflowEnabled) {
+    const evidenceText = String(providedIr?.rawText || rawText || '').trim();
+    const effectiveOperator = landOperator || providedIr?.meta?.landOperator;
+    const effectiveCommissionRate = commissionRate ?? providedIr?.meta?.commissionRate;
+    if (evidenceText.length < 50 || isSynthesizedRawText(evidenceText)) {
+      return NextResponse.json({
+        ok: false,
+        code: 'IR_SOURCE_EVIDENCE_REQUIRED',
+        error: '통합 등록에는 50자 이상의 실제 원문이 필요하며 합성 원문은 사용할 수 없습니다.',
+      }, { status: 422 });
+    }
+    if (!effectiveOperator || effectiveCommissionRate == null) {
+      return NextResponse.json({
+        ok: false,
+        code: 'IR_SOURCE_METADATA_REQUIRED',
+        error: '랜드사와 수수료율 정보가 필요합니다.',
+      }, { status: 400 });
+    }
+    const requestId = crypto.randomUUID();
+    const started = await startProductRegistrationTextWorkflow({
+      supabase: supabaseAdmin,
+      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+      rawText: evidenceText,
+      fileName: `ir-${effectiveOperator}-${Date.now()}.txt`,
+      requestId,
+      requestBaseUrl: req.nextUrl.origin,
+      publicBaseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? req.nextUrl.origin,
+      sourceChannel: 'ir',
+      uploadSourceMetadata: {
+        landOperator: effectiveOperator,
+        commissionRate: effectiveCommissionRate,
+        marginRate: effectiveCommissionRate,
+        source: 'explicit',
+        issues: [],
+      },
+      metadata: {
+        providedIrHash: providedIr?.rawTextHash ?? null,
+        providedIrVersion: providedIr?.normalizerVersion ?? null,
+        providedIrIsCandidateOnly: Boolean(providedIr),
+      },
+      forceReprocess: false,
+    });
+    return NextResponse.json({
+      ok: true,
+      code: 'PRODUCT_REGISTRATION_KERNEL_ACCEPTED',
+      state: 'processing',
+      sourceChannel: 'ir',
+      ...started,
+    }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
+  }
 
   // ── Direct 모드: 이미 작성된 IR 을 받아서 pkg 변환만 수행 (LLM 호출 0원) ──
   let ir: NormalizedIntake;

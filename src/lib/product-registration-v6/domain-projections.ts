@@ -41,7 +41,7 @@ function flightIdentity(value: unknown): { carrierCode: string | null; serviceNu
 
 export function buildProductRegistrationV6DomainProjection(input: {
   canonicalPayload: JsonObject;
-  packageId: string;
+  packageId?: string | null;
 }): ProductRegistrationV6DomainProjection {
   const projection: ProductRegistrationV6DomainProjection = {
     departures: [],
@@ -60,7 +60,7 @@ export function buildProductRegistrationV6DomainProjection(input: {
         if (!departureDate || !/^\d{4}-\d{2}-\d{2}$/.test(departureDate)) return;
         const fieldPath = `sections[${sectionIndex}].v3.ledger.variants[${variantIndex}].price_calendar[${priceIndex}]`;
         projection.departures.push({
-          package_id: input.packageId,
+          package_id: input.packageId ?? null,
           section_index: sectionIndex,
           variant_key: variantKey,
           departure_date: departureDate,
@@ -75,7 +75,7 @@ export function buildProductRegistrationV6DomainProjection(input: {
         const departureLocalTime = time(segment.dep_time ?? segment.departure_time);
         const arrivalLocalTime = time(segment.arr_time ?? segment.arrival_time);
         projection.transportSegments.push({
-          package_id: input.packageId,
+          package_id: input.packageId ?? null,
           section_index: sectionIndex,
           variant_key: variantKey,
           sequence_no: sequenceNo,
@@ -103,7 +103,7 @@ export function buildProductRegistrationV6DomainProjection(input: {
         if (lodgingName) {
           const fieldPath = `sections[${sectionIndex}].v3.ledger.variants[${variantIndex}].days[${dayOffset}].hotel`;
           projection.lodgingStays.push({
-            package_id: input.packageId,
+            package_id: input.packageId ?? null,
             section_index: sectionIndex,
             variant_key: variantKey,
             day_index: dayIndex,
@@ -121,7 +121,7 @@ export function buildProductRegistrationV6DomainProjection(input: {
           if (/선택|옵션|추가\s*비용/i.test(rawName) || ['option', 'optional_tour'].includes(String(event.type))) return;
           const holes = Number(rawName.match(/(\d{1,2})\s*홀/)?.[1] ?? NaN);
           projection.golfRounds.push({
-            package_id: input.packageId,
+            package_id: input.packageId ?? null,
             section_index: sectionIndex,
             variant_key: variantKey,
             day_index: dayIndex,

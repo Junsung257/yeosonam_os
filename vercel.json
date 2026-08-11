@@ -18,6 +18,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/product-registration-schedule-revalidation",
+      "schedule": "17 18 * * *"
+    },
+    {
       "path": "/api/cron/clobe-bank-sync",
       "schedule": "12 19 * * *"
     },

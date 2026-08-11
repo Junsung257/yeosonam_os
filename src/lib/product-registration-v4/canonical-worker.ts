@@ -4,18 +4,18 @@ import { runProductRegistrationV3 } from '@/lib/product-registration-v3';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { splitCatalogByItineraryHeaders } from '@/lib/parser/catalog-pre-split';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
+import { commitCanonicalRevisionAtomic } from '@/lib/product-registration-authority';
+import { buildProductRegistrationV6DomainProjection } from '@/lib/product-registration-v6/domain-projections';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 import { getDocumentIRValidationErrors, sha256Hex } from './document-ir';
 import { evaluateCanonicalCompleteness, type CanonicalCompleteness } from './completeness';
 import { getProductRegistrationV4Job, transitionProductRegistrationV4Job } from './jobs';
 import {
   buildProductRegistrationV5Revision,
-  nextProductRegistrationV5RevisionNo,
-  persistProductRegistrationV5Revision,
   stableJson,
 } from './revision';
 import { buildV3V5CriticalDiff } from './shadow-diff';
-import { persistV5TypedProjections } from './typed-projections';
 import type { DocumentIR, ProductRegistrationV4JobRecord } from './types';
 
 export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-11';
@@ -330,6 +330,7 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       .select('id, source_document_id, document_ir')
       .eq('id', job.extraction_id)
       .eq('source_document_id', job.source_document_id)
+      .eq('tenant_id', job.tenant_id)
       .single();
     if (extractionError) throw extractionError;
     const documentIr = extraction?.document_ir as DocumentIR;
@@ -343,6 +344,7 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     const { data, error } = await input.supabase
       .from('product_registration_v4_normalizations')
       .upsert({
+        tenant_id: job.tenant_id,
         job_id: job.id,
         source_document_id: job.source_document_id,
         extraction_id: job.extraction_id,
@@ -358,9 +360,26 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     if (error) throw error;
     const normalizationId = String((data as { id?: unknown }).id);
     const v5RevisionIds: string[] = [];
+    const catalogProductIds: string[] = [];
+    const correctionCatalogProductId = typeof job.v4_stage_state.correctionCatalogProductId === 'string'
+      ? job.v4_stage_state.correctionCatalogProductId
+      : null;
+    const correctionBaseRevisionId = typeof job.v4_stage_state.correctionBaseRevisionId === 'string'
+      ? job.v4_stage_state.correctionBaseRevisionId
+      : null;
+    const correctionProductKey = typeof job.v4_stage_state.correctionProductKey === 'string'
+      ? job.v4_stage_state.correctionProductKey
+      : null;
+    if (correctionCatalogProductId && (
+      !correctionBaseRevisionId
+      || !correctionProductKey
+      || normalization.sections.length !== 1
+    )) {
+      throw new Error('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
+    }
     let v5ShadowDiffSummary: Record<string, unknown> | null = null;
     if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
-      || process.env.PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED === '1') {
+      || getProductRegistrationV6RuntimeConfig().workflowEnabled) {
       const { data: legacyDraft, error: legacyDraftError } = await input.supabase
         .from('product_registration_drafts')
         .select('ledger')
@@ -389,37 +408,26 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       }
       const shadowDiffBlocked = v5ShadowDiffSummary?.status === 'complete'
         && (v5ShadowDiffSummary.criticalMismatch === true || v5ShadowDiffSummary.highMismatch === true);
-      const packageIds = Array.isArray(job.v4_stage_state?.packageIds)
-        ? job.v4_stage_state.packageIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        : [];
       const payloadSections = Array.isArray(normalization.canonicalPayload.sections)
         ? normalization.canonicalPayload.sections
         : [];
-      const oneRevisionPerSection = packageIds.length > 1 && packageIds.length === normalization.sections.length;
-      const revisionSlices = oneRevisionPerSection
-        ? normalization.sections.map((section, index) => ({
-            sections: [section],
-            canonicalPayload: { sections: [payloadSections[index] ?? {}] },
-            packageId: packageIds[index] ?? null,
-          }))
-        : [{
-            sections: normalization.sections,
-            canonicalPayload: normalization.canonicalPayload,
-            packageId: packageIds.length === 1 ? packageIds[0] : null,
-          }];
+      const revisionSlices = normalization.sections.map((section, index) => ({
+        sections: [section],
+        canonicalPayload: {
+          sections: [payloadSections[index] ?? {}],
+          lineage: normalization.canonicalPayload.lineage,
+        },
+      }));
       for (const slice of revisionSlices) {
-        const revisionNo = await nextProductRegistrationV5RevisionNo({
-          supabase: input.supabase,
-          packageId: slice.packageId,
-        });
+        const section = slice.sections[0];
+        if (!section) throw new Error('REGISTRATION_SECTION_REQUIRED');
         const v5Build = buildProductRegistrationV5Revision({
-          tenantId: null,
-          packageId: slice.packageId,
+          tenantId: job.tenant_id,
+          packageId: null,
           jobId: job.id,
           normalizationId,
           sourceDocumentId: job.source_document_id,
           extractionId: job.extraction_id,
-          revisionNo,
           normalization: {
             ...normalization,
             lineage: normalization.lineage,
@@ -429,29 +437,26 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
             canonicalPayload: slice.canonicalPayload,
           },
         });
-        const persisted = await persistProductRegistrationV5Revision({
+        const domainProjection = buildProductRegistrationV6DomainProjection({
+          canonicalPayload: slice.canonicalPayload,
+          packageId: null,
+        });
+        if (correctionBaseRevisionId) v5Build.supersedesRevisionId = correctionBaseRevisionId;
+        const persisted = await commitCanonicalRevisionAtomic({
           supabase: input.supabase,
-          build: v5Build,
-          sections: slice.sections,
+          commit: {
+            tenantId: job.tenant_id,
+            productKey: correctionProductKey ?? `source:${job.source_document_id}:section:${section.sectionKey}`,
+            sourceChannel: correctionCatalogProductId ? 'correction' : 'upload',
+            operationKey: `kernel:${job.id}:${normalizationId}:${section.sectionKey}:${v5Build.payloadHash}`,
+            catalogProductId: correctionCatalogProductId,
+            build: v5Build,
+            sections: slice.sections,
+            domainProjection,
+          },
         });
         v5RevisionIds.push(persisted.revisionId);
-        await persistV5TypedProjections({
-          supabase: input.supabase,
-          revisionId: persisted.revisionId,
-          canonicalPayload: slice.canonicalPayload,
-        });
-        if (slice.packageId && !shadowDiffBlocked && v5Build.status === 'candidate') {
-          const { error: packageLineageError } = await input.supabase
-            .from('travel_packages')
-            .update({
-              canonical_revision_id: persisted.revisionId,
-              canonical_payload_hash: v5Build.payloadHash,
-            })
-            .eq('id', slice.packageId);
-          if (packageLineageError) {
-            console.warn('[Product Registration V5] package canonical pointer update unavailable:', packageLineageError.message);
-          }
-        }
+        catalogProductIds.push(persisted.catalogProductId);
       }
     }
     const updatedJob = await transitionProductRegistrationV4Job({
@@ -465,6 +470,10 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
         ...(v5RevisionIds.length > 0 ? {
           v5RevisionIds,
           v5RevisionId: v5RevisionIds[0],
+        } : {}),
+        ...(catalogProductIds.length > 0 ? {
+          catalogProductIds,
+          catalogProductId: catalogProductIds[0],
         } : {}),
         ...(v5ShadowDiffSummary ? { v5ShadowDiff: v5ShadowDiffSummary } : {}),
         rawTextHash: normalization.rawTextHash,

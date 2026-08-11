@@ -60,6 +60,13 @@ export function buildProductRegistrationV6ReadinessReport(
     recommendations.push('Preview에서 실제 HWP 1건을 V6 shadow workflow로 먼저 실행하세요.');
   }
 
+  if (input.config.authorityMode === 'kernel') {
+    add('V6_AUTHORITY_KERNEL', 'pass', '상품 사실 writer와 공개 권한이 Registration Kernel로 고정되어 있습니다.');
+  } else {
+    add('V6_AUTHORITY_NOT_KERNEL', 'blocked', `${input.config.authorityMode} 모드에서는 고객 자동 공개를 허용하지 않습니다.`);
+    recommendations.push('shadow 검증 기준을 충족한 뒤 DB와 환경의 authority mode를 함께 kernel로 전환하세요.');
+  }
+
   if (input.config.shadowEnabled) {
     add('V6_SHADOW_ENABLED', 'pass', 'revision·검증·snapshot 그림자 생성이 허용됩니다.');
   } else {
@@ -113,6 +120,7 @@ export function buildProductRegistrationV6ReadinessReport(
   ].includes(check.code));
   const publicationBlockers = checks.some(check => check.status === 'blocked' && [
     'V6_PUBLICATION_LOCKED',
+    'V6_AUTHORITY_NOT_KERNEL',
     'V6_SCHEMA_UNAVAILABLE',
     'V6_PROOF_SECRET_MISSING',
     'V6_BROWSER_PROOF_RUNTIME_MISSING',

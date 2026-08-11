@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { loadProductRegistrationRevisionAggregate } from '@/lib/product-registration-authority';
 import { fetchIndependentSchedules, type ScheduleProviderResult } from './schedule-providers';
 import {
   TRANSPORT_SOURCE_WEIGHTS,
@@ -26,6 +27,7 @@ export type ResolvedTransportForSnapshot = {
   arrivalLocalTime: string | null;
   arrivalDayOffset: number;
   state: 'source_confirmed' | 'corroborated' | 'degraded' | 'conflicting';
+  verifiedByCurrentProviders: boolean;
 };
 
 export type SharedFactJobResult = {
@@ -43,9 +45,8 @@ function string(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function departureDates(pkg: JsonObject): string[] {
-  const rows = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
-  return [...new Set(rows.map(row => string(asObject(row)?.date)).filter((date): date is string => Boolean(date && /^\d{4}-\d{2}-\d{2}$/.test(date))))]
+function departureDates(rows: JsonObject[]): string[] {
+  return [...new Set(rows.map(row => string(row.departure_date)).filter((date): date is string => Boolean(date && /^\d{4}-\d{2}-\d{2}$/.test(date))))]
     .sort()
     .slice(0, 10);
 }
@@ -67,9 +68,9 @@ function observationFromSource(input: {
   segment: JsonObject;
   date: string;
 }): TransportFactObservation | null {
-  const serviceNumber = string(input.segment.flight_no ?? input.segment.code)?.replace(/\s+/g, '').toUpperCase();
-  const departureAirport = normalizeAirport(input.segment.dep_airport ?? input.segment.departure_airport);
-  const arrivalAirport = normalizeAirport(input.segment.arr_airport ?? input.segment.arrival_airport);
+  const serviceNumber = string(input.segment.service_number ?? input.segment.flight_no ?? input.segment.code)?.replace(/\s+/g, '').toUpperCase();
+  const departureAirport = normalizeAirport(input.segment.departure_place_code ?? input.segment.dep_airport ?? input.segment.departure_airport);
+  const arrivalAirport = normalizeAirport(input.segment.arrival_place_code ?? input.segment.arr_airport ?? input.segment.arrival_airport);
   if (!serviceNumber || !departureAirport || !arrivalAirport) return null;
   const carrierCode = serviceNumber.match(/^([A-Z0-9]{2,3})/)?.[1] ?? null;
   const withoutHash: Omit<TransportFactObservation, 'observationHash'> = {
@@ -86,11 +87,11 @@ function observationFromSource(input: {
     effectiveStart: input.date,
     effectiveEnd: input.date,
     operatingWeekdays: [],
-    departureLocalTime: string(input.segment.dep_time),
-    arrivalLocalTime: string(input.segment.arr_time),
-    arrivalDayOffset: Number(input.segment.arr_day_offset ?? 0),
-    departureTimezone: null,
-    arrivalTimezone: null,
+    departureLocalTime: string(input.segment.departure_local_time ?? input.segment.dep_time),
+    arrivalLocalTime: string(input.segment.arrival_local_time ?? input.segment.arr_time),
+    arrivalDayOffset: Number(input.segment.arrival_day_offset ?? input.segment.arr_day_offset ?? 0),
+    departureTimezone: string(input.segment.departure_timezone),
+    arrivalTimezone: string(input.segment.arrival_timezone),
     observedAt: new Date().toISOString(),
     sourceWeight: TRANSPORT_SOURCE_WEIGHTS.current_source,
     sourceHash: input.sourceHash,
@@ -182,30 +183,24 @@ export async function resolveSharedFactsForJob(input: {
       result.blockers.push(`package:${packageId}:CANONICAL_REVISION_MISSING`);
       continue;
     }
-    const { data: revision, error: revisionError } = await input.supabase
-      .from('product_registration_v5_revisions')
-      .select('payload_hash')
-      .eq('id', revisionId)
-      .single();
-    if (revisionError || !revision?.payload_hash) {
+    const aggregate = await loadProductRegistrationRevisionAggregate({
+      supabase: input.supabase,
+      revisionId,
+    }).catch(() => null);
+    if (!aggregate?.revision.payload_hash) {
       result.blockers.push(`package:${packageId}:CANONICAL_REVISION_HASH_MISSING`);
       continue;
     }
-    const revisionHash = String(revision.payload_hash);
-    const { data: pkg, error } = await input.supabase
-      .from('travel_packages')
-      .select('id,itinerary_data,price_dates')
-      .eq('id', packageId)
-      .single();
-    if (error || !pkg) {
-      result.blockers.push(`package:${packageId}:PACKAGE_FACTS_UNAVAILABLE`);
+    if (input.tenantId && aggregate.revision.tenant_id !== input.tenantId) {
+      result.blockers.push(`package:${packageId}:REVISION_TENANT_MISMATCH`);
       continue;
     }
-    const itinerary = asObject(pkg.itinerary_data) ?? {};
-    const segments = Array.isArray(itinerary.flight_segments)
-      ? itinerary.flight_segments.map(asObject).filter((item): item is JsonObject => Boolean(item))
-      : [];
-    const dates = departureDates(pkg as JsonObject);
+    if (aggregate.media.length === 0) {
+      result.degradedReasons.push(`package:${packageId}:MEDIA_ASSET_MISSING`);
+    }
+    const revisionHash = aggregate.revision.payload_hash;
+    const segments = aggregate.transportSegments.filter(segment => segment.transport_type === 'flight');
+    const dates = departureDates(aggregate.departures);
     if (segments.length === 0) continue;
     if (dates.length === 0) {
       result.blockers.push(`package:${packageId}:DEPARTURE_DATE_MISSING_FOR_TRANSPORT`);
@@ -247,8 +242,13 @@ export async function resolveSharedFactsForJob(input: {
           arrivalLocalTime: currentObservation.arrivalLocalTime,
           arrivalDayOffset: currentObservation.arrivalDayOffset,
         };
-        const existingResolution = resolveTransportFact({ source, observations });
-        if ((!source.departureLocalTime || !source.arrivalLocalTime) && existingResolution.state !== 'corroborated') {
+        const providerFamilies = new Set(observations
+          .filter(item => item.sourceKind === 'oag' || item.sourceKind === 'cirium')
+          .map(item => item.sourceKind));
+        // Future schedules are checked even when the supplier source includes
+        // times. Explicit source facts are never overwritten; a two-provider
+        // disagreement becomes a blocker in resolveTransportFact().
+        if (!(providerFamilies.has('oag') && providerFamilies.has('cirium'))) {
           const provider = await fetchIndependentSchedules({
             tenantId: input.tenantId,
             carrierCode: currentObservation.carrierCode ?? '',
@@ -326,6 +326,7 @@ export async function resolveSharedFactsForJob(input: {
           arrivalLocalTime: resolved.fact.arrivalLocalTime,
           arrivalDayOffset: resolved.fact.arrivalDayOffset,
           state: resolved.state,
+          verifiedByCurrentProviders: resolved.verifiedByCurrentProviders,
         });
       }
     }
@@ -333,4 +334,20 @@ export async function resolveSharedFactsForJob(input: {
   result.blockers = [...new Set(result.blockers)];
   result.degradedReasons = [...new Set(result.degradedReasons)];
   return result;
+}
+
+export function catalogProductsEligibleForScheduleDriftClear(input: {
+  packageIds: string[];
+  catalogProductIds: string[];
+  shared: SharedFactJobResult;
+}): string[] {
+  return input.packageIds.flatMap((packageId, index) => {
+    const catalogProductId = input.catalogProductIds[index];
+    if (!catalogProductId) return [];
+    const packagePrefix = `package:${packageId}:`;
+    if (input.shared.blockers.some(blocker => blocker.startsWith(packagePrefix))) return [];
+    const transport = input.shared.resolvedTransport.filter(item => item.packageId === packageId);
+    if (transport.length === 0 || transport.some(item => !item.verifiedByCurrentProviders)) return [];
+    return [catalogProductId];
+  });
 }

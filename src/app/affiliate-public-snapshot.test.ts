@@ -74,14 +74,15 @@ describe('affiliate and embed public package data boundary', () => {
 
   it('renders affiliate OG images from current public snapshots only', () => {
     const text = source('src/app/api/og/affiliate/route.tsx');
-    const packageGateIndex = text.indexOf('/rest/v1/travel_packages');
+    const packageGateIndex = text.indexOf('/rest/v1/product_registration_v5_publication_pointers');
     const snapshotIndex = text.indexOf('/rest/v1/public_package_snapshots');
     const packageGateQuery = text.slice(packageGateIndex, snapshotIndex);
     const productAssignmentIndex = text.indexOf('productTitle = publicProduct.title');
 
     expect(text).toContain('function publicProductFromSnapshot');
-    expect(text).toContain('publication_state=in.(approved,published)');
-    expect(text).toContain('package_revision=eq.');
+    expect(text).toContain('state=eq.published');
+    expect(text).toContain('current_snapshot_id');
+    expect(text).toContain('catalog_product_id=eq.');
     expect(snapshotIndex).toBeGreaterThan(packageGateIndex);
     expect(productAssignmentIndex).toBeGreaterThan(snapshotIndex);
     expect(packageGateQuery).not.toMatch(/select=[^`]*(title|destination|price|product_summary|display_title)/);

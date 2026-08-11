@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { PRODUCT_REGISTRATION_V4_MAX_BYTES, type ProductSourceType, type SourceDocumentRecord } from './types';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority';
 
 export const PRODUCT_SOURCE_BUCKET = 'product-source-private';
 
@@ -74,12 +75,14 @@ export function validateSourceDocumentInput(input: {
 
 export async function findSourceDocumentByHash(
   supabase: SupabaseClient,
+  tenantId: string,
   sha256: string,
   byteSize: number,
 ): Promise<SourceDocumentRecord | null> {
   const { data, error } = await supabase
     .from('product_source_documents')
     .select('*')
+    .eq('tenant_id', tenantId)
     .eq('sha256', sha256)
     .eq('byte_size', byteSize)
     .maybeSingle();
@@ -116,7 +119,7 @@ export async function createSourceDocumentRecord(input: {
       detected_mime: input.declaredMime ?? null,
       source_type: input.sourceType,
       status: 'stored',
-      tenant_id: input.tenantId ?? null,
+      tenant_id: input.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
       uploaded_by: input.uploadedBy ?? null,
       metadata: input.metadata ?? {},
     })
@@ -134,6 +137,9 @@ export async function ensureSourceDocumentStored(input: {
   sourceType: ProductSourceType;
   tenantId?: string | null;
   uploadedBy?: string | null;
+  metadata?: Record<string, unknown>;
+  requestKey?: string;
+  sourceChannel?: string;
 }): Promise<SourceDocumentRecord> {
   // Chromium/Edge commonly reports legacy HWP as octet-stream. The parser
   // signature check below remains authoritative, so store that ambiguous
@@ -155,11 +161,21 @@ export async function ensureSourceDocumentStored(input: {
     throw new Error(`SOURCE_DOCUMENT_INVALID:${[...new Set(validationErrors)].join(',')}`);
   }
   const sha256 = hashSourceBytes(input.buffer);
-  const existing = await findSourceDocumentByHash(input.supabase, sha256, input.buffer.byteLength);
-  if (existing) return existing;
+  const tenantId = input.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID;
+  const existing = await findSourceDocumentByHash(input.supabase, tenantId, sha256, input.buffer.byteLength);
+  if (existing) {
+    await recordSourceUploadEvent(input.supabase, {
+      tenantId,
+      sourceDocument: existing,
+      requestKey: input.requestKey,
+      sourceChannel: input.sourceChannel,
+      metadata: input.metadata,
+    });
+    return existing;
+  }
 
   const safeFilename = input.filename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'source.bin';
-  const storagePath = `${input.tenantId ?? 'default'}/${sha256}/${safeFilename}`;
+  const storagePath = `${tenantId}/${sha256}/${safeFilename}`;
   const upload = await input.supabase.storage.from(PRODUCT_SOURCE_BUCKET).upload(storagePath, input.buffer, {
     contentType: declaredMime ?? undefined,
     upsert: false,
@@ -167,7 +183,7 @@ export async function ensureSourceDocumentStored(input: {
   if (upload.error && !/already exists|duplicate/i.test(upload.error.message)) throw upload.error;
 
   try {
-    return await createSourceDocumentRecord({
+    const created = await createSourceDocumentRecord({
       supabase: input.supabase,
       filename: input.filename,
       byteSize: input.buffer.byteLength,
@@ -175,12 +191,56 @@ export async function ensureSourceDocumentStored(input: {
       sourceType: input.sourceType,
       sha256,
       storagePath,
-      tenantId: input.tenantId,
+      tenantId,
       uploadedBy: input.uploadedBy,
+      metadata: input.metadata,
     });
+    await recordSourceUploadEvent(input.supabase, {
+      tenantId,
+      sourceDocument: created,
+      requestKey: input.requestKey,
+      sourceChannel: input.sourceChannel,
+      metadata: input.metadata,
+    });
+    return created;
   } catch (error) {
-    const raced = await findSourceDocumentByHash(input.supabase, sha256, input.buffer.byteLength);
-    if (raced) return raced;
+    const raced = await findSourceDocumentByHash(input.supabase, tenantId, sha256, input.buffer.byteLength);
+    if (raced) {
+      await recordSourceUploadEvent(input.supabase, {
+        tenantId,
+        sourceDocument: raced,
+        requestKey: input.requestKey,
+        sourceChannel: input.sourceChannel,
+        metadata: input.metadata,
+      });
+      return raced;
+    }
+    throw error;
+  }
+}
+
+async function recordSourceUploadEvent(
+  supabase: SupabaseClient,
+  input: {
+    tenantId: string;
+    sourceDocument: SourceDocumentRecord;
+    requestKey?: string;
+    sourceChannel?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  if (!input.requestKey) return;
+  const { error } = await supabase.rpc('record_product_registration_source_upload_event', {
+    p_payload: {
+      tenant_id: input.tenantId,
+      source_document_id: input.sourceDocument.id,
+      request_key: input.requestKey,
+      source_channel: input.sourceChannel ?? 'upload',
+      metadata: input.metadata ?? {},
+    },
+  });
+  // Allows the code and the forward migration to deploy in either order.
+  if (error && !/record_product_registration_source_upload_event|schema cache|PGRST202/i.test(error.message)) {
     throw error;
   }
 }

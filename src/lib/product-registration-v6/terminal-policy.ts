@@ -16,6 +16,7 @@ export type ProductRegistrationV6PolicyInput = {
   sourceTenantId?: string | null;
   sharedFactBlockers?: string[];
   sharedFactDegradedReasons?: string[];
+  termsTypes?: string[];
 };
 
 function asObject(value: unknown): JsonObject | null {
@@ -35,6 +36,7 @@ function unique(values: string[]): string[] {
 }
 
 function hasCancellationEvidence(input: ProductRegistrationV6PolicyInput): boolean {
+  if (input.termsTypes?.some(type => type === 'cancellation' || type === 'refund')) return true;
   const raw = input.sourceTexts?.join('\n') ?? '';
   if (/(?:취소|환불|해약|여행약관|특별약관|취소료|위약금)/u.test(raw)) return true;
   return asArray(input.canonicalPayload.sections).some(rawSection => {

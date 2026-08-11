@@ -57,6 +57,7 @@ export type TransportFactResolution = {
   state: 'source_confirmed' | 'corroborated' | 'degraded' | 'conflicting';
   fact: SourceTransportFact;
   observationIds: string[];
+  verifiedByCurrentProviders: boolean;
   degradedReasons: string[];
   blockers: string[];
 };
@@ -136,13 +137,14 @@ export function resolveTransportFact(input: {
   if (!source.departureDate) blockers.push('FLIGHT_DEPARTURE_DATE_MISSING');
   if (source.arrivalDayOffset < -1 || source.arrivalDayOffset > 3) blockers.push('FLIGHT_ARRIVAL_DAY_OFFSET_INVALID');
   if (blockers.length > 0) {
-    return { state: 'conflicting', fact: source, observationIds: [], degradedReasons, blockers };
-  }
-
-  // New supplier evidence always wins. Existing products/providers can only
-  // confirm it; they never silently overwrite it.
-  if (source.departureLocalTime && source.arrivalLocalTime) {
-    return { state: 'source_confirmed', fact: source, observationIds: [], degradedReasons, blockers };
+    return {
+      state: 'conflicting',
+      fact: source,
+      observationIds: [],
+      verifiedByCurrentProviders: false,
+      degradedReasons,
+      blockers,
+    };
   }
 
   const matching = input.observations.filter(observation =>
@@ -165,6 +167,41 @@ export function resolveTransportFact(input: {
     return sourceFamilies.size >= 2 && averageWeight >= 0.95;
   });
 
+  // Explicit supplier times remain immutable, but two independent current
+  // schedule providers may prove that the published schedule changed. Keep
+  // the source value for audit and fail closed instead of silently replacing
+  // it with the external value.
+  if (source.departureLocalTime && source.arrivalLocalTime) {
+    const sourceKey = `${source.departureLocalTime}|${source.arrivalLocalTime}|${source.arrivalDayOffset}`;
+    const providerConsensus = corroborated.filter(([, observations]) => {
+      const families = new Set(observations.map(item => item.sourceFamily));
+      return families.has('oag') && families.has('cirium');
+    });
+    const conflictingConsensus = providerConsensus.filter(([key]) => key !== sourceKey);
+    if (conflictingConsensus.length > 0) {
+      blockers.push('FLIGHT_SOURCE_PROVIDER_TIME_CONFLICT');
+      return {
+        state: 'conflicting',
+        fact: source,
+        observationIds: conflictingConsensus.flatMap(([, observations]) => observations.map(item => item.id))
+          .filter((value): value is string => Boolean(value)),
+        verifiedByCurrentProviders: false,
+        degradedReasons,
+        blockers,
+      };
+    }
+    const matchingProviderConsensus = providerConsensus.filter(([key]) => key === sourceKey);
+    return {
+      state: 'source_confirmed',
+      fact: source,
+      observationIds: matchingProviderConsensus.flatMap(([, observations]) => observations.map(item => item.id))
+        .filter((value): value is string => Boolean(value)),
+      verifiedByCurrentProviders: matchingProviderConsensus.length > 0,
+      degradedReasons,
+      blockers,
+    };
+  }
+
   if (corroborated.length === 1) {
     const [key, observations] = corroborated[0]!;
     const [departureLocalTime, arrivalLocalTime, dayOffset] = key.split('|');
@@ -177,6 +214,8 @@ export function resolveTransportFact(input: {
         arrivalDayOffset: Number(dayOffset),
       },
       observationIds: observations.map(item => item.id).filter((value): value is string => Boolean(value)),
+      verifiedByCurrentProviders: observations.some(item => item.sourceFamily === 'oag')
+        && observations.some(item => item.sourceFamily === 'cirium'),
       degradedReasons,
       blockers,
     };
@@ -191,6 +230,7 @@ export function resolveTransportFact(input: {
     state: corroborated.length > 1 ? 'conflicting' : 'degraded',
     fact: source,
     observationIds: matching.map(item => item.id).filter((value): value is string => Boolean(value)),
+    verifiedByCurrentProviders: false,
     degradedReasons,
     blockers,
   };

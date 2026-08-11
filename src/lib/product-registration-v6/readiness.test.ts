@@ -12,7 +12,7 @@ const database = {
 describe('product registration V6 readiness', () => {
   it('blocks canary when workflow or browser proof is unavailable', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { workflowEnabled: false, shadowEnabled: true, publishEnabled: false, publicationFrozen: true },
+      config: { authorityMode: 'legacy', workflowEnabled: false, shadowEnabled: true, publishEnabled: false, publicationFrozen: true },
       credentials: {
         proofSecret: true,
         browser: false,
@@ -32,7 +32,7 @@ describe('product registration V6 readiness', () => {
 
   it('allows a restricted canary while keeping full cohort publication limited', () => {
     const report = buildProductRegistrationV6ReadinessReport({
-      config: { workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false },
+      config: { authorityMode: 'kernel', workflowEnabled: true, shadowEnabled: true, publishEnabled: true, publicationFrozen: false },
       credentials: {
         proofSecret: true,
         browser: true,

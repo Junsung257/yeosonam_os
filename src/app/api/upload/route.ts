@@ -16,6 +16,7 @@ import {
 } from '@/lib/product-registration/upload-timeout-replay-queue';
 import { start } from 'workflow/api';
 import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority';
 import {
   PRODUCT_REGISTRATION_V6_POLICY_VERSION,
   type ProductRegistrationV6WorkflowInput,
@@ -154,6 +155,13 @@ const postHandler = async (request: NextRequest) => {
             filename: intake.fileName,
             declaredMime: intake.declaredMime,
             sourceType: intake.sourceType,
+            tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+            metadata: {
+              sourceChannel: 'upload',
+              uploadSourceMetadata: intake.uploadSourceMetadata,
+            },
+            requestKey: requestId,
+            sourceChannel: 'upload',
           });
         const sourceDocumentId = intake.sourceDocumentId ?? sourceDocument?.id ?? null;
         const job = intake.registrationJobId
@@ -163,6 +171,7 @@ const postHandler = async (request: NextRequest) => {
             sourceType: intake.sourceType === 'text' ? 'text' : 'file',
             sourceDocumentId,
             normalizedHash: intake.fileHash,
+            tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
           });
         pipelineIntake = {
           ...intake,
@@ -207,6 +216,7 @@ const postHandler = async (request: NextRequest) => {
         ?? request.nextUrl.origin;
       const workflowInput: ProductRegistrationV6WorkflowInput = {
         jobId: pipelineIntake.registrationJobId,
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
         sourceDocumentId: pipelineIntake.sourceDocumentId,
         requestId,
         requestBaseUrl: request.nextUrl.origin,
