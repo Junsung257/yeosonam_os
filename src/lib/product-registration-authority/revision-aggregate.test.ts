@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPackageProjectionFromRevision, type ProductRegistrationRevisionAggregate } from './revision-aggregate';
+import {
+  buildPackageProjectionFromRevision,
+  productRegistrationRevisionProjectionBlocker,
+  type ProductRegistrationRevisionAggregate,
+} from './revision-aggregate';
 
 function aggregate(): ProductRegistrationRevisionAggregate {
   return {
@@ -80,5 +84,12 @@ describe('revision aggregate package projection', () => {
     section.v3.ledger.variants.push({ ...section.v3.ledger.variants[0], variant_key: 'danang-2' });
     expect(() => buildPackageProjectionFromRevision({ packageId: 'package-1', aggregate: input }))
       .toThrow('REVISION_VARIANT_CARDINALITY_UNSUPPORTED');
+  });
+
+  it('classifies ambiguous projection cardinality as a safe customer block instead of infrastructure failure', () => {
+    expect(productRegistrationRevisionProjectionBlocker(
+      new Error('REVISION_VARIANT_CARDINALITY_UNSUPPORTED'),
+    )).toBe('REVISION_VARIANT_CARDINALITY_UNSUPPORTED');
+    expect(productRegistrationRevisionProjectionBlocker(new Error('DATABASE_UNAVAILABLE'))).toBeNull();
   });
 });

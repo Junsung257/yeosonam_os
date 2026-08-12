@@ -28,6 +28,7 @@ import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from
 import {
   buildPackageProjectionFromRevision,
   loadProductRegistrationRevisionAggregate,
+  productRegistrationRevisionProjectionBlocker,
 } from '@/lib/product-registration-authority/revision-aggregate';
 import { projectCompatibilityFromRevisionAtomic } from '@/lib/product-registration-authority/repository';
 import { resolveRegistrationTermsPolicy } from '@/lib/standard-terms';
@@ -453,10 +454,21 @@ async function validateStep(
     loadProductRegistrationRevisionAggregate({ supabase, revisionId })));
   const termsTypes = [...new Set(aggregates.flatMap(aggregate =>
     aggregate.terms.map(row => String(row.terms_type ?? '')).filter(Boolean)))];
-  const termsPolicies = await Promise.all(aggregates.map(async (aggregate, index) => {
+  const projectionBlockers: string[] = [];
+  const termsPolicies = (await Promise.all(aggregates.map(async (aggregate, index) => {
     const revisionId = normalized.revisionIds[index] ?? aggregate.revision.id;
     const catalogProductId = normalized.packageIds[index] ?? aggregate.revision.catalog_product_id;
-    const pkg = buildPackageProjectionFromRevision({ packageId: catalogProductId, aggregate });
+    let pkg: JsonObject;
+    try {
+      pkg = buildPackageProjectionFromRevision({ packageId: catalogProductId, aggregate });
+    } catch (error) {
+      const code = productRegistrationRevisionProjectionBlocker(error);
+      if (code) {
+        projectionBlockers.push(`package:${catalogProductId}:${code}`);
+        return null;
+      }
+      throw error;
+    }
     const policy = await resolveRegistrationTermsPolicy(pkg, 'mobile');
     return {
       ...policy,
@@ -465,7 +477,7 @@ async function validateStep(
       sourceCancellationCovered: aggregate.terms.some(row =>
         row.terms_type === 'cancellation' && row.validation_state === 'verified'),
     };
-  }));
+  }))).filter((policy): policy is NonNullable<typeof policy> => Boolean(policy));
   const decision = evaluateProductRegistrationV6Policy({
     canonicalPayload: normalized.normalization.canonicalPayload,
     packageIds: normalized.packageIds,
@@ -475,7 +487,7 @@ async function validateStep(
     expectedSourceHash: input.fileHash,
     tenantId: normalized.tenantId,
     sourceTenantId: preflight.sourceTenantId,
-    sharedFactBlockers: shared.blockers,
+    sharedFactBlockers: [...shared.blockers, ...projectionBlockers],
     sharedFactDegradedReasons: shared.degradedReasons,
     termsTypes,
     cancellationCoverage: termsPolicies.map(policy => ({
@@ -497,6 +509,7 @@ async function validateStep(
       degradedReasons: decision.degradedReasons,
       decisionHash: decision.decisionHash,
       termsPolicyHashes: termsPolicies.map(policy => policy.policy_hash),
+      projectionBlockers,
     },
   });
   return decision;
@@ -807,6 +820,7 @@ async function blockFailedWorkflowStep(
         error_detail: error,
         source_hash: input.fileHash,
         payload: { workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
+        created_version: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
       },
     });
   }

@@ -67,6 +67,15 @@ describe('product registration authority hardening contracts', () => {
     expect(migration).toContain('b.attempt_count < 3');
   });
 
+  it('scopes retry ceilings to an explicit deployed engine version', () => {
+    const route = source('src/app/api/cron/product-registration-v6-backfill/route.ts');
+    const migration = source('supabase/migrations/20260813001000_product_registration_backfill_engine_version.sql');
+    expect(route).toContain('p_engine_version: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION');
+    expect(migration).toContain('total_attempt_count');
+    expect(migration).toContain("b.last_error like 'WORKFLOW_FAILED:%'");
+    expect(migration).toContain('engine_version is distinct from v_engine_version');
+  });
+
   it('keeps golf facts immutable while permitting atomic aggregate construction', () => {
     const migration = source('supabase/migrations/20260812113000_product_registration_atomic_golf_linkage.sql');
     const jsonSafeMigration = source('supabase/migrations/20260812123000_product_registration_atomic_golf_linkage_json_safe.sql');

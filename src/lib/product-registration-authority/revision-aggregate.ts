@@ -77,6 +77,14 @@ function canonicalLedger(canonicalPayload: JsonObject): V3DraftLedger {
   return ledger as unknown as V3DraftLedger;
 }
 
+export function productRegistrationRevisionProjectionBlocker(error: unknown): string | null {
+  const code = error instanceof Error ? error.message : String(error);
+  return code === 'REVISION_VARIANT_CARDINALITY_UNSUPPORTED'
+    || code === 'REVISION_RENDER_PROJECTION_CARDINALITY_MISMATCH'
+    ? code
+    : null;
+}
+
 export function buildPackageProjectionFromRevision(input: {
   packageId: string;
   aggregate: ProductRegistrationRevisionAggregate;

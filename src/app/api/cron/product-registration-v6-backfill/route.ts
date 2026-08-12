@@ -5,6 +5,7 @@ import { withCronGuard } from '@/lib/cron-auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { startProductRegistrationTextWorkflow } from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
+import { PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION } from '@/lib/product-registration-v6/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,7 @@ async function handler(request: NextRequest) {
   const limit = Math.max(1, Math.min(25, Number.isFinite(requestedLimit) ? requestedLimit : 10));
   const { data: claimed, error: claimError } = await db.rpc(
     'claim_product_registration_legacy_backfill',
-    { p_limit: limit },
+    { p_limit: limit, p_engine_version: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
   );
   if (claimError) throw claimError;
   const claims = Array.isArray(claimed) ? claimed as BackfillClaim[] : [];
