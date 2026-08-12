@@ -105,6 +105,16 @@ export function needsCustomerCashReceipt(params: {
     && params.receiptStatus === 'NOT_ISSUED';
 }
 
+export function suggestedExactBankFee(params: {
+  cashMargin: unknown;
+  customerRefunds: unknown;
+  bankFees: unknown;
+}): 500 | 1_000 | null {
+  if (money(params.customerRefunds) !== 0 || money(params.bankFees) !== 0) return null;
+  const shortage = -money(params.cashMargin);
+  return shortage === 500 || shortage === 1_000 ? shortage : null;
+}
+
 export function summarizeBookingCashBreakdown(params: {
   bookingId: string;
   transactions: FinanceV3Transaction[];

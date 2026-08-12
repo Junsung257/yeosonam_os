@@ -56,7 +56,7 @@ function won(value: number): string {
   return `${Math.round(value).toLocaleString('ko-KR')}원`;
 }
 
-export default function FinanceClassifications() {
+export default function FinanceClassifications({ focusMode = false }: { focusMode?: boolean }) {
   const { data, error, isLoading, mutate } = useSWR('/api/admin/finance/classifications', fetcher, { revalidateOnFocus: false });
   const [filter, setFilter] = useState<'review' | 'all'>('review');
   const [query, setQuery] = useState('');
@@ -135,9 +135,7 @@ export default function FinanceClassifications() {
       setNotice('검토 필요가 아닌 최종 분류를 선택해주세요.');
       return;
     }
-    const requiresReceipt = classification === 'company_expense' || classification === 'company_travel' || classification === 'tax';
-    const receiptStatus = receiptDrafts[row.id]
-      ?? (requiresReceipt && row.receiptStatus === 'not_required' ? 'missing' : row.receiptStatus);
+    const receiptStatus = receiptDrafts[row.id] ?? row.receiptStatus;
     setSavingId(row.id);
     setNotice(null);
     try {
@@ -172,6 +170,7 @@ export default function FinanceClassifications() {
 
   return (
     <section className="space-y-4">
+      {focusMode ? <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-950"><strong>미분류 회사 거래 집중 처리</strong><span className="mt-1 block">Clobe 메모와 거래처를 확인하고 실제 용도를 확정합니다. 예약 가능성이 있는 거래는 안전을 위해 개별 확인만 허용합니다.</span></div> : null}
       <div>
         <h2 className="text-lg font-semibold text-admin-text">회사 경비·비여행 거래</h2>
         <p className="mt-1 text-xs text-admin-muted">Clobe 원본 분류는 보존하고, OS 확정 분류만 별도로 저장합니다. 자본금·이체·대표자 인출은 손익에서 제외됩니다.</p>
@@ -181,7 +180,7 @@ export default function FinanceClassifications() {
         <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">Clobe 원본 거래</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.transactionTotal ?? '...' }건</p><p className="mt-1 text-[10px] text-admin-muted">분류 항목 {data?.summary.itemTotal ?? '...'}건</p></div>
         <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4"><p className="text-xs text-amber-700">미분류</p><p className="mt-1 text-xl font-bold text-amber-900">{data?.summary.review ?? '...' }건</p></div>
         <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs text-emerald-700">분류 완료</p><p className="mt-1 text-xl font-bold text-emerald-900">{data?.summary.resolved ?? '...' }건</p></div>
-        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">증빙 필요</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.missingReceipt ?? '...' }건</p></div>
+        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">{(data?.summary.missingReceipt ?? 0) > 0 ? '증빙 확인 요청' : '증빙 확인 요청 없음'}</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.missingReceipt ?? '...' }건</p><p className="mt-1 text-[10px] text-admin-muted">수동 요청한 거래만 집계</p></div>
       </div>
 
       <div className="flex flex-col gap-2 rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 sm:flex-row">
@@ -214,12 +213,11 @@ export default function FinanceClassifications() {
                 {rows.map(row => {
                   const selected = drafts[row.id] ?? row.resolvedClassification;
                   const requiresReceipt = selected === 'company_expense' || selected === 'company_travel' || selected === 'tax';
-                  const receiptStatus = receiptDrafts[row.id]
-                    ?? (requiresReceipt && row.receiptStatus === 'not_required' ? 'missing' : row.receiptStatus);
+                  const receiptStatus = receiptDrafts[row.id] ?? row.receiptStatus;
                   return (
                     <tr key={row.id} className="align-top hover:bg-admin-bg/60">
-                      <td className="px-3 py-4"><input type="checkbox" aria-label={`${row.counterparty_name || '거래'} 선택`} title={row.batchEligible ? '일괄 분류에 선택' : '분할 또는 예약 연결 거래는 개별 확정이 필요합니다'} checked={selectedIds.has(row.id)} disabled={!row.batchEligible} onChange={() => toggleSelected(row.id)} /></td>
-                      <td className="max-w-sm px-4 py-3"><span className="block text-xs text-admin-muted">{new Date(row.received_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span><strong className="block text-admin-text-2">{row.counterparty_name || '거래처 없음'}</strong><span className="mt-1 block break-all text-xs leading-5 text-admin-muted"><span className="font-semibold text-admin-text-2">Clobe 메모:</span> {row.memo || '메모 없음'}</span>{row.targetLabel ? <span className="mt-1 block break-all text-xs font-medium leading-5 text-sky-700">분할 용도: {row.targetLabel}</span> : null}</td>
+                      <td className="px-3 py-4"><input type="checkbox" aria-label={`${row.counterparty_name || '거래'} 선택`} title={row.batchEligible ? '일괄 분류에 선택' : '예약 연결 가능성이 있어 개별 확인이 필요합니다'} checked={selectedIds.has(row.id)} disabled={!row.batchEligible} onChange={() => toggleSelected(row.id)} />{!row.batchEligible ? <span className="mt-1 block w-16 text-[9px] leading-3 text-amber-700">개별 확인 필요</span> : null}</td>
+                      <td className="max-w-sm px-4 py-3"><span className="block text-xs text-admin-muted">{new Date(row.received_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</span><strong className="block text-admin-text-2">{row.counterparty_name || '거래처 없음'}</strong><span className="mt-1 block break-all text-xs leading-5 text-admin-muted"><span className="font-semibold text-admin-text-2">Clobe 메모:</span> {row.memo || '메모 없음'}</span>{row.targetLabel ? <span className="mt-1 block break-all text-xs font-medium leading-5 text-sky-700">{row.targetLabel === 'review' ? '개별 확인 필요' : `배분 용도: ${row.targetLabel}`}</span> : null}</td>
                       <td className="px-4 py-3 text-xs text-admin-muted">{row.clobeOriginalClassification || '미분류'}</td>
                       <td className="px-4 py-3"><select value={selected} onChange={event => setDrafts(current => ({ ...current, [row.id]: event.target.value as FinanceClassification }))} aria-label={`${row.counterparty_name || '거래'} OS 분류`} className="rounded-lg border border-admin-border-strong bg-white px-2.5 py-2 text-xs"><option value="review">검토 필요</option>{OPTIONS.filter(([value]) => value !== 'review').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
                       <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${row.transaction_type === '출금' ? 'text-red-700' : 'text-emerald-700'}`}>{row.transaction_type === '출금' ? '-' : '+'}{won(row.amount)}</td>

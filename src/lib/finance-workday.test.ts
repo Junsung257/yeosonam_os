@@ -2,17 +2,27 @@ import { describe, expect, it } from 'vitest';
 
 import type { FinanceCenterSummary } from '@/lib/finance-center-service';
 import type { FinanceBookingReviewRow } from '@/lib/finance-settlement-v3-service';
-import { buildFinanceWorkday } from '@/lib/finance-workday';
+import {
+  buildFinanceWorkday,
+  nextClobeScheduledSyncAt,
+  scopeTravelActionTransactionIds,
+} from '@/lib/finance-workday';
 
 const summary: FinanceCenterSummary = {
   generatedAt: '2026-08-12T00:00:00.000Z',
   accountNumber: '100038454128',
   status: {
     connected: true,
+    connectedAt: '2026-07-31T00:00:00.000Z',
     lastSyncAt: '2026-08-12T00:00:00.000Z',
     lastSyncStatus: 'success',
     sourceCount: 482,
     recognizedCount: 482,
+    newCount: 0,
+    autoMatchedCount: 0,
+    memoUpdatedCount: 0,
+    memoReviewCount: 0,
+    errorCount: 0,
     ledgerCount: 482,
     bankBalance: 24_060_610,
     osBalance: 24_060_610,
@@ -29,6 +39,7 @@ const summary: FinanceCenterSummary = {
     actualTaxPayments: 500_000,
     companyOperatingResult: -2_000_000,
     confirmedTravelProfit: 12_000_000,
+    provisionalUnconfirmedTravelMargin: 3_000_000,
     afterTaxConfirmedProfit: 10_800_000,
     safeToWithdraw: 8_000_000,
     calculationStatus: 'clear',
@@ -41,6 +52,12 @@ const summary: FinanceCenterSummary = {
     unclassifiedCompany: 3,
     monthCloseWaiting: 1,
     postCloseChanges: 0,
+  },
+  actionRefs: {
+    travelTransactionIds: [],
+    unclassifiedCompanyTransactionIds: ['company-1', 'company-2', 'company-3'],
+    monthCloseMonths: ['2026-07'],
+    postCloseExceptionIds: [],
   },
   monthly: [],
   bookings: [],
@@ -93,6 +110,65 @@ describe('buildFinanceWorkday', () => {
     expect(result.nextTask?.href).toContain('focus=risk');
     expect(result.tasks.find(item => item.kind === 'month_close')?.status).toBe('blocked');
     expect(result.metrics.actualBankBalance).toBe(24_060_610);
+    expect(result.closeMonth).toBe('2026-07');
+  });
+
+  it('scopes booking review and month-close blocking to the selected departure month', () => {
+    const result = buildFinanceWorkday({
+      summary,
+      pendingBookings: [
+        booking({ id: 'july', departureDate: '2026-07-15' }),
+        booking({ id: 'august', departureDate: '2026-08-15', cashMargin: -500 }),
+      ],
+      missingReceiptCount: 0,
+      closeMonth: '2026-07',
+      now: new Date('2026-08-12T01:00:00.000Z'),
+    });
+
+    expect(result.tasks.find(item => item.kind === 'booking_risk')?.count).toBe(0);
+    expect(result.tasks.find(item => item.kind === 'booking_review')?.count).toBe(1);
+    expect(result.scope.futurePendingBookingCount).toBe(1);
+    expect(result.tasks.find(item => item.kind === 'month_close')?.blocker).toContain('2026-07');
+  });
+
+  it('counts a travel transaction once even when legacy unmatched count overlaps it', () => {
+    const result = buildFinanceWorkday({
+      summary: {
+        ...summary,
+        actions: { ...summary.actions, travelMemoOrAllocation: 1, unmatchedTravel: 1 },
+        actionRefs: { ...summary.actionRefs, travelTransactionIds: ['transaction-1'] },
+      },
+      pendingBookings: [],
+      missingReceiptCount: 0,
+      closeMonth: '2026-07',
+      now: new Date('2026-08-12T01:00:00.000Z'),
+    });
+
+    expect(result.tasks.find(item => item.kind === 'travel_review')?.count).toBe(1);
+    expect(result.openItems).toBe(result.stageItemTotal);
+  });
+
+  it('does not let other-month travel review rows block the selected close month', () => {
+    const result = buildFinanceWorkday({
+      summary: {
+        ...summary,
+        actions: { ...summary.actions, travelMemoOrAllocation: 7 },
+        actionRefs: {
+          ...summary.actionRefs,
+          travelTransactionIds: Array.from({ length: 7 }, (_, index) => `transaction-${index}`),
+        },
+      },
+      pendingBookings: [],
+      missingReceiptCount: 0,
+      closeMonth: '2026-07',
+      closeMonthTravelTransactionIds: [],
+      otherMonthTravelReviewCount: 7,
+      now: new Date('2026-08-12T01:00:00.000Z'),
+    });
+
+    expect(result.tasks.find(item => item.kind === 'travel_review')?.count).toBe(0);
+    expect(result.tasks.find(item => item.kind === 'month_close')?.status).toBe('ready');
+    expect(result.scope.otherMonthTravelReviewCount).toBe(7);
   });
 
   it('blocks downstream work when the bank does not reconcile', () => {
@@ -110,14 +186,56 @@ describe('buildFinanceWorkday', () => {
 
   it('marks every step complete when no work remains', () => {
     const result = buildFinanceWorkday({
-      summary: { ...summary, actions: { travelMemoOrAllocation: 0, unmatchedTravel: 0, negativeMargin: 0, unclassifiedCompany: 0, monthCloseWaiting: 0, postCloseChanges: 0 } },
+      summary: {
+        ...summary,
+        actions: { travelMemoOrAllocation: 0, unmatchedTravel: 0, negativeMargin: 0, unclassifiedCompany: 0, monthCloseWaiting: 0, postCloseChanges: 0 },
+        actionRefs: { travelTransactionIds: [], unclassifiedCompanyTransactionIds: [], monthCloseMonths: [], postCloseExceptionIds: [] },
+      },
       pendingBookings: [],
       missingReceiptCount: 0,
       closeMonth: '2026-07',
+      closeMonthClosed: true,
       now: new Date('2026-08-12T01:00:00.000Z'),
     });
 
     expect(result.nextTask).toBeNull();
     expect(result.completedSteps).toBe(result.totalSteps);
+  });
+
+  it('calculates the next six-times-daily KST Clobe sync', () => {
+    expect(nextClobeScheduledSyncAt(new Date('2026-08-12T01:00:00.000Z'))).toBe('2026-08-12T03:12:00.000Z');
+    expect(nextClobeScheduledSyncAt(new Date('2026-08-12T15:30:00.000Z'))).toBe('2026-08-12T19:12:00.000Z');
+  });
+});
+
+describe('scopeTravelActionTransactionIds', () => {
+  it('uses booking allocation month before Clobe memo or transaction month', () => {
+    expect(scopeTravelActionTransactionIds([{
+      id: 'allocated-august',
+      receivedAt: '2026-07-22T10:49:00+09:00',
+      memo: '260701_잘못된메모_투어폰',
+      bookingDepartureDates: ['2026-08-13'],
+    }], '2026-07')).toEqual([]);
+  });
+
+  it('uses a valid travel memo month when no booking allocation exists', () => {
+    expect(scopeTravelActionTransactionIds([{
+      id: 'memo-july',
+      receivedAt: '2026-06-29T14:48:43+09:00',
+      memo: '260701_김아름송이_투어폰',
+      bookingDepartureDates: [],
+    }], '2026-07')).toEqual(['memo-july']);
+  });
+
+  it('falls back to the bank transaction month for an unresolved blank memo', () => {
+    const rows = [{
+      id: 'blank-august',
+      receivedAt: '2026-08-06T10:23:55+09:00',
+      memo: null,
+      bookingDepartureDates: [],
+    }];
+
+    expect(scopeTravelActionTransactionIds(rows, '2026-07')).toEqual([]);
+    expect(scopeTravelActionTransactionIds(rows, '2026-08')).toEqual(['blank-august']);
   });
 });

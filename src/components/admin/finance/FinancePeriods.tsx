@@ -46,6 +46,7 @@ interface PeriodResponse {
     transaction_memo: string | null;
     transaction_received_at: string | null;
   }>;
+  otherExceptions: PeriodResponse['exceptions'];
   error?: string;
 }
 
@@ -168,6 +169,7 @@ export default function FinancePeriods({ initialMonth }: { initialMonth?: string
   const summary = preview?.summary;
   const currentPeriod = data?.periods.find(period => period.is_current && String(period.departure_month).slice(0, 7) === month);
   const isLocked = currentPeriod?.status === 'closed' || currentPeriod?.status === 'conditional';
+  const otherExceptions = data?.otherExceptions ?? [];
 
   const openCloseDialog = () => {
     setCloseStatus((summary?.deferredReviewCount ?? 0) > 0 ? 'conditional' : 'closed');
@@ -308,6 +310,20 @@ export default function FinancePeriods({ initialMonth }: { initialMonth?: string
             ))}
           </div>
         </section>
+      ) : null}
+
+      {!isLoading && data && otherExceptions.length > 0 ? (
+        <details className="rounded-admin-md border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">다른 출발 월의 열린 예외 {otherExceptions.length}건</summary>
+          <p className="mt-2 text-xs text-slate-600">선택한 {month} 마감에는 포함되지 않습니다. 해당 월로 이동해 별도로 처리합니다.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[...new Set(otherExceptions.map(item => String(item.departure_month).slice(0, 7)))].sort().map(otherMonth => (
+              <button key={otherMonth} type="button" onClick={() => { setMonth(otherMonth); setNotice(null); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                {otherMonth} · {otherExceptions.filter(item => String(item.departure_month).slice(0, 7) === otherMonth).length}건
+              </button>
+            ))}
+          </div>
+        </details>
       ) : null}
 
       {!isLoading && data ? <section className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface"><header className="border-b border-admin-border px-4 py-3"><h3 className="text-sm font-semibold text-admin-text">월 마감 이력</h3></header><div className="overflow-x-auto"><table className="min-w-full text-xs"><thead className="bg-admin-bg text-left text-admin-muted"><tr><th className="px-4 py-2">출발 월</th><th className="px-4 py-2">버전·상태</th><th className="px-4 py-2 text-right">예약</th><th className="px-4 py-2 text-right">입금</th><th className="px-4 py-2 text-right">출금</th><th className="px-4 py-2 text-right">마진</th><th className="px-4 py-2">확정자</th></tr></thead><tbody className="divide-y divide-admin-border">{data.periods.map(period => <tr key={period.id} className={period.is_current ? '' : 'text-admin-muted opacity-70'}><td className="px-4 py-2 font-semibold">{String(period.departure_month).slice(0, 7)}</td><td className="px-4 py-2">v{period.revision} · {PERIOD_STATUS_LABELS[period.status]}</td><td className="px-4 py-2 text-right">{period.confirmed_booking_count}</td><td className="px-4 py-2 text-right">{won(period.confirmed_deposits)}</td><td className="px-4 py-2 text-right">{won(period.confirmed_withdrawals)}</td><td className="px-4 py-2 text-right font-semibold">{won(period.confirmed_cash_margin)}</td><td className="px-4 py-2">{period.closed_by_label === 'legacy_booking_confirmation' ? '과거 자동확정' : period.closed_by_label || '-'}</td></tr>)}{data.periods.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-admin-muted">마감 이력이 없습니다.</td></tr> : null}</tbody></table></div></section> : null}

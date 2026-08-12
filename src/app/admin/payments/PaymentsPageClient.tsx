@@ -475,6 +475,9 @@ interface PaymentsClientProps {
   initialTrashTxs?: BankTransaction[];
   initialBookings?: BookingFull[];
   initialErp?: ErpStats;
+  focusMode?: boolean;
+  initialQueue?: string;
+  closeMonth?: string;
 }
 
 interface OpsQueueSummary {
@@ -497,6 +500,14 @@ export function getOutflowLandingSubTab(transactions: BankTransaction[]): Outflo
     && ['unmatched', 'error', 'review'].includes(transaction.match_status),
   );
   return hasAttentionItem ? 'unmatched' : 'all';
+}
+
+export function filterFocusedCloseMonthTransactions(
+  transactions: BankTransaction[],
+  transactionIds: string[],
+): BankTransaction[] {
+  const ids = new Set(transactionIds);
+  return transactions.filter(transaction => ids.has(transaction.id));
 }
 
 function PaymentOpsQueue({
@@ -555,7 +566,15 @@ function PaymentOpsQueue({
   );
 }
 
-export default function PaymentsPageClient({ initialTransactions, initialTrashTxs, initialBookings, initialErp }: PaymentsClientProps = {}) {
+export default function PaymentsPageClient({
+  initialTransactions,
+  initialTrashTxs,
+  initialBookings,
+  initialErp,
+  focusMode = false,
+  initialQueue,
+  closeMonth,
+}: PaymentsClientProps = {}) {
   // 대시보드 KPI 카드 drilldown 진입점:
   //   ?filter=outstanding → unmatched 탭 (미매칭 입금 대사 = 미수금 운영 뷰)
   //   ?tab=outflow|matched|unmatched|review → 명시적 탭 진입
@@ -567,7 +586,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'outflow' || tabParam === 'review' || tabParam === 'non_travel') {
       return tabParam;
     }
-    return 'review';
+    return initialQueue === 'unmatched' || initialQueue === 'outflow' || initialQueue === 'non_travel'
+      ? initialQueue
+      : 'review';
   })();
 
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
@@ -586,6 +607,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [trashOpen, setTrashOpen] = useState(false);
   const [undoInfo, setUndoInfo] = useState<{ ids: string[]; items: BankTransaction[]; countdown: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const focusTargetRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(!initialTransactions);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(() => initialTransactions ? new Date().toISOString() : null);
@@ -594,6 +616,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [opsQueueSummary, setOpsQueueSummary] = useState<OpsQueueSummary | null>(null);
+  const [focusScope, setFocusScope] = useState<{
+    transactionIds: string[];
+    otherMonthCount: number;
+  } | null>(() => focusMode && closeMonth ? null : { transactionIds: [], otherMonthCount: 0 });
+  const [focusScopeError, setFocusScopeError] = useState<string | null>(null);
 
   // 수동 매칭 모달
   const [selectedTx, setSelectedTx] = useState<BankTransaction | null>(null);
@@ -746,6 +773,50 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   // eslint-disable-next-line
   }, []);
 
+  useEffect(() => {
+    if (!focusMode || isLoading || !focusTargetRef.current) return;
+    const timer = window.setTimeout(() => {
+      focusTargetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      focusTargetRef.current?.focus({ preventScroll: true });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [focusMode, isLoading]);
+
+  useEffect(() => {
+    if (!focusMode || !closeMonth) {
+      setFocusScope({ transactionIds: [], otherMonthCount: 0 });
+      setFocusScopeError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setFocusScope(null);
+    setFocusScopeError(null);
+    fetch(`/api/admin/finance/workday?closeMonth=${encodeURIComponent(closeMonth)}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async response => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || '선택 월 거래 범위를 불러오지 못했습니다.');
+        setFocusScope({
+          transactionIds: payload?.workday?.scope?.travelReviewTransactionIds ?? [],
+          otherMonthCount: payload?.workday?.scope?.otherMonthTravelReviewCount ?? 0,
+        });
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setFocusScopeError(error instanceof Error ? error.message : '선택 월 거래 범위를 불러오지 못했습니다.');
+      });
+    return () => controller.abort();
+  }, [closeMonth, focusMode]);
+
+  const scopedTransactions = useMemo(() => {
+    if (!focusMode || !closeMonth) return transactions;
+    if (!focusScope) return [];
+    return filterFocusedCloseMonthTransactions(transactions, focusScope.transactionIds);
+  }, [closeMonth, focusMode, focusScope, transactions]);
+  const isFocusScopeLoading = Boolean(focusMode && closeMonth && !focusScope && !focusScopeError);
+
   const filtered = useMemo(() => {
     if (tab === 'non_travel') {
       return nonTravelTransactions
@@ -758,7 +829,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     // B-3: 환불/출금은 입금 탭에서 분리 — 전용 탭(outflow)에서만 노출
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
 
-    const result = transactions.filter(tx => {
+    const result = scopedTransactions.filter(tx => {
       if (tab === 'outflow') {
         if (!isOutflow(tx)) return false;
         // sub-필터로 매칭 상태별 분리
@@ -791,22 +862,22 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
     }
     return result;
-  }, [transactions, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
+  }, [scopedTransactions, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
 
   const isOutflowTx = isOutflowTransaction;
-  const reviewCount    = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
-  const unmatchedCount = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
-  const matchedCount   = transactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
-  const outflowCount   = transactions.filter(isOutflowTx).length;
-  const outflowUnmatchedCount = transactions.filter(t => isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review')).length;
-  const outflowMatchedCount   = transactions.filter(t => isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
-  const allOutflowUnmatchedCount = transactions.filter(t =>
+  const reviewCount    = scopedTransactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
+  const unmatchedCount = scopedTransactions.filter(t => !isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error')).length;
+  const matchedCount   = scopedTransactions.filter(t => !isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const outflowCount   = scopedTransactions.filter(isOutflowTx).length;
+  const outflowUnmatchedCount = scopedTransactions.filter(t => isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review')).length;
+  const outflowMatchedCount   = scopedTransactions.filter(t => isOutflowTx(t) && (t.match_status === 'auto' || t.match_status === 'manual')).length;
+  const allOutflowUnmatchedCount = scopedTransactions.filter(t =>
     isOutflowTx(t) && (t.match_status === 'unmatched' || t.match_status === 'error' || t.match_status === 'review'),
   ).length;
-  const allReviewCount = transactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
-  const activeMatchedCount = transactions.filter(t => t.match_status === 'auto' || t.match_status === 'manual').length;
-  const activeAttentionCount = transactions.length - activeMatchedCount;
-  const activeClobeCount = transactions.filter(t => t.source === 'clobe_mcp').length;
+  const allReviewCount = scopedTransactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
+  const activeMatchedCount = scopedTransactions.filter(t => t.match_status === 'auto' || t.match_status === 'manual').length;
+  const activeAttentionCount = scopedTransactions.length - activeMatchedCount;
+  const activeClobeCount = scopedTransactions.filter(t => t.source === 'clobe_mcp').length;
   const nonTravelCount = nonTravelTransactions.length;
   const archivedSlackSmsCount = trashTxs.filter(t => t.source === 'slack_webhook' || t.source === 'slack_gap_fill' || t.source === 'sms').length;
   const archivedClobeCount = trashTxs.filter(t => t.source === 'clobe_mcp').length;
@@ -833,16 +904,16 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     return { ...totals, payables: totals.payable };
   }, [erp]);
   const unmatchedAmount = useMemo(() =>
-    transactions.filter(t => t.match_status === 'unmatched' || t.match_status === 'error')
+    scopedTransactions.filter(t => t.match_status === 'unmatched' || t.match_status === 'error')
       .reduce((s, t) => s + t.amount, 0),
-    [transactions]
+    [scopedTransactions]
   );
   const staleCount = useMemo(() =>
-    transactions.filter(t =>
+    scopedTransactions.filter(t =>
       (t.match_status === 'review' || t.match_status === 'unmatched' || t.match_status === 'error') &&
       hoursSince(t.created_at) >= 24
     ).length,
-    [transactions]
+    [scopedTransactions]
   );
 
   const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
@@ -1544,7 +1615,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </p>
             <p className={`mt-1 text-admin-xs ${clobeIntegration.connected ? 'text-emerald-700' : 'text-amber-700'}`}>
               {clobeIntegration.connected
-                ? `Clobe 메모장 입출금 내역을 OS 정산으로 가져옵니다.${clobeIntegration.connectedAt ? ` 마지막 연결: ${fmtDate(clobeIntegration.connectedAt)}` : ''}`
+                ? `Clobe 메모장 입출금 내역을 OS 정산으로 가져옵니다.${clobeIntegration.connectedAt ? ` OAuth 연결일: ${fmtDate(clobeIntegration.connectedAt)}` : ''}`
                 : 'Clobe에 로그인해 연결하면 메모에 적은 여행 입출금 내역을 정산 화면에서 바로 동기화할 수 있습니다.'}
             </p>
           </div>
@@ -1671,7 +1742,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         );
       })()}
 
-      {bankReality && (
+      {bankReality && !focusMode && (
         <section className="mb-4 overflow-hidden rounded-admin-md border border-sky-200 bg-white shadow-admin-xs">
           <div className="flex flex-col gap-3 border-b border-sky-100 bg-sky-50 px-5 py-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -1806,22 +1877,39 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         <span className="ml-2 text-admin-muted">여행 외 통장 거래 {nonTravelCount}건은 예약 수익과 분리됩니다.</span>
       </div>
 
-      <PaymentOpsQueue
-        activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow'
-          ? tab
-          : tab === 'non_travel' && nonTravelReviewOnly ? 'bank_review' : undefined}
-        counts={{
-          review: allReviewCount,
-          unmatched: unmatchedCount,
-          stale: staleCount,
-          outflow: allOutflowUnmatchedCount,
-          bank_review: bankReality?.memoReviewCount ?? 0,
-          trash: trashTxs.length,
-        }}
-        onSelect={handlePaymentQueueSelect}
-      />
+      {!focusMode ? (
+        <PaymentOpsQueue
+          activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow'
+            ? tab
+            : tab === 'non_travel' && nonTravelReviewOnly ? 'bank_review' : undefined}
+          counts={{
+            review: allReviewCount,
+            unmatched: unmatchedCount,
+            stale: staleCount,
+            outflow: allOutflowUnmatchedCount,
+            bank_review: bankReality?.memoReviewCount ?? 0,
+            trash: trashTxs.length,
+          }}
+          onSelect={handlePaymentQueueSelect}
+        />
+      ) : null}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5">
+      <div ref={focusTargetRef} tabIndex={-1} className="scroll-mt-4 outline-none" />
+      {focusMode ? (
+        <section className="mb-4 rounded-admin-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-950">
+          <strong>{closeMonth ? `${closeMonth} 출발 월 · ` : ''}Clobe 메모 처리 순서</strong>
+          <span className="mt-1 block">1. Clobe 거래 메모에 <code className="rounded bg-white px-1 py-0.5">YYMMDD_대표고객_랜드사</code> 입력 → 2. 위의 지금 동기화 실행 → 3. 아래 목록에서 예약 연결 확인</span>
+          {focusScope ? <span className="mt-1 block text-emerald-800">이 달 확인 {focusScope.transactionIds.length}건 · 다른 출발 월 확인 {focusScope.otherMonthCount}건은 이 달 마감을 막지 않습니다.</span> : null}
+        </section>
+      ) : null}
+
+      {focusScopeError ? (
+        <div role="alert" className="mb-4 rounded-admin-md border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
+          {focusScopeError} 전체 거래를 대신 표시하지 않았습니다. 새로고침 후 다시 확인해주세요.
+        </div>
+      ) : null}
+
+      <div className={`${focusMode ? 'hidden' : 'grid'} grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5`}>
         <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
@@ -1900,7 +1988,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             {[
               { label: '미수', value: erp ? fmt만(safeRemaining) : '—', tone: 'text-red-600', hint: '아직 고객에게 받아야 할 돈' },
               { label: '예상 우리수익', value: erp ? fmt만(ownerNumbers.grossProfit) : '—', tone: 'text-emerald-700', hint: '상품가 - 랜드사 예정액' },
-              { label: '예상 세금', value: erp ? fmt만(ownerNumbers.taxEstimate) : '—', tone: 'text-admin-text-2', hint: '간편 추정 10%' },
+              { label: '보수적 세금 적립금', value: erp ? fmt만(ownerNumbers.taxEstimate) : '—', tone: 'text-admin-text-2', hint: '조정 가능한 적립률 10%' },
               { label: '예상 순수익', value: erp ? fmt만(ownerNumbers.netProfit) : '—', tone: 'text-brand', hint: '우리수익 - 예상세금' },
             ].map(item => (
               <div key={item.label} className="border border-admin-border-mid rounded-admin-md bg-white px-3 py-3">
@@ -1939,8 +2027,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       </div>
 
       {/* ── Metric Filter Cards (탭 겸용) ──────────────────────────────────────── */}
-      <p className="mb-2 text-[11px] text-admin-muted">전체 활성 입출금 원장 기준</p>
-      <div className="grid grid-cols-2 gap-3 mb-5 lg:grid-cols-5">
+      <p className={`${focusMode ? 'sr-only' : 'mb-2'} text-[11px] text-admin-muted`}>전체 활성 입출금 원장 기준</p>
+      <div className={`${focusMode ? 'hidden' : 'grid'} grid-cols-2 gap-3 mb-5 lg:grid-cols-5`}>
         {([
           { id: 'review'    as const, label: '검토 필요',   count: reviewCount,    active: 'border-amber-400 bg-amber-50', num: 'text-amber-700' },
           { id: 'matched'   as const, label: '매칭 완료',   count: matchedCount,   active: 'border-emerald-400 bg-emerald-50', num: 'text-emerald-700' },
@@ -2010,7 +2098,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       )}
 
       {/* 트랜잭션 테이블 */}
-      {isLoading ? (
+      {isLoading || isFocusScopeLoading ? (
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex gap-4 py-2 border-b border-slate-50 last:border-0">
