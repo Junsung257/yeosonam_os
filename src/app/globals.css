@@ -2,7 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Public UI uses the OS Korean font stack to avoid multi-megabyte webfont downloads. */
+/*
+ * Public pages must render Korean in the same headless Chromium environment
+ * used by the immutable mobile proof. Relying only on OS fonts made the DOM
+ * text assertions pass while Korean glyphs were blank in the saved proof PNG.
+ * Keep the existing OS stack as fallback, but make the bundled Korean font the
+ * authoritative face for both customers and proof workers.
+ */
+@font-face {
+  font-family: 'Yeosonam Korean';
+  src: url('/fonts/Pretendard-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 100 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Yeosonam Korean';
+  src: url('/fonts/Pretendard-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: swap;
+}
 
 /* ──────────────────────────────────────────────────────────
  * 디자인 토큰 (Toss Blue 기반 통합 팔레트)
@@ -83,7 +104,7 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+  font-family: 'Yeosonam Korean', -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.02em;

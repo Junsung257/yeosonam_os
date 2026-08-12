@@ -17,6 +17,7 @@ export type ProductRegistrationV6BrowserProofSurfaceResult = {
    * private source bucket and removes them before the proof JSON is saved. */
   screenshotPng: Uint8Array | null;
   bodyTextHash: string | null;
+  koreanFontReady: boolean;
   imageCount: number;
   brokenImageCount: number;
   ctaOpened: boolean;
@@ -116,6 +117,9 @@ function collectConsoleError(message: ConsoleMessage, errors: string[]) {
 async function waitForInteractive(page: Page) {
   await page.waitForFunction(() => document.readyState === 'complete', { timeout: 45_000 });
   await page.evaluate(async () => {
+    if (document.fonts?.ready) await document.fonts.ready;
+  });
+  await page.evaluate(async () => {
     const delay = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
     const max = Math.max(document.body?.scrollHeight ?? 0, document.documentElement?.scrollHeight ?? 0);
     for (let y = 0; y < max; y += Math.max(500, window.innerHeight * 0.8)) {
@@ -162,6 +166,7 @@ async function proveSurface(input: {
   let screenshotHash: string | null = null;
   let screenshotPng: Uint8Array | null = null;
   let bodyTextHash: string | null = null;
+  let koreanFontReady = false;
   let imageCount = 0;
   let brokenImageCount = 0;
   let ctaOpened = false;
@@ -211,6 +216,10 @@ async function proveSurface(input: {
       const meta = (name: string) => document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content ?? null;
       return {
         bodyText,
+        koreanFontReady: Boolean(document.fonts?.check(
+          '16px "Yeosonam Korean"',
+          '한글 상품 가격 일정 고객',
+        )),
         imageCount: images.length,
         brokenImageCount: images.filter(image => image.complete && image.naturalWidth === 0).length,
         snapshotHash: meta('product-registration-v5-snapshot-hash'),
@@ -219,8 +228,10 @@ async function proveSurface(input: {
     });
     responseSnapshotHash ??= rendered.snapshotHash;
     responseRendererBuildId ??= rendered.rendererBuildId;
+    koreanFontReady = rendered.koreanFontReady;
     if (responseSnapshotHash !== input.expectedSnapshotHash) failures.push('SNAPSHOT_HASH_LINEAGE_MISMATCH');
     if (responseRendererBuildId !== input.expectedRendererBuildId) failures.push('RENDERER_BUILD_LINEAGE_MISMATCH');
+    if (!koreanFontReady) failures.push('KOREAN_WEBFONT_NOT_READY');
     imageCount = rendered.imageCount;
     brokenImageCount = rendered.brokenImageCount;
     bodyTextHash = hash(rendered.bodyText);
@@ -251,6 +262,7 @@ async function proveSurface(input: {
     screenshotHash,
     screenshotPng,
     bodyTextHash,
+    koreanFontReady,
     imageCount,
     brokenImageCount,
     ctaOpened,
