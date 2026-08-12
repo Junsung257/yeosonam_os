@@ -213,6 +213,7 @@ export function calculateBookingCashPositions(params: {
   transactions: BankAccountRealityRow[];
   allocations: BookingCashAllocationRow[];
   bookings: BookingCashBookingRow[];
+  confirmedBookingIds?: Iterable<string>;
   referenceDate?: Date | string;
 }): BookingCashPositionSummary {
   const referenceDate = koreaDate(params.referenceDate ?? new Date());
@@ -225,6 +226,7 @@ export function calculateBookingCashPositions(params: {
   );
   const transactionById = new Map(transactions.map(row => [row.id as string, row]));
   const bookingById = new Map(params.bookings.map(row => [row.id, row]));
+  const confirmedBookingIds = params.confirmedBookingIds ? new Set(params.confirmedBookingIds) : null;
   const allocatedByTransaction = new Map<string, number>();
   let classifiedNonBookingNet = 0;
   const eventsByBooking = new Map<string, Array<{
@@ -295,7 +297,10 @@ export function calculateBookingCashPositions(params: {
       continue;
     }
 
-    const bucket = booking?.settlement_confirmed_at
+    const bookingIsConfirmed = confirmedBookingIds
+      ? confirmedBookingIds.has(bookingId)
+      : Boolean(booking?.settlement_confirmed_at);
+    const bucket = bookingIsConfirmed
       ? buckets.settled
       : !booking?.departure_date
         ? buckets.dateMissing
@@ -364,10 +369,10 @@ const TRAVEL_ACTION_STATUSES = new Set(['review', 'unmatched', 'error']);
  * Counts transaction rows that need an operator's attention. A row is counted
  * once even when it has both a review status and an allocation mismatch.
  */
-export function countTravelMemoOrAllocationActions(params: {
+export function travelMemoOrAllocationActionIds(params: {
   transactions: BankAccountRealityRow[];
   allocations: BookingCashAllocationRow[];
-}): number {
+}): string[] {
   const allocatedByTransaction = new Map<string, number>();
   for (const allocation of params.allocations) {
     allocatedByTransaction.set(
@@ -376,12 +381,19 @@ export function countTravelMemoOrAllocationActions(params: {
     );
   }
 
-  return params.transactions.filter(transaction => {
-    if (!transaction.id || transaction.settlement_scope !== 'travel' || money(transaction.amount) <= 0) return false;
+  return params.transactions.flatMap(transaction => {
+    if (!transaction.id || transaction.settlement_scope !== 'travel' || money(transaction.amount) <= 0) return [];
     const needsStatusReview = TRAVEL_ACTION_STATUSES.has(transaction.match_status ?? '');
     const hasAllocationMismatch = (allocatedByTransaction.get(transaction.id) ?? 0) !== money(transaction.amount);
-    return needsStatusReview || hasAllocationMismatch;
-  }).length;
+    return needsStatusReview || hasAllocationMismatch ? [transaction.id] : [];
+  });
+}
+
+export function countTravelMemoOrAllocationActions(params: {
+  transactions: BankAccountRealityRow[];
+  allocations: BookingCashAllocationRow[];
+}): number {
+  return travelMemoOrAllocationActionIds(params).length;
 }
 
 const OPERATING_INCOME_CATEGORIES = new Set([

@@ -475,6 +475,8 @@ interface PaymentsClientProps {
   initialTrashTxs?: BankTransaction[];
   initialBookings?: BookingFull[];
   initialErp?: ErpStats;
+  focusMode?: boolean;
+  initialQueue?: string;
 }
 
 interface OpsQueueSummary {
@@ -555,7 +557,14 @@ function PaymentOpsQueue({
   );
 }
 
-export default function PaymentsPageClient({ initialTransactions, initialTrashTxs, initialBookings, initialErp }: PaymentsClientProps = {}) {
+export default function PaymentsPageClient({
+  initialTransactions,
+  initialTrashTxs,
+  initialBookings,
+  initialErp,
+  focusMode = false,
+  initialQueue,
+}: PaymentsClientProps = {}) {
   // 대시보드 KPI 카드 drilldown 진입점:
   //   ?filter=outstanding → unmatched 탭 (미매칭 입금 대사 = 미수금 운영 뷰)
   //   ?tab=outflow|matched|unmatched|review → 명시적 탭 진입
@@ -567,7 +576,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'outflow' || tabParam === 'review' || tabParam === 'non_travel') {
       return tabParam;
     }
-    return 'review';
+    return initialQueue === 'unmatched' || initialQueue === 'outflow' || initialQueue === 'non_travel'
+      ? initialQueue
+      : 'review';
   })();
 
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
@@ -586,6 +597,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [trashOpen, setTrashOpen] = useState(false);
   const [undoInfo, setUndoInfo] = useState<{ ids: string[]; items: BankTransaction[]; countdown: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const focusTargetRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(!initialTransactions);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(() => initialTransactions ? new Date().toISOString() : null);
@@ -745,6 +757,15 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     ]));
   // eslint-disable-next-line
   }, []);
+
+  useEffect(() => {
+    if (!focusMode || isLoading || !focusTargetRef.current) return;
+    const timer = window.setTimeout(() => {
+      focusTargetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      focusTargetRef.current?.focus({ preventScroll: true });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [focusMode, isLoading]);
 
   const filtered = useMemo(() => {
     if (tab === 'non_travel') {
@@ -1544,7 +1565,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </p>
             <p className={`mt-1 text-admin-xs ${clobeIntegration.connected ? 'text-emerald-700' : 'text-amber-700'}`}>
               {clobeIntegration.connected
-                ? `Clobe 메모장 입출금 내역을 OS 정산으로 가져옵니다.${clobeIntegration.connectedAt ? ` 마지막 연결: ${fmtDate(clobeIntegration.connectedAt)}` : ''}`
+                ? `Clobe 메모장 입출금 내역을 OS 정산으로 가져옵니다.${clobeIntegration.connectedAt ? ` OAuth 연결일: ${fmtDate(clobeIntegration.connectedAt)}` : ''}`
                 : 'Clobe에 로그인해 연결하면 메모에 적은 여행 입출금 내역을 정산 화면에서 바로 동기화할 수 있습니다.'}
             </p>
           </div>
@@ -1671,7 +1692,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         );
       })()}
 
-      {bankReality && (
+      {bankReality && !focusMode && (
         <section className="mb-4 overflow-hidden rounded-admin-md border border-sky-200 bg-white shadow-admin-xs">
           <div className="flex flex-col gap-3 border-b border-sky-100 bg-sky-50 px-5 py-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -1821,7 +1842,15 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         onSelect={handlePaymentQueueSelect}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5">
+      <div ref={focusTargetRef} tabIndex={-1} className="scroll-mt-4 outline-none" />
+      {focusMode ? (
+        <section className="mb-4 rounded-admin-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-950">
+          <strong>Clobe 메모 처리 순서</strong>
+          <span className="mt-1 block">1. Clobe 거래 메모에 <code className="rounded bg-white px-1 py-0.5">YYMMDD_대표고객_랜드사</code> 입력 → 2. 위의 지금 동기화 실행 → 3. 아래 목록에서 예약 연결 확인</span>
+        </section>
+      ) : null}
+
+      <div className={`${focusMode ? 'hidden' : 'grid'} grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5`}>
         <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
@@ -1900,7 +1929,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             {[
               { label: '미수', value: erp ? fmt만(safeRemaining) : '—', tone: 'text-red-600', hint: '아직 고객에게 받아야 할 돈' },
               { label: '예상 우리수익', value: erp ? fmt만(ownerNumbers.grossProfit) : '—', tone: 'text-emerald-700', hint: '상품가 - 랜드사 예정액' },
-              { label: '예상 세금', value: erp ? fmt만(ownerNumbers.taxEstimate) : '—', tone: 'text-admin-text-2', hint: '간편 추정 10%' },
+              { label: '보수적 세금 적립금', value: erp ? fmt만(ownerNumbers.taxEstimate) : '—', tone: 'text-admin-text-2', hint: '조정 가능한 적립률 10%' },
               { label: '예상 순수익', value: erp ? fmt만(ownerNumbers.netProfit) : '—', tone: 'text-brand', hint: '우리수익 - 예상세금' },
             ].map(item => (
               <div key={item.label} className="border border-admin-border-mid rounded-admin-md bg-white px-3 py-3">
@@ -1939,8 +1968,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       </div>
 
       {/* ── Metric Filter Cards (탭 겸용) ──────────────────────────────────────── */}
-      <p className="mb-2 text-[11px] text-admin-muted">전체 활성 입출금 원장 기준</p>
-      <div className="grid grid-cols-2 gap-3 mb-5 lg:grid-cols-5">
+      <p className={`${focusMode ? 'sr-only' : 'mb-2'} text-[11px] text-admin-muted`}>전체 활성 입출금 원장 기준</p>
+      <div className={`${focusMode ? 'hidden' : 'grid'} grid-cols-2 gap-3 mb-5 lg:grid-cols-5`}>
         {([
           { id: 'review'    as const, label: '검토 필요',   count: reviewCount,    active: 'border-amber-400 bg-amber-50', num: 'text-amber-700' },
           { id: 'matched'   as const, label: '매칭 완료',   count: matchedCount,   active: 'border-emerald-400 bg-emerald-50', num: 'text-emerald-700' },

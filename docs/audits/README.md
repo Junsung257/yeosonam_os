@@ -79,6 +79,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-12 | `2026-08-12-finance-operational-completion-v4-1.md` | Selected-month workday, unique task counts, focused review UX, sync status, fee assistance, evidence wording, and release gates. |
 | 2026-08-12 | `2026-08-12-finance-guided-workday-ux.md` | Guided daily settlement UX, atomic company batch classification, privacy-safe telemetry, and verification evidence. |
 | 2026-08-11 | `2026-08-11-finance-integrity-and-ux.md` | Clobe review fingerprint integrity, reserve math, booking/month-close UX, production DB reconciliation, and release evidence. |
 | 2026-08-06 | `2026-08-06-finance-v3-revalidation.md` | Settlement Center V3 split allocation, owner review, legacy revalidation, production reconciliation, and case-correction evidence. |

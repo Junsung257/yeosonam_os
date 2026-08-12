@@ -217,10 +217,10 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
             hint="입금 − 여행출금 − 고객환불"
           />
           <KpiCard
-            label="예상 세후 현금 마진"
+            label="적립금 차감 후 현금 마진"
             value={`₩${fmt(kpis.net_profit_estimate)}`}
             icon={Receipt}
-            hint={`조정 가능한 세금 추정 ₩${fmt(kpis.vat_estimate)}`}
+            hint={`보수적 세금 적립금 ₩${fmt(kpis.vat_estimate)}`}
           />
         </div>
       )}
@@ -459,7 +459,7 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
                   <td className="px-3 py-2 text-right text-amber-700">₩{fmt(kpis.customer_refunds)}</td>
                   <td className="px-3 py-2 text-right text-green-700">₩{fmt(kpis.cash_margin)}</td>
                   <td colSpan={6} className="px-3 py-2 text-[11px] text-admin-muted font-normal">
-                    예상 세금: ₩{fmt(kpis.vat_estimate)} / 예상 세후 현금 마진: ₩{fmt(kpis.net_profit_estimate)}
+                    보수적 세금 적립금: ₩{fmt(kpis.vat_estimate)} / 적립금 차감 후 현금 마진: ₩{fmt(kpis.net_profit_estimate)}
                   </td>
                 </tr>
               </tfoot>
@@ -475,7 +475,7 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
         <span>미송금 = 랜드사 예정액 - 송금액</span>
         <span>장부 예상마진 = 판매가 - 랜드사 예정액</span>
         <span>현금 마진 = Clobe 입금 - 여행출금 - 고객환불</span>
-        <span>예상 세금은 공식 신고 금액이 아닙니다.</span>
+        <span>보수적 세금 적립금은 공식 신고 금액이 아닙니다.</span>
       </div>
     </div>
   );

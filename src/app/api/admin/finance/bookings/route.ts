@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
     const status = request.nextUrl.searchParams.get('status');
     const query = request.nextUrl.searchParams.get('q');
     const includeExcluded = request.nextUrl.searchParams.get('includeExcluded') === 'true';
+    const sort = request.nextUrl.searchParams.get('sort') === 'departure_asc'
+      ? 'departure_asc'
+      : 'departure_desc';
     if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       return NextResponse.json({ error: '출발 월은 YYYY-MM 형식이어야 합니다.' }, { status: 400 });
     }
@@ -28,6 +31,7 @@ export async function GET(request: NextRequest) {
       status: status as ReviewFilters['status'],
       query,
       includeExcluded,
+      sort,
     });
     return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {

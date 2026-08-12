@@ -94,11 +94,18 @@ export async function GET(request: NextRequest) {
         transaction_received_at: transaction?.received_at ?? null,
       };
     });
+    const selectedMonthExceptions = month
+      ? enrichedExceptions.filter(exception => String(exception.departure_month).slice(0, 7) === month)
+      : enrichedExceptions;
+    const otherMonthExceptions = month
+      ? enrichedExceptions.filter(exception => String(exception.departure_month).slice(0, 7) !== month)
+      : [];
 
     return NextResponse.json({
       preview,
       periods: periodsResult.data ?? [],
-      exceptions: enrichedExceptions,
+      exceptions: selectedMonthExceptions,
+      otherExceptions: otherMonthExceptions,
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     const message = error instanceof Error ? error.message : '월 마감 정보를 불러오지 못했습니다.';
