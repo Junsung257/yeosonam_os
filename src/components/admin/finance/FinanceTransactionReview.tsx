@@ -15,9 +15,11 @@ const PaymentsPageClient = dynamic(
 export default function FinanceTransactionReview({
   focusMode = false,
   initialQueue,
+  closeMonth,
 }: {
   focusMode?: boolean;
   initialQueue?: string;
+  closeMonth?: string;
 }) {
-  return <PaymentsPageClient focusMode={focusMode} initialQueue={initialQueue} />;
+  return <PaymentsPageClient focusMode={focusMode} initialQueue={initialQueue} closeMonth={closeMonth} />;
 }

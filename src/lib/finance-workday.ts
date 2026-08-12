@@ -1,5 +1,13 @@
 import type { FinanceCenterSummary } from '@/lib/finance-center-service';
 import type { FinanceBookingReviewRow } from '@/lib/finance-settlement-v3-service';
+import { parseTravelSettlementMemo } from '@/lib/settlement-import/bank-statement-parser';
+
+export interface FinanceTravelActionScopeRow {
+  id: string;
+  receivedAt: string;
+  memo: string | null;
+  bookingDepartureDates: string[];
+}
 
 export type FinanceWorkdayTaskKind =
   | 'sync'
@@ -34,6 +42,8 @@ export interface FinanceWorkday {
     futurePendingBookingCount: number;
     priorPendingBookingCount: number;
     undatedPendingBookingCount: number;
+    travelReviewTransactionIds: string[];
+    otherMonthTravelReviewCount: number;
   };
   metrics: Pick<FinanceCenterSummary['metrics'],
     | 'actualBankBalance'
@@ -96,6 +106,28 @@ function syntheticKeys(prefix: string, count: number): string[] {
   return Array.from({ length: count }, (_, index) => `${prefix}:${index}`);
 }
 
+/**
+ * Manual booking allocations are authoritative, followed by a valid Clobe
+ * travel memo. An unresolved row falls back to its bank transaction month so
+ * it remains visible without blocking unrelated departure months.
+ */
+export function scopeTravelActionTransactionIds(
+  rows: FinanceTravelActionScopeRow[],
+  closeMonth: string,
+): string[] {
+  return rows.flatMap(row => {
+    const bookingMonths = [...new Set(row.bookingDepartureDates
+      .filter(Boolean)
+      .map(value => value.slice(0, 7)))];
+    if (bookingMonths.length > 0) return bookingMonths.includes(closeMonth) ? [row.id] : [];
+
+    const memoMonth = parseTravelSettlementMemo(row.memo)?.departureDate.slice(0, 7);
+    if (memoMonth) return memoMonth === closeMonth ? [row.id] : [];
+
+    return row.receivedAt.slice(0, 7) === closeMonth ? [row.id] : [];
+  });
+}
+
 export function buildFinanceWorkday(params: {
   summary: FinanceCenterSummary;
   pendingBookings: FinanceBookingReviewRow[];
@@ -103,6 +135,8 @@ export function buildFinanceWorkday(params: {
   closeMonth: string;
   closeMonthClosed?: boolean;
   closeMonthPostCloseExceptionIds?: string[];
+  closeMonthTravelTransactionIds?: string[];
+  otherMonthTravelReviewCount?: number;
   now?: Date;
 }): FinanceWorkday {
   const now = params.now ?? new Date();
@@ -117,7 +151,8 @@ export function buildFinanceWorkday(params: {
   const normalBookings = monthPending.filter(row => !riskBookingIds.has(row.id));
   const firstRisk = riskBookings[0];
   const firstNormal = normalBookings[0];
-  const travelTransactionIds = params.summary.actionRefs?.travelTransactionIds
+  const travelTransactionIds = params.closeMonthTravelTransactionIds
+    ?? params.summary.actionRefs?.travelTransactionIds
     ?? syntheticKeys('travel', params.summary.actions.travelMemoOrAllocation);
   const travelReviewCount = travelTransactionIds.length;
   const closeMonthPostCloseExceptionIds = params.closeMonthPostCloseExceptionIds ?? [];
@@ -230,6 +265,8 @@ export function buildFinanceWorkday(params: {
       futurePendingBookingCount: futurePending.length,
       priorPendingBookingCount: priorPending.length,
       undatedPendingBookingCount: undatedPending.length,
+      travelReviewTransactionIds: travelTransactionIds,
+      otherMonthTravelReviewCount: params.otherMonthTravelReviewCount ?? 0,
     },
     metrics: {
       actualBankBalance: params.summary.metrics.actualBankBalance,

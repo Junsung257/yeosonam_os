@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { FinanceCenterSummary } from '@/lib/finance-center-service';
 import type { FinanceBookingReviewRow } from '@/lib/finance-settlement-v3-service';
-import { buildFinanceWorkday, nextClobeScheduledSyncAt } from '@/lib/finance-workday';
+import {
+  buildFinanceWorkday,
+  nextClobeScheduledSyncAt,
+  scopeTravelActionTransactionIds,
+} from '@/lib/finance-workday';
 
 const summary: FinanceCenterSummary = {
   generatedAt: '2026-08-12T00:00:00.000Z',
@@ -144,6 +148,29 @@ describe('buildFinanceWorkday', () => {
     expect(result.openItems).toBe(result.stageItemTotal);
   });
 
+  it('does not let other-month travel review rows block the selected close month', () => {
+    const result = buildFinanceWorkday({
+      summary: {
+        ...summary,
+        actions: { ...summary.actions, travelMemoOrAllocation: 7 },
+        actionRefs: {
+          ...summary.actionRefs,
+          travelTransactionIds: Array.from({ length: 7 }, (_, index) => `transaction-${index}`),
+        },
+      },
+      pendingBookings: [],
+      missingReceiptCount: 0,
+      closeMonth: '2026-07',
+      closeMonthTravelTransactionIds: [],
+      otherMonthTravelReviewCount: 7,
+      now: new Date('2026-08-12T01:00:00.000Z'),
+    });
+
+    expect(result.tasks.find(item => item.kind === 'travel_review')?.count).toBe(0);
+    expect(result.tasks.find(item => item.kind === 'month_close')?.status).toBe('ready');
+    expect(result.scope.otherMonthTravelReviewCount).toBe(7);
+  });
+
   it('blocks downstream work when the bank does not reconcile', () => {
     const result = buildFinanceWorkday({
       summary: { ...summary, status: { ...summary.status, difference: 500 } },
@@ -178,5 +205,37 @@ describe('buildFinanceWorkday', () => {
   it('calculates the next six-times-daily KST Clobe sync', () => {
     expect(nextClobeScheduledSyncAt(new Date('2026-08-12T01:00:00.000Z'))).toBe('2026-08-12T03:12:00.000Z');
     expect(nextClobeScheduledSyncAt(new Date('2026-08-12T15:30:00.000Z'))).toBe('2026-08-12T19:12:00.000Z');
+  });
+});
+
+describe('scopeTravelActionTransactionIds', () => {
+  it('uses booking allocation month before Clobe memo or transaction month', () => {
+    expect(scopeTravelActionTransactionIds([{
+      id: 'allocated-august',
+      receivedAt: '2026-07-22T10:49:00+09:00',
+      memo: '260701_잘못된메모_투어폰',
+      bookingDepartureDates: ['2026-08-13'],
+    }], '2026-07')).toEqual([]);
+  });
+
+  it('uses a valid travel memo month when no booking allocation exists', () => {
+    expect(scopeTravelActionTransactionIds([{
+      id: 'memo-july',
+      receivedAt: '2026-06-29T14:48:43+09:00',
+      memo: '260701_김아름송이_투어폰',
+      bookingDepartureDates: [],
+    }], '2026-07')).toEqual(['memo-july']);
+  });
+
+  it('falls back to the bank transaction month for an unresolved blank memo', () => {
+    const rows = [{
+      id: 'blank-august',
+      receivedAt: '2026-08-06T10:23:55+09:00',
+      memo: null,
+      bookingDepartureDates: [],
+    }];
+
+    expect(scopeTravelActionTransactionIds(rows, '2026-07')).toEqual([]);
+    expect(scopeTravelActionTransactionIds(rows, '2026-08')).toEqual(['blank-august']);
   });
 });

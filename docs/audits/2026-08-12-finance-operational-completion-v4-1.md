@@ -18,10 +18,12 @@ This audit records the implementation and release checks for the selected-depart
 - Company evidence copy preserves `not_required` and presents it as no evidence check requested.
 - Confirmed locked profit and provisional review cash margin are visually and mathematically separate.
 - Legacy booking confirmation timestamps do not satisfy the V3 close gate. Only current closed/conditional period snapshots remove a booking from protected cash and provisional review margin.
+- Authenticated production click verification found seven global travel-review rows incorrectly blocking July: six August blank-memo deposits and one July transaction allocated to an August departure. The follow-up month-scope gate now assigns review rows by manual booking departure month, then Clobe memo departure month, then transaction month, and filters focused review to the exact server-issued transaction IDs.
 
 ## Automated Verification
 
 - Finance workday tests cover selected-month scope, future booking isolation, unique overlapping action counts, and KST sync scheduling.
+- Month-scope regression tests cover allocation precedence over conflicting memo/date values, valid memo month attribution, blank-memo transaction-month fallback, and non-blocking other-month rows.
 - Settlement tests cover exact 500/1,000 won fee suggestions, existing refunds/fees, split conservation, cancellation, and close decisions.
 - Bank reality tests cover exact transaction action IDs and deduplication.
 - Type checking, production build, and the finance regression suite are required before release.
