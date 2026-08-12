@@ -202,3 +202,15 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - 전체 Vitest 재검증은 680 files / 5,153 tests가 모두 PASS했다. `npm run type-check` 오류 0, `npm run lint` 경고·오류 0, `git diff --check` 오류 0이다.
 - 최종 production build는 Next.js 15.5.21에서 641.7초에 PASS했다. compile 93초, static pages 389/389, `.next` manifest 및 postbuild 검증이 모두 통과했다.
 - migration safety는 V3 5 files / 0 issues, prefix audit는 전체 452 files / 알려진 historical collision 16 / 신규 collision 0이다.
+
+## 17. 2026-08-12 isolated Supabase staging rehearsal
+
+- production schema만 추출하고 data를 복사하지 않은 non-default preview branch `blog-quality-v3-final-rehearsal-20260812`에서 V3 migration 5개를 순서대로 적용했다. 운영 DB write와 production deploy는 0건이다.
+- 최종 probe는 runtime resource 18/18, RLS 14/14, view `security_invoker=true`, eligibility function `security_invoker=true`, SQL/TS parity 9/9 PASS였다.
+- synthetic fixture 3건 중 공개 가능 1건만 public view와 snapshot에 나타났고 `changes_requested`와 미승인 HIGH-risk 글은 0건이었다. 익명 public view와 snapshot refresh RPC는 모두 `42501`로 차단됐다.
+- staging에서 발견한 view ordinal drift, safe-update RPC, ambiguous PL/pgSQL, preview default function privilege, duplicate hot-path index를 migration과 contract test로 수정했다.
+- 민감한 blog `SECURITY DEFINER` RPC 4개의 ACL은 anon/authenticated false, service-role true다. Supabase Security/Performance Advisor의 블로그 warning은 각각 0건이다.
+- targeted regression은 17 files / 89 tests, migration safety는 5 files / 0 issues로 PASS했다.
+- 최종 전체 회귀는 682 files / 5,168 tests, TypeScript 오류 0, ESLint 경고·오류 0, production build 490.9초와 389/389 static pages/postbuild PASS였다.
+- staging migration history에는 schema/API 검증이 끝난 후 정확히 V3 5개 version만 `applied`로 기록했고 다른 version은 repair하지 않았다.
+- 상세 증거와 credential rotation 후속 조치는 `docs/audits/blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`에 기록했다.

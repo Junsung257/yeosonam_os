@@ -134,3 +134,20 @@ npx tsx scripts/refresh-blog-public-snapshots.ts `
 ```
 
 HIGH/MEDIUM/LOW risk 본문의 fallback 최대 수명은 각각 24/48/72시간입니다. bundle refresh가 이 만료를 우회하지 않습니다.
+
+## 원격 Supabase preview 리허설 계약
+
+로컬 stack만으로 production schema drift를 재현할 수 없을 때는 production data가 없는 Supabase preview branch를 사용합니다.
+
+1. branch는 `with_data=false`, non-default, non-persistent로 생성하고 원격 Git branch와 다른 이름을 사용합니다. 같은 이름은 Git integration의 background migration과 수동 restore가 겹칠 수 있습니다.
+2. production에는 schema dump와 SELECT만 실행합니다. `db dump --linked --dry-run`은 credential을 출력할 수 있으므로 사용하지 않습니다.
+3. dump에 `COPY`, data `INSERT`, password, service-role key, `DATABASE_URL`이 없는지 확인합니다.
+4. restore는 PowerShell string pipe가 아니라 read-only Docker bind mount와 `psql -f`를 사용합니다. schema restore에는 `ON_ERROR_STOP=1`과 `--single-transaction`을 함께 지정합니다.
+5. `CREATE INDEX CONCURRENTLY`가 있는 V3 migration은 외부 transaction으로 감싸지 않고 파일 순서대로 하나씩 실행합니다.
+6. `public_blog_content_creatives`의 기존 ordinal 1~51과 `security_invoker=true`, V3 resource 18/18, RLS 14/14를 확인합니다.
+7. `npm run verify:blog-public-eligibility-parity-v3`와 `npm run verify:blog-staging-runtime-v3`를 preview URL/service-role/anon key로 실행합니다. fixture 외의 production data를 복제하지 않습니다.
+8. 네 개의 민감한 blog `SECURITY DEFINER` RPC가 anon/authenticated에 false, service-role에 true인지 확인하고 Supabase Advisor의 blog warning이 0인지 확인합니다.
+9. preview fixture와 snapshot refresh는 staging에만 허용합니다. production snapshot refresh와 corpus write는 별도 change window 전에는 실행하지 않습니다.
+10. 실패한 preview branch는 exact branch id와 `is_default=false`, `with_data=false`를 확인한 뒤 삭제합니다. production branch를 reset/delete/rebase/merge하지 않습니다.
+
+최종 staging 증거는 `docs/audits/blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`에 보존합니다.
