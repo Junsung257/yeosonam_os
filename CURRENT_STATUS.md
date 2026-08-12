@@ -2,6 +2,8 @@
 
 ## 2026-08-12 상품등록 실제 HWP 고객 흐름 검증
 - 실제 마쓰야마 HWP canary는 source → EvidenceIR → immutable revision → customer snapshot → 390x844 Chrome 상세/LP proof까지 terminal `published_degraded`로 완료됐다.
+- 저장 proof를 직접 확인하며 발견한 서버리스 Chromium 한글 공백과 긴 화면 고정요소 반복 문제를 수정했다. 현재 proof는 번들 한글 폰트를 필수로 확인하고, CTA를 열기 전 실제 첫 390x844 화면을 private Storage에 보존하며, 전체 내용·스크롤·CTA는 별도 자동 검사한다.
+- 고객 CTA proof 중 발견한 `lead_sheet_open` 점수 신호 DB 제약 불일치를 순방향 migration으로 보완했다. 실제 API 삽입 성공과 검증용 행 정리까지 확인했다.
 - 가격 10건, 3일/2박 일정, BX134/BX133, 포함 7건, 불포함 5건이 원문과 일치하고 critical/high evidence는 8/8이다. 상세와 LP 모두 CTA, snapshot/build hash, 금지문구, 깨진 이미지, hydration 검사를 통과했다.
 - 실제 사용권 이미지가 없어 브랜드 fallback만 표시되고, OAG/Cirium 이중 검증이 없어 항공시간은 고객 화면에서 숨겼다. 전역 freeze를 유지해 publication pointer와 고객 공개 상태는 변경하지 않았다.
 - 남은 고객 오픈 게이트는 기존 989건 shadow 분류, 대표 공급사 cohort 정확도, media provenance 자동 보완, 실 OAG/Cirium/OCR provider 정책, bounded CAS 공개와 surface convergence다. 한 건의 성공 canary는 전체 80% 자동 공개율을 증명하지 않는다.
