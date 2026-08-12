@@ -183,6 +183,7 @@ export async function GET(request: NextRequest) {
         transactionTotal: new Set(rows.map(row => row.transactionId)).size,
         itemTotal: rows.length,
         review: rows.filter(row => row.resolvedClassification === 'review').length,
+        batchEligibleReview: rows.filter(row => row.resolvedClassification === 'review' && row.batchEligible).length,
         resolved: rows.filter(row => row.resolvedClassification !== 'review').length,
         manual: rows.filter(row => row.resolutionSource === 'manual').length,
         missingReceipt: rows.filter(row => row.receiptStatus === 'missing').length,

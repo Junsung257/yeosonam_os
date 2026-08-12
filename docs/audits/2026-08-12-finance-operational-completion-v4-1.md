@@ -20,6 +20,7 @@ This audit records the implementation and release checks for the selected-depart
 - Legacy booking confirmation timestamps do not satisfy the V3 close gate. Only current closed/conditional period snapshots remove a booking from protected cash and provisional review margin.
 - Authenticated production click verification found seven global travel-review rows incorrectly blocking July: six August blank-memo deposits and one July transaction allocated to an August departure. The follow-up month-scope gate now assigns review rows by manual booking departure month, then Clobe memo departure month, then transaction month, and filters focused review to the exact server-issued transaction IDs.
 - Mobile and keyboard verification found that the booking detail drawer opened with Enter but did not close with Escape. The drawer now moves focus to its close control, traps Tab navigation inside the active drawer, leaves nested dialogs in control of their own Escape key, and restores focus to the originating booking control when closed.
+- Cross-tab verification found the legacy account-reality API only loaded bookings already referenced by a bank allocation, which understated reserves and unpaid supplier costs for zero-transaction or unmatched bookings. It now loads the same complete finance booking population as the finance center. OAuth copy now uses the token creation date rather than its refresh timestamp, and company review cards separate immediately classifiable rows from booking-sensitive individual review rows.
 
 ## Automated Verification
 
