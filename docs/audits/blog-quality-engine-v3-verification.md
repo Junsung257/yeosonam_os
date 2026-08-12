@@ -169,3 +169,19 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - offline canary 재실행은 24 drafts, 24 destinations, 12 intents, 12 archetypes, duplicate title/opening 및 unsupported numeric/stale HIGH claim 모두 0으로 PASS했다.
 - pHash read-only 실행은 `.env.prod`의 placeholder key 때문에 `corpus_read_failed:Invalid API key`로 중단됐다. 따라서 실제 이미지 hash 수와 duplicate cluster는 아직 측정하지 않았고 DB update는 0건이다.
 - 작업 중 `origin/main`은 시작 commit `2ab65ef0`에서 finance 변경을 포함한 `8543d6d2`로 전진했다. blog 파일 직접 변경은 없었고, 5개 블로그 커밋을 최신 main 위에 충돌 없이 재배치했다. 재배치 후 typecheck, 1,346 tests, 전체 lint, production build를 모두 다시 통과했다.
+
+## 15. 2026-08-12 runtime/browser hardening follow-up
+
+- `origin/main`의 후속 finance commit `32871161` 위로 기존 6개 블로그 커밋을 다시 충돌 없이 rebase했다. 이 검증 문서 갱신 commit을 포함한 최종 branch는 `origin/main` 대비 behind 0, ahead 7이다.
+- catalog page, durable snapshot, facet, detail snapshot query를 hard deadline으로 묶었다. AbortSignal을 무시하는 adapter/socket도 `Promise.race`가 각각 2.5~6초 안에 종료해 bundled/durable fallback으로 전환한다.
+- 상세 query의 PostgREST/schema/connection 오류를 `null`로 바꾸던 false-404 경로를 제거했다. cache에 남은 `null`도 fresh query로 재확인하며, 실제 0행만 404이고 query 오류는 last-known-good 또는 database-unavailable surface로 간다.
+- V3 migration 직전/직후 rolling window에는 기존 `public_blog_content_creatives` view의 공개 자격 정책을 그대로 사용하면서 `content_modified_at`, `fact_checked_at` projection 부재(`42703`, `PGRST204`)만 legacy projection으로 재시도한다. 이때 `updated_at`은 modified fallback으로만 사용하고 fact-check 날짜는 만들지 않는다.
+- Windows `next dev`에서 production manifest 보정 plugin이 `afterEmit`마다 `.next`를 다시 써 watcher를 재기동하던 문제를 막았다. 보정 plugin은 production compiler에서만 등록한다. 별도 dev dist에서 instrumentation cold compile 134.1초, `/blog` cold compile 249.5초였으나 반복 manifest write가 사라지고 `Ready`에 도달했다. cache 재사용 기동에서는 `Ready` 32초, `/blog` compile 22.5초였다.
+- 사용자 Chrome 실화면 검증: `/blog` title `여행 매거진 | 여소남`, H1 `여행 매거진`, visible text 1,269자, 공개 count 173, error overlay 0, console warning/error 0, database-unavailable 문구 미노출. 카드 및 destination facet가 렌더됐다.
+- 로컬 Supabase는 API/DB 전체를 기동해 read-only query를 확인했다. public table 384개, `content_creatives` 0행, migration history 0행이며 V3 테이블은 아직 없다. 따라서 상세 bundled artifact 0건과 함께 실제 slug 본문을 재현할 row는 없었다. 목록은 bundled snapshot으로 정상 제공되고 상세는 가짜 본문이나 false-404 대신 fail-closed surface를 제공했다.
+- migration rehearsal은 일반 개발 project id `yeosonam-os`에서 확인값을 넣어도 의도적으로 거부됐다. 이제 `rehearsal`, `ephemeral`, `scratch`가 포함된 별도 project id, 정확한 project-id confirmation, loopback DB URL이 모두 맞아야만 local reset을 실행한다. 이번 검증에서 DB reset/migration apply는 0회다.
+- 추가 targeted regression은 5 files / 19 tests PASS였다. 경로 기준 전체 blog suite는 Windows 명령행 제한을 피하기 위해 45/45/45/45/2 파일로 나눠 실행했고 182 files / 1,338 tests가 모두 PASS했다. `npm run type-check` 오류 0, 전체 `npm run lint` 경고·오류 0이다.
+- 최종 production build는 Next.js 15.5.21에서 964.1초에 PASS했다. compile 5.9분, static pages 389/389, `.next` postbuild manifest 검증 PASS다. 긴 cold build 시간은 CI timeout/caching 운영 위험으로 남긴다.
+- offline canary 재실행 결과 24 drafts, 24 destinations, 12 intents, 12 archetypes, normalized title skeleton 최대 2, FAQ 12.5%, checklist 4.17%, duplicate title/opening, unsupported numeric, stale HIGH, cross-destination image reuse, broken Korean 모두 0으로 PASS했다.
+- migration safety는 5 files / 0 issues, prefix audit는 전체 451 files / 기존 collision 16 / 신규 collision 0이다.
+- corpus read-only audit 재시도는 `.env.prod` placeholder key 때문에 `corpus_read_failed:Invalid API key`로 실패했다. 이를 성공으로 처리하지 않았고 운영 DB write는 0건이다.
