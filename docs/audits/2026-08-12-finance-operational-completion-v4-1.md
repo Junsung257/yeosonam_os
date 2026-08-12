@@ -19,6 +19,7 @@ This audit records the implementation and release checks for the selected-depart
 - Confirmed locked profit and provisional review cash margin are visually and mathematically separate.
 - Legacy booking confirmation timestamps do not satisfy the V3 close gate. Only current closed/conditional period snapshots remove a booking from protected cash and provisional review margin.
 - Authenticated production click verification found seven global travel-review rows incorrectly blocking July: six August blank-memo deposits and one July transaction allocated to an August departure. The follow-up month-scope gate now assigns review rows by manual booking departure month, then Clobe memo departure month, then transaction month, and filters focused review to the exact server-issued transaction IDs.
+- Mobile and keyboard verification found that the booking detail drawer opened with Enter but did not close with Escape. The drawer now moves focus to its close control, traps Tab navigation inside the active drawer, leaves nested dialogs in control of their own Escape key, and restores focus to the originating booking control when closed.
 
 ## Automated Verification
 
