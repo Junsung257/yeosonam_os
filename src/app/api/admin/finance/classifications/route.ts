@@ -176,13 +176,17 @@ export async function GET(request: NextRequest) {
       return [...splitRows, ...wholeTransactionRows];
     });
 
+    const reviewRows = rows.filter(row => row.resolvedClassification === 'review');
+
     return NextResponse.json({
       rows,
       rules: ruleResult.data ?? [],
       summary: {
         transactionTotal: new Set(rows.map(row => row.transactionId)).size,
         itemTotal: rows.length,
-        review: rows.filter(row => row.resolvedClassification === 'review').length,
+        reviewTransactionTotal: new Set(reviewRows.map(row => row.transactionId)).size,
+        review: reviewRows.length,
+        batchEligibleReview: reviewRows.filter(row => row.batchEligible).length,
         resolved: rows.filter(row => row.resolvedClassification !== 'review').length,
         manual: rows.filter(row => row.resolutionSource === 'manual').length,
         missingReceipt: rows.filter(row => row.receiptStatus === 'missing').length,

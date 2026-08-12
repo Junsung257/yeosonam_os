@@ -27,7 +27,7 @@ interface ClassificationRow {
 
 interface ClassificationResponse {
   rows: ClassificationRow[];
-  summary: { transactionTotal: number; itemTotal: number; review: number; resolved: number; manual: number; missingReceipt: number };
+  summary: { transactionTotal: number; itemTotal: number; reviewTransactionTotal: number; review: number; batchEligibleReview: number; resolved: number; manual: number; missingReceipt: number };
   error?: string;
 }
 
@@ -178,7 +178,7 @@ export default function FinanceClassifications({ focusMode = false }: { focusMod
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">Clobe 원본 거래</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.transactionTotal ?? '...' }건</p><p className="mt-1 text-[10px] text-admin-muted">분류 항목 {data?.summary.itemTotal ?? '...'}건</p></div>
-        <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4"><p className="text-xs text-amber-700">미분류</p><p className="mt-1 text-xl font-bold text-amber-900">{data?.summary.review ?? '...' }건</p></div>
+        <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4"><p className="text-xs text-amber-700">미분류 검토 항목</p><p className="mt-1 text-xl font-bold text-amber-900">{data?.summary.review ?? '...' }건</p><p className="mt-1 text-[10px] leading-4 text-amber-800">은행 거래 {data?.summary.reviewTransactionTotal ?? '...'}건 · 바로 분류 {data?.summary.batchEligibleReview ?? '...'}항목 · 개별 확인 {(data?.summary.review ?? 0) - (data?.summary.batchEligibleReview ?? 0)}항목</p></div>
         <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs text-emerald-700">분류 완료</p><p className="mt-1 text-xl font-bold text-emerald-900">{data?.summary.resolved ?? '...' }건</p></div>
         <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><p className="text-xs text-admin-muted">{(data?.summary.missingReceipt ?? 0) > 0 ? '증빙 확인 요청' : '증빙 확인 요청 없음'}</p><p className="mt-1 text-xl font-bold text-admin-text">{data?.summary.missingReceipt ?? '...' }건</p><p className="mt-1 text-[10px] text-admin-muted">수동 요청한 거래만 집계</p></div>
       </div>

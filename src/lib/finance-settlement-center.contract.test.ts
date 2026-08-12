@@ -55,12 +55,28 @@ const classificationApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/classifications/route.ts'),
   'utf8',
 );
+const financeClassifications = readFileSync(
+  join(process.cwd(), 'src/components/admin/finance/FinanceClassifications.tsx'),
+  'utf8',
+);
 const classificationBatchMigration = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260811224328_finance_classification_batch_workflow.sql'),
   'utf8',
 );
 const classificationBatchApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/classifications/batch/route.ts'),
+  'utf8',
+);
+const accountRealityApi = readFileSync(
+  join(process.cwd(), 'src/app/api/bank-transactions/account-reality/route.ts'),
+  'utf8',
+);
+const integrationsApi = readFileSync(
+  join(process.cwd(), 'src/app/api/admin/integrations/route.ts'),
+  'utf8',
+);
+const paymentsPage = readFileSync(
+  join(process.cwd(), 'src/app/admin/payments/PaymentsPageClient.tsx'),
   'utf8',
 );
 
@@ -178,5 +194,24 @@ describe('finance settlement center contracts', () => {
     expect(fingerprintIntegrityMigration).toContain("WHERE status = 'cancelled'");
     expect(fingerprintIntegrityMigration).toContain("SET status = 'customer_cancelled'");
     expect(fingerprintIntegrityMigration).toContain('finance_excluded = true');
+  });
+
+  it('uses one complete booking reserve population across finance tabs', () => {
+    expect(accountRealityApi).toContain(".from('bookings')");
+    expect(accountRealityApi).toContain(".limit(5000)");
+    expect(accountRealityApi).not.toContain('const bookingIds =');
+    expect(accountRealityApi).toContain(".from('settlement_periods')");
+    expect(accountRealityApi).toContain(".from('settlement_period_items')");
+    expect(accountRealityApi).toContain('confirmedSettlementItems');
+    expect(accountRealityApi).toContain('confirmedBookingIds');
+  });
+
+  it('keeps connection dates and focused work counts semantically consistent', () => {
+    expect(integrationsApi).toContain('connected_at: row?.created_at ?? null');
+    expect(integrationsApi).not.toContain('connected_at: row?.updated_at ?? null');
+    expect(classificationApi).toContain('reviewTransactionTotal');
+    expect(classificationApi).toContain('batchEligibleReview');
+    expect(financeClassifications).toContain('은행 거래 {data?.summary.reviewTransactionTotal');
+    expect(paymentsPage).toContain('opsQueueSummary && !focusMode');
   });
 });
