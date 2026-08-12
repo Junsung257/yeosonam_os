@@ -71,6 +71,10 @@ const accountRealityApi = readFileSync(
   join(process.cwd(), 'src/app/api/bank-transactions/account-reality/route.ts'),
   'utf8',
 );
+const bankAccountReality = readFileSync(
+  join(process.cwd(), 'src/lib/bank-account-reality.ts'),
+  'utf8',
+);
 const integrationsApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/integrations/route.ts'),
   'utf8',
@@ -209,9 +213,16 @@ describe('finance settlement center contracts', () => {
   it('keeps connection dates and focused work counts semantically consistent', () => {
     expect(integrationsApi).toContain('connected_at: row?.created_at ?? null');
     expect(integrationsApi).not.toContain('connected_at: row?.updated_at ?? null');
+    expect(financeCenterService).toContain("allocation.target_type === 'review'");
+    expect(bankAccountReality).toContain("| 'review'");
+    expect(financeCenterService).toContain('unclassifiedCompany: unclassifiedCompanyTransactionIds.length');
+    expect(financeCenterService).not.toContain('unclassifiedCompany: profit.classificationReviewCount');
     expect(classificationApi).toContain('reviewTransactionTotal');
+    expect(classificationApi).toContain('companyReviewTransactionTotal');
+    expect(classificationApi).toContain('travelReviewTransactionTotal');
     expect(classificationApi).toContain('batchEligibleReview');
-    expect(financeClassifications).toContain('은행 거래 {data?.summary.reviewTransactionTotal');
+    expect(financeClassifications).toContain('회사 미분류 {data?.summary.companyReviewTransactionTotal');
+    expect(financeClassifications).toContain('여행 가능성 {data?.summary.travelReviewTransactionTotal');
     expect(paymentsPage).toContain('opsQueueSummary && !focusMode');
   });
 });

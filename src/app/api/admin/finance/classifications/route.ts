@@ -177,6 +177,8 @@ export async function GET(request: NextRequest) {
     });
 
     const reviewRows = rows.filter(row => row.resolvedClassification === 'review');
+    const companyReviewRows = reviewRows.filter(row => row.settlement_scope === 'non_travel');
+    const travelReviewRows = reviewRows.filter(row => row.settlement_scope === 'travel');
 
     return NextResponse.json({
       rows,
@@ -185,6 +187,8 @@ export async function GET(request: NextRequest) {
         transactionTotal: new Set(rows.map(row => row.transactionId)).size,
         itemTotal: rows.length,
         reviewTransactionTotal: new Set(reviewRows.map(row => row.transactionId)).size,
+        companyReviewTransactionTotal: new Set(companyReviewRows.map(row => row.transactionId)).size,
+        travelReviewTransactionTotal: new Set(travelReviewRows.map(row => row.transactionId)).size,
         review: reviewRows.length,
         batchEligibleReview: reviewRows.filter(row => row.batchEligible).length,
         resolved: rows.filter(row => row.resolvedClassification !== 'review').length,
