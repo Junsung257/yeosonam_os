@@ -3,11 +3,23 @@ export const BLOG_AUTOPUBLISH_MODES = ['draft_only', 'reviewed_only', 'live'] as
 export type BlogAutopublishMode = (typeof BLOG_AUTOPUBLISH_MODES)[number];
 
 export interface BlogAutopublishPolicyV3 {
+  requestedMode: BlogAutopublishMode;
   mode: BlogAutopublishMode;
   dailyPublishCap: number;
   maxWeatherShare30d: number;
   maxSameArchetypeInLast10: number;
   requireDemandSignal: boolean;
+  deploymentProvenance: BlogDeploymentProvenanceV3;
+}
+
+export interface BlogDeploymentProvenanceV3 {
+  required: boolean;
+  passed: boolean;
+  environment: string | null;
+  expectedGitRef: string;
+  actualGitRef: string | null;
+  commitSha: string | null;
+  reasons: string[];
 }
 
 export interface BlogDemandSignalInput {
@@ -52,15 +64,45 @@ function envBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+export function evaluateBlogDeploymentProvenanceV3(
+  env: Record<string, string | undefined> = process.env,
+): BlogDeploymentProvenanceV3 {
+  const environment = String(env.VERCEL_ENV || '').trim() || null;
+  const required = environment === 'production';
+  const expectedGitRef = String(env.BLOG_PRODUCTION_ALLOWED_GIT_REF || 'main').trim() || 'main';
+  const actualGitRef = String(env.VERCEL_GIT_COMMIT_REF || '').trim() || null;
+  const commitSha = String(env.VERCEL_GIT_COMMIT_SHA || '').trim() || null;
+  const reasons: string[] = [];
+
+  if (required && !actualGitRef) reasons.push('production_git_ref_missing');
+  if (required && actualGitRef && actualGitRef !== expectedGitRef) {
+    reasons.push('production_git_ref_not_allowed');
+  }
+  if (required && !commitSha) reasons.push('production_commit_sha_missing');
+
+  return {
+    required,
+    passed: !required || reasons.length === 0,
+    environment,
+    expectedGitRef,
+    actualGitRef,
+    commitSha,
+    reasons,
+  };
+}
+
 export function readBlogAutopublishPolicyV3(
   env: Record<string, string | undefined> = process.env,
 ): BlogAutopublishPolicyV3 {
   const rawMode = String(env.BLOG_AUTOPUBLISH_MODE || '').trim();
-  const mode = (BLOG_AUTOPUBLISH_MODES as readonly string[]).includes(rawMode)
+  const requestedMode = (BLOG_AUTOPUBLISH_MODES as readonly string[]).includes(rawMode)
     ? rawMode as BlogAutopublishMode
     : 'draft_only';
+  const deploymentProvenance = evaluateBlogDeploymentProvenanceV3(env);
+  const mode = deploymentProvenance.passed ? requestedMode : 'draft_only';
 
   return {
+    requestedMode,
     mode,
     dailyPublishCap: Math.floor(boundedNumber(env.BLOG_DAILY_PUBLISH_CAP, 1, 0, 20)),
     maxWeatherShare30d: boundedNumber(env.BLOG_MAX_WEATHER_SHARE_30D, 0.2, 0, 1),
@@ -68,6 +110,7 @@ export function readBlogAutopublishPolicyV3(
       boundedNumber(env.BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10, 2, 0, 10),
     ),
     requireDemandSignal: envBoolean(env.BLOG_REQUIRE_DEMAND_SIGNAL, true),
+    deploymentProvenance,
   };
 }
 

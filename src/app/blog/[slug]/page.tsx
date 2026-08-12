@@ -396,8 +396,10 @@ async function getPost(slug: string): Promise<BlogPost | null> {
 
 async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   const dbSlug = safeDecodeSlug(slug);
-  const snapshot = await loadBlogPublicDetailSnapshotV3(dbSlug).catch(() => null);
-  if (snapshot) {
+  const snapshotResult = await loadBlogPublicDetailSnapshotV3(dbSlug);
+  if (snapshotResult.state === 'missing') return null;
+  const snapshot = snapshotResult.state === 'found' ? snapshotResult.snapshot : null;
+  if (snapshot !== null) {
     return {
       id: snapshot.creative_id,
       slug: snapshot.slug,
@@ -529,12 +531,6 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   return post;
 }
 
-const getCachedPostFast = unstable_cache(
-  async (slug: string) => getPostFastUncached(slug),
-  ['blog-detail-v5-no-false-404'],
-  { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
-);
-
 function isNextCacheContextUnavailable(error: unknown): boolean {
   return error instanceof Error && /incrementalCache missing in unstable_cache/i.test(error.message);
 }
@@ -548,9 +544,33 @@ function hasUsableBlogBody(post: BlogPost | null | undefined): boolean {
   return text.length >= 200;
 }
 
-function shouldRefreshCachedBlogPost(post: BlogPost | null | undefined): boolean {
-  return !post || !hasUsableBlogBody(post);
+type BlogPostCacheEnvelope =
+  | { state: 'found'; post: BlogPost }
+  | { state: 'missing'; post: null }
+  | { state: 'unavailable'; post: null };
+
+async function loadBlogPostCacheEnvelope(slug: string): Promise<BlogPostCacheEnvelope> {
+  try {
+    const post = await getPostFastUncached(slug);
+    if (!post) return { state: 'missing', post: null };
+    if (!hasUsableBlogBody(post)) return { state: 'unavailable', post: null };
+    return { state: 'found', post };
+  } catch (error) {
+    if (isBlogDatabaseUnavailableError(error)) {
+      // Cache a short-lived typed outage result instead of rejecting inside
+      // unstable_cache. This prevents transient DB incidents becoming 404s
+      // or surfacing as failed cache revalidation in production telemetry.
+      return { state: 'unavailable', post: null };
+    }
+    throw error;
+  }
 }
+
+const getCachedPostFast = unstable_cache(
+  loadBlogPostCacheEnvelope,
+  ['blog-detail-v6-outage-envelope'],
+  { revalidate: 30, tags: [BLOG_DETAIL_CACHE_TAG] },
+);
 
 async function getPostFast(slug: string): Promise<BlogPost | null> {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
@@ -558,17 +578,8 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   }
   try {
     const cached = await getCachedPostFast(slug);
-    if (shouldRefreshCachedBlogPost(cached)) {
-      // Cached null can be an old transient query failure. Recheck it before
-      // returning a 404, and never turn a refresh error into another null.
-      const fresh = await getPostFastUncached(slug);
-      if (!fresh) return null;
-      if (hasUsableBlogBody(fresh)) return fresh;
-      if (!hasUsableBlogBody(cached)) {
-        throw createBlogDatabaseUnavailableError();
-      }
-    }
-    return cached;
+    if (cached.state === 'unavailable') throw createBlogDatabaseUnavailableError();
+    return cached.post;
   } catch (error) {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);

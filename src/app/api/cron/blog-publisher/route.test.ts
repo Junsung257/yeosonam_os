@@ -22,6 +22,18 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('information_evidence_content_key: evidenceContentKey');
     expect(source).toContain('applyFinalResearchStructureRepair();');
     expect(source).toContain('evaluateBlogAutopublishDecisionV3');
+    expect(source).toContain('loadQueueDemandEvidenceV3(item)');
+    expect(source).toContain('verified_demand_signal_missing_before_generation');
+    expect(source).toContain('demand_signal_repository_unavailable_before_generation');
+    const snapshotRefresh = source.indexOf("rpc('refresh_blog_public_snapshots_v3')");
+    const indexingEnqueue = source.indexOf('const result = await enqueueBlogIndexingJob({');
+    expect(snapshotRefresh).toBeGreaterThan(0);
+    expect(snapshotRefresh).toBeLessThan(indexingEnqueue);
+    expect(source).toContain("publicSnapshotRefresh.status === 'succeeded'");
+    expect(source).toContain('probeBlogRuntimeSchemaReadinessV3');
+    expect(source).toContain("resource.scope === 'publish' || resource.scope === 'delivery'");
+    expect(source).toContain('!schemaReadiness.publishReady || !schemaReadiness.deliveryReady');
+    expect(source).toContain("reason: 'blog_quality_v3_runtime_schema_not_ready'");
     expect(source).toContain('evaluateBlogCorpusCandidateV3');
     expect(source).toContain('evaluateBlogQualityV3');
     expect(source).not.toContain("'local_transport_deterministic_evidence_article'");

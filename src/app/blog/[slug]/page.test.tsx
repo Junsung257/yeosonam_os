@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 const mockState = vi.hoisted(() => ({
   postQueryError: false,
   legacyProjectionSucceeds: false,
+  snapshotTableReady: false,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -63,6 +64,11 @@ vi.mock('@/lib/supabase', () => {
   };
 
   function queryResult(table: string, selected: string | undefined) {
+    if (table === 'blog_public_snapshots') {
+      return mockState.snapshotTableReady
+        ? { data: [], error: null }
+        : { data: null, error: { code: '42P01', message: 'relation blog_public_snapshots does not exist' } };
+    }
     if (table === 'public_blog_content_creatives' && selected?.includes('blog_html')) {
       if (mockState.postQueryError) {
         if (mockState.legacyProjectionSucceeds && !selected.includes('content_modified_at')) {
@@ -124,14 +130,16 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('if (/<table\\b/i.test(html)) return null;');
   });
 
-  it('bypasses cached blog detail rows only when the article body is unusable', () => {
+  it('keeps database outages out of the Next cache rejection path', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
 
-    expect(source).toContain('function shouldRefreshCachedBlogPost');
-    expect(source).toContain('return !post || !hasUsableBlogBody(post)');
-    expect(source).toContain('const fresh = await getPostFastUncached(slug)');
-    expect(source).not.toContain('getPostFastUncached(slug).catch(() => null)');
-    expect(source).toContain('throw createBlogDatabaseUnavailableError()');
+    expect(source).toContain('type BlogPostCacheEnvelope');
+    expect(source).toContain("return { state: 'unavailable', post: null }");
+    expect(source).toContain("['blog-detail-v6-outage-envelope']");
+    expect(source).toContain("if (snapshotResult.state === 'missing') return null");
+    expect(source).toContain("if (cached.state === 'unavailable') throw createBlogDatabaseUnavailableError()");
+    expect(source).not.toContain('function shouldRefreshCachedBlogPost');
+    expect(source).not.toContain('unstable_cache(\n  async (slug: string) => getPostFastUncached(slug)');
     expect(source).not.toContain('inspectBlogIntentQuality');
   });
 
@@ -197,7 +205,7 @@ describe('/blog/[slug] page smoke', () => {
       const mod = await import('./page');
       const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
       const element = await Page({
-        params: Promise.resolve({ slug: 'manila-weather' }),
+        params: Promise.resolve({ slug: 'unbundled-db-error-fixture' }),
         searchParams: Promise.resolve({}),
       });
 

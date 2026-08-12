@@ -1,0 +1,53 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  BLOG_RUNTIME_RESOURCES_V3,
+  probeBlogRuntimeSchemaReadinessV3,
+} from './blog-runtime-readiness-v3';
+
+describe('blog runtime schema readiness v3', () => {
+  it('requires every publish resource instead of trusting the latest migration number', async () => {
+    const report = await probeBlogRuntimeSchemaReadinessV3(async (resource) => ({
+      error: resource.key === 'publication_decisions'
+        ? { code: '42P01', message: 'relation does not exist' }
+        : null,
+    }), new Date('2026-08-12T00:00:00.000Z'));
+
+    expect(report.publishReady).toBe(false);
+    expect(report.fullyReady).toBe(false);
+    expect(report.missing).toContain('publication_decisions');
+    expect(report.checkedAt).toBe('2026-08-12T00:00:00.000Z');
+  });
+
+  it('reports scope readiness independently for safe operator diagnosis', async () => {
+    const report = await probeBlogRuntimeSchemaReadinessV3(async (resource) => ({
+      error: resource.scope === 'measurement'
+        ? { code: 'PGRST204', message: 'missing measurement projection' }
+        : null,
+    }));
+
+    expect(report.publishReady).toBe(true);
+    expect(report.deliveryReady).toBe(true);
+    expect(report.measurementReady).toBe(false);
+    expect(report.missing.length).toBe(
+      BLOG_RUNTIME_RESOURCES_V3.filter((resource) => resource.scope === 'measurement').length,
+    );
+  });
+
+  it('fails closed when a probe throws', async () => {
+    const report = await probeBlogRuntimeSchemaReadinessV3(async (resource) => {
+      if (resource.key === 'public_snapshots') throw new Error('network timeout');
+      return { error: null };
+    });
+
+    expect(report.deliveryReady).toBe(false);
+    expect(report.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'public_snapshots',
+        ready: false,
+        errorCode: 'probe_exception',
+        errorMessage: 'network timeout',
+      }),
+    ]));
+  });
+});

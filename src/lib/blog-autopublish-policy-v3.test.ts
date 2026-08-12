@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  evaluateBlogDeploymentProvenanceV3,
   evaluateBlogAutopublishDecisionV3,
   hasVerifiedBlogDemandSignal,
   readBlogAutopublishPolicyV3,
@@ -8,14 +9,49 @@ import {
 
 describe('blog autopublish policy v3', () => {
   it('fails closed to draft_only with conservative defaults', () => {
-    expect(readBlogAutopublishPolicyV3({})).toEqual({
+    expect(readBlogAutopublishPolicyV3({})).toMatchObject({
+      requestedMode: 'draft_only',
       mode: 'draft_only',
       dailyPublishCap: 1,
       maxWeatherShare30d: 0.2,
       maxSameArchetypeInLast10: 2,
       requireDemandSignal: true,
+      deploymentProvenance: {
+        required: false,
+        passed: true,
+        expectedGitRef: 'main',
+      },
     });
     expect(readBlogAutopublishPolicyV3({ BLOG_AUTOPUBLISH_MODE: 'oops' }).mode).toBe('draft_only');
+  });
+
+  it('forces production feature-branch deployments to draft_only', () => {
+    const policy = readBlogAutopublishPolicyV3({
+      BLOG_AUTOPUBLISH_MODE: 'live',
+      VERCEL_ENV: 'production',
+      VERCEL_GIT_COMMIT_REF: 'codex/unsafe-feature',
+      VERCEL_GIT_COMMIT_SHA: 'abc123',
+    });
+
+    expect(policy.requestedMode).toBe('live');
+    expect(policy.mode).toBe('draft_only');
+    expect(policy.deploymentProvenance).toMatchObject({
+      required: true,
+      passed: false,
+      expectedGitRef: 'main',
+      actualGitRef: 'codex/unsafe-feature',
+      reasons: ['production_git_ref_not_allowed'],
+    });
+  });
+
+  it('requires production system git evidence before autopublishing', () => {
+    const provenance = evaluateBlogDeploymentProvenanceV3({ VERCEL_ENV: 'production' });
+
+    expect(provenance.passed).toBe(false);
+    expect(provenance.reasons).toEqual([
+      'production_git_ref_missing',
+      'production_commit_sha_missing',
+    ]);
   });
 
   it('never publishes in draft_only and never runs public side effects', () => {

@@ -1,5 +1,4 @@
-import { unstable_cache } from 'next/cache';
-import { BLOG_DETAIL_CACHE_TAG, createBlogDatabaseUnavailableError } from './blog-cache';
+import { createBlogDatabaseUnavailableError } from './blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from './cron-resource-saver';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from './supabase';
 import bundledDetailSnapshot from '@/data/blog-public-detail-snapshot-v3.json';
@@ -30,6 +29,11 @@ export interface BlogPublicDetailSnapshotV3 {
   content_modified_at: string | null;
   fact_checked_at: string | null;
 }
+
+export type BlogPublicDetailSnapshotLoadResultV3 =
+  | { state: 'found'; snapshot: BlogPublicDetailSnapshotV3 }
+  | { state: 'missing'; snapshot: null }
+  | { state: 'unavailable'; snapshot: null };
 
 interface BlogPublicDetailSnapshotBundleV3 {
   generated_at: string | null;
@@ -65,9 +69,11 @@ export function selectBundledBlogPublicDetailSnapshotV3(
 }
 
 function snapshotRiskBrief(snapshot: BlogPublicDetailSnapshotV3 | undefined): string | null {
-  const brief = snapshot?.generation_meta?.content_brief;
+  const brief = snapshot?.generation_meta?.content_brief
+    ?? snapshot?.generation_meta?.content_brief_v3;
   if (!brief || typeof brief !== 'object' || Array.isArray(brief)) return null;
-  const risk = (brief as Record<string, unknown>).risk_level;
+  const record = brief as Record<string, unknown>;
+  const risk = record.risk_level ?? record.riskLevel;
   return risk === 'HIGH' || risk === 'MEDIUM' || risk === 'LOW' ? risk : null;
 }
 
@@ -77,9 +83,12 @@ function loadBundled(slug: string): BlogPublicDetailSnapshotV3 | null {
   return selectBundledBlogPublicDetailSnapshotV3(BUNDLED_DETAIL_SNAPSHOT, slug);
 }
 
-async function loadUncached(slug: string): Promise<BlogPublicDetailSnapshotV3 | null> {
+async function loadUncached(slug: string): Promise<BlogPublicDetailSnapshotLoadResultV3> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured || shouldSkipPublicDbReadsForResourceSaver()) {
-    return loadBundled(slug) ?? Promise.reject(createBlogDatabaseUnavailableError());
+    const bundled = loadBundled(slug);
+    return bundled
+      ? { state: 'found', snapshot: bundled }
+      : { state: 'unavailable', snapshot: null };
   }
   const { data, error } = await runBlogPublicQueryWithTimeout(
     'detail-snapshot',
@@ -91,16 +100,21 @@ async function loadUncached(slug: string): Promise<BlogPublicDetailSnapshotV3 | 
       .limit(1),
     6000,
   ).catch(() => ({ data: null, error: createBlogDatabaseUnavailableError() }));
-  if (error) return loadBundled(slug) ?? Promise.reject(createBlogDatabaseUnavailableError());
-  return ((data?.[0] || null) as unknown) as BlogPublicDetailSnapshotV3 | null;
+  if (error) {
+    const bundled = loadBundled(slug);
+    return bundled
+      ? { state: 'found', snapshot: bundled }
+      : { state: 'unavailable', snapshot: null };
+  }
+  const snapshot = ((data?.[0] || null) as unknown) as BlogPublicDetailSnapshotV3 | null;
+  return snapshot
+    ? { state: 'found', snapshot }
+    : { state: 'missing', snapshot: null };
 }
 
-const loadCached = unstable_cache(loadUncached, ['blog-public-detail-snapshot-v3'], {
-  revalidate: 300,
-  tags: [BLOG_DETAIL_CACHE_TAG],
-});
-
-export async function loadBlogPublicDetailSnapshotV3(slug: string): Promise<BlogPublicDetailSnapshotV3 | null> {
-  if (process.env.NODE_ENV === 'test' || process.env.VITEST) return loadUncached(slug);
-  return loadCached(slug);
+export async function loadBlogPublicDetailSnapshotV3(slug: string): Promise<BlogPublicDetailSnapshotLoadResultV3> {
+  // The detail page owns the single cache boundary. Keeping another
+  // unstable_cache here caused rejected database reads to be reported as
+  // cache revalidation failures even when the page rendered its fallback.
+  return loadUncached(slug);
 }

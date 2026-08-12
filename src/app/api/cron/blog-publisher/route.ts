@@ -140,11 +140,20 @@ import { createBlogInformationContentFingerprint } from '@/lib/blog-information-
 import { createBlogInformationEvidenceWorkflowStore } from '@/lib/blog-information-review-repository';
 import {
   evaluateBlogAutopublishDecisionV3,
+  hasVerifiedBlogDemandSignal,
   readBlogAutopublishPolicyV3,
   type BlogDemandSignalInput,
 } from '@/lib/blog-autopublish-policy-v3';
+import {
+  mergePersistedBlogDemandSignalsV3,
+  type PersistedBlogDemandSignalV3,
+} from '@/lib/blog-demand-repository-v3';
 import { buildBlogContentBriefV3 } from '@/lib/blog-content-brief-v3';
 import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
+import {
+  BLOG_RUNTIME_RESOURCES_V3,
+  probeBlogRuntimeSchemaReadinessV3,
+} from '@/lib/blog-runtime-readiness-v3';
 import {
   evaluateBlogCorpusCandidateV3,
   type BlogCorpusCandidateV3,
@@ -223,6 +232,34 @@ function readQueueDemandSignalV3(item: any): BlogDemandSignalInput {
     monthlySearchVolume: typeof item?.monthly_search_volume === 'number' ? item.monthly_search_volume : null,
     trendScore: typeof item?.trend_score === 'number' ? item.trend_score : null,
   };
+}
+
+async function loadQueueDemandEvidenceV3(item: any): Promise<{
+  repositoryReady: boolean;
+  signal: BlogDemandSignalInput;
+  acceptedProviders: string[];
+  rejectedCount: number;
+  error: string | null;
+}> {
+  const base = readQueueDemandSignalV3(item);
+  const { data, error } = await supabaseAdmin
+    .from('blog_demand_signals')
+    .select('provider, signal_value, source_reference, verified_at, expires_at')
+    .eq('queue_id', item.id);
+  if (error) {
+    return {
+      repositoryReady: false,
+      signal: base,
+      acceptedProviders: [],
+      rejectedCount: 0,
+      error: error.message,
+    };
+  }
+  const merged = mergePersistedBlogDemandSignalsV3(
+    base,
+    (data ?? []) as PersistedBlogDemandSignalV3[],
+  );
+  return { repositoryReady: true, ...merged, error: null };
 }
 
 async function loadBlogPortfolioSaturationV3(archetype: string): Promise<{
@@ -1163,6 +1200,31 @@ async function runBlogPublisher(request: NextRequest) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
+  const schemaReadiness = await probeBlogRuntimeSchemaReadinessV3(
+    async (resource) => {
+      const { error } = await supabaseAdmin
+        .from(resource.table)
+        .select(resource.columns, { count: 'exact', head: true });
+      return { error };
+    },
+    new Date(),
+    BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
+      resource.scope === 'publish' || resource.scope === 'delivery'
+    )),
+  );
+  if (!schemaReadiness.publishReady || !schemaReadiness.deliveryReady) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'blog_quality_v3_runtime_schema_not_ready',
+      autopublishMode: BLOG_AUTOPUBLISH_POLICY_V3.mode,
+      requestedAutopublishMode: BLOG_AUTOPUBLISH_POLICY_V3.requestedMode,
+      deploymentProvenance: BLOG_AUTOPUBLISH_POLICY_V3.deploymentProvenance,
+      schemaReadiness,
+      errors: [] as string[],
+    };
+  }
+
   const results: Array<{
     id: string;
     topic: string;
@@ -1729,8 +1791,25 @@ async function runBlogPublisher(request: NextRequest) {
     const publishedSlugs = results
       .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
       .map(r => r.reason);
-    const publicSideEffectsEnabled = BLOG_AUTOPUBLISH_POLICY_V3.mode !== 'draft_only'
+    const publicPublicationRequested = BLOG_AUTOPUBLISH_POLICY_V3.mode !== 'draft_only'
       && publishedSlugs.length > 0;
+    let publicSnapshotRefresh: {
+      status: 'not_needed' | 'succeeded' | 'failed';
+      result?: unknown;
+      error?: string;
+    } = { status: 'not_needed' };
+    if (publicPublicationRequested) {
+      const { data: snapshotData, error: snapshotError } = await supabaseAdmin
+        .rpc('refresh_blog_public_snapshots_v3');
+      if (snapshotError) {
+        publicSnapshotRefresh = { status: 'failed', error: snapshotError.message };
+        errors.push(`public_snapshot_refresh_failed:${snapshotError.message}`);
+      } else {
+        publicSnapshotRefresh = { status: 'succeeded', result: snapshotData };
+      }
+    }
+    const publicSideEffectsEnabled = publicPublicationRequested
+      && publicSnapshotRefresh.status === 'succeeded';
 
     const creativeIdBySlug = new Map<string, string>();
     if (publicSideEffectsEnabled) {
@@ -1858,6 +1937,7 @@ async function runBlogPublisher(request: NextRequest) {
       published: publishedCount,
       candidate_failures: candidateFailures,
       indexingWorker,
+      publicSnapshotRefresh,
       dailyQuota: {
         day: todayQuota.dayKey,
         target: targetPostsToday,
@@ -2002,6 +2082,26 @@ async function processQueueItem(
       await handleFailure(item, reason, null, true, { content_boundary: contentBoundary });
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
+    const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
+    const demandPreflight = await loadQueueDemandEvidenceV3(item);
+    if (
+      !privateRegenerationIntent
+      && BLOG_AUTOPUBLISH_POLICY_V3.requireDemandSignal
+      && (!demandPreflight.repositoryReady || !hasVerifiedBlogDemandSignal(demandPreflight.signal))
+    ) {
+      const reason = demandPreflight.repositoryReady
+        ? 'verified_demand_signal_missing_before_generation'
+        : 'demand_signal_repository_unavailable_before_generation';
+      await handleFailure(item, reason, null, true, {
+        demand_preflight_v3: {
+          repository_ready: demandPreflight.repositoryReady,
+          accepted_providers: demandPreflight.acceptedProviders,
+          rejected_count: demandPreflight.rejectedCount,
+          error: demandPreflight.error,
+        },
+      });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -2051,7 +2151,6 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
 
-    const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
     const privateRegenerationRequest = options.validatedPrivateRegenerationRequest
       ?? readPrivateBlogRegenerationRequest(item);
     const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);
@@ -2824,7 +2923,7 @@ async function processQueueItem(
       deterministicFallback: generated.generation_meta?.private_diagnostic_fallback === true
         || generated.generation_meta?.deterministic_info_fallback === true,
       riskLevel: contentBriefV3.riskLevel,
-      demand: readQueueDemandSignalV3(item),
+      demand: demandPreflight.signal,
       publishedToday: todayPublished.count,
       weatherShare30d: portfolio.weatherShare30d,
       sameArchetypeInLast10: portfolio.sameArchetypeInLast10,
@@ -2832,6 +2931,12 @@ async function processQueueItem(
     generationMeta.autopublish_policy_v3 = {
       ...autopublishDecision,
       mode: BLOG_AUTOPUBLISH_POLICY_V3.mode,
+      evaluated_at: now,
+    };
+    generationMeta.demand_evidence_v3 = {
+      repository_ready: demandPreflight.repositoryReady,
+      accepted_providers: demandPreflight.acceptedProviders,
+      rejected_count: demandPreflight.rejectedCount,
       evaluated_at: now,
     };
     const contentRequiresHumanReview = blogType === 'info'
@@ -3349,8 +3454,6 @@ async function processQueueItem(
       // 로그 저장 실패는 발행 성공을 롤백하지 않는다.
       logWarning('[cron/blog-publisher] marketing_logs record failed (non-blocking)', e);
     }
-
-    revalidatePublicBlogCache(generated.slug);
 
     return {
       id: item.id,

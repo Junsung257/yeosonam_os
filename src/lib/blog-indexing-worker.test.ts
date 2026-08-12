@@ -30,12 +30,18 @@ describe('blog indexing worker', () => {
 
   it('rechecks the canonical public source before an update notification', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/blog-indexing-worker.ts'), 'utf8');
+    const snapshotRefreshIndex = source.indexOf('await refreshBlogPublicSnapshotsForIndexingV3()');
     const eligibilityIndex = source.indexOf('isBlogIndexingJobPubliclyEligible(job)');
     const notifyIndex = source.indexOf('notifyIndexing(canonicalUrl, baseUrl, {');
 
+    expect(source).toContain("rpc('refresh_blog_public_snapshots_v3')");
+    expect(source).toContain("snapshot_refresh: 'failed'");
+    expect(source).toContain('leave every outbox row unclaimed for a retry');
     expect(source).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
     expect(source).toContain("job.type === 'URL_DELETED'");
     expect(source).toContain("status: 'skipped'");
+    expect(snapshotRefreshIndex).toBeGreaterThan(0);
+    expect(snapshotRefreshIndex).toBeLessThan(eligibilityIndex);
     expect(eligibilityIndex).toBeGreaterThan(0);
     expect(eligibilityIndex).toBeLessThan(notifyIndex);
   });
