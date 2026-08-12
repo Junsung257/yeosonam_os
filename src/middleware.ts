@@ -157,6 +157,8 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/resweep-unmatched',
   '/api/cron/upload-review-auto-replay',
   '/api/cron/upload-to-open-autopilot',
+  '/api/cron/product-registration-v6-backfill',
+  '/api/cron/product-registration-v6-watchdog',
   '/api/cron/embed-products',
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
