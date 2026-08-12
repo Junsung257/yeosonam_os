@@ -16,7 +16,7 @@ export type ProductRegistrationV6BrowserProofSurfaceResult = {
   /** Transient capture bytes. The publication layer stores these in the
    * private source bucket and removes them before the proof JSON is saved. */
   screenshotPng: Uint8Array | null;
-  screenshotState: 'customer-page-before-cta' | null;
+  screenshotState: 'customer-first-viewport-before-cta' | null;
   bodyTextHash: string | null;
   koreanFontReady: boolean;
   imageCount: number;
@@ -185,17 +185,20 @@ async function proveSurface(input: {
     // The retained visual artifact must show the customer page itself, not a
     // full-page Chromium capture with a fixed consent or lead dialog repeated
     // across scroll tiles. Keep essential-only consent for the proof session,
-    // capture the readable page, then exercise the CTA as a separate assertion.
+    // capture the actual first customer viewport, then exercise the CTA as a
+    // separate assertion. Extremely tall full-page captures repeat fixed
+    // elements across Chromium tiles and are not a faithful customer view;
+    // the full page is covered independently by the scroll and DOM assertions.
     await page.evaluate(() => {
       const consent = document.querySelector<HTMLElement>('[role="dialog"][aria-labelledby="consent-title"]');
       const essentialOnly = consent?.querySelector<HTMLButtonElement>('button.bg-slate-100');
       essentialOnly?.click();
     });
     await new Promise(resolve => setTimeout(resolve, 300));
-    const customerPageScreenshot = await page.screenshot({ fullPage: true, type: 'png' });
+    const customerPageScreenshot = await page.screenshot({ type: 'png' });
     screenshotHash = hash(customerPageScreenshot);
     screenshotPng = customerPageScreenshot;
-    screenshotState = 'customer-page-before-cta';
+    screenshotState = 'customer-first-viewport-before-cta';
 
     const ctaSelector = input.surface === 'packages'
       ? '[data-analytics-id="mobile_sticky_reservation"]'
