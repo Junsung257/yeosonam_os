@@ -2,6 +2,7 @@
 
 import { startTransition, useDeferredValue, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import {
   AlertTriangle,
@@ -30,6 +31,7 @@ import type {
   FinanceBookingReviewRow,
 } from '@/lib/finance-settlement-v3-service';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
+import { trackFinanceEvent } from '@/lib/finance-analytics';
 
 interface BookingResponse {
   rows: FinanceBookingReviewRow[];
@@ -371,12 +373,17 @@ function BookingDrawer({
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || '정산 결정을 저장하지 못했습니다.');
+      trackFinanceEvent('finance_review_decision', { decision, result: 'success' });
       setDecision(null);
       setReason('');
       await refresh();
-      if (nextBookingId) onSelectBooking(nextBookingId);
+      if (nextBookingId) {
+        trackFinanceEvent('finance_next_item', { source: 'booking_review' });
+        onSelectBooking(nextBookingId);
+      }
       else onClose();
     } catch (submitError) {
+      trackFinanceEvent('finance_review_decision', { decision, result: 'error' });
       setNotice(submitError instanceof Error ? submitError.message : '정산 결정을 저장하지 못했습니다.');
     } finally {
       setBusy(false);
@@ -478,11 +485,22 @@ function BookingDrawer({
   );
 }
 
-export default function FinanceBookingsTable({ initialMonth = '', initialQuery = '' }: { initialMonth?: string; initialQuery?: string }) {
+export default function FinanceBookingsTable({
+  initialMonth = '',
+  initialQuery = '',
+  initialFocus = '',
+  returnToToday = false,
+}: {
+  initialMonth?: string;
+  initialQuery?: string;
+  initialFocus?: string;
+  returnToToday?: boolean;
+}) {
+  const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [month, setMonth] = useState(/^\d{4}-\d{2}$/.test(initialMonth) ? initialMonth : '');
   const [status, setStatus] = useState<BookingSettlementReviewStatus | 'all'>('pending');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialFocus || null);
   const [showExcluded, setShowExcluded] = useState(false);
   const deferredQuery = useDeferredValue(query.trim());
   const params = new URLSearchParams();
@@ -526,7 +544,7 @@ export default function FinanceBookingsTable({ initialMonth = '', initialQuery =
         <div className="hidden overflow-x-auto lg:block"><table className="min-w-full text-sm"><thead className="bg-admin-bg text-left text-xs text-admin-muted"><tr><th className="px-4 py-3">출발일·예약</th><th className="px-4 py-3">고객·여행키</th><th className="px-4 py-3 text-right">입금</th><th className="px-4 py-3 text-right">여행 출금</th><th className="px-4 py-3 text-right">환불·수수료</th><th className="px-4 py-3 text-right">현금 마진</th><th className="px-4 py-3">검토 상태</th><th className="px-4 py-3">작업</th></tr></thead><tbody className="divide-y divide-admin-border">{rows.map(row => <tr key={row.id} className="hover:bg-admin-bg/70"><td className="whitespace-nowrap px-4 py-3"><span className="block text-xs text-admin-muted">{row.departureDate || '출발일 없음'}</span><strong>{row.bookingNo}</strong></td><td className="max-w-xs px-4 py-3"><span className="block font-medium">{row.customerName || '고객명 없음'}</span><span className="block truncate text-xs text-admin-muted">{row.travelKey || row.packageTitle || '여행키 없음'} · 거래 {row.transactionCount}건</span></td><td className="px-4 py-3 text-right tabular-nums">{won(row.deposits)}</td><td className="px-4 py-3 text-right tabular-nums">{won(row.travelWithdrawals)}</td><td className="px-4 py-3 text-right text-xs tabular-nums">환불 {won(row.customerRefunds)}<span className="block text-admin-muted">수수료 {won(row.bankFees)}</span></td><td className={`px-4 py-3 text-right font-bold tabular-nums ${row.cashMargin < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{won(row.cashMargin)}</td><td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${row.reviewStatus === 'confirmed' ? 'bg-emerald-50 text-emerald-700' : row.reviewStatus === 'pending' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{row.reviewStatus === 'confirmed' ? <CheckCircle2 className="h-3 w-3" /> : row.reviewStatus === 'pending' ? <AlertTriangle className="h-3 w-3" /> : null}{BOOKING_REVIEW_LABELS[row.reviewStatus]}</span>{row.reviewedBy ? <span className="mt-1 block text-[10px] text-admin-muted">{row.reviewedBy}</span> : null}</td><td className="px-4 py-3"><button type="button" onClick={() => setSelectedId(row.id)} className="inline-flex items-center gap-1 rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-xs font-semibold">상세 검토 <ChevronRight className="h-4 w-4" /></button></td></tr>)}{rows.length === 0 ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-admin-muted"><BadgeDollarSign className="mx-auto mb-2 h-6 w-6" />조건에 맞는 예약이 없습니다.</td></tr> : null}</tbody></table></div>
       </div> : null}
 
-      {selectedId ? <BookingDrawer bookingId={selectedId} bookingChoices={choicesData?.rows ?? rows} nextBookingId={nextPendingId === selectedId ? null : nextPendingId} onSelectBooking={setSelectedId} onClose={() => setSelectedId(null)} onChanged={refresh} /> : null}
+      {selectedId ? <BookingDrawer bookingId={selectedId} bookingChoices={choicesData?.rows ?? rows} nextBookingId={nextPendingId === selectedId ? null : nextPendingId} onSelectBooking={setSelectedId} onClose={() => returnToToday ? router.push('/admin/finance') : setSelectedId(null)} onChanged={refresh} /> : null}
     </section>
   );
 }

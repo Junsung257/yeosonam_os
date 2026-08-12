@@ -145,15 +145,21 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
     a.click();
   }
 
-  const additionalTodoGroups: Array<{
-    label: string;
-    items: TaxBooking[];
-    amount: (booking: TaxBooking) => number;
-  }> = todos ? [
-    { label: '판매가 미확정', items: todos.price_unconfirmed, amount: booking => booking.total_price },
-    { label: '랜드사 예정원가 미확정', items: todos.cost_unconfirmed, amount: booking => booking.total_cost },
-    { label: '예약 정산 재검토', items: todos.review_pending, amount: booking => booking.cash_margin },
-  ] : [];
+  const todoByBooking = new Map<string, { booking: TaxBooking; reasons: string[] }>();
+  const addTodo = (items: TaxBooking[] | undefined, reason: string) => {
+    for (const booking of items ?? []) {
+      const current = todoByBooking.get(booking.id) ?? { booking, reasons: [] };
+      if (!current.reasons.includes(reason)) current.reasons.push(reason);
+      todoByBooking.set(booking.id, current);
+    }
+  };
+  addTodo(todos?.pending_transfers, '랜드사 원가 미송금');
+  addTodo(todos?.not_issued_receipts, '현금영수증 미발행');
+  addTodo(todos?.price_unconfirmed, '판매가 미확정');
+  addTodo(todos?.cost_unconfirmed, '예정원가 미확정');
+  addTodo(todos?.review_pending, '예약 정산 재검토');
+  const todoRows = [...todoByBooking.values()].sort((a, b) => a.booking.departure_date.localeCompare(b.booking.departure_date));
+  const todoIssueCount = todoRows.reduce((sum, row) => sum + row.reasons.length, 0);
 
   return (
     <div className="space-y-5">
@@ -220,52 +226,17 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
       )}
 
       {/* To-Do 경고 알림 */}
-      {todos && !loading && (todos.pending_transfers.length > 0 || todos.not_issued_receipts.length > 0 || todos.price_unconfirmed.length > 0 || todos.cost_unconfirmed.length > 0 || todos.review_pending.length > 0) && (
+      {todos && !loading && todoRows.length > 0 && (
         <div className="admin-card p-4 space-y-3 border-danger/30">
-          <h2 className="text-admin-base font-semibold text-danger flex items-center gap-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><h2 className="text-admin-base font-semibold text-danger flex items-center gap-2">
             <AlertTriangle size={16} />
-            처리 필요 항목 (To-Do)
-          </h2>
-          {todos.pending_transfers.length > 0 && (
-            <div>
-              <p className="text-admin-xs font-semibold text-danger mb-2">
-                랜드사 원가 미송금 <span className="admin-num">{todos.pending_transfers.length}</span>건
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {todos.pending_transfers.map(b => (
-                  <Link
-                    key={b.id}
-                    href={`/admin/bookings/${b.id}`}
-                    className="text-admin-xs bg-admin-surface border border-danger/30 text-danger rounded-full px-2.5 py-1 hover:bg-danger-light transition-colors admin-num"
-                  >
-                    {b.booking_no} ({b.customers?.name ?? '?'}, ₩{fmt(b.total_cost)})
-                  </Link>
-                ))}
-              </div>
+            처리 필요 예약
+          </h2><p className="text-admin-xs text-admin-muted">예약 {todoRows.length}건 · 확인 항목 {todoIssueCount}개</p></div>
+          <div className="overflow-hidden rounded-admin-sm border border-danger/20 bg-admin-surface">
+            <div className="divide-y divide-admin-border">
+              {todoRows.map(({ booking, reasons }) => <div key={booking.id} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><strong className="text-admin-sm text-admin-text">{booking.booking_no} · {booking.customers?.name ?? '고객명 없음'}</strong><span className="ml-2 text-admin-xs text-admin-muted">{booking.departure_date}</span><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map(reason => <span key={reason} className="rounded-full bg-danger-light px-2 py-0.5 text-[10px] font-semibold text-danger">{reason}</span>)}</div></div><Link href={`/admin/finance?tab=bookings&q=${encodeURIComponent(booking.booking_no)}&return=today`} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-danger/30 bg-white px-3 py-2 text-admin-xs font-semibold text-danger hover:bg-danger-light">예약 한 번에 확인</Link></div>)}
             </div>
-          )}
-          {todos.not_issued_receipts.length > 0 && (
-            <div>
-              <p className="text-admin-xs font-semibold text-danger mb-2">
-                고객 현금영수증 미발행 <span className="admin-num">{todos.not_issued_receipts.length}</span>건
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {todos.not_issued_receipts.map(b => (
-                  <Link
-                    key={b.id}
-                    href={`/admin/bookings/${b.id}`}
-                    className="text-admin-xs bg-admin-surface border border-danger/30 text-danger rounded-full px-2.5 py-1 hover:bg-danger-light transition-colors admin-num"
-                  >
-                    {b.booking_no} ({b.customers?.name ?? '?'}, ₩{fmt(b.total_price)})
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-          {additionalTodoGroups.map(group => {
-            if (group.items.length === 0) return null;
-            return <div key={group.label}><p className="mb-2 text-admin-xs font-semibold text-danger">{group.label} <span className="admin-num">{group.items.length}</span>건</p><div className="flex flex-wrap gap-1.5">{group.items.map(booking => <Link key={booking.id} href={`/admin/finance?tab=bookings&q=${encodeURIComponent(booking.booking_no)}`} className="rounded-full border border-danger/30 bg-admin-surface px-2.5 py-1 text-admin-xs text-danger transition-colors hover:bg-danger-light">{booking.booking_no} ({booking.customers?.name ?? '?'}, ₩{fmt(group.amount(booking))})</Link>)}</div></div>;
-          })}
+          </div>
         </div>
       )}
 
@@ -395,7 +366,7 @@ export default function FinanceTaxPanel({ initialMonth }: { initialMonth: string
                               : 'border-red-200 bg-red-50 text-red-700'
                           }`}
                         >
-                          <option value="PENDING">PENDING</option>
+                          <option value="PENDING">송금 대기</option>
                           <option value="COMPLETED">완료</option>
                         </select>
                       </td>

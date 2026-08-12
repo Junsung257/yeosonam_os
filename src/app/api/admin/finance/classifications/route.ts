@@ -140,6 +140,10 @@ export async function GET(request: NextRequest) {
       const nonBookingAllocations = allocations.filter(allocation => allocation.target_type !== 'booking');
       const splitRows = nonBookingAllocations.map(allocation => {
         const allocationClassification = ALLOCATION_TO_CLASSIFICATION[allocation.target_type ?? 'unassigned'] ?? 'review';
+        const batchEligible = transaction.settlement_scope === 'non_travel'
+          && allocations.length === 1
+          && allocation.booking_id === null
+          && Number(allocation.allocated_amount) === Number(transaction.amount);
         const receiptStatus = typeof allocation.metadata?.receiptStatus === 'string'
           ? allocation.metadata.receiptStatus
           : ['company_expense', 'company_travel', 'tax'].includes(allocationClassification)
@@ -150,6 +154,7 @@ export async function GET(request: NextRequest) {
           id: allocation.id,
           transactionId: transaction.id,
           allocationId: allocation.id,
+          batchEligible,
           amount: Number(allocation.allocated_amount) || 0,
           targetLabel: allocation.target_label,
           reconciliationKey: allocation.reconciliation_key,
@@ -166,7 +171,7 @@ export async function GET(request: NextRequest) {
       const allocatedTotal = allocations.reduce((sum, allocation) => sum + Number(allocation.allocated_amount || 0), 0);
       const remaining = Math.max(0, Number(transaction.amount || 0) - allocatedTotal);
       const wholeTransactionRows = transaction.settlement_scope === 'non_travel' && remaining > 0
-        ? [{ ...base, amount: remaining, transactionId: transaction.id, allocationId: null, targetLabel: null, reconciliationKey: null }]
+        ? [{ ...base, amount: remaining, transactionId: transaction.id, allocationId: null, batchEligible: false, targetLabel: null, reconciliationKey: null }]
         : [];
       return [...splitRows, ...wholeTransactionRows];
     });
