@@ -19,13 +19,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sna
     snapshotHash: snapshot.row.snapshot_hash,
     packageId: snapshot.row.package_id,
   })) return new NextResponse('Not found', { status: 404 });
-  const currentRendererBuildId = process.env.VERCEL_GIT_COMMIT_SHA
-    ?? process.env.NEXT_PUBLIC_BUILD_ID
-    ?? 'local-v6-renderer';
-  if (snapshot.row.renderer_build_id && snapshot.row.renderer_build_id !== currentRendererBuildId) {
-    return new NextResponse('Snapshot renderer mismatch', { status: 409 });
-  }
-
   const target = new URL(`/packages/${snapshot.row.package_id}`, request.nextUrl.origin);
   target.searchParams.set('__proof_snapshot', snapshotId);
   const response = NextResponse.redirect(target, 307);

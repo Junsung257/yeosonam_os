@@ -7,12 +7,62 @@ import {
 } from '@/lib/product-registration-authority/revision-aggregate';
 import { createCandidateSnapshot } from '@/lib/product-registration-authority/repository';
 import { persistProductRegistrationV5ProofRun } from '@/lib/product-registration-v4/proof';
+import { PRODUCT_SOURCE_BUCKET } from '@/lib/product-registration-v4/source-documents';
 import { runProductRegistrationV6ChromeProof } from './browser-proof';
 import { createProductRegistrationV6ProofToken } from './proof-token';
+import { currentProductRegistrationRendererBuildId } from './renderer-build';
 import type { ProductRegistrationV6Decision } from './types';
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
 
 type JsonObject = Record<string, unknown>;
+
+export function productRegistrationProofScreenshotPath(input: {
+  tenantId: string;
+  snapshotId: string;
+  rendererBuildId: string;
+  surface: 'packages' | 'lp';
+  screenshotHash: string;
+}): string {
+  const safeBuild = input.rendererBuildId.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `${input.tenantId}/proofs/${input.snapshotId}/${safeBuild}/${input.surface}-${input.screenshotHash}.png`;
+}
+
+async function persistPrivateProofScreenshots(input: {
+  supabase: SupabaseClient;
+  snapshot: ProductRegistrationV6CandidateSnapshot;
+  chromeProof: Awaited<ReturnType<typeof runProductRegistrationV6ChromeProof>>;
+}) {
+  const surfaces = [];
+  for (const captured of input.chromeProof.surfaces) {
+    const { screenshotPng, ...surface } = captured;
+    if (!screenshotPng || !surface.screenshotHash) {
+      surfaces.push({ ...surface, screenshotStorage: null });
+      continue;
+    }
+    const storagePath = productRegistrationProofScreenshotPath({
+      tenantId: input.snapshot.tenantId,
+      snapshotId: input.snapshot.snapshotId,
+      rendererBuildId: input.snapshot.rendererBuildId,
+      surface: surface.surface,
+      screenshotHash: surface.screenshotHash,
+    });
+    const upload = await input.supabase.storage.from(PRODUCT_SOURCE_BUCKET).upload(
+      storagePath,
+      Buffer.from(screenshotPng),
+      { contentType: 'image/png', upsert: false },
+    );
+    if (upload.error && !/already exists|duplicate/i.test(upload.error.message)) throw upload.error;
+    surfaces.push({
+      ...surface,
+      screenshotStorage: {
+        bucket: PRODUCT_SOURCE_BUCKET,
+        path: storagePath,
+        private: true,
+      },
+    });
+  }
+  return { ...input.chromeProof, surfaces };
+}
 
 export type ProductRegistrationV6CandidateSnapshot = {
   tenantId: string;
@@ -209,9 +259,7 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
       canonical_payload_hash: revision.payload_hash,
       package_revision: revision.revision_no,
     });
-    const rendererBuildId = process.env.VERCEL_GIT_COMMIT_SHA
-      ?? process.env.NEXT_PUBLIC_BUILD_ID
-      ?? 'local-v6-renderer';
+    const rendererBuildId = currentProductRegistrationRendererBuildId();
     const row = {
       package_id: pair.packageId,
       catalog_product_id: catalogProductId,
@@ -277,13 +325,19 @@ export async function proveProductRegistrationV6Snapshot(input: {
     requiredText: input.snapshot.proofAssertions.requiredText,
     forbiddenText: input.snapshot.proofAssertions.forbiddenText,
   });
+  const persistedChromeProof = await persistPrivateProofScreenshots({
+    supabase: input.supabase,
+    snapshot: input.snapshot,
+    chromeProof,
+  });
   const passed = chromeProof.status === 'passed'
     && chromeProof.surfaces.length === 2
     && chromeProof.surfaces.every(surface => surface.status === 'passed'
       && surface.snapshotHash === input.snapshot.snapshotHash
       && surface.rendererBuildId === input.snapshot.rendererBuildId
       && surface.ctaOpened
-      && surface.hydrationErrors.length === 0);
+      && surface.hydrationErrors.length === 0)
+    && persistedChromeProof.surfaces.every(surface => Boolean(surface.screenshotStorage));
   const persisted = await persistProductRegistrationV5ProofRun({
     supabase: input.supabase,
     proof: {
@@ -300,7 +354,13 @@ export async function proveProductRegistrationV6Snapshot(input: {
       locale: 'ko-KR',
       deviceProfile: 'mobile-customer',
       status: passed ? 'passed' : 'failed',
-      result: { chromeProof, surfaceUrls, tokenBound: true, legacyPackageMutation: false },
+      result: {
+        chromeProof: persistedChromeProof,
+        surfaceUrls,
+        tokenBound: true,
+        legacyPackageMutation: false,
+        screenshotArtifactsPrivate: true,
+      },
       checkedAt: new Date().toISOString(),
     },
   });

@@ -38,7 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
-| 2026-08-12 | `2026-08-12-product-registration-authority-live-cutover.md` | Production authority migrations/finalizer, pointer-only customer readers, live legacy-public blockers, and remaining HWP/Chrome canary gate. |
+| 2026-08-12 | `2026-08-12-product-registration-authority-live-cutover.md` | Production authority hardening plus a real HWP source-to-revision-to-snapshot-to-mobile-Chrome terminal canary, customer assessment, private screenshot evidence, and remaining cohort launch gates. |
 | 2026-08-11 | `2026-08-11-product-registration-v6-implementation.md` | V6 durable workflow, private schema, real HWP 40/40 recheck, production Supabase permission boundary, and remaining launch prerequisites. |
 | 2026-08-10 | `2026-08-10-product-registration-v5-shadow-corpus.md` | 40개 HWP 원문을 고객 비노출 격리 상태에서 V5 정규화·근거·가격·일정·고객 화면 계약까지 전수 검증한 결과. |
 | 2026-08-10 | `2026-08-10-product-registration-live-readiness.md` | Chrome·Vercel·Supabase·고객 `/packages`·`/lp` 실시간 점검과 V5 production open blockers. |

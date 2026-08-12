@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
-import { applyResolvedTransport } from './snapshot-publication';
+import { applyResolvedTransport, productRegistrationProofScreenshotPath } from './snapshot-publication';
 
 function packageWithFlight() {
   return {
@@ -83,5 +83,17 @@ describe('applyResolvedTransport', () => {
     expect(flight(result)).not.toHaveProperty('dep_time');
     expect(flight(result)).not.toHaveProperty('arr_time');
     expect(flight(result)).toMatchObject({ v6_fact_state: 'conflicting' });
+  });
+});
+
+describe('productRegistrationProofScreenshotPath', () => {
+  it('keeps proof screenshots tenant scoped and renderer specific', () => {
+    expect(productRegistrationProofScreenshotPath({
+      tenantId: 'tenant-1',
+      snapshotId: 'snapshot-1',
+      rendererBuildId: 'build/one',
+      surface: 'packages',
+      screenshotHash: 'a'.repeat(64),
+    })).toBe(`tenant-1/proofs/snapshot-1/build_one/packages-${'a'.repeat(64)}.png`);
   });
 });

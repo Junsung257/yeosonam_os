@@ -1,5 +1,11 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
+## 2026-08-12 상품등록 실제 HWP 고객 흐름 검증
+- 실제 마쓰야마 HWP canary는 source → EvidenceIR → immutable revision → customer snapshot → 390x844 Chrome 상세/LP proof까지 terminal `published_degraded`로 완료됐다.
+- 가격 10건, 3일/2박 일정, BX134/BX133, 포함 7건, 불포함 5건이 원문과 일치하고 critical/high evidence는 8/8이다. 상세와 LP 모두 CTA, snapshot/build hash, 금지문구, 깨진 이미지, hydration 검사를 통과했다.
+- 실제 사용권 이미지가 없어 브랜드 fallback만 표시되고, OAG/Cirium 이중 검증이 없어 항공시간은 고객 화면에서 숨겼다. 전역 freeze를 유지해 publication pointer와 고객 공개 상태는 변경하지 않았다.
+- 남은 고객 오픈 게이트는 기존 989건 shadow 분류, 대표 공급사 cohort 정확도, media provenance 자동 보완, 실 OAG/Cirium/OCR provider 정책, bounded CAS 공개와 surface convergence다. 한 건의 성공 canary는 전체 80% 자동 공개율을 증명하지 않는다.
+
 ## 2026-08-11 상품등록 통합 권한 기준선
 
 - 신규 흐름은 `EvidenceIR → immutable revision → compatibility projection → immutable snapshot → private proof → CAS pointer` 순서다. `products`와 `travel_packages`는 권위 원천이 아니라 revision 이후 생성되는 호환 projection이다.

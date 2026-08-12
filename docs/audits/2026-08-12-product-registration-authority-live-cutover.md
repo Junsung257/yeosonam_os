@@ -46,8 +46,25 @@ was used for the live shadow canary. No publication pointer was changed.
 - The WASM adapter reconstructs page text, table dimensions, merged-cell coordinates, and evidence hashes from `getPageTextLayout`, `getTableDimensions`, and `getCellInfo`. Against the exact Matsuyama sample it produced 2 pages, 1,544 text characters, 5 tables, 90 cells, the source price grid, and flight numbers `BX134`/`BX133` in about 2.3 seconds locally.
 - A production-mode build passed with 389 static pages. Postbuild verified both the pinned native regression binary and `node_modules/@rhwp/core/rhwp_bg.wasm` in the workflow-step trace.
 
-These failures demonstrate why source upload acceptance and extraction success must be measured separately. The product is not customer-openable until the WASM canary reaches a terminal registration outcome and its snapshot has exact mobile proof.
+These failures demonstrate why source upload acceptance and extraction success must be measured separately.
 
-## Remaining live gate
+## Successful live customer-flow canary
 
-The V6 preview is branch-scoped to shadow mode with publication disabled and frozen. A successful second HWP canary, exact source comparison, Chrome mobile proof, and surface convergence are still required before any bounded publication. Chrome automation could not be completed in this run because the Codex Chrome-control runtime failed to create its internal kernel asset path even though Chrome, the extension, and native-host diagnostics all passed. Do not substitute a different browser and do not claim visual proof until the Browser/Chrome plugin is reinstalled or repaired.
+The final live run used the same source blob and completed without changing a customer publication pointer.
+
+- Job `d35796d2-7089-47ee-ae0a-1624c77a05d1` and workflow `wrun_01KZTB1WC3Y2F4FGQ5TQHW8EHQ` reached terminal `done` as `published_degraded` at `2026-08-12T06:39:30.125629Z`.
+- The source produced 2 pages, 5 tables, 97 IR nodes, 1,544 characters, one product section, immutable revision `2d97526f-92a4-42bc-b087-61c8aad87d4e`, and candidate snapshot `387e4cca-62fc-4da9-8ca6-b1a48d8a4636`.
+- All 8 critical/high claims have verified evidence and at least one evidence anchor; no critical/high evidence gap or conflict remains.
+- The customer snapshot contains the exact 10 departure-date prices from 979,000 to 1,269,000 KRW, a 3-day/2-night itinerary, BX134/BX133, 7 inclusions, 5 exclusions, and the customer-safe ticketing/cancellation notice.
+- Uncorroborated source flight times are absent from the customer snapshot. The engine retained route/date/flight number and applied the final-confirmation disclosure instead of copying historical product times.
+- Snapshot hash `7db389acf8fbfe75f13a4f5a17f7a9048a6496093aea1cadd1ac425d6d5a51f6` was rendered by build `06881581ddd9e6974cf0b3cbc398084dab03babb` at 390x844 in actual serverless Chromium.
+- Both `/packages` and `/lp` returned 200, matched the exact snapshot/build lineage, opened the customer CTA, had zero missing required facts, zero forbidden flight times, zero broken images, and zero hydration/runtime errors.
+- The snapshot stays `candidate`, the publication pointer query returns no row for catalog product `a4d687d2-13e0-4cda-ba46-d9b6ff78454d`, and the job records `publication_state=frozen`. Production exposure therefore remains unchanged.
+
+## Customer assessment and remaining launch gate
+
+The sample is technically safe for degraded automatic publication, but it is not yet visually sales-ready as a premium landing page. The document contains no licensable product imagery, so the snapshot explicitly records `MEDIA_ASSET_MISSING` and renders the brand fallback. OAG/Cirium credentials or two equivalent current schedule observations are also absent, so the source times remain hidden. These are the only three degraded reasons; there are no blockers in price, departure date, itinerary, terms, evidence, customer rendering, or CTA interaction.
+
+The proof engine now preserves each full-page PNG in tenant-scoped private Storage, records its path and SHA-256 in the proof run, and never places capture bytes in public snapshot JSON. A later deployment may re-proof the same immutable snapshot with its own renderer build; proof acceptance still requires the observed build to equal the new proof run's expected build.
+
+Keep the global freeze and existing-inventory backfill disabled until: (1) licensed destination/product media is automatically resolved or the business explicitly accepts brand fallback for the launch cohort, (2) the airline schedule provider policy is live if exact times must be shown, (3) more representative supplier files pass the same source-to-mobile gate, and (4) the existing 989 rows are shadow-classified before broad publication. One successful canary proves the end-to-end path, not an 80% corpus auto-publication rate.

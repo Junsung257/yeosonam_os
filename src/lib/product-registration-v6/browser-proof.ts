@@ -13,6 +13,9 @@ export type ProductRegistrationV6BrowserProofSurfaceResult = {
   snapshotHash: string | null;
   rendererBuildId: string | null;
   screenshotHash: string | null;
+  /** Transient capture bytes. The publication layer stores these in the
+   * private source bucket and removes them before the proof JSON is saved. */
+  screenshotPng: Uint8Array | null;
   bodyTextHash: string | null;
   imageCount: number;
   brokenImageCount: number;
@@ -157,6 +160,7 @@ async function proveSurface(input: {
   let responseSnapshotHash: string | null = null;
   let responseRendererBuildId: string | null = null;
   let screenshotHash: string | null = null;
+  let screenshotPng: Uint8Array | null = null;
   let bodyTextHash: string | null = null;
   let imageCount = 0;
   let brokenImageCount = 0;
@@ -230,6 +234,7 @@ async function proveSurface(input: {
     if (forbiddenTextFound.length > 0) failures.push(`UNVERIFIED_CUSTOMER_FACTS_VISIBLE_${forbiddenTextFound.length}`);
     const screenshot = await page.screenshot({ fullPage: true, type: 'png' });
     screenshotHash = hash(screenshot);
+    screenshotPng = screenshot;
   } catch (error) {
     failures.push(`BROWSER_ASSERTION:${error instanceof Error ? error.message : String(error)}`);
   } finally {
@@ -244,6 +249,7 @@ async function proveSurface(input: {
     snapshotHash: responseSnapshotHash,
     rendererBuildId: responseRendererBuildId,
     screenshotHash,
+    screenshotPng,
     bodyTextHash,
     imageCount,
     brokenImageCount,

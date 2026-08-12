@@ -28,6 +28,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { fetchLatestPublicPackageSnapshot, fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
+import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
@@ -267,7 +268,7 @@ export async function generateMetadata({
     }
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
-    rendererBuildId = publicSnapshot?.row.renderer_build_id ?? undefined;
+    rendererBuildId = currentProductRegistrationRendererBuildId();
     canonicalRevisionId = publicSnapshot?.row.canonical_revision_id ?? undefined;
     data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
   } catch {

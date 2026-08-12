@@ -5,6 +5,7 @@ import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/ma
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
+import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 export async function fetchLpPackageUncached(
@@ -66,8 +67,19 @@ export async function fetchLpPackageUncached(
     // 히어로 실패 시 그라디언트만
   }
 
+  const packageSnapshot = (pkg as Record<string, unknown>)._public_snapshot;
+  const snapshotMetadata = packageSnapshot && typeof packageSnapshot === 'object' && !Array.isArray(packageSnapshot)
+    ? packageSnapshot as Record<string, unknown>
+    : {};
   return mapTravelPackageToLandingData(
-    { ...(pkg as Record<string, unknown>), _packageScores: scores ?? [] },
+    {
+      ...(pkg as Record<string, unknown>),
+      _packageScores: scores ?? [],
+      _public_snapshot: {
+        ...snapshotMetadata,
+        renderer_build_id: currentProductRegistrationRendererBuildId(),
+      },
+    },
     lpHero,
   );
 }

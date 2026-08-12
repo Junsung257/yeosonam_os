@@ -34,13 +34,15 @@ Deployment truth:
 - The current authority scan is `authorized=1 legacy=143 unapproved=0`. The 143 legacy writers are a measured retirement ledger, not extra authorities: kernel database guards prevent them from changing canonical facts or publication.
 - The latest verification passes TypeScript, authority/registration contracts, the full 684-file/5,154-test suite, and a production Next.js build with 389 static pages. The local build took about 14 minutes 38 seconds; when Supabase/blog build-time credentials are absent, sitemap generation returns no package/blog entries rather than falling back to mutable rows.
 - The live mobile-readiness audit now treats an authoritative customer pointer as the definition of public. Two legacy active/published samples both failed: the pointerless Kota Kinabalu row, and the Fukuoka row whose 85 saved price dates disagree with its 84-date snapshot and whose mobile proof/customer-open contract are stale or blocked.
-- Customer opening remains blocked until at least one real HWP canary reaches a terminal shadow result, exact source comparison and current-snapshot proof pass, all required surfaces converge, and the cohort error budget permits a bounded CAS publication. The remaining 989 legacy rows must be classified before broad rollout.
+- A real Matsuyama HWP canary now reaches terminal `published_degraded` in shadow. Its 10 date-price pairs, 3-day/2-night itinerary, BX134/BX133, 7 inclusions, 5 exclusions, and customer-safe cancellation notice match the source; 8/8 critical/high claims are evidence-backed. Its exact snapshot passed real 390x844 serverless-Chromium `/packages` and `/lp` rendering, CTA interaction, snapshot/build lineage, required/forbidden-text, image-integrity, and hydration checks. Publication remained frozen and no pointer was created.
+- The canary is safe degraded, not premium visual-ready: it has only a brand fallback image and its two flight times remain hidden until two current independent schedule sources corroborate them. Broad customer opening still requires representative-cohort error-budget evidence, media policy/provider completion, provider-backed schedule verification when exact times are promised, and shadow classification of the remaining 989 legacy rows.
+- Full-page proof PNGs are stored only in tenant-scoped private Storage with SHA-256 and private artifact location in the proof result. Immutable snapshots can be re-proved after a deployment; a proof still passes only when its observed renderer build matches that proof run's expected build.
 
 Safe deployment order:
 
 1. Keep production publication frozen and the legacy backfill disabled.
-2. Deploy the branch preview in `shadow`; upload the selected HWP corpus and confirm terminal verified/degraded/blocked outcomes without moving customer pointers.
-3. Pass live tenant/RLS, provider, private Chrome proof, and surface-convergence tests for the exact revision/snapshot hashes.
+2. Expand the successful shadow HWP path across representative supplier/layout cohorts and confirm terminal verified/degraded/blocked outcomes without moving customer pointers.
+3. Complete media and schedule-provider policy, then pass live tenant/RLS, private Chrome proof, and bounded pointer/surface-convergence tests for the exact revision/snapshot hashes.
 4. Reprocess the existing 989 rows in bounded shadow batches and retain duplicate/ambiguous identities in quarantine.
 5. Promote one bounded cohort to `kernel`; remove the freeze only for an exact canary operation, then re-enable it until its error budget holds.
 6. Retire remaining legacy writers and direct readers only after the authoritative reader and rollback-pointer path are proven in production.
