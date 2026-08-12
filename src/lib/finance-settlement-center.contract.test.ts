@@ -55,6 +55,10 @@ const classificationApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/classifications/route.ts'),
   'utf8',
 );
+const financeClassifications = readFileSync(
+  join(process.cwd(), 'src/components/admin/finance/FinanceClassifications.tsx'),
+  'utf8',
+);
 const classificationBatchMigration = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260811224328_finance_classification_batch_workflow.sql'),
   'utf8',
@@ -205,7 +209,9 @@ describe('finance settlement center contracts', () => {
   it('keeps connection dates and focused work counts semantically consistent', () => {
     expect(integrationsApi).toContain('connected_at: row?.created_at ?? null');
     expect(integrationsApi).not.toContain('connected_at: row?.updated_at ?? null');
+    expect(classificationApi).toContain('reviewTransactionTotal');
     expect(classificationApi).toContain('batchEligibleReview');
+    expect(financeClassifications).toContain('은행 거래 {data?.summary.reviewTransactionTotal');
     expect(paymentsPage).toContain('opsQueueSummary && !focusMode');
   });
 });
