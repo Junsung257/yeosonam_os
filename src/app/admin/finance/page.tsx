@@ -104,7 +104,7 @@ export default async function FinanceCenterPage({
       ) : null}
 
       {activeTab === 'home' ? (params.view === 'overview' ? <FinanceCenterHome /> : <FinanceTodayWorkbench />) : null}
-      {activeTab === 'review' ? <FinanceTransactionReview focusMode={params.mode === 'workday'} initialQueue={params.queue} /> : null}
+      {activeTab === 'review' ? <FinanceTransactionReview focusMode={params.mode === 'workday'} initialQueue={params.queue} closeMonth={isFinanceYearMonth(params.month) ? params.month : undefined} /> : null}
       {activeTab === 'bookings' ? <FinanceBookingsTable initialMonth={params.month} initialQuery={params.q} initialFocus={params.focus} initialStatus={params.status} initialSort={params.sort} focusMode={params.mode === 'workday'} returnToToday={params.return === 'today'} /> : null}
       {activeTab === 'periods' ? <FinancePeriods initialMonth={params.month} /> : null}
       {activeTab === 'expenses' ? <FinanceClassifications focusMode={params.mode === 'workday'} /> : null}

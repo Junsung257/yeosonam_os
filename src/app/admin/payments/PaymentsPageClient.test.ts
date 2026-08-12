@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type BankTransaction,
+  filterFocusedCloseMonthTransactions,
   getOutflowLandingSubTab,
 } from './PaymentsPageClient';
 
@@ -40,5 +41,14 @@ describe('getOutflowLandingSubTab', () => {
       transaction({ transaction_type: '입금', match_status: 'unmatched' }),
       transaction({ transaction_type: '출금', match_status: 'manual' }),
     ])).toBe('all');
+  });
+});
+
+describe('filterFocusedCloseMonthTransactions', () => {
+  it('shows only server-scoped transactions and never falls back to the global queue', () => {
+    const rows = [transaction({ id: 'july' }), transaction({ id: 'august' })];
+
+    expect(filterFocusedCloseMonthTransactions(rows, ['july']).map(row => row.id)).toEqual(['july']);
+    expect(filterFocusedCloseMonthTransactions(rows, [])).toEqual([]);
   });
 });
