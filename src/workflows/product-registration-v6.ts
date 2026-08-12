@@ -1,7 +1,10 @@
 import { FatalError, getWorkflowMetadata } from 'workflow';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { processProductRegistrationV4CanonicalNormalizationJob } from '@/lib/product-registration-v4/canonical-worker';
+import {
+  processProductRegistrationV4CanonicalNormalizationJob,
+  sliceCanonicalNormalizationForRevisionSections,
+} from '@/lib/product-registration-v4/canonical-worker';
 import { processProductRegistrationV4ExtractionJob } from '@/lib/product-registration-v4/extractions';
 import { getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 import { observeProductRegistrationV5ConvergenceBatch } from '@/lib/product-registration-v4/convergence-observer';
@@ -274,10 +277,19 @@ async function normalizeStep(
   const catalogProductIds = Array.isArray(result.job.v4_stage_state.catalogProductIds)
     ? result.job.v4_stage_state.catalogProductIds.map(String).filter(Boolean)
     : [];
-  if (revisionIds.length !== result.normalization.sections.length
+  const revisionSectionIndexes = Array.isArray(result.job.v4_stage_state.revisionSectionIndexes)
+    ? result.job.v4_stage_state.revisionSectionIndexes
+        .map(Number)
+        .filter(index => Number.isInteger(index) && index >= 0)
+    : result.normalization.sections.map((_, index) => index);
+  if (revisionIds.length !== revisionSectionIndexes.length
     || catalogProductIds.length !== revisionIds.length) {
     throw new FatalError('V6_KERNEL_REVISION_COUNT_MISMATCH');
   }
+  const revisionNormalization = sliceCanonicalNormalizationForRevisionSections(
+    result.normalization,
+    revisionSectionIndexes,
+  );
   const revisionTenantIds = new Set<string>();
   const lineageBlockers: string[] = [];
   const revisionHashes: string[] = [];
@@ -310,7 +322,12 @@ async function normalizeStep(
     fencingToken: input.fencingToken,
     stage: 'segment',
     status: 'succeeded',
-    output: { sectionCount: result.normalization.sections.length, catalogProductIds },
+    output: {
+      sectionCount: revisionNormalization.sections.length,
+      sourceSectionCount: result.normalization.sections.length,
+      revisionSectionIndexes,
+      catalogProductIds,
+    },
   });
   await recordStage({
     jobId: input.jobId,
@@ -321,7 +338,7 @@ async function normalizeStep(
       normalizationId: result.normalizationId,
       revisionIds,
       catalogProductIds,
-      normalizationStatus: result.normalization.status,
+      normalizationStatus: revisionNormalization.status,
       tenantId,
       lineageBlockers,
     },
@@ -332,7 +349,8 @@ async function normalizeStep(
     revisionHashes,
     catalogProductIds,
     packageIds: [] as string[],
-    normalization: result.normalization,
+    normalization: revisionNormalization,
+    revisionSectionIndexes,
     tenantId,
     lineageBlockers,
   };
@@ -426,8 +444,9 @@ async function validateStep(
   const supabase = db();
   const { data: segments, error: segmentError } = await supabase
     .from('product_registration_v5_segments')
-    .select('raw_text')
+    .select('segment_index,raw_text')
     .eq('job_id', input.jobId)
+    .in('segment_index', normalized.revisionSectionIndexes)
     .order('segment_index', { ascending: true });
   if (segmentError) throw segmentError;
   const aggregates = await Promise.all(normalized.revisionIds.map(revisionId =>

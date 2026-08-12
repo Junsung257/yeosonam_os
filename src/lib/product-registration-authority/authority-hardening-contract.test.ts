@@ -53,6 +53,20 @@ describe('product registration authority hardening contracts', () => {
       .toContain('operationScope: `revalidation:${input.job.id}:${input.job.checkpoint}:segment:${index}`');
   });
 
+  it('covers Product Registration foreign keys used by backfill and durable workflows', () => {
+    const migration = source('supabase/migrations/20260812155000_product_registration_foreign_key_indexes.sql');
+    expect(migration).toContain("('legacy_backfill_jobs', 'workflow_job_id')");
+    expect(migration).toContain("('dead_letter_jobs', 'job_id')");
+    expect(migration).toContain("('transport_segments', 'departure_instance_id')");
+    expect(migration).toContain("('provider_calls', 'product_revision_id')");
+  });
+
+  it('prioritizes a bounded corrected-engine retry ahead of unseen legacy inventory', () => {
+    const migration = source('supabase/migrations/20260812156000_product_registration_backfill_retry_priority.sql');
+    expect(migration).toContain("case when b.status = 'failed' then 1000 else 0 end desc");
+    expect(migration).toContain('b.attempt_count < 3');
+  });
+
   it('keeps golf facts immutable while permitting atomic aggregate construction', () => {
     const migration = source('supabase/migrations/20260812113000_product_registration_atomic_golf_linkage.sql');
     const jsonSafeMigration = source('supabase/migrations/20260812123000_product_registration_atomic_golf_linkage_json_safe.sql');

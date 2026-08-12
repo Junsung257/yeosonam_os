@@ -183,6 +183,36 @@ export function selectCanonicalSectionForIdentity(
   return null;
 }
 
+export function sliceCanonicalNormalizationForRevisionSections(
+  normalization: CanonicalNormalization,
+  sectionIndexes: number[],
+): CanonicalNormalization {
+  const uniqueIndexes = [...new Set(sectionIndexes)];
+  const sections = uniqueIndexes.map(index => normalization.sections[index]).filter(Boolean) as CanonicalSection[];
+  const payloadSections = uniqueIndexes
+    .map(index => normalization.canonicalPayload.sections[index])
+    .filter(Boolean) as Array<Record<string, unknown>>;
+  if (sections.length !== uniqueIndexes.length || payloadSections.length !== uniqueIndexes.length) {
+    throw new Error('REGISTRATION_REVISION_SECTION_INDEX_INVALID');
+  }
+  return {
+    ...normalization,
+    rawTextHash: sections.length === 1 ? sections[0]!.rawTextHash : normalization.rawTextHash,
+    sections,
+    canonicalPayload: {
+      ...normalization.canonicalPayload,
+      sections: payloadSections,
+    },
+    qualityDiagnostics: {
+      ...normalization.qualityDiagnostics,
+      sectionCount: sections.length,
+      normalizedSectionCount: payloadSections.filter(section => !section.error).length,
+      blockedSectionCount: payloadSections.filter(section => Boolean(section.error)).length,
+      gateStatuses: uniqueIndexes.map(index => normalization.qualityDiagnostics.gateStatuses[index] ?? 'unknown'),
+    },
+  };
+}
+
 async function loadActiveAttractions(supabase: SupabaseClient): Promise<AttractionData[]> {
   const rows: AttractionData[] = [];
   const pageSize = 1000;
@@ -560,6 +590,8 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     if (correctionCatalogProductId && !boundSection) {
       throw new Error('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
     }
+    const revisionSourceSections = boundSection ? [boundSection] : normalization.sections;
+    const revisionSectionIndexes = revisionSourceSections.map(section => section.index);
     let v5ShadowDiffSummary: Record<string, unknown> | null = null;
     if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
       || getProductRegistrationV6RuntimeConfig().workflowEnabled) {
@@ -594,7 +626,6 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       const payloadSections = Array.isArray(normalization.canonicalPayload.sections)
         ? normalization.canonicalPayload.sections
         : [];
-      const revisionSourceSections = boundSection ? [boundSection] : normalization.sections;
       const revisionSlices = revisionSourceSections.map(section => ({
         sections: [section],
         canonicalPayload: {
@@ -661,6 +692,7 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
         ...(catalogProductIds.length > 0 ? {
           catalogProductIds,
           catalogProductId: catalogProductIds[0],
+          revisionSectionIndexes,
         } : {}),
         ...(v5ShadowDiffSummary ? { v5ShadowDiff: v5ShadowDiffSummary } : {}),
         rawTextHash: normalization.rawTextHash,

@@ -6,6 +6,7 @@ import {
   canonicalNormalizationJobStatus,
   segmentDocumentIR,
   selectCanonicalSectionForIdentity,
+  sliceCanonicalNormalizationForRevisionSections,
   type CanonicalSection,
 } from './canonical-worker';
 
@@ -75,5 +76,37 @@ describe('product registration V4 canonical worker', () => {
       evidence: [],
     }));
     expect(selectCanonicalSectionForIdentity(sections, { title: '구분할 수 없는 상품' })).toBeNull();
+  });
+
+  it('hands only revision-bound sections and payloads to downstream policy', () => {
+    const sections: CanonicalSection[] = [0, 1].map(index => ({
+      index,
+      sectionKey: `source:${index}`,
+      titleHint: `상품 ${index}`,
+      rawText: `상품 ${index} 원문`,
+      rawTextHash: `hash-${index}`,
+      sourceNodeIds: [],
+      evidence: [],
+    }));
+    const normalization = {
+      version: 'v6-canonical-2026-08-12.2' as const,
+      sourceDocumentId: 'source', extractionId: 'extraction', rawTextHash: 'full', sections,
+      canonicalPayload: { sections: [{ index: 0 }, { index: 1 }] },
+      lineage: { attractionMasterHash: null },
+      qualityDiagnostics: {
+        sectionCount: 2, normalizedSectionCount: 2, blockedSectionCount: 0,
+        segmentationSource: 'catalog-pre-split' as const, gateStatuses: ['blocked', 'ready_to_publish'],
+        completeness: {
+          confirmedCount: 0, pendingSupplierCount: 0, conflictingCount: 0, unavailableCount: 0,
+          publicReadySectionCount: 1, verifiedSectionCount: 1, degradedSectionCount: 0,
+          blockedSectionCount: 1, degradedReasons: [], blockers: [], fields: [],
+        },
+      },
+      status: 'needs_review' as const,
+    };
+    const sliced = sliceCanonicalNormalizationForRevisionSections(normalization, [1]);
+    expect(sliced.sections.map(section => section.index)).toEqual([1]);
+    expect(sliced.canonicalPayload.sections).toEqual([{ index: 1 }]);
+    expect(sliced.qualityDiagnostics.gateStatuses).toEqual(['ready_to_publish']);
   });
 });
