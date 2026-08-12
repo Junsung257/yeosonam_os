@@ -74,6 +74,8 @@ describe('product registration authority hardening contracts', () => {
     expect(migration).toContain('total_attempt_count');
     expect(migration).toContain("b.last_error like 'WORKFLOW_FAILED:%'");
     expect(migration).toContain('engine_version is distinct from v_engine_version');
+    expect(source('supabase/migrations/20260813002000_product_registration_backfill_attempt_audit.sql'))
+      .toContain('greatest(total_attempt_count, attempt_count)');
   });
 
   it('keeps golf facts immutable while permitting atomic aggregate construction', () => {
