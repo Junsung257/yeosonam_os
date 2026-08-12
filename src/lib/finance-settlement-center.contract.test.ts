@@ -55,6 +55,14 @@ const classificationApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/classifications/route.ts'),
   'utf8',
 );
+const classificationBatchMigration = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260811224328_finance_classification_batch_workflow.sql'),
+  'utf8',
+);
+const classificationBatchApi = readFileSync(
+  join(process.cwd(), 'src/app/api/admin/finance/classifications/batch/route.ts'),
+  'utf8',
+);
 
 describe('finance settlement center contracts', () => {
   it('serializes close and keeps one current revision per departure month', () => {
@@ -109,6 +117,24 @@ describe('finance settlement center contracts', () => {
     expect(classificationApi).toContain('nonBookingAllocations');
     expect(classificationApi).toContain(".rpc('save_bank_transaction_breakdown'");
     expect(classificationApi).toContain('allocationId');
+  });
+
+  it('saves company classifications as one stale-safe idempotent batch', () => {
+    expect(classificationApi).toContain('batchEligible');
+    expect(classificationApi).toContain('allocations.length === 1');
+    expect(classificationApi).toContain('Number(allocation.allocated_amount) === Number(transaction.amount)');
+    expect(classificationBatchMigration).toContain('save_finance_classification_batch');
+    expect(classificationBatchMigration).toContain('pg_advisory_xact_lock');
+    expect(classificationBatchMigration).toContain('stale finance classification');
+    expect(classificationBatchMigration).toContain('duplicate transaction ids');
+    expect(classificationBatchMigration).toContain('allocation.allocated_amount = transaction.amount');
+    expect(classificationBatchMigration).toContain('allocation.booking_id IS NULL');
+    expect(classificationBatchMigration).toContain("expense classification requires a withdrawal");
+    expect(classificationBatchMigration).toContain('finance_classification_batch_runs');
+    expect(classificationBatchMigration).toContain('REVOKE ALL ON FUNCTION public.save_finance_classification_batch');
+    expect(classificationBatchMigration).toContain('TO service_role');
+    expect(classificationBatchApi).toContain("request.headers.get('Idempotency-Key')");
+    expect(classificationBatchApi).toContain('expectedClassification');
   });
 
   it('conserves every non-travel transaction without overwriting manual splits', () => {

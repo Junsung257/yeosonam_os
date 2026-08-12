@@ -10,6 +10,7 @@ import {
   type MonthlyCloseReviewReason,
   type MonthlySettlementClosePreview,
 } from '@/lib/monthly-settlement-close';
+import { trackFinanceEvent } from '@/lib/finance-analytics';
 
 interface PeriodRow {
   id: string;
@@ -148,8 +149,8 @@ function Dialog({
   );
 }
 
-export default function FinancePeriods() {
-  const [month, setMonth] = useState(previousCompletedKoreaMonth());
+export default function FinancePeriods({ initialMonth }: { initialMonth?: string }) {
+  const [month, setMonth] = useState(/^\d{4}-\d{2}$/.test(initialMonth ?? '') ? initialMonth! : previousCompletedKoreaMonth());
   const [showClose, setShowClose] = useState(false);
   const [showReopen, setShowReopen] = useState(false);
   const [closeStatus, setCloseStatus] = useState<'closed' | 'conditional'>('closed');
@@ -198,10 +199,12 @@ export default function FinancePeriods() {
         if (payload.preview) await mutate({ ...(data as PeriodResponse), preview: payload.preview }, false);
         throw new Error(payload.error || '월 마감을 확정하지 못했습니다.');
       }
+      trackFinanceEvent('finance_close_completed', { month, result: closeStatus });
       setShowClose(false);
       setNotice({ ok: true, text: `${monthLabel(month)} ${payload.closed.bookingCount}건, 현금 마진 ${won(payload.closed.cashMargin)} 마감 완료` });
       await mutate();
     } catch (closeError) {
+      trackFinanceEvent('finance_error_shown', { error_code: 'month_close_failed', source: 'finance_periods' });
       setNotice({ ok: false, text: closeError instanceof Error ? closeError.message : '월 마감을 확정하지 못했습니다.' });
     } finally {
       setBusy(false);
