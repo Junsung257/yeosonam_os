@@ -32,9 +32,15 @@ describe('product registration authority hardening contracts', () => {
     expect(route).toContain('startProductRegistrationTextWorkflow');
     expect(route).toContain('archiveMode: true');
     expect(route).toContain("bindingKind: 'legacy_backfill'");
+    expect(route).toContain('targetTitle:');
+    expect(route).toContain('targetInternalCode:');
+    expect(route).toContain("throw new Error('LEGACY_SOURCE_TEXT_UNAVAILABLE')");
     expect(route).not.toContain(".from('travel_packages').insert");
     expect(migration).toContain("j.v4_stage_state->>'authorityBindingOperationKey'");
     expect(migration).toContain("'legacy-backfill:' || b.id::text");
+    const terminalSyncMigration = source('supabase/migrations/20260812154000_product_registration_backfill_terminal_sync.sql');
+    expect(terminalSyncMigration).toContain('trg_sync_legacy_backfill_terminal_state');
+    expect(terminalSyncMigration).toContain("case when length(btrim(coalesce(p.raw_text, ''))) >= 50 then 100");
   });
 
   it('reserves provider effects with a durable retry ceiling', () => {

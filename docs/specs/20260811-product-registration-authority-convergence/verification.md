@@ -23,7 +23,10 @@ These results prove local code consistency, not customer-open readiness. Product
 - Fixed three production-risk defects: serverless Chromium was falsely reported unavailable; ISO flight timestamps could be parsed from the year as `20:26`; OCR could classify a bare year as a flight number.
 - Added a licensed Pexels reference-media path that stores source page, photographer, license, attribution, and a customer-visible reference-image disclaimer. Missing provider configuration remains degraded, never fabricated.
 - Converted customer content generation, public search, B2B v1, affiliate API/landing/embed/referral, blog product links/destination, RSS, destination attractions, and itinerary print to exact pointer/snapshot reads.
-- Latest verification: TypeScript, lint, production build, authority/registration contracts (`authorized=1 legacy=143 unapproved=0`), and the full 710-file / 5,252-test suite passed. The build produced 20 durable workflow steps and 389 static pages.
+- Latest verification: TypeScript, lint, production build, authority/registration contracts (`authorized=1 legacy=143 unapproved=0`), and the full 710-file / 5,256-test suite passed. The build produced 20 durable workflow steps and 389 static pages.
+- Deployed the guarded V6 backfill endpoint in a branch preview with authority `shadow`, publish disabled, and global publication freeze enabled. The first forced bounded batch claimed/started 25/25 rows with zero start or bind failure and later synchronized 25/25 terminal outcomes without creating or moving customer pointers.
+- The first batch correctly exposed that shared legacy source text can contain several catalog products. Twelve rows initially terminal-blocked at normalization with `REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS`. The Kernel now selects only a uniquely matching local source section using the legacy title/internal code as routing hints, never evidence; unresolved identity remains an expected explained block instead of a dead letter.
+- Applied forward migration `20260812154000_product_registration_backfill_terminal_sync.sql` to production. It synchronizes the backfill ledger in the same transaction as the V6 terminal job and prioritizes evidence-rich rows for subsequent bounded canaries. It does not publish, unfreeze, or change authority mode.
 
 ## Automated Checks
 
@@ -47,7 +50,7 @@ npm test
 - [ ] signed proof URL에서만 비공개 snapshot이 렌더되고 상품 운영 상태는 바뀌지 않는다.
 - [ ] `/packages`, `/lp`, OG, sitemap, affiliate, B2B가 채널별 동일 pointer hash를 표시한다.
 - [ ] verified/degraded/blocked 표본이 고객 관점에서 올바르게 자동 종결된다.
-- [ ] 기존 989개 shadow backfill이 현재 publication pointer를 변경하지 않는다.
+- [~] 기존 990개 중 첫 25개 shadow backfill은 publication pointer를 변경하지 않고 25/25 terminal 처리됐다. 나머지 965개도 같은 제한 배치로 검증한다.
 
 ## Evidence To Report
 

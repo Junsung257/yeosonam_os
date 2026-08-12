@@ -26,6 +26,8 @@ type IdentityBinding = {
   productKey: string;
   operationKey: string;
   bindingKind: 'legacy_backfill';
+  targetTitle?: string | null;
+  targetInternalCode?: string | null;
 };
 
 export type KernelWorkflowStartResult = {
@@ -148,6 +150,8 @@ export async function startProductRegistrationWorkflowForSource(input: {
           correctionBaseRevisionId: input.identityBinding.baseRevisionId ?? null,
           correctionProductKey: input.identityBinding.productKey,
           authorityBindingOperationKey: input.identityBinding.operationKey,
+          authorityBindingTargetTitle: input.identityBinding.targetTitle ?? null,
+          authorityBindingTargetInternalCode: input.identityBinding.targetInternalCode ?? null,
         } : {}),
         ...(input.correction ? {
           correctionJobId: input.correction.correctionJobId,

@@ -743,11 +743,14 @@ async function blockFailedWorkflowStep(
   error: string,
 ): Promise<ProductRegistrationV6WorkflowResult> {
   'use step';
+  const expectedIdentityBlock = error.includes('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
   const decision: ProductRegistrationV6Decision = {
     outcome: 'blocked',
     terminalOutcome: 'blocked_action_required',
     degradedReasons: [],
-    blockers: [`WORKFLOW_FAILED:${error}`],
+    blockers: expectedIdentityBlock
+      ? ['IDENTITY_BINDING_AMBIGUOUS']
+      : [`WORKFLOW_FAILED:${error}`],
     packageIds: [],
     revisionIds: [],
   };
@@ -773,19 +776,21 @@ async function blockFailedWorkflowStep(
       error,
     }).catch(() => undefined);
   }
-  await supabase.rpc('record_product_registration_v6_dead_letter', {
-    p_payload: {
-      tenant_id: input.tenantId,
-      job_id: input.jobId,
-      workflow_run_id: workflowRunId,
-      failed_stage: failedStage,
-      operation_key: `${input.jobId}:${input.fencingToken}:dead-letter`,
-      error_code: error.split(':')[0] || 'WORKFLOW_FAILED',
-      error_detail: error,
-      source_hash: input.fileHash,
-      payload: { workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
-    },
-  });
+  if (!expectedIdentityBlock) {
+    await supabase.rpc('record_product_registration_v6_dead_letter', {
+      p_payload: {
+        tenant_id: input.tenantId,
+        job_id: input.jobId,
+        workflow_run_id: workflowRunId,
+        failed_stage: failedStage,
+        operation_key: `${input.jobId}:${input.fencingToken}:dead-letter`,
+        error_code: error.split(':')[0] || 'WORKFLOW_FAILED',
+        error_detail: error,
+        source_hash: input.fileHash,
+        payload: { workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
+      },
+    });
+  }
   const { error: terminalError } = await supabase.rpc('record_product_registration_v6_terminal_state', {
     p_payload: {
       job_id: input.jobId,
@@ -817,7 +822,7 @@ async function blockFailedWorkflowStep(
     fencingToken: input.fencingToken,
     stage: 'complete',
     status: 'succeeded',
-    output: { terminalOutcome: decision.terminalOutcome, failed: true },
+    output: { terminalOutcome: decision.terminalOutcome, failed: !expectedIdentityBlock },
   });
   return {
     ...decision,

@@ -85,7 +85,7 @@ async function handler(request: NextRequest) {
       if (!pkg || pkg.tenant_id !== claim.tenant_id || pkg.catalog_product_id !== claim.catalog_product_id) {
         throw new Error('LEGACY_BACKFILL_PACKAGE_LINEAGE_MISMATCH');
       }
-      if (rawText.length < 50) throw new Error('LEGACY_BACKFILL_SOURCE_TEXT_TOO_SHORT');
+      if (rawText.length < 50) throw new Error('LEGACY_SOURCE_TEXT_UNAVAILABLE');
       started = await startProductRegistrationTextWorkflow({
         supabase: db,
         tenantId: claim.tenant_id,
@@ -113,6 +113,8 @@ async function handler(request: NextRequest) {
           baseRevisionId: baseRevisionByCatalog.get(claim.catalog_product_id) ?? null,
           productKey: `legacy:travel-package:${claim.package_id}`,
           operationKey: `legacy-backfill:${claim.id}:${claim.attempt_count}`,
+          targetTitle: typeof pkg.title === 'string' ? pkg.title : null,
+          targetInternalCode: typeof pkg.internal_code === 'string' ? pkg.internal_code : null,
         },
       });
       const { error: bindError } = await db.rpc('bind_product_registration_legacy_backfill', {

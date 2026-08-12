@@ -84,6 +84,105 @@ export type CanonicalNormalization = {
   status: 'complete' | 'needs_review';
 };
 
+type BoundSectionIdentity = {
+  title?: string | null;
+  internalCode?: string | null;
+};
+
+const IDENTITY_STOP_WORDS = new Set([
+  '상품', '여행', '패키지', '출발', '도착', '일정', '특가', '성인', '기준',
+]);
+
+function normalizeIdentityText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase('ko-KR')
+    .replace(/[^0-9a-z가-힣]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function localSectionText(rawText: string): string {
+  const chunks = rawText.split(/\n\s*---\s*\n/g);
+  return chunks[chunks.length - 1] ?? rawText;
+}
+
+function identityTokens(value: string): string[] {
+  return [...new Set(normalizeIdentityText(value)
+    .split(' ')
+    .filter(token => token.length >= 2 && !IDENTITY_STOP_WORDS.has(token)))];
+}
+
+function durationToken(value: string): string | null {
+  const match = value.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  return match ? `${match[1]}박${match[2]}일` : null;
+}
+
+function flightTokens(value: string): string[] {
+  return [...new Set((value.toUpperCase().match(/\b[A-Z0-9]{2}\s*\d{3,4}\b/g) ?? [])
+    .map(token => token.replace(/\s+/g, '')))];
+}
+
+export function selectCanonicalSectionForIdentity(
+  sections: CanonicalSection[],
+  identity: BoundSectionIdentity,
+): CanonicalSection | null {
+  if (sections.length === 1) return sections[0] ?? null;
+  const targetTitle = identity.title?.trim() ?? '';
+  const targetCode = identity.internalCode?.trim() ?? '';
+  if (!targetTitle && !targetCode) return null;
+  const normalizedTitle = normalizeIdentityText(targetTitle);
+  const normalizedCode = normalizeIdentityText(targetCode);
+  const tokens = identityTokens(targetTitle);
+  const targetDuration = durationToken(targetTitle);
+  const targetFlights = flightTokens(targetTitle);
+
+  const scored = sections.map(section => {
+    const localRaw = localSectionText(section.rawText);
+    const local = normalizeIdentityText(localRaw);
+    const whole = normalizeIdentityText(section.rawText);
+    const hint = normalizeIdentityText(section.titleHint ?? '');
+    const localDuration = durationToken(localRaw);
+    const localFlights = flightTokens(localRaw);
+    const localMatches = tokens.filter(token => local.includes(token));
+    const wholeMatches = tokens.filter(token => whole.includes(token));
+    const localCoverage = tokens.length > 0 ? localMatches.length / tokens.length : 0;
+    let score = 0;
+    let strong = false;
+
+    if (normalizedCode && local.includes(normalizedCode)) {
+      score += 1_200;
+      strong = true;
+    }
+    if (normalizedTitle && local.includes(normalizedTitle)) {
+      score += 1_000;
+      strong = true;
+    }
+    if (normalizedTitle && hint.includes(normalizedTitle)) {
+      score += 700;
+      strong = true;
+    }
+    if (targetDuration && localDuration === targetDuration) score += 140;
+    else if (targetDuration && localDuration && localDuration !== targetDuration) score -= 180;
+    const matchedFlights = targetFlights.filter(token => localFlights.includes(token)).length;
+    if (matchedFlights > 0) score += matchedFlights * 90;
+    score += localMatches.reduce((sum, token) => sum + Math.min(24, token.length * 4), 0);
+    score += Math.max(0, wholeMatches.length - localMatches.length) * 2;
+    if (localCoverage >= 0.7) score += 100;
+
+    return { section, score, strong, localCoverage };
+  }).sort((left, right) => right.score - left.score || left.section.index - right.section.index);
+
+  const best = scored[0];
+  const runnerUp = scored[1];
+  if (!best || best.score <= 0) return null;
+  const margin = best.score - (runnerUp?.score ?? 0);
+  if (best.strong && margin >= 1) return best.section;
+  if (best.localCoverage >= 0.7 && margin >= 20) return best.section;
+  if (targetDuration && best.localCoverage >= 0.4 && margin >= 40) return best.section;
+  return null;
+}
+
 async function loadActiveAttractions(supabase: SupabaseClient): Promise<AttractionData[]> {
   const rows: AttractionData[] = [];
   const pageSize = 1000;
@@ -437,14 +536,28 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
     const correctionProductKey = typeof job.v4_stage_state.correctionProductKey === 'string'
       ? job.v4_stage_state.correctionProductKey
       : null;
+    const authorityBindingTargetTitle = typeof job.v4_stage_state.authorityBindingTargetTitle === 'string'
+      ? job.v4_stage_state.authorityBindingTargetTitle
+      : null;
+    const authorityBindingTargetInternalCode = typeof job.v4_stage_state.authorityBindingTargetInternalCode === 'string'
+      ? job.v4_stage_state.authorityBindingTargetInternalCode
+      : null;
     const authorityBindingKind = job.v4_stage_state.authorityBindingKind === 'legacy_backfill'
       ? 'legacy_backfill'
       : 'correction';
     if (correctionCatalogProductId && (
       !correctionProductKey
-      || normalization.sections.length !== 1
       || (authorityBindingKind === 'correction' && !correctionBaseRevisionId)
     )) {
+      throw new Error('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
+    }
+    const boundSection = correctionCatalogProductId
+      ? selectCanonicalSectionForIdentity(normalization.sections, {
+          title: authorityBindingTargetTitle,
+          internalCode: authorityBindingTargetInternalCode,
+        })
+      : null;
+    if (correctionCatalogProductId && !boundSection) {
       throw new Error('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
     }
     let v5ShadowDiffSummary: Record<string, unknown> | null = null;
@@ -481,10 +594,11 @@ export async function processProductRegistrationV4CanonicalNormalizationJob(inpu
       const payloadSections = Array.isArray(normalization.canonicalPayload.sections)
         ? normalization.canonicalPayload.sections
         : [];
-      const revisionSlices = normalization.sections.map((section, index) => ({
+      const revisionSourceSections = boundSection ? [boundSection] : normalization.sections;
+      const revisionSlices = revisionSourceSections.map(section => ({
         sections: [section],
         canonicalPayload: {
-          sections: [payloadSections[index] ?? {}],
+          sections: [payloadSections[section.index] ?? {}],
           lineage: normalization.canonicalPayload.lineage,
         },
       }));
