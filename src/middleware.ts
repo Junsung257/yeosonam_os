@@ -669,6 +669,13 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
 function isPublicPath(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Signed, short-lived V6 proof URLs must reach their route-local token verifier.
+  // Do not place this route under an underscore-prefixed App Router segment:
+  // Next.js treats those folders as non-routable private implementation details.
+  if (pathname.startsWith('/product-registration-proof/')) {
+    return request.method === 'GET';
+  }
+
   // Blog APIs are public only where the route is an intentional read surface.
   // Every generation, mutation, queue, and indexing route must pass middleware auth
   // and still enforce its own route-local admin/cron guard.

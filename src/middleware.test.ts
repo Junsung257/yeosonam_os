@@ -196,6 +196,15 @@ describe('middleware backend P0 server-token pass-through', () => {
 });
 
 describe('middleware guide-token public entry points', () => {
+  it('lets signed product registration proof pages reach their route-local verifier', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/product-registration-proof/packages/snapshot-a',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('lets voucher GET reach the route-local guide-token/admin guard', async () => {
     const response = await middleware(new NextRequest(
       'https://www.yeosonam.com/api/voucher?id=voucher-a&bookingId=booking-a&guideToken=token-a',

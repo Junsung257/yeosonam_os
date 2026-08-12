@@ -266,8 +266,8 @@ export async function proveProductRegistrationV6Snapshot(input: {
   });
   const baseUrl = input.baseUrl.replace(/\/$/, '');
   const surfaceUrls = {
-    packages: `${baseUrl}/__proof/packages/${input.snapshot.snapshotId}`,
-    lp: `${baseUrl}/__proof/lp/${input.snapshot.snapshotId}`,
+    packages: `${baseUrl}/product-registration-proof/packages/${input.snapshot.snapshotId}`,
+    lp: `${baseUrl}/product-registration-proof/lp/${input.snapshot.snapshotId}`,
   };
   const chromeProof = await runProductRegistrationV6ChromeProof({
     surfaceUrls,
