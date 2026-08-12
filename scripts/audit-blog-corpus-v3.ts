@@ -37,7 +37,7 @@ async function main(): Promise<void> {
       branch: execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim(),
       head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       origin_main: execFileSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' }).trim(),
-      production_commit: '2ab65ef05b4a0f9fff8564a9685de0047bc08860',
+      production_commit: process.env.BLOG_AUDIT_PRODUCTION_COMMIT || null,
       package_lock: 'package-lock.json', next_version: '15.5.21',
     },
     ...audit,
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
 
 ## Source of truth
 
-- 작업 기준: \`origin/main\` = production commit \`2ab65ef05b4a0f9fff8564a9685de0047bc08860\`
+- 작업 기준: \`origin/main\` = \`${enriched.source_of_truth.origin_main}\`, production commit = \`${enriched.source_of_truth.production_commit || 'not_supplied'}\`
 - 격리 branch: \`${enriched.source_of_truth.branch}\`
 - lockfile: \`package-lock.json\`, Next.js \`15.5.21\`
 - 운영 배포가 feature branch commit을 직접 사용한 이력이 있어, main 병합 후 immutable commit을 promote하고 branch-name deploy를 금지하는 runbook 절차가 필요합니다.

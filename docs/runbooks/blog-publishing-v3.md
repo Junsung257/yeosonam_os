@@ -9,6 +9,7 @@ V3는 발행량보다 검증된 수요, claim 근거, corpus 다양성, human re
 | 변수 | 기본값 | 의미 |
 |---|---:|---|
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`만 허용 |
+| `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | production 배포 ref가 다르거나 commit SHA가 없으면 effective mode를 `draft_only`로 강등 |
 | `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 최대 비중 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 중 같은 archetype 상한 |
@@ -86,3 +87,50 @@ observed demand → research packet → flexible brief/archetype → writer
 ## 배포 후 관찰
 
 Vercel에서 `/blog`의 database-unavailable 발생률, stale snapshot 제공 수, snapshot age를 확인합니다. RUM은 동의가 있는 비식별 이벤트만 저장하며 p75 목표는 LCP 2.5s, INP 200ms, CLS 0.1입니다. 표본이 없으면 달성으로 보고하지 않습니다.
+
+## 2026-08-12 production readiness addendum
+
+### Fail-closed environment
+
+- `BLOG_AUTOPUBLISH_MODE=draft_only`로 배포를 시작합니다.
+- `BLOG_PRODUCTION_ALLOWED_GIT_REF=main`을 설정합니다.
+- production에서 `VERCEL_GIT_COMMIT_REF`, `VERCEL_GIT_COMMIT_SHA`가 없거나 ref가 허용값과 다르면 요청 mode가 `live`여도 effective mode는 `draft_only`입니다.
+- publisher는 V3 publish 및 delivery resource의 실제 column probe가 모두 통과하기 전에 queue row를 변경하지 않습니다.
+
+### 운영 migration history가 local과 다를 때
+
+2026-08-12 읽기 전용 점검에서 일반 `db push --linked --include-all --dry-run`은 `LegacyDbPushMissingLocalError`로 차단됐습니다. CLI가 제안하는 대규모 history repair를 실행하지 않습니다.
+
+1. production clone/staging branch에서 다음 SQL 5개를 파일 순서대로 실행하고 rollback SQL, function 권한, RLS, SQL/TS eligibility parity, snapshot refresh를 검증합니다.
+   - `20260811132017_blog_quality_v3_policy.sql`
+   - `20260811132023_blog_quality_v3_demand_evidence.sql`
+   - `20260811132031_blog_quality_v3_snapshots_media.sql`
+   - `20260811132037_blog_quality_v3_measurement.sql`
+   - `20260811210920_blog_quality_v3_reliability_followup.sql`
+2. production change window에서는 일반 `db push`가 아니라 검토된 5개 SQL만 같은 순서로 선택 적용합니다. 각 파일 직후 object/column/function probe를 실행하고 실패하면 다음 파일로 진행하지 않습니다.
+3. SQL 적용과 object 검증이 모두 끝난 뒤에만 정확히 위 5개 version을 migration history에 `applied`로 표시합니다. 선기록하거나 unrelated version을 repair하지 않습니다.
+4. `select * from public.refresh_blog_public_snapshots_v3();` 실행 후 `current snapshot count = public eligibility count`를 확인합니다.
+5. 검수 차단 published row와 수요 없는 queue disposition을 승인된 dry-run plan대로 처리합니다.
+6. 아래 strict gate가 통과하기 전에는 `reviewed_only` 또는 `live`를 켜지 않습니다.
+
+```powershell
+npm run verify:blog-production-readiness-v3 -- `
+  --production-branch=main `
+  --production-commit=<immutable-sha> `
+  --database-errors-7d=<vercel-observed-count>
+```
+
+코드 배포를 DB migration보다 먼저 해야 할 경우에도 publisher는 schema gate에서 중단되고 catalog/detail은 bundled last-known-good를 사용합니다. 이때도 mode는 계속 `draft_only`여야 합니다.
+
+### 전체 공개 corpus detail bundle
+
+DB 장애 시 공개 가능 글 전체를 보존하려면 아래 명령으로 공개 뷰를 읽고 local artifact만 갱신합니다. DB에는 쓰지 않으며 최대 500건, 8MB를 넘으면 실패합니다.
+
+```powershell
+npx tsx scripts/refresh-blog-public-snapshots.ts `
+  --all-details `
+  --write-bundled `
+  --write-detail-bundled
+```
+
+HIGH/MEDIUM/LOW risk 본문의 fallback 최대 수명은 각각 24/48/72시간입니다. bundle refresh가 이 만료를 우회하지 않습니다.

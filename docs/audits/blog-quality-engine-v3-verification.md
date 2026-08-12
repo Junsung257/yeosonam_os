@@ -1,6 +1,6 @@
 # Blog Quality Engine V3 검증 — 2026-08-11 기준
 
-이 문서는 운영 배포나 운영 DB 쓰기 없이 수행한 구현 검증 기록이다. 기준일은 미션에서 지정한 2026-08-11(Asia/Seoul)이며, 최종 로컬 검증은 2026-08-12 01:08 KST까지 이어졌다.
+이 문서는 운영 배포나 운영 DB 쓰기 없이 수행한 구현 검증 기록이다. 기준일은 미션에서 지정한 2026-08-11(Asia/Seoul)이며, 최종 로컬 검증은 2026-08-12 15:59 KST까지 이어졌다.
 
 ## 1. source of truth
 
@@ -137,8 +137,8 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - 운영 200건의 147건 merge 후보는 자동 적용할 수 없고, 대표 문서 및 301/410을 편집자가 확인해야 한다.
 - pHash/embedding threshold는 labeled fixture로 시작했지만 실제 코퍼스 label로 재보정해야 한다.
 - 모델 credential 없이 실행한 offline canary는 source 진위와 실제 문장 품질을 보증하지 않는다.
-- 상세 full-body 번들 경로는 구현됐지만 현재 artifact는 0건이다. 운영 read-only snapshot export에서 핵심 URL을 선별하기 전까지 cold-start DB 전면 장애에서 본문 fallback은 발생하지 않는다.
-- 첫 production build는 high-core worker fan-out으로 실패했다. 4-worker build artifact는 통과했지만 전체 빌드 시간이 15분을 넘으므로 CI timeout/캐시 정책을 확인해야 한다.
+- 상세 full-body 번들은 운영 공개 뷰를 읽기 전용으로 조회해 공개 가능 192건 전체를 생성했다. artifact는 2,711,758 bytes이며 본문 200자 미만 항목은 0건이다. 이 번들은 가용성 fallback이지 기존 콘텐츠 품질 승인으로 간주하지 않는다.
+- 최초 build의 high-core worker fan-out 문제는 `experimental.cpus=4` 제한으로 해소했다. 최종 cold production build는 641.7초에 통과했으므로 CI timeout은 15분보다 길게 유지하고 build cache hit/miss를 별도로 관찰해야 한다.
 - 과거 검색엔진 캐시의 review-blocked 문서는 운영 disposition 적용과 Google/Naver removal 절차가 끝날 때까지 남을 수 있다.
 
 ## 13. 정확한 배포·검증 순서
@@ -158,7 +158,7 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 ## 14. 2026-08-12 reliability follow-up
 
 - 리드 분석 이벤트 손실 지점을 `analytics_server_event_outbox`와 lead INSERT trigger로 보강했다. 1차 타깃 테스트는 7 files / 22 tests가 통과했다.
-- 상세 페이지는 DB 장애 때 최대 20개 선별 full-body bundle을 사용할 수 있다. 번들이 비어 있거나 72시간을 넘으면 fail-closed이며, 현재 저장소 번들은 운영 SELECT 자격 증명이 없어 의도적으로 0건이다.
+- 상세 페이지는 DB 장애 때 공개 가능 192건의 full-body bundle을 사용할 수 있다. 번들이 비어 있거나 risk별 24/48/72시간 freshness budget을 넘으면 fail-closed한다.
 - 기존 64-bit image dHash를 사용하는 dry-run backfill/중복 리포트 도구를 추가했다. 실제 pHash DB backfill은 실행하지 않았다.
 - zero-data readiness는 search 30d, engagement/RUM 7d, server event 30d, current snapshot, outbox를 검사한다. 0건과 query 실패는 critical이다.
 - Supabase CLI 2.113.0을 확인했다. `supabase status`는 Docker Desktop Linux engine이 실행 중이지 않아 실패했으므로 local migration reset/pgTAP은 실행하지 않았다.
@@ -185,3 +185,20 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - offline canary 재실행 결과 24 drafts, 24 destinations, 12 intents, 12 archetypes, normalized title skeleton 최대 2, FAQ 12.5%, checklist 4.17%, duplicate title/opening, unsupported numeric, stale HIGH, cross-destination image reuse, broken Korean 모두 0으로 PASS했다.
 - migration safety는 5 files / 0 issues, prefix audit는 전체 451 files / 기존 collision 16 / 신규 collision 0이다.
 - corpus read-only audit 재시도는 `.env.prod` placeholder key 때문에 `corpus_read_failed:Invalid API key`로 실패했다. 이를 성공으로 처리하지 않았고 운영 DB write는 0건이다.
+
+## 16. 2026-08-12 production-connected final hardening
+
+- 최신 운영 Vercel deployment는 feature branch가 아니라 `main`의 immutable commit `54043ebdc5e7b787b304de9a932ecd3d50d7bdc6`다.
+- 운영 Supabase 최종 SELECT에서 published 200, public eligible 192, review-blocked published 8, queued 9, queued without verified demand 9를 확인했다. 대기열은 검증 중 8건에서 9건으로 증가했지만 운영 DB write는 수행하지 않았다.
+- V3 migration 5개와 V3 runtime resource 18개는 운영에 아직 없으므로 새 readiness gate는 `safeToEnableLive=false`를 반환한다.
+- 최근 7일 `BLOG_DATABASE_UNAVAILABLE`은 131 occurrences / 100 users였다. 7일 관찰 창이 0이 되기 전에는 live gate를 통과하지 않는다.
+- publisher는 publish+delivery schema probe를 queue write 전에 수행하며, stored demand signal을 읽어 검증된 demand가 없으면 AI generation 전에 차단한다.
+- detail cache는 outage를 cache rejection으로 던지지 않고 typed envelope로 저장한다. durable snapshot의 진짜 empty row만 404이고, table/schema/DB 오류는 legacy public view 또는 bundled full body로 간다.
+- 운영 공개 뷰를 읽기 전용으로 사용해 192/192 usable full-body bundle을 생성했다. artifact는 2.72MB이고 DB write는 0건이다.
+- publisher와 indexing worker 모두 public snapshot refresh 성공 후에만 cache/indexing side effect를 수행한다.
+- local Chrome에서 `/blog`는 H1과 article link를 렌더했고 database-unavailable 문구 및 console warning/error가 0이었다. `/blog/fukuoka-3`은 canonical, H1, 본문 2,409자, JSON-LD 4개를 렌더했다.
+- local HTTP 검증에서 sitemap, RSS, image sitemap은 모두 200이며 content type은 각각 XML, RSS XML, XML이었다. 현재 운영의 image sitemap은 아직 HTML이므로 후보 배포 후 재검증이 필요하다.
+- production migration history와 repository가 크게 달라 일반 `db push --include-all --dry-run`도 실패한다. 대규모 history repair는 금지하고 검토된 V3 5개 SQL만 staging rehearsal 후 선택 적용한다.
+- 전체 Vitest 재검증은 680 files / 5,153 tests가 모두 PASS했다. `npm run type-check` 오류 0, `npm run lint` 경고·오류 0, `git diff --check` 오류 0이다.
+- 최종 production build는 Next.js 15.5.21에서 641.7초에 PASS했다. compile 93초, static pages 389/389, `.next` manifest 및 postbuild 검증이 모두 통과했다.
+- migration safety는 V3 5 files / 0 issues, prefix audit는 전체 452 files / 알려진 historical collision 16 / 신규 collision 0이다.
