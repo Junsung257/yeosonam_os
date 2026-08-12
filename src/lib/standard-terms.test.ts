@@ -65,6 +65,18 @@ describe('registration terms policy snapshot', () => {
 });
 
 describe('sanitizeNoticeForCustomerSurface', () => {
+  it('does not phrase cancellation cost guidance as a customer-facing confirmation promise', () => {
+    const sanitized = sanitizeNoticeForCustomerSurface({
+      type: 'AUTO_TICKETING',
+      title: '발권 후 취소 안내',
+      text: '발권 뒤 취소하면 실비가 발생할 수 있습니다.',
+      _tier: 1,
+    });
+
+    expect(sanitized?.text).toContain('숙박 배정');
+    expect(sanitized?.text).not.toContain('숙박 확정');
+  });
+
   it('keeps product notices and condenses approved platform cancellation blocks', () => {
     expect(sanitizeNoticeForCustomerSurface({
       type: 'AUTO_TICKETING',

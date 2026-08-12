@@ -68,7 +68,7 @@ export function sanitizeNoticeForCustomerSurface(notice: NoticeBlock): NoticeBlo
     return {
       ...notice,
       title: '발권 후 취소 비용 안내',
-      text: '예약 후 항공권 발권이나 숙박 확정이 진행된 뒤 취소하면 실제 발생한 비용이 부과될 수 있습니다. 적용 조건은 결제 전에 다시 안내드립니다.',
+      text: '예약 후 항공권 발권이나 숙박 배정이 진행된 뒤 취소하면 실제 발생한 비용이 부과될 수 있습니다. 적용 조건은 결제 전에 다시 안내드립니다.',
     };
   }
   if (notice.type === 'RESERVATION') {
