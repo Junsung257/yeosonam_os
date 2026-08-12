@@ -574,7 +574,7 @@ async function proveSnapshotsStep(input: ProductRegistrationV6WorkflowInput, sna
   const supabase = db();
   const proofs = [];
   for (const snapshot of snapshots) {
-    proofs.push(await proveProductRegistrationV6Snapshot({ supabase, snapshot, baseUrl: input.publicBaseUrl || input.requestBaseUrl }));
+    proofs.push(await proveProductRegistrationV6Snapshot({ supabase, snapshot, baseUrl: input.requestBaseUrl || input.publicBaseUrl }));
   }
   await recordStage({
     jobId: input.jobId,

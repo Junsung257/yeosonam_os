@@ -29,6 +29,7 @@ type SnapshotRow = {
   card_projection: AnyRecord;
   lp_projection: AnyRecord;
   route_text_dump: string[];
+  renderer_build_id?: string | null;
   status: string;
   created_at: string;
 };
@@ -114,7 +115,7 @@ export async function fetchPublicPackageSnapshotById(
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, renderer_build_id, status, created_at')
     .eq('id', snapshotId)
     .in('status', ['candidate', 'approved', 'published'])
     .maybeSingle();
@@ -158,7 +159,7 @@ export async function getCurrentPublicPackage(
 
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
+    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, renderer_build_id, status, created_at')
     .eq('id', pointer.current_snapshot_id)
     .eq('tenant_id', input.tenantId)
     .eq('package_id', packageId)

@@ -22,7 +22,52 @@ export type ProductRegistrationV6CandidateSnapshot = {
   snapshotId: string;
   snapshotHash: string;
   rendererBuildId: string;
+  proofAssertions: {
+    requiredText: string[];
+    forbiddenText: string[];
+  };
 };
+
+function customerProofAssertions(input: {
+  snapshot: JsonObject;
+  packageId: string;
+  resolvedTransport: ResolvedTransportForSnapshot[];
+}): ProductRegistrationV6CandidateSnapshot['proofAssertions'] {
+  const pkg = input.snapshot.package && typeof input.snapshot.package === 'object' && !Array.isArray(input.snapshot.package)
+    ? input.snapshot.package as JsonObject
+    : {};
+  const itinerary = pkg.itinerary_data && typeof pkg.itinerary_data === 'object' && !Array.isArray(pkg.itinerary_data)
+    ? pkg.itinerary_data as JsonObject
+    : {};
+  const segments = Array.isArray(itinerary.flight_segments)
+    ? itinerary.flight_segments.filter((item): item is JsonObject => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    : [];
+  const termsSnapshot = pkg.terms_snapshot && typeof pkg.terms_snapshot === 'object' && !Array.isArray(pkg.terms_snapshot)
+    ? pkg.terms_snapshot as JsonObject
+    : {};
+  const notices = Array.isArray(termsSnapshot.notices)
+    ? termsSnapshot.notices.filter((item): item is JsonObject => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    : [];
+  const price = typeof pkg.price === 'number' && Number.isFinite(pkg.price)
+    ? `${pkg.price.toLocaleString('ko-KR')}원`
+    : null;
+  const requiredText = [
+    typeof pkg.title === 'string' ? pkg.title : null,
+    price,
+    ...segments.map(segment => typeof segment.flight_no === 'string' ? segment.flight_no : null),
+    ...(Array.isArray(pkg.inclusions) ? pkg.inclusions : []),
+    ...(Array.isArray(pkg.excludes) ? pkg.excludes : []),
+    ...notices.filter(notice => notice.type === 'AUTO_TICKETING').map(notice => notice.text),
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  const forbiddenText = input.resolvedTransport
+    .filter(item => item.packageId === input.packageId && (!item.verifiedByCurrentProviders || item.state === 'conflicting'))
+    .flatMap(item => [item.departureLocalTime, item.arrivalLocalTime])
+    .filter((value): value is string => typeof value === 'string' && /^\d{2}:\d{2}$/.test(value));
+  return {
+    requiredText: [...new Set(requiredText)],
+    forbiddenText: [...new Set(forbiddenText)],
+  };
+}
 
 function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrationV6Decision): JsonObject {
   if (decision.outcome !== 'degraded') return pkg;
@@ -39,7 +84,7 @@ function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrationV6Dec
   };
 }
 
-function applyResolvedTransport(
+export function applyResolvedTransport(
   pkg: JsonObject,
   packageId: string,
   resolvedTransport: ResolvedTransportForSnapshot[],
@@ -53,22 +98,43 @@ function applyResolvedTransport(
     const row = segment as JsonObject;
     const leg = String(row.leg ?? '');
     const serviceNumber = String(row.flight_no ?? row.code ?? '').replace(/\s+/g, '').toUpperCase();
-    const candidates = resolvedTransport.filter(item =>
+    const matchingFacts = resolvedTransport.filter(item =>
       item.packageId === packageId
       && item.leg === leg
-      && item.serviceNumber === serviceNumber
+      && item.serviceNumber === serviceNumber,
+    );
+    if (matchingFacts.length === 0) return row;
+
+    const candidates = matchingFacts.filter(item =>
+      item.verifiedByCurrentProviders
       && (item.state === 'source_confirmed' || item.state === 'corroborated')
       && item.departureLocalTime
       && item.arrivalLocalTime,
     );
     const variants = new Set(candidates.map(item => `${item.departureLocalTime}|${item.arrivalLocalTime}|${item.arrivalDayOffset}`));
-    if (variants.size !== 1) return row;
+    const hasConflict = matchingFacts.some(item => item.state === 'conflicting');
+    if (hasConflict || variants.size !== 1) {
+      const {
+        dep_time: _departureTime,
+        arr_time: _arrivalTime,
+        arr_day_offset: _arrivalDayOffset,
+        departure_local_time: _departureLocalTime,
+        arrival_local_time: _arrivalLocalTime,
+        arrival_day_offset: _arrivalLocalDayOffset,
+        ...safeRow
+      } = row;
+      return {
+        ...safeRow,
+        v6_fact_state: hasConflict ? 'conflicting' : 'degraded',
+        v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+      };
+    }
     const resolved = candidates[0]!;
     return {
       ...row,
-      dep_time: row.dep_time || resolved.departureLocalTime,
-      arr_time: row.arr_time || resolved.arrivalLocalTime,
-      arr_day_offset: row.arr_day_offset ?? resolved.arrivalDayOffset,
+      dep_time: resolved.departureLocalTime,
+      arr_time: resolved.arrivalLocalTime,
+      arr_day_offset: resolved.arrivalDayOffset,
       v6_fact_state: resolved.state,
     };
   });
@@ -170,7 +236,20 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     };
     const persistedSnapshot = await createCandidateSnapshot({ supabase: input.supabase, row });
     const snapshotId = persistedSnapshot.snapshotId;
-    results.push({ tenantId, catalogProductId, packageId: pair.packageId, revisionId: pair.revisionId, snapshotId, snapshotHash, rendererBuildId });
+    results.push({
+      tenantId,
+      catalogProductId,
+      packageId: pair.packageId,
+      revisionId: pair.revisionId,
+      snapshotId,
+      snapshotHash,
+      rendererBuildId,
+      proofAssertions: customerProofAssertions({
+        snapshot: snapshot as unknown as JsonObject,
+        packageId: pair.packageId,
+        resolvedTransport: input.resolvedTransport ?? [],
+      }),
+    });
   }
   return results;
 }
@@ -194,11 +273,15 @@ export async function proveProductRegistrationV6Snapshot(input: {
     surfaceUrls,
     proofToken: token,
     expectedSnapshotHash: input.snapshot.snapshotHash,
+    expectedRendererBuildId: input.snapshot.rendererBuildId,
+    requiredText: input.snapshot.proofAssertions.requiredText,
+    forbiddenText: input.snapshot.proofAssertions.forbiddenText,
   });
   const passed = chromeProof.status === 'passed'
     && chromeProof.surfaces.length === 2
     && chromeProof.surfaces.every(surface => surface.status === 'passed'
       && surface.snapshotHash === input.snapshot.snapshotHash
+      && surface.rendererBuildId === input.snapshot.rendererBuildId
       && surface.ctaOpened
       && surface.hydrationErrors.length === 0);
   const persisted = await persistProductRegistrationV5ProofRun({

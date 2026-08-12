@@ -11,24 +11,29 @@ export type ProductRegistrationV6BrowserProofSurfaceResult = {
   status: 'passed' | 'failed';
   responseStatus: number | null;
   snapshotHash: string | null;
+  rendererBuildId: string | null;
   screenshotHash: string | null;
   bodyTextHash: string | null;
   imageCount: number;
   brokenImageCount: number;
   ctaOpened: boolean;
+  requiredTextChecked: string[];
+  missingRequiredText: string[];
+  forbiddenTextFound: string[];
   hydrationErrors: string[];
   failures: string[];
 };
 
 export type ProductRegistrationV6BrowserProofResult = {
   status: 'passed' | 'failed';
-  browserMode: 'remote-cdp' | 'local-chrome';
+  browserMode: 'remote-cdp' | 'local-chrome' | 'serverless-chromium';
   viewport: { width: number; height: number; deviceScaleFactor: number };
   surfaces: ProductRegistrationV6BrowserProofSurfaceResult[];
   checkedAt: string;
 };
 
 const VIEWPORT = { width: 390, height: 844, deviceScaleFactor: 3 } as const;
+let serverlessChromiumExecutable: Promise<string> | null = null;
 
 function hash(value: string | Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
@@ -46,7 +51,10 @@ function localChromeCandidates(): string[] {
   ].filter((value): value is string => Boolean(value));
 }
 
-async function openBrowser(): Promise<{ browser: Browser; mode: 'remote-cdp' | 'local-chrome' }> {
+async function openBrowser(): Promise<{
+  browser: Browser;
+  mode: ProductRegistrationV6BrowserProofResult['browserMode'];
+}> {
   const browserWSEndpoint = process.env.PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT?.trim();
   if (browserWSEndpoint) {
     return {
@@ -55,6 +63,7 @@ async function openBrowser(): Promise<{ browser: Browser; mode: 'remote-cdp' | '
     };
   }
   let executablePath = localChromeCandidates().find(candidate => existsSync(candidate));
+  let mode: ProductRegistrationV6BrowserProofResult['browserMode'] = 'local-chrome';
   if (!executablePath) {
     try {
       const bundled = puppeteer.executablePath();
@@ -63,14 +72,32 @@ async function openBrowser(): Promise<{ browser: Browser; mode: 'remote-cdp' | '
       // A real browser is a publication prerequisite; no fetch-only fallback.
     }
   }
+  let serverlessArgs: string[] = [];
+  if (!executablePath && process.platform === 'linux') {
+    const chromium = (await import('@sparticuz/chromium-min')).default;
+    const packUrl = process.env.PRODUCT_REGISTRATION_CHROMIUM_PACK_URL?.trim()
+      || 'https://github.com/Sparticuz/chromium/releases/download/v148.0.0/chromium-v148.0.0-pack.x64.tar';
+    serverlessChromiumExecutable ??= chromium.executablePath(packUrl).catch(error => {
+      serverlessChromiumExecutable = null;
+      throw error;
+    });
+    executablePath = await serverlessChromiumExecutable;
+    serverlessArgs = chromium.args;
+    mode = 'serverless-chromium';
+  }
   if (!executablePath) throw new Error('V6_REAL_CHROME_UNAVAILABLE');
   return {
     browser: await puppeteer.launch({
       executablePath,
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: [...new Set([
+        ...serverlessArgs,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+      ])],
     }),
-    mode: 'local-chrome',
+    mode,
   };
 }
 
@@ -85,7 +112,16 @@ function collectConsoleError(message: ConsoleMessage, errors: string[]) {
 
 async function waitForInteractive(page: Page) {
   await page.waitForFunction(() => document.readyState === 'complete', { timeout: 45_000 });
-  await new Promise(resolve => setTimeout(resolve, 1_000));
+  await page.evaluate(async () => {
+    const delay = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
+    const max = Math.max(document.body?.scrollHeight ?? 0, document.documentElement?.scrollHeight ?? 0);
+    for (let y = 0; y < max; y += Math.max(500, window.innerHeight * 0.8)) {
+      window.scrollTo(0, y);
+      await delay(80);
+    }
+    window.scrollTo(0, 0);
+  });
+  await new Promise(resolve => setTimeout(resolve, 800));
 }
 
 async function proveSurface(input: {
@@ -94,6 +130,9 @@ async function proveSurface(input: {
   url: string;
   proofToken: string;
   expectedSnapshotHash: string;
+  expectedRendererBuildId: string;
+  requiredText: string[];
+  forbiddenText: string[];
 }): Promise<ProductRegistrationV6BrowserProofSurfaceResult> {
   const page = await input.browser.newPage();
   const failures: string[] = [];
@@ -107,20 +146,31 @@ async function proveSurface(input: {
     'x-product-registration-v6-proof-token': input.proofToken,
     'accept-language': 'ko-KR,ko;q=0.9',
     'cache-control': 'no-cache',
+    ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+      ? {
+          'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+          'x-vercel-set-bypass-cookie': 'true',
+        }
+      : {}),
   });
   let responseStatus: number | null = null;
   let responseSnapshotHash: string | null = null;
+  let responseRendererBuildId: string | null = null;
   let screenshotHash: string | null = null;
   let bodyTextHash: string | null = null;
   let imageCount = 0;
   let brokenImageCount = 0;
   let ctaOpened = false;
+  let missingRequiredText: string[] = [];
+  let forbiddenTextFound: string[] = [];
   try {
     const response = await page.goto(input.url, { waitUntil: 'networkidle2', timeout: 60_000 });
     responseStatus = response?.status() ?? null;
     responseSnapshotHash = response?.headers()['x-product-registration-snapshot-hash'] ?? null;
+    responseRendererBuildId = response?.headers()['x-product-registration-renderer-build-id'] ?? null;
     if (responseStatus !== 200) failures.push(`HTTP_STATUS_${responseStatus ?? 'NONE'}`);
     if (responseSnapshotHash !== input.expectedSnapshotHash) failures.push('SNAPSHOT_HASH_HEADER_MISMATCH');
+    if (responseRendererBuildId !== input.expectedRendererBuildId) failures.push('RENDERER_BUILD_HEADER_MISMATCH');
     await waitForInteractive(page);
     const rendered = await page.evaluate(() => {
       const bodyText = document.body?.innerText?.replace(/\s+/g, ' ').trim() ?? '';
@@ -134,9 +184,14 @@ async function proveSurface(input: {
     imageCount = rendered.imageCount;
     brokenImageCount = rendered.brokenImageCount;
     bodyTextHash = hash(rendered.bodyText);
+    const normalizedBodyText = rendered.bodyText.replace(/\s+/g, ' ').trim();
+    missingRequiredText = input.requiredText.filter(value => !normalizedBodyText.includes(value.replace(/\s+/g, ' ').trim()));
+    forbiddenTextFound = input.forbiddenText.filter(value => normalizedBodyText.includes(value.replace(/\s+/g, ' ').trim()));
     if (rendered.bodyText.length < 200) failures.push('CUSTOMER_BODY_TOO_SHORT');
     if (/not found|찾을 수 없|상품이 없습니다/i.test(rendered.bodyText)) failures.push('CUSTOMER_NOT_FOUND_RENDERED');
     if (brokenImageCount > 0) failures.push(`BROKEN_IMAGES_${brokenImageCount}`);
+    if (missingRequiredText.length > 0) failures.push(`REQUIRED_CUSTOMER_FACTS_MISSING_${missingRequiredText.length}`);
+    if (forbiddenTextFound.length > 0) failures.push(`UNVERIFIED_CUSTOMER_FACTS_VISIBLE_${forbiddenTextFound.length}`);
 
     const ctaSelector = input.surface === 'packages'
       ? '[data-analytics-id="mobile_sticky_reservation"]'
@@ -162,11 +217,15 @@ async function proveSurface(input: {
     status: failures.length === 0 ? 'passed' : 'failed',
     responseStatus,
     snapshotHash: responseSnapshotHash,
+    rendererBuildId: responseRendererBuildId,
     screenshotHash,
     bodyTextHash,
     imageCount,
     brokenImageCount,
     ctaOpened,
+    requiredTextChecked: input.requiredText,
+    missingRequiredText,
+    forbiddenTextFound,
     hydrationErrors: [...new Set(hydrationErrors)].slice(0, 20),
     failures: [...new Set(failures)],
   };
@@ -176,6 +235,9 @@ export async function runProductRegistrationV6ChromeProof(input: {
   surfaceUrls: Record<ProductRegistrationV6BrowserSurface, string>;
   proofToken: string;
   expectedSnapshotHash: string;
+  expectedRendererBuildId: string;
+  requiredText: string[];
+  forbiddenText: string[];
 }): Promise<ProductRegistrationV6BrowserProofResult> {
   const { browser, mode } = await openBrowser();
   try {
@@ -187,6 +249,9 @@ export async function runProductRegistrationV6ChromeProof(input: {
         url: input.surfaceUrls[surface],
         proofToken: input.proofToken,
         expectedSnapshotHash: input.expectedSnapshotHash,
+        expectedRendererBuildId: input.expectedRendererBuildId,
+        requiredText: input.requiredText,
+        forbiddenText: input.forbiddenText,
       }));
     }
     return {

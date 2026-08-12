@@ -4,6 +4,46 @@ import { buildPublicPackageSnapshot } from './public-snapshot';
 import { buildPublicTermsPolicy } from './public-terms-policy';
 
 describe('public terms policy', () => {
+  it('preserves evidence-verified golf commercial terms in customer language', () => {
+    const result = buildPublicTermsPolicy({
+      inclusions: [],
+      exclusions: [],
+      verifiedInclusions: [
+        '왕복 항공료+유류+TAX',
+        '골프 수하물 23KG',
+        '여행자보험',
+        '호텔2인1실',
+        '호텔조식',
+        '일정상 그린피+카트비',
+        '공항-호텔-골프장 송영차량(일본인)',
+      ],
+      verifiedExclusions: [
+        '클럽 중식',
+        '석식',
+        '기타 개인비용',
+        '싱글차지 1인/1박/4만원',
+        '2-3인플레이',
+      ],
+    });
+
+    expect(result.inclusionsPublic).toEqual([
+      '왕복 항공료·유류할증료·TAX',
+      '골프 수하물 23kg',
+      '여행자보험',
+      '호텔 2인 1실',
+      '호텔 조식',
+      '일정표상 그린피·카트비',
+      '공항·호텔·골프장 송영차량',
+    ]);
+    expect(result.exclusionsPublic).toEqual([
+      '골프장 중식',
+      '석식',
+      '기타 개인비용',
+      '싱글룸 추가비(1인·1박 4만 원)',
+      '2~3인 플레이 추가비용',
+    ]);
+  });
+
   it('keeps only customer-safe inclusion and exclusion labels', () => {
     const result = buildPublicTermsPolicy({
       inclusions: [

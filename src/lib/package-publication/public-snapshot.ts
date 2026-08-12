@@ -946,9 +946,12 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     optionalTours: publicPackage.optional_tours,
     rawText: asString(pkg.raw_text),
   });
+  const verifiedCommercialTerms = asRecord(pkg.verified_commercial_terms);
   const publicTerms = buildPublicTermsPolicy({
     inclusions: publicPackage.inclusions,
     exclusions: publicPackage.excludes,
+    verifiedInclusions: verifiedCommercialTerms?.inclusions,
+    verifiedExclusions: verifiedCommercialTerms?.exclusions,
     rawText: asString(pkg.raw_text),
   });
   const sourceBackedItinerary = postProcessItineraryData(

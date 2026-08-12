@@ -3,6 +3,8 @@ type PublicTermKind = 'inclusion' | 'exclusion';
 type PublicTermPolicyInput = {
   inclusions: unknown;
   exclusions: unknown;
+  verifiedInclusions?: unknown;
+  verifiedExclusions?: unknown;
   rawText?: string | null;
 };
 
@@ -232,11 +234,67 @@ function buildTerms(
   return output;
 }
 
+function canonicalVerifiedTerm(kind: PublicTermKind, value: string): string | null {
+  const text = normalizeTermText(value);
+  if (!text || isFragment(text)) return null;
+  if (kind === 'inclusion') {
+    if (/골프\s*수하물/i.test(text)) {
+      const kilograms = text.match(/(\d{1,2})\s*kg/i)?.[1];
+      return kilograms ? `골프 수하물 ${kilograms}kg` : '골프 수하물';
+    }
+    if (/그린피/.test(text) && /카트/.test(text)) return '일정표상 그린피·카트비';
+    if (/호텔\s*조식/.test(text)) return '호텔 조식';
+    if (/송영\s*차량/.test(text)) return '공항·호텔·골프장 송영차량';
+    if (/호텔\s*2\s*인\s*1\s*실/.test(text)) return '호텔 2인 1실';
+    if (/왕복\s*항공료/.test(text) && /유류/.test(text) && /tax/i.test(text)) {
+      return '왕복 항공료·유류할증료·TAX';
+    }
+  } else {
+    if (/클럽\s*중식|골프장\s*중식/.test(text)) return '골프장 중식';
+    if (/^석식$/.test(text)) return '석식';
+    if (/기타\s*개인\s*비용/.test(text)) return '기타 개인비용';
+    if (/싱글\s*차지|싱글\s*룸/.test(text)) {
+      const amount = text.match(/(\d+)\s*만\s*원/)?.[1];
+      return amount ? `싱글룸 추가비(1인·1박 ${amount}만 원)` : '싱글룸 추가비';
+    }
+    if (/2\s*[-~]\s*3\s*인\s*플레이/.test(text)) return '2~3인 플레이 추가비용';
+  }
+  return classifyTerm(kind, text);
+}
+
+function buildVerifiedTerms(
+  kind: PublicTermKind,
+  candidates: string[],
+  rejected: PublicTermsPolicyResult['rejected'],
+): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = normalizeTermText(candidate);
+    const publicLabel = canonicalVerifiedTerm(kind, normalized);
+    if (!publicLabel) {
+      rejected.push({ kind, value: normalized, reason: isFragment(normalized) ? 'fragment' : 'unsupported' });
+      continue;
+    }
+    if (seen.has(publicLabel)) continue;
+    seen.add(publicLabel);
+    output.push(publicLabel);
+  }
+  return output;
+}
+
 export function buildPublicTermsPolicy(input: PublicTermPolicyInput): PublicTermsPolicyResult {
   const rejected: PublicTermsPolicyResult['rejected'] = [];
   const rawText = input.rawText ?? '';
 
-  const inclusionsPublic = buildTerms(
+  const verifiedInclusions = termCandidates(input.verifiedInclusions);
+  const verifiedExclusions = termCandidates(input.verifiedExclusions);
+
+  const inclusionsPublic = verifiedInclusions.length > 0 ? buildVerifiedTerms(
+    'inclusion',
+    verifiedInclusions,
+    rejected,
+  ) : buildTerms(
     'inclusion',
     termCandidates(input.inclusions),
     [
@@ -245,7 +303,11 @@ export function buildPublicTermsPolicy(input: PublicTermPolicyInput): PublicTerm
     ],
     rejected,
   );
-  const exclusionsPublic = buildTerms(
+  const exclusionsPublic = verifiedExclusions.length > 0 ? buildVerifiedTerms(
+    'exclusion',
+    verifiedExclusions,
+    rejected,
+  ) : buildTerms(
     'exclusion',
     termCandidates(input.exclusions),
     [

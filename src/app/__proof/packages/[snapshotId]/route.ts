@@ -22,10 +22,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sna
 
   const target = new URL(`/packages/${snapshot.row.package_id}`, request.nextUrl.origin);
   target.searchParams.set('__proof_snapshot', snapshotId);
+  const protectionBypass = request.headers.get('x-vercel-protection-bypass')
+    || process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   const response = await fetch(target, {
     headers: {
       'x-product-registration-v6-proof-token': token!,
       'user-agent': request.headers.get('user-agent') || 'YeosonamV6Proof/1.0',
+      ...(protectionBypass ? { 'x-vercel-protection-bypass': protectionBypass } : {}),
     },
     cache: 'no-store',
   });
@@ -36,6 +39,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sna
       'cache-control': 'private, no-store, max-age=0',
       'x-robots-tag': 'noindex, nofollow, noarchive',
       'x-product-registration-snapshot-hash': snapshot.row.snapshot_hash,
+      'x-product-registration-renderer-build-id': snapshot.row.renderer_build_id || 'unknown-renderer',
     },
   });
 }

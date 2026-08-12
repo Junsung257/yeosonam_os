@@ -119,6 +119,16 @@ export function buildPackageProjectionFromRevision(input: {
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
   const hero = media.find(row => row.role === 'hero') ?? media[0] ?? null;
+  const verifiedTermItems = (type: 'inclusion' | 'exclusion'): string[] => input.aggregate.terms
+    .filter(row => row.terms_type === type && row.validation_state === 'verified')
+    .flatMap(row => {
+      const payload = object(row.terms_payload);
+      return Array.isArray(payload?.items)
+        ? payload.items.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : [];
+    });
+  const verifiedInclusions = verifiedTermItems('inclusion');
+  const verifiedExclusions = verifiedTermItems('exclusion');
   return {
     ...(input.operationalIdentity ?? {}),
     ...render,
@@ -136,6 +146,11 @@ export function buildPackageProjectionFromRevision(input: {
     price: prices.length > 0 ? Math.min(...prices) : null,
     images_public: media,
     hero_image_url: hero?.url ?? null,
+    verified_commercial_terms: {
+      inclusions: verifiedInclusions,
+      exclusions: verifiedExclusions,
+      source: 'immutable_revision_terms',
+    },
     publication_state: 'published',
     status: 'active',
     revision_aggregate_hash: input.aggregate.revision.payload_hash,
