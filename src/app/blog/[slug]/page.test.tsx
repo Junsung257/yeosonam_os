@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
+const mockState = vi.hoisted(() => ({
+  postQueryError: false,
+  legacyProjectionSucceeds: false,
+}));
+
 vi.mock('next/navigation', () => ({
   notFound: () => {
     const err = new Error('NEXT_HTTP_ERROR_FALLBACK;404') as Error & { digest: string };
@@ -59,6 +64,12 @@ vi.mock('@/lib/supabase', () => {
 
   function queryResult(table: string, selected: string | undefined) {
     if (table === 'public_blog_content_creatives' && selected?.includes('blog_html')) {
+      if (mockState.postQueryError) {
+        if (mockState.legacyProjectionSucceeds && !selected.includes('content_modified_at')) {
+          return { data: [post], error: null };
+        }
+        return { data: null, error: { code: '42703', message: 'column content_modified_at does not exist' } };
+      }
       return { data: [post], error: null };
     }
     if (table === 'public_blog_content_creatives') {
@@ -80,6 +91,8 @@ vi.mock('@/lib/supabase', () => {
       in: vi.fn(() => query),
       not: vi.fn(() => query),
       neq: vi.fn(() => query),
+      ilike: vi.fn(() => query),
+      gte: vi.fn(() => query),
       lt: vi.fn(() => query),
       gt: vi.fn(() => query),
       order: vi.fn(() => query),
@@ -115,10 +128,23 @@ describe('/blog/[slug] page smoke', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
 
     expect(source).toContain('function shouldRefreshCachedBlogPost');
-    expect(source).toContain('return !hasUsableBlogBody(post)');
-    expect(source).toContain('getPostFastUncached(slug).catch(() => null)');
+    expect(source).toContain('return !post || !hasUsableBlogBody(post)');
+    expect(source).toContain('const fresh = await getPostFastUncached(slug)');
+    expect(source).not.toContain('getPostFastUncached(slug).catch(() => null)');
     expect(source).toContain('throw createBlogDatabaseUnavailableError()');
     expect(source).not.toContain('inspectBlogIntentQuality');
+  });
+
+  it('never converts a public detail query error into a false 404', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+    const start = source.indexOf("logError('[blog/getPostFast] supabase error'");
+    const end = source.indexOf('if (!data || data.length === 0)', start);
+    const errorBranch = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    expect(errorBranch).toContain('throw createBlogDatabaseUnavailableError();');
+    expect(errorBranch).not.toContain('return null;');
   });
 
   it('keeps metadata title synchronized with the stored article title', () => {
@@ -163,5 +189,44 @@ describe('/blog/[slug] page smoke', () => {
     });
 
     expect(element).toBeTruthy();
+  }, 20_000);
+
+  it('renders the database-unavailable surface instead of a false 404 on query errors', async () => {
+    mockState.postQueryError = true;
+    try {
+      const mod = await import('./page');
+      const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
+      const element = await Page({
+        params: Promise.resolve({ slug: 'manila-weather' }),
+        searchParams: Promise.resolve({}),
+      });
+
+      expect(element).toBeTruthy();
+      expect((element as unknown as { type?: { name?: string } }).type?.name)
+        .toBe('BlogDatabaseUnavailableView');
+    } finally {
+      mockState.postQueryError = false;
+      mockState.legacyProjectionSucceeds = false;
+    }
+  }, 20_000);
+
+  it('uses the legacy public-view projection during a V3 rolling migration', async () => {
+    mockState.postQueryError = true;
+    mockState.legacyProjectionSucceeds = true;
+    try {
+      const mod = await import('./page');
+      const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
+      const element = await Page({
+        params: Promise.resolve({ slug: 'manila-weather' }),
+        searchParams: Promise.resolve({}),
+      });
+
+      expect(element).toBeTruthy();
+      expect((element as unknown as { type?: { name?: string } }).type?.name)
+        .not.toBe('BlogDatabaseUnavailableView');
+    } finally {
+      mockState.postQueryError = false;
+      mockState.legacyProjectionSucceeds = false;
+    }
   }, 20_000);
 });

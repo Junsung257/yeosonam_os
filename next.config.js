@@ -184,7 +184,11 @@ const nextConfig = {
     if (isServer && config.output) {
       config.output.chunkFilename = 'chunks/[name].js';
     }
-    if (isServer) {
+    // These files repair rare incomplete Windows production build artifacts.
+    // Writing them from next dev's afterEmit hook retriggers the watcher and can
+    // keep the server in "Starting" indefinitely, so never install this plugin
+    // for development compilers.
+    if (isServer && isProd) {
       config.plugins = config.plugins || [];
       config.plugins.push({
         apply(compiler) {

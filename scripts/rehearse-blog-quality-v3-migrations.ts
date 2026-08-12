@@ -34,6 +34,36 @@ function runSupabase(args: string[]): string {
   });
 }
 
+function readSupabaseProjectId(): string {
+  const configPath = join(process.cwd(), 'supabase', 'config.toml');
+  if (!existsSync(configPath)) throw new Error('supabase_config_missing');
+  const match = readFileSync(configPath, 'utf8').match(/^project_id\s*=\s*"([^"]+)"/m);
+  if (!match?.[1]) throw new Error('supabase_project_id_missing');
+  return match[1].trim();
+}
+
+function isDedicatedRehearsalProjectId(projectId: string): boolean {
+  return /(?:^|[-_])(rehearsal|ephemeral|scratch)(?:[-_]|$)/i.test(projectId);
+}
+
+function assertDedicatedLocalRehearsalTarget(projectId: string): void {
+  const confirmedProjectId = process.env.BLOG_LOCAL_MIGRATION_REHEARSAL_PROJECT_ID?.trim();
+  if (!confirmedProjectId || confirmedProjectId !== projectId) {
+    throw new Error('local_migration_rehearsal_project_id_confirmation_missing_or_mismatched');
+  }
+  if (!isDedicatedRehearsalProjectId(projectId)) {
+    throw new Error(`local_migration_rehearsal_requires_dedicated_project_id:${projectId}`);
+  }
+
+  const rawStatus = runSupabase(['status', '--output', 'json']);
+  const status = JSON.parse(rawStatus) as { DB_URL?: string };
+  if (!status.DB_URL) throw new Error('local_migration_rehearsal_db_url_missing');
+  const host = new URL(status.DB_URL).hostname.toLowerCase();
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+    throw new Error(`local_migration_rehearsal_non_loopback_db_forbidden:${host}`);
+  }
+}
+
 function assertStaticContracts(): Array<{ migration: string; bytes: number }> {
   return V3_MIGRATIONS.map((migration) => {
     const path = join(process.cwd(), 'supabase', 'migrations', migration);
@@ -53,9 +83,12 @@ function main(): void {
   if (forbidden.length > 0) throw new Error(`production_or_remote_target_forbidden:${forbidden.join(',')}`);
   const executeLocalReset = process.argv.includes('--local-reset');
   const migrations = assertStaticContracts();
+  const projectId = readSupabaseProjectId();
   const plan = {
     mode: executeLocalReset ? 'local_ephemeral_reset' : 'dry_run',
     remote_access_allowed: false,
+    project_id: projectId,
+    dedicated_rehearsal_project: isDedicatedRehearsalProjectId(projectId),
     migrations,
     commands: [
       'npx supabase status --output json',
@@ -70,7 +103,7 @@ function main(): void {
     throw new Error('local_migration_rehearsal_confirmation_missing');
   }
 
-  runSupabase(['status', '--output', 'json']);
+  assertDedicatedLocalRehearsalTarget(projectId);
   runSupabase(['db', 'reset', '--local', '--no-seed']);
   runSupabase(['db', 'lint', '--local', '--schema', 'public', '--level', 'error', '--fail-on', 'error']);
   runSupabase([

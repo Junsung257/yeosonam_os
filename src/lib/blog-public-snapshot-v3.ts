@@ -3,6 +3,7 @@ import { BLOG_DETAIL_CACHE_TAG, createBlogDatabaseUnavailableError } from './blo
 import { shouldSkipPublicDbReadsForResourceSaver } from './cron-resource-saver';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from './supabase';
 import bundledDetailSnapshot from '@/data/blog-public-detail-snapshot-v3.json';
+import { runBlogPublicQueryWithTimeout } from './blog-public-query-timeout';
 
 export interface BlogPublicDetailSnapshotV3 {
   creative_id: string;
@@ -80,14 +81,18 @@ async function loadUncached(slug: string): Promise<BlogPublicDetailSnapshotV3 | 
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured || shouldSkipPublicDbReadsForResourceSaver()) {
     return loadBundled(slug) ?? Promise.reject(createBlogDatabaseUnavailableError());
   }
-  const { data, error } = await supabaseAdmin
-    .from('blog_public_snapshots')
-    .select('creative_id, slug, title, description, content_document, legacy_markdown, generation_meta, quality_gate, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, hero_image, author, review, destination, angle_type, published_at, content_modified_at, fact_checked_at')
-    .eq('slug', slug)
-    .eq('is_current', true)
-    .maybeSingle();
+  const { data, error } = await runBlogPublicQueryWithTimeout(
+    'detail-snapshot',
+    supabaseAdmin
+      .from('blog_public_snapshots')
+      .select('creative_id, slug, title, description, content_document, legacy_markdown, generation_meta, quality_gate, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, hero_image, author, review, destination, angle_type, published_at, content_modified_at, fact_checked_at')
+      .eq('slug', slug)
+      .eq('is_current', true)
+      .limit(1),
+    6000,
+  ).catch(() => ({ data: null, error: createBlogDatabaseUnavailableError() }));
   if (error) return loadBundled(slug) ?? Promise.reject(createBlogDatabaseUnavailableError());
-  return (data || null) as BlogPublicDetailSnapshotV3 | null;
+  return ((data?.[0] || null) as unknown) as BlogPublicDetailSnapshotV3 | null;
 }
 
 const loadCached = unstable_cache(loadUncached, ['blog-public-detail-snapshot-v3'], {

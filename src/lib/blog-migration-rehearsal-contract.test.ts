@@ -9,6 +9,15 @@ describe('blog migration rehearsal safety', () => {
     expect(source).toContain("process.argv.includes('--local-reset')");
     expect(source).toContain("BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM !== 'LOCAL_EPHEMERAL_DB'");
     expect(source).toContain("'db', 'reset', '--local', '--no-seed'");
+    expect(source).toContain('assertDedicatedLocalRehearsalTarget(projectId)');
+    expect(source).toContain('BLOG_LOCAL_MIGRATION_REHEARSAL_PROJECT_ID');
+    expect(source).toContain("host !== '127.0.0.1'");
+  });
+
+  it('refuses the normal local project even when the generic confirmation is present', () => {
+    expect(source).toContain('isDedicatedRehearsalProjectId(projectId)');
+    expect(source).toContain('local_migration_rehearsal_requires_dedicated_project_id');
+    expect(source).toContain("/(?:^|[-_])(rehearsal|ephemeral|scratch)(?:[-_]|$)/i");
   });
 
   it('rejects linked and arbitrary database targets', () => {

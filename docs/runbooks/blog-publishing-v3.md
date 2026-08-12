@@ -76,9 +76,12 @@ observed demand → research packet → flexible brief/archetype → writer
 
 1. Docker Desktop과 Supabase local stack을 준비합니다.
 2. `npm run rehearse:blog-migrations`로 대상 migration 5개와 실행 명령을 dry-run 확인합니다.
-3. 별도의 임시 로컬 DB임을 확인한 change window에서만 `BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM=LOCAL_EPHEMERAL_DB npm run rehearse:blog-migrations:local`을 실행합니다.
-4. 스크립트는 `db reset --local --no-seed`, `db lint --local`, V3 pgTAP만 실행하며 `--linked`, `--db-url`, `--apply`를 거부합니다.
-5. local rehearsal이 통과한 뒤에만 staging clone에서 사람이 migration 적용을 승인합니다. 운영 DB는 별도 승인 전까지 변경하지 않습니다.
+3. 일반 개발용 `project_id = "yeosonam-os"`에서는 reset을 실행하지 않습니다. 별도 clone/worktree의 `supabase/config.toml`에 `blog-quality-v3-rehearsal`처럼 `rehearsal`, `ephemeral`, `scratch`가 포함된 고유 project id와 충돌하지 않는 로컬 port를 지정합니다.
+4. 해당 별도 프로젝트를 `npx supabase start`로 기동한 뒤 project id와 loopback DB URL을 모두 확인합니다.
+5. PowerShell에서는 `$env:BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM='LOCAL_EPHEMERAL_DB'; $env:BLOG_LOCAL_MIGRATION_REHEARSAL_PROJECT_ID='blog-quality-v3-rehearsal'; npm run rehearse:blog-migrations:local`을 실행합니다. bash에서는 두 환경 변수를 명령 앞에 지정합니다.
+6. 스크립트는 확인한 project id가 현재 config와 정확히 일치하고 `127.0.0.1`, `localhost`, `::1` DB일 때만 reset을 허용합니다. 일반 로컬 업무 데이터와 linked/임의 DB URL은 거부합니다.
+7. 스크립트는 `db reset --local --no-seed`, `db lint --local`, V3 pgTAP만 실행합니다.
+8. local rehearsal이 통과한 뒤에만 staging clone에서 사람이 migration 적용을 승인합니다. 운영 DB는 별도 승인 전까지 변경하지 않습니다.
 
 ## 배포 후 관찰
 

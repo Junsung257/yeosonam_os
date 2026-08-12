@@ -212,6 +212,19 @@ type AbortableQuery<T> = {
 
 type BlogDetailQueryResult<T> = T & { __blogQueryUnavailable?: true };
 
+const BLOG_DETAIL_LEGACY_SELECT =
+  'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate';
+const BLOG_DETAIL_V3_SELECT = `${BLOG_DETAIL_LEGACY_SELECT}, content_modified_at, fact_checked_at`;
+
+function isMissingV3DetailProjection(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as { code?: unknown; message?: unknown };
+  const code = typeof record.code === 'string' ? record.code : '';
+  const message = typeof record.message === 'string' ? record.message : '';
+  return (code === '42703' || code === 'PGRST204')
+    && /content_modified_at|fact_checked_at/i.test(message);
+}
+
 function isBlogDetailQueryUnavailable(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false;
   const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
@@ -440,9 +453,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
     'postFast',
     supabaseAdmin
       .from(PUBLIC_BLOG_READ_SOURCE)
-      .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, content_modified_at, fact_checked_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
-      )
+      .select(BLOG_DETAIL_V3_SELECT)
       .eq('slug', dbSlug)
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -450,19 +461,49 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
       .limit(1),
     { data: null, error: null },
   );
-  const { data, error } = postResult;
+  let data = postResult.data as Array<Record<string, unknown>> | null;
+  let error: unknown = postResult.error;
 
   if (isBlogDetailQueryUnavailable(postResult)) {
     throw createBlogDatabaseUnavailableError();
   }
 
+  // Rolling deployment compatibility: the current public eligibility view is
+  // still authoritative, while the material/fact-check timestamp columns are
+  // added by the V3 migration. During the migration window, retry only this
+  // known projection mismatch and derive modifiedAt from updated_at.
+  if (isMissingV3DetailProjection(error)) {
+    const legacyResult = await runBlogDetailQuery(
+      'postFastLegacyProjection',
+      supabaseAdmin
+        .from(PUBLIC_BLOG_READ_SOURCE)
+        .select(BLOG_DETAIL_LEGACY_SELECT)
+        .eq('slug', dbSlug)
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .not('slug', 'is', null)
+        .limit(1),
+      { data: null, error: null },
+    );
+    if (isBlogDetailQueryUnavailable(legacyResult)) {
+      throw createBlogDatabaseUnavailableError();
+    }
+    data = legacyResult.data as Array<Record<string, unknown>> | null;
+    error = legacyResult.error;
+  }
+
   if (error) {
     logError('[blog/getPostFast] supabase error', error, { slug: dbSlug, rawParam: slug });
-    return null;
+    // A PostgREST/schema/connection error cannot prove that the slug does not
+    // exist. Treating it as a null row produces a false 404 and lets crawlers
+    // cache an infrastructure incident as a deletion.
+    throw createBlogDatabaseUnavailableError();
   }
   if (!data || data.length === 0) return null;
 
   const post = data[0] as unknown as BlogPost;
+  post.content_modified_at ??= post.updated_at;
+  post.fact_checked_at ??= null;
   post.travel_packages = null;
 
   if (post.product_id) {
@@ -490,7 +531,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
 
 const getCachedPostFast = unstable_cache(
   async (slug: string) => getPostFastUncached(slug),
-  ['blog-detail-v4-full-body-required'],
+  ['blog-detail-v5-no-false-404'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
 
@@ -508,8 +549,7 @@ function hasUsableBlogBody(post: BlogPost | null | undefined): boolean {
 }
 
 function shouldRefreshCachedBlogPost(post: BlogPost | null | undefined): boolean {
-  if (!post) return false;
-  return !hasUsableBlogBody(post);
+  return !post || !hasUsableBlogBody(post);
 }
 
 async function getPostFast(slug: string): Promise<BlogPost | null> {
@@ -519,7 +559,10 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   try {
     const cached = await getCachedPostFast(slug);
     if (shouldRefreshCachedBlogPost(cached)) {
-      const fresh = await getPostFastUncached(slug).catch(() => null);
+      // Cached null can be an old transient query failure. Recheck it before
+      // returning a 404, and never turn a refresh error into another null.
+      const fresh = await getPostFastUncached(slug);
+      if (!fresh) return null;
       if (hasUsableBlogBody(fresh)) return fresh;
       if (!hasUsableBlogBody(cached)) {
         throw createBlogDatabaseUnavailableError();

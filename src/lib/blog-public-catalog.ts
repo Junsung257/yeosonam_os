@@ -11,6 +11,10 @@ import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { isBlogSlugRedirectSource } from '@/lib/blog-slug-redirects';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import bundledCatalogSnapshot from '@/data/blog-public-catalog-snapshot-v3.json';
+import {
+  runBlogPublicQueryWithTimeout,
+  type AbortableBlogPublicQuery,
+} from '@/lib/blog-public-query-timeout';
 
 export const PUBLIC_BLOG_CATALOG_SELECT =
   'id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, content_modified_at, product_id, destination, content_type, featured, featured_order, view_count';
@@ -69,24 +73,19 @@ function loadBundledCatalogPage(input: {
   };
 }
 
-type AbortableCatalogQuery<T> = {
-  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
-};
-
-async function runCatalogQuery<T>(query: AbortableCatalogQuery<T>, timeoutMs = 6000): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+async function runCatalogQuery<T>(
+  label: string,
+  query: AbortableBlogPublicQuery<T>,
+  timeoutMs = 6000,
+): Promise<T> {
   try {
-    return await query.abortSignal(controller.signal);
+    return await runBlogPublicQueryWithTimeout(label, query, timeoutMs);
   } catch (error) {
     console.info(
       '[blog/catalog][degraded] public catalog query unavailable',
       error instanceof Error ? error.message : error,
     );
     throw createBlogDatabaseUnavailableError();
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -99,6 +98,7 @@ async function loadPublicBlogCatalogUncached(): Promise<PublicBlogCatalogPost[]>
   }
 
   const result = await runCatalogQuery(
+    'catalog-all',
     supabaseAdmin
       .from(PUBLIC_BLOG_READ_SOURCE)
       .select(PUBLIC_BLOG_CATALOG_SELECT)
@@ -124,11 +124,15 @@ function normalizePage(value: number, fallback: number, maximum: number): number
 }
 
 async function loadFacetSnapshot(): Promise<Pick<PublicBlogCatalogPage, 'destinations' | 'angleCounts'>> {
-  const { data, error } = await supabaseAdmin
-    .from('blog_public_catalog_facets')
-    .select('facet_type, facet_key, post_count')
-    .order('post_count', { ascending: false })
-    .limit(1000);
+  const { data, error } = await runCatalogQuery(
+    'catalog-facets',
+    supabaseAdmin
+      .from('blog_public_catalog_facets')
+      .select('facet_type, facet_key, post_count')
+      .order('post_count', { ascending: false })
+      .limit(1000),
+    2500,
+  ).catch(() => ({ data: null, error: createBlogDatabaseUnavailableError() }));
   if (error) return { destinations: [], angleCounts: {} };
   const rows = (data || []) as Array<{ facet_type: string; facet_key: string; post_count: number }>;
   return {
@@ -150,7 +154,7 @@ async function loadDurableCatalogPage(input: {
     .range(from, from + input.pageSize - 1);
   if (input.destination) query = query.eq('destination', input.destination);
   if (input.angle) query = query.eq('angle_type', input.angle);
-  const result = await runCatalogQuery(query);
+  const result = await runCatalogQuery('catalog-durable-snapshot', query);
   if (result.error || !result.data?.length) return null;
   const facets = await loadFacetSnapshot();
   return {
@@ -188,7 +192,7 @@ export async function loadPublicBlogCatalogPage(input: {
   if (input.destination) query = query.eq('destination', input.destination);
   if (input.angle) query = query.eq('angle_type', input.angle);
   try {
-    const result = await runCatalogQuery(query);
+    const result = await runCatalogQuery('catalog-page', query);
     if (result.error) throw createBlogDatabaseUnavailableError();
     const posts = ((result.data || []) as unknown as PublicBlogCatalogPost[])
       .filter((post) => Boolean(post.slug?.trim()))
