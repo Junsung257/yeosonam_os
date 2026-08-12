@@ -67,6 +67,26 @@ export function defaultProfitAndLoss(classification: FinanceClassification): boo
   return !NON_PROFIT_CLASSES.has(classification);
 }
 
+export function classificationFromAllocationTarget(
+  target: string | null | undefined,
+): FinanceClassification | null {
+  switch (target) {
+    case 'booking': return null;
+    case 'customer_refund': return 'refund';
+    case 'bank_fee':
+    case 'company_expense': return 'company_expense';
+    case 'company_travel': return 'company_travel';
+    case 'tax': return 'tax';
+    case 'capital': return 'capital';
+    case 'transfer': return 'transfer';
+    case 'owner_draw': return 'owner_draw';
+    case 'other_income': return 'other_income';
+    case 'review':
+    case 'unassigned':
+    default: return 'review';
+  }
+}
+
 export function classificationFromClobe(
   category: string | null | undefined,
   transactionType: string,
