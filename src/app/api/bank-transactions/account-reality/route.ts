@@ -9,6 +9,7 @@ import {
   type BookingCashAllocationRow,
   type BookingCashBookingRow,
   type BankAccountRealityRow,
+  type SettlementProfitSnapshot,
 } from '@/lib/bank-account-reality';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -65,27 +66,52 @@ export async function GET(request: NextRequest) {
       allocations.push(...((result.data ?? []) as BookingCashAllocationRow[]));
     }
 
-    const bookingIds = [...new Set(allocations.flatMap(allocation => allocation.booking_id ? [allocation.booking_id] : []))];
-    if (bookingIds.length > 0) {
-      const { data: bookingData, error: bookingError } = await supabaseAdmin
-        .from('bookings')
-        .select('id, departure_date, settlement_confirmed_at, total_price, total_cost, status, is_deleted, finance_excluded')
-        .in('id', bookingIds);
-      if (bookingError) {
-        return NextResponse.json({ error: bookingError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
-      }
-      bookings = (bookingData ?? []) as BookingCashBookingRow[];
-    }
   }
 
-  const bankSummary = calculateBankAccountReality(transactions);
-  const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings });
+  // Unmatched and zero-transaction bookings can still hold customer money or
+  // unpaid supplier cost, so every active finance booking must share the same
+  // reserve calculation used by the finance center summary.
+  const { data: bookingData, error: bookingError } = await supabaseAdmin
+    .from('bookings')
+    .select('id, departure_date, settlement_confirmed_at, total_price, total_cost, status, is_deleted, finance_excluded')
+    .limit(5000);
+  if (bookingError) {
+    return NextResponse.json({ error: bookingError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+  }
+  bookings = (bookingData ?? []) as BookingCashBookingRow[];
+
+  const { data: currentPeriods, error: periodError } = await supabaseAdmin
+    .from('settlement_periods')
+    .select('id')
+    .eq('is_current', true)
+    .in('status', ['closed', 'conditional'])
+    .limit(500);
+  if (periodError) {
+    return NextResponse.json({ error: periodError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+  }
+  const confirmedSettlementItems: SettlementProfitSnapshot[] = [];
+  for (const periodIds of chunkIds((currentPeriods ?? []).map(row => row.id as string))) {
+    const { data: itemData, error: itemError } = await supabaseAdmin
+      .from('settlement_period_items')
+      .select('booking_id, departure_date, cash_margin')
+      .in('settlement_period_id', periodIds)
+      .limit(5000);
+    if (itemError) {
+      return NextResponse.json({ error: itemError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+    }
+    confirmedSettlementItems.push(...((itemData ?? []) as SettlementProfitSnapshot[]));
+  }
+  const confirmedBookingIds = new Set(confirmedSettlementItems.map(item => item.booking_id));
+
+  const bankSummary = calculateBankAccountReality(transactions, allocations);
+  const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings, confirmedBookingIds });
   const profitErp = calculateBankProfitErp({
     bankSummary,
     bookingCash,
     transactions,
     allocations,
     bookings,
+    confirmedSettlementItems,
     referenceDate: bankSummary.asOf ?? new Date(),
   });
 

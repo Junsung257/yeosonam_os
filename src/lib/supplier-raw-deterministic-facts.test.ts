@@ -63,6 +63,9 @@ BX 서안/진시황릉+병마용 3박5일
   });
 
   it('expands literal HWP slash-comma departure day lists', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T00:00:00+09:00'));
+
     const facts = extractSupplierRawDeterministicFacts(`
 PKG
 BX 청도 2색골프 2박3일

@@ -1,6 +1,6 @@
 # Analytics Event Taxonomy
 
-Last updated: 2026-06-01
+Last updated: 2026-08-12
 
 This document is the canonical event dictionary for customer UX, recommendation quality, and guidebook behavior analytics. Keep event names stable; add a new row here before shipping a new tracking event.
 
@@ -20,6 +20,7 @@ This document is the canonical event dictionary for customer UX, recommendation 
 | `cart_added` | Product | `product_id`, `session_id`, `visitor_uid` | `product_name`, `page_url` | Which products create shortlist intent? |
 | `cart_abandon_exit` | Growth | `session_id`, `visitor_uid`, `page_url` | `cartItems`, `time_on_page_ms` | Which shortlist sessions need retargeting? |
 | `checkout_start` | Product | `product_id`, `session_id`, `visitor_uid` | `product_name`, `page_url` | Where does inquiry or booking intent begin? |
+| `consultation_request_start` | Sales | `page_url`, `session_id`, `visitor_uid` | `product_id`, `source` | Which concierge sessions begin a consultation request? |
 | `page_exit` | Growth | `page_url`, `time_on_page_ms`, `max_scroll_pct`, `interaction_count` | `product_id` | Which pages lose attention before CTA? |
 | `scroll_25` | Growth | `page_url`, `session_id`, `visitor_uid` | `product_id` | Does the first content block carry intent? |
 | `scroll_50` | Growth | `page_url`, `session_id`, `visitor_uid` | `product_id` | Is the middle content being consumed? |
@@ -71,6 +72,24 @@ These events are not all implemented yet. They are the next instrumentation laye
 | `admin_package_approve` | Product Ops | `admin_user_id`, `package_id`, `source` | vendor private notes | Measure package approval throughput. |
 | `admin_ai_action_approve` | AI Ops | `admin_user_id`, `action_id`, `risk_level` | raw prompt with PII | Measure human-in-the-loop AI trust. |
 | `admin_bulk_retry` | Ops | `admin_user_id`, `job_type`, `count` | customer free text | Measure repeated operational failure points. |
+
+## Finance Workday Events
+
+Finance events are anonymous, manually emitted PostHog events. Autocapture, page-view capture,
+person profiles, and session replay are disabled. Values, booking numbers, customer names,
+transaction IDs, account numbers, counterparties, and Clobe memo text are forbidden.
+
+| Event | Owner | Allowed properties | Purpose |
+| --- | --- | --- | --- |
+| `finance_workday_opened` | Finance | `count_bucket`, `viewport` | Measure whether the guided workday is used and how much work remains. |
+| `finance_task_opened` | Finance | `task_type`, `count_bucket` | Identify which finance step creates the most navigation. |
+| `finance_task_resolved` | Finance | `task_type`, `result`, `count_bucket` | Measure single and batch task completion. |
+| `finance_review_decision` | Finance | `decision`, `result` | Measure booking review outcomes without identifying a booking. |
+| `finance_next_item` | Finance | `source` | Measure sequential-review usage. |
+| `finance_close_blocked` | Finance | `month`, `count_bucket` | Measure month-close blockers. |
+| `finance_close_completed` | Finance | `month`, `result` | Measure successful close completion. |
+| `finance_sync_result` | Finance | `result`, `count_bucket` | Measure Clobe sync outcomes without transaction details. |
+| `finance_error_shown` | Finance | `error_code`, `source` | Detect UX-visible finance errors using a stable non-PII code. |
 
 ## Change Control
 

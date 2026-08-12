@@ -68,6 +68,7 @@ export interface BookingCashAllocationRow {
     | 'owner_draw'
     | 'other_income'
     | 'unassigned'
+    | 'review'
     | null;
 }
 
@@ -213,6 +214,7 @@ export function calculateBookingCashPositions(params: {
   transactions: BankAccountRealityRow[];
   allocations: BookingCashAllocationRow[];
   bookings: BookingCashBookingRow[];
+  confirmedBookingIds?: Iterable<string>;
   referenceDate?: Date | string;
 }): BookingCashPositionSummary {
   const referenceDate = koreaDate(params.referenceDate ?? new Date());
@@ -225,6 +227,7 @@ export function calculateBookingCashPositions(params: {
   );
   const transactionById = new Map(transactions.map(row => [row.id as string, row]));
   const bookingById = new Map(params.bookings.map(row => [row.id, row]));
+  const confirmedBookingIds = params.confirmedBookingIds ? new Set(params.confirmedBookingIds) : null;
   const allocatedByTransaction = new Map<string, number>();
   let classifiedNonBookingNet = 0;
   const eventsByBooking = new Map<string, Array<{
@@ -295,7 +298,10 @@ export function calculateBookingCashPositions(params: {
       continue;
     }
 
-    const bucket = booking?.settlement_confirmed_at
+    const bookingIsConfirmed = confirmedBookingIds
+      ? confirmedBookingIds.has(bookingId)
+      : Boolean(booking?.settlement_confirmed_at);
+    const bucket = bookingIsConfirmed
       ? buckets.settled
       : !booking?.departure_date
         ? buckets.dateMissing
@@ -364,10 +370,10 @@ const TRAVEL_ACTION_STATUSES = new Set(['review', 'unmatched', 'error']);
  * Counts transaction rows that need an operator's attention. A row is counted
  * once even when it has both a review status and an allocation mismatch.
  */
-export function countTravelMemoOrAllocationActions(params: {
+export function travelMemoOrAllocationActionIds(params: {
   transactions: BankAccountRealityRow[];
   allocations: BookingCashAllocationRow[];
-}): number {
+}): string[] {
   const allocatedByTransaction = new Map<string, number>();
   for (const allocation of params.allocations) {
     allocatedByTransaction.set(
@@ -376,12 +382,19 @@ export function countTravelMemoOrAllocationActions(params: {
     );
   }
 
-  return params.transactions.filter(transaction => {
-    if (!transaction.id || transaction.settlement_scope !== 'travel' || money(transaction.amount) <= 0) return false;
+  return params.transactions.flatMap(transaction => {
+    if (!transaction.id || transaction.settlement_scope !== 'travel' || money(transaction.amount) <= 0) return [];
     const needsStatusReview = TRAVEL_ACTION_STATUSES.has(transaction.match_status ?? '');
     const hasAllocationMismatch = (allocatedByTransaction.get(transaction.id) ?? 0) !== money(transaction.amount);
-    return needsStatusReview || hasAllocationMismatch;
-  }).length;
+    return needsStatusReview || hasAllocationMismatch ? [transaction.id] : [];
+  });
+}
+
+export function countTravelMemoOrAllocationActions(params: {
+  transactions: BankAccountRealityRow[];
+  allocations: BookingCashAllocationRow[];
+}): number {
+  return travelMemoOrAllocationActionIds(params).length;
 }
 
 const OPERATING_INCOME_CATEGORIES = new Set([
@@ -681,6 +694,7 @@ export function needsNonTravelMemoReview(row: BankAccountRealityRow): boolean {
 
 export function calculateBankAccountReality(
   inputRows: BankAccountRealityRow[],
+  allocations: BookingCashAllocationRow[] = [],
 ): BankAccountRealitySummary {
   const rows = inputRows
     .filter(row => Number.isFinite(Number(row.amount)) && Number(row.amount) > 0)
@@ -695,6 +709,14 @@ export function calculateBankAccountReality(
       + (isDeposit(earliestWithBalance) ? 0 : money(earliestWithBalance.amount))
     : 0;
 
+  const allocationsByTransaction = new Map<string, BookingCashAllocationRow[]>();
+  for (const allocation of allocations) {
+    if (!allocation.bank_transaction_id || money(allocation.allocated_amount) <= 0) continue;
+    const current = allocationsByTransaction.get(allocation.bank_transaction_id) ?? [];
+    current.push(allocation);
+    allocationsByTransaction.set(allocation.bank_transaction_id, current);
+  }
+
   const totals = rows.reduce((result, row) => {
     const amount = money(row.amount);
     const deposit = isDeposit(row) ? amount : 0;
@@ -702,15 +724,38 @@ export function calculateBankAccountReality(
     result.totalDeposits += deposit;
     result.totalWithdrawals += withdrawal;
 
-    if (row.settlement_scope === 'non_travel') {
+    let remaining = amount;
+    let travelAmount = 0;
+    let nonTravelAmount = 0;
+    for (const allocation of row.id ? (allocationsByTransaction.get(row.id) ?? []) : []) {
+      if (remaining <= 0) break;
+      const allocated = Math.min(remaining, money(allocation.allocated_amount));
+      if (allocated <= 0) continue;
+      remaining -= allocated;
+      const target = allocation.target_type
+        ?? (allocation.booking_id ? 'booking' : null);
+      const isTravel = target === 'booking'
+        || target === 'customer_refund'
+        || (target === 'unassigned' && row.settlement_scope !== 'non_travel')
+        || (target == null && row.settlement_scope !== 'non_travel');
+      if (isTravel) travelAmount += allocated;
+      else nonTravelAmount += allocated;
+    }
+    if (remaining > 0) {
+      if (row.settlement_scope === 'non_travel') nonTravelAmount += remaining;
+      else travelAmount += remaining;
+    }
+
+    if (nonTravelAmount > 0) {
       result.nonTravelCount += 1;
-      result.nonTravelDeposits += deposit;
-      result.nonTravelWithdrawals += withdrawal;
+      result.nonTravelDeposits += isDeposit(row) ? nonTravelAmount : 0;
+      result.nonTravelWithdrawals += isDeposit(row) ? 0 : nonTravelAmount;
       if (needsNonTravelMemoReview(row)) result.memoReviewCount += 1;
-    } else {
+    }
+    if (travelAmount > 0) {
       result.travelCount += 1;
-      result.travelDeposits += deposit;
-      result.travelWithdrawals += withdrawal;
+      result.travelDeposits += isDeposit(row) ? travelAmount : 0;
+      result.travelWithdrawals += isDeposit(row) ? 0 : travelAmount;
     }
     return result;
   }, {

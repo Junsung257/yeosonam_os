@@ -86,7 +86,10 @@ export default function FinanceCenterHome() {
     { label: '지금 써도 되는 돈', value: summary.metrics.safeToWithdraw, icon: Wallet, hint: summary.metrics.calculationStatus === 'clear' ? '보호금·세금 차감 후' : '검토 완료 전 출금 차단', href: '/admin/finance?tab=expenses', tone: summary.metrics.calculationStatus === 'clear' ? 'positive' : 'negative' },
   ] as const;
 
-  const maxMonthly = Math.max(1, ...summary.monthly.map(point => Math.abs(point.afterTaxTravelProfit)));
+  const maxMonthly = Math.max(1, ...summary.monthly.flatMap(point => [
+    Math.abs(point.afterTaxTravelProfit),
+    Math.abs(point.provisionalUnconfirmedTravelMargin),
+  ]));
 
   return (
     <div className="space-y-5">
@@ -95,15 +98,17 @@ export default function FinanceCenterHome() {
           <span className={`font-semibold ${syncHealthy ? 'text-emerald-800' : 'text-amber-900'}`}>Clobe {syncHealthy ? '자동 동기화 정상' : '동기화 확인 필요'}</span>
           <span>최근 동기화 {summary.status.lastSyncAt ? formatSettlementTimestamp(summary.status.lastSyncAt) : '기록 없음'}</span>
           <span>상태 {summary.status.lastSyncStatus ?? '기록 없음'}</span>
-          <span>원본 {summary.status.sourceCount}건</span>
-          <span>OS 인식 {summary.status.recognizedCount}건</span>
+          <span>전체 통장 원장 {summary.status.ledgerCount}건</span>
+          <span title="대량 동기화는 기간을 여러 구간으로 나눠 처리합니다.">
+            마지막 처리구간 {summary.status.sourceCount}건 / OS {summary.status.recognizedCount}건
+          </span>
           <span>통장 {won(summary.status.bankBalance)}</span>
           <span>OS {won(summary.status.osBalance)}</span>
           <strong className={summary.status.difference === 0 ? 'text-emerald-800' : 'text-red-700'}>차이 {won(summary.status.difference)}</strong>
           {!syncHealthy ? <strong className="text-amber-900">실패·누락·8시간 초과 여부를 확인하세요.</strong> : null}
         </div>
         <div className="flex items-end gap-2 self-start sm:self-auto">
-          <label className="text-[10px] font-semibold text-admin-muted">예상 세금률
+          <label className="text-[10px] font-semibold text-admin-muted">보수적 세금 적립률
             <span className="mt-0.5 flex items-center rounded-lg border border-current/20 bg-white/70 px-2"><input type="number" min={0} max={100} step={1} value={taxRatePercent} onChange={event => setTaxRatePercent(Math.max(0, Math.min(100, Number(event.target.value) || 0)))} className="w-10 bg-transparent py-1.5 text-right text-xs font-semibold outline-none" aria-label="예상 세금 적립률" />%</span>
           </label>
           <button type="button" onClick={() => mutate()} disabled={isValidating} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-current/20 bg-white/70 px-2.5 font-semibold disabled:opacity-50">
@@ -145,8 +150,8 @@ export default function FinanceCenterHome() {
         <section className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-5 shadow-admin-xs">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-admin-text">세후 확정 여행수익 추이</h2>
-              <p className="mt-1 text-xs text-admin-muted">출발 월 기준, 확정된 예약만 표시</p>
+              <h2 className="text-base font-semibold text-admin-text">월잠금 확정수익과 재검토 현금마진</h2>
+              <p className="mt-1 text-xs text-admin-muted">초록은 월잠금 확정수익, 회색은 아직 수익이 아닌 재검토 중 현금 차액</p>
             </div>
             <div className="text-right text-xs text-admin-muted">
               <span className="block">누적 확정수익</span>
@@ -159,7 +164,10 @@ export default function FinanceCenterHome() {
               const height = Math.max(3, Math.round((Math.abs(point.afterTaxTravelProfit) / maxMonthly) * 100));
               return (
                 <div key={point.month} className="group flex h-full min-w-0 flex-1 flex-col justify-end" title={`${point.month}: ${won(point.afterTaxTravelProfit)}`}>
-                  <div className={`mx-auto w-full max-w-9 rounded-t-sm transition-opacity group-hover:opacity-75 ${positive ? 'bg-emerald-600' : 'bg-red-500'}`} style={{ height: `${height}%` }} />
+                  <div className="flex min-h-0 flex-1 items-end justify-center gap-1">
+                    <div className={`w-[42%] max-w-5 rounded-t-sm transition-opacity group-hover:opacity-75 ${positive ? 'bg-emerald-600' : 'bg-red-500'}`} style={{ height: `${height}%` }} />
+                    <div className={`w-[42%] max-w-5 rounded-t-sm transition-opacity group-hover:opacity-75 ${point.provisionalUnconfirmedTravelMargin >= 0 ? 'bg-slate-400' : 'bg-rose-300'}`} style={{ height: `${Math.max(3, Math.round((Math.abs(point.provisionalUnconfirmedTravelMargin) / maxMonthly) * 100))}%` }} title={`재검토 중 현금 마진: ${won(point.provisionalUnconfirmedTravelMargin)}`} />
+                  </div>
                   <span className="mt-2 truncate text-center text-[9px] text-admin-muted">{point.month.slice(5)}월</span>
                 </div>
               );
@@ -187,8 +195,19 @@ export default function FinanceCenterHome() {
         </section>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <details className="rounded-admin-md border border-admin-border-mid bg-admin-surface px-4 py-3 text-xs text-admin-muted">
+        <summary className="cursor-pointer font-semibold text-admin-text">지금 써도 되는 돈 산식 펼쳐보기</summary>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <p>실제 잔액 {won(summary.metrics.actualBankBalance)} - 여행 보호금 {won(summary.metrics.protectedTravelCash)} - 보수적 세금 적립금 {won(summary.metrics.estimatedTaxReserve)}</p>
+          <p>세후 월잠금 수익 {won(summary.metrics.afterTaxConfirmedProfit)} + 회사 운영손익 {won(summary.metrics.companyOperatingResult)}</p>
+          <p>고객 보호금 {won(summary.metrics.protectedCustomerFunds)} · 미지급 랜드사 원가 {won(summary.metrics.unpaidSupplierCost)}</p>
+          <p className="font-semibold text-emerald-700">두 한도 중 작은 금액: {won(summary.metrics.safeToWithdraw)}</p>
+        </div>
+      </details>
+
+      <section className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-admin-md border border-admin-border-mid bg-slate-950 p-4 text-white"><Banknote className="h-5 w-5 text-emerald-300" /><p className="mt-3 text-xs text-slate-400">여행 실현수익</p><p className="mt-1 text-lg font-bold">{won(summary.metrics.confirmedTravelProfit)}</p></div>
+        <div className="rounded-admin-md border border-slate-200 bg-slate-50 p-4"><AlertTriangle className="h-5 w-5 text-slate-500" /><p className="mt-3 text-xs text-admin-muted">재검토 중 현금 마진</p><p className="mt-1 text-lg font-bold text-admin-text">{won(summary.metrics.provisionalUnconfirmedTravelMargin)}</p><p className="mt-1 text-[10px] text-admin-muted">확정수익 아님</p></div>
         <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><Coins className="h-5 w-5 text-amber-600" /><p className="mt-3 text-xs text-admin-muted">세금 차감 후 확정수익</p><p className="mt-1 text-lg font-bold text-admin-text">{won(summary.metrics.afterTaxConfirmedProfit)}</p></div>
         <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4"><Wallet className="h-5 w-5 text-emerald-700" /><p className="mt-3 text-xs text-admin-muted">보호금·경비까지 차감한 사용가능액</p><p className="mt-1 text-lg font-bold text-admin-text">{won(summary.metrics.safeToWithdraw)}</p></div>
       </section>

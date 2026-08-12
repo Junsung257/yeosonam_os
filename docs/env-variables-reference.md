@@ -75,8 +75,12 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 | `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` | 공개 | Search Console URL-prefix meta 인증 token |
 | `NEXT_PUBLIC_ATTRIBUTION_TTL_DAYS` | 공개 | attribution 보존일, 1~365, 기본 90 |
 | `GA4_MEASUREMENT_PROTOCOL_API_SECRET` | **서버 비밀** | 서버 purchase/refund delivery. 절대 `NEXT_PUBLIC_` 금지 |
+| `NEXT_PUBLIC_POSTHOG_KEY` | 공개 | 선택적 정산 작업대 익명 수동 이벤트 키. 미설정 시 no-op |
+| `NEXT_PUBLIC_POSTHOG_HOST` | 공개 | PostHog 수집 호스트. 기본 `https://us.i.posthog.com` |
 
 운영 전송은 `NODE_ENV=production`, `VERCEL_ENV=production`, 유효한 GTM ID, 운영 hostname, 사용자 동의를 모두 만족해야 한다. Preview에는 Production 변수 scope를 복사하지 않는다.
+
+정산센터의 PostHog 연결은 자동 캡처, 페이지뷰, 개인 프로필, 세션 리플레이를 사용하지 않는다. 금액, 예약·고객·거래 식별자, 거래처, Clobe 메모는 전송 금지다.
 
 ## 📨 알림톡 (Solapi) — 배포 시점에 전부 없음, 추후 등록 필요
 

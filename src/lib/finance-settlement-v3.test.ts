@@ -5,6 +5,7 @@ import {
   clobeSettlementKeyFromSourceMetadata,
   isFinanceBookingVisible,
   needsCustomerCashReceipt,
+  suggestedExactBankFee,
   summarizeBookingCashBreakdown,
   validateBreakdownTotal,
 } from './finance-settlement-v3';
@@ -60,6 +61,14 @@ describe('finance settlement v3', () => {
     expect(summary.cashMargin).toBe(0);
     expect(summary.bankFees).toBe(500);
     expect(validateBreakdownTotal(600_500, [{ amount: 600_000 }, { amount: 500 }]).exact).toBe(true);
+  });
+
+  it('suggests only exact 500 or 1,000 won fee shortages without changing data', () => {
+    expect(suggestedExactBankFee({ cashMargin: -500, customerRefunds: 0, bankFees: 0 })).toBe(500);
+    expect(suggestedExactBankFee({ cashMargin: -1_000, customerRefunds: 0, bankFees: 0 })).toBe(1_000);
+    expect(suggestedExactBankFee({ cashMargin: -501, customerRefunds: 0, bankFees: 0 })).toBeNull();
+    expect(suggestedExactBankFee({ cashMargin: -500, customerRefunds: 500, bankFees: 0 })).toBeNull();
+    expect(suggestedExactBankFee({ cashMargin: -1_000, customerRefunds: 0, bankFees: 1_000 })).toBeNull();
   });
 
   it('blocks normal close until every booking has an owner decision', () => {

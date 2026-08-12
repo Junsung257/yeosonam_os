@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -31,7 +31,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Clobe bank sync | `/api/bank-transactions/sync-clobe`, `src/lib/settlement-import/clobe-bank-sync.ts` |
 | Scheduled Clobe sync | `/api/cron/clobe-bank-sync`, `src/lib/settlement-import/clobe-sync-scheduler.ts` |
 | Complete bank reality | `bank_transactions.settlement_scope`, `/api/bank-transactions/account-reality`, `src/lib/bank-account-reality.ts` |
-| Finance center | `/admin/finance`, `/api/admin/finance/summary`, `/api/admin/finance/periods`, `/api/admin/finance/classifications`, `/api/admin/finance/bookings/**`, `/api/admin/finance/transactions/**`, `/api/admin/finance/tax` |
+| Finance center | `/admin/finance`, `/api/admin/finance/workday`, `/api/admin/finance/summary`, `/api/admin/finance/periods`, `/api/admin/finance/classifications`, `/api/admin/finance/classifications/batch`, `/api/admin/finance/bookings/**`, `/api/admin/finance/transactions/**`, `/api/admin/finance/tax` |
 | Booking settlement review | `booking_settlement_reviews`, `save_booking_settlement_review` |
 | Month close snapshots | `settlement_periods`, `settlement_period_items`, `settlement_period_exceptions` |
 | Company transaction classification | `bank_transaction_classifications`, `bank_classification_rules` |
@@ -84,6 +84,18 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Booking review fingerprints contain only operator-visible business evidence: booking identity/state/price/cost plus transaction and allocation business fields. Persistence timestamps such as `bank_transactions.updated_at` must never invalidate a review. A no-op Clobe refresh preserves confirmed decisions; genuine memo, amount, counterparty, transaction time, status, allocation, or booking changes invalidate them.
 - The booking review API must return a live fingerprint and live allocation totals. Stored pending snapshots are cache/audit evidence, not an authority for an optimistic-concurrency click. Fingerprint-version migrations refresh current rows without changing an operator's resolved decision and preserve a pre-change immutable snapshot.
 - Company transaction classification precedence is `manual confirmation > active OS rule > Clobe category > review`. New rules do not apply retroactively unless a future explicit operation sets `apply_to_existing=true`. Capital, transfers, refunds, and owner withdrawals are excluded from profit.
+- `/admin/finance` opens the guided `오늘 정산하기` workday by default. The expert overview and six finance tabs remain available, but workday priority is fixed as bank sync/reconciliation, travel memo/allocation, negative-margin or changed bookings, normal booking review, company classification, month close, then evidence.
+- The guided workday is a read-only projection over the same ledger, booking reviews, classifications, and period snapshots. It must never copy or persist a second finance total, and a code deployment must not reset an operator decision.
+- The guided workday is scoped to one selected completed departure month. Booking review and risk counts, close blockers, and links must carry that month; future departures, prior omissions, and undated bookings remain visible as separate non-blocking counts.
+- A travel transaction review row belongs to a close month by authoritative manual booking allocation first, then a valid Clobe travel-memo departure date, then its own bank transaction month only when neither anchor exists. Other-month review rows remain in the global transaction queue but cannot block the selected departure month or inflate its open-work count.
+- Workday totals count unique operational records, not the sum of overlapping stage badges. A travel transaction that has both a memo issue and an allocation mismatch is one open item. The UI may also show the larger stage-display sum, but it must label that number as including overlap.
+- Workday links use focused mode to place actionable rows before overview cards while preserving expert views. Booking rows default to departure date ascending within the selected close month, and every stage link identifies its blocker and completion condition.
+- Clobe OAuth connection time, last successful sync, next scheduled sync, and source/recognized/new/memo-change/auto-match/review/error counts are distinct status fields. Two missed scheduled windows or any reconciliation drift makes the sync stage blocking.
+- Exact negative cash margins of 500 or 1,000 won may be offered as a bank-fee split preview only when no refund or bank fee is already allocated. The operator must review and save the exact-conservation breakdown; the assistant never mutates allocation evidence automatically.
+- Existing evidence status is preserved. `not_required` means no evidence check was requested, not that evidence was supplied. Finance UI must display it as `증빙 확인 요청 없음`, and deployments or queue recalculation must never rewrite it.
+- The 10% tax value is a configurable conservative reserve, not an official tax amount. Confirmed locked profit and provisional unreviewed cash margin must remain separate in totals, charts, and safe-to-withdraw calculations.
+- Company transaction batch confirmation must use `save_finance_classification_batch`. The RPC accepts 1-200 fully allocated one-line non-travel transactions only, rejects split or booking-linked lines, validates direction and every stale classification before any write, saves the entire batch atomically, persists an idempotency result, and records audit evidence. A partial batch success is forbidden. Split, refund-linked, or booking-linked lines remain on the individual breakdown flow.
+- Finance UX telemetry is manual and anonymous. Allowed properties are coarse task/result/count/duration/viewport/month/error-code fields only. Amounts, booking/customer/transaction identifiers, account numbers, counterparties, and Clobe memo text are forbidden. Finance pages disable session replay while preserving redacted Sentry error reporting.
 - Finance center loading failures must render a clear error and retain the distinction from a valid zero amount. Never replace failed finance data with `0원`.
 - A non-travel Clobe row whose memo is later corrected to a valid travel key may move into booking settlement only before allocation, through the normal memo resolution and allocation path. If an allocated travel row loses or changes its travel key, mark it for review and do not move the allocation automatically.
 - Clobe bank sync must normalize provider rows into the same bank import contract before touching `bank_transactions`.

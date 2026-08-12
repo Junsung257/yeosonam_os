@@ -55,6 +55,34 @@ const classificationApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/classifications/route.ts'),
   'utf8',
 );
+const financeClassifications = readFileSync(
+  join(process.cwd(), 'src/components/admin/finance/FinanceClassifications.tsx'),
+  'utf8',
+);
+const classificationBatchMigration = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260811224328_finance_classification_batch_workflow.sql'),
+  'utf8',
+);
+const classificationBatchApi = readFileSync(
+  join(process.cwd(), 'src/app/api/admin/finance/classifications/batch/route.ts'),
+  'utf8',
+);
+const accountRealityApi = readFileSync(
+  join(process.cwd(), 'src/app/api/bank-transactions/account-reality/route.ts'),
+  'utf8',
+);
+const bankAccountReality = readFileSync(
+  join(process.cwd(), 'src/lib/bank-account-reality.ts'),
+  'utf8',
+);
+const integrationsApi = readFileSync(
+  join(process.cwd(), 'src/app/api/admin/integrations/route.ts'),
+  'utf8',
+);
+const paymentsPage = readFileSync(
+  join(process.cwd(), 'src/app/admin/payments/PaymentsPageClient.tsx'),
+  'utf8',
+);
 
 describe('finance settlement center contracts', () => {
   it('serializes close and keeps one current revision per departure month', () => {
@@ -111,6 +139,24 @@ describe('finance settlement center contracts', () => {
     expect(classificationApi).toContain('allocationId');
   });
 
+  it('saves company classifications as one stale-safe idempotent batch', () => {
+    expect(classificationApi).toContain('batchEligible');
+    expect(classificationApi).toContain('allocations.length === 1');
+    expect(classificationApi).toContain('Number(allocation.allocated_amount) === Number(transaction.amount)');
+    expect(classificationBatchMigration).toContain('save_finance_classification_batch');
+    expect(classificationBatchMigration).toContain('pg_advisory_xact_lock');
+    expect(classificationBatchMigration).toContain('stale finance classification');
+    expect(classificationBatchMigration).toContain('duplicate transaction ids');
+    expect(classificationBatchMigration).toContain('allocation.allocated_amount = transaction.amount');
+    expect(classificationBatchMigration).toContain('allocation.booking_id IS NULL');
+    expect(classificationBatchMigration).toContain("expense classification requires a withdrawal");
+    expect(classificationBatchMigration).toContain('finance_classification_batch_runs');
+    expect(classificationBatchMigration).toContain('REVOKE ALL ON FUNCTION public.save_finance_classification_batch');
+    expect(classificationBatchMigration).toContain('TO service_role');
+    expect(classificationBatchApi).toContain("request.headers.get('Idempotency-Key')");
+    expect(classificationBatchApi).toContain('expectedClassification');
+  });
+
   it('conserves every non-travel transaction without overwriting manual splits', () => {
     expect(nonTravelConservationMigration).toContain('sync_non_travel_classification_allocations');
     expect(nonTravelConservationMigration).toContain("p_classification = 'review'");
@@ -152,5 +198,31 @@ describe('finance settlement center contracts', () => {
     expect(fingerprintIntegrityMigration).toContain("WHERE status = 'cancelled'");
     expect(fingerprintIntegrityMigration).toContain("SET status = 'customer_cancelled'");
     expect(fingerprintIntegrityMigration).toContain('finance_excluded = true');
+  });
+
+  it('uses one complete booking reserve population across finance tabs', () => {
+    expect(accountRealityApi).toContain(".from('bookings')");
+    expect(accountRealityApi).toContain(".limit(5000)");
+    expect(accountRealityApi).not.toContain('const bookingIds =');
+    expect(accountRealityApi).toContain(".from('settlement_periods')");
+    expect(accountRealityApi).toContain(".from('settlement_period_items')");
+    expect(accountRealityApi).toContain('confirmedSettlementItems');
+    expect(accountRealityApi).toContain('confirmedBookingIds');
+  });
+
+  it('keeps connection dates and focused work counts semantically consistent', () => {
+    expect(integrationsApi).toContain('connected_at: row?.created_at ?? null');
+    expect(integrationsApi).not.toContain('connected_at: row?.updated_at ?? null');
+    expect(financeCenterService).toContain("allocation.target_type === 'review'");
+    expect(bankAccountReality).toContain("| 'review'");
+    expect(financeCenterService).toContain('unclassifiedCompany: unclassifiedCompanyTransactionIds.length');
+    expect(financeCenterService).not.toContain('unclassifiedCompany: profit.classificationReviewCount');
+    expect(classificationApi).toContain('reviewTransactionTotal');
+    expect(classificationApi).toContain('companyReviewTransactionTotal');
+    expect(classificationApi).toContain('travelReviewTransactionTotal');
+    expect(classificationApi).toContain('batchEligibleReview');
+    expect(financeClassifications).toContain('회사 미분류 {data?.summary.companyReviewTransactionTotal');
+    expect(financeClassifications).toContain('여행 가능성 {data?.summary.travelReviewTransactionTotal');
+    expect(paymentsPage).toContain('opsQueueSummary && !focusMode');
   });
 });

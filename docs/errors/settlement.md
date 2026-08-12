@@ -168,3 +168,18 @@ Last updated: 2026-08-05
 - [x] **증상:** 거래 API 실패 또는 최초 로딩 중 실제 원장이 있어도 0건·0원처럼 보일 수 있었다.
 - [x] **원인:** 여러 fetch의 HTTP 오류를 검사하지 않았고 실패 상태와 유효한 빈 상태를 분리하지 않았다.
 - [x] **수정 계약:** 최초 로딩에는 skeleton만 표시하고, 하나의 API라도 실패하면 명확한 오류를 표시한다. 기존 정상 데이터가 있으면 유지하면서 마지막 정상 시각을 함께 보여준다.
+
+## ERR-CLOBE-EVIDENCE-SCOPE-OVERWRITE@2026-08-12
+
+- **Symptom:** A no-op Clobe sync kept all amounts and allocations intact but changed 138 manually classified company transactions from `non_travel` to `travel` in the dashboard.
+- **Root cause:** The shared evidence-refresh helper always wrote `settlement_scope = travel`, including the path that only records the latest provider memo observation.
+- **Permanent rule:** Updating provider evidence may refresh account number, balance, category, raw payload, and source metadata, but it must never change settlement scope. Scope changes are allowed only for a new import or an explicit reclassification path.
+- **Required proof:** Repeating the same full sync must return zero memo reviews, preserve 286 travel and 195 non-travel transactions, keep all 481 allocations exact, and leave booking review fingerprints unchanged.
+- **Split rule:** Dashboard travel/company cash totals come from allocation lines, not a transaction-wide scope. A refund-plus-fee transaction contributes the refund to travel cash and the fee to company cash without duplicating any amount.
+
+## ERR-CLOBE-memo-review-repeat@2026-08-12
+
+- [x] **증상:** 실제 Clobe 메모가 바뀌지 않은 재동기화에서도 기존 배분 거래 86건이 매번 `메모 검토`로 다시 집계됐다.
+- [x] **원인:** 변경 감지가 마지막으로 저장한 Clobe 원본 메모가 아니라 이관 전 `bank_transactions.memo`와 현재 Clobe 메모를 비교했다. 메모 제거도 이미 확인했는지 구분하지 않고 매번 검토로 처리했다.
+- [x] **수정 계약:** 공급자별 `source_metadata`에 마지막으로 관측한 메모와 여행키가 있으면 이를 비교 기준으로 사용한다. 공급자 증빙이 아직 없을 때만 기존 거래 메모로 폴백하며, 여행 메모 제거는 공급자별 최초 1회만 검토로 생성한다.
+- [x] **검증:** 같은 공급자 메모의 두 번째 동기화는 `memoChangedReview = 0`이어야 하고, 신규 메모 변경은 1회만 검토로 남아야 한다. 예약 검토 지문 drift와 배분 부족·초과는 계속 0건이어야 한다.
