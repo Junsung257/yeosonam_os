@@ -12,6 +12,12 @@ const PaymentsPageClient = dynamic(
   },
 );
 
-export default function FinanceTransactionReview() {
-  return <PaymentsPageClient />;
+export default function FinanceTransactionReview({
+  focusMode = false,
+  initialQueue,
+}: {
+  focusMode?: boolean;
+  initialQueue?: string;
+}) {
+  return <PaymentsPageClient focusMode={focusMode} initialQueue={initialQueue} />;
 }

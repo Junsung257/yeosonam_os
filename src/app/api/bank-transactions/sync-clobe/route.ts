@@ -276,6 +276,8 @@ export async function POST(request: NextRequest) {
           tool_name: mcp.toolName,
           merged: result.merged,
           skipped: result.skipped,
+          memo_updated: result.memoUpdated,
+          memo_changed_review: result.memoChangedReview,
           classification_refresh: classificationRefresh,
           classification_refresh_error: classificationRefreshError,
           post_close_changes: postCloseChanges,

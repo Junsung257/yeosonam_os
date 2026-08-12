@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       basis: {
         bank: 'Clobe 신한 4128 활성 배분',
         book: '예약 판매가·예정원가',
-        warning: '예상 세금은 신고 금액이 아닙니다.',
+        warning: '보수적 세금 적립금은 공식 신고 금액이 아닙니다.',
       },
       bookings,
       kpis: {

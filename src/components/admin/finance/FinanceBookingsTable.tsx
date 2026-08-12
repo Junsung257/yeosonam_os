@@ -22,6 +22,7 @@ import {
 import {
   BOOKING_REVIEW_LABELS,
   FINANCE_TARGET_LABELS,
+  suggestedExactBankFee,
   type BookingSettlementDecision,
   type BookingSettlementReviewStatus,
   type FinanceAllocationTarget,
@@ -142,12 +143,14 @@ function BreakdownDialog({
   defaultBookingId,
   onClose,
   onSaved,
+  suggestedBankFee = 0,
 }: {
   transactionId: string;
   bookingChoices: FinanceBookingReviewRow[];
   defaultBookingId: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
+  suggestedBankFee?: number;
 }) {
   const { data, error, isLoading } = useSWR<BreakdownResponse>(`/api/admin/finance/transactions/${transactionId}/breakdown`, fetcher, { revalidateOnFocus: false });
   const [lines, setLines] = useState<BreakdownLine[]>([]);
@@ -158,15 +161,32 @@ function BreakdownDialog({
 
   useEffect(() => {
     if (!breakdown) return;
-    setLines(breakdown.allocations.map(line => ({
+    const nextLines = breakdown.allocations.map(line => ({
       targetType: line.target_type,
       amount: Number(line.allocated_amount),
       bookingId: line.booking_id ?? '',
       targetLabel: line.target_label ?? '',
       reconciliationKey: line.reconciliation_key ?? '',
       metadata: line.metadata ?? {},
-    })));
-  }, [breakdown]);
+    }));
+    const bookingLine = suggestedBankFee > 0
+      ? nextLines.find(line => line.targetType === 'booking' && line.bookingId === defaultBookingId && line.amount > suggestedBankFee)
+      : null;
+    const alreadySplit = nextLines.some(line => line.targetType === 'bank_fee' && line.bookingId === defaultBookingId);
+    if (bookingLine && !alreadySplit) {
+      bookingLine.amount -= suggestedBankFee;
+      nextLines.push({
+        targetType: 'bank_fee',
+        amount: suggestedBankFee,
+        bookingId: defaultBookingId,
+        targetLabel: `송금수수료 ${suggestedBankFee.toLocaleString('ko-KR')}원`,
+        reconciliationKey: '',
+        metadata: { suggestedBy: 'exact_margin_fee_assistant' },
+      });
+      setReason(`${suggestedBankFee.toLocaleString('ko-KR')}원 송금수수료 후보 확인`);
+    }
+    setLines(nextLines);
+  }, [breakdown, defaultBookingId, suggestedBankFee]);
 
   const allocated = lines.reduce((sum, line) => sum + Math.round(Number(line.amount) || 0), 0);
   const remaining = Math.round(Number(breakdown?.transaction.amount) || 0) - allocated;
@@ -197,6 +217,7 @@ function BreakdownDialog({
       <div className="space-y-4 p-5">
         {isLoading ? <div className="h-40 animate-pulse rounded-xl bg-slate-100" /> : null}
         {error ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error.message}</div> : null}
+        {suggestedBankFee > 0 ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><strong>{won(suggestedBankFee)} 송금수수료 후보를 미리 적용했습니다.</strong><span className="block">예약 출금에서 수수료만 분리한 뒤 배분 합계가 원본 금액과 같은지 확인하고 저장해주세요. 자동 저장되지는 않습니다.</span></div> : null}
         {breakdown ? (
           <>
             <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-4">
@@ -275,9 +296,14 @@ function BookingDrawer({
   const [dueDate, setDueDate] = useState(() => new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10));
   const [reclassTarget, setReclassTarget] = useState<'owner_draw' | 'company_travel'>('company_travel');
   const [splitTransactionId, setSplitTransactionId] = useState<string | null>(null);
+  const [feeSuggestionTransactionId, setFeeSuggestionTransactionId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const booking = data?.booking;
+  const suggestedBankFee = booking ? (suggestedExactBankFee(booking) ?? 0) : 0;
+  const suggestedFeeTransaction = suggestedBankFee > 0
+    ? booking?.transactions.find(transaction => transaction.direction === '출금' && transaction.targetType === 'booking' && transaction.allocatedAmount > suggestedBankFee)
+    : null;
 
   const refresh = async () => { await mutate(); await onChanged(); };
 
@@ -457,6 +483,7 @@ function BookingDrawer({
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="text-sm font-semibold text-slate-900">처리 결정</h4>
+                {suggestedFeeTransaction ? <div className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>{won(suggestedBankFee)} 송금수수료 후보</strong><span className="mt-1 block">예약 출금에서 수수료를 분리하면 현금 마진이 0원으로 바뀌는지 미리 확인할 수 있습니다.</span></span><button type="button" onClick={() => setFeeSuggestionTransactionId(suggestedFeeTransaction.id)} className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold text-amber-900">분리 미리보기</button></div> : null}
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   <button type="button" onClick={() => openDecision('confirmed')} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2.5 text-xs font-semibold text-white"><CheckCircle2 className="h-4 w-4" /> 정산 확인</button>
                   <button type="button" onClick={() => openDecision('customer_cancelled')} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900"><Receipt className="h-4 w-4" /> 고객 취소·환불</button>
@@ -481,6 +508,7 @@ function BookingDrawer({
       </div></Dialog> : null}
 
       {splitTransactionId ? <BreakdownDialog transactionId={splitTransactionId} bookingChoices={bookingChoices} defaultBookingId={bookingId} onClose={() => setSplitTransactionId(null)} onSaved={refresh} /> : null}
+      {feeSuggestionTransactionId ? <BreakdownDialog transactionId={feeSuggestionTransactionId} bookingChoices={bookingChoices} defaultBookingId={bookingId} suggestedBankFee={suggestedBankFee} onClose={() => setFeeSuggestionTransactionId(null)} onSaved={refresh} /> : null}
     </div>
   );
 }
@@ -489,17 +517,28 @@ export default function FinanceBookingsTable({
   initialMonth = '',
   initialQuery = '',
   initialFocus = '',
+  initialStatus = 'pending',
+  initialSort = 'departure_desc',
+  focusMode = false,
   returnToToday = false,
 }: {
   initialMonth?: string;
   initialQuery?: string;
   initialFocus?: string;
+  initialStatus?: string;
+  initialSort?: string;
+  focusMode?: boolean;
   returnToToday?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [month, setMonth] = useState(/^\d{4}-\d{2}$/.test(initialMonth) ? initialMonth : '');
-  const [status, setStatus] = useState<BookingSettlementReviewStatus | 'all'>('pending');
+  const [status, setStatus] = useState<BookingSettlementReviewStatus | 'all'>(
+    FILTERS.some(filter => filter.value === initialStatus)
+      ? initialStatus as BookingSettlementReviewStatus | 'all'
+      : 'pending',
+  );
+  const sort = initialSort === 'departure_asc' ? 'departure_asc' : 'departure_desc';
   const [selectedId, setSelectedId] = useState<string | null>(initialFocus || null);
   const [showExcluded, setShowExcluded] = useState(false);
   const deferredQuery = useDeferredValue(query.trim());
@@ -508,6 +547,7 @@ export default function FinanceBookingsTable({
   if (status !== 'all') params.set('status', status);
   if (deferredQuery) params.set('q', deferredQuery);
   if (showExcluded) params.set('includeExcluded', 'true');
+  params.set('sort', sort);
   const url = `/api/admin/finance/bookings?${params.toString()}`;
   const { data, error, isLoading, isValidating, mutate } = useSWR<BookingResponse>(url, fetcher, { revalidateOnFocus: false });
   const { data: choicesData } = useSWR<BookingResponse>('/api/admin/finance/bookings?status=all', fetcher, { revalidateOnFocus: false });
@@ -523,6 +563,12 @@ export default function FinanceBookingsTable({
 
   return (
     <section className="space-y-4">
+      {focusMode ? (
+        <div className="rounded-admin-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-950" role="status">
+          <strong>{month ? `${month} 출발 월` : '선택한 출발 월'} 집중 검토</strong>
+          <span className="mt-1 block">출발일 순서대로 거래와 메모를 확인하면 저장 후 다음 미검토 예약으로 이어집니다. 향후 출발 예약은 이 월의 마감을 막지 않습니다.</span>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div><h2 className="flex items-center gap-2 text-lg font-semibold text-admin-text"><Wallet className="h-5 w-5 text-emerald-700" />예약별 정산</h2><p className="mt-1 text-xs text-admin-muted">Clobe 거래를 직접 확인한 예약만 월 확정수익에 포함됩니다.</p></div>
         <div className="flex gap-2"><Link href="/admin/payments/reconcile" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-xs font-semibold">원장 정합성</Link><button type="button" onClick={() => mutate()} disabled={isValidating} className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">{isValidating ? '갱신 중' : '최신 거래 갱신'}</button></div>
@@ -535,7 +581,7 @@ export default function FinanceBookingsTable({
         <label className="inline-flex items-center gap-2 rounded-lg border border-admin-border-strong px-3 py-2 text-xs font-semibold"><input type="checkbox" checked={showExcluded} onChange={event => setShowExcluded(event.target.checked)} /> 제외건 포함</label>
       </div>
 
-      {data ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-xl border border-slate-200 p-3"><span className="text-xs text-slate-500">조회 예약</span><strong className="mt-1 block text-lg">{data.summary.total ?? 0}건</strong></div><div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="text-xs text-amber-800">재검토 필요</span><strong className="mt-1 block text-lg text-amber-950">{data.summary.pending ?? 0}건</strong></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><span className="text-xs text-emerald-800">검토완료 마진</span><strong className="mt-1 block text-lg text-emerald-950">{won(data.summary.cashMargin ?? 0)}</strong></div><div className="rounded-xl border border-slate-200 p-3"><span className="text-xs text-slate-500">보류</span><strong className="mt-1 block text-lg">{data.summary.deferred ?? 0}건</strong></div></div> : null}
+      {data && !focusMode ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-xl border border-slate-200 p-3"><span className="text-xs text-slate-500">조회 예약</span><strong className="mt-1 block text-lg">{data.summary.total ?? 0}건</strong></div><div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="text-xs text-amber-800">재검토 필요</span><strong className="mt-1 block text-lg text-amber-950">{data.summary.pending ?? 0}건</strong></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><span className="text-xs text-emerald-800">검토완료 마진</span><strong className="mt-1 block text-lg text-emerald-950">{won(data.summary.cashMargin ?? 0)}</strong></div><div className="rounded-xl border border-slate-200 p-3"><span className="text-xs text-slate-500">보류</span><strong className="mt-1 block text-lg">{data.summary.deferred ?? 0}건</strong></div></div> : null}
 
       {error ? <div role="alert" className="rounded-admin-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error.message}</div> : null}
       {isLoading ? <div className="h-80 animate-pulse rounded-admin-md bg-admin-surface-2" /> : null}

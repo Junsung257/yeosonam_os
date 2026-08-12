@@ -4,7 +4,7 @@ import {
   calculateBankAccountReality,
   calculateBankProfitErp,
   calculateBookingCashPositions,
-  countTravelMemoOrAllocationActions,
+  travelMemoOrAllocationActionIds,
   YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
   type BankAccountRealityRow,
   type BookingCashAllocationRow,
@@ -68,10 +68,16 @@ export interface FinanceCenterSummary {
   accountNumber: string;
   status: {
     connected: boolean;
+    connectedAt: string | null;
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
     sourceCount: number;
     recognizedCount: number;
+    newCount: number;
+    autoMatchedCount: number;
+    memoUpdatedCount: number;
+    memoReviewCount: number;
+    errorCount: number;
     ledgerCount: number;
     bankBalance: number;
     osBalance: number;
@@ -88,6 +94,7 @@ export interface FinanceCenterSummary {
     actualTaxPayments: number;
     companyOperatingResult: number;
     confirmedTravelProfit: number;
+    provisionalUnconfirmedTravelMargin: number;
     afterTaxConfirmedProfit: number;
     safeToWithdraw: number;
     calculationStatus: 'clear' | 'blocked';
@@ -101,6 +108,12 @@ export interface FinanceCenterSummary {
     monthCloseWaiting: number;
     postCloseChanges: number;
   };
+  actionRefs: {
+    travelTransactionIds: string[];
+    unclassifiedCompanyTransactionIds: string[];
+    monthCloseMonths: string[];
+    postCloseExceptionIds: string[];
+  };
   monthly: Array<{
     month: string;
     confirmedTravelProfit: number;
@@ -109,6 +122,7 @@ export interface FinanceCenterSummary {
     classifiedOperatingIncome: number;
     classifiedOperatingExpense: number;
     provisionalOperatingCashResult: number;
+    provisionalUnconfirmedTravelMargin: number;
   }>;
   bookings: FinanceBookingSettlementRow[];
 }
@@ -247,7 +261,7 @@ function buildBookingRows(
     const cash = totals.get(booking.id) ?? { deposits: 0, withdrawals: 0, ids: new Set<string>() };
     const snapshot = snapshotByBooking.get(booking.id);
     const departureDate = booking.departure_date?.slice(0, 10) ?? null;
-    const state = snapshot || booking.settlement_confirmed_at
+    const state = snapshot
       ? 'settled'
       : !departureDate
         ? 'date_missing'
@@ -279,10 +293,12 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
       loadConfirmedSettlementSnapshots(),
     ]);
     const bankSummary = calculateBankAccountReality(data.transactions, data.allocations);
+    const confirmedBookingIds = new Set(confirmedSnapshots.map(row => row.booking_id));
     const bookingCash = calculateBookingCashPositions({
       transactions: data.transactions,
       allocations: data.allocations,
       bookings: data.bookings,
+      confirmedBookingIds,
       referenceDate: bankSummary.asOf ?? new Date(),
     });
     const profit = calculateBankProfitErp({
@@ -297,23 +313,31 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
     });
     const referenceDate = koreaDate(bankSummary.asOf ?? new Date());
     const bookingRows = buildBookingRows(data, referenceDate, confirmedSnapshots);
+    const provisionalMarginByMonth = new Map<string, number>();
+    for (const booking of bookingRows) {
+      if (booking.state !== 'departed_pending' || !booking.departureDate) continue;
+      const month = booking.departureDate.slice(0, 7);
+      provisionalMarginByMonth.set(month, (provisionalMarginByMonth.get(month) ?? 0) + booking.cashMargin);
+    }
+    const provisionalUnconfirmedTravelMargin = [...provisionalMarginByMonth.values()]
+      .reduce((sum, value) => sum + value, 0);
 
     const [syncResult, connectionResult, exceptionResult, periodResult] = await Promise.all([
       supabaseAdmin
         .from('finance_sync_runs')
-        .select('source_count, recognized_count, status, completed_at')
+        .select('source_count, recognized_count, inserted_count, matched_count, error_count, details, status, completed_at')
         .eq('account_number', YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER)
         .order('completed_at', { ascending: false })
-        .limit(1),
+        .limit(25),
       supabaseAdmin
         .from('tenant_api_tokens')
-        .select('id')
+        .select('id, created_at')
         .eq('provider', 'clobe')
         .eq('is_active', true)
         .limit(1),
       supabaseAdmin
         .from('settlement_period_exceptions')
-        .select('exception_type')
+        .select('id, departure_month, exception_type')
         .eq('status', 'open')
         .limit(MAX_ROWS),
       supabaseAdmin
@@ -327,7 +351,11 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
     if (exceptionResult.error) throw exceptionResult.error;
     if (periodResult.error) throw periodResult.error;
 
-    const latestSync = syncResult.data?.[0];
+    const latestSyncRun = syncResult.data?.[0];
+    const latestSuccessfulSync = syncResult.data?.find(row => row.status === 'success');
+    const latestSyncDetails = latestSyncRun?.details && typeof latestSyncRun.details === 'object' && !Array.isArray(latestSyncRun.details)
+      ? latestSyncRun.details as Record<string, unknown>
+      : {};
     const exceptions = exceptionResult.data ?? [];
     const closedMonths = new Set((periodResult.data ?? [])
       .filter(row => row.status === 'closed' || row.status === 'conditional')
@@ -335,16 +363,37 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
     const completedBookingMonths = new Set(bookingRows
       .filter(row => row.departureDate && row.departureDate < referenceDate)
       .map(row => row.departureDate!.slice(0, 7)));
+    const monthCloseMonths = [...new Set([
+      ...bookingRows
+        .filter(row => row.state === 'departed_pending' && row.departureDate)
+        .map(row => row.departureDate!.slice(0, 7)),
+      ...[...completedBookingMonths].filter(month => !closedMonths.has(month)),
+    ])].sort();
+    const travelTransactionIds = travelMemoOrAllocationActionIds({
+      transactions: data.transactions,
+      allocations: data.allocations,
+    });
+    const unclassifiedCompanyTransactionIds = data.transactions.flatMap(row =>
+      row.id && row.settlement_scope === 'non_travel' && row.resolved_classification === 'review'
+        ? [row.id]
+        : [],
+    );
 
     return {
       generatedAt: new Date().toISOString(),
       accountNumber: YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
       status: {
         connected: (connectionResult.data?.length ?? 0) > 0,
-        lastSyncAt: latestSync?.completed_at ?? bankSummary.asOf,
-        lastSyncStatus: latestSync?.status ?? null,
-        sourceCount: latestSync?.source_count ?? bankSummary.transactionCount,
-        recognizedCount: latestSync?.recognized_count ?? bankSummary.transactionCount,
+        connectedAt: connectionResult.data?.[0]?.created_at ?? null,
+        lastSyncAt: latestSuccessfulSync?.completed_at ?? null,
+        lastSyncStatus: latestSyncRun?.status ?? null,
+        sourceCount: latestSyncRun?.source_count ?? bankSummary.transactionCount,
+        recognizedCount: latestSyncRun?.recognized_count ?? bankSummary.transactionCount,
+        newCount: latestSyncRun?.inserted_count ?? 0,
+        autoMatchedCount: latestSyncRun?.matched_count ?? 0,
+        memoUpdatedCount: Number(latestSyncDetails.memo_updated ?? 0),
+        memoReviewCount: Number(latestSyncDetails.memo_changed_review ?? 0),
+        errorCount: latestSyncRun?.error_count ?? 0,
         ledgerCount: bankSummary.transactionCount,
         bankBalance: bankSummary.actualBalance,
         osBalance: bankSummary.computedBalance,
@@ -361,28 +410,30 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
         actualTaxPayments: profit.actualTaxPayments,
         companyOperatingResult: profit.provisionalOperatingCashResult,
         confirmedTravelProfit: profit.confirmedTravelProfit,
+        provisionalUnconfirmedTravelMargin,
         afterTaxConfirmedProfit: profit.afterTaxTravelProfit,
         safeToWithdraw: profit.safeToWithdraw,
         calculationStatus: profit.calculationStatus,
         blockers: profit.blockers,
       },
       actions: {
-        travelMemoOrAllocation: countTravelMemoOrAllocationActions({
-          transactions: data.transactions,
-          allocations: data.allocations,
-        }),
+        travelMemoOrAllocation: travelTransactionIds.length,
         unmatchedTravel: bookingCash.unallocatedTravelCount,
         negativeMargin: bookingRows.filter(row => row.state !== 'settled' && row.cashMargin < 0).length,
         unclassifiedCompany: profit.classificationReviewCount,
-        monthCloseWaiting: new Set([
-          ...bookingRows
-            .filter(row => row.state === 'departed_pending' && row.departureDate)
-            .map(row => row.departureDate!.slice(0, 7)),
-          ...[...completedBookingMonths].filter(month => !closedMonths.has(month)),
-        ]).size,
+        monthCloseWaiting: monthCloseMonths.length,
         postCloseChanges: exceptions.filter(row => row.exception_type === 'post_close_change').length,
       },
-      monthly: profit.monthly,
+      actionRefs: {
+        travelTransactionIds,
+        unclassifiedCompanyTransactionIds,
+        monthCloseMonths,
+        postCloseExceptionIds: exceptions.flatMap(row => row.exception_type === 'post_close_change' ? [String(row.id)] : []),
+      },
+      monthly: profit.monthly.map(point => ({
+        ...point,
+        provisionalUnconfirmedTravelMargin: provisionalMarginByMonth.get(point.month) ?? 0,
+      })),
       bookings: bookingRows,
     };
   } catch (error) {

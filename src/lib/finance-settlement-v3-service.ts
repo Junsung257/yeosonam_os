@@ -223,12 +223,13 @@ export async function loadFinanceBookingReviews(filters: {
   status?: BookingSettlementReviewStatus | 'all' | null;
   query?: string | null;
   includeExcluded?: boolean;
+  sort?: 'departure_asc' | 'departure_desc';
 } = {}): Promise<{ rows: FinanceBookingReviewRow[]; summary: Record<string, number> }> {
   const [bookingResult, allocationResult, reviewResult, keyResult] = await Promise.all([
     supabaseAdmin
       .from('bookings')
       .select('id, booking_no, package_title, departure_date, status, is_deleted, finance_excluded, finance_exclusion_reason, total_price, total_cost, customers!lead_customer_id(name)')
-      .order('departure_date', { ascending: false, nullsFirst: false })
+      .order('departure_date', { ascending: filters.sort === 'departure_asc', nullsFirst: false })
       .limit(MAX_ROWS),
     supabaseAdmin
       .from('bank_transaction_allocations')
@@ -292,7 +293,12 @@ export async function loadFinanceBookingReviews(filters: {
         .filter(Boolean)
         .some(value => String(value).normalize('NFKC').toLowerCase().includes(normalizedQuery));
     })
-    .sort((a, b) => String(b.departureDate).localeCompare(String(a.departureDate)) || a.bookingNo.localeCompare(b.bookingNo));
+    .sort((a, b) => {
+      const dateOrder = filters.sort === 'departure_asc'
+        ? String(a.departureDate).localeCompare(String(b.departureDate))
+        : String(b.departureDate).localeCompare(String(a.departureDate));
+      return dateOrder || a.bookingNo.localeCompare(b.bookingNo);
+    });
 
   return {
     rows,

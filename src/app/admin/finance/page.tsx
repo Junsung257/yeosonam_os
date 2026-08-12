@@ -40,7 +40,18 @@ function isFinanceTab(value: string | undefined): value is FinanceTab {
 export default async function FinanceCenterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; month?: string; q?: string; view?: string; focus?: string; return?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    month?: string;
+    q?: string;
+    view?: string;
+    focus?: string;
+    return?: string;
+    mode?: string;
+    status?: string;
+    sort?: string;
+    queue?: string;
+  }>;
 }) {
   const params = await searchParams;
   const activeTab: FinanceTab = isFinanceTab(params.tab) ? params.tab : 'home';
@@ -93,10 +104,10 @@ export default async function FinanceCenterPage({
       ) : null}
 
       {activeTab === 'home' ? (params.view === 'overview' ? <FinanceCenterHome /> : <FinanceTodayWorkbench />) : null}
-      {activeTab === 'review' ? <FinanceTransactionReview /> : null}
-      {activeTab === 'bookings' ? <FinanceBookingsTable initialMonth={params.month} initialQuery={params.q} initialFocus={params.focus} returnToToday={params.return === 'today'} /> : null}
+      {activeTab === 'review' ? <FinanceTransactionReview focusMode={params.mode === 'workday'} initialQueue={params.queue} /> : null}
+      {activeTab === 'bookings' ? <FinanceBookingsTable initialMonth={params.month} initialQuery={params.q} initialFocus={params.focus} initialStatus={params.status} initialSort={params.sort} focusMode={params.mode === 'workday'} returnToToday={params.return === 'today'} /> : null}
       {activeTab === 'periods' ? <FinancePeriods initialMonth={params.month} /> : null}
-      {activeTab === 'expenses' ? <FinanceClassifications /> : null}
+      {activeTab === 'expenses' ? <FinanceClassifications focusMode={params.mode === 'workday'} /> : null}
       {activeTab === 'tax' ? (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 rounded-admin-md border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-950 sm:flex-row sm:items-center sm:justify-between">
