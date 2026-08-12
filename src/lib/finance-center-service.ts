@@ -373,11 +373,15 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
       transactions: data.transactions,
       allocations: data.allocations,
     });
-    const unclassifiedCompanyTransactionIds = data.transactions.flatMap(row =>
-      row.id && row.settlement_scope === 'non_travel' && row.resolved_classification === 'review'
-        ? [row.id]
+    const transactionScopeById = new Map(data.transactions.flatMap(row =>
+      row.id ? [[row.id, row.settlement_scope] as const] : [],
+    ));
+    const unclassifiedCompanyTransactionIds = [...new Set(data.allocations.flatMap(allocation =>
+      allocation.target_type === 'review'
+        && transactionScopeById.get(allocation.bank_transaction_id) === 'non_travel'
+        ? [allocation.bank_transaction_id]
         : [],
-    );
+    ))];
 
     return {
       generatedAt: new Date().toISOString(),
@@ -420,7 +424,7 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
         travelMemoOrAllocation: travelTransactionIds.length,
         unmatchedTravel: bookingCash.unallocatedTravelCount,
         negativeMargin: bookingRows.filter(row => row.state !== 'settled' && row.cashMargin < 0).length,
-        unclassifiedCompany: profit.classificationReviewCount,
+        unclassifiedCompany: unclassifiedCompanyTransactionIds.length,
         monthCloseWaiting: monthCloseMonths.length,
         postCloseChanges: exceptions.filter(row => row.exception_type === 'post_close_change').length,
       },

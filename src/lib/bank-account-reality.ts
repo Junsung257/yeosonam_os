@@ -68,6 +68,7 @@ export interface BookingCashAllocationRow {
     | 'owner_draw'
     | 'other_income'
     | 'unassigned'
+    | 'review'
     | null;
 }
 
