@@ -16,6 +16,7 @@ export type ProductRegistrationV6BrowserProofSurfaceResult = {
   /** Transient capture bytes. The publication layer stores these in the
    * private source bucket and removes them before the proof JSON is saved. */
   screenshotPng: Uint8Array | null;
+  screenshotState: 'customer-page-before-cta' | null;
   bodyTextHash: string | null;
   koreanFontReady: boolean;
   imageCount: number;
@@ -165,6 +166,7 @@ async function proveSurface(input: {
   let responseRendererBuildId: string | null = null;
   let screenshotHash: string | null = null;
   let screenshotPng: Uint8Array | null = null;
+  let screenshotState: ProductRegistrationV6BrowserProofSurfaceResult['screenshotState'] = null;
   let bodyTextHash: string | null = null;
   let koreanFontReady = false;
   let imageCount = 0;
@@ -179,6 +181,21 @@ async function proveSurface(input: {
     responseRendererBuildId = response?.headers()['x-product-registration-renderer-build-id'] ?? null;
     if (responseStatus !== 200) failures.push(`HTTP_STATUS_${responseStatus ?? 'NONE'}`);
     await waitForInteractive(page);
+
+    // The retained visual artifact must show the customer page itself, not a
+    // full-page Chromium capture with a fixed consent or lead dialog repeated
+    // across scroll tiles. Keep essential-only consent for the proof session,
+    // capture the readable page, then exercise the CTA as a separate assertion.
+    await page.evaluate(() => {
+      const consent = document.querySelector<HTMLElement>('[role="dialog"][aria-labelledby="consent-title"]');
+      const essentialOnly = consent?.querySelector<HTMLButtonElement>('button.bg-slate-100');
+      essentialOnly?.click();
+    });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const customerPageScreenshot = await page.screenshot({ fullPage: true, type: 'png' });
+    screenshotHash = hash(customerPageScreenshot);
+    screenshotPng = customerPageScreenshot;
+    screenshotState = 'customer-page-before-cta';
 
     const ctaSelector = input.surface === 'packages'
       ? '[data-analytics-id="mobile_sticky_reservation"]'
@@ -243,9 +260,6 @@ async function proveSurface(input: {
     if (brokenImageCount > 0) failures.push(`BROKEN_IMAGES_${brokenImageCount}`);
     if (missingRequiredText.length > 0) failures.push(`REQUIRED_CUSTOMER_FACTS_MISSING_${missingRequiredText.length}`);
     if (forbiddenTextFound.length > 0) failures.push(`UNVERIFIED_CUSTOMER_FACTS_VISIBLE_${forbiddenTextFound.length}`);
-    const screenshot = await page.screenshot({ fullPage: true, type: 'png' });
-    screenshotHash = hash(screenshot);
-    screenshotPng = screenshot;
   } catch (error) {
     failures.push(`BROWSER_ASSERTION:${error instanceof Error ? error.message : String(error)}`);
   } finally {
@@ -261,6 +275,7 @@ async function proveSurface(input: {
     rendererBuildId: responseRendererBuildId,
     screenshotHash,
     screenshotPng,
+    screenshotState,
     bodyTextHash,
     koreanFontReady,
     imageCount,

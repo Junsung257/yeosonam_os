@@ -13,5 +13,8 @@ describe('product registration V6 Korean visual proof contract', () => {
     expect(globalCss).toContain("url('/fonts/Pretendard-Bold.otf')");
     expect(proofSource).toContain('await document.fonts.ready');
     expect(proofSource).toContain("failures.push('KOREAN_WEBFONT_NOT_READY')");
+    expect(proofSource).toContain("screenshotState = 'customer-page-before-cta'");
+    expect(proofSource.indexOf("screenshotState = 'customer-page-before-cta'"))
+      .toBeLessThan(proofSource.indexOf('element.click();'));
   });
 });
