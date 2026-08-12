@@ -115,6 +115,9 @@ export async function generateMetadata(
   const lineageMeta = data.publicSnapshotHash
     ? {
         'product-registration-v5-snapshot-hash': data.publicSnapshotHash,
+        ...(data.publicSnapshotRendererBuildId
+          ? { 'product-registration-v5-renderer-build-id': data.publicSnapshotRendererBuildId }
+          : {}),
         ...(data.canonicalRevisionId
           ? { 'product-registration-v5-revision-id': data.canonicalRevisionId }
           : {}),

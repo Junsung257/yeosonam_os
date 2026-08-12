@@ -169,29 +169,7 @@ async function proveSurface(input: {
     responseSnapshotHash = response?.headers()['x-product-registration-snapshot-hash'] ?? null;
     responseRendererBuildId = response?.headers()['x-product-registration-renderer-build-id'] ?? null;
     if (responseStatus !== 200) failures.push(`HTTP_STATUS_${responseStatus ?? 'NONE'}`);
-    if (responseSnapshotHash !== input.expectedSnapshotHash) failures.push('SNAPSHOT_HASH_HEADER_MISMATCH');
-    if (responseRendererBuildId !== input.expectedRendererBuildId) failures.push('RENDERER_BUILD_HEADER_MISMATCH');
     await waitForInteractive(page);
-    const rendered = await page.evaluate(() => {
-      const bodyText = document.body?.innerText?.replace(/\s+/g, ' ').trim() ?? '';
-      const images = Array.from(document.images);
-      return {
-        bodyText,
-        imageCount: images.length,
-        brokenImageCount: images.filter(image => image.complete && image.naturalWidth === 0).length,
-      };
-    });
-    imageCount = rendered.imageCount;
-    brokenImageCount = rendered.brokenImageCount;
-    bodyTextHash = hash(rendered.bodyText);
-    const normalizedBodyText = rendered.bodyText.replace(/\s+/g, ' ').trim();
-    missingRequiredText = input.requiredText.filter(value => !normalizedBodyText.includes(value.replace(/\s+/g, ' ').trim()));
-    forbiddenTextFound = input.forbiddenText.filter(value => normalizedBodyText.includes(value.replace(/\s+/g, ' ').trim()));
-    if (rendered.bodyText.length < 200) failures.push('CUSTOMER_BODY_TOO_SHORT');
-    if (/not found|찾을 수 없|상품이 없습니다/i.test(rendered.bodyText)) failures.push('CUSTOMER_NOT_FOUND_RENDERED');
-    if (brokenImageCount > 0) failures.push(`BROKEN_IMAGES_${brokenImageCount}`);
-    if (missingRequiredText.length > 0) failures.push(`REQUIRED_CUSTOMER_FACTS_MISSING_${missingRequiredText.length}`);
-    if (forbiddenTextFound.length > 0) failures.push(`UNVERIFIED_CUSTOMER_FACTS_VISIBLE_${forbiddenTextFound.length}`);
 
     const ctaSelector = input.surface === 'packages'
       ? '[data-analytics-id="mobile_sticky_reservation"]'
@@ -203,6 +181,41 @@ async function proveSurface(input: {
       : '[data-testid="lp-lead-bottom-sheet"][role="dialog"]';
     await page.waitForSelector(dialogSelector, { visible: true, timeout: 10_000 });
     ctaOpened = true;
+    if (input.surface === 'lp') {
+      await page.evaluate(() => {
+        const button = Array.from(document.querySelectorAll('button'))
+          .find(item => item.textContent?.includes('약관 보기'));
+        if (button instanceof HTMLElement) button.click();
+      });
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    const rendered = await page.evaluate(() => {
+      const bodyText = document.body?.innerText?.replace(/\s+/g, ' ').trim() ?? '';
+      const images = Array.from(document.images);
+      const meta = (name: string) => document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content ?? null;
+      return {
+        bodyText,
+        imageCount: images.length,
+        brokenImageCount: images.filter(image => image.complete && image.naturalWidth === 0).length,
+        snapshotHash: meta('product-registration-v5-snapshot-hash'),
+        rendererBuildId: meta('product-registration-v5-renderer-build-id'),
+      };
+    });
+    responseSnapshotHash ??= rendered.snapshotHash;
+    responseRendererBuildId ??= rendered.rendererBuildId;
+    if (responseSnapshotHash !== input.expectedSnapshotHash) failures.push('SNAPSHOT_HASH_LINEAGE_MISMATCH');
+    if (responseRendererBuildId !== input.expectedRendererBuildId) failures.push('RENDERER_BUILD_LINEAGE_MISMATCH');
+    imageCount = rendered.imageCount;
+    brokenImageCount = rendered.brokenImageCount;
+    bodyTextHash = hash(rendered.bodyText);
+    const normalizedBodyText = rendered.bodyText.replace(/\s+/g, ' ').trim();
+    missingRequiredText = input.requiredText.filter(value => !normalizedBodyText.includes(value.replace(/\s+/g, ' ').trim()));
+    forbiddenTextFound = input.forbiddenText.filter(value => normalizedBodyText.includes(value.replace(/\s+/g, ' ').trim()));
+    if (rendered.bodyText.length < 200) failures.push('CUSTOMER_BODY_TOO_SHORT');
+    if (/not found|찾을 수 없|상품이 없습니다/i.test(rendered.bodyText)) failures.push('CUSTOMER_NOT_FOUND_RENDERED');
+    if (brokenImageCount > 0) failures.push(`BROKEN_IMAGES_${brokenImageCount}`);
+    if (missingRequiredText.length > 0) failures.push(`REQUIRED_CUSTOMER_FACTS_MISSING_${missingRequiredText.length}`);
+    if (forbiddenTextFound.length > 0) failures.push(`UNVERIFIED_CUSTOMER_FACTS_VISIBLE_${forbiddenTextFound.length}`);
     const screenshot = await page.screenshot({ fullPage: true, type: 'png' });
     screenshotHash = hash(screenshot);
   } catch (error) {

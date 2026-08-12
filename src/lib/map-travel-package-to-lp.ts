@@ -40,6 +40,7 @@ export interface LandingProductData {
   /** Technical lineage markers used by the V5 cache-convergence observer.
    * They are not rendered in customer copy or exposed as business data. */
   publicSnapshotHash?: string;
+  publicSnapshotRendererBuildId?: string | null;
   canonicalRevisionId?: string | null;
   termsPolicyHash?: string;
   frozenTermsNotices?: NoticeBlock[];
@@ -242,6 +243,10 @@ export function mapTravelPackageToLandingData(
     && publicSnapshot.canonical_revision_id.trim()
     ? publicSnapshot.canonical_revision_id
     : null;
+  const publicSnapshotRendererBuildId = typeof publicSnapshot?.renderer_build_id === 'string'
+    && publicSnapshot.renderer_build_id.trim()
+    ? publicSnapshot.renderer_build_id
+    : null;
   const termsPolicy = readRegistrationTermsPolicySnapshot(pkg.terms_snapshot);
   const internalCode = readInternalCode(pkg);
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
@@ -319,6 +324,7 @@ export function mapTravelPackageToLandingData(
   return {
     id: String(pkg.id),
     publicSnapshotHash,
+    publicSnapshotRendererBuildId,
     canonicalRevisionId,
     termsPolicyHash: termsPolicy?.policy_hash,
     frozenTermsNotices: termsPolicy?.notices,

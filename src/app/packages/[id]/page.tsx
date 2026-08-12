@@ -239,6 +239,7 @@ export async function generateMetadata({
   let rawData: MetadataPackageRow | null = null;
   let publicSnapshotFound = false;
   let publicSnapshotHash: string | undefined;
+  let rendererBuildId: string | undefined;
   let canonicalRevisionId: string | undefined;
   try {
     const resolvedSearchParams = searchParams ? await searchParams : {};
@@ -266,6 +267,7 @@ export async function generateMetadata({
     }
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
+    rendererBuildId = publicSnapshot?.row.renderer_build_id ?? undefined;
     canonicalRevisionId = publicSnapshot?.row.canonical_revision_id ?? undefined;
     data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
   } catch {
@@ -328,6 +330,9 @@ export async function generateMetadata({
   const lineageMeta = publicSnapshotHash
     ? {
         'product-registration-v5-snapshot-hash': publicSnapshotHash,
+        ...(rendererBuildId
+          ? { 'product-registration-v5-renderer-build-id': rendererBuildId }
+          : {}),
         ...(canonicalRevisionId
           ? { 'product-registration-v5-revision-id': canonicalRevisionId }
           : {}),

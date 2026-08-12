@@ -100,6 +100,7 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
       package_revision: row.package_revision,
       canonical_revision_id: row.canonical_revision_id ?? null,
       snapshot_hash: row.snapshot_hash,
+      renderer_build_id: row.renderer_build_id ?? null,
       status: row.status,
       created_at: row.created_at,
     },

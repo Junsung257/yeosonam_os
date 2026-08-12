@@ -325,6 +325,10 @@ describe('public package snapshot gate', () => {
 
   it('stores the canonical render view inside the public snapshot', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({ optional_tours: [] }));
+    const canonical = snapshot.canonical_view as {
+      inclusions?: { flat?: string[] };
+      excludes?: { basic?: string[] };
+    };
 
     expect(snapshot.canonical_view).toEqual(expect.objectContaining({
       days: expect.any(Array),
@@ -332,6 +336,8 @@ describe('public package snapshot gate', () => {
       inclusions: expect.any(Object),
       optionalTours: expect.any(Object),
     }));
+    expect(canonical.inclusions?.flat).toEqual(snapshot.inclusions_public);
+    expect(canonical.excludes?.basic).toEqual(snapshot.exclusions_public);
   });
 
   it('regenerates public itinerary days from raw DAY sections when saved itinerary data is missing', () => {

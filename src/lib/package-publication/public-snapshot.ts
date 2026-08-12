@@ -1040,9 +1040,25 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     publication_state: pkg.publication_state ?? publicPackage.publication_state ?? null,
     package_revision: asNumber(pkg.package_revision) ?? 1,
   };
-  const canonicalView = sanitizePublicCustomerValue(
+  const renderedCanonicalView = sanitizePublicCustomerValue(
     renderPackage(snapshotPackage as Parameters<typeof renderPackage>[0]),
   ) as Record<string, unknown>;
+  // Public terms are evidence-backed customer facts. Keep their exact approved
+  // copy in the canonical view so detail, LP and snapshot projections cannot
+  // drift back to older catalog aliases while rendering the same revision.
+  const canonicalView = {
+    ...renderedCanonicalView,
+    inclusions: {
+      basic: publicTerms.inclusionsPublic.map(text => ({ text, icon: '✓', remainder: null })),
+      program: [],
+      flat: publicTerms.inclusionsPublic,
+    },
+    excludes: {
+      display: [],
+      basic: publicTerms.exclusionsPublic,
+      remainingSurchargeLines: [],
+    },
+  };
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
     snapshot_version: SNAPSHOT_VERSION,
     package_id: String(pkg.id ?? publicPackage.id ?? ''),
