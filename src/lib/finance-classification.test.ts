@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { defaultProfitAndLoss, resolveFinanceClassification } from './finance-classification';
+import {
+  classificationFromAllocationTarget,
+  defaultProfitAndLoss,
+  resolveFinanceClassification,
+} from './finance-classification';
 
 const transaction = {
   id: 'tx-1',
@@ -13,6 +17,13 @@ const transaction = {
 };
 
 describe('finance classification precedence', () => {
+  it('maps current and legacy unresolved allocation targets to one review state', () => {
+    expect(classificationFromAllocationTarget('unassigned')).toBe('review');
+    expect(classificationFromAllocationTarget('review')).toBe('review');
+    expect(classificationFromAllocationTarget('transfer')).toBe('transfer');
+    expect(classificationFromAllocationTarget('booking')).toBeNull();
+  });
+
   it('keeps refunds, capital, transfers, and owner draws out of profit', () => {
     expect(defaultProfitAndLoss('refund')).toBe(false);
     expect(defaultProfitAndLoss('capital')).toBe(false);
