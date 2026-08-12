@@ -146,19 +146,21 @@ HIGH/MEDIUM/LOW risk 본문의 fallback 최대 수명은 각각 24/48/72시간�
 4. restore는 PowerShell string pipe가 아니라 read-only Docker bind mount와 `psql -f`를 사용합니다. schema restore에는 `ON_ERROR_STOP=1`과 `--single-transaction`을 함께 지정합니다.
 5. `CREATE INDEX CONCURRENTLY`가 있는 V3 migration은 외부 transaction으로 감싸지 않고 파일 순서대로 하나씩 실행합니다.
 6. `public_blog_content_creatives`의 기존 ordinal 1~51과 `security_invoker=true`, V3 resource 18/18, RLS 14/14를 확인합니다.
-7. `npm run verify:blog-public-eligibility-parity-v3`를 preview URL/service-role/anon key로 실행합니다. runtime verifier는 snapshot을 갱신하므로 아래처럼 preview ref를 명시하고 정확한 확인값까지 넣은 경우에만 실행합니다. `SUPABASE_URL`은 server-only 직접 project origin이어야 하며 `NEXT_PUBLIC_SUPABASE_URL`로 대체되지 않습니다.
+7. `npm run verify:blog-public-eligibility-parity-v3`를 preview URL/service-role/anon key로 실행합니다. runtime verifier는 snapshot을 갱신하므로 아래처럼 preview branch 이름과 ref를 명시하고 정확한 확인값까지 넣은 경우에만 실행합니다. `SUPABASE_URL`은 server-only 직접 project origin이어야 하며 `NEXT_PUBLIC_SUPABASE_URL`로 대체되지 않습니다. Management API token에는 read-only `environment:read`와 해당 production/development branch read 권한만 부여합니다.
 
 ```powershell
 $env:BLOG_STAGING_RUNTIME_VERIFY_CONFIRM='STAGING_SNAPSHOT_REFRESH_ALLOWED'
+$env:BLOG_STAGING_SUPABASE_BRANCH_NAME='<preview-branch-name>'
 $env:BLOG_STAGING_SUPABASE_PROJECT_REF='<preview-project-ref>'
 $env:BLOG_PRODUCTION_SUPABASE_PROJECT_REF='ixaxnvbmhzjvupissmly'
+$env:SUPABASE_ACCESS_TOKEN='<read-only-management-api-token>'
 $env:SUPABASE_URL='https://<preview-project-ref>.supabase.co'
 $env:SUPABASE_SERVICE_ROLE_KEY='<preview-service-role-key>'
 $env:SUPABASE_ANON_KEY='<preview-anon-key>'
 npm run verify:blog-staging-runtime-v3
 ```
 
-   확인값 누락, production ref, URL/ref 불일치, path/query가 붙은 URL은 API 호출 전에 실패합니다. fixture 외의 production data를 복제하지 않습니다.
+   먼저 read-only Management API가 branch 이름, `parent_project_ref`, `project_ref`, `is_default=false`, `persistent=false`, `with_data=false`를 증명합니다. 이 검증이 실패하면 Data API client도 만들지 않으며 snapshot RPC를 호출하지 않습니다. 확인값 누락, production ref, URL/ref 불일치, path/query가 붙은 URL도 같은 방식으로 fail-closed 합니다. fixture 외의 production data를 복제하지 않습니다.
 8. 네 개의 민감한 blog `SECURITY DEFINER` RPC가 anon/authenticated에 false, service-role에 true인지 확인하고 Supabase Advisor의 blog warning이 0인지 확인합니다.
 9. preview fixture와 snapshot refresh는 staging에만 허용합니다. production snapshot refresh와 corpus write는 별도 change window 전에는 실행하지 않습니다.
 10. 실패한 preview branch는 exact branch id와 `is_default=false`, `with_data=false`를 확인한 뒤 삭제합니다. production branch를 reset/delete/rebase/merge하지 않습니다.

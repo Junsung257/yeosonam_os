@@ -26,7 +26,7 @@ describe('blog migration rehearsal safety', () => {
     expect(source).not.toContain("'db', 'reset', '--linked'");
   });
 
-  it('verifies the signed release bundle before offering reset commands', () => {
+  it('verifies the hash-pinned release bundle before offering reset commands', () => {
     expect(source).toContain('verifyBlogMigrationReleaseBundleV3()');
     expect(source.indexOf('verifyBlogMigrationReleaseBundleV3()')).toBeLessThan(
       source.indexOf("runSupabase(['db', 'reset'"),

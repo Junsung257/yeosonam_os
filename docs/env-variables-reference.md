@@ -19,6 +19,22 @@
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
+### V3 staging runtime verifier 전용
+
+아래 값은 Vercel 환경 변수나 상시 `.env`에 저장하지 않습니다. 데이터 없는 Supabase preview에서 `npm run verify:blog-staging-runtime-v3`를 실행하는 한 번의 shell에만 주입하고 종료 후 제거합니다.
+
+| 변수 | 설명 |
+|---|---|
+| `BLOG_STAGING_RUNTIME_VERIFY_CONFIRM` | 정확히 `STAGING_SNAPSHOT_REFRESH_ALLOWED`; snapshot 갱신이 포함됨을 명시적으로 승인 |
+| `BLOG_STAGING_SUPABASE_BRANCH_NAME` | Management API가 확인할 preview branch 이름 |
+| `BLOG_STAGING_SUPABASE_PROJECT_REF` | preview branch의 20자 project ref |
+| `BLOG_PRODUCTION_SUPABASE_PROJECT_REF` | parent production project ref; 기본값 없이 반드시 명시 |
+| `SUPABASE_ACCESS_TOKEN` | branch metadata 조회용 read-only token. `environment:read`와 branch read 권한만 허용 |
+| `SUPABASE_URL` | `https://<preview-ref>.supabase.co` 형태의 직접 server origin |
+| `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` | 해당 preview 전용 key; production key 사용 금지 |
+
+검증기는 Management API가 `parent_project_ref`와 target ref가 일치하고 `is_default=false`, `persistent=false`, `with_data=false`임을 증명하기 전에는 Supabase Data API client를 생성하지 않습니다.
+
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
 ## ⚠️ 시크릿 관리 정책 (중요)

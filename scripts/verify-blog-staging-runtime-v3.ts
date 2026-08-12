@@ -1,18 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
-import { assertBlogStagingRuntimeTarget } from './lib/blog-staging-runtime-target-v3';
+import {
+  assertBlogStagingRuntimeTarget,
+  verifyBlogStagingBranchMetadata,
+} from './lib/blog-staging-runtime-target-v3';
 
 const target = assertBlogStagingRuntimeTarget(process.env);
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const anonKey = process.env.SUPABASE_ANON_KEY!;
 
-const service = createClient(target.url, serviceRoleKey, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
-const anonymous = createClient(target.url, anonKey, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
-
 async function main(): Promise<void> {
+  // This read-only Management API proof must complete before any Data API call,
+  // including the snapshot refresh RPC below.
+  const branchMetadata = await verifyBlogStagingBranchMetadata(target, process.env);
+  const service = createClient(target.url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const anonymous = createClient(target.url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
   const [{ data: posts, error: postError }, { data: snapshots, error: snapshotError }] = await Promise.all([
     service.from('public_blog_content_creatives')
       .select('id,slug,public_eligibility_lane,public_eligibility_reason')
@@ -40,6 +46,7 @@ async function main(): Promise<void> {
     && anonymousRefreshError?.code === '42501';
 
   const report = {
+    branchMetadata,
     targetProjectRef: target.projectRef,
     mutatesStagingSnapshots: true,
     passed,

@@ -57,7 +57,7 @@ describe('Blog Quality V3 migration release bundle', () => {
     expect(pgTap).toContain("'public eligibility reason is appended at ordinal 60'");
   });
 
-  it('fails closed when a reviewed migration changes after the manifest is signed', () => {
+  it('fails closed when a reviewed migration changes after the manifest is hash-pinned', () => {
     const root = copyReleaseBundle();
     appendFileSync(
       join(root, 'supabase/migrations/20260811132037_blog_quality_v3_measurement.sql'),

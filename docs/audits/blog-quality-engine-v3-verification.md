@@ -224,3 +224,12 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - 새 targeted unit/contract regression은 3 files / 10 tests PASS다. 최초 무제한 병렬 전체 회귀에서는 `src/app/sitemap.test.ts` 1건이 5초 timeout으로 실패했으나 단독 재실행은 0.52초에 PASS했고, 4-worker 제한 전체 재실행은 최종 수집 기준 684 files / 5,178 tests 모두 PASS했다. TypeScript 오류 0, 전체 ESLint 경고·오류 0, `git diff --check` 오류 0이다. 운영 DB write, migration apply, Vercel 배포, 환경 변수 변경은 모두 0건이다.
 - 검증 중 전진한 `origin/main`의 finance-only commit `c5bec525`, `2718bc37`을 두 차례 충돌 없이 병합했다. 최종 검증 code baseline SHA `510c059227af57d6ca802239304e291d3ed6f619`은 확인 시점 `origin/main=2718bc37fc6c0ee382624ea0d7dfd722ef878ed2` 대비 behind 0, ahead 18이었다.
 - 최종 병합 상태의 Next.js 15.5.21 production build는 580.1초, compile 2.5분, static pages 389/389, `.next` postbuild manifest 검증까지 PASS했다.
+
+## 19. 2026-08-12 preview identity hardening
+
+- 단순히 `preview ref != production ref`만 확인하면 다른 Supabase 프로젝트나 잘못 지정한 production parent를 staging으로 오인할 수 있었다. 공식 Management API의 database branch 응답을 snapshot mutation 전 필수 증거로 추가했다.
+- verifier는 명시적 production ref, preview branch name, read-only Management API token을 요구한다. 응답의 branch name, `project_ref`, `parent_project_ref`, `is_default=false`, `persistent=false`, `with_data=false`가 모두 일치한 뒤에만 Data API client를 생성한다. token과 service-role key는 report에 포함하지 않는다.
+- unsafe metadata 6종(default, persistent, with-data, wrong name, wrong parent, wrong project), Management API 403/invalid JSON, production ref/token 누락을 포함한 targeted regression은 3 files / 20 tests PASS, TypeScript 오류 0이었다. 삭제된 preview branch를 재생성하지 않았으므로 Management API 실연결 및 확장 pgTAP 23개 실행은 다음 data-free staging change window의 release gate로 유지한다.
+- Supabase 2026-04-28 Data API 변경에 맞춰 V3 public table/function 권한은 migration에서 명시적으로 service-role에만 부여하고, anon/authenticated/public revoke를 유지한다. 운영 DB write, migration apply, 배포, production env 변경은 0건이다.
+- 4-worker 전체 회귀에서는 기존 `/blog/[slug]` smoke 1건이 자원 경쟁 중 20초 timeout으로 실패했다. 해당 파일 단독 재실행은 9/9 PASS이고 문제 테스트는 2.746초였다. 사용자 프로세스를 종료하지 않고 2-worker로 재실행한 최종 전체 회귀는 수집 기준 684 files / 5,188 tests 모두 PASS했다.
+- 최종 `npm run type-check`, 전체 ESLint, `git diff --check`는 오류 0이다. Next.js 15.5.21 production build는 411.9초, compile 77초, static pages 389/389, `.next` postbuild manifest 검증까지 PASS했다. 확인 시점 `origin/main=2718bc37fc6c0ee382624ea0d7dfd722ef878ed2` 대비 behind 0이었다.

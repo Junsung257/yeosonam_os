@@ -105,7 +105,7 @@ Supabase CLI의 `db dump --linked --dry-run`이 명령 preview에 production dat
 
 ## 남은 release gate
 
-후속 hardening으로 staging runtime verifier는 snapshot refresh가 발생하는 mutation 도구임을 명시하고 exact preview project ref + confirmation을 필수화했다. 기존 preview는 이미 삭제했으므로 이 변경 뒤 재실행하지 않았으며, 다음 staging clone에서는 `docs/runbooks/blog-publishing-v3.md`의 환경 변수 계약을 먼저 충족해야 한다. V3 SQL과 rollback은 release manifest의 SHA-256과 순서가 일치할 때만 rehearsal에 진입한다.
+후속 hardening으로 staging runtime verifier는 snapshot refresh가 발생하는 mutation 도구임을 명시하고 exact preview project ref + confirmation을 필수화했다. 이어서 공식 Management API가 exact branch name/parent/ref와 `is_default=false`, `persistent=false`, `with_data=false`를 증명한 뒤에만 Data API client를 생성하도록 강화했다. 기존 preview는 이미 삭제했으므로 이 변경 뒤 재실행하지 않았으며, 다음 staging clone에서는 `docs/runbooks/blog-publishing-v3.md`의 환경 변수 계약을 먼저 충족해야 한다. V3 SQL과 rollback은 release manifest의 SHA-256과 순서가 일치할 때만 rehearsal에 진입한다.
 
 - production migration 5개 선택 적용 및 정확한 migration history 기록
 - production snapshot 생성과 public eligibility count parity
