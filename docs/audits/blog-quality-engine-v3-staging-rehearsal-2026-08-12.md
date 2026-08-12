@@ -21,7 +21,7 @@
 | 블로그 Security Advisor warning | 0 |
 | 블로그 Performance Advisor warning | 0 |
 | migration safety | 5 files / 0 issues |
-| 전체 Vitest | 682 files / 5,168 tests PASS |
+| 전체 Vitest | 682 files / 5,170 tests PASS |
 | TypeScript / ESLint | 오류 0 / 경고·오류 0 |
 | Next.js 15 production build | 389/389 static pages, postbuild PASS |
 
@@ -89,7 +89,9 @@ anonymousViewAccessDenied=true
 anonymousSnapshotRefreshDenied=true
 ```
 
-추가 targeted regression은 17 files / 89 tests PASS였다. 최종 전체 Vitest는 682 files / 5,168 tests, `tsc --noEmit`, 전체 ESLint, `git diff --check`가 모두 통과했다. Next.js 15.5.21 production build는 490.9초, compile 2.4분, static pages 389/389와 postbuild artifact 검증까지 PASS했다. migration safety checker는 5 files / 0 issues였고 migration prefix audit은 전체 452 files, 기존 collision 16, 신규 collision 0이었다.
+추가 targeted regression은 17 files / 89 tests PASS였다. 최종 전체 Vitest는 최신 `origin/main` 병합 후 682 files / 5,170 tests, `tsc --noEmit`, 전체 ESLint, `git diff --check`가 모두 통과했다. Next.js 15.5.21 production build는 570.6초, compile 115초, static pages 389/389와 postbuild artifact 검증까지 PASS했다. migration safety checker는 5 files / 0 issues였고 migration prefix audit은 전체 452 files, 기존 collision 16, 신규 collision 0이었다.
+
+검증 종료 직전 `origin/main`이 재무 전용 변경 2개를 포함한 `cef59defd55ecfb9dea192a8863ede6ab471d81e`로 전진했다. 블로그 변경과 충돌 없이 merge했고 최종 branch는 main 대비 behind 0이다. 위 전체 테스트·typecheck·lint·build 수치는 해당 merge 이후 재실행한 결과다.
 
 ## Advisor와 lint 해석
 

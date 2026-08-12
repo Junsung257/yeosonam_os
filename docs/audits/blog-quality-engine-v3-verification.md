@@ -211,6 +211,6 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - staging에서 발견한 view ordinal drift, safe-update RPC, ambiguous PL/pgSQL, preview default function privilege, duplicate hot-path index를 migration과 contract test로 수정했다.
 - 민감한 blog `SECURITY DEFINER` RPC 4개의 ACL은 anon/authenticated false, service-role true다. Supabase Security/Performance Advisor의 블로그 warning은 각각 0건이다.
 - targeted regression은 17 files / 89 tests, migration safety는 5 files / 0 issues로 PASS했다.
-- 최종 전체 회귀는 682 files / 5,168 tests, TypeScript 오류 0, ESLint 경고·오류 0, production build 490.9초와 389/389 static pages/postbuild PASS였다.
+- 검증 종료 직전 최신 `origin/main` `cef59defd55ecfb9dea192a8863ede6ab471d81e`를 충돌 없이 merge했다. 이후 최종 전체 회귀는 682 files / 5,170 tests, TypeScript 오류 0, ESLint 경고·오류 0, production build 570.6초와 389/389 static pages/postbuild PASS였다.
 - staging migration history에는 schema/API 검증이 끝난 후 정확히 V3 5개 version만 `applied`로 기록했고 다른 version은 repair하지 않았다.
 - 상세 증거와 credential rotation 후속 조치는 `docs/audits/blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`에 기록했다.
