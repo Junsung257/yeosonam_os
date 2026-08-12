@@ -1553,7 +1553,7 @@ export default function PaymentsPageClient({
           <div className="flex items-center gap-2">
             <h1 className="text-admin-lg font-semibold text-admin-text-2">Clobe 거래 검토</h1>
             <LedgerStatusChip />
-            {opsQueueSummary && (
+            {opsQueueSummary && !focusMode && (
               <span
                 className={`rounded border px-2 py-0.5 text-[11px] tabular-nums ${
                   opsQueueSummary.ledger_drift > 0

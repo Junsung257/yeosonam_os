@@ -72,6 +72,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       expires_at: string | null;
       encrypted_refresh_token?: string | null;
       scopes: string[];
+      created_at: string | null;
       updated_at: string | null;
     };
     const tokenMap = new Map<Platform, TokenRow>((data ?? []).map((r: TokenRow) => [r.provider as Platform, r]));
@@ -93,7 +94,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
         platform: p,
         label: PLATFORM_LABELS[p],
         connected: !!(row?.is_active),
-        connected_at: row?.updated_at ?? null,
+        connected_at: row?.created_at ?? null,
         expires_at: row?.expires_at ?? null,
         renewable: !!row?.encrypted_refresh_token,
         scopes: row?.scopes ?? [],
