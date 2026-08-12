@@ -1,17 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
+import { assertBlogStagingRuntimeTarget } from './lib/blog-staging-runtime-target-v3';
 
-const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const anonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const target = assertBlogStagingRuntimeTarget(process.env);
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const anonKey = process.env.SUPABASE_ANON_KEY!;
 
-if (!url || !serviceRoleKey || !anonKey) {
-  throw new Error('SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_ANON_KEY are required');
-}
-
-const service = createClient(url, serviceRoleKey, {
+const service = createClient(target.url, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-const anonymous = createClient(url, anonKey, {
+const anonymous = createClient(target.url, anonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -43,7 +40,8 @@ async function main(): Promise<void> {
     && anonymousRefreshError?.code === '42501';
 
   const report = {
-    readOnlyExceptSnapshotRefreshRpc: true,
+    targetProjectRef: target.projectRef,
+    mutatesStagingSnapshots: true,
     passed,
     publicEligibleFixtures: posts?.length ?? 0,
     currentSnapshots: snapshots?.length ?? 0,

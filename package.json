@@ -107,6 +107,7 @@
     "canary:blog-quality-v3": "npx tsx scripts/run-blog-quality-v3-canary.ts",
     "refresh:blog-public-snapshots-v3": "npx tsx scripts/refresh-blog-public-snapshots.ts",
     "verify:blog-production-readiness-v3": "npx tsx scripts/verify-blog-production-readiness-v3.ts --strict",
+    "verify:blog-migration-bundle-v3": "npx tsx scripts/verify-blog-migration-release-bundle-v3.ts",
     "verify:blog-public-eligibility-parity-v3": "npx tsx scripts/verify-blog-public-eligibility-parity-v3.ts",
     "verify:blog-staging-runtime-v3": "npx tsx scripts/verify-blog-staging-runtime-v3.ts",
     "import:blog-search-performance": "npx tsx scripts/import-blog-search-performance.ts",

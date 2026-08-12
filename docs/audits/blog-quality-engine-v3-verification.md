@@ -214,3 +214,11 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - 검증 종료 직전 최신 `origin/main` `cef59defd55ecfb9dea192a8863ede6ab471d81e`를 충돌 없이 merge했다. 이후 최종 전체 회귀는 682 files / 5,170 tests, TypeScript 오류 0, ESLint 경고·오류 0, production build 570.6초와 389/389 static pages/postbuild PASS였다.
 - staging migration history에는 schema/API 검증이 끝난 후 정확히 V3 5개 version만 `applied`로 기록했고 다른 version은 repair하지 않았다.
 - 상세 증거와 credential rotation 후속 조치는 `docs/audits/blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`에 기록했다.
+
+## 18. 2026-08-12 post-rehearsal release hardening
+
+- staging runtime 검증기는 public snapshot refresh RPC를 호출하므로 순수 read-only 도구가 아니다. 이제 정확한 confirmation, explicit server-only Supabase URL, preview project ref, production project ref를 모두 검사하고 production ref 또는 URL/ref 불일치는 네트워크 호출 전에 차단한다. 확인값 없는 실제 명령은 의도대로 `blog_staging_runtime_confirmation_missing`으로 종료됐다.
+- V3 migration 5개와 rollback SQL을 `supabase/release-manifests/blog-quality-v3-20260811.json`에 실행 순서와 SHA-256으로 고정했다. `npm run verify:blog-migration-bundle-v3`와 dry-run rehearsal은 5/5 file, rollback 1/1 file을 검증했고 migration 본문 변조 fixture는 fail-closed 했다.
+- rollback SQL에 reliability follow-up의 analytics outbox, lead trigger/function, 두 lead column과 constraint 정리를 추가했다. 사용 중인 public list index와 ambiguous representative key 수정은 되돌리면 장애를 재도입하므로 의도적으로 유지한다.
+- DB pgTAP 계약을 10개에서 23개로 확장해 민감 RPC 4개의 anon/authenticated/service-role 권한, qualified function body, view ordinal 51/52/60, security invoker, 중복 index 제거와 snapshot refresh ACL을 고정했다. 이번 추가 작업에서는 삭제된 preview를 다시 만들거나 운영 DB에 접속하지 않았으므로 새 23개 pgTAP의 DB 실행은 운영 반영 전 새 staging clone에서 수행해야 한다. 기존 isolated staging에서 같은 object/ACL/ordinal 값은 SQL probe로 이미 확인됐다.
+- 새 targeted unit/contract regression은 3 files / 10 tests PASS다. 최초 무제한 병렬 전체 회귀에서는 `src/app/sitemap.test.ts` 1건이 5초 timeout으로 실패했으나 단독 재실행은 0.52초에 PASS했고, 4-worker 제한 전체 재실행은 수집 기준 684 files / 5,177 tests 모두 PASS했다. TypeScript 오류 0, 전체 ESLint 경고·오류 0, `git diff --check` 오류 0이다. 운영 DB write, migration apply, Vercel 배포, 환경 변수 변경은 모두 0건이다.

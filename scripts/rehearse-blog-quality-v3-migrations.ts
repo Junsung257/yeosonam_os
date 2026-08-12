@@ -1,14 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-const V3_MIGRATIONS = [
-  '20260811132017_blog_quality_v3_policy.sql',
-  '20260811132023_blog_quality_v3_demand_evidence.sql',
-  '20260811132031_blog_quality_v3_snapshots_media.sql',
-  '20260811132037_blog_quality_v3_measurement.sql',
-  '20260811210920_blog_quality_v3_reliability_followup.sql',
-];
+import { verifyBlogMigrationReleaseBundleV3 } from './lib/blog-migration-release-bundle-v3';
 
 function stripDollarQuotedBodies(sql: string): string {
   const delimiter = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/g;
@@ -64,8 +57,8 @@ function assertDedicatedLocalRehearsalTarget(projectId: string): void {
   }
 }
 
-function assertStaticContracts(): Array<{ migration: string; bytes: number }> {
-  return V3_MIGRATIONS.map((migration) => {
+function assertStaticContracts(migrationFiles: string[]): Array<{ migration: string; bytes: number }> {
+  return migrationFiles.map((migration) => {
     const path = join(process.cwd(), 'supabase', 'migrations', migration);
     if (!existsSync(path)) throw new Error(`v3_migration_missing:${migration}`);
     const sql = readFileSync(path, 'utf8');
@@ -82,13 +75,21 @@ function main(): void {
   ));
   if (forbidden.length > 0) throw new Error(`production_or_remote_target_forbidden:${forbidden.join(',')}`);
   const executeLocalReset = process.argv.includes('--local-reset');
-  const migrations = assertStaticContracts();
+  const releaseBundle = verifyBlogMigrationReleaseBundleV3();
+  const migrations = assertStaticContracts(
+    releaseBundle.migrations.map((entry) => entry.file.split('/').at(-1)!),
+  );
   const projectId = readSupabaseProjectId();
   const plan = {
     mode: executeLocalReset ? 'local_ephemeral_reset' : 'dry_run',
     remote_access_allowed: false,
     project_id: projectId,
     dedicated_rehearsal_project: isDedicatedRehearsalProjectId(projectId),
+    release_bundle: {
+      release: releaseBundle.release,
+      manifest: releaseBundle.manifestFile,
+      rollback: releaseBundle.rollback,
+    },
     migrations,
     commands: [
       'npx supabase status --output json',

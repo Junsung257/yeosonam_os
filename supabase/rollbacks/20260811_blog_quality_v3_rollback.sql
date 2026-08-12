@@ -2,6 +2,14 @@
 -- This file is not invoked by the application and was not applied in this mission.
 begin;
 
+drop trigger if exists trg_enqueue_generate_lead_analytics_event on public.leads;
+drop function if exists public.enqueue_generate_lead_analytics_event();
+drop table if exists public.analytics_server_event_outbox;
+alter table public.leads drop constraint if exists leads_search_query_hash_format;
+alter table public.leads
+  drop column if exists assisting_content_creative_id,
+  drop column if exists search_query_hash;
+
 drop view if exists public.blog_information_claim_ledger_v3;
 drop view if exists public.public_blog_content_creatives;
 drop function if exists public.refresh_blog_public_snapshots_v3();
@@ -102,3 +110,11 @@ revoke all on public.public_blog_content_creatives from public, anon, authentica
 grant select on public.public_blog_content_creatives to service_role;
 
 commit;
+
+-- Intentionally retained after rollback:
+-- - idx_cc_public_blog_list_v2 remains the used equivalent of the removed
+--   zero-scan idx_cc_published_blog_nulls_last. Recreating a duplicate index
+--   would add write overhead without restoring behavior.
+-- - the qualified representative_key reference in
+--   replace_blog_information_reviewed_draft_atomically remains because
+--   reverting it would reintroduce an ambiguous PL/pgSQL expression.
