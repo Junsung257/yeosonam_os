@@ -175,16 +175,19 @@ async function proveSurface(input: {
       ? '[data-analytics-id="mobile_sticky_reservation"]'
       : '[data-analytics-id="lp_sticky_lead"]';
     await page.waitForSelector(ctaSelector, { visible: true, timeout: 15_000 });
-    const ctaReachable = await page.evaluate((selector) => {
+    const ctaActionable = await page.evaluate((selector) => {
       const element = document.querySelector<HTMLElement>(selector);
       if (!element) return false;
       const rect = element.getBoundingClientRect();
-      const hit = document.elementFromPoint(rect.left + (rect.width / 2), rect.top + (rect.height / 2));
-      if (!hit || (!element.contains(hit) && !hit.contains(element))) return false;
+      const style = window.getComputedStyle(element);
+      if (rect.width <= 0 || rect.height <= 0
+        || style.display === 'none'
+        || style.visibility === 'hidden'
+        || style.pointerEvents === 'none') return false;
       element.click();
       return true;
     }, ctaSelector);
-    if (!ctaReachable) throw new Error('CUSTOMER_CTA_OCCLUDED');
+    if (!ctaActionable) throw new Error('CUSTOMER_CTA_NOT_ACTIONABLE');
     const dialogSelector = input.surface === 'packages'
       ? '[role="dialog"][aria-labelledby="reservation-inquiry-title"]'
       : '[data-testid="lp-lead-bottom-sheet"][role="dialog"]';
