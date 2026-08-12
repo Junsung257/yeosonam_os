@@ -7,15 +7,17 @@
 - [x] Remove V6 legacy-first compatibility step; derive projections after revision commit.
 - [x] Route authoritative IR, Band, reextract, and correction inputs through the same workflow; keep scan preview-only and fail-close stub/review mutation in kernel mode.
 - [x] Add terms, media provenance, hotel/golf observation, schedule revalidation, and cohort quality contracts.
-- [ ] Make B2C/B2B/affiliate readers pointer-only by channel.
-- [ ] Run unit, corpus, workflow, authority, type, build, and mobile proof verification.
+- [x] Make the primary B2C/B2B/affiliate/search/blog/RSS/embed/print readers pointer-only by channel.
+- [ ] Run the remaining deployed workflow, 990-row backfill, annotated corpus, full build, and cohort mobile-proof verification.
 - [x] Update current SSOT/status and prepare safe migration/deployment handoff.
 
 Current partials:
 
 - Correction and reextract create a superseding revision from an immutable replacement source. IR and Band enter the same durable workflow in shadow/kernel mode. Scan endpoints remain non-authoritative previews; stub/review and old mutable CRUD/approval endpoints return `409` in kernel mode. Their legacy bodies remain only for controlled rollback during the staged transition.
-- Package/LP, B2B, partner, affiliate OG, kernel `/api/packages`, and kernel sitemap use exact pointer/snapshot readers. Remaining destination/home/blog/recommendation discovery reads still need projection conversion before the pointer-only item is complete.
-- Local SQL parse, authority audit, type check, lint, production build, 100-file registration-domain suite, and the full 5,140-test suite pass. Frozen corpus, live DB/RLS, 989-product shadow backfill, provider calls, and real deployed browser proof remain deployment gates.
+- Package/LP, public package search, B2B v1, affiliate public/landing/embed/referral, blog detail/destination, destination RSS, itinerary print, content generation, home, destination, and sitemap now read exact pointer-bound snapshots. Legacy compatibility reads remain only in explicitly tracked operational/admin/booking code and in a small number of package-detail ancillary queries; customer facts must still come from `getCurrentPublicPackage()`.
+- The 40-file HWP structural corpus is 40/40 extracted and normalized, with 53/66 sections automatically terminal as verified/degraded (80.30%) and 13/66 blocked. Critical claim evidence is 248/248. This result is recorded in production as a **non-passing structural benchmark** because annotated field exact-match and critical false-publication review have not yet been completed.
+- Production stale V6 jobs are now zero. Two abandoned historical jobs were dead-lettered and terminalized without publication. Production remains `shadow` with publication freeze enabled.
+- Type check, authority/registration contracts, and 24 focused tests pass after the latest changes. Full build/full-suite reruns, live 40-source workflow corpus, 990-row shadow backfill, paid provider calls, and a representative deployed browser-proof cohort remain release gates.
 
 ## Parallel Candidates
 

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { loadProductRegistrationRevisionAggregate } from '@/lib/product-registration-authority/revision-aggregate';
+import { ensureLicensedReferenceMedia } from './media-provenance';
 import { estimatedScheduleProviderCostKrw } from './schedule-providers';
 import { executeScheduleProviderEffectivelyOnce } from './provider-call-ledger';
 import {
@@ -147,7 +148,7 @@ export async function resolveSharedFactsForJob(input: {
       result.blockers.push(`package:${packageId}:CANONICAL_REVISION_MISSING`);
       continue;
     }
-    const aggregate = await loadProductRegistrationRevisionAggregate({
+    let aggregate = await loadProductRegistrationRevisionAggregate({
       supabase: input.supabase,
       revisionId,
     }).catch(() => null);
@@ -160,7 +161,18 @@ export async function resolveSharedFactsForJob(input: {
       continue;
     }
     if (aggregate.media.length === 0) {
-      result.degradedReasons.push(`package:${packageId}:MEDIA_ASSET_MISSING`);
+      const media = await ensureLicensedReferenceMedia({
+        supabase: input.supabase,
+        aggregate,
+      });
+      if (media.linked) {
+        aggregate = await loadProductRegistrationRevisionAggregate({
+          supabase: input.supabase,
+          revisionId,
+        });
+      } else {
+        result.degradedReasons.push(`package:${packageId}:${media.reason}`);
+      }
     }
     const revisionHash = aggregate.revision.payload_hash;
     const segments = aggregate.transportSegments.filter(segment => segment.transport_type === 'flight');

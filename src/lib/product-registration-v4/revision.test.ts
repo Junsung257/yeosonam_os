@@ -25,9 +25,21 @@ const normalization = {
       v3: {
         ledger: {
           variants: [{
-            price_calendar: [{ amount: 599000, currency: 'KRW', date: '2026-09-01' }],
-            flight_segments: [{ code: 'KE123', dep_time: '10:00' }],
-            days: [{ day: 1, events: [] }],
+            price_calendar: [{
+              amount: 599000,
+              currency: 'KRW',
+              date: '2026-09-01',
+              evidence: { node_id: 'paragraph-1', quote: '599,000원 2026-09-01' },
+            }],
+            flight_segments: [{
+              code: 'KE123',
+              dep_time: '10:00',
+              evidence: { node_id: 'paragraph-1', quote: 'KE123 출발 10:00' },
+            }],
+            days: [{
+              day: 1,
+              events: [{ evidence: { node_id: 'paragraph-1', quote: 'DAY 1' } }],
+            }],
           }],
         },
         gate_result: { status: 'ready_to_publish' },

@@ -39,11 +39,15 @@ export type CrossValidatedOcrOutput = {
   totalCostKrw: number;
 };
 
-function extractCriticalTokens(text: string): string[] {
+export function extractOcrCriticalTokens(text: string): string[] {
   const prices = text.match(/(?:₩|KRW\s*)?\d{1,3}(?:,\d{3})+(?:\s*원)?/g) ?? [];
   const dates = text.match(/(?:20\d{2}[./-])?\d{1,2}[./-]\d{1,2}/g) ?? [];
-  const flights = text.match(/\b[A-Z0-9]{2,3}\s?\d{2,4}[A-Z]?\b/g) ?? [];
+  const flights = text.match(/\b(?:[A-Z]{2,3}|[A-Z]\d|\d[A-Z])\s?\d{2,4}[A-Z]?\b/g) ?? [];
   return [...new Set([...prices, ...dates, ...flights].map(value => value.replace(/\s+/g, '').toUpperCase()))].sort();
+}
+
+export function ocrCriticalTokensMatch(primary: string[], secondary: string[]): boolean {
+  return [...new Set(primary)].sort().join('|') === [...new Set(secondary)].sort().join('|');
 }
 
 function mimeFormat(filename: string, mime: string): string {
@@ -128,7 +132,7 @@ export async function runClovaOcr(input: {
     provider: 'clova',
     text,
     pages,
-    criticalTokens: extractCriticalTokens(text),
+    criticalTokens: extractOcrCriticalTokens(text),
     costKrw,
     rawModelVersion: 'clova-general-v2-table',
   };
@@ -210,7 +214,7 @@ export async function runGoogleDocumentAi(input: {
     provider: 'google-document-ai',
     text,
     pages: pages.some(page => page.text) ? pages : [{ page: 1, text }],
-    criticalTokens: extractCriticalTokens(text),
+    criticalTokens: extractOcrCriticalTokens(text),
     costKrw,
     rawModelVersion: String((payload as { processorVersion?: string }).processorVersion ?? 'document-ai-processor'),
   };
@@ -247,7 +251,7 @@ export async function extractOcrWithCrossValidation(input: {
   }
   const totalCostKrw = primary.costKrw + secondary.costKrw;
   if (totalCostKrw > 2_000) throw new Error('DOCUMENT_EXTERNAL_COST_LIMIT_EXCEEDED');
-  if (primary.criticalTokens.join('|') !== secondary.criticalTokens.join('|')) {
+  if (!ocrCriticalTokensMatch(primary.criticalTokens, secondary.criticalTokens)) {
     throw new Error('OCR_CRITICAL_VALUE_MISMATCH:price/date/flight values disagree across CLOVA and Google');
   }
   return {

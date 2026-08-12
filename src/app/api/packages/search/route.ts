@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   normalizeDepartureHub,
-  departureHubSupabaseOr,
   hubMatchesDepartureAirport,
   type DepartureHubId,
 } from '@/lib/departure-hub';
@@ -11,27 +10,12 @@ import { logError } from '@/lib/sentry-logger';
 import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
 // (Page 는 dynamic 페이지여도 next.config.js headers() 가 덮어쓰여지는 문제 회피 —
 //  근거: https://github.com/vercel/next.js/issues/22319, /issues/69920)
-
-const PACKAGE_FIELDS = `
-  id, title, destination, country, category, product_type, trip_style,
-  departure_days, departure_airport, airline, min_participants, ticketing_deadline,
-  price, price_tiers, price_list, price_dates, status, audit_status, audit_report, created_at, updated_at,
-  publication_state, package_revision,
-  product_tags, product_highlights, product_summary,
-  internal_code, is_airtel, display_title, hero_tagline, duration, nights,
-  avg_rating, review_count,
-  seats_held, seats_confirmed,
-  catalog_id, optional_tours, itinerary_data,
-  products(internal_code, display_name)
-`;
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
@@ -66,61 +50,22 @@ export async function GET(request: NextRequest) {
     const sb = supabaseAdmin;
 
     const urgencyOn = urgency === '1';
-    const hubOr = departureHubSupabaseOr(hub);
     const fetchLimit = urgencyOn ? 200 : 50;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + 14);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const safeQuery = q.replace(/[%,]/g, ' ').toLowerCase();
+    const rawPackages = (await listCurrentPublicPackageCardSnapshots(sb, { limit: 5_000 }))
+      .filter((pkg: any) => !destination || String(pkg.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
+      .filter((pkg: any) => !urgencyOn || pkg.product_type === 'urgency' || String(pkg.ticketing_deadline ?? '') <= cutoffStr)
+      .filter((pkg: any) => urgencyOn || hub === 'all' || hubMatchesDepartureAirport(hub, pkg.departure_airport))
+      .filter((pkg: any) => !category || pkg.category === category)
+      .filter((pkg: any) => !safeQuery || `${String(pkg.destination ?? '')} ${String(pkg.title ?? '')} ${String(pkg.display_title ?? '')}`.toLowerCase().includes(safeQuery))
+      .slice(0, fetchLimit) as any[];
 
-    let query = sb
-      .from('travel_packages')
-      .select(PACKAGE_FIELDS)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .order('created_at', { ascending: false })
-      .limit(fetchLimit);
-
-    if (destination) {
-      query = query.ilike('destination', `%${destination}%`);
-    }
-
-    if (urgencyOn) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() + 14);
-      const cutoffStr = cutoff.toISOString().slice(0, 10);
-      query = query.or(`product_type.eq.urgency,ticketing_deadline.lte.${cutoffStr}`);
-    }
-
-    if (hubOr && !urgencyOn) {
-      query = query.or(hubOr);
-    }
-
-    if (category) {
-      query = query.eq('category', category);
-    }
-
-    if (q) {
-      const safe = q.replace(/[%,]/g, ' ');
-      query = query.or(`destination.ilike.%${safe}%,title.ilike.%${safe}%,display_title.ilike.%${safe}%`);
-    }
-
-    const { data: rawPackages, error: pkgErr } = await query;
-    if (pkgErr) throw pkgErr;
-
-    // V5 publishes an immutable, proof-bound snapshot. Resolve that snapshot
-    // before applying the legacy V3 eligibility contract: a package may retain
-    // a historical V3 `audit_report` blocker (for example stale mobile proof)
-    // while its current V5 snapshot is already approved and customer-safe.
-    const projectedV5 = rawPackages?.length
-      ? await fetchAndMergeCurrentPublicPackageCardSnapshots(
-        sb,
-        rawPackages as Array<Record<string, unknown>>,
-      ) as any[]
-      : [];
-    const projectedById = new Map(projectedV5.map((pkg: any) => [String(pkg.id), pkg]));
     const today = new Date().toISOString().slice(0, 10);
-    let aliveRaw = (rawPackages ?? [])
-      .map((raw: any) => projectedById.get(String(raw.id)) ?? raw)
+    let aliveRaw = rawPackages
       .filter((p: any) => {
-        const isCurrentV5Projection = projectedById.has(String(p.id));
-        if (!isCurrentV5Projection && !isCustomerPubliclyOpenable(p)) return false;
         const pd = (p.price_dates || []) as Array<{ date?: string }>;
         if (pd.length === 0) return true;
         return pd.some(d => d?.date && d.date >= today);

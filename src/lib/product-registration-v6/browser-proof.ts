@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 
 import puppeteer, { type Browser, type ConsoleMessage, type Page } from 'puppeteer';
+import { browserProofLocalChromeCandidates } from './browser-runtime';
 
 export type ProductRegistrationV6BrowserSurface = 'packages' | 'lp';
 
@@ -45,15 +46,7 @@ function hash(value: string | Uint8Array): string {
 }
 
 function localChromeCandidates(): string[] {
-  return [
-    process.env.PRODUCT_REGISTRATION_CHROME_EXECUTABLE_PATH,
-    process.env.CHROME_EXECUTABLE_PATH,
-    process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : null,
-    process.platform === 'win32' ? 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe' : null,
-    process.platform === 'linux' ? '/usr/bin/google-chrome-stable' : null,
-    process.platform === 'linux' ? '/usr/bin/google-chrome' : null,
-    process.platform === 'linux' ? '/usr/bin/chromium' : null,
-  ].filter((value): value is string => Boolean(value));
+  return browserProofLocalChromeCandidates();
 }
 
 async function openBrowser(): Promise<{

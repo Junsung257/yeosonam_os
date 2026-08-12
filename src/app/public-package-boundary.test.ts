@@ -26,6 +26,20 @@ const SNAPSHOT_OR_STRIP_MARKERS = [
   'stripRawPackageDataFromBlogListPosts',
 ];
 
+const POINTER_ONLY_FILES = [
+  'src/app/api/affiliate/public/[referral_code]/route.ts',
+  'src/app/api/packages/search/route.ts',
+  'src/app/api/v1/packages/route.ts',
+  'src/app/blog/[slug]/page.tsx',
+  'src/app/blog/destination/[dest]/page.tsx',
+  'src/app/destinations/[city]/rss.xml/route.ts',
+  'src/app/embed/pkg/[id]/page.tsx',
+  'src/app/itinerary/[id]/print/page.tsx',
+  'src/app/r/[code]/[slug]/page.tsx',
+  'src/app/things-to-do/[region]/page.tsx',
+  'src/app/with/[slug]/page.tsx',
+];
+
 function toPosixPath(path: string): string {
   return path.split(sep).join('/');
 }
@@ -77,6 +91,15 @@ describe('public customer package data boundary', () => {
       .filter(({ source }) => readsOrRendersPackageData(source))
       .filter(({ source }) => !SNAPSHOT_OR_STRIP_MARKERS.some(marker => source.includes(marker)))
       .map(({ file }) => file);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('prevents migrated customer and partner surfaces from reintroducing compatibility-table reads', () => {
+    const offenders = POINTER_ONLY_FILES.filter((file) => {
+      const source = readFileSync(join(ROOT, file), 'utf8');
+      return source.includes(".from('travel_packages')") || source.includes('.from("travel_packages")');
+    });
 
     expect(offenders).toEqual([]);
   });

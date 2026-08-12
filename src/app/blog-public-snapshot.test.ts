@@ -9,14 +9,13 @@ function source(path: string): string {
 describe('blog public package data boundary', () => {
   it('uses public snapshots before attaching package data to blog detail pages', () => {
     const text = source('src/app/blog/[slug]/page.tsx');
-    const packageQueryIndex = text.indexOf("'postFastPackage'");
-    const packageMergeIndex = text.indexOf('post.travel_packages = (publicRows[0]');
+    const packageMergeIndex = text.indexOf('post.travel_packages = (current?.package');
 
-    expect(text).toContain('function isBlogPublicSnapshotCandidate');
-    expect(text).toContain('async function mergeBlogPublicPackageSnapshots');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).toContain('getCurrentPublicPackage');
+    expect(text).toContain("channel: 'customer'");
+    expect(text).not.toContain("'postFastPackage'");
     expect(text).not.toContain('travel_packages(id, title');
-    expect(packageMergeIndex).toBeGreaterThan(packageQueryIndex);
+    expect(packageMergeIndex).toBeGreaterThan(0);
   });
 
   it('uses public snapshots before rendering related and curation product rows', () => {
@@ -25,15 +24,14 @@ describe('blog public package data boundary', () => {
     const scoredMergeIndex = text.indexOf('for (const pkg of await mergeBlogPublicPackageSnapshots(scoredCandidates))');
     const relatedPostIndex = text.indexOf("'relatedPosts'");
     const relatedPostAttachIndex = text.indexOf('const posts = await attachRelatedPostPublicSnapshots');
-    const curationIndex = text.indexOf("'curationProducts'");
-    const curationMergeIndex = text.indexOf('const publicAlive = await mergeBlogPublicPackageSnapshots');
+    const pointerListCount = text.split('listCurrentPublicPackageCardSnapshots').length - 1;
 
     expect(text).not.toContain('travel_packages(destination, price, duration, nights)');
     expect(text).toContain('async function attachRelatedPostPublicSnapshots');
-    expect(text).toContain("'relatedPostPublicPackages'");
+    expect(pointerListCount).toBeGreaterThanOrEqual(3);
     expect(scoredMergeIndex).toBeGreaterThan(scoredIndex);
     expect(relatedPostAttachIndex).toBeGreaterThan(relatedPostIndex);
-    expect(curationMergeIndex).toBeGreaterThan(curationIndex);
+    expect(text).not.toContain("'curationProducts'");
   });
 
   it('does not join raw package titles into the public RSS feed', () => {
@@ -55,15 +53,14 @@ describe('blog public package data boundary', () => {
 
   it('filters destination RSS posts with public snapshot destinations only', () => {
     const text = source('src/app/destinations/[city]/rss.xml/route.ts');
-    const packageQueryIndex = text.indexOf(".from('travel_packages')");
-    const snapshotIndex = text.indexOf('const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const snapshotIndex = text.indexOf('const publicPackages = (await listCurrentPublicPackageCardSnapshots');
     const filterIndex = text.indexOf('publicPackageDestinationById.get');
 
-    expect(text).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(text).toContain('status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data');
+    expect(text).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(text).not.toContain(".from('travel_packages')");
     expect(text).not.toContain('travel_packages(destination)');
     expect(text).not.toContain('p.travel_packages?.destination');
-    expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
+    expect(snapshotIndex).toBeGreaterThan(0);
     expect(filterIndex).toBeGreaterThan(snapshotIndex);
   });
 });

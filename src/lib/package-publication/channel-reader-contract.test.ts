@@ -36,4 +36,12 @@ describe('channel pointer reader convergence', () => {
     expect(sitemap).toContain('const snapshotDestinations = packageDestinations');
     expect(sitemap).not.toContain(".from('travel_packages')");
   });
+
+  it('allows generated customer content only from the current publication pointer', () => {
+    const contentPackage = source('src/lib/content-public-package.ts');
+    expect(contentPackage).toContain('getCurrentPublicPackage');
+    expect(contentPackage).toContain('PLATFORM_PRODUCT_REGISTRATION_TENANT_ID');
+    expect(contentPackage).not.toContain(".from('travel_packages')");
+    expect(contentPackage).not.toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+  });
 });

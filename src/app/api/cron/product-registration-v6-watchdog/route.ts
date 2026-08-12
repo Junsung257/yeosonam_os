@@ -8,6 +8,7 @@ import { withCronGuard } from '@/lib/cron-auth';
 import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { PRODUCT_REGISTRATION_V6_POLICY_VERSION } from '@/lib/product-registration-v6/types';
+import { productRegistrationWatchdogAction } from '@/lib/product-registration-v6/watchdog-policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,7 +108,7 @@ async function handler(): Promise<NextResponse> {
     .select('id,tenant_id,source_document_id,v6_workflow_run_id,v6_fencing_token,v6_last_heartbeat_at,created_at')
     .is('v6_outcome', null)
     .not('source_document_id', 'is', null)
-    .lt('v6_last_heartbeat_at', staleBefore)
+    .or(`v6_last_heartbeat_at.lt.${staleBefore},and(v6_last_heartbeat_at.is.null,created_at.lt.${staleBefore})`)
     .order('v6_last_heartbeat_at', { ascending: true })
     .limit(20);
   if (error) throw error;
@@ -117,7 +118,16 @@ async function handler(): Promise<NextResponse> {
   for (const job of jobs) {
     const ageMs = now - new Date(job.created_at).getTime();
     try {
-      if (ageMs >= 2 * 60 * 60_000) {
+      const action = productRegistrationWatchdogAction({
+        createdAt: job.created_at,
+        lastHeartbeatAt: job.v6_last_heartbeat_at,
+        now,
+      });
+      if (action === 'ignore') {
+        results.push({ jobId: job.id, action: 'ignored', ok: true });
+        continue;
+      }
+      if (action === 'quarantine') {
         await terminallyQuarantine({ supabase, job, reason: `job age ${Math.round(ageMs / 60_000)}m` });
         results.push({ jobId: job.id, action: 'quarantined', ok: true });
         continue;

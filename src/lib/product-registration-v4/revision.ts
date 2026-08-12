@@ -98,13 +98,72 @@ function evidenceForSection(input: {
   }));
 }
 
+function evidenceForValue(input: {
+  value: unknown;
+  section: CanonicalSection;
+  sourceDocumentId: string;
+  extractionId: string;
+}): ProductRegistrationV5Claim['evidence'] {
+  const found: ProductRegistrationV5Claim['evidence'] = [];
+  const seen = new Set<string>();
+  const recordEvidence = (evidence: JsonObject) => {
+    const sourceQuote = typeof evidence.quote === 'string' ? evidence.quote.trim() : '';
+    const matchingSectionEvidence = input.section.evidence.find(item =>
+      (typeof evidence.quote_hash === 'string' && item.quoteHash === evidence.quote_hash)
+      || (sourceQuote && (item.quote.includes(sourceQuote) || sourceQuote.includes(item.quote))),
+    );
+    const nodeId = typeof evidence.node_id === 'string' && evidence.node_id.trim()
+      ? evidence.node_id.trim()
+      : matchingSectionEvidence?.nodeId;
+    if (!sourceQuote || !nodeId) return;
+    const quoteHash = typeof evidence.quote_hash === 'string' && /^[0-9a-f]{64}$/.test(evidence.quote_hash)
+      ? evidence.quote_hash
+      : matchingSectionEvidence?.quoteHash ?? sha256Hex(sourceQuote);
+    const key = `${nodeId}:${quoteHash}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push({
+      sourceDocumentId: input.sourceDocumentId,
+      extractionId: input.extractionId,
+      nodeId,
+      page: typeof evidence.page === 'number' ? evidence.page : undefined,
+      quoteHash,
+      sourceQuote,
+    });
+  };
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const row = value as JsonObject;
+    if (Array.isArray(row.evidence)) {
+      row.evidence.map(item => item && typeof item === 'object' && !Array.isArray(item) ? item as JsonObject : null)
+        .filter((item): item is JsonObject => Boolean(item))
+        .forEach(recordEvidence);
+    } else if (row.evidence && typeof row.evidence === 'object') {
+      recordEvidence(row.evidence as JsonObject);
+    }
+    Object.entries(row).forEach(([key, child]) => {
+      if (key !== 'evidence') visit(child);
+    });
+  };
+  visit(input.value);
+  return found;
+}
+
 function pushClaim(
   claims: ProductRegistrationV5Claim[],
   fieldPath: string,
   normalizedValue: unknown,
   evidence: ProductRegistrationV5Claim['evidence'],
 ): void {
-  if (normalizedValue === undefined) return;
+  if (normalizedValue === undefined || normalizedValue === null) return;
+  if (Array.isArray(normalizedValue) && normalizedValue.length === 0) return;
+  if (normalizedValue && typeof normalizedValue === 'object'
+    && !Array.isArray(normalizedValue)
+    && Object.keys(normalizedValue as JsonObject).length === 0) return;
   const claimHash = sha256Hex(stableJson({ fieldPath, normalizedValue, evidence }));
   claims.push({
     fieldPath,
@@ -148,11 +207,17 @@ function buildClaims(input: {
       if (!variant || typeof variant !== 'object') return;
       for (const key of ['price_calendar', 'flight_segments', 'days', 'inclusions', 'exclusions', 'options', 'standard_notices', 'minimum_departure']) {
         if (key in (variant as JsonObject)) {
+          const normalizedValue = (variant as JsonObject)[key];
           pushClaim(
             claims,
             `sections[${sectionIndex}].v3.ledger.variants[${variantIndex}].${key}`,
-            (variant as JsonObject)[key],
-            sectionEvidence,
+            normalizedValue,
+            evidenceForValue({
+              value: normalizedValue,
+              section: input.sections[sectionIndex]!,
+              sourceDocumentId: input.sourceDocumentId,
+              extractionId: input.extractionId,
+            }),
           );
         }
       }

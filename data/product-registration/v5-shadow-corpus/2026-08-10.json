@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10T01:43:53.464Z",
+  "generatedAt": "2026-08-12T12:14:24.370Z",
   "mode": "offline-shadow-quarantine",
   "publicExposure": "none",
   "sourceDirectory": "C:\\Users\\admin\\Downloads\\코덱스테스트",
@@ -8,37 +8,39 @@
     "extractionSuccess": 40,
     "normalizationSuccess": 40,
     "sections": 66,
-    "candidates": 4,
-    "needsReview": 44,
-    "blocked": 18,
+    "verified": 1,
+    "degraded": 52,
+    "autoPublishable": 53,
+    "blocked": 13,
     "renderContractPass": 66,
     "renderContractFail": 0,
     "priceRules": 865,
-    "itineraryItems": 3729,
-    "claims": 602,
-    "criticalClaims": 268,
+    "itineraryItems": 3058,
+    "claims": 522,
+    "criticalClaims": 248,
     "missingCriticalClaims": 0,
-    "highClaims": 268,
-    "missingHighClaims": 0,
-    "verifiedClaims": 602
+    "highClaims": 208,
+    "missingHighClaims": 41,
+    "verifiedClaims": 481
   },
   "rates": {
     "extractionSuccess": 1,
     "normalizationSuccess": 1,
-    "sectionCandidate": 0.0606,
-    "sectionNeedsReview": 0.6667,
-    "sectionBlocked": 0.2727,
-    "evidenceCoverage": 1,
+    "sectionVerified": 0.0152,
+    "sectionDegraded": 0.7879,
+    "sectionAutoPublishable": 0.803,
+    "sectionBlocked": 0.197,
+    "evidenceCoverage": 0.9215,
     "renderContractPass": 1
   },
   "customerVerdict": {
-    "status": "limited_manual_pilot",
-    "summary": "일부 섹션만 고객 공개 후보입니다. 나머지는 사람 검수 전에는 고객에게 보여주면 안 됩니다.",
+    "status": "limited_automated_pilot",
+    "summary": "검증 또는 안전 축약이 가능한 상품은 자동 공개 후보로 끝나고, 구매 판단에 중요한 정보가 부족한 상품만 자동 차단됩니다.",
     "rationale": [
       "원문 추출 40/40건 성공",
-      "고객 공개 후보 4/66개 섹션",
-      "검수 필요 44개, 차단 18개",
-      "근거 연결률 100%",
+      "안전 자동 공개 후보 53/66개 섹션",
+      "검증 공개 1개, 안전 축약 공개 52개, 차단 13개",
+      "근거 연결률 92%",
       "고객 화면 계약 통과 66/66개"
     ]
   },
@@ -47,7 +49,7 @@
       "filename": "특가 - BX세부에스타디럭스패키지 0806.hwp",
       "sourceHash": "b4bb7503f1e2be469e75d83e05dbc22feaca59e8a1bd3c3be8c42e4028f8c4f1",
       "bytes": 120832,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -71,20 +73,20 @@
           "titleHint": "BX 세부 에스타 디럭스 패키지 3박5일",
           "rawTextHash": "065587bcb7c44bf85c6f75e9a713ad9650bcf2417272b96ac56cb7c9083de239",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:1",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 7,
-          "itineraryItemCount": 11,
+          "itineraryItemCount": 26,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -104,14 +106,14 @@
             "currency": "KRW",
             "dateCount": 1,
             "flightCount": 2,
-            "dayCount": 2,
-            "inclusionCount": 4,
+            "dayCount": 5,
+            "inclusionCount": 8,
             "exclusionCount": 3,
             "optionalTourCount": 6,
             "sampleDayTitles": [
-              "BX711",
               "출발2시간전 김해공항 국제선에서 도착 후 개별 수속 후 출발",
-              "김해 국제공항 출발"
+              "김해 출발 → 세부 도착",
+              "호텔 도착 후 휴식 및 자유시간"
             ],
             "customerReady": true
           }
@@ -122,7 +124,7 @@
       "filename": "[일정표]하노이 VN 0925 황금연휴 특가 PKG - 0702.hwp",
       "sourceHash": "9eb36e892551d098d451a2895cadeea1dd68a6f269b494f7c129e77bc5b4cd3f",
       "bytes": 124928,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 5,
@@ -146,13 +148,14 @@
           "titleHint": "최소 출발인원",
           "rawTextHash": "745b621ace567bf56aa7505a0f932769a356788223ec3c79b6ef487e87610a49",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:13",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -160,11 +163,11 @@
           "variantCount": 1,
           "priceRuleCount": 2,
           "itineraryItemCount": 73,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 13,
             "optionReview": 0,
@@ -180,8 +183,8 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 1,
+            "inclusionCount": 16,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하 노 이",
@@ -196,13 +199,17 @@
           "titleHint": "하노이/메가월드/하롱베이/디너크루즈 3박5일",
           "rawTextHash": "f06c8b0ecf4264b98f657960faca4904481998fedf4a947e6b7a3b5df5f00219",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:11 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:11 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:16",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -210,11 +217,11 @@
           "variantCount": 1,
           "priceRuleCount": 3,
           "itineraryItemCount": 92,
-          "claimCount": 9,
+          "claimCount": 7,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 2,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 16,
             "optionReview": 0,
@@ -230,8 +237,8 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 3,
-            "exclusionCount": 2,
+            "inclusionCount": 1,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하 노 이",
@@ -247,7 +254,7 @@
       "filename": "[일정표]다낭 LJ 특가모음 PKG - 0813발권.hwp",
       "sourceHash": "0e96774621ec4577e8a7ddad7e711391dd396cfcf4e35804f83d77be59cfa1f3",
       "bytes": 95744,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -271,13 +278,14 @@
           "titleHint": "[관광팩] 다낭&호이안 3박5일 노팁노옵션 PKG",
           "rawTextHash": "a5f729c38dcafb4d4458532b823701805d482977ffadbb9fd4fb2bc1b9ee12dc",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:4",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -285,11 +293,11 @@
           "variantCount": 1,
           "priceRuleCount": 4,
           "itineraryItemCount": 59,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 4,
             "optionReview": 0,
@@ -305,8 +313,8 @@
             "dateCount": 4,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 18,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ111",
@@ -322,7 +330,7 @@
       "filename": "[일정표] BX 부산출발 나달 노노 특가일정 3박5일 260919,20 -8.14발권.hwp",
       "sourceHash": "65980fae86e8a5a5465469b386efa1132dccef4bc473607ffa68bce5fd885611",
       "bytes": 125952,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -346,14 +354,15 @@
           "titleHint": "[BX 오후출발] 나트랑/달랏 5성 3박5일",
           "rawTextHash": "c2a837b0779730b73b39d7cf3172e87cce38d81a80f367ccfdbeb447ce52b5f9",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.options_reflected:source option section is reflected in ledger",
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -361,11 +370,11 @@
           "variantCount": 1,
           "priceRuleCount": 1,
           "itineraryItemCount": 62,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -381,8 +390,8 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 1,
+            "inclusionCount": 19,
+            "exclusionCount": 3,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "BX781",
@@ -398,7 +407,7 @@
       "filename": "[요금표]싱가폴 7C 부산출발 8~10월 8.14이전발권 - 0803.hwp",
       "sourceHash": "b8b66f00d6e48f0ec87b09464936e8032635a87cc7b065dd865f96618d2d2cb6",
       "bytes": 138752,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 10,
@@ -422,14 +431,15 @@
           "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
           "rawTextHash": "9a33405ac99fafaae280287147dc25b876955e3365be0b44e23f415aa2e35a79",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.options_reflected:source option section is reflected in ledger",
             "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -437,11 +447,11 @@
           "variantCount": 1,
           "priceRuleCount": 63,
           "itineraryItemCount": 57,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -457,8 +467,8 @@
             "dateCount": 63,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 4,
-            "exclusionCount": 5,
+            "inclusionCount": 3,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "싱가포르",
@@ -473,14 +483,15 @@
           "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
           "rawTextHash": "eda004d55760886c65a3b4a9898a42570aeb5b4d6cb297af742cae0b55df4d36",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.options_reflected:source option section is reflected in ledger",
             "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:7",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -488,11 +499,11 @@
           "variantCount": 1,
           "priceRuleCount": 63,
           "itineraryItemCount": 58,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 7,
             "optionReview": 0,
@@ -508,8 +519,8 @@
             "dateCount": 63,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 4,
-            "exclusionCount": 1,
+            "inclusionCount": 16,
+            "exclusionCount": 3,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "싱가포르",
@@ -524,13 +535,14 @@
           "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
           "rawTextHash": "8b9f1cb69c980d790d2cb2bd918d780b3307db6438fe2e4b6a47c7ceea686d2d",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:16 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:16 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:18",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -542,7 +554,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 18,
             "optionReview": 0,
@@ -558,8 +570,8 @@
             "dateCount": 63,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 5,
-            "exclusionCount": 1,
+            "inclusionCount": 19,
+            "exclusionCount": 3,
             "optionalTourCount": 4,
             "sampleDayTitles": [
               "싱가포르",
@@ -574,13 +586,17 @@
           "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
           "rawTextHash": "3075c82308123c3e14eac4b8dc63e1349a76daef507b1ade7f233ff190f32b3a",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[3].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:13",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -588,11 +604,11 @@
           "variantCount": 1,
           "priceRuleCount": 67,
           "itineraryItemCount": 66,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 13,
             "optionReview": 0,
@@ -608,8 +624,8 @@
             "dateCount": 63,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 5,
-            "exclusionCount": 1,
+            "inclusionCount": 4,
+            "exclusionCount": 0,
             "optionalTourCount": 4,
             "sampleDayTitles": [
               "싱가포르",
@@ -625,7 +641,7 @@
       "filename": "[요금표]세부 LJ 부산출발 샹그릴라 특가 - 8.14발권 (0731).hwp",
       "sourceHash": "c0777a7445abe814b33941170cd9a81c76b23a58354b60affa73bf248908a3ac",
       "bytes": 9927168,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 4,
@@ -649,13 +665,14 @@
           "titleHint": "2026년 8월~11월 출발 3박5일",
           "rawTextHash": "533619771bff06a6425cda6fc6137af06bbadd3c164db8fc4d1c30d164cfcc8a",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:2",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -663,11 +680,11 @@
           "variantCount": 1,
           "priceRuleCount": 8,
           "itineraryItemCount": 46,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 2,
             "optionReview": 0,
@@ -683,8 +700,8 @@
             "dateCount": 8,
             "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 3,
+            "inclusionCount": 9,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ061",
@@ -699,17 +716,28 @@
           "titleHint": "부산-세부 샹그릴라 노팁노옵션 패키지 3박5일",
           "rawTextHash": "bc4ea467e44cf42c0ba62537ae923e87d7facde1c9b6a68cd22de57593597aa8",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[1].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다.",
+            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다.",
+            "sections[1].variants[1].price: 출발일에 적용되는 성인 기준 판매가가 없습니다.",
+            "sections[1].variants[1].inclusions: 포함사항을 확인할 수 없습니다.",
+            "sections[1].variants[1].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
             "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "v1.exclusions:substantive exclusion evidence exists",
             "v2.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "v2.inclusions:substantive inclusion evidence exists",
+            "v2.exclusions:substantive exclusion evidence exists",
             "v2.options_reflected:source option section is reflected in ledger",
             "v2.shopping_reflected:source shopping section is reflected in ledger",
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[1].days",
             "ATTRACTION_UNMATCHED:12",
-            "GATE_NEEDS_REVIEW",
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED",
             "MULTIPLE_RENDER_VARIANTS:2"
           ],
           "renderContractPass": true,
@@ -718,11 +746,11 @@
           "variantCount": 2,
           "priceRuleCount": 0,
           "itineraryItemCount": 101,
-          "claimCount": 17,
-          "criticalClaimCount": 8,
+          "claimCount": 10,
+          "criticalClaimCount": 6,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 8,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 2,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -738,8 +766,8 @@
             "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 1,
+            "inclusionCount": 1,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ061",
@@ -755,7 +783,7 @@
       "filename": "[요금표]보홀 7C 부산출발 8~10월 특가 8.14이전발권 - 0731.hwp",
       "sourceHash": "50811aaa40009108c1ff2c558d49ebca6850bf04e0081f60be8ae07c47558caf",
       "bytes": 20800000,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 6,
@@ -779,16 +807,20 @@
           "titleHint": "★단독★발리카삭 호핑투어 선포함 시 돌핀왓칭($30)까지 서비스 제공!!",
           "rawTextHash": "23cbc465cafa6990419661b9f00cd417d851365f106e1d8e3221135b99b459d7",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
             "option_review_queue_clear:2 option events require review",
             "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9",
             "OPTION_REVIEW:2",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -796,11 +828,11 @@
           "variantCount": 1,
           "priceRuleCount": 68,
           "itineraryItemCount": 52,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 2,
@@ -816,8 +848,8 @@
             "dateCount": 39,
             "flightCount": 8,
             "dayCount": 5,
-            "inclusionCount": 32,
-            "exclusionCount": 16,
+            "inclusionCount": 28,
+            "exclusionCount": 0,
             "optionalTourCount": 29,
             "sampleDayTitles": [
               "보홀",
@@ -833,7 +865,7 @@
       "filename": "[요금표]몽골 7C 저녁출발 9월 - 0826발권.hwp",
       "sourceHash": "85dccf5349d5d55d5548a6986f7ca02a850752f4a2e9ae8973354eb02e74fa56",
       "bytes": 3868672,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -857,13 +889,17 @@
           "titleHint": "몽골(울란바토르/테를지) 노팁/노옵션/노쇼핑 3박5일",
           "rawTextHash": "1744e74fe4d639aa5758cc4806b99801e3f40471a70af4a8e7dedb988b9be709",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:22 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:22 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:22",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -871,11 +907,11 @@
           "variantCount": 1,
           "priceRuleCount": 7,
           "itineraryItemCount": 81,
-          "claimCount": 9,
+          "claimCount": 7,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 2,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 22,
             "optionReview": 0,
@@ -891,8 +927,8 @@
             "dateCount": 7,
             "flightCount": 6,
             "dayCount": 5,
-            "inclusionCount": 4,
-            "exclusionCount": 2,
+            "inclusionCount": 2,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "울란바토르",
@@ -908,7 +944,7 @@
       "filename": "[요금표]다낭 KE 아침출발 2날짜 스팟특가 PKG - 8월발권.hwp",
       "sourceHash": "ae1834c1e4420e65ac9784b9c1e271f75b8b8e12679e9a0069aa4bddb3d06979",
       "bytes": 1199616,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 6,
@@ -932,13 +968,14 @@
           "titleHint": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
           "rawTextHash": "1f8ae9b5b2869e8c729f47e132c6c58d70e753386ace4f9aea75da6dd8ed7f55",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:5 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:5 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:6",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -946,11 +983,11 @@
           "variantCount": 1,
           "priceRuleCount": 1,
           "itineraryItemCount": 58,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 6,
             "optionReview": 0,
@@ -966,8 +1003,8 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 20,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "KE2093",
@@ -982,13 +1019,14 @@
           "titleHint": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
           "rawTextHash": "bc6796f65b10955786d4d400c6f50f7eec0d48d08f5dea4a694d43c1d3ace9de",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:7",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -996,11 +1034,11 @@
           "variantCount": 1,
           "priceRuleCount": 1,
           "itineraryItemCount": 61,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 7,
             "optionReview": 0,
@@ -1016,8 +1054,8 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 20,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "KE2093",
@@ -1032,13 +1070,14 @@
           "titleHint": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
           "rawTextHash": "573735fb7d52397a18af3c8407ecdd30a4ee615e07a0077aa473b8fc00b8e73e",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:5 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:5 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:6",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -1046,11 +1085,11 @@
           "variantCount": 1,
           "priceRuleCount": 1,
           "itineraryItemCount": 58,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 6,
             "optionReview": 0,
@@ -1066,8 +1105,8 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 19,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "KE2093",
@@ -1083,7 +1122,7 @@
       "filename": "[★LJ-399특가] 다낭 8~9월 399 스팟특가_0813발권.hwp",
       "sourceHash": "fda4e131fa8402a6e305e966633393c24978a8477ae3b3bd1e8691529a90ab23",
       "bytes": 102912,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -1107,24 +1146,24 @@
           "titleHint": "[LJ] 다낭/호이안 3박5일 ☑노팁노옵션",
           "rawTextHash": "6d8924cb61b3a093a0dca1ddebd859952280b9a17bb7d8039db53b230abe999d",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:6",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 3,
-          "itineraryItemCount": 67,
-          "claimCount": 9,
+          "itineraryItemCount": 32,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
@@ -1141,13 +1180,13 @@
             "dateCount": 3,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 18,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "LJ111",
-              "전용차량",
-              "부산 국제공항 출국수속"
+              "부산 국제공항 출국수속",
+              "부산 국제공항 출발",
+              "다낭 도착 후 가이드 미팅"
             ],
             "customerReady": true
           }
@@ -1158,7 +1197,7 @@
       "filename": "[★KE-499특가] 다낭 9월 499 스팟특가 3박4일_0827발권.hwp",
       "sourceHash": "63587e2fe6c572243f8b83e15eb2205d35ac89fdecb17b42b0beec5c2a41da7a",
       "bytes": 105984,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -1182,13 +1221,14 @@
           "titleHint": "[KE] 다낭/호이안 3박4일 ☑노팁노옵션",
           "rawTextHash": "7cea26bf7f22d925f750b2a98efa3432aef8e32bb7f3aa9495a14f408f6316ad",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:6",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -1196,11 +1236,11 @@
           "variantCount": 1,
           "priceRuleCount": 2,
           "itineraryItemCount": 63,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 6,
             "optionReview": 0,
@@ -1216,8 +1256,8 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 16,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "KE2093",
@@ -1233,7 +1273,7 @@
       "filename": "[VN,VJ-8월특가] 하노이 0902 노노옌뜨 스팟특가_0727.hwp",
       "sourceHash": "d03caf578e0aea0064382b84d588115fdd619dcf9b1e734a9c62ceeabdc31152",
       "bytes": 113152,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -1260,12 +1300,13 @@
           "classification": "blocked",
           "criticalFailures": [
             "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state",
-            "GATE_BLOCKED:blocked"
+            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
           ],
           "highWarnings": [
-            "v1.minimum_departure:minimum departure evidence exists",
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:14"
           ],
           "renderContractPass": true,
@@ -1274,11 +1315,11 @@
           "variantCount": 1,
           "priceRuleCount": 2,
           "itineraryItemCount": 75,
-          "claimCount": 9,
+          "claimCount": 7,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 2,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 14,
             "optionReview": 0,
@@ -1294,8 +1335,8 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 4,
-            "exclusionCount": 3,
+            "inclusionCount": 3,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하노이",
@@ -1313,12 +1354,13 @@
           "classification": "blocked",
           "criticalFailures": [
             "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state",
-            "GATE_BLOCKED:blocked"
+            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
           ],
           "highWarnings": [
-            "v1.minimum_departure:minimum departure evidence exists",
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:14"
           ],
           "renderContractPass": true,
@@ -1327,11 +1369,11 @@
           "variantCount": 1,
           "priceRuleCount": 2,
           "itineraryItemCount": 75,
-          "claimCount": 9,
+          "claimCount": 7,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 2,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 14,
             "optionReview": 0,
@@ -1347,8 +1389,8 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 4,
-            "exclusionCount": 1,
+            "inclusionCount": 3,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하노이",
@@ -1364,7 +1406,7 @@
       "filename": "[TW-8월선발] 부산출발-나트랑&달랏 3박,4박-패키지_(0728).hwp",
       "sourceHash": "21ae280c44a6d3957173332c6635c07fe64174b6119ca1cd7edc74b9d9348bf4",
       "bytes": 177152,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 9,
@@ -1388,14 +1430,14 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "feeefe87e0addeb33de09f86298cacbe17299bae59ab56b1ab37d6b8157d27ef",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
@@ -1408,7 +1450,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 0,
@@ -1424,7 +1466,7 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 5,
-            "inclusionCount": 1,
+            "inclusionCount": 16,
             "exclusionCount": 1,
             "optionalTourCount": 6,
             "sampleDayTitles": [
@@ -1440,14 +1482,14 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "5a39c39ff9c5d25dcf7a7395ac484a64d14f757a42935796943cf89baba061c6",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[1].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
@@ -1460,7 +1502,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -1476,7 +1518,7 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 4,
-            "inclusionCount": 3,
+            "inclusionCount": 19,
             "exclusionCount": 1,
             "optionalTourCount": 8,
             "sampleDayTitles": [
@@ -1492,14 +1534,14 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "26c3b326961450215d910ea3146c5d946ee51e9c1abe1c6916114d994bfdc04e",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[2].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
@@ -1508,11 +1550,11 @@
           "variantCount": 1,
           "priceRuleCount": 14,
           "itineraryItemCount": 63,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -1528,8 +1570,8 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 10,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "TW 041",
@@ -1544,14 +1586,14 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "15029ea3c6a3dd52e57b429784f7e2f8cd1deb7df0ee8bf7f602d7bc075bb15c",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[3].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:15"
           ],
           "renderContractPass": true,
@@ -1560,11 +1602,11 @@
           "variantCount": 1,
           "priceRuleCount": 14,
           "itineraryItemCount": 71,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 15,
             "optionReview": 0,
@@ -1580,8 +1622,8 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 11,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "TW 041",
@@ -1596,14 +1638,14 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "0667946bc256140d0fb056cb70a23b5b4a49559c374e28a2ec20ad1a77199cdc",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[4].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[4].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
@@ -1616,7 +1658,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -1632,8 +1674,8 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 4,
-            "inclusionCount": 3,
-            "exclusionCount": 1,
+            "inclusionCount": 20,
+            "exclusionCount": 2,
             "optionalTourCount": 1,
             "sampleDayTitles": [
               "TW 041",
@@ -1648,16 +1690,16 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "adad6cca3e92a7edef7b7cd73bf0f2f55620f6253a14694eeafc9134090aa29d",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[5].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
             "option_review_queue_clear:2 option events require review",
             "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
+            "MISSING_HIGH_EVIDENCE:sections[5].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "OPTION_REVIEW:2"
           ],
@@ -1671,7 +1713,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 2,
@@ -1687,7 +1729,7 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 5,
-            "inclusionCount": 5,
+            "inclusionCount": 13,
             "exclusionCount": 4,
             "optionalTourCount": 4,
             "sampleDayTitles": [
@@ -1703,14 +1745,14 @@
           "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
           "rawTextHash": "6068111dc26b9bdbe46a15aa4bd343f91112da89a5787b8babe57b2e74171d49",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[6].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[6].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
@@ -1719,11 +1761,11 @@
           "variantCount": 1,
           "priceRuleCount": 14,
           "itineraryItemCount": 81,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -1739,8 +1781,8 @@
             "dateCount": 14,
             "flightCount": 6,
             "dayCount": 6,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 10,
+            "exclusionCount": 5,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "TW 041",
@@ -1756,7 +1798,7 @@
       "filename": "[LJ]푸꾸옥 3박 ♥특가♥노옵션스페셜팩 0910 0918 (0814발권) 0804.hwp",
       "sourceHash": "87f283ad9c245b9ee6d303a0477a1d36220eabbe531add7e61e6c2788150fbc7",
       "bytes": 32768,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -1780,12 +1822,13 @@
           "titleHint": "[LJ] 푸꾸옥 3박5일 ◈ 5성 노옵션 스페셜팩 ◈ ※일정표",
           "rawTextHash": "d482a715dfa844be548047752eee68c1ca22afe083a617baad2fe75362257b70",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.minimum_departure:minimum departure evidence exists",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -1793,11 +1836,11 @@
           "variantCount": 1,
           "priceRuleCount": 2,
           "itineraryItemCount": 41,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 0,
@@ -1813,8 +1856,8 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 13,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ 119",
@@ -1830,7 +1873,7 @@
       "filename": "[LJ-8월선발] 부산출발-나트랑&달랏 3박,4박-패키지_(0803).hwp",
       "sourceHash": "d97d6922db17b87597e7165f25b187654ce7f05d73a395e616c10dca324ba883",
       "bytes": 154624,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 9,
@@ -1854,14 +1897,14 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "578781f42467765d4a76aa5c9c6d7ce9700296442e15e739ca772270e3a6c661",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
@@ -1874,7 +1917,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 0,
@@ -1890,7 +1933,7 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 1,
+            "inclusionCount": 16,
             "exclusionCount": 1,
             "optionalTourCount": 6,
             "sampleDayTitles": [
@@ -1906,14 +1949,14 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "63bd0ef211d194b9362cc307b10b487125c30656f768c8de6c2a7ceafcfdfb1d",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[1].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
@@ -1926,7 +1969,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -1942,7 +1985,7 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 4,
-            "inclusionCount": 3,
+            "inclusionCount": 19,
             "exclusionCount": 1,
             "optionalTourCount": 8,
             "sampleDayTitles": [
@@ -1958,14 +2001,14 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "cec556c318d4b0e03b9269d2259dde5f288f2b0d17c50d7432581a8a944e3c72",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[2].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
@@ -1974,11 +2017,11 @@
           "variantCount": 1,
           "priceRuleCount": 3,
           "itineraryItemCount": 63,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -1994,8 +2037,8 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 10,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ 115",
@@ -2010,14 +2053,14 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "e4e35018fa7891912414e908fcb9d48a71c0082fcf8795422af035b2d08a6bbf",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[3].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:15"
           ],
           "renderContractPass": true,
@@ -2026,11 +2069,11 @@
           "variantCount": 1,
           "priceRuleCount": 3,
           "itineraryItemCount": 71,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 15,
             "optionReview": 0,
@@ -2046,8 +2089,8 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 11,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ 115",
@@ -2062,14 +2105,14 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "293b5fcbec06de7db50d30f8f95018ddfbccf94861fd2e4732047439dbf666e5",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[4].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[4].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
@@ -2082,7 +2125,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2098,8 +2141,8 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 4,
-            "inclusionCount": 3,
-            "exclusionCount": 1,
+            "inclusionCount": 20,
+            "exclusionCount": 2,
             "optionalTourCount": 1,
             "sampleDayTitles": [
               "LJ 115",
@@ -2114,16 +2157,16 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "8cc9e1c96e5e67577a1035d6a972309fd9ef0ed917446022d0ff7df4b2f0f6ee",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[5].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
             "option_review_queue_clear:2 option events require review",
             "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
+            "MISSING_HIGH_EVIDENCE:sections[5].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "OPTION_REVIEW:2"
           ],
@@ -2137,7 +2180,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 2,
@@ -2153,7 +2196,7 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 5,
+            "inclusionCount": 13,
             "exclusionCount": 4,
             "optionalTourCount": 4,
             "sampleDayTitles": [
@@ -2169,14 +2212,14 @@
           "titleHint": "수/금 출발 : 3박5일",
           "rawTextHash": "f5c3469dcb5a1bc34540a79799291ecf51502336e4e4699bf47fec7d5cb4b71e",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
-            "GATE_BLOCKED:blocked"
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[6].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[6].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
@@ -2185,11 +2228,11 @@
           "variantCount": 1,
           "priceRuleCount": 3,
           "itineraryItemCount": 81,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -2205,8 +2248,8 @@
             "dateCount": 3,
             "flightCount": 4,
             "dayCount": 6,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 10,
+            "exclusionCount": 5,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ 115",
@@ -2222,7 +2265,7 @@
       "filename": "[BX전세기] 0818 장가계 4박 5일 노노 499 특가 - 컴10만_영진 정리★.hwp",
       "sourceHash": "d2adfad795e5c28f8594c87921d6c6178ebdb2fb512e4947e9bfc29012db4e34",
       "bytes": 103424,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -2246,25 +2289,26 @@
           "titleHint": "장가계 노팁 노옵션 초특가",
           "rawTextHash": "aad688f92c9aaea930755a17600dce7a12b6a360b34b2c1eff57259be5aa4379",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "sections[0].variants[0].lodging: 원문에서 호텔이 미정 또는 동급으로 표시되었습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:20 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:20 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:26",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 1,
-          "itineraryItemCount": 75,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 39,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 26,
@@ -2281,13 +2325,13 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
+            "inclusionCount": 8,
             "exclusionCount": 1,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "장가계",
-              "BX371",
-              "전용차량"
+              "부산 출발",
+              "▶장가계의 혼이라 불리는 천문산 등정",
+              "신선이 만든 듯한 기기묘묘한 봉우리들의 절경 감상"
             ],
             "customerReady": true
           }
@@ -2298,7 +2342,7 @@
       "filename": "[BX전세기] 0815 장가계 3박 4일 노노 699 특가 - 컴10만.hwp",
       "sourceHash": "28f8484cf72a39725717cf3cd7d24052ef539219f7d84cc771d7b1d324ddc2a4",
       "bytes": 98816,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -2322,25 +2366,26 @@
           "titleHint": "장가계 노팁노옵션",
           "rawTextHash": "503db1d829ce9e3073e92215a809f05605c234fc237cedcc30d9821832fd0f3b",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "sections[0].variants[0].lodging: 원문에서 호텔이 미정 또는 동급으로 표시되었습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:16 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:16 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:21",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 1,
-          "itineraryItemCount": 63,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 33,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 21,
@@ -2357,13 +2402,13 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
+            "inclusionCount": 8,
             "exclusionCount": 1,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "장가계",
-              "BX371",
-              "전용차량"
+              "부산 출발",
+              "▶장가계의 혼이라 불리는 천문산 등정",
+              "신선이 만든 듯한 기기묘묘한 봉우리들의 절경 감상"
             ],
             "customerReady": true
           }
@@ -2374,7 +2419,7 @@
       "filename": "[BX-8월선발] 부산출발-나트랑&달랏 3박5일-패키지_(0729).hwp",
       "sourceHash": "2750eb953c006bfa5cbe5ebaf6f0955c69c27f5580c36227f9e36ec416cb5ccf",
       "bytes": 297984,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 7,
@@ -2398,13 +2443,14 @@
           "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
           "rawTextHash": "08819eff5f86c6595bcb3fc3233cbf3aec3799db4d18346833fe33bb140b9043",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -2416,7 +2462,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 0,
@@ -2432,7 +2478,7 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
+            "inclusionCount": 16,
             "exclusionCount": 1,
             "optionalTourCount": 6,
             "sampleDayTitles": [
@@ -2448,13 +2494,14 @@
           "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
           "rawTextHash": "bd45804a76665124536ab790406c5214d08b1c8983359e4c72150d9500617d37",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -2466,7 +2513,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -2482,7 +2529,7 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 3,
+            "inclusionCount": 19,
             "exclusionCount": 1,
             "optionalTourCount": 8,
             "sampleDayTitles": [
@@ -2498,13 +2545,14 @@
           "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
           "rawTextHash": "87613b745e894241b39f493975712c788a6daeffb6239f3e46e1a7ad0db4a72a",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -2512,11 +2560,11 @@
           "variantCount": 1,
           "priceRuleCount": 17,
           "itineraryItemCount": 63,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2532,8 +2580,8 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 10,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "BX 781",
@@ -2548,13 +2596,14 @@
           "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
           "rawTextHash": "14fa336d4908e9a110e4f2ca26a21b271aea9677ba7af9590051e52607ba9fb8",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:15",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -2562,11 +2611,11 @@
           "variantCount": 1,
           "priceRuleCount": 17,
           "itineraryItemCount": 71,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 15,
             "optionReview": 0,
@@ -2582,8 +2631,8 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 11,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "BX 781",
@@ -2598,13 +2647,14 @@
           "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
           "rawTextHash": "e48280476d9dccfa97476a90defac00545c7c94bf0ab3319177c99edbdf395b1",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[4].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -2616,7 +2666,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2632,8 +2682,8 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 3,
-            "exclusionCount": 1,
+            "inclusionCount": 20,
+            "exclusionCount": 2,
             "optionalTourCount": 1,
             "sampleDayTitles": [
               "BX 781",
@@ -2648,16 +2698,17 @@
           "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
           "rawTextHash": "2dadb8b5abd602b0e003e51dac4f7ae3b4b337510e207a39b549a47348278447",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
             "option_review_queue_clear:2 option events require review",
             "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
+            "MISSING_HIGH_EVIDENCE:sections[5].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "OPTION_REVIEW:2",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -2669,7 +2720,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 2,
@@ -2685,7 +2736,7 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 5,
+            "inclusionCount": 13,
             "exclusionCount": 4,
             "optionalTourCount": 4,
             "sampleDayTitles": [
@@ -2702,7 +2753,7 @@
       "filename": "[0825발권 BX] 알테라 세미PKG 특가  - 컴 10%.hwp",
       "sourceHash": "81045c03d6ef4918a2afb087e3a2d3d73b1c255e771d8117a601efa8557805af",
       "bytes": 89088,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -2726,8 +2777,10 @@
           "titleHint": "♥ SPECIAL PRICE ♥ (최소출발 2명부터)",
           "rawTextHash": "62ac8de05fa5ceae247a51407207a1e4b733839147f7583b7ca58a3dd6b334a9",
           "gateStatus": "ready_to_publish",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
             "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing"
           ],
@@ -2736,9 +2789,9 @@
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 3,
-          "itineraryItemCount": 48,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 16,
+          "claimCount": 8,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
           "missingHighClaimCount": 0,
@@ -2757,13 +2810,13 @@
             "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 7,
+            "inclusionCount": 14,
             "exclusionCount": 2,
             "optionalTourCount": 3,
             "sampleDayTitles": [
-              "BX711",
-              "화 출발",
-              "부산 국제 출발 → 세부 국제 도착"
+              "부산 국제 출발 → 세부 국제 도착",
+              "▶해양스포츠 체험 – 스쿠버다이빙 강습 (바다체험시 추가금발생!)",
+              "▶여행의 피로를 풀어주는 전신마사지 1시간"
             ],
             "customerReady": false
           }
@@ -2774,7 +2827,7 @@
       "filename": "[0814발권] 진에어 노팁 노옵션 바나힐특식 - 컴 10%.hwp",
       "sourceHash": "f7f0589b2d85cb19a346d9d8f5ca1f83e8f545eb91f6bc76441ffc9570d3ed01",
       "bytes": 103424,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -2798,25 +2851,25 @@
           "titleHint": "[노팁&노옵션] 다낭 / 호이안 3박 5일 + 바나힐 특식",
           "rawTextHash": "895476b8146062d87c03b1c2b01ea19d9f92de333fda829988cff08f5a3e66d1",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:4 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:4 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:6",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 3,
-          "itineraryItemCount": 66,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 33,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
@@ -2833,13 +2886,13 @@
             "dateCount": 3,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 7,
+            "inclusionCount": 13,
+            "exclusionCount": 1,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "LJ111",
               "김해 국제 출발 → 다낭 국제 도착",
-              "전용차량"
+              "오전 자유 휴식 및 자유일정",
+              "▶베트남 전통의상 아오자이 체험관 + 커피 OR 음료 1인 1잔 제공"
             ],
             "customerReady": true
           }
@@ -2850,7 +2903,7 @@
       "filename": "BX다낭호이안알란씨,페닌슐라 노노패키지 0803.hwp",
       "sourceHash": "17e5492d8a66e9abc6a97128d42899786671e6c114c06165e94454aa799813f8",
       "bytes": 230912,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 4,
@@ -2874,24 +2927,27 @@
           "titleHint": "노팁,노옵션 BX 다낭/호이안 알란씨 호텔 3박5일",
           "rawTextHash": "34d682daf6cb519b136fb9ebc092acff03ada3155d30852df888a0af1a7e50d5",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:9",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 15,
-          "itineraryItemCount": 54,
-          "claimCount": 9,
+          "itineraryItemCount": 28,
+          "claimCount": 7,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 2,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
@@ -2906,15 +2962,15 @@
             "firstPrice": 799000,
             "currency": "KRW",
             "dateCount": 15,
-            "flightCount": 4,
+            "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 1,
+            "inclusionCount": 1,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "BX773",
               "출발2시간전 김해공항 국제선 1층에서 미팅 후 수속",
-              "김해 출발 → 다낭 도착"
+              "김해 출발 → 다낭 도착",
+              "다낭 공항 도착 후 현지가이드 미팅하여 호텔로 이동"
             ],
             "customerReady": true
           }
@@ -2924,24 +2980,27 @@
           "titleHint": "노팁,노옵션 BX 다낭/호이안 페닌슐라 호텔 3박5일",
           "rawTextHash": "e718b4b77a9a529bc44c3b34831d739d2aaa5df99c1fd2b722741b2052116c43",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:9",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 15,
-          "itineraryItemCount": 54,
-          "claimCount": 9,
+          "itineraryItemCount": 28,
+          "claimCount": 7,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 2,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
@@ -2956,15 +3015,15 @@
             "firstPrice": 799000,
             "currency": "KRW",
             "dateCount": 15,
-            "flightCount": 4,
+            "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 1,
+            "inclusionCount": 1,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "BX773",
               "출발2시간전 김해공항 국제선 1층에서 미팅 후 수속",
-              "김해 출발 → 다낭 도착"
+              "김해 출발 → 다낭 도착",
+              "다낭 공항 도착 후 현지가이드 미팅하여 호텔로 이동"
             ],
             "customerReady": true
           }
@@ -2975,7 +3034,7 @@
       "filename": "BX나트랑달랏품격노팁노옵션 0803.hwp",
       "sourceHash": "f56f3b8fd158d4adcfca5b9f9c73814820bb5b0b3a1b86aa1c9ced19b6f0d797",
       "bytes": 79360,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 4,
@@ -2999,24 +3058,24 @@
           "titleHint": "노팁/노옵션 BX 나트랑/달랏 품격 패키지 3박5일",
           "rawTextHash": "40d8b8cb8b1774eb28ff29173e192dca79e0d8a025263cc6a749d9f3d3c0b669",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:14",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 20,
-          "itineraryItemCount": 66,
-          "claimCount": 9,
+          "itineraryItemCount": 30,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 14,
@@ -3033,13 +3092,13 @@
             "dateCount": 20,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 10,
-            "exclusionCount": 1,
+            "inclusionCount": 8,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "BX781",
               "출발2시간전 김해공항 국제선 2층에서 미팅 후 수속",
-              "김해 출발 → 나트랑 깜란 도착"
+              "김해 출발 → 나트랑 깜란 도착",
+              "깜란 공항 도착 후 현지가이드 미팅하여 호텔로 이동"
             ],
             "customerReady": true
           }
@@ -3050,7 +3109,7 @@
       "filename": "8,9월 특가 4박) BX방콕썬밸리무제한골프 0724.hwp",
       "sourceHash": "a6cc484aceb4598490368e78f8185ef265251107c94f72e47e0967a575096c19",
       "bytes": 115200,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -3074,13 +3133,14 @@
           "titleHint": "[부산출발] BX 방콕 썬밸리 무제한골프 4박6일",
           "rawTextHash": "3ae5e21880452c4723a0e6be98bfacdc90e7588ea99bbc614f677294de21183f",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
+            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:7",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
@@ -3092,7 +3152,7 @@
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 0,
+          "missingHighClaimCount": 1,
           "match": {
             "attractionUnmatched": 7,
             "optionReview": 0,
@@ -3108,8 +3168,8 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 1,
+            "inclusionCount": 8,
+            "exclusionCount": 4,
             "optionalTourCount": 4,
             "sampleDayTitles": [
               "BX725",
@@ -3125,7 +3185,7 @@
       "filename": "0813 증편특가★투어폰 26년 7월 백두산 ADM증편-컴15만.hwp",
       "sourceHash": "402d972e961b74ed3db7888e3a85a8a5f443fdb8ee94b7a5635e48171d038366",
       "bytes": 92672,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 1,
@@ -3149,23 +3209,25 @@
           "titleHint": "증편특가",
           "rawTextHash": "400ef1544a667b86b1c62dd67c62b295303e62fe3637bc6fe7e911145b09b68f",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "sections[0].variants[0].lodging: 원문에서 호텔이 미정 또는 동급으로 표시되었습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
+            "v1.hotel_or_notice:hotel evidence exists or explicit hotel notice is present",
             "attraction_unmatched_queue_clear:5 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:5 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:5",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 5,
-          "itineraryItemCount": 72,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 34,
+          "claimCount": 8,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
           "missingHighClaimCount": 0,
@@ -3184,13 +3246,13 @@
             "dateCount": 1,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 7,
+            "exclusionCount": 3,
             "optionalTourCount": 4,
             "sampleDayTitles": [
-              "연  길",
-              "도  문",
-              "용  정"
+              "김해 국제공항 미팅",
+              "부산 출발",
+              "연길 도착 후 가이드 미팅"
             ],
             "customerReady": true
           }
@@ -3201,7 +3263,7 @@
       "filename": "#후쿠오카_[스탠다드]_(0828TL)초석 시내 다색 골프 2박3일 (컴10만원).hwp",
       "sourceHash": "e6bf6c8dac09c3fc5f634ba1ca64a47a93f665da6f68d8fdd4af9595920cbbfb",
       "bytes": 145408,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -3211,11 +3273,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "complete",
+        "status": "needs_review",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "ready_to_publish": 1
+          "needs_review": 1
         },
         "error": null
       },
@@ -3224,20 +3286,23 @@
           "index": 0,
           "titleHint": "[스탠다드] 시내 다색 골프&숙박 3일 초석패턴",
           "rawTextHash": "e112dc17e151252dbf18722d418c4c519a4a1693cef5821b880f0a67fc6c69e8",
-          "gateStatus": "ready_to_publish",
-          "classification": "candidate",
+          "gateStatus": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
-          "highWarnings": [],
+          "highWarnings": [
+            "v1.minimum_departure:minimum departure evidence exists",
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+          ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 16,
-          "itineraryItemCount": 35,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 14,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 0,
@@ -3254,13 +3319,13 @@
             "dateCount": 16,
             "flightCount": 2,
             "dayCount": 3,
-            "inclusionCount": 1,
-            "exclusionCount": 5,
+            "inclusionCount": 7,
+            "exclusionCount": 3,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "FUK",
-              "BX148"
+              "김해공항 국제선 출발",
+              "후쿠오카 국제선 도착",
+              "송영차량 미팅 후 골프장 이동"
             ],
             "customerReady": true
           }
@@ -3271,7 +3336,7 @@
       "filename": "#코타_[세이브]_0825TL_코타 보르네오 무제한(컴 7%).hwp",
       "sourceHash": "671a0491457540ee854341922891347168fda8dc945228f9d212783dfb14870d",
       "bytes": 154624,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3295,25 +3360,24 @@
           "titleHint": "아티타야 보르네오 골프&리조트",
           "rawTextHash": "70c7efd4d7eebbefb19062612631714d4234a8f96fe3f1f15e03065b337a248d",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
-            "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:4",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 8,
-          "itineraryItemCount": 53,
-          "claimCount": 9,
+          "itineraryItemCount": 16,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 4,
@@ -3330,13 +3394,13 @@
             "dateCount": 8,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 6,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKI",
-              "BX761"
+              "김해 출발 → 코타키나발루 도착",
+              "손님 성함 으로 가이드 미팅 후 호텔 이동",
+              "호텔 체크인 및 휴식"
             ],
             "customerReady": true
           }
@@ -3347,7 +3411,7 @@
       "filename": "#장가계_[스탠다드]_0814TL_천문산 골프&관광 4일, 5일 (컴10만).hwp",
       "sourceHash": "2232fad746c6acf3cd9185776485b8a7a919cc9381aa535be935674b9164688f",
       "bytes": 205824,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3371,21 +3435,21 @@
           "titleHint": "- 2인출발시 4일(20만원/인), 5일(25만원/인) 추가됩니다.",
           "rawTextHash": "f78f59b74fdf2a1a0cfa21af48690bb485bddc29dfd1f87325aaa80c112b6d44",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.shopping_reflected:source shopping section is reflected in ledger",
             "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:1",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 21,
-          "itineraryItemCount": 50,
+          "itineraryItemCount": 17,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -3406,13 +3470,13 @@
             "dateCount": 17,
             "flightCount": 2,
             "dayCount": 4,
-            "inclusionCount": 1,
+            "inclusionCount": 7,
             "exclusionCount": 1,
             "optionalTourCount": 4,
             "sampleDayTitles": [
-              "PUS",
-              "DYG",
-              "BX371"
+              "부산 김해공항 국제선 출발 → 장가계 도착",
+              "가이드 미팅 후 이동",
+              "보봉호수 VIP-유람선을 타고 즐기는 보봉호수의 절경"
             ],
             "customerReady": true
           }
@@ -3423,7 +3487,7 @@
       "filename": "#오키나와_[스탠다드]_(0828TL)조조 시내 다색 골프 3박4일(컴10만원).hwp",
       "sourceHash": "2cb6514d620a3e8cd4fc87ac752fb3213c3e9b59585e1ccd3fd5ca70827a3612",
       "bytes": 7879680,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3447,24 +3511,25 @@
           "titleHint": "명품골프",
           "rawTextHash": "83eaed524506ce9a6dde3950bb1255d75576f8612be41b55301954243aae452d",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:4 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:4 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:4",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 27,
-          "itineraryItemCount": 29,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 11,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 4,
@@ -3481,13 +3546,13 @@
             "dateCount": 27,
             "flightCount": 2,
             "dayCount": 3,
-            "inclusionCount": 1,
-            "exclusionCount": 7,
+            "inclusionCount": 8,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "오키나와",
-              "ZE963",
-              "김해 출발 → 오키나와 나하 도착"
+              "김해 출발 → 오키나와 나하 도착",
+              "송영차량 탑승 및 골프장으로 이동",
+              "● 예정골프장 중 1곳  – 18홀 라운드(셀프+카트) / 일몰시까지"
             ],
             "customerReady": true
           }
@@ -3498,7 +3563,7 @@
       "filename": "#오사카_[스탠다드]_(0828TL)조석 시내 다색골프(이즈미사노)_컴10만원.hwp",
       "sourceHash": "ef93bfc4f2341baccb591aa3a5753f0bdc7953eee8b7df27619dfe9794e641ed",
       "bytes": 212992,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 4,
@@ -3508,11 +3573,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "complete",
+        "status": "needs_review",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "ready_to_publish": 1
+          "needs_review": 1
         },
         "error": null
       },
@@ -3521,20 +3586,23 @@
           "index": 0,
           "titleHint": "[스탠다드] 시내 다색 골프&숙박 3일 조석패턴",
           "rawTextHash": "da919db1db40bd4bca54836126eab8d62a9150ec6b88f17fe39aca6f8b12c81d",
-          "gateStatus": "ready_to_publish",
-          "classification": "candidate",
+          "gateStatus": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
-          "highWarnings": [],
+          "highWarnings": [
+            "v1.minimum_departure:minimum departure evidence exists",
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+          ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 16,
-          "itineraryItemCount": 34,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 14,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 0,
@@ -3551,13 +3619,13 @@
             "dateCount": 16,
             "flightCount": 2,
             "dayCount": 3,
-            "inclusionCount": 1,
-            "exclusionCount": 6,
+            "inclusionCount": 6,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "KIX",
-              "BX124"
+              "김해공항 국제선 출발 → 간사이공항 국제선 도착",
+              "송영차량 미팅 후 골프장 이동",
+              "예정 골프장 18홀 라운딩 또는 동급(일몰시까지/쓰루플래이)"
             ],
             "customerReady": true
           }
@@ -3568,7 +3636,7 @@
       "filename": "#세부 [스탠다드]_0827TL_세부 3색 골프 3박5일(컴10%).hwp",
       "sourceHash": "9aeb98a2d8a9cd2d384d002557b432987261c809aa60d1d9461c0d0fb6f0b2ef",
       "bytes": 178176,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -3592,22 +3660,22 @@
           "titleHint": "#세부5일 #다색 골프 #54홀 #시내호텔",
           "rawTextHash": "bec7fb33ed17f43462de32a73b8df11cadef2d9588d9ed2e728491b2c71139ca",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.shopping_reflected:source shopping section is reflected in ledger",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 16,
-          "itineraryItemCount": 39,
-          "claimCount": 9,
+          "itineraryItemCount": 16,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 0,
@@ -3624,13 +3692,13 @@
             "dateCount": 16,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 7,
+            "inclusionCount": 6,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "CEB",
-              "BX711"
+              "김해 국제 출발 → 막탄 세부 도착",
+              "골프장 이동",
+              "❥예정 골프장 중 1곳 18홀 라운딩"
             ],
             "customerReady": true
           }
@@ -3641,7 +3709,7 @@
       "filename": "#방콕(BX)_[프리미엄]_0828TL_방콕+리버데일 2색 골프 (컴 10만원).hwp",
       "sourceHash": "dd8fd91b775dfae9274e66aee9d6fe3d078e8fe52ede6d3850d746917fca5a09",
       "bytes": 125952,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3655,7 +3723,7 @@
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -3664,26 +3732,27 @@
           "index": 0,
           "titleHint": "▼▼▼ 3박5일 특가 ▼▼▼",
           "rawTextHash": "26cd26d2161f08a0fc601026d358e7439a39e4b425fa8293f0f73376f31a806c",
-          "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "gateStatus": "blocked",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:2",
-            "GATE_NEEDS_REVIEW"
+            "ATTRACTION_UNMATCHED:2"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 47,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 16,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 2,
@@ -3700,13 +3769,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 9,
+            "inclusionCount": 8,
+            "exclusionCount": 5,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 피켓으로 직원",
+              "호텔이동(약 60분소요)"
             ],
             "customerReady": true
           }
@@ -3717,7 +3786,7 @@
       "filename": "#방콕(BX)_[스탠다드]_0828TL_파타야 원파티오 다색 골프 (컴 10만원).hwp",
       "sourceHash": "495f3dcafaed0e2b412182639c3c1aa9e7de1bb42254518fce0850f72735c020",
       "bytes": 126464,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3743,10 +3812,11 @@
           "gateStatus": "blocked",
           "classification": "blocked",
           "criticalFailures": [
-            "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state",
-            "GATE_BLOCKED:blocked"
+            "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state"
           ],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
@@ -3757,11 +3827,11 @@
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 47,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 16,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 2,
@@ -3778,13 +3848,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 9,
+            "inclusionCount": 8,
+            "exclusionCount": 8,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 피켓으로 직원",
+              "호텔이동(약 2시간 소요)"
             ],
             "customerReady": true
           }
@@ -3795,7 +3865,7 @@
       "filename": "#방콕(BX)_[스탠다드]_0828TL_아유타야 다색 무제한 골프 (컴 10만원).hwp",
       "sourceHash": "60d18a25d86ab48733a817c218f85b434dd4ce7645db8fd3a44864289dfee4a6",
       "bytes": 125440,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3809,7 +3879,7 @@
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -3818,26 +3888,32 @@
           "index": 0,
           "titleHint": "아유타야 5일 #센타라호텔 #무제한다색골프 특가",
           "rawTextHash": "03f347b8cba8c8738b449ccb0157dde2c94a79cff7b33d06c147708d04505675",
-          "gateStatus": "needs_review",
-          "classification": "needs_review",
-          "criticalFailures": [],
+          "gateStatus": "blocked",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].inclusions: 포함사항을 확인할 수 없습니다.",
+            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+          ],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
+            "v1.inclusions:substantive inclusion evidence exists",
+            "v1.exclusions:substantive exclusion evidence exists",
             "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:2",
-            "GATE_NEEDS_REVIEW"
+            "ATTRACTION_UNMATCHED:2"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 47,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 16,
+          "claimCount": 5,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 1,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 2,
@@ -3854,13 +3930,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 5,
+            "inclusionCount": 0,
+            "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 피켓으로 직원",
+              "호텔이동(약 1시간 소요)"
             ],
             "customerReady": true
           }
@@ -3871,7 +3947,7 @@
       "filename": "#방콕(BX)_[스탠다드]_0828TL_시라차 J타운 다색 골프 (컴 10만원).hwp",
       "sourceHash": "7afff01e4b2c18de5d550c29e8b031261e30dc4d2229a8cdb71cb34b255ec6e6",
       "bytes": 125952,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3885,7 +3961,7 @@
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -3894,26 +3970,27 @@
           "index": 0,
           "titleHint": "시라차 5일 #J-town호텔 #다색골프 특가",
           "rawTextHash": "af6b11c23587ded4b005ba013c0f8c3672430b67930ac74035daf174ed600bf3",
-          "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "gateStatus": "blocked",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:1",
-            "GATE_NEEDS_REVIEW"
+            "ATTRACTION_UNMATCHED:1"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 41,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 16,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 1,
@@ -3930,13 +4007,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 5,
+            "inclusionCount": 12,
+            "exclusionCount": 6,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 피켓으로 직원",
+              "호텔이동(약 1시간 소요)"
             ],
             "customerReady": true
           }
@@ -3947,7 +4024,7 @@
       "filename": "#방콕(BX)_[스탠다드]_0828TL 파타야 품격 자유 다색 골프 (컴 10만원).hwp",
       "sourceHash": "b45bb33ba7164d1e04d9b13b95eecb17bdf392d19ad72f4a9d55567033e9e69e",
       "bytes": 181248,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -3957,11 +4034,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "complete",
+        "status": "needs_review",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "ready_to_publish": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -3970,20 +4047,24 @@
           "index": 0,
           "titleHint": "파타야 품격 자유골프 #3박5일  특가!",
           "rawTextHash": "2481b75f0d56e934c721a3e040895b0b91220deceb404da1708c6f7991e9ba60",
-          "gateStatus": "ready_to_publish",
-          "classification": "candidate",
+          "gateStatus": "blocked",
+          "classification": "degraded",
           "criticalFailures": [],
-          "highWarnings": [],
+          "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
+            "v1.minimum_departure:minimum departure evidence exists"
+          ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 42,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 17,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 0,
@@ -4000,13 +4081,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 7,
+            "inclusionCount": 7,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 후 3번 출구‘타나시티골프&리조트’",
+              "피켓으로 직원 미팅하여 리조트 이동(약 30분소요)"
             ],
             "customerReady": true
           }
@@ -4017,7 +4098,7 @@
       "filename": "#방콕(BX)_[스탠다드]_0828TL 타나시티 2색 골프 (컴 10만원).hwp",
       "sourceHash": "8d8efa33be54df620992b2aa58297434dd69e7a80e84580dad991f7c1e35d7f6",
       "bytes": 125952,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -4027,11 +4108,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "complete",
+        "status": "needs_review",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "ready_to_publish": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -4040,20 +4121,24 @@
           "index": 0,
           "titleHint": "타나시티&그린밸리 골프 #3박5일  특가!",
           "rawTextHash": "de048e46d85c59e65b601f44ef87c54aa1566f7bd5a1ae8a3be041815e8174b2",
-          "gateStatus": "ready_to_publish",
-          "classification": "candidate",
+          "gateStatus": "blocked",
+          "classification": "degraded",
           "criticalFailures": [],
-          "highWarnings": [],
+          "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
+            "v1.minimum_departure:minimum departure evidence exists"
+          ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 42,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 19,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 0,
@@ -4070,13 +4155,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 10,
+            "exclusionCount": 5,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 후 3번 출구‘타나시티골프&리조트’",
+              "피켓으로 직원 미팅하여 리조트 이동(약 30분소요)"
             ],
             "customerReady": true
           }
@@ -4087,7 +4172,7 @@
       "filename": "#방콕(BX)_[세이브]_0828TL아티타야 무제한 골프 (컴 7만원).hwp",
       "sourceHash": "d6530326b5d4e43dd4f8a710efa830cea3289c452f474dbde27dee64c764ba98",
       "bytes": 125952,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -4113,10 +4198,12 @@
           "gateStatus": "blocked",
           "classification": "blocked",
           "criticalFailures": [
-            "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state",
-            "GATE_BLOCKED:blocked"
+            "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state"
           ],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
+            "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:6"
@@ -4126,11 +4213,11 @@
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 48,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 17,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
@@ -4147,13 +4234,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 1,
+            "inclusionCount": 9,
+            "exclusionCount": 7,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 후 C게이트 10번 출구‘아티타야골프&리조트’",
+              "피켓으로 직원 미팅하여 리조트 이동(약 60분소요)"
             ],
             "customerReady": true
           }
@@ -4164,7 +4251,7 @@
       "filename": "#방콕(BX)_[세이브]_0828TL_썬밸리 무제한 2색골프 (컴 10만원).hwp",
       "sourceHash": "fb42e0304515a9c8c5964c96f4b2b48db6ab80f511d2e8f4dbf8b57731b4701e",
       "bytes": 124928,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 3,
@@ -4178,7 +4265,7 @@
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -4187,25 +4274,27 @@
           "index": 0,
           "titleHint": "썬밸리 2색 무제한 골프 3박5일 특가",
           "rawTextHash": "0eeac826fa689b1c14835c06de2231a942e4ff1814b91a8281b371f9c5957dab",
-          "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "gateStatus": "blocked",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
+            "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
+            "v1.minimum_departure:minimum departure evidence exists",
             "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:6",
-            "GATE_NEEDS_REVIEW"
+            "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 2,
-          "itineraryItemCount": 47,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 16,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
@@ -4222,13 +4311,13 @@
             "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
+            "inclusionCount": 8,
             "exclusionCount": 1,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "BKK",
-              "BX725"
+              "김해 출발 → 방콕 도착",
+              "수하물을 찾으신 후 3번 출구‘고객명’",
+              "피켓으로 직원 미팅하여 리조트 이동(약 60분소요)"
             ],
             "customerReady": true
           }
@@ -4239,7 +4328,7 @@
       "filename": "#마쓰야마_[스탠다드]_0828TL_시내 다색 골프 2박3일 (컴10만원).hwp",
       "sourceHash": "122edd3707c541d1e2ed91a4aebd4f90fb508370f20d2e4c9152ceca0d0a9871",
       "bytes": 133632,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -4249,11 +4338,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -4262,23 +4351,20 @@
           "index": 0,
           "titleHint": "[스탠다드] 마쓰야마 시내 다색 골프 3일",
           "rawTextHash": "089cd516dfebbf677886224306ccb197671c758afe563b2f0f48789e2f432a11",
-          "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "gateStatus": "ready_to_publish",
+          "classification": "verified",
           "criticalFailures": [],
-          "highWarnings": [
-            "v1.minimum_departure:minimum departure evidence exists",
-            "GATE_NEEDS_REVIEW"
-          ],
+          "highWarnings": [],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 12,
-          "itineraryItemCount": 33,
-          "claimCount": 9,
+          "itineraryItemCount": 12,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 0,
@@ -4295,13 +4381,13 @@
             "dateCount": 12,
             "flightCount": 2,
             "dayCount": 3,
-            "inclusionCount": 1,
-            "exclusionCount": 7,
+            "inclusionCount": 5,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "PUS",
-              "MYJ",
-              "BX134"
+              "부산 김해공항 국제선 출발 → 일본 마츠야마 도착",
+              "송영차량 미팅 후 시내이동",
+              "호텔 체크인 후 자유일정"
             ],
             "customerReady": true
           }
@@ -4312,7 +4398,7 @@
       "filename": "#나리타_[스탠다드]_(0828TL) 조조 초시CC(구,레인보이힐스CC) 3박4일(컴10만원).hwp",
       "sourceHash": "11daefb3e284b374cae896661139248c984e017b0e5e831ea9aede93c47af556",
       "bytes": 146432,
-      "parser": "C:\\dev\\yeosonam-os-product-registration-v4\\vendor\\rhwp\\0.8.2\\rhwp.exe",
+      "parser": "C:\\dev\\yeosonam-os-product-registration-v6\\vendor\\rhwp\\0.8.2\\rhwp.exe",
       "extraction": {
         "success": true,
         "pages": 2,
@@ -4336,25 +4422,26 @@
           "titleHint": "[스탠다드] 나리타 초시CC 골프텔 4일",
           "rawTextHash": "450b7f416f45e5bad98cf196d53493c3ceda58510760d13c781a7595e9b7bde7",
           "gateStatus": "needs_review",
-          "classification": "needs_review",
+          "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
+            "v1.minimum_departure:minimum departure evidence exists",
             "v1.shopping_reflected:source shopping section is reflected in ledger",
             "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
             "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:1",
-            "GATE_NEEDS_REVIEW"
+            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 13,
-          "itineraryItemCount": 10,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "itineraryItemCount": 17,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 1,
@@ -4370,14 +4457,14 @@
             "currency": "KRW",
             "dateCount": 13,
             "flightCount": 2,
-            "dayCount": 1,
-            "inclusionCount": 1,
-            "exclusionCount": 2,
+            "dayCount": 4,
+            "inclusionCount": 8,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "안내사항",
-              "- 여권 만료일 6개월이상 남아있어야 합니다.",
-              "- 리조트(골프장) 송영 차량은 다른팀과 조인될 수 있습니다., 개인적인 용도로 사용 불가합니다"
+              "부산 김해공항 국제선 출발 → 나리타 도착",
+              "직원 미팅 후 골프장 이동",
+              "초시CC(구,레인보우힐즈CC) 18홀 라운딩(일몰&쓰루플레이)"
             ],
             "customerReady": true
           }

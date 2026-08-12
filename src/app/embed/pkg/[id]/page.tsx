@@ -18,10 +18,8 @@
  */
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 interface Params {
   params: Promise<{ id?: string | string[] }>;
@@ -62,11 +60,6 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-function isEmbedPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 export default async function EmbedWidget(props: Params) {
   const searchParams = await props.searchParams;
   const params = await props.params;
@@ -80,23 +73,18 @@ export default async function EmbedWidget(props: Params) {
 
   if (id && isSupabaseConfigured) {
     try {
-      const [{ data: p }, { data: a }] = await Promise.all([
-        supabaseAdmin
-          .from('travel_packages')
-          .select('id, title, destination, duration, price, airline, product_summary, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-          .eq('id', id)
-          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-          .in('publication_state', ['approved', 'published'])
-          .maybeSingle(),
+      const [current, { data: a }] = await Promise.all([
+        getCurrentPublicPackage(supabaseAdmin, {
+          tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+          packageRef: id,
+          channel: 'customer',
+          locale: 'ko-KR',
+        }),
         ref
           ? supabaseAdmin.from('affiliates').select('name, logo_url').eq('referral_code', ref).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
-      const pp = p as (PackageRow & Record<string, unknown>) | null;
-      if (pp && isEmbedPublicSnapshotCandidate(pp)) {
-        const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [pp]);
-        pkg = (publicRows[0] as PackageRow | undefined) ?? null;
-      }
+      pkg = (current?.package as PackageRow | undefined) ?? null;
       aff = (a as AffiliateRow) || null;
     } catch { /* */ }
   }

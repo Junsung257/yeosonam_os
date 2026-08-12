@@ -20,14 +20,12 @@ describe('blog list public package data boundary', () => {
 
   it('keeps destination blog lists from joining raw packages and gates destination package cards', () => {
     const text = source('src/app/blog/destination/[dest]/page.tsx');
-    const packageQueryIndex = text.indexOf("'packages'");
-    const snapshotIndex = text.indexOf('packages: await mergeBlogDestinationPublicPackages');
+    const snapshotIndex = text.indexOf('const packages = (await listCurrentPublicPackageCardSnapshots');
 
     expect(text).not.toContain('travel_packages(');
-    expect(text).toContain('function isBlogDestinationPublicSnapshotCandidate');
-    expect(text).toContain('async function mergeBlogDestinationPublicPackages');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
+    expect(text).not.toContain(".from('travel_packages')");
+    expect(text).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(snapshotIndex).toBeGreaterThan(0);
   });
 
   it('strips accidental raw package data from the public blog list before rendering', () => {

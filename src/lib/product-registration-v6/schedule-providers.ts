@@ -28,7 +28,8 @@ function splitFlightNumber(serviceNumber: string): { carrier: string; number: st
 
 function clock(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const hhmm = value.match(/(?:T|^)(\d{2}):?(\d{2})/);
+  const hhmm = value.match(/T([01]\d|2[0-3]):([0-5]\d)/)
+    ?? value.match(/(?:^|\s)([01]\d|2[0-3]):?([0-5]\d)(?:$|\s)/);
   return hhmm ? `${hhmm[1]}:${hhmm[2]}` : null;
 }
 

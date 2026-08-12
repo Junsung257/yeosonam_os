@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { canonicalizePublicDestination, getPublicDestinationQueryNames, slugMatchesPublicDestination } from '@/lib/public-destinations';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
@@ -136,14 +136,8 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
           .filter(Boolean),
       )];
       if (productIds.length > 0) {
-        const { data: packageRows } = await supabaseAdmin
-          .from('travel_packages')
-          .select('id, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-          .in('id', productIds);
-        const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
-          supabaseAdmin,
-          (packageRows ?? []) as Array<Record<string, unknown>>,
-        );
+        const publicPackages = (await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 }))
+          .filter(pkg => productIds.includes(String(pkg.id ?? '')));
         publicPackageDestinationById = new Map(
           (publicPackages as Array<{ id?: unknown; destination?: unknown }>)
             .map(pkg => [

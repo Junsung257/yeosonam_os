@@ -44,7 +44,12 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import {
+  fetchAndMergeCurrentPublicPackageCardSnapshots,
+  listCurrentPublicPackageCardSnapshots,
+} from '@/lib/package-publication/snapshot-projection';
+import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import {
   rankBlogInformationalRelatedLinks,
@@ -507,23 +512,13 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   post.travel_packages = null;
 
   if (post.product_id) {
-    const { data: packageRows } = await runBlogDetailQuery(
-      'postFastPackage',
-      supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .eq('id', post.product_id)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
-        .limit(1),
-      { data: null, error: null },
-      4000,
-    );
-    const packageRow = ((packageRows || [])[0] as (BlogPost['travel_packages'] & Record<string, unknown>) | undefined) ?? null;
-    const publicRows = packageRow && isBlogPublicSnapshotCandidate(packageRow)
-      ? await mergeBlogPublicPackageSnapshots([packageRow])
-      : [];
-    post.travel_packages = (publicRows[0] as BlogPost['travel_packages'] | undefined) ?? null;
+    const current = await getCurrentPublicPackage(supabaseAdmin, {
+      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+      packageRef: post.product_id,
+      channel: 'customer',
+      locale: 'ko-KR',
+    }).catch(() => null);
+    post.travel_packages = (current?.package as BlogPost['travel_packages'] | undefined) ?? null;
   }
 
   return post;
@@ -660,26 +655,13 @@ async function getRelatedProducts(
     if (scored.length > 0) return scored;
   }
 
-  let query = supabaseAdmin
-    .from('travel_packages')
-    .select('id, title, destination, price, duration, nights, airline, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-    .eq('destination', destination)
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-    .in('publication_state', ['approved', 'published'])
-    .order('price', { ascending: true })
-    .limit(4);
-  if (currentProductId) query = query.neq('id', currentProductId);
-  const result = await runBlogDetailQuery(
-    'relatedProducts',
-    query,
-    { data: [] as RelatedProductLite[], error: null },
-    2500,
-  );
-  if (isBlogDetailQueryUnavailable(result) || result.error) return [];
-  const { data } = result;
-  return (await mergeBlogPublicPackageSnapshots(
-    ((data as unknown as Array<Record<string, unknown>>) || []).filter(isBlogPublicSnapshotCandidate),
-  ) as unknown as RelatedProductLite[])
+  const data = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 })
+    .then(rows => rows
+      .filter(pkg => String(pkg.destination ?? '') === destination && String(pkg.id ?? '') !== currentProductId)
+      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      .slice(0, 4))
+    .catch(() => []);
+  return (data as unknown as RelatedProductLite[])
     .map((item, index) => ({
       ...item,
       recommended_rank: index + 1,
@@ -718,20 +700,8 @@ async function attachRelatedPostPublicSnapshots(posts: RelatedPost[]): Promise<R
   }
 
   try {
-    const { data } = await runBlogDetailQuery(
-      'relatedPostPublicPackages',
-      supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, price, duration, nights, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('id', productIds)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published']),
-      { data: [] as Array<Record<string, unknown>>, error: null },
-      2200,
-    );
-    const publicRows = await mergeBlogPublicPackageSnapshots(
-      ((data || []) as Array<Record<string, unknown>>).filter(isBlogPublicSnapshotCandidate),
-    );
+    const publicRows = (await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 }))
+      .filter(pkg => productIds.includes(String(pkg.id ?? '')));
     const publicById = new Map(
       publicRows.map((pkg) => [String(pkg.id), pkg]),
     );
@@ -888,34 +858,22 @@ async function getCurationProductsForInfo(destination: string) {
     itinerary_data?: unknown;
   }
 
-  const result = await runBlogDetailQuery(
-    'curationProducts',
-    supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .eq('destination', destination)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .order('price', { ascending: true })
-      .limit(12),
-    { data: [] as CurationPackage[], error: null },
-    2500,
-  );
-  if (isBlogDetailQueryUnavailable(result) || result.error || !result.data || result.data.length === 0) return [];
-  const { data } = result;
+  const data = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 })
+    .then(rows => rows
+      .filter(pkg => String(pkg.destination ?? '') === destination)
+      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      .slice(0, 12))
+    .catch(() => []);
+  if (data.length === 0) return [];
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as unknown as CurationPackage[])
-    .filter((p) => isBlogPublicSnapshotCandidate(p as unknown as Record<string, unknown>))
-    .filter((p) => {
+  const alive = (data as unknown as CurationPackage[]).filter((p) => {
       const pd = (p.price_dates || []) as Array<{ date?: string }>;
       if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
       return pd.some((d) => d.date && d.date >= today);
     });
 
-  const publicAlive = await mergeBlogPublicPackageSnapshots(
-    alive as unknown as Array<Record<string, unknown>>,
-  ) as unknown as CurationPackage[];
+  const publicAlive = alive;
 
   if (publicAlive.length <= 3) return publicAlive;
 

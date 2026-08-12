@@ -14,6 +14,17 @@
 
 These results prove local code consistency, not customer-open readiness. Production migration application, live RLS/grant negative tests, frozen HWP/OCR corpus execution, the 989-product shadow backfill, live OAG/Cirium calls, deployed cache convergence, and real mobile Chrome proof have not been performed in this task and remain mandatory Tier 3 gates.
 
+## Additional evidence recorded on 2026-08-12
+
+- Applied forward migration `20260812133000_product_registration_automation_readiness_and_media.sql` to production. It adds complete legacy-inventory claiming, safe terminal blocking for missing source text, licensed reference-media linkage, and one automation-readiness metrics RPC. It does not change authority mode, publication pointers, or the global freeze.
+- Terminalized two historical abandoned V6 jobs through the existing dead-letter/terminal RPC path. Production now has zero unfinished and zero stale V6 jobs.
+- Re-ran all 40 HWP files: extraction 40/40, normalization 40/40, 66 product sections, render contracts 66/66, verified 1, degraded 52, blocked 13, safe automatic terminal candidates 53/66 (80.30%). Critical claims have 248/248 evidence anchors; overall claim-level evidence is 92.15% after removing false section-wide evidence inheritance.
+- Recorded the result in `profile_benchmark_runs` as `passed=false`, `exact_match_rate=null`, `measurement_status=structural_only`. The readiness gate therefore remains closed until a frozen annotated corpus proves at least 99.5% exact match and zero critical false publications.
+- Fixed three production-risk defects: serverless Chromium was falsely reported unavailable; ISO flight timestamps could be parsed from the year as `20:26`; OCR could classify a bare year as a flight number.
+- Added a licensed Pexels reference-media path that stores source page, photographer, license, attribution, and a customer-visible reference-image disclaimer. Missing provider configuration remains degraded, never fabricated.
+- Converted customer content generation, public search, B2B v1, affiliate API/landing/embed/referral, blog product links/destination, RSS, destination attractions, and itinerary print to exact pointer/snapshot reads.
+- Latest verification: TypeScript, lint, production build, authority/registration contracts (`authorized=1 legacy=143 unapproved=0`), and the full 710-file / 5,252-test suite passed. The build produced 20 durable workflow steps and 389 static pages.
+
 ## Automated Checks
 
 ```bash

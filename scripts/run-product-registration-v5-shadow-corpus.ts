@@ -35,7 +35,7 @@ type DocumentResult = {
     titleHint: string | null;
     rawTextHash: string;
     gateStatus: string;
-    classification: 'candidate' | 'needs_review' | 'blocked';
+    classification: 'verified' | 'degraded' | 'blocked';
     criticalFailures: string[];
     highWarnings: string[];
     renderContractPass: boolean;
@@ -83,8 +83,9 @@ type CorpusReport = {
     extractionSuccess: number;
     normalizationSuccess: number;
     sections: number;
-    candidates: number;
-    needsReview: number;
+    verified: number;
+    degraded: number;
+    autoPublishable: number;
     blocked: number;
     renderContractPass: number;
     renderContractFail: number;
@@ -100,14 +101,15 @@ type CorpusReport = {
   rates: {
     extractionSuccess: number;
     normalizationSuccess: number;
-    sectionCandidate: number;
-    sectionNeedsReview: number;
+    sectionVerified: number;
+    sectionDegraded: number;
+    sectionAutoPublishable: number;
     sectionBlocked: number;
     evidenceCoverage: number;
     renderContractPass: number;
   };
   customerVerdict: {
-    status: 'not_ready_for_open' | 'limited_manual_pilot' | 'customer_ready_candidate';
+    status: 'not_ready_for_open' | 'limited_automated_pilot' | 'customer_ready_candidate';
     summary: string;
     rationale: string[];
   };
@@ -248,22 +250,32 @@ function sectionResult(input: {
     customerReady: false,
   };
   const match = matchSummary(input.section);
+  const safeDegradedGateFailure = (reason: string) => /\.(?:flight|flight_times_complete|hotel_or_notice):/.test(reason);
+  const unsafeCriticalFailures = criticalFailures.filter(reason => !safeDegradedGateFailure(reason));
+  const safeCriticalFailures = criticalFailures.filter(safeDegradedGateFailure);
+  const completeness = asObject(input.section.completeness);
+  const completenessOutcome = statusLabel(completeness?.publicationOutcome);
+  const completenessBlockers = asArray(completeness?.blockers).map(String);
+  const completenessDegraded = asArray(completeness?.degradedReasons).map(String);
   const blockers = [
-    ...criticalFailures,
+    ...unsafeCriticalFailures,
+    ...completenessBlockers,
     ...missingCritical.map(claim => `MISSING_CRITICAL_EVIDENCE:${claim.fieldPath}`),
-    ...(status === 'blocked' ? [`GATE_BLOCKED:${status}`] : []),
+    ...(completenessOutcome === 'blocked' && completenessBlockers.length === 0 ? ['CANONICAL_COMPLETENESS_BLOCKED'] : []),
     ...(!renderContractPass ? [`RENDER_CONTRACT:${renderContractError ?? 'failed'}`] : []),
   ];
   const reviewReasons = [
+    ...safeCriticalFailures,
+    ...completenessDegraded,
     ...highWarnings,
     ...missingHigh.map(claim => `MISSING_HIGH_EVIDENCE:${claim.fieldPath}`),
     ...(match.attractionUnmatched > 0 ? [`ATTRACTION_UNMATCHED:${match.attractionUnmatched}`] : []),
     ...(match.optionReview > 0 ? [`OPTION_REVIEW:${match.optionReview}`] : []),
     ...(match.unknownCustomerVisible > 0 ? [`UNKNOWN_CUSTOMER_VISIBLE:${match.unknownCustomerVisible}`] : []),
-    ...(status === 'needs_review' ? ['GATE_NEEDS_REVIEW'] : []),
+    ...(status === 'needs_review' ? ['LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED'] : []),
     ...(previews.length > 1 ? [`MULTIPLE_RENDER_VARIANTS:${previews.length}`] : []),
   ];
-  const classification = blockers.length > 0 ? 'blocked' : reviewReasons.length > 0 ? 'needs_review' : 'candidate';
+  const classification = blockers.length > 0 ? 'blocked' : reviewReasons.length > 0 ? 'degraded' : 'verified';
   return {
     index: input.index,
     titleHint: input.normalizationSections[input.index]?.titleHint ?? null,
@@ -354,8 +366,9 @@ function aggregate(input: { sourceDirectory: string; documents: DocumentResult[]
   const sections = input.documents.flatMap(document => document.sections);
   const extractionSuccess = input.documents.filter(document => document.extraction.success).length;
   const normalizationSuccess = input.documents.filter(document => document.normalization.success).length;
-  const candidates = sections.filter(section => section.classification === 'candidate').length;
-  const needsReview = sections.filter(section => section.classification === 'needs_review').length;
+  const verified = sections.filter(section => section.classification === 'verified').length;
+  const degraded = sections.filter(section => section.classification === 'degraded').length;
+  const autoPublishable = verified + degraded;
   const blocked = sections.filter(section => section.classification === 'blocked').length;
   const renderContractPass = sections.filter(section => section.renderContractPass).length;
   const totals = {
@@ -363,8 +376,9 @@ function aggregate(input: { sourceDirectory: string; documents: DocumentResult[]
     extractionSuccess,
     normalizationSuccess,
     sections: sections.length,
-    candidates,
-    needsReview,
+    verified,
+    degraded,
+    autoPublishable,
     blocked,
     renderContractPass,
     renderContractFail: sections.length - renderContractPass,
@@ -381,21 +395,22 @@ function aggregate(input: { sourceDirectory: string; documents: DocumentResult[]
   const rates = {
     extractionSuccess: rate(extractionSuccess, input.documents.length),
     normalizationSuccess: rate(normalizationSuccess, input.documents.length),
-    sectionCandidate: rate(candidates, sections.length),
-    sectionNeedsReview: rate(needsReview, sections.length),
+    sectionVerified: rate(verified, sections.length),
+    sectionDegraded: rate(degraded, sections.length),
+    sectionAutoPublishable: rate(autoPublishable, sections.length),
     sectionBlocked: rate(blocked, sections.length),
     evidenceCoverage: rate(totals.verifiedClaims, totals.claims),
     renderContractPass: rate(renderContractPass, sections.length),
   };
-  const status: CorpusReport['customerVerdict']['status'] = candidates > 0 && blocked === 0
+  const status: CorpusReport['customerVerdict']['status'] = autoPublishable > 0 && blocked === 0
     ? 'customer_ready_candidate'
-    : candidates > 0
-      ? 'limited_manual_pilot'
+    : autoPublishable > 0
+      ? 'limited_automated_pilot'
       : 'not_ready_for_open';
   const rationale = [
     `원문 추출 ${extractionSuccess}/${input.documents.length}건 성공`,
-    `고객 공개 후보 ${candidates}/${sections.length}개 섹션`,
-    `검수 필요 ${needsReview}개, 차단 ${blocked}개`,
+    `안전 자동 공개 후보 ${autoPublishable}/${sections.length}개 섹션`,
+    `검증 공개 ${verified}개, 안전 축약 공개 ${degraded}개, 차단 ${blocked}개`,
     `근거 연결률 ${Math.round(rates.evidenceCoverage * 100)}%`,
     `고객 화면 계약 통과 ${renderContractPass}/${sections.length}개`,
   ];
@@ -410,8 +425,8 @@ function aggregate(input: { sourceDirectory: string; documents: DocumentResult[]
       status,
       summary: status === 'customer_ready_candidate'
         ? '모든 섹션이 자동 공개 후보지만, 실제 고객 오픈 전에는 운영 DB 저장·모바일 proof·관리자 승인이 남아 있습니다.'
-        : status === 'limited_manual_pilot'
-          ? '일부 섹션만 고객 공개 후보입니다. 나머지는 사람 검수 전에는 고객에게 보여주면 안 됩니다.'
+        : status === 'limited_automated_pilot'
+          ? '검증 또는 안전 축약이 가능한 상품은 자동 공개 후보로 끝나고, 구매 판단에 중요한 정보가 부족한 상품만 자동 차단됩니다.'
           : '현재 샘플은 자동 공개 가능한 상태가 아닙니다. 원문은 처리됐지만 고객 오픈 전 검수·근거·렌더 조건이 더 필요합니다.',
       rationale,
     },
@@ -422,7 +437,7 @@ function aggregate(input: { sourceDirectory: string; documents: DocumentResult[]
 function markdown(report: CorpusReport): string {
   const { totals, rates, customerVerdict } = report;
   const lines: string[] = [];
-  lines.push('# 상품등록 V5 전수 Shadow/Quarantine 검증 결과');
+  lines.push('# 상품등록 통합 자동화 엔진 전수 Shadow/Quarantine 검증 결과');
   lines.push('');
   lines.push(`- 실행 시각: ${report.generatedAt}`);
   lines.push(`- 처리 모드: 원문 기반 오프라인 격리 검증 (고객 노출 없음)`);
@@ -442,8 +457,9 @@ function markdown(report: CorpusReport): string {
   lines.push(`| 추출 성공 | ${totals.extractionSuccess}/${totals.files} (${Math.round(rates.extractionSuccess * 100)}%) |`);
   lines.push(`| 정규화 성공 | ${totals.normalizationSuccess}/${totals.files} (${Math.round(rates.normalizationSuccess * 100)}%) |`);
   lines.push(`| 상품 섹션 | ${totals.sections}개 |`);
-  lines.push(`| 자동 공개 후보 | ${totals.candidates}개 (${Math.round(rates.sectionCandidate * 100)}%) |`);
-  lines.push(`| 사람 검수 필요 | ${totals.needsReview}개 (${Math.round(rates.sectionNeedsReview * 100)}%) |`);
+  lines.push(`| 안전 자동 공개 후보 | ${totals.autoPublishable}개 (${Math.round(rates.sectionAutoPublishable * 100)}%) |`);
+  lines.push(`| 검증 공개 | ${totals.verified}개 (${Math.round(rates.sectionVerified * 100)}%) |`);
+  lines.push(`| 안전 축약 공개 | ${totals.degraded}개 (${Math.round(rates.sectionDegraded * 100)}%) |`);
   lines.push(`| 공개 차단 | ${totals.blocked}개 (${Math.round(rates.sectionBlocked * 100)}%) |`);
   lines.push(`| 가격 규칙 | ${totals.priceRules}개 |`);
   lines.push(`| 일정 항목 | ${totals.itineraryItems}개 |`);
@@ -455,8 +471,8 @@ function markdown(report: CorpusReport): string {
   lines.push('| 파일 | 추출 | 섹션 | 후보/검수/차단 | 가격 | 일정 | 고객 화면 | 주요 사유 |');
   lines.push('|---|---:|---:|---:|---:|---:|---:|---|');
   for (const document of report.documents) {
-    const candidate = document.sections.filter(section => section.classification === 'candidate').length;
-    const review = document.sections.filter(section => section.classification === 'needs_review').length;
+    const candidate = document.sections.filter(section => section.classification === 'verified').length;
+    const review = document.sections.filter(section => section.classification === 'degraded').length;
     const blocked = document.sections.filter(section => section.classification === 'blocked').length;
     const reasons = document.sections.flatMap(section => [...section.criticalFailures, ...section.highWarnings]).slice(0, 2).join('<br>') || '-';
     lines.push(`| ${document.filename.replaceAll('|', '\\|')} | ${document.extraction.success ? '성공' : '실패'} | ${document.sections.length} | ${candidate}/${review}/${blocked} | ${document.sections.reduce((n, section) => n + section.priceRuleCount, 0)} | ${document.sections.reduce((n, section) => n + section.itineraryItemCount, 0)} | ${document.sections.filter(section => section.renderContractPass).length}/${document.sections.length} | ${reasons} |`);
@@ -467,7 +483,7 @@ function markdown(report: CorpusReport): string {
   lines.push('- 가격과 출발일이 원문 근거와 연결되고, 일정이 실제 모바일 화면에서 깨지지 않는 상품만 구매 후보로 봅니다.');
   lines.push('- 관광지 미매칭, 옵션/쇼핑 해석 불명확, 항공·호텔·취소조건 누락이 하나라도 있으면 “문의 필요” 또는 비공개가 맞습니다.');
   lines.push('- 이번 결과는 고객 공개 전 단계입니다. 이 리포트는 자동 승인·DB 공개·캐시 반영을 수행하지 않았습니다.');
-  lines.push('- 다음 공개 게이트는 운영 DB shadow 저장 → V3/V5 핵심 필드 diff → 동일 snapshot 모바일 proof → 관리자 승인 → atomic publication 순서입니다.');
+  lines.push('- 다음 공개 게이트는 운영 DB shadow 저장 → 핵심 필드 diff → 동일 snapshot 모바일 proof → 정책 기준 자동 판정 → CAS atomic publication 순서입니다.');
   lines.push('');
   lines.push('## 정확도 해석');
   lines.push('');

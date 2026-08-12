@@ -13,10 +13,8 @@ import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 interface Params {
   params: Promise<{ code?: string | string[]; slug?: string | string[] }>;
@@ -42,11 +40,6 @@ function safeDecodePathSegment(value: string): string {
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
-}
-
-function isReferralPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 export async function generateMetadata(props: Params): Promise<Metadata> {
@@ -93,17 +86,14 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
   let description = '여소남 제휴 콘텐츠 · 추천 보상 포함 (광고)';
   if (isSupabaseConfigured) {
     try {
-      const { data: pkg } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, product_summary, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .eq('id', decodedSlug)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
-        .maybeSingle();
-      const packageRow = pkg as Record<string, unknown> | null;
-      if (packageRow && isReferralPublicSnapshotCandidate(packageRow)) {
-        const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [packageRow]);
-        const p = publicRows[0] as { title?: string; destination?: string; product_summary?: string } | undefined;
+      const current = await getCurrentPublicPackage(supabaseAdmin, {
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        packageRef: decodedSlug,
+        channel: 'customer',
+        locale: 'ko-KR',
+      });
+      if (current) {
+        const p = current.package as { title?: string; destination?: string; product_summary?: string };
         if (!p) return { title, description, robots: { index: false, follow: false } };
         const packageTitle = p.title || title;
         title = `${packageTitle} · ${metadataCode}`;

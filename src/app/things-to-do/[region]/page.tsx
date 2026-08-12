@@ -18,11 +18,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 86400; // 1d
@@ -170,11 +167,6 @@ function normalizePackageRow(row: unknown): PackageRow | null {
   };
 }
 
-function isThingsToDoPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 function pickPackageCoverUrl(p: PackageRow): string | null {
   const fromPhotos = pickAttractionPhotoUrl(p.photos);
   if (fromPhotos) return fromPhotos;
@@ -208,7 +200,7 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
     };
   }
 
-  const [{ data: attractions }, { data: packages }] = await Promise.all([
+  const results = await Promise.all([
     supabaseAdmin
       .from('attractions')
       .select('id, name, short_desc, long_desc, category, badge_type, photos, emoji, region, is_active, customer_publishable')
@@ -217,15 +209,14 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .eq('customer_publishable', true)
       .order('mention_count', { ascending: false })
       .limit(60),
-    supabaseAdmin
-      .from('travel_packages')
-      .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .eq('destination', region)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
-      .order('price', { ascending: true })
-      .limit(8),
-  ]).catch(() => [{ data: null }, { data: null }]);
+    listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 })
+      .then(rows => rows
+        .filter(row => String(row.destination ?? '').trim() === region)
+        .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+        .slice(0, 8)),
+  ]).catch(() => [{ data: null }, [] as Record<string, unknown>[]]);
+  const attractions = (results[0] as { data?: unknown[] | null }).data ?? null;
+  const publicPackages = results[1] as Record<string, unknown>[];
 
   const normalizedAttractions = ((attractions as unknown[] | null) ?? [])
     .filter((row): row is AttractionData => isCustomerRenderableAttraction(row as AttractionData))
@@ -239,12 +230,6 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(a);
   }
-
-  const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
-    supabaseAdmin,
-    ((packages as Array<Record<string, unknown>> | null) ?? [])
-      .filter(isThingsToDoPublicSnapshotCandidate),
-  ).catch(() => []);
 
   return {
     region,

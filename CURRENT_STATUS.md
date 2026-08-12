@@ -1,6 +1,11 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
 ## 2026-08-12 상품등록 실제 HWP 고객 흐름 검증
+- 40개 HWP 전체 재검증 결과 추출·정규화 40/40, 상품 구간 66개이며 V6 기준 verified 1, 안전 축약 degraded 52, 자동 차단 13이다. 따라서 구조상 자동 종결·공개 후보는 53/66(80.30%)이고 critical evidence는 248/248이다.
+- 이 80.30%는 정답지 대조 정확도가 아니다. 운영 DB에는 `structural_only`, `passed=false`, exact match 미측정으로 기록해 99.5% 정확도 게이트를 우회하지 못하게 했다.
+- 고객 검색, B2B v1, 제휴 공개·랜딩·임베드·추천 링크, 블로그 상품 연결·목적지, RSS, 일정 인쇄, 마케팅 콘텐츠 생성은 현재 publication pointer의 immutable snapshot만 읽도록 전환했다.
+- 중단된 과거 V6 작업 2건을 dead-letter 후 terminal 처리해 미완료·stale 작업은 0건이다. watchdog은 heartbeat를 한 번도 쓰지 못한 작업도 회수한다.
+- Vercel 번들 Chromium 준비상태 오판, ISO 연도 숫자를 항공시간 `20:26`으로 읽던 오류, 연도만 있는 값을 항공편명으로 읽던 OCR 오류를 수정하고 회귀 테스트를 추가했다.
 - 실제 마쓰야마 HWP canary는 source → EvidenceIR → immutable revision → customer snapshot → 390x844 Chrome 상세/LP proof까지 terminal `published_degraded`로 완료됐다.
 - 저장 proof를 직접 확인하며 발견한 서버리스 Chromium 한글 공백과 긴 화면 고정요소 반복 문제를 수정했다. 현재 proof는 번들 한글 폰트를 필수로 확인하고, CTA를 열기 전 실제 첫 390x844 화면을 private Storage에 보존하며, 전체 내용·스크롤·CTA는 별도 자동 검사한다.
 - 고객 CTA proof 중 발견한 `lead_sheet_open` 점수 신호 DB 제약 불일치를 순방향 migration으로 보완했다. 실제 API 삽입 성공과 검증용 행 정리까지 확인했다.

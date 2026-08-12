@@ -23,9 +23,7 @@ import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { apiResponse, ApiErrors } from '@/lib/api-response'
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility'
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection'
-import { isPublicPublicationState } from '@/lib/package-publication/types'
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection'
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload'
 
 export const maxDuration = 30
@@ -38,9 +36,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function isCustomerPublicSnapshotCandidate(row: PublicPackageRow): boolean {
-  return isPublicPublicationState(typeof row.publication_state === 'string' ? row.publication_state : null)
-    && isCustomerPubliclyOpenable(row)
+function hasDepartureInRange(row: PublicPackageRow, dateFrom?: string | null, dateTo?: string | null): boolean {
+  if (!dateFrom && !dateTo) return true
+  const dates = Array.isArray(row.price_dates) ? row.price_dates : []
+  return dates.some((item) => {
+    const record = asRecord(item)
+    const date = typeof record?.date === 'string' ? record.date : ''
+    return Boolean(date) && (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo)
+  })
 }
 
 function toPublicV1Package(row: PublicPackageRow): Record<string, unknown> {
@@ -89,27 +92,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let query = supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, display_title, destination, price, days, duration, nights, summary, product_summary, is_active, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
-      .eq('is_active', true)
-      .in('publication_state', ['approved', 'published'])
-
-    if (destination) query = query.ilike('destination', `%${destination}%`)
-    if (keyword) query = query.or(`title.ilike.%${keyword}%,summary.ilike.%${keyword}%`)
-    if (dateFrom) query = query.gte('start_date', dateFrom)
-    if (dateTo) query = query.lte('end_date', dateTo)
-
-    const { data, error } = await query
-      .order('price', { ascending: true })
-      .range(offset, offset + limit - 1)
-
-    if (error) throw error
-
-    const visibleData = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
-      supabaseAdmin,
-      (data ?? []).filter((row) => isCustomerPublicSnapshotCandidate(row as PublicPackageRow)) as PublicPackageRow[],
-    )).map(toPublicV1Package)
+    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
+      channel: 'b2b',
+      locale: 'ko-KR',
+      limit: 5_000,
+    })
+    const visibleData = published
+      .filter(row => !destination || String(row.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
+      .filter(row => !keyword || `${String(row.title ?? '')} ${String(row.summary ?? row.product_summary ?? '')}`.toLowerCase().includes(keyword.toLowerCase()))
+      .filter(row => hasDepartureInRange(row, dateFrom, dateTo))
+      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      .slice(offset, offset + limit)
+      .map(toPublicV1Package)
 
     return apiResponse({
       ok: true,
@@ -146,29 +140,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    let query = supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, display_title, destination, price, days, duration, nights, summary, product_summary, is_active, highlights, included, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
-      .eq('is_active', true)
-      .in('publication_state', ['approved', 'published'])
-
-    if (body.destination) query = query.ilike('destination', `%${body.destination}%`)
-    if (body.date_from) query = query.gte('start_date', body.date_from)
+    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
+      channel: 'b2b',
+      locale: 'ko-KR',
+      limit: 5_000,
+    })
 
     // pax 수용 가능 패키지 필터 (기본 2인)
     const pax = body.pax ?? 2
-    query = query.gte('max_pax', pax)
-
-    const { data, error } = await query
-      .order('price', { ascending: true })
-      .limit(10)
-
-    if (error) throw error
-
-    const visibleData = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
-      supabaseAdmin,
-      (data ?? []).filter((row) => isCustomerPublicSnapshotCandidate(row as PublicPackageRow)) as PublicPackageRow[],
-    )).map(toPublicV1Package)
+    const visibleData = published
+      .filter(row => !body.destination || String(row.destination ?? '').toLowerCase().includes(body.destination.toLowerCase()))
+      .filter(row => hasDepartureInRange(row, body.date_from, null))
+      .filter(row => Number(row.max_pax ?? pax) >= pax)
+      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      .slice(0, 10)
+      .map(toPublicV1Package)
 
     return apiResponse({
       ok: true,

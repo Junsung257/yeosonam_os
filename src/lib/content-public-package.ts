@@ -1,7 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 export type PublicContentPackage = {
   id: string;
@@ -63,11 +62,6 @@ function asPriceDates(value: unknown): Array<{ date: string; price: number; conf
     .filter((item): item is { date: string; price: number; confirmed: boolean } => Boolean(item));
 }
 
-function isPublicContentPackageCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = asString(row.publication_state);
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 function toPublicContentPackage(row: Record<string, unknown>): PublicContentPackage | null {
   const id = asString(row.id);
   const title = asString(row.title) ?? asString(row.display_title);
@@ -96,18 +90,11 @@ function toPublicContentPackage(row: Record<string, unknown>): PublicContentPack
 export async function loadPublicContentPackageForGeneration(
   packageId: string,
 ): Promise<PublicContentPackage | null> {
-  const { data, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-    .eq('id', packageId)
-    .in('publication_state', ['approved', 'published'])
-    .limit(1);
-  if (error) throw error;
-
-  const candidate = ((data ?? []) as Array<Record<string, unknown>>).find(isPublicContentPackageCandidate);
-  if (!candidate) return null;
-
-  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [candidate]);
-  const publicRow = publicRows[0];
-  return publicRow ? toPublicContentPackage(publicRow) : null;
+  const current = await getCurrentPublicPackage(supabaseAdmin, {
+    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+    packageRef: packageId,
+    channel: 'customer',
+    locale: 'ko-KR',
+  });
+  return current ? toPublicContentPackage(current.package) : null;
 }

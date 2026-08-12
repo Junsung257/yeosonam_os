@@ -2,9 +2,7 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 
 export const runtime = 'nodejs';
@@ -23,11 +21,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function isAffiliatePublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 function toAffiliatePublicPackage(row: Record<string, unknown>): Record<string, unknown> {
@@ -99,16 +92,9 @@ export async function GET(
 
     let packages: unknown[] = [];
     if (affiliate.landing_pick_package_ids && affiliate.landing_pick_package_ids.length > 0) {
-      const { data: pkgData } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('id', affiliate.landing_pick_package_ids)
-        .in('publication_state', ['approved', 'published'])
-        .limit(10);
-      const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
-        supabaseAdmin,
-        ((pkgData ?? []) as Array<Record<string, unknown>>).filter(isAffiliatePublicSnapshotCandidate),
-      ).catch(() => []);
+      const publicPackages = (await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 }))
+        .filter(pkg => affiliate.landing_pick_package_ids.includes(String(pkg.id ?? '')))
+        .slice(0, 10);
       packages = publicPackages.map(toAffiliatePublicPackage);
     }
 

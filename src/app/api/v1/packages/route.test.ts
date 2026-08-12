@@ -10,11 +10,10 @@ describe('public v1 packages API publication gate', () => {
   it('requires current public snapshots before returning customer package rows', () => {
     const source = routeSource();
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain('function isCustomerPublicSnapshotCandidate');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
-    expect(source).toContain(').map(toPublicV1Package)');
+    expect(source).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(source).toContain("channel: 'b2b'");
+    expect(source).not.toContain(".from('travel_packages')");
+    expect(source).toContain('.map(toPublicV1Package)');
   });
 
   it('returns a small customer projection instead of raw travel_packages rows', () => {

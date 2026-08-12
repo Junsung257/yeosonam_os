@@ -5,7 +5,7 @@ import { renderPackage } from '@/lib/render-contract';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidUuid } from '@/lib/supabase-filter-safe';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import {
   PosterHeader,
@@ -24,17 +24,11 @@ import {
 async function loadPackage(id: string) {
   const normalizedId = id.trim();
   if (!isSupabaseConfigured || !isValidUuid(normalizedId)) return null;
-  const { data } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id, package_revision')
-    .eq('id', normalizedId)
-    .single();
-  const row = data as { id?: string | null; package_revision?: number | null } | null;
-  if (!row?.id) return null;
-
-  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, row.id, {
+  const publicSnapshot = await getCurrentPublicPackage(supabaseAdmin, {
     tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-    expectedPackageRevision: row.package_revision,
+    packageRef: normalizedId,
+    channel: 'customer',
+    locale: 'ko-KR',
   });
   return publicSnapshot?.package as {
     id: string;

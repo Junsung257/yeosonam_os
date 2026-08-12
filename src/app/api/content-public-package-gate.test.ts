@@ -39,10 +39,9 @@ describe('content generation public package gate', () => {
   it('loads product context only through current approved public snapshots', () => {
     const helper = source('src/lib/content-public-package.ts');
 
-    expect(helper).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(helper).toContain('isCustomerPubliclyOpenable');
-    expect(helper).toContain('isPublicPublicationState');
-    expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(helper).toContain('getCurrentPublicPackage');
+    expect(helper).toContain("channel: 'customer'");
+    expect(helper).not.toContain(".from('travel_packages')");
     expect(helper).toContain('price_dates: asPriceDates(row.price_dates)');
     expect(helper).toContain('if (!title) return null');
     expect(helper).not.toContain("select('id, title");
