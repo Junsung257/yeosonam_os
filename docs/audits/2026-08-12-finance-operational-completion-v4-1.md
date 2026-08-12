@@ -22,6 +22,7 @@ This audit records the implementation and release checks for the selected-depart
 - Mobile and keyboard verification found that the booking detail drawer opened with Enter but did not close with Escape. The drawer now moves focus to its close control, traps Tab navigation inside the active drawer, leaves nested dialogs in control of their own Escape key, and restores focus to the originating booking control when closed.
 - Cross-tab verification found the legacy account-reality API only loaded bookings already referenced by a bank allocation, which understated reserves and unpaid supplier costs for zero-transaction or unmatched bookings. It now loads the same complete finance booking population as the finance center. OAuth copy now uses the token creation date rather than its refresh timestamp, and company review cards separate immediately classifiable rows from booking-sensitive individual review rows.
 - Company-expense cards label unique bank transactions separately from split review items, so the workday transaction count and the detailed allocation-item count no longer look contradictory.
+- Company workday counts now use active allocation targets as the classification SSOT. Travel-scoped review allocations stay in the travel queue, while already reclassified pass-through allocations no longer remain in the company queue because of a stale transaction-level shadow value.
 
 ## Automated Verification
 
