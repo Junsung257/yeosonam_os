@@ -29,6 +29,11 @@ These results prove local code consistency, not customer-open readiness. Product
 - Applied forward migration `20260812154000_product_registration_backfill_terminal_sync.sql` to production. It synchronizes the backfill ledger in the same transaction as the V6 terminal job and prioritizes evidence-rich rows for subsequent bounded canaries. It does not publish, unfreeze, or change authority mode.
 - Applied `20260812155000_product_registration_foreign_key_indexes.sql`; the Supabase performance advisor went from 61 uncovered internal Product Registration foreign keys to 0. Security advisor reported no new product-registration warning from the terminal-sync trigger/function.
 - Retried the 12 shared-source failures on the corrected section selector. Identity ambiguity fell to zero, exposing `V6_KERNEL_REVISION_COUNT_MISMATCH`; the downstream workflow contract now transports exact `revisionSectionIndexes` and validates only the bound canonical payload/source segments. Migration `20260812156000_product_registration_backfill_retry_priority.sql` keeps corrected canaries ahead of unseen inventory without relaxing the retry ceiling.
+- Retried those 12 rows again after the section-index fix: 11 reached ordinary policy/evidence blocks, while one complementary two-variant source exposed `REVISION_VARIANT_CARDINALITY_UNSUPPORTED`. The workflow now classifies this as a customer-safe policy block rather than retrying and dead-lettering it as infrastructure failure.
+- Applied `20260813001000_product_registration_backfill_engine_version.sql` and `20260813002000_product_registration_backfill_attempt_audit.sql`. Retries are now scoped to the workflow engine version, only previous `WORKFLOW_FAILED` outcomes can be reconsidered by a newer engine, and lifetime attempts remain auditable across upgrades.
+- The exact one-item `product-registration-v6-workflow-2` canary ended `blocked` with publication `not_requested`, no new dead letter, and no publication pointer movement. The legacy ledger is 25/25 terminal blocked and 0 failed; readiness reports 73 V6 terminal outcomes, 0 unfinished/stale jobs, 17 unique sources, and 19 media-ready revisions.
+- Final local regression after the last production-data defect fixes: 710 test files / 5,261 tests, TypeScript, zero-warning lint, registration contract, authority boundary (`authorized=1 legacy=143 unapproved=0`), and production build all passed. The build emitted 20 durable workflow steps and 389 static pages. The yearless-date test now pins its reference clock, preventing calendar-date rollover from creating a false annual failure.
+- The benchmark still has `exact_match_rate=null`, zero audited cohort samples, and zero eligible cohorts. Publication remains correctly frozen; these results prove terminal safety and regression integrity, not the 99.5% customer-open accuracy gate.
 
 ## Automated Checks
 
@@ -65,5 +70,5 @@ npm test
 ## Approval Gates
 
 - [x] 로컬 코드와 순방향 migration 파일 작성은 사용자가 승인한 구현 범위다.
-- [ ] 운영 DB migration은 별도 적용 게이트에서 live backup, advisor, RLS 검증과 함께 수행한다.
-- [ ] publication flag와 freeze는 989개 shadow 결과 및 canary 기준이 통과하기 전 변경하지 않는다.
+- [x] 이 작업 범위의 운영 DB migration은 순방향으로 적용했고 Product Registration FK 성능 advisor, 신규 보안 경고, 권한 경계, terminal sync를 재검증했다. 공개 mode/freeze는 변경하지 않았다.
+- [ ] publication flag와 freeze는 현재 990개 shadow inventory와 canary 기준이 통과하기 전 변경하지 않는다.

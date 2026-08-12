@@ -47,6 +47,9 @@ afterEach(() => {
 
 describe('applySupplierRawDeterministicFacts', () => {
   it('uses literal HWP 출발일 and 판매가 blocks as source-backed dates and prices', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T00:00:00+09:00'));
+
     const facts = extractSupplierRawDeterministicFacts(`
 PKG
 BX 서안/진시황릉+병마용 3박5일
