@@ -217,7 +217,11 @@ begin
      or not public.blog_public_snapshots.is_current;
   get diagnostics v_refreshed = row_count;
 
-  delete from public.blog_public_catalog_facets;
+  -- Supabase Data API enables safe-update protection for RPC execution. Use a
+  -- real non-null predicate instead of an unqualified DELETE so the service-
+  -- role RPC follows the same path as the application runtime.
+  delete from public.blog_public_catalog_facets
+  where facet_type is not null;
   insert into public.blog_public_catalog_facets(facet_type, facet_key, label, post_count, snapshot_generated_at)
   select facet_type, facet_key, facet_key, count(*)::integer, now()
   from (

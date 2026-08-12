@@ -140,7 +140,72 @@ $$;
 create or replace view public.public_blog_content_creatives
 with (security_invoker = true)
 as
-select c.*, policy.lane as public_eligibility_lane, policy.reason as public_eligibility_reason
+-- CREATE OR REPLACE VIEW cannot rename or reorder existing columns. Keep the
+-- production view's original 51-column contract intact, then append fields
+-- introduced after that view was first created. Do not replace this projection
+-- with c.*: content_creatives has newer columns that would shift the existing
+-- public_eligibility_lane ordinal and make the migration fail atomically.
+select
+  c.id,
+  c.tenant_id,
+  c.product_id,
+  c.angle_type,
+  c.target_audience,
+  c.channel,
+  c.image_ratio,
+  c.slides,
+  c.blog_html,
+  c.ad_copy,
+  c.tracking_id,
+  c.tone,
+  c.extra_prompt,
+  c.status,
+  c.published_at,
+  c.slug,
+  c.seo_title,
+  c.seo_description,
+  c.og_image_url,
+  c.created_at,
+  c.updated_at,
+  c.category,
+  c.prompt_version,
+  c.ai_model,
+  c.ai_temperature,
+  c.sub_keyword,
+  c.generation_params,
+  c.category_id,
+  c.publish_scheduled_at,
+  c.view_count,
+  c.quality_gate,
+  c.topic_source,
+  c.generation_meta,
+  c.destination,
+  c.target_ad_keywords,
+  c.landing_headline,
+  c.landing_subtitle,
+  c.landing_enabled,
+  c.featured,
+  c.featured_order,
+  c.content_type,
+  c.pillar_for,
+  c.readability_score,
+  c.readability_issues,
+  c.source,
+  c.band_post_url,
+  c.review_status,
+  c.cta_text,
+  c.seo_score,
+  c.metrics,
+  policy.lane as public_eligibility_lane,
+  c.title,
+  c.description,
+  c.content_document,
+  c.content_modified_at,
+  c.fact_checked_at,
+  c.last_verified_at,
+  c.material_update_reason,
+  c.author_profile_id,
+  policy.reason as public_eligibility_reason
 from public.content_creatives c
 left join public.blog_information_representatives r on r.canonical_creative_id = c.id
 cross join lateral public.evaluate_blog_public_eligibility_v3(

@@ -18,6 +18,10 @@ create index concurrently if not exists idx_content_creatives_author_profile_id
   on public.content_creatives(author_profile_id)
   where author_profile_id is not null;
 
+-- idx_cc_public_blog_list_v2 is byte-for-byte equivalent and is the index
+-- observed on the production hot path. Retire the older zero-scan duplicate.
+drop index concurrently if exists public.idx_cc_published_blog_nulls_last;
+
 alter table public.content_creatives
   drop constraint if exists content_creatives_author_profile_id_fkey;
 alter table public.content_creatives
@@ -175,6 +179,94 @@ after insert on public.leads
 for each row
 execute function public.enqueue_generate_lead_analytics_event();
 
+-- The deployed reviewed-replacement function predates plpgsql_check in the
+-- release gate and has one ambiguous unqualified column reference. Patch only
+-- the exact known definition and fail closed if upstream text has drifted.
+do $$
+declare
+  v_oid oid;
+  v_definition text;
+  v_needle constant text := 'where representative_key = p_representative_key;';
+  v_replacement constant text :=
+    'where blog_information_representatives.representative_key = p_representative_key;';
+  v_needle_count integer;
+  v_replacement_count integer;
+begin
+  select p.oid, pg_get_functiondef(p.oid)
+  into v_oid, v_definition
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'replace_blog_information_reviewed_draft_atomically';
+
+  if v_oid is null then
+    raise exception 'reviewed replacement function is missing';
+  end if;
+
+  v_needle_count :=
+    (length(lower(v_definition)) - length(replace(lower(v_definition), v_needle, '')))
+    / length(v_needle);
+  v_replacement_count :=
+    (length(lower(v_definition)) - length(replace(lower(v_definition), v_replacement, '')))
+    / length(v_replacement);
+
+  if v_needle_count = 1 and v_replacement_count = 0 then
+    execute replace(v_definition, v_needle, v_replacement);
+  elsif v_needle_count = 0 and v_replacement_count = 1 then
+    null; -- An interrupted deployment may already have applied this repair.
+  else
+    raise exception 'reviewed replacement representative_key definition drifted';
+  end if;
+end;
+$$;
+
+-- Supabase preview projects can grant EXECUTE to anon/authenticated through
+-- database-level default privileges when functions are restored. Production
+-- currently has the intended service-role-only ACLs, but a schema-only restore
+-- must converge to the same state instead of inheriting environment defaults.
+do $$
+declare
+  v_function_name text;
+  v_function regprocedure;
+  v_overload_count integer;
+begin
+  foreach v_function_name in array array[
+    'decide_blog_information_review',
+    'publish_blog_information_atomically',
+    'record_blog_information_cta_event',
+    'replace_blog_information_reviewed_draft_atomically'
+  ]
+  loop
+    v_overload_count := 0;
+
+    for v_function in
+      select p.oid::regprocedure
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.proname = v_function_name
+    loop
+      execute format(
+        'revoke all on function %s from public, anon, authenticated',
+        v_function
+      );
+      execute format(
+        'grant execute on function %s to service_role',
+        v_function
+      );
+      v_overload_count := v_overload_count + 1;
+    end loop;
+
+    if v_overload_count <> 1 then
+      raise exception
+        'expected exactly one public.% overload while hardening blog RPC ACLs, found %',
+        v_function_name,
+        v_overload_count;
+    end if;
+  end loop;
+end;
+$$;
+
 -- Rollback (manual, intentionally not executed):
 --   drop trigger if exists trg_enqueue_generate_lead_analytics_event on public.leads;
 --   drop function if exists public.enqueue_generate_lead_analytics_event();
@@ -184,3 +276,6 @@ execute function public.enqueue_generate_lead_analytics_event();
 --   alter table public.leads drop column if exists search_query_hash;
 --   alter table public.content_creatives drop constraint if exists content_creatives_author_profile_id_fkey;
 --   drop index concurrently if exists public.idx_content_creatives_author_profile_id;
+--   create index concurrently if not exists idx_cc_published_blog_nulls_last
+--     on public.content_creatives(published_at desc nulls last)
+--     where status = 'published' and channel = 'naver_blog' and slug is not null;

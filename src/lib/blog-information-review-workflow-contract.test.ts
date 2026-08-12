@@ -10,6 +10,7 @@ describe('blog information review workflow contract', () => {
   const migration = source('supabase/migrations/20260715227000_blog_information_review_workflow.sql');
   const atomicMigration = source('supabase/migrations/20260715228000_blog_information_atomic_publication.sql');
   const replacementMigration = source('supabase/migrations/20260730113000_reviewed_blog_replacement.sql');
+  const reliabilityMigration = source('supabase/migrations/20260811210920_blog_quality_v3_reliability_followup.sql');
   const adminRoute = source('src/app/api/admin/blog/information-review/route.ts');
   const sharedReviewRoute = source('src/app/api/content-review/route.ts');
   const repository = source('src/lib/blog-information-review-repository.ts');
@@ -49,6 +50,44 @@ describe('blog information review workflow contract', () => {
     expect(repository).toContain('replaceBlogInformationReviewedDraftAtomically({');
     expect(adminRoute).toContain('readReviewedPublishedBlogReplacement');
     expect(adminRoute).toContain('publishSlug = reviewedReplacement?.canonicalSlug');
+  });
+
+  it('qualifies the deployed representative update without rewriting a drifted function', () => {
+    expect(reliabilityMigration).toContain("v_needle constant text := 'where representative_key = p_representative_key;'");
+    expect(reliabilityMigration).toContain('reviewed replacement representative_key definition drifted');
+    expect(reliabilityMigration).toContain(
+      'where blog_information_representatives.representative_key = p_representative_key;',
+    );
+    expect(reliabilityMigration).toContain(
+      'elsif v_needle_count = 0 and v_replacement_count = 1 then',
+    );
+  });
+
+  it('normalizes privileged blog RPC grants across restored and preview databases', () => {
+    for (const functionName of [
+      'decide_blog_information_review',
+      'publish_blog_information_atomically',
+      'record_blog_information_cta_event',
+      'replace_blog_information_reviewed_draft_atomically',
+    ]) {
+      expect(reliabilityMigration).toContain(`'${functionName}'`);
+    }
+    expect(reliabilityMigration).toContain(
+      "'revoke all on function %s from public, anon, authenticated'",
+    );
+    expect(reliabilityMigration).toContain(
+      "'grant execute on function %s to service_role'",
+    );
+    expect(reliabilityMigration).toContain('if v_overload_count <> 1 then');
+  });
+
+  it('retires only the unused duplicate public-blog hot-path index', () => {
+    expect(reliabilityMigration).toContain(
+      'drop index concurrently if exists public.idx_cc_published_blog_nulls_last;',
+    );
+    expect(reliabilityMigration).not.toContain(
+      'drop index concurrently if exists public.idx_cc_public_blog_list_v2;',
+    );
   });
 
   it('revalidates evidence at approval and again immediately before publish', () => {
