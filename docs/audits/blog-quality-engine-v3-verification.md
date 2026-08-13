@@ -158,7 +158,7 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 ## 14. 2026-08-12 reliability follow-up
 
 - 리드 분석 이벤트 손실 지점을 `analytics_server_event_outbox`와 lead INSERT trigger로 보강했다. 1차 타깃 테스트는 7 files / 22 tests가 통과했다.
-- 상세 페이지는 DB 장애 때 공개 가능 192건의 full-body bundle을 사용할 수 있다. 번들이 비어 있거나 risk별 24/48/72시간 freshness budget을 넘으면 fail-closed한다.
+- 상세 페이지는 DB 장애 때 공개 가능 본문의 full-body bundle을 사용할 수 있다. 번들이 비어 있거나 risk별 HIGH 24시간/MEDIUM 48시간/LOW 720시간 freshness budget을 넘으면 fail-closed한다.
 - 기존 64-bit image dHash를 사용하는 dry-run backfill/중복 리포트 도구를 추가했다. 실제 pHash DB backfill은 실행하지 않았다.
 - zero-data readiness는 search 30d, engagement/RUM 7d, server event 30d, current snapshot, outbox를 검사한다. 0건과 query 실패는 critical이다.
 - Supabase CLI 2.113.0을 확인했다. `supabase status`는 Docker Desktop Linux engine이 실행 중이지 않아 실패했으므로 local migration reset/pgTAP은 실행하지 않았다.
@@ -233,3 +233,20 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - Supabase 2026-04-28 Data API 변경에 맞춰 V3 public table/function 권한은 migration에서 명시적으로 service-role에만 부여하고, anon/authenticated/public revoke를 유지한다. 운영 DB write, migration apply, 배포, production env 변경은 0건이다.
 - 4-worker 전체 회귀에서는 기존 `/blog/[slug]` smoke 1건이 자원 경쟁 중 20초 timeout으로 실패했다. 해당 파일 단독 재실행은 9/9 PASS이고 문제 테스트는 2.746초였다. 사용자 프로세스를 종료하지 않고 2-worker로 재실행한 최종 전체 회귀는 수집 기준 684 files / 5,188 tests 모두 PASS했다.
 - 최종 `npm run type-check`, 전체 ESLint, `git diff --check`는 오류 0이다. Next.js 15.5.21 production build는 411.9초, compile 77초, static pages 389/389, `.next` postbuild manifest 검증까지 PASS했다. 확인 시점 `origin/main=2718bc37fc6c0ee382624ea0d7dfd722ef878ed2` 대비 behind 0이었다.
+
+## 20. 2026-08-13 전수 재검증과 fail-closed 보강
+
+- 운영 DB를 SELECT로만 다시 조사했다. 현재 queued 11건은 모두 `coverage_gap` 계열이며 검색량·trend·GSC/Naver query·customer question·검증된 active product relation·editor approval가 모두 없어, 새 진단기 기준 `publishable_candidate_count=0`, `demand_missing_count=11`, `next_action=collect_demand`다. 운영 row는 변경하지 않았다.
+- PostgREST는 존재하지 않는 relation에 대한 HEAD 요청도 성공처럼 보일 수 있었다. runtime readiness와 publisher 사전 검사를 실제 `select(...).limit(1)`로 교체했고, 운영에서 V3 resource 18/18이 아직 없음을 정확히 검출했다. 따라서 publisher는 queue claim·생성·상태 변경보다 먼저 중단한다.
+- TypeScript public policy와 snapshot fallback 양쪽에 review/risk 판정을 적용했다. 운영 public view의 과거 정책에 의존하지 않고 unapproved 여행자보험 글도 제외해 bundled catalog/detail은 191건으로 재생성했다. `changes_requested`, `rejected`, `pending_review`, `in_review`와 승인 없는 HIGH-risk 문서는 직접 URL·목록·related·sitemap·RSS·image sitemap·indexing 대상이 아니다.
+- 목록은 첫 화면 단위의 서버 cursor query와 5분 cache를 사용하며, 현재 운영 view에 아직 없는 V3 column 때문에 전체 요청이 실패하지 않도록 compact V3 select 뒤 legacy select로 호환 재시도한다. 상세는 authoritative public view를 우선하고, DB 장애일 때만 risk별 24/48/720시간 last-known-good bundle을 쓴다.
+- GSC 실제 read-only 검증은 2026-08-08/09/10에 각각 18/21/36 row, 24/61/65 impressions, 1/0/0 clicks를 반환했다. importer는 date+page+query를 저장하고 25,000-row pagination과 `startRow`를 지원하며, 빈 결과는 성공으로 처리하지 않는다.
+- 이미지 proxy는 480/768/960/1280/1600 variant, AVIF/WebP 협상, 최종 redirect host 검증, width별 cache key를 사용한다. 카드/본문은 `srcset`·`sizes`·고정 intrinsic size를 제공하고, deterministic repair가 목적지나 제목을 근거로 가짜 alt/caption을 만들지 않는다.
+- offline canary는 24 drafts, 24 destinations, 12 intents, 12 archetypes, exact title 0, normalized skeleton 최대 2, 동일 opening 0, unsupported numeric claim 0, stale HIGH claim 0, cross-destination image reuse 0, FAQ 12.5%, checklist 4.17%, broken Korean 0으로 PASS했다.
+- corpus dry-run disposition은 총 270건에 대해 REFRESH 92, MERGE 155, QUARANTINE 23이다. 직접 claim linkage가 부족한 기존 corpus에는 보수적인 unsupported-number 휴리스틱을 적용했으므로 이 결과는 자동 적용안이 아니라 human disposition preview다. 운영 DB write는 0건이다.
+- release bundle checksum과 rollback dry-run은 통과했다. Docker/local Supabase가 이 환경에서 가동되지 않아 변경된 SQL의 실제 apply/pgTAP은 새 data-free staging clone에서 다시 통과해야 한다. 운영 readiness는 required migrations, runtime schema, snapshot parity, public surfaces, DB reliability, measurement, review-blocked legacy rows, queued demand의 8개 gate가 계속 BLOCKED다.
+- production image corpus 500건 pHash 감사는 184초 제한에서 완료되지 않았다. 이를 PASS로 간주하지 않으며 staging/worker 환경에서 재실행해야 한다. 운영 배포, 운영 DB write, migration apply, production env 변경은 모두 0건이다.
+- Chrome/HTTP 검증 중 승인 없는 HIGH-risk 문서가 화면상 not-found여도 streamed HTTP 200을 반환하는 soft-404를 발견했다. middleware의 동적 공개 판정이 public-prefix fast path 뒤에 있어 도달 불가능했던 것이 원인이었다. 공개 view row에 동일 review/HIGH-risk 정책을 적용하는 preflight를 fast path 앞으로 이동해 승인 없는 여행자보험은 404, 명시적 tombstone은 410으로 고정했고 둘 다 `X-Robots-Tag: noindex, nofollow`를 반환한다. DB 조회 실패는 page의 risk-bounded snapshot으로 넘겨 false-404를 만들지 않는다.
+- 같은 변경에서 `/blog/image-sitemap.xml`을 article slug로 오인하는 회귀를 HTTP 검증으로 발견해 예약 경로 예외와 test fixture를 추가했다. 최종 production-start 결과는 `/blog` 200, `/blog/fukuoka-3` 200, unapproved insurance 404, tombstone 410, sitemap 283 entries, RSS 50 items, image sitemap 191 entries이며 세 index surface 모두 차단 slug 0건이다.
+- 목록 첫 화면은 Chrome에서 이미지 12/12가 480/768/960/1280/1600 `srcset`, `sizes`, intrinsic size를 사용했고 eager image는 hero 1장뿐이었다. 상세 11/11도 반응형이며 기존 inline Pexels 3장은 1200x627, lazy, async decoding으로 보강됐다. 콘솔 warning/error는 0건이고 자체 `blog-assets` 480px 요청은 AVIF 31,823 bytes로 응답했다.
+- 최종 blog 회귀는 193 files / 1,395 tests PASS다. middleware hard-404/reserved-route 회귀는 34 tests PASS, TypeScript·ESLint·`git diff --check` 오류 0이다. 마지막 Next.js 15.5.21 production build는 487.8초, compile 89초, static pages 390/390, `.next` postbuild 검증까지 PASS했다.

@@ -238,3 +238,14 @@ group by name;
 ```
 
 기계 판독용 전체 수치는 [blog-live-operations-revalidation-2026-08-13.json](./blog-live-operations-revalidation-2026-08-13.json)에 저장했다.
+
+## 12. 같은 날 코드 보강 후 재판정
+
+- 운영 대기열은 재조회 시 11건이며 모두 검증된 demand signal이 없다. 로컬 V3 진단 결과는 `publishable_candidate_count=0`, `demand_missing_count=11`이다. 과거 analytics event 안의 `publishable_candidate_count=10`은 이전 코드가 기록한 historical payload이며 현재 대기열 판정이 아니다.
+- 운영에는 V3 migration 5개와 runtime resource 18개가 아직 적용되지 않았다. HEAD 요청의 false-ready 가능성을 제거한 실제 row probe는 18/18 missing을 확인했고, publisher는 queue mutation 전에 fail-closed한다.
+- review 정책을 application과 bundled snapshot에도 중복 방어로 적용해 현재 안전 번들은 191건이다. 운영 view 192건과의 1건 차이는 승인되지 않은 여행자보험 문서를 코드가 선제 제외했기 때문이다.
+- GSC read-only 3일 표본은 2026-08-08 24 impressions/1 click, 08-09 61/0, 08-10 65/0이다. 자동 주제선정에 사용할 만큼 충분하다고 판정하지 않았으며, 빈 import도 오류로 처리한다.
+- 24개 canary는 필수 다양성·claim·한국어·이미지 기준을 모두 통과했다. 기존 corpus dry-run은 REFRESH 92, MERGE 155, QUARANTINE 23이며 자동 적용하지 않았다.
+- 코드와 migration bundle은 로컬 검증 대상일 뿐 운영에 배포되지 않았다. 운영 readiness 8개 gate는 계속 BLOCKED이며 production DB write/deploy/env change는 0건이다.
+- 로컬 production-start에서 승인 없는 여행자보험 URL은 200 soft-404에서 404+`noindex,nofollow`로 교정했고 tombstone은 410을 유지했다. 정상 목록/상세는 200이며 sitemap 283, RSS 50, image sitemap 191 어디에도 차단 slug가 없다. 검증 과정에서 image sitemap 예약 경로가 동적 slug 검사에 걸리는 회귀도 발견해 수정·fixture로 고정했다.
+- Chrome 목록 이미지 12/12와 상세 이미지 11/11이 반응형 `srcset`·intrinsic size를 사용하고 hero만 eager였다. final blog suite 193 files / 1,395 tests, middleware 34 tests, typecheck, lint, Next.js 15.5.21 build(487.8초, static 390/390)가 통과했다. 이는 후보 코드의 로컬 결과이며 현재 운영 성능·field RUM 달성 증거가 아니다.

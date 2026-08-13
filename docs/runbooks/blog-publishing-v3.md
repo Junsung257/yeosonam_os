@@ -56,7 +56,7 @@ observed demand → research packet → flexible brief/archetype → writer
 - DB snapshot은 전체 공개 본문을 보관하고, 정적 번들은 장애 시 반드시 살아 있어야 하는 핵심 URL만 최대 20개 보관합니다.
 - 생성 예: `npx tsx scripts/refresh-blog-public-snapshots.ts --detail-slugs=slug-a,slug-b --write-detail-bundled`
 - 번들은 `public_blog_content_creatives`가 아니라 공개 자격이 반영된 `blog_public_snapshots`에서만 읽습니다.
-- 본문 200자 미만, 누락 slug, 8MB 초과 번들은 생성 실패합니다. 기본 최대 72시간이며 HIGH risk는 24시간, MEDIUM risk는 48시간으로 더 짧게 제한합니다.
+- 본문 200자 미만, 누락 slug, 8MB 초과 번들은 생성 실패합니다. LOW risk 기본 최대 수명은 720시간(30일)이며 HIGH risk는 24시간, MEDIUM risk는 48시간으로 더 짧게 제한합니다.
 - DB가 정상이며 slug 조회 결과가 0건이면 번들로 되살리지 않고 진짜 404로 처리합니다.
 
 ## 분석 이벤트 내구성과 데이터 readiness
@@ -134,7 +134,7 @@ npx tsx scripts/refresh-blog-public-snapshots.ts `
   --write-detail-bundled
 ```
 
-HIGH/MEDIUM/LOW risk 본문의 fallback 최대 수명은 각각 24/48/72시간입니다. bundle refresh가 이 만료를 우회하지 않습니다.
+HIGH/MEDIUM/LOW risk 본문의 fallback 최대 수명은 각각 24/48/720시간입니다. LOW risk의 30일 허용은 DB 장애 중 이미 공개 검증된 글의 false-404를 줄이기 위한 것이며, HIGH/MEDIUM risk에는 적용되지 않습니다. bundle refresh가 이 만료를 우회하지 않습니다.
 
 ## 원격 Supabase preview 리허설 계약
 
