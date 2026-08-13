@@ -5,7 +5,9 @@
 - 2026-08-12 — Blog Quality Engine V3 production readiness: live Vercel/Supabase/public-surface read-only evidence, migration-history drift, and fail-closed release decision: `blog-quality-engine-v3-production-readiness-2026-08-12.md`
 - 2026-08-12 — Blog Quality Engine V3 isolated Supabase staging rehearsal: five migrations, SQL/TS parity, snapshot/Data API, ACL, Advisor, and rollback-safe evidence: `blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`
 
-Last updated: 2026-08-12
+- 2026-08-13 — Blog live operations revalidation: production source, full corpus, autopublish, demand, GSC, eligibility, indexing, images, RUM, and fail-closed release evidence: `blog-live-operations-revalidation-2026-08-13.md`
+
+Last updated: 2026-08-13
 
 This folder is an evidence archive, not the current operating playbook.
 

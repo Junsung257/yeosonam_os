@@ -1,0 +1,248 @@
+{
+  "audit": {
+    "name": "blog-live-operations-revalidation",
+    "audited_at": "2026-08-13T16:20:00+09:00",
+    "timezone": "Asia/Seoul",
+    "read_only": true,
+    "production_deploy_performed": false,
+    "production_database_write_performed": false,
+    "verdict": "BLOCKED",
+    "safe_to_enable_v3_live": false
+  },
+  "source_of_truth": {
+    "production_branch": "main",
+    "production_commit": "2718bc37fc6c0ee382624ea0d7dfd722ef878ed2",
+    "production_deployment_state": "READY",
+    "v3_branch": "codex/blog-quality-engine-v3-20260811",
+    "v3_head": "6c1afd5782362360701808d20ad922eaf541bc16",
+    "v3_commits_ahead_of_production": 20,
+    "v3_changed_files_against_production": 156,
+    "package_lock": "package-lock.json",
+    "next_version": "15.5.21",
+    "v3_is_in_production": false
+  },
+  "v3_runtime_readiness": {
+    "result": "BLOCKED",
+    "passed": ["production_source_branch"],
+    "blocked": [
+      "required_migrations",
+      "runtime_schema",
+      "snapshot_parity",
+      "public_surfaces",
+      "runtime_database_reliability",
+      "measurement_pipeline",
+      "review_blocked_published_rows",
+      "queued_demand_evidence"
+    ],
+    "missing_migrations": [
+      "20260811132017_blog_quality_v3_policy.sql",
+      "20260811132023_blog_quality_v3_demand_evidence.sql",
+      "20260811132031_blog_quality_v3_snapshots_media.sql",
+      "20260811132037_blog_quality_v3_measurement.sql",
+      "20260811210920_blog_quality_v3_reliability_followup.sql"
+    ],
+    "sql_ts_parity_runtime_rpc": "missing_from_production_schema"
+  },
+  "publishing": {
+    "production_policy": {
+      "enabled": true,
+      "posts_per_day": 5,
+      "slot_times": ["09:00", "12:00", "15:00", "18:00", "21:00"],
+      "per_destination_daily_cap": 2,
+      "product_ratio": 0.4
+    },
+    "v3_expected_defaults": {
+      "autopublish_mode_if_missing_or_invalid": "draft_only",
+      "daily_publish_cap": 1,
+      "max_weather_share_30d": 0.2,
+      "max_same_archetype_in_last_10": 2,
+      "require_demand_signal": true
+    },
+    "published_last_30d": 52,
+    "weather_published_last_30d": 50,
+    "weather_share_last_30d": 0.962,
+    "coverage_gap_published_last_30d": 50,
+    "published_queue_rows_last_30d": 67,
+    "published_queue_rows_without_verified_demand": 65,
+    "queued_now": 10,
+    "queued_now_without_verified_demand": 10,
+    "queued_destinations": [
+      "코펜하겐", "제네바", "뮌헨", "브뤼셀", "베를린",
+      "더블린", "크라쿠프", "마드리드", "취리히", "바르샤바"
+    ],
+    "last_publisher": {
+      "status": "partial_failure",
+      "started_at": "2026-08-13T15:05:37.553+09:00",
+      "elapsed_ms": 118415,
+      "processed": 2,
+      "published": 0,
+      "target": 5,
+      "errors": [
+        "publisher_zero_published_with_remaining_quota",
+        "copenhagen_seo_score_94",
+        "porto_duplicate_slug"
+      ]
+    },
+    "cron_14d": {
+      "blog_publisher": { "runs": 344, "success": 45, "non_success": 299, "success_rate": 0.131, "average_elapsed_ms": 109587, "max_elapsed_ms": 172095 },
+      "blog_scheduler": { "runs": 184, "success": 184, "non_success": 0 },
+      "blog_daily_summary": { "runs": 20, "success": 5, "non_success": 15 },
+      "blog_indexing_worker": { "runs": 90, "success": 90, "non_success": 0 }
+    },
+    "legacy_behavior_still_observed": [
+      "coverage_gap_only_candidate_generation",
+      "daily_target_5",
+      "keyword_density_gate",
+      "fixed_weather_checklist_titles",
+      "fixed_faq_and_checklist_sections",
+      "three_image_pattern"
+    ]
+  },
+  "corpus": {
+    "content_creatives_with_slug": 270,
+    "status": { "published": 200, "archived": 45, "draft": 25 },
+    "published_informational": 198,
+    "published_product_linked": 2,
+    "public_sql_view": 192,
+    "canonical_public_api_and_sitemap_articles": 173,
+    "redirect_source_rows_excluded_from_canonical_catalog": 19,
+    "published_exact_title_duplicates": { "groups": 16, "rows": 34 },
+    "published_normalized_title_skeleton_duplicates": { "groups": 15, "rows": 149 },
+    "all_corpus_exact_title_duplicates": { "groups": 19, "rows": 42 },
+    "all_corpus_normalized_title_skeleton_duplicates": { "groups": 20, "rows": 187 },
+    "published_normalized_h2_duplicates": { "groups": 19, "rows": 43 },
+    "published_intro_signature_duplicates": { "groups": 14, "rows": 158 },
+    "published_with_checklist_h2": 200,
+    "published_with_faq_h2": 200,
+    "published_with_generic_intro": 143,
+    "published_archetype_metadata_missing": 200,
+    "published_with_null_title": 1,
+    "quality": { "seo_average": 96.74, "seo_95_or_more": 191, "readability_100": 200 }
+  },
+  "public_eligibility": {
+    "published_changes_requested": 8,
+    "blocked_from_api_sitemap_and_rss": 8,
+    "blocked_detail_response": {
+      "http_status": 200,
+      "robots": "noindex",
+      "canonical": "https://www.yeosonam.com",
+      "classification": "soft_404_not_301_or_410"
+    },
+    "high_risk_unapproved_still_public": [
+      { "slug": "summer-travel-insurance-coverage-guide-2026", "review_status": "none", "robots": "index, follow" }
+    ],
+    "replacement_records": 0
+  },
+  "customer_surface": {
+    "discovered_canonical_articles": 173,
+    "checked_with_browser": 173,
+    "passed": 140,
+    "failed": 33,
+    "average_score": 95,
+    "issues": {
+      "overbuilt_mechanical_structure": 69,
+      "duplicate_public_section": 26,
+      "unsupported_internal_claim": 11,
+      "info_answer_mismatch": 2,
+      "placeholder_copy": 2
+    },
+    "technical_seo": { "passed": 172, "failed_or_warning": 1, "reported_score": 99 },
+    "public_surface_smoke": { "checked": 13, "passed": 13 },
+    "image_sitemap": { "http_status": 200, "content_type": "text/html", "image_entries": 0, "valid": false }
+  },
+  "images": {
+    "public_render_occurrences": 522,
+    "public_render_unique": 408,
+    "public_render_duplicate_ratio": 0.218,
+    "inline_db_occurrences": 602,
+    "inline_db_pexels_occurrences": 588,
+    "generic_alt_occurrences": 289,
+    "duplicated_url_groups": 81,
+    "duplicated_url_occurrences": 227,
+    "urls_used_across_3_or_more_destinations": 7,
+    "maximum_unrelated_destination_reuse": 14,
+    "production_renderer": "plain_img_through_960px_proxy",
+    "srcset_observed": false
+  },
+  "claims_and_evidence": {
+    "claims": 6700,
+    "evidence": 11621,
+    "claim_evidence_links": 11666,
+    "claim_status": { "supported": 6502, "review_required": 137, "pending": 61 },
+    "claim_risk": { "low": 5902, "medium": 788, "high": 10 },
+    "high_claims_without_approval": 10,
+    "medium_or_high_evidence_missing_expiry": 103,
+    "published_without_direct_creative_claim_link": 145,
+    "published_without_direct_creative_evidence_link": 200,
+    "traceability_note": "Recent research also uses content_key and generation metadata, so missing direct creative links do not prove missing evidence; they do prove incomplete article-level traceability."
+  },
+  "gsc": {
+    "ui_range": "2026-05-11/2026-08-10",
+    "ui_query_rows": 299,
+    "database_real_query_count": 75,
+    "database_query_coverage_ratio": 0.251,
+    "database_query_source_start": "2026-06-20",
+    "database_page_rows": 1117,
+    "database_page_clicks": 346,
+    "database_page_impressions": 21032,
+    "page_level_sentinel_query": "__page__",
+    "observed_value_mismatches": [
+      { "query": "몽골 7월 옷차림", "gsc_ui": { "clicks": 8, "impressions": 172 }, "database": { "clicks": 0, "impressions": 50 } },
+      { "query": "발리 7월 날씨", "gsc_ui": { "clicks": 1, "impressions": 324 }, "database": { "clicks": 0, "impressions": 28 } },
+      { "query": "7월 몽골 여행 준비물", "gsc_ui": { "clicks": 15, "impressions": 88 }, "database": { "clicks": 0, "impressions": 3 } }
+    ],
+    "naver_rows": 139,
+    "naver_impressions": 0,
+    "conclusion": "not_trustworthy_for_automatic_topic_selection"
+  },
+  "indexing": {
+    "public_articles": 192,
+    "inspection_pass": 10,
+    "inspection_neutral": 53,
+    "without_inspection_verdict": 129,
+    "discovered_currently_not_indexed": 43,
+    "unknown_to_google": 10,
+    "note": "Submission success is not equivalent to an indexed verdict."
+  },
+  "runtime": {
+    "blog_database_unavailable_7d_occurrences": 279,
+    "affected_user_counts_summed_across_error_groups_not_deduplicated": 183,
+    "catalog_error_cluster": 270,
+    "catalog_limit": 2000,
+    "catalog_cache_key": "blog-public-catalog-v2",
+    "durable_public_snapshot_active": false,
+    "field_vitals_30d": {
+      "LCP": { "count": 1052, "p75_ms": 4312, "target_ms": 2500, "passed": false },
+      "INP": { "count": 46, "p75_ms": 48, "target_ms": 200, "passed": true },
+      "CLS": { "count": 773, "p75": 0.022832666015625, "target": 0.1, "passed": true },
+      "TTFB": { "count": 2955, "p75_ms": 232.7 }
+    }
+  },
+  "measurement": {
+    "analytics_server_events": 0,
+    "analytics_delivery_jobs": 0,
+    "blog_engagement_events_30d": 3936,
+    "blog_sessions_30d": 1635,
+    "sessions_60_seconds": 35,
+    "sessions_scroll_50": 60,
+    "sessions_cta_click": 1,
+    "cta_session_rate": 0.00061,
+    "business_attribution_ready": false
+  },
+  "verification": {
+    "blog_test_files": 191,
+    "blog_tests": 1374,
+    "blog_tests_passed": 1374,
+    "targeted_v3_tests": 57,
+    "targeted_v3_tests_passed": 57,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "production_build": "PASS",
+    "migration_bundle_integrity": "PASS",
+    "production_sql_ts_parity": "BLOCKED_MISSING_RPC",
+    "production_readiness": "BLOCKED",
+    "public_customer_quality_strict": "FAIL_33_OF_173",
+    "technical_seo_strict": "FAIL_1_WARNING_OF_173",
+    "public_surface_smoke": "PASS_13_OF_13"
+  }
+}
