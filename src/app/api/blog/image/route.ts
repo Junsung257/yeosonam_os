@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
-import { isProxyableBlogImageUrl } from '@/lib/blog-image-proxy';
+import { isProxyableBlogImageUrl, normalizeBlogImageProxyWidth } from '@/lib/blog-image-proxy';
 
 export const runtime = 'nodejs';
 export const revalidate = 2592000;
 
 const IMAGE_ACCEPT = 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8';
 const DEFAULT_WIDTH = 960;
-const MAX_WIDTH = 1600;
 const DEFAULT_QUALITY = 74;
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 
@@ -26,7 +25,9 @@ export async function GET(request: NextRequest) {
   if (!isProxyableBlogImageUrl(src)) {
     return badRequest('Unsupported blog image source');
   }
-  const width = clampInt(request.nextUrl.searchParams.get('w'), DEFAULT_WIDTH, 160, MAX_WIDTH);
+  const width = normalizeBlogImageProxyWidth(
+    clampInt(request.nextUrl.searchParams.get('w'), DEFAULT_WIDTH, 160, 1600),
+  );
   const quality = clampInt(request.nextUrl.searchParams.get('q'), DEFAULT_QUALITY, 50, 85);
 
   const upstream = await fetch(src, {
@@ -35,10 +36,15 @@ export async function GET(request: NextRequest) {
       'user-agent': 'yeosonam-blog-image-proxy/1.0',
     },
     cache: 'no-store',
+    redirect: 'follow',
+    signal: AbortSignal.timeout(8_000),
   }).catch(() => null);
 
   if (!upstream || !upstream.ok || !upstream.body) {
     return badRequest('Blog image source is not reachable', 502);
+  }
+  if (!isProxyableBlogImageUrl(upstream.url)) {
+    return badRequest('Blog image source redirected outside the allowlist', 502);
   }
 
   const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
@@ -54,6 +60,11 @@ export async function GET(request: NextRequest) {
         'x-content-type-options': 'nosniff',
       },
     });
+  }
+
+  const declaredLength = Number(upstream.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_SOURCE_BYTES) {
+    return badRequest('Blog image source is too large', 413);
   }
 
   const sourceBuffer = Buffer.from(await upstream.arrayBuffer());

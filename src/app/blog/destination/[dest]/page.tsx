@@ -13,7 +13,6 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
@@ -110,7 +109,7 @@ function safeDecodePathSegment(value: string): string {
 }
 
 function getDisplayImageUrl(post: BlogPost): string | null {
-  return toBlogImageDisplaySrc(post.og_image_url);
+  return post.og_image_url?.trim() || null;
 }
 
 function isBlogDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
@@ -337,9 +336,10 @@ function DestinationContent({
                     <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
                         src={getDisplayImageUrl(post)}
-                        alt={post.seo_title || ''}
+                        alt=""
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         fallback={
                           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-light to-[#F2F4F6]">
                             <span className="text-4xl">✈️</span>

@@ -1,7 +1,14 @@
 export interface BlogImageAssetV3 {
   assetId: string;
   url: string;
+  sourceProvider?: string | null;
+  sourceUrl?: string | null;
+  license?: string | null;
+  attribution?: string | null;
+  photographer?: string | null;
+  capturedAt?: string | null;
   destinationId?: string | null;
+  locationEntityId?: string | null;
   landmarkEntityId?: string | null;
   imageType: string;
   isFirstParty: boolean;
@@ -10,6 +17,7 @@ export interface BlogImageAssetV3 {
   alt: string;
   width?: number | null;
   height?: number | null;
+  verifiedAt?: string | null;
 }
 
 const IMAGE_TYPE_PRIORITY: Record<string, number> = {
@@ -23,7 +31,7 @@ const IMAGE_TYPE_PRIORITY: Record<string, number> = {
   decorative: 100,
 };
 
-const GENERIC_ALT_RE = /^(?:여행\s*준비\s*장면|비용\s*확인\s*장면|월별\s*날씨\s*확인|여행\s*이미지|관광지\s*이미지)$/u;
+const GENERIC_ALT_RE = /(?:^|\s)(?:여행\s*준비(?:\s*여행)?|비용\s*확인|월별\s*날씨\s*확인|여행\s*이미지|관광지\s*이미지|대표\s*이미지|핵심\s*이미지)(?:\s*장면)?(?:\s*\d+)?$/u;
 
 export function hammingDistanceHexV3(left: string, right: string): number {
   if (!/^[0-9a-f]+$/i.test(left) || left.length !== right.length) return Number.POSITIVE_INFINITY;
@@ -55,6 +63,10 @@ export function findCrossDestinationImageDuplicatesV3(
       const left = assets[leftIndex];
       const right = assets[rightIndex];
       if (!left.destinationId || !right.destinationId || left.destinationId === right.destinationId) continue;
+      if (left.url.trim() && left.url.trim() === right.url.trim()) {
+        duplicates.push({ leftAssetId: left.assetId, rightAssetId: right.assetId, distance: 0 });
+        continue;
+      }
       if (!left.perceptualHash || !right.perceptualHash) continue;
       const distance = hammingDistanceHexV3(left.perceptualHash, right.perceptualHash);
       if (distance <= maximumHammingDistance) duplicates.push({ leftAssetId: left.assetId, rightAssetId: right.assetId, distance });

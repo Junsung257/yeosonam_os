@@ -6,7 +6,6 @@ import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
-import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import {
   BLOG_PUBLIC_ANGLES,
@@ -68,7 +67,7 @@ function isGenericBlogImageUrl(url: string | null | undefined): boolean {
 }
 
 function getDisplayImageUrl(post: BlogPost): string | null {
-  if (!isGenericBlogImageUrl(post.og_image_url)) return toBlogImageDisplaySrc(post.og_image_url);
+  if (!isGenericBlogImageUrl(post.og_image_url)) return post.og_image_url?.trim() || null;
   return null;
 }
 
@@ -230,14 +229,15 @@ function HeroCard({ post }: { post: BlogPost }) {
       <div className="aspect-[16/9] overflow-hidden relative">
         <SafeCoverImg
           src={imageUrl}
-          alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           loading="eager"
           fetchPriority="high"
+          sizes="(max-width: 768px) 100vw, 66vw"
           fallback={
             <img
               src="/og-image.png"
-              alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
+              alt=""
               className="absolute inset-0 h-full w-full object-cover"
               loading="eager"
             />
@@ -288,13 +288,14 @@ function SideCard({ post }: { post: BlogPost }) {
       <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-bg-section relative">
         <SafeCoverImg
           src={imageUrl}
-          alt={dest || ''}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          sizes="112px"
           fallback={
             <img
               src="/og-image.png"
-              alt={dest || '여소남 매거진'}
+              alt=""
               className="w-full h-full object-cover"
               loading="lazy"
             />
@@ -349,13 +350,14 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>
         <SafeCoverImg
           src={imageUrl}
-          alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '블로그 썸네일'}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           loading="lazy"
+          sizes="(max-width: 768px) 100vw, 33vw"
           fallback={
             <img
               src="/og-image.png"
-              alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '여소남 매거진'}
+              alt=""
               className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
             />

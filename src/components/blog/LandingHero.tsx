@@ -39,10 +39,11 @@ export default function LandingHero({
       <div className="absolute inset-0 z-0">
         <SafeCoverImg
           src={heroImage}
-          alt={headline}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover"
           loading="eager"
           fetchPriority="high"
+          sizes="(max-width: 768px) 100vw, 896px"
           fallback={<div className="absolute inset-0 bg-slate-900" aria-hidden />}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/50 to-slate-900/20" />

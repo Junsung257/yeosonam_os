@@ -10,7 +10,6 @@ import {
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
-import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
@@ -37,7 +36,7 @@ type AnglePageData = {
 };
 
 function getDisplayImageUrl(post: BlogPost): string | null {
-  return toBlogImageDisplaySrc(post.og_image_url);
+  return post.og_image_url?.trim() || null;
 }
 
 function getRouteParam(value: string | string[] | undefined): string {
@@ -215,9 +214,10 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                     <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
                         src={getDisplayImageUrl(post)}
-                        alt={post.seo_title || ''}
+                        alt=""
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         fallback={
                           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-light to-[#F2F4F6]">
                             <span className="text-4xl">{meta.icon}</span>

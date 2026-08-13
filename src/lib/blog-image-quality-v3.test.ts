@@ -13,7 +13,15 @@ describe('blog image quality v3', () => {
   });
   it('rejects generic and title-copy alt text', () => {
     expect(evaluateBlogImageAltV3('여행 준비 장면')).toContain('alt_generic_scene');
+    expect(evaluateBlogImageAltV3('다낭 비용 확인 장면 2')).toContain('alt_generic_scene');
     expect(evaluateBlogImageAltV3('오사카 숙소 위치', '오사카 숙소 위치')).toContain('alt_copies_full_title');
+  });
+
+  it('detects an exact image URL reused across unrelated destinations without requiring a pHash', () => {
+    expect(findCrossDestinationImageDuplicatesV3([
+      { assetId: 'a', url: 'https://images.pexels.com/same.jpg', destinationId: 'osaka', imageType: 'stock', isFirstParty: false, isGenerated: false, alt: 'Osaka street at night' },
+      { assetId: 'b', url: 'https://images.pexels.com/same.jpg', destinationId: 'paris', imageType: 'stock', isFirstParty: false, isGenerated: false, alt: 'Paris street at night' },
+    ])).toEqual([{ leftAssetId: 'a', rightAssetId: 'b', distance: 0 }]);
   });
 
   it('computes a stable perceptual hash and prioritizes exact first-party assets', async () => {

@@ -39,7 +39,7 @@ describe('blog public sections contract', () => {
 
     for (const file of files) {
       const source = readSource(file);
-      expect(source).toContain('toBlogImageDisplaySrc');
+      expect(source).toContain('SafeCoverImg');
       expect(source).not.toContain('src={post.og_image_url}');
     }
   });
@@ -124,7 +124,8 @@ describe('blog public sections contract', () => {
     expect(catalogSource).toContain('isBlogSlugRedirectSource');
     expect(catalogSource).not.toContain('blog_html');
     expect(catalogSource).not.toContain('quality_gate');
-    expect(catalogSource).not.toContain('generation_meta');
+    expect(catalogSource).toContain('noindex:generation_meta->noindex');
+    expect(catalogSource).not.toContain('prompt_manifest');
   });
 
   it('does not redirect legacy slugs to archived blog posts', () => {

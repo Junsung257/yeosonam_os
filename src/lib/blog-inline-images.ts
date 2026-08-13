@@ -57,20 +57,20 @@ function cleanHeading(raw: string): string {
     .slice(0, 60);
 }
 
-function buildAlt(destination: string | null | undefined, heading: string, fallback: string): string {
-  const dest = (destination || fallback || '여행').trim();
-  const title = cleanHeading(heading).replace(/^\d+[.)]\s*/, '');
-  const alt = title && !title.includes(dest) ? `${dest} ${title}` : `${dest} 여행 이미지`;
-  return alt.replace(/\s+/g, ' ').slice(0, 44).trim();
-}
-
-function buildImageLabel(baseAlt: string, url: string): { alt: string; caption: string } {
-  if (!isGeneratedBlogImageUrl(url)) return { alt: baseAlt, caption: baseAlt };
+function buildImageLabel(baseAlt: string, url: string): { alt: string; caption: string | null } {
+  if (!isGeneratedBlogImageUrl(url)) return { alt: baseAlt, caption: null };
   const disclosure = 'AI 생성 참고 이미지';
   return {
-    alt: `${disclosure}: ${baseAlt}`.slice(0, 80),
+    alt: baseAlt ? `${disclosure}: ${baseAlt}`.slice(0, 80) : disclosure,
     caption: `${disclosure} · 실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.`,
   };
+}
+
+export interface RelevantBlogPexelsImage {
+  url: string;
+  alt: string;
+  sourceUrl: string;
+  photographer: string;
 }
 
 function sectionAlreadyHasImage(lines: string[], headingIndex: number): boolean {
@@ -86,13 +86,13 @@ function sectionAlreadyHasImage(lines: string[], headingIndex: number): boolean 
   return false;
 }
 
-export async function findRelevantBlogPexelsImage(input: {
+export async function findRelevantBlogPexelsAsset(input: {
   destination?: string | null;
   primaryKeyword?: string | null;
   sectionTitle?: string | null;
   usedUrls?: Set<string>;
   minimumScore?: number;
-}): Promise<string | null> {
+}): Promise<RelevantBlogPexelsImage | null> {
   if (!isPexelsConfigured()) return null;
   try {
     const destinationQuery = input.destination
@@ -124,7 +124,12 @@ export async function findRelevantBlogPexelsImage(input: {
           minimumScore: input.minimumScore,
         });
         if (photo) {
-          return photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original;
+          return {
+            url: photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original,
+            alt: String(photo.alt ?? '').replace(/\s+/g, ' ').trim().slice(0, 120),
+            sourceUrl: photo.url,
+            photographer: photo.photographer,
+          };
         }
       }
     }
@@ -132,6 +137,16 @@ export async function findRelevantBlogPexelsImage(input: {
   } catch {
     return null;
   }
+}
+
+export async function findRelevantBlogPexelsImage(input: {
+  destination?: string | null;
+  primaryKeyword?: string | null;
+  sectionTitle?: string | null;
+  usedUrls?: Set<string>;
+  minimumScore?: number;
+}): Promise<string | null> {
+  return (await findRelevantBlogPexelsAsset(input))?.url ?? null;
 }
 
 export async function ensureBlogInlineImages(options: BlogInlineImageOptions): Promise<BlogInlineImageResult> {
@@ -155,6 +170,7 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
     .filter((item): item is { line: string; index: number; match: RegExpMatchArray } => !!item.match);
 
   let inserted = 0;
+  let insertedLineCount = 0;
   let imageCount = existingImages.length;
   let externalAssetAttempts = 0;
   const maxExternalAssetAttempts = Math.max(0, options.maxExternalAssetAttempts ?? maxImages);
@@ -165,18 +181,21 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
 
     const heading = h2.match[1] ?? '';
     let url: string | null = null;
+    let verifiedAlt = '';
     if (options.preferFallbackImages) {
       url = takeFallbackImage();
     }
     const canAttemptExternalAsset = externalAssetAttempts < maxExternalAssetAttempts;
     if (!url && canAttemptExternalAsset && options.allowPexelsSearch !== false) {
       externalAssetAttempts += 1;
-      url = await findRelevantBlogPexelsImage({
+      const selectedAsset = await findRelevantBlogPexelsAsset({
         destination: options.destination,
         primaryKeyword: options.primaryKeyword,
         sectionTitle: heading,
         usedUrls,
       });
+      url = selectedAsset?.url ?? null;
+      verifiedAlt = selectedAsset?.alt ?? '';
     }
     if (!url && canAttemptExternalAsset && options.allowGeneratedFallback !== false) {
       if (options.allowPexelsSearch === false) externalAssetAttempts += 1;
@@ -193,10 +212,12 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
 
     if (!url) continue;
     usedUrls.add(url);
-    const baseAlt = buildAlt(options.destination, heading, options.primaryKeyword || '');
-    const label = buildImageLabel(baseAlt, url);
-    const caption = `<figcaption>${label.caption}</figcaption>`;
-    lines.splice(h2.index + 1 + inserted * 2, 0, `![${label.alt}](${url})`, caption);
+    const generatedAlt = cleanHeading(heading);
+    const label = buildImageLabel(isGeneratedBlogImageUrl(url) ? generatedAlt : verifiedAlt, url);
+    const additions = [`![${label.alt}](${url})`];
+    if (label.caption) additions.push(`<figcaption>${label.caption}</figcaption>`);
+    lines.splice(h2.index + 1 + insertedLineCount, 0, ...additions);
+    insertedLineCount += additions.length;
     inserted += 1;
     imageCount += 1;
   }
@@ -208,14 +229,17 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
   ) {
     const heading = `${options.primaryKeyword || options.destination || 'travel'} travel reference ${imageCount + 1}`;
     let url: string | null = null;
+    let verifiedAlt = '';
     if (options.allowPexelsSearch !== false) {
       externalAssetAttempts += 1;
-      url = await findRelevantBlogPexelsImage({
+      const selectedAsset = await findRelevantBlogPexelsAsset({
         destination: options.destination,
         primaryKeyword: options.primaryKeyword,
         sectionTitle: heading,
         usedUrls,
       });
+      url = selectedAsset?.url ?? null;
+      verifiedAlt = selectedAsset?.alt ?? '';
     }
     if (!url && options.allowGeneratedFallback !== false) {
       if (options.allowPexelsSearch === false) externalAssetAttempts += 1;
@@ -229,18 +253,18 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
     if (!url || usedUrls.has(url)) break;
 
     usedUrls.add(url);
-    const baseAlt = buildAlt(options.destination, heading, options.primaryKeyword || '');
-    const label = buildImageLabel(baseAlt, url);
-    lines.push('', `![${label.alt}](${url})`, `<figcaption>${label.caption}</figcaption>`);
+    const label = buildImageLabel(isGeneratedBlogImageUrl(url) ? cleanHeading(heading) : verifiedAlt, url);
+    lines.push('', `![${label.alt}](${url})`);
+    if (label.caption) lines.push(`<figcaption>${label.caption}</figcaption>`);
     inserted += 1;
     imageCount += 1;
   }
 
   const finalFallbackUrl = takeFallbackImage();
   if (imageCount < minImages && finalFallbackUrl) {
-    const baseAlt = buildAlt(options.destination, '여행 핵심 이미지', options.primaryKeyword || '');
-    const label = buildImageLabel(baseAlt, finalFallbackUrl);
-    lines.push('', `![${label.alt}](${finalFallbackUrl})`, `<figcaption>${label.caption}</figcaption>`);
+    const label = buildImageLabel('', finalFallbackUrl);
+    lines.push('', `![${label.alt}](${finalFallbackUrl})`);
+    if (label.caption) lines.push(`<figcaption>${label.caption}</figcaption>`);
     inserted += 1;
     imageCount += 1;
   }

@@ -15,7 +15,6 @@ export async function GET() {
     <loc>${xml(`${baseUrl}/blog/${encodeURIComponent(post.slug)}`)}</loc>
     <image:image>
       <image:loc>${xml(post.og_image_url!)}</image:loc>
-      <image:title>${xml(post.seo_title || '')}</image:title>
     </image:image>
   </url>`).join('');
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>
