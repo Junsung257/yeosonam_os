@@ -78,8 +78,7 @@ import {
   buildInformationalWriterPrompt,
 } from '@/lib/blog-informational-writer-prompt';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
-import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
-import { buildBlogInformationalSeoDescription } from '@/lib/blog-informational-seo-description';
+import { buildBlogContentBrief } from '@/lib/blog-content-brief';
 import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
@@ -154,7 +153,20 @@ import {
   aggregateObservedBlogSearchMetricsV3,
   scoreBlogDemandCandidateV3,
 } from '@/lib/blog-demand-engine-v3';
-import { buildBlogContentBriefV3 } from '@/lib/blog-content-brief-v3';
+import {
+  buildBlogContentBriefV3,
+  buildBlogContentBriefV3PromptBlock,
+  type BlogContentBriefV3,
+} from '@/lib/blog-content-brief-v3';
+import {
+  buildSerpResearchPromptBlockV3,
+  findCompetitorPhraseMatchesV3,
+  prioritizeBlogSerpInitialCandidatesV3,
+  researchSerpNaverFirstV3,
+  type SerpResearchPacketV3,
+} from '@/lib/blog-serp-research-v3';
+import { enrichBlogDemandWithNaverV3 } from '@/lib/blog-live-demand-v3';
+import type { BlogInformationResearchBundle } from '@/lib/blog-information-evidence';
 import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
 import {
   BLOG_RUNTIME_RESOURCES_V3,
@@ -208,7 +220,8 @@ export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
-const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 8, MAX_BATCH, 8);
+const MAX_CANDIDATE_ATTEMPTS_PER_RUN = 8;
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
 // V3 never deterministically invents or appends content to satisfy a gate.
 const BLOG_AUTOPUBLISH_POLICY_V3 = readBlogAutopublishPolicyV3();
@@ -222,7 +235,10 @@ const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_I
 const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
-const MAX_ATTEMPTS = 2;
+// A candidate can be regenerated at most three times across durable queue
+// attempts. The research bundle/claim fingerprints remain persisted between
+// attempts, so retries may change expression and structure but not invent facts.
+const MAX_ATTEMPTS = 3;
 const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 
@@ -283,10 +299,15 @@ async function loadQueueDemandEvidenceV3(item: any): Promise<{
     },
     (data ?? []) as PersistedBlogDemandSignalV3[],
   );
+  const liveNaver = hasVerifiedBlogDemandSignal(merged.signal)
+    ? { signal: merged.signal, acceptedProviders: [] as string[], errors: [] as string[] }
+    : await enrichBlogDemandWithNaverV3(merged.signal, item.primary_keyword || item.topic);
   return {
     repositoryReady: !performanceResult.error,
-    ...merged,
-    error: performanceResult.error?.message ?? null,
+    signal: liveNaver.signal,
+    acceptedProviders: [...new Set([...merged.acceptedProviders, ...liveNaver.acceptedProviders])].sort(),
+    rejectedCount: merged.rejectedCount,
+    error: [performanceResult.error?.message, ...liveNaver.errors].filter(Boolean).join('|') || null,
     performance: aggregateObservedBlogSearchMetricsV3(performanceResult.data ?? []),
   };
 }
@@ -399,6 +420,62 @@ function buildQueueContentBrief(item: any) {
     travelerNationality: typeof item.meta?.traveler_nationality === 'string'
       ? item.meta.traveler_nationality
       : null,
+  });
+}
+
+function buildResearchBackedContentBriefV3(input: {
+  item: any;
+  legacyBrief: ReturnType<typeof buildQueueContentBrief>;
+  researchBundle: BlogInformationResearchBundle;
+  serpResearch: SerpResearchPacketV3 | null;
+}): BlogContentBriefV3 {
+  const evidenceByKey = new Map(input.researchBundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]));
+  const sourceByKey = new Map(input.researchBundle.sources.map((source) => [source.sourceKey, source]));
+  const destinationDecisionDetails = input.researchBundle.claims
+    .filter((claim) => claim.requiresEvidence && claim.evidenceKeys.length > 0 && claim.claimText.trim().length > 0)
+    .map((claim) => {
+      const evidence = evidenceByKey.get(claim.evidenceKeys[0]);
+      const source = evidence ? sourceByKey.get(evidence.sourceKey) : null;
+      return {
+        text: claim.claimText,
+        evidenceId: claim.claimFingerprint,
+        sourceType: source?.sourceType,
+      };
+    })
+    .filter((detail, index, rows) => rows.findIndex((row) => row.evidenceId === detail.evidenceId) === index)
+    .slice(0, 12);
+  const bundleEvidenceTypes = new Set(input.researchBundle.claims.map((claim) => claim.claimType));
+  const availableEvidenceTypes = [
+    ...bundleEvidenceTypes,
+    ...(input.researchBundle.claims.filter((claim) => claim.claimType === 'climate').length >= 12
+      ? ['climate_series']
+      : []),
+    ...(input.researchBundle.sources.some((source) => source.authorityLevel === 'field_observation' || source.sourceType === 'field_research')
+      ? ['first_party']
+      : []),
+  ];
+  const registeredFirstPartyIds = Array.isArray(input.item.meta?.first_party_source_ids)
+    ? input.item.meta.first_party_source_ids.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const bundleFirstPartyIds = input.researchBundle.sources
+    .filter((source) => source.authorityLevel === 'field_observation' || source.sourceType === 'field_research')
+    .map((source) => source.sourceKey);
+  return buildBlogContentBriefV3({
+    topic: input.item.topic,
+    destination: input.item.destination,
+    primaryKeyword: input.item.primary_keyword || input.legacyBrief.primaryKeyword,
+    secondaryQueries: [
+      ...(Array.isArray(input.item.meta?.keywords) ? input.item.meta.keywords : []),
+      ...input.legacyBrief.secondaryKeywords,
+    ].filter((value): value is string => typeof value === 'string'),
+    audience: typeof input.item.meta?.audience === 'string' ? input.item.meta.audience : null,
+    availableEvidenceTypes,
+    firstPartySourceIds: [...new Set([...registeredFirstPartyIds, ...bundleFirstPartyIds])],
+    customerQuestionIds: Array.isArray(input.item.meta?.customer_question_ids)
+      ? input.item.meta.customer_question_ids.filter((value: unknown): value is string => typeof value === 'string')
+      : [],
+    destinationDecisionDetails,
+    serpResearch: input.serpResearch,
   });
 }
 
@@ -1658,13 +1735,14 @@ async function runBlogPublisher(request: NextRequest) {
     let emergencyRefillRounds = 0;
     let stoppedForTimeBudget = false;
     const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
-    const orderedInitialQueue = sortPublisherQueueForTimeBudget(queue, {
+    const orderedInitialQueue = prioritizeBlogSerpInitialCandidatesV3(sortPublisherQueueForTimeBudget(queue, {
       remainingMs: publisherRemainingMs(startTime),
       minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
       fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
       isFallbackEligible: isFastFallbackEligibleInfoItem,
-    });
+    }));
     for (const item of orderedInitialQueue) {
+      if (attemptedQueueIds.size >= MAX_CANDIDATE_ATTEMPTS_PER_RUN) break;
       if (attemptedQueueIds.has(item.id)) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
         continue;
@@ -1694,7 +1772,11 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
+    while (
+      publishedThisRun < remainingDueNow
+      && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS
+      && attemptedQueueIds.size < MAX_CANDIDATE_ATTEMPTS_PER_RUN
+    ) {
       const remaining = publisherRemainingMs(startTime);
       const extraClaimPlan = getPublisherExtraClaimRecoveryPlan({
         remainingMs: remaining,
@@ -1771,14 +1853,15 @@ async function runBlogPublisher(request: NextRequest) {
       const nextEligibleByCardNewsId =
         nextCardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(nextCardNewsIds) : new Map<string, number>();
 
-      const orderedNextQueue = sortPublisherQueueForTimeBudget(nextQueue, {
+      const orderedNextQueue = prioritizeBlogSerpInitialCandidatesV3(sortPublisherQueueForTimeBudget(nextQueue, {
         remainingMs: publisherRemainingMs(startTime),
         minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
         fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
         isFallbackEligible: isFastFallbackEligibleInfoItem,
-      });
+      }));
 
       for (const item of orderedNextQueue) {
+        if (attemptedQueueIds.size >= MAX_CANDIDATE_ATTEMPTS_PER_RUN) break;
         if (attemptedQueueIds.has(item.id)) {
           results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
           continue;
@@ -2815,16 +2898,22 @@ async function processQueueItem(
         .filter((detail: unknown) => detail && typeof detail === 'object')
         .map((detail: any) => ({ text: String(detail.text || ''), evidenceId: String(detail.evidence_id || detail.evidenceId || '') }))
       : [];
-    const contentBriefV3 = buildBlogContentBriefV3({
-      topic: item.topic,
-      destination: item.destination,
-      primaryKeyword,
-      audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
-      availableEvidenceTypes: Array.isArray(item.meta?.available_evidence_types) ? item.meta.available_evidence_types : [],
-      firstPartySourceIds: Array.isArray(item.meta?.first_party_source_ids) ? item.meta.first_party_source_ids : [],
-      customerQuestionIds: Array.isArray(item.meta?.customer_question_ids) ? item.meta.customer_question_ids : [],
-      destinationDecisionDetails,
-    });
+    const generatedContentBriefV3 = generated.generation_meta?.content_brief_v3;
+    const contentBriefV3 = generatedContentBriefV3
+      && typeof generatedContentBriefV3 === 'object'
+      && !Array.isArray(generatedContentBriefV3)
+      && (generatedContentBriefV3 as Record<string, unknown>).version === 'blog-quality-v3.1'
+      ? generatedContentBriefV3 as BlogContentBriefV3
+      : buildBlogContentBriefV3({
+          topic: item.topic,
+          destination: item.destination,
+          primaryKeyword,
+          audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
+          availableEvidenceTypes: Array.isArray(item.meta?.available_evidence_types) ? item.meta.available_evidence_types : [],
+          firstPartySourceIds: Array.isArray(item.meta?.first_party_source_ids) ? item.meta.first_party_source_ids : [],
+          customerQuestionIds: Array.isArray(item.meta?.customer_question_ids) ? item.meta.customer_question_ids : [],
+          destinationDecisionDetails,
+        });
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
       information_evidence_content_key: evidenceContentKey,
@@ -2954,6 +3043,17 @@ async function processQueueItem(
       authorReviewTruthful: true,
       internalLinkRelevance: qa.passed ? 1 : 0,
       userActionability: taskCompletion01,
+      serpIntentAlignment: taskCompletion01,
+      decisionCompletion: taskCompletion01,
+      queryClusterCoverage: generated.seo_title.includes(contentBriefV3.primaryQuery) ? 1 : taskCompletion01,
+      comparativeInformationGain: engineScore01,
+      competitorCopyRisk: Number(
+        (generated.generation_meta?.competitor_copy_risk_v3 as Record<string, unknown> | undefined)?.match_count || 0,
+      ) > 0 ? 1 : 0,
+      titleSnippetCongruence: generated.seo_title === contentBriefV3.metadata.title ? 1 : 0,
+      sectionPurposeCoverage: taskCompletion01,
+      imageEntityMatch: publishQuality.passed ? 1 : 0,
+      pillarSupportRelationship: representativeIdentity ? 1 : 0,
       normalizedTitleClusterSize: diversityReport?.normalizedTitleClusterSize ?? 3,
       templateSaturation: !diversityReport || ['queue_reject', 'refresh', 'merge'].includes(diversityReport.disposition),
       firstPartySourceIds: Array.isArray(item.meta?.first_party_source_ids)
@@ -4008,11 +4108,40 @@ async function generateFromTopic(
       (claim) => claim.claimFingerprint,
     ),
   });
+  let serpResearchV3: SerpResearchPacketV3 | null = null;
+  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
+    item.primary_keyword || contentBrief.primaryKeyword,
+  );
+  if (shouldAnalyzeSerp) {
+    try {
+      serpResearchV3 = await researchSerpNaverFirstV3({
+        primaryQuery: item.primary_keyword || contentBrief.primaryKeyword,
+        secondaryQueries: [
+          ...(Array.isArray(item.meta?.keywords) ? item.meta.keywords : []),
+          ...contentBrief.secondaryKeywords,
+        ].filter((value): value is string => typeof value === 'string'),
+      });
+    } catch (error) {
+      console.warn('[blog-publisher] Naver-first research unavailable; continuing with verified demand and official evidence only:',
+        error instanceof Error ? error.message : String(error));
+    }
+  }
+  const contentBriefV3 = buildResearchBackedContentBriefV3({
+    item,
+    legacyBrief: contentBrief,
+    researchBundle: researchReadiness.bundle,
+    serpResearch: serpResearchV3,
+  });
+  if (!contentBriefV3.passed) {
+    throw new Error(`blog_content_brief_v3_failed:${contentBriefV3.issues.join(',')}`);
+  }
+  if (contentBriefV3.publicationStrategy === 'refresh_representative' && !privateRegeneration) {
+    throw new Error('information_representative_refresh_required:broad_query_new_url_blocked');
+  }
   const researchPromptBlock = buildBlogGenerationResearchPromptBlock(researchReadiness);
-  const infoGuideBrief = buildInfoGuideBrief(contentBrief);
-  const effectiveTopic = contentBrief.title;
-  const primaryKw = contentBrief.primaryKeyword;
-  const volume = item.monthly_search_volume;
+  const infoGuideBrief = buildInfoGuideBrief(contentBriefV3);
+  const effectiveTopic = contentBriefV3.title;
+  const primaryKw = contentBriefV3.primaryQuery;
   const trendScore = item.trend_score;
   const intentPromptBlock = buildBlogIntentPromptContract(classifyBlogIntent({
     title: effectiveTopic,
@@ -4027,50 +4156,9 @@ async function generateFromTopic(
   const trendBlock = trendScore && trendScore > 30
     ? `\n## Demand signal (planning context only)\n- Internal trend score: ${trendScore}/100.\n- Never expose this score or claim that searches are surging. Use it only to prioritize timely reader checks.\n` : '';
 
-  // SERP analysis: always for head/mid, selectively for proven longtail opportunities.
-  let serpBlock = '';
-  let serpGapBlock = '';
-  let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
-    primaryKw &&
-    (
-      tier === 'head' ||
-      tier === 'mid' ||
-      item.source === 'gsc_longtail' ||
-      (tier === 'longtail' && typeof volume === 'number' && volume >= 300)
-    ),
-  );
-  if (shouldAnalyzeSerp && primaryKw) {
-    try {
-      await new Promise(r => setTimeout(r, 500));
-      serpData = await analyzeSerp(primaryKw, 'naver_blog');
-      serpBlock = buildSerpPromptBlock(serpData);
-
-      // SERP 갭 분석: 경쟁사 상위 글 대비 누락 주제 발견
-      if (serpData && serpData.recommended_entities_to_include?.length > 0) {
-        try {
-          const { analyzeSerpGap } = await import('@/lib/serp-gap-analyzer');
-          const gapResult = analyzeSerpGap(
-            primaryKw,
-            effectiveTopic,
-            [primaryKw, ...serpData.recommended_entities_to_include.slice(0, 5)],
-          );
-          if (gapResult.missingTopics.length > 0) {
-            serpGapBlock = `
-## 경쟁 글에서 자주 다루는 보강 주제
-
-아래는 경쟁사 상위 글이 공통으로 다루지만 이 글에는 없는 주제입니다.
-각각을 무조건 H2로 늘리지 말고, 기존 섹션에 자연스럽게 통합하세요. 꼭 별도 판단이 필요한 주제만 H2로 승격합니다.
-
-${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggestions[i] || '관련 내용으로 H2 섹션 추가'}`).join('\n')}
-
-커버리지 점수: ${gapResult.coverageScore}/100 (낮을수록 보강 필요)
-`;
-          }
-        } catch { /* SERP 갭 분석 실패 시 미주입 — 발행은 계속 */ }
-      }
-    } catch { /* SERP 실패 시 미주입 — 발행은 계속 */ }
-  }
+  // Search results guide decision coverage only. Facts still come exclusively
+  // from the official research/claim packet above.
+  const serpBlock = serpResearchV3 ? buildSerpResearchPromptBlockV3(serpResearchV3) : '';
 
   const assignmentBlock = [
     '## Assignment',
@@ -4090,13 +4178,12 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       reviewPromptBlock,
       freshnessPromptBlock,
       intentPromptBlock,
-      buildBlogContentBriefPromptBlock(contentBrief),
+      buildBlogContentBriefV3PromptBlock(contentBriefV3),
       editorialVariationBlock,
       buildInfoWriterPromptBlock(infoGuideBrief),
       researchPromptBlock,
       trendBlock,
       serpBlock,
-      serpGapBlock,
     ],
     depthBlock: buildInformationalDepthBlock(tier),
     qualityBlock: buildInformationalQualityBlock({
@@ -4116,6 +4203,12 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     .trim();
   const writerOutputBoundary = boundBlogWriterOutput(blog_html);
   blog_html = writerOutputBoundary.markdown;
+  const competitorPhraseMatches = serpResearchV3
+    ? findCompetitorPhraseMatchesV3(blog_html, serpResearchV3.results)
+    : [];
+  if (competitorPhraseMatches.length > 0) {
+    throw new Error(`competitor_copy_risk:${competitorPhraseMatches.map((match) => match.url).slice(0, 3).join(',')}`);
+  }
   console.log(
     `[blog-publisher] writer output boundary: ${writerOutputBoundary.originalCharacters}`
     + ` -> ${writerOutputBoundary.finalCharacters}, truncated=${writerOutputBoundary.truncated}`,
@@ -4128,10 +4221,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
 
   // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
   const seo_title = effectiveTopic.trim().slice(0, 80);
-  const seo_description = buildBlogInformationalSeoDescription({
-    title: effectiveTopic,
-    intent: contentBrief.intentType,
-  });
+  const seo_description = contentBriefV3.metadata.description;
 
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
@@ -4153,7 +4243,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     writer: 'info_writer',
     editorial_voice: BLOG_EDITORIAL_VOICE,
     info_guide_brief: infoGuideBrief,
-    content_brief: {
+      content_brief: {
       title: contentBrief.title,
       primary_keyword: contentBrief.primaryKeyword,
       secondary_keywords: contentBrief.secondaryKeywords,
@@ -4177,6 +4267,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       claim_ledger_policy: contentBrief.claimLedgerPolicy,
       editorial_variation: item.meta?.editorial_variation ?? null,
     },
+    content_brief_v3: contentBriefV3,
     writer_claim_ledger: {
       version: 'v1',
       claims: writerOutput.claimLedger,
@@ -4187,6 +4278,11 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       original_characters: writerOutputBoundary.originalCharacters,
       final_characters: writerOutputBoundary.finalCharacters,
       truncated: writerOutputBoundary.truncated,
+    },
+    competitor_copy_risk_v3: {
+      minimum_consecutive_tokens: 12,
+      match_count: competitorPhraseMatches.length,
+      passed: competitorPhraseMatches.length === 0,
     },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
     ...(item.meta?.auto_research
@@ -4203,17 +4299,28 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       provider: isGeneratedBlogImageUrl(og_image_url) ? 'ai_generated' : (og_image_url ? 'pexels' : 'none'),
       disclosure: isGeneratedBlogImageUrl(og_image_url) ? 'AI 생성 참고 이미지' : null,
     },
-    serp_analyzed: Boolean(serpData),
+    serp_analyzed: Boolean(serpResearchV3?.serpFeatures.editorialResultCount),
     freshness_risk: freshnessRisk,
-    ...(serpData ? {
+    ...(serpResearchV3 ? {
       serp_analysis: {
-        keyword: serpData.keyword,
-        source: serpData.source,
-        signal_source: serpData.signal_source ?? 'naver_serp',
-        fetched_at: serpData.fetched_at,
-        cached: serpData.cached,
-        recommended_title_patterns: serpData.recommended_title_patterns,
-        recommended_entities_to_include: serpData.recommended_entities_to_include,
+        keyword: serpResearchV3.queryCluster.primaryQuery,
+        source: 'naver_first',
+        signal_source: serpResearchV3.mode,
+        fetched_at: serpResearchV3.researchedAt,
+        cached: serpResearchV3.mode === 'cached',
+        intent: serpResearchV3.intent,
+        structure_consensus: serpResearchV3.consensus,
+        content_gaps: serpResearchV3.contentGaps,
+      },
+      serp_research_packet_v3: {
+        ...serpResearchV3,
+        results: serpResearchV3.results.map((result) => ({
+          sampleRank: result.sampleRank,
+          providerRank: result.providerRank,
+          source: result.source,
+          url: result.url,
+          domain: result.domain,
+        })),
       },
     } : {}),
   };

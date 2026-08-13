@@ -12,13 +12,13 @@ describe('blog content brief', () => {
     });
 
     expect(brief.passed).toBe(true);
-    expect(brief.title).toBe('보라카이 월별 날씨 옷차림 여행 준비물 체크리스트');
-    expect(brief.primaryKeyword).toBe('보라카이 월별 날씨');
+    expect(brief.title).toBe('보라카이 7월 날씨');
+    expect(brief.primaryKeyword).toBe('보라카이 7월 날씨');
     expect(brief.intentType).toBe('monthly_weather');
     expect(brief.requiresHumanReview).toBe(false);
     expect(brief.requiredSections).toContain('1~12월 평균 기온');
     expect(brief.secondaryKeywords).toEqual(
-      expect.arrayContaining(['보라카이 7월 옷차림', '보라카이 여행 준비물', '보라카이 7월 우기']),
+      expect.arrayContaining(['보라카이 7월 옷차림', '보라카이 7월 우기']),
     );
     expect(brief.forbiddenAngles.join(' ')).toContain('에어컨 없는 숙소');
   });
@@ -34,7 +34,7 @@ describe('blog content brief', () => {
 
     expect(brief.searchIntent).toBe('weather');
     expect(brief.intentType).toBe('monthly_weather');
-    expect(brief.primaryKeyword).toBe('다낭 월별 날씨');
+    expect(brief.primaryKeyword).toBe('다낭 7월 날씨');
     expect(brief.requiredSections).toEqual(
       expect.arrayContaining([
         '1~12월 평균 기온',
@@ -43,7 +43,7 @@ describe('blog content brief', () => {
         '기후 평년값 관측 기간과 출처',
       ]),
     );
-    expect(buildBlogContentBriefPromptBlock(brief)).toContain('Required H2 sections');
+    expect(buildBlogContentBriefPromptBlock(brief)).toContain('not fixed H2 headings');
     expect(brief.claimLedgerPolicy.required).toBe(true);
     expect(brief.claimLedgerPolicy.candidateKinds).toContain('money_price');
   });
@@ -87,7 +87,7 @@ describe('blog content brief', () => {
     expect(brief.requiredSections).toContain('정부·대사관·공항·세관 1차 출처');
   });
 
-  it('requires evidence-backed daily tiers and meal prices for food-budget articles', () => {
+  it('keeps tables optional and forbids invented values for food-budget articles', () => {
     const brief = buildBlogContentBrief({
       topic: '삿포로 식비와 하루 음식 예산',
       destination: '삿포로',
@@ -98,17 +98,10 @@ describe('blog content brief', () => {
     const prompt = buildBlogContentBriefPromptBlock(brief);
 
     expect(brief.intentType).toBe('food_budget');
-    expect(prompt).toContain('Mandatory food-budget evidence tables');
-    expect(prompt).toContain('| 예산 유형 | 1인 1일 총액 | 산정 근거 |');
-    expect(prompt).toContain('exactly three data rows');
-    expect(prompt).toContain('do not leave a blank, dash, placeholder');
-    expect(prompt).toContain('| 끼니 | 대표 메뉴 | 가격 범위 | 근거 |');
-    expect(prompt).toContain('first body paragraph must include `기준으로`');
-    expect(prompt).toContain('source-backed numeric 1-person daily budget range');
-    expect(prompt).toContain('N박 M일 여행 총액은 1인 기준 [현지통화 금액]입니다');
-    expect(prompt).toContain('계산식: [1인 1일 총액] × [식사일 수] = [여행 총액]');
-    expect(prompt).toContain('Never estimate, average, or invent a price');
-    expect(prompt).toContain('missing evidence in the claim ledger');
+    expect(prompt).toContain('Tables: optional; use only when every cell is supported');
+    expect(prompt).toContain('FAQ: default off');
+    expect(prompt).toContain('No deterministic length filling');
+    expect(prompt).not.toContain('exactly three data rows');
   });
 
   it('fails closed before writing when a regulated plan is missing traveler nationality', () => {

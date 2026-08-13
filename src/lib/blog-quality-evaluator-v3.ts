@@ -4,6 +4,9 @@ export const BLOG_QUALITY_DIMENSIONS_V3 = [
   'information_gain', 'title_uniqueness', 'opening_uniqueness', 'structure_uniqueness',
   'Korean_language_integrity', 'image_relevance', 'image_uniqueness', 'source_quality',
   'author_review_truthfulness', 'internal_link_relevance', 'user_actionability',
+  'serp_intent_alignment', 'decision_completion', 'query_cluster_coverage',
+  'comparative_information_gain', 'competitor_copy_risk', 'title_snippet_congruence',
+  'section_purpose_coverage', 'image_entity_match', 'pillar_support_relationship',
 ] as const;
 
 export type BlogQualityDimensionV3 = (typeof BLOG_QUALITY_DIMENSIONS_V3)[number];
@@ -39,6 +42,15 @@ export interface BlogQualityEvaluationInputV3 {
   normalizedTitleClusterSize?: number;
   templateSaturation?: boolean;
   firstPartySourceIds?: string[];
+  serpIntentAlignment?: number;
+  decisionCompletion?: number;
+  queryClusterCoverage?: number;
+  comparativeInformationGain?: number;
+  competitorCopyRisk?: number;
+  titleSnippetCongruence?: number;
+  sectionPurposeCoverage?: number;
+  imageEntityMatch?: number;
+  pillarSupportRelationship?: number;
 }
 
 export interface BlogQualityEvaluationV3 {
@@ -110,6 +122,15 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     author_review_truthfulness: result(truthful ? 1 : 0, truthful, [`first_party_sources=${(input.firstPartySourceIds || []).length}`], truthful ? [] : ['review_or_experience_claim_unverifiable']),
     internal_link_relevance: result(clamp(input.internalLinkRelevance, 1), clamp(input.internalLinkRelevance, 1) >= 0.6, [`score=${input.internalLinkRelevance ?? 1}`], clamp(input.internalLinkRelevance, 1) >= 0.6 ? [] : ['internal_link_irrelevant']),
     user_actionability: result(clamp(input.userActionability, 1), clamp(input.userActionability, 1) >= 0.7, [`score=${input.userActionability ?? 1}`], clamp(input.userActionability, 1) >= 0.7 ? [] : ['next_action_unclear']),
+    serp_intent_alignment: result(clamp(input.serpIntentAlignment, intentCompletion), clamp(input.serpIntentAlignment, intentCompletion) >= 0.75, [`score=${input.serpIntentAlignment ?? intentCompletion}`], clamp(input.serpIntentAlignment, intentCompletion) >= 0.75 ? [] : ['serp_intent_misaligned']),
+    decision_completion: result(clamp(input.decisionCompletion, intentCompletion), clamp(input.decisionCompletion, intentCompletion) >= 0.75, [`score=${input.decisionCompletion ?? intentCompletion}`], clamp(input.decisionCompletion, intentCompletion) >= 0.75 ? [] : ['reader_decision_incomplete']),
+    query_cluster_coverage: result(clamp(input.queryClusterCoverage, 1), clamp(input.queryClusterCoverage, 1) >= 0.6, [`score=${input.queryClusterCoverage ?? 1}`], clamp(input.queryClusterCoverage, 1) >= 0.6 ? [] : ['query_cluster_undercovered']),
+    comparative_information_gain: result(clamp(input.comparativeInformationGain, input.informationGainScore), clamp(input.comparativeInformationGain, input.informationGainScore) >= 0.6, [`score=${input.comparativeInformationGain ?? input.informationGainScore ?? 0}`], clamp(input.comparativeInformationGain, input.informationGainScore) >= 0.6 ? [] : ['comparative_information_gain_low']),
+    competitor_copy_risk: result(1 - clamp(input.competitorCopyRisk), clamp(input.competitorCopyRisk) <= 0.3, [`risk=${input.competitorCopyRisk ?? 0}`], clamp(input.competitorCopyRisk) <= 0.3 ? [] : ['competitor_phrase_overlap']),
+    title_snippet_congruence: result(clamp(input.titleSnippetCongruence, 1), clamp(input.titleSnippetCongruence, 1) >= 0.8, [`score=${input.titleSnippetCongruence ?? 1}`], clamp(input.titleSnippetCongruence, 1) >= 0.8 ? [] : ['title_description_body_mismatch']),
+    section_purpose_coverage: result(clamp(input.sectionPurposeCoverage, intentCompletion), clamp(input.sectionPurposeCoverage, intentCompletion) >= 0.75, [`score=${input.sectionPurposeCoverage ?? intentCompletion}`], clamp(input.sectionPurposeCoverage, intentCompletion) >= 0.75 ? [] : ['section_purpose_missing']),
+    image_entity_match: result(clamp(input.imageEntityMatch, input.imageRelevance), clamp(input.imageEntityMatch, input.imageRelevance) >= 0.7, [`score=${input.imageEntityMatch ?? input.imageRelevance ?? 1}`], clamp(input.imageEntityMatch, input.imageRelevance) >= 0.7 ? [] : ['image_entity_mismatch']),
+    pillar_support_relationship: result(clamp(input.pillarSupportRelationship, 1), clamp(input.pillarSupportRelationship, 1) >= 0.7, [`score=${input.pillarSupportRelationship ?? 1}`], clamp(input.pillarSupportRelationship, 1) >= 0.7 ? [] : ['pillar_relationship_missing']),
   };
 
   const failureReasons = Object.entries(dimensions).flatMap(([dimension, dimensionResult]) =>

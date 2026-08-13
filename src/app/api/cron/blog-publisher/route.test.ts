@@ -12,7 +12,9 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain("readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8)");
-    expect(source).toContain('while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS)');
+    expect(source).toContain('publishedThisRun < remainingDueNow');
+    expect(source).toContain('extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS');
+    expect(source).toContain('attemptedQueueIds.size < MAX_CANDIDATE_ATTEMPTS_PER_RUN');
     expect(source).toContain('calculateBlogPublishSlotQuota({');
     expect(source).toContain("'daily_publish_quota_reached_atomic_upgrade_processed'");
     expect(source).toContain('PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE');
