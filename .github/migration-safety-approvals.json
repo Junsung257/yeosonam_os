@@ -267,6 +267,33 @@
       "approvedIssueCounts": {
         "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
       }
+    },
+    "20260812155000_product_registration_foreign_key_indexes.sql": {
+      "sha256": "abea56358119609608a9446a1cb6b973086ab24b36b0a2866c95ab9b362a5de4",
+      "status": "A",
+      "rationale": "All 61 replay-safe Product Registration foreign-key indexes are already applied and verified valid and ready on production. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260813001000_product_registration_backfill_engine_version.sql": {
+      "sha256": "089677c5e1e496bee28b20211e08678244fbbb319f10905c377eee130ae67f2c",
+      "status": "A",
+      "rationale": "The engine-version retry columns, valid ready partial index, and service-role-only versioned claim RPC are already applied and verified on production while publication remains frozen. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260813042000_product_registration_public_fk_indexes.sql": {
+      "sha256": "e2d88419ca28bc68bc2007eaa122396d0059226d3e1d2e61002a88a56e95e85c",
+      "status": "A",
+      "rationale": "The eight replay-safe public Product Registration foreign-key indexes are already applied and verified valid and ready on production while publication remains frozen. Supabase migration transactions cannot use CREATE INDEX CONCURRENTLY; all affected registration tables are currently small, and fresh bootstrap databases have no customer traffic.",
+      "evidence": "docs/audits/2026-08-12-product-registration-authority-live-cutover.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 8
+      }
     }
   }
 }

@@ -1,8 +1,10 @@
 ﻿import type { Metadata } from 'next';
-import { getPackageById } from '@/lib/supabase';
+import { getSupabase, getSupabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { isUuid } from '@/lib/uuid';
 import { withPublicQueryFallback } from '@/lib/public-query-timeout';
+import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -17,9 +19,28 @@ const PACKAGE_METADATA_QUERY_TIMEOUT_MS = Math.max(
 // 2026-05-18 諛뺤젣 (ERR-layout-page-source-drift):
 //   湲곗〈 fetch('/api/packages?id=...') ??page.tsx ??supabaseAdmin 吏곸젒 荑쇰━ ?
 //   蹂꾨룄 ?곗씠???뚯뒪 (BASE_URL HTTP ?뺣났 + ISR 300s 罹먯떆). 罹먯떆 留뚮즺 ??대컢 ?닿툔?섎㈃
-//   meta ? 蹂몃Ц drift 媛?? getPackageById SSOT ?듭씪.
-async function getPackage(id: string) {
-  return await getPackageById(id);
+// Metadata and page content now share the exact publication-pointer snapshot reader.
+type LayoutPublicPackage = {
+  title?: unknown;
+  destination?: unknown;
+  duration?: unknown;
+  price?: unknown;
+  product_type?: unknown;
+  product_highlights?: unknown;
+  itinerary_data?: unknown;
+};
+
+async function getPackage(id: string): Promise<LayoutPublicPackage | null> {
+  if (!isSupabaseConfigured) return null;
+  const client = getSupabaseAdmin() ?? getSupabase();
+  if (!client) return null;
+  const current = await getCurrentPublicPackage(client, {
+    tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+    packageRef: id,
+    channel: 'customer',
+    locale: 'ko-KR',
+  });
+  return current?.package as LayoutPublicPackage | null;
 }
 
 async function safeGetPackage(id: string) {
@@ -82,8 +103,8 @@ function buildPackageSeoTitle(input: {
     parts.push(input.productType.trim());
   }
   const price = Number(input.price);
-  if (Number.isFinite(price)) parts.push(`${price.toLocaleString('ko-KR')}??`);
-  parts.push(`?곹뭹踰덊샇 ${input.id.slice(0, 8)}`);
+  if (Number.isFinite(price)) parts.push(`${price.toLocaleString('ko-KR')}원~`);
+  parts.push(`상품번호 ${input.id.slice(0, 8)}`);
   return parts.filter(Boolean).join(' | ');
 }
 
@@ -98,7 +119,7 @@ export async function generateMetadata({
   const pkg = id && isUuid(id) ? await safeGetPackage(id) : null;
   if (!pkg) {
     return {
-      title: '?곹뭹??李얠쓣 ???놁뒿?덈떎',
+      title: '상품을 찾을 수 없습니다',
       alternates: { canonical },
       robots: { index: false, follow: true },
     };
@@ -119,8 +140,8 @@ export async function generateMetadata({
   if (pkg.destination) parts.push(decodeCustomerHtmlEntities(String(pkg.destination)));
   if (pkg.duration) parts.push(`${pkg.duration}일`);
   if (pkg.price) parts.push(`${Number(pkg.price).toLocaleString('ko-KR')}원~`);
-  if (pkg.product_highlights?.length) {
-    parts.push(decodeCustomerHtmlEntities((pkg.product_highlights as string[]).slice(0, 3).join(', ')));
+  if (Array.isArray(pkg.product_highlights) && pkg.product_highlights.length > 0) {
+    parts.push(decodeCustomerHtmlEntities(pkg.product_highlights.filter((item): item is string => typeof item === 'string').slice(0, 3).join(', ')));
   }
   const description = parts.length > 0
     ? parts.join(' | ')

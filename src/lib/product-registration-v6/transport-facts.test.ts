@@ -109,6 +109,32 @@ describe('shared transport fact resolver', () => {
     expect(result.fact.departureLocalTime).toBeNull();
   });
 
+  it('fills a missing time from two independent date-and-route matched verified products', () => {
+    const result = resolveTransportFact({
+      source: missingTimes,
+      observations: [
+        observation({ id: 'product-a', sourceKind: 'verified_product', sourceFamily: 'source-document-a', sourceWeight: 0.8 }),
+        observation({ id: 'product-b', sourceKind: 'verified_product', sourceFamily: 'source-document-b', sourceWeight: 0.8 }),
+      ],
+    });
+    expect(result.state).toBe('corroborated');
+    expect(result.fact.departureLocalTime).toBe('19:00');
+    expect(result.resolutionBasis).toBe('independent_products');
+    expect(result.independentSourceCount).toBe(2);
+  });
+
+  it('does not count duplicated products from one source document twice', () => {
+    const result = resolveTransportFact({
+      source: missingTimes,
+      observations: [
+        observation({ id: 'product-a', sourceKind: 'verified_product', sourceFamily: 'same-source', sourceWeight: 0.8 }),
+        observation({ id: 'product-b', sourceKind: 'verified_product', sourceFamily: 'same-source', sourceWeight: 0.8 }),
+      ],
+    });
+    expect(result.state).toBe('degraded');
+    expect(result.fact.departureLocalTime).toBeNull();
+  });
+
   it('preserves conflicting schedule variants instead of averaging', () => {
     const result = resolveTransportFact({
       source: missingTimes,

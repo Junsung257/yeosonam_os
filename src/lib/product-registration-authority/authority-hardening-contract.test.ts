@@ -26,6 +26,30 @@ describe('product registration authority hardening contracts', () => {
     expect(migration).toContain('has_function_privilege');
   });
 
+  it('prevents a published pointer from committing without the exact published snapshot and proof', () => {
+    const migration = source('supabase/migrations/20260813034932_product_registration_publication_pointer_invariant.sql');
+    expect(migration).toContain('create constraint trigger trg_product_registration_published_pointer_integrity');
+    expect(migration).toContain('deferrable initially deferred');
+    expect(migration).toContain("s.status = 'published'");
+    expect(migration).toContain("p.status = 'passed'");
+    expect(migration).toContain('p.renderer_build_id = s.renderer_build_id');
+    expect(migration).toContain("lower(s.renderer_build_id) !~ '^(local|dev|development|unknown)");
+    expect(migration).toContain('REGISTRATION_PUBLISHED_POINTER_INTEGRITY_VIOLATION');
+    expect(migration).toContain("'publication_pointer_quarantined'");
+    expect(migration).toContain("set state = 'blocked', pointer_version = pointer_version + 1");
+  });
+
+  it('keeps proof-bound public snapshot bodies append-only', () => {
+    const migration = source('supabase/migrations/20260813041000_product_registration_snapshot_immutability.sql');
+    expect(migration).toContain('guard_public_snapshot_immutability');
+    expect(migration).toContain('REGISTRATION_PUBLIC_SNAPSHOT_BODY_IMMUTABLE');
+    expect(migration).toContain('REGISTRATION_PUBLIC_SNAPSHOT_DELETE_FORBIDDEN');
+    expect(migration).toContain('REGISTRATION_PUBLIC_SNAPSHOT_STILL_REFERENCED');
+    expect(migration).toContain('old.snapshot_json is distinct from new.snapshot_json');
+    expect(migration).toContain('old.snapshot_hash is distinct from new.snapshot_hash');
+    expect(migration).toContain("p.state = 'published'");
+  });
+
   it('backfills through one shadow workflow and heals a lost follow-up bind', () => {
     const route = source('src/app/api/cron/product-registration-v6-backfill/route.ts');
     const migration = source('supabase/migrations/20260811121526_product_registration_legacy_backfill_ledger.sql');
@@ -53,12 +77,29 @@ describe('product registration authority hardening contracts', () => {
       .toContain('operationScope: `revalidation:${input.job.id}:${input.job.checkpoint}:segment:${index}`');
   });
 
+  it('seeds legacy flight observations only from dated source-evidenced rows', () => {
+    const migration = source('supabase/migrations/20260813035515_product_registration_legacy_transport_observation_seed.sql');
+    expect(migration).toContain("p.departure_date is not null");
+    expect(migration).toContain("position(upper(p.flight_info->>'flight_no')");
+    expect(migration).toContain("position(p.flight_info->>'depart'");
+    expect(migration).toContain("position(p.flight_info->>'arrive'");
+    expect(migration).toContain("'verified_product'");
+    expect(migration).toContain("'verified-product-source:'");
+    expect(migration).toContain('effective_start, effective_end');
+    expect(migration).toContain('on conflict do nothing');
+  });
+
   it('covers Product Registration foreign keys used by backfill and durable workflows', () => {
     const migration = source('supabase/migrations/20260812155000_product_registration_foreign_key_indexes.sql');
+    const publicMigration = source('supabase/migrations/20260813042000_product_registration_public_fk_indexes.sql');
     expect(migration).toContain("('legacy_backfill_jobs', 'workflow_job_id')");
     expect(migration).toContain("('dead_letter_jobs', 'job_id')");
     expect(migration).toContain("('transport_segments', 'departure_instance_id')");
     expect(migration).toContain("('provider_calls', 'product_revision_id')");
+    expect(publicMigration).toContain('product_registration_drafts(extraction_id)');
+    expect(publicMigration).toContain('product_registration_v5_proof_runs(catalog_product_id)');
+    expect(publicMigration).toContain('product_registration_v5_publication_pointers(tenant_id, catalog_product_id)');
+    expect(publicMigration).toContain('public_package_snapshots(tenant_id, catalog_product_id)');
   });
 
   it('prioritizes a bounded corrected-engine retry ahead of unseen legacy inventory', () => {

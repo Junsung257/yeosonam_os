@@ -132,11 +132,11 @@ function buildPackageSeoTitle(input: {
 
 function buildPackageNoindexMetadata(id: string, canonical: string): Metadata {
   return {
-    title: '?곹뭹 ?곸꽭',
+    title: '상품 상세',
     alternates: { canonical },
     robots: { index: false, follow: true },
     openGraph: {
-      title: '?곹뭹 ?곸꽭',
+      title: '상품 상세',
       url: canonical,
     },
   };
@@ -213,7 +213,7 @@ export async function generateMetadata({
   }
   const sb = getPackageReadClient();
   if (!sb) {
-    return { title: '?怨밸? ?怨멸쉭', alternates: { canonical }, robots: { index: false, follow: true } };
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
   }
   type MetadataPackageRow = {
     title?: string | null;
@@ -319,7 +319,7 @@ export async function generateMetadata({
     product_type: metadataPackage.product_type,
     airline: metadataPackage.airline,
   });
-  const title = displayCopy.seoTitle || decodeCustomerHtmlEntities(String(data.title || data.destination || '?ъ냼???⑦궎吏 ?ы뻾'));
+  const title = displayCopy.seoTitle || decodeCustomerHtmlEntities(String(data.title || data.destination || '여소남 패키지 여행'));
   const seoTitle = buildPackageSeoTitle({
     title,
     productType: data.product_type,

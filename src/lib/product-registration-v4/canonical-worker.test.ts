@@ -27,6 +27,50 @@ describe('product registration V4 canonical worker', () => {
     expect(segmented.sections[0]?.sourceNodeIds.length).toBeGreaterThan(0);
   });
 
+  it('inherits one terminal commercial context block into every catalog product', () => {
+    const catalog = createTextDocumentIR({
+      filename: 'catalog.txt',
+      sourceType: 'text',
+      parserEngine: 'text-utf8',
+      parserVersion: '1',
+      text: [
+        '공통 가격표',
+        '2027-01-01 599,000원',
+        '[ZE] 다낭 실속 3박5일 일정표',
+        '제1일 부산 출발',
+        '[BX] 다낭 골프 3박5일 일정표',
+        '제1일 부산 출발',
+        '포함 내역',
+        '왕복 항공료, 숙박',
+        '불포함 내역',
+        '개인 경비',
+        '취소 및 환불 규정',
+        '출발 20일 전 취소 시 여행요금의 10% 공제',
+      ].join('\n'),
+    });
+    const result = segmentDocumentIR(catalog, 'source-catalog');
+    expect(result.sections).toHaveLength(2);
+    for (const section of result.sections) {
+      expect(section.rawText).toContain('왕복 항공료, 숙박');
+      expect(section.rawText).toContain('개인 경비');
+      expect(section.rawText).toContain('출발 20일 전 취소 시');
+    }
+  });
+
+  it('does not mix repeated product-specific commercial blocks', () => {
+    const catalog = createTextDocumentIR({
+      filename: 'catalog.txt', sourceType: 'text', parserEngine: 'text-utf8', parserVersion: '1',
+      text: [
+        '[ZE] 다낭 실속 3박5일 일정표', '제1일 일정 A', '포함 내역', '상품 A 전용 포함',
+        '[BX] 다낭 골프 3박5일 일정표', '제1일 일정 B', '포함 내역', '상품 B 전용 포함',
+      ].join('\n'),
+    });
+    const result = segmentDocumentIR(catalog, 'source-specific');
+    expect(result.sections).toHaveLength(2);
+    expect(result.sections[0]?.rawText).not.toContain('상품 B 전용 포함');
+    expect(result.sections[1]?.rawText).not.toContain('상품 A 전용 포함');
+  });
+
   it('produces a lineage-bound canonical payload without writing customer data', async () => {
     const normalized = await buildCanonicalNormalization({
       documentIr,

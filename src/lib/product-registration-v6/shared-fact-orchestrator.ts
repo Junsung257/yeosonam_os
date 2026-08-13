@@ -30,6 +30,9 @@ export type ResolvedTransportForSnapshot = {
   arrivalDayOffset: number;
   state: 'source_confirmed' | 'corroborated' | 'degraded' | 'conflicting';
   verifiedByCurrentProviders: boolean;
+  resolutionBasis?: 'source' | 'schedule_providers' | 'independent_products' | 'none';
+  trustScore?: number;
+  independentSourceCount?: number;
 };
 
 export type SharedFactJobResult = {
@@ -298,7 +301,13 @@ export async function resolveSharedFactsForJob(input: {
           arrival_day_offset: resolved.fact.arrivalDayOffset,
           resolution_state: resolved.state,
           observation_ids: resolved.observationIds,
-          reasons: [...resolved.degradedReasons, ...resolved.blockers],
+          reasons: [
+            `RESOLUTION_BASIS:${resolved.resolutionBasis}`,
+            `TRUST_SCORE:${resolved.trustScore.toFixed(4)}`,
+            `INDEPENDENT_SOURCE_COUNT:${resolved.independentSourceCount}`,
+            ...resolved.degradedReasons,
+            ...resolved.blockers,
+          ],
           source_hash: input.sourceHash,
           revision_hash: revisionHash,
           resolution_hash: '',
@@ -321,6 +330,9 @@ export async function resolveSharedFactsForJob(input: {
           arrivalDayOffset: resolved.fact.arrivalDayOffset,
           state: resolved.state,
           verifiedByCurrentProviders: resolved.verifiedByCurrentProviders,
+          resolutionBasis: resolved.resolutionBasis,
+          trustScore: resolved.trustScore,
+          independentSourceCount: resolved.independentSourceCount,
         });
       }
     }

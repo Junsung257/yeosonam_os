@@ -35,6 +35,7 @@ const POINTER_ONLY_FILES = [
   'src/app/destinations/[city]/rss.xml/route.ts',
   'src/app/embed/pkg/[id]/page.tsx',
   'src/app/itinerary/[id]/print/page.tsx',
+  'src/app/packages/[id]/layout.tsx',
   'src/app/r/[code]/[slug]/page.tsx',
   'src/app/things-to-do/[region]/page.tsx',
   'src/app/with/[slug]/page.tsx',
@@ -102,5 +103,16 @@ describe('public customer package data boundary', () => {
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it('keeps package metadata behind the same pointer and renders readable Korean fallbacks', () => {
+    const layout = readFileSync(join(ROOT, 'src/app/packages/[id]/layout.tsx'), 'utf8');
+    const page = readFileSync(join(ROOT, 'src/app/packages/[id]/page.tsx'), 'utf8');
+    expect(layout).toContain('getCurrentPublicPackage');
+    expect(layout).toContain("title: '상품을 찾을 수 없습니다'");
+    expect(layout).toContain('상품번호 ${input.id.slice(0, 8)}');
+    expect(layout).not.toContain('getPackageById');
+    expect(page).toContain("title: '상품 상세'");
+    expect(page).toContain("data.title || data.destination || '여소남 패키지 여행'");
   });
 });

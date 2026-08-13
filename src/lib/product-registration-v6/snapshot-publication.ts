@@ -155,12 +155,18 @@ export function applyResolvedTransport(
     );
     if (matchingFacts.length === 0) return row;
 
-    const candidates = matchingFacts.filter(item =>
-      item.verifiedByCurrentProviders
-      && (item.state === 'source_confirmed' || item.state === 'corroborated')
-      && item.departureLocalTime
-      && item.arrivalLocalTime,
-    );
+    const candidates = matchingFacts.filter(item => {
+      const sourceConfirmed = item.state === 'source_confirmed'
+        && (item.resolutionBasis === 'source' || item.resolutionBasis === undefined);
+      const independentProducts = item.state === 'corroborated'
+        && item.resolutionBasis === 'independent_products'
+        && (item.trustScore ?? 0) >= 0.8
+        && (item.independentSourceCount ?? 0) >= 2;
+      const currentProviders = item.verifiedByCurrentProviders
+        && (item.state === 'source_confirmed' || item.state === 'corroborated');
+      return (sourceConfirmed || independentProducts || currentProviders)
+        && Boolean(item.departureLocalTime && item.arrivalLocalTime);
+    });
     const variants = new Set(candidates.map(item => `${item.departureLocalTime}|${item.arrivalLocalTime}|${item.arrivalDayOffset}`));
     const hasConflict = matchingFacts.some(item => item.state === 'conflicting');
     if (hasConflict || variants.size !== 1) {
@@ -186,6 +192,7 @@ export function applyResolvedTransport(
       arr_time: resolved.arrivalLocalTime,
       arr_day_offset: resolved.arrivalDayOffset,
       v6_fact_state: resolved.state,
+      v6_fact_basis: resolved.resolutionBasis ?? (resolved.verifiedByCurrentProviders ? 'schedule_providers' : 'source'),
     };
   });
   return { ...pkg, itinerary_data: { ...itinerary, flight_segments: segments } };

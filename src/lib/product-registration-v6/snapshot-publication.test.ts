@@ -39,17 +39,16 @@ function flight(result: Record<string, unknown>): Record<string, unknown> {
 }
 
 describe('applyResolvedTransport', () => {
-  it('hides source times that current schedule providers did not corroborate', () => {
+  it('keeps times explicitly stated in the current supplier source', () => {
     const result = applyResolvedTransport(packageWithFlight(), 'package-1', [fact()]);
 
     expect(flight(result)).toMatchObject({
       flight_no: 'BX134',
-      v6_fact_state: 'degraded',
-      v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+      dep_time: '16:30',
+      arr_time: '17:35',
+      v6_fact_state: 'source_confirmed',
+      v6_fact_basis: 'source',
     });
-    expect(flight(result)).not.toHaveProperty('dep_time');
-    expect(flight(result)).not.toHaveProperty('arr_time');
-    expect(flight(result)).not.toHaveProperty('arr_day_offset');
   });
 
   it('uses the single time variant corroborated by current providers', () => {
@@ -66,6 +65,30 @@ describe('applyResolvedTransport', () => {
       arr_day_offset: 0,
       v6_fact_state: 'corroborated',
     });
+  });
+
+  it('uses one variant agreed by two independent verified product sources', () => {
+    const result = applyResolvedTransport(packageWithFlight(), 'package-1', [fact({
+      state: 'corroborated',
+      resolutionBasis: 'independent_products',
+      trustScore: 0.8,
+      independentSourceCount: 2,
+      departureLocalTime: '16:45',
+      arrivalLocalTime: '17:50',
+    })]);
+    expect(flight(result)).toMatchObject({
+      dep_time: '16:45',
+      arr_time: '17:50',
+      v6_fact_basis: 'independent_products',
+    });
+  });
+
+  it('hides an internally inferred time below the trust threshold', () => {
+    const result = applyResolvedTransport(packageWithFlight(), 'package-1', [fact({
+      state: 'corroborated', resolutionBasis: 'independent_products', trustScore: 0.7, independentSourceCount: 2,
+    })]);
+    expect(flight(result)).not.toHaveProperty('dep_time');
+    expect(flight(result)).toMatchObject({ v6_fact_state: 'degraded' });
   });
 
   it('hides times when observations conflict', () => {

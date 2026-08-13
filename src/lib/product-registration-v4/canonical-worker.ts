@@ -25,6 +25,7 @@ import { buildV3V5CriticalDiff } from './shadow-diff';
 import type { DocumentIR, ProductRegistrationV4JobRecord } from './types';
 import { buildDocumentIrTableItinerary } from './table-grid-itinerary';
 import { buildDocumentIrTableCommercialTerms } from './table-grid-commercial-terms';
+import { attachSharedDocumentContext, inferSharedDocumentContext } from './document-context';
 
 export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-12.2';
 
@@ -313,8 +314,12 @@ export function segmentDocumentIR(documentIr: DocumentIR, sourceDocumentId: stri
   if (fullText.length < 10) throw new Error('CANONICAL_SOURCE_TEXT_TOO_SHORT');
 
   const split = splitCatalogByItineraryHeaders(fullText);
+  const sharedContext = split.sections.length >= 2 ? inferSharedDocumentContext(fullText) : [];
   const rawSections = split.sections.length >= 2
-    ? split.sections.map(section => `${split.sharedPrefix ? `${split.sharedPrefix}\n\n---\n\n` : ''}${section}`.trim())
+    ? split.sections.map(section => attachSharedDocumentContext(
+      `${split.sharedPrefix ? `${split.sharedPrefix}\n\n---\n\n` : ''}${section}`.trim(),
+      sharedContext,
+    ))
     : [fullText];
   const segmentationSource = rawSections.length >= 2 ? 'catalog-pre-split' : 'single-document';
 

@@ -58,6 +58,9 @@ export type TransportFactResolution = {
   fact: SourceTransportFact;
   observationIds: string[];
   verifiedByCurrentProviders: boolean;
+  resolutionBasis: 'source' | 'schedule_providers' | 'independent_products' | 'none';
+  trustScore: number;
+  independentSourceCount: number;
   degradedReasons: string[];
   blockers: string[];
 };
@@ -142,6 +145,9 @@ export function resolveTransportFact(input: {
       fact: source,
       observationIds: [],
       verifiedByCurrentProviders: false,
+      resolutionBasis: 'none',
+      trustScore: 0,
+      independentSourceCount: 0,
       degradedReasons,
       blockers,
     };
@@ -163,9 +169,35 @@ export function resolveTransportFact(input: {
 
   const corroborated = [...groups.entries()].filter(([, observations]) => {
     const sourceFamilies = new Set(observations.map(item => item.sourceFamily));
-    const averageWeight = observations.reduce((sum, item) => sum + item.sourceWeight, 0) / observations.length;
-    return sourceFamilies.size >= 2 && averageWeight >= 0.95;
+    const independentTrusted = observations.filter(item =>
+      item.sourceKind === 'current_source'
+      || item.sourceKind === 'verified_product'
+      || item.sourceKind === 'oag'
+      || item.sourceKind === 'cirium');
+    const trustedFamilies = new Set(independentTrusted.map(item => item.sourceFamily));
+    const totalWeight = [...trustedFamilies].reduce((sum, family) => {
+      const strongest = independentTrusted
+        .filter(item => item.sourceFamily === family)
+        .reduce((max, item) => Math.max(max, item.sourceWeight), 0);
+      return sum + strongest;
+    }, 0);
+    return sourceFamilies.size >= 2 && trustedFamilies.size >= 2 && totalWeight >= 1.6;
   });
+
+  const resolutionMetadata = (observations: TransportFactObservation[]) => {
+    const families = new Set(observations.map(item => item.sourceFamily));
+    const providerVerified = observations.some(item => item.sourceFamily === 'oag')
+      && observations.some(item => item.sourceFamily === 'cirium');
+    const trustScore = [...families].reduce((sum, family) => sum + observations
+      .filter(item => item.sourceFamily === family)
+      .reduce((max, item) => Math.max(max, item.sourceWeight), 0), 0);
+    return {
+      verifiedByCurrentProviders: providerVerified,
+      resolutionBasis: providerVerified ? 'schedule_providers' as const : 'independent_products' as const,
+      trustScore: Math.min(1, trustScore / 2),
+      independentSourceCount: families.size,
+    };
+  };
 
   // Explicit supplier times remain immutable, but two independent current
   // schedule providers may prove that the published schedule changed. Keep
@@ -186,17 +218,24 @@ export function resolveTransportFact(input: {
         observationIds: conflictingConsensus.flatMap(([, observations]) => observations.map(item => item.id))
           .filter((value): value is string => Boolean(value)),
         verifiedByCurrentProviders: false,
+        resolutionBasis: 'source',
+        trustScore: 1,
+        independentSourceCount: new Set(conflictingConsensus.flatMap(([, rows]) => rows.map(row => row.sourceFamily))).size,
         degradedReasons,
         blockers,
       };
     }
     const matchingProviderConsensus = providerConsensus.filter(([key]) => key === sourceKey);
+    const providerRows = matchingProviderConsensus.flatMap(([, observations]) => observations);
     return {
       state: 'source_confirmed',
       fact: source,
-      observationIds: matchingProviderConsensus.flatMap(([, observations]) => observations.map(item => item.id))
+      observationIds: providerRows.map(item => item.id)
         .filter((value): value is string => Boolean(value)),
       verifiedByCurrentProviders: matchingProviderConsensus.length > 0,
+      resolutionBasis: 'source',
+      trustScore: 1,
+      independentSourceCount: new Set(providerRows.map(row => row.sourceFamily)).size,
       degradedReasons,
       blockers,
     };
@@ -205,6 +244,7 @@ export function resolveTransportFact(input: {
   if (corroborated.length === 1) {
     const [key, observations] = corroborated[0]!;
     const [departureLocalTime, arrivalLocalTime, dayOffset] = key.split('|');
+    const metadata = resolutionMetadata(observations);
     return {
       state: 'corroborated',
       fact: {
@@ -214,8 +254,7 @@ export function resolveTransportFact(input: {
         arrivalDayOffset: Number(dayOffset),
       },
       observationIds: observations.map(item => item.id).filter((value): value is string => Boolean(value)),
-      verifiedByCurrentProviders: observations.some(item => item.sourceFamily === 'oag')
-        && observations.some(item => item.sourceFamily === 'cirium'),
+      ...metadata,
       degradedReasons,
       blockers,
     };
@@ -231,6 +270,9 @@ export function resolveTransportFact(input: {
     fact: source,
     observationIds: matching.map(item => item.id).filter((value): value is string => Boolean(value)),
     verifiedByCurrentProviders: false,
+    resolutionBasis: 'none',
+    trustScore: 0,
+    independentSourceCount: new Set(matching.map(item => item.sourceFamily)).size,
     degradedReasons,
     blockers,
   };

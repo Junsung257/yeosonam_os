@@ -17,9 +17,15 @@ interface Props {
   destination: string;
   primaryCity: string;
   country: string | null;
-  /** KST(+540min) 대비 분 단위 차이. 음수 = 한국보다 늦음 */
+  /** destination_climate.utc_offset_minutes: UTC 기준 현지 오프셋 */
   offsetMinutes: number;
   timezone: string; // IANA TZ — 라이브 표시용
+}
+
+const KOREA_UTC_OFFSET_MINUTES = 9 * 60;
+
+export function koreaTimeDifferenceMinutes(destinationUtcOffsetMinutes: number): number {
+  return destinationUtcOffsetMinutes - KOREA_UTC_OFFSET_MINUTES;
 }
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'] as const;
@@ -117,10 +123,11 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
     return () => clearInterval(id);
   }, []);
 
-  const offsetH = Math.abs(offsetMinutes) / 60;
-  const offsetText = offsetMinutes === 0
+  const differenceMinutes = koreaTimeDifferenceMinutes(offsetMinutes);
+  const offsetH = Math.abs(differenceMinutes) / 60;
+  const offsetText = differenceMinutes === 0
     ? '한국과 시차 없음'
-    : offsetMinutes > 0
+    : differenceMinutes > 0
       ? `한국보다 ${offsetH % 1 === 0 ? offsetH : offsetH.toFixed(1)}시간 빠름`
       : `한국보다 ${offsetH % 1 === 0 ? offsetH : offsetH.toFixed(1)}시간 느림`;
 
@@ -128,7 +135,7 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
   const localTime = fmtTimeInTz(now, timezone);
   const localDate = fmtDateInTz(now, timezone);
   const displayCity = primaryCity || destination;
-  const tips = timezoneTips(offsetMinutes);
+  const tips = timezoneTips(differenceMinutes);
 
   return (
     <section className="px-4 mt-4">

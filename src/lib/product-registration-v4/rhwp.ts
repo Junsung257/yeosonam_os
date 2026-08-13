@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { promisify } from 'node:util';
 
 import { createTextDocumentIR, sha256Hex } from './document-ir';
@@ -33,12 +33,21 @@ type RhwpTablePayload = {
   }>;
 };
 
-function pushRootAndParents(target: string[], value: string | undefined): void {
+function pathApi(platform: NodeJS.Platform): typeof posix | typeof win32 {
+  return platform === 'win32' ? win32 : posix;
+}
+
+function pushRootAndParents(
+  target: string[],
+  value: string | undefined,
+  platform: NodeJS.Platform,
+): void {
   if (!value) return;
-  let current = resolve(value);
+  const path = pathApi(platform);
+  let current = path.resolve(value);
   for (let depth = 0; depth < 10; depth += 1) {
     if (!target.includes(current)) target.push(current);
-    const parent = dirname(current);
+    const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;
   }
@@ -52,20 +61,26 @@ export function getRhwpBinaryCandidates(input: {
   argvEntry?: string;
   platform?: NodeJS.Platform;
 } = {}): string[] {
+  const platform = input.platform ?? process.platform;
+  const path = pathApi(platform);
   const roots: string[] = [];
-  pushRootAndParents(roots, input.cwd ?? process.cwd());
-  pushRootAndParents(roots, input.lambdaTaskRoot ?? process.env.LAMBDA_TASK_ROOT);
-  pushRootAndParents(roots, input.vercelProjectDir ?? process.env.VERCEL_PROJECT_DIR);
-  pushRootAndParents(roots, input.pwd ?? process.env.PWD);
-  pushRootAndParents(roots, dirname(input.argvEntry ?? process.argv[1] ?? process.cwd()));
+  pushRootAndParents(roots, input.cwd ?? process.cwd(), platform);
+  pushRootAndParents(roots, input.lambdaTaskRoot ?? process.env.LAMBDA_TASK_ROOT, platform);
+  pushRootAndParents(roots, input.vercelProjectDir ?? process.env.VERCEL_PROJECT_DIR, platform);
+  pushRootAndParents(roots, input.pwd ?? process.env.PWD, platform);
+  pushRootAndParents(
+    roots,
+    path.dirname(input.argvEntry ?? process.argv[1] ?? process.cwd()),
+    platform,
+  );
 
-  const binaryName = (input.platform ?? process.platform) === 'win32' ? 'rhwp.exe' : 'rhwp';
-  const relativeBinary = join('vendor', 'rhwp', PRODUCT_REGISTRATION_V4_PARSER_VERSION, binaryName);
+  const binaryName = platform === 'win32' ? 'rhwp.exe' : 'rhwp';
+  const relativeBinary = path.join('vendor', 'rhwp', PRODUCT_REGISTRATION_V4_PARSER_VERSION, binaryName);
   const candidates: string[] = [];
   for (const root of roots) {
     for (const candidate of [
-      join(root, relativeBinary),
-      join(root, '.next', 'server', relativeBinary),
+      path.join(root, relativeBinary),
+      path.join(root, '.next', 'server', relativeBinary),
     ]) {
       if (!candidates.includes(candidate)) candidates.push(candidate);
     }

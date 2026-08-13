@@ -1,6 +1,10 @@
 # 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
 
 ## 2026-08-12 상품등록 실제 HWP 고객 흐름 검증
+- 2026-08-13 로컬 통합 브랜치에서 다중상품 문서 끝의 공통 포함·불포함·취소조건을 각 상품 구간에 안전 상속하는 문맥 계층을 추가했다. 동일 제목이 여러 번 나오면 상품별 조건으로 간주해 섞지 않는다.
+- 고객 시차 계산은 DB의 절대 UTC 오프셋을 한국 기준 차이로 변환하도록 고쳐 코타키나발루(UTC+8)를 `한국보다 1시간 느림`으로 표시한다.
+- 공개 포인터는 정확한 published snapshot·revision·passed proof·renderer build와 한 transaction에서 일치해야 하며, 기존 불일치 포인터는 순방향 migration 적용 시 감사행을 남기고 자동 격리된다.
+- 기존 항공정보 574건 중 원문 편명·양쪽 시간·단일 출발일·노선을 모두 검증할 수 있는 것은 58행/24개 날짜별 사실/17편이다. 독립 원문 두 개가 즉시 일치하는 사실은 2개뿐이므로 나머지는 자동 보완 근거로 승격하지 않는다. 신규 원문 명시값은 최우선이며 누락값만 독립 검증 자료로 채운다.
 - 40개 HWP 전체 재검증 결과 추출·정규화 40/40, 상품 구간 66개이며 V6 기준 verified 1, 안전 축약 degraded 52, 자동 차단 13이다. 따라서 구조상 자동 종결·공개 후보는 53/66(80.30%)이고 critical evidence는 248/248이다.
 - 이 80.30%는 정답지 대조 정확도가 아니다. 운영 DB에는 `structural_only`, `passed=false`, exact match 미측정으로 기록해 99.5% 정확도 게이트를 우회하지 못하게 했다.
 - 고객 검색, B2B v1, 제휴 공개·랜딩·임베드·추천 링크, 블로그 상품 연결·목적지, RSS, 일정 인쇄, 마케팅 콘텐츠 생성은 현재 publication pointer의 immutable snapshot만 읽도록 전환했다.
@@ -18,7 +22,10 @@
 - 신규 흐름은 `EvidenceIR → immutable revision → compatibility projection → immutable snapshot → private proof → CAS pointer` 순서다. `products`와 `travel_packages`는 권위 원천이 아니라 revision 이후 생성되는 호환 projection이다.
 - 운영 Supabase에는 상품등록 순방향 migration 18개를 저장소 순서대로 적용했고, tenant/catalog/revision/snapshot/pointer의 null·placeholder 차단 수는 모두 0이다. schema finalizer `product-registration-authority-hardened-1`도 통과해 tenant FK 검증이 끝났고 구형 공개 RPC 실행권은 회수됐다.
 - 운영 모드는 `shadow`, 전역 `publication_freeze=true`를 유지한다. 따라서 스키마는 강화됐지만 검증되지 않은 신규 상품을 자동 공개하지 않는다.
+- 고객 snapshot 본문·hash·projection·renderer lineage는 이제 DB에서 수정·삭제가 금지된다. 공개 뒤 수정은 기존 행 변경이 아니라 새 snapshot과 새 proof를 만들어야 하며, 공개 pointer가 참조 중인 snapshot은 상태를 내릴 수도 없다.
+- Supabase 성능 점검이 지적한 상품등록 복합 연결키를 모두 보완했다. 추가한 public-schema 인덱스 8개는 운영 DB에서 valid/ready로 확인됐고, 상품등록의 미인덱스 foreign key는 0건이다.
 - 고객 `/api/packages`, 홈, 목적지, sitemap은 authority mode와 무관하게 publication pointer와 immutable snapshot만 사용한다. mutable `travel_packages`의 `active/published` 표지만으로는 고객 상품이 되지 않는다.
+- `/packages/[id]`의 title·description·OG metadata도 본문과 같은 publication pointer snapshot을 사용한다. 차단/404 상품은 레거시 상품명·가격·목적지를 검색엔진·메신저 미리보기에 흘리지 않고 읽을 수 있는 한국어 일반 안내와 `noindex`만 반환한다.
 - 라이브 감사에서 기존 코타키나발루·후쿠오카 표시 상품 2건을 모두 권위 체인 실패로 차단했다. 후쿠오카는 저장 가격 85건과 snapshot 84건이 달랐고 모바일 proof가 현재 상태보다 오래됐으며 customer-open contract도 blocked였다.
 - 기존 internal-code backfill은 tenant를 비교하지 않아 813건을 다른 tenant identity에 연결할 위험이 있었다. 현재 migration은 동일 tenant의 유일한 코드만 연결하고 중복·충돌은 별도 catalog identity로 격리한다.
 - 기존 989건 shadow backfill, 실 OAG/Cirium/OCR provider, 실제 HWP canary, Chrome 모바일 proof, surface convergence가 남아 있다. 이 항목을 통과하기 전 전역 freeze 해제나 전량 공개는 금지한다.
