@@ -64,7 +64,7 @@ async function openBrowser(): Promise<{
   let mode: ProductRegistrationV6BrowserProofResult['browserMode'] = 'local-chrome';
   if (!executablePath) {
     try {
-      const bundled = puppeteer.executablePath();
+      const bundled = await puppeteer.executablePath();
       if (bundled && existsSync(bundled)) executablePath = bundled;
     } catch {
       // A real browser is a publication prerequisite; no fetch-only fallback.
