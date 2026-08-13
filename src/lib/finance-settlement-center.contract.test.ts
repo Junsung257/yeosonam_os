@@ -39,6 +39,10 @@ const financeSettlementV3Service = readFileSync(
   join(process.cwd(), 'src/lib/finance-settlement-v3-service.ts'),
   'utf8',
 );
+const financeClassification = readFileSync(
+  join(process.cwd(), 'src/lib/finance-classification.ts'),
+  'utf8',
+);
 const periodApi = readFileSync(
   join(process.cwd(), 'src/app/api/admin/finance/periods/route.ts'),
   'utf8',
@@ -213,7 +217,9 @@ describe('finance settlement center contracts', () => {
   it('keeps connection dates and focused work counts semantically consistent', () => {
     expect(integrationsApi).toContain('connected_at: row?.created_at ?? null');
     expect(integrationsApi).not.toContain('connected_at: row?.updated_at ?? null');
-    expect(financeCenterService).toContain("allocation.target_type === 'review'");
+    expect(financeClassification).toContain('classificationFromAllocationTarget');
+    expect(financeClassification).toContain("case 'unassigned':");
+    expect(financeCenterService).toContain("classificationFromAllocationTarget(allocation.target_type) === 'review'");
     expect(bankAccountReality).toContain("| 'review'");
     expect(financeCenterService).toContain('unclassifiedCompany: unclassifiedCompanyTransactionIds.length');
     expect(financeCenterService).not.toContain('unclassifiedCompany: profit.classificationReviewCount');

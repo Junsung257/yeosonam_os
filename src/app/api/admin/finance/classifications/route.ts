@@ -5,6 +5,7 @@ import { getAdminContext } from '@/lib/admin-context';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER } from '@/lib/bank-account-reality';
 import {
+  classificationFromAllocationTarget,
   defaultProfitAndLoss,
   resolveFinanceClassification,
   type FinanceClassification,
@@ -21,19 +22,6 @@ export const dynamic = 'force-dynamic';
 const CLASSIFICATIONS = new Set<FinanceClassification>([
   'company_expense', 'company_travel', 'tax', 'capital', 'transfer', 'refund', 'owner_draw', 'other_income', 'review',
 ]);
-
-const ALLOCATION_TO_CLASSIFICATION: Record<string, FinanceClassification> = {
-  customer_refund: 'refund',
-  bank_fee: 'company_expense',
-  company_expense: 'company_expense',
-  company_travel: 'company_travel',
-  tax: 'tax',
-  capital: 'capital',
-  transfer: 'transfer',
-  owner_draw: 'owner_draw',
-  other_income: 'other_income',
-  unassigned: 'review',
-};
 
 const CLASSIFICATION_TO_ALLOCATION: Partial<Record<FinanceClassification, string>> = {
   company_expense: 'company_expense',
@@ -139,7 +127,7 @@ export async function GET(request: NextRequest) {
       const allocations = allocationsByTransaction.get(transaction.id) ?? [];
       const nonBookingAllocations = allocations.filter(allocation => allocation.target_type !== 'booking');
       const splitRows = nonBookingAllocations.map(allocation => {
-        const allocationClassification = ALLOCATION_TO_CLASSIFICATION[allocation.target_type ?? 'unassigned'] ?? 'review';
+        const allocationClassification = classificationFromAllocationTarget(allocation.target_type) ?? 'review';
         const batchEligible = transaction.settlement_scope === 'non_travel'
           && allocations.length === 1
           && allocation.booking_id === null

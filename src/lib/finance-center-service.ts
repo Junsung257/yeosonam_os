@@ -12,6 +12,7 @@ import {
   type SettlementProfitSnapshot,
 } from '@/lib/bank-account-reality';
 import {
+  classificationFromAllocationTarget,
   resolveFinanceClassification,
   type FinanceClassificationOverride,
   type FinanceClassificationRule,
@@ -377,7 +378,7 @@ export async function loadFinanceCenterSummary(taxRate = 0.1): Promise<FinanceCe
       row.id ? [[row.id, row.settlement_scope] as const] : [],
     ));
     const unclassifiedCompanyTransactionIds = [...new Set(data.allocations.flatMap(allocation =>
-      allocation.target_type === 'review'
+      classificationFromAllocationTarget(allocation.target_type) === 'review'
         && transactionScopeById.get(allocation.bank_transaction_id) === 'non_travel'
         ? [allocation.bank_transaction_id]
         : [],
