@@ -6,8 +6,10 @@
 - 2026-08-12 — Blog Quality Engine V3 isolated Supabase staging rehearsal: five migrations, SQL/TS parity, snapshot/Data API, ACL, Advisor, and rollback-safe evidence: `blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`
 
 - 2026-08-13 — Blog live operations revalidation: production source, full corpus, autopublish, demand, GSC, eligibility, indexing, images, RUM, and fail-closed release evidence: `blog-live-operations-revalidation-2026-08-13.md`
+- 2026-08-14 — Naver-first SERP benchmark: 24 queries, 240 editorial samples, page-structure fetch evidence and provider semantics: `blog-serp-benchmark-2026-08-14.md`
+- 2026-08-14 — SERP brief structured canary: 24 offline drafts with per-canary failure evidence: `blog-serp-generated-canary-2026-08-14.md`
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 This folder is an evidence archive, not the current operating playbook.
 

@@ -33,6 +33,14 @@ npm run import:blog-search-performance -- --input=gsc.csv --provider=google_sear
 
 query/page metric은 demand와 refresh opportunity에 사용합니다. position 4~20, 낮은 CTR, customer question frequency, active product relevance, seasonality, freshness를 가점으로 사용하고 cannibalization/template saturation을 감점합니다.
 
+## 발행 후 학습 주기
+
+- 7일: index 상태, query 노출, crawl/schema 오류를 확인합니다.
+- 28일: query별 impressions, clicks, CTR, position, 여러 URL의 cannibalization을 확인합니다.
+- 56일: 동의된 60초 engagement, scroll 50%, 관련 글·상품·상담 click과 assisted conversion을 확인합니다.
+
+position 4~20에 노출이 있으면 새 URL 대신 대표글을 refresh합니다. 1~10위인데 CTR이 낮으면 URL 단위로 하나의 고정 title/description variant만 기간을 정해 실험합니다. 같은 query가 여러 URL에 잡히면 merge·대표 URL·내부 링크를 수정합니다. 28일 노출 0이면 색인·수요·intent를 재검토하며 유사 URL을 추가 생성하지 않습니다.
+
 ## 개인정보와 attribution
 
 원시 상담 내용, DM 본문, 카카오톡 사용자 ID는 저장하지 않습니다. customer question은 집계 frequency와 승인된 source reference만 demand signal로 저장합니다. 방문자 query는 원문을 analytics event에 저장하지 않고 필요한 경우 one-way hash만 저장합니다.

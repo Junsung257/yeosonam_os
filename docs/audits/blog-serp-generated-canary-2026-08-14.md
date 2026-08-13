@@ -1,4 +1,4 @@
-# Blog Quality Engine V3 canary results
+# Blog SERP-generated canary — 2026-08-14
 
 실행 모드는 `offline_structured_canary_no_publication`입니다. 외부 모델이나 운영 DB를 쓰지 않았고, fixture source ID는 production evidence로 사용할 수 없습니다.
 

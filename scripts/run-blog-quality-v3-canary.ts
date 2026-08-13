@@ -13,9 +13,9 @@ interface CanarySeed {
 }
 
 const seeds: CanarySeed[] = [
-  { destination: '오사카', intent: '숙소 위치 선택', topic: '오사카 숙소 위치를 우메다와 난바 중 고르는 법' },
-  { destination: '도쿄', intent: '공항 이동', topic: '나리타공항에서 신주쿠까지 이동 경로' },
-  { destination: '후쿠오카', intent: '짧은 답', topic: '후쿠오카 첫날 하카타와 텐진 중 어디에 머물까' },
+  { destination: '다낭', intent: '날씨 여행 가능성', topic: '다낭 10월 날씨' },
+  { destination: '다낭', intent: '관광지 선택과 동선', topic: '다낭 가볼만한곳' },
+  { destination: '세부', intent: '숙소 지역 선택', topic: '세부 호텔 추천' },
   { destination: '교토', intent: '실수 예방', topic: '교토 버스 이동에서 피해야 할 실수' },
   { destination: '다낭', intent: '예산', topic: '다낭 가족여행 예산 시나리오' },
   { destination: '나트랑', intent: '여행자 유형', topic: '부모님과 나트랑에서 무리 없는 일정' },
@@ -123,12 +123,16 @@ const summary = {
     && new Set(results.map((result) => result.destination)).size >= 12
     && new Set(results.map((result) => result.intent)).size >= 8
     && new Set(results.map((result) => result.archetype)).size >= 8
-    && Math.max(...Object.values(skeletonCounts)) <= 2,
+    && Math.max(...Object.values(skeletonCounts)) <= 2
+    && results.length === new Set(results.map((result) => result.title)).size
+    && results.length === new Set(results.map((result) => result.opening)).size
+    && results.filter((result) => result.faq).length / results.length <= 0.4
+    && results.filter((result) => result.checklist).length / results.length <= 0.4,
 };
 
 mkdirSync('docs/audits', { recursive: true });
-writeFileSync('docs/audits/blog-quality-engine-v3-canary-results.json', `${JSON.stringify({ summary, canaries: results }, null, 2)}\n`);
-writeFileSync('docs/audits/blog-quality-engine-v3-canary-results.md', `# Blog Quality Engine V3 canary results
+const jsonOutput = `${JSON.stringify({ summary, canaries: results }, null, 2)}\n`;
+const markdownOutput = `# Blog Quality Engine V3 canary results
 
 실행 모드는 \`offline_structured_canary_no_publication\`입니다. 외부 모델이나 운영 DB를 쓰지 않았고, fixture source ID는 production evidence로 사용할 수 없습니다.
 
@@ -151,7 +155,14 @@ writeFileSync('docs/audits/blog-quality-engine-v3-canary-results.md', `# Blog Qu
 종합 판정: **${summary.passed ? 'PASS' : 'FAIL'}**
 
 각 canary의 archetype, source fixture와 failure evidence는 JSON에 저장했습니다. 이 검사는 실제 모델 문장 품질이나 실제 출처의 진위를 증명하지 않으므로, 운영 전에는 승인된 provider로 별도 live canary를 실행해야 합니다.
-`);
+`;
+writeFileSync('docs/audits/blog-quality-engine-v3-canary-results.json', jsonOutput);
+writeFileSync('docs/audits/blog-quality-engine-v3-canary-results.md', markdownOutput);
+writeFileSync('docs/audits/blog-serp-generated-canary-2026-08-14.json', jsonOutput);
+writeFileSync('docs/audits/blog-serp-generated-canary-2026-08-14.md', markdownOutput.replace(
+  '# Blog Quality Engine V3 canary results',
+  '# Blog SERP-generated canary — 2026-08-14',
+));
 
 console.log(JSON.stringify(summary, null, 2));
 if (!summary.passed) process.exitCode = 1;

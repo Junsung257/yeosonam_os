@@ -16,6 +16,9 @@
 | `BLOG_DETAIL_BUNDLE_MAX_AGE_HOURS` | `720` | DB 장애 시 LOW-risk 상세 본문 번들의 최대 허용 나이(30일); HIGH 24시간, MEDIUM 48시간 상한은 이 값보다 우선하며 만료 시 fail-closed |
 | `BLOG_IMAGE_PHASH_APPLY_CONFIRM` | 없음 | pHash DB backfill 이중 확인값; 평소 환경 변수로 저장 금지 |
 | `BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM` | 없음 | 로컬 임시 DB reset 전용 확인값; preview/production 설정 금지 |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 없음 | Naver Search API와 DataLab 서버 자격증명; client 노출 금지 |
+| `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
+| `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 

@@ -307,3 +307,42 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - 운영 queued 11건은 demand 0건이라 publishable candidate 0건이다. V3 runtime resource 18/18과 migrations는 운영에 아직 적용되지 않았다.
 - 운영 public view와 bundled safe snapshot 사이의 수량 parity, review-blocked legacy row disposition, 301/410, GSC/Naver import, 실제 RUM·engagement event는 production change window에서 별도 검증해야 한다.
 - 따라서 현재 결과는 “배포 가능한 fail-closed 코드와 검증 산출물”이지 “운영이 완벽하다”는 선언이 아니다. production 전환은 migration rehearsal → `draft_only` 배포 → snapshot parity → 24개 provider-backed canary → 사람 승인 순서를 유지한다.
+
+## 23. 2026-08-14 Naver-first SERP generation engine
+
+### 공급자와 실제 수집 결과
+
+- 유료 Google SERP API를 생성 필수조건에서 제거했다. V3 기본 공급자는 Naver Search Ads Keyword Tool(월간 검색수), Naver DataLab(상대 추이), Naver Search API blog/web(editorial 구조 표본), GSC(여소남 실제 성과)다.
+- `npm run audit:blog-serp-v3`를 production DB write 없이 실행했다. 24개 query에서 editorial 표본 240/240, query당 10개 24/24, 상세 구조 fetch 204/240(85.0%), `fetch_blocked` 35, 기타 실패 1, unavailable query 0을 기록했다.
+- 양수로 관측된 demand가 있는 query는 20/24였다. 두 DataLab 요청은 timeout이 발생했으며 성공으로 숨기지 않았다. Search Ads `"< 10"` bucket은 숫자로 바꾸지 않고 exact monthly total을 null로 유지한다.
+- 이 표본은 Google 상위 10개 또는 Naver 통합검색 순위의 대체값이 아니다. 경쟁사 본문 전체는 저장하지 않고 compact structure metric과 짧은 excerpt만 보관한다.
+
+### 생성·발행 계약 변경
+
+- V3 brief가 writer 호출 전에 확정되고 실제 prompt의 단일 작성 계약이 된다. 구형 brief는 공식 evidence 연구계획 adapter로만 남겼다.
+- 고정 H2·12개월표·FAQ·checklist·이미지 최소 수·연도·power word·`여행 가이드` suffix를 기본값에서 제거했다. broad destination query는 새 URL 대신 representative refresh로 보낸다.
+- 후보 선정 preflight가 Naver Search Ads/DataLab의 실제 양수 신호를 읽는다. Search API 결과 존재 자체는 demand로 인정하지 않는다. `coverage_gap`만으로는 계속 차단한다.
+- 첫 운영 후보 우선순위는 `다낭 10월 날씨`, `다낭 가볼만한곳`, `세부 호텔 추천`이다. 하루 cap 3을 승인한 경우 KST 누적 slot은 09시 1, 12시 1, 15시 2, 18시 2, 21시 3이다. 한 슬롯에서 최대 8후보, 한 queue item은 최대 3 durable attempts다.
+- HIGH-risk human approval, claim conflict/expiry, unsupported number, corpus duplication, malformed Korean, fabricated experience, competitor 12-token overlap gate는 SERP 장애와 무관하게 계속 차단한다.
+
+### 카나리·정적 검증
+
+| 검증 | 결과 |
+|---|---|
+| structured canary | 24 drafts, 21 destinations, 15 intents, 10 archetypes |
+| 다양성 | exact title 0, normalized skeleton 최대 2, duplicate opening 0 |
+| 사실/언어 | unsupported numeric 0, stale HIGH 0, broken Korean 0 |
+| 구성 포화 | FAQ 12.5%, checklist 4.2% |
+| blog/SERP/keyword Vitest | 200 files, 1,435 tests PASS |
+| TypeScript | error 0 |
+| ESLint | warning/error 0 |
+| Next.js production build | 15.5.21, 539초, compile 2.8분, static pages 390/390, postbuild PASS |
+
+카나리는 `offline_structured_canary_no_publication`이며 production evidence나 실제 모델 문장 품질을 증명하지 않는다. 실제 운영 전에는 승인된 provider와 공식 source로 LOW/MEDIUM live canary를 `draft_only`에서 다시 실행해야 한다.
+
+### DB·운영 미적용 상태
+
+- additive migration `20260813223117_blog_naver_first_serp_research_v3.sql`, rollback, service-role RLS contract test를 작성했지만 운영에는 적용하지 않았다.
+- 구형 title-frequency snapshot은 V3 research로 자동 이관하지 않는다. read-only backfill 검토 SQL의 기본 승인 수는 0이고 fresh research를 요구한다.
+- 운영 배포, production environment 변경, production DB INSERT/UPDATE/DELETE, migration apply, push, PR은 모두 0건이다.
+- 코드 기본값은 계속 `BLOG_AUTOPUBLISH_MODE=draft_only`, `BLOG_DAILY_PUBLISH_CAP=1`이다. migration·snapshot parity·provider-backed canary·public surface 검증 뒤 승인 change window에서만 `live`와 cap 3을 함께 설정한다.

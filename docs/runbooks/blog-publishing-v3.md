@@ -24,6 +24,12 @@ V3는 발행량보다 검증된 수요, claim 근거, corpus 다양성, human re
 
 `reviewed_only`는 `review_status=approved`이고 demand/evidence/claim/quality/diversity gate를 모두 통과한 글만 발행합니다. `live`도 human approval이 필요한 HIGH risk를 우회하지 않습니다. `coverage_gap`은 demand signal이 아닙니다.
 
+### Naver-first 운영값과 슬롯
+
+생성 입력은 `docs/runbooks/blog-serp-research-v3.md`의 Naver-first 계약을 사용합니다. 코드 기본값은 계속 `draft_only`, cap 1입니다. migration·snapshot·provider-backed canary와 public surface 검증이 끝난 운영 change window에서만 `BLOG_AUTOPUBLISH_MODE=live`, `BLOG_DAILY_PUBLISH_CAP=3`을 함께 승인합니다.
+
+cap 3의 KST 누적 공개 허용량은 09시 1건, 12시 1건, 15시 2건, 18시 2건, 21시 3건입니다. 기존 5회 cron은 유지합니다. LOW/MEDIUM만 자동발행하고 HIGH-risk는 다른 안전 후보로 슬롯을 넘깁니다. 같은 실행에서 후보를 최대 8개까지 순서대로 시도합니다.
+
 ## 발행 흐름
 
 ```text
@@ -43,12 +49,13 @@ observed demand → research packet → flexible brief/archetype → writer
 2. migration 다섯 개를 staging/local clone에서 순서대로 검증합니다. 운영에는 아직 적용하지 않습니다.
 3. `npm run test -- <V3 tests>`, blog suite, `npm run type-check`, `npm run lint`, `npm run build`를 실행합니다.
 4. `npm run canary:blog-quality-v3` 결과와 failure evidence를 검토합니다.
-5. `npm run audit:blog-quality-v3`와 `npm run plan:blog-disposition-v3`를 read-only로 실행합니다.
-6. production env는 먼저 `draft_only`로 설정하고 preview deployment에서 발행 cron을 dry-run 검증합니다.
-7. main의 immutable commit만 Vercel production으로 promote합니다. feature branch 이름을 production source로 직접 사용하지 않습니다.
-8. DB migration 적용 후 `select * from refresh_blog_public_snapshots_v3();`를 1회 실행하고 count/checksum을 확인합니다.
-9. `draft_only` 상태에서 목록, 상세, RSS, sitemap, image sitemap, related, invalid destination, DB 장애 fallback을 검증합니다.
-10. 승인된 운영 판단이 있을 때만 `reviewed_only`로 전환합니다. `live` 전환은 별도 승인 사항입니다.
+5. `npm run audit:blog-serp-v3`로 24개 query와 상세 fetch 실패 사유를 검토합니다. Naver 표본을 Google/Naver 통합검색 순위로 해석하지 않습니다.
+6. `npm run audit:blog-quality-v3`와 `npm run plan:blog-disposition-v3`를 read-only로 실행합니다.
+7. production env는 먼저 `draft_only`로 설정하고 preview deployment에서 발행 cron을 dry-run 검증합니다.
+8. main의 immutable commit만 Vercel production으로 promote합니다. feature branch 이름을 production source로 직접 사용하지 않습니다.
+9. DB migration 적용 후 `select * from refresh_blog_public_snapshots_v3();`를 1회 실행하고 count/checksum을 확인합니다.
+10. `draft_only` 상태에서 목록, 상세, RSS, sitemap, image sitemap, related, invalid destination, DB 장애 fallback을 검증합니다.
+11. LOW/MEDIUM provider-backed canary가 모두 통과한 승인 change window에서만 `live`/cap 3을 켭니다. HIGH-risk human approval은 계속 필수입니다.
 
 ## snapshot 갱신과 rollback
 

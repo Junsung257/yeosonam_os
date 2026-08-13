@@ -55,6 +55,7 @@
 | 제휴 추적·쿠키·코브랜딩 세부 | `docs/affiliate-attribution.md` |
 | **블로그 자동발행 현재 SSOT·품질 계약** | **`docs/blog-autopublish-contract.md`** |
 | 블로그 운영 런북 | `docs/blog-system-runbook.md`, `docs/blog-ops-runbook.md` |
+| 블로그 SERP·keyword 연구 V3 | `docs/runbooks/blog-serp-research-v3.md` |
 | 블로그 V3 발행·정리·검색성과 운영 | `docs/runbooks/blog-publishing-v3.md`, `docs/runbooks/blog-stale-content-and-removal.md`, `docs/runbooks/blog-search-performance-import.md` |
 | **정산 현재 SSOT·ledger·지급 계약** | **`docs/settlement-current-ssot.md`** |
 | **마케팅 현재 SSOT·Ad OS·외부발행 계약** | **`docs/marketing-current-ssot.md`** |

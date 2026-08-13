@@ -103,6 +103,7 @@
     "eval:blog-info-v2": "npx tsx scripts/eval-blog-informational-engine-v2.ts",
     "eval:blog-prompt-v2": "npx tsx scripts/eval-blog-informational-writer-prompt.ts",
     "audit:blog-quality-v3": "npx tsx scripts/audit-blog-corpus-v3.ts",
+    "audit:blog-serp-v3": "npx tsx scripts/audit-blog-serp-benchmark-v3.ts",
     "plan:blog-disposition-v3": "npx tsx scripts/plan-blog-corpus-disposition.ts",
     "canary:blog-quality-v3": "npx tsx scripts/run-blog-quality-v3-canary.ts",
     "refresh:blog-public-snapshots-v3": "npx tsx scripts/refresh-blog-public-snapshots.ts",
