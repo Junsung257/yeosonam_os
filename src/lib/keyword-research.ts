@@ -15,6 +15,11 @@
 import { supabaseAdmin } from './supabase';
 import { getSecret } from './secret-registry';
 import { fetchRelatedQueries } from './related-queries';
+import {
+  fetchNaverKeywordTool,
+  parseNaverKeywordMetric,
+  type NaverKeywordToolItem,
+} from './search-ads-api';
 
 // ── 타입 ──────────────────────────────────────────────────
 
@@ -48,6 +53,39 @@ export interface KeywordResearchResult {
     ctr: number;
     average_position: number;
   };
+  /** Naver DataLab relative index. Never treat this as monthly volume. */
+  trend_score?: number | null;
+}
+
+function normalizeNaverKeyword(value: unknown): string {
+  return String(value ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+}
+
+export function extractExactNaverMonthlyVolumes(
+  keywords: string[],
+  rows: NaverKeywordToolItem[],
+): Map<string, number | null> {
+  const byKeyword = new Map(rows.map((row) => [normalizeNaverKeyword(row.relKeyword), row]));
+  const result = new Map<string, number | null>();
+  for (const keyword of keywords) {
+    const row = byKeyword.get(normalizeNaverKeyword(keyword));
+    const pc = parseNaverKeywordMetric(row?.monthlyPcQcCnt);
+    const mobile = parseNaverKeywordMetric(row?.monthlyMobileQcCnt);
+    // If either platform is the provider's "< 10" bucket, the exact total is
+    // unknown. Preserve null instead of manufacturing an exact count.
+    result.set(keyword, pc !== null && mobile !== null ? pc + mobile : null);
+  }
+  return result;
+}
+
+async function fetchExactNaverMonthlyVolumes(keywords: string[]): Promise<Map<string, number | null>> {
+  const uniqueKeywords = [...new Set(keywords.map((keyword) => keyword.trim()).filter(Boolean))];
+  const rows: NaverKeywordToolItem[] = [];
+  for (let offset = 0; offset < uniqueKeywords.length; offset += 5) {
+    const batch = uniqueKeywords.slice(offset, offset + 5);
+    rows.push(...await fetchNaverKeywordTool(batch.map(normalizeNaverKeyword)));
+  }
+  return extractExactNaverMonthlyVolumes(uniqueKeywords, rows);
 }
 
 // ── 검색 의도 분류 휴리스틱 ─────────────────────────────────
@@ -374,10 +412,13 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
   } catch { /* 캐시 미스 — 계속 진행 */ }
 
   // 2) Naver DataLab 호출
-  const trendMap = await fetchNaverDataLabTrends([keyword]);
+  const [trendMap, monthlyMap] = await Promise.all([
+    fetchNaverDataLabTrends([keyword]),
+    fetchExactNaverMonthlyVolumes([keyword]),
+  ]);
   const t = trendMap.get(keyword);
 
-  const monthly = t?.volume ?? null;
+  const monthly = monthlyMap.get(keyword) ?? null;
   const score = t?.score ?? null;
 
   // 경쟁도 추정: head=high / mid=medium / longtail=low
@@ -404,7 +445,7 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
         monthly_search_volume: monthly,
         competition_level: competition,
         related_queries: relatedQueries,
-        raw: { trend_score: score, intent },
+        raw: { trend_score: score, intent, volume_source: monthly == null ? null : 'naver_search_ads' },
         fetched_at: new Date().toISOString(),
       }, { onConflict: 'keyword' });
   } catch { /* 캐시 저장 실패해도 발행은 진행 */ }
@@ -418,6 +459,7 @@ export async function researchKeyword(keyword: string): Promise<KeywordResearchR
     source: t ? 'naver_datalab' : 'fallback',
     cached: false,
     intent,
+    trend_score: score,
   };
 }
 
@@ -441,7 +483,12 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
   }
 
   const missing = keywords.filter(k => !cachedMap.has(k));
-  const trendMap = missing.length > 0 ? await fetchNaverDataLabTrends(missing) : new Map();
+  const [trendMap, monthlyMap] = missing.length > 0
+    ? await Promise.all([
+        fetchNaverDataLabTrends(missing),
+        fetchExactNaverMonthlyVolumes(missing),
+      ])
+    : [new Map<string, { score: number; volume: null }>(), new Map<string, number | null>()];
 
   // 캐시된 것은 그대로
   for (const [kw, row] of cachedMap) {
@@ -454,6 +501,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
       source: row.source,
       cached: true,
       intent: classifyIntent(kw),
+      trend_score: Number(row.raw?.trend_score) > 0 ? Number(row.raw.trend_score) : null,
     });
   }
 
@@ -461,7 +509,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
   const upserts: any[] = [];
   for (const kw of missing) {
     const t = trendMap.get(kw);
-    const monthly = t?.volume ?? null;
+    const monthly = monthlyMap.get(kw) ?? null;
     const tier = classifyKeywordTier(kw, monthly);
     const competition: CompetitionLevel = tier === 'head' ? 'high' : tier === 'mid' ? 'medium' : 'low';
 
@@ -475,6 +523,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
       source: t ? 'naver_datalab' : 'fallback',
       cached: false,
       intent,
+      trend_score: t?.score ?? null,
     });
 
     upserts.push({
@@ -483,7 +532,7 @@ export async function researchKeywordsBatch(keywords: string[]): Promise<Map<str
       monthly_search_volume: monthly,
       competition_level: competition,
       related_queries: [],
-      raw: { trend_score: t?.score ?? null, intent },
+      raw: { trend_score: t?.score ?? null, intent, volume_source: monthly == null ? null : 'naver_search_ads' },
       fetched_at: new Date().toISOString(),
     });
   }

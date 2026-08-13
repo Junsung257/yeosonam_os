@@ -802,6 +802,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         primary_keyword: pk,
         keyword_tier: r?.tier ?? classifyKeywordTier(pk),
         monthly_search_volume: r?.monthly_search_volume ?? null,
+        trend_score: r?.trend_score ?? null,
         competition_level: r?.competition_level ?? null,
         meta: { keywords: s.keywords, season_tag: s.season_tag },
       };
@@ -860,6 +861,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         primary_keyword: pk,
         keyword_tier: r?.tier ?? 'mid',
         monthly_search_volume: r?.monthly_search_volume ?? null,
+        trend_score: r?.trend_score ?? null,
         competition_level: r?.competition_level ?? 'medium',
         meta: { expected_slug: g.slug_suffix },
       };
