@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 
 import puppeteer, { type Browser, type ConsoleMessage, type Page } from 'puppeteer';
+import { getSecret } from '@/lib/secret-registry';
 import { browserProofLocalChromeCandidates } from './browser-runtime';
 
 export type ProductRegistrationV6BrowserSurface = 'packages' | 'lp';
@@ -53,7 +54,7 @@ async function openBrowser(): Promise<{
   browser: Browser;
   mode: ProductRegistrationV6BrowserProofResult['browserMode'];
 }> {
-  const browserWSEndpoint = process.env.PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT?.trim();
+  const browserWSEndpoint = getSecret('PRODUCT_REGISTRATION_BROWSER_WS_ENDPOINT');
   if (browserWSEndpoint) {
     return {
       browser: await puppeteer.connect({ browserWSEndpoint }),
@@ -73,7 +74,7 @@ async function openBrowser(): Promise<{
   let serverlessArgs: string[] = [];
   if (!executablePath && process.platform === 'linux') {
     const chromium = (await import('@sparticuz/chromium-min')).default;
-    const packUrl = process.env.PRODUCT_REGISTRATION_CHROMIUM_PACK_URL?.trim()
+    const packUrl = getSecret('PRODUCT_REGISTRATION_CHROMIUM_PACK_URL')
       || 'https://github.com/Sparticuz/chromium/releases/download/v148.0.0/chromium-v148.0.0-pack.x64.tar';
     serverlessChromiumExecutable ??= chromium.executablePath(packUrl).catch(error => {
       serverlessChromiumExecutable = null;
@@ -143,13 +144,14 @@ async function proveSurface(input: {
     (error instanceof Error ? error.message : String(error)).slice(0, 500),
   ));
   await page.setViewport(VIEWPORT);
+  const vercelProtectionBypass = getSecret('VERCEL_AUTOMATION_BYPASS_SECRET');
   await page.setExtraHTTPHeaders({
     'x-product-registration-v6-proof-token': input.proofToken,
     'accept-language': 'ko-KR,ko;q=0.9',
     'cache-control': 'no-cache',
-    ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+    ...(vercelProtectionBypass
       ? {
-          'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+          'x-vercel-protection-bypass': vercelProtectionBypass,
           'x-vercel-set-bypass-cookie': 'true',
         }
       : {}),
