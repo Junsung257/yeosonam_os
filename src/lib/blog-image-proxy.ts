@@ -1,6 +1,7 @@
 const PROXYABLE_BLOG_IMAGE_HOSTS = new Set([
   'images.pexels.com',
   'commons.wikimedia.org',
+  'upload.wikimedia.org',
 ]);
 const YEOSONAM_PUBLIC_ASSET_HOST = 'ixaxnvbmhzjvupissmly.supabase.co';
 const YEOSONAM_BLOG_ASSET_PATH_PREFIX = '/storage/v1/object/public/blog-assets/';
@@ -22,6 +23,7 @@ export function isProxyableBlogImageUrl(value: unknown): value is string {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:') return false;
+    if (url.username || url.password || (url.port && url.port !== '443')) return false;
     const hostname = url.hostname.toLowerCase();
     if (PROXYABLE_BLOG_IMAGE_HOSTS.has(hostname)) return true;
     return hostname === YEOSONAM_PUBLIC_ASSET_HOST

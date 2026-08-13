@@ -33,6 +33,12 @@ describe('blog image proxy variants', () => {
     expect(buildBlogImageSrcSet('https://ixaxnvbmhzjvupissmly.supabase.co/storage/v1/object/public/private-assets/example.jpg')).toBeUndefined();
   });
 
+  it('allows the Wikimedia media host but rejects credentials and non-standard ports', () => {
+    expect(buildBlogImageSrcSet('https://upload.wikimedia.org/wikipedia/commons/a/a1/example.jpg')).toBeTruthy();
+    expect(buildBlogImageSrcSet('https://user:pass@images.pexels.com/photo.jpg')).toBeUndefined();
+    expect(buildBlogImageSrcSet('https://images.pexels.com:8443/photo.jpg')).toBeUndefined();
+  });
+
   it('adds responsive, lazy, intrinsic attributes to trusted inline images without inventing alt text', () => {
     const html = '<p><img src="https://images.pexels.com/photos/123/example.jpg?w=1200&h=627" alt="실제 장면"></p>';
     const rendered = proxyBlogImageUrlsInHtml(html);

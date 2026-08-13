@@ -421,9 +421,9 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     getSecret('SUPABASE_URL');
   const key =
-    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    getSecret('SUPABASE_ANON_KEY');
+    getSecret('SUPABASE_ANON_KEY') ||
+    getSecret('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) {
     return null;
@@ -480,7 +480,9 @@ async function publicBlogRouteIsEligible(slug: string): Promise<boolean | null> 
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
+    // A slow eligibility probe must not consume the stale-detail fallback budget.
+    // Do not cache this decision: review-status changes need to take effect at once.
+    const timer = setTimeout(() => controller.abort(), 750);
     const endpoint = new URL(`${config.url}/rest/v1/public_blog_content_creatives`);
     endpoint.searchParams.set(
       'select',

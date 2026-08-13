@@ -1,7 +1,7 @@
 /**
  * @case ERR-BLOG-edge-middleware-timeout (2026-06-18)
- * @summary Public blog routes must not be held in Edge middleware DB existence
- * checks, and blog rendering must not wait forever on auxiliary queries.
+ * @summary Public blog eligibility preflight must be bounded and fail over to
+ * the page snapshot without letting public fast paths bypass review blocks.
  */
 
 const test = require('node:test');
@@ -13,15 +13,16 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 const exists = (...parts) => fs.existsSync(path.join(ROOT, ...parts));
 
-test('ERR-BLOG-edge-middleware-timeout: public paths bypass dynamic DB not-found checks', () => {
+test('ERR-BLOG-edge-middleware-timeout: review-safe preflight runs before the public fast path', () => {
   const source = read('src', 'middleware.ts');
   const publicIndex = source.indexOf('if (isPublicPath(request))');
   const dynamicIndex = source.indexOf('const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);');
 
   assert.ok(publicIndex > 0, 'public path check should exist');
   assert.ok(dynamicIndex > 0, 'dynamic not-found check should exist');
-  assert.ok(publicIndex < dynamicIndex, 'public routes should bypass Edge DB checks');
-  assert.match(source, /setTimeout\(\(\) => controller\.abort\(\), 1500\)/);
+  assert.ok(dynamicIndex < publicIndex, 'review-blocked blog routes must not bypass the hard-status preflight');
+  assert.match(source, /setTimeout\(\(\) => controller\.abort\(\), 750\)/);
+  assert.match(source, /Database outages must not turn a known public bundle into a false 404/);
 });
 
 test('ERR-BLOG-edge-middleware-timeout: blog routes are pinned to node runtime', () => {
@@ -36,14 +37,17 @@ test('ERR-BLOG-edge-middleware-timeout: blog routes are pinned to node runtime',
   assert.match(detailPage, /postFastPackage/);
 });
 
-test('ERR-BLOG-edge-middleware-timeout: blog list queries are abortable', () => {
-  const source = read('src', 'app', 'blog', 'BlogData.tsx');
+test('ERR-BLOG-edge-middleware-timeout: blog list reads use the bounded snapshot catalog', () => {
+  const list = read('src', 'app', 'blog', 'BlogData.tsx');
+  const catalog = read('src', 'lib', 'blog-public-catalog.ts');
+  const timeout = read('src', 'lib', 'blog-public-query-timeout.ts');
 
-  assert.match(source, /function runBlogQuery|async function runBlogQuery/);
-  assert.match(source, /abortSignal\(controller\.signal\)/);
-  assert.match(source, /controller\.abort\(\)/);
-  assert.match(source, /Promise\.race/);
-  assert.match(source, /runBlogQuery\('posts'/);
+  assert.match(list, /loadPublicBlogCatalogPage/);
+  assert.match(catalog, /runBlogPublicQueryWithTimeout/);
+  assert.match(catalog, /loadPublicBlogCatalogPageUncached/);
+  assert.match(timeout, /AbortController/);
+  assert.match(timeout, /controller\.abort\(\)/);
+  assert.match(timeout, /Promise\.race/);
 });
 
 test('ERR-BLOG-edge-middleware-timeout: ops monitors allow CRON_SECRET server calls', () => {

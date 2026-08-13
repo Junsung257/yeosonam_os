@@ -126,6 +126,22 @@ describe('middleware blog public status contract', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
+  it('uses the public Supabase key for the public-view preflight even when a service key exists', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-key');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    await middleware(new NextRequest('https://www.yeosonam.com/blog/unknown-fixture'));
+
+    expect(fetchSpy).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({
+      headers: expect.objectContaining({ apikey: 'anon-key', authorization: 'Bearer anon-key' }),
+    }));
+  });
+
   it('does not treat the image sitemap route as a dynamic article slug', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
