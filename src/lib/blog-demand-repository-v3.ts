@@ -14,11 +14,37 @@ export interface MergedBlogDemandEvidenceV3 {
   rejectedCount: number;
 }
 
+export interface BlogQueueDemandRowV3 {
+  product_id?: string | null;
+  monthly_search_volume?: number | null;
+  trend_score?: number | null;
+  meta?: Record<string, unknown> | null;
+}
+
 const HUMAN_ASSERTED_PROVIDERS = new Set(['operator_note', 'editor_seed']);
 
 function positive(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+export function readEmbeddedBlogQueueDemandSignalV3(
+  row: BlogQueueDemandRowV3,
+): BlogDemandSignalInput {
+  const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+    ? row.meta as Record<string, unknown>
+    : {};
+  return {
+    gsc: Number(meta.gsc_impressions || meta.gsc_clicks || 0) > 0 || meta.gsc_signal === true,
+    naver: Number(meta.naver_impressions || meta.naver_clicks || 0) > 0 || meta.naver_signal === true,
+    customerQuestionCount: positive(meta.customer_question_count),
+    activeProductRelation: meta.active_product_relation_verified === true,
+    verifiedOperatorNote: typeof meta.verified_operator_note_id === 'string'
+      && meta.verified_operator_note_id.trim().length > 0,
+    editorApprovedSeed: meta.editor_approved_seed === true,
+    monthlySearchVolume: positive(row.monthly_search_volume) || null,
+    trendScore: positive(row.trend_score) || null,
+  };
 }
 
 export function mergePersistedBlogDemandSignalsV3(

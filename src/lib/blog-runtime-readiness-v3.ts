@@ -130,20 +130,18 @@ export async function probeBlogRuntimeSchemaReadinessV3(
 export async function probeBlogRuntimeSchemaWithSupabaseV3(
   client: {
     from: (table: string) => {
-      select: (
-        columns: string,
-        options: { count: 'exact'; head: true },
-      ) => PromiseLike<BlogRuntimeProbeResultV3>;
+      select: (columns: string) => {
+        limit: (count: number) => PromiseLike<BlogRuntimeProbeResultV3>;
+      };
     };
   },
   checkedAt = new Date(),
   resources: readonly BlogRuntimeResourceV3[] = BLOG_RUNTIME_RESOURCES_V3,
 ): Promise<BlogRuntimeSchemaReadinessV3> {
   return probeBlogRuntimeSchemaReadinessV3(
-    (resource) => Promise.resolve(client.from(resource.table).select(resource.columns, {
-      count: 'exact',
-      head: true,
-    })),
+    // PostgREST can return a successful HEAD response for a missing relation,
+    // so schema readiness must execute a real, bounded row projection.
+    (resource) => Promise.resolve(client.from(resource.table).select(resource.columns).limit(1)),
     checkedAt,
     resources,
   );

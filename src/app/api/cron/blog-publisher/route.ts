@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogSeo, type AngleType } from '@/lib/content-generator';
@@ -146,13 +147,18 @@ import {
 } from '@/lib/blog-autopublish-policy-v3';
 import {
   mergePersistedBlogDemandSignalsV3,
+  readEmbeddedBlogQueueDemandSignalV3,
   type PersistedBlogDemandSignalV3,
 } from '@/lib/blog-demand-repository-v3';
+import {
+  aggregateObservedBlogSearchMetricsV3,
+  scoreBlogDemandCandidateV3,
+} from '@/lib/blog-demand-engine-v3';
 import { buildBlogContentBriefV3 } from '@/lib/blog-content-brief-v3';
 import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
 import {
   BLOG_RUNTIME_RESOURCES_V3,
-  probeBlogRuntimeSchemaReadinessV3,
+  probeBlogRuntimeSchemaWithSupabaseV3,
 } from '@/lib/blog-runtime-readiness-v3';
 import {
   evaluateBlogCorpusCandidateV3,
@@ -221,17 +227,7 @@ const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 
 function readQueueDemandSignalV3(item: any): BlogDemandSignalInput {
-  const meta = item?.meta && typeof item.meta === 'object' ? item.meta as Record<string, any> : {};
-  return {
-    gsc: Number(meta.gsc_impressions || meta.gsc_clicks || 0) > 0 || meta.gsc_signal === true,
-    naver: Number(meta.naver_impressions || meta.naver_clicks || 0) > 0 || meta.naver_signal === true,
-    customerQuestionCount: Number(meta.customer_question_count || 0),
-    activeProductRelation: Boolean(item?.product_id || meta.active_product_id),
-    verifiedOperatorNote: typeof meta.verified_operator_note_id === 'string' && meta.verified_operator_note_id.length > 0,
-    editorApprovedSeed: meta.editor_approved_seed === true,
-    monthlySearchVolume: typeof item?.monthly_search_volume === 'number' ? item.monthly_search_volume : null,
-    trendScore: typeof item?.trend_score === 'number' ? item.trend_score : null,
-  };
+  return readEmbeddedBlogQueueDemandSignalV3(item);
 }
 
 async function loadQueueDemandEvidenceV3(item: any): Promise<{
@@ -240,12 +236,35 @@ async function loadQueueDemandEvidenceV3(item: any): Promise<{
   acceptedProviders: string[];
   rejectedCount: number;
   error: string | null;
+  performance: ReturnType<typeof aggregateObservedBlogSearchMetricsV3>;
 }> {
   const base = readQueueDemandSignalV3(item);
-  const { data, error } = await supabaseAdmin
-    .from('blog_demand_signals')
-    .select('provider, signal_value, source_reference, verified_at, expires_at')
-    .eq('queue_id', item.id);
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [demandResult, activeProductResult, performanceResult] = await Promise.all([
+    supabaseAdmin
+      .from('blog_demand_signals')
+      .select('provider, signal_value, source_reference, verified_at, expires_at')
+      .eq('queue_id', item.id),
+    item.product_id
+      ? supabaseAdmin
+          .from('travel_packages')
+          .select('id')
+          .eq('id', item.product_id)
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+          .in('publication_state', ['approved', 'published'])
+          .limit(1)
+      : Promise.resolve({ data: [], error: null }),
+    item.primary_keyword
+      ? supabaseAdmin
+          .from('blog_search_performance')
+          .select('metric_date, clicks, impressions, average_position')
+          .eq('query', String(item.primary_keyword).trim())
+          .gte('metric_date', since)
+          .order('metric_date', { ascending: false })
+          .limit(500)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const { data, error } = demandResult;
   if (error) {
     return {
       repositoryReady: false,
@@ -253,16 +272,26 @@ async function loadQueueDemandEvidenceV3(item: any): Promise<{
       acceptedProviders: [],
       rejectedCount: 0,
       error: error.message,
+      performance: aggregateObservedBlogSearchMetricsV3([]),
     };
   }
   const merged = mergePersistedBlogDemandSignalsV3(
-    base,
+    {
+      ...base,
+      activeProductRelation: base.activeProductRelation
+        || (!activeProductResult.error && Boolean(activeProductResult.data?.length)),
+    },
     (data ?? []) as PersistedBlogDemandSignalV3[],
   );
-  return { repositoryReady: true, ...merged, error: null };
+  return {
+    repositoryReady: !performanceResult.error,
+    ...merged,
+    error: performanceResult.error?.message ?? null,
+    performance: aggregateObservedBlogSearchMetricsV3(performanceResult.data ?? []),
+  };
 }
 
-async function loadBlogPortfolioSaturationV3(archetype: string): Promise<{
+async function loadBlogPortfolioSaturationV3(archetype: string, isWeatherContent: boolean): Promise<{
   weatherShare30d: number;
   sameArchetypeInLast10: number;
 }> {
@@ -280,7 +309,9 @@ async function loadBlogPortfolioSaturationV3(archetype: string): Promise<{
     row.generation_meta?.content_brief_v3?.archetype === archetype,
   ).length;
   return {
-    weatherShare30d: rows.length ? weather / rows.length : 0,
+    weatherShare30d: (rows.length + 1) > 0
+      ? (weather + (isWeatherContent ? 1 : 0)) / (rows.length + 1)
+      : 0,
     sameArchetypeInLast10,
   };
 }
@@ -1200,13 +1231,8 @@ async function runBlogPublisher(request: NextRequest) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
-  const schemaReadiness = await probeBlogRuntimeSchemaReadinessV3(
-    async (resource) => {
-      const { error } = await supabaseAdmin
-        .from(resource.table)
-        .select(resource.columns, { count: 'exact', head: true });
-      return { error };
-    },
+  const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
+    supabaseAdmin,
     new Date(),
     BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
       resource.scope === 'publish' || resource.scope === 'delivery'
@@ -2857,7 +2883,19 @@ async function processQueueItem(
       ? item.meta.content_review_status
       : null;
     const todayPublished = await getTodayBlogPublishCount();
-    const portfolio = await loadBlogPortfolioSaturationV3(contentBriefV3.archetype);
+    const isWeatherContent = /weather|날씨|옷차림/i.test(
+      `${item.category || ''} ${item.topic || ''} ${generated.seo_title || ''}`,
+    );
+    const portfolio = await loadBlogPortfolioSaturationV3(
+      contentBriefV3.archetype,
+      isWeatherContent,
+    );
+    const latestMetricMs = demandPreflight.performance.latestMetricDate
+      ? Date.parse(`${demandPreflight.performance.latestMetricDate}T00:00:00Z`)
+      : Number.NaN;
+    const sourceFreshness = Number.isFinite(latestMetricMs)
+      ? Math.max(0, 1 - (Date.now() - latestMetricMs) / (90 * 24 * 60 * 60 * 1000))
+      : (demandPreflight.acceptedProviders.length > 0 ? 1 : 0);
     const corpusDiversity = await loadBlogCorpusDiversityV3({
       queueItemId: item.id,
       excludeCreativeId: promoteDraftId,
@@ -2881,6 +2919,20 @@ async function processQueueItem(
       ? Math.max(0, Math.min(1, claimValidation.coverage))
       : (blogType === 'info' ? 0 : 1);
     const diversityReport = corpusDiversity.report;
+    const demandScoreV3 = scoreBlogDemandCandidateV3({
+      demand: demandPreflight.signal,
+      impressions: demandPreflight.performance.impressions,
+      clicks: demandPreflight.performance.clicks,
+      ctr: demandPreflight.performance.ctr,
+      averagePosition: demandPreflight.performance.averagePosition,
+      customerQuestionFrequency: demandPreflight.signal.customerQuestionCount,
+      activeProductRelevance: demandPreflight.signal.activeProductRelation ? 1 : 0,
+      seasonality: Number(item.meta?.seasonality_score || 0),
+      sourceFreshness,
+      cannibalizationPenalty: ['refresh', 'merge'].includes(diversityReport?.disposition || '') ? 1 : 0,
+      templateSaturationPenalty: (diversityReport?.normalizedTitleClusterSize ?? 0) >= 3 ? 1 : 0,
+      staleInformationRisk: contentBriefV3.riskLevel === 'HIGH' ? 1 : contentBriefV3.riskLevel === 'MEDIUM' ? 0.5 : 0,
+    });
     const qualityEvaluationV3 = evaluateBlogQualityV3({
       title: generated.seo_title,
       body: generated.blog_html,
@@ -2919,19 +2971,23 @@ async function processQueueItem(
         && claimValidation.passed
         && contentBriefV3.passed
         && corpusDiversity.error === null
-        && qualityEvaluationV3.passed,
+        && qualityEvaluationV3.passed
+        && demandScoreV3.eligible,
       deterministicFallback: generated.generation_meta?.private_diagnostic_fallback === true
         || generated.generation_meta?.deterministic_info_fallback === true,
       riskLevel: contentBriefV3.riskLevel,
       demand: demandPreflight.signal,
       publishedToday: todayPublished.count,
       weatherShare30d: portfolio.weatherShare30d,
+      isWeatherContent,
       sameArchetypeInLast10: portfolio.sameArchetypeInLast10,
     });
     generationMeta.autopublish_policy_v3 = {
       ...autopublishDecision,
       mode: BLOG_AUTOPUBLISH_POLICY_V3.mode,
       evaluated_at: now,
+      performance: demandPreflight.performance,
+      score: demandScoreV3,
     };
     generationMeta.demand_evidence_v3 = {
       repository_ready: demandPreflight.repositoryReady,

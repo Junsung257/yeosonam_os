@@ -30,7 +30,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(snapshotRefresh).toBeGreaterThan(0);
     expect(snapshotRefresh).toBeLessThan(indexingEnqueue);
     expect(source).toContain("publicSnapshotRefresh.status === 'succeeded'");
-    expect(source).toContain('probeBlogRuntimeSchemaReadinessV3');
+    expect(source).toContain('probeBlogRuntimeSchemaWithSupabaseV3');
     expect(source).toContain("resource.scope === 'publish' || resource.scope === 'delivery'");
     expect(source).toContain('!schemaReadiness.publishReady || !schemaReadiness.deliveryReady');
     expect(source).toContain("reason: 'blog_quality_v3_runtime_schema_not_ready'");

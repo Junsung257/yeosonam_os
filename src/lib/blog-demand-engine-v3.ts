@@ -33,6 +33,50 @@ export interface BlogDemandScoreV3 {
   reasons: string[];
 }
 
+export interface BlogObservedSearchMetricV3 {
+  metric_date: string;
+  clicks: number | null;
+  impressions: number | null;
+  average_position: number | null;
+}
+
+export function aggregateObservedBlogSearchMetricsV3(
+  rows: BlogObservedSearchMetricV3[],
+): {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  averagePosition: number | null;
+  latestMetricDate: string | null;
+} {
+  let clicks = 0;
+  let impressions = 0;
+  let weightedPosition = 0;
+  let positionWeight = 0;
+  let latestMetricDate: string | null = null;
+  for (const row of rows) {
+    const rowImpressions = Math.max(0, Number(row.impressions || 0));
+    const rowClicks = Math.max(0, Number(row.clicks || 0));
+    const position = Number(row.average_position);
+    clicks += rowClicks;
+    impressions += rowImpressions;
+    if (Number.isFinite(position) && position >= 0) {
+      const weight = rowImpressions > 0 ? rowImpressions : 1;
+      weightedPosition += position * weight;
+      positionWeight += weight;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(row.metric_date)
+      && (!latestMetricDate || row.metric_date > latestMetricDate)) latestMetricDate = row.metric_date;
+  }
+  return {
+    clicks,
+    impressions,
+    ctr: impressions > 0 ? clicks / impressions : 0,
+    averagePosition: positionWeight > 0 ? weightedPosition / positionWeight : null,
+    latestMetricDate,
+  };
+}
+
 const clamp = (value: number | null | undefined, min = 0, max = 1) =>
   Math.min(max, Math.max(min, Number.isFinite(value) ? Number(value) : 0));
 

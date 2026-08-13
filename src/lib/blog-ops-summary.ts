@@ -2,7 +2,11 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
 import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
-import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS } from '@/lib/blog-scheduler';
+import {
+  countPublishableQueueCandidates,
+  loadQueueDemandSignalMapV3,
+  MIN_PUBLISHABLE_BUFFER_DAYS,
+} from '@/lib/blog-scheduler';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
 import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
@@ -605,9 +609,12 @@ export async function buildBlogOpsSummary(supabase: any) {
     ? 'risk'
     : qualitySummary.slug_only_failure_count > 0 ? 'watch' : 'healthy';
   const currentDayPublisherLevel: BlogOpsLevel = currentDayPublisherHealth.status === 'risk' ? 'blocked' : 'healthy';
+  const publishableQueueRows = queueRows.filter((row) => row.status === 'queued' || row.status === 'generating');
+  const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(publishableQueueRows, supabase);
   const publishabilityStats = countPublishableQueueCandidates({
-    activeQueue: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
+    activeQueue: publishableQueueRows,
     recentPublished: publishedRows.slice(0, 100),
+    demandSignalsByQueueId,
   });
   const candidateContractBlocked = publishabilityStats.candidateContractBlocked;
   const preflight = evaluateBlogPublishPreflight({
@@ -615,7 +622,10 @@ export async function buildBlogOpsSummary(supabase: any) {
     publishedToday,
     publishableCandidateCount: publishabilityStats.publishableCount,
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing,
     candidateShortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
     actionableFailedCount: retryableFailedQueue.length,
     staleGeneratingCount: staleGenerating,

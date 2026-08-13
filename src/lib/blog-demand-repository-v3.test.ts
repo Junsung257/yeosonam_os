@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { mergePersistedBlogDemandSignalsV3 } from './blog-demand-repository-v3';
+import {
+  mergePersistedBlogDemandSignalsV3,
+  readEmbeddedBlogQueueDemandSignalV3,
+} from './blog-demand-repository-v3';
 
 describe('blog demand repository v3', () => {
   it('merges observed search and customer evidence without inventing values', () => {
@@ -58,5 +61,25 @@ describe('blog demand repository v3', () => {
 
     expect(result.signal.editorApprovedSeed).toBe(true);
     expect(result.acceptedProviders).toEqual(['editor_seed']);
+  });
+
+  it('does not treat a bare product id or null volume fields as verified demand', () => {
+    expect(readEmbeddedBlogQueueDemandSignalV3({
+      product_id: 'product-with-unknown-state',
+      monthly_search_volume: null,
+      trend_score: null,
+      meta: {},
+    })).toMatchObject({
+      activeProductRelation: false,
+      monthlySearchVolume: null,
+      trendScore: null,
+    });
+  });
+
+  it('accepts only an explicitly verified active product relation from queue metadata', () => {
+    expect(readEmbeddedBlogQueueDemandSignalV3({
+      product_id: 'active-product',
+      meta: { active_product_relation_verified: true },
+    }).activeProductRelation).toBe(true);
   });
 });

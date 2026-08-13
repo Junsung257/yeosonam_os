@@ -8,13 +8,15 @@ import {
   buildWeatherQueueVariation,
   buildMicroAnglePrimaryKeyword,
   countPublishableQueueCandidates,
+  loadQueueDemandSignalMapV3,
   MIN_PUBLISHABLE_BUFFER_DAYS,
   SCHEDULE_OCCUPYING_QUEUE_STATUSES,
 } from './blog-scheduler';
 
-function researchedTokyoWeatherMeta() {
-  const destination = '도쿄';
-  const contentKey = 'tokyo-weather-packing';
+function researchedTokyoWeatherMeta(
+  destination = '도쿄',
+  contentKey = 'tokyo-weather-packing',
+) {
   const sourceUrl = 'https://worldweather.wmo.int/kr/json/183_kr.xml';
   const climateMonth = Array.from({ length: 12 }, (_, index) => ({
     month: index + 1,
@@ -62,6 +64,7 @@ function researchedTokyoWeatherMeta() {
   if (!result.bundle) throw new Error(result.issues.join(','));
   return {
     writer_type: 'info_writer',
+    gsc_impressions: 120,
     micro_angle: 'weather_packing',
     expected_slug: contentKey,
     information_research_bundle: result.bundle,
@@ -156,6 +159,7 @@ describe('blog scheduler queue refill helpers', () => {
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
       researchNotReady: 1,
+      demandMissing: 0,
     });
   });
 
@@ -164,8 +168,8 @@ describe('blog scheduler queue refill helpers', () => {
       recentPublished: [],
       activeQueue: [
         { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'info_writer' } },
-        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'product_consultant_writer', product_dedup_key: 'pkg|2026-07-01|5d|YSN' } },
-        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'product_consultant_writer', product_dedup_key: 'pkg|2026-07-01|5d|YSN' } },
+        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'product_consultant_writer', product_dedup_key: 'pkg|2026-07-01|5d|YSN', active_product_relation_verified: true } },
+        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'product_consultant_writer', product_dedup_key: 'pkg|2026-07-01|5d|YSN', active_product_relation_verified: true } },
         { destination: '발리', angle_type: 'value', meta: { micro_angle: 'transport_cost', evidence_insufficient: true } },
       ],
     });
@@ -179,6 +183,7 @@ describe('blog scheduler queue refill helpers', () => {
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
       researchNotReady: 1,
+      demandMissing: 0,
     });
   });
 
@@ -186,7 +191,7 @@ describe('blog scheduler queue refill helpers', () => {
     const stats = countPublishableQueueCandidates({
       recentPublished: [],
       activeQueue: [
-        { product_id: 'pkg-ok', meta: { product_dedup_key: 'pkg-ok|2026-07-01|4d|YSN' } },
+        { product_id: 'pkg-ok', meta: { product_dedup_key: 'pkg-ok|2026-07-01|4d|YSN', active_product_relation_verified: true } },
         { product_id: 'pkg-blocked', meta: { failure_code: 'product_open_contract' } },
         { product_id: 'pkg-blocked-2', meta: { quarantine_reason: 'product_open_contract' } },
       ],
@@ -201,6 +206,7 @@ describe('blog scheduler queue refill helpers', () => {
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
       researchNotReady: 0,
+      demandMissing: 0,
     });
   });
 
@@ -222,6 +228,7 @@ describe('blog scheduler queue refill helpers', () => {
     expect(stats.productOpenContractBlocked).toBe(3);
     expect(stats.evidenceInsufficient).toBe(0);
     expect(stats.researchNotReady).toBe(4);
+    expect(stats.demandMissing).toBe(0);
   });
 
   it('excludes destinationless info candidates unless they are explicitly generic', () => {
@@ -250,6 +257,7 @@ describe('blog scheduler queue refill helpers', () => {
       destinationlessInfoBlocked: 1,
       candidateContractBlocked: 0,
       researchNotReady: 1,
+      demandMissing: 0,
     });
   });
 
@@ -279,6 +287,7 @@ describe('blog scheduler queue refill helpers', () => {
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 1,
       researchNotReady: 1,
+      demandMissing: 0,
     });
   });
 
@@ -300,6 +309,7 @@ describe('blog scheduler queue refill helpers', () => {
 
     expect(stats.publishableCount).toBe(0);
     expect(stats.researchNotReady).toBe(1);
+    expect(stats.demandMissing).toBe(0);
   });
 
   it('counts an exact, current research bundle as publish ready', () => {
@@ -317,6 +327,7 @@ describe('blog scheduler queue refill helpers', () => {
 
     expect(stats.publishableCount).toBe(1);
     expect(stats.researchNotReady).toBe(0);
+    expect(stats.demandMissing).toBe(0);
   });
 
   it('quarantines an old canonical representative before a refill consumes a slot', () => {
@@ -338,5 +349,53 @@ describe('blog scheduler queue refill helpers', () => {
     expect(stats.publishableCount).toBe(0);
     expect(stats.blockedRecentDuplicate).toBe(1);
     expect(stats.researchNotReady).toBe(0);
+    expect(stats.demandMissing).toBe(0);
+  });
+
+  it('classifies ten researched coverage-gap weather rows without demand as non-publishable', () => {
+    const activeQueue = Array.from({ length: 10 }, (_, index) => ({
+      id: `weather-${index}`,
+      destination: `도시-${index}`,
+      topic: `도시-${index} 8월 날씨와 옷차림 준비물 체크`,
+      primary_keyword: `도시-${index} 날씨 옷차림 준비물`,
+      category: 'preparation',
+      angle_type: 'value',
+      source: 'coverage_gap',
+      meta: {
+        ...researchedTokyoWeatherMeta(`도시-${index}`, `city-${index}-weather-packing`),
+        gsc_impressions: 0,
+        expected_slug: `city-${index}-weather-packing`,
+      },
+    }));
+
+    const stats = countPublishableQueueCandidates({ activeQueue, recentPublished: [] });
+
+    expect(stats.publishableCount).toBe(0);
+    expect(stats.demandMissing).toBe(10);
+    expect(stats.researchNotReady).toBe(0);
+  });
+
+  it('consumes an exact observed query from the V3 performance repository as demand', async () => {
+    const makeQuery = (table: string) => {
+      const result = table === 'blog_search_performance'
+        ? { data: [{ provider: 'google_search_console', query: '도쿄 날씨 옷차림 준비물', impressions: 120 }], error: null }
+        : { data: [], error: null };
+      const query: Record<string, any> = {
+        select: () => query, in: () => query, gte: () => query, gt: () => query, limit: () => query,
+        then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
+      };
+      return query;
+    };
+    const rows = [{
+      id: 'queue-1',
+      destination: '도쿄',
+      primary_keyword: '도쿄 날씨 옷차림 준비물',
+      topic: '도쿄 8월 날씨',
+      meta: researchedTokyoWeatherMeta(),
+    }];
+
+    const signals = await loadQueueDemandSignalMapV3(rows, { from: makeQuery });
+
+    expect(signals.get('queue-1')).toMatchObject({ gsc: true });
   });
 });

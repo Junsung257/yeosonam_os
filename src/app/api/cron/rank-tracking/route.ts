@@ -6,6 +6,7 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { expandGscLongtailTopics } from '@/lib/blog-longtail-expander';
 import { buildBlogGscQueryRankHistoryRows } from '@/lib/blog-gsc-rank-history-rows';
+import { buildBlogGscSearchPerformanceRowsV3 } from '@/lib/blog-search-performance-import-v3';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -30,6 +31,29 @@ export const dynamic = 'force-dynamic';
 
 const RANK_DROP_THRESHOLD = 5;       // 5계단 이상 하락 시 경보
 const LOOKBACK_AVG_DAYS = 7;
+
+function boundedCatchupDays(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(90, Math.max(1, Math.floor(parsed))) : 7;
+}
+
+async function upsertInChunks(
+  table: 'rank_history' | 'blog_search_performance',
+  rows: Array<Record<string, unknown>>,
+  onConflict: string,
+): Promise<{ inserted: number; error: string | null }> {
+  let inserted = 0;
+  for (let offset = 0; offset < rows.length; offset += 500) {
+    const chunk = rows.slice(offset, offset + 500);
+    const { error } = await supabaseAdmin.from(table).upsert(chunk, {
+      onConflict,
+      ignoreDuplicates: false,
+    });
+    if (error) return { inserted, error: sanitizeDbError(error) };
+    inserted += chunk.length;
+  }
+  return { inserted, error: null };
+}
 
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -65,26 +89,65 @@ async function runRankTracking(request: NextRequest) {
   targetDate.setDate(targetDate.getDate() - 2);
   const dateStr = targetDate.toISOString().split('T')[0];
 
-  const metrics = await fetchBlogSearchMetrics(siteUrl, dateStr, true).catch(err => {
-    errors.push(`GSC fetch failed: ${sanitizeDbError(err)}`);
-    return [];
+  const catchupDays = boundedCatchupDays(process.env.BLOG_GSC_CATCHUP_DAYS);
+  const targetDates = Array.from({ length: catchupDays }, (_, index) => {
+    const date = new Date(targetDate);
+    date.setUTCDate(date.getUTCDate() - (catchupDays - index - 1));
+    return date.toISOString().split('T')[0]!;
   });
+  const metrics = [] as Awaited<ReturnType<typeof fetchBlogSearchMetrics>>;
+  for (const target of targetDates) {
+    const daily = await fetchBlogSearchMetrics(siteUrl, target, true).catch(err => {
+      errors.push(`GSC fetch failed (${target}): ${sanitizeDbError(err)}`);
+      return [];
+    });
+    metrics.push(...daily);
+  }
   const selectedGscSiteUrl = metrics[0]?.gscSiteUrl ?? siteUrl;
 
   if (metrics.length === 0) {
-    return { date: dateStr, fetched: 0, inserted: 0, alerts: 0, errors, message: 'GSC 데이터 없음' };
+    errors.push(`gsc_observed_metrics_empty:${targetDates[0]}:${dateStr}`);
+    return {
+      ok: false,
+      date: dateStr,
+      catchup_days: catchupDays,
+      fetched: 0,
+      inserted: 0,
+      performance_inserted: 0,
+      alerts: 0,
+      errors,
+      message: 'GSC observed query-page metrics are empty',
+    };
   }
 
   // 2) rank_history 일괄 upsert (slug 추출)
-  const rows = buildBlogGscQueryRankHistoryRows(metrics, dateStr);
+  const rows = targetDates.flatMap((date) => buildBlogGscQueryRankHistoryRows(
+    metrics.filter((metric) => metric.date === date),
+    date,
+  ));
 
   let inserted = 0;
   if (rows.length > 0) {
-    const { error: insErr } = await supabaseAdmin
-      .from('rank_history')
-      .upsert(rows, { onConflict: 'slug,query,date,source', ignoreDuplicates: false });
-    if (insErr) errors.push(`rank_history upsert failed: ${sanitizeDbError(insErr)}`);
-    else inserted = rows.length;
+    const result = await upsertInChunks(
+      'rank_history',
+      rows as unknown as Array<Record<string, unknown>>,
+      'slug,query,date,source',
+    );
+    inserted = result.inserted;
+    if (result.error) errors.push(`rank_history upsert failed: ${result.error}`);
+  }
+
+  const performanceRows = buildBlogGscSearchPerformanceRowsV3(
+    metrics,
+    `gsc-api-${targetDates[0]}-${dateStr}`,
+  );
+  const performanceResult = await upsertInChunks(
+    'blog_search_performance',
+    performanceRows as unknown as Array<Record<string, unknown>>,
+    'provider,source_row_hash',
+  );
+  if (performanceResult.error) {
+    errors.push(`blog_search_performance upsert failed: ${performanceResult.error}`);
   }
 
   let longtailExpansion: Record<string, unknown> | null = null;
@@ -225,9 +288,13 @@ async function runRankTracking(request: NextRequest) {
   }
 
   return {
+    ok: errors.length === 0,
     date: dateStr,
+    catchup_days: catchupDays,
+    requested_dates: targetDates,
     fetched: metrics.length,
     inserted,
+    performance_inserted: performanceResult.inserted,
     alerts,
     siteUrl: selectedGscSiteUrl,
     fallback_used: selectedGscSiteUrl !== siteUrl,

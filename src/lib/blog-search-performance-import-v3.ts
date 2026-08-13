@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { GSCMetrics } from './gsc-client';
 
 export type BlogSearchPerformanceProviderV3 = 'google_search_console' | 'naver_search_advisor';
 
@@ -63,7 +64,9 @@ export function normalizeBlogSearchPerformanceRowV3(input: {
     : (impressions > 0 ? clicks / impressions : 0);
   if (ctr > 1 || clicks > impressions) throw new Error(`metric_inconsistent:${clicks}/${impressions}/${ctr}`);
   const rawPosition = valueFor(input.row, 'average_position');
-  const canonical = [input.provider, metricDate, query, pageUrl, clicks, impressions, ctr, rawPosition].join('\u001f');
+  const device = valueFor(input.row, 'device') || null;
+  const country = valueFor(input.row, 'country') || null;
+  const canonical = [input.provider, metricDate, query, pageUrl, device || '', country || ''].join('\u001f');
   return {
     provider: input.provider,
     metric_date: metricDate,
@@ -73,9 +76,30 @@ export function normalizeBlogSearchPerformanceRowV3(input: {
     impressions,
     ctr,
     average_position: rawPosition ? nonnegative(rawPosition, 'average_position') : null,
-    device: valueFor(input.row, 'device') || null,
-    country: valueFor(input.row, 'country') || null,
+    device,
+    country,
     source_batch_id: input.batchId,
     source_row_hash: createHash('sha256').update(canonical).digest('hex'),
   };
+}
+
+export function buildBlogGscSearchPerformanceRowsV3(
+  metrics: GSCMetrics[],
+  batchId: string,
+): BlogSearchPerformanceImportRowV3[] {
+  return metrics
+    .filter((metric) => Boolean(metric.query?.trim()) && /^https?:\/\//i.test(metric.page))
+    .map((metric) => normalizeBlogSearchPerformanceRowV3({
+      provider: 'google_search_console',
+      batchId,
+      row: {
+        date: metric.date,
+        query: metric.query!.trim(),
+        page: metric.page,
+        clicks: String(metric.clicks),
+        impressions: String(metric.impressions),
+        ctr: String(metric.ctr),
+        position: String(metric.position),
+      },
+    }));
 }

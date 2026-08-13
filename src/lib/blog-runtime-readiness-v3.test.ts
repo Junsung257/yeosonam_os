@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BLOG_RUNTIME_RESOURCES_V3,
   probeBlogRuntimeSchemaReadinessV3,
+  probeBlogRuntimeSchemaWithSupabaseV3,
 } from './blog-runtime-readiness-v3';
 
 describe('blog runtime schema readiness v3', () => {
@@ -49,5 +50,28 @@ describe('blog runtime schema readiness v3', () => {
         errorMessage: 'network timeout',
       }),
     ]));
+  });
+
+  it('uses a bounded GET projection because PostgREST HEAD can mask missing relations', async () => {
+    const calls: Array<{ table: string; columns: string; limit: number }> = [];
+    const report = await probeBlogRuntimeSchemaWithSupabaseV3({
+      from: (table: string) => ({
+        select: (columns: string) => ({
+          limit: async (limit: number) => {
+            calls.push({ table, columns, limit });
+            return {
+              error: table === 'blog_demand_signals'
+                ? { code: 'PGRST205', message: 'relation is missing' }
+                : null,
+            };
+          },
+        }),
+      }),
+    });
+
+    expect(calls).toHaveLength(BLOG_RUNTIME_RESOURCES_V3.length);
+    expect(calls.every((call) => call.limit === 1)).toBe(true);
+    expect(report.publishReady).toBe(false);
+    expect(report.missing).toContain('demand_signals');
   });
 });

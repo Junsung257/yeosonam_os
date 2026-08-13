@@ -18,7 +18,8 @@ async function main(): Promise<void> {
   const batchId = `${provider}-${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}`;
   const parsed = Papa.parse<Record<string, string>>(bytes.toString('utf8'), { header: true, skipEmptyLines: 'greedy' });
   if (parsed.errors.length) throw new Error(`csv_parse_failed:${parsed.errors.map((error) => error.message).join('|')}`);
-  const rows = parsed.data.map((row) => normalizeBlogSearchPerformanceRowV3({ provider, row, batchId }));
+  const normalizedRows = parsed.data.map((row) => normalizeBlogSearchPerformanceRowV3({ provider, row, batchId }));
+  const rows = [...new Map(normalizedRows.map((row) => [row.source_row_hash, row])).values()];
   if (!rows.length) throw new Error('empty_observed_metric_import');
   const preview = {
     dry_run: !apply,
@@ -39,7 +40,7 @@ async function main(): Promise<void> {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('supabase_apply_configuration_missing');
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await client.from('blog_search_performance').upsert(rows, { onConflict: 'provider,source_row_hash', ignoreDuplicates: true });
+  const { error } = await client.from('blog_search_performance').upsert(rows, { onConflict: 'provider,source_row_hash', ignoreDuplicates: false });
   if (error) throw new Error(`search_performance_import_failed:${error.message}`);
 }
 

@@ -41,6 +41,7 @@ export interface BlogPublishDecisionInput {
   demand?: BlogDemandSignalInput | null;
   publishedToday?: number;
   weatherShare30d?: number;
+  isWeatherContent?: boolean;
   sameArchetypeInLast10?: number;
 }
 
@@ -138,7 +139,9 @@ export function evaluateBlogAutopublishDecisionV3(
     reasons.push('verified_demand_signal_missing');
   }
   if ((input.publishedToday || 0) >= policy.dailyPublishCap) reasons.push('daily_publish_cap_reached');
-  if ((input.weatherShare30d || 0) > policy.maxWeatherShare30d) reasons.push('weather_share_cap_exceeded');
+  if (input.isWeatherContent && (input.weatherShare30d || 0) > policy.maxWeatherShare30d) {
+    reasons.push('weather_share_cap_exceeded');
+  }
   if ((input.sameArchetypeInLast10 || 0) >= policy.maxSameArchetypeInLast10) {
     reasons.push('archetype_saturation_cap_reached');
   }

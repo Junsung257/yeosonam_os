@@ -85,6 +85,7 @@ describe('blog autopublish policy v3', () => {
       demand: null,
       publishedToday: 1,
       weatherShare30d: 0.5,
+      isWeatherContent: true,
       sameArchetypeInLast10: 2,
     });
     expect(decision.publish).toBe(false);
@@ -96,6 +97,19 @@ describe('blog autopublish policy v3', () => {
       'weather_share_cap_exceeded',
       'archetype_saturation_cap_reached',
     ]));
+  });
+
+  it('allows non-weather work to dilute an over-saturated weather portfolio', () => {
+    const policy = readBlogAutopublishPolicyV3({ BLOG_AUTOPUBLISH_MODE: 'live' });
+    const decision = evaluateBlogAutopublishDecisionV3(policy, {
+      allGatesPassed: true,
+      demand: { customerQuestionCount: 1 },
+      weatherShare30d: 0.95,
+      isWeatherContent: false,
+    });
+
+    expect(decision.reasons).not.toContain('weather_share_cap_exceeded');
+    expect(decision.publish).toBe(true);
   });
 
   it('does not invent demand when volume and trend are null', () => {
