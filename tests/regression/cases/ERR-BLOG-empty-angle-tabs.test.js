@@ -13,12 +13,14 @@ const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
 test('ERR-BLOG-empty-angle-tabs: list renders only angle chips that have published posts', () => {
   const source = read('src', 'app', 'blog', 'BlogData.tsx');
+  const catalog = read('src', 'lib', 'blog-public-catalog.ts');
 
   assert.match(source, /angleCounts: Record<string, number>/);
-  assert.match(source, /\.select\('angle_type'\)/);
-  assert.match(source, /if \(filter\.destination\) angleQuery = angleQuery\.eq\('destination', filter\.destination\);/);
-  assert.match(source, /const visibleAngleChips = ANGLE_CHIPS\.filter/);
-  assert.match(source, /angleCounts\[c\.v\]/);
+  assert.match(source, /loadPublicBlogCatalogPage/);
+  assert.match(catalog, /blog_public_catalog_facets/);
+  assert.match(catalog, /facet_type === 'angle'/);
+  assert.match(source, /const visibleAngleChips = BLOG_PUBLIC_ANGLES\.filter/);
+  assert.match(source, /angleCounts\[candidate\.key\]/);
   assert.match(source, /visibleAngleChips\.map/);
-  assert.doesNotMatch(source, /ANGLE_CHIPS\.map\(c =>/);
+  assert.doesNotMatch(source, /BLOG_PUBLIC_ANGLES\.map\(/);
 });

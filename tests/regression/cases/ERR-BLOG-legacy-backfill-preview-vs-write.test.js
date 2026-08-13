@@ -13,17 +13,20 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 const source = fs.readFileSync(path.join(ROOT, 'scripts', 'backfill-blog-quality.ts'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
-test('ERR-BLOG-legacy-backfill-preview-vs-write: dry-run is default and write mode is explicit', () => {
-  assert.match(source, /const dryRun = !args\.has\(['"]--write['"]\)/);
+test('ERR-BLOG-legacy-backfill-preview-vs-write: legacy content repair cannot write', () => {
+  assert.match(source, /const legacyWriteRequested = args\.has\('--write'\) \|\| args\.has\('--apply'\)/);
+  assert.match(source, /Legacy blog quality backfill is permanently dry-run-only/);
+  assert.match(source, /const dryRun = true/);
   assert.match(source, /if \(!changed \|\| dryRun\) continue/);
   assert.equal(pkg.scripts['backfill:blog-quality'], 'npx tsx scripts/backfill-blog-quality.ts');
-  assert.equal(pkg.scripts['backfill:blog-quality:write'], 'npx tsx scripts/backfill-blog-quality.ts --write');
+  assert.equal(pkg.scripts['backfill:blog-quality:write'], undefined);
 });
 
 test('ERR-BLOG-legacy-backfill-preview-vs-write: every candidate is evaluated before update', () => {
   assert.match(source, /evaluateBlogPublishQuality/);
-  assert.match(source, /const publishReady = !hasBlockingBlogIssue\(qaReport\)/);
-  assert.match(source, /qualityGatePassed: publishReady/);
+  assert.match(source, /const publishReady = qaReport\.passed/);
+  assert.match(source, /qualityGatePassed:\s*publishReady/);
+  assert.match(source, /publishReady,/);
   assert.match(source, /failedGates: qaReport\.qualityGate\.gates/);
   assert.match(source, /qualityGateFailed: auditRows\.filter\(\(row\) => !row\.qualityGatePassed\)\.length/);
 });

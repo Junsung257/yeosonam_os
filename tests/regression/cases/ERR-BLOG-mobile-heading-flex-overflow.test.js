@@ -26,12 +26,12 @@ test('ERR-BLOG-mobile-heading-flex-overflow: .prose-blog h2 is block flow, not f
   assert.doesNotMatch(block, /display:\s*(inline-)?flex\s*;/);
 });
 
-test('ERR-BLOG-mobile-heading-flex-overflow: h2 numbering stays in pseudo-element, not flex child layout', () => {
+test('ERR-BLOG-mobile-heading-flex-overflow: h2 pseudo-element cannot inject fixed numbering', () => {
   const css = readCss();
   const h2Block = cssBlock(css, '.prose-blog h2');
   const beforeBlock = cssBlock(css, '.prose-blog h2::before');
 
   assert.doesNotMatch(h2Block, /align-items|justify-content|gap:/);
-  assert.match(beforeBlock, /content:\s*counter\(h2-counter,\s*decimal-leading-zero\)/);
-  assert.match(beforeBlock, /display:\s*inline-flex\s*;/);
+  assert.match(beforeBlock, /content:\s*none\s*;/);
+  assert.doesNotMatch(beforeBlock, /counter\(|display:\s*(inline-)?flex/);
 });

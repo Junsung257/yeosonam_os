@@ -175,6 +175,39 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('const metadataTitle = cleanedTitle;');
   });
 
+  it('shows only persisted package facts in the landing hero', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('buildBlogProductFactLabels({');
+    expect(source).not.toContain("trustBadges={['운영팀 검증'");
+    expect(source).not.toContain("pkg?.airline || '직항'");
+    expect(source).not.toContain("'노팁·노옵션'");
+  });
+
+  it('does not render a second DKI headline below the canonical H1', () => {
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+    const heroSource = readFileSync(join(process.cwd(), 'src/components/blog/LandingHero.tsx'), 'utf8');
+
+    expect(detailSource).not.toContain('headline={dki.headline}');
+    expect(detailSource).not.toContain('matched={dki.matched}');
+    expect(heroSource).not.toContain('{headline}');
+    expect(heroSource).not.toContain('맞춤 검색 결과');
+    expect(heroSource).not.toContain('pf.kakao.com');
+  });
+
+  it('does not query or mutate visitor-level DKI state on public detail requests', () => {
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(detailSource).not.toContain("from '@/lib/dki-resolver'");
+    expect(detailSource).not.toContain('resolveDki(');
+    expect(detailSource).not.toContain('const utmTerm =');
+    expect(detailSource).not.toContain('const utmCampaign =');
+    expect(detailSource).not.toContain('const utmSource =');
+    expect(detailSource).not.toContain('qp.utm_term');
+    expect(detailSource).not.toContain('qp.utm_campaign');
+    expect(detailSource).not.toContain('qp.utm_source');
+  });
+
   it('keeps decorative author avatars out of extracted article text', () => {
     const detailSource = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
     const authorSource = readFileSync(join(process.cwd(), 'src/components/blog/AuthorBox.tsx'), 'utf8');

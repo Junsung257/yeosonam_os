@@ -1,6 +1,8 @@
 # Blog Autopublish Contract
 
 > 2026-08-11 V3 override: 자동발행의 fail-closed 정책은 `docs/runbooks/blog-publishing-v3.md`가 우선합니다. 누락/잘못된 `BLOG_AUTOPUBLISH_MODE`는 `draft_only`이고, coverage gap만으로 발행하지 않으며, deterministic fallback과 content-creating repair는 공개 불가입니다.
+>
+> 2026-08-13 safety addendum: `scripts/backfill-blog-quality.ts` is permanently dry-run-only. Historical `--write` examples below are incident records, not executable instructions. Use the V3 disposition preview and reviewed migration runbook for corpus changes.
 
 Last updated: 2026-07-29
 

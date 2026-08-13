@@ -1,5 +1,7 @@
 # Blog Errors
 
+> 2026-08-13 V3 note: legacy `audit:blog-quality ... --write` and `backfill:blog-quality:write` commands in historical incident entries are no longer executable. The underlying script is permanently dry-run-only because it can create or rewrite article content.
+
 Last updated: 2026-07-30
 
 ## ERR-BLOG-local-transit-misclassified-as-airport@2026-07-28

@@ -245,8 +245,65 @@ BLOG_REQUIRE_DEMAND_SIGNAL=true
 - offline canary는 24 drafts, 24 destinations, 12 intents, 12 archetypes, exact title 0, normalized skeleton 최대 2, 동일 opening 0, unsupported numeric claim 0, stale HIGH claim 0, cross-destination image reuse 0, FAQ 12.5%, checklist 4.17%, broken Korean 0으로 PASS했다.
 - corpus dry-run disposition은 총 270건에 대해 REFRESH 92, MERGE 155, QUARANTINE 23이다. 직접 claim linkage가 부족한 기존 corpus에는 보수적인 unsupported-number 휴리스틱을 적용했으므로 이 결과는 자동 적용안이 아니라 human disposition preview다. 운영 DB write는 0건이다.
 - release bundle checksum과 rollback dry-run은 통과했다. Docker/local Supabase가 이 환경에서 가동되지 않아 변경된 SQL의 실제 apply/pgTAP은 새 data-free staging clone에서 다시 통과해야 한다. 운영 readiness는 required migrations, runtime schema, snapshot parity, public surfaces, DB reliability, measurement, review-blocked legacy rows, queued demand의 8개 gate가 계속 BLOCKED다.
-- production image corpus 500건 pHash 감사는 184초 제한에서 완료되지 않았다. 이를 PASS로 간주하지 않으며 staging/worker 환경에서 재실행해야 한다. 운영 배포, 운영 DB write, migration apply, production env 변경은 모두 0건이다.
+- 최초 production image pHash 감사는 같은 URL을 출현마다 직렬 다운로드해 184초 제한에서 끝나지 않았다. 감사기를 고유 URL 기준·bounded concurrency로 교체한 뒤, 2026-08-13 bundled public-detail snapshot의 이미지 766회 출현/478개 고유 URL을 6.623초에 전수 해시했고 실패 0, hash coverage 100%를 기록했다. 목적지별 중복 출현을 접은 518 visual uses에서 exact URL cross-destination 22그룹, 동일 원본 URL variant 21쌍, 서로 다른 source asset의 pHash 후보 7쌍을 찾았다. 후자 7쌍은 임계값 보정과 편집자 육안 검수 전 자동 제거하지 않는다. 로컬 `.env.prod` 키는 `Invalid API key`이므로 결과 scope는 `last_known_good_public_eligible_posts`이며 전체 draft/queue를 포함한 live registry 감사로 과장하지 않는다. 운영 배포, 운영 DB write, migration apply, production env 변경은 모두 0건이다.
 - Chrome/HTTP 검증 중 승인 없는 HIGH-risk 문서가 화면상 not-found여도 streamed HTTP 200을 반환하는 soft-404를 발견했다. middleware의 동적 공개 판정이 public-prefix fast path 뒤에 있어 도달 불가능했던 것이 원인이었다. 공개 view row에 동일 review/HIGH-risk 정책을 적용하는 preflight를 fast path 앞으로 이동해 승인 없는 여행자보험은 404, 명시적 tombstone은 410으로 고정했고 둘 다 `X-Robots-Tag: noindex, nofollow`를 반환한다. DB 조회 실패는 page의 risk-bounded snapshot으로 넘겨 false-404를 만들지 않는다.
 - 같은 변경에서 `/blog/image-sitemap.xml`을 article slug로 오인하는 회귀를 HTTP 검증으로 발견해 예약 경로 예외와 test fixture를 추가했다. 최종 production-start 결과는 `/blog` 200, `/blog/fukuoka-3` 200, unapproved insurance 404, tombstone 410, sitemap 283 entries, RSS 50 items, image sitemap 191 entries이며 세 index surface 모두 차단 slug 0건이다.
 - 목록 첫 화면은 Chrome에서 이미지 12/12가 480/768/960/1280/1600 `srcset`, `sizes`, intrinsic size를 사용했고 eager image는 hero 1장뿐이었다. 상세 11/11도 반응형이며 기존 inline Pexels 3장은 1200x627, lazy, async decoding으로 보강됐다. 콘솔 warning/error는 0건이고 자체 `blog-assets` 480px 요청은 AVIF 31,823 bytes로 응답했다.
 - 최종 blog 회귀는 193 files / 1,395 tests PASS다. middleware hard-404/reserved-route 회귀는 34 tests PASS, TypeScript·ESLint·`git diff --check` 오류 0이다. 마지막 Next.js 15.5.21 production build는 487.8초, compile 89초, static pages 390/390, `.next` postbuild 검증까지 PASS했다.
+
+## 21. 2026-08-13 이미지 및 공개 경로 추가 hardening
+
+- 이미지 프록시는 redirect를 자동 추적하지 않고 최대 3회까지 매 hop의 정확한 HTTPS allowlist를 요청 전에 검사한다. Wikimedia의 실제 media host인 `upload.wikimedia.org`만 추가했으며 credential URL과 non-standard port를 거부한다.
+- 선언된 크기뿐 아니라 chunked body도 10MB를 넘는 즉시 읽기를 취소한다. same-origin active content가 될 수 있는 upstream SVG passthrough는 제거하고 415로 차단한다.
+- 공개 블로그 middleware preflight는 anon/public key를 service-role보다 우선해 최소 권한으로 조회한다. review 상태를 즉시 반영해야 하므로 eligibility 결과를 캐시하지 않되, DB 장애가 상세 snapshot fallback 시간을 잠식하지 않도록 hard deadline을 1.5초에서 750ms로 줄였다.
+- 추가 targeted regression은 5 files / 57 tests와 이미지 전용 3 files / 17 tests가 PASS했고, 전체 TypeScript 검사도 PASS했다. `docs/audits/blog-image-phash-preview.json`과 CSV는 dry-run 산출물이며 DB update는 0건이다.
+
+## 22. 2026-08-13 최종 사용자 표면·운영 안전 재검증
+
+### 자동발행과 레거시 쓰기 경로
+
+- 레거시 `scripts/backfill-blog-quality.ts`는 영구 dry-run 전용으로 바꿨다. `--write` 또는 `--apply`는 DB client 생성이나 row 조회 전에 non-zero로 종료하며, `package.json`의 write alias도 제거했다.
+- 기존 운영 가이드에 남아 있던 5건/일, SEO 100점, 키워드 밀도 보정, 범용 FAQ·체크리스트 append 절차는 V3 비활성 이력으로 표시했다. 현재 실행 계약은 `draft_only`, 일일 cap 1, 실측 demand 필수, 안전한 문법/HTML repair만 허용한다.
+- `npm run audit:blog-revenue-funnel -- --strict`는 V3 일일 cap 계약 기준 15/15를 통과했다. 기존 5건/일을 성공 조건으로 판단하지 않는다.
+- 운영 DB write, migration apply, production deploy, production env 변경은 모두 0건이다.
+
+### 이미지 pHash dry-run
+
+- bundled last-known-good 공개 snapshot 범위에서 이미지 출현 766건, audit 대상 visual use 518건, 고유 URL 478건을 6.623초에 해시했다. 계산 성공 478, 실패 0, hash coverage 100%였다.
+- cross-destination exact URL cluster 22개, 동일 원본 URL variant 21쌍, 서로 다른 source asset pHash 후보 7쌍을 기록했다. 후보는 자동 삭제 대상이 아니라 라이선스·장소 확인이 필요한 편집 검토 대상이다.
+- 결과는 `blog-image-phash-preview.json/csv`에 저장했다. 로컬 Supabase credential이 유효하지 않아 scope는 전체 media registry/draft/queue가 아닌 `last_known_good_public_eligible_posts`이며, 이 한계를 artifact의 `source_scope`와 `source_read_error`에 명시했다.
+
+### 공개 표면 진실성 보강
+
+- 상품 랜딩 hero의 `운영팀 검증`, `노팁·노옵션`, airline fallback `직항` 자동 배지를 제거했다. 화면에는 DB에 저장된 항공사·출발 공항·기간 사실만 중립 label로 표시한다.
+- canonical H1 아래 DKI headline을 다시 H2로 출력하던 경로와 “맞춤 검색 결과” 표식을 제거했다. metadata title, H1, OG title은 URL 단위 저장 제목을 사용하고 방문자별 사실/제목 변형은 공개하지 않는다.
+- 공개 상세 요청의 UTM parsing, `ad_landing_mappings` DKI lookup, `increment_alm_clicks` RPC 경로도 제거했다. 상세 요청은 광고 click count를 쓰지 않으며 stored landing subtitle만 사용한다.
+- “여행 준비 장면”, “10초 판단”, “포함/불포함”, “일정 체감”처럼 실제 장면을 설명하지 않는 기존 inline alt는 공개 render에서 빈 alt로 바꿔 장식 이미지로 처리한다. 장면을 추측해 새 alt를 만들지 않는다.
+- snapshot의 `reviewedBy`는 더 이상 `fact_checked_at`을 검토 시각으로 재사용하지 않는다. 최신 approved `content_reviews`의 `reviewer_id`, `reviewed_at`, `review_scope`와 명시된 reviewer display name이 모두 있을 때만 snapshot review metadata를 만든다. migration release SHA-256 manifest도 재검토 후 갱신했다.
+- mobile breadcrumb는 제목을 숨겨 축약하고, 로고·breadcrumb·standalone 본문 링크·citation link의 touch area를 최소 44px로 맞췄다. hero의 중복 카카오 CTA는 제거하고 전역 mobile bottom navigation을 상시 상담 CTA로 유지한다.
+
+### 최종 테스트와 build
+
+| 검증 | 결과 | 증거 |
+|---|---|---|
+| Blog Vitest 전수 | PASS | 195 files, 1,413 tests |
+| ERR-BLOG regression | PASS | 28 files, 88 tests |
+| TypeScript | PASS | `tsc --noEmit`, error 0 |
+| ESLint | PASS | 전체 `src`, warning/error 0 |
+| migration release bundle | PASS | ordered migration 5개 + rollback SHA-256 일치 |
+| revenue funnel strict | PASS | 15/15 |
+| production build | PASS | Next.js 15.5.21, 565.0초, compile 113초, static pages 390/390, postbuild `.next` 검증 PASS |
+
+### Chrome 실제 화면 검증
+
+- 목록 `/blog`: title `여행 매거진 | 여소남`, canonical `https://www.yeosonam.com/blog`, robots `index, follow`, 12/12 image가 `srcset`·`sizes`·intrinsic dimension을 사용하고 hero만 eager였다. console warning/error 0건이었다.
+- 상세 `/blog/fukuoka-3`: H1 1개, 같은 제목 H2/H3 0개, canonical·OG title·H1 동기화, JSON-LD는 `BlogPosting`과 `BreadcrumbList`, 본문 image 3/3 responsive, article width 720px, 허위 `운영팀 검증`/`노팁·노옵션` 노출 0, console warning/error 0건이었다.
+- mobile 390×844: horizontal overflow 0, article width 342.7px, 본문 17px/line-height 30.94px, TOC 기본 접힘, 점검 대상 touch target 미달 0건, H1 1개, 동일 제목 heading 0개였다.
+- 첫 cold navigation에서는 local snapshot/DB fallback 초기화 동안 browser CDP 3초 deadline이 1회 초과했지만, 페이지 준비 후 DOM·console 검증은 정상 통과했다. field 성능 자료가 아니므로 LCP 목표 달성으로 보고하지 않는다.
+
+### 아직 “운영 완료”라고 부를 수 없는 이유
+
+- 선택 검증 글 `fukuoka-3`은 disposition preview에서 `REFRESH`, unsupported numeric claim 4건으로 남아 있다. 기존 본문의 slash-delimited 깨진 표와 범용 checklist 잔재도 보인다. deterministic repair로 내용·숫자·주장을 새로 만들지 않는 원칙 때문에 이번 코드 변경으로 원문을 덮어쓰지 않았다.
+- 운영 queued 11건은 demand 0건이라 publishable candidate 0건이다. V3 runtime resource 18/18과 migrations는 운영에 아직 적용되지 않았다.
+- 운영 public view와 bundled safe snapshot 사이의 수량 parity, review-blocked legacy row disposition, 301/410, GSC/Naver import, 실제 RUM·engagement event는 production change window에서 별도 검증해야 한다.
+- 따라서 현재 결과는 “배포 가능한 fail-closed 코드와 검증 산출물”이지 “운영이 완벽하다”는 선언이 아니다. production 전환은 migration rehearsal → `draft_only` 배포 → snapshot parity → 24개 provider-backed canary → 사람 승인 순서를 유지한다.

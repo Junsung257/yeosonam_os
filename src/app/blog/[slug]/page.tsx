@@ -18,12 +18,12 @@ import InlineRelated, {
 import { extractTocAndInjectIds, shouldShowToc } from '@/lib/blog-toc';
 import { removeUnreachableBlogAssetImages, renderBlogContentToHtml } from '@/lib/blog-renderer';
 import LandingHero from '@/components/blog/LandingHero';
+import { buildBlogProductFactLabels } from '@/lib/blog-product-fact-labels';
 import StickyMobileCta from '@/components/blog/StickyMobileCta';
 import DestinationCuration from '@/components/blog/DestinationCuration';
 import BlogProductRecommendationTracker from '@/components/blog/BlogProductRecommendationTracker';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
-import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
@@ -1062,8 +1062,7 @@ export async function generateMetadata({
   const dest = post.travel_packages?.destination || post.destination || null;
   const tagSet = [dest, angleLabel, '여행', '패키지여행', '단체여행'].filter(Boolean) as string[];
 
-  // A/B 테스트: generateMetadata는 서버 정적이므로 원본 seo_title 유지
-  // (실제 변형은 페이지 컴포넌트에서 처리)
+  // Metadata, OG title, and the page H1 use the same stored title.
   return {
     // absolute를 쓰면 layout의 template이 적용되지 않음
     title: { absolute: `${metadataTitle} | 여소남` },
@@ -1132,10 +1131,9 @@ function BlogDatabaseUnavailableView({ slug }: { slug: string }) {
 // ── 페이지 컴포넌트 ──────────────────────────────────────────
 export default async function BlogDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug: rawSlug } = await params;
   const slug = safeDecodeSlug(rawSlug);
@@ -1143,14 +1141,9 @@ export default async function BlogDetailPage({
   if (redirectedSlug) {
     permanentRedirect(`/blog/${redirectedSlug}`);
   }
-  const qp = await searchParams;
-  const utmCampaign = (qp.utm_campaign as string) || null;
-  const utmTerm = (qp.utm_term as string) || null;
-  const utmSource = (qp.utm_source as string) || null;
-
   // 렌더링 errors를 notFound로 fallback (E1401/500 방어)
   try {
-    return await renderBlogDetail({ rawSlug, slug, utmCampaign, utmTerm, utmSource });
+    return await renderBlogDetail({ rawSlug, slug });
   } catch (err) {
     if (isNextNotFoundError(err) || isNextRedirectError(err)) {
       throw err;
@@ -1171,15 +1164,9 @@ export default async function BlogDetailPage({
 async function renderBlogDetail({
   rawSlug,
   slug,
-  utmCampaign,
-  utmTerm,
-  utmSource,
 }: {
   rawSlug: string;
   slug: string;
-  utmCampaign: string | null;
-  utmTerm: string | null;
-  utmSource: string | null;
 }) {
   // 숫자로만 구성된 slug(e.g. "/blog/2026")는 블로그 목록으로 리다이렉트
   if (/^\d+$/.test(slug)) {
@@ -1220,23 +1207,9 @@ async function renderBlogDetail({
   // experiments are URL-stable records and must never vary facts per visitor.
   const abTestTitle = title;
 
-  // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
-  // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
-  const [dki, relatedPosts, relatedProducts, officialSourceTarget, researchCitations] = await Promise.all([
-    isLanding
-      ? withBlogRenderTimeout(
-          'dki',
-          resolveDki(
-            { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
-            {
-              seo_title: abTestTitle,
-              landing_headline: post.landing_headline,
-              landing_subtitle: post.landing_subtitle,
-            },
-          ),
-          null,
-        )
-      : Promise.resolve(null),
+  // Related content and evidence are independent and start together. Public
+  // detail rendering never performs visitor-level DKI lookups or mutations.
+  const [relatedPosts, relatedProducts, officialSourceTarget, researchCitations] = await Promise.all([
     withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type, post), []),
     withBlogRenderTimeout('relatedProducts', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
     informationalIdentity && informationalRiskLevel === 'HIGH'
@@ -1422,12 +1395,12 @@ async function renderBlogDetail({
           className="border-b bg-white/95 backdrop-blur sticky top-14 md:top-16 z-20"
           aria-label="경로 탐색"
         >
-          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-slate-500">
-            <Link href="/" className="hover:text-brand">
+          <div className="mx-auto flex min-h-11 max-w-6xl items-center gap-2 px-4 text-sm text-slate-500">
+            <Link href="/" className="hidden min-h-11 items-center px-2 hover:text-brand sm:inline-flex">
               홈
             </Link>
-            <span aria-hidden="true">/</span>
-            <Link href="/blog" className="hover:text-brand">
+            <span aria-hidden="true" className="hidden sm:inline">/</span>
+            <Link href="/blog" className="inline-flex min-h-11 items-center px-2 hover:text-brand">
               블로그
             </Link>
             {pkg?.destination && (
@@ -1435,14 +1408,14 @@ async function renderBlogDetail({
                 <span aria-hidden="true">/</span>
                 <Link
                   href={`/blog/destination/${encodeURIComponent(pkg.destination)}`}
-                  className="hover:text-brand"
+                  className="inline-flex min-h-11 items-center px-2 hover:text-brand"
                 >
                   {pkg.destination}
                 </Link>
               </>
             )}
-            <span aria-hidden="true">/</span>
-            <span className="truncate text-slate-900">{abTestTitle}</span>
+            <span aria-hidden="true" className="hidden sm:inline">/</span>
+            <span className="hidden truncate text-slate-900 sm:inline">{abTestTitle}</span>
           </div>
         </nav>
 
@@ -1516,16 +1489,19 @@ async function renderBlogDetail({
         </header>
 
         {/* 상품 블로그 + landing_enabled → 광고 랜딩 Hero (above-fold CTA) */}
-        {isLanding && dki && (
+        {isLanding && (
           <div className="mx-auto mb-2 max-w-4xl px-4">
             <LandingHero
-              headline={dki.headline}
-              subtitle={dki.subtitle || post.landing_subtitle || (pkg?.product_highlights?.slice(0, 3).join(' · ') ?? undefined)}
+              subtitle={post.landing_subtitle || (pkg?.product_highlights?.slice(0, 3).join(' · ') ?? undefined)}
               heroImage={post.og_image_url || pkg?.hero_image_url}
               priceKrw={pkg?.price ?? null}
               productUrl={pkg ? `/packages/${pkg.id}` : null}
-              trustBadges={['운영팀 검증', '노팁·노옵션', pkg?.airline || '직항']}
-              matched={dki.matched}
+              trustBadges={buildBlogProductFactLabels({
+                airline: pkg?.airline,
+                departureAirport: pkg?.departure_airport,
+                duration: pkg?.duration,
+                nights: pkg?.nights,
+              })}
             />
           </div>
         )}

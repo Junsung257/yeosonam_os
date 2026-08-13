@@ -175,9 +175,17 @@ begin
       'verified_experience', a.verified_experience, 'credentials', a.credentials,
       'profile_image_url', a.profile_image_url
     ) end,
-    case when c.review_status = 'approved' and c.fact_checked_at is not null then jsonb_build_object(
-      'review_status', c.review_status, 'reviewed_at', c.fact_checked_at,
-      'review_scope', c.generation_meta ->> 'review_scope'
+    case when c.review_status = 'approved'
+      and approved_review.reviewer_id is not null
+      and approved_review.reviewed_at is not null
+      and nullif(approved_review.review_scope, '') is not null
+      and nullif(c.generation_meta ->> 'reviewer_display_name', '') is not null
+    then jsonb_build_object(
+      'review_status', c.review_status,
+      'reviewer_id', approved_review.reviewer_id,
+      'display_name', c.generation_meta ->> 'reviewer_display_name',
+      'reviewed_at', approved_review.reviewed_at,
+      'review_scope', approved_review.review_scope
     ) end,
     case when nullif(c.og_image_url, '') is not null then jsonb_build_object('url', c.og_image_url) end,
     c.destination, c.angle_type, c.published_at,
@@ -186,6 +194,16 @@ begin
       c.content_modified_at::text, c.fact_checked_at::text), 'UTF8'), 'sha256'), 'hex')
   from public.public_blog_content_creatives c
   left join public.blog_author_profiles a on a.id = c.author_profile_id and a.is_active
+  left join lateral (
+    select r.reviewer_id, r.reviewed_at, r.review_scope
+    from public.content_reviews r
+    where r.creative_id = c.id
+      and r.status = 'approved'
+      and r.reviewer_id is not null
+      and r.reviewed_at is not null
+    order by coalesce(r.completed_at, r.reviewed_at, r.created_at) desc
+    limit 1
+  ) approved_review on true
   on conflict (creative_id) do update set
     slug = excluded.slug,
     snapshot_version = public.blog_public_snapshots.snapshot_version + 1,

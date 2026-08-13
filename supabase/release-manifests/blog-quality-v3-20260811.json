@@ -15,7 +15,7 @@
     {
       "version": "20260811132031",
       "file": "supabase/migrations/20260811132031_blog_quality_v3_snapshots_media.sql",
-      "sha256": "2695b6f45b2efc45a45071211b90642667e82e0e511b4d2e58abc7d9320a5a3c"
+      "sha256": "4c8f6299f36ab4647a1507ef61c37ae536eea0c232b92072f2fb8b0b34f6b3b8"
     },
     {
       "version": "20260811132037",

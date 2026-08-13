@@ -127,7 +127,14 @@ type AuditRow = {
 };
 
 const args = new Set(process.argv.slice(2));
-const dryRun = !args.has('--write');
+const legacyWriteRequested = args.has('--write') || args.has('--apply');
+if (legacyWriteRequested) {
+  throw new Error(
+    'Legacy blog quality backfill is permanently dry-run-only because it can create or rewrite article content. '
+    + 'Use audit:blog-corpus-v3 and the reviewed disposition/migration runbooks instead.',
+  );
+}
+const dryRun = true;
 const debugDiff = args.has('--debug-diff');
 const limitArg = process.argv.find((arg) => arg.startsWith('--limit='));
 const slugArg = process.argv.find((arg) => arg.startsWith('--slug='));

@@ -12,12 +12,11 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
-test('ERR-BLOG-destination-static-prerender-build-timeout: blog destination static params default to zero', () => {
+test('ERR-BLOG-destination-static-prerender-build-timeout: destinations never query DB during static param generation', () => {
   const source = read('src', 'app', 'blog', 'destination', '[dest]', 'page.tsx');
 
-  assert.match(source, /BLOG_DESTINATION_STATIC_PRERENDER_LIMIT \?\? ['"]0['"]/);
-  assert.match(source, /if \(BLOG_DESTINATION_STATIC_PRERENDER_LIMIT <= 0\) return \[\];/);
-  assert.match(source, /\.limit\(BLOG_DESTINATION_STATIC_PRERENDER_LIMIT\)/);
-  assert.match(source, /\[\.\.\.destinations\]\.slice\(0, BLOG_DESTINATION_STATIC_PRERENDER_LIMIT\)/);
-  assert.doesNotMatch(source, /\.not\('destination', 'is', null\)\s*\.limit\(2000\);/);
+  assert.doesNotMatch(source, /generateStaticParams/);
+  assert.match(source, /export const dynamicParams = true/);
+  assert.match(source, /loadPublicBlogCatalogPage/);
+  assert.doesNotMatch(source, /\.not\('destination', 'is', null\)\s*\.limit\(2000\)/);
 });

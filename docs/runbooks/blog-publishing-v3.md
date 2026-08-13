@@ -1,5 +1,12 @@
 # Blog Publishing V3 운영 런북
 
+## Legacy repair write guard
+
+- `npm run audit:blog-quality` and `npm run backfill:blog-quality` may be used only as legacy read-only diagnostics.
+- `scripts/backfill-blog-quality.ts --write` and `--apply` terminate before any database update.
+- The removed `backfill:blog-quality:write` package command must not be restored.
+- Use `audit:blog-quality-v3`, disposition previews, reviewed SQL, and the stale-content/removal runbook for corpus changes.
+
 ## 목적과 안전 기본값
 
 V3는 발행량보다 검증된 수요, claim 근거, corpus 다양성, human review를 우선합니다. `BLOG_AUTOPUBLISH_MODE`가 없거나 잘못되면 `draft_only`이며, 이 모드에서는 `content_creatives.status=published`, indexing outbox, IndexNow worker, public cache revalidation을 실행하지 않습니다.
@@ -69,6 +76,9 @@ observed demand → research packet → flexible brief/archetype → writer
 ## pHash 감사
 
 - 기본 실행 `npm run audit:blog-image-phash`는 media registry를 읽고 로컬 JSON/CSV preview만 만듭니다.
+- 전체 검사는 `npm run audit:blog-image-phash -- --limit=1000 --concurrency=12`로 실행합니다. `--limit`은 출현 횟수가 아니라 고유 이미지 URL 수이며 concurrency는 최대 16으로 제한됩니다.
+- media registry나 corpus read가 실패하면 실패 원인을 숨기지 않고 `source_read_error`에 기록합니다. 이때 같은 날 생성된 bundled public-detail snapshot이 있으면 공개 가능 글 범위만 감사하고 `source_scope=last_known_good_public_eligible_posts`로 표시합니다. 이 결과를 전체 draft/queue 감사로 간주하지 않습니다.
+- JSON에는 URL·양쪽 목적지·pHash distance·동일 원본 여부가 저장됩니다. exact URL, 동일 source URL variant, 서로 다른 source asset 후보를 구분하며 후보만으로 자동 삭제하지 않습니다.
 - DB 반영은 `BLOG_IMAGE_PHASH_APPLY_CONFIRM=DRY_RUN_REVIEWED`와 `npm run backfill:blog-image-phash`가 동시에 있어야 합니다.
 - URL redirect마다 public DNS를 재검사하고 private/local 주소, 비-image content type, 12MB 초과 파일을 거부합니다.
 - 이 작업에서는 운영 DB backfill을 실행하지 않습니다.
@@ -166,3 +176,10 @@ npm run verify:blog-staging-runtime-v3
 10. 실패한 preview branch는 exact branch id와 `is_default=false`, `with_data=false`를 확인한 뒤 삭제합니다. production branch를 reset/delete/rebase/merge하지 않습니다.
 
 최종 staging 증거는 `docs/audits/blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`에 보존합니다.
+
+## 공개 검수자 표기 조건
+
+- `fact_checked_at`은 사실 확인 날짜이며 human review 시각이 아닙니다. 두 값을 서로 대체하지 않습니다.
+- 공개 `reviewedBy`는 approved `content_reviews` row에 `reviewer_id`, `reviewed_at`, `review_scope`가 모두 있고, 공개 가능한 reviewer display name이 명시된 경우에만 snapshot에 포함합니다.
+- 하나라도 없으면 review badge와 JSON-LD `reviewedBy`를 모두 생략합니다. “운영팀 검증” 같은 집단 배지로 대체하지 않습니다.
+- snapshot refresh dry-run에서 review metadata가 새로 사라지는 row 수를 확인하고, 의도한 reviewer profile을 먼저 보강한 뒤 refresh를 승인합니다.
