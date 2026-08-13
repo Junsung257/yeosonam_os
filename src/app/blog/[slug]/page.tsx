@@ -25,6 +25,7 @@ import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
+import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
@@ -64,7 +65,10 @@ import {
   sanitizePublicBlogBodyHtml,
   stripPublicDuplicateBodyTitleHeading,
 } from '@/lib/blog-public-render-normalizer';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  getBlogPublicSurfacePolicyBlockReason,
+  PUBLIC_BLOG_READ_SOURCE,
+} from '@/lib/blog-public-eligibility';
 import {
   calculateBlogReadingTimeFromHtml,
   readPersistedBlogReadingTime,
@@ -139,6 +143,9 @@ interface BlogPost {
   landing_headline: string | null;
   landing_subtitle: string | null;
   content_type?: string | null;
+  category?: string | null;
+  topic_source?: string | null;
+  review_status?: string | null;
   pillar_for?: string | null;
   target_audience?: string | null;
   generation_meta?: Record<string, unknown> | null;
@@ -213,7 +220,7 @@ type AbortableQuery<T> = {
 type BlogDetailQueryResult<T> = T & { __blogQueryUnavailable?: true };
 
 const BLOG_DETAIL_LEGACY_SELECT =
-  'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate';
+  'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, category, topic_source, review_status, pillar_for, target_audience, generation_meta, quality_gate';
 const BLOG_DETAIL_V3_SELECT = `${BLOG_DETAIL_LEGACY_SELECT}, content_modified_at, fact_checked_at`;
 
 function isMissingV3DetailProjection(error: unknown): boolean {
@@ -371,7 +378,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, content_modified_at, fact_checked_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, content_modified_at, fact_checked_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, category, topic_source, review_status, pillar_for, target_audience, generation_meta, quality_gate',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -391,13 +398,25 @@ async function getPost(slug: string): Promise<BlogPost | null> {
     throw createBlogDatabaseUnavailableError();
   }
   if (!data || data.length === 0) return null;
-  return data[0] as unknown as BlogPost;
+  const post = data[0] as unknown as BlogPost;
+  return isBlogPostSurfacePolicySafe(post) ? post : null;
+}
+
+function isBlogPostSurfacePolicySafe(post: BlogPost): boolean {
+  return getBlogPublicSurfacePolicyBlockReason({
+    productId: post.product_id,
+    reviewStatus: post.review_status,
+    title: post.seo_title,
+    category: post.category,
+    contentType: post.content_type,
+    topic: post.topic_source,
+    generationMeta: post.generation_meta,
+  }) === null;
 }
 
 async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   const dbSlug = safeDecodeSlug(slug);
   const snapshotResult = await loadBlogPublicDetailSnapshotV3(dbSlug);
-  if (snapshotResult.state === 'missing') return null;
   const snapshot = snapshotResult.state === 'found' ? snapshotResult.snapshot : null;
   if (snapshot !== null) {
     return {
@@ -422,6 +441,8 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
       landing_headline: snapshot.landing_headline,
       landing_subtitle: snapshot.landing_subtitle,
       content_type: snapshot.content_type,
+      review_status: snapshot.review_status
+        ?? (typeof snapshot.review?.review_status === 'string' ? snapshot.review.review_status : null),
       pillar_for: null,
       target_audience: snapshot.target_audience,
       generation_meta: {
@@ -504,6 +525,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   if (!data || data.length === 0) return null;
 
   const post = data[0] as unknown as BlogPost;
+  if (!isBlogPostSurfacePolicySafe(post)) return null;
   post.content_modified_at ??= post.updated_at;
   post.fact_checked_at ??= null;
   post.travel_packages = null;
@@ -1499,7 +1521,7 @@ async function renderBlogDetail({
             <LandingHero
               headline={dki.headline}
               subtitle={dki.subtitle || post.landing_subtitle || (pkg?.product_highlights?.slice(0, 3).join(' · ') ?? undefined)}
-              heroImage={toBlogImageDisplaySrc(post.og_image_url || pkg?.hero_image_url)}
+              heroImage={post.og_image_url || pkg?.hero_image_url}
               priceKrw={pkg?.price ?? null}
               productUrl={pkg ? `/packages/${pkg.id}` : null}
               trustBadges={['운영팀 검증', '노팁·노옵션', pkg?.airline || '직항']}
@@ -1512,17 +1534,14 @@ async function renderBlogDetail({
         {!isLanding && post.og_image_url && (
           <figure className="mx-auto mb-4 max-w-3xl px-4">
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
-              <img
-                src={toBlogImageDisplaySrc(post.og_image_url) || post.og_image_url}
-                alt={[
-                  generatedHeroImage ? 'AI 생성 참고 이미지' : null,
-                  pkg?.destination || post.destination,
-                  title,
-                ].filter(Boolean).join(' — ')}
+              <SafeCoverImg
+                src={post.og_image_url}
+                alt={generatedHeroImage ? 'AI 생성 참고 이미지' : ''}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="eager"
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
                 fetchPriority="high"
+                fallback={<div className="absolute inset-0 bg-slate-100" aria-hidden />}
               />
             </div>
             <figcaption className={generatedHeroImage ? 'mt-2 text-center text-xs text-slate-500' : 'sr-only'}>
@@ -1750,12 +1769,13 @@ async function RelatedPostsSection({
               >
                 {rp.og_image_url ? (
                   <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
-                    <img
-                      src={toBlogImageDisplaySrc(rp.og_image_url) || rp.og_image_url}
-                      alt={rpTitle}
+                    <SafeCoverImg
+                      src={rp.og_image_url}
+                      alt=""
                       className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                       sizes="(max-width: 640px) 100vw, 33vw"
                       loading="lazy"
+                      fallback={<div className="absolute inset-0 bg-slate-100" aria-hidden />}
                     />
                   </div>
                 ) : (
@@ -1897,12 +1917,13 @@ async function PrevNextSection({
             >
               {prevNext.prev.og_image_url && (
                 <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
-                  <img
-                    src={toBlogImageDisplaySrc(prevNext.prev.og_image_url) || prevNext.prev.og_image_url}
+                  <SafeCoverImg
+                    src={prevNext.prev.og_image_url}
                     alt=""
                     className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     sizes="96px"
                     loading="lazy"
+                    fallback={<div className="absolute inset-0 bg-slate-100" aria-hidden />}
                   />
                 </div>
               )}
@@ -1943,12 +1964,13 @@ async function PrevNextSection({
               </div>
               {prevNext.next.og_image_url && (
                 <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
-                  <img
-                    src={toBlogImageDisplaySrc(prevNext.next.og_image_url) || prevNext.next.og_image_url}
+                  <SafeCoverImg
+                    src={prevNext.next.og_image_url}
                     alt=""
                     className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     sizes="96px"
                     loading="lazy"
+                    fallback={<div className="absolute inset-0 bg-slate-100" aria-hidden />}
                   />
                 </div>
               )}

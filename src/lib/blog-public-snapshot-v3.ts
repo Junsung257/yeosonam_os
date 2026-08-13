@@ -3,6 +3,8 @@ import { shouldSkipPublicDbReadsForResourceSaver } from './cron-resource-saver';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from './supabase';
 import bundledDetailSnapshot from '@/data/blog-public-detail-snapshot-v3.json';
 import { runBlogPublicQueryWithTimeout } from './blog-public-query-timeout';
+import { getBlogPublicSurfacePolicyBlockReason } from './blog-public-eligibility';
+import { isHighRiskInformationalTopic } from './blog-publication-review-policy';
 
 export interface BlogPublicDetailSnapshotV3 {
   creative_id: string;
@@ -13,6 +15,7 @@ export interface BlogPublicDetailSnapshotV3 {
   legacy_markdown: string | null;
   generation_meta: Record<string, unknown>;
   quality_gate: Record<string, unknown>;
+  review_status?: string | null;
   product_id: string | null;
   tracking_id: string | null;
   content_type: string | null;
@@ -48,6 +51,31 @@ function hasUsableBundledBody(snapshot: BlogPublicDetailSnapshotV3): boolean {
   return body.replace(/\s+/g, '').length >= 200;
 }
 
+function readSnapshotReviewStatus(snapshot: BlogPublicDetailSnapshotV3): string | null {
+  if (typeof snapshot.review_status === 'string') return snapshot.review_status;
+  const nested = snapshot.review;
+  return nested && typeof nested.review_status === 'string' ? nested.review_status : null;
+}
+
+export function isBlogPublicDetailSnapshotPolicySafeV3(
+  snapshot: BlogPublicDetailSnapshotV3,
+): boolean {
+  const brief = snapshot.generation_meta.content_brief
+    ?? snapshot.generation_meta.content_brief_v3;
+  const topic = brief && typeof brief === 'object' && !Array.isArray(brief)
+    ? String((brief as Record<string, unknown>).intent_type ?? '')
+    : null;
+  return getBlogPublicSurfacePolicyBlockReason({
+    productId: snapshot.product_id,
+    reviewStatus: readSnapshotReviewStatus(snapshot),
+    title: snapshot.title,
+    category: null,
+    contentType: snapshot.content_type,
+    topic,
+    generationMeta: snapshot.generation_meta,
+  }) === null;
+}
+
 export function selectBundledBlogPublicDetailSnapshotV3(
   bundle: BlogPublicDetailSnapshotBundleV3,
   slug: string,
@@ -56,16 +84,28 @@ export function selectBundledBlogPublicDetailSnapshotV3(
   const generatedAt = bundle.generated_at ? Date.parse(bundle.generated_at) : Number.NaN;
   if (!Number.isFinite(generatedAt)) return null;
   if (generatedAt > now.getTime() + 5 * 60_000) return null;
-  const configuredMaximumAge = Number(process.env.BLOG_DETAIL_BUNDLE_MAX_AGE_HOURS || 72);
+  const configuredMaximumAge = Number(process.env.BLOG_DETAIL_BUNDLE_MAX_AGE_HOURS || 720);
   const configuredHours = Number.isFinite(configuredMaximumAge)
     ? Math.max(1, configuredMaximumAge)
-    : 72;
-  const contentBrief = snapshotRiskBrief(bundle.posts.find((post) => post.slug === slug));
-  const riskMaximumHours = contentBrief === 'HIGH' ? 24 : contentBrief === 'MEDIUM' ? 48 : 72;
+    : 720;
+  const candidate = bundle.posts.find((post) => post.slug === slug);
+  const contentBrief = snapshotRiskBrief(candidate);
+  const topic = snapshotIntent(candidate);
+  const highRisk = contentBrief === 'HIGH' || Boolean(candidate && isHighRiskInformationalTopic({
+    productId: candidate.product_id,
+    title: candidate.title,
+    contentType: candidate.content_type,
+    topic,
+  }));
+  const riskMaximumHours = highRisk ? 24 : contentBrief === 'MEDIUM' ? 48 : 720;
   const maximumAgeHours = Math.min(configuredHours, riskMaximumHours);
   if (now.getTime() - generatedAt > maximumAgeHours * 60 * 60_000) return null;
   const snapshot = bundle.posts.find((post) => post.slug === slug);
-  return snapshot && hasUsableBundledBody(snapshot) ? snapshot : null;
+  return snapshot
+    && hasUsableBundledBody(snapshot)
+    && isBlogPublicDetailSnapshotPolicySafeV3(snapshot)
+    ? snapshot
+    : null;
 }
 
 function snapshotRiskBrief(snapshot: BlogPublicDetailSnapshotV3 | undefined): string | null {
@@ -75,6 +115,15 @@ function snapshotRiskBrief(snapshot: BlogPublicDetailSnapshotV3 | undefined): st
   const record = brief as Record<string, unknown>;
   const risk = record.risk_level ?? record.riskLevel;
   return risk === 'HIGH' || risk === 'MEDIUM' || risk === 'LOW' ? risk : null;
+}
+
+function snapshotIntent(snapshot: BlogPublicDetailSnapshotV3 | undefined): string | null {
+  const brief = snapshot?.generation_meta?.content_brief
+    ?? snapshot?.generation_meta?.content_brief_v3;
+  if (!brief || typeof brief !== 'object' || Array.isArray(brief)) return null;
+  const record = brief as Record<string, unknown>;
+  const intent = record.intent_type ?? record.intentType;
+  return typeof intent === 'string' ? intent : null;
 }
 
 const BUNDLED_DETAIL_SNAPSHOT = bundledDetailSnapshot as unknown as BlogPublicDetailSnapshotBundleV3;
@@ -94,7 +143,7 @@ async function loadUncached(slug: string): Promise<BlogPublicDetailSnapshotLoadR
     'detail-snapshot',
     supabaseAdmin
       .from('blog_public_snapshots')
-      .select('creative_id, slug, title, description, content_document, legacy_markdown, generation_meta, quality_gate, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, hero_image, author, review, destination, angle_type, published_at, content_modified_at, fact_checked_at')
+      .select('creative_id, slug, title, description, content_document, legacy_markdown, generation_meta, quality_gate, review_status, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, hero_image, author, review, destination, angle_type, published_at, content_modified_at, fact_checked_at')
       .eq('slug', slug)
       .eq('is_current', true)
       .limit(1),
@@ -107,7 +156,7 @@ async function loadUncached(slug: string): Promise<BlogPublicDetailSnapshotLoadR
       : { state: 'unavailable', snapshot: null };
   }
   const snapshot = ((data?.[0] || null) as unknown) as BlogPublicDetailSnapshotV3 | null;
-  return snapshot
+  return snapshot && isBlogPublicDetailSnapshotPolicySafeV3(snapshot)
     ? { state: 'found', snapshot }
     : { state: 'missing', snapshot: null };
 }

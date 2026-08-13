@@ -7,7 +7,10 @@ import {
   createBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  getBlogPublicSurfacePolicyBlockReason,
+  PUBLIC_BLOG_READ_SOURCE,
+} from '@/lib/blog-public-eligibility';
 import { isBlogSlugRedirectSource } from '@/lib/blog-slug-redirects';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import bundledCatalogSnapshot from '@/data/blog-public-catalog-snapshot-v3.json';
@@ -17,7 +20,9 @@ import {
 } from '@/lib/blog-public-query-timeout';
 
 export const PUBLIC_BLOG_CATALOG_SELECT =
-  'id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, content_modified_at, product_id, destination, content_type, featured, featured_order, view_count';
+  'id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, content_modified_at, product_id, destination, content_type, featured, featured_order, view_count, review_status, topic_source, noindex:generation_meta->noindex, redirect_to:generation_meta->>redirect_to';
+export const PUBLIC_BLOG_CATALOG_LEGACY_SELECT =
+  'id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, product_id, destination, content_type, featured, featured_order, view_count, review_status, topic_source, noindex:generation_meta->noindex, redirect_to:generation_meta->>redirect_to';
 
 export interface PublicBlogCatalogPost {
   id: string;
@@ -36,6 +41,10 @@ export interface PublicBlogCatalogPost {
   featured: boolean | null;
   featured_order: number | null;
   view_count: number | null;
+  review_status?: string | null;
+  topic_source?: string | null;
+  noindex?: unknown;
+  redirect_to?: string | null;
 }
 
 export interface PublicBlogCatalogPage {
@@ -48,10 +57,29 @@ export interface PublicBlogCatalogPage {
 
 const BUNDLED_CATALOG_POSTS = bundledCatalogSnapshot.posts as PublicBlogCatalogPost[];
 
+function isCatalogPostPolicySafe(post: PublicBlogCatalogPost): boolean {
+  const bundledMeta = (post as PublicBlogCatalogPost & {
+    generation_meta?: Record<string, unknown> | null;
+  }).generation_meta;
+  return getBlogPublicSurfacePolicyBlockReason({
+    productId: post.product_id,
+    reviewStatus: post.review_status,
+    title: post.seo_title,
+    category: post.category,
+    contentType: post.content_type,
+    topic: post.topic_source,
+    generationMeta: {
+      noindex: post.noindex ?? bundledMeta?.noindex,
+      redirect_to: post.redirect_to ?? bundledMeta?.redirect_to,
+    },
+  }) === null;
+}
+
 function loadBundledCatalogPage(input: {
   page: number; pageSize: number; destination?: string; angle?: string;
 }): PublicBlogCatalogPage {
   const filtered = BUNDLED_CATALOG_POSTS
+    .filter(isCatalogPostPolicySafe)
     .filter((post) => !input.destination || post.destination === input.destination)
     .filter((post) => !input.angle || post.angle_type === input.angle)
     .filter((post) => !isBlogSlugRedirectSource(post.slug));
@@ -59,6 +87,7 @@ function loadBundledCatalogPage(input: {
   const destinationCounts = new Map<string, number>();
   const angleCounts = new Map<string, number>();
   for (const post of BUNDLED_CATALOG_POSTS) {
+    if (!isCatalogPostPolicySafe(post) || isBlogSlugRedirectSource(post.slug)) continue;
     if (post.destination) destinationCounts.set(post.destination, (destinationCounts.get(post.destination) || 0) + 1);
     if (post.angle_type) angleCounts.set(post.angle_type, (angleCounts.get(post.angle_type) || 0) + 1);
   }
@@ -89,6 +118,13 @@ async function runCatalogQuery<T>(
   }
 }
 
+function isCatalogViewSchemaCompatibilityError(error: unknown): boolean {
+  const message = error && typeof error === 'object' && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : String(error ?? '');
+  return /content_modified_at.*does not exist/i.test(message);
+}
+
 async function loadPublicBlogCatalogUncached(): Promise<PublicBlogCatalogPost[]> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
     return BUNDLED_CATALOG_POSTS;
@@ -97,17 +133,24 @@ async function loadPublicBlogCatalogUncached(): Promise<PublicBlogCatalogPost[]>
     return BUNDLED_CATALOG_POSTS;
   }
 
-  const result = await runCatalogQuery(
+  const buildQuery = (select: string) => supabaseAdmin
+    .from(PUBLIC_BLOG_READ_SOURCE)
+    .select(select)
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .not('slug', 'is', null)
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .limit(500);
+  let result = await runCatalogQuery(
     'catalog-all',
-    supabaseAdmin
-      .from(PUBLIC_BLOG_READ_SOURCE)
-      .select(PUBLIC_BLOG_CATALOG_SELECT)
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(500),
+    buildQuery(PUBLIC_BLOG_CATALOG_SELECT),
   ).catch(() => null);
+  if (result?.error && isCatalogViewSchemaCompatibilityError(result.error)) {
+    result = await runCatalogQuery(
+      'catalog-all-legacy-view',
+      buildQuery(PUBLIC_BLOG_CATALOG_LEGACY_SELECT),
+    ).catch(() => null);
+  }
 
   if (!result || result.error) {
     console.info('[blog/catalog][degraded] serving bundled snapshot', result?.error);
@@ -115,6 +158,7 @@ async function loadPublicBlogCatalogUncached(): Promise<PublicBlogCatalogPost[]>
   }
 
   return ((result.data ?? []) as unknown as PublicBlogCatalogPost[])
+    .filter(isCatalogPostPolicySafe)
     .filter((post) => Boolean(post.slug?.trim()))
     .filter((post) => !isBlogSlugRedirectSource(post.slug));
 }
@@ -148,7 +192,7 @@ async function loadDurableCatalogPage(input: {
 }): Promise<PublicBlogCatalogPage | null> {
   const from = (input.page - 1) * input.pageSize;
   let query = supabaseAdmin.from('blog_public_snapshots')
-    .select('creative_id, slug, title, description, hero_image, angle_type, destination, published_at, content_modified_at', { count: 'exact' })
+    .select('creative_id, slug, title, description, hero_image, angle_type, destination, published_at, content_modified_at, review_status, product_id, content_type, noindex:generation_meta->noindex, redirect_to:generation_meta->>redirect_to', { count: 'exact' })
     .eq('is_current', true)
     .order('published_at', { ascending: false })
     .range(from, from + input.pageSize - 1);
@@ -168,14 +212,19 @@ async function loadDurableCatalogPage(input: {
       published_at: String(row.published_at),
       updated_at: typeof row.content_modified_at === 'string' ? row.content_modified_at : null,
       content_modified_at: typeof row.content_modified_at === 'string' ? row.content_modified_at : null,
-      product_id: null, destination: typeof row.destination === 'string' ? row.destination : null,
-      content_type: 'guide', featured: false, featured_order: null, view_count: null,
-    })),
+      product_id: typeof row.product_id === 'string' ? row.product_id : null,
+      destination: typeof row.destination === 'string' ? row.destination : null,
+      content_type: typeof row.content_type === 'string' ? row.content_type : null,
+      review_status: typeof row.review_status === 'string' ? row.review_status : null,
+      noindex: row.noindex,
+      redirect_to: typeof row.redirect_to === 'string' ? row.redirect_to : null,
+      featured: false, featured_order: null, view_count: null,
+    })).filter(isCatalogPostPolicySafe),
     total: Number(result.count || 0), ...facets, servedFrom: 'durable_snapshot',
   };
 }
 
-export async function loadPublicBlogCatalogPage(input: {
+async function loadPublicBlogCatalogPageUncached(input: {
   page?: number; pageSize?: number; destination?: string; angle?: string;
 } = {}): Promise<PublicBlogCatalogPage> {
   const page = normalizePage(input.page || 1, 1, 10000);
@@ -185,16 +234,26 @@ export async function loadPublicBlogCatalogPage(input: {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured || shouldSkipPublicDbReadsForResourceSaver()) {
     return bundled();
   }
-  let query = supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE)
-    .select(PUBLIC_BLOG_CATALOG_SELECT, { count: 'exact' })
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .range(from, from + pageSize - 1);
-  if (input.destination) query = query.eq('destination', input.destination);
-  if (input.angle) query = query.eq('angle_type', input.angle);
+  const buildQuery = (select: string) => {
+    let query = supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE)
+      .select(select, { count: 'exact' })
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .range(from, from + pageSize - 1);
+    if (input.destination) query = query.eq('destination', input.destination);
+    if (input.angle) query = query.eq('angle_type', input.angle);
+    return query;
+  };
   try {
-    const result = await runCatalogQuery('catalog-page', query);
+    let result = await runCatalogQuery('catalog-page', buildQuery(PUBLIC_BLOG_CATALOG_SELECT));
+    if (result.error && isCatalogViewSchemaCompatibilityError(result.error)) {
+      result = await runCatalogQuery(
+        'catalog-page-legacy-view',
+        buildQuery(PUBLIC_BLOG_CATALOG_LEGACY_SELECT),
+      );
+    }
     if (result.error) throw createBlogDatabaseUnavailableError();
     const posts = ((result.data || []) as unknown as PublicBlogCatalogPost[])
+      .filter(isCatalogPostPolicySafe)
       .filter((post) => Boolean(post.slug?.trim()))
       .filter((post) => !isBlogSlugRedirectSource(post.slug));
     const facets = await loadFacetSnapshot();
@@ -204,6 +263,30 @@ export async function loadPublicBlogCatalogPage(input: {
     if (snapshot) return snapshot;
     return bundled();
   }
+}
+
+const getCachedPublicBlogCatalogPage = unstable_cache(
+  loadPublicBlogCatalogPageUncached,
+  ['blog-public-catalog-page-v3'],
+  {
+    revalidate: 300,
+    tags: [BLOG_LIST_CACHE_TAG, BLOG_DESTINATION_CACHE_TAG, BLOG_ANGLE_CACHE_TAG],
+  },
+);
+
+export async function loadPublicBlogCatalogPage(input: {
+  page?: number; pageSize?: number; destination?: string; angle?: string;
+} = {}): Promise<PublicBlogCatalogPage> {
+  const normalizedInput = {
+    page: normalizePage(input.page || 1, 1, 10000),
+    pageSize: normalizePage(input.pageSize || 12, 12, 50),
+    ...(input.destination?.trim() ? { destination: input.destination.trim() } : {}),
+    ...(input.angle?.trim() ? { angle: input.angle.trim() } : {}),
+  };
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+    return loadPublicBlogCatalogPageUncached(normalizedInput);
+  }
+  return getCachedPublicBlogCatalogPage(normalizedInput);
 }
 
 const getCachedPublicBlogCatalog = unstable_cache(

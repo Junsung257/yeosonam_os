@@ -5,7 +5,7 @@
     {
       "version": "20260811132017",
       "file": "supabase/migrations/20260811132017_blog_quality_v3_policy.sql",
-      "sha256": "89e25facf754993856d720581cee08f939dfa0992de969a27c144410e0a168eb"
+      "sha256": "ae3a9891d83d60170a479bf33e66a321e47edf7cbabc514ae8149cee26c1ad7d"
     },
     {
       "version": "20260811132023",
@@ -15,7 +15,7 @@
     {
       "version": "20260811132031",
       "file": "supabase/migrations/20260811132031_blog_quality_v3_snapshots_media.sql",
-      "sha256": "bcd0df3a6551de74cea0c2426a8249369cf730a5dc45eeeeb98b8bbd3f587104"
+      "sha256": "2695b6f45b2efc45a45071211b90642667e82e0e511b4d2e58abc7d9320a5a3c"
     },
     {
       "version": "20260811132037",
@@ -30,6 +30,6 @@
   ],
   "rollback": {
     "file": "supabase/rollbacks/20260811_blog_quality_v3_rollback.sql",
-    "sha256": "1fa2babce41dd30c6adb1c52f24dae797fd3dcb3d8f4a0251e5705590966bd03"
+    "sha256": "a181cf97d119ba3f695987fa2757a690d16a2f46900bf22839d7c469268bef36"
   }
 }

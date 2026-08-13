@@ -36,7 +36,8 @@ describe('informational representative enforcement across publish entrypoints', 
     expect(sitemap).toContain("import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog'");
     expect(sitemap).toContain('loadPublicBlogCatalog()');
     expect(catalog).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
-    expect(catalog).not.toContain('generation_meta');
+    expect(catalog).toContain('noindex:generation_meta->noindex');
+    expect(catalog).not.toContain('prompt_manifest');
     expect(sitemap).toContain('for (const post of canonicalPosts)');
     expect(sitemap).not.toContain('isCanonicalInformationSitemapPost');
   });

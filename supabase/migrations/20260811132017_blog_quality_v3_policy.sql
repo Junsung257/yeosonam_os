@@ -87,7 +87,7 @@ set search_path = public, pg_temp
 as $$
 declare
   v_text text := concat_ws(' ', p_title, p_category, p_content_type, p_topic);
-  v_high_risk boolean := v_text ~* '(비자|입국|출입국|이민국|여권|세관|면세|보험[[:space:]]*(보장|면책|청구)|여행[[:space:]]*보험|법률|규제|안전[[:space:]]*(경보|주의보)|건강|의료|질병|예방접종|visa|immigration|passport|customs|duty[ -]?free|(^|[^a-z])(eta|esta|etias)([^a-z]|$)|travel[[:space:]]*insurance|health[[:space:]]*advisory|safety[[:space:]]*alert)';
+  v_high_risk boolean := v_text ~* '(비자|입국|출입국|이민국|여권|세관|면세|보험[[:space:]]*(보장|면책|청구)|여행자?[[:space:]]*보험|법률|규제|안전[[:space:]]*(경보|주의보)|건강|의료|질병|예방접종|visa|immigration|passport|customs|duty[ _-]?free|(^|[^a-z])(eta|esta|etias)([^a-z]|$)|entry[ _-]*requirements?|travel[ _-]*insurance|health[ _-]*advisory|safety[ _-]*alert)';
 begin
   if p_status is distinct from 'published' then return query select false, null::text, 'not_published'; return; end if;
   if p_channel is distinct from 'naver_blog' then return query select false, null::text, 'wrong_channel'; return; end if;

@@ -61,6 +61,7 @@ create table if not exists public.blog_public_snapshots (
   legacy_markdown text null,
   generation_meta jsonb not null default '{}'::jsonb,
   quality_gate jsonb not null default '{}'::jsonb,
+  review_status text null,
   product_id uuid null,
   tracking_id text null,
   content_type text null,
@@ -156,7 +157,7 @@ begin
   insert into public.blog_public_snapshots(
     creative_id, slug, snapshot_version, eligibility_reason, canonical_url,
     title, description, content_document, legacy_markdown, generation_meta,
-    quality_gate, product_id, tracking_id, content_type, target_audience,
+    quality_gate, review_status, product_id, tracking_id, content_type, target_audience,
     landing_enabled, landing_headline, landing_subtitle, author, review,
     hero_image, destination, angle_type, published_at, content_modified_at,
     fact_checked_at, generated_at, is_current, checksum
@@ -166,6 +167,7 @@ begin
     'https://www.yeosonam.com/blog/' || c.slug,
     coalesce(c.seo_title, c.title, c.slug), c.seo_description, c.content_document,
     c.blog_html, coalesce(c.generation_meta, '{}'::jsonb), coalesce(c.quality_gate, '{}'::jsonb),
+    c.review_status,
     c.product_id, c.tracking_id, c.content_type, c.target_audience,
     coalesce(c.landing_enabled, false), c.landing_headline, c.landing_subtitle,
     case when c.author_profile_id is not null then jsonb_build_object(
@@ -195,6 +197,7 @@ begin
     legacy_markdown = excluded.legacy_markdown,
     generation_meta = excluded.generation_meta,
     quality_gate = excluded.quality_gate,
+    review_status = excluded.review_status,
     product_id = excluded.product_id,
     tracking_id = excluded.tracking_id,
     content_type = excluded.content_type,
@@ -236,6 +239,28 @@ begin
 end;
 $$;
 
+create or replace function public.retire_blog_public_snapshot_on_contract_change_v3()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.blog_public_snapshots
+  set is_current = false
+  where creative_id = new.id
+    and is_current;
+  return new;
+end;
+$$;
+
+drop trigger if exists retire_blog_public_snapshot_on_contract_change_v3 on public.content_creatives;
+create trigger retire_blog_public_snapshot_on_contract_change_v3
+after update of status, review_status, slug, seo_title, seo_description, blog_html,
+  generation_meta, quality_gate, published_at, content_modified_at, fact_checked_at
+on public.content_creatives
+for each row execute function public.retire_blog_public_snapshot_on_contract_change_v3();
+
 alter table public.blog_author_profiles enable row level security;
 alter table public.blog_media_assets enable row level security;
 alter table public.blog_content_media enable row level security;
@@ -246,6 +271,7 @@ revoke all on public.blog_author_profiles, public.blog_media_assets, public.blog
   public.blog_public_snapshots, public.blog_public_snapshot_history, public.blog_public_catalog_facets
   from public, anon, authenticated;
 revoke all on function public.refresh_blog_public_snapshots_v3() from public, anon, authenticated;
+revoke all on function public.retire_blog_public_snapshot_on_contract_change_v3() from public, anon, authenticated;
 grant select, insert, update, delete on public.blog_author_profiles, public.blog_media_assets, public.blog_content_media,
   public.blog_public_snapshots, public.blog_public_snapshot_history, public.blog_public_catalog_facets to service_role;
 grant execute on function public.refresh_blog_public_snapshots_v3() to service_role;

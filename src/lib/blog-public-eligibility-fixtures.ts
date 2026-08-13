@@ -42,6 +42,15 @@ export const BLOG_PUBLIC_ELIGIBILITY_FIXTURES: BlogPublicEligibilityFixture[] = 
     row: { ...base, title: 'ETIAS 입국 규정 변경', reviewStatus: 'approved' },
   },
   {
+    id: 'travel-insurance-intent-unapproved', expectedEligible: false, expectedReason: 'review_blocked',
+    row: {
+      ...base,
+      title: '여름 휴가 해외여행자 보험 안내',
+      topic: 'travel_insurance',
+      reviewStatus: 'none',
+    },
+  },
+  {
     id: 'legacy-review-blocked', expectedEligible: false, expectedReason: 'review_blocked',
     row: {
       ...base,

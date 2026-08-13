@@ -12,6 +12,8 @@ alter table public.leads
 
 drop view if exists public.blog_information_claim_ledger_v3;
 drop view if exists public.public_blog_content_creatives;
+drop trigger if exists retire_blog_public_snapshot_on_contract_change_v3 on public.content_creatives;
+drop function if exists public.retire_blog_public_snapshot_on_contract_change_v3();
 drop function if exists public.refresh_blog_public_snapshots_v3();
 drop function if exists public.archive_blog_public_snapshot_v3();
 drop function if exists public.evaluate_blog_public_eligibility_v3(uuid,text,text,text,uuid,text,text,text,text,text,timestamptz,jsonb,jsonb,text,uuid,text);

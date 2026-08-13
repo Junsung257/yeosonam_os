@@ -68,6 +68,79 @@ describe('middleware cron resource saver', () => {
   });
 });
 
+describe('middleware blog public status contract', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('returns a hard 404 for a review-blocked public-view row before the streamed page can soft-404', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([{
+      product_id: null,
+      review_status: 'changes_requested',
+      seo_title: '입국 규정 변경',
+      content_type: 'guide',
+      noindex: false,
+      redirect_to: null,
+    }]), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/blog/review-blocked-fixture',
+    ));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  it('returns a hard 404 for an unapproved high-risk row even when a legacy view still returns it', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([{
+      product_id: null,
+      review_status: 'none',
+      seo_title: '해외여행자 보험 보장 가이드',
+      content_type: 'guide',
+      noindex: false,
+      redirect_to: null,
+    }]), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/blog/travel-insurance-fixture',
+    ));
+
+    expect(response.status).toBe(404);
+  });
+
+  it('fails over to the page snapshot instead of returning a false 404 when the public view is unavailable', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('unavailable', { status: 503 }));
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/blog/known-bundled-public-post',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not treat the image sitemap route as a dynamic article slug', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/blog/image-sitemap.xml',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('middleware blog API boundary', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

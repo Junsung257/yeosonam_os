@@ -6,6 +6,8 @@ const mockState = vi.hoisted(() => ({
   postQueryError: false,
   legacyProjectionSucceeds: false,
   snapshotTableReady: false,
+  publicViewHasPost: true,
+  highRiskUnapproved: false,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -76,7 +78,15 @@ vi.mock('@/lib/supabase', () => {
         }
         return { data: null, error: { code: '42703', message: 'column content_modified_at does not exist' } };
       }
-      return { data: [post], error: null };
+      const selectedPost = mockState.highRiskUnapproved
+        ? {
+            ...post,
+            seo_title: '여름 휴가 해외여행자 보험 안내',
+            review_status: 'none',
+            topic_source: 'travel_insurance',
+          }
+        : post;
+      return { data: mockState.publicViewHasPost ? [selectedPost] : [], error: null };
     }
     if (table === 'public_blog_content_creatives') {
       return { data: [], error: null };
@@ -136,7 +146,8 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('type BlogPostCacheEnvelope');
     expect(source).toContain("return { state: 'unavailable', post: null }");
     expect(source).toContain("['blog-detail-v6-outage-envelope']");
-    expect(source).toContain("if (snapshotResult.state === 'missing') return null");
+    expect(source).not.toContain("if (snapshotResult.state === 'missing') return null");
+    expect(source).toContain("const snapshot = snapshotResult.state === 'found'");
     expect(source).toContain("if (cached.state === 'unavailable') throw createBlogDatabaseUnavailableError()");
     expect(source).not.toContain('function shouldRefreshCachedBlogPost');
     expect(source).not.toContain('unstable_cache(\n  async (slug: string) => getPostFastUncached(slug)');
@@ -235,6 +246,56 @@ describe('/blog/[slug] page smoke', () => {
     } finally {
       mockState.postQueryError = false;
       mockState.legacyProjectionSucceeds = false;
+    }
+  }, 20_000);
+
+  it('falls through a missing durable snapshot to the authoritative public view', async () => {
+    mockState.snapshotTableReady = true;
+    try {
+      const mod = await import('./page');
+      const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
+      const element = await Page({
+        params: Promise.resolve({ slug: 'manila-weather' }),
+        searchParams: Promise.resolve({}),
+      });
+
+      expect(element).toBeTruthy();
+      expect((element as unknown as { type?: { name?: string } }).type?.name)
+        .not.toBe('BlogDatabaseUnavailableView');
+    } finally {
+      mockState.snapshotTableReady = false;
+    }
+  }, 20_000);
+
+  it('propagates a real 404 when both the current snapshot and public view exclude a slug', async () => {
+    mockState.snapshotTableReady = true;
+    mockState.publicViewHasPost = false;
+    try {
+      const mod = await import('./page');
+      const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
+      await expect(Page({
+        params: Promise.resolve({ slug: 'changes-requested-fixture' }),
+        searchParams: Promise.resolve({}),
+      })).rejects.toMatchObject({ digest: 'NEXT_HTTP_ERROR_FALLBACK;404' });
+    } finally {
+      mockState.snapshotTableReady = false;
+      mockState.publicViewHasPost = true;
+    }
+  }, 20_000);
+
+  it('fails closed for an unapproved high-risk row from a rolling legacy view', async () => {
+    mockState.snapshotTableReady = true;
+    mockState.highRiskUnapproved = true;
+    try {
+      const mod = await import('./page');
+      const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
+      await expect(Page({
+        params: Promise.resolve({ slug: 'summer-travel-insurance-coverage-guide-2026' }),
+        searchParams: Promise.resolve({}),
+      })).rejects.toMatchObject({ digest: 'NEXT_HTTP_ERROR_FALLBACK;404' });
+    } finally {
+      mockState.snapshotTableReady = false;
+      mockState.highRiskUnapproved = false;
     }
   }, 20_000);
 });

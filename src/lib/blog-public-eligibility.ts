@@ -79,6 +79,25 @@ function hasRedirect(meta: Record<string, unknown> | null | undefined): boolean 
     .some((value) => typeof value === 'string' && value.trim().length > 0);
 }
 
+export type BlogPublicSurfacePolicyReason = 'noindex' | 'redirected' | 'review_blocked';
+
+export function getBlogPublicSurfacePolicyBlockReason(
+  row: Pick<BlogPublicEligibilityRow,
+    'productId' | 'reviewStatus' | 'title' | 'category' | 'contentType' | 'topic' | 'generationMeta'>,
+): BlogPublicSurfacePolicyReason | null {
+  if (hasNoindex(row.generationMeta)) return 'noindex';
+  if (hasRedirect(row.generationMeta)) return 'redirected';
+  if (getInformationalReviewBlockReason({
+    productId: row.productId,
+    reviewStatus: row.reviewStatus,
+    title: row.title,
+    category: row.category,
+    contentType: row.contentType,
+    topic: row.topic,
+  })) return 'review_blocked';
+  return null;
+}
+
 export function evaluateBlogPublicEligibility(
   row: BlogPublicEligibilityRow,
 ): BlogPublicEligibilityResult {
@@ -87,19 +106,13 @@ export function evaluateBlogPublicEligibility(
   const slug = typeof row.slug === 'string' ? row.slug.trim() : '';
   if (!slug) return { eligible: false, lane: null, reason: 'missing_slug' };
   if (row.fallback) return { eligible: false, lane: null, reason: 'fallback_content' };
-  if (hasNoindex(row.generationMeta)) return { eligible: false, lane: null, reason: 'noindex' };
-  if (hasRedirect(row.generationMeta)) return { eligible: false, lane: null, reason: 'redirected' };
-
-  const reviewBlock = getInformationalReviewBlockReason({
-    productId: row.productId,
-    reviewStatus: row.reviewStatus,
-    title: row.title,
-    category: row.category,
-    contentType: row.contentType,
-    topic: row.topic,
-  });
-  if (reviewBlock) {
-    return { eligible: false, lane: row.productId ? 'product' : null, reason: 'review_blocked' };
+  const publicSurfaceBlock = getBlogPublicSurfacePolicyBlockReason(row);
+  if (publicSurfaceBlock) {
+    return {
+      eligible: false,
+      lane: publicSurfaceBlock === 'review_blocked' && row.productId ? 'product' : null,
+      reason: publicSurfaceBlock,
+    };
   }
 
   if (row.productId) {

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { getReadOnlySupabaseV3 } from './lib/blog-corpus-v3';
+import { getBlogPublicSurfacePolicyBlockReason } from '../src/lib/blog-public-eligibility';
 
 function compactDetailGenerationMeta(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -15,10 +16,39 @@ function compactDetailGenerationMeta(value: unknown): Record<string, unknown> {
   };
 }
 
+function compactCatalogGenerationMeta(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const seo = source.seo && typeof source.seo === 'object' && !Array.isArray(source.seo)
+    ? source.seo as Record<string, unknown>
+    : null;
+  return {
+    ...(source.noindex === true ? { noindex: true } : {}),
+    ...(seo?.noindex === true ? { seo: { noindex: true } } : {}),
+    ...(typeof source.redirect_to === 'string' ? { redirect_to: source.redirect_to } : {}),
+    ...(typeof source.redirectTo === 'string' ? { redirectTo: source.redirectTo } : {}),
+    ...(typeof source.canonical_redirect_to === 'string'
+      ? { canonical_redirect_to: source.canonical_redirect_to }
+      : {}),
+  };
+}
+
 function compactDetailQualityGate(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const minutes = (value as Record<string, unknown>).rendered_reading_time_minutes;
   return typeof minutes === 'number' ? { rendered_reading_time_minutes: minutes } : {};
+}
+
+function isSnapshotSourcePolicySafe(row: Record<string, any>): boolean {
+  return getBlogPublicSurfacePolicyBlockReason({
+    productId: row.product_id ?? null,
+    reviewStatus: row.review_status ?? row.review?.review_status ?? null,
+    title: row.seo_title ?? row.title ?? null,
+    category: row.category ?? null,
+    contentType: row.content_type ?? null,
+    topic: row.topic_source ?? row.generation_meta?.content_brief?.intent_type ?? null,
+    generationMeta: row.generation_meta ?? null,
+  }) === null;
 }
 
 async function main(): Promise<void> {
@@ -37,18 +67,19 @@ async function main(): Promise<void> {
   }
   const client = getReadOnlySupabaseV3();
   let publicResult = await client.from('public_blog_content_creatives')
-    .select('id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, content_modified_at, product_id, destination, content_type, featured, featured_order, view_count')
+    .select('id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, content_modified_at, product_id, destination, content_type, featured, featured_order, view_count, review_status, generation_meta, topic_source')
     .eq('status', 'published').eq('channel', 'naver_blog').not('slug', 'is', null)
     .order('published_at', { ascending: false }).limit(500);
   if (publicResult.error?.code === '42703') {
     publicResult = await client.from('public_blog_content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, product_id, destination, content_type, featured, featured_order, view_count')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, category, published_at, updated_at, product_id, destination, content_type, featured, featured_order, view_count, review_status, generation_meta, topic_source')
       .eq('status', 'published').eq('channel', 'naver_blog').not('slug', 'is', null)
       .order('published_at', { ascending: false }).limit(500) as typeof publicResult;
   }
   if (publicResult.error) throw new Error(`public_snapshot_source_failed:${publicResult.error.message}`);
-  const publicRows = (publicResult.data || []).map((row) => ({
+  const publicRows = (publicResult.data || []).filter(isSnapshotSourcePolicySafe).map((row) => ({
     ...row,
+    generation_meta: compactCatalogGenerationMeta(row.generation_meta),
     content_modified_at: row.content_modified_at ?? row.updated_at ?? row.published_at,
   }));
 
@@ -63,7 +94,7 @@ async function main(): Promise<void> {
     let snapshotDetailUnavailable = Boolean(snapshotError);
     if (!snapshotError) {
       let query = client.from('blog_public_snapshots')
-        .select('creative_id, slug, title, description, content_document, legacy_markdown, generation_meta, quality_gate, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, hero_image, author, review, destination, angle_type, published_at, content_modified_at, fact_checked_at')
+        .select('creative_id, slug, title, description, content_document, legacy_markdown, generation_meta, quality_gate, review_status, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, hero_image, author, review, destination, angle_type, published_at, content_modified_at, fact_checked_at')
         .eq('is_current', true)
         .order('published_at', { ascending: false })
         .limit(500);
@@ -82,7 +113,7 @@ async function main(): Promise<void> {
     if (snapshotDetailUnavailable) {
       detailSource = 'public_blog_content_creatives_legacy_read_only';
       let query = client.from('public_blog_content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, generation_meta, quality_gate, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, destination, angle_type, published_at, updated_at')
+        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, generation_meta, quality_gate, review_status, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, destination, angle_type, published_at, updated_at')
         .eq('status', 'published').eq('channel', 'naver_blog').not('slug', 'is', null)
         .order('published_at', { ascending: false })
         .limit(500);
@@ -98,6 +129,7 @@ async function main(): Promise<void> {
         legacy_markdown: row.blog_html,
         generation_meta: row.generation_meta || {},
         quality_gate: row.quality_gate || {},
+        review_status: row.review_status,
         product_id: row.product_id,
         tracking_id: row.tracking_id,
         content_type: row.content_type,
@@ -116,7 +148,7 @@ async function main(): Promise<void> {
       }));
     }
   }
-  const detailRows: Array<Record<string, any>> = detailRowsRaw.map((row): Record<string, any> => ({
+  const detailRows: Array<Record<string, any>> = detailRowsRaw.filter(isSnapshotSourcePolicySafe).map((row): Record<string, any> => ({
     ...row,
     content_document: row.legacy_markdown ? null : row.content_document,
     generation_meta: compactDetailGenerationMeta(row.generation_meta),
