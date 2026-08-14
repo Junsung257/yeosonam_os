@@ -3,4 +3,3 @@
 -- this migration safe when replayed after dispositions have accumulated.
 create index concurrently if not exists idx_blog_url_dispositions_creative
   on public.blog_url_dispositions(creative_id);
-
