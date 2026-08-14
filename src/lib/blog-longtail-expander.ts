@@ -141,6 +141,7 @@ function daysAgoIso(days: number): string {
 
 export function normalizeKeyword(keyword: string): string {
   return keyword
+    .normalize('NFKC')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .replace(/\b20\d{2}\b/g, '')
@@ -207,8 +208,9 @@ function isNearDuplicate(keyword: string, existing: string[]): string | null {
   return null;
 }
 
-function cleanCandidateKeyword(keyword: string): string {
+export function cleanCandidateKeyword(keyword: string): string {
   return keyword
+    .normalize('NFKC')
     .replace(/\s+/g, ' ')
     .replace(/[|]/g, ' ')
     .trim()
@@ -220,14 +222,10 @@ function ensureDestinationPrefix(keyword: string, destination: string | null): s
   return keyword.includes(destination) ? keyword : `${destination} ${keyword}`;
 }
 
-function buildTopic(keyword: string, destination: string | null, sourceKind: LongtailCandidate['sourceKind']): string {
-  const prefix = destination ? `${destination} ` : '';
-  if (sourceKind === 'winner_query') return `${keyword} 검색 의도 완전 정리`;
-  if (/비용|가격|예산/.test(keyword)) return `${keyword} 실제 예산과 예약 전 체크포인트`;
-  if (/일정|코스|루트/.test(keyword)) return `${keyword} 추천 일정과 동선 가이드`;
-  if (/날씨|옷차림|기온/.test(keyword)) return `${keyword} 날씨와 옷차림 가이드`;
-  if (/환전|화폐|팁/.test(keyword)) return `${keyword} 환전과 현지 결제 팁`;
-  return `${prefix}${keyword} 여행자가 가장 많이 묻는 질문 정리`.replace(/\s+/g, ' ').trim();
+export function buildLongtailTopic(keyword: string): string {
+  // Queue topics are demand observations, not headlines. The V3 brief owns title,
+  // structure, and optional components after evidence and intent are known.
+  return cleanCandidateKeyword(keyword);
 }
 
 function scoreSeed(row: {
@@ -625,7 +623,7 @@ export async function expandGscLongtailTopics(
       });
       return {
         keyword: candidate.keyword,
-        topic: buildTopic(candidate.keyword, destination, candidate.sourceKind),
+        topic: buildLongtailTopic(candidate.keyword),
         destination,
         familyKey,
         seedQuery: candidate.seed.query,

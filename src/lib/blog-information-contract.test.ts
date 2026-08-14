@@ -55,6 +55,27 @@ describe('blog information contract', () => {
     expect(BLOG_INFORMATION_INTENTS).not.toContain('general');
   });
 
+  it('accepts an explicit preparation decision without opening generic travel topics', () => {
+    const contract = buildBlogInformationContract({
+      destination: '몽골',
+      topic: '몽골 여행 준비물 체크 리스트',
+      primaryKeyword: '몽골 여행 준비물 체크 리스트',
+      category: 'preparation',
+    });
+
+    expect(contract.intentType).toBe('general');
+    expect(contract.passed).toBe(true);
+    expect(contract.issues).not.toContain('unresolved_intent');
+
+    const mislabeledGeneric = buildBlogInformationContract({
+      destination: '파리',
+      topic: '파리 여행',
+      category: 'preparation',
+    });
+    expect(mislabeledGeneric.passed).toBe(false);
+    expect(mislabeledGeneric.issues).toContain('unresolved_intent');
+  });
+
   it('lets a structured micro angle override stale category metadata', () => {
     expect(inferBlogInformationIntent({
       destination: 'Mongolia',

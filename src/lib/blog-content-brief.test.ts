@@ -104,6 +104,20 @@ describe('blog content brief', () => {
     expect(prompt).not.toContain('exactly three data rows');
   });
 
+  it('routes a destination preparation query into the preparation brief', () => {
+    const brief = buildBlogContentBrief({
+      topic: '몽골 여행 준비물 체크 리스트',
+      destination: '몽골',
+      primaryKeyword: '몽골 여행 준비물 체크 리스트',
+      category: 'preparation',
+      source: 'gsc_longtail',
+    });
+
+    expect(brief.passed).toBe(true);
+    expect(brief.searchIntent).toBe('preparation');
+    expect(brief.issues).not.toContain('information_plan:contract:unresolved_intent');
+  });
+
   it('fails closed before writing when a regulated plan is missing traveler nationality', () => {
     const brief = buildBlogContentBrief({
       topic: '일본 비자 입국 신고와 세관 조건',
