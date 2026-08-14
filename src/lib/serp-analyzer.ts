@@ -1,13 +1,13 @@
 /**
- * SERP Analyzer — 키워드 경쟁강도 분석 + 최적 SEO 제목/엔티티 추출
+ * Legacy SERP compatibility adapter.
  *
  * 흐름:
  *   1. Naver Search API (blog + web) 상위 10개 fetch
  *   2. serp_snapshots 캐시 저장 (7일 TTL)
  *   3. 패턴 추출:
- *      - 제목 평균 길이 / 년도 포함률 / 대괄호 사용률 / power word 빈도
- *      - 본문 스니펫에서 자주 등장하는 엔티티 (관광지/호텔/지명/항공사)
- *   4. blog-publisher prompt에 "## SERP 분석" 블록으로 주입
+ * V3 publishing uses blog-serp-research-v3. This adapter keeps older pillar
+ * callers operational, but title gimmicks and mandatory keyword/H2 insertion
+ * are intentionally disabled.
  *
  * 비용 보호:
  *   - HEAD/MID tier만 호출 (longtail은 SERP 분석 가치 낮음)
@@ -202,8 +202,7 @@ function extractPatterns(snippets: SerpSnippet[]): Omit<SerpAnalysis, 'keyword' 
 
   // 년도 포함률
   const currentYear = new Date().getFullYear();
-  const nextYear = currentYear + 1;
-  const yearMatches = titles.filter(t => t.includes(String(currentYear)) || t.includes(String(nextYear))).length;
+  const yearMatches = titles.filter(t => t.includes(String(currentYear)) || t.includes(String(currentYear + 1))).length;
   const yearRate = +(yearMatches / titles.length).toFixed(2);
 
   // 대괄호 사용률
@@ -227,13 +226,10 @@ function extractPatterns(snippets: SerpSnippet[]): Omit<SerpAnalysis, 'keyword' 
     .sort((a, b) => b.count - a.count)
     .slice(0, 15);
 
-  // 추천 제목 패턴
+  // Descriptive observations only. Frequency never authorizes copying a title
+  // pattern, adding a year, or inserting a promotional word.
   const recommendedTitles: string[] = [];
-  const dominantPower = powerWords[0]?.word;
-  if (yearRate > 0.5) recommendedTitles.push(`${nextYear} 트렌드 반영 — 제목에 "${nextYear}" 포함 권장`);
-  if (bracketRate > 0.4) recommendedTitles.push(`상위 글의 ${(bracketRate * 100).toFixed(0)}%가 [..] 또는 (..) 사용`);
-  if (dominantPower) recommendedTitles.push(`Power word "${dominantPower}" 포함 ${powerCount.get(dominantPower)}/10회 — 강력 권장`);
-  if (avgLen > 0) recommendedTitles.push(`상위 평균 ${avgLen}자 — Naver 모바일 최적은 30-55자`);
+  if (avgLen > 0) recommendedTitles.push(`표본 평균 제목 길이 ${avgLen}자 (관찰값이며 목표값이 아님)`);
 
   return {
     avg_title_len: avgLen,
@@ -375,23 +371,13 @@ export function buildSerpPromptBlock(
   }
 
   if (analysis) {
-    lines.push('## 🎯 경쟁 SERP 분석 (Naver 상위 10개)');
-    lines.push(`- 평균 제목 길이: ${analysis.avg_title_len}자 (당신의 SEO 제목도 ${analysis.avg_title_len > 50 ? '40~55자' : '30~45자'} 권장)`);
-    if (analysis.power_words.length > 0) {
-      const top3 = analysis.power_words.slice(0, 3).map(p => `${p.word}(${p.count}/10)`).join(', ');
-      lines.push(`- 상위 Power Word: ${top3} → 제목에 1개 이상 포함 강력 권장`);
-    }
-    if (analysis.year_inclusion_rate > 0.4) {
-      lines.push(`- 상위 ${(analysis.year_inclusion_rate * 100).toFixed(0)}%가 "${new Date().getFullYear() + 1}" 또는 "${new Date().getFullYear()}" 포함 — 제목에 년도 포함`);
-    }
-    if (analysis.bracket_rate > 0.3) {
-      lines.push(`- 상위 ${(analysis.bracket_rate * 100).toFixed(0)}%가 [..] 또는 (..) 형식 사용 — 시각적 차별화`);
-    }
+    lines.push('## 검색 의도 참고 표본 (Naver editorial 결과)');
+    lines.push(`- 분석 표본의 평균 제목 길이: ${analysis.avg_title_len}자 (관찰값이며 제목 목표값이 아님)`);
     if (analysis.recommended_entities_to_include.length > 0) {
-      lines.push(`- 상위 글에 자주 언급되는 엔티티 (본문에 자연스럽게 포함 권장): ${analysis.recommended_entities_to_include.join(', ')}`);
+      lines.push(`- 표본에서 반복 관찰된 엔티티: ${analysis.recommended_entities_to_include.join(', ')}`);
     }
     lines.push('');
-    lines.push('이 패턴을 참고하되 표절 금지. 토픽 본질 + 여소남 톤 유지.');
+    lines.push('이 값으로 연도, power word, 대괄호, 엔티티를 강제하지 말 것. 검색 의도만 참고하고 사실은 공식 claim packet으로 검증한다.');
   }
 
   // 갭 분석 결과 주입
@@ -401,11 +387,10 @@ export function buildSerpPromptBlock(
     lines.push(`현재 글의 주제 커버리지 점수: ${serpGapAnalysis.coverageScore}/100`);
     lines.push(`경쟁사 상위 글에서 다루지만 이 글에 없는 주제:`);
     for (const topic of serpGapAnalysis.missingTopics) {
-      lines.push(`- "${topic}" — 본문에 이 주제를 포함하세요`);
+      lines.push(`- "${topic}" — 독자의 결정에 필요한지 먼저 판단하세요`);
     }
     lines.push('');
-    lines.push('중요: 위 부족한 주제들은 반드시 본문에 자연스럽게 녹여 포함하세요.');
-    lines.push('H2 섹션으로 추가하거나 기존 문단에 통합할 수 있습니다.');
+    lines.push('위 항목은 의무 H2 목록이 아니며, 근거와 검색 의도에 맞는 항목만 사용합니다.');
   }
 
   return lines.join('\n');
@@ -414,46 +399,20 @@ export function buildSerpPromptBlock(
 /**
  * SERP 분석 결과를 반영한 최적 SEO 제목 생성
  *
- * 규칙:
- *   1. 상위 50% 이상이 연도 포함 → 제목 끝에 "(2026)" 추가
- *   2. 상위 top power word가 제목에 없으면 삽입 (길이 허용 시)
- *   3. 대괄호 rate > 50% → 이미 포함 여부 확인 후 삽입
- *   4. 최종 길이 30~55자 내 유지
+ * V3 rule: the query and article answer determine the title. Observed SERP
+ * formatting never adds a year, power word, bracket, or episode suffix.
  */
 export function buildOptimalTitle(
   baseTopic: string,
   analysis: SerpAnalysis,
   tier: 'head' | 'mid' | 'longtail' = 'mid',
 ): string {
-  const year = new Date().getFullYear();
-  let title = baseTopic.substring(0, 55).trim();
-
-  // 연도 포함율 > 50% → 아직 없으면 추가
-  if (analysis.year_inclusion_rate > 0.5) {
-    if (!title.includes(String(year)) && !title.includes(String(year + 1))) {
-      const candidate = `${title} (${year})`;
-      if (candidate.length <= 55) title = candidate;
-    }
-  }
-
-  // 상위 power word 1개가 없으면 삽입 (head/mid만)
-  if (tier !== 'longtail' && analysis.power_words.length > 0) {
-    const topWord = analysis.power_words[0].word;
-    // 연도·숫자 power word는 제목에 추가 불필요 (이미 처리)
-    if (!/^\d{4}$/.test(topWord) && !title.includes(topWord)) {
-      const withWord = `${title} — ${topWord}`;
-      if (withWord.length <= 55) title = withWord;
-    }
-  }
-
-  // 대괄호 rate > 50% → 앞에 분류 태그 추가 (head tier만, 공간 여유 있을 때)
-  if (tier === 'head' && analysis.bracket_rate > 0.5) {
-    if (!/^\[/.test(title)) {
-      const tag = '[완벽 가이드]';
-      const withTag = `${tag} ${title}`;
-      if (withTag.length <= 55) title = withTag;
-    }
-  }
-
-  return title.substring(0, 60);
+  void analysis;
+  void tier;
+  return baseTopic
+    .replace(/\s*\((?:2|3|4)편\)\s*$/u, '')
+    .replace(/\s+(?:완벽|최고|필수|총정리|BEST)\s*$/iu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
 }

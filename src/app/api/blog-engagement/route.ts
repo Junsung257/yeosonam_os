@@ -1,23 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { hashAnalyticsSearchQuery } from '@/lib/analytics/query-hash';
 
 type BlogEventType =
   | 'summary'
+  | 'engaged_60_seconds'
   | 'scroll_25'
   | 'scroll_50'
   | 'scroll_75'
   | 'scroll_90'
   | 'cta_impression'
-  | 'cta_click';
+  | 'cta_click'
+  | 'source_link_click'
+  | 'related_article_click'
+  | 'destination_hub_click'
+  | 'product_click'
+  | 'consultation_click';
 
 const BLOG_EVENT_TYPES = new Set<BlogEventType>([
   'summary',
+  'engaged_60_seconds',
   'scroll_25',
   'scroll_50',
   'scroll_75',
   'scroll_90',
   'cta_impression',
   'cta_click',
+  'source_link_click',
+  'related_article_click',
+  'destination_hub_click',
+  'product_click',
+  'consultation_click',
 ]);
 
 async function resolveAdLandingMappingId(input: {
@@ -81,6 +94,9 @@ function jsonPayload(value: unknown): Record<string, unknown> {
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: true });
+  if (!request.cookies.get('ys_consent_v2')?.value.startsWith('a')) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'analytics_consent_required' });
+  }
 
   try {
     const body = await request.json();
@@ -101,6 +117,11 @@ export async function POST(request: NextRequest) {
       utm_medium,
       utm_campaign,
       utm_term,
+      route,
+      device,
+      connection_type,
+      navigation_type,
+      consent_state,
     } = body;
 
     if (!content_creative_id) {
@@ -135,6 +156,12 @@ export async function POST(request: NextRequest) {
       cta_placement: nullableText(cta_placement),
       cta_href: nullableText(cta_href),
       event_payload: jsonPayload(event_payload),
+      route: nullableText(route),
+      device: nullableText(device),
+      connection_type: nullableText(connection_type),
+      navigation_type: nullableText(navigation_type),
+      consent_state: consent_state === 'granted' ? 'granted' : 'unknown',
+      search_query_hash: hashAnalyticsSearchQuery(utm_term),
     });
 
     if (isCtaClick) {

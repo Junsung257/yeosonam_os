@@ -34,7 +34,8 @@ function normalizedSlotTimes(slotTimes: string[], dailyTarget: number): Array<{
   minutes: number;
 }> {
   const fallback = [...DEFAULT_BLOG_PUBLISH_SLOT_TIMES];
-  const source = slotTimes.length >= dailyTarget ? slotTimes : fallback;
+  void dailyTarget;
+  const source = slotTimes.length > 0 ? slotTimes : fallback;
   const unique = new Map<number, string>();
   for (const value of source) {
     const minutes = parseSlotMinutes(value);
@@ -43,12 +44,10 @@ function normalizedSlotTimes(slotTimes: string[], dailyTarget: number): Array<{
   }
   const normalized = [...unique.entries()]
     .map(([minutes, label]) => ({ label, minutes }))
-    .sort((a, b) => a.minutes - b.minutes)
-    .slice(0, dailyTarget);
-  if (normalized.length === dailyTarget) return normalized;
+    .sort((a, b) => a.minutes - b.minutes);
+  if (normalized.length > 0) return normalized;
   return fallback
-    .map((label) => ({ label, minutes: parseSlotMinutes(label)! }))
-    .slice(0, dailyTarget);
+    .map((label) => ({ label, minutes: parseSlotMinutes(label)! }));
 }
 
 export function calculateBlogPublishSlotQuota(input: {
@@ -63,10 +62,13 @@ export function calculateBlogPublishSlotQuota(input: {
   const slots = normalizedSlotTimes(input.slotTimes ?? [], dailyTarget);
   const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
   const kstMinutes = (utcMinutes + KST_OFFSET_MINUTES) % (24 * 60);
-  const scheduledTargetNow = Math.min(
-    dailyTarget,
-    slots.filter((slot) => slot.minutes <= kstMinutes).length,
-  );
+  const elapsedSlotCount = slots.filter((slot) => slot.minutes <= kstMinutes).length;
+  const scheduledTargetNow = elapsedSlotCount === 0
+    ? 0
+    : Math.min(
+        dailyTarget,
+        Math.floor(((elapsedSlotCount - 1) * dailyTarget) / slots.length) + 1,
+      );
 
   return {
     dailyTarget,

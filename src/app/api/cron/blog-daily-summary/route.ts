@@ -3,7 +3,12 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
-import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import {
+  countPublishableQueueCandidates,
+  loadQueueDemandSignalMapV3,
+  MIN_PUBLISHABLE_BUFFER_DAYS,
+  normalizeDailyPostTarget,
+} from '@/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '@/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
 import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
@@ -318,7 +323,7 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('content_creatives').select('id, slug, seo_title, content_type, product_id, destination, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
-    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, content_creative_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, meta', { count: 'exact' })
+    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, content_creative_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, monthly_search_volume, trend_score, meta', { count: 'exact' })
       .in('status', ['queued', 'generating', 'failed']),
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
@@ -419,19 +424,29 @@ async function runDailySummary(request: NextRequest) {
     rows: queueRes.data || [],
     limit: 12,
   });
+  const publishableQueueRows = (queueRes.data || [])
+    .filter((row: any) => row.status === 'queued' || row.status === 'generating');
+  const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(publishableQueueRows);
   const publishabilityStats = countPublishableQueueCandidates({
-    activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
+    activeQueue: publishableQueueRows,
     recentPublished: recentPublishedRes.data || [],
+    demandSignalsByQueueId,
   });
   const publishability = {
     queued_total: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing,
+    demand_missing_count: publishabilityStats.demandMissing,
     candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
-    next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
-      ? 'collect_evidence'
+    next_action: publishabilityStats.demandMissing > 0
+      ? 'collect_demand'
+      : publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
+        ? 'collect_evidence'
       : publishabilityStats.candidateContractBlocked > 0
         ? 'repair_candidate_contract'
         : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
@@ -445,7 +460,10 @@ async function runDailySummary(request: NextRequest) {
     publishedToday: pubRes.count || 0,
     publishableCandidateCount: publishabilityStats.publishableCount,
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing,
     candidateShortage: publishability.candidate_shortage,
     actionableFailedCount: queueOperationalHealth.actionable_failed_count,
     staleGeneratingCount: queueOperationalHealth.stale_generating_count,

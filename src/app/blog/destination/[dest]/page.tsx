@@ -13,7 +13,6 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
@@ -23,7 +22,7 @@ import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isObviouslyInvalidDestinationRoute } from '../public-route';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import {
-  loadPublicBlogCatalog,
+  loadPublicBlogCatalogPage,
   type PublicBlogCatalogPost,
 } from '@/lib/blog-public-catalog';
 
@@ -110,7 +109,7 @@ function safeDecodePathSegment(value: string): string {
 }
 
 function getDisplayImageUrl(post: BlogPost): string | null {
-  return toBlogImageDisplaySrc(post.og_image_url);
+  return post.og_image_url?.trim() || null;
 }
 
 function isBlogDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
@@ -133,8 +132,8 @@ async function resolveDestinationRouteParamUncached(value: string): Promise<stri
   if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
 
   try {
-    const match = (await loadPublicBlogCatalog())
-      .map((row) => row.destination?.trim() ?? '')
+    const match = (await loadPublicBlogCatalogPage({ page: 1, pageSize: 1 })).destinations
+      .map((row) => row.destination.trim())
       .find(destination => destination && destinationSlugMatches(destination, decoded));
 
     return match || decoded;
@@ -162,15 +161,11 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
   const destination = await resolveDestinationRouteParam(dest);
 
   try {
-    const posts = (await loadPublicBlogCatalog())
-      .filter(p => {
-        const postDestination = (p.destination || '').trim();
-        return (
-          postDestination.includes(destination) ||
-          destinationSlugMatches(postDestination, destination)
-        );
-      })
-      .slice(0, 60) as BlogPost[];
+    const posts = (await loadPublicBlogCatalogPage({
+      page: 1,
+      pageSize: 50,
+      destination,
+    })).posts as BlogPost[];
 
     if (shouldSkipPublicDbReadsForResourceSaver()) {
       return { destination, posts, packages: [], unavailable: false };
@@ -341,9 +336,10 @@ function DestinationContent({
                     <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
                         src={getDisplayImageUrl(post)}
-                        alt={post.seo_title || ''}
+                        alt=""
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         fallback={
                           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-light to-[#F2F4F6]">
                             <span className="text-4xl">✈️</span>

@@ -2,10 +2,9 @@ import type { Metadata } from 'next';
 import BlogData from './BlogData';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
-export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-export const revalidate = 0;
+export const revalidate = 300;
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 

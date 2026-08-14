@@ -15,7 +15,8 @@ const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 test('ERR-BLOG-render-integrity-audit: package scripts expose render audit modes', () => {
   const pkg = JSON.parse(read('package.json'));
 
-  assert.equal(pkg.scripts['audit:blog-render'], 'node scripts/audit-blog-render-integrity.mjs');
+  assert.equal(pkg.scripts['audit:blog-render'], 'node scripts/audit-blog-render-integrity.mjs --browser-fallback');
+  assert.equal(pkg.scripts['audit:blog-render:static'], 'node scripts/audit-blog-render-integrity.mjs');
   assert.equal(pkg.scripts['audit:blog-render:browser'], 'node scripts/audit-blog-render-integrity.mjs --browser-fallback');
 });
 

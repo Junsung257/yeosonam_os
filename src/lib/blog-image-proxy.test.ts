@@ -1,56 +1,61 @@
 import { describe, expect, it } from 'vitest';
-
 import {
-  isProxyableBlogImageUrl,
+  BLOG_IMAGE_PROXY_WIDTHS,
+  buildBlogImageSrcSet,
+  normalizeBlogImageProxyWidth,
   proxyBlogImageUrlsInHtml,
-  toBlogImageDisplaySrc,
+  toBlogImageProxySrc,
 } from './blog-image-proxy';
 
-describe('blog-image-proxy', () => {
-  it('proxies Pexels images through the site route', () => {
-    const src = 'https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&w=1200';
+describe('blog image proxy variants', () => {
+  const source = 'https://images.pexels.com/photos/123/example.jpg';
 
-    expect(isProxyableBlogImageUrl(src)).toBe(true);
-    expect(toBlogImageDisplaySrc(src)).toBe(
-      `/api/blog/image?src=${encodeURIComponent(src)}&w=960`,
-    );
+  it('emits the five production width variants', () => {
+    const srcSet = buildBlogImageSrcSet(source);
+    for (const width of BLOG_IMAGE_PROXY_WIDTHS) {
+      expect(srcSet).toContain(`w=${width}`);
+      expect(srcSet).toContain(`${width}w`);
+    }
+    expect(srcSet?.split(', ')).toHaveLength(5);
   });
 
-  it('proxies Wikimedia Commons file images through the site route', () => {
-    const src = 'https://commons.wikimedia.org/wiki/Special:FilePath/Yun%20Dong-ju.jpg?width=480';
-
-    expect(isProxyableBlogImageUrl(src)).toBe(true);
-    expect(toBlogImageDisplaySrc(src)).toBe(
-      `/api/blog/image?src=${encodeURIComponent(src)}&w=960`,
-    );
+  it('normalizes arbitrary widths and refuses a srcset for an untrusted host', () => {
+    expect(normalizeBlogImageProxyWidth(700)).toBe(768);
+    expect(normalizeBlogImageProxyWidth(1920)).toBe(1600);
+    expect(toBlogImageProxySrc(source, '', { width: 700 })).toContain('w=768');
+    expect(buildBlogImageSrcSet('https://example.com/not-allowed.jpg')).toBeUndefined();
   });
 
-  it('leaves unsupported hosts unchanged', () => {
-    const src = 'https://example.com/image.jpg';
-
-    expect(isProxyableBlogImageUrl(src)).toBe(false);
-    expect(toBlogImageDisplaySrc(src)).toBe(src);
+  it('optimizes only the Yeosonam public blog asset bucket', () => {
+    const blogAsset = 'https://ixaxnvbmhzjvupissmly.supabase.co/storage/v1/object/public/blog-assets/generated/blog/example.jpg';
+    expect(buildBlogImageSrcSet(blogAsset)?.split(', ')).toHaveLength(5);
+    expect(buildBlogImageSrcSet('https://other-project.supabase.co/storage/v1/object/public/blog-assets/example.jpg')).toBeUndefined();
+    expect(buildBlogImageSrcSet('https://ixaxnvbmhzjvupissmly.supabase.co/storage/v1/object/public/private-assets/example.jpg')).toBeUndefined();
   });
 
-  it('rewrites rendered blog image html without changing alt text', () => {
-    const src = 'https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&w=1200';
-    const html = `<p><img src="${src}" alt="Bohol weather"></p>`;
-
-    const rewritten = proxyBlogImageUrlsInHtml(html);
-
-    expect(rewritten).toContain(`/api/blog/image?src=${encodeURIComponent(src)}&w=960`);
-    expect(rewritten).toContain('alt="Bohol weather"');
-    expect(rewritten).not.toContain('src="https://images.pexels.com');
+  it('allows the Wikimedia media host but rejects credentials and non-standard ports', () => {
+    expect(buildBlogImageSrcSet('https://upload.wikimedia.org/wikipedia/commons/a/a1/example.jpg')).toBeTruthy();
+    expect(buildBlogImageSrcSet('https://user:pass@images.pexels.com/photo.jpg')).toBeUndefined();
+    expect(buildBlogImageSrcSet('https://images.pexels.com:8443/photo.jpg')).toBeUndefined();
   });
 
-  it('rewrites Wikimedia image html through the same proxy', () => {
-    const src = 'https://commons.wikimedia.org/wiki/Special:FilePath/Yun%20Dong-ju.jpg?width=480';
-    const html = `<p><img src="${src}" alt="Yanji travel"></p>`;
+  it('adds responsive, lazy, intrinsic attributes to trusted inline images without inventing alt text', () => {
+    const html = '<p><img src="https://images.pexels.com/photos/123/example.jpg?w=1200&h=627" alt="실제 장면"></p>';
+    const rendered = proxyBlogImageUrlsInHtml(html);
+    expect(rendered).toContain('src="/api/blog/image?');
+    expect(rendered).toContain('srcset="/api/blog/image?');
+    expect(rendered).toContain('480w');
+    expect(rendered).toContain('1600w');
+    expect(rendered).toContain('sizes="(max-width: 768px) 100vw, 760px"');
+    expect(rendered).toContain('width="1200"');
+    expect(rendered).toContain('height="627"');
+    expect(rendered).toContain('loading="lazy"');
+    expect(rendered).toContain('decoding="async"');
+    expect(rendered).toContain('alt="실제 장면"');
+  });
 
-    const rewritten = proxyBlogImageUrlsInHtml(html);
-
-    expect(rewritten).toContain(`/api/blog/image?src=${encodeURIComponent(src)}&w=960`);
-    expect(rewritten).toContain('alt="Yanji travel"');
-    expect(rewritten).not.toContain('src="https://commons.wikimedia.org');
+  it('leaves untrusted inline image URLs untouched', () => {
+    const html = '<img src="https://example.com/image.jpg" alt="">';
+    expect(proxyBlogImageUrlsInHtml(html)).toBe(html);
   });
 });

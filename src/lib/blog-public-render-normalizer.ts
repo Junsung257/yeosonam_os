@@ -22,6 +22,19 @@ function removeExcessiveHorizontalRules(html: string): string {
   return count >= 3 ? html.replace(/<hr\b[^>]*\/?>/gi, '') : html;
 }
 
+const NON_DESCRIPTIVE_IMAGE_ALT_RE = /(?:여행\s*준비(?:\s*장면)?|비용\s*확인(?:\s*장면)?|월별\s*날씨(?:\s*확인)?|10초\s*판단|포함\s*\/\s*불포함|일정\s*체감|예산\s*체크(?:\s*장면)?)$/u;
+
+function removeNonDescriptiveImageAlts(html: string): string {
+  return html.replace(/<img\b[^>]*>/gi, (tag) => tag.replace(
+    /\balt\s*=\s*(["'])(.*?)\1/i,
+    (attribute, quote: string, alt: string) => (
+      NON_DESCRIPTIVE_IMAGE_ALT_RE.test(alt.replace(/\s+/g, ' ').trim())
+        ? `alt=${quote}${quote}`
+        : attribute
+    ),
+  ));
+}
+
 function normalizeHeadingTextForCompare(value: string): string {
   return value
     .replace(/<[^>]+>/g, ' ')
@@ -64,5 +77,5 @@ export function sanitizePublicBlogBodyHtml(html: string): string {
     .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
     .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
     .replace(/<\/h1>/gi, '</h2>');
-  return dedupeExactLongBlocks(removeExcessiveHorizontalRules(sanitized));
+  return dedupeExactLongBlocks(removeNonDescriptiveImageAlts(removeExcessiveHorizontalRules(sanitized)));
 }

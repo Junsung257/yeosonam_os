@@ -6,6 +6,16 @@ import {
 import { buildBlogContentBrief } from './blog-content-brief';
 import { buildBlogInformationRepresentativeKey } from './blog-information-representative';
 import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
+import {
+  hasVerifiedBlogDemandSignal,
+  readBlogAutopublishPolicyV3,
+  type BlogDemandSignalInput,
+} from './blog-autopublish-policy-v3';
+import {
+  mergePersistedBlogDemandSignalsV3,
+  readEmbeddedBlogQueueDemandSignalV3,
+  type PersistedBlogDemandSignalV3,
+} from './blog-demand-repository-v3';
 
 type MicroAngleId =
   | 'budget_family'
@@ -112,11 +122,6 @@ function readMicroAngle(row: { angle_type?: string | null; generation_meta?: any
   return null;
 }
 
-function expectedMicroSlug(destination: string, microAngle: MicroAngleId): string {
-  const destSlug = romanize(destination) || destination.toLowerCase().replace(/\s+/g, '-');
-  return `${destSlug}-${microAngle.replace(/_/g, '-')}`;
-}
-
 export function buildMicroAnglePrimaryKeyword(destination: string, template: Pick<MicroAngleTemplate, 'keywordSuffix'>): string {
   return `${destination} ${template.keywordSuffix}`.replace(/\s+/g, ' ').trim();
 }
@@ -196,7 +201,82 @@ type QueueCandidateLike = {
   slug_hint?: string | null;
   generation_meta?: any;
   meta?: any;
+  monthly_search_volume?: number | null;
+  trend_score?: number | null;
 };
+
+export async function loadQueueDemandSignalMapV3(
+  rows: QueueCandidateLike[],
+  client: any = supabaseAdmin,
+): Promise<Map<string, BlogDemandSignalInput>> {
+  const map = new Map<string, BlogDemandSignalInput>();
+  const ids = rows.map((row) => row.id).filter((id): id is string => Boolean(id));
+  for (const row of rows) {
+    if (row.id) map.set(row.id, readEmbeddedBlogQueueDemandSignalV3(row));
+  }
+  if (ids.length === 0) return map;
+  let persistedRows: any[] = [];
+  try {
+    const result = await client
+      .from('blog_demand_signals')
+      .select('queue_id, provider, signal_value, source_reference, verified_at, expires_at')
+      .in('queue_id', ids);
+    if (!result.error) persistedRows = result.data ?? [];
+  } catch {
+    persistedRows = [];
+  }
+  const grouped = new Map<string, PersistedBlogDemandSignalV3[]>();
+  for (const row of persistedRows) {
+    const queueId = typeof row.queue_id === 'string' ? row.queue_id : null;
+    if (!queueId) continue;
+    const values = grouped.get(queueId) ?? [];
+    values.push(row as PersistedBlogDemandSignalV3);
+    grouped.set(queueId, values);
+  }
+  for (const row of rows) {
+    if (!row.id) continue;
+    map.set(row.id, mergePersistedBlogDemandSignalsV3(
+      map.get(row.id) ?? {},
+      grouped.get(row.id) ?? [],
+    ).signal);
+  }
+  const normalizeQuery = (value: unknown) => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+  const keywordToQueueIds = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.id) continue;
+    const keyword = normalizeQuery(row.primary_keyword);
+    if (!keyword) continue;
+    keywordToQueueIds.set(keyword, [...(keywordToQueueIds.get(keyword) ?? []), row.id]);
+  }
+  const keywords = [...keywordToQueueIds.keys()];
+  if (keywords.length > 0) {
+    try {
+      const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const performance = await client
+        .from('blog_search_performance')
+        .select('provider, query, impressions')
+        .in('query', keywords)
+        .gte('metric_date', since)
+        .gt('impressions', 0)
+        .limit(5000);
+      if (!performance.error) {
+        for (const observed of performance.data ?? []) {
+          const queueIds = keywordToQueueIds.get(normalizeQuery(observed.query)) ?? [];
+          for (const queueId of queueIds) {
+            const signal = map.get(queueId) ?? {};
+            if (observed.provider === 'google_search_console') signal.gsc = true;
+            if (observed.provider === 'naver_search_advisor') signal.naver = true;
+            map.set(queueId, signal);
+          }
+        }
+      }
+    } catch {
+      // Missing V3 repository or old test client: embedded/persisted demand
+      // remains authoritative and the caller still fails closed when absent.
+    }
+  }
+  return map;
+}
 
 function readWriterType(row: QueueCandidateLike): string {
   const raw = row.meta?.writer_type ?? row.meta?.writer ?? row.generation_meta?.writer;
@@ -273,6 +353,7 @@ export function countPublishableQueueCandidates(input: {
   activeQueue: QueueCandidateLike[];
   recentPublished: QueueCandidateLike[];
   activeRepresentativeKeys?: ReadonlySet<string>;
+  demandSignalsByQueueId?: ReadonlyMap<string, BlogDemandSignalInput>;
 }): {
   publishableCount: number;
   blockedRecentDuplicate: number;
@@ -282,6 +363,7 @@ export function countPublishableQueueCandidates(input: {
   destinationlessInfoBlocked: number;
   candidateContractBlocked: number;
   researchNotReady: number;
+  demandMissing: number;
 } {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
@@ -298,6 +380,7 @@ export function countPublishableQueueCandidates(input: {
   let destinationlessInfoBlocked = 0;
   let candidateContractBlocked = 0;
   let researchNotReady = 0;
+  let demandMissing = 0;
 
   for (const row of [...input.activeQueue].sort(compareBlogDuplicateCandidatePreference)) {
     if (row.source === 'pillar') continue;
@@ -341,6 +424,11 @@ export function countPublishableQueueCandidates(input: {
       researchNotReady += 1;
       continue;
     }
+    const demandSignal = row.id ? input.demandSignalsByQueueId?.get(row.id) : undefined;
+    if (!hasVerifiedBlogDemandSignal(demandSignal ?? readEmbeddedBlogQueueDemandSignalV3(row))) {
+      demandMissing += 1;
+      continue;
+    }
     publishableKeys.add(key);
   }
 
@@ -353,6 +441,7 @@ export function countPublishableQueueCandidates(input: {
     destinationlessInfoBlocked,
     candidateContractBlocked,
     researchNotReady,
+    demandMissing,
   };
 }
 
@@ -447,7 +536,6 @@ export async function ensureDailyPublishableQueue(opts?: {
   const targetCandidates = Math.max(
     opts?.minCandidates ?? 0,
     postsPerDay * MIN_PUBLISHABLE_BUFFER_DAYS,
-    15,
   );
 
   const since = new Date();
@@ -463,7 +551,7 @@ export async function ensureDailyPublishableQueue(opts?: {
       .limit(300),
     supabaseAdmin
       .from('blog_topic_queue')
-      .select('id, product_id, content_creative_id, destination, primary_keyword, category, angle_type, topic, source, priority, created_at, updated_at, meta')
+      .select('id, product_id, content_creative_id, destination, primary_keyword, category, angle_type, topic, source, priority, created_at, updated_at, monthly_search_volume, trend_score, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
     supabaseAdmin
@@ -478,10 +566,12 @@ export async function ensureDailyPublishableQueue(opts?: {
       .filter((key): key is string => typeof key === 'string' && key.length > 0),
   );
 
+  const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(activeQueueRes.data ?? []);
   const queueCandidateStats = countPublishableQueueCandidates({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
     activeRepresentativeKeys,
+    demandSignalsByQueueId,
   });
   const queuedTotal = activeQueueRes.data?.filter((row: QueueCandidateLike) => row.source !== 'pillar').length ?? 0;
   const duplicateCount = queueCandidateStats.blockedRecentDuplicate + queueCandidateStats.duplicateQueued;
@@ -491,13 +581,15 @@ export async function ensureDailyPublishableQueue(opts?: {
     duplicate_count: duplicateCount,
     evidence_insufficient_count: queueCandidateStats.evidenceInsufficient
       + queueCandidateStats.productOpenContractBlocked
-      + queueCandidateStats.researchNotReady,
+      + queueCandidateStats.researchNotReady
+      + queueCandidateStats.demandMissing,
     destinationless_info_count: queueCandidateStats.destinationlessInfoBlocked,
     candidate_contract_blocked_count: queueCandidateStats.candidateContractBlocked,
     candidate_shortage: queueCandidateStats.publishableCount < targetCandidates,
     next_action: queueCandidateStats.evidenceInsufficient
       + queueCandidateStats.productOpenContractBlocked
-      + queueCandidateStats.researchNotReady > 0
+      + queueCandidateStats.researchNotReady
+      + queueCandidateStats.demandMissing > 0
       ? 'collect_evidence'
       : queueCandidateStats.destinationlessInfoBlocked > 0
         ? 'repair_destinationless_info'
@@ -524,7 +616,8 @@ export async function ensureDailyPublishableQueue(opts?: {
       skippedQueuedDuplicate: queueCandidateStats.duplicateQueued,
       evidenceInsufficient: queueCandidateStats.evidenceInsufficient
         + queueCandidateStats.productOpenContractBlocked
-        + queueCandidateStats.researchNotReady,
+        + queueCandidateStats.researchNotReady
+        + queueCandidateStats.demandMissing,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: 0,
@@ -532,170 +625,29 @@ export async function ensureDailyPublishableQueue(opts?: {
     };
   }
 
-  const recentKeys = new Set<string>();
-  for (const row of recentPublishedRes.data ?? []) {
-    const key = microAngleKey(row.destination, readMicroAngle(row));
-    if (key) recentKeys.add(key);
-  }
-
-  const queuedKeys = new Set<string>();
-  const queuedTopics = new Set<string>();
-  for (const row of activeQueueRes.data ?? []) {
-    const key = microAngleKey(row.destination, readMicroAngle(row));
-    if (key) queuedKeys.add(key);
-    if (typeof row.topic === 'string') queuedTopics.add(row.topic);
-  }
-
-  const recentDestinations = (recentPublishedRes.data ?? [])
-    .map(row => row.destination)
-    .filter((destination): destination is string => typeof destination === 'string' && destination.trim().length > 0);
-  const recentDestinationSet = new Set(recentDestinations);
-  const freshDestinations = REVIEWED_CLIMATE_FALLBACK_DESTINATIONS
-    .filter(destination => !recentDestinationSet.has(destination));
-  const destinations = Array.from(
-    new Set([...freshDestinations, ...REVIEWED_CLIMATE_FALLBACK_DESTINATIONS]),
-  );
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const deficit = Math.max(0, targetCandidates - existingQueued);
-
-  let skippedRecentDuplicate = 0;
-  let skippedQueuedDuplicate = 0;
-  const rowsRaw: Array<Record<string, unknown>> = [];
-
-  for (const destination of destinations) {
-    for (const template of MICRO_ANGLE_TEMPLATES.filter((candidate) => candidate.id === 'weather_packing')) {
-      if (rowsRaw.length >= deficit * 2) break;
-      const key = microAngleKey(destination, template.id);
-      const topic = template.topic(destination, year, month);
-      if (!key) continue;
-      const audience = template.id === 'kid_friendly' || template.id === 'budget_family'
-        ? 'family'
-        : 'general';
-      const primaryKeyword = buildMicroAnglePrimaryKeyword(destination, template);
-      const representativeKey = publishableRepresentativeKey({
-        topic,
-        destination,
-        primary_keyword: primaryKeyword,
-        category: template.category,
-        source: 'coverage_gap',
-        angle_type: 'value',
-        meta: {
-          micro_angle: template.id,
-          audience,
-        },
-      });
-      if (representativeKey && activeRepresentativeKeys.has(representativeKey)) {
-        skippedRecentDuplicate += 1;
-        continue;
-      }
-      if (recentKeys.has(key)) {
-        skippedRecentDuplicate += 1;
-        continue;
-      }
-      const destinationAngle = destinationAngleKey({
-        destination,
-        angle_type: 'value',
-        source: 'coverage_gap',
-      });
-      if (destinationAngle && recentKeys.has(destinationAngle)) {
-        skippedRecentDuplicate += 1;
-        continue;
-      }
-      if (queuedKeys.has(key) || queuedTopics.has(topic)) {
-        skippedQueuedDuplicate += 1;
-        continue;
-      }
-
-      rowsRaw.push({
-        topic,
-        source: 'coverage_gap',
-        priority: 72,
-        destination,
-        category: template.category,
-        angle_type: 'value',
-        primary_keyword: primaryKeyword,
-        keyword_tier: 'longtail' as KeywordTier,
-        competition_level: 'low',
-        meta: {
-          micro_angle: template.id,
-          audience,
-          season_month: month,
-          expected_slug: expectedMicroSlug(destination, template.id),
-          generated_by: 'micro_angle_refill',
-          research_fallback: 'reviewed_wmo_climate',
-          editorial_variation: buildWeatherQueueVariation(destination, month),
-        },
-      });
-    }
-    if (rowsRaw.length >= deficit * 2) break;
-  }
-
-  const { rows, rejected } = filterTopicFitPassed(rowsRaw as any[]);
-  const rowsToInsert = rows.slice(0, Math.min(rows.length, deficit + postsPerDay));
-  if (rowsToInsert.length === 0) {
-    return {
-      added: 0,
-      existingQueued,
-      targetCandidates,
-      skippedRecentDuplicate,
-      skippedQueuedDuplicate,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient
-        + queueCandidateStats.productOpenContractBlocked
-        + queueCandidateStats.researchNotReady,
-      quarantinedDuplicateCandidates,
-      publishabilitySnapshot,
-      rejectedByTopicFit: rejected.length,
-      insertedTopics: [],
-    };
-  }
-
-  const { data: inserted, error } = await supabaseAdmin
-    .from('blog_topic_queue')
-    .insert(rowsToInsert)
-    .select('topic');
-
-  if (error) {
-    console.warn('[scheduler] micro-angle insert failed:', error);
-    return {
-      added: 0,
-      existingQueued,
-      targetCandidates,
-      skippedRecentDuplicate,
-      skippedQueuedDuplicate,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient
-        + queueCandidateStats.productOpenContractBlocked
-        + queueCandidateStats.researchNotReady,
-      quarantinedDuplicateCandidates,
-      publishabilitySnapshot,
-      rejectedByTopicFit: rejected.length,
-      insertedTopics: [],
-    };
-  }
-
-  const insertedTopics = (inserted ?? [])
-    .map((row: { topic?: string | null }) => row.topic)
-    .filter((topic): topic is string => typeof topic === 'string' && topic.length > 0);
-
+  // Coverage gaps and reviewed climate research prove that an article can be
+  // researched; they do not prove that anyone needs it. Queue creation waits
+  // for an observed demand record or an explicitly verified human/product
+  // signal instead of manufacturing another weather candidate.
   return {
-    added: insertedTopics.length,
+    added: 0,
     existingQueued,
     targetCandidates,
-    skippedRecentDuplicate,
-    skippedQueuedDuplicate,
+    skippedRecentDuplicate: queueCandidateStats.blockedRecentDuplicate,
+    skippedQueuedDuplicate: queueCandidateStats.duplicateQueued,
     evidenceInsufficient: queueCandidateStats.evidenceInsufficient
       + queueCandidateStats.productOpenContractBlocked
-      + queueCandidateStats.researchNotReady,
+      + queueCandidateStats.researchNotReady
+      + queueCandidateStats.demandMissing,
     quarantinedDuplicateCandidates,
     publishabilitySnapshot: {
       ...publishabilitySnapshot,
       publishable_count: existingQueued,
       candidate_shortage: existingQueued < targetCandidates,
-      next_action: insertedTopics.length > 0 ? 'collect_evidence' : 'refill_candidates',
+      next_action: 'collect_demand',
     },
-    rejectedByTopicFit: rejected.length,
-    insertedTopics,
+    rejectedByTopicFit: 0,
+    insertedTopics: [],
   };
 }
 
@@ -721,20 +673,18 @@ import { pickSeasonalTopics, generateNextQuarterTopics } from './blog-seasonal-c
 import { analyzeCoverageGaps } from './blog-coverage-analyzer';
 import { researchKeywordsBatch, classifyKeywordTier, type KeywordTier } from './keyword-research';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
-import { romanize } from './slug-utils';
 import { buildProductDedupKey, resolveProductDepartureDate, resolveProductSupplierCode } from './blog-product-brief';
 import type { BlogPublishabilitySnapshot } from './blog-engine-v2';
 import { destinationlessInfoBlocksPublishability } from './blog-destinationless-info';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 import { evaluateQueuedInformationResearch } from './blog-queue-research';
-import { REVIEWED_CLIMATE_FALLBACK_DESTINATIONS } from './blog-research-fallback-catalog';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:00', '15:00', '18:00', '21:00'];
 
-export const MIN_POSTS_PER_DAY = 5;
+export const MIN_POSTS_PER_DAY = 0;
 export const MAX_POSTS_PER_DAY = 5;
-export const DEFAULT_POSTS_PER_DAY = 5;
+export const DEFAULT_POSTS_PER_DAY = 1;
 export const PRODUCT_RATIO = 0.4; // 40% — multi-angle drip 도입으로 상품 비중 상향
 export const SCHEDULE_OCCUPYING_QUEUE_STATUSES = ['queued', 'generating'] as const;
 
@@ -758,8 +708,10 @@ export function normalizeDailyPostTarget(value: unknown): number {
     : typeof value === 'string'
       ? Number.parseInt(value, 10)
       : DEFAULT_POSTS_PER_DAY;
-  if (!Number.isFinite(parsed)) return DEFAULT_POSTS_PER_DAY;
-  return Math.min(MAX_POSTS_PER_DAY, Math.max(MIN_POSTS_PER_DAY, parsed));
+  const configured = Number.isFinite(parsed)
+    ? Math.min(MAX_POSTS_PER_DAY, Math.max(MIN_POSTS_PER_DAY, parsed))
+    : DEFAULT_POSTS_PER_DAY;
+  return Math.min(configured, readBlogAutopublishPolicyV3().dailyPublishCap);
 }
 
 export async function getBlogPublishingPolicy(scope: string = 'global'): Promise<PublishingPolicy> {
@@ -850,15 +802,19 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         primary_keyword: pk,
         keyword_tier: r?.tier ?? classifyKeywordTier(pk),
         monthly_search_volume: r?.monthly_search_volume ?? null,
+        trend_score: r?.trend_score ?? null,
         competition_level: r?.competition_level ?? null,
         meta: { keywords: s.keywords, season_tag: s.season_tag },
       };
     });
     const { rows: seasonalRows } = filterTopicFitPassed(seasonalRowsRaw);
-    if (seasonalRows.length > 0) {
+    const demandBackedSeasonalRows = seasonalRows.filter((row) =>
+      hasVerifiedBlogDemandSignal(readEmbeddedBlogQueueDemandSignalV3(row)),
+    );
+    if (demandBackedSeasonalRows.length > 0) {
     const { data: inserted, error } = await supabaseAdmin
       .from('blog_topic_queue')
-      .insert(seasonalRows)
+      .insert(demandBackedSeasonalRows)
       .select('topic');
     if (!error) {
       const insertedTopics = new Set((inserted ?? []).map((r: { topic: string }) => r.topic));
@@ -905,15 +861,19 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         primary_keyword: pk,
         keyword_tier: r?.tier ?? 'mid',
         monthly_search_volume: r?.monthly_search_volume ?? null,
+        trend_score: r?.trend_score ?? null,
         competition_level: r?.competition_level ?? 'medium',
         meta: { expected_slug: g.slug_suffix },
       };
     });
     const { rows: gapRows } = filterTopicFitPassed(gapRowsRaw);
-    if (gapRows.length > 0) {
+    const demandBackedGapRows = gapRows.filter((row) =>
+      hasVerifiedBlogDemandSignal(readEmbeddedBlogQueueDemandSignalV3(row)),
+    );
+    if (demandBackedGapRows.length > 0) {
       const { data: inserted, error } = await supabaseAdmin
         .from('blog_topic_queue')
-        .insert(gapRows)
+        .insert(demandBackedGapRows)
         .select('topic');
       if (!error) coverageAdded = (inserted ?? []).length;
     }
@@ -1030,6 +990,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         ...(targetPublishAt ? { target_publish_at: targetPublishAt } : {}),
         meta: {
           product_title: p.title,
+          active_product_relation_verified: true,
           product_dedup_key: productDedupKey,
           departure_date: departureDate,
           duration: p.duration ?? null,
@@ -1077,12 +1038,13 @@ export async function assignPublishSlots(postsPerDay?: number): Promise<{ assign
 
   const { data: queued } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id, product_id, priority, destination, primary_keyword, angle_type, topic, category, source, meta')
+    .select('id, product_id, priority, destination, primary_keyword, angle_type, topic, category, source, monthly_search_volume, trend_score, meta')
     .eq('status', 'queued')
     .is('target_publish_at', null)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true });
 
+  const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(queued ?? []);
   const publishableQueued = (queued ?? []).filter((row: QueueCandidateLike) => {
     if (
       row.source === 'pillar'
@@ -1091,6 +1053,10 @@ export async function assignPublishSlots(postsPerDay?: number): Promise<{ assign
       || destinationlessInfoBlocksPublishability(row)
       || !inspectBlogCandidatePrepublishContract(row).passed
     ) return false;
+    if (!hasVerifiedBlogDemandSignal(
+      (row.id ? demandSignalsByQueueId.get(row.id) : undefined)
+        ?? readEmbeddedBlogQueueDemandSignalV3(row),
+    )) return false;
     return readWriterType(row) !== 'info_writer' || evaluateQueuedInformationResearch(row).passed;
   });
   if (publishableQueued.length === 0) return { assigned: 0 };

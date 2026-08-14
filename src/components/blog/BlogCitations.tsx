@@ -10,8 +10,8 @@ interface Citation {
 
 /**
  * 목적지·항공사별 공식 참고 링크.
- * E-E-A-T 신호 강화 + GEO(Generative Engine Optimization) 연구에서 AI Overviews 인용률 증가.
- * 실제 검증된 공식 도메인만 사용할 것.
+ * 실제 검증된 공식 도메인만 사용한다. 링크 존재 자체를 사실 검증이나
+ * 검색 성과의 증거로 간주하지 않는다.
  */
 const DESTINATION_CITATIONS: Record<string, Citation[]> = {
   '다낭': [
@@ -83,7 +83,7 @@ export default function BlogCitations({ destination, airline, citations: researc
               href={c.url}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="group inline-flex items-center gap-1.5 text-slate-600 hover:text-brand"
+              className="group inline-flex min-h-11 items-center gap-1.5 text-slate-600 hover:text-brand"
             >
               <ExternalLink
                 size={13}

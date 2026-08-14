@@ -2,11 +2,8 @@ import { runQualityGates, type QualityGateReport } from './blog-quality-gate';
 import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-quality-score';
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
-import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
-import { repairBlogEngineCategoryGaps } from './blog-engine-category-repair';
-import { repairPublishReadiness } from './blog-publish-readiness-repair';
 import { inspectBlogCustomerQuality, type BlogCustomerQualityReport } from './blog-customer-quality';
-import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
+import { repairBlogPublishFormattingV3 } from './blog-safe-publish-repair-v3';
 import {
   inspectPublicBlogCustomerQuality,
   type PublicBlogCustomerQualityReport,
@@ -375,131 +372,10 @@ export async function prepareBlogForPublish(
       report,
     };
   }
-  if (!input.product_id) {
-    const normalized = stripBlogInformationalBodyCtas(blogHtml);
-    if (normalized !== blogHtml) {
-      blogHtml = normalized;
-      changes.push('normalized_informational_body_cta');
-    }
-  }
-
-  const editorialRepair = repairBlogEditorialQuality({
-    title: input.seo_title ?? input.slug,
-    slug: input.slug,
-    primaryKeyword,
-    angleType: input.angle_type ?? null,
-    category: input.category ?? null,
-    contentType,
-    productId: input.product_id ?? null,
-    blogHtml,
-  });
-  if (editorialRepair.changed) {
-    blogHtml = editorialRepair.blogHtml;
-    changes.push(...editorialRepair.changes);
-  }
-
-  const structureRepair = repairBlogStructureQuality({
-    title: input.seo_title ?? input.slug,
-    slug: input.slug,
-    primaryKeyword,
-    angleType: input.angle_type ?? null,
-    category: input.category ?? null,
-    contentType,
-    productId: input.product_id ?? null,
-    blogHtml,
-  });
-  if (structureRepair.changed) {
-    blogHtml = structureRepair.blogHtml;
-    changes.push(...structureRepair.changes);
-  }
-
-  const densityRepair = repairKeywordDensityToTarget(blogHtml, primaryKeyword, input.product_id ? 'product' : 'info');
-  if (densityRepair.changed) {
-    blogHtml = densityRepair.blogHtml;
-    changes.push('repaired_keyword_density_after_surface_repair');
-  }
-
-  const readinessRepair = repairPublishReadiness({
-    markdown: blogHtml,
-    blogType: input.product_id ? 'product' : 'info',
-    slug: input.slug,
-    destination: input.destination ?? null,
-    topic: input.seo_title ?? input.slug,
-    primaryKeyword,
-    hasRuntimeInformationalCta: !input.product_id,
-  });
-  if (readinessRepair.changed) {
-    blogHtml = readinessRepair.markdown;
-    changes.push(...readinessRepair.changes);
-  }
-
-  const categoryRepair = repairBlogEngineCategoryGaps({
-    markdown: blogHtml,
-    blogType: input.product_id ? 'product' : 'info',
-    title: input.seo_title ?? input.slug,
-    slug: input.slug,
-    destination: input.destination ?? null,
-    primaryKeyword,
-    angleType: input.angle_type ?? null,
-    category: input.category ?? null,
-    contentType,
-    productId: input.product_id ?? null,
-    generationMeta: input.generation_meta ?? null,
-  });
-  if (categoryRepair.changed) {
-    blogHtml = categoryRepair.markdown;
-    changes.push(...categoryRepair.changes);
-  }
-
-  const finalReadinessRepair = repairPublishReadiness({
-    markdown: blogHtml,
-    blogType: input.product_id ? 'product' : 'info',
-    slug: input.slug,
-    destination: input.destination ?? null,
-    topic: input.seo_title ?? input.slug,
-    primaryKeyword,
-    hasRuntimeInformationalCta: !input.product_id,
-  });
-  if (finalReadinessRepair.changed) {
-    blogHtml = finalReadinessRepair.markdown;
-    changes.push(...finalReadinessRepair.changes);
-  }
-
-  if (!input.product_id) {
-    const finalCustomerSurface = repairBlogFinalCustomerSurface({
-      markdown: blogHtml,
-      destination: input.destination ?? null,
-      primaryKeyword,
-      slug: input.slug,
-      title: input.seo_title ?? input.slug,
-    });
-    if (finalCustomerSurface.changed) {
-      blogHtml = finalCustomerSurface.markdown;
-      changes.push(...finalCustomerSurface.changes);
-    }
-
-    // The final customer-surface pass can split paragraphs, remove headings,
-    // or normalize tables. Re-run structure repair on the final information
-    // article body that customers will receive.
-    const finalStructureRepair = repairBlogStructureQuality({
-      title: input.seo_title ?? input.slug,
-      slug: input.slug,
-      primaryKeyword,
-      angleType: input.angle_type ?? null,
-      category: input.category ?? null,
-      contentType,
-      productId: null,
-      blogHtml,
-    });
-    if (finalStructureRepair.changed) {
-      blogHtml = finalStructureRepair.blogHtml;
-      changes.push(...finalStructureRepair.changes);
-    }
-    const normalized = stripBlogInformationalBodyCtas(blogHtml);
-    if (normalized !== blogHtml) {
-      blogHtml = normalized;
-      changes.push('normalized_final_informational_body_cta');
-    }
+  const safeRepair = repairBlogPublishFormattingV3(blogHtml);
+  if (safeRepair.changed) {
+    blogHtml = safeRepair.markdown;
+    changes.push(...safeRepair.changes);
   }
 
   const report = await evaluateBlogPublishQuality({

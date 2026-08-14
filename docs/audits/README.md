@@ -1,6 +1,15 @@
 # Audit Archive Index
 
-Last updated: 2026-08-06
+- 2026-08-11 — Blog Quality Engine V3 baseline, canary, corpus disposition/redirect preview, verification: `blog-quality-engine-v3-baseline-2026-08-11.md`
+- 2026-08-12 — Blog Quality Engine V3 reliability follow-up migration safety (5 files, 0 issues): `blog-quality-v3-migration-safety-report.json`
+- 2026-08-12 — Blog Quality Engine V3 production readiness: live Vercel/Supabase/public-surface read-only evidence, migration-history drift, and fail-closed release decision: `blog-quality-engine-v3-production-readiness-2026-08-12.md`
+- 2026-08-12 — Blog Quality Engine V3 isolated Supabase staging rehearsal: five migrations, SQL/TS parity, snapshot/Data API, ACL, Advisor, and rollback-safe evidence: `blog-quality-engine-v3-staging-rehearsal-2026-08-12.md`
+
+- 2026-08-13 — Blog live operations revalidation: production source, full corpus, autopublish, demand, GSC, eligibility, indexing, images, RUM, and fail-closed release evidence: `blog-live-operations-revalidation-2026-08-13.md`
+- 2026-08-14 — Naver-first SERP benchmark: 24 queries, 240 editorial samples, page-structure fetch evidence and provider semantics: `blog-serp-benchmark-2026-08-14.md`
+- 2026-08-14 — SERP brief structured canary: 24 offline drafts with per-canary failure evidence: `blog-serp-generated-canary-2026-08-14.md`
+
+Last updated: 2026-08-14
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -88,6 +97,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-13 | `blog-image-phash-preview.json` + `blog-image-phash-preview.csv` | Dry-run public-snapshot image hash coverage and actionable cross-destination duplicate-pair evidence; no DB writes. |
 | 2026-07-29 | `2026-07-29-blog-full-process-95-audit.md` | Full blog publication, public-render quality, category coverage, research backlog, crawler stampede root cause, and prevention evidence. |
 | 2026-07-24 | `2026-07-24-blog-autopublish-live-evidence-audit.md` | Live ten-intent direct-source audit with production create, update-publish, immutable revision, public render, and reindex proof. |
 | 2026-07-20 | `2026-07-20-meta-publisher-boundary.md` | Meta publisher external-write boundary audit: disabled incomplete deploy context, guarded mutation routes, and aligned PAUSED ad copy with the marketing SSOT. |

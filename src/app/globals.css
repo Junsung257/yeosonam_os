@@ -404,6 +404,14 @@ td, th {
   opacity: 0.6;
 }
 
+/* Standalone list links are actions on mobile, not inline prose. */
+.prose-blog li > a:only-child,
+.prose-blog li > p > a:only-child {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+}
+
 .prose-blog img {
   /* 자연 비율 보존. Jiwonnote 스타일: 얕은 radius + shadow 최소화 */
   display: block;

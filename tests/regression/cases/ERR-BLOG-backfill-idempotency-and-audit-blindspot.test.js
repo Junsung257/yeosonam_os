@@ -12,18 +12,20 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
-test('ERR-BLOG-backfill-idempotency-and-audit-blindspot: backfill write mode is explicit and idempotent', () => {
+test('ERR-BLOG-backfill-idempotency-and-audit-blindspot: content-creating legacy backfill is permanently dry-run-only', () => {
   const source = read('scripts', 'backfill-blog-quality.ts');
   const pkg = JSON.parse(read('package.json'));
 
-  assert.match(source, /const dryRun = !args\.has\(['"]--write['"]\)/);
+  assert.match(source, /const legacyWriteRequested = args\.has\('--write'\) \|\| args\.has\('--apply'\)/);
+  assert.match(source, /Legacy blog quality backfill is permanently dry-run-only/);
+  assert.match(source, /const dryRun = true/);
   assert.match(source, /const debugDiff = args\.has\(['"]--debug-diff['"]\)/);
   assert.match(source, /normalizeMarkdownLinkLabels/);
   assert.match(source, /isSameStoredBlogHtml/);
   assert.match(source, /if \(!changed \|\| dryRun\) continue/);
   assert.match(source, /evaluateBlogPublishQuality/);
   assert.equal(pkg.scripts['backfill:blog-quality'], 'npx tsx scripts/backfill-blog-quality.ts');
-  assert.equal(pkg.scripts['backfill:blog-quality:write'], 'npx tsx scripts/backfill-blog-quality.ts --write');
+  assert.equal(pkg.scripts['backfill:blog-quality:write'], undefined);
 });
 
 test('ERR-BLOG-backfill-idempotency-and-audit-blindspot: audits strip noise and retry incomplete pages', () => {

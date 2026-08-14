@@ -303,7 +303,7 @@ export default function GlobalNav() {
         className={`md:hidden h-14 flex items-center justify-between px-5 transition-all duration-200 ${scrolled ? 'bg-white/95 backdrop-blur-md shadow-md border-b border-transparent' : 'bg-white border-b border-admin-border'}`}
         aria-label="주 메뉴"
       >
-        <Link href="/" className="text-lg font-black tracking-tight text-brand">여소남</Link>
+        <Link href="/" className="inline-flex min-h-11 min-w-11 items-center text-lg font-black tracking-tight text-brand">여소남</Link>
         <button
           type="button"
           ref={hamburgerBtnRef}

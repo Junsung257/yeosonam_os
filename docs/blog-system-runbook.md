@@ -1,5 +1,7 @@
 # 블로그 시스템 운영 런북 (Runbook)
 
+> 2026-08-13 V3 override: the legacy `scripts/backfill-blog-quality.ts` path is audit-only. Its content-creating write mode and `backfill:blog-quality:write` package command were removed. Apply corpus decisions only through the reviewed V3 disposition/removal workflow.
+
 > 여소남 블로그 자동 발행 시스템 운영 가이드 — 매일/매주/매월 확인 사항
 
 ---

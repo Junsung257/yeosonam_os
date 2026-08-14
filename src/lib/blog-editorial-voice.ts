@@ -1,4 +1,5 @@
 import type { BlogContentBrief } from './blog-content-brief';
+import type { BlogContentBriefV3 } from './blog-content-brief-v3';
 import type { ProductBlogBrief } from './blog-product-brief';
 import { buildBlogInformationClaimLedgerPromptContract } from './blog-information-claim-ledger';
 
@@ -67,7 +68,19 @@ function topicParticle(value: string, withBatchim: string, withoutBatchim: strin
   return hasFinalConsonant(value) ? withBatchim : withoutBatchim;
 }
 
-export function buildInfoGuideBrief(brief: BlogContentBrief): InfoGuideBrief {
+export function buildInfoGuideBrief(brief: BlogContentBrief | BlogContentBriefV3): InfoGuideBrief {
+  if ('sectionPurposes' in brief) {
+    const firstPurpose = brief.sectionPurposes[0]?.purpose || '검색 질문에 직접 답한다';
+    return {
+      reader_question: brief.primaryDecision,
+      answer_first: `${brief.primaryQuery}${topicParticle(brief.primaryQuery, '은', '는')} ${firstPurpose}.`,
+      search_intent: brief.archetype,
+      official_sources_required: brief.riskLevel !== 'LOW',
+      destination_required: !/^(?:해외여행|여행|가족\s*여름|로밍|보험)/.test(brief.primaryQuery),
+      cta_policy: 'runtime_contextual',
+      claim_ledger_required: true,
+    };
+  }
   const requiredSections = brief.requiredSections.slice(0, 2).filter(Boolean).join(', ');
   const answerFirst = requiredSections
     ? `${brief.primaryKeyword}${topicParticle(brief.primaryKeyword, '은', '는')} 먼저 ${requiredSections} 기준으로 보면 됩니다.`

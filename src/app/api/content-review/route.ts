@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
       note: review_note,
     });
     if (informationResult.handled) {
+      // Review state is part of public eligibility; invalidate every public
+      // surface before returning from the information-specific workflow.
+      revalidatePublicBlogCache();
       return NextResponse.json({
         review_id: informationResult.reviewCaseId,
         information_review: true,

@@ -155,8 +155,8 @@ export interface HistoricalMetric {
 /** 네이버 키워드 검색 도구 (KeywordTool) API 응답 항목 */
 export interface NaverKeywordToolItem {
   relKeyword: string;
-  monthlyPcQcCnt: number;
-  monthlyMobileQcCnt: number;
+  monthlyPcQcCnt: number | string;
+  monthlyMobileQcCnt: number | string;
   monthlyAvePcClkCnt: number;
   monthlyAveMobileClkCnt: number;
   monthlyAvePcCtr: number;
@@ -165,6 +165,16 @@ export interface NaverKeywordToolItem {
   compIdx: number;
   lowPrice: number;
   highPrice: number;
+}
+
+export function parseNaverKeywordMetric(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.round(value);
+  const text = String(value ?? '').normalize('NFKC').replace(/,/g, '').trim();
+  // "< 10" is a provider bucket, not an exact count. Do not turn it into an
+  // invented number for demand scoring.
+  if (!text || /^<\s*10$/.test(text)) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : null;
 }
 
 export interface NaverCreatedKeyword {

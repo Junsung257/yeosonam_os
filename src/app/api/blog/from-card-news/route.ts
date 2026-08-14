@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
       primaryKeyword: primaryKeyword ?? null,
       ogImageUrl: ogImage,
       inlineImageSeedUrl: cardNewsImages[0] ?? ogImage,
-      minImages: 2,
+      minImages: 0,
       maxImages: 3,
       fallbackOgImageUrl: `${siteBaseUrl}/og-image.png`,
     });

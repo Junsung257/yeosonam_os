@@ -282,7 +282,7 @@ describe('blog publish quality', () => {
     expect(result.blogHtml).not.toContain('/packages?');
   });
 
-  it('prepares weak product posts with customer decision blocks before final evaluation', async () => {
+  it('does not invent customer decision blocks during deterministic publish preparation', async () => {
     const result = await prepareBlogForPublish({
       blog_html: [
         '# 다낭 패키지',
@@ -311,14 +311,12 @@ describe('blog publish quality', () => {
       },
     });
 
-    expect(result.changes).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/product_consult_decision_blocks|engine_category_product_decision_blocks/),
-      ]),
-    );
-    expect(result.blogHtml).toContain('## 포함/불포함');
-    expect(result.blogHtml).toContain('## 맞는 사람과 안 맞는 사람');
-    expect(result.blogHtml).toContain('## 문의 전 질문');
+    expect(result.changes).not.toEqual(expect.arrayContaining([
+      expect.stringMatching(/product_consult_decision_blocks|engine_category_product_decision_blocks/),
+    ]));
+    expect(result.blogHtml).not.toContain('## 포함/불포함');
+    expect(result.blogHtml).not.toContain('## 맞는 사람과 안 맞는 사람');
+    expect(result.blogHtml).not.toContain('## 문의 전 질문');
   });
 
   it('keeps a verified body unchanged for metadata-only republishing and uses the brief keyword', async () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { hasAnalyticsConsent } from '@/lib/analytics/consent';
 
 function getPageType(path: string): string {
   if (path.startsWith('/blog/')) return 'blog';
@@ -23,6 +24,7 @@ export default function WebVitalsReporter() {
   const sentRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    if (!hasAnalyticsConsent()) return;
     let cancelled = false;
     const path = pathname || '/';
     const pageType = getPageType(path);
@@ -33,7 +35,16 @@ export default function WebVitalsReporter() {
       if (sentRef.current.has(key)) return;
       sentRef.current.add(key);
 
-      const body = JSON.stringify({ name, value, path, pageType, slug });
+      const body = JSON.stringify({
+        name, value, path, pageType, slug,
+        route: path,
+        device: window.matchMedia('(max-width: 767px)').matches ? 'mobile' : 'desktop',
+        connectionType: (navigator as Navigator & { connection?: { effectiveType?: string } }).connection?.effectiveType || null,
+        navigationType: performance.getEntriesByType('navigation')[0]
+          ? (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming).type
+          : null,
+        consentState: 'granted',
+      });
       if (navigator.sendBeacon) {
         navigator.sendBeacon('/api/web-vitals', body);
       } else {

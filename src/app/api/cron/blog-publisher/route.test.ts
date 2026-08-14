@@ -12,7 +12,9 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain("readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8)");
-    expect(source).toContain('while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS)');
+    expect(source).toContain('publishedThisRun < remainingDueNow');
+    expect(source).toContain('extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS');
+    expect(source).toContain('attemptedQueueIds.size < MAX_CANDIDATE_ATTEMPTS_PER_RUN');
     expect(source).toContain('calculateBlogPublishSlotQuota({');
     expect(source).toContain("'daily_publish_quota_reached_atomic_upgrade_processed'");
     expect(source).toContain('PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE');
@@ -21,12 +23,24 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('contentKey: evidenceContentKey');
     expect(source).toContain('information_evidence_content_key: evidenceContentKey');
     expect(source).toContain('applyFinalResearchStructureRepair();');
-    expect(source).toContain("'local_transport_deterministic_evidence_article'");
-    expect(source).toContain('claims: replacedWithDeterministicEvidenceArticle');
-    expect(source).toContain('generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);');
-    expect(source).toContain('const seoMetadataDetailsNeedRepair = seoScore.details.some');
-    expect(source).toContain("['title', 'meta_description'].includes(d.name) && d.score < d.maxScore");
-    expect(source).toContain('if (seoMetadataDetailsNeedRepair) {');
+    expect(source).toContain('evaluateBlogAutopublishDecisionV3');
+    expect(source).toContain('loadQueueDemandEvidenceV3(item)');
+    expect(source).toContain('verified_demand_signal_missing_before_generation');
+    expect(source).toContain('demand_signal_repository_unavailable_before_generation');
+    const snapshotRefresh = source.indexOf("rpc('refresh_blog_public_snapshots_v3')");
+    const indexingEnqueue = source.indexOf('const result = await enqueueBlogIndexingJob({');
+    expect(snapshotRefresh).toBeGreaterThan(0);
+    expect(snapshotRefresh).toBeLessThan(indexingEnqueue);
+    expect(source).toContain("publicSnapshotRefresh.status === 'succeeded'");
+    expect(source).toContain('probeBlogRuntimeSchemaWithSupabaseV3');
+    expect(source).toContain("resource.scope === 'publish' || resource.scope === 'delivery'");
+    expect(source).toContain('!schemaReadiness.publishReady || !schemaReadiness.deliveryReady');
+    expect(source).toContain("reason: 'blog_quality_v3_runtime_schema_not_ready'");
+    expect(source).toContain('evaluateBlogCorpusCandidateV3');
+    expect(source).toContain('evaluateBlogQualityV3');
+    expect(source).not.toContain("'local_transport_deterministic_evidence_article'");
+    expect(source).not.toContain('softenKeywordDensity');
+    expect(source).not.toContain('seoMetadataDetailsNeedRepair');
     expect(source).toContain("contains('meta'");
     expect(source).toContain("? 'daily_publish_quota_reached'");
     expect(source).toContain("'scheduled_publish_window_not_due'");
@@ -114,9 +128,9 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('isHighRiskInformationalTopic({');
-    expect(source).toContain('status: publishedAtomicUpgrade');
-    expect(source).toContain("(contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published')");
-    expect(source).toContain("review_status: requiresHumanReview ? 'pending_review' : null");
+    expect(source).toContain('const contentRequiresHumanReview');
+    expect(source).toContain("status: publishAllowed ? 'published' : 'draft'");
+    expect(source).toContain("review_status: publishAllowed ? contentReviewStatus : 'pending_review'");
     expect(source).toContain('representativeIdentity && !requiresHumanReview');
     expect(source).toContain('publishBlogInformationAtomically({');
     expect(source).toContain("status: 'pending_review'");
@@ -205,13 +219,12 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7');
   });
 
-  it('repairs an exact primary keyword miss before blocking SEO publication', () => {
+  it('does not rewrite prose to hit an exact primary keyword quota', () => {
     const source = routeSource();
 
-    expect(source).toContain('function repairPrimaryKeywordPresence');
-    expect(source).toContain("d.name === 'primary_keyword' && d.status === 'fail'");
-    expect(source).toContain('const keywordRepair = repairPrimaryKeywordPresence(generated.blog_html, primaryKeyword)');
-    expect(source).toContain('SEO primary keyword repair');
+    expect(source).not.toContain('function repairPrimaryKeywordPresence');
+    expect(source).not.toContain('repairKeywordDensityToTarget');
+    expect(source).not.toContain('SEO primary keyword repair');
   });
 
   it('persists SEO component evidence when aggregate SEO remains below the release floor', () => {
@@ -219,8 +232,9 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('last_seo_score: {');
     expect(source).toContain('details: seoScore.details');
-    expect(source).toContain('last_information_claim_validation:');
-    expect(source).toContain('generated.generation_meta?.information_claim_validation ?? null');
+    expect(source).toContain('information_claim_validation: claimValidationSummary');
+    expect(source).toContain('quality_evaluation_v3');
+    expect(source).toContain("from('blog_quality_evaluations')");
   });
 
   it('persists the final SEO score on successful and pending-review queue handoffs', () => {
@@ -250,7 +264,7 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('const privateRegeneration = privateRegenerationRequest !== null');
     expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
-    expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
+    expect(source).not.toContain('maybeApplyChainOfDensity');
     expect(source).toContain('if (destForImage && !privateRegeneration) {');
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
     expect(source).not.toContain('if (!publishedAtomicUpgrade) {\n        privateReplacementAssets = {');
@@ -312,12 +326,10 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('parseBlogInformationWriterOutput(raw)');
-    expect(source).toContain('repairBlogGenerationResearchStructure({');
-    expect(source).toContain('plannedTitle: contentBrief.title');
-    expect(source).toContain('plannedTitle: finalContentBrief.title');
+    expect(source).not.toContain('repairBlogGenerationResearchStructure({');
     expect(source).toContain('information_research_structure_repair: {');
     expect(source).toContain('const applyFinalResearchStructureRepair = (): void =>');
-    expect(source).toContain("stage: 'final_quality_boundary'");
+    expect(source).toContain("policy: 'v3_claim_gate_only_no_deterministic_prose_rewrite'");
     expect(source).toContain('const runQualityWithResearchStructure = async (): Promise<QualityGateReport> =>');
     expect(source).toContain('const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> =>');
     expect(source).toContain('const restoreFinalReusableImages = async (): Promise<void> =>');
@@ -351,14 +363,14 @@ describe('blog publisher quota recovery contract', () => {
     expect(finalInlineSurfaceRepair).toBeGreaterThan(finalImageRestore);
     expect(finalQualityGate).toBeGreaterThan(finalInlineSurfaceRepair);
     expect(source).toContain('hasRenderedPageH1: true');
-    expect(source).toContain("['title', 'meta_description'].includes(d.name) && d.score < d.maxScore");
+    expect(source).not.toContain('seoMetadataDetailsNeedRepair');
     expect(source).toContain('qa = await runQualityWithResearchStructure();');
     expect(source).toContain('qa = await runQualityAfterAiReadableRepair();');
     const genericRepair = source.indexOf('qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);');
     const finalAiRepair = source.indexOf('qa = await runQualityAfterAiReadableRepair();', genericRepair);
     expect(genericRepair).toBeGreaterThan(-1);
     expect(finalAiRepair).toBeGreaterThan(genericRepair);
-    expect(source).toContain("qa = blogType === 'info'");
+    expect(source).toContain('quality gate failed; preserving generated content as a private review draft');
     expect(source).toContain('writer_claim_ledger: {');
     expect(source).toContain("claimLedger: contentBoundary.lane === 'informational'");
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
@@ -369,12 +381,12 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const evaluateCurrentInformationClaimValidation = async () =>');
     expect(source).toContain('const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();');
     expect(source).toContain('const finalClaimValidation = await evaluateCurrentInformationClaimValidation();');
-    expect(source).toContain("contentBrief.intentType === 'entry_requirements'");
+    expect(source).toContain('isHighRiskInformationalTopic({');
     expect(source).toContain('researchReadiness.passed');
-    expect(source).toContain('forceDeterministicEvidenceArticle:');
+    expect(source).not.toContain('forceDeterministicEvidenceArticle:');
     expect(source).toContain('const applyFinalInternalLinkFloor = (): void =>');
-    expect(source).toContain('여행 정보 아카이브](/blog)');
-    expect(source).toContain('entry_requirements_deterministic_evidence_article');
+    expect(source).not.toContain('여행 정보 아카이브](/blog)');
+    expect(source).not.toContain('entry_requirements_deterministic_evidence_article');
     expect(source).toContain('? { auto_research: item.meta.auto_research }');
     const preSeoClaimValidation = source.indexOf(
       'const preSeoClaimValidation = await evaluateCurrentInformationClaimValidation();',
@@ -391,12 +403,12 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain(".in('status', ['queued', 'assigned'])");
   });
 
-  it('repairs common article-quality failures instead of treating them as terminal blockers', () => {
+  it('records article-quality failures without deterministic content repair', () => {
     const source = routeSource();
 
-    expect(source).toContain("from '@/lib/blog-article-quality-v2-repair'");
-    expect(source).toContain('repairArticleQualityV2Specifics');
-    expect(source).toContain('const finalArticleRepair = repairArticleQualityV2Specifics');
+    expect(source).not.toContain("from '@/lib/blog-article-quality-v2-repair'");
+    expect(source).not.toContain('repairArticleQualityV2Specifics');
+    expect(source).toContain('V3 records failed dimensions and routes the generated draft to review');
   });
 
   it('returns claimed but unattempted rows to the queue for the next recovery run', () => {

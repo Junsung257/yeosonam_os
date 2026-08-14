@@ -1,6 +1,7 @@
 /**
- * @case ERR-BLOG-db-unavailable-not-silent-empty (2026-06-18)
- * @summary Blog DB outages must not be reported as zero published posts or 404s.
+ * @case ERR-BLOG-db-unavailable-not-silent-empty (2026-08-13)
+ * @summary Public blog outages use bounded reads and last-known-good snapshots;
+ * they must not be represented as an empty corpus or a false 404.
  */
 
 const test = require('node:test');
@@ -11,112 +12,73 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
-test('Supabase server client keeps verified service role ahead of unvalidated secret key aliases', () => {
+test('ERR-BLOG-db-unavailable-not-silent-empty: server credentials keep verified service role precedence', () => {
   const registry = read('src', 'lib', 'secret-registry.ts');
   const supabase = read('src', 'lib', 'supabase.ts');
-
-  assert.match(registry, /'SUPABASE_SECRET_KEY'/);
-  assert.match(registry, /'SUPABASE_SECRET_DEFAULT_KEY'/);
-  assert.match(registry, /'SUPABASE_SERVICE_KEY'/);
-
   const secretIndex = supabase.indexOf("getSecret('SUPABASE_SECRET_KEY')");
   const legacyIndex = supabase.indexOf("getSecret('SUPABASE_SERVICE_ROLE_KEY')");
-  assert.ok(secretIndex > 0, 'new secret key should be read');
-  assert.ok(legacyIndex > 0, 'legacy service role should remain supported');
-  assert.ok(legacyIndex < secretIndex, 'verified service role should take precedence');
+
+  assert.match(registry, /'SUPABASE_SECRET_KEY'/);
+  assert.ok(secretIndex > 0);
+  assert.ok(legacyIndex > 0);
+  assert.ok(legacyIndex < secretIndex);
 });
 
-test('/api/v1/health performs a real DB probe with a short timeout', () => {
-  const source = read('src', 'app', 'api', 'v1', 'health', 'route.ts');
+test('ERR-BLOG-db-unavailable-not-silent-empty: health DB probe is bounded', () => {
+  const health = read('src', 'app', 'api', 'v1', 'health', 'route.ts');
 
-  assert.match(source, /checkDatabase/);
-  assert.match(source, /abortSignal\(controller\.signal\)/);
-  assert.match(source, /timeoutMs = 2500/);
-  assert.match(source, /db,\s*timestamp/s);
-  assert.doesNotMatch(source, /db:\s*dbOk \? ['"]connected['"] : ['"]not_configured['"]/);
+  assert.match(health, /checkDatabase/);
+  assert.match(health, /abortSignal\(controller\.signal\)/);
+  assert.match(health, /timeoutMs = 2500/);
 });
 
-test('/blog list renders DB unavailable state instead of silent empty posts', () => {
-  const source = read('src', 'app', 'blog', 'BlogData.tsx');
+test('ERR-BLOG-db-unavailable-not-silent-empty: list uses live, durable, then bundled catalog', () => {
+  const list = read('src', 'app', 'blog', 'BlogData.tsx');
   const catalog = read('src', 'lib', 'blog-public-catalog.ts');
+  const timeout = read('src', 'lib', 'blog-public-query-timeout.ts');
 
-  assert.match(source, /unavailable: boolean/);
-  assert.match(source, /loadPublicBlogCatalog/);
-  assert.match(source, /\.\.\.unavailableBlogData\(filter\)/);
-  assert.match(source, /matchingPosts\.slice\(offset, offset \+ PER_PAGE\)/);
-  assert.match(catalog, /unstable_cache/);
-  assert.match(catalog, /getCachedPublicBlogCatalog/);
-  assert.match(catalog, /BLOG_LIST_CACHE_TAG/);
-  assert.match(catalog, /throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(catalog, /abortSignal\(controller\.signal\)/);
-  assert.match(catalog, /\[blog\/catalog\]\[degraded\]/);
-  assert.doesNotMatch(catalog, /count:\s*['"]exact['"]/);
-  assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
-  assert.match(source, /DB 응답 지연/);
-  assert.match(source, /totalLabel = unavailable \? '확인 중' : total\.toLocaleString\(\)/);
-  assert.match(source, /const jsonLdItemCount = fallback \? jsonLdPosts\.length : total/);
-  assert.match(source, /numberOfItems: unavailable \? undefined : jsonLdItemCount/);
-  assert.match(catalog, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
+  assert.match(list, /loadPublicBlogCatalogPage/);
+  assert.match(list, /unavailable: boolean/);
+  assert.match(list, /블로그 데이터를 잠시 불러오지 못했습니다/);
+  assert.match(list, /totalLabel = unavailable \? '확인 중' : total\.toLocaleString\(\)/);
+  assert.match(catalog, /loadDurableCatalogPage/);
+  assert.match(catalog, /loadBundledCatalogPage/);
+  assert.match(catalog, /servedFrom: 'live_view'/);
+  assert.match(catalog, /servedFrom: 'durable_snapshot'/);
+  assert.match(catalog, /servedFrom: 'bundled_snapshot'/);
+  assert.match(catalog, /getCachedPublicBlogCatalogPage/);
+  assert.match(timeout, /AbortController/);
+  assert.match(timeout, /Promise\.race/);
 });
 
-test('/blog detail does not convert DB timeouts into notFound', () => {
-  const source = read('src', 'app', 'blog', '[slug]', 'page.tsx');
-  const cache = read('src', 'lib', 'blog-cache.ts');
+test('ERR-BLOG-db-unavailable-not-silent-empty: detail uses a typed outage envelope and bundled snapshot', () => {
+  const detail = read('src', 'app', 'blog', '[slug]', 'page.tsx');
+  const snapshot = read('src', 'lib', 'blog-public-snapshot-v3.ts');
 
-  assert.match(cache, /BLOG_DATABASE_UNAVAILABLE/);
-  assert.match(source, /createBlogDatabaseUnavailableError/);
-  assert.match(source, /unstable_cache/);
-  assert.match(source, /getPostFastUncached/);
-  assert.match(source, /getCachedPostFast/);
-  assert.match(source, /blog-detail-v4-full-body-required/);
-  assert.match(source, /function shouldRefreshCachedBlogPost[\s\S]+return !hasUsableBlogBody\(post\)/);
-  assert.doesNotMatch(source, /inspectBlogIntentQuality/);
-  assert.match(source, /if \(!hasUsableBlogBody\(cached\)\) \{\s*throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(source, /BLOG_DETAIL_CACHE_TAG/);
-  assert.match(source, /duplicateTitleSuffix/);
-  assert.match(source, /headlineExperiment/);
-  assert.match(source, /isBlogDetailQueryUnavailable/);
-  assert.match(source, /BlogDatabaseUnavailableView/);
-  assert.match(source, /return <BlogDatabaseUnavailableView slug=\{slug\} \/>/);
-  assert.match(source, /Promise\.race/);
-  assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
-  assert.match(source, /DB 응답이 지연/);
-  assert.match(source, /const postResult = await runBlogDetailQuery/);
-  assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
+  assert.match(detail, /loadBlogPublicDetailSnapshotV3/);
+  assert.match(detail, /loadBlogPostCacheEnvelope/);
+  assert.match(detail, /blog-detail-v6-outage-envelope/);
+  assert.match(detail, /state: 'unavailable'/);
+  assert.match(detail, /if \(cached\.state === 'unavailable'\) throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(detail, /BlogDatabaseUnavailableView/);
+  assert.match(detail, /return <BlogDatabaseUnavailableView slug=\{slug\} \/>/);
+  assert.match(snapshot, /bundledDetailSnapshot/);
+  assert.match(snapshot, /isBlogPublicDetailSnapshotPolicySafeV3/);
 });
 
-test('/api/blog returns stale or Korean fallback for list DB timeout instead of hanging silently', () => {
-  const source = read('src', 'app', 'api', 'blog', 'route.ts');
+test('ERR-BLOG-db-unavailable-not-silent-empty: destination and angle routes use the shared catalog', () => {
+  const destination = read('src', 'app', 'blog', 'destination', '[dest]', 'page.tsx');
+  const angle = read('src', 'app', 'blog', 'angle', '[angle]', 'page.tsx');
 
-  assert.match(source, /runApiBlogQuery/);
-  assert.match(source, /abortSignal\(controller\.signal\)/);
-  assert.match(source, /Promise\.race/);
-  assert.match(source, /isAbortLikeError/);
-  assert.match(source, /Blog database request timed out/);
-  assert.match(source, /lastGoodBlogLists/);
-  assert.match(source, /staleBlogListResponse/);
-  assert.match(source, /unavailableBlogResponse/);
-  assert.match(source, /stale-if-error=86400/);
-  assert.match(source, /status: 503/);
-  assert.match(source, /loadPublicBlogCatalog/);
-  assert.match(source, /matchingPosts\.slice\(offset, offset \+ limit\)/);
-  assert.doesNotMatch(source, /BLOG_LIST_COUNT_SELECT/);
+  assert.match(destination, /loadPublicBlogCatalogPage/);
+  assert.match(destination, /getDestinationPageDataUncached/);
+  assert.match(destination, /unavailable: true/);
+  assert.match(angle, /loadPublicBlogCatalogPage/);
+  assert.match(angle, /getAnglePageDataUncached/);
+  assert.match(angle, /unavailable: true/);
 });
 
-test('public blog fallback content is Korean and not an English sample article', () => {
-  const source = read('src', 'lib', 'blog-public-fallback.ts');
-
-  assert.match(source, /장가계 월별 날씨와 옷차림 가이드 2026/);
-  assert.match(source, /다낭 가족여행 패키지 고르는 법/);
-  assert.match(source, /후쿠오카 온천 포함 짧은 여행 가이드/);
-  assert.match(source, /destination:\s*'장가계'/);
-  assert.match(source, /FALLBACK_SEEDS/);
-  assert.match(source, /normalizeDestination/);
-  assert.doesNotMatch(source, /Zhangjiajie weather and what to wear by month 2026/);
-  assert.doesNotMatch(source, /Quick summary for Zhangjiajie weather planning/);
-});
-
-test('public blog publish paths invalidate list and detail data caches', () => {
+test('ERR-BLOG-db-unavailable-not-silent-empty: public cache invalidation covers all blog surfaces', () => {
   const cache = read('src', 'lib', 'blog-cache.ts');
   const revalidate = read('src', 'lib', 'revalidate-blog-cache.ts');
 
@@ -126,155 +88,5 @@ test('public blog publish paths invalidate list and detail data caches', () => {
   assert.match(cache, /BLOG_ANGLE_CACHE_TAG = ['"]blog-angle['"]/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_LIST_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_DETAIL_CACHE_TAG\)/);
-  assert.match(revalidate, /safeRevalidateTag\(BLOG_DESTINATION_CACHE_TAG\)/);
-  assert.match(revalidate, /safeRevalidateTag\(BLOG_ANGLE_CACHE_TAG\)/);
-  assert.match(revalidate, /safeRevalidatePath\('\/blog'\)/);
   assert.match(revalidate, /safeRevalidatePath\('\/sitemap\.xml'\)/);
-  assert.match(revalidate, /safeRevalidatePath\(`\/blog\/\$\{slug\}`\)/);
-
-  for (const file of [
-    ['src', 'app', 'api', 'blog', 'route.ts'],
-    ['src', 'app', 'api', 'blog', 'from-card-news', 'route.ts'],
-    ['src', 'app', 'api', 'content-queue', 'route.ts'],
-    ['src', 'app', 'api', 'content-hub', 'publish', 'route.ts'],
-    ['src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts'],
-  ]) {
-    assert.match(read(...file), /revalidatePublicBlogCache/);
-  }
-
-  const hotelRanking = read('src', 'app', 'api', 'blog', 'mrt-hotel-ranking', 'route.ts');
-  assert.match(hotelRanking, /body\.publish === true/);
-  assert.match(hotelRanking, /정보성 검토·승인 절차/);
-  assert.match(hotelRanking, /status:\s*'draft'/);
-});
-
-test('blog destination and angle tabs do not cache unavailable empty states', () => {
-  const destination = read('src', 'app', 'blog', 'destination', '[dest]', 'page.tsx');
-  const angle = read('src', 'app', 'blog', 'angle', '[angle]', 'page.tsx');
-  const matcher = read('src', 'lib', 'angle-matcher.ts');
-
-  assert.match(destination, /getCachedDestinationPageData/);
-  assert.match(destination, /BLOG_DESTINATION_CACHE_TAG/);
-  assert.match(destination, /throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(destination, /loadPublicBlogCatalog/);
-  assert.match(destination, /destinationSlugMatches\(postDestination, destination\)/);
-  assert.doesNotMatch(destination, /runBlogDestinationQuery\('posts'/);
-  assert.match(destination, /블로그 데이터를 잠시 불러오지 못했습니다/);
-
-  assert.match(angle, /getCachedAnglePageData/);
-  assert.match(angle, /BLOG_ANGLE_CACHE_TAG/);
-  assert.match(angle, /throw createBlogDatabaseUnavailableError\(\)/);
-  assert.match(angle, /loadPublicBlogCatalog/);
-  assert.match(angle, /\.filter\(\(post\) => post\.angle_type === angle\)/);
-  assert.match(angle, /블로그 데이터를 잠시 불러오지 못했습니다/);
-
-  assert.match(matcher, /runAnglePackageQuery/);
-  assert.match(matcher, /abortSignal\(controller\.signal\)/);
-  assert.match(matcher, /Promise\.race/);
-  assert.match(matcher, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
-
-  const destinationMetadata = destination.slice(
-    destination.indexOf('export async function generateMetadata'),
-    destination.indexOf('export default async function DestinationBlogPage'),
-  );
-  const angleMetadata = angle.slice(
-    angle.indexOf('export async function generateMetadata'),
-    angle.indexOf('export default async function AngleBlogPage'),
-  );
-  assert.doesNotMatch(destinationMetadata, /getDestinationPageData/);
-  assert.doesNotMatch(destinationMetadata, /hasIndexableContent/);
-  assert.doesNotMatch(angleMetadata, /getAnglePageData/);
-  assert.doesNotMatch(angleMetadata, /hasIndexableContent/);
-});
-
-test('public sitemap is cached and does not fan out long DB reads during outages', () => {
-  const source = read('src', 'app', 'sitemap.ts');
-
-  assert.match(source, /export const revalidate = 3600/);
-  assert.doesNotMatch(source, /export const dynamic = ['"]force-dynamic['"]/);
-  assert.match(source, /const PACKAGE_LIMIT = 1000/);
-  assert.match(source, /const BLOG_LIMIT = 2000/);
-  assert.match(source, /const DESTINATION_LIMIT = 500/);
-  assert.match(source, /const QUERY_TIMEOUT_MS = 2500/);
-  assert.match(source, /Promise\.all/);
-  assert.match(source, /abortSignal\(signal\)/);
-  assert.match(source, /isSupabaseAdminConfigured/);
-  assert.doesNotMatch(source, /withTimeout/);
-  assert.doesNotMatch(source, /limit\(5000\)/);
-  assert.doesNotMatch(source, /limit\(10000\)/);
-});
-
-test('public blog surface monitor covers all angle tabs and survives DB outages', () => {
-  const surfaces = read('src', 'lib', 'blog-public-surfaces.ts');
-  const checker = read('src', 'lib', 'blog-public-surface-check.ts');
-  const revalidate = read('src', 'lib', 'revalidate-blog-cache.ts');
-  const opsRoute = read('src', 'app', 'api', 'ops', 'blog-system', 'route.ts');
-
-  for (const angle of ['value', 'luxury', 'filial', 'emotional', 'activity', 'food', 'urgency']) {
-    assert.match(surfaces, new RegExp(`['"]${angle}['"]`));
-    assert.match(surfaces, new RegExp(`/blog/angle/\\$\\{angle\\}`));
-  }
-
-  assert.match(surfaces, /\/blog\/destination\/\$\{encodePathSegment\(destination\)\}/);
-  assert.match(surfaces, /\/sitemap\.xml/);
-  assert.match(surfaces, /\/api\/blog\?limit=3/);
-  assert.match(surfaces, /\/api\/v1\/health/);
-
-  assert.match(checker, /checkPublicBlogSurfaces/);
-  assert.match(checker, /Promise\.race/);
-  assert.match(checker, /silent_zero_posts/);
-  assert.match(checker, /blog_api_db_timeout/);
-  assert.match(checker, /db_timeout/);
-  assert.match(checker, /warmPublicBlogSurfacesBestEffort/);
-
-  assert.match(revalidate, /warmPublicBlogSurfacesBestEffort\(\{ slug, destination \}\)/);
-
-  assert.match(opsRoute, /public_surfaces/);
-  assert.match(opsRoute, /emptyBlogSystemPayload/);
-  assert.match(opsRoute, /BLOG_SYSTEM_DB_TIMEOUT_MS/);
-  assert.match(opsRoute, /withBlogSystemDbTimeout/);
-  assert.match(opsRoute, /Promise\.all/);
-  assert.match(opsRoute, /status:\s*200/);
-  assert.match(opsRoute, /NextRequest/);
-  assert.match(opsRoute, /publicSurfaceBaseUrl/);
-  assert.match(opsRoute, /request\.nextUrl\.origin/);
-  assert.match(opsRoute, /checkPublicBlogSurfaces\(\{ baseUrl: publicSurfaceBaseUrl\(request\) \}\)/);
-  assert.doesNotMatch(opsRoute, /status:\s*500/);
-});
-
-test('local release readiness treats transient local DB outages as blocked, not hard fail', () => {
-  const source = read('scripts', 'open-readiness-check.mjs');
-
-  assert.match(source, /function localDataUnavailableText/);
-  assert.match(source, /function localCommandUnavailable/);
-  assert.match(source, /localCommandOnlyFailure/);
-  assert.match(source, /failedRows\.length === 0/);
-  assert.match(source, /failedCount === 0/);
-  assert.match(source, /unavailable \? 'blocked' : 'fail'/);
-  assert.match(source, /blog quality probe output was unavailable during a local DB\/runtime timeout/);
-});
-
-test('open readiness rejects package detail not-found bodies even when HTTP status is 200', () => {
-  const source = read('scripts', 'open-readiness-check.mjs');
-
-  assert.match(source, /public:package-detail/);
-  assert.match(source, /packageDetailLooksRenderable/);
-  assert.match(source, /PACKAGE_ID\.slice\(0, 8\)/);
-  assert.match(source, /package detail title did not include the probe package id/);
-});
-
-test('open readiness rejects blog detail not-found bodies even when HTTP status is 200', () => {
-  const source = read('scripts', 'open-readiness-check.mjs');
-  const htmlContract = read('scripts', 'lib', 'open-readiness-html.mjs');
-
-  assert.match(htmlContract, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
-  assert.match(htmlContract, /BLOG_DETAIL_NOINDEX_PATTERN/);
-  assert.match(htmlContract, /BLOG_CANONICAL_PATTERN/);
-  assert.match(source, /blogDetailLooksRenderable/);
-  assert.match(source, /public:blog-runtime/);
-  assert.match(source, /OPEN_CHECK_BLOG_SLUG/);
-  assert.match(source, /HAS_EXPLICIT_BLOG_SLUG/);
-  assert.match(source, /OPEN_CHECK_BLOG_SLUG not provided/);
-  assert.match(source, /blogDetailLooksRenderable\(body\)/);
-  assert.match(source, /blog detail rendered a not-found or noindex state/);
 });

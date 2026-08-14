@@ -50,7 +50,7 @@ describe('blog-image-quality', () => {
     ]));
   });
 
-  it('requires at least two images for product posts and three for info posts', () => {
+  it('does not force an image minimum unless an editorial brief explicitly supplies one', () => {
     const markdown = [
       '![다낭 상품 대표 이미지](https://images.pexels.com/photos/1/pexels-photo-1.jpeg)',
       '![다낭 호텔 이미지](https://images.pexels.com/photos/2/pexels-photo-2.jpeg)',
@@ -64,6 +64,11 @@ describe('blog-image-quality', () => {
     expect(inspectBlogImageQuality(markdown, {
       destination: '다낭',
       blogType: 'info',
+    }).evidence.issues).not.toContain('image_count_below_minimum');
+    expect(inspectBlogImageQuality(markdown, {
+      destination: '?ㅻ궘',
+      blogType: 'info',
+      minImages: 3,
     }).evidence.issues).toContain('image_count_below_minimum');
   });
 

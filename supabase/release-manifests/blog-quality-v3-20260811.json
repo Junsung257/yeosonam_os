@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "release": "blog-quality-engine-v3-20260811",
+  "migrations": [
+    {
+      "version": "20260811132017",
+      "file": "supabase/migrations/20260811132017_blog_quality_v3_policy.sql",
+      "sha256": "ae3a9891d83d60170a479bf33e66a321e47edf7cbabc514ae8149cee26c1ad7d"
+    },
+    {
+      "version": "20260811132023",
+      "file": "supabase/migrations/20260811132023_blog_quality_v3_demand_evidence.sql",
+      "sha256": "3814aa5d3554705b62d28cad88af63126f42ed537f62911f4f5d8cb4ed587047"
+    },
+    {
+      "version": "20260811132031",
+      "file": "supabase/migrations/20260811132031_blog_quality_v3_snapshots_media.sql",
+      "sha256": "4c8f6299f36ab4647a1507ef61c37ae536eea0c232b92072f2fb8b0b34f6b3b8"
+    },
+    {
+      "version": "20260811132037",
+      "file": "supabase/migrations/20260811132037_blog_quality_v3_measurement.sql",
+      "sha256": "e729237f281eb63f787d004862dcbfc992fbe873066089863ede4c630b882624"
+    },
+    {
+      "version": "20260811210920",
+      "file": "supabase/migrations/20260811210920_blog_quality_v3_reliability_followup.sql",
+      "sha256": "3ae853169d9755d198b1f9ac57f2812d959e4bf0126cecf926d5bbb7c0601ac5"
+    }
+  ],
+  "rollback": {
+    "file": "supabase/rollbacks/20260811_blog_quality_v3_rollback.sql",
+    "sha256": "a181cf97d119ba3f695987fa2757a690d16a2f46900bf22839d7c469268bef36"
+  }
+}

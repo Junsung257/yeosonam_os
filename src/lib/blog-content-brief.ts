@@ -130,27 +130,22 @@ function weatherBrief(destination: string, month: string): Pick<
   BlogContentBrief,
   'title' | 'primaryKeyword' | 'secondaryKeywords' | 'readerQuestion' | 'requiredSections' | 'forbiddenAngles' | 'sourceRequirements' | 'titleCandidates'
 > {
-  const base = `${destination} 월별`;
   const monthLongtail = `${destination} ${month}`;
   return {
-    title: `${base} 날씨 옷차림 여행 준비물 체크리스트`,
-    primaryKeyword: `${base} 날씨`,
+    title: `${monthLongtail} 날씨`,
+    primaryKeyword: `${monthLongtail} 날씨`,
     secondaryKeywords: [
-      `${destination} 월별 옷차림`,
-      `${destination} 여행 준비물`,
-      `${monthLongtail} 날씨`,
       `${monthLongtail} 옷차림`,
       `${monthLongtail} 우기`,
       `${monthLongtail} 태풍`,
     ],
-    readerQuestion: `${destination} 여행을 준비하는 사람이 1~12월 날씨, 옷차림, 준비물을 한 번에 비교하고 ${month} 출발 조건도 판단할 수 있어야 한다.`,
+    readerQuestion: `${month} ${destination} 여행이 가능한지, 날씨 변동이 일정과 옷차림에 어떤 영향을 주는지 판단할 수 있어야 한다.`,
     requiredSections: [
-      `${destination} 월별 날씨 한눈에 보기`,
-      `1~12월 기온/강수/습도 표`,
-      `${destination} 월별 옷차림`,
-      `${destination} 여행 준비물 체크리스트`,
-      `우기/스콜/태풍 리스크`,
-      `출발 전 최종 확인 FAQ`,
+      `여행 가능 여부`,
+      `날씨 변동이 일정에 미치는 영향`,
+      `근거에 맞는 옷차림`,
+      `우천 대안`,
+      `출발 전 공식 확인`,
     ],
     forbiddenAngles: [
       '에어컨 없는 숙소가 중심 주제가 되면 안 됨',
@@ -159,13 +154,9 @@ function weatherBrief(destination: string, month: string): Pick<
     ],
     sourceRequirements: [
       '기온, 강수, 태풍처럼 변동되는 정보는 공식/권위 출처 확인 링크가 필요함',
-      '월별 또는 시즌별 표가 본문에 실제 Markdown table로 있어야 함',
+      '표는 모든 셀을 근거로 채울 수 있을 때만 사용함',
     ],
-    titleCandidates: [
-      `${base} 날씨 옷차림 여행 준비물 체크리스트`,
-      `${destination} 1~12월 날씨와 옷차림 여행 준비`,
-      `${destination} 월별 기온 강수 옷차림 가이드`,
-    ],
+    titleCandidates: [`${monthLongtail} 날씨`],
   };
 }
 
@@ -178,16 +169,16 @@ function genericBrief(
   BlogContentBrief,
   'title' | 'primaryKeyword' | 'secondaryKeywords' | 'readerQuestion' | 'requiredSections' | 'forbiddenAngles' | 'sourceRequirements' | 'titleCandidates'
 > {
-  const primary = primaryKeyword || (destination ? `${destination} 여행 가이드` : '해외여행 가이드');
-  const baseTitle = primary.length >= 10 ? primary : `${primary} 여행 가이드`;
+  const primary = primaryKeyword || (destination ? `${destination} 여행` : '해외여행');
+  const baseTitle = primary;
   const sectionByIntent: Record<BlogBriefIntent, string[]> = {
-    weather: ['날씨 핵심 요약', '월별/시즌별 표', '옷차림', '준비물', '주의할 날씨 변수', 'FAQ'],
-    preparation: ['준비물 핵심 요약', '필수 체크리스트', '상황별 짐싸기', '출발 전 확인', '현지에서 필요한 것', 'FAQ'],
-    cost: ['비용 핵심 요약', '항목별 예산 표', '절약 팁', '추가 비용', '추천 예산 시나리오', 'FAQ'],
-    transport: ['이동 핵심 요약', '공항/항공권 체크', '현지 교통', '시간대별 주의점', '공식 확인 링크', 'FAQ'],
-    comparison: ['선택 기준', '비교표', '추천 대상', '장단점', '주의점', 'FAQ'],
-    itinerary: ['일정 핵심 요약', '일차별 코스', '이동 동선', '소요 시간', '대안 일정', 'FAQ'],
-    general: ['핵심 요약', '여행 전 확인', '현지 팁', '주의점', '체크리스트', 'FAQ'],
+    weather: ['여행 가능 여부', '날씨 변동', '일정 영향', '옷차림', '우천 대안'],
+    preparation: ['주된 준비 판단', '상황별 차이', '출발 전 확인'],
+    cost: ['계산 기준', '예산 시나리오', '비용이 달라지는 조건'],
+    transport: ['상황별 선택', '구간별 이동', '시간·비용·수하물', '지연 대안'],
+    comparison: ['선택 기준', '대안별 차이', '누구에게 맞는가'],
+    itinerary: ['시간대별 흐름', '이동과 휴식', '일정 조정 기준'],
+    general: ['직접 답변', '판단 기준', '다음 행동'],
   };
 
   const sourceRequirements = intent === 'transport'
@@ -203,7 +194,6 @@ function genericBrief(
       ...keywords,
       destination ? `${destination} 여행 준비` : null,
       destination ? `${destination} 여행 팁` : null,
-      `${primary} 체크리스트`,
     ]).filter((keyword) => keyword !== primary).slice(0, 6),
     readerQuestion: `${primary}을 검색한 사람이 가장 먼저 해결하려는 질문에 첫 화면에서 답해야 한다.`,
     requiredSections: sectionByIntent[intent],
@@ -212,11 +202,7 @@ function genericBrief(
       '근거 없는 일반론으로 분량만 늘리면 안 됨',
     ],
     sourceRequirements,
-    titleCandidates: [
-      baseTitle,
-      `${baseTitle} 체크리스트`,
-      `${baseTitle} 2026 최신 정리`,
-    ],
+    titleCandidates: [baseTitle],
   };
 }
 
@@ -294,8 +280,6 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
 
   const issues: string[] = finalInformationPlan.missingInputs.map((issue) => `information_plan:${issue}`);
   if (base.primaryKeyword.length < 2) issues.push('missing_primary_keyword');
-  if (secondaryKeywords.length < 3) issues.push('not_enough_secondary_keywords');
-  if (finalInformationContract.requiredSections.length < 4) issues.push('not_enough_required_sections');
   if (shouldForceWeather && LODGING_TANGENT_RE.test(base.title)) issues.push('seasonal_title_lodging_tangent');
   if (shouldForceWeather && !WEATHER_RE.test(`${base.title} ${base.primaryKeyword}`)) issues.push('seasonal_weather_intent_missing');
 
@@ -322,22 +306,9 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
 }
 
 export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): string {
-  const intentStructureContract = brief.intentType === 'food_budget'
-    ? [
-        '',
-        '### Mandatory food-budget evidence tables',
-        '- Use only destination-specific prices supported by a cited source and an explicit research/check date. Never estimate, average, or invent a price to fill a cell.',
-        '- The first body paragraph must include `기준으로` and answer with a source-backed numeric 1-person daily budget range in the local currency. Reuse values supported by the article evidence; never create a new number for the opening.',
-        '- Table 1 must use this exact compact shape: `| 예산 유형 | 1인 1일 총액 | 산정 근거 |`. Keep exactly three data rows, in this order: `절약형`, `일반형`, `여유형`. Every total cell must contain a source-backed numeric range in the local currency, and every evidence-basis cell must be non-empty.',
-        '- Do not remove any of the three Table 1 rows, and do not leave a blank, dash, placeholder, `미정`, or `확인 필요` in any Table 1 cell. If a supported value is unavailable, record the evidence gap in the claim ledger instead of fabricating a number.',
-        '- Table 2 must use this exact shape: `| 끼니 | 대표 메뉴 | 가격 범위 | 근거 |` with at least one row each for `아침`, `점심`, `저녁`, and `간식`. Use real destination-specific menu names, distinct supported price values, and a source link or source name in every row.',
-        '- After the tables, include this exact sentence shape with supported values: `N박 M일 여행 총액은 1인 기준 [현지통화 금액]입니다. 계산식: [1인 1일 총액] × [식사일 수] = [여행 총액].` Use a requested trip length, or clearly declare one when the queue topic has none.',
-        '- If reliable price evidence is unavailable, do not substitute generic values. Leave the article non-publishable by recording the missing evidence in the claim ledger.',
-      ]
-    : [];
-
   return [
     '## Content Brief - must follow before writing',
+    '## Legacy research-plan adapter (V3 writer brief takes precedence)',
     `- Final title/topic: ${brief.title}`,
     `- Primary keyword: ${brief.primaryKeyword}`,
     `- Secondary keywords: ${brief.secondaryKeywords.join(', ')}`,
@@ -349,10 +320,10 @@ export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): strin
     `- Risk level: ${brief.plan.riskLevel}`,
     `- Human review required: ${brief.requiresHumanReview ? 'yes' : 'no'}`,
     `- Reader question: ${brief.readerQuestion}`,
-    `- Required H2 sections: ${brief.requiredSections.join(' / ')}`,
+    `- Evidence coverage purposes (not fixed H2 headings): ${brief.requiredSections.join(' / ')}`,
     `- Required facts: ${brief.plan.requiredFacts.map((fact) => fact.label).join(' / ')}`,
-    `- Planned tables: ${brief.plan.plannedTables.map((table) => table.purpose).join(' / ')}`,
-    `- FAQ questions: ${brief.plan.faqQuestions.join(' / ')}`,
+    `- Tables: optional; use only when every cell is supported (${brief.plan.plannedTables.map((table) => table.purpose).join(' / ') || 'none'})`,
+    '- FAQ: default off; use only for a real-question archetype with registered questions.',
     `- Missing inputs: ${brief.plan.missingInputs.join(', ') || 'none'}`,
     `- Forbidden angles: ${brief.forbiddenAngles.join(' / ')}`,
     `- Source requirements: ${brief.sourceRequirements.join(' / ')}`,
@@ -360,6 +331,6 @@ export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): strin
     `- Claim ledger candidate kinds: ${brief.claimLedgerPolicy.candidateKinds.join(', ')}`,
     `- Claim ledger maximum entries: ${brief.claimLedgerPolicy.maxEntries}`,
     '- Do not copy SERP articles. Use SERP only to understand intent, missing subtopics, and reader expectations.',
-    ...intentStructureContract,
+    '- No deterministic length filling, generic checklist, generic FAQ, or mandatory table repair.',
   ].join('\n');
 }

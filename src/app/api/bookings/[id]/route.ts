@@ -204,7 +204,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       total_price?: number;
       destination?: string | null;
       departure_date?: string;
-      attribution_snapshot?: { analytics?: unknown } | null;
+      attribution_snapshot?: {
+        analytics?: unknown;
+        assisting_content_creative_id?: string | null;
+        search_query_hash?: string | null;
+      } | null;
     };
     try {
       await recordServerAnalyticsEvent({
@@ -219,6 +223,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
           ? Math.max(0, Math.round(confirmed.total_price ?? 0))
           : null,
         attribution: confirmed.attribution_snapshot?.analytics,
+        assistingContentCreativeId: confirmed.attribution_snapshot?.assisting_content_creative_id,
+        searchQueryHash: confirmed.attribution_snapshot?.search_query_hash,
         payload: {
           transaction_id: `booking:${id}`,
           currency: 'KRW',

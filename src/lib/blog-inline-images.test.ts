@@ -74,8 +74,8 @@ describe('ensureBlogInlineImages', () => {
     });
 
     expect(result.inserted).toBe(2);
-    expect(result.markdown).toContain('![다낭 날씨와 옷차림](https://images.pexels.com/photos/section.jpg)');
-    expect(result.markdown).toContain('![다낭 추천 일정](https://cdn.test/og.jpg)');
+    expect(result.markdown).toContain('![Da Nang Vietnam city street and local landmark](https://images.pexels.com/photos/section.jpg)');
+    expect(result.markdown).toContain('![](https://cdn.test/og.jpg)');
     expect(searchPexelsPhotos).toHaveBeenCalledWith(
       expect.stringContaining('Da Nang Vietnam travel'),
       18,
@@ -149,7 +149,7 @@ describe('ensureBlogInlineImages', () => {
       '삿포로',
       { skipPexelsFallback: true },
     );
-    expect(result.markdown).toContain('![AI 생성 참고 이미지: 삿포로 끼니별 예산]');
+    expect(result.markdown).toContain('![AI 생성 참고 이미지: 끼니별 예산]');
     expect(result.markdown).toContain('AI 생성 참고 이미지 · 실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.');
   });
 

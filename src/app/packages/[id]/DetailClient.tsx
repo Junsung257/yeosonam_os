@@ -38,6 +38,8 @@ import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { trackAnalyticsEvent } from '@/lib/analytics';
+import { getAttributionSnapshot } from '@/lib/analytics/attribution';
+import { readLastBlogAssist } from '@/lib/analytics/blog-assist';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -1095,6 +1097,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || null,
           },
           submittedAt: new Date().toISOString(),
+          attribution: getAttributionSnapshot(),
+          assistingContentCreativeId: readLastBlogAssist(),
         }),
       });
       ok = res.ok;

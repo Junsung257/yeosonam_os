@@ -1,43 +1,45 @@
-const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
-const { test } = require('node:test');
+/**
+ * @case ERR-BLOG-publisher-quality-self-repair (2026-08-13)
+ * @summary A failed quality gate must produce a draft/review handoff, not
+ * deterministic paragraphs, links, FAQs, keywords, or claims.
+ */
 
-const root = path.resolve(__dirname, '../../..');
-const publisherSource = fs.readFileSync(
-  path.join(root, 'src/app/api/cron/blog-publisher/route.ts'),
-  'utf8',
-);
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
-function indexOfOrFail(source, needle, label) {
-  const index = source.indexOf(needle);
-  assert.notStrictEqual(index, -1, `${label} not found`);
-  return index;
-}
+const ROOT = path.resolve(__dirname, '..', '..', '..');
+const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
-test('ERR-BLOG-publisher-quality-self-repair: length and links failures are repairable before blocking publish', () => {
-  assert.match(publisherSource, /function appendPublishReadinessSupport/);
-  assert.match(publisherSource, /function ensurePublisherInternalLinks/);
-  assert.match(publisherSource, /failed\.has\('length'\)/);
-  assert.match(publisherSource, /failed\.has\('links'\)/);
-  assert.match(publisherSource, /buildStandardBlogCtaMarkdown/);
+test('ERR-BLOG-publisher-quality-self-repair: publisher only invokes the safe formatting repair', () => {
+  const publisher = read('src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts');
 
-  const repairStart = indexOfOrFail(publisherSource, 'async function repairFailedQualityGates', 'repairFailedQualityGates');
-  const repairSource = publisherSource.slice(repairStart);
-  const lengthRepair = indexOfOrFail(repairSource, 'appendPublishReadinessSupport(', 'length repair');
-  const linkRepair = indexOfOrFail(repairSource, 'ensurePublisherInternalLinks(', 'internal link repair');
-  const rerunGate = indexOfOrFail(repairSource, 'qa = await runGeneratedQualityGates', 'gate rerun');
-
-  assert.ok(lengthRepair < rerunGate, 'length repair must run before the gate is rechecked');
-  assert.ok(linkRepair < rerunGate, 'link repair must run before the gate is rechecked');
+  assert.match(publisher, /repairBlogPublishFormattingV3/);
+  assert.doesNotMatch(publisher, /appendPublishReadinessSupport/);
+  assert.doesNotMatch(publisher, /ensurePublisherInternalLinks/);
+  assert.doesNotMatch(publisher, /buildStandardBlogCtaMarkdown/);
+  assert.doesNotMatch(publisher, /repairKeywordDensityToTarget/);
+  assert.doesNotMatch(publisher, /repairBlogEditorialQuality/);
+  assert.doesNotMatch(publisher, /repairBlogStructureQuality/);
 });
 
-test('ERR-BLOG-publisher-quality-self-repair: failure breakdown names length and links instead of other', () => {
-  const classifyStart = indexOfOrFail(publisherSource, 'function classifyPublisherFailure', 'classifyPublisherFailure');
-  const classifySource = publisherSource.slice(classifyStart, indexOfOrFail(publisherSource, 'function buildPublisherFailureBreakdown', 'buildPublisherFailureBreakdown'));
+test('ERR-BLOG-publisher-quality-self-repair: failed policy decisions stay private', () => {
+  const publisher = read('src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts');
 
-  assert.match(classifySource, /thin content/);
-  assert.match(classifySource, /return 'length'/);
-  assert.match(classifySource, /internal link/);
-  assert.match(classifySource, /return 'links'/);
+  assert.match(publisher, /const requiresHumanReview = contentRequiresHumanReview \|\| !autopublishDecision\.publish/);
+  assert.match(publisher, /status: publishAllowed \? 'published' : 'draft'/);
+  assert.match(publisher, /review_status: publishAllowed \? contentReviewStatus : 'pending_review'/);
+  assert.match(publisher, /status: 'pending_review'/);
+});
+
+test('ERR-BLOG-publisher-quality-self-repair: safe repair is limited to syntax and unsafe markup', () => {
+  const source = read('src', 'lib', 'blog-safe-publish-repair-v3.ts');
+
+  assert.match(source, /normalized_line_endings/);
+  assert.match(source, /removed_unsafe_html/);
+  assert.match(source, /removed_unsafe_markdown_links/);
+  assert.match(source, /normalized_trailing_whitespace/);
+  assert.match(source, /normalized_blank_lines/);
+  assert.doesNotMatch(source, /buildStandardBlogCtaMarkdown|repairKeywordDensityToTarget|appendPublishReadinessSupport/);
 });

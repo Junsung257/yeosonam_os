@@ -87,6 +87,7 @@ export interface BlogPublishabilitySnapshot {
   publishable_count: number;
   duplicate_count: number;
   evidence_insufficient_count: number;
+  demand_missing_count?: number;
   destinationless_info_count?: number;
   candidate_contract_blocked_count?: number;
   candidate_shortage: boolean;
@@ -95,6 +96,7 @@ export interface BlogPublishabilitySnapshot {
     | 'refill_candidates'
     | 'quarantine_duplicates'
     | 'collect_evidence'
+    | 'collect_demand'
     | 'repair_destinationless_info'
     | 'repair_candidate_contract';
 }

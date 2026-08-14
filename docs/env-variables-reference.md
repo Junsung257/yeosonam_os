@@ -1,5 +1,43 @@
 # 여소남 OS 환경변수 레퍼런스
 
+## Blog Quality Engine V3 (2026-08-11)
+
+| 변수 | 기본값 | 설명 |
+|---|---:|---|
+| `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
+| `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | Vercel production 자동발행을 허용할 유일한 Git ref. production에서 ref/SHA 증거가 없거나 다르면 자동으로 `draft_only` |
+| `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
+| `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
+| `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
+| `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
+| `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
+| `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
+| `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
+| `BLOG_DETAIL_BUNDLE_MAX_AGE_HOURS` | `720` | DB 장애 시 LOW-risk 상세 본문 번들의 최대 허용 나이(30일); HIGH 24시간, MEDIUM 48시간 상한은 이 값보다 우선하며 만료 시 fail-closed |
+| `BLOG_IMAGE_PHASH_APPLY_CONFIRM` | 없음 | pHash DB backfill 이중 확인값; 평소 환경 변수로 저장 금지 |
+| `BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM` | 없음 | 로컬 임시 DB reset 전용 확인값; preview/production 설정 금지 |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 없음 | Naver Search API와 DataLab 서버 자격증명; client 노출 금지 |
+| `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
+| `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
+
+운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
+
+### V3 staging runtime verifier 전용
+
+아래 값은 Vercel 환경 변수나 상시 `.env`에 저장하지 않습니다. 데이터 없는 Supabase preview에서 `npm run verify:blog-staging-runtime-v3`를 실행하는 한 번의 shell에만 주입하고 종료 후 제거합니다.
+
+| 변수 | 설명 |
+|---|---|
+| `BLOG_STAGING_RUNTIME_VERIFY_CONFIRM` | 정확히 `STAGING_SNAPSHOT_REFRESH_ALLOWED`; snapshot 갱신이 포함됨을 명시적으로 승인 |
+| `BLOG_STAGING_SUPABASE_BRANCH_NAME` | Management API가 확인할 preview branch 이름 |
+| `BLOG_STAGING_SUPABASE_PROJECT_REF` | preview branch의 20자 project ref |
+| `BLOG_PRODUCTION_SUPABASE_PROJECT_REF` | parent production project ref; 기본값 없이 반드시 명시 |
+| `SUPABASE_ACCESS_TOKEN` | branch metadata 조회용 read-only token. `environment:read`와 branch read 권한만 허용 |
+| `SUPABASE_URL` | `https://<preview-ref>.supabase.co` 형태의 직접 server origin |
+| `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` | 해당 preview 전용 key; production key 사용 금지 |
+
+검증기는 Management API가 `parent_project_ref`와 target ref가 일치하고 `is_default=false`, `persistent=false`, `with_data=false`임을 증명하기 전에는 Supabase Data API client를 생성하지 않습니다.
+
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
 ## ⚠️ 시크릿 관리 정책 (중요)

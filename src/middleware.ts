@@ -8,6 +8,7 @@ import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -420,9 +421,9 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     getSecret('SUPABASE_URL');
   const key =
-    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    getSecret('SUPABASE_ANON_KEY');
+    getSecret('SUPABASE_ANON_KEY') ||
+    getSecret('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) {
     return null;
@@ -460,6 +461,60 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
     const data = await res.json();
     return Array.isArray(data) && data.length > 0;
   } catch {
+    return null;
+  }
+}
+
+type PublicBlogRoutePolicyRow = {
+  product_id?: string | null;
+  review_status?: string | null;
+  seo_title?: string | null;
+  content_type?: string | null;
+  noindex?: boolean | null;
+  redirect_to?: string | null;
+};
+
+async function publicBlogRouteIsEligible(slug: string): Promise<boolean | null> {
+  const config = getSupabaseRestConfig();
+  if (!config) return null;
+
+  try {
+    const controller = new AbortController();
+    // A slow eligibility probe must not consume the stale-detail fallback budget.
+    // Do not cache this decision: review-status changes need to take effect at once.
+    const timer = setTimeout(() => controller.abort(), 750);
+    const endpoint = new URL(`${config.url}/rest/v1/public_blog_content_creatives`);
+    endpoint.searchParams.set(
+      'select',
+      'product_id,review_status,seo_title,content_type,noindex:generation_meta->noindex,redirect_to:generation_meta->>redirect_to',
+    );
+    endpoint.searchParams.set('slug', `eq.${slug}`);
+    endpoint.searchParams.set('limit', '1');
+
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey: config.key,
+        authorization: `Bearer ${config.key}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+
+    const data = await res.json() as PublicBlogRoutePolicyRow[];
+    const row = Array.isArray(data) ? data[0] : null;
+    if (!row) return false;
+    if (row.noindex === true || (typeof row.redirect_to === 'string' && row.redirect_to.trim())) return false;
+    return getInformationalReviewBlockReason({
+      productId: row.product_id,
+      reviewStatus: row.review_status,
+      title: row.seo_title,
+      contentType: row.content_type,
+    }) === null;
+  } catch {
+    // Database outages must not turn a known public bundle into a false 404.
+    // The page layer will serve the risk-bounded last-known-good snapshot.
     return null;
   }
 }
@@ -575,15 +630,11 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
     if (!isUuid(id)) return plainNotFound();
   }
 
-  if (segments[0] === 'blog' && segments.length === 2) {
+  if (segments[0] === 'blog' && segments.length === 2 && segments[1] !== 'image-sitemap.xml') {
     const slug = safeDecodePathSegment(segments[1]).trim();
     if (!slug) return plainNotFound();
-    const exists = await supabaseRowExists('content_creatives', {
-      slug,
-      status: 'published',
-      channel: 'naver_blog',
-    });
-    if (exists === false) return plainNotFound();
+    const eligible = await publicBlogRouteIsEligible(slug);
+    if (eligible === false) return plainNotFound();
   }
 
   if (segments[0] === 'destinations' && segments.length === 2) {
@@ -780,6 +831,12 @@ export async function middleware(request: NextRequest) {
     return res;
   }
 
+  // Resolve public dynamic 404s before the public-prefix fast path. Keeping
+  // this below isPublicPath makes /blog/*, /packages/* and /destinations/*
+  // bypass the hard status response and produces a streamed 200 soft-404.
+  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
+  if (dynamicNotFound) return dynamicNotFound;
+
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(request)) {
     return response || NextResponse.next();
@@ -788,9 +845,6 @@ export async function middleware(request: NextRequest) {
   if (!hasKnownTopLevelRoute(pathname)) {
     return response || NextResponse.next();
   }
-
-  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
-  if (dynamicNotFound) return dynamicNotFound;
 
   // ── 3-0. /api/ops/* server-to-server calls may use CRON_SECRET bearer auth. ──
   if (pathname.startsWith('/api/ops/') && request.headers.get('authorization')) {
