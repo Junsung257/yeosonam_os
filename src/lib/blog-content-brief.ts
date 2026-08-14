@@ -257,7 +257,9 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
       })
     : informationPlan;
   const finalInformationContract = finalInformationPlan.contract;
-  const finalIntent = toLegacyBriefIntent(finalInformationPlan.intent);
+  const finalIntent = finalInformationPlan.intent === 'general' && PREPARATION_RE.test(text)
+    ? 'preparation'
+    : toLegacyBriefIntent(finalInformationPlan.intent);
 
   const base = shouldForceWeather
     ? weatherBrief(destination, month as string)

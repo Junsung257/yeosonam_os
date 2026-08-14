@@ -171,6 +171,15 @@ const TEXT_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
   [/(?:환율|환전|현금|카드\s*결제|모바일\s*결제|결제\s*수단|currency|exchange|payment)/i, 'currency_payment'],
 ];
 
+const EXPLICIT_PREPARATION_RE = /준비물|체크\s*리스트|체크리스트|짐\s*싸기|짐싸기|필수품|packing|checklist|preparation/i;
+
+function isExplicitPreparationQuestion(input: BlogInformationContractInput): boolean {
+  return EXPLICIT_PREPARATION_RE.test(clean([
+    input.topic,
+    input.primaryKeyword,
+  ].filter(Boolean).join(' ')));
+}
+
 const SLOTS: Record<BlogInformationIntent, BlogInformationRequiredSlot[]> = {
   food_budget: [
     slot('quick_answer', '3줄 빠른 답', [['빠른 답', '핵심 요약', '한눈에']]),
@@ -515,7 +524,10 @@ export function buildBlogInformationContract(input: BlogInformationContractInput
   const humanReview = HUMAN_REVIEW_POLICIES[intentType];
   const issues: BlogInformationContract['issues'] = destination.issues.map((issue) => issue.code);
 
-  if (intentType === 'general') issues.push('unresolved_intent');
+  // Preparation is a concrete decision even though the legacy evidence taxonomy
+  // has no dedicated enum. Keep truly generic travel topics private, but allow
+  // this narrow compatibility path so V3 can choose its evidence-led archetype.
+  if (intentType === 'general' && !isExplicitPreparationQuestion(input)) issues.push('unresolved_intent');
   const destinationRequired = intentType !== 'general' && intentType !== 'travel_insurance';
   if (destinationRequired && !destination.destination) issues.push('missing_destination_for_intent');
 

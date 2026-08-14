@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildLongtailTopic,
+  cleanCandidateKeyword,
   isTravelRelevantKeyword,
   keywordSimilarity,
   normalizeKeyword,
@@ -35,5 +37,17 @@ describe('blog longtail keyword helpers', () => {
     expect(isTravelRelevantKeyword('의학정보', '의학정보 검색 의도 완전 정리', null)).toBe(false);
     expect(isTravelRelevantKeyword(`${osaka} ${weather}`, `${osaka} 날씨`, null)).toBe(true);
     expect(isTravelRelevantKeyword('의학정보', '의학정보 검색 의도 완전 정리', '서울')).toBe(true);
+  });
+
+  it('normalizes decomposed Hangul before a query enters the queue', () => {
+    const decomposed = '몽골 여행 준비물 체크 리스트'.normalize('NFD');
+    expect(cleanCandidateKeyword(decomposed)).toBe('몽골 여행 준비물 체크 리스트');
+    expect(normalizeKeyword(decomposed)).toBe('몽골 여행 준비물 체크 리스트');
+  });
+
+  it('keeps the observed query as the topic instead of inventing a headline', () => {
+    expect(buildLongtailTopic('시드니 날씨')).toBe('시드니 날씨');
+    expect(buildLongtailTopic('몽골 여행 준비물 체크 리스트')).toBe('몽골 여행 준비물 체크 리스트');
+    expect(buildLongtailTopic('다낭 10월 날씨')).not.toMatch(/가이드|완전|총정리|질문|체크포인트/);
   });
 });

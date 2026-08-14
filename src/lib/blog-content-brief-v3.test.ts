@@ -24,6 +24,20 @@ describe('flexible blog content brief v3', () => {
     });
   });
 
+  it('uses mistake prevention only when preparation is the actual query intent', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '몽골 여행 준비물 체크 리스트',
+      primaryKeyword: '몽골 여행 준비물 체크 리스트',
+      destination: '몽골',
+      destinationDecisionDetails: details,
+    });
+
+    expect(brief.archetype).toBe('mistake_prevention');
+    expect(brief.includeChecklist).toBe(true);
+    expect(brief.includeFaq).toBe(false);
+    expect(brief.includeTable).toBe(false);
+  });
+
   it('requires three evidence-backed destination details', () => {
     expect(buildBlogContentBriefV3({ topic: '오사카 숙소 위치' })).toMatchObject({
       passed: false,

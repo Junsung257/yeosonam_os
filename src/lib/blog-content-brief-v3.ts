@@ -147,6 +147,9 @@ export function selectBlogContentArchetypeV3(input: BlogContentBriefV3Input): Bl
   if (intent === 'weather_travel_viability' && evidence.has('climate_series') && /월별|계절|언제/i.test(text)) {
     return 'seasonal_calendar';
   }
+  if (/준비물|체크\s*리스트|체크리스트|짐\s*싸기|짐싸기|packing|checklist|preparation/i.test(text)) {
+    return 'mistake_prevention';
+  }
   if (/비교|vs|어디가|선택/i.test(text)) return 'decision_comparison';
   if (/실수|주의|피해야|하지\s*말/i.test(text)) return 'mistake_prevention';
   return input.serpResearch?.archetypeCandidates[0] ?? 'direct_answer';
