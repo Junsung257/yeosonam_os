@@ -6,7 +6,6 @@ import {
   type CompetitionLevel,
   type KeywordTier,
 } from './keyword-research';
-import { fetchRelatedQueries } from './related-queries';
 import { supabaseAdmin } from './supabase';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
 import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
@@ -14,22 +13,7 @@ import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
 const DEFAULT_LOOKBACK_DAYS = 28;
 const DEFAULT_LIMIT = 8;
 const DEFAULT_SEED_LIMIT = 20;
-const DEFAULT_MAX_CANDIDATES_PER_SEED = 5;
 const DEFAULT_RECENT_DEDUP_DAYS = 90;
-
-const LONGTAIL_MODIFIERS = [
-  '비용',
-  '일정',
-  '준비물',
-  '후기',
-  '가이드',
-  '추천',
-  '날씨',
-  '환전',
-  '공항 이동',
-  '가족여행',
-  '효도여행',
-];
 
 const STOP_TOKENS = new Set([
   '여행',
@@ -84,6 +68,8 @@ export interface LongtailSeed {
   conversionScore: number;
 }
 
+export type LongtailCandidateSourceKind = 'related_query' | 'modifier_variant' | 'winner_query';
+
 export interface LongtailCandidate {
   keyword: string;
   topic: string;
@@ -92,7 +78,7 @@ export interface LongtailCandidate {
   seedQuery: string;
   seedSlug: string;
   seedScore: number;
-  sourceKind: 'related_query' | 'modifier_variant' | 'winner_query';
+  sourceKind: LongtailCandidateSourceKind;
   tier: KeywordTier;
   monthlySearchVolume: number | null;
   competitionLevel: CompetitionLevel | null;
@@ -217,9 +203,10 @@ export function cleanCandidateKeyword(keyword: string): string {
     .slice(0, 80);
 }
 
-function ensureDestinationPrefix(keyword: string, destination: string | null): string {
-  if (!destination) return keyword;
-  return keyword.includes(destination) ? keyword : `${destination} ${keyword}`;
+export function isObservedDemandSourceKind(sourceKind: LongtailCandidateSourceKind): boolean {
+  // Naver result-title tokens and deterministic suffixes are discovery hints,
+  // not observed query demand. Only the exact GSC winner enters auto-publish.
+  return sourceKind === 'winner_query';
 }
 
 export function buildLongtailTopic(keyword: string): string {
@@ -349,12 +336,12 @@ function aggregateSeeds(
     .sort((a, b) => b.score - a.score);
 }
 
-async function buildCandidatesForSeed(
+function buildCandidatesForSeed(
   seed: LongtailSeed,
-  maxCandidatesPerSeed: number,
-): Promise<Array<Pick<LongtailCandidate, 'keyword' | 'sourceKind'>>> {
+): Array<Pick<LongtailCandidate, 'keyword' | 'sourceKind'>> {
   const candidates = new Map<string, Pick<LongtailCandidate, 'keyword' | 'sourceKind'>>();
   const add = (keyword: string, sourceKind: LongtailCandidate['sourceKind']) => {
+    if (!isObservedDemandSourceKind(sourceKind)) return;
     const cleaned = cleanCandidateKeyword(keyword);
     if (!cleaned || cleaned.length < 3) return;
     const key = normalizeKeyword(cleaned);
@@ -362,21 +349,7 @@ async function buildCandidatesForSeed(
   };
 
   add(seed.query, 'winner_query');
-
-  const related = await fetchRelatedQueries(seed.query).catch(() => []);
-  for (const relatedQuery of related.slice(0, maxCandidatesPerSeed)) {
-    add(ensureDestinationPrefix(relatedQuery, seed.destination), 'related_query');
-  }
-
-  for (const modifier of LONGTAIL_MODIFIERS) {
-    if (seed.query.includes(modifier)) continue;
-    add(`${seed.query} ${modifier}`, 'modifier_variant');
-    if (candidates.size >= maxCandidatesPerSeed + 2) break;
-  }
-
-  return [...candidates.values()]
-    .filter((candidate) => normalizeKeyword(candidate.keyword) !== normalizeKeyword(seed.query) || candidate.sourceKind === 'winner_query')
-    .slice(0, maxCandidatesPerSeed + 1);
+  return [...candidates.values()];
 }
 
 async function loadExistingKeywordSurface(recentDedupDays: number): Promise<string[]> {
@@ -534,7 +507,6 @@ export async function expandGscLongtailTopics(
   const seedLimit = clamp(options.seedLimit ?? DEFAULT_SEED_LIMIT, 3, 80);
   const lookbackDays = clamp(options.lookbackDays ?? DEFAULT_LOOKBACK_DAYS, 7, 120);
   const recentDedupDays = clamp(options.recentDedupDays ?? DEFAULT_RECENT_DEDUP_DAYS, 14, 365);
-  const maxCandidatesPerSeed = clamp(options.maxCandidatesPerSeed ?? DEFAULT_MAX_CANDIDATES_PER_SEED, 2, 12);
   const minSeedImpressions = Math.max(1, options.minSeedImpressions ?? 5);
   const minSeedClicks = Math.max(1, options.minSeedClicks ?? 1);
   const maxAvgPosition = clamp(options.maxAvgPosition ?? 25, 1, 80);
@@ -572,7 +544,7 @@ export async function expandGscLongtailTopics(
   }> = [];
 
   for (const seed of seeds) {
-    const seedCandidates = await buildCandidatesForSeed(seed, maxCandidatesPerSeed);
+    const seedCandidates = buildCandidatesForSeed(seed);
     for (const candidate of seedCandidates) {
       rawCandidates.push({ ...candidate, seed });
     }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLongtailTopic,
   cleanCandidateKeyword,
+  isObservedDemandSourceKind,
   isTravelRelevantKeyword,
   keywordSimilarity,
   normalizeKeyword,
@@ -49,5 +50,11 @@ describe('blog longtail keyword helpers', () => {
     expect(buildLongtailTopic('시드니 날씨')).toBe('시드니 날씨');
     expect(buildLongtailTopic('몽골 여행 준비물 체크 리스트')).toBe('몽골 여행 준비물 체크 리스트');
     expect(buildLongtailTopic('다낭 10월 날씨')).not.toMatch(/가이드|완전|총정리|질문|체크포인트/);
+  });
+
+  it('auto-queues only an exact observed query, not title tokens or synthetic modifiers', () => {
+    expect(isObservedDemandSourceKind('winner_query')).toBe(true);
+    expect(isObservedDemandSourceKind('related_query')).toBe(false);
+    expect(isObservedDemandSourceKind('modifier_variant')).toBe(false);
   });
 });
