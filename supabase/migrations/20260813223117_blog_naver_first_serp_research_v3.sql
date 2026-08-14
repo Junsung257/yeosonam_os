@@ -1,7 +1,8 @@
 -- Naver-first keyword demand and editorial-result research.
 -- This migration is additive: the legacy serp_analysis/serp_snapshots readers
 -- continue to work while V3 readers opt into the new columns and tables.
-begin;
+-- Keep this migration outside an explicit transaction because the index on the
+-- existing serp_snapshots table must be built CONCURRENTLY in production.
 
 create table if not exists public.blog_serp_research_runs (
   id uuid primary key default gen_random_uuid(),
@@ -113,10 +114,16 @@ create index if not exists idx_blog_keyword_demand_query_collected
   on public.blog_keyword_demand_observations(query_normalized, collected_at desc);
 create index if not exists idx_blog_keyword_demand_provider_metric
   on public.blog_keyword_demand_observations(provider, metric_name, collected_at desc);
-create index if not exists idx_serp_snapshots_research_run
+create index if not exists idx_blog_keyword_demand_research_run
+  on public.blog_keyword_demand_observations(research_run_id)
+  where research_run_id is not null;
+create index concurrently if not exists idx_serp_snapshots_research_run
   on public.serp_snapshots(research_run_id, original_rank);
 create index if not exists idx_blog_serp_observations_run_rank
   on public.blog_serp_page_observations(research_run_id, rank);
+create index if not exists idx_blog_serp_observations_snapshot
+  on public.blog_serp_page_observations(serp_snapshot_id)
+  where serp_snapshot_id is not null;
 create index if not exists idx_blog_serp_observations_domain
   on public.blog_serp_page_observations(domain, fetched_at desc);
 
@@ -151,5 +158,3 @@ comment on table public.blog_keyword_demand_observations is
   'Observed provider metrics only. DataLab values remain relative indexes and are never converted to search volume.';
 comment on table public.blog_serp_page_observations is
   'Compact editorial structure fingerprints and short evidence excerpts; competitor full bodies are not stored.';
-
-commit;

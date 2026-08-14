@@ -35,6 +35,14 @@ describe('Naver-first SERP research migration contract', () => {
     expect(rollback).toContain('drop column if exists analysis_version');
   });
 
+  it('avoids an exclusive production index build and indexes every new foreign key', () => {
+    expect(sql).not.toMatch(/^begin;/m);
+    expect(sql).toContain('create index concurrently if not exists idx_serp_snapshots_research_run');
+    expect(sql).toContain('idx_blog_keyword_demand_research_run');
+    expect(sql).toContain('idx_blog_serp_observations_run_rank');
+    expect(sql).toContain('idx_blog_serp_observations_snapshot');
+  });
+
   it('keeps legacy backfill review read-only and defaults approved rows to zero', () => {
     expect(backfill).not.toMatch(/\b(insert|update|delete|merge|call|truncate)\s+(?:into\s+|from\s+|table\s+)?public\./);
     expect(backfill).toContain('0::bigint as approved_legacy_backfill_rows');
