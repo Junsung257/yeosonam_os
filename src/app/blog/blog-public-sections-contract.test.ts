@@ -118,7 +118,7 @@ describe('blog public sections contract', () => {
     }
 
     const catalogSource = readSource('src/lib/blog-public-catalog.ts');
-    expect(catalogSource).toContain("['blog-public-catalog-v2']");
+    expect(catalogSource).toContain("['blog-public-catalog-v3-medication-policy']");
     expect(catalogSource).toContain('loadPublicBlogCatalogPage');
     expect(catalogSource).not.toContain('.limit(2000)');
     expect(catalogSource).toContain('isBlogSlugRedirectSource');

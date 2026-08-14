@@ -8,6 +8,7 @@ import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
+import { isBlogSlugRedirectTombstone } from '@/lib/blog-slug-redirects';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -204,7 +205,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const post of canonicalPosts) {
-    if (isSafeSitemapBlogSlug(post.slug)) {
+    if (isSafeSitemapBlogSlug(post.slug) && !isBlogSlugRedirectTombstone(post.slug)) {
       routes.push({
         url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,
         lastModified: safeLastModified(post.content_modified_at || post.published_at),

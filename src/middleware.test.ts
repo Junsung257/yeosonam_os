@@ -85,6 +85,18 @@ describe('middleware cron resource saver', () => {
     expect(response.status).toBe(410);
     expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
+
+  it.each([
+    'travel-emergency-medicine-summer-checklist',
+    'post-hv01',
+  ])('returns 410 for unsafe medication content and its legacy alias: %s', async (slug) => {
+    const response = await middleware(new NextRequest(
+      `https://www.yeosonam.com/blog/${slug}`,
+    ));
+
+    expect(response.status).toBe(410);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
 });
 
 describe('middleware blog public status contract', () => {
