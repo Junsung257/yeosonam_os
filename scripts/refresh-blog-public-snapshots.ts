@@ -80,7 +80,9 @@ async function main(): Promise<void> {
   const publicRows = (publicResult.data || []).filter(isSnapshotSourcePolicySafe).map((row) => ({
     ...row,
     generation_meta: compactCatalogGenerationMeta(row.generation_meta),
-    content_modified_at: row.content_modified_at ?? row.updated_at ?? row.published_at,
+    // Operational writes such as view counts can change updated_at without a
+    // material article edit. Never turn those writes into SEO dateModified.
+    content_modified_at: row.content_modified_at ?? row.published_at,
   }));
 
   const { count: snapshotCount, error: snapshotError } = await client
@@ -143,7 +145,7 @@ async function main(): Promise<void> {
         destination: row.destination,
         angle_type: row.angle_type,
         published_at: row.published_at,
-        content_modified_at: row.updated_at || row.published_at,
+        content_modified_at: row.published_at,
         fact_checked_at: null,
       }));
     }

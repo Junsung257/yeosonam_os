@@ -1,4 +1,5 @@
 import type { BlogInformationAudience, BlogInformationRiskLevel } from './blog-information-planner';
+import { isHighRiskInformationalTopic } from './blog-publication-review-policy';
 import type { SearchDecisionIntent, SerpResearchPacketV3 } from './blog-serp-research-v3';
 
 export const BLOG_CONTENT_ARCHETYPES_V3 = [
@@ -156,7 +157,7 @@ export function selectBlogContentArchetypeV3(input: BlogContentBriefV3Input): Bl
 }
 
 function riskLevel(text: string): BlogInformationRiskLevel {
-  if (/비자|입국|출입국|ETA|ESTA|ETIAS|여권|세관|면세|보험|법률|규제|안전\s*경보|의료|건강/i.test(text)) return 'HIGH';
+  if (isHighRiskInformationalTopic({ topic: text })) return 'HIGH';
   if (/요금|가격|운영시간|환율|공항|교통|날씨|일정\s*변경/i.test(text)) return 'MEDIUM';
   return 'LOW';
 }

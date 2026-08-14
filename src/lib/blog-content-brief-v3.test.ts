@@ -45,6 +45,14 @@ describe('flexible blog content brief v3', () => {
     });
   });
 
+  it('classifies travel medication queries as HIGH risk before writing', () => {
+    expect(buildBlogContentBriefV3({
+      topic: '해외여행 약',
+      primaryKeyword: '해외여행 약',
+      destinationDecisionDetails: details,
+    }).riskLevel).toBe('HIGH');
+  });
+
   it('builds decision-first structures for the first operating candidates', () => {
     const weather = buildBlogContentBriefV3({
       topic: '다낭 10월 날씨', primaryKeyword: '다낭 10월 날씨', destination: '다낭',
