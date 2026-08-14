@@ -173,6 +173,8 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).not.toContain('공항 이동 체크리스트');
     expect(source).not.toContain('비용 체크 2026');
     expect(source).toContain('const metadataTitle = cleanedTitle;');
+    expect(source).toContain('title: { absolute: metadataTitle },');
+    expect(source).not.toContain('title: { absolute: `${metadataTitle} | 여소남` }');
   });
 
   it('shows only persisted package facts in the landing hero', () => {

@@ -84,6 +84,13 @@ A day is healthy only when all of these are true:
 
 ## 2026-07-27 GSC Data And Improvement Loop
 
+- Production defaults to DB resource-saver mode. The blog operating chain is
+  not running merely because Vercel Cron returns HTTP 200: inspect the response
+  for `skipped=true` and `reason=db_resource_saver_mode`. Set
+  `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1` only for a verified release, then
+  run `rank-tracking` → `blog-data-readiness` → `blog-publisher` →
+  `blog-indexing-worker` → `analytics-delivery` and compare durable run logs and
+  table counts. Keep `BLOG_AUTOPUBLISH_MODE=draft_only` for the first canary.
 - Google Search Console search performance must prefer the canonical `https://www.yeosonam.com/` URL-prefix property, then fall back to the configured property, apex URL-prefix, and `sc-domain:yeosonam.com`.
 - A zero-row response from `https://yeosonam.com/` is not proof that the blog has no traffic. Operators must compare the selected `siteUrl` returned by `rank-tracking` or `gsc-index-rank`.
 - `rank-tracking` now writes query-level search rows and then runs the GSC longtail expander with a bounded timeout. This keeps the search-data -> topic-queue loop active without adding another Vercel cron.

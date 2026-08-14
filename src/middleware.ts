@@ -8,7 +8,6 @@ import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 import { requireAdminRequest } from '@/lib/admin-guard';
-import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -163,6 +162,8 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/blog-scheduler',
   '/api/cron/blog-publisher',
   '/api/cron/blog-indexing-worker',
+  '/api/cron/blog-data-readiness',
+  '/api/cron/analytics-delivery',
   '/api/cron/blog-learn',
   '/api/cron/publish-scheduled',
   '/api/cron/auto-publish-loop',
@@ -465,15 +466,6 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
   }
 }
 
-type PublicBlogRoutePolicyRow = {
-  product_id?: string | null;
-  review_status?: string | null;
-  seo_title?: string | null;
-  content_type?: string | null;
-  noindex?: boolean | null;
-  redirect_to?: string | null;
-};
-
 async function publicBlogRouteIsEligible(slug: string): Promise<boolean | null> {
   const config = getSupabaseRestConfig();
   if (!config) return null;
@@ -483,35 +475,27 @@ async function publicBlogRouteIsEligible(slug: string): Promise<boolean | null> 
     // A slow eligibility probe must not consume the stale-detail fallback budget.
     // Do not cache this decision: review-status changes need to take effect at once.
     const timer = setTimeout(() => controller.abort(), 750);
-    const endpoint = new URL(`${config.url}/rest/v1/public_blog_content_creatives`);
-    endpoint.searchParams.set(
-      'select',
-      'product_id,review_status,seo_title,content_type,noindex:generation_meta->noindex,redirect_to:generation_meta->>redirect_to',
-    );
-    endpoint.searchParams.set('slug', `eq.${slug}`);
-    endpoint.searchParams.set('limit', '1');
+    // The full public eligibility view is service-role only. This narrow RPC
+    // exposes one Boolean and keeps middleware aligned with the canonical SQL
+    // policy without leaking article rows to the anonymous key.
+    const endpoint = new URL(`${config.url}/rest/v1/rpc/is_blog_public_slug_eligible_v3`);
 
     const res = await fetch(endpoint, {
+      method: 'POST',
       headers: {
         apikey: config.key,
         authorization: `Bearer ${config.key}`,
         accept: 'application/json',
+        'content-type': 'application/json',
       },
+      body: JSON.stringify({ p_slug: slug }),
       cache: 'no-store',
       signal: controller.signal,
     }).finally(() => clearTimeout(timer));
     if (!res.ok) return null;
 
-    const data = await res.json() as PublicBlogRoutePolicyRow[];
-    const row = Array.isArray(data) ? data[0] : null;
-    if (!row) return false;
-    if (row.noindex === true || (typeof row.redirect_to === 'string' && row.redirect_to.trim())) return false;
-    return getInformationalReviewBlockReason({
-      productId: row.product_id,
-      reviewStatus: row.review_status,
-      title: row.seo_title,
-      contentType: row.content_type,
-    }) === null;
+    const eligible = await res.json() as unknown;
+    return typeof eligible === 'boolean' ? eligible : null;
   } catch {
     // Database outages must not turn a known public bundle into a false 404.
     // The page layer will serve the risk-bounded last-known-good snapshot.

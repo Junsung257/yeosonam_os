@@ -1065,7 +1065,7 @@ export async function generateMetadata({
   // Metadata, OG title, and the page H1 use the same stored title.
   return {
     // absolute를 쓰면 layout의 template이 적용되지 않음
-    title: { absolute: `${metadataTitle} | 여소남` },
+    title: { absolute: metadataTitle },
     description,
     keywords: tagSet,
     alternates: {

@@ -12,6 +12,13 @@ const CRITICAL_CRONS = new Set([
   'blog-scheduler',
   'blog-daily-summary',
   'blog-regenerate-zero-click',
+  // Blog Quality V3 cannot make a safe publish decision without fresh demand,
+  // readiness, indexing, and measurement delivery. Keep the whole chain behind
+  // the same explicit production allowlist instead of silently skipping it.
+  'rank-tracking',
+  'blog-data-readiness',
+  'blog-indexing-worker',
+  'analytics-delivery',
 ]);
 
 export function isDbResourceSaverEnabled(): boolean {
