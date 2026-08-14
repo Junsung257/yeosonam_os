@@ -11,7 +11,10 @@ import {
   getBlogPublicSurfacePolicyBlockReason,
   PUBLIC_BLOG_READ_SOURCE,
 } from '@/lib/blog-public-eligibility';
-import { isBlogSlugRedirectSource } from '@/lib/blog-slug-redirects';
+import {
+  isBlogSlugRedirectSource,
+  isBlogSlugRedirectTombstone,
+} from '@/lib/blog-slug-redirects';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import bundledCatalogSnapshot from '@/data/blog-public-catalog-snapshot-v3.json';
 import {
@@ -58,6 +61,7 @@ export interface PublicBlogCatalogPage {
 const BUNDLED_CATALOG_POSTS = bundledCatalogSnapshot.posts as PublicBlogCatalogPost[];
 
 function isCatalogPostPolicySafe(post: PublicBlogCatalogPost): boolean {
+  if (isBlogSlugRedirectTombstone(post.slug)) return false;
   const bundledMeta = (post as PublicBlogCatalogPost & {
     generation_meta?: Record<string, unknown> | null;
   }).generation_meta;
@@ -267,7 +271,7 @@ async function loadPublicBlogCatalogPageUncached(input: {
 
 const getCachedPublicBlogCatalogPage = unstable_cache(
   loadPublicBlogCatalogPageUncached,
-  ['blog-public-catalog-page-v3'],
+  ['blog-public-catalog-page-v4-medication-policy'],
   {
     revalidate: 300,
     tags: [BLOG_LIST_CACHE_TAG, BLOG_DESTINATION_CACHE_TAG, BLOG_ANGLE_CACHE_TAG],
@@ -291,7 +295,7 @@ export async function loadPublicBlogCatalogPage(input: {
 
 const getCachedPublicBlogCatalog = unstable_cache(
   loadPublicBlogCatalogUncached,
-  ['blog-public-catalog-v2'],
+  ['blog-public-catalog-v3-medication-policy'],
   {
     revalidate: 300,
     tags: [BLOG_LIST_CACHE_TAG, BLOG_DESTINATION_CACHE_TAG, BLOG_ANGLE_CACHE_TAG],
