@@ -30,7 +30,7 @@ begin
 
   select * into result from public.evaluate_blog_public_eligibility_v3(
     fixture_id, 'legacy', 'published', 'naver_blog', null, 'none', '저위험 문화 정보', null, 'informational', null,
-    '2026-07-01T00:00:00Z', '{}', '{}', null, null, null);
+    '2026-07-01T00:00:00Z', '{}', '{"passed":true}', null, null, null);
   assert result.eligible and result.reason = 'eligible_information_legacy', 'legacy parity failed';
 end $$;
 
