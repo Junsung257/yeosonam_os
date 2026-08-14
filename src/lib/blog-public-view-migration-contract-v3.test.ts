@@ -37,4 +37,11 @@ describe('Blog Quality V3 public view migration contract', () => {
     expect(snapshotMigration).toContain("c.generation_meta ->> 'reviewer_display_name'");
     expect(snapshotMigration).not.toContain("'reviewed_at', c.fact_checked_at");
   });
+
+  it('keeps Korean-only high-risk terms intact in the SQL policy', () => {
+    for (const term of ['비자', '입국', '출입국', '여권', '세관', '면세', '보험', '법률', '규제', '건강', '의료']) {
+      expect(migration).toContain(term);
+    }
+    expect(migration).not.toContain('鍮');
+  });
 });

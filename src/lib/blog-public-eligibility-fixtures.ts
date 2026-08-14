@@ -38,6 +38,10 @@ export const BLOG_PUBLIC_ELIGIBILITY_FIXTURES: BlogPublicEligibilityFixture[] = 
     row: { ...base, title: 'ETIAS 입국 규정 변경', reviewStatus: 'none' },
   },
   {
+    id: 'korean-only-high-risk-unapproved', expectedEligible: false, expectedReason: 'review_blocked',
+    row: { ...base, title: '베트남 여권과 세관 면세 규정', reviewStatus: 'none' },
+  },
+  {
     id: 'high-risk-approved', expectedEligible: true, expectedReason: 'eligible_information_v2',
     row: { ...base, title: 'ETIAS 입국 규정 변경', reviewStatus: 'approved' },
   },
