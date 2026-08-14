@@ -10,6 +10,7 @@
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
+| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-publisher`, `blog-indexing-worker`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
@@ -20,7 +21,7 @@
 | `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
 | `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
 
-운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
+운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
 ### V3 staging runtime verifier 전용
 

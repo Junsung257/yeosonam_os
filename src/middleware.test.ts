@@ -37,6 +37,25 @@ describe('middleware cron resource saver', () => {
     });
   });
 
+  it.each([
+    'rank-tracking',
+    'blog-data-readiness',
+    'blog-publisher',
+    'blog-indexing-worker',
+    'analytics-delivery',
+  ])('allows the verified blog operating chain when critical crons are explicitly enabled: %s', async (cron) => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+    vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS', '1');
+
+    const response = await middleware(new NextRequest(
+      `https://www.yeosonam.com/api/cron/${cron}`,
+      { headers: { 'x-vercel-cron': '1' } },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('lets the Clobe bank sync reach its route-local cron bearer guard', async () => {
     const response = await middleware(new NextRequest(
       'https://www.yeosonam.com/api/cron/clobe-bank-sync',
@@ -74,17 +93,13 @@ describe('middleware blog public status contract', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns a hard 404 for a review-blocked public-view row before the streamed page can soft-404', async () => {
+  it('returns a hard 404 when the canonical public-eligibility RPC rejects a slug', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([{
-      product_id: null,
-      review_status: 'changes_requested',
-      seo_title: '입국 규정 변경',
-      content_type: 'guide',
-      noindex: false,
-      redirect_to: null,
-    }]), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(false), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
 
     const response = await middleware(new NextRequest(
       'https://www.yeosonam.com/blog/review-blocked-fixture',
@@ -94,23 +109,20 @@ describe('middleware blog public status contract', () => {
     expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
 
-  it('returns a hard 404 for an unapproved high-risk row even when a legacy view still returns it', async () => {
+  it('allows a slug accepted by the canonical public-eligibility RPC', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([{
-      product_id: null,
-      review_status: 'none',
-      seo_title: '해외여행자 보험 보장 가이드',
-      content_type: 'guide',
-      noindex: false,
-      redirect_to: null,
-    }]), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(true), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
 
     const response = await middleware(new NextRequest(
-      'https://www.yeosonam.com/blog/travel-insurance-fixture',
+      'https://www.yeosonam.com/blog/known-public-fixture',
     ));
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
   it('fails over to the page snapshot instead of returning a false 404 when the public view is unavailable', async () => {
@@ -126,20 +138,25 @@ describe('middleware blog public status contract', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
-  it('uses the public Supabase key for the public-view preflight even when a service key exists', async () => {
+  it('uses the public Supabase key and narrow RPC for the eligibility preflight', async () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-key');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([]), {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(false), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     }));
 
     await middleware(new NextRequest('https://www.yeosonam.com/blog/unknown-fixture'));
 
-    expect(fetchSpy).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({
-      headers: expect.objectContaining({ apikey: 'anon-key', authorization: 'Bearer anon-key' }),
-    }));
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/rest/v1/rpc/is_blog_public_slug_eligible_v3' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ p_slug: 'unknown-fixture' }),
+        headers: expect.objectContaining({ apikey: 'anon-key', authorization: 'Bearer anon-key' }),
+      }),
+    );
   });
 
   it('does not treat the image sitemap route as a dynamic article slug', async () => {
