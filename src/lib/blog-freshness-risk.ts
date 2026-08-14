@@ -11,6 +11,7 @@ const HIGH_RISK_PATTERNS = [
   { topic: 'visa_entry', re: /비자|입국|출입국|여권|전자\s*비자|eta|esta|evisa/i },
   { topic: 'safety', re: /안전|치안|분실|응급|대사관|영사관|주의보/i },
   { topic: 'regulation', re: /세관|반입|면세|검역|규정|벌금/i },
+  { topic: 'medical', re: /건강|의료|질병|예방접종|의약품|상비약|비상약|처방약|처방전|약국|복용|(?:해외\s*여행|여행|휴대|반입|처방|상비|비상)\s*약(?:품)?(?=$|\s|[,./·:;!?()])|\b(?:medication|medicine|prescription|pharmacy)\b/i },
 ];
 
 const MEDIUM_RISK_PATTERNS = [

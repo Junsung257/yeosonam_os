@@ -29,7 +29,7 @@ export const BLOG_PUBLIC_BLOCKED_REVIEW_STATUSES = [
 ] as const;
 
 const BLOCKED_REVIEW_STATUSES = new Set<string>(BLOG_PUBLIC_BLOCKED_REVIEW_STATUSES);
-const HIGH_RISK_INFORMATION_RE = /(?:비자|입국|출입국|이민국|여권|세관|면세|보험\s*(?:보장|면책|청구)|여행자?\s*보험|법률|규제|안전\s*(?:경보|주의보)|건강|의료|질병|예방접종|\bvisa\b|immigration|passport|customs|duty[ _-]?free|\b(?:eta|esta|etias)\b|entry[ _-]*requirements?|travel[ _-]*insurance|health[ _-]*advisory|safety[ _-]*alert)/i;
+const HIGH_RISK_INFORMATION_RE = /(?:비자|입국|출입국|이민국|여권|세관|면세|보험\s*(?:보장|면책|청구)|여행자?\s*보험|법률|규제|안전\s*(?:경보|주의보)|건강|의료|질병|예방접종|의약품|상비약|비상약|처방약|처방전|약국|복용|(?:해외\s*여행|여행|휴대|반입|처방|상비|비상)\s*약(?:품)?(?=$|\s|[,./·:;!?()])|\bvisa\b|immigration|passport|customs|duty[ _-]?free|\b(?:eta|esta|etias)\b|entry[ _-]*requirements?|travel[ _-]*insurance|health[ _-]*advisory|safety[ _-]*alert|\b(?:medication|medicine|prescription|pharmacy)\b)/i;
 
 function combinedPolicyText(input: InformationalReviewPolicyInput): string {
   return [input.title, input.category, input.contentType, input.topic]

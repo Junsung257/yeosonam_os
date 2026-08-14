@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-08-13T07:55:57.244Z",
   "source": "public_blog_content_creatives_read_only",
-  "count": 191,
+  "count": 190,
   "posts": [
     {
       "id": "5170dbb9-68da-4838-b830-bc78609ba2dc",
@@ -1934,27 +1934,6 @@
       "generation_meta": {},
       "topic_source": "coverage_gap",
       "content_modified_at": "2026-08-13T07:00:40.704737+00:00"
-    },
-    {
-      "id": "15d54a8d-de67-4a0d-a4b7-8e382e68a98e",
-      "slug": "travel-emergency-medicine-summer-checklist",
-      "seo_title": "해외여행 비상약 여행 가이드 2026 | 일정과 이동 동선 체크",
-      "seo_description": "해외여행 비상약 기준으로 일정과 이동 동선을 2026년 관점에서 정리했습니다. 비용, 일정, 준비물, 현지 체크 포인트를 예약 전 확인하세요.",
-      "og_image_url": "https://images.pexels.com/photos/8573202/pexels-photo-8573202.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "angle_type": "value",
-      "category": "travel_tips",
-      "published_at": "2026-06-13T07:35:05.509+00:00",
-      "updated_at": "2026-08-13T07:00:41.364287+00:00",
-      "product_id": null,
-      "destination": null,
-      "content_type": "guide",
-      "featured": false,
-      "featured_order": null,
-      "view_count": 135,
-      "review_status": "none",
-      "generation_meta": {},
-      "topic_source": "seasonal",
-      "content_modified_at": "2026-08-13T07:00:41.364287+00:00"
     },
     {
       "id": "abfa69c2-28cd-49c3-9032-48a729064487",
