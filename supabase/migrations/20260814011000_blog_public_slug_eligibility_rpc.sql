@@ -23,7 +23,7 @@ $$;
 
 revoke all on public.public_blog_content_creatives from public, anon, authenticated;
 revoke all on function public.is_blog_public_slug_eligible_v3(text) from public;
-grant execute on function public.is_blog_public_slug_eligible_v3(text) to anon, authenticated, service_role;
+grant execute on function public.is_blog_public_slug_eligible_v3(text) to anon, service_role;
 
 comment on function public.is_blog_public_slug_eligible_v3(text) is
   'Boolean-only public slug eligibility probe for edge middleware; delegates to the canonical server-only V3 view.';
