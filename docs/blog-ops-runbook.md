@@ -1,5 +1,7 @@
 # Blog Ops Runbook
 
+> 2026-08-15 V4 override: 신규 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`의 생성/공개 분리 계약을 따른다. `blog-generate`는 KST 01:05~06:05 계산 전용이고 `blog-publication-controller`는 KST 09:05/12:05/15:05/18:05/21:05 공개 전용이다. 아래 `blog-publisher` 직접 공개·22:05 catch-up 설명은 V4 이전 사고 기록이며 신규 스케줄 근거로 사용하지 않는다.
+
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
 Last updated: 2026-07-28

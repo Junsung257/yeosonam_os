@@ -7,10 +7,12 @@
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
 | `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | Vercel production 자동발행을 허용할 유일한 Git ref. production에서 ref/SHA 증거가 없거나 다르면 자동으로 `draft_only` |
 | `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
+| `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 공개 상한 안전단계: `pilot_3`, `ramp_5`, `ramp_10`, `max_20`. 실효 상한은 이 단계와 `BLOG_DAILY_PUBLISH_CAP` 중 작은 값 |
+| `BLOG_DAILY_CANDIDATE_CAP` | `30` | KST 야간에 생성·검증할 후보 상한. 공개 상한이 아니며 최대 30 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
-| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-publisher`, `blog-indexing-worker`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
+| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
@@ -18,8 +20,10 @@
 | `BLOG_IMAGE_PHASH_APPLY_CONFIRM` | 없음 | pHash DB backfill 이중 확인값; 평소 환경 변수로 저장 금지 |
 | `BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM` | 없음 | 로컬 임시 DB reset 전용 확인값; preview/production 설정 금지 |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 없음 | Naver Search API와 DataLab 서버 자격증명; client 노출 금지 |
+| `NAVER_API_HUB_CLIENT_ID` / `NAVER_API_HUB_CLIENT_SECRET` | 없음 | Naver API HUB Search 자격증명. 설정 시 HUB 우선, 장애 시 기존 `NAVER_CLIENT_*`로 fallback |
 | `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
 | `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
+| `DEEPSEEK_API_KEY` | 없음 | Blog V4 생성 전용. Flash 초안과 Pro 재작성에 사용하며 다른 모델 공급자로 자동 fallback하지 않음 |
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 

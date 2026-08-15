@@ -10,6 +10,7 @@
 - 2026-08-14 — SERP brief structured canary: 24 offline drafts with per-canary failure evidence: `blog-serp-generated-canary-2026-08-14.md`
 
 - 2026-08-15 — Blog live operations browser verification: publisher health, queue visibility, effective policy, runtime schema, and fail-closed release decision: `blog-live-ops-verification-2026-08-15.md`
+- 2026-08-15 — Blog DeepSeek Orchestrator V4 local verification: DeepSeek-only quality routing, off-peak generation/daytime publication split, durable attempt evidence, Naver fallback, 1,494 blog tests, and production build: `blog-deepseek-orchestrator-v4-verification-2026-08-15.md`
 
 Last updated: 2026-08-15
 

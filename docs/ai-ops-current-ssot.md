@@ -1,6 +1,6 @@
 # AI Ops Current SSOT
 
-Last updated: 2026-06-29
+Last updated: 2026-08-15
 
 This is the current operating contract for AI provider policy, Jarvis, RAG, QA, prompt routing, evals, model fallback, and learning-loop evidence.
 
@@ -22,6 +22,7 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 | Area | Current source |
 |---|---|
 | AI provider routing | `src/lib/ai-provider-policy.ts`, `scripts/ai-provider-switch.mjs` |
+| Blog generation V4 exception | `src/lib/blog-deepseek-orchestrator-v4.ts`, `src/lib/blog-ai-caller.ts`, `docs/runbooks/blog-deepseek-orchestrator-v4.md` |
 | Jarvis APIs | `/api/jarvis`, `/api/jarvis/stream`, `/api/admin/jarvis/**` |
 | Jarvis orchestration | `src/lib/jarvis/orchestration/**`, `src/lib/jarvis/v2-dispatch.ts` |
 | Jarvis RAG/evals | `src/lib/jarvis/rag/**`, `src/lib/jarvis/eval/**` |
@@ -41,6 +42,10 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 - Prompt fixes for repeated failures must become an eval, regression test, deterministic gate, or error-registry entry.
 
 ## Provider And Prompt Boundary
+
+### Blog DeepSeek V4 exception
+
+Scheduled blog generation is an intentionally isolated DeepSeek-only lane. It does not inherit the generic Gemini/Claude fallback chain: Flash creates the grounded draft and Pro may rewrite it at most twice using persisted failure evidence. A provider error stays queued for a later off-peak attempt. Daytime publication reads a durable `approved_for_slot` attempt and makes zero model calls. This exception applies only to the V4 blog generation route; other AI tasks continue to follow `system_ai_policies` and the general provider policy.
 
 Correct sequence for AI behavior changes:
 
