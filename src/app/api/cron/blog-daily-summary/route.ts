@@ -22,6 +22,7 @@ import {
   buildPublishedBlogUpgradeQueueTopic,
   PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
 } from '@/lib/blog-private-regeneration';
+import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -297,7 +298,11 @@ async function runDailySummary(request: NextRequest) {
     { data: null } as any,
   );
   const policy = policyRow?.[0];
+  const autopublishPolicy = readBlogAutopublishPolicyV3();
   const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
+  const publicDailyTarget = policy?.enabled === false || autopublishPolicy.mode === 'draft_only'
+    ? 0
+    : dailyTarget;
   const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
 
   // Report the latest closed KST publishing day. If the route is delayed past
@@ -547,8 +552,15 @@ async function runDailySummary(request: NextRequest) {
     used_previous_day_for_pre_close_run: reportDay.usedPreviousDay,
     close_minute_kst: reportDay.closeMinuteKst,
     published: pubRes.count || 0,
-    min_daily_target: dailyTarget,
-    under_daily_target: (pubRes.count || 0) < dailyTarget,
+    min_daily_target: publicDailyTarget,
+    configured_generation_target: dailyTarget,
+    under_daily_target: (pubRes.count || 0) < publicDailyTarget,
+    autopublish: {
+      requested_mode: autopublishPolicy.requestedMode,
+      effective_mode: autopublishPolicy.mode,
+      daily_publish_cap: autopublishPolicy.dailyPublishCap,
+      public_publication_enabled: publicDailyTarget > 0,
+    },
     queue_pending: queueCounts.queued || 0,
     queue_failed: queueOperationalHealth.actionable_failed_count,
     queue_failed_total: queueCounts.failed || 0,
@@ -615,7 +627,7 @@ async function runDailySummary(request: NextRequest) {
   (summary as any).ops_watcher = opsWatcher;
 
   if (summary.under_daily_target) {
-    const message = `블로그 일일 발행 SLA 미달: ${summary.date} KST published=${summary.published}, min=${dailyTarget}`;
+    const message = `블로그 일일 발행 SLA 미달: ${summary.date} KST published=${summary.published}, min=${publicDailyTarget}`;
     errors.push(message);
     await insertDedupedBlogAlert({
       severity: summary.published === 0 ? 'high' : 'medium',
@@ -625,7 +637,7 @@ async function runDailySummary(request: NextRequest) {
       refId: summary.date,
       meta: {
         published: summary.published,
-        min_daily_target: dailyTarget,
+        min_daily_target: publicDailyTarget,
         queue_pending: summary.queue_pending,
         queue_failed: summary.queue_failed,
         queue_failed_total: summary.queue_failed_total,

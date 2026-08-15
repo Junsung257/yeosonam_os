@@ -31,6 +31,15 @@ describe('blog daily summary report day', () => {
     expect(searchIssueBlock).not.toContain('errors.push(message)');
   });
 
+  it('does not create a public-publish SLA while draft_only is active', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
+
+    expect(source).toContain("autopublishPolicy.mode === 'draft_only'");
+    expect(source).toContain('publicDailyTarget');
+    expect(source).toContain('under_daily_target: (pubRes.count || 0) < publicDailyTarget');
+    expect(source).toContain('public_publication_enabled: publicDailyTarget > 0');
+  });
+
   it('does not flag publisher cron observation when the selected report day already met quota', () => {
     const routeSource = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
     const diagnoseSource = readFileSync(join(process.cwd(), 'scripts/diagnose-blog-autopublish.ts'), 'utf8');
