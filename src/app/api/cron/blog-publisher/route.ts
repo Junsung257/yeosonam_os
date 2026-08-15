@@ -3874,7 +3874,14 @@ async function processQueueItem(
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
 
-    if (err instanceof BlogAiResponseError) {
+    const timeoutMatch = msg.match(/blog_ai_generation_timeout:(\d+)ms/);
+    const timeoutFailureCode = timeoutMatch
+      ? 'blog_ai_generation_timeout'
+      : null;
+    const providerFailureCode = err instanceof BlogAiResponseError
+      ? err.code
+      : timeoutFailureCode;
+    if (providerFailureCode) {
       const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
       const attemptNumber = Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1);
       const requestedStage = String(
@@ -3885,6 +3892,18 @@ async function processQueueItem(
         : 'draft_flash';
       const terminal = attemptNumber >= 3;
       const route = terminal ? 'quarantine' : 'rewrite_pro_max';
+      const timeoutDurationMs = Math.max(0, Number(timeoutMatch?.[1] || 0));
+      const failureReceipt: BlogAiTextResult['receipt'] = err instanceof BlogAiResponseError
+        ? err.receipt
+        : {
+            provider: 'deepseek',
+            model: stage === 'draft_flash' ? BLOG_DEEPSEEK_MODELS.draft : BLOG_DEEPSEEK_MODELS.rewrite,
+            startedAt: new Date(Date.now() - timeoutDurationMs).toISOString(),
+            completedAt: new Date().toISOString(),
+            latencyMs: timeoutDurationMs,
+            finishReason: 'timeout',
+            deepseekCost: null,
+          };
       const attemptPersistence = await recordBlogGenerationAttemptV4({
         queueId: item.id,
         tenantId: item.tenant_id ?? null,
@@ -3894,21 +3913,21 @@ async function processQueueItem(
         output: { title: '', description: '', slug: '', markdown: '' },
         qualityScore: 0,
         hardBlockers: ['model_output_incomplete'],
-        failureReasons: [err.code],
+        failureReasons: [providerFailureCode],
         researchFingerprint: priorAttempt?.researchFingerprint ?? null,
         claimFingerprint: priorAttempt?.claimFingerprint ?? null,
-        receipt: err.receipt,
+        receipt: failureReceipt,
         attemptStatus: 'failed',
-        errorCode: err.code,
+        errorCode: providerFailureCode,
       });
       const failureStatus = await handleFailure(item, msg, null, terminal, {
         ai_orchestration_v4: {
           version: 'blog-deepseek-orchestrator-v4',
           route,
           next_stage: terminal ? null : 'rewrite_pro_max',
-          failure_evidence: [err.code],
-          provider_finish_reason: err.receipt.finishReason,
-          output_characters: err.outputCharacters,
+          failure_evidence: [providerFailureCode],
+          provider_finish_reason: failureReceipt.finishReason,
+          output_characters: err instanceof BlogAiResponseError ? err.outputCharacters : 0,
           attempt_persistence_error: attemptPersistence.error,
           last_attempted_at: new Date().toISOString(),
         },
@@ -4198,7 +4217,9 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         deepseekThinking: 'enabled',
-        reasoningEffort: generationStage === 'rewrite_pro_max' ? 'max' : 'high',
+        // `max` repeatedly exceeded the serverless response window in live
+        // canaries. High retains reasoning while prioritizing a complete body.
+        reasoningEffort: 'high',
       });
   const blog_html = generation.text
     .replace(/^```markdown\s*/i, '')
@@ -4341,7 +4362,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         deepseekThinking: 'enabled',
-        reasoningEffort: generationStage === 'rewrite_pro_max' ? 'max' : 'high',
+        reasoningEffort: 'high',
       });
   const blog_html = generation.text
     .replace(/^```markdown\s*/i, '')
@@ -4613,7 +4634,7 @@ async function generateFromTopic(
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         deepseekThinking: 'enabled',
-        reasoningEffort: generationStage === 'rewrite_pro_max' ? 'max' : 'high',
+        reasoningEffort: 'high',
       });
   const writerOutput = parseBlogInformationWriterOutput(generation.text);
   let blog_html = writerOutput.markdown
