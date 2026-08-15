@@ -3209,7 +3209,7 @@ async function processQueueItem(
       const researchAttempts = Number(previousOrchestration?.research_attempts || 0)
         + (qualityRouteV4.route === 'reresearch' ? 1 : 0);
       const reason = `blog_quality_v4_${qualityRouteV4.route}:${qualityRouteV4.reasons.join(',')}`;
-      await handleFailure(item, reason, qa, qualityRouteV4.route === 'quarantine', {
+      const failureStatus = await handleFailure(item, reason, qa, qualityRouteV4.route === 'quarantine', {
         ai_orchestration_v4: {
           version: 'blog-deepseek-orchestrator-v4',
           previous_score: qualityEvaluationV3.score,
@@ -3227,11 +3227,15 @@ async function processQueueItem(
               claim_fingerprint: null,
             }
           : {}),
+      }, {
+        forceQueue: qualityRouteV4.route !== 'quarantine',
       });
       return {
         id: item.id,
         topic: item.topic,
-        status: qualityRouteV4.route === 'quarantine' ? 'quarantined' : 'rewrite_queued',
+        status: qualityRouteV4.route === 'quarantine'
+          ? 'quarantined'
+          : failureStatus === 'queued' ? 'rewrite_queued' : failureStatus,
         reason,
       };
     }
@@ -3860,6 +3864,7 @@ async function handleFailure(
   qa: any,
   forceFailure = false,
   extraMeta?: Record<string, unknown>,
+  retryPolicy?: { forceQueue?: boolean },
 ): Promise<'queued' | 'failed' | 'skipped'> {
   const attempts = (item.attempts || 0) + 1;
   const duplicateFailure = /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복/i.test(reason);
@@ -3875,12 +3880,27 @@ async function handleFailure(
     && !isDuplicateFailure
     && item.source !== 'manual'
     && currentSelfHealRetries < 4;
-  const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
-    ? 'skipped'
-    : shouldForceFailure || (attempts >= MAX_ATTEMPTS && !keepSelfHealCandidateLive) ? 'failed' : 'queued';
-  const storedAttempts = keepSelfHealCandidateLive && finalStatus === 'queued'
+  const forceOrchestratorQueue = retryPolicy?.forceQueue === true
+    && !shouldForceFailure
+    && !isDuplicateFailure
+    && !decision.skipped;
+  const finalStatus = forceOrchestratorQueue
+    ? 'queued'
+    : (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
+      ? 'skipped'
+      : shouldForceFailure || (attempts >= MAX_ATTEMPTS && !keepSelfHealCandidateLive) ? 'failed' : 'queued';
+  const storedAttempts = forceOrchestratorQueue
+    ? Math.min(attempts, Math.max(0, MAX_ATTEMPTS - 1))
+    : keepSelfHealCandidateLive && finalStatus === 'queued'
     ? Math.min(attempts, Math.max(0, MAX_ATTEMPTS - 1))
     : attempts;
+  const baseMeta = item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta)
+    ? { ...(item.meta as Record<string, unknown>) }
+    : {};
+  if (forceOrchestratorQueue) {
+    delete baseMeta.quarantine_reason;
+    delete baseMeta.skipped_duplicate;
+  }
 
   const { error: queueUpdateError } = await supabaseAdmin.from('blog_topic_queue')
     .update({
@@ -3891,7 +3911,7 @@ async function handleFailure(
         ? new Date(Date.now() + retryDelayMs).toISOString()
         : item.target_publish_at,
       meta: {
-        ...(item.meta || {}),
+        ...baseMeta,
         last_qa: qa,
         failure_code: decision.code,
         failure_retryable: decision.retryable,
