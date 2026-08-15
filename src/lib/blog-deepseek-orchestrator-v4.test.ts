@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BLOG_DEEPSEEK_MODELS,
+  buildDeepSeekRewritePromptV4,
   calculateDeepSeekCostV4,
   decideBlogQualityRouteV4,
   isBlogGenerationWindowKstV4,
@@ -35,9 +36,42 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(decideBlogQualityRouteV4({ score: 74.99, completedAttempts: 1 }).nextStage).toBe('rewrite_pro_max');
   });
 
-  it('quarantines non-converging or third-attempt candidates', () => {
-    expect(decideBlogQualityRouteV4({ score: 79, previousScore: 76, completedAttempts: 2 }).route).toBe('quarantine');
+  it('uses the third model call for a final max rewrite even when attempt two did not converge', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 79,
+      previousScore: 76,
+      completedAttempts: 2,
+    })).toMatchObject({
+      route: 'rewrite_pro_max',
+      nextStage: 'rewrite_pro_max',
+      reasons: expect.arrayContaining(['final_rewrite_attempt', 'rewrite_not_converging_observed']),
+    });
+    expect(decideBlogQualityRouteV4({
+      score: 74,
+      previousScore: 70,
+      completedAttempts: 2,
+      hardBlockers: ['unsupported_number'],
+    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
+  });
+
+  it('quarantines only after the third completed model call', () => {
     expect(decideBlogQualityRouteV4({ score: 89, completedAttempts: 3 }).route).toBe('quarantine');
+  });
+
+  it('builds a bounded rewrite contract that preserves the claim-ledger envelope', () => {
+    const prompt = buildDeepSeekRewritePromptV4({
+      originalDraft: '# 다낭\n\n초안 본문',
+      failureEvidence: ['unsupported_number', 'primary_decision_not_answered'],
+      researchFingerprint: 'research-1',
+      claimFingerprint: 'claims-1',
+    });
+
+    expect(prompt).toContain('Answer that decision directly in the first paragraph.');
+    expect(prompt).toContain('Delete every numeric expression that does not appear verbatim in an approved claim.');
+    expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_START');
+    expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_END -->');
+    expect(prompt).toContain('- unsupported_number');
+    expect(prompt).toContain('# 다낭\n\n초안 본문');
   });
 
   it('never auto-publishes HIGH risk without human approval', () => {

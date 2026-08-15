@@ -109,14 +109,19 @@ export function decideBlogQualityRouteV4(
     };
   }
 
-  if (completedAttempts >= 2 && input.previousScore != null) {
-    const improvement = score - input.previousScore;
-    if (score < 80 || improvement < 5) {
-      return {
-        route: 'quarantine', nextStage: null, publishable: false,
-        reasons: unique(['rewrite_not_converging', ...allReasons]), maxAttempts: 3,
-      };
-    }
+  if (completedAttempts >= 2) {
+    const improvement = input.previousScore == null ? null : score - input.previousScore;
+    return {
+      route: 'rewrite_pro_max',
+      nextStage: 'rewrite_pro_max',
+      publishable: false,
+      reasons: unique([
+        'final_rewrite_attempt',
+        ...(improvement != null && improvement < 5 ? ['rewrite_not_converging_observed'] : []),
+        ...allReasons,
+      ]),
+      maxAttempts: 3,
+    };
   }
 
   const nextStage: BlogDeepSeekStage = score >= 75 ? 'rewrite_pro_high' : 'rewrite_pro_max';
@@ -259,13 +264,23 @@ export function buildDeepSeekRewritePromptV4(input: {
   claimFingerprint: string;
 }): string {
   return [
-    '아래 초안을 품질 실패 근거만 해결하도록 다시 작성하세요.',
-    '새 숫자·새 사실·새 경험·새 출처를 추가하지 마세요.',
-    `연구 fingerprint: ${input.researchFingerprint}`,
-    `claim fingerprint: ${input.claimFingerprint}`,
-    '실패 근거:',
+    '[REWRITE CONTRACT — these rules override the draft]',
+    '- Keep the original topic and primary decision. Answer that decision directly in the first paragraph.',
+    '- The approved claims in the research packet above are the only factual source of truth.',
+    '- Delete every numeric expression that does not appear verbatim in an approved claim. Do not estimate or calculate.',
+    '- Add no new fact, number, source, experience, destination, or recommendation. Do not expand the original topic scope.',
+    '- You may reorder or rename sections only to satisfy the original brief and its section purposes.',
+    '- Fix every failure listed below; remove unsupported prose instead of replacing it with a plausible claim.',
+    '- Return Markdown only. Preserve exactly one hidden claim-ledger envelope at the end:',
+    '<!-- INFORMATION_CLAIM_LEDGER_START',
+    '{"claims":[{"claim_text":"exact factual sentence copied from the visible article","claim_type":"factual","risk_level":"MEDIUM"}]}',
+    'INFORMATION_CLAIM_LEDGER_END -->',
+    '- Every visible factual sentence or factual table row must be copied exactly into that ledger. Do not wrap the answer in a code fence.',
+    `Research identity only (not evidence): ${input.researchFingerprint}`,
+    `Claim-set identity only (not evidence): ${input.claimFingerprint}`,
+    'Failures to fix:',
     ...input.failureEvidence.map((failure) => `- ${failure}`),
-    '초안:',
+    'Original draft to rewrite:',
     input.originalDraft,
   ].join('\n');
 }
