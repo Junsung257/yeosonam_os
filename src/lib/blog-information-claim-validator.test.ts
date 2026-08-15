@@ -54,6 +54,24 @@ describe('V3 editorial decision guidance classification', () => {
       factualClassification: null,
     });
   });
+
+  it('keeps a source-neutral route-choice explanation out of the factual ledger', () => {
+    expect(classifyBlogInformationStatement(
+      '같은 반나절이라도 도시에서 가까운 곳과 서쪽으로 이동해야 하는 곳은 선택 기준이 달라지므로, 내 우선순위에 따라 하나씩 확인하는 방식이 가장 명확합니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('still blocks a destination fact that merely mentions an itinerary choice', () => {
+    expect(classifyBlogInformationStatement(
+      '마블 마운틴은 다낭 도심 서쪽에 있어 일정에 따라 선택해야 합니다.',
+    )).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind: 'requirement_prohibition' },
+    });
+  });
 });
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {

@@ -188,6 +188,7 @@ const SUBJECTIVE_EDITORIAL_RE = /(?:저는|개인적으로|제 생각|느낌|취
 const EDITORIAL_READING_GUIDANCE_RE = /(?:(?:먼저|우선).*(?:봐야|확인해야).*(?:실수|혼선|누락).*(?:줄일|피할)\s*수\s*있)|(?:(?:처음 읽는 분|먼저).*(?:표|요약|체크리스트).*(?:골라 읽|저장해도|보면 됩니다|확인))|(?:숫자는\s*(?:확정값|실시간값)이\s*아니라\s*(?:비교|참고)\s*기준)|(?:출발\s*\d+\s*(?:일|시간)\s*전.*(?:공식 안내|예약 조건).*다시\s*확인)/i;
 const V3_DECISION_GUIDANCE_RE = /(?:고를\s*때|선택할\s*때|일정에\s*넣는다면|자신의\s*여행\s*스타일|먼저\s*.+(?:정한|고른)|(?:무엇|어디|어떤).*(?:기준|질문)|어디를\s*갈지는.*(?:시간|체력|동행|일정|우선순위).*(?:따라\s*달라|정해야|고르면)|(?:이|가)\s*핵심입니다|함께\s*보아야\s*합니다|확인해야\s*합니다|다른\s*.+(?:고르는|바꾸는)\s*것이\s*더\s*현실적입니다|자세한\s*.+에서\s*확인할\s*수\s*있습니다)/i;
 const V3_DIRECT_DECISION_ANSWER_RE = /(?:어디를\s*갈지|무엇을\s*고를지|장소를\s*(?:고르|선택)|후보를\s*(?:고르|선택)).*(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교|결정|고르|선택)|(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교).*(?:결정|고르|선택)/i;
+const V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE = /^(?:같은|내|자신의|여행자는|일정에|어디를|무엇을|먼저\s).*(?:선택\s*기준|우선순위|일정|체력|동행|비교|결정|확인).*(?:정하|고르|선택|비교|확인|좁히|달라지|방식)/i;
 const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
@@ -200,7 +201,8 @@ export function classifyBlogInformationStatement(segment: string): {
   // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
   const factualClassification = classifyClaim(segment);
   const directDecisionGuidance = V3_DECISION_GUIDANCE_RE.test(segment)
-    || V3_DIRECT_DECISION_ANSWER_RE.test(segment);
+    || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment);
   if (
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
