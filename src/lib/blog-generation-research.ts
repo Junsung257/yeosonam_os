@@ -27,7 +27,10 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
   local_transport: { price: 2, duration: 2 },
   hotel_areas: { price: 3, factual: 3 },
   family_budget: { price: 4 },
-  itinerary: { duration: 1, factual: 2 },
+  // V3 separately requires at least three evidence-linked destination decision
+  // details. Do not reject a safe packet merely because a detail is typed as
+  // duration or superlative rather than the generic `factual` bucket.
+  itinerary: { duration: 1, factual: 1 },
   shopping_souvenirs: { price: 3, factual: 2 },
   currency_payment: { currency: 1, factual: 3 },
   entry_requirements: { entry_visa: 2, policy: 2 },

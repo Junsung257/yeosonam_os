@@ -10,6 +10,7 @@ import {
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
 import {
+  BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT,
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
@@ -476,6 +477,13 @@ function localTransportReadiness() {
 }
 
 describe('blog generation research preflight', () => {
+  it('lets V3 enforce three evidence-linked details without requiring two generic factual claims', () => {
+    expect(BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT.itinerary).toEqual({
+      duration: 1,
+      factual: 1,
+    });
+  });
+
   it('adds verified destination and purpose-stay context for entry requirements and stays idempotent', () => {
     const initial = [
       '# 미국 입국 요건과 비자',
