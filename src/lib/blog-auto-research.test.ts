@@ -836,6 +836,7 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(promptFor('family_budget')).toContain('Exclude rent, gym membership, preschool tuition');
     expect(promptFor('family_budget')).toContain('newest reviewed official operator fare sheet');
     expect(promptFor('itinerary')).toContain('A visa stay limit is not an itinerary duration');
+    expect(promptFor('itinerary')).toContain('Minimum total independently supported claims: 6');
     expect(promptFor('shopping_souvenirs')).toContain('Exclude generic clothing, shoes, rent, restaurant');
     expect(promptFor('hotel_areas')).toContain('nightly price samples');
   });

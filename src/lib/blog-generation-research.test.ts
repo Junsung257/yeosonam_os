@@ -11,6 +11,7 @@ import {
 } from './blog-information-evidence';
 import {
   BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT,
+  BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT,
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
@@ -477,11 +478,12 @@ function localTransportReadiness() {
 }
 
 describe('blog generation research preflight', () => {
-  it('lets V3 enforce three evidence-linked details without requiring two generic factual claims', () => {
+  it('requires three evidence-linked details plus enough supported facts to write a useful itinerary decision', () => {
     expect(BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT.itinerary).toEqual({
       duration: 1,
       factual: 1,
     });
+    expect(BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT.itinerary).toBe(6);
   });
 
   it('adds verified destination and purpose-stay context for entry requirements and stays idempotent', () => {

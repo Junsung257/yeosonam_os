@@ -529,4 +529,27 @@ describe('blog engine v2 evaluation', () => {
 
     expect(evaluation.metrics.task_completion).toBe(100);
   });
+
+  it('accepts a direct V3 decision answer without forcing a number into the opening', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 다낭 가볼만한곳 선택 기준',
+        '',
+        '다낭에서 어디를 갈지는 내 일정의 시간과 동행자의 체력, 원하는 경험을 먼저 비교해 고릅니다. 아래 공식 정보에 내 우선순위를 대입하면 선택지를 좁힐 수 있습니다.',
+        '',
+        '## 오행산 공식 정보',
+        '',
+        '[공식 근거](https://vietnam.travel/things-to-do/must-visit-places-in-da-nang)',
+      ].join('\n'),
+      primaryKeyword: '다낭 가볼만한곳 선택 기준',
+      destination: '다낭',
+      contentType: 'guide',
+      generationMeta: {
+        writer: 'info_writer',
+        content_brief_v3: { version: 'blog-quality-v3.1' },
+      },
+    });
+
+    expect(evaluation.metrics.task_completion).toBe(100);
+  });
 });

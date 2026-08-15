@@ -554,13 +554,16 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
 export function checkAiReadability(
   blog_html: string,
   blog_type: 'product' | 'info' = 'product',
+  flexibleInformationalBrief = false,
 ): GateResult {
   const lines = blog_html.split('\n');
 
   // 1) H2 밀도
   const h2Lines = lines.filter(l => /^##\s+\S/.test(l.trim()));
   const h2Count = h2Lines.length;
-  const h2Range = blog_type === 'info' ? { min: 5, max: 9 } : { min: 3, max: 6 };
+  const h2Range = blog_type === 'info'
+    ? (flexibleInformationalBrief ? { min: 2, max: 9 } : { min: 5, max: 9 })
+    : { min: 3, max: 6 };
   const h2Ok = h2Count >= h2Range.min && h2Count <= h2Range.max;
 
   // 2) 정의 문단 — H1 다음 200자
@@ -591,13 +594,19 @@ export function checkAiReadability(
   const extractableOk = numberedList >= 1 || tableRow >= 2 || bulletList >= 2;
 
   const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)/.test(intro);
-  const criteria = [
-    { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
-    { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
-    { key: 'faq_block', ok: faqOk, qPatterns, qHeadings, hasFaqHeading },
-    { key: 'question_h2', ok: questionH2Ok, count: questionH2 },
-    { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
-  ];
+  const criteria = flexibleInformationalBrief
+    ? [
+        { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
+        { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
+        { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
+      ]
+    : [
+        { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
+        { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
+        { key: 'faq_block', ok: faqOk, qPatterns, qHeadings, hasFaqHeading },
+        { key: 'question_h2', ok: questionH2Ok, count: questionH2 },
+        { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
+      ];
   const okCount = criteria.filter(c => c.ok).length;
   const passed = okCount >= 3;
 
@@ -1148,7 +1157,21 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   ));
   gates.push(checkCliche(input.blog_html, blogType));
   gates.push(await checkDuplicate(input));
-  gates.push(checkKeywordDensity(input.blog_html, input.primary_keyword, blogType));
+  const keywordDensity = checkKeywordDensity(input.blog_html, input.primary_keyword, blogType);
+  gates.push(
+    input.generation_meta?.content_brief_v3 && !keywordDensity.passed
+      ? {
+          ...keywordDensity,
+          passed: true,
+          reason: undefined,
+          evidence: {
+            ...(keywordDensity.evidence ?? {}),
+            advisory: true,
+            policy: 'v3_natural_query_use_without_density_target',
+          },
+        }
+      : keywordDensity,
+  );
   gates.push(checkHook(input.blog_html));
   gates.push(checkCta(input.blog_html));
   gates.push(checkCtaDestinationIntegrity(input));
@@ -1159,7 +1182,11 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
     : (adaptive?.productMinReadability ?? 60);
   gates.push(checkReadability(input.blog_html, readThreshold));
   // AI 인용 최적화 (Cue/AIO/SGE) — 9번째 게이트
-  gates.push(checkAiReadability(input.blog_html, blogType));
+  gates.push(checkAiReadability(
+    input.blog_html,
+    blogType,
+    Boolean(input.generation_meta?.content_brief_v3),
+  ));
   // 실제 상세 페이지 렌더 기준 검증 — 이미지/링크/헤딩 마크다운 잔여물 차단
   gates.push(await checkRenderIntegrity(input.blog_html));
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단

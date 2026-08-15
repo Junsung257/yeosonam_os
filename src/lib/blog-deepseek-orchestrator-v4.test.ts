@@ -100,6 +100,8 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('source-neutral editorial guidance');
     expect(prompt).toContain('one question-form H2');
     expect(prompt).toContain('Markdown bullet list of 3-5 reader-choice questions');
+    expect(prompt).toContain('Keep evidence-section H2 labels neutral');
+    expect(prompt).toContain('Do not introduce a new place property inside a question');
   });
 
   it('never auto-publishes HIGH risk without human approval', () => {

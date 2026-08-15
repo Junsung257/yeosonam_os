@@ -266,7 +266,7 @@ export function buildBlogEngineV2Brief(input: BuildBriefInput): BlogEngineV2Brie
   };
 }
 
-function scoreInfoTask(markdown: string): number {
+function scoreInfoTask(markdown: string, flexibleV3 = false): number {
   const first = firstBodyParagraph(markdown);
   if (!first) return 0;
   let score = 45;
@@ -296,6 +296,17 @@ function scoreInfoTask(markdown: string): number {
   const concreteSignal = /\d|원|℃|박|일|시간|성수기|우기|건기|출발|현지|공식|공항|항공|숙소|~|–|-/.test(first);
   if (actionFirst && customerTravelNeed && concreteSignal) {
     score = Math.max(score, 100);
+  }
+  if (
+    flexibleV3
+    && first.length >= 80
+    && !/^(안녕하세요|오늘은|이번\s*글에서는|여소남\s*에디터)/.test(first)
+    && /(고르|선택|비교|기준|판단|좁혀|대입|정하)/.test(first)
+    && /(시간|체력|동행|일정|우선순위|비용|숙소|호텔|교통|날씨|준비)/.test(first)
+  ) {
+    // Flexible V3 briefs may answer a decision without fabricating a number in
+    // the opening paragraph. Numeric facts remain governed by the claim gate.
+    score = 100;
   }
   const weatherDecisionFirst =
     /(날씨|옷차림|기온|비|우산|우비|방수|겉옷|자외선|일교차)/.test(first)
@@ -503,7 +514,7 @@ export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluati
   const metrics = {
     task_completion: brief.writer_type === 'product_consultant_writer'
       ? scoreProductDecision(blogHtml, brief)
-      : scoreInfoTask(blogHtml),
+      : scoreInfoTask(blogHtml, Boolean(asRecord(input.generationMeta).content_brief_v3)),
     customer_language: scoreCustomerLanguage(blogHtml, brief.writer_type),
     naturalness: scoreNaturalness(blogHtml),
     faithfulness: scoreFaithfulness(blogHtml, brief),

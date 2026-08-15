@@ -37,6 +37,23 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
   travel_insurance: { insurance: 4, policy: 2 },
 };
 
+/**
+ * Type minimums prevent a packet from containing the wrong kind of facts;
+ * total minimums prevent a nominally valid but editorially unusable packet.
+ * Attraction/itinerary decisions need more than the three entity details used
+ * by the flexible brief because each choice also needs a supported constraint
+ * or comparison input.
+ */
+export const BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT: Partial<Record<
+  BlogInformationIntent,
+  number
+>> = {
+  itinerary: 6,
+  hotel_areas: 8,
+  airport_transport: 6,
+  local_transport: 6,
+};
+
 const BLOG_INFORMATION_MINIMUM_SOURCE_DOMAINS: Partial<Record<BlogInformationIntent, number>> = {
   food_budget: 1,
   monthly_weather: 1,
@@ -399,6 +416,10 @@ export function evaluateBlogGenerationResearchReadiness(input: {
   for (const [claimType, minimum] of Object.entries(minimums)) {
     const count = supportedClaims.filter((claim) => claim.claimType === claimType).length;
     if (count < Number(minimum)) issues.push(`claim_type_below_minimum:${claimType}:${count}/${minimum}`);
+  }
+  const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.intent] ?? 3;
+  if (supportedClaims.length < minimumTotalClaims) {
+    issues.push(`supported_claim_count_below_minimum:${supportedClaims.length}/${minimumTotalClaims}`);
   }
 
   const supportedClaimText = supportedClaims.map((claim) => normalize(claim.claimText)).join('\n');

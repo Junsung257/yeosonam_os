@@ -144,6 +144,23 @@ function inspectIntent(
   expectedIntent: BlogInformationIntent,
   issues: BlogRenderedSeoIssue[],
 ): void {
+  const contentBriefV3 = readRecord(input.generationMeta?.content_brief_v3);
+  const metadataV3 = readRecord(contentBriefV3?.metadata);
+  if (contentBriefV3 && metadataV3) {
+    const fixedTitle = typeof metadataV3.title === 'string' ? metadataV3.title.trim() : '';
+    const fixedDescription = typeof metadataV3.description === 'string' ? metadataV3.description.trim() : '';
+    if (
+      (fixedTitle && fixedTitle !== input.title.trim())
+      || (fixedDescription && fixedDescription !== input.description.trim())
+    ) {
+      addIssue(
+        issues,
+        'metadata_intent_mismatch',
+        'title/H1/description이 V3 고정 메타데이터 계약과 일치하지 않습니다.',
+      );
+    }
+    return;
+  }
   if (expectedIntent === 'general') return;
   const titleIntent = inferBlogInformationIntent({
     topic: input.title,

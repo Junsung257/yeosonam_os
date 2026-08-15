@@ -114,4 +114,26 @@ describe('informational rendered SEO quality', () => {
 
     expect(report.issues.map((issue) => issue.code)).not.toContain('empty_heading');
   });
+
+  it('uses the fixed V3 metadata contract instead of legacy intent inference', async () => {
+    const title = '다낭 가볼만한곳 선택 기준: 시간·체력에 맞춰 고르는 법';
+    const description = '다낭 가볼만한곳 선택 기준을 시간과 체력, 동행자 우선순위에 맞춰 공식 근거와 함께 비교합니다.';
+    const report = await inspectBlogRenderedSeoQuality({
+      slug: 'danang-attractions-route-selector',
+      title,
+      description,
+      destination: '다낭',
+      markdown: '답부터 비교합니다.\n\n## 오행산 공식 정보\n\n검증된 사실을 확인합니다.',
+      generationMeta: {
+        content_brief_v3: {
+          metadata: { title, description },
+        },
+        information_representative: {
+          intent: 'itinerary',
+        },
+      },
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('metadata_intent_mismatch');
+  });
 });

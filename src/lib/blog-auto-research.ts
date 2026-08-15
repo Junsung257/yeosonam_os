@@ -25,6 +25,7 @@ import {
 } from '@/lib/blog-information-official-source';
 import {
   BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT,
+  BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT,
   BLOG_INFORMATION_RESEARCH_META_KEY,
   evaluateBlogGenerationResearchReadiness,
 } from '@/lib/blog-generation-research';
@@ -1130,6 +1131,7 @@ export function buildBlogGroundingResearchPrompt(input: {
   )
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
+  const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.brief.intentType] ?? 3;
   return [
     'You are a source-first travel researcher. Use Google Search before answering.',
     `Current date: ${input.now.toISOString().slice(0, 10)}.`,
@@ -1154,6 +1156,7 @@ export function buildBlogGroundingResearchPrompt(input: {
     'Required decision facts:',
     requiredFacts,
     `Minimum independently supported claims by type: ${claimMinimums}.`,
+    `Minimum total independently supported claims: ${minimumTotalClaims}.`,
     'Run separate searches for each required decision fact before selecting sources.',
     'Prioritize exact decision facts over general background, provider directories, contact details, addresses, or marketing descriptions.',
     'Do not use company names, telephone numbers, email addresses, or street addresses merely to fill the claim quota unless a required decision fact explicitly asks for them.',
@@ -1259,6 +1262,7 @@ export function buildBlogStructuredResearchPrompt(input: {
   )
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
+  const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.brief.intentType] ?? 3;
   const intentInstructions = input.brief.intentType === 'food_budget'
     ? [
         'FOOD BUDGET PRIORITY:',
@@ -1349,6 +1353,7 @@ export function buildBlogStructuredResearchPrompt(input: {
     'For price or currency evidence, currency must be an explicit ISO currency code.',
     'Omit optional unit, currency, validFrom, or validUntil when the digest does not state it.',
     `Minimum independently supported claims by type: ${claimMinimums}.`,
+    `Minimum total independently supported claims: ${minimumTotalClaims}.`,
     'Return exactly one compact JSON object with this shape:',
     '{"sources":[{"sourceKey":"s1","groundingChunkIndex":0,"publisher":"...","sourceType":"...","claimTypes":["price"],"country":"...","destination":"..."}],"evidence":[{"evidenceKey":"e1","sourceKey":"s1","excerpt":"...","sourceLocator":"...","claimType":"price","riskLevel":"MEDIUM","country":"...","destination":"...","applicableTo":"한국인 여행자","normalizedValue":"100","unit":"1회","currency":"USD","conditions":["..."]}],"claims":[{"claimText":"...","claimType":"price","riskLevel":"MEDIUM","evidenceKeys":["e1"],"normalizedValue":"100","unit":"1회","currency":"USD"}]}',
     'Required decision facts:',

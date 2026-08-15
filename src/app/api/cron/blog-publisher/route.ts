@@ -3168,7 +3168,6 @@ async function processQueueItem(
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const orchestrationQualityScore = Math.min(
       qualityEvaluationV3.score,
-      publishQuality.blogQualityScore.score,
       publishQuality.publicCustomerQuality.score,
     );
     const orchestrationFailureReasons = [
