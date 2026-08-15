@@ -32,6 +32,9 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(decideBlogQualityRouteV4({
       score: 71, completedAttempts: 1, hardBlockers: ['unsupported_number'],
     })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
+    expect(decideBlogQualityRouteV4({
+      score: 82, completedAttempts: 1, hardBlockers: ['unsupported_first_party_claim'],
+    })).toMatchObject({ route: 'rewrite_pro_high', nextStage: 'rewrite_pro_high' });
   });
 
   it('routes 75-89 to Pro high and lower soft scores to Pro max', () => {

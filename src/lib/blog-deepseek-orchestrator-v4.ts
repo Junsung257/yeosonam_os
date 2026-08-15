@@ -53,7 +53,6 @@ const NON_REWRITABLE_BLOCKERS = new Set([
   'stale_etias_2025_or_7_euro',
   'template_saturation',
   'title_skeleton_saturated',
-  'unsupported_first_party_claim',
 ]);
 
 function unique(values: string[]): string[] {

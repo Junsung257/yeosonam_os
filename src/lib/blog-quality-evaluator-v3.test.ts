@@ -41,6 +41,13 @@ describe('explainable blog quality evaluator v3', () => {
     expect(evaluateBlogQualityV3({ ...base, title: 'ETIAS 안내', body: 'ETIAS는 2025년 상반기부터 7유로입니다.' }).hardBlockers).toContain('stale_etias_2025_or_7_euro');
   });
 
+  it('does not confuse an instruction to verify locally with a claimed field verification', () => {
+    expect(evaluateBlogQualityV3({ ...base, body: '현지에서 확인이 필요합니다.' }).hardBlockers)
+      .not.toContain('unsupported_first_party_claim');
+    expect(evaluateBlogQualityV3({ ...base, body: '현지에서 확인했습니다.' }).hardBlockers)
+      .toContain('unsupported_first_party_claim');
+  });
+
   it('fails part suffix, generic checklist and destination-swapped weather saturation', () => {
     expect(evaluateBlogQualityV3({ ...base, title: '오사카 숙소 위치 (2편)' }).hardBlockers).toContain('numeric_part_title_suffix');
     expect(evaluateBlogQualityV3({ ...base, body: '이곳 준비물입니다. 이곳 체크리스트입니다. 이곳에서 확인하세요.', destinationSpecificDetailCount: 0 }).passed).toBe(false);
