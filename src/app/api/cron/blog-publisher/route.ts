@@ -4,7 +4,11 @@ import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
-import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import {
+  generateBlogTextWithReceipt,
+  hasBlogApiKey,
+  type BlogAiTextResult,
+} from '@/lib/blog-ai-caller';
 import { generateBlogSeo, type AngleType } from '@/lib/content-generator';
 import { buildProductBlogBrief, buildProductSlugSuffix } from '@/lib/blog-product-brief';
 import { generateProductConsultantBlogPost } from '@/lib/blog-product-consultant-writer';
@@ -169,6 +173,18 @@ import { enrichBlogDemandWithNaverV3 } from '@/lib/blog-live-demand-v3';
 import type { BlogInformationResearchBundle } from '@/lib/blog-information-evidence';
 import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
 import {
+  BLOG_DEEPSEEK_MODELS,
+  buildDeepSeekRewritePromptV4,
+  decideBlogQualityRouteV4,
+  nextBlogPublicationSlotKstV4,
+  type BlogDeepSeekStage,
+} from '@/lib/blog-deepseek-orchestrator-v4';
+import {
+  approveBlogGenerationRunForSlotV4,
+  readLatestBlogGenerationAttemptV4,
+  recordBlogGenerationAttemptV4,
+} from '@/lib/blog-generation-run-v4';
+import {
   BLOG_RUNTIME_RESOURCES_V3,
   probeBlogRuntimeSchemaWithSupabaseV3,
 } from '@/lib/blog-runtime-readiness-v3';
@@ -192,7 +208,7 @@ import {
 } from '@/lib/blog-private-regeneration';
 
 /**
- * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
+ * 블로그 생성/검증 실행기. V4 production schedule은 blog-generate wrapper에서 야간에 호출한다.
  *
  * 로직:
  *   1) blog_topic_queue WHERE target_publish_at <= NOW() AND status='queued' 스캔 (최대 MAX_BATCH)
@@ -202,10 +218,10 @@ import {
  *         - pillar       → /destinations/[city] 허브 (장문 AI)
  *         - card_news    → from-card-news `publisher_bridge`(본문만) + 퍼블리셔가 단일 INSERT/승격
  *         - product      → product_consultant_writer (템플릿)
- *         - 나머지       → Gemini 2.5 Flash + style guide
- *      c. 4-Gate 검증 (length·cliche·duplicate·keyword_density)
- *      d. Pass → content_creatives insert 또는 draft 승격(status='published') + 색인 알림 + ISR revalidate
- *         Fail → attempts++ / 2회 초과 시 status='failed'
+ *         - 나머지       → DeepSeek V4 Flash 초안, 필요 시 Pro 제한 재작성
+ *      c. claim·수요·중복·언어·공개표면 품질 검증
+ *      d. generate_only는 승인 초안만 적재하고, 주간 controller가 모델 호출 없이 공개
+ *         Fail → 최대 3회 내 재작성/재연구 후 격리
  *   3) 실패 사유는 error_patterns RAG 에 자동 기록 (자기학습)
  *
  * 멀티테넌시: blog_topic_queue.tenant_id 그대로 content_creatives 에 전파
@@ -222,12 +238,12 @@ const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 8, MAX_BATCH, 8);
 const MAX_CANDIDATE_ATTEMPTS_PER_RUN = 8;
+const BLOG_DAILY_CANDIDATE_CAP = readBoundedIntEnv('BLOG_DAILY_CANDIDATE_CAP', 30, 1, 30);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
 // V3 never deterministically invents or appends content to satisfy a gate.
 const BLOG_AUTOPUBLISH_POLICY_V3 = readBlogAutopublishPolicyV3();
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS = 55_000;
-const BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS = 30_000;
 const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192;
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
@@ -531,6 +547,7 @@ function classifyPublisherFailure(reason?: string): string {
 function buildPublisherFailureBreakdown(results: Array<{ status: string; reason?: string }>): Record<string, number> {
   return results
     .filter(result => result.status !== 'published'
+      && result.status !== 'approved_for_slot'
       && result.status !== 'done'
       && result.status !== 'deferred_buffer'
       && result.status !== 'deferred_time_budget')
@@ -553,19 +570,15 @@ function withPublisherTimeout<T>(promise: Promise<T>, timeoutMs: number, label: 
 
 function generatePublisherBlogText(
   prompt: string,
-  options: Parameters<typeof generateBlogText>[1] = {},
-): Promise<string> {
+  options: Partial<Parameters<typeof generateBlogTextWithReceipt>[1]> = {},
+): Promise<BlogAiTextResult> {
   return withPublisherTimeout(
-    generateBlogText(prompt, {
+    generateBlogTextWithReceipt(prompt, {
       ...options,
+      model: options.model ?? BLOG_DEEPSEEK_MODELS.draft,
       maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS,
-      thinkingBudget: options.thinkingBudget ?? 0,
-      cascade: {
-        firstTry: 'gemini',
-        fallback: 'deepseek',
-        firstTryTimeoutMs: BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS,
-        fallbackTimeoutMs: BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS,
-      },
+      deepseekThinking: options.deepseekThinking ?? 'disabled',
+      requestTimeoutMs: options.requestTimeoutMs ?? BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS,
     }),
     BLOG_PUBLISHER_AI_TIMEOUT_MS,
     'blog_ai_generation',
@@ -634,6 +647,20 @@ async function getTodayBlogPublishCount(): Promise<{ count: number; dayKey: stri
     return { count: 0, dayKey: range.dayKey };
   }
   return { count: count ?? 0, dayKey: range.dayKey };
+}
+
+async function getTodayBlogGenerationCount(): Promise<number> {
+  const range = getKstDayRangeUtc();
+  const { count, error } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', range.startIso)
+    .lt('created_at', range.endIso);
+  if (error) {
+    logWarning('[cron/blog-publisher] V4 generation count unavailable', error);
+    return 0;
+  }
+  return Number(count ?? 0);
 }
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
@@ -1299,7 +1326,7 @@ async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
   return { deferred: ids.length };
 }
 
-async function runBlogPublisher(request: NextRequest) {
+export async function runBlogPublisher(request: NextRequest) {
   if (!isCronOrVercelAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
@@ -1307,6 +1334,7 @@ async function runBlogPublisher(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
+  const deferPublication = request.nextUrl.searchParams.get('phase') === 'generate_only';
 
   const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
     supabaseAdmin,
@@ -1489,6 +1517,7 @@ async function runBlogPublisher(request: NextRequest) {
       const result = await processQueueItem(item, new Map(), {
         startedAtMs: startTime,
         validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined,
+        deferPublication,
       });
       const targetedAttempts = 1;
       results.push(result);
@@ -1544,7 +1573,7 @@ async function runBlogPublisher(request: NextRequest) {
         };
       }
 
-      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });
       results.push(result);
       const published = result.status === 'published' ? 1 : 0;
       return {
@@ -1584,21 +1613,26 @@ async function runBlogPublisher(request: NextRequest) {
     });
     const pillarDeferral = await deferDuePillarQueueItems();
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
-    const targetPostsToday = Math.min(
-      BLOG_AUTOPUBLISH_POLICY_V3.dailyPublishCap,
-      normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET),
-    );
+    const targetPostsToday = deferPublication
+      ? BLOG_DAILY_CANDIDATE_CAP
+      : Math.min(
+          BLOG_AUTOPUBLISH_POLICY_V3.dailyPublishCap,
+          normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET),
+        );
     const todayQuota = await getTodayBlogPublishCount();
     const slotQuota = calculateBlogPublishSlotQuota({
       dailyTarget: targetPostsToday,
       alreadyPublished: todayQuota.count,
       slotTimes: publishPolicy?.slot_times,
     });
-    const remainingDueNow = slotQuota.remainingDueNow;
+    const generatedToday = deferPublication ? await getTodayBlogGenerationCount() : 0;
+    const remainingDueNow = deferPublication
+      ? Math.max(0, BLOG_DAILY_CANDIDATE_CAP - generatedToday)
+      : slotQuota.remainingDueNow;
     if (remainingDueNow <= 0) {
       const dailyQuotaReached = slotQuota.remainingDaily <= 0;
       let atomicUpgradeResult: Awaited<ReturnType<typeof processQueueItem>> | null = null;
-      if (dailyQuotaReached && canStartPublisherQueueItem({
+      if (!deferPublication && dailyQuotaReached && canStartPublisherQueueItem({
         source: 'quality_upgrade',
         meta: {
           private_regeneration: {
@@ -1730,6 +1764,7 @@ async function runBlogPublisher(request: NextRequest) {
       cardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(cardNewsIds) : new Map<string, number>();
 
     let publishedThisRun = 0;
+    let slotCompletionsThisRun = 0;
     let extraClaimRounds = 0;
     let pullForwarded = 0;
     let emergencyRefillRounds = 0;
@@ -1747,7 +1782,7 @@ async function runBlogPublisher(request: NextRequest) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
         continue;
       }
-      if (publishedThisRun >= remainingDueNow) {
+      if (slotCompletionsThisRun >= remainingDueNow) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
@@ -1759,12 +1794,13 @@ async function runBlogPublisher(request: NextRequest) {
       }
       attemptedQueueIds.add(item.id);
       try {
-        const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime });
+        const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime, deferPublication });
         results.push(r);
         if (r.status === 'published') {
           publishedThisRun += 1;
         }
-        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
+        if (r.status === 'published' || r.status === 'approved_for_slot') slotCompletionsThisRun += 1;
+        if (r.status !== 'published' && r.status !== 'approved_for_slot' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
           candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
@@ -1773,7 +1809,7 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     while (
-      publishedThisRun < remainingDueNow
+      slotCompletionsThisRun < remainingDueNow
       && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS
       && attemptedQueueIds.size < MAX_CANDIDATE_ATTEMPTS_PER_RUN
     ) {
@@ -1782,7 +1818,7 @@ async function runBlogPublisher(request: NextRequest) {
         remainingMs: remaining,
         minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
         fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
-        remainingQuota: remainingDueNow - publishedThisRun,
+        remainingQuota: remainingDueNow - slotCompletionsThisRun,
         maxBatch: MAX_BATCH,
         claimPoolMultiplier: CLAIM_POOL_MULTIPLIER,
         maxCandidatePool: MAX_CANDIDATE_POOL,
@@ -1866,7 +1902,7 @@ async function runBlogPublisher(request: NextRequest) {
           results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
           continue;
         }
-        if (publishedThisRun >= remainingDueNow) break;
+        if (slotCompletionsThisRun >= remainingDueNow) break;
 
         const itemRemaining = publisherRemainingMs(startTime);
         if (!canStartPublisherQueueItem(item, itemRemaining)) {
@@ -1877,12 +1913,13 @@ async function runBlogPublisher(request: NextRequest) {
         attemptedQueueIds.add(item.id);
 
         try {
-          const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime });
+          const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime, deferPublication });
           results.push(r);
           if (r.status === 'published') {
             publishedThisRun += 1;
           }
-          if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
+          if (r.status === 'published' || r.status === 'approved_for_slot') slotCompletionsThisRun += 1;
+          if (r.status !== 'published' && r.status !== 'approved_for_slot' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
             candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
           }
         } catch (err) {
@@ -2029,12 +2066,14 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     const publishedCount = results.filter(r => r.status === 'published').length;
+    const approvedForSlotCount = results.filter(r => r.status === 'approved_for_slot').length;
+    const quotaCompletedCount = deferPublication ? approvedForSlotCount : publishedCount;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
     const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
-    const underfilledQuota = publishedCount < remainingDueNow;
+    const underfilledQuota = !deferPublication && quotaCompletedCount < remainingDueNow;
     if (underfilledQuota) {
       errors.push(
-        publishedCount === 0
+        quotaCompletedCount === 0
           ? 'publisher_zero_published_with_remaining_quota'
           : 'publisher_under_published_with_remaining_quota',
       );
@@ -2044,6 +2083,8 @@ async function runBlogPublisher(request: NextRequest) {
     return {
       processed: results.length,
       published: publishedCount,
+      approvedForSlot: approvedForSlotCount,
+      phase: deferPublication ? 'generate_only' : 'generate_and_publish',
       candidate_failures: candidateFailures,
       indexingWorker,
       publicSnapshotRefresh,
@@ -2053,7 +2094,7 @@ async function runBlogPublisher(request: NextRequest) {
         scheduledTargetNow: slotQuota.scheduledTargetNow,
         alreadyPublishedBeforeRun: todayQuota.count,
         remainingBeforeRun: remainingDueNow,
-        remainingAfterRun: Math.max(0, remainingDueNow - publishedCount),
+        remainingAfterRun: Math.max(0, remainingDueNow - quotaCompletedCount),
         remainingDailyAfterRun: Math.max(0, slotQuota.remainingDaily - publishedCount),
         nextSlot: slotQuota.nextSlot,
         slotTimes: slotQuota.slotTimes,
@@ -2061,6 +2102,7 @@ async function runBlogPublisher(request: NextRequest) {
       quota_fulfillment: {
         required: remainingDueNow,
         published: publishedCount,
+        approvedForSlot: approvedForSlotCount,
         met: !underfilledQuota,
         candidate_failures: candidateFailures.length,
         attempted_candidates: attemptedQueueIds.size,
@@ -2152,6 +2194,7 @@ async function processQueueItem(
   options: {
     startedAtMs?: number;
     validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
+    deferPublication?: boolean;
   } = {},
 ): Promise<{
   id: string;
@@ -2239,8 +2282,8 @@ async function processQueueItem(
     // 생성 경로 분기
     //   1) pillar → /destinations/[city] 허브 본문 생성 (장문 AI)
     //   2) card_news 연결 → from-card-news API 위임 (PNG 삽입 블로그)
-    //   3) product_id 있음 → product_consultant_writer (템플릿)
-    //   4) 나머지 → Gemini 정보성 글
+    //   3) product_id 있음 → grounded product draft + DeepSeek V4
+    //   4) 나머지 → research-backed DeepSeek V4 정보성 글
     const topicFit = evaluateBlogTopicFit({
       topic: item.topic,
       destination: item.destination,
@@ -3060,10 +3103,108 @@ async function processQueueItem(
         ? item.meta.first_party_source_ids.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
         : [],
     });
+    const previousOrchestration = item.meta?.ai_orchestration_v4 as Record<string, unknown> | undefined;
+    const aiOrchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
+    const orchestrationAttempt = Math.max(1, Math.min(3, Number(
+      aiOrchestrationMeta?.attempt || Number(item.attempts || 0) + 1,
+    )));
+    const generationReceipt = aiOrchestrationMeta?.receipt as BlogAiTextResult['receipt'] | undefined;
+    const qualityRouteV4: ReturnType<typeof decideBlogQualityRouteV4> = generationReceipt
+      ? decideBlogQualityRouteV4({
+          score: qualityEvaluationV3.score,
+          hardBlockers: qualityEvaluationV3.hardBlockers,
+          failureReasons: qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+          completedAttempts: orchestrationAttempt,
+          previousScore: typeof previousOrchestration?.previous_score === 'number'
+            ? previousOrchestration.previous_score
+            : null,
+          researchAttempts: Number(previousOrchestration?.research_attempts || 0),
+          riskLevel: contentBriefV3.riskLevel,
+          humanApproved: contentReviewStatus === 'approved',
+        })
+      : {
+          route: qualityEvaluationV3.passed ? 'approved_for_slot' : 'human_review',
+          nextStage: null,
+          publishable: qualityEvaluationV3.passed,
+          reasons: qualityEvaluationV3.passed ? ['non_model_candidate_quality_passed'] : ['non_model_candidate_review_required'],
+          maxAttempts: 3,
+        };
+    generationMeta.ai_orchestration_v4 = {
+      ...(aiOrchestrationMeta || {}),
+      version: 'blog-deepseek-orchestrator-v4',
+      attempt: orchestrationAttempt,
+      score: qualityEvaluationV3.score,
+      route: qualityRouteV4.route,
+      next_stage: qualityRouteV4.nextStage,
+      failure_evidence: qualityRouteV4.reasons,
+      evaluated_at: now,
+    };
+    if (generationReceipt && typeof generationReceipt.model === 'string') {
+      const attemptPersistence = await recordBlogGenerationAttemptV4({
+        queueId: item.id,
+        tenantId: item.tenant_id ?? null,
+        attemptNumber: orchestrationAttempt,
+        stage: String(aiOrchestrationMeta?.stage || 'draft_flash') as BlogDeepSeekStage,
+        route: qualityRouteV4.route,
+        output: {
+          title: generated.seo_title,
+          description: generated.seo_description,
+          slug: generated.slug,
+          markdown: generated.blog_html,
+        },
+        qualityScore: qualityEvaluationV3.score,
+        hardBlockers: qualityEvaluationV3.hardBlockers,
+        failureReasons: qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+        researchFingerprint: typeof item.meta?.information_research_fingerprint === 'string'
+          ? item.meta.information_research_fingerprint
+          : null,
+        claimFingerprint: typeof item.meta?.claim_fingerprint === 'string'
+          ? item.meta.claim_fingerprint
+          : null,
+        receipt: generationReceipt,
+      });
+      if (attemptPersistence.error) {
+        logWarning('[cron/blog-publisher] V4 generation attempt persistence failed', {
+          queueId: item.id,
+          error: attemptPersistence.error,
+        });
+        const reason = `generation_attempt_persistence_failed:${attemptPersistence.error}`;
+        await handleFailure(item, reason, qa, true, {
+          ai_orchestration_v4: {
+            ...generationMeta.ai_orchestration_v4 as Record<string, unknown>,
+            route: 'quarantine',
+            persistence_error: attemptPersistence.error,
+          },
+        });
+        return { id: item.id, topic: item.topic, status: 'quarantined', reason };
+      }
+    }
     generationMeta.corpus_diversity_v3 = corpusDiversity.error
       ? { passed: false, error: corpusDiversity.error }
       : diversityReport;
     generationMeta.quality_evaluation_v3 = qualityEvaluationV3;
+    if (['rewrite_pro_high', 'rewrite_pro_max', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
+      const researchAttempts = Number(previousOrchestration?.research_attempts || 0)
+        + (qualityRouteV4.route === 'reresearch' ? 1 : 0);
+      const reason = `blog_quality_v4_${qualityRouteV4.route}:${qualityRouteV4.reasons.join(',')}`;
+      await handleFailure(item, reason, qa, qualityRouteV4.route === 'quarantine', {
+        ai_orchestration_v4: {
+          version: 'blog-deepseek-orchestrator-v4',
+          previous_score: qualityEvaluationV3.score,
+          next_stage: qualityRouteV4.nextStage,
+          route: qualityRouteV4.route,
+          research_attempts: researchAttempts,
+          failure_evidence: qualityRouteV4.reasons,
+          last_attempted_at: now,
+        },
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: qualityRouteV4.route === 'quarantine' ? 'quarantined' : 'rewrite_queued',
+        reason,
+      };
+    }
     const autopublishDecision = evaluateBlogAutopublishDecisionV3(BLOG_AUTOPUBLISH_POLICY_V3, {
       reviewStatus: contentReviewStatus,
       allGatesPassed: publishQuality.passed
@@ -3072,6 +3213,7 @@ async function processQueueItem(
         && contentBriefV3.passed
         && corpusDiversity.error === null
         && qualityEvaluationV3.passed
+        && qualityRouteV4.publishable
         && demandScoreV3.eligible,
       deterministicFallback: generated.generation_meta?.private_diagnostic_fallback === true
         || generated.generation_meta?.deterministic_info_fallback === true,
@@ -3102,8 +3244,19 @@ async function processQueueItem(
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
       }));
-    const requiresHumanReview = contentRequiresHumanReview || !autopublishDecision.publish;
-    const publishAllowed = autopublishDecision.publish && !contentRequiresHumanReview;
+    const approvedForDeferredPublication = Boolean(
+      options.deferPublication
+      && generationReceipt
+      && qualityRouteV4.publishable
+      && autopublishDecision.publish
+      && !contentRequiresHumanReview,
+    );
+    const requiresHumanReview = contentRequiresHumanReview
+      || !autopublishDecision.publish
+      || Boolean(options.deferPublication && !approvedForDeferredPublication);
+    const publishAllowed = autopublishDecision.publish
+      && !contentRequiresHumanReview
+      && !options.deferPublication;
     const reviewedPublishedReplacement = publishedAtomicUpgrade
       && requiresHumanReview
       && !requiresClaimReview
@@ -3197,7 +3350,7 @@ async function processQueueItem(
         };
       }
     }
-    if (representativeIdentity && requiresHumanReview && !reviewedPublishedReplacement) {
+    if (representativeIdentity && (requiresHumanReview || approvedForDeferredPublication) && !reviewedPublishedReplacement) {
       representativeDecision = await reserveBlogInformationRepresentative({
         reservationOwner: representativeOwner,
         candidate: {
@@ -3249,7 +3402,7 @@ async function processQueueItem(
       angle_type: normalizeAngleType(item.angle_type),
       status: publishAllowed ? 'published' : 'draft',
       published_at: publishAllowed ? publicationTimestamp : null,
-      review_status: publishAllowed ? contentReviewStatus : 'pending_review',
+      review_status: (publishAllowed || approvedForDeferredPublication) ? contentReviewStatus : 'pending_review',
       quality_gate: publishQuality.readingTimeMinutes == null
         ? qa
         : withPersistedBlogReadingTime(qa, publishQuality.readingTimeMinutes),
@@ -3437,6 +3590,49 @@ async function processQueueItem(
         tenantId: item.tenant_id ?? null,
         report: reviewClaimValidation,
       });
+    }
+
+    if (approvedForDeferredPublication) {
+      if (representativeDecision) {
+        await attachBlogInformationRepresentativeDraft({
+          representativeKey: representativeDecision.representativeKey,
+          reservationOwner: representativeOwner,
+          creativeId,
+          canonicalSlug: generated.slug,
+        });
+      }
+      const scheduledPublishAt = nextBlogPublicationSlotKstV4(new Date(now));
+      const approvalPersistenceError = await approveBlogGenerationRunForSlotV4({
+        queueId: item.id,
+        creativeId,
+        scheduledPublishAt,
+      });
+      if (approvalPersistenceError) {
+        await handleFailure(item, `generation_run_approval_persistence_failed:${approvalPersistenceError}`, qa, true, {
+          content_creative_id: creativeId,
+        });
+        return { id: item.id, topic: item.topic, status: 'quarantined', reason: approvalPersistenceError };
+      }
+      await supabaseAdmin.from('blog_topic_queue').update({
+        status: 'pending_review',
+        content_creative_id: creativeId,
+        last_error: null,
+        attempts: 0,
+        meta: {
+          ...successfulQueueMeta,
+          ai_orchestration_v4: generationMeta.ai_orchestration_v4,
+          publication_deferred_v4: {
+            status: 'approved_for_slot',
+            scheduled_publish_at: scheduledPublishAt,
+          },
+        },
+      }).eq('id', item.id);
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'approved_for_slot',
+        reason: scheduledPublishAt,
+      };
     }
 
     if (representativeIdentity && !requiresHumanReview) {
@@ -3861,8 +4057,30 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
 
-  const raw = await generatePublisherBlogText(prompt, { temperature: 0.65 });
-  const blog_html = raw
+  const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+    ? requestedStage
+    : 'draft_flash';
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const failureEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
+    ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  const generationPrompt = generationStage === 'draft_flash'
+    ? prompt
+    : `${prompt}\n\n${buildDeepSeekRewritePromptV4({
+        originalDraft: priorAttempt?.output.markdown || '(이전 pillar 초안 없음)',
+        failureEvidence,
+        researchFingerprint: priorAttempt?.researchFingerprint || `pillar:${item.destination}`,
+        claimFingerprint: priorAttempt?.claimFingerprint || `pillar:${item.destination}`,
+      })}`;
+  const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
+    ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.65 }
+    : {
+        model: BLOG_DEEPSEEK_MODELS.rewrite,
+        deepseekThinking: 'enabled',
+        reasoningEffort: generationStage === 'rewrite_pro_max' ? 'max' : 'high',
+      });
+  const blog_html = generation.text
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -3894,12 +4112,22 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
     seo_title: seoTitle,
     seo_description: seoDescription,
     og_image_url,
+    generation_meta: {
+      ai_orchestration_v4: {
+        stage: generationStage,
+        attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        receipt: generation.receipt,
+      },
+    },
   };
 }
 
 // romanize()와 slugifyTopic()은 src/lib/slug-utils.ts로 이관 (SSOT 통합)
 
 async function generateFromProduct(item: any): Promise<GeneratedBlog> {
+  if (!hasBlogApiKey(BLOG_DEEPSEEK_MODELS.draft)) {
+    throw new Error('AI API 키 미설정 — 상품 블로그 생성 불가');
+  }
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
     .select('*')
@@ -3929,13 +4157,13 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
 
   const productBrief = buildProductBlogBrief(product, angle);
   const productConsultBrief = buildProductConsultBrief(productBrief);
-  let blog_html = generateProductConsultantBlogPost(product, productBrief);
+  let groundedDraft = generateProductConsultantBlogPost(product, productBrief);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: product.id,
     destination: product.destination,
     limit: 3,
   });
-  blog_html += formatReviewQuotesAppendMarkdown(reviewSnips);
+  groundedDraft += formatReviewQuotesAppendMarkdown(reviewSnips);
   const seo = generateBlogSeo(product, angle);
   // Append product facts to prevent same-destination products from burning duplicate slug candidates.
   const slug = `${seo.slug}-${buildProductSlugSuffix(product)}`;
@@ -3960,6 +4188,47 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       : null) ||
     firstAttrPhoto ||
     `${baseUrl}/og-image.png`;
+
+  const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+    ? requestedStage
+    : 'draft_flash';
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const failureEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
+    ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  const productPrompt = [
+    '당신은 여소남의 여행상품 설명 에디터입니다.',
+    '아래 저장된 상품 사실과 승인된 후기만 사용해 독자가 이 상품이 자신에게 맞는지 판단할 수 있는 한국어 글을 작성하세요.',
+    '가격·날짜·항공·호텔·포함/불포함·좌석·혜택을 새로 만들거나 추정하지 마세요.',
+    '과장, 허위 희소성, 운영팀 검증 표현, 입력에 없는 고객 경험을 쓰지 마세요.',
+    '본문에 판매 URL을 만들지 마세요. 공개 렌더러가 의도 기반 CTA를 별도로 붙입니다.',
+    `고정 제목: ${seo.seoTitle}`,
+    `상품 계약: ${JSON.stringify(productConsultBrief)}`,
+    '근거가 되는 초안:',
+    groundedDraft,
+  ].join('\n\n');
+  const finalPrompt = generationStage === 'draft_flash'
+    ? productPrompt
+    : `${productPrompt}\n\n${buildDeepSeekRewritePromptV4({
+        originalDraft: priorAttempt?.output.markdown || groundedDraft,
+        failureEvidence,
+        researchFingerprint: priorAttempt?.researchFingerprint || `product:${product.id}`,
+        claimFingerprint: priorAttempt?.claimFingerprint || productBrief.dedup_key,
+      })}`;
+  const generation = await generatePublisherBlogText(finalPrompt, generationStage === 'draft_flash'
+    ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.35 }
+    : {
+        model: BLOG_DEEPSEEK_MODELS.rewrite,
+        deepseekThinking: 'enabled',
+        reasoningEffort: generationStage === 'rewrite_pro_max' ? 'max' : 'high',
+      });
+  const blog_html = generation.text
+    .replace(/^```markdown\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+  if (!blog_html) throw new Error('deepseek_product_generation_empty');
 
   return {
     blog_html: blog_html + `\n\n<!-- prompt_version: ${productBrief.prompt_version} -->`,
@@ -3998,6 +4267,13 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
         product: productBrief,
       },
       product_dedup_key: productBrief.dedup_key,
+      ai_orchestration_v4: {
+        stage: generationStage,
+        attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        model: generation.receipt.model,
+        thinking: generationStage === 'draft_flash' ? 'disabled' : 'enabled',
+        receipt: generation.receipt,
+      },
       seo: {
         primary_keyword: seo.primaryKeyword,
         seo_keyword: productBrief.seo_keyword,
@@ -4013,7 +4289,7 @@ async function generateFromTopic(
     validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
   } = {},
 ): Promise<GeneratedBlog> {
-  if (!hasBlogApiKey()) {
+  if (!hasBlogApiKey(BLOG_DEEPSEEK_MODELS.draft)) {
     throw new Error('AI API 키 미설정 — 정보성 블로그 생성 불가');
   }
 
@@ -4192,10 +4468,34 @@ async function generateFromTopic(
     }),
   });
 
-  const raw = await generatePublisherBlogText(prompt, {
-    temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7,
-  });
-  const writerOutput = parseBlogInformationWriterOutput(raw);
+  const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+    ? requestedStage
+    : 'draft_flash';
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const rewriteEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
+    ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  const generationPrompt = generationStage === 'draft_flash'
+    ? prompt
+    : `${prompt}\n\n${buildDeepSeekRewritePromptV4({
+        originalDraft: priorAttempt?.output.markdown || '(이전 초안 원문을 불러오지 못했습니다. 동일 연구·claim 범위에서만 새로 작성하세요.)',
+        failureEvidence: rewriteEvidence,
+        researchFingerprint: priorAttempt?.researchFingerprint || 'persisted-research-packet',
+        claimFingerprint: priorAttempt?.claimFingerprint || 'persisted-claim-ledger',
+      })}`;
+  const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
+    ? {
+        model: BLOG_DEEPSEEK_MODELS.draft,
+        deepseekThinking: 'disabled',
+        temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7,
+      }
+    : {
+        model: BLOG_DEEPSEEK_MODELS.rewrite,
+        deepseekThinking: 'enabled',
+        reasoningEffort: generationStage === 'rewrite_pro_max' ? 'max' : 'high',
+      });
+  const writerOutput = parseBlogInformationWriterOutput(generation.text);
   let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -4241,6 +4541,13 @@ async function generateFromTopic(
     prompt_source: promptSource,
     prompt_manifest: promptManifest,
     writer: 'info_writer',
+    ai_orchestration_v4: {
+      stage: generationStage,
+      attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+      model: generation.receipt.model,
+      thinking: generationStage === 'draft_flash' ? 'disabled' : 'enabled',
+      receipt: generation.receipt,
+    },
     editorial_voice: BLOG_EDITORIAL_VOICE,
     info_guide_brief: infoGuideBrief,
       content_brief: {

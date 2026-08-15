@@ -12,15 +12,13 @@
  *   gemini-2.5-flash-lite : input $0.04  · output $0.15  · cache_read $0.01
  *   gemini-embedding-001  : input $0.025 · output 0
  *
- *   [DeepSeek V4 — 2026-05 추정값, 실제 청구와 다를 수 있음]
- *   deepseek-v4-flash     : input $0.014 · output $0.028 · cache_read $0.0014
- *   deepseek-v4-pro       : input $0.14  · output $0.28  · cache_read $0.014
- *
- * 단가 변경 시 PRICING / DEEPSEEK_PRICING 표만 갱신.
+ * DeepSeek V4 pricing is effective-dated in blog-deepseek-orchestrator-v4.
+ * Unknown DeepSeek models are rejected instead of inheriting a cheaper model.
  */
 
 import { supabaseAdmin } from '@/lib/supabase'
 import type { JarvisContext } from './types'
+import { calculateDeepSeekCostV4 } from '@/lib/blog-deepseek-orchestrator-v4'
 
 type PricePair = { input: number; output: number; cacheRead: number }
 
@@ -31,13 +29,6 @@ const PRICING: Record<string, PricePair> = {
   'gemini-2.5-flash-lite': { input: 0.04,  output: 0.15,  cacheRead: 0.01  },
   'gemini-2.0-flash':      { input: 0.075, output: 0.30,  cacheRead: 0.019 },
   'gemini-embedding-001':  { input: 0.025, output: 0,     cacheRead: 0     },
-}
-
-// $/1M tokens — DeepSeek V4 (추정값, 2026-05 기준)
-const DEEPSEEK_PRICING: Record<string, PricePair> = {
-  'deepseek-v4-flash-lite': { input: 0.008, output: 0.016, cacheRead: 0.0008 },
-  'deepseek-v4-flash':      { input: 0.014, output: 0.028, cacheRead: 0.0014 },
-  'deepseek-v4-pro':        { input: 0.14,  output: 0.28,  cacheRead: 0.014  },
 }
 
 export interface GeminiUsage {
@@ -146,6 +137,7 @@ export interface DeepSeekUsage {
   completion_tokens?: number;
   /** DeepSeek 프롬프트 캐시 히트 토큰 (OpenAI usage 확장 필드) */
   prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
 }
 
 export interface TrackDeepSeekCostParams {
@@ -160,16 +152,15 @@ export interface TrackDeepSeekCostParams {
 /** DeepSeek API 호출 비용을 jarvis_cost_ledger 에 기록. 실패해도 서비스 차단 안 함 (fail-open). */
 export async function trackDeepSeekCost(p: TrackDeepSeekCostParams): Promise<void> {
   try {
-    const price = DEEPSEEK_PRICING[p.model] ?? DEEPSEEK_PRICING['deepseek-v4-flash']
     const input = p.usage.prompt_tokens ?? 0
     const output = p.usage.completion_tokens ?? 0
     const cacheHit = p.usage.prompt_cache_hit_tokens ?? 0
-    const chargedInput = Math.max(0, input - cacheHit)
-    const cost = (
-      (chargedInput * price.input) +
-      (cacheHit    * price.cacheRead) +
-      (output      * price.output)
-    ) / 1_000_000
+    const receipt = calculateDeepSeekCostV4(p.model, {
+      inputTokens: input,
+      cacheHitInputTokens: cacheHit,
+      cacheMissInputTokens: p.usage.prompt_cache_miss_tokens,
+      outputTokens: output,
+    })
 
     await supabaseAdmin.from('jarvis_cost_ledger').insert({
       tenant_id: p.tenantId ?? null,
@@ -181,7 +172,7 @@ export async function trackDeepSeekCost(p: TrackDeepSeekCostParams): Promise<voi
       cache_read_tokens: cacheHit,
       cache_write_tokens: 0,
       thinking_tokens: 0,
-      cost_usd: cost,
+      cost_usd: receipt.estimatedCostUsd,
       latency_ms: p.latencyMs ?? null,
     })
   } catch (err) {

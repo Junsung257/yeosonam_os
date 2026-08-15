@@ -75,7 +75,60 @@ describe('blog-ai-caller — 공개 API', () => {
     expect(typeof mod._resetBlogAiClientCacheForTest).toBe('function');
     expect(typeof mod.generateBlogJSON).toBe('function');
     expect(typeof mod.generateBlogText).toBe('function');
+    expect(typeof mod.generateBlogTextWithReceipt).toBe('function');
     expect(typeof mod.hasBlogApiKey).toBe('function');
+  });
+
+  it('DeepSeek V4 direct draft disables thinking and records conservative token cost', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: 'draft response long enough' } }],
+      usage: {
+        prompt_tokens: 1_000,
+        prompt_cache_hit_tokens: 250,
+        prompt_cache_miss_tokens: 750,
+        completion_tokens: 200,
+      },
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    const result = await generateBlogTextWithReceipt('prompt', {
+      model: 'deepseek-v4-flash',
+      deepseekThinking: 'disabled',
+      temperature: 0.3,
+    });
+
+    expect(result.text).toBe('draft response long enough');
+    expect(result.receipt).toMatchObject({ provider: 'deepseek', model: 'deepseek-v4-flash' });
+    expect(result.receipt.deepseekCost?.inputTokens).toBe(1_000);
+    expect(mocks.dsCreate).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'deepseek-v4-flash',
+      temperature: 0.3,
+      extra_body: { thinking: { type: 'disabled' } },
+    }), undefined);
+  });
+
+  it('DeepSeek Pro rewrite enables thinking without a misleading temperature', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: 'rewritten response long enough' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 10 },
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    await generateBlogTextWithReceipt('prompt', {
+      model: 'deepseek-v4-pro',
+      deepseekThinking: 'enabled',
+      reasoningEffort: 'max',
+      temperature: 0.9,
+    });
+
+    expect(mocks.dsCreate).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'deepseek-v4-pro',
+      reasoning_effort: 'max',
+      extra_body: { thinking: { type: 'enabled' } },
+    }), undefined);
+    expect(mocks.dsCreate.mock.calls[0]?.[0]).not.toHaveProperty('temperature');
   });
 
   it('hasBlogApiKey: 키 미설정 → false / 설정 → true', async () => {

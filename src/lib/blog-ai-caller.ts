@@ -32,8 +32,14 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { getProviderApiKey, resolveAiPolicy } from '@/lib/ai-provider-policy';
+import {
+  calculateDeepSeekCostV4,
+  type DeepSeekCostReceiptV4,
+} from '@/lib/blog-deepseek-orchestrator-v4';
 
 export interface BlogCallOptions {
+  /** Explicit model bypasses the general AI policy. Blog V4 uses this to remain DeepSeek-only. */
+  model?: string;
   temperature?: number;
   systemPrompt?: string;
   maxTokens?: number;
@@ -41,6 +47,9 @@ export interface BlogCallOptions {
   requestTimeoutMs?: number;
   /** Gemini 2.5 reasoning budget. Use zero for grounded transformation tasks. */
   thinkingBudget?: number;
+  /** DeepSeek V4 thinking is explicit so draft calls never inherit a provider default. */
+  deepseekThinking?: 'enabled' | 'disabled';
+  reasoningEffort?: 'low' | 'high' | 'max';
   /**
    * Claude prompt cache TTL 을 1h 로 확장 (기본 5min ephemeral).
    * 동일 systemPrompt 로 1시간 내 2회 이상 호출되는 워크로드(시간당 publisher,
@@ -66,6 +75,21 @@ export interface BlogCallOptions {
     firstTryTimeoutMs?: number;
     fallbackTimeoutMs?: number;
   };
+}
+
+export interface BlogAiUsageReceipt {
+  provider: 'deepseek' | 'claude' | 'gemini';
+  model: string;
+  startedAt: string;
+  completedAt: string;
+  latencyMs: number;
+  finishReason: string | null;
+  deepseekCost: DeepSeekCostReceiptV4 | null;
+}
+
+export interface BlogAiTextResult {
+  text: string;
+  receipt: BlogAiUsageReceipt;
 }
 
 function withRequestTimeout(
@@ -150,6 +174,7 @@ export async function generateBlogJSON(
 ): Promise<string> {
   const cascade = opts.cascade ?? true;
   const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
+  const directModel = opts.model || policy.model;
   const temperature = opts.temperature ?? 0.85;
 
   if (cascade) {
@@ -208,7 +233,7 @@ export async function generateBlogJSON(
   }
 
   // Legacy direct path (cascade=false)
-  return callModelDirect(policy.model, prompt, opts, true);
+  return callModelDirect(directModel, prompt, opts, true);
 }
 
 /**
@@ -222,6 +247,7 @@ export async function generateBlogText(
 ): Promise<string> {
   const cascade = opts.cascade ?? true;
   const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
+  const directModel = opts.model || policy.model;
   const temperature = opts.temperature ?? 0.85;
 
   if (cascade) {
@@ -271,7 +297,18 @@ export async function generateBlogText(
     throw new Error(`FrugalGPT cascade (text) all failed: ${errors.join('; ')}`);
   }
 
-  return callModelDirect(policy.model, prompt, opts, false);
+  return callModelDirect(directModel, prompt, opts, false);
+}
+
+/**
+ * Receipt-bearing direct call for durable generation attempts.
+ * A model must be explicit: silently falling back to another provider would invalidate cost and audit records.
+ */
+export async function generateBlogTextWithReceipt(
+  prompt: string,
+  opts: BlogCallOptions & { model: string },
+): Promise<BlogAiTextResult> {
+  return callModelDirectWithReceipt(opts.model, prompt, { ...opts, cascade: false }, false);
 }
 
 // ── Internal: model name → direct call ──────────────────────
@@ -282,6 +319,17 @@ async function callModelDirect(
   opts: BlogCallOptions,
   jsonMode: boolean,
 ): Promise<string> {
+  return (await callModelDirectWithReceipt(modelOrProvider, prompt, opts, jsonMode)).text;
+}
+
+async function callModelDirectWithReceipt(
+  modelOrProvider: string,
+  prompt: string,
+  opts: BlogCallOptions,
+  jsonMode: boolean,
+): Promise<BlogAiTextResult> {
+  const started = new Date();
+  const startedMs = Date.now();
   const temperature = opts.temperature ?? 0.85;
   const requestOptions = opts.requestTimeoutMs
     ? { timeout: opts.requestTimeoutMs, maxRetries: 0 }
@@ -294,17 +342,45 @@ async function callModelDirect(
     if (opts.systemPrompt) messages.push({ role: 'system', content: opts.systemPrompt });
     messages.push({ role: 'user', content: prompt });
 
-    const r = await client.chat.completions.create(
-      {
+    const thinking = opts.deepseekThinking ?? 'disabled';
+    const requestBody = {
         model,
         messages,
         ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-        temperature,
+        ...(thinking === 'disabled' ? { temperature } : {}),
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-      },
+        extra_body: { thinking: { type: thinking } },
+        ...(thinking === 'enabled' ? { reasoning_effort: opts.reasoningEffort ?? 'high' } : {}),
+      };
+    const r = await client.chat.completions.create(
+      requestBody as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
       requestOptions,
     );
-    return r.choices[0]?.message?.content ?? '';
+    const completed = new Date();
+    const rawUsage = (r.usage ?? {}) as Record<string, unknown>;
+    const inputTokens = Number(rawUsage.prompt_tokens || 0);
+    const cacheHitInputTokens = Number(
+      rawUsage.prompt_cache_hit_tokens
+      || (rawUsage.prompt_tokens_details as { cached_tokens?: number } | undefined)?.cached_tokens
+      || 0,
+    );
+    const cacheMissInputTokens = Number(
+      rawUsage.prompt_cache_miss_tokens || Math.max(0, inputTokens - cacheHitInputTokens),
+    );
+    return {
+      text: r.choices[0]?.message?.content ?? '',
+      receipt: {
+        provider: 'deepseek', model, startedAt: started.toISOString(), completedAt: completed.toISOString(),
+        latencyMs: Math.max(0, Date.now() - startedMs),
+        finishReason: r.choices[0]?.finish_reason ?? null,
+        deepseekCost: calculateDeepSeekCostV4(model, {
+          inputTokens,
+          cacheHitInputTokens,
+          cacheMissInputTokens,
+          outputTokens: Number(rawUsage.completion_tokens || 0),
+        }, completed),
+      },
+    };
   }
 
   if (isClaudeModel(modelOrProvider) || modelOrProvider === 'claude') {
@@ -323,7 +399,13 @@ async function callModelDirect(
       requestOptions,
     );
     const text = r.content.filter((x) => x.type === 'text').map((x) => (x as Anthropic.TextBlock).text).join('\n');
-    return text || '';
+    return {
+      text: text || '',
+      receipt: {
+        provider: 'claude', model, startedAt: started.toISOString(), completedAt: new Date().toISOString(),
+        latencyMs: Math.max(0, Date.now() - startedMs), finishReason: r.stop_reason ?? null, deepseekCost: null,
+      },
+    };
   }
 
   // Gemini
@@ -345,11 +427,18 @@ async function callModelDirect(
     opts.requestTimeoutMs ? { timeout: opts.requestTimeoutMs } : undefined,
   );
   const r = await gmodel.generateContent(prompt);
-  return r.response.text();
+  return {
+    text: r.response.text(),
+    receipt: {
+      provider: 'gemini', model, startedAt: started.toISOString(), completedAt: new Date().toISOString(),
+      latencyMs: Math.max(0, Date.now() - startedMs), finishReason: null, deepseekCost: null,
+    },
+  };
 }
 
 /** API 키가 설정돼 있는지 확인 (fallback 분기용) */
-export function hasBlogApiKey(): boolean {
+export function hasBlogApiKey(model?: string): boolean {
+  if (model) return !!getProviderApiKey(providerName(model));
   const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
   return !!getProviderApiKey(policy.provider);
 }

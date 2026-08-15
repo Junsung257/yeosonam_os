@@ -47,6 +47,24 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
   { key: 'publication_decisions', table: 'blog_publication_decisions', columns: 'id', scope: 'publish' },
   { key: 'quality_evaluations', table: 'blog_quality_evaluations', columns: 'id', scope: 'publish' },
   {
+    key: 'generation_runs_v4',
+    table: 'blog_generation_runs',
+    columns: 'id,queue_id,status,attempt_count,latest_quality_score,scheduled_publish_at',
+    scope: 'publish',
+  },
+  {
+    key: 'generation_attempts_v4',
+    table: 'blog_generation_attempts',
+    columns: 'id,run_id,attempt_number,model,route,hard_blockers,failure_reasons',
+    scope: 'publish',
+  },
+  {
+    key: 'model_price_catalog_v4',
+    table: 'ai_model_price_catalog',
+    columns: 'id,provider,model,pricing_version,pricing_tier,effective_from',
+    scope: 'publish',
+  },
+  {
     key: 'demand_signals',
     table: 'blog_demand_signals',
     columns: 'id,queue_id,provider,signal_value,source_reference,verified_at,expires_at',

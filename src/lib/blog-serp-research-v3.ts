@@ -3,6 +3,7 @@ import { fetchNaverKeywordTool, parseNaverKeywordMetric } from './search-ads-api
 import { getSecret } from './secret-registry';
 import { supabaseAdmin } from './supabase';
 import type { BlogContentArchetypeV3 } from './blog-content-brief-v3';
+import { fetchNaverSearchV4, type NaverSearchTransportV4 } from './naver-search-transport-v4';
 
 export const BLOG_SERP_RESEARCH_VERSION = 'naver-first-serp-v3.1.0';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -109,6 +110,7 @@ export interface SerpEditorialResultV3 {
   domain: string;
   snippet: string;
   publishedAt: string | null;
+  apiTransport?: NaverSearchTransportV4;
 }
 
 export interface CompetitorPhraseMatchV3 {
@@ -317,22 +319,17 @@ function analyzeDecisionCoverage(results: SerpEditorialResultV3[], intent: Searc
 }
 
 async function fetchNaverVertical(query: string, source: 'naver_blog' | 'naver_web'): Promise<SerpEditorialResultV3[]> {
-  const clientId = getSecret('NAVER_CLIENT_ID');
-  const clientSecret = getSecret('NAVER_CLIENT_SECRET');
-  if (!clientId || !clientSecret) return [];
   const endpoint = source === 'naver_blog' ? 'blog' : 'webkr';
-  const response = await fetch(
-    `https://openapi.naver.com/v1/search/${endpoint}.json?query=${encodeURIComponent(query)}&display=10&sort=sim`,
-    {
-      headers: {
-        'X-Naver-Client-Id': clientId,
-        'X-Naver-Client-Secret': clientSecret,
-      },
-      signal: AbortSignal.timeout(10_000),
-    },
+  const credentialsAvailable = Boolean(
+    (getSecret('NAVER_API_HUB_CLIENT_ID') && getSecret('NAVER_API_HUB_CLIENT_SECRET'))
+    || (getSecret('NAVER_CLIENT_ID') && getSecret('NAVER_CLIENT_SECRET')),
   );
-  if (!response.ok) throw new Error(`naver_search_${source}_http_${response.status}`);
-  const payload = await response.json() as NaverSearchPayload;
+  if (!credentialsAvailable) return [];
+  const { payload, transport } = await fetchNaverSearchV4<NaverSearchPayload>({
+    query,
+    vertical: endpoint,
+    display: 10,
+  });
   return (payload.items ?? [])
     .map((item, index) => {
       const url = clean(item.link);
@@ -347,6 +344,7 @@ async function fetchNaverVertical(query: string, source: 'naver_blog' | 'naver_w
         publishedAt: /^\d{8}$/.test(clean(item.postdate))
           ? `${clean(item.postdate).slice(0, 4)}-${clean(item.postdate).slice(4, 6)}-${clean(item.postdate).slice(6, 8)}T00:00:00.000Z`
           : null,
+        apiTransport: transport,
       } satisfies SerpEditorialResultV3;
     })
     .filter((item) => item.title && item.url && isEditorialUrl(item.url));

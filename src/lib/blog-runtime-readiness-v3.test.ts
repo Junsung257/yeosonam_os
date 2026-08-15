@@ -27,6 +27,14 @@ describe('blog runtime schema readiness v3', () => {
     ]));
   });
 
+  it('requires the V4 durable generation ledger before generation or publication', () => {
+    expect(BLOG_RUNTIME_RESOURCES_V3).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'generation_runs_v4', scope: 'publish' }),
+      expect.objectContaining({ key: 'generation_attempts_v4', scope: 'publish' }),
+      expect.objectContaining({ key: 'model_price_catalog_v4', scope: 'publish' }),
+    ]));
+  });
+
   it('reports scope readiness independently for safe operator diagnosis', async () => {
     const report = await probeBlogRuntimeSchemaReadinessV3(async (resource) => ({
       error: resource.scope === 'measurement'

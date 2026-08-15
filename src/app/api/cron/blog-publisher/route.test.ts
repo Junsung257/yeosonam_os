@@ -12,7 +12,7 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain("readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8)");
-    expect(source).toContain('publishedThisRun < remainingDueNow');
+    expect(source).toContain('slotCompletionsThisRun < remainingDueNow');
     expect(source).toContain('extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS');
     expect(source).toContain('attemptedQueueIds.size < MAX_CANDIDATE_ATTEMPTS_PER_RUN');
     expect(source).toContain('calculateBlogPublishSlotQuota({');
@@ -115,7 +115,7 @@ describe('blog publisher quota recovery contract', () => {
     const generatorStart = source.indexOf('async function generateFromTopic');
     const planner = source.indexOf('const contentBrief = buildQueueContentBrief', generatorStart);
     const blocker = source.indexOf('if (!contentBrief.passed)', planner);
-    const writer = source.indexOf('const raw = await generatePublisherBlogText', blocker);
+    const writer = source.indexOf('const generation = await generatePublisherBlogText', blocker);
 
     expect(generatorStart).toBeGreaterThanOrEqual(0);
     expect(planner).toBeGreaterThan(generatorStart);
@@ -130,7 +130,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('isHighRiskInformationalTopic({');
     expect(source).toContain('const contentRequiresHumanReview');
     expect(source).toContain("status: publishAllowed ? 'published' : 'draft'");
-    expect(source).toContain("review_status: publishAllowed ? contentReviewStatus : 'pending_review'");
+    expect(source).toContain("review_status: (publishAllowed || approvedForDeferredPublication) ? contentReviewStatus : 'pending_review'");
     expect(source).toContain('representativeIdentity && !requiresHumanReview');
     expect(source).toContain('publishBlogInformationAtomically({');
     expect(source).toContain("status: 'pending_review'");
@@ -210,7 +210,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('targetMeta.controlled_publish_canary !== true');
     expect(source).toContain("reason: item.product_id\n            ? 'target_queue_item_must_be_informational'");
     expect(source).toContain('targetedCanaryPublication: true');
-    expect(source).toContain('const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });');
+    expect(source).toContain('const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });');
   });
 
   it('uses a lower-variance writer temperature for private regeneration', () => {
@@ -325,7 +325,7 @@ describe('blog publisher quota recovery contract', () => {
   it('reconciles the final informational body with a bounded writer claim ledger', () => {
     const source = routeSource();
 
-    expect(source).toContain('parseBlogInformationWriterOutput(raw)');
+    expect(source).toContain('parseBlogInformationWriterOutput(generation.text)');
     expect(source).not.toContain('repairBlogGenerationResearchStructure({');
     expect(source).toContain('information_research_structure_repair: {');
     expect(source).toContain('const applyFinalResearchStructureRepair = (): void =>');
@@ -431,15 +431,16 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).not.toContain('지금 한국인이 가장 많이 묻는');
   });
 
-  it('bounds grounded writer output and disables dynamic Gemini thinking', () => {
+  it('bounds grounded writer output and makes DeepSeek thinking explicit by stage', () => {
     const source = routeSource();
 
     expect(source).toContain('const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192');
     expect(source).toContain('maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS');
-    expect(source).toContain('thinkingBudget: options.thinkingBudget ?? 0');
+    expect(source).toContain("deepseekThinking: options.deepseekThinking ?? 'disabled'");
     expect(source).toContain('const writerOutputBoundary = boundBlogWriterOutput(blog_html)');
     expect(source).toContain('writer_output_boundary: {');
-    expect(source).toContain('firstTryTimeoutMs: BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS');
-    expect(source).toContain('fallbackTimeoutMs: BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS');
+    expect(source).toContain('requestTimeoutMs: options.requestTimeoutMs ?? BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS');
+    expect(source).toContain('model: BLOG_DEEPSEEK_MODELS.rewrite');
+    expect(source).not.toContain("fallback: 'gemini'");
   });
 });
