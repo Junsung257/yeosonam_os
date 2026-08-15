@@ -41,6 +41,8 @@ describe('middleware cron resource saver', () => {
     'rank-tracking',
     'blog-data-readiness',
     'blog-publisher',
+    'blog-generate',
+    'blog-publication-controller',
     'blog-indexing-worker',
     'analytics-delivery',
   ])('allows the verified blog operating chain when critical crons are explicitly enabled: %s', async (cron) => {
