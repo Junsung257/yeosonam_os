@@ -582,7 +582,13 @@ export function validateBlogInformationClaims(input: {
       const semanticReport = blogInformationEvidenceSetSupportsClaim({
         evidence: authorityEligibleEvidence,
         claimType: claim.claimType,
-        extractedValue: claim.extractedValue,
+        // An exact fingerprint means the visible sentence is byte-for-byte the
+        // approved persisted claim. Its persisted structured value already
+        // passed bundle validation (including literal numeric support), while
+        // re-extracting a translated factual sentence can produce a different
+        // free-text value or a localized unit such as "분" vs "minutes".
+        // Paraphrases never reach this branch because their fingerprint differs.
+        extractedValue: persisted.extractedValue ?? claim.extractedValue,
         expectedScope: input.expectedScope,
       });
       if (!semanticReport.passed) {

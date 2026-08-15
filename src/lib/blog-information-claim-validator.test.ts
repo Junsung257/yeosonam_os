@@ -99,6 +99,28 @@ function supportedRecord(
 }
 
 describe('blog information claim validator', () => {
+  it('uses the persisted structured value for an exact approved translated claim', () => {
+    const markdown = '미케 해변은 손짜 반도 남쪽에 위치해 있습니다.';
+    const record = supportedRecord(markdown, {
+      excerpt: '2026년 일본 오사카 KR 대상 My Khe Beach is south of Son Tra Peninsula',
+    });
+    record.extractedValue = {
+      normalizedValue: 'My Khe Beach is south of Son Tra Peninsula',
+      unit: null,
+      currency: null,
+    };
+    record.evidence[0]!.scope.normalizedValue = 'My Khe Beach is south of Son Tra Peninsula';
+
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [record],
+      claimLedger: ledgerFor(markdown),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+  });
+
   it.each([
     '오사카 지하철은 자정 무렵 운행을 마칩니다.',
     '주말에는 운행하지 않습니다.',
