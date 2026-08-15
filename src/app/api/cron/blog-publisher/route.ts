@@ -260,7 +260,12 @@ const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192;
 // headroom for reasoning plus the complete article and hidden claim ledger.
 const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 16_384;
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
-const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
+const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv(
+  'BLOG_PUBLISHER_GENERATION_TIMEOUT_MS',
+  190_000,
+  30_000,
+  210_000,
+);
 const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
 const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
@@ -269,7 +274,9 @@ const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OP
 // attempts. The research bundle/claim fingerprints remain persisted between
 // attempts, so retries may change expression and structure but not invent facts.
 const MAX_ATTEMPTS = 3;
-const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
+// The outer generation budget must be longer than the 165s DeepSeek Pro
+// rewrite budget. Keep 15s below the 285s cron guard and 30s below Vercel.
+const MAX_EXEC_MS = 270_000;
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 
 function readQueueDemandSignalV3(item: any): BlogDemandSignalInput {

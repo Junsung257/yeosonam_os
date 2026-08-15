@@ -445,6 +445,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192');
     expect(source).toContain('const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 16_384');
     expect(source).toContain("'BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS'");
+    expect(source).toContain("'BLOG_PUBLISHER_GENERATION_TIMEOUT_MS'");
+    expect(source).toContain('190_000');
+    expect(source).toContain('const MAX_EXEC_MS = 270_000');
     expect(source).toContain('const isRewrite = options.model === BLOG_DEEPSEEK_MODELS.rewrite');
     expect(source).toContain('? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS');
     expect(source).toContain("deepseekThinking: options.deepseekThinking ?? 'disabled'");
