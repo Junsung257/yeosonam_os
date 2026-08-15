@@ -4674,9 +4674,10 @@ async function generateFromTopic(
           fixedTitle: contentBriefV3.metadata.title,
           primaryQuery: contentBriefV3.primaryQuery,
           primaryDecision: contentBriefV3.primaryDecision,
-          sectionPurposes: contentBriefV3.sectionPurposes.map(
-            (section) => `${section.purpose} — ${section.decisionQuestion}`,
-          ),
+          // Final safety rewrite is evidence-shaped. Legacy or SERP-derived
+          // section purposes can demand weather/route facts absent from the
+          // approved packet, so they are deliberately not forwarded here.
+          sectionPurposes: [],
           approvedClaims: rewriteApprovedClaims,
           officialSourceUrls: [...new Set(researchReadiness.bundle.sources
             .map((source) => source.sourceUrl)

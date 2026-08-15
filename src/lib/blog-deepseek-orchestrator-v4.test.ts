@@ -87,12 +87,14 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_START');
     expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_END -->');
     expect(prompt).toContain('- unsupported_number');
-    expect(prompt).toContain('# 다낭\n\n초안 본문');
+    expect(prompt).not.toContain('# 다낭\n\n초안 본문');
+    expect(prompt).toContain('previous draft is intentionally omitted');
     expect(prompt).toContain('Approved claims (the complete factual universe');
     expect(prompt).toContain('오행산은 도시에서 15분 거리입니다.');
     expect(prompt).toContain('Do not use a table in this rewrite.');
     expect(prompt).toContain('The ledger must contain only the approved claim sentences');
-    expect(prompt).toContain('citation: https://vietnam.travel/example');
+    expect(prompt).toContain('exact citation markdown: [공식 근거](https://vietnam.travel/example)');
+    expect(prompt).toContain('write only headings and reader-choice questions');
   });
 
   it('never auto-publishes HIGH risk without human approval', () => {
