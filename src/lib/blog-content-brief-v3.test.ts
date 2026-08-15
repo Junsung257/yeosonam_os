@@ -85,6 +85,7 @@ describe('flexible blog content brief v3', () => {
     expect(brief.metadata.ogTitle).toBe(brief.metadata.title);
     expect(brief.metadata.description.length).toBeGreaterThanOrEqual(80);
     expect(brief.metadata.description.length).toBeLessThanOrEqual(150);
+    expect(brief.metadata.description).not.toMatch(/제시.*제시|기준과 출발 전 다시 확인할 공식 정보/);
     expect(brief.title).not.toMatch(/2026|완벽|총정리|BEST/i);
   });
 

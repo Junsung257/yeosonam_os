@@ -256,17 +256,22 @@ function buildTitleCandidates(primaryQuery: string, destination: string, intent:
   }));
 }
 
-function buildDescription(primaryQuery: string, intent: SearchDecisionIntent, purposes: SectionPurpose[]): string {
-  const focus = purposes.slice(0, 3).map((item) => item.purpose.replace(/한다$/, '')).join(', ');
-  const intentAnswer = intent === 'weather_travel_viability'
-    ? '여행 가능 여부와 날씨 변동이 일정에 미치는 영향을 먼저 답하고'
+function buildDescription(primaryQuery: string, intent: SearchDecisionIntent): string {
+  const base = intent === 'weather_travel_viability'
+    ? `${primaryQuery}의 여행 가능 여부를 판단할 수 있도록 확인된 날씨 조건과 일정 영향을 정리했습니다. 옷차림과 우천 대안, 출발 전 확인 항목을 함께 살펴보세요.`
     : intent === 'hotel_area_selection'
-      ? '숙소 지역을 먼저 고른 뒤 여행자 유형별 장단점을 비교하고'
+      ? `${primaryQuery}을 찾는 분을 위해 먼저 지역을 고르는 기준과 여행자 유형별 판단 조건을 정리했습니다. 확인된 정보로 장단점을 비교해 내 일정에 맞는 숙소 후보를 좁혀 보세요.`
       : intent === 'attraction_selection'
-        ? '시간·체력·동행 유형에 맞는 장소와 묶기 좋은 동선을 비교하고'
-        : '검색 질문에 직접 답하고 선택을 바꾸는 조건을 구분하며';
-  const base = `${primaryQuery}을 찾는 분께 ${intentAnswer}, ${focus} 기준과 출발 전 다시 확인할 공식 정보를 정리했습니다.`;
-  return base.slice(0, 150);
+        ? `${primaryQuery}을 찾는 분을 위해 일정·체력·동행자에 따른 선택 기준을 정리했습니다. 확인된 공식 정보와 각 장소의 조건을 비교해 내 일정에 맞는 후보를 좁혀 보세요.`
+        : intent === 'route_decision'
+          ? `${primaryQuery}의 이동 방법을 시간·비용·환승 부담 기준으로 비교합니다. 확인된 공식 교통 정보를 바탕으로 내 일정에 맞는 경로와 출발 전 확인 조건을 정리했습니다.`
+          : intent === 'budget_decision'
+            ? `${primaryQuery}에 필요한 비용을 여행 방식별로 나누어 비교합니다. 확인된 가격 근거와 변동 조건을 바탕으로 내 예산에 맞는 선택과 출발 전 확인 항목을 정리했습니다.`
+            : `${primaryQuery}에 바로 답할 수 있도록 확인된 정보와 선택 기준을 구분해 정리했습니다. 내 일정과 우선순위에 맞는 결정을 내리고 출발 전에 다시 확인할 항목도 살펴보세요.`;
+  const complete = base.length >= 80
+    ? base
+    : `${base} 최신 공식 정보는 출발 직전에 다시 확인하세요.`;
+  return complete.slice(0, 150);
 }
 
 function evidenceRequirements(risk: BlogInformationRiskLevel, intent: SearchDecisionIntent): EvidenceRequirement[] {
@@ -324,7 +329,7 @@ export function buildBlogContentBriefV3(input: BlogContentBriefV3Input): BlogCon
   const purposes = sectionPurposes(intent, details);
   const destination = clean(input.destination);
   const titleCandidates = buildTitleCandidates(primaryQuery, destination, intent);
-  const metadataDescription = buildDescription(primaryQuery, intent, purposes);
+  const metadataDescription = buildDescription(primaryQuery, intent);
   const issues: string[] = [];
   if (!primaryQuery) issues.push('primary_decision_missing');
   if (details.length < 3) issues.push('destination_specific_evidence_below_three');

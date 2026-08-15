@@ -36,6 +36,15 @@ describe('V3 editorial decision guidance classification', () => {
         factualClassification: { claimType: 'duration' },
       });
   });
+
+  it('treats a source-neutral direct decision answer as editorial guidance', () => {
+    expect(classifyBlogInformationStatement(
+      '다낭에서 어디를 갈지는 내 일정의 이동 시간과 체력 여유를 먼저 확인한 뒤, 공식 정보에 나온 거리와 위치를 내 우선순위와 비교해 결정하면 됩니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
 });
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {

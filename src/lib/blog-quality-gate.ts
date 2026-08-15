@@ -237,7 +237,7 @@ export function checkCliche(blog_html: string, blog_type: 'product' | 'info' = '
  * 트리거: 숫자 1개 이상 + (질문 마크 OR 가격 표현 OR 시간 표현 OR 비교 표현)
  * Why: AI가 쓴 평탄한 도입부 ("...꿈꾸시나요?") 차단. 검색자 3초 이탈 방어.
  */
-export function checkHook(blog_html: string): GateResult {
+export function checkHook(blog_html: string, flexibleInformationalBrief = false): GateResult {
   // 마크다운 원문에서 H1 위치를 명시적으로 찾는다 (stripMarkup 후엔 # 마커가 사라져 H1 식별 불가).
   const rawLines = blog_html.split('\n');
   const h1Idx = rawLines.findIndex(l => /^#\s/.test(l.trim()));
@@ -268,6 +268,19 @@ export function checkHook(blog_html: string): GateResult {
   const hasPriceHook = /(만원|원|만\s|절약|저렴|차이|할인|특가)/.test(intro);
   const hasTimeHook = /(\d+분|\d+시간|즉시|당일|바로)/.test(intro);
   const hasCompare = /(시중가|단품|직접|비교|보다|나눠|분리|따로|포함\/불포함)/.test(intro);
+  const hasDecisionAnswer = /(?:고르|선택|결정).*(?:확인|비교|우선순위|일정|조건|체력|시간)|(?:확인|비교).*(?:고르|선택|결정)/.test(intro);
+
+  if (flexibleInformationalBrief && hasDecisionAnswer) {
+    return {
+      gate: 'hook',
+      passed: true,
+      evidence: {
+        intro_preview: intro.slice(0, 80),
+        hasDecisionAnswer,
+        policy: 'v3_answer_first_without_forced_numeric_hook',
+      },
+    };
+  }
 
   const triggers = [hasQuestion, hasPriceHook, hasTimeHook, hasCompare].filter(Boolean).length;
   // 숫자 + 트리거 1개 이상 OR 트리거 2개 이상
@@ -1172,7 +1185,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
         }
       : keywordDensity,
   );
-  gates.push(checkHook(input.blog_html));
+  gates.push(checkHook(input.blog_html, Boolean(input.generation_meta?.content_brief_v3)));
   gates.push(checkCta(input.blog_html));
   gates.push(checkCtaDestinationIntegrity(input));
   gates.push(checkLinks(input.blog_html, baseUrl));

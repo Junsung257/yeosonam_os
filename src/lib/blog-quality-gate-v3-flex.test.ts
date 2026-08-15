@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkAiReadability, checkLength } from './blog-quality-gate';
+import { checkAiReadability, checkHook, checkLength } from './blog-quality-gate';
 
 describe('blog quality gate V3 flexible brief', () => {
   it('does not impose a fixed informational character target on a V3 brief', () => {
@@ -40,5 +40,19 @@ describe('blog quality gate V3 flexible brief', () => {
 
     expect(checkAiReadability(markdown, 'info', true).passed).toBe(true);
     expect(checkAiReadability(markdown, 'info', false).passed).toBe(false);
+  });
+
+  it('accepts a direct decision answer without forcing a numeric hook', () => {
+    const markdown = [
+      '# 다낭 가볼만한곳 선택 기준',
+      '',
+      '다낭에서 어디를 갈지는 내 일정과 체력을 먼저 확인한 뒤, 공식 정보와 우선순위를 비교해 결정하면 됩니다.',
+    ].join('\n');
+
+    expect(checkHook(markdown, true)).toMatchObject({
+      passed: true,
+      evidence: { policy: 'v3_answer_first_without_forced_numeric_hook' },
+    });
+    expect(checkHook(markdown, false).passed).toBe(false);
   });
 });

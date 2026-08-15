@@ -102,7 +102,8 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('exact citation markdown: [공식 근거](https://vietnam.travel/example)');
     expect(prompt).toContain('source-neutral editorial guidance');
     expect(prompt).toContain('one question-form H2');
-    expect(prompt).toContain('Markdown bullet list of 3-5 reader-choice questions');
+    expect(prompt).toContain('Markdown bullet list of exactly 3 distinct reader-choice questions');
+    expect(prompt).toContain('do not repeat a four-word Korean phrase more than twice');
     expect(prompt).toContain('Keep evidence-section H2 labels neutral');
     expect(prompt).toContain('Do not introduce a new place property inside a question');
   });
