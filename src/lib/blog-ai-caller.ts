@@ -349,7 +349,11 @@ async function callModelDirectWithReceipt(
         ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
         ...(thinking === 'disabled' ? { temperature } : {}),
         ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-        extra_body: { thinking: { type: thinking } },
+        // The JavaScript OpenAI client forwards unknown request-body fields
+        // directly. DeepSeek's Node example therefore uses the top-level
+        // `thinking` field; `extra_body` is the Python SDK spelling and would
+        // be sent as a literal, ignored field here.
+        thinking: { type: thinking },
         ...(thinking === 'enabled' ? { reasoning_effort: opts.reasoningEffort ?? 'high' } : {}),
       };
     const r = await client.chat.completions.create(

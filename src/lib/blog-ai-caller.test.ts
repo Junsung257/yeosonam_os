@@ -104,7 +104,7 @@ describe('blog-ai-caller — 공개 API', () => {
     expect(mocks.dsCreate).toHaveBeenCalledWith(expect.objectContaining({
       model: 'deepseek-v4-flash',
       temperature: 0.3,
-      extra_body: { thinking: { type: 'disabled' } },
+      thinking: { type: 'disabled' },
     }), undefined);
   });
 
@@ -126,7 +126,7 @@ describe('blog-ai-caller — 공개 API', () => {
     expect(mocks.dsCreate).toHaveBeenCalledWith(expect.objectContaining({
       model: 'deepseek-v4-pro',
       reasoning_effort: 'max',
-      extra_body: { thinking: { type: 'enabled' } },
+      thinking: { type: 'enabled' },
     }), undefined);
     expect(mocks.dsCreate.mock.calls[0]?.[0]).not.toHaveProperty('temperature');
   });
