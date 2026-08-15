@@ -778,10 +778,12 @@ describe('blog generation research preflight', () => {
       });
 
     expect(evaluateIntent('itinerary').issues).toEqual(expect.arrayContaining([
-      'claim_semantic_coverage_missing:itinerary:child_or_family',
       'claim_semantic_coverage_missing:itinerary:attraction',
       'claim_semantic_coverage_missing:itinerary:route_duration',
     ]));
+    expect(evaluateIntent('itinerary').issues).not.toContain(
+      'claim_semantic_coverage_missing:itinerary:child_or_family',
+    );
     expect(evaluateIntent('shopping_souvenirs').issues).toEqual(expect.arrayContaining([
       'claim_semantic_coverage_missing:shopping_souvenirs:souvenir_product',
       'claim_semantic_coverage_missing:shopping_souvenirs:purchase_location',

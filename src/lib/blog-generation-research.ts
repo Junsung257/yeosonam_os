@@ -99,8 +99,10 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
     { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
   ],
   itinerary: [
-    { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
-    { key: 'attraction', pattern: /수족관|언더워터|박물관|해변|비치|야시장|관광|명소|aquarium|museum|beach|attraction/ },
+    {
+      key: 'attraction',
+      pattern: /수족관|박물관|해변|비치|야시장|관광|명소|반도|산|시장|사원|다리|공원|탑|대성당|동굴|유적|aquarium|museum|beach|attraction|peninsula|mountain|market|temple|bridge|park|cave|heritage/i,
+    },
     {
       key: 'route_duration',
       pattern: /(?:공항|에서|부터|까지|이동|주행|airport|drive|ride|route|panglao|carmen|tumon|hagatna|kmart|giaa)[^\n]{0,120}\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/,
