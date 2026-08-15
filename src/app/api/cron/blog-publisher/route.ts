@@ -256,9 +256,9 @@ const BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS = readBoundedIntEnv(
 const BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS = 55_000;
 const BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS = 150_000;
 const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192;
-// DeepSeek thinking tokens share the completion budget. A Pro rewrite needs
-// headroom for reasoning plus the complete article and hidden claim ledger.
-const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 16_384;
+// Pro rewrite runs without thinking tokens in the serverless path, leaving the
+// full budget for the complete article and hidden claim ledger.
+const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 8_192;
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv(
   'BLOG_PUBLISHER_GENERATION_TIMEOUT_MS',
@@ -3902,6 +3902,7 @@ async function processQueueItem(
             completedAt: new Date().toISOString(),
             latencyMs: timeoutDurationMs,
             finishReason: 'timeout',
+            thinkingMode: 'disabled',
             deepseekCost: null,
           };
       const attemptPersistence = await recordBlogGenerationAttemptV4({
@@ -4216,10 +4217,11 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
     ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.65 }
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
-        deepseekThinking: 'enabled',
-        // `max` repeatedly exceeded the serverless response window in live
-        // canaries. High retains reasoning while prioritizing a complete body.
-        reasoningEffort: 'high',
+        // Thinking mode repeatedly exceeded the serverless response window.
+        // The Pro model remains the rewrite tier; this path prioritizes a
+        // complete, auditable article over an unfinished reasoning stream.
+        deepseekThinking: 'disabled',
+        temperature: 0.2,
       });
   const blog_html = generation.text
     .replace(/^```markdown\s*/i, '')
@@ -4361,8 +4363,8 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.35 }
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
-        deepseekThinking: 'enabled',
-        reasoningEffort: 'high',
+        deepseekThinking: 'disabled',
+        temperature: 0.2,
       });
   const blog_html = generation.text
     .replace(/^```markdown\s*/i, '')
@@ -4412,7 +4414,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
         stage: generationStage,
         attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
         model: generation.receipt.model,
-        thinking: generationStage === 'draft_flash' ? 'disabled' : 'enabled',
+        thinking: generation.receipt.thinkingMode ?? 'disabled',
         receipt: generation.receipt,
       },
       seo: {
@@ -4633,8 +4635,8 @@ async function generateFromTopic(
       }
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
-        deepseekThinking: 'enabled',
-        reasoningEffort: 'high',
+        deepseekThinking: 'disabled',
+        temperature: 0.2,
       });
   const writerOutput = parseBlogInformationWriterOutput(generation.text);
   let blog_html = writerOutput.markdown
@@ -4686,7 +4688,7 @@ async function generateFromTopic(
       stage: generationStage,
       attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
       model: generation.receipt.model,
-      thinking: generationStage === 'draft_flash' ? 'disabled' : 'enabled',
+      thinking: generation.receipt.thinkingMode ?? 'disabled',
       receipt: generation.receipt,
     },
     editorial_voice: BLOG_EDITORIAL_VOICE,

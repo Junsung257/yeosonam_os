@@ -106,7 +106,8 @@ export async function recordBlogGenerationAttemptV4(
     stage: input.stage,
     provider: input.receipt.provider,
     model: input.receipt.model,
-    thinking_mode: input.stage === 'draft_flash' ? 'disabled' : 'enabled',
+    thinking_mode: input.receipt.thinkingMode
+      ?? (input.stage === 'draft_flash' ? 'disabled' : 'enabled'),
     research_fingerprint: input.researchFingerprint ?? null,
     claim_fingerprint: input.claimFingerprint ?? null,
     output_hash: outputHash,

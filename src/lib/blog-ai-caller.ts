@@ -84,6 +84,7 @@ export interface BlogAiUsageReceipt {
   completedAt: string;
   latencyMs: number;
   finishReason: string | null;
+  thinkingMode?: 'enabled' | 'disabled' | null;
   deepseekCost: DeepSeekCostReceiptV4 | null;
 }
 
@@ -457,6 +458,7 @@ async function callModelDirectWithReceipt(
         provider: 'deepseek', model, startedAt: started.toISOString(), completedAt: completed.toISOString(),
         latencyMs: Math.max(0, Date.now() - startedMs),
         finishReason: r.choices[0]?.finish_reason ?? null,
+        thinkingMode: thinking,
         deepseekCost: calculateDeepSeekCostV4(model, {
           inputTokens,
           cacheHitInputTokens,

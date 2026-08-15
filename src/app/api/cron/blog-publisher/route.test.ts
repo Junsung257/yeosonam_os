@@ -443,7 +443,7 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192');
-    expect(source).toContain('const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 16_384');
+    expect(source).toContain('const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 8_192');
     expect(source).toContain("'BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS'");
     expect(source).toContain("'BLOG_PUBLISHER_GENERATION_TIMEOUT_MS'");
     expect(source).toContain('190_000');
@@ -470,7 +470,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('forceQueue: !terminal');
     expect(source).toContain("? 'blog_ai_generation_timeout'");
     expect(source).toContain("finishReason: 'timeout'");
-    expect(source).toContain("reasoningEffort: 'high'");
+    expect(source).toContain("deepseekThinking: 'disabled'");
+    expect(source).toContain('thinking: generation.receipt.thinkingMode');
     expect(source).not.toContain("generationStage === 'rewrite_pro_max' ? 'max' : 'high'");
   });
 });
