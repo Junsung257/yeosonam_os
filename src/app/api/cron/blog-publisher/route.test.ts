@@ -474,7 +474,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('thinking: generation.receipt.thinkingMode');
     expect(source).not.toContain("generationStage === 'rewrite_pro_max' ? 'max' : 'high'");
     expect(source).toContain('evidencePacket: {');
-    expect(source).toContain('approvedClaims: researchReadiness.bundle.claims.map');
+    expect(source).toContain('approvedClaims: rewriteApprovedClaims');
+    expect(source).toContain('inspectBlogInformationClaimLiteralSupport');
     expect(source).toContain('officialSourceUrls: [...new Set(researchReadiness.bundle.sources');
     expect(source).toContain('const seo_title = contentBriefV3.metadata.title.trim().slice(0, 80)');
   });

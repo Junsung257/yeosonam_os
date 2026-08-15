@@ -144,9 +144,26 @@ function shouldCheckDestinationAngleDuplicate(input: CheckInput): boolean {
   return true;
 }
 
-export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
+export function checkLength(
+  blog_html: string,
+  blog_type: 'product' | 'info' = 'product',
+  flexibleInformationalBrief = false,
+): GateResult {
   const text = stripMarkup(blog_html);
   const length = text.length;
+  if (blog_type === 'info' && flexibleInformationalBrief) {
+    return {
+      gate: 'length',
+      passed: length > 0,
+      reason: length > 0 ? undefined : '본문 없음',
+      evidence: {
+        length,
+        min: null,
+        type: blog_type,
+        policy: 'v3_intent_and_evidence_no_fixed_length',
+      },
+    };
+  }
   const minLen = THRESHOLDS[blog_type].minLen;
   return {
     gate: 'length',
@@ -760,7 +777,8 @@ export function checkIntentQuality(input: CheckInput): GateResult {
   const legacyPassed = issues.length === 0 || report.passed || (criticalCount === 0 && score >= 90);
   const shouldInspectInformationContract = !input.product_id
     && input.blog_type !== 'product'
-    && input.content_type !== 'pillar';
+    && input.content_type !== 'pillar'
+    && !input.generation_meta?.content_brief_v3;
   const informationContract = shouldInspectInformationContract
     ? buildBlogInformationContract({
         intentType: getPlannedInformationIntent(input.generation_meta),
@@ -1123,7 +1141,11 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
     // fallback: 기본 THRESHOLDS 상수 사용
   }
 
-  gates.push(checkLength(input.blog_html, blogType));
+  gates.push(checkLength(
+    input.blog_html,
+    blogType,
+    Boolean(input.generation_meta?.content_brief_v3),
+  ));
   gates.push(checkCliche(input.blog_html, blogType));
   gates.push(await checkDuplicate(input));
   gates.push(checkKeywordDensity(input.blog_html, input.primary_keyword, blogType));

@@ -172,6 +172,7 @@ import {
 } from '@/lib/blog-serp-research-v3';
 import { enrichBlogDemandWithNaverV3 } from '@/lib/blog-live-demand-v3';
 import {
+  inspectBlogInformationClaimLiteralSupport,
   isPrimaryInformationAuthority,
   type BlogInformationResearchBundle,
 } from '@/lib/blog-information-evidence';
@@ -3092,8 +3093,12 @@ async function processQueueItem(
       : (blogType === 'info' ? 0 : 1);
     const imageQualityGatePassed = publishQuality.qualityGate.gates
       .find((gate) => gate.gate === 'image_quality')?.passed ?? true;
-    const linksGatePassed = publishQuality.qualityGate.gates
-      .find((gate) => gate.gate === 'links')?.passed ?? true;
+    const linksGate = publishQuality.qualityGate.gates.find((gate) => gate.gate === 'links');
+    const linksGateEvidence = linksGate?.evidence ?? {};
+    const ctaDestinationGatePassed = publishQuality.qualityGate.gates
+      .find((gate) => gate.gate === 'cta_destination_integrity')?.passed ?? true;
+    const internalLinkRelevant = Number(linksGateEvidence.internal ?? 0) > 0
+      && ctaDestinationGatePassed;
     const diversityReport = corpusDiversity.report;
     const demandScoreV3 = scoreBlogDemandCandidateV3({
       demand: demandPreflight.signal,
@@ -3129,7 +3134,7 @@ async function processQueueItem(
       imageUniqueness: imageQualityGatePassed ? 1 : 0,
       sourceQuality: sourceQuality01,
       authorReviewTruthful: true,
-      internalLinkRelevance: linksGatePassed ? 1 : 0,
+      internalLinkRelevance: internalLinkRelevant ? 1 : 0,
       userActionability: taskCompletion01,
       serpIntentAlignment: taskCompletion01,
       decisionCompletion: taskCompletion01,
@@ -3196,6 +3201,14 @@ async function processQueueItem(
           description: generated.seo_description,
           slug: generated.slug,
           markdown: generated.blog_html,
+          audit: {
+            claim_validation: claimValidationSummary,
+            writer_claim_ledger: writerClaimLedger,
+            writer_claim_ledger_issues: writerClaimLedgerIssues,
+            quality_evaluation_v3: qualityEvaluationV3,
+            links_gate: linksGate ?? null,
+            rewrite_claim_packet_v4: generationMeta.rewrite_claim_packet_v4 ?? null,
+          },
         },
         qualityScore: qualityEvaluationV3.score,
         hardBlockers: qualityEvaluationV3.hardBlockers,
@@ -4619,6 +4632,37 @@ async function generateFromTopic(
   const rewriteEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
     ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
     : [];
+  const researchEvidenceByKey = new Map(
+    researchReadiness.bundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]),
+  );
+  const researchSourceByKey = new Map(
+    researchReadiness.bundle.sources.map((source) => [source.sourceKey, source]),
+  );
+  const rewriteClaimPacketAudit = researchReadiness.bundle.claims.map((claim) => {
+    const linkedEvidence = claim.evidenceKeys
+      .map((key) => researchEvidenceByKey.get(key))
+      .filter((evidence): evidence is BlogInformationResearchBundle['evidence'][number] => Boolean(evidence));
+    const literalSupport = inspectBlogInformationClaimLiteralSupport({
+      claimText: claim.claimText,
+      evidence: linkedEvidence,
+    });
+    const sourceUrls = [...new Set(linkedEvidence.flatMap((evidence) => {
+      const sourceUrl = researchSourceByKey.get(evidence.sourceKey)?.sourceUrl;
+      return sourceUrl ? [sourceUrl] : [];
+    }))];
+    return { claim, literalSupport, sourceUrls };
+  });
+  const rewriteApprovedClaims = rewriteClaimPacketAudit
+    .filter((entry) => entry.literalSupport.passed && entry.sourceUrls.length > 0)
+    .map((entry) => ({
+      claimText: entry.claim.claimText,
+      claimType: entry.claim.claimType,
+      riskLevel: entry.claim.riskLevel,
+      sourceUrls: entry.sourceUrls,
+    }));
+  if (generationStage !== 'draft_flash' && rewriteApprovedClaims.length === 0) {
+    throw new Error('blog_rewrite_approved_claims_missing');
+  }
   const generationPrompt = generationStage === 'draft_flash'
     ? prompt
     : buildDeepSeekRewritePromptV4({
@@ -4633,11 +4677,7 @@ async function generateFromTopic(
           sectionPurposes: contentBriefV3.sectionPurposes.map(
             (section) => `${section.purpose} — ${section.decisionQuestion}`,
           ),
-          approvedClaims: researchReadiness.bundle.claims.map((claim) => ({
-            claimText: claim.claimText,
-            claimType: claim.claimType,
-            riskLevel: claim.riskLevel,
-          })),
+          approvedClaims: rewriteApprovedClaims,
           officialSourceUrls: [...new Set(researchReadiness.bundle.sources
             .map((source) => source.sourceUrl)
             .filter((url): url is string => Boolean(url)))].slice(0, 6),
@@ -4752,6 +4792,13 @@ async function generateFromTopic(
       minimum_consecutive_tokens: 12,
       match_count: competitorPhraseMatches.length,
       passed: competitorPhraseMatches.length === 0,
+    },
+    rewrite_claim_packet_v4: {
+      approved_count: rewriteApprovedClaims.length,
+      excluded: rewriteClaimPacketAudit.flatMap((entry) => entry.literalSupport.passed ? [] : [{
+        claim_fingerprint: entry.claim.claimFingerprint,
+        missing_numeric_tokens: entry.literalSupport.missingNumericTokens,
+      }]),
     },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
     ...(item.meta?.auto_research

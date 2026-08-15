@@ -9,7 +9,13 @@ export interface BlogGenerationAttemptRecordV4 {
   attemptNumber: number;
   stage: BlogDeepSeekStage;
   route: BlogQualityRouteV4;
-  output: { title: string; description: string; slug: string; markdown: string };
+  output: {
+    title: string;
+    description: string;
+    slug: string;
+    markdown: string;
+    audit?: Record<string, unknown>;
+  };
   qualityScore: number;
   hardBlockers: string[];
   failureReasons: string[];

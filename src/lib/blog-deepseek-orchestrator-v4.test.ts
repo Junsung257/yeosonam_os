@@ -69,7 +69,12 @@ describe('blog DeepSeek orchestrator V4', () => {
         primaryQuery: '다낭 가볼만한곳',
         primaryDecision: '내 일정에 어떤 장소가 맞는가?',
         sectionPurposes: ['선택 기준 — 체력에 맞는 장소는 어디인가?'],
-        approvedClaims: [{ claimText: '오행산은 도시에서 15분 거리입니다.', claimType: 'duration', riskLevel: 'LOW' }],
+        approvedClaims: [{
+          claimText: '오행산은 도시에서 15분 거리입니다.',
+          claimType: 'duration',
+          riskLevel: 'LOW',
+          sourceUrls: ['https://vietnam.travel/example'],
+        }],
         officialSourceUrls: ['https://vietnam.travel/example'],
         internalLink: 'https://www.yeosonam.com/blog/destination/%EB%8B%A4%EB%82%AD',
         includeFaq: false,
@@ -86,6 +91,8 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Approved claims (the complete factual universe');
     expect(prompt).toContain('오행산은 도시에서 15분 거리입니다.');
     expect(prompt).toContain('Do not use a table in this rewrite.');
+    expect(prompt).toContain('The ledger must contain only the approved claim sentences');
+    expect(prompt).toContain('citation: https://vietnam.travel/example');
   });
 
   it('never auto-publishes HIGH risk without human approval', () => {

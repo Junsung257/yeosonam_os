@@ -267,7 +267,12 @@ export function buildDeepSeekRewritePromptV4(input: {
     primaryQuery: string;
     primaryDecision: string;
     sectionPurposes: string[];
-    approvedClaims: Array<{ claimText: string; claimType: string; riskLevel: string }>;
+    approvedClaims: Array<{
+      claimText: string;
+      claimType: string;
+      riskLevel: string;
+      sourceUrls?: string[];
+    }>;
     officialSourceUrls: string[];
     internalLink: string;
     includeFaq: boolean;
@@ -280,6 +285,8 @@ export function buildDeepSeekRewritePromptV4(input: {
     '- Keep the original topic and primary decision. Answer that decision directly in the first paragraph.',
     '- The approved claims in the research packet above are the only factual source of truth.',
     '- Delete every numeric expression that does not appear verbatim in an approved claim. Do not estimate or calculate.',
+    '- The visible article and hidden ledger may contain only exact approved factual claim sentences. Do not add derived factual prose.',
+    '- Never infer visit duration, crowd level, route compatibility, waiting time, safety, opening status, or transport time.',
     '- Add no new fact, number, source, experience, destination, or recommendation. Do not expand the original topic scope.',
     '- You may reorder or rename sections only to satisfy the original brief and its section purposes.',
     '- Fix every failure listed below; remove unsupported prose instead of replacing it with a plausible claim.',
@@ -299,8 +306,12 @@ export function buildDeepSeekRewritePromptV4(input: {
       `- Checklist: ${packet.includeChecklist ? 'allowed only for evidence-backed actions' : 'do not include'}`,
       '- Do not use a table in this rewrite. Tables encourage unsupported values and implied comparisons.',
       '- Approved claims (the complete factual universe; copy a whole sentence exactly when used):',
-      ...packet.approvedClaims.map((claim, index) =>
-        `  ${index + 1}. [${claim.claimType}/${claim.riskLevel}] ${claim.claimText}`),
+      ...packet.approvedClaims.flatMap((claim, index) => [
+        `  ${index + 1}. [${claim.claimType}/${claim.riskLevel}] ${claim.claimText}`,
+        `     citation: ${(claim.sourceUrls ?? []).join(', ') || 'none'}`,
+      ]),
+      '- When an approved claim is used, copy it as its own complete sentence and put one linked citation on the next line.',
+      '- The ledger must contain only the approved claim sentences actually copied into the visible article.',
       '- Allowed official links (links are citations, not permission to invent claims):',
       ...packet.officialSourceUrls.map((url) => `  - ${url}`),
       `- Required relevant internal link: ${packet.internalLink}`,
