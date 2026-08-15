@@ -92,6 +92,86 @@ export interface BlogAiTextResult {
   receipt: BlogAiUsageReceipt;
 }
 
+export type BlogAiResponseErrorCode =
+  | 'blog_ai_empty_response'
+  | 'blog_ai_truncated_response'
+  | 'blog_ai_incomplete_response'
+  | 'blog_ai_malformed_json_response';
+
+/**
+ * Fail-closed provider response error.
+ *
+ * Durable generation callers can persist `receipt` for cost/audit purposes,
+ * but must never treat the partial provider text as an article. The text is
+ * deliberately not retained on the error to avoid leaking a cut-off draft to
+ * logs or accidentally recovering it as publishable content.
+ */
+export class BlogAiResponseError extends Error {
+  readonly code: BlogAiResponseErrorCode;
+  readonly receipt: BlogAiUsageReceipt;
+  readonly outputCharacters: number;
+
+  constructor(input: {
+    code: BlogAiResponseErrorCode;
+    receipt: BlogAiUsageReceipt;
+    outputCharacters: number;
+  }) {
+    const finishReason = input.receipt.finishReason ?? 'missing';
+    super(
+      `${input.code}:provider=${input.receipt.provider}:model=${input.receipt.model}`
+      + `:finish_reason=${finishReason}:output_chars=${input.outputCharacters}`,
+    );
+    this.name = 'BlogAiResponseError';
+    this.code = input.code;
+    this.receipt = input.receipt;
+    this.outputCharacters = input.outputCharacters;
+  }
+}
+
+function assertCompleteDeepSeekResponse(input: {
+  text: string;
+  receipt: BlogAiUsageReceipt;
+  jsonMode: boolean;
+}): void {
+  const text = input.text.trim();
+  const outputCharacters = Array.from(text).length;
+  if (!text) {
+    throw new BlogAiResponseError({
+      code: 'blog_ai_empty_response',
+      receipt: input.receipt,
+      outputCharacters,
+    });
+  }
+
+  // OpenAI-compatible DeepSeek responses use `length` when max_tokens cuts
+  // output off. Accept only an explicit normal stop at this durable boundary;
+  // missing or provider-specific termination states are not proof of a
+  // complete article.
+  if (input.receipt.finishReason !== 'stop') {
+    const normalizedReason = input.receipt.finishReason?.toLowerCase() ?? '';
+    const truncated = normalizedReason === 'length'
+      || normalizedReason === 'max_tokens'
+      || normalizedReason === 'max_output_tokens';
+    throw new BlogAiResponseError({
+      code: truncated ? 'blog_ai_truncated_response' : 'blog_ai_incomplete_response',
+      receipt: input.receipt,
+      outputCharacters,
+    });
+  }
+
+  if (input.jsonMode) {
+    try {
+      JSON.parse(text);
+    } catch {
+      throw new BlogAiResponseError({
+        code: 'blog_ai_malformed_json_response',
+        receipt: input.receipt,
+        outputCharacters,
+      });
+    }
+  }
+}
+
 function withRequestTimeout(
   opts: BlogCallOptions,
   requestTimeoutMs: number | undefined,
@@ -371,7 +451,7 @@ async function callModelDirectWithReceipt(
     const cacheMissInputTokens = Number(
       rawUsage.prompt_cache_miss_tokens || Math.max(0, inputTokens - cacheHitInputTokens),
     );
-    return {
+    const result: BlogAiTextResult = {
       text: r.choices[0]?.message?.content ?? '',
       receipt: {
         provider: 'deepseek', model, startedAt: started.toISOString(), completedAt: completed.toISOString(),
@@ -385,6 +465,8 @@ async function callModelDirectWithReceipt(
         }, completed),
       },
     };
+    assertCompleteDeepSeekResponse({ ...result, jsonMode });
+    return result;
   }
 
   if (isClaudeModel(modelOrProvider) || modelOrProvider === 'claude') {

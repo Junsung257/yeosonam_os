@@ -146,7 +146,7 @@ describe('blog-ai-caller — 공개 API', () => {
   // ── A-1 코드리뷰 fix: 싱글톤 캐싱 실제 동작 검증 ─────────────────────────────
   it('동일 키로 여러 번 호출 → SDK constructor 1회만 (싱글톤 캐싱)', async () => {
     process.env.DEEPSEEK_API_KEY = 'sk-test-1';
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: '{"x":1}' } }] });
+    mocks.dsCreate.mockResolvedValue({ choices: [{ finish_reason: 'stop', message: { content: '{"x":1}' } }] });
 
     const { generateBlogJSON } = await import('./blog-ai-caller');
     await generateBlogJSON('p1');
@@ -159,7 +159,7 @@ describe('blog-ai-caller — 공개 API', () => {
 
   it('API 키 교체 → 새 SDK 인스턴스 생성 (캐시 무효화)', async () => {
     process.env.DEEPSEEK_API_KEY = 'sk-test-1';
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: '{"ok":true}' } }] });
+    mocks.dsCreate.mockResolvedValue({ choices: [{ finish_reason: 'stop', message: { content: '{"ok":true}' } }] });
 
     const { generateBlogJSON } = await import('./blog-ai-caller');
     await generateBlogJSON('p1');
@@ -173,7 +173,9 @@ describe('blog-ai-caller — 공개 API', () => {
 
   it('generateBlogText 도 같은 인스턴스 공유 (provider 별 1개)', async () => {
     process.env.DEEPSEEK_API_KEY = 'sk-test';
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'plain text response long enough' } }] });
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '{"article":"plain text response long enough"}' } }],
+    });
 
     const { generateBlogJSON, generateBlogText } = await import('./blog-ai-caller');
     await generateBlogJSON('p1');
@@ -185,7 +187,7 @@ describe('blog-ai-caller — 공개 API', () => {
 
   it('passes a per-provider timeout to the underlying SDK request', async () => {
     process.env.DEEPSEEK_API_KEY = 'sk-test';
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'plain text result' } }] });
+    mocks.dsCreate.mockResolvedValue({ choices: [{ finish_reason: 'stop', message: { content: 'plain text result' } }] });
 
     const { generateBlogText } = await import('./blog-ai-caller');
     await generateBlogText('p1', {
@@ -203,7 +205,7 @@ describe('blog-ai-caller — 공개 API', () => {
     process.env.GEMINI_API_KEY = 'gemini-test';
     process.env.DEEPSEEK_API_KEY = 'deepseek-test';
     mocks.geminiGenContent.mockRejectedValue(new Error('request timed out'));
-    mocks.dsCreate.mockResolvedValue({ choices: [{ message: { content: 'fallback article response long enough' } }] });
+    mocks.dsCreate.mockResolvedValue({ choices: [{ finish_reason: 'stop', message: { content: 'fallback article response long enough' } }] });
 
     const { generateBlogText } = await import('./blog-ai-caller');
     const result = await generateBlogText('p1', {
@@ -245,5 +247,80 @@ describe('blog-ai-caller — 공개 API', () => {
 
     expect(mocks.geminiGenContent).toHaveBeenCalledTimes(1);
     expect(mocks.dsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed and preserves the receipt when DeepSeek stops at the token limit', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '# partial article\n\ncut off' } }],
+      usage: {
+        prompt_tokens: 1_000,
+        prompt_cache_hit_tokens: 900,
+        completion_tokens: 8_192,
+      },
+    });
+
+    const { BlogAiResponseError, generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    const failure = await generateBlogTextWithReceipt('prompt', {
+      model: 'deepseek-v4-pro',
+      maxTokens: 8_192,
+      deepseekThinking: 'enabled',
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(BlogAiResponseError);
+    expect(failure).toMatchObject({
+      code: 'blog_ai_truncated_response',
+      outputCharacters: 26,
+      receipt: {
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro',
+        finishReason: 'length',
+      },
+    });
+    expect(String((failure as Error).message)).not.toContain('partial article');
+  });
+
+  it('fails closed on an empty DeepSeek response even when finish_reason is stop', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '  \n ' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 0 },
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    await expect(generateBlogTextWithReceipt('prompt', {
+      model: 'deepseek-v4-flash',
+    })).rejects.toMatchObject({
+      code: 'blog_ai_empty_response',
+      outputCharacters: 0,
+    });
+  });
+
+  it('fails closed when DeepSeek omits a normal completion reason', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: null, message: { content: 'apparently complete text' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 10 },
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    await expect(generateBlogTextWithReceipt('prompt', {
+      model: 'deepseek-v4-flash',
+    })).rejects.toMatchObject({
+      code: 'blog_ai_incomplete_response',
+      receipt: { finishReason: null },
+    });
+  });
+
+  it('does not return a cut-off JSON object as a successful DeepSeek result', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-test';
+    mocks.dsCreate.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '{"title":"cut off"' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 10 },
+    });
+
+    const { generateBlogJSON } = await import('./blog-ai-caller');
+    await expect(generateBlogJSON('prompt', { cascade: false }))
+      .rejects.toMatchObject({ code: 'blog_ai_malformed_json_response' });
   });
 });
