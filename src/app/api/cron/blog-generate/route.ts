@@ -13,6 +13,12 @@ async function runBlogGenerate(request: NextRequest) {
   const url = new URL(request.url);
   const forceValue = url.searchParams.get('force');
   const forcedManualRun = forceValue === '1' || forceValue === 'true';
+  const scheduledGenerationEnabled = ['1', 'true'].includes(
+    String(process.env.BLOG_GENERATION_CRON_ENABLED || '').trim().toLowerCase(),
+  );
+  if (!forcedManualRun && !scheduledGenerationEnabled) {
+    return { skipped: true, reason: 'blog_generation_cron_paused' };
+  }
   if (!forcedManualRun && !isBlogGenerationWindowKstV4(new Date())) {
     return { skipped: true, reason: 'outside_kst_offpeak_generation_window' };
   }

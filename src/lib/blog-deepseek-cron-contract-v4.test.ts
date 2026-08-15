@@ -14,6 +14,8 @@ describe('blog DeepSeek V4 cron contract', () => {
     });
     expect(generationRoute).toContain('isBlogGenerationWindowKstV4');
     expect(generationRoute).toContain("forceValue === '1' || forceValue === 'true'");
+    expect(generationRoute).toContain('BLOG_GENERATION_CRON_ENABLED');
+    expect(generationRoute).toContain("reason: 'blog_generation_cron_paused'");
     expect(externalWorkflow).toContain('if [ "$endpoint" != "blog-generate" ]; then');
   });
 
