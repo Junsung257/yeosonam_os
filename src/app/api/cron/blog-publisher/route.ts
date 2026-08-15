@@ -2378,11 +2378,12 @@ async function processQueueItem(
       };
     }
     let queueReusableDraftId: string | null = null;
+    let queueReusableDraftReviewStatus: string | null = null;
     let queueReusableAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
     if (!privateRegenerationRequest && typeof item.content_creative_id === 'string') {
       const { data: queueCreative, error: queueCreativeError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,channel,status,og_image_url,blog_html')
+        .select('id,channel,status,review_status,og_image_url,blog_html')
         .eq('id', item.content_creative_id)
         .maybeSingle();
       if (queueCreativeError) {
@@ -2393,6 +2394,9 @@ async function processQueueItem(
         && queueCreative.status === 'draft'
       ) {
         queueReusableDraftId = queueCreative.id;
+        queueReusableDraftReviewStatus = typeof queueCreative.review_status === 'string'
+          ? queueCreative.review_status
+          : null;
         queueReusableAssets = {
           ogImageUrl: typeof queueCreative.og_image_url === 'string' ? queueCreative.og_image_url : null,
           inlineImageUrls: extractBlogInlineImageUrls(
@@ -2797,6 +2801,7 @@ async function processQueueItem(
         markdown: generated.blog_html,
         productId: item.product_id ?? null,
         tenantId: item.tenant_id ?? null,
+        reviewStatus: queueReusableDraftReviewStatus,
         claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
         claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
         intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'

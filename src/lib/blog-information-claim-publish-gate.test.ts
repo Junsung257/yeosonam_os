@@ -13,6 +13,7 @@ vi.mock('./supabase', () => ({
 import {
   isBlogInformationClaimValidationPendingHumanApprovalOnly,
   persistBlogInformationClaimFindings,
+  shouldApplyDurableBlogInformationReviewGate,
   toBlogInformationClaimValidationMeta,
 } from './blog-information-claim-publish-gate';
 
@@ -67,6 +68,21 @@ describe('claim validation review readiness', () => {
     };
 
     expect(isBlogInformationClaimValidationPendingHumanApprovalOnly(result)).toBe(false);
+  });
+
+  it('does not make a stale draft review case mandatory for a LOW/MEDIUM auto-publish claim set', () => {
+    expect(shouldApplyDurableBlogInformationReviewGate({
+      reportRequiresHumanReview: false,
+      reviewStatus: 'pending_review',
+    })).toBe(false);
+    expect(shouldApplyDurableBlogInformationReviewGate({
+      reportRequiresHumanReview: false,
+      reviewStatus: 'changes_requested',
+    })).toBe(true);
+    expect(shouldApplyDurableBlogInformationReviewGate({
+      reportRequiresHumanReview: true,
+      reviewStatus: null,
+    })).toBe(true);
   });
 });
 
