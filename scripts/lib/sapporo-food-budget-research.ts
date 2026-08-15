@@ -75,7 +75,7 @@ export function buildSapporoFoodBudgetResearchBundle(checkedAt = new Date()): Bl
   const date = retrievedAt.slice(0, 10);
   const sourceKey = 'budget-your-trip-sapporo-food';
   const excerpts = FACTS.map((fact) =>
-    `${date} Japan Sapporo travelers - ${fact.label}: ${fact.value} ${fact.currency}.`);
+    `${date} Japan Sapporo 1 traveler - ${fact.label}: ${fact.value} ${fact.currency}.`);
   const snapshotContent = [
     'Structured fact capture from Budget Your Trip, Food Budget in Sapporo.',
     ...excerpts,
@@ -118,7 +118,7 @@ export function buildSapporoFoodBudgetResearchBundle(checkedAt = new Date()): Bl
       scope: {
         country: 'Japan',
         destination: '삿포로',
-        applicableTo: 'travelers',
+        applicableTo: '1 traveler',
         locale: 'ko-KR',
         claimType: 'price' as const,
         normalizedValue: fact.value,
