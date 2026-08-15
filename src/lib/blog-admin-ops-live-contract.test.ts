@@ -19,11 +19,13 @@ describe('blog admin live operations contract', () => {
   it('honors dashboard scope drilldowns on the first render', () => {
     const page = source('src/app/admin/blog/queue/page.tsx');
     const client = source('src/app/admin/blog/queue/BlogQueueClient.tsx');
+    const statusStrip = source('src/app/admin/blog/BlogOpsStatusStrip.tsx');
 
     expect(page).toContain('const params = await searchParams');
     expect(page).toContain('resolveBlogQueueAdminView(params.scope, params.status)');
     expect(client).toContain("initialView = 'active'");
     expect(client).toContain('useState<(typeof VIEW_TABS)[number]');
+    expect(statusStrip).toContain("'/admin/blog/queue?scope=attention'");
   });
 
   it('shows the effective environment cap instead of presenting the DB target as executable truth', () => {

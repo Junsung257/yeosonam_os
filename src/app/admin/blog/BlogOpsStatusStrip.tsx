@@ -120,7 +120,12 @@ export default function BlogOpsStatusStrip() {
             <Clock size={12} />
             오늘 {ops.publish.published_today}/{ops.publish.daily_target}
           </Link>
-          <Link href="/admin/blog/queue" className="inline-flex items-center gap-1 rounded-admin-xs bg-admin-surface/60 px-2 py-1 font-semibold text-admin-text-2 hover:bg-admin-surface">
+          <Link
+            href={(ops.queue.counts.failed || 0) > 0
+              ? '/admin/blog/queue?scope=attention'
+              : '/admin/blog/queue'}
+            className="inline-flex items-center gap-1 rounded-admin-xs bg-admin-surface/60 px-2 py-1 font-semibold text-admin-text-2 hover:bg-admin-surface"
+          >
             <ListChecks size={12} />
             큐 {ops.queue.active_count} · 실패 {ops.queue.counts.failed || 0}
           </Link>
