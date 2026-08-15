@@ -13,7 +13,7 @@
 5. 90점 이상이고 hard blocker와 failure가 모두 0이면 `approved_for_slot`이다.
 6. 75~89점은 DeepSeek V4 Pro `reasoning_effort=high`, 75점 미만의 표현·완결성 실패는 Pro `max`로 재작성한다.
 7. 사실·수요·claim 충돌은 문장 재작성으로 덮지 않는다. 한 번 재연구 후 계속 실패하면 격리한다.
-8. 한 후보의 모델 호출은 초안을 포함해 최대 3회다. 두 번째 시도 후 점수가 80 미만이거나 5점 이상 개선되지 않으면 조기 격리한다.
+8. 한 후보의 모델 호출은 초안을 포함해 최대 3회다. 두 번째 재작성 가능 실패가 미수렴이면 승인 claim만 사용하는 Pro max 최종 시도를 수행하며, 세 번째 완료 후에도 실패할 때만 격리한다. 연구·수요·비재작성 hard blocker는 즉시 안전 보류할 수 있다.
 9. `blog-publication-controller`가 KST 09/12/15/18/21에 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
 10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용한다.
 
@@ -38,7 +38,7 @@ DeepSeek 공식 가격 변경 시점은 2026-08-16 16:00 UTC(2026-08-17 01:00 KS
 
 - `draft_flash`: `deepseek-v4-flash`, thinking disabled. 검증된 연구 packet 안에서 초안을 빠르게 만든다.
 - `rewrite_pro_high`: `deepseek-v4-pro`, thinking enabled/high. 75~89점의 구조·완결성 실패만 고친다.
-- `rewrite_pro_max`: `deepseek-v4-pro`, thinking enabled/max. 75점 미만이지만 사실 gate는 통과한 초안을 한 번 더 구성한다.
+- `rewrite_pro_max`: `deepseek-v4-pro`, thinking enabled/max. 앞선 시도가 미수렴한 경우 승인된 research claim만 사실 경계로 사용해 마지막 3차 초안을 구성한다.
 - Gemini/GPT/Claude fallback은 블로그 V4에서 금지한다. DeepSeek 장애는 다음 off-peak 실행으로 재시도하고 공급자 변경으로 숨기지 않는다.
 
 재작성 prompt에는 이전 초안, 실패 evidence, research fingerprint, claim fingerprint가 들어간다. 새 숫자·새 사실·새 경험·새 출처 추가를 금지한다.
@@ -128,6 +128,19 @@ where r.status = 'approved_for_slot';
 7. preview에서 `live`, cap 3, `pilot_3`로 바꾸고 한 slot canary를 확인한다.
 8. production migration → production code → secrets → draft-only canary 순으로 반영한다.
 9. 승인 후에만 production `live`를 켠다. 기존 글 UPDATE나 migration backfill은 별도 승인 없이는 실행하지 않는다.
+
+### 2026-08-16 preview 검증 기준
+
+`draft_only` 실호출 canary는 다음을 동시에 만족해야 성공이다.
+
+- latest attempt `route=approved_for_slot`, `finish_reason=stop`
+- claim coverage 1.0, ledger declared/candidate 동일, unclassified 0
+- hard blocker와 failure reason 모두 0
+- creative `status=draft`, `published_at`과 `publish_scheduled_at` null
+- public view 0, indexing job/report 0
+- 상세 404, sitemap/RSS/image sitemap에 slug 없음
+
+현재 증명된 queue는 `6fd9464c-cf2c-42c6-9ef4-1a9cd9fbe991`, deployment는 `dpl_GcnZ3JyrQdvMuEmwMMrhCFTvF9SE`다. 이는 preview 증거이며 production 활성화 근거로 단독 사용하지 않는다.
 
 ## 장애·롤백
 
