@@ -16,6 +16,19 @@ describe('explainable blog quality evaluator v3', () => {
     expect(report.version).toBe('blog-quality-v3');
   });
 
+  it('uses the measured decision-completion score instead of requiring prompt text verbatim', () => {
+    const report = evaluateBlogQualityV3({
+      ...base,
+      primaryDecision: '여행자 유형과 이동 부담에 따라 장소를 고른다',
+      intentCompletionScore: 0.9,
+    });
+
+    expect(report.dimensions.intent_completion).toMatchObject({
+      value: 0.9,
+      passed: true,
+    });
+  });
+
   it.each([
     '고민을에서 덜어드리겠습니다.에서 엄선한', '여 여소남 에디터', '낮춝니다',
     '어렵편입니다', '여행 준비 여행', '쉥겐 협약국 2-6개국',

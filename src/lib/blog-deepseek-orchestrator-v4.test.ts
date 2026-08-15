@@ -18,7 +18,16 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
     expect(decideBlogQualityRouteV4({
       score: 96, completedAttempts: 1, hardBlockers: ['unsupported_number'],
-    })).toMatchObject({ route: 'reresearch', publishable: false });
+    })).toMatchObject({ route: 'rewrite_pro_high', publishable: false });
+  });
+
+  it('re-researches missing evidence but rewrites removable unsupported prose', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 71, completedAttempts: 1, hardBlockers: ['missing_evidence'],
+    })).toMatchObject({ route: 'reresearch', nextStage: null });
+    expect(decideBlogQualityRouteV4({
+      score: 71, completedAttempts: 1, hardBlockers: ['unsupported_number'],
+    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
   });
 
   it('routes 75-89 to Pro high and lower soft scores to Pro max', () => {

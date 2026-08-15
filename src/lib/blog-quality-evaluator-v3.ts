@@ -23,6 +23,7 @@ export interface BlogQualityEvaluationInputV3 {
   body: string;
   destination?: string | null;
   primaryDecision?: string | null;
+  intentCompletionScore?: number;
   supportedClaimCount?: number;
   factualClaimCount?: number;
   staleClaimCount?: number;
@@ -101,7 +102,9 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
   const genericHereCount = (input.body.match(/(?:이곳|해당\s*지역|이\s*여행지)/gu) || []).length;
   const destinationSpecificity = clamp((input.destinationSpecificDetailCount || 0) / 3)
     * (genericHereCount > destinationMentions + 3 ? 0.4 : 1);
-  const intentCompletion = input.primaryDecision && input.body.includes(input.primaryDecision) ? 1 : 0.7;
+  const intentCompletion = typeof input.intentCompletionScore === 'number'
+    ? clamp(input.intentCompletionScore)
+    : input.primaryDecision && input.body.includes(input.primaryDecision) ? 1 : 0.7;
   const truthful = input.authorReviewTruthful !== false && !hardBlockers.includes('unsupported_first_party_claim');
 
   const dimensions: Record<BlogQualityDimensionV3, BlogQualityDimensionResultV3> = {

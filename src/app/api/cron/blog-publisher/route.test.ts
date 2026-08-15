@@ -38,6 +38,11 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("reason: 'blog_quality_v3_runtime_schema_not_ready'");
     expect(source).toContain('evaluateBlogCorpusCandidateV3');
     expect(source).toContain('evaluateBlogQualityV3');
+    expect(source).toContain("gate.gate === 'image_quality'");
+    expect(source).toContain("gate.gate === 'links'");
+    expect(source).toContain('intentCompletionScore: taskCompletion01');
+    expect(source).toContain('[BLOG_INFORMATION_RESEARCH_META_KEY]: null');
+    expect(source).toContain('information_research_fingerprint: null');
     expect(source).not.toContain("'local_transport_deterministic_evidence_article'");
     expect(source).not.toContain('softenKeywordDensity');
     expect(source).not.toContain('seoMetadataDetailsNeedRepair');

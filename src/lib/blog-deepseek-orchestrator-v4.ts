@@ -43,8 +43,6 @@ const RESEARCH_BLOCKERS = new Set([
   'missing_evidence',
   'stale_claim',
   'stale_claim_present',
-  'unsupported_number',
-  'unsupported_number_present',
   'verified_demand_signal_missing',
 ]);
 

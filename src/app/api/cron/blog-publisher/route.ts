@@ -170,7 +170,10 @@ import {
   type SerpResearchPacketV3,
 } from '@/lib/blog-serp-research-v3';
 import { enrichBlogDemandWithNaverV3 } from '@/lib/blog-live-demand-v3';
-import type { BlogInformationResearchBundle } from '@/lib/blog-information-evidence';
+import {
+  isPrimaryInformationAuthority,
+  type BlogInformationResearchBundle,
+} from '@/lib/blog-information-evidence';
 import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
 import {
   BLOG_DEEPSEEK_MODELS,
@@ -3047,9 +3050,27 @@ async function processQueueItem(
     const taskCompletion01 = typeof engineMetrics.task_completion === 'number'
       ? Math.max(0, Math.min(1, Number(engineMetrics.task_completion) / 100))
       : 0;
-    const sourceQuality01 = claimValidation.claims.length > 0
-      ? Math.max(0, Math.min(1, claimValidation.coverage))
+    const persistedResearchBundle = item.meta?.[BLOG_INFORMATION_RESEARCH_META_KEY]
+      && typeof item.meta[BLOG_INFORMATION_RESEARCH_META_KEY] === 'object'
+      && !Array.isArray(item.meta[BLOG_INFORMATION_RESEARCH_META_KEY])
+      ? item.meta[BLOG_INFORMATION_RESEARCH_META_KEY] as BlogInformationResearchBundle
+      : null;
+    const researchSources: BlogInformationResearchBundle['sources'] = Array.isArray(
+      persistedResearchBundle?.sources,
+    ) ? persistedResearchBundle.sources : [];
+    const sourceQuality01 = researchSources.length > 0
+      ? researchSources.reduce((sum, source) => {
+          if (isPrimaryInformationAuthority(source.authorityLevel)) return sum + 1;
+          if (source.authorityLevel === 'official_secondary') return sum + 0.85;
+          if (source.authorityLevel === 'field_observation') return sum + 0.75;
+          if (source.authorityLevel === 'editorial_secondary') return sum + 0.7;
+          return sum + 0.6;
+        }, 0) / researchSources.length
       : (blogType === 'info' ? 0 : 1);
+    const imageQualityGatePassed = publishQuality.qualityGate.gates
+      .find((gate) => gate.gate === 'image_quality')?.passed ?? true;
+    const linksGatePassed = publishQuality.qualityGate.gates
+      .find((gate) => gate.gate === 'links')?.passed ?? true;
     const diversityReport = corpusDiversity.report;
     const demandScoreV3 = scoreBlogDemandCandidateV3({
       demand: demandPreflight.signal,
@@ -3070,6 +3091,7 @@ async function processQueueItem(
       body: generated.blog_html,
       destination: item.destination,
       primaryDecision: contentBriefV3.primaryDecision,
+      intentCompletionScore: taskCompletion01,
       supportedClaimCount: Math.floor(claimValidation.claims.length * claimValidation.coverage),
       factualClaimCount: claimValidation.claims.length,
       staleClaimCount,
@@ -3080,11 +3102,11 @@ async function processQueueItem(
       titleUniqueness: diversityReport && diversityReport.normalizedTitleClusterSize < 3 ? 1 : 0,
       openingUniqueness: diversityReport ? 1 - diversityReport.maxOpeningSimilarity : 0,
       structureUniqueness: diversityReport ? 1 - diversityReport.maxHeadingSimilarity : 0,
-      imageRelevance: publishQuality.passed ? 1 : 0,
-      imageUniqueness: publishQuality.passed ? 1 : 0,
+      imageRelevance: imageQualityGatePassed ? 1 : 0,
+      imageUniqueness: imageQualityGatePassed ? 1 : 0,
       sourceQuality: sourceQuality01,
       authorReviewTruthful: true,
-      internalLinkRelevance: qa.passed ? 1 : 0,
+      internalLinkRelevance: linksGatePassed ? 1 : 0,
       userActionability: taskCompletion01,
       serpIntentAlignment: taskCompletion01,
       decisionCompletion: taskCompletion01,
@@ -3095,7 +3117,7 @@ async function processQueueItem(
       ) > 0 ? 1 : 0,
       titleSnippetCongruence: generated.seo_title === contentBriefV3.metadata.title ? 1 : 0,
       sectionPurposeCoverage: taskCompletion01,
-      imageEntityMatch: publishQuality.passed ? 1 : 0,
+      imageEntityMatch: imageQualityGatePassed ? 1 : 0,
       pillarSupportRelationship: representativeIdentity ? 1 : 0,
       normalizedTitleClusterSize: diversityReport?.normalizedTitleClusterSize ?? 3,
       templateSaturation: !diversityReport || ['queue_reject', 'refresh', 'merge'].includes(diversityReport.disposition),
@@ -3197,6 +3219,14 @@ async function processQueueItem(
           failure_evidence: qualityRouteV4.reasons,
           last_attempted_at: now,
         },
+        ...(qualityRouteV4.route === 'reresearch'
+          ? {
+              [BLOG_INFORMATION_RESEARCH_META_KEY]: null,
+              auto_research: null,
+              information_research_fingerprint: null,
+              claim_fingerprint: null,
+            }
+          : {}),
       });
       return {
         id: item.id,
