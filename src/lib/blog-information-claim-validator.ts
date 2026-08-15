@@ -199,11 +199,17 @@ export function classifyBlogInformationStatement(segment: string): {
   // win over editorial-language allowlists. This prevents a sentence such as
   // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
   const factualClassification = classifyClaim(segment);
-  if (factualClassification) return { category: 'verified_factual', factualClassification };
+  const directDecisionGuidance = V3_DECISION_GUIDANCE_RE.test(segment)
+    || V3_DIRECT_DECISION_ANSWER_RE.test(segment);
+  if (
+    factualClassification
+    && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
+  ) {
+    return { category: 'verified_factual', factualClassification };
+  }
   if (
     EDITORIAL_READING_GUIDANCE_RE.test(segment)
-    || V3_DECISION_GUIDANCE_RE.test(segment)
-    || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
+    || directDecisionGuidance
     || V3_NAVIGATION_HEADING_RE.test(segment)
   ) {
     return { category: 'navigation_boilerplate', factualClassification: null };

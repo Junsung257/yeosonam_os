@@ -8,6 +8,7 @@ import {
   isDeepSeekOffPeakAt,
   isDeepSeekPeakAt,
   nextBlogPublicationSlotKstV4,
+  normalizeBlogWriterHeadingV4,
   resolveBlogPublicationRampCapV4,
   resolveDeepSeekPriceV4,
 } from './blog-deepseek-orchestrator-v4';
@@ -106,6 +107,13 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('do not repeat a four-word Korean phrase more than twice');
     expect(prompt).toContain('Keep evidence-section H2 labels neutral');
     expect(prompt).toContain('Do not introduce a new place property inside a question');
+  });
+
+  it('normalizes only an exact plain fixed title into an H1', () => {
+    expect(normalizeBlogWriterHeadingV4('고정 제목\n\n첫 문단입니다.', '고정 제목'))
+      .toBe('# 고정 제목\n\n첫 문단입니다.');
+    expect(normalizeBlogWriterHeadingV4('다른 제목\n\n첫 문단입니다.', '고정 제목'))
+      .toBe('다른 제목\n\n첫 문단입니다.');
   });
 
   it('never auto-publishes HIGH risk without human approval', () => {

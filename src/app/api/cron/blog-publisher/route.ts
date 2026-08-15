@@ -182,6 +182,7 @@ import {
   buildDeepSeekRewritePromptV4,
   decideBlogQualityRouteV4,
   nextBlogPublicationSlotKstV4,
+  normalizeBlogWriterHeadingV4,
   type BlogDeepSeekStage,
 } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
@@ -4744,6 +4745,7 @@ async function generateFromTopic(
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
+  blog_html = normalizeBlogWriterHeadingV4(blog_html, contentBriefV3.metadata.title);
   const writerOutputBoundary = boundBlogWriterOutput(blog_html);
   blog_html = writerOutputBoundary.markdown;
   const competitorPhraseMatches = serpResearchV3

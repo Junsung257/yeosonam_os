@@ -343,3 +343,16 @@ export function buildDeepSeekRewritePromptV4(input: {
       : ['Original draft to rewrite:', input.originalDraft]),
   ].join('\n');
 }
+
+/** Safe Markdown normalization: the writer sometimes returns the fixed H1 as plain text. */
+export function normalizeBlogWriterHeadingV4(markdown: string, fixedTitle: string): string {
+  const title = fixedTitle.trim();
+  if (!title) return markdown.trim();
+  const lines = markdown.trim().split(/\r?\n/);
+  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex < 0) return '';
+  if (lines[firstContentIndex]!.trim() === title) {
+    lines[firstContentIndex] = `# ${title}`;
+  }
+  return lines.join('\n').trim();
+}

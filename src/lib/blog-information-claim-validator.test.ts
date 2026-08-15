@@ -45,6 +45,15 @@ describe('V3 editorial decision guidance classification', () => {
       factualClassification: null,
     });
   });
+
+  it('does not misclassify source-neutral decision instructions as policy requirements', () => {
+    expect(classifyBlogInformationStatement(
+      '다낭에서 갈 곳을 고를 때는 공식 정보에 나온 위치와 이동 시간을 내 일정의 체력·동선과 직접 비교해야 합니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
 });
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
