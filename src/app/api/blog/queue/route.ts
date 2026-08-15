@@ -111,6 +111,10 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from('blog_topic_queue')
       .select('*', { count: 'exact' })
+      // Operational failures usually have no target_publish_at. Ordering by
+      // target first pushed them outside the 500-row audit window and made the
+      // queue UI report zero failures while the OS summary reported dozens.
+      .order('created_at', { ascending: false })
       .order('target_publish_at', { ascending: true, nullsFirst: false })
       .order('priority', { ascending: false })
       .limit(500);

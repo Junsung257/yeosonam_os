@@ -29,6 +29,11 @@ interface OpsSummary {
   publish: {
     published_today: number;
     daily_target: number;
+    configured_daily_target?: number;
+    effective_daily_target?: number;
+    daily_publish_cap?: number;
+    autopublish_mode?: 'draft_only' | 'reviewed_only' | 'live';
+    public_publication_enabled?: boolean;
     remaining_today: number;
     per_destination_daily_cap: number | null;
     product_ratio: number | null;
@@ -43,6 +48,7 @@ interface OpsSummary {
 }
 
 const CHECK_LABELS: Record<string, string> = {
+  autopublish_mode_draft_only: '자동발행 안전정지',
   current_day_publisher_failure: '오늘 발행자 실패',
   publish_preflight_blocked: '발행 전 점검 차단',
   canary_candidates_unavailable: 'Canary 후보 부족',
@@ -100,9 +106,10 @@ export default function PolicyPage() {
   };
 
   const dailyTotal = policy!.posts_per_day;
-  const product = Math.round(dailyTotal * policy!.product_ratio);
-  const info = dailyTotal - product;
-  const queuePressure = ops ? Math.max(0, ops.queue.active_count - dailyTotal) : 0;
+  const effectiveDailyTotal = ops?.publish.effective_daily_target ?? dailyTotal;
+  const product = Math.round(effectiveDailyTotal * policy!.product_ratio);
+  const info = effectiveDailyTotal - product;
+  const queuePressure = ops ? Math.max(0, ops.queue.active_count - effectiveDailyTotal) : 0;
 
   const save = async () => {
     if (!policy) return;
@@ -156,7 +163,15 @@ export default function PolicyPage() {
       {ops && (
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            ['오늘 발행', `${ops.publish.published_today}/${ops.publish.daily_target}`, ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성', Activity, ops.publish.remaining_today ? 'text-danger' : 'text-success'],
+            [
+              '오늘 발행',
+              ops.publish.public_publication_enabled === false ? '안전정지' : `${ops.publish.published_today}/${ops.publish.daily_target}`,
+              ops.publish.public_publication_enabled === false
+                ? `${ops.publish.autopublish_mode || 'draft_only'} 모드 · 공개 발행 중지`
+                : ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성',
+              Activity,
+              ops.publish.public_publication_enabled === false || ops.publish.remaining_today ? 'text-danger' : 'text-success',
+            ],
             ['큐 압력', queuePressure.toLocaleString('ko-KR'), queuePressure ? '현재 정책보다 큐가 많음' : '정책 범위 안', ListChecks, queuePressure ? 'text-warning' : 'text-success'],
             ['실패 큐', `${ops.queue.counts.failed || 0}`, `지연 ${ops.queue.overdue_queued}`, AlertTriangle, (ops.queue.counts.failed || 0) ? 'text-danger' : 'text-success'],
             ['계약 상태', ops.contract.passed ? '통과' : '점검', checkLabels(ops.contract.failed_checks) || '정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
@@ -178,7 +193,7 @@ export default function PolicyPage() {
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">현재 정책 미리보기</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              다음 스케줄러 실행부터 하루 {dailyTotal}편, 정보성 {info}편, 상품 {product}편 기준으로 큐 슬롯을 잡습니다.
+              DB 설정은 하루 {dailyTotal}편이고, 현재 환경 상한을 적용한 실효 기준은 {effectiveDailyTotal}편입니다. 정보성 {info}편, 상품 {product}편 범위에서 큐 슬롯을 잡습니다.
             </p>
           </div>
           <div>
@@ -200,7 +215,7 @@ export default function PolicyPage() {
         {/* posts_per_day */}
         <div>
           <label htmlFor="blog-policy-posts-per-day" className="text-admin-xs font-semibold text-admin-text-2">하루 발행 편수</label>
-          <p className="text-[10px] text-admin-muted-2 mb-1">검색 안전선 8-12편/일. 12편 이상은 얇은 글이 늘어날 위험이 있습니다.</p>
+          <p className="text-[10px] text-admin-muted-2 mb-1">DB 목표값입니다. 실제 공개 수는 BLOG_DAILY_PUBLISH_CAP 환경 상한을 넘을 수 없으며 V3 권장 운영값은 3편/일입니다.</p>
           <input
             id="blog-policy-posts-per-day"
             type="number" min="1" max="20"
@@ -208,7 +223,7 @@ export default function PolicyPage() {
             onChange={e => update({ posts_per_day: parseInt(e.target.value) })}
             className="w-24 h-9 px-3 text-admin-sm border border-admin-border-mid rounded-admin-sm bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
           />
-          <span className="ml-3 text-[11px] text-admin-muted">{'>'} 정보성 {info}편 + 상품 {product}편</span>
+          <span className="ml-3 text-[11px] text-admin-muted">실효 {effectiveDailyTotal}편 {'>'} 정보성 {info}편 + 상품 {product}편</span>
         </div>
 
         {/* product_ratio */}

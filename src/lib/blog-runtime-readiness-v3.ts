@@ -52,6 +52,18 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
     columns: 'id,queue_id,provider,signal_value,source_reference,verified_at,expires_at',
     scope: 'publish',
   },
+  {
+    key: 'keyword_families',
+    table: 'blog_keyword_families',
+    columns: 'id,family_key,canonical_keyword,status',
+    scope: 'publish',
+  },
+  {
+    key: 'keyword_family_members',
+    table: 'blog_keyword_family_members',
+    columns: 'family_id,keyword,role,source,score',
+    scope: 'publish',
+  },
   { key: 'content_signatures', table: 'blog_content_signatures', columns: 'id', scope: 'publish' },
   { key: 'claim_ledger', table: 'blog_information_claim_ledger_v3', columns: 'claim_id', scope: 'publish' },
   { key: 'author_profiles', table: 'blog_author_profiles', columns: 'id', scope: 'delivery' },

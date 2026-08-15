@@ -3,6 +3,8 @@
 > 2026-08-11 V3 override: 자동발행의 fail-closed 정책은 `docs/runbooks/blog-publishing-v3.md`가 우선합니다. 누락/잘못된 `BLOG_AUTOPUBLISH_MODE`는 `draft_only`이고, coverage gap만으로 발행하지 않으며, deterministic fallback과 content-creating repair는 공개 불가입니다.
 >
 > 2026-08-13 safety addendum: `scripts/backfill-blog-quality.ts` is permanently dry-run-only. Historical `--write` examples below are incident records, not executable instructions. Use the V3 disposition preview and reviewed migration runbook for corpus changes.
+>
+> 2026-08-15 live-ops addendum: 관리자 화면과 일일 SLA는 DB `posts_per_day`만 공개 목표로 사용하지 않는다. 실효 공개 목표는 autopublish mode, policy enabled, `BLOG_DAILY_PUBLISH_CAP`을 함께 적용한다. `draft_only`는 오류가 아니라 공개 목표 0의 안전정지다. Keyword-family 두 테이블은 live readiness 필수 리소스이며, queue scope나 최신 실패가 관리자 첫 화면에서 숨겨져서는 안 된다.
 
 Last updated: 2026-07-29
 

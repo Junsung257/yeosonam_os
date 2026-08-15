@@ -20,6 +20,13 @@ describe('blog runtime schema readiness v3', () => {
     expect(report.checkedAt).toBe('2026-08-12T00:00:00.000Z');
   });
 
+  it('treats keyword-family storage as a publish prerequisite', () => {
+    expect(BLOG_RUNTIME_RESOURCES_V3).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'keyword_families', scope: 'publish' }),
+      expect.objectContaining({ key: 'keyword_family_members', scope: 'publish' }),
+    ]));
+  });
+
   it('reports scope readiness independently for safe operator diagnosis', async () => {
     const report = await probeBlogRuntimeSchemaReadinessV3(async (resource) => ({
       error: resource.scope === 'measurement'

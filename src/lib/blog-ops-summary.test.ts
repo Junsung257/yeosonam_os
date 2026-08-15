@@ -165,6 +165,44 @@ describe('blog ops quality summary', () => {
     expect(summary.contract.failed_checks).toContain('indexing_outbox_missing');
   });
 
+  it('shows the fail-closed runtime mode instead of the larger DB policy target', async () => {
+    const previousMode = process.env.BLOG_AUTOPUBLISH_MODE;
+    const previousCap = process.env.BLOG_DAILY_PUBLISH_CAP;
+    delete process.env.BLOG_AUTOPUBLISH_MODE;
+    delete process.env.BLOG_DAILY_PUBLISH_CAP;
+
+    try {
+      const summary = await buildBlogOpsSummary(fakeSupabase({
+        blog_topic_queue: [],
+        content_creatives: [],
+        blog_indexing_jobs: [],
+        indexing_reports: [],
+        cron_health: [],
+        publishing_policies: [{ scope: 'global', posts_per_day: 5, enabled: true }],
+        programmatic_seo_topics: [],
+        blog_categories: [],
+        ad_landing_mappings: [],
+        rank_history: [],
+      }) as any);
+
+      expect(summary.publish).toMatchObject({
+        configured_daily_target: 5,
+        effective_daily_target: 1,
+        daily_publish_cap: 1,
+        autopublish_mode: 'draft_only',
+        public_publication_enabled: false,
+        daily_target: 0,
+        remaining_today: 0,
+      });
+      expect(summary.contract.failed_checks).toContain('autopublish_mode_draft_only');
+    } finally {
+      if (previousMode === undefined) delete process.env.BLOG_AUTOPUBLISH_MODE;
+      else process.env.BLOG_AUTOPUBLISH_MODE = previousMode;
+      if (previousCap === undefined) delete process.env.BLOG_DAILY_PUBLISH_CAP;
+      else process.env.BLOG_DAILY_PUBLISH_CAP = previousCap;
+    }
+  });
+
   it('exposes fleet phrase drift as a quality signal in the admin summary', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/blog-ops-summary.ts'), 'utf8');
 
