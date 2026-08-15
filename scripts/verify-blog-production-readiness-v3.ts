@@ -9,6 +9,7 @@ import {
 } from '../src/lib/blog-runtime-readiness-v3';
 
 const EXPECTED_MIGRATIONS = [
+  '20260606115000',
   '20260811132017',
   '20260811132023',
   '20260811132031',
@@ -18,6 +19,7 @@ const EXPECTED_MIGRATIONS = [
   '20260814011000',
   '20260814012500',
   '20260814033000',
+  '20260815093943',
 ] as const;
 
 interface SchemaInventoryRow {

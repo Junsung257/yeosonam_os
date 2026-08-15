@@ -9,7 +9,9 @@
 - 2026-08-14 — Naver-first SERP benchmark: 24 queries, 240 editorial samples, page-structure fetch evidence and provider semantics: `blog-serp-benchmark-2026-08-14.md`
 - 2026-08-14 — SERP brief structured canary: 24 offline drafts with per-canary failure evidence: `blog-serp-generated-canary-2026-08-14.md`
 
-Last updated: 2026-08-14
+- 2026-08-15 — Blog live operations browser verification: publisher health, queue visibility, effective policy, runtime schema, and fail-closed release decision: `blog-live-ops-verification-2026-08-15.md`
+
+Last updated: 2026-08-15
 
 This folder is an evidence archive, not the current operating playbook.
 

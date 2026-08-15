@@ -1,5 +1,15 @@
 # Blog Publishing V3 운영 런북
 
+## 2026-08-15 실효 발행 정책과 DB readiness
+
+- DB `publishing_policies.posts_per_day`는 편집 목표이며 그 자체가 공개 cap은 아니다.
+- `draft_only` 또는 policy disabled 상태의 실효 공개 목표는 0이다.
+- `reviewed_only`와 `live`에서 실효 공개 목표는 DB 목표와 `BLOG_DAILY_PUBLISH_CAP` 중 작은 값이다.
+- `/admin/blog/system`과 `/admin/blog/policy`는 DB 목표, 환경 cap, mode, 실효 공개 목표를 모두 보여야 한다.
+- `blog_keyword_families`, `blog_keyword_family_members` 중 하나라도 없으면 V3 runtime readiness는 실패한다.
+- `/admin/blog/queue?scope=attention`의 첫 렌더와 system 화면의 실패 수가 같은 최신 500건 기준으로 일치해야 한다.
+- 운영 반영 순서는 백업·migration 검토 → staging 적용 검증 → 운영 migration → readiness 재검사 → 안전정지 canary → cap 3과 live 동시 설정이다. 순서를 뒤집지 않는다.
+
 ## Legacy repair write guard
 
 - `npm run audit:blog-quality` and `npm run backfill:blog-quality` may be used only as legacy read-only diagnostics.
