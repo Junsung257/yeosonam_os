@@ -443,12 +443,27 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192');
-    expect(source).toContain('maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS');
+    expect(source).toContain('const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 16_384');
+    expect(source).toContain("'BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS'");
+    expect(source).toContain('const isRewrite = options.model === BLOG_DEEPSEEK_MODELS.rewrite');
+    expect(source).toContain('? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS');
     expect(source).toContain("deepseekThinking: options.deepseekThinking ?? 'disabled'");
     expect(source).toContain('const writerOutputBoundary = boundBlogWriterOutput(blog_html)');
     expect(source).toContain('writer_output_boundary: {');
-    expect(source).toContain('requestTimeoutMs: options.requestTimeoutMs ?? BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS');
+    expect(source).toContain('? BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS');
+    expect(source).toContain('isRewrite ? BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS : BLOG_PUBLISHER_AI_TIMEOUT_MS');
     expect(source).toContain('model: BLOG_DEEPSEEK_MODELS.rewrite');
     expect(source).not.toContain("fallback: 'gemini'");
+  });
+
+  it('persists incomplete provider calls as failed attempts and never evaluates partial text', () => {
+    const source = routeSource();
+
+    expect(source).toContain('if (err instanceof BlogAiResponseError)');
+    expect(source).toContain("attemptStatus: 'failed'");
+    expect(source).toContain("hardBlockers: ['model_output_incomplete']");
+    expect(source).toContain('provider_finish_reason: err.receipt.finishReason');
+    expect(source).toContain("next_stage: terminal ? null : 'rewrite_pro_max'");
+    expect(source).toContain('forceQueue: !terminal');
   });
 });

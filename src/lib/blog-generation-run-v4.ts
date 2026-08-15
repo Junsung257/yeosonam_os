@@ -16,6 +16,8 @@ export interface BlogGenerationAttemptRecordV4 {
   researchFingerprint?: string | null;
   claimFingerprint?: string | null;
   receipt: BlogAiUsageReceipt;
+  attemptStatus?: 'completed' | 'failed';
+  errorCode?: string | null;
 }
 
 export interface PriorBlogGenerationAttemptV4 {
@@ -121,7 +123,9 @@ export async function recordBlogGenerationAttemptV4(
     failure_reasons: input.failureReasons,
     route: input.route,
     latency_ms: input.receipt.latencyMs,
-    status: 'completed',
+    finish_reason: input.receipt.finishReason,
+    status: input.attemptStatus ?? 'completed',
+    error_code: input.errorCode ?? null,
     completed_at: input.receipt.completedAt || now,
   };
   const { error: attemptError } = await supabaseAdmin

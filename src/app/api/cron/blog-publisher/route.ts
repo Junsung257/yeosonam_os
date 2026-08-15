@@ -5,6 +5,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import {
+  BlogAiResponseError,
   generateBlogTextWithReceipt,
   hasBlogApiKey,
   type BlogAiTextResult,
@@ -246,8 +247,18 @@ const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM
 // V3 never deterministically invents or appends content to satisfy a gate.
 const BLOG_AUTOPUBLISH_POLICY_V3 = readBlogAutopublishPolicyV3();
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
+const BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS = readBoundedIntEnv(
+  'BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS',
+  165_000,
+  90_000,
+  190_000,
+);
 const BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS = 55_000;
+const BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS = 150_000;
 const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192;
+// DeepSeek thinking tokens share the completion budget. A Pro rewrite needs
+// headroom for reasoning plus the complete article and hidden claim ledger.
+const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 16_384;
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
 const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
@@ -575,15 +586,20 @@ function generatePublisherBlogText(
   prompt: string,
   options: Partial<Parameters<typeof generateBlogTextWithReceipt>[1]> = {},
 ): Promise<BlogAiTextResult> {
+  const isRewrite = options.model === BLOG_DEEPSEEK_MODELS.rewrite;
   return withPublisherTimeout(
     generateBlogTextWithReceipt(prompt, {
       ...options,
       model: options.model ?? BLOG_DEEPSEEK_MODELS.draft,
-      maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS,
+      maxTokens: options.maxTokens ?? (isRewrite
+        ? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS
+        : BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS),
       deepseekThinking: options.deepseekThinking ?? 'disabled',
-      requestTimeoutMs: options.requestTimeoutMs ?? BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS,
+      requestTimeoutMs: options.requestTimeoutMs ?? (isRewrite
+        ? BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS
+        : BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS),
     }),
-    BLOG_PUBLISHER_AI_TIMEOUT_MS,
+    isRewrite ? BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS : BLOG_PUBLISHER_AI_TIMEOUT_MS,
     'blog_ai_generation',
   );
 }
@@ -3850,6 +3866,53 @@ async function processQueueItem(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
+
+    if (err instanceof BlogAiResponseError) {
+      const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+      const attemptNumber = Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1);
+      const requestedStage = String(
+        item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash',
+      ) as BlogDeepSeekStage;
+      const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+        ? requestedStage
+        : 'draft_flash';
+      const terminal = attemptNumber >= 3;
+      const route = terminal ? 'quarantine' : 'rewrite_pro_max';
+      const attemptPersistence = await recordBlogGenerationAttemptV4({
+        queueId: item.id,
+        tenantId: item.tenant_id ?? null,
+        attemptNumber,
+        stage,
+        route,
+        output: { title: '', description: '', slug: '', markdown: '' },
+        qualityScore: 0,
+        hardBlockers: ['model_output_incomplete'],
+        failureReasons: [err.code],
+        researchFingerprint: priorAttempt?.researchFingerprint ?? null,
+        claimFingerprint: priorAttempt?.claimFingerprint ?? null,
+        receipt: err.receipt,
+        attemptStatus: 'failed',
+        errorCode: err.code,
+      });
+      const failureStatus = await handleFailure(item, msg, null, terminal, {
+        ai_orchestration_v4: {
+          version: 'blog-deepseek-orchestrator-v4',
+          route,
+          next_stage: terminal ? null : 'rewrite_pro_max',
+          failure_evidence: [err.code],
+          provider_finish_reason: err.receipt.finishReason,
+          output_characters: err.outputCharacters,
+          attempt_persistence_error: attemptPersistence.error,
+          last_attempted_at: new Date().toISOString(),
+        },
+      }, { forceQueue: !terminal });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: terminal ? 'quarantined' : failureStatus === 'queued' ? 'rewrite_queued' : failureStatus,
+        reason: msg,
+      };
+    }
 
     // 정보성 컨텍스트 부족은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
