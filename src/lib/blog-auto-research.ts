@@ -587,6 +587,25 @@ function toRiskLevel(value: unknown, claimType?: BlogInformationClaimType): Blog
   return 'LOW';
 }
 
+export function normalizeAutoResearchStructuredValue(input: {
+  normalizedValue: unknown;
+  unit: unknown;
+}): { normalizedValue: string; unit: string | null } {
+  const normalizedValue = clean(input.normalizedValue);
+  const explicitUnit = clean(input.unit) || null;
+  if (!normalizedValue || explicitUnit || normalizedValue.includes('|')) {
+    return { normalizedValue, unit: explicitUnit };
+  }
+  const embedded = normalizedValue.match(
+    /(-?\d+(?:[.,]\d+)?)\s*(°C|℃|km|mm|m|분|시간|시|일|박|개|명|회|%)/i,
+  );
+  if (!embedded) return { normalizedValue, unit: null };
+  return {
+    normalizedValue: embedded[1].replace(/,/g, ''),
+    unit: embedded[2] === '℃' ? '°C' : embedded[2],
+  };
+}
+
 function sourceKey(url: string, index: number): string {
   const digest = createHash('sha256').update(url).digest('hex').slice(0, 16);
   return `grounded-${index + 1}-${digest}`;
@@ -825,7 +844,11 @@ export function buildBlogResearchBundleFromGrounding(input: {
       : sourceByDraftIndex.get(Number(draft.sourceIndex) - evidenceSourceOffset);
     const statement = clean(draft.excerpt);
     const claimType = toClaimType(draft.claimType);
-    const normalizedValue = clean(draft.normalizedValue);
+    const structuredValue = normalizeAutoResearchStructuredValue({
+      normalizedValue: draft.normalizedValue,
+      unit: draft.unit,
+    });
+    const normalizedValue = structuredValue.normalizedValue;
     if (!source || !statement || !claimType || !normalizedValue) {
       issues.push(`evidence_rejected:${draftIndex}`);
       if (!source) issues.push(`evidence_rejected:${draftIndex}:source:${payloadSourceKey || clean(draft.sourceIndex) || 'missing'}`);
@@ -837,7 +860,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
     const country = source.country || clean(draft.country) || input.destination;
     const destination = input.destination;
     const applicableTo = clean(draft.applicableTo) || '여행자';
-    const unit = clean(draft.unit) || null;
+    const unit = structuredValue.unit;
     const currency = explicitCurrency(
       draft.currency,
       [statement, normalizedValue, clean(draft.unit)].filter(Boolean).join(' '),

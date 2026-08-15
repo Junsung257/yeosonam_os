@@ -18,10 +18,25 @@ import {
   extractReviewedHtmlTextForResearch,
   extractReviewedPageTextForResearch,
   fetchReviewedDirectPages,
+  normalizeAutoResearchStructuredValue,
   sanitizeGroundedResearchPayload,
   selectReputableResearchRegistryForIntent,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
+
+describe('normalizeAutoResearchStructuredValue', () => {
+  it.each([
+    ['15분', null, '15', '분'],
+    ['40분', null, '40', '분'],
+    ['67m', null, '67', 'm'],
+    ['오전 7시 이전', null, '7', '시'],
+  ])('separates %s into a canonical value and unit', (normalizedValue, unit, value, expectedUnit) => {
+    expect(normalizeAutoResearchStructuredValue({ normalizedValue, unit })).toEqual({
+      normalizedValue: value,
+      unit: expectedUnit,
+    });
+  });
+});
 
 const sourcePolicy = {
   minimumClaimSourceCoverage: 0.9,

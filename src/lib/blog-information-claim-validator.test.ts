@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyBlogInformationStatement,
   extractBlogInformationClaims,
   validateBlogInformationClaims,
   type PersistedBlogInformationClaimRecord,
@@ -8,6 +9,25 @@ import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-l
 import type { BlogInformationEvidenceScope } from './blog-information-evidence';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
+
+describe('V3 editorial decision guidance classification', () => {
+  it.each([
+    '다낭 가볼만한곳을 고를 때 가장 중요한 기준은 자신의 시간과 체력입니다.',
+    '먼저 자신의 여행 스타일을 정한 뒤 장소를 고르는 것이 더 현실적입니다.',
+    '바나힐을 일정에 넣는다면 이동을 감당할 수 있는가가 핵심입니다.',
+    '자세한 다낭 여행 정보는 다낭 여행 가이드에서 확인할 수 있습니다.',
+  ])('does not promote reader guidance to an evidence claim: %s', (sentence) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('keeps an unsupported destination fact inside the factual gate', () => {
+    expect(classifyBlogInformationStatement('다낭은 우기와 건기가 뚜렷한 지역입니다.'))
+      .toMatchObject({ category: 'unknown_unclassified' });
+  });
+});
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
   return extractBlogInformationClaims(markdown).map((claim) => ({
