@@ -9,6 +9,8 @@ const ESSENTIAL_CRONS = new Set([
 ]);
 const CRITICAL_CRONS = new Set([
   'blog-publisher',
+  'blog-generate',
+  'blog-publication-controller',
   'blog-scheduler',
   'blog-daily-summary',
   'blog-regenerate-zero-click',

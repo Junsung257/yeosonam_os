@@ -110,8 +110,12 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/blog-publisher",
-      "schedule": "5 0,3,6,9,12,13 * * *"
+      "path": "/api/cron/blog-generate",
+      "schedule": "5 16,17,18,19,20,21 * * *"
+    },
+    {
+      "path": "/api/cron/blog-publication-controller",
+      "schedule": "5 0,3,6,9,12 * * *"
     },
     {
       "path": "/api/cron/blog-regenerate-zero-click",
@@ -380,6 +384,7 @@
     "src/app/api/cron/agent-executor/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/auto-publish-loop/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-publisher/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/blog-generate/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-learn/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-scheduler/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300 },

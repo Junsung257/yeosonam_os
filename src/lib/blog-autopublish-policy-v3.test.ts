@@ -116,4 +116,13 @@ describe('blog autopublish policy v3', () => {
     expect(hasVerifiedBlogDemandSignal({ monthlySearchVolume: null, trendScore: null })).toBe(false);
     expect(hasVerifiedBlogDemandSignal({ gsc: true })).toBe(true);
   });
+
+  it('keeps a requested high cap behind an explicit staged ramp', () => {
+    expect(readBlogAutopublishPolicyV3({
+      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '20',
+    })).toMatchObject({ requestedDailyPublishCap: 20, dailyPublishCap: 3, publicationRampStage: 'pilot_3' });
+    expect(readBlogAutopublishPolicyV3({
+      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '20', BLOG_PUBLICATION_RAMP_STAGE: 'ramp_10',
+    })).toMatchObject({ requestedDailyPublishCap: 20, dailyPublishCap: 10, publicationRampStage: 'ramp_10' });
+  });
 });

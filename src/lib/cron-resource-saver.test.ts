@@ -62,6 +62,8 @@ describe('cron resource saver', () => {
     ).toBeNull();
 
     for (const cron of [
+      'blog-generate',
+      'blog-publication-controller',
       'rank-tracking',
       'blog-data-readiness',
       'blog-indexing-worker',
@@ -81,6 +83,8 @@ describe('cron resource saver', () => {
 
     for (const cron of [
       'blog-publisher',
+      'blog-generate',
+      'blog-publication-controller',
       'rank-tracking',
       'blog-data-readiness',
       'blog-indexing-worker',

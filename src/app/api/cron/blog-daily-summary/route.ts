@@ -26,7 +26,7 @@ import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
- * Runs after the final daily blog-publisher slot, so the report covers today's
+ * Runs after the final daily blog-publication-controller slot, so the report covers today's
  * completed KST publishing window instead of a morning pre-publish snapshot.
  *
  * 1) 어제 발행 통계 → publishing_policies.daily_summary_webhook 으로 push
@@ -137,7 +137,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       severity: summary.published === 0 ? 'critical' : 'high',
       title: 'Daily blog publish target missed',
       detail: `Published ${summary.published}/${summary.min_daily_target} posts for ${summary.date} KST.`,
-      recommendation: 'Inspect blog-publisher, active queue rows, and recent quality-gate failures before requeueing.',
+      recommendation: 'Inspect blog-generate, blog-publication-controller, approved runs, and recent quality-gate failures before requeueing.',
     });
   }
 
@@ -149,7 +149,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       severity: 'critical',
       title: 'Blog target missed while publishable candidates were available',
       detail: `${publishableCandidateCount} publishable candidate(s) were available for ${remainingDailyPosts} remaining slot(s).`,
-      recommendation: 'Treat this as publisher recovery failure: force blog-scheduler, then run blog-publisher until remainingAfterRun is 0 or a concrete blocker appears.',
+      recommendation: 'Treat this as publication recovery failure: inspect approved_for_slot inventory, then run blog-publication-controller until remainingAfterRun is 0 or a concrete blocker appears.',
     });
   }
 
@@ -158,7 +158,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       code: 'publisher_cron_not_observed',
       severity: 'critical',
       title: 'Blog publisher cron did not run today',
-      detail: `No blog-publisher cron run was recorded for ${summary.date} KST. Last run: ${summary.publisher_cron.last_run_at ?? 'unknown'}.`,
+      detail: `No blog-publication-controller cron run was recorded for ${summary.date} KST. Last run: ${summary.publisher_cron.last_run_at ?? 'unknown'}.`,
       recommendation: 'Check Vercel Cron delivery, Deployment Protection bypass, and CRON_SECRET before manually forcing publication.',
     });
   }
@@ -341,7 +341,7 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
     supabaseAdmin.from('cron_health').select('cron_name, last_status, last_run_at, last_error_count, last_summary')
-      .eq('cron_name', 'blog-publisher')
+      .eq('cron_name', 'blog-publication-controller')
       .limit(1),
     supabaseAdmin.from('content_creatives').select('id, destination, angle_type, slug, seo_title, blog_html, product_id, generation_meta')
       .eq('channel', 'naver_blog')

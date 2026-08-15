@@ -67,7 +67,9 @@ export function calculateBlogPublishSlotQuota(input: {
     ? 0
     : Math.min(
         dailyTarget,
-        Math.floor(((elapsedSlotCount - 1) * dailyTarget) / slots.length) + 1,
+        dailyTarget <= slots.length
+          ? Math.floor(((elapsedSlotCount - 1) * dailyTarget) / slots.length) + 1
+          : Math.ceil((elapsedSlotCount * dailyTarget) / slots.length),
       );
 
   return {

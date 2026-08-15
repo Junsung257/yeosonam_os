@@ -185,6 +185,8 @@ const CORE_CRON_COPY: Record<string, { label: string; description: string }> = {
   'blog-indexing-worker': { label: '색인 작업 처리', description: '구글/네이버 색인 요청 큐를 처리합니다.' },
   'blog-orchestrator': { label: '자동 발행 총괄', description: '후보 발굴, 큐 보충, 발행 흐름을 조율합니다.' },
   'blog-publisher': { label: '글 발행자', description: '품질 점검을 통과한 큐를 실제 글로 발행합니다.' },
+  'blog-generate': { label: '야간 글 생성', description: 'DeepSeek로 후보를 생성·재작성하고 공개 승인 원장에 적재합니다.' },
+  'blog-publication-controller': { label: '주간 공개 제어', description: '모델 호출 없이 승인된 초안만 공개합니다.' },
   'blog-scheduler': { label: '발행 일정 정리', description: '오늘 처리할 큐와 발행 슬롯을 맞춥니다.' },
   'gsc-index-rank': { label: '구글 색인/순위 확인', description: '구글 기준 색인과 노출 상태를 확인합니다.' },
   'rank-tracking': { label: '순위 추적', description: '발행 글의 검색 노출 변화를 추적합니다.' },
