@@ -4621,12 +4621,31 @@ async function generateFromTopic(
     : [];
   const generationPrompt = generationStage === 'draft_flash'
     ? prompt
-    : `${prompt}\n\n${buildDeepSeekRewritePromptV4({
+    : buildDeepSeekRewritePromptV4({
         originalDraft: priorAttempt?.output.markdown || '(이전 초안 원문을 불러오지 못했습니다. 동일 연구·claim 범위에서만 새로 작성하세요.)',
         failureEvidence: rewriteEvidence,
         researchFingerprint: priorAttempt?.researchFingerprint || 'persisted-research-packet',
         claimFingerprint: priorAttempt?.claimFingerprint || 'persisted-claim-ledger',
-      })}`;
+        evidencePacket: {
+          fixedTitle: contentBriefV3.metadata.title,
+          primaryQuery: contentBriefV3.primaryQuery,
+          primaryDecision: contentBriefV3.primaryDecision,
+          sectionPurposes: contentBriefV3.sectionPurposes.map(
+            (section) => `${section.purpose} — ${section.decisionQuestion}`,
+          ),
+          approvedClaims: researchReadiness.bundle.claims.map((claim) => ({
+            claimText: claim.claimText,
+            claimType: claim.claimType,
+            riskLevel: claim.riskLevel,
+          })),
+          officialSourceUrls: [...new Set(researchReadiness.bundle.sources
+            .map((source) => source.sourceUrl)
+            .filter((url): url is string => Boolean(url)))].slice(0, 6),
+          internalLink: `${resolveBlogCanonicalOrigin()}/blog/destination/${encodeURIComponent(item.destination || '')}`,
+          includeFaq: contentBriefV3.includeFaq,
+          includeChecklist: contentBriefV3.includeChecklist,
+        },
+      });
   const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
     ? {
         model: BLOG_DEEPSEEK_MODELS.draft,
@@ -4663,7 +4682,7 @@ async function generateFromTopic(
   const slug = queueSlug;
 
   // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
-  const seo_title = effectiveTopic.trim().slice(0, 80);
+  const seo_title = contentBriefV3.metadata.title.trim().slice(0, 80);
   const seo_description = contentBriefV3.metadata.description;
 
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용

@@ -262,7 +262,19 @@ export function buildDeepSeekRewritePromptV4(input: {
   failureEvidence: string[];
   researchFingerprint: string;
   claimFingerprint: string;
+  evidencePacket?: {
+    fixedTitle: string;
+    primaryQuery: string;
+    primaryDecision: string;
+    sectionPurposes: string[];
+    approvedClaims: Array<{ claimText: string; claimType: string; riskLevel: string }>;
+    officialSourceUrls: string[];
+    internalLink: string;
+    includeFaq: boolean;
+    includeChecklist: boolean;
+  };
 }): string {
+  const packet = input.evidencePacket;
   return [
     '[REWRITE CONTRACT — these rules override the draft]',
     '- Keep the original topic and primary decision. Answer that decision directly in the first paragraph.',
@@ -276,6 +288,25 @@ export function buildDeepSeekRewritePromptV4(input: {
     '{"claims":[{"claim_text":"exact factual sentence copied from the visible article","claim_type":"factual","risk_level":"MEDIUM"}]}',
     'INFORMATION_CLAIM_LEDGER_END -->',
     '- Every visible factual sentence or factual table row must be copied exactly into that ledger. Do not wrap the answer in a code fence.',
+    ...(packet ? [
+      '[FIXED ASSIGNMENT]',
+      `- Exact title/H1: ${packet.fixedTitle}`,
+      `- Primary query: ${packet.primaryQuery}`,
+      `- Primary decision: ${packet.primaryDecision}`,
+      '- Section purposes:',
+      ...packet.sectionPurposes.map((purpose) => `  - ${purpose}`),
+      `- FAQ: ${packet.includeFaq ? 'allowed only for evidence-backed registered questions' : 'do not include'}`,
+      `- Checklist: ${packet.includeChecklist ? 'allowed only for evidence-backed actions' : 'do not include'}`,
+      '- Do not use a table in this rewrite. Tables encourage unsupported values and implied comparisons.',
+      '- Approved claims (the complete factual universe; copy a whole sentence exactly when used):',
+      ...packet.approvedClaims.map((claim, index) =>
+        `  ${index + 1}. [${claim.claimType}/${claim.riskLevel}] ${claim.claimText}`),
+      '- Allowed official links (links are citations, not permission to invent claims):',
+      ...packet.officialSourceUrls.map((url) => `  - ${url}`),
+      `- Required relevant internal link: ${packet.internalLink}`,
+      '- The original draft below is structure/voice reference only. Ignore every factual statement in it unless it is an exact approved claim above.',
+      '- Before returning, inspect every digit-bearing sentence. It must be an exact approved claim or be deleted.',
+    ] : []),
     `Research identity only (not evidence): ${input.researchFingerprint}`,
     `Claim-set identity only (not evidence): ${input.claimFingerprint}`,
     'Failures to fix:',
