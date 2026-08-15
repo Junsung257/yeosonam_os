@@ -478,5 +478,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('inspectBlogInformationClaimLiteralSupport');
     expect(source).toContain('officialSourceUrls: [...new Set(researchReadiness.bundle.sources');
     expect(source).toContain('const seo_title = contentBriefV3.metadata.title.trim().slice(0, 80)');
+    expect(source).toContain('const publishQualityFailureReasons = [');
+    expect(source).toContain('`publish_gate:${gate.gate}`');
+    expect(source).toContain('score: orchestrationQualityScore');
+    expect(source).toContain('publish_quality_passed: publishQuality.passed');
   });
 });

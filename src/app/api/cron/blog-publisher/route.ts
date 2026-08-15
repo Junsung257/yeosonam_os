@@ -3153,6 +3153,28 @@ async function processQueueItem(
         ? item.meta.first_party_source_ids.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
         : [],
     });
+    const publishQualityFailureReasons = [
+      ...publishQuality.publishContractIssues.map((issue) => `publish_contract:${issue.code}`),
+      ...publishQuality.qualityGate.gates
+        .filter((gate) => !gate.passed)
+        .map((gate) => `publish_gate:${gate.gate}`),
+      ...publishQuality.seoScore.details
+        .filter((detail) => detail.status === 'fail')
+        .map((detail) => `seo:${detail.name}`),
+      ...publishQuality.publicCustomerQuality.issues
+        .map((issue) => `public_customer:${issue.code}`),
+      ...(publishQuality.renderedSeoQuality?.issues ?? [])
+        .map((issue) => `rendered_seo:${issue.code}`),
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
+    const orchestrationQualityScore = Math.min(
+      qualityEvaluationV3.score,
+      publishQuality.blogQualityScore.score,
+      publishQuality.publicCustomerQuality.score,
+    );
+    const orchestrationFailureReasons = [
+      ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+      ...publishQualityFailureReasons,
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
     const previousOrchestration = item.meta?.ai_orchestration_v4 as Record<string, unknown> | undefined;
     const aiOrchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
     const orchestrationAttempt = Math.max(1, Math.min(3, Number(
@@ -3161,9 +3183,9 @@ async function processQueueItem(
     const generationReceipt = aiOrchestrationMeta?.receipt as BlogAiTextResult['receipt'] | undefined;
     const qualityRouteV4: ReturnType<typeof decideBlogQualityRouteV4> = generationReceipt
       ? decideBlogQualityRouteV4({
-          score: qualityEvaluationV3.score,
+          score: orchestrationQualityScore,
           hardBlockers: qualityEvaluationV3.hardBlockers,
-          failureReasons: qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+          failureReasons: orchestrationFailureReasons,
           completedAttempts: orchestrationAttempt,
           previousScore: typeof previousOrchestration?.previous_score === 'number'
             ? previousOrchestration.previous_score
@@ -3173,17 +3195,25 @@ async function processQueueItem(
           humanApproved: contentReviewStatus === 'approved',
         })
       : {
-          route: qualityEvaluationV3.passed ? 'approved_for_slot' : 'human_review',
+          route: qualityEvaluationV3.passed && publishQuality.passed ? 'approved_for_slot' : 'human_review',
           nextStage: null,
-          publishable: qualityEvaluationV3.passed,
-          reasons: qualityEvaluationV3.passed ? ['non_model_candidate_quality_passed'] : ['non_model_candidate_review_required'],
+          publishable: qualityEvaluationV3.passed && publishQuality.passed,
+          reasons: qualityEvaluationV3.passed && publishQuality.passed
+            ? ['non_model_candidate_quality_passed']
+            : ['non_model_candidate_review_required', ...orchestrationFailureReasons],
           maxAttempts: 3,
         };
     generationMeta.ai_orchestration_v4 = {
       ...(aiOrchestrationMeta || {}),
       version: 'blog-deepseek-orchestrator-v4',
       attempt: orchestrationAttempt,
-      score: qualityEvaluationV3.score,
+      score: orchestrationQualityScore,
+      component_scores: {
+        quality_v3: qualityEvaluationV3.score,
+        publish_quality: publishQuality.blogQualityScore.score,
+        public_customer: publishQuality.publicCustomerQuality.score,
+      },
+      publish_quality_passed: publishQuality.passed,
       route: qualityRouteV4.route,
       next_stage: qualityRouteV4.nextStage,
       failure_evidence: qualityRouteV4.reasons,
@@ -3206,13 +3236,22 @@ async function processQueueItem(
             writer_claim_ledger: writerClaimLedger,
             writer_claim_ledger_issues: writerClaimLedgerIssues,
             quality_evaluation_v3: qualityEvaluationV3,
+            publish_quality: {
+              passed: publishQuality.passed,
+              score: publishQuality.blogQualityScore.score,
+              public_customer_score: publishQuality.publicCustomerQuality.score,
+              summary: publishQuality.summary,
+              failed_gates: publishQuality.qualityGate.gates
+                .filter((gate) => !gate.passed)
+                .map((gate) => gate.gate),
+            },
             links_gate: linksGate ?? null,
             rewrite_claim_packet_v4: generationMeta.rewrite_claim_packet_v4 ?? null,
           },
         },
-        qualityScore: qualityEvaluationV3.score,
+        qualityScore: orchestrationQualityScore,
         hardBlockers: qualityEvaluationV3.hardBlockers,
-        failureReasons: qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+        failureReasons: orchestrationFailureReasons,
         researchFingerprint: typeof item.meta?.information_research_fingerprint === 'string'
           ? item.meta.information_research_fingerprint
           : null,
@@ -3248,7 +3287,7 @@ async function processQueueItem(
       const failureStatus = await handleFailure(item, reason, qa, qualityRouteV4.route === 'quarantine', {
         ai_orchestration_v4: {
           version: 'blog-deepseek-orchestrator-v4',
-          previous_score: qualityEvaluationV3.score,
+          previous_score: orchestrationQualityScore,
           next_stage: qualityRouteV4.nextStage,
           route: qualityRouteV4.route,
           research_attempts: researchAttempts,
@@ -3532,6 +3571,7 @@ async function processQueueItem(
       ...(diversityReport?.reasons || []),
       ...qualityEvaluationV3.hardBlockers,
       ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+      ...publishQualityFailureReasons,
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const [qualityAuditResult, publicationAuditResult] = await Promise.all([
       supabaseAdmin.from('blog_quality_evaluations').insert({
@@ -3807,6 +3847,7 @@ async function processQueueItem(
           attempts: 0,
           meta: {
             ...successfulQueueMeta,
+            ai_orchestration_v4: generationMeta.ai_orchestration_v4,
             autopublish_policy_v3: generationMeta.autopublish_policy_v3,
             ...(generationMeta.review_workflow_warning
               ? { review_workflow_warning: generationMeta.review_workflow_warning }

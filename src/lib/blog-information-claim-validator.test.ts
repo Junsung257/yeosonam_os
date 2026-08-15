@@ -27,6 +27,14 @@ describe('V3 editorial decision guidance classification', () => {
     expect(classifyBlogInformationStatement('다낭은 우기와 건기가 뚜렷한 지역입니다.'))
       .toMatchObject({ category: 'unknown_unclassified' });
   });
+
+  it('does not let reader-guidance wording hide a measurable claim', () => {
+    expect(classifyBlogInformationStatement('먼저 오행산이 도심에서 15분 거리인지 확인하세요.'))
+      .toMatchObject({
+        category: 'verified_factual',
+        factualClassification: { claimType: 'duration' },
+      });
+  });
 });
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
@@ -156,7 +164,7 @@ describe('blog information claim validator', () => {
     expect(extractBlogInformationClaims('1. 준비\n2. 출발\n첫 번째로 동선을 정하세요.')).toEqual([]);
   });
 
-  it('does not turn reading guidance and freshness reminders into unsupported claims', () => {
+  it('keeps non-numeric reading guidance editorial but validates prescriptive timing', () => {
     const guidance = [
       '낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다.',
       '처음 읽는 분은 표와 체크리스트를 먼저 보고, 세부 설명은 필요한 부분만 골라 읽으면 됩니다.',
@@ -165,7 +173,12 @@ describe('blog information claim validator', () => {
       '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
     ].join('\n');
 
-    expect(extractBlogInformationClaims(guidance)).toEqual([]);
+    expect(extractBlogInformationClaims(guidance)).toEqual([
+      expect.objectContaining({
+        claimText: '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
+        candidateKind: 'time_schedule',
+      }),
+    ]);
   });
 
   it.each([

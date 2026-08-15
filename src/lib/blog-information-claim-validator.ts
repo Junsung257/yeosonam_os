@@ -194,6 +194,11 @@ export function classifyBlogInformationStatement(segment: string): {
   category: BlogInformationStatementCategory;
   factualClassification: Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null;
 } {
+  // Measurable, regulated, availability and other explicit fact shapes always
+  // win over editorial-language allowlists. This prevents a sentence such as
+  // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
+  const factualClassification = classifyClaim(segment);
+  if (factualClassification) return { category: 'verified_factual', factualClassification };
   if (
     EDITORIAL_READING_GUIDANCE_RE.test(segment)
     || V3_DECISION_GUIDANCE_RE.test(segment)
@@ -201,8 +206,6 @@ export function classifyBlogInformationStatement(segment: string): {
   ) {
     return { category: 'navigation_boilerplate', factualClassification: null };
   }
-  const factualClassification = classifyClaim(segment);
-  if (factualClassification) return { category: 'verified_factual', factualClassification };
   if (SUBJECTIVE_EDITORIAL_RE.test(segment)) {
     return { category: 'subjective_editorial', factualClassification: null };
   }

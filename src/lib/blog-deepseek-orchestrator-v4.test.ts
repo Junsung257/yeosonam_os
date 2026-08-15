@@ -20,6 +20,9 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(decideBlogQualityRouteV4({
       score: 96, completedAttempts: 1, hardBlockers: ['unsupported_number'],
     })).toMatchObject({ route: 'rewrite_pro_high', publishable: false });
+    expect(decideBlogQualityRouteV4({
+      score: 100, completedAttempts: 1, failureReasons: ['publish_gate:public_customer_quality'],
+    })).toMatchObject({ route: 'rewrite_pro_high', publishable: false });
   });
 
   it('re-researches missing evidence but rewrites removable unsupported prose', () => {
@@ -94,7 +97,9 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Do not use a table in this rewrite.');
     expect(prompt).toContain('The ledger must contain only the approved claim sentences');
     expect(prompt).toContain('exact citation markdown: [공식 근거](https://vietnam.travel/example)');
-    expect(prompt).toContain('write only headings and reader-choice questions');
+    expect(prompt).toContain('source-neutral editorial guidance');
+    expect(prompt).toContain('one question-form H2');
+    expect(prompt).toContain('Markdown bullet list of 3-5 reader-choice questions');
   });
 
   it('never auto-publishes HIGH risk without human approval', () => {
