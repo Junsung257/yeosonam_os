@@ -825,6 +825,9 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(transportPrompt).toContain('A clock-of-day, show time, opening time, or other schedule is not duration');
     expect(transportPrompt).toContain('must name both the origin and destination');
     expect(transportPrompt).toContain('Omit comparative or superlative wording');
+    expect(transportPrompt).toContain(
+      'Do not create two evidence or claim records for the same entity, source, normalized value, and unit',
+    );
     expect(transportPrompt).toContain('vehicle marketing');
     expect(insurancePrompt).toContain('at least four insurance claims');
     expect(insurancePrompt).toContain('Exclude signup discounts');
