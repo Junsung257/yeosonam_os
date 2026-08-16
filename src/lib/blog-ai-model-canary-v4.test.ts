@@ -8,8 +8,8 @@ describe('Blog V4 AI model canary', () => {
   it('covers the exact production stages and model settings', () => {
     expect(buildBlogAiModelCanaryChecksV4()).toEqual([
       expect.objectContaining({ stage: 'draft_flash', provider: 'deepseek', model: 'deepseek-v4-flash', deepseekThinking: 'disabled' }),
-      expect.objectContaining({ stage: 'rewrite_pro_high', provider: 'deepseek', model: 'deepseek-v4-pro', deepseekThinking: 'enabled', reasoningEffort: 'high' }),
-      expect.objectContaining({ stage: 'rewrite_pro_max', provider: 'deepseek', model: 'deepseek-v4-pro', deepseekThinking: 'enabled', reasoningEffort: 'max' }),
+      expect.objectContaining({ stage: 'rewrite_pro_high', provider: 'deepseek', model: 'deepseek-v4-pro', deepseekThinking: 'disabled' }),
+      expect.objectContaining({ stage: 'rewrite_pro_max', provider: 'deepseek', model: 'deepseek-v4-pro', deepseekThinking: 'disabled' }),
     ]);
   });
 

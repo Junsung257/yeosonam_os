@@ -57,6 +57,10 @@ export async function readLatestBlogGenerationAttemptV4(
     .from('blog_generation_attempts')
     .select('attempt_number,output_document,research_fingerprint,claim_fingerprint,quality_score_after')
     .eq('queue_id', queueId)
+    // Failed provider calls deliberately persist an empty output document for
+    // auditability. They must advance the durable attempt counter, but must
+    // never replace the latest usable draft used by the next rewrite.
+    .eq('status', 'completed')
     .order('attempt_number', { ascending: false })
     .limit(1)
     .maybeSingle();
