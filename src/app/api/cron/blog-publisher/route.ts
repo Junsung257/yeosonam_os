@@ -3201,6 +3201,8 @@ async function processQueueItem(
       body: generated.blog_html,
       destination: item.destination,
       primaryDecision: contentBriefV3.primaryDecision,
+      primaryQuery: contentBriefV3.primaryQuery,
+      archetype: contentBriefV3.archetype,
       intentCompletionScore: taskCompletion01,
       supportedClaimCount: Math.floor(claimValidation.claims.length * claimValidation.coverage),
       factualClaimCount: claimValidation.claims.length,
@@ -4706,10 +4708,11 @@ async function generateFromTopic(
           fixedTitle: contentBriefV3.metadata.title,
           primaryQuery: contentBriefV3.primaryQuery,
           primaryDecision: contentBriefV3.primaryDecision,
-          // Final safety rewrite is evidence-shaped. Legacy or SERP-derived
-          // section purposes can demand weather/route facts absent from the
-          // approved packet, so they are deliberately not forwarded here.
-          sectionPurposes: [],
+          archetype: contentBriefV3.archetype,
+          // These remain purposes, not factual instructions. The rewrite
+          // contract explicitly permits omission when the approved packet
+          // cannot support a purpose.
+          sectionPurposes: contentBriefV3.sectionPurposes.map((purpose) => purpose.purpose),
           approvedClaims: rewriteApprovedClaims,
           officialSourceUrls: [...new Set(researchReadiness.bundle.sources
             .map((source) => source.sourceUrl)

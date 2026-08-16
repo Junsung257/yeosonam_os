@@ -15,8 +15,25 @@ describe('flexible blog content brief v3', () => {
     ['ETIAS 변경', 'current_change_explainer'],
     ['부모님과 장가계', 'traveler_type_plan'],
     ['다낭 4박5일 비용', 'budget_scenarios'],
+    ['다낭 여행 일정과 이동 동선', 'itinerary_timeline'],
   ] as const)('selects %s by intent and evidence', (topic, archetype) => {
     expect(buildBlogContentBriefV3({ topic, destinationDecisionDetails: details }).archetype).toBe(archetype);
+  });
+
+  it('resolves schedule plus movement wording as an itinerary before the generic route matcher', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '다낭 여행 일정과 이동 동선',
+      primaryKeyword: '다낭 여행 일정과 이동 동선',
+      destination: '다낭',
+      destinationDecisionDetails: details,
+    });
+
+    expect(brief).toMatchObject({
+      archetype: 'itinerary_timeline',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+    });
+    expect(brief.title).toContain('이동 부담을 줄이는 순서');
+    expect(brief.metadata.description).toContain('함께 묶을 동선');
   });
 
   it('defaults FAQ, checklist, year and image minimum off', () => {

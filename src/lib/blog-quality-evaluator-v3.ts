@@ -23,6 +23,8 @@ export interface BlogQualityEvaluationInputV3 {
   body: string;
   destination?: string | null;
   primaryDecision?: string | null;
+  primaryQuery?: string | null;
+  archetype?: string | null;
   intentCompletionScore?: number;
   supportedClaimCount?: number;
   factualClaimCount?: number;
@@ -79,6 +81,54 @@ const result = (value: number, passed: boolean, evidence: string[], failures: st
   value: Math.round(value * 100) / 100, passed, evidence, failures,
 });
 
+function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
+  score: number;
+  evidence: string[];
+} | null {
+  const topic = `${input.primaryQuery || ''} ${input.title} ${input.primaryDecision || ''}`;
+  const itineraryIntent = input.archetype === 'itinerary_timeline'
+    || /일정|코스|동선|\d+박\s*\d+일/i.test(topic);
+  const routeIntent = input.archetype === 'route_walkthrough'
+    || /공항.*(?:에서|부터)|가는\s*법|교통편|이동수단/i.test(topic);
+  if (!itineraryIntent && !routeIntent) return null;
+
+  const visibleLines = input.body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^#|^\[[^\]]+\]\(https?:/i.test(line));
+  const prose = visibleLines.join('\n');
+  const firstParagraph = visibleLines.find((line) => !/^[-*]\s/.test(line)) || '';
+  const sequenceMatches = prose.match(
+    itineraryIntent
+      ? /먼저|이어서|다음|별도|마지막|순서|묶(?:어|고|음)|분리(?:해|하고|한)|동선/gi
+      : /출발|도착|구간|환승|타고|내리|이동수단|동선|먼저|이어서|마지막/gi,
+  ) || [];
+  const actionMatches = prose.match(
+    /(?:묶어|분리해|비교|확인|검토|선택|결정|배치|정)하세요|후보로\s*두세요|순서로\s*두세요/gi,
+  ) || [];
+  const movementEvidence = /\d+(?:\.\d+)?\s*(?:분|시간)|(?:주말|평일|오전|오후|저녁|밤).*\d{1,2}\s*시/i.test(prose);
+  const directAnswer = itineraryIntent
+    ? /동선|이동\s*시간|묶|분리|순서/i.test(firstParagraph)
+    : /동선|이동\s*시간|이동수단|출발|도착/i.test(firstParagraph);
+  const score = clamp(
+    (directAnswer ? 0.25 : 0)
+    + Math.min(1, sequenceMatches.length / 3) * 0.35
+    + Math.min(1, actionMatches.length / 3) * 0.25
+    + (movementEvidence ? 0.15 : 0),
+  );
+  return {
+    score,
+    evidence: [
+      `archetype=${input.archetype || (itineraryIntent ? 'itinerary_timeline' : 'route_walkthrough')}`,
+      `direct_answer=${directAnswer}`,
+      `sequence_markers=${sequenceMatches.length}`,
+      `action_markers=${actionMatches.length}`,
+      `movement_evidence=${movementEvidence}`,
+    ],
+  };
+}
+
 export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): BlogQualityEvaluationV3 {
   const hardBlockers: string[] = [];
   const languageFailures = KOREAN_NEGATIVE_FIXTURES
@@ -102,13 +152,27 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
   const genericHereCount = (input.body.match(/(?:이곳|해당\s*지역|이\s*여행지)/gu) || []).length;
   const destinationSpecificity = clamp((input.destinationSpecificDetailCount || 0) / 3)
     * (genericHereCount > destinationMentions + 3 ? 0.4 : 1);
-  const intentCompletion = typeof input.intentCompletionScore === 'number'
+  const measuredIntentCompletion = typeof input.intentCompletionScore === 'number'
     ? clamp(input.intentCompletionScore)
     : input.primaryDecision && input.body.includes(input.primaryDecision) ? 1 : 0.7;
+  const intentArtifact = inspectIntentArtifactV3(input);
+  const intentCompletion = intentArtifact
+    ? Math.min(measuredIntentCompletion, intentArtifact.score)
+    : measuredIntentCompletion;
+  const intentEvidence = intentArtifact?.evidence ?? [String(input.primaryDecision || '')];
+  const effectiveSerpAlignment = intentArtifact
+    ? Math.min(clamp(input.serpIntentAlignment, intentCompletion), intentArtifact.score)
+    : clamp(input.serpIntentAlignment, intentCompletion);
+  const effectiveDecisionCompletion = intentArtifact
+    ? Math.min(clamp(input.decisionCompletion, intentCompletion), intentArtifact.score)
+    : clamp(input.decisionCompletion, intentCompletion);
+  const effectiveSectionCoverage = intentArtifact
+    ? Math.min(clamp(input.sectionPurposeCoverage, intentCompletion), intentArtifact.score)
+    : clamp(input.sectionPurposeCoverage, intentCompletion);
   const truthful = input.authorReviewTruthful !== false && !hardBlockers.includes('unsupported_first_party_claim');
 
   const dimensions: Record<BlogQualityDimensionV3, BlogQualityDimensionResultV3> = {
-    intent_completion: result(intentCompletion, intentCompletion >= 0.75, [String(input.primaryDecision || '')], intentCompletion >= 0.75 ? [] : ['primary_decision_not_answered']),
+    intent_completion: result(intentCompletion, intentCompletion >= 0.75, intentEvidence, intentCompletion >= 0.75 ? [] : ['primary_decision_not_answered']),
     factual_support_coverage: result(supportCoverage, supportCoverage >= 0.9, [`${input.supportedClaimCount || 0}/${factualCount}`], supportCoverage >= 0.9 ? [] : ['claim_support_coverage_below_90_percent']),
     stale_claim_count: result(input.staleClaimCount || 0, (input.staleClaimCount || 0) === 0, [`count=${input.staleClaimCount || 0}`], (input.staleClaimCount || 0) ? ['stale_claim_present'] : []),
     conflicting_claim_count: result(input.conflictingClaimCount || 0, (input.conflictingClaimCount || 0) === 0, [`count=${input.conflictingClaimCount || 0}`], (input.conflictingClaimCount || 0) ? ['claim_conflict_present'] : []),
@@ -125,13 +189,13 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     author_review_truthfulness: result(truthful ? 1 : 0, truthful, [`first_party_sources=${(input.firstPartySourceIds || []).length}`], truthful ? [] : ['review_or_experience_claim_unverifiable']),
     internal_link_relevance: result(clamp(input.internalLinkRelevance, 1), clamp(input.internalLinkRelevance, 1) >= 0.6, [`score=${input.internalLinkRelevance ?? 1}`], clamp(input.internalLinkRelevance, 1) >= 0.6 ? [] : ['internal_link_irrelevant']),
     user_actionability: result(clamp(input.userActionability, 1), clamp(input.userActionability, 1) >= 0.7, [`score=${input.userActionability ?? 1}`], clamp(input.userActionability, 1) >= 0.7 ? [] : ['next_action_unclear']),
-    serp_intent_alignment: result(clamp(input.serpIntentAlignment, intentCompletion), clamp(input.serpIntentAlignment, intentCompletion) >= 0.75, [`score=${input.serpIntentAlignment ?? intentCompletion}`], clamp(input.serpIntentAlignment, intentCompletion) >= 0.75 ? [] : ['serp_intent_misaligned']),
-    decision_completion: result(clamp(input.decisionCompletion, intentCompletion), clamp(input.decisionCompletion, intentCompletion) >= 0.75, [`score=${input.decisionCompletion ?? intentCompletion}`], clamp(input.decisionCompletion, intentCompletion) >= 0.75 ? [] : ['reader_decision_incomplete']),
+    serp_intent_alignment: result(effectiveSerpAlignment, effectiveSerpAlignment >= 0.75, intentEvidence, effectiveSerpAlignment >= 0.75 ? [] : ['serp_intent_misaligned']),
+    decision_completion: result(effectiveDecisionCompletion, effectiveDecisionCompletion >= 0.75, intentEvidence, effectiveDecisionCompletion >= 0.75 ? [] : ['reader_decision_incomplete']),
     query_cluster_coverage: result(clamp(input.queryClusterCoverage, 1), clamp(input.queryClusterCoverage, 1) >= 0.6, [`score=${input.queryClusterCoverage ?? 1}`], clamp(input.queryClusterCoverage, 1) >= 0.6 ? [] : ['query_cluster_undercovered']),
     comparative_information_gain: result(clamp(input.comparativeInformationGain, input.informationGainScore), clamp(input.comparativeInformationGain, input.informationGainScore) >= 0.6, [`score=${input.comparativeInformationGain ?? input.informationGainScore ?? 0}`], clamp(input.comparativeInformationGain, input.informationGainScore) >= 0.6 ? [] : ['comparative_information_gain_low']),
     competitor_copy_risk: result(1 - clamp(input.competitorCopyRisk), clamp(input.competitorCopyRisk) <= 0.3, [`risk=${input.competitorCopyRisk ?? 0}`], clamp(input.competitorCopyRisk) <= 0.3 ? [] : ['competitor_phrase_overlap']),
     title_snippet_congruence: result(clamp(input.titleSnippetCongruence, 1), clamp(input.titleSnippetCongruence, 1) >= 0.8, [`score=${input.titleSnippetCongruence ?? 1}`], clamp(input.titleSnippetCongruence, 1) >= 0.8 ? [] : ['title_description_body_mismatch']),
-    section_purpose_coverage: result(clamp(input.sectionPurposeCoverage, intentCompletion), clamp(input.sectionPurposeCoverage, intentCompletion) >= 0.75, [`score=${input.sectionPurposeCoverage ?? intentCompletion}`], clamp(input.sectionPurposeCoverage, intentCompletion) >= 0.75 ? [] : ['section_purpose_missing']),
+    section_purpose_coverage: result(effectiveSectionCoverage, effectiveSectionCoverage >= 0.75, intentEvidence, effectiveSectionCoverage >= 0.75 ? [] : ['section_purpose_missing']),
     image_entity_match: result(clamp(input.imageEntityMatch, input.imageRelevance), clamp(input.imageEntityMatch, input.imageRelevance) >= 0.7, [`score=${input.imageEntityMatch ?? input.imageRelevance ?? 1}`], clamp(input.imageEntityMatch, input.imageRelevance) >= 0.7 ? [] : ['image_entity_mismatch']),
     pillar_support_relationship: result(clamp(input.pillarSupportRelationship, 1), clamp(input.pillarSupportRelationship, 1) >= 0.7, [`score=${input.pillarSupportRelationship ?? 1}`], clamp(input.pillarSupportRelationship, 1) >= 0.7 ? [] : ['pillar_relationship_missing']),
   };

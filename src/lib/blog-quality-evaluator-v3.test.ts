@@ -53,4 +53,69 @@ describe('explainable blog quality evaluator v3', () => {
     expect(evaluateBlogQualityV3({ ...base, body: '이곳 준비물입니다. 이곳 체크리스트입니다. 이곳에서 확인하세요.', destinationSpecificDetailCount: 0 }).passed).toBe(false);
     expect(evaluateBlogQualityV3({ ...base, templateSaturation: true }).hardBlockers).toContain('template_saturation');
   });
+
+  it('rejects an evidence-correct itinerary that never produces an executable sequence', () => {
+    const body = [
+      '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '지금 어떤 이동수단을 고를지는 공식 정보의 시간과 수치를 내 일정에 대조해 결정하세요.',
+      '## 이동 시간을 기준으로 선택지 좁히기',
+      '오행산은 도시에서 차로 15분 거리입니다.',
+      '바나힐은 다낭 시내에서 차로 40분 거리입니다.',
+      '이 공식 정보가 내 일정과 맞는지 확인하세요.',
+      '## 무엇을 결정할까?',
+      '- 이 수치를 내 우선순위와 비교하세요.',
+      '- 동행자와 함께 이 시간을 확인하세요.',
+    ].join('\n\n');
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      body,
+      destination: '다낭',
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      archetype: 'itinerary_timeline',
+      intentCompletionScore: 1,
+      serpIntentAlignment: 1,
+      decisionCompletion: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.dimensions.intent_completion.passed).toBe(false);
+    expect(report.dimensions.decision_completion.passed).toBe(false);
+    expect(report.dimensions.section_purpose_coverage.passed).toBe(false);
+    expect(report.failureReasons.map((failure) => failure.code)).toEqual(expect.arrayContaining([
+      'primary_decision_not_answered',
+      'reader_decision_incomplete',
+      'section_purpose_missing',
+    ]));
+  });
+
+  it('accepts the intent artifact when an itinerary contains a direct grouping and usable order', () => {
+    const body = [
+      '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '다낭 일정은 오행산과 린응사를 한 동선 후보로 묶고, 바나힐은 별도 순서로 두고 비교하세요.',
+      '## 추천 동선부터 정하기',
+      '- 먼저 오행산과 린응사를 묶어 비교하세요.',
+      '- 바나힐은 별도 후보로 두세요.',
+      '- 드래곤 브리지는 마지막 순서로 검토하세요.',
+      '오행산은 도시에서 차로 15분 거리입니다.',
+    ].join('\n\n');
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      body,
+      destination: '다낭',
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      archetype: 'itinerary_timeline',
+      intentCompletionScore: 1,
+      serpIntentAlignment: 1,
+      decisionCompletion: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.dimensions.intent_completion).toMatchObject({ value: 1, passed: true });
+    expect(report.dimensions.decision_completion.passed).toBe(true);
+    expect(report.dimensions.section_purpose_coverage.passed).toBe(true);
+  });
 });

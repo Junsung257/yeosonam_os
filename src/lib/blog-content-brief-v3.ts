@@ -147,9 +147,12 @@ function inferDecisionIntent(input: BlogContentBriefV3Input): SearchDecisionInte
   if (/날씨|우기|건기|옷차림|기온|강수/i.test(text)) return 'weather_travel_viability';
   if (/호텔|리조트|숙소|어디.*묵/i.test(text)) return 'hotel_area_selection';
   if (/가볼만한곳|관광지|명소|액티비티/i.test(text)) return 'attraction_selection';
-  if (/공항.*(?:에서|부터)|가는\s*법|이동|교통/i.test(text)) return 'route_decision';
   if (/비용|예산|경비|가격/i.test(text)) return 'budget_decision';
-  if (/일정|코스|\d+박\s*\d+일/i.test(text)) return 'itinerary_execution';
+  // A query such as "여행 일정과 이동 동선" asks for an executable
+  // itinerary, not merely a comparison of transport modes. Resolve the more
+  // specific itinerary intent before the broad 이동/교통 route matcher.
+  if (/일정|코스|동선|\d+박\s*\d+일/i.test(text)) return 'itinerary_execution';
+  if (/공항.*(?:에서|부터)|가는\s*법|이동|교통/i.test(text)) return 'route_decision';
   if (/부모님|가족|아이|커플|신혼|혼자|시니어/i.test(text)) return 'traveler_fit';
   if (/^[^\s]+\s*여행$/i.test(clean(input.primaryKeyword) || clean(input.topic))) return 'destination_overview';
   return 'direct_answer';
@@ -269,8 +272,10 @@ function buildTitleCandidates(primaryQuery: string, destination: string, intent:
         ? [[`${query}: 시간·체력에 맞춰 고르는 법`, '장소 나열보다 선택 조건을 명시']]
         : intent === 'route_decision'
           ? [[`${query}: 시간·비용·수하물 기준 비교`, '이동 의사결정의 핵심 조건을 명시']]
-          : intent === 'budget_decision'
+      : intent === 'budget_decision'
             ? [[`${query}: 여행 방식별 예산 시나리오`, '근거 있는 비용 조건을 설명']]
+            : intent === 'itinerary_execution'
+              ? [[`${query}: 이동 부담을 줄이는 순서`, '명소 나열보다 실행 순서와 동선 결정을 명시']]
             : [[query, '검색어와 본문의 주된 답을 그대로 일치']];
   return unique(candidates.map(([title]) => title)).map((title, index) => ({
     title: title.slice(0, 80),
@@ -290,6 +295,8 @@ function buildDescription(primaryQuery: string, intent: SearchDecisionIntent): s
           ? `${primaryQuery}의 이동 방법을 시간·비용·환승 부담 기준으로 비교합니다. 확인된 공식 교통 정보를 바탕으로 내 일정에 맞는 경로와 출발 전 확인 조건을 정리했습니다.`
           : intent === 'budget_decision'
             ? `${primaryQuery}에 필요한 비용을 여행 방식별로 나누어 비교합니다. 확인된 가격 근거와 변동 조건을 바탕으로 내 예산에 맞는 선택과 출발 전 확인 항목을 정리했습니다.`
+            : intent === 'itinerary_execution'
+              ? `${primaryQuery}을 이동 시간과 일정 순서 기준으로 정리했습니다. 확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나누고, 마지막 순서까지 실행 가능하게 살펴보세요.`
             : `${primaryQuery}에 바로 답할 수 있도록 확인된 정보와 선택 기준을 구분해 정리했습니다. 내 일정과 우선순위에 맞는 결정을 내리고 출발 전에 다시 확인할 항목도 살펴보세요.`;
   const complete = base.length >= 80
     ? base
