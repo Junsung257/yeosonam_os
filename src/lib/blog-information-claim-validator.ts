@@ -232,7 +232,9 @@ const V3_AVAILABILITY_RECHECK_RE = /(?:예약|입장|이용|운영|영업).*(?:�
 const V3_AVAILABILITY_DECISION_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*(?:여부|시간|날짜|조건)).*(?:맞춰|기준으로).*(?:결정|선택|비교|조정)하세요/i;
 const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
 const V3_ITINERARY_EDITORIAL_GUIDANCE_RE = /^(?!.*(?:\d|현재|실제로|항상|통상|평균|이동\s*시간이\s*(?:길|짧)|도심\s*(?:동|서|남|북)쪽|같은\s*권역|안전|적합|필수|의무|금지|불가|가능합니다))(?=.*(?:일정|동선|이동\s*구간|예약|휴식))(?=.*(?:정하|나누|묶|분리|얹|점검|비교|고르|선택|결정|남겨|두고|두며))(?=.*(?:순서|기준|먼저|마지막|쉽게|무리|부담|대체|흐름)).+$/i;
-const V3_ITINERARY_CONTINGENCY_GUIDANCE_RE = /^(?!.*\d)(?=.*(?:우천|날씨|휴무|변동))(?=.*(?:경우|때|어긋|밀리|밀릴|바뀌))(?=.*(?:대체|조정|바꾸|남겨|정해|확인))(?=.*(?:일정|동선|순서)).+$/i;
+const V3_ITINERARY_CONTINGENCY_GUIDANCE_RE = /^(?!.*\d)(?=.*(?:우천|날씨|휴무|변동))(?=.*(?:경우|때|어긋|밀리|밀릴|바뀌|대비))(?=.*(?:대체|조정|바꾸|남겨|정해|확인))(?=.*(?:일정|동선|순서)).+$/i;
+const V3_OPERATIONAL_RECHECK_GUIDANCE_RE = /^(?!.*(?:\d|(?:현재|오늘).*(?:가능|불가|휴무|운영)))(?=.*(?:공식\s*(?:채널|홈페이지|공지|사이트)))(?=.*(?:운영\s*여부|예약\s*조건|입장\s*여부|휴무\s*여부|변동\s*여부))(?=.*(?:확인|점검))(?=.*(?:일정|동선|대체|출발)).+$/i;
+const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s*(?:긴|길|짧)|(?:긴|짧은)\s*이동\s*구간|같은\s*권역|동선(?:이|은)\s*복잡|(?:안전|적합|최적|효율적)(?:합니다|입니다|한|하))/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
 export function classifyBlogInformationStatement(segment: string): {
@@ -243,14 +245,22 @@ export function classifyBlogInformationStatement(segment: string): {
   // win over editorial-language allowlists. This prevents a sentence such as
   // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
   const factualClassification = classifyClaim(segment);
-  const directDecisionGuidance = V3_DECISION_GUIDANCE_RE.test(segment)
-    || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment)
-    || V3_ITINERARY_EDITORIAL_GUIDANCE_RE.test(segment);
+  const unsupportedLocalEvaluation = V3_UNSUPPORTED_LOCAL_EVALUATION_RE.test(segment);
+  const directDecisionGuidance = !unsupportedLocalEvaluation && (
+    V3_DECISION_GUIDANCE_RE.test(segment)
+      || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
+      || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
+      || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment)
+      || V3_ITINERARY_EDITORIAL_GUIDANCE_RE.test(segment)
+  );
   const itineraryContingencyGuidance = V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(segment);
+  const operationalRecheckGuidance = V3_OPERATIONAL_RECHECK_GUIDANCE_RE.test(segment);
   const availabilityRecheck = factualClassification?.candidateKind === 'availability_status'
-    && (V3_AVAILABILITY_RECHECK_RE.test(segment) || V3_AVAILABILITY_DECISION_RE.test(segment));
+    && (
+      V3_AVAILABILITY_RECHECK_RE.test(segment)
+      || V3_AVAILABILITY_DECISION_RE.test(segment)
+      || operationalRecheckGuidance
+    );
   if (
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
@@ -263,6 +273,7 @@ export function classifyBlogInformationStatement(segment: string): {
     EDITORIAL_READING_GUIDANCE_RE.test(segment)
     || directDecisionGuidance
     || itineraryContingencyGuidance
+    || operationalRecheckGuidance
     || availabilityRecheck
     || V3_NAVIGATION_HEADING_RE.test(segment)
   ) {
@@ -273,6 +284,16 @@ export function classifyBlogInformationStatement(segment: string): {
   }
   if (NAVIGATION_OR_BOILERPLATE_RE.test(segment)) {
     return { category: 'navigation_boilerplate', factualClassification: null };
+  }
+  if (unsupportedLocalEvaluation) {
+    return {
+      category: 'unknown_unclassified',
+      factualClassification: {
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        candidateKind: 'unknown_statement',
+      },
+    };
   }
   if (!ASSERTIVE_STATEMENT_RE.test(segment)) {
     return { category: 'navigation_boilerplate', factualClassification: null };
