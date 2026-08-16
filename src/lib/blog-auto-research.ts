@@ -1309,6 +1309,8 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Keep every evidence excerpt and claimText under 240 characters. Never copy a full table, directory, schedule, policy section, or menu.',
     'Each claim must contain one independently supported fact from one linked evidence excerpt.',
     'Every digit in claimText must occur in that linked excerpt. Never combine a second schedule, distance, date, quantity, or price into the claim.',
+    'Every route-duration claim must name both the origin and destination stated by the digest; a duration with only one endpoint is incomplete.',
+    'For a factual measurement, keep only the supported measurement and entity. Omit comparative or superlative wording such as 가장, 최고, largest, or tallest unless the claimType is superlative and that type is allowed for the intent.',
     'Select facts that satisfy Required decision facts and Minimum independently supported claims before any general background.',
     'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
