@@ -1,5 +1,9 @@
 # Blog Ops Runbook
 
+> 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
+
+> 2026-08-15 V4 override: 신규 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`의 생성/공개 분리 계약을 따른다. `blog-generate`는 KST 01:05~06:05 계산 전용이고 `blog-publication-controller`는 KST 09:05/12:05/15:05/18:05/21:05 공개 전용이다. 아래 `blog-publisher` 직접 공개·22:05 catch-up 설명은 V4 이전 사고 기록이며 신규 스케줄 근거로 사용하지 않는다.
+
 > 2026-08-13 V3 override: `backfill:blog-quality:write` was removed. The legacy backfill creates article text, so `--write` and `--apply` now fail before any database mutation. Commands below that include the old write flag are historical verification records only.
 
 Last updated: 2026-07-28
@@ -514,7 +518,7 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - `src/lib/blog-current-day-publisher-health.ts` evaluates the latest `blog-publisher` `cron_health` row separately from the closed-day SLA window.
 - If the latest current-day publisher run had remaining quota and published `0`, `diagnose:blog-autopublish` reports `current_day_publisher_failure` and `/admin/blog` marks the contract as failed.
 - A quota-reached no-op with `remaining=0` remains healthy.
-- A single slow AI writer or card-news bridge call must not consume the full Vercel function window. The publisher wraps those calls with local timeout guards (`BLOG_PUBLISHER_AI_TIMEOUT_MS`, `BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS`) so a bad candidate is recorded through queue failure handling and the cron can still write a useful summary before the 285s completion guard.
+- A single slow AI writer or card-news bridge call must not consume the full Vercel function window. The publisher wraps those calls with local timeout guards (`BLOG_PUBLISHER_AI_TIMEOUT_MS`, `BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS`, `BLOG_PUBLISHER_GENERATION_TIMEOUT_MS`, `BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS`) so a bad candidate is recorded through queue failure handling and the cron can still write a useful summary before the 285s completion guard. Keep the outer generation timeout above the Pro rewrite timeout; the code defaults are 190s and 165s respectively.
 - Verification on 2026-07-03:
   - `npx vitest run src/lib/blog-current-day-publisher-health.test.ts src/lib/blog-publish-preflight.test.ts src/lib/blog-canary-preflight.test.ts src/app/api/cron/blog-daily-summary/route.test.ts` passed;
   - `npm run diagnose:blog-autopublish -- --json` reported `current_day_publisher_health.status="risk"` and bucket `current_day_publisher_failure` for the current-day zero-published run.

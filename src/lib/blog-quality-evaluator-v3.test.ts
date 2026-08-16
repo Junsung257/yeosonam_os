@@ -16,6 +16,19 @@ describe('explainable blog quality evaluator v3', () => {
     expect(report.version).toBe('blog-quality-v3');
   });
 
+  it('uses the measured decision-completion score instead of requiring prompt text verbatim', () => {
+    const report = evaluateBlogQualityV3({
+      ...base,
+      primaryDecision: '여행자 유형과 이동 부담에 따라 장소를 고른다',
+      intentCompletionScore: 0.9,
+    });
+
+    expect(report.dimensions.intent_completion).toMatchObject({
+      value: 0.9,
+      passed: true,
+    });
+  });
+
   it.each([
     '고민을에서 덜어드리겠습니다.에서 엄선한', '여 여소남 에디터', '낮춝니다',
     '어렵편입니다', '여행 준비 여행', '쉥겐 협약국 2-6개국',
@@ -26,6 +39,13 @@ describe('explainable blog quality evaluator v3', () => {
   it('fails unsupported experience and stale ETIAS claims', () => {
     expect(evaluateBlogQualityV3({ ...base, body: '운영팀 검증 결과입니다.' }).hardBlockers).toContain('unsupported_first_party_claim');
     expect(evaluateBlogQualityV3({ ...base, title: 'ETIAS 안내', body: 'ETIAS는 2025년 상반기부터 7유로입니다.' }).hardBlockers).toContain('stale_etias_2025_or_7_euro');
+  });
+
+  it('does not confuse an instruction to verify locally with a claimed field verification', () => {
+    expect(evaluateBlogQualityV3({ ...base, body: '현지에서 확인이 필요합니다.' }).hardBlockers)
+      .not.toContain('unsupported_first_party_claim');
+    expect(evaluateBlogQualityV3({ ...base, body: '현지에서 확인했습니다.' }).hardBlockers)
+      .toContain('unsupported_first_party_claim');
   });
 
   it('fails part suffix, generic checklist and destination-swapped weather saturation', () => {

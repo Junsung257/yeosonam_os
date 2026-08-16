@@ -73,7 +73,10 @@ import {
   calculateBlogReadingTimeFromHtml,
   readPersistedBlogReadingTime,
 } from '@/lib/blog-reading-time';
-import { loadBlogPublicDetailSnapshotV3 } from '@/lib/blog-public-snapshot-v3';
+import {
+  loadBlogPublicDetailSnapshotV3,
+  type BlogPublicDetailSnapshotV3,
+} from '@/lib/blog-public-snapshot-v3';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -414,63 +417,72 @@ function isBlogPostSurfacePolicySafe(post: BlogPost): boolean {
   }) === null;
 }
 
+function blogPostFromPublicSnapshot(
+  snapshot: BlogPublicDetailSnapshotV3,
+): BlogPost {
+  return {
+    id: snapshot.creative_id,
+    slug: snapshot.slug,
+    seo_title: snapshot.title,
+    seo_description: snapshot.description,
+    og_image_url: typeof snapshot.hero_image?.url === 'string' ? snapshot.hero_image.url : null,
+    blog_html: snapshot.legacy_markdown
+      || (typeof snapshot.content_document?.markdown === 'string' ? snapshot.content_document.markdown : null),
+    angle_type: snapshot.angle_type || 'value',
+    channel: 'naver_blog',
+    published_at: snapshot.published_at,
+    created_at: snapshot.published_at,
+    updated_at: snapshot.content_modified_at,
+    content_modified_at: snapshot.content_modified_at,
+    fact_checked_at: snapshot.fact_checked_at,
+    product_id: snapshot.product_id,
+    tracking_id: snapshot.tracking_id,
+    destination: snapshot.destination,
+    landing_enabled: snapshot.landing_enabled,
+    landing_headline: snapshot.landing_headline,
+    landing_subtitle: snapshot.landing_subtitle,
+    content_type: snapshot.content_type,
+    review_status: snapshot.review_status
+      ?? (typeof snapshot.review?.review_status === 'string' ? snapshot.review.review_status : null),
+    pillar_for: null,
+    target_audience: snapshot.target_audience,
+    generation_meta: {
+      ...snapshot.generation_meta,
+      ...(snapshot.author ? {
+        author_profile: {
+          slug: snapshot.author.slug,
+          displayName: snapshot.author.display_name,
+          bio: snapshot.author.bio,
+        },
+      } : {}),
+      ...(snapshot.review ? {
+        reviewer: {
+          displayName: snapshot.review.display_name,
+          reviewedAt: snapshot.review.reviewed_at,
+          scope: snapshot.review.review_scope,
+        },
+      } : {}),
+    },
+    quality_gate: snapshot.quality_gate,
+    travel_packages: null,
+  };
+}
+
+async function loadBlogPublicFallbackOrThrow(dbSlug: string): Promise<BlogPost> {
+  const snapshotResult = await loadBlogPublicDetailSnapshotV3(dbSlug);
+  if (snapshotResult.state === 'found') {
+    return blogPostFromPublicSnapshot(snapshotResult.snapshot);
+  }
+  throw createBlogDatabaseUnavailableError();
+}
+
 async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   const dbSlug = safeDecodeSlug(slug);
-  const snapshotResult = await loadBlogPublicDetailSnapshotV3(dbSlug);
-  const snapshot = snapshotResult.state === 'found' ? snapshotResult.snapshot : null;
-  if (snapshot !== null) {
-    return {
-      id: snapshot.creative_id,
-      slug: snapshot.slug,
-      seo_title: snapshot.title,
-      seo_description: snapshot.description,
-      og_image_url: typeof snapshot.hero_image?.url === 'string' ? snapshot.hero_image.url : null,
-      blog_html: snapshot.legacy_markdown
-        || (typeof snapshot.content_document?.markdown === 'string' ? snapshot.content_document.markdown : null),
-      angle_type: snapshot.angle_type || 'value',
-      channel: 'naver_blog',
-      published_at: snapshot.published_at,
-      created_at: snapshot.published_at,
-      updated_at: snapshot.content_modified_at,
-      content_modified_at: snapshot.content_modified_at,
-      fact_checked_at: snapshot.fact_checked_at,
-      product_id: snapshot.product_id,
-      tracking_id: snapshot.tracking_id,
-      destination: snapshot.destination,
-      landing_enabled: snapshot.landing_enabled,
-      landing_headline: snapshot.landing_headline,
-      landing_subtitle: snapshot.landing_subtitle,
-      content_type: snapshot.content_type,
-      review_status: snapshot.review_status
-        ?? (typeof snapshot.review?.review_status === 'string' ? snapshot.review.review_status : null),
-      pillar_for: null,
-      target_audience: snapshot.target_audience,
-      generation_meta: {
-        ...snapshot.generation_meta,
-        ...(snapshot.author ? {
-          author_profile: {
-            slug: snapshot.author.slug,
-            displayName: snapshot.author.display_name,
-            bio: snapshot.author.bio,
-          },
-        } : {}),
-        ...(snapshot.review ? {
-          reviewer: {
-            displayName: snapshot.review.display_name,
-            reviewedAt: snapshot.review.reviewed_at,
-            scope: snapshot.review.review_scope,
-          },
-        } : {}),
-      },
-      quality_gate: snapshot.quality_gate,
-      travel_packages: null,
-    };
-  }
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
-    throw createBlogDatabaseUnavailableError();
+    return loadBlogPublicFallbackOrThrow(dbSlug);
   }
   if (shouldSkipPublicDbReadsForResourceSaver()) {
-    throw createBlogDatabaseUnavailableError();
+    return loadBlogPublicFallbackOrThrow(dbSlug);
   }
   const postResult = await runBlogDetailQuery(
     'postFast',
@@ -488,7 +500,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   let error: unknown = postResult.error;
 
   if (isBlogDetailQueryUnavailable(postResult)) {
-    throw createBlogDatabaseUnavailableError();
+    return loadBlogPublicFallbackOrThrow(dbSlug);
   }
 
   // Rolling deployment compatibility: the current public eligibility view is
@@ -509,7 +521,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
       { data: null, error: null },
     );
     if (isBlogDetailQueryUnavailable(legacyResult)) {
-      throw createBlogDatabaseUnavailableError();
+      return loadBlogPublicFallbackOrThrow(dbSlug);
     }
     data = legacyResult.data as Array<Record<string, unknown>> | null;
     error = legacyResult.error;
@@ -520,7 +532,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
     // A PostgREST/schema/connection error cannot prove that the slug does not
     // exist. Treating it as a null row produces a false 404 and lets crawlers
     // cache an infrastructure incident as a deletion.
-    throw createBlogDatabaseUnavailableError();
+    return loadBlogPublicFallbackOrThrow(dbSlug);
   }
   if (!data || data.length === 0) return null;
 

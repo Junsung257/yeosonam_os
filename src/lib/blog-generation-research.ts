@@ -27,11 +27,31 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
   local_transport: { price: 2, duration: 2 },
   hotel_areas: { price: 3, factual: 3 },
   family_budget: { price: 4 },
-  itinerary: { duration: 1, factual: 2 },
+  // V3 separately requires at least three evidence-linked destination decision
+  // details. Do not reject a safe packet merely because a detail is typed as
+  // duration or superlative rather than the generic `factual` bucket.
+  itinerary: { duration: 1, factual: 1 },
   shopping_souvenirs: { price: 3, factual: 2 },
   currency_payment: { currency: 1, factual: 3 },
   entry_requirements: { entry_visa: 2, policy: 2 },
   travel_insurance: { insurance: 4, policy: 2 },
+};
+
+/**
+ * Type minimums prevent a packet from containing the wrong kind of facts;
+ * total minimums prevent a nominally valid but editorially unusable packet.
+ * Attraction/itinerary decisions need more than the three entity details used
+ * by the flexible brief because each choice also needs a supported constraint
+ * or comparison input.
+ */
+export const BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT: Partial<Record<
+  BlogInformationIntent,
+  number
+>> = {
+  itinerary: 6,
+  hotel_areas: 8,
+  airport_transport: 6,
+  local_transport: 6,
 };
 
 const BLOG_INFORMATION_MINIMUM_SOURCE_DOMAINS: Partial<Record<BlogInformationIntent, number>> = {
@@ -99,8 +119,10 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
     { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
   ],
   itinerary: [
-    { key: 'child_or_family', pattern: /아동|아이|어린이|가족|child|children|kid|family/ },
-    { key: 'attraction', pattern: /수족관|언더워터|박물관|해변|비치|야시장|관광|명소|aquarium|museum|beach|attraction/ },
+    {
+      key: 'attraction',
+      pattern: /수족관|박물관|해변|비치|야시장|관광|명소|반도|산|시장|사원|다리|공원|탑|대성당|동굴|유적|aquarium|museum|beach|attraction|peninsula|mountain|market|temple|bridge|park|cave|heritage/i,
+    },
     {
       key: 'route_duration',
       pattern: /(?:공항|에서|부터|까지|이동|주행|airport|drive|ride|route|panglao|carmen|tumon|hagatna|kmart|giaa)[^\n]{0,120}\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/,
@@ -394,6 +416,10 @@ export function evaluateBlogGenerationResearchReadiness(input: {
   for (const [claimType, minimum] of Object.entries(minimums)) {
     const count = supportedClaims.filter((claim) => claim.claimType === claimType).length;
     if (count < Number(minimum)) issues.push(`claim_type_below_minimum:${claimType}:${count}/${minimum}`);
+  }
+  const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.intent] ?? 3;
+  if (supportedClaims.length < minimumTotalClaims) {
+    issues.push(`supported_claim_count_below_minimum:${supportedClaims.length}/${minimumTotalClaims}`);
   }
 
   const supportedClaimText = supportedClaims.map((claim) => normalize(claim.claimText)).join('\n');

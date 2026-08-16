@@ -161,6 +161,10 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
   '/api/cron/blog-publisher',
+  '/api/cron/blog-generate',
+  '/api/cron/blog-publication-controller',
+  '/api/cron/blog-ai-model-canary',
+  '/api/cron/blog-analytics-canary',
   '/api/cron/blog-indexing-worker',
   '/api/cron/blog-data-readiness',
   '/api/cron/analytics-delivery',
@@ -466,40 +470,37 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
   }
 }
 
-async function publicBlogRouteIsEligible(slug: string): Promise<boolean | null> {
-  const config = getSupabaseRestConfig();
-  if (!config) return null;
+async function publicBlogSlugExists(slug: string): Promise<boolean | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) return null;
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1200);
   try {
-    const controller = new AbortController();
-    // A slow eligibility probe must not consume the stale-detail fallback budget.
-    // Do not cache this decision: review-status changes need to take effect at once.
-    const timer = setTimeout(() => controller.abort(), 750);
-    // The full public eligibility view is service-role only. This narrow RPC
-    // exposes one Boolean and keeps middleware aligned with the canonical SQL
-    // policy without leaking article rows to the anonymous key.
-    const endpoint = new URL(`${config.url}/rest/v1/rpc/is_blog_public_slug_eligible_v3`);
-
-    const res = await fetch(endpoint, {
-      method: 'POST',
+    const endpoint = new URL(`${url.replace(/\/+$/, '')}/rest/v1/public_blog_slug_registry`);
+    endpoint.searchParams.set('select', 'id');
+    endpoint.searchParams.set('slug', `eq.${slug}`);
+    endpoint.searchParams.set('limit', '1');
+    const response = await fetch(endpoint, {
       headers: {
-        apikey: config.key,
-        authorization: `Bearer ${config.key}`,
+        apikey: key,
+        authorization: `Bearer ${key}`,
         accept: 'application/json',
-        'content-type': 'application/json',
       },
-      body: JSON.stringify({ p_slug: slug }),
       cache: 'no-store',
       signal: controller.signal,
-    }).finally(() => clearTimeout(timer));
-    if (!res.ok) return null;
-
-    const eligible = await res.json() as unknown;
-    return typeof eligible === 'boolean' ? eligible : null;
+    });
+    if (!response.ok) return null;
+    const rows = await response.json();
+    return Array.isArray(rows) && rows.length > 0;
   } catch {
-    // Database outages must not turn a known public bundle into a false 404.
-    // The page layer will serve the risk-bounded last-known-good snapshot.
+    // An unavailable registry cannot prove absence. The App Router will use
+    // the durable/remote/bundled detail snapshot instead of emitting a false
+    // 404 during an infrastructure incident.
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -617,8 +618,8 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
   if (segments[0] === 'blog' && segments.length === 2 && segments[1] !== 'image-sitemap.xml') {
     const slug = safeDecodePathSegment(segments[1]).trim();
     if (!slug) return plainNotFound();
-    const eligible = await publicBlogRouteIsEligible(slug);
-    if (eligible === false) return plainNotFound();
+    const exists = await publicBlogSlugExists(slug);
+    if (exists === false) return plainNotFound();
   }
 
   if (segments[0] === 'destinations' && segments.length === 2) {

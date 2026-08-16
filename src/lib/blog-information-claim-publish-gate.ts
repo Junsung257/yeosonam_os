@@ -48,6 +48,16 @@ export function isBlogInformationClaimValidationPendingHumanApprovalOnly(
     && result.issues.every((issue) => issue.code === 'human_approval_required');
 }
 
+export function shouldApplyDurableBlogInformationReviewGate(input: {
+  reportRequiresHumanReview: boolean;
+  reviewStatus?: string | null;
+  approvalValidation?: boolean;
+}): boolean {
+  return input.reportRequiresHumanReview
+    || input.approvalValidation === true
+    || ['approved', 'in_review', 'changes_requested', 'rejected'].includes(input.reviewStatus ?? '');
+}
+
 export function toBlogInformationClaimValidationMeta(
   result: BlogInformationClaimPublishGateResult,
 ): Record<string, unknown> {
@@ -98,6 +108,13 @@ async function applyDurableReviewStateGate(input: {
   report: BlogInformationClaimValidationReport;
 }): Promise<BlogInformationClaimValidationReport> {
   if (!input.creativeId) return input.report;
+  if (!shouldApplyDurableBlogInformationReviewGate({
+    reportRequiresHumanReview: input.report.requiresHumanReview,
+    reviewStatus: input.reviewStatus,
+    approvalValidation: input.approvalValidation,
+  })) {
+    return input.report;
+  }
   const { data: reviewCase, error: caseError } = await supabaseAdmin
     .from('blog_information_review_cases')
     .select('status, risk_level, content_fingerprint')

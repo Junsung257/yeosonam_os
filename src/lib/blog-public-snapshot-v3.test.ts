@@ -61,13 +61,13 @@ describe('blog public full-body snapshot bundle', () => {
     }, 'does-not-exist', new Date('2026-08-12T00:00:00.000Z'))).toBeNull();
   });
 
-  it('caps high-risk fallback freshness at 24 hours', () => {
+  it('never serves a stale fallback for high-risk content', () => {
     const highRisk = {
       ...snapshot,
       generation_meta: { content_brief: { risk_level: 'HIGH' } },
     };
     expect(selectBundledBlogPublicDetailSnapshotV3({
-      generated_at: '2026-08-10T23:00:00.000Z',
+      generated_at: '2026-08-11T23:59:00.000Z',
       posts: [highRisk],
     }, highRisk.slug, new Date('2026-08-12T00:00:00.000Z'))).toBeNull();
   });
@@ -115,6 +115,21 @@ describe('blog public full-body snapshot bundle', () => {
       bundle,
       approvedHighRisk.slug,
       new Date('2026-08-11T01:00:00.000Z'),
-    )).toEqual(approvedHighRisk);
+    )).toBeNull();
+  });
+
+  it('caps medium-risk fallback at 48 hours', () => {
+    const mediumRisk = {
+      ...snapshot,
+      slug: 'danang-october-weather',
+      title: '다낭 10월 날씨',
+      generation_meta: { content_brief: { risk_level: 'MEDIUM', intent_type: 'monthly_weather' } },
+    };
+    expect(selectBundledBlogPublicDetailSnapshotV3({
+      generated_at: '2026-08-10T01:00:00.000Z', posts: [mediumRisk],
+    }, mediumRisk.slug, new Date('2026-08-12T00:00:00.000Z'))).toEqual(mediumRisk);
+    expect(selectBundledBlogPublicDetailSnapshotV3({
+      generated_at: '2026-08-09T23:00:00.000Z', posts: [mediumRisk],
+    }, mediumRisk.slug, new Date('2026-08-12T00:00:00.000Z'))).toBeNull();
   });
 });

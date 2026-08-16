@@ -18,10 +18,25 @@ import {
   extractReviewedHtmlTextForResearch,
   extractReviewedPageTextForResearch,
   fetchReviewedDirectPages,
+  normalizeAutoResearchStructuredValue,
   sanitizeGroundedResearchPayload,
   selectReputableResearchRegistryForIntent,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
+
+describe('normalizeAutoResearchStructuredValue', () => {
+  it.each([
+    ['15분', null, '15', '분'],
+    ['40분', null, '40', '분'],
+    ['67m', null, '67', 'm'],
+    ['오전 7시 이전', null, '7', '시'],
+  ])('separates %s into a canonical value and unit', (normalizedValue, unit, value, expectedUnit) => {
+    expect(normalizeAutoResearchStructuredValue({ normalizedValue, unit })).toEqual({
+      normalizedValue: value,
+      unit: expectedUnit,
+    });
+  });
+});
 
 const sourcePolicy = {
   minimumClaimSourceCoverage: 0.9,
@@ -821,6 +836,7 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(promptFor('family_budget')).toContain('Exclude rent, gym membership, preschool tuition');
     expect(promptFor('family_budget')).toContain('newest reviewed official operator fare sheet');
     expect(promptFor('itinerary')).toContain('A visa stay limit is not an itinerary duration');
+    expect(promptFor('itinerary')).toContain('Minimum total independently supported claims: 6');
     expect(promptFor('shopping_souvenirs')).toContain('Exclude generic clothing, shoes, rent, restaurant');
     expect(promptFor('hotel_areas')).toContain('nightly price samples');
   });

@@ -27,6 +27,31 @@ describe('blog runtime schema readiness v3', () => {
     ]));
   });
 
+  it('requires the least-privilege public slug registry for hard 404 responses', () => {
+    expect(BLOG_RUNTIME_RESOURCES_V3).toContainEqual(expect.objectContaining({
+      key: 'public_slug_registry_v1',
+      table: 'public_blog_slug_registry',
+      columns: 'id,slug',
+      scope: 'delivery',
+    }));
+  });
+
+  it('requires the V4 durable generation ledger before generation or publication', () => {
+    expect(BLOG_RUNTIME_RESOURCES_V3).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'generation_runs_v4',
+        scope: 'publish',
+        columns: expect.stringContaining('selected_attempt_id'),
+      }),
+      expect.objectContaining({
+        key: 'generation_attempts_v4',
+        scope: 'publish',
+        columns: expect.stringContaining('finish_reason'),
+      }),
+      expect.objectContaining({ key: 'model_price_catalog_v4', scope: 'publish' }),
+    ]));
+  });
+
   it('reports scope readiness independently for safe operator diagnosis', async () => {
     const report = await probeBlogRuntimeSchemaReadinessV3(async (resource) => ({
       error: resource.scope === 'measurement'

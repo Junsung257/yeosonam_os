@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { assertNoFabricatedExperienceV3, buildBlogContentBriefV3 } from './blog-content-brief-v3';
+import {
+  assertNoFabricatedExperienceV3,
+  buildBlogContentBriefV3,
+  resolveVerifiedFirstPartySourceIdsV3,
+} from './blog-content-brief-v3';
 import type { SerpResearchPacketV3 } from './blog-serp-research-v3';
 
 const details = [1, 2, 3].map((n) => ({ text: `destination detail ${n}`, evidenceId: `evidence-${n}` }));
@@ -85,12 +89,42 @@ describe('flexible blog content brief v3', () => {
     expect(brief.metadata.ogTitle).toBe(brief.metadata.title);
     expect(brief.metadata.description.length).toBeGreaterThanOrEqual(80);
     expect(brief.metadata.description.length).toBeLessThanOrEqual(150);
+    expect(brief.metadata.description).not.toMatch(/제시.*제시|기준과 출발 전 다시 확인할 공식 정보/);
     expect(brief.title).not.toMatch(/2026|완벽|총정리|BEST/i);
   });
 
   it('blocks invented first-party experience language', () => {
     expect(assertNoFabricatedExperienceV3('지난달 다녀온 지인이 좋다고 말했다.', [])).not.toHaveLength(0);
     expect(assertNoFabricatedExperienceV3('운영팀이 직접 확인했다.', ['field-note-1'])).toEqual([]);
+  });
+
+  it('carries only caller-verified first-party IDs into the quality contract', () => {
+    expect(buildBlogContentBriefV3({
+      topic: '다낭 호텔 현장 노트',
+      destinationDecisionDetails: details,
+      availableEvidenceTypes: ['first_party'],
+      firstPartySourceIds: ['field-source-1', 'field-source-1'],
+    })).toMatchObject({
+      verifiedFirstPartySourceIds: ['field-source-1'],
+      experienceLanguageAllowed: true,
+      archetype: 'first_party_field_note',
+    });
+  });
+
+  it('does not trust a queue first-party ID unless the validated packet resolves it', () => {
+    expect(resolveVerifiedFirstPartySourceIdsV3({
+      registeredIds: ['invented-note', 'field-note-internal'],
+      sources: [{
+        sourceKey: 'field-source-1',
+        internalIdentifier: 'field-note-internal',
+        authorityLevel: 'field_observation',
+        sourceType: 'field_research',
+      }, {
+        sourceKey: 'official-source',
+        authorityLevel: 'official_primary',
+        sourceType: 'government',
+      }],
+    })).toEqual(['field-source-1', 'field-note-internal']);
   });
 
   it('routes a broad destination query to representative refresh instead of a new URL', () => {

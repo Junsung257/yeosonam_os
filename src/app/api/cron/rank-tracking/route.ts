@@ -7,6 +7,10 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { expandGscLongtailTopics } from '@/lib/blog-longtail-expander';
 import { buildBlogGscQueryRankHistoryRows } from '@/lib/blog-gsc-rank-history-rows';
 import { buildBlogGscSearchPerformanceRowsV3 } from '@/lib/blog-search-performance-import-v3';
+import {
+  buildBlogGscCollectionPlanV3,
+  readBlogGscBackfillCursorV3,
+} from '@/lib/blog-gsc-collection-plan-v3';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -31,11 +35,6 @@ export const dynamic = 'force-dynamic';
 
 const RANK_DROP_THRESHOLD = 5;       // 5계단 이상 하락 시 경보
 const LOOKBACK_AVG_DAYS = 7;
-
-function boundedCatchupDays(value: string | undefined): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(90, Math.max(1, Math.floor(parsed))) : 7;
-}
 
 async function upsertInChunks(
   table: 'rank_history' | 'blog_search_performance',
@@ -84,25 +83,52 @@ async function runRankTracking(request: NextRequest) {
   const siteUrl = process.env.GSC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com/';
   const errors: string[] = [];
 
-  // 1) 어제 데이터 (GSC는 보통 1-2일 지연)
+  // 1) 최근 7일은 매번 재수집하고, 그 이전 90일은 작은 청크로
+  //    역방향 보강한다. GSC 수정 데이터도 반영하면서 한 번의 크론이
+  //    과도한 API 호출이나 함수 시간을 쓰지 않게 한다.
   const targetDate = new Date();
   targetDate.setDate(targetDate.getDate() - 2);
   const dateStr = targetDate.toISOString().split('T')[0];
-
-  const catchupDays = boundedCatchupDays(process.env.BLOG_GSC_CATCHUP_DAYS);
-  const targetDates = Array.from({ length: catchupDays }, (_, index) => {
-    const date = new Date(targetDate);
-    date.setUTCDate(date.getUTCDate() - (catchupDays - index - 1));
-    return date.toISOString().split('T')[0]!;
+  const previousRuns = await supabaseAdmin
+    .from('cron_run_logs')
+    .select('summary')
+    .eq('cron_name', 'rank-tracking')
+    .order('started_at', { ascending: false })
+    .limit(20);
+  const priorRows = previousRuns.error ? [] : previousRuns.data || [];
+  const hasPreviousBackfillState = priorRows.some((row: any) => (
+    row?.summary?.gsc_collection
+    && Object.prototype.hasOwnProperty.call(row.summary.gsc_collection, 'nextBackfillEndDate')
+  ));
+  const previousBackfillEndDate = readBlogGscBackfillCursorV3(priorRows);
+  const collectionPlan = buildBlogGscCollectionPlanV3({
+    now: new Date(),
+    catchupDays: Number(process.env.BLOG_GSC_CATCHUP_DAYS || 7),
+    backfillDays: Number(process.env.BLOG_GSC_BACKFILL_DAYS || 90),
+    backfillChunkDays: Number(process.env.BLOG_GSC_BACKFILL_CHUNK_DAYS || 7),
+    previousBackfillEndDate,
+    hasPreviousState: hasPreviousBackfillState,
   });
+  const targetDates = collectionPlan.requestedDates;
   const metrics = [] as Awaited<ReturnType<typeof fetchBlogSearchMetrics>>;
+  const failedDates: string[] = [];
   for (const target of targetDates) {
     const daily = await fetchBlogSearchMetrics(siteUrl, target, true).catch(err => {
       errors.push(`GSC fetch failed (${target}): ${sanitizeDbError(err)}`);
+      failedDates.push(target);
       return [];
     });
     metrics.push(...daily);
   }
+  const gscCollection = {
+    ...collectionPlan,
+    nextBackfillEndDate: failedDates.length > 0
+      ? (hasPreviousBackfillState ? previousBackfillEndDate : collectionPlan.backfillDates.at(-1) ?? null)
+      : collectionPlan.nextBackfillEndDate,
+    fetchedDates: targetDates.filter((date) => !failedDates.includes(date)),
+    failedDates,
+    stateReadError: previousRuns.error ? sanitizeDbError(previousRuns.error) : null,
+  };
   const selectedGscSiteUrl = metrics[0]?.gscSiteUrl ?? siteUrl;
 
   if (metrics.length === 0) {
@@ -110,7 +136,8 @@ async function runRankTracking(request: NextRequest) {
     return {
       ok: false,
       date: dateStr,
-      catchup_days: catchupDays,
+      catchup_days: collectionPlan.catchupDates.length,
+      gsc_collection: gscCollection,
       fetched: 0,
       inserted: 0,
       performance_inserted: 0,
@@ -290,8 +317,9 @@ async function runRankTracking(request: NextRequest) {
   return {
     ok: errors.length === 0,
     date: dateStr,
-    catchup_days: catchupDays,
+    catchup_days: collectionPlan.catchupDates.length,
     requested_dates: targetDates,
+    gsc_collection: gscCollection,
     fetched: metrics.length,
     inserted,
     performance_inserted: performanceResult.inserted,

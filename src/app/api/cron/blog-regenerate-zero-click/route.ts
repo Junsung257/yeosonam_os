@@ -32,9 +32,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-const WINDOW_DAYS = 14;
-const COOLDOWN_DAYS = 7;
-const PERFORMANCE_MATURITY_DAYS = 14;
+const WINDOW_DAYS = 28;
+const COOLDOWN_DAYS = 28;
+const PERFORMANCE_MATURITY_DAYS = 28;
 const MAX_BATCH = 2;
 const CANDIDATE_POOL_LIMIT = 500;
 const PUBLIC_QUALITY_AUDIT_CONCURRENCY = 6;
@@ -147,11 +147,6 @@ async function runRegenerator(request: NextRequest) {
       current.clicks += row.clicks ?? 0;
       performance.set(row.slug, current);
     }
-    const zeroClickSlugs = [...performance.entries()]
-      .filter(([, value]) => value.impressions === 0 && value.clicks === 0)
-      .map(([slug]) => slug);
-    const zeroClickSet = new Set(zeroClickSlugs);
-
     const { data: cooldownRows, error: cooldownError } = await supabaseAdmin
       .from('blog_regenerate_log')
       .select('slug')
@@ -177,6 +172,19 @@ async function runRegenerator(request: NextRequest) {
     const publishedPosts = allPublishedPosts.filter(post =>
       !isBlogSlugRedirectSource(post.slug),
     );
+    // GSC normally omits true-zero pages. Treat a mature page that is absent
+    // from an otherwise successful 28-day collection as zero-observation, but
+    // never infer zero when the collector query failed or returned no rows.
+    const searchObservationAvailable = !rankError && (rankRows?.length ?? 0) > 0;
+    const zeroClickSlugs = searchObservationAvailable
+      ? publishedPosts
+          .filter((post) => {
+            const metric = performance.get(post.slug);
+            return !metric || (metric.impressions === 0 && metric.clicks === 0);
+          })
+          .map((post) => post.slug)
+      : [];
+    const zeroClickSet = new Set(zeroClickSlugs);
     const publicQualityEntries = await mapWithConcurrency(
       publishedPosts,
       PUBLIC_QUALITY_AUDIT_CONCURRENCY,

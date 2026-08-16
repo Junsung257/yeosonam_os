@@ -1,0 +1,99 @@
+{
+  "version": "blog-orchestrator-v4-production-verification",
+  "asOf": "2026-08-16T13:01:00+09:00",
+  "timeZone": "Asia/Seoul",
+  "writePolicy": {
+    "productionDeployPerformed": false,
+    "productionDatabaseWritesPerformed": false,
+    "productionMigrationApplied": false,
+    "corpusAuditDryRun": true
+  },
+  "source": {
+    "worktree": "C:/dev/yeosonam-os-blog-deepseek-v4",
+    "branch": "codex/blog-deepseek-orchestrator-v4-20260815",
+    "preVerificationHead": "4745dde09d0bd4f29a7723302a20348925f0c68a",
+    "productionDeploymentId": "dpl_426L8iTmMHs4EWvgena1UnUEFuzD",
+    "productionProject": "os",
+    "productionReadyState": "READY",
+    "productionCreatedAt": "2026-08-15T11:03:07.782Z",
+    "productionGitCommitProven": false,
+    "productionGitMetadataReason": "vercel inspect returned no immutable gitSource/meta commit SHA"
+  },
+  "localVerification": {
+    "fullVitest": { "filesPassed": 730, "testsPassed": 5466, "failed": 0 },
+    "middlewareAndCanaryRegression": { "filesPassed": 3, "testsPassed": 48, "failed": 0 },
+    "typecheck": "passed",
+    "lint": "passed_with_zero_warnings",
+    "productionBuild": {
+      "nextVersion": "15.5.21",
+      "status": "passed",
+      "staticPages": 390,
+      "buildOutputVerified": true,
+      "existingWarnings": ["edge runtime disables static generation for the affected page"]
+    },
+    "releaseBundle": { "status": "passed", "migrationCount": 9 },
+    "supabaseDryRun": {
+      "status": "passed",
+      "remoteAppliedPlaceholderCount": 509,
+      "pendingMigrationCount": 9,
+      "unexpectedMigrationCount": 0,
+      "remoteHistoryMutated": false
+    },
+    "localHttp": {
+      "blog": 200,
+      "sitemap": 200,
+      "rss": 200,
+      "imageSitemap": 200,
+      "blogGenerateUnauthorized": 401,
+      "publicationControllerUnauthorized": 401,
+      "aiModelCanaryUnauthorized": 401,
+      "analyticsCanaryUnauthorized": 401,
+      "missingSlugBeforeRegistryMigration": 200
+    }
+  },
+  "providerCanary": {
+    "readOnly": true,
+    "modelCalls": 4,
+    "passed": 4,
+    "failed": 0,
+    "results": [
+      { "stage": "draft_flash", "provider": "deepseek", "model": "deepseek-v4-flash", "reasoning": "disabled", "latencyMs": 605, "finishReason": "stop", "inputTokens": 34, "outputTokens": 1, "estimatedCostUsd": 0.00000504 },
+      { "stage": "rewrite_pro_high", "provider": "deepseek", "model": "deepseek-v4-pro", "reasoning": "high", "latencyMs": 2708, "finishReason": "stop", "inputTokens": 113, "outputTokens": 23, "estimatedCostUsd": 0.00006917 },
+      { "stage": "rewrite_pro_max", "provider": "deepseek", "model": "deepseek-v4-pro", "reasoning": "max", "latencyMs": 5237, "finishReason": "stop", "inputTokens": 126, "outputTokens": 26, "estimatedCostUsd": 0.00007743 },
+      { "stage": "rescue_gemini", "provider": "gemini", "model": "gemini-2.5-pro", "reasoning": "provider_minimum_128", "latencyMs": 1836, "finishReason": "STOP", "inputTokens": 32, "outputTokens": 1, "estimatedCostUsd": null }
+    ]
+  },
+  "productionEvidence": {
+    "publicEligible": 191,
+    "durableSnapshots": 186,
+    "missingSnapshots": 5,
+    "reviewBlockedPublished": 8,
+    "reviewBlockedWithDisposition": 0,
+    "queuedWithoutVerifiedDemand": 13,
+    "dueQueuedWithoutVerifiedDemand": 13,
+    "failedQueueManualReview": 91,
+    "gscRows90d": 225,
+    "gscLatestMetricDate": "2026-08-13",
+    "engagementRows7d": 1478,
+    "rumRows7d": 3550,
+    "analyticsCanaryPassedAt": null,
+    "naturalAttributedEvents30d": 0,
+    "indexingOutboxDead": 0,
+    "v4UnauthorizedRouteFailures": 4,
+    "requiredMigrationsPresent": 0,
+    "requiredMigrationsTotal": 9
+  },
+  "readiness": {
+    "safeToEnableLive": false,
+    "blockedScopes": ["source", "schema", "delivery", "corpus", "measurement", "rollout"],
+    "passingSignals": ["engagement_and_rum_observation", "indexing_outbox_has_no_dead_rows"],
+    "warningSignals": ["natural_conversion_observation"]
+  },
+  "rollout": {
+    "defaultMode": "draft_only",
+    "initialStage": "pilot_3",
+    "promotionStages": ["pilot_3", "ramp_10", "max_30"],
+    "dailyAiBudgetUsdDefault": 2,
+    "liveActivationAllowedNow": false
+  }
+}

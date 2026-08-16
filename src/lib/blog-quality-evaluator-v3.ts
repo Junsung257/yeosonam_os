@@ -23,6 +23,7 @@ export interface BlogQualityEvaluationInputV3 {
   body: string;
   destination?: string | null;
   primaryDecision?: string | null;
+  intentCompletionScore?: number;
   supportedClaimCount?: number;
   factualClaimCount?: number;
   staleClaimCount?: number;
@@ -70,7 +71,7 @@ const KOREAN_NEGATIVE_FIXTURES: Array<[string, RegExp]> = [
   ['duplicate_travel_phrase', /여행\s*준비\s*여행/u],
   ['invalid_schengen_range', /쉥겐\s*협약국\s*2\s*[-~]\s*6개국/u],
 ];
-const EXPERIENCE_RE = /운영팀(?:이)?\s*(?:직접\s*)?검증|지난달\s*다녀온\s*지인|직접\s*다녀왔|현지에서\s*확인/u;
+const EXPERIENCE_RE = /운영팀(?:이)?\s*(?:직접\s*)?검증|지난달\s*다녀온\s*지인|직접\s*다녀왔|현지에서\s*(?:직접\s*)?확인(?:했|한|했습니다|하였다|해봤|해\s*보았)/u;
 const STALE_ETIAS_RE = /ETIAS[\s\S]{0,80}(?:2025년\s*상반기|7\s*유로)|(?:2025년\s*상반기|7\s*유로)[\s\S]{0,80}ETIAS/iu;
 
 const clamp = (value: number | undefined, fallback = 0) => Math.min(1, Math.max(0, value ?? fallback));
@@ -101,7 +102,9 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
   const genericHereCount = (input.body.match(/(?:이곳|해당\s*지역|이\s*여행지)/gu) || []).length;
   const destinationSpecificity = clamp((input.destinationSpecificDetailCount || 0) / 3)
     * (genericHereCount > destinationMentions + 3 ? 0.4 : 1);
-  const intentCompletion = input.primaryDecision && input.body.includes(input.primaryDecision) ? 1 : 0.7;
+  const intentCompletion = typeof input.intentCompletionScore === 'number'
+    ? clamp(input.intentCompletionScore)
+    : input.primaryDecision && input.body.includes(input.primaryDecision) ? 1 : 0.7;
   const truthful = input.authorReviewTruthful !== false && !hardBlockers.includes('unsupported_first_party_claim');
 
   const dimensions: Record<BlogQualityDimensionV3, BlogQualityDimensionResultV3> = {

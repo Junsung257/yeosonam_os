@@ -23,10 +23,24 @@ import {
   PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE,
 } from '@/lib/blog-private-regeneration';
 import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
+import {
+  evaluateBlogPublicationRolloutWindow,
+  resolveEffectiveBlogPublicationRollout,
+  type BlogPublicationRolloutSignals,
+} from '@/lib/blog-publication-rollout';
+import {
+  loadBlogPublicationRolloutState,
+  persistBlogPublicationRolloutEvaluation,
+} from '@/lib/blog-publication-rollout-repository';
+import {
+  PUBLIC_BLOG_READ_SOURCE,
+  getBlogPublicSurfacePolicyBlockReason,
+} from '@/lib/blog-public-eligibility';
+import { normalizeBlogTitleSkeletonV3 } from '@/lib/blog-corpus-diversity-v3';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
- * Runs after the final daily blog-publisher slot, so the report covers today's
+ * Runs after the final daily blog-publication-controller slot, so the report covers today's
  * completed KST publishing window instead of a morning pre-publish snapshot.
  *
  * 1) 어제 발행 통계 → publishing_policies.daily_summary_webhook 으로 push
@@ -137,7 +151,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       severity: summary.published === 0 ? 'critical' : 'high',
       title: 'Daily blog publish target missed',
       detail: `Published ${summary.published}/${summary.min_daily_target} posts for ${summary.date} KST.`,
-      recommendation: 'Inspect blog-publisher, active queue rows, and recent quality-gate failures before requeueing.',
+      recommendation: 'Inspect blog-generate, blog-publication-controller, approved runs, and recent quality-gate failures before requeueing.',
     });
   }
 
@@ -149,7 +163,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       severity: 'critical',
       title: 'Blog target missed while publishable candidates were available',
       detail: `${publishableCandidateCount} publishable candidate(s) were available for ${remainingDailyPosts} remaining slot(s).`,
-      recommendation: 'Treat this as publisher recovery failure: force blog-scheduler, then run blog-publisher until remainingAfterRun is 0 or a concrete blocker appears.',
+      recommendation: 'Treat this as publication recovery failure: inspect approved_for_slot inventory, then run blog-publication-controller until remainingAfterRun is 0 or a concrete blocker appears.',
     });
   }
 
@@ -158,7 +172,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       code: 'publisher_cron_not_observed',
       severity: 'critical',
       title: 'Blog publisher cron did not run today',
-      detail: `No blog-publisher cron run was recorded for ${summary.date} KST. Last run: ${summary.publisher_cron.last_run_at ?? 'unknown'}.`,
+      detail: `No blog-publication-controller cron run was recorded for ${summary.date} KST. Last run: ${summary.publisher_cron.last_run_at ?? 'unknown'}.`,
       recommendation: 'Check Vercel Cron delivery, Deployment Protection bypass, and CRON_SECRET before manually forcing publication.',
     });
   }
@@ -325,7 +339,7 @@ async function runDailySummary(request: NextRequest) {
     { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, slug, seo_title, content_type, product_id, destination, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
+    supabaseAdmin.from('content_creatives').select('id, slug, title, seo_title, category, content_type, product_id, destination, review_status, published_at, content_modified_at, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
     supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, content_creative_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, monthly_search_volume, trend_score, meta', { count: 'exact' })
@@ -341,7 +355,7 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
     supabaseAdmin.from('cron_health').select('cron_name, last_status, last_run_at, last_error_count, last_summary')
-      .eq('cron_name', 'blog-publisher')
+      .eq('cron_name', 'blog-publication-controller')
       .limit(1),
     supabaseAdmin.from('content_creatives').select('id, destination, angle_type, slug, seo_title, blog_html, product_id, generation_meta')
       .eq('channel', 'naver_blog')
@@ -623,6 +637,185 @@ async function runDailySummary(request: NextRequest) {
       ? 'Review editorial backlog samples before regenerating more failed topics.'
       : 'Keep scheduler and publisher running; refill queue if pending candidates drop below target.',
   };
+
+  // Evaluate one closed KST day against the durable 3 -> 10 -> 30 ramp.
+  // Every unavailable observation remains null, which resets the healthy
+  // streak and prevents promotion. Severe publication leaks freeze at pilot.
+  const rolloutStateResult = await loadBlogPublicationRolloutState(supabaseAdmin);
+  let rolloutResult: Record<string, unknown> = {
+    persisted: false,
+    error: rolloutStateResult.error,
+  };
+  if (rolloutStateResult.state) {
+    const effectiveRollout = resolveEffectiveBlogPublicationRollout({
+      state: rolloutStateResult.state,
+      environmentStageCeiling: autopublishPolicy.publicationRampStage,
+      environmentDailyCap: autopublishPolicy.requestedDailyPublishCap,
+    });
+    const rolloutFallback = [
+      { count: null, error: { message: 'timeout' } },
+      { count: null, error: { message: 'timeout' } },
+      { data: null, error: { message: 'timeout' } },
+      { data: null, error: { message: 'timeout' } },
+      { count: null, error: { message: 'timeout' } },
+      { count: null, error: { message: 'timeout' } },
+      { data: null, error: { message: 'timeout' } },
+      { data: null, error: { message: 'timeout' } },
+    ] as any;
+    const rolloutObservations = await withTimeout(Promise.all([
+      supabaseAdmin.from('content_creatives').select('id', { count: 'exact', head: true })
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .gte('published_at', reportDay.start.toISOString())
+        .lt('published_at', reportDay.end.toISOString())
+        .in('review_status', ['pending_review', 'in_review', 'rejected', 'changes_requested']),
+      supabaseAdmin.from('blog_generation_runs').select('id', { count: 'exact', head: true })
+        .eq('status', 'published')
+        .gte('published_at', reportDay.start.toISOString())
+        .lt('published_at', reportDay.end.toISOString())
+        .or('selected_attempt_id.is.null,latest_quality_score.is.null,latest_quality_score.lt.90'),
+      supabaseAdmin.from('blog_ai_budget_reservations')
+        .select('actual_usd,reserved_usd,cap_usd')
+        .eq('budget_day_kst', reportDay.dayKey),
+      supabaseAdmin.from('blog_public_snapshots')
+        .select('creative_id,generated_at,content_modified_at,published_at')
+        .eq('is_current', true)
+        .limit(1000),
+      supabaseAdmin.from('blog_search_performance').select('id', { count: 'exact', head: true })
+        .gte('metric_date', new Date(reportDay.end.getTime() - 3 * 86_400_000).toISOString().slice(0, 10)),
+      supabaseAdmin.from('blog_engagement_logs').select('id', { count: 'exact', head: true })
+        .gte('created_at', reportDay.start.toISOString())
+        .lt('created_at', reportDay.end.toISOString()),
+      supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE)
+        .select('id,product_id,review_status,title,category,content_type,generation_meta')
+        .limit(1000),
+      supabaseAdmin.from('content_creatives')
+        .select('id,seo_title,destination')
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .limit(1000),
+    ]), 8_000, rolloutFallback);
+    const [unsafePublishedToday, badPublishedRuns, budgetRows, latestSnapshot, recentSearch, recentAnalytics, publicSurfaceRows, allPublishedTitles] = rolloutObservations;
+    const budgetTotals = budgetRows.error || !Array.isArray(budgetRows.data)
+      ? null
+      : budgetRows.data.reduce((acc: { used: number; cap: number }, row: any) => ({
+          used: acc.used + Number(row.actual_usd || 0) + Number(row.reserved_usd || 0),
+          cap: Math.max(acc.cap, Number(row.cap_usd || 0)),
+        }), { used: 0, cap: 0 });
+    const snapshotsByCreativeId = !latestSnapshot.error && Array.isArray(latestSnapshot.data)
+      ? new Map(latestSnapshot.data.map((row: any) => [String(row.creative_id || ''), row]))
+      : null;
+    const snapshotLagRows = snapshotsByCreativeId
+      ? published.map((post: any) => {
+          const snapshot = snapshotsByCreativeId.get(String(post.id || ''));
+          if (!snapshot) return 1_440;
+          const generatedAt = Date.parse(String((snapshot as any).generated_at || ''));
+          const sourceAt = Math.max(
+            Date.parse(String(post.content_modified_at || '')) || 0,
+            Date.parse(String(post.published_at || '')) || 0,
+          );
+          return Number.isFinite(generatedAt) && sourceAt > 0
+            ? Math.max(0, (generatedAt - sourceAt) / 60_000)
+            : 1_440;
+        })
+      : [];
+    const maxSnapshotLagMinutes = snapshotsByCreativeId == null
+      ? null
+      : snapshotLagRows.length > 0 ? Math.max(...snapshotLagRows) : 0;
+    const publicSurfaceLeakCount = publicSurfaceRows.error || !Array.isArray(publicSurfaceRows.data)
+      ? null
+      : publicSurfaceRows.data.filter((row: any) => getBlogPublicSurfacePolicyBlockReason({
+          productId: row.product_id,
+          reviewStatus: row.review_status,
+          title: row.title,
+          category: row.category,
+          contentType: row.content_type,
+          generationMeta: row.generation_meta,
+        }) !== null).length;
+    const unsafeDailyPolicyCount = summaryResults === summaryFallback
+      ? null
+      : published.filter((row: any) => getBlogPublicSurfacePolicyBlockReason({
+          productId: row.product_id,
+          reviewStatus: row.review_status,
+          title: row.title || row.seo_title,
+          category: row.category,
+          contentType: row.content_type,
+          generationMeta: row.generation_meta,
+        }) !== null).length;
+    const duplicatePublicationViolationCount = allPublishedTitles.error || !Array.isArray(allPublishedTitles.data)
+      ? null
+      : (() => {
+          const destinations = allPublishedTitles.data
+            .map((row: any) => String(row.destination || '').trim())
+            .filter(Boolean);
+          const exactCounts = new Map<string, number>();
+          const skeletonCounts = new Map<string, number>();
+          for (const row of allPublishedTitles.data) {
+            const title = String(row.seo_title || '').normalize('NFKC').trim();
+            if (!title) continue;
+            exactCounts.set(title, (exactCounts.get(title) || 0) + 1);
+            const skeleton = normalizeBlogTitleSkeletonV3(title, { cities: destinations });
+            skeletonCounts.set(skeleton, (skeletonCounts.get(skeleton) || 0) + 1);
+          }
+          return published.filter((row: any) => {
+            const title = String(row.seo_title || '').normalize('NFKC').trim();
+            if (!title) return true;
+            const skeleton = normalizeBlogTitleSkeletonV3(title, { cities: destinations });
+            return (exactCounts.get(title) || 0) > 1 || (skeletonCounts.get(skeleton) || 0) >= 3;
+          }).length;
+        })();
+    const controllerObservationAvailable = publisherRanToday
+      && typeof publisherCron?.last_status === 'string';
+    const signals: BlogPublicationRolloutSignals = {
+      reviewBlockedOrHighRiskPublicCount: unsafePublishedToday.error || unsafeDailyPolicyCount == null
+        ? null
+        : Math.max(Number(unsafePublishedToday.count || 0), unsafeDailyPolicyCount),
+      dailyCapOrDuplicatePublicationViolationCount: duplicatePublicationViolationCount == null
+        ? null
+        : Math.max(
+            duplicatePublicationViolationCount,
+            Number(pubRes.count || 0) - effectiveRollout.dailyCap,
+          ),
+      ineligibleSurfaceLeakCount: publicSurfaceLeakCount,
+      publishedWithoutApprovedAttemptCount: badPublishedRuns.error
+        ? null
+        : Number(badPublishedRuns.count || 0),
+      blog5xxLast15m: controllerObservationAvailable
+        ? publisherCron.last_status === 'success' ? 0 : Math.max(1, Number(publisherCron.last_error_count || 1))
+        : null,
+      aiCostCapExceeded: budgetTotals == null
+        ? null
+        : budgetTotals.cap > 0 && budgetTotals.used > budgetTotals.cap + 1e-9,
+      controllerSuccessRate: controllerObservationAvailable
+        ? publisherCron.last_status === 'success' ? 1 : 0
+        : null,
+      indexingEnqueueParity: indexingOutboxCoverage.coverage_rate == null
+        ? Number(pubRes.count || 0) === 0 ? 1 : null
+        : indexingOutboxCoverage.coverage_rate / 100,
+      dbFallbackRate: summaryResults === summaryFallback ? 1 : 0,
+      maxSnapshotLagMinutes,
+      searchCollectorFresh: recentSearch.error ? null : Number(recentSearch.count || 0) > 0,
+      analyticsCollectorFresh: recentAnalytics.error ? null : Number(recentAnalytics.count || 0) > 0,
+    };
+    const evaluation = evaluateBlogPublicationRolloutWindow({
+      state: rolloutStateResult.state,
+      signals,
+      publicationsObserved: Number(pubRes.count || 0),
+      autoRampEnabled: autopublishPolicy.autoRampEnabled,
+      autoRollbackEnabled: autopublishPolicy.autoRollbackEnabled,
+    });
+    const persistence = await persistBlogPublicationRolloutEvaluation({
+      client: supabaseAdmin,
+      state: rolloutStateResult.state,
+      evaluation,
+      windowKey: reportDay.dayKey,
+      signals,
+      publicationsObserved: Number(pubRes.count || 0),
+    });
+    rolloutResult = { stateBefore: rolloutStateResult.state, effective: effectiveRollout, signals, evaluation, ...persistence };
+    if (!persistence.persisted) errors.push(`rollout_evaluation_persist_failed:${persistence.error}`);
+  }
+  (summary as any).publication_rollout = rolloutResult;
   const opsWatcher = buildBlogOpsWatcherReport(summary, errors);
   (summary as any).ops_watcher = opsWatcher;
 
@@ -729,13 +922,14 @@ async function runDailySummary(request: NextRequest) {
 }
 
 /**
- * 7일 이상 발행 + GSC 클릭 0건 → 큐에 user_seed로 재생성
+ * 28일 이상 발행 + GSC 노출 0건 → 대표 URL의 material refresh 후보 생성.
+ * Search collection must be non-empty; absence of collector data is not zero.
  */
 async function regenerateUnderperformers(): Promise<{ count: number }> {
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const fourteenDaysAgo = new Date();
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+  const twentyEightDaysAgo = new Date();
+  twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+  const fiftySixDaysAgo = new Date();
+  fiftySixDaysAgo.setDate(fiftySixDaysAgo.getDate() - 56);
 
   // 후보: 7-14일 전 발행, 정보성 위주 (상품은 노출 사이클 다름)
   const { data: candidates } = await supabaseAdmin
@@ -744,34 +938,36 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .is('product_id', null)
-    .lte('published_at', sevenDaysAgo.toISOString())
-    .gte('published_at', fourteenDaysAgo.toISOString())
+    .lte('published_at', twentyEightDaysAgo.toISOString())
+    .gte('published_at', fiftySixDaysAgo.toISOString())
     .limit(50);
 
   if (!candidates || candidates.length === 0) return { count: 0 };
 
-  // GSC에서 7일 클릭 0건 필터
+  // GSC에서 28일 노출 0건 필터. 수집 데이터 자체가 없으면 아무것도 큐잉하지 않는다.
   const slugs = candidates.map((c: any) => c.slug);
   const { data: clickRows } = await supabaseAdmin
     .from('rank_history')
-    .select('slug, clicks')
+    .select('slug, clicks, impressions')
     .in('slug', slugs)
-    .gte('date', sevenDaysAgo.toISOString().split('T')[0]);
+    .gte('date', twentyEightDaysAgo.toISOString().split('T')[0]);
 
-  const clickMap = new Map<string, number>();
+  if (!clickRows || clickRows.length === 0) return { count: 0 };
+
+  const impressionMap = new Map<string, number>();
   for (const r of clickRows || []) {
-    const row = r as { slug: string; clicks: number };
-    clickMap.set(row.slug, (clickMap.get(row.slug) || 0) + (row.clicks || 0));
+    const row = r as { slug: string; impressions: number };
+    impressionMap.set(row.slug, (impressionMap.get(row.slug) || 0) + (row.impressions || 0));
   }
 
-  const underperformers = candidates.filter((c: any) => (clickMap.get(c.slug) || 0) === 0);
+  const underperformers = candidates.filter((c: any) => (impressionMap.get(c.slug) || 0) === 0);
   if (underperformers.length === 0) return { count: 0 };
 
   // 14일 윈도 dedup — 동일 글의 업그레이드 큐만 중복 억제한다.
   const { data: recentQueue } = await supabaseAdmin
     .from('blog_topic_queue')
     .select('content_creative_id')
-    .gte('created_at', fourteenDaysAgo.toISOString());
+    .gte('created_at', twentyEightDaysAgo.toISOString());
   const recentCreativeIds = new Set(
     ((recentQueue || []) as Array<{ content_creative_id?: string | null }>)
       .map(row => row.content_creative_id)
@@ -797,7 +993,7 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
       content_creative_id: c.id,
       meta: {
         regenerated_from: c.id,
-        regenerated_reason: '7일 GSC 클릭 0',
+        regenerated_reason: '28일 GSC 노출 0 — 수요·색인·의도 재검토',
         expected_slug: c.slug,
         original_slug: c.slug,
         original_title: c.seo_title,

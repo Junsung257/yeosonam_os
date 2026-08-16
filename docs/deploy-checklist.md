@@ -159,7 +159,8 @@ Detailed runbook: [`docs/supabase-auth-open-gate.md`](./supabase-auth-open-gate.
 
 - [ ] `/api/cron/blog-lifecycle` — 매일 01:30 KST
 - [ ] `/api/cron/blog-scheduler` — 매주 월 00:00 KST
-- [ ] `/api/cron/blog-publisher` — 매일 KST 12:05, 15:05, 18:05, 21:05, 22:05 catch-up
+- [ ] `/api/cron/blog-generate` — 매일 KST 01:05~06:05, DeepSeek 생성/재작성만 수행
+- [ ] `/api/cron/blog-publication-controller` — 매일 KST 09:05, 12:05, 15:05, 18:05, 21:05, 저장된 승인 초안만 공개하며 모델 호출 0건
 - [ ] `/api/cron/blog-learn` — 매주 일 23:00 KST
 - [ ] 기타 11개 기존 크론 (meta-optimize, auto-archive, post-travel 등) 유지
 - [ ] `/api/cron/marketing-rules` — 등록/ENABLED 확인
@@ -215,7 +216,9 @@ Vercel Dashboard > Project > Settings > Crons 에서 전부 ENABLED 확인.
 
 ### 크론 수동 실행
 - [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-scheduler` → 200 + `pillars: { queued: N }` 응답
-- [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-publisher` → 200 + `processed: N` 응답
+- [ ] off-peak 또는 preview에서 `/api/cron/blog-generate?force=true` → 생성 원장 + private draft, 공개 0건
+- [ ] `/api/cron/blog-publication-controller?force=true` → 승인 초안만 공개, `modelCalls: 0`
+- [ ] `/api/cron/blog-publisher`는 `privateQueueId`가 있는 수동 복구 외 정기 실행 금지
 - [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-lifecycle` → 200 응답
 - [ ] `curl https://yeosonam.com/api/cron/marketing-rules` → 200 + `apply_bid_updates` 확인
 - [ ] `curl https://yeosonam.com/api/cron/ad-optimizer` → 200 + `apply_db_changes` 확인
@@ -236,9 +239,8 @@ Vercel Dashboard > Project > Settings > Crons 에서 전부 ENABLED 확인.
 
 배포 후 문제 발생 시:
 
-### DB 롤백 불필요
-전부 `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` 로 추가만 함.
-신규 컬럼 NULL이어도 기존 로직 안 깨짐.
+### DB 롤백
+V4 migration은 additive지만 원장 데이터를 만든다. 먼저 앱과 cron을 롤백하고 데이터를 export한 뒤 `docs/runbooks/blog-deepseek-orchestrator-v4.md`의 수동 rollback SQL을 검토한다. migration을 무조건 삭제하지 않는다.
 
 ### 코드 롤백
 ```bash
@@ -247,15 +249,11 @@ git revert <hash>
 # Vercel이 자동 재배포
 ```
 
-### 자동 생성 일시 중지 (긴급 시)
-Supabase SQL Editor:
-```sql
--- 큐 전체 일시 중지
-UPDATE blog_topic_queue SET status='skipped' WHERE status='queued';
+### 자동 생성·공개 일시 중지 (긴급 시)
 
--- 또는 크론 자체 disable:
--- Vercel Dashboard > Crons > 해당 크론 toggle OFF
-```
+1. `BLOG_AUTOPUBLISH_MODE=draft_only`로 내려 공개를 즉시 차단한다.
+2. 필요하면 Vercel Dashboard에서 `blog-generate`와 `blog-publication-controller` cron을 비활성화한다.
+3. 큐 상태를 일괄 UPDATE하지 않는다. 원인 분석과 복구 계획을 먼저 만든다.
 
 ---
 
@@ -263,10 +261,10 @@ UPDATE blog_topic_queue SET status='skipped' WHERE status='queued';
 
 아래 전부 ✓ 이면 배포 승인:
 
-- [ ] DB 마이그레이션 3개 적용
-- [ ] 환경변수 필수 5개 설정
-- [ ] Vercel Cron 15개 등록
-- [ ] 타입체크 통과 (`npx tsc --noEmit` — 기존 무관 에러 제외)
+- [ ] 해당 release migration bundle을 preview에서 먼저 검증 후 적용
+- [ ] V4 server-only 환경변수와 `draft_only` 설정
+- [ ] Vercel Cron 총 수가 100 이하이고 generation/controller schedule contract 통과
+- [ ] 타입체크 통과 (`npm run type-check`)
 - [ ] 스모크 테스트 공개 페이지 5개 통과
 - [ ] robots.txt + sitemap 정합성
 - [ ] 롤백 절차 숙지
@@ -277,7 +275,8 @@ UPDATE blog_topic_queue SET status='skipped' WHERE status='queued';
 
 첫 4시간은 크론 1~2회 자동 실행됨. 그 때 확인:
 
-- [ ] 첫 `blog-publisher` 실행 로그 → 에러 0건
+- [ ] 첫 `blog-generate` 실행 → attempt receipt·비공개 draft·공개 0건
+- [ ] 첫 `blog-publication-controller` 실행 → `modelCalls: 0`, 격리 0건
 - [ ] 생성된 블로그 실제 URL 접근 → 깨진 링크 없음
 - [ ] 광고 매핑 UTM URL 테스트 → 클릭 시 리디렉션 + 트래킹 정상
 - [ ] `/admin/blog/queue` → 실시간 상태 변화 관찰

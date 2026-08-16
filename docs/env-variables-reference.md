@@ -7,19 +7,33 @@
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
 | `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | Vercel production 자동발행을 허용할 유일한 Git ref. production에서 ref/SHA 증거가 없거나 다르면 자동으로 `draft_only` |
 | `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
+| `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 환경 상한: `pilot_3`, `ramp_10`, `max_30`. 실효 단계는 환경 상한과 DB rollout 상태 중 더 낮은 단계 |
+| `BLOG_AUTO_RAMP_ENABLED` | `false` | `true`일 때만 완전한 일일 관측 7회와 단계별 누적 발행량을 만족하면 `pilot_3→ramp_10→max_30` 자동 승격 |
+| `BLOG_AUTO_ROLLBACK_ENABLED` | `true` | 심각 사고는 즉시 동결·pilot 복귀, 일반 불건전 관측 2회 연속은 한 단계 강등 |
+| `BLOG_DAILY_CANDIDATE_CAP` | `30` | KST 야간에 생성·검증할 후보 상한. 공개 상한이 아니며 최대 30 |
+| `BLOG_DAILY_AI_COST_CAP_USD` | `2` | KST 일일 AI 비용 상한. 공급자 호출 전에 DB 원자 예약이 실패하거나 상한을 넘으면 호출 금지 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
-| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-publisher`, `blog-indexing-worker`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
+| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
+| `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
 | `BLOG_DETAIL_BUNDLE_MAX_AGE_HOURS` | `720` | DB 장애 시 LOW-risk 상세 본문 번들의 최대 허용 나이(30일); HIGH 24시간, MEDIUM 48시간 상한은 이 값보다 우선하며 만료 시 fail-closed |
+| `BLOG_PUBLIC_CATALOG_LKG_URL` / `BLOG_PUBLIC_CATALOG_LKG_SHA256` | 없음 | SHA-256이 URL에 포함된 immutable catalog recovery artifact. HTTPS와 본문 hash가 모두 일치해야 사용 |
+| `BLOG_PUBLIC_DETAIL_LKG_URL` / `BLOG_PUBLIC_DETAIL_LKG_SHA256` | 없음 | SHA-256이 URL에 포함된 immutable detail recovery artifact. HIGH-risk 만료 정책은 우회하지 않음 |
 | `BLOG_IMAGE_PHASH_APPLY_CONFIRM` | 없음 | pHash DB backfill 이중 확인값; 평소 환경 변수로 저장 금지 |
 | `BLOG_LOCAL_MIGRATION_REHEARSAL_CONFIRM` | 없음 | 로컬 임시 DB reset 전용 확인값; preview/production 설정 금지 |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 없음 | Naver Search API와 DataLab 서버 자격증명; client 노출 금지 |
+| `NAVER_API_HUB_CLIENT_ID` / `NAVER_API_HUB_CLIENT_SECRET` | 없음 | Naver API HUB Search 자격증명. 설정 시 HUB 우선, 장애 시 기존 `NAVER_CLIENT_*`로 fallback |
 | `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
 | `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
+| `DEEPSEEK_API_KEY` | 없음 | Blog V4 Flash 초안과 Pro 재작성용 server-only key |
+| `GOOGLE_AI_API_KEY` | 없음 | 다른 플랫폼 AI 기능 전용. Blog V4 발행 경로는 이 키를 읽지 않음 |
+| `BLOG_GSC_CATCHUP_DAYS` | `7` | 매일 재수집하는 최근 GSC 날짜 수(최대 7) |
+| `BLOG_GSC_BACKFILL_DAYS` | `90` | 보강할 GSC 전체 관측 기간(최대 90일) |
+| `BLOG_GSC_BACKFILL_CHUNK_DAYS` | `7` | 한 번의 rank-tracking에서 추가로 보강할 과거 날짜 수(최대 7). 실패 시 cursor 전진 금지 |
 
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
@@ -154,7 +168,7 @@
 | `AI_TASK_PROVIDER_OVERRIDES` | 태스크별 제공자 오버라이드. 형식: `task:provider,task:provider` | 빈 값 |
 | `AI_TASK_MODEL_OVERRIDES` | 태스크별 모델 오버라이드. 형식: `task:model,task:model` | 빈 값 |
 | `BLOG_AI_MODEL` | 블로그 생성 모델 강제 지정(선택) | `deepseek-v4-flash` |
-| `BLOG_RESEARCH_MODEL` | 정보성 블로그의 Google Search grounding 리서치 모델. 미설정 시 `gemini-2.5-flash` | `gemini-2.5-flash` |
+| `BLOG_RESEARCH_MODEL` | V4에서는 사용하지 않음. 발행 연구 구조화 모델은 `deepseek-v4-pro`로 고정 | 없음 |
 | `BLOG_RESEARCH_TIMEOUT_MS` | 정보성 블로그 자동 리서치 1회 제한 시간. 기본 `90000`, 허용 범위 20~120초 | `90000` |
 
 예시:

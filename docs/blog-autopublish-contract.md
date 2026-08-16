@@ -5,6 +5,8 @@
 > 2026-08-13 safety addendum: `scripts/backfill-blog-quality.ts` is permanently dry-run-only. Historical `--write` examples below are incident records, not executable instructions. Use the V3 disposition preview and reviewed migration runbook for corpus changes.
 >
 > 2026-08-15 live-ops addendum: 관리자 화면과 일일 SLA는 DB `posts_per_day`만 공개 목표로 사용하지 않는다. 실효 공개 목표는 autopublish mode, policy enabled, `BLOG_DAILY_PUBLISH_CAP`을 함께 적용한다. `draft_only`는 오류가 아니라 공개 목표 0의 안전정지다. Keyword-family 두 테이블은 live readiness 필수 리소스이며, queue scope나 최신 실패가 관리자 첫 화면에서 숨겨져서는 안 된다.
+>
+> 2026-08-16 DeepSeek-only V4 release addendum: 검토된 공식 URL을 직접 fetch한 연구 자료만 DeepSeek Pro가 구조화한다. KST 01:05~06:05 계산 cron은 DeepSeek Flash 초안 → 규칙/claim/중복 평가 → DeepSeek Pro high/max 제한 재작성으로 동작한다. Gemini, GPT, Claude, generic provider cascade와 검색 snippet grounding은 이 발행 경로에서 금지한다. 후보별 writer 모델 호출은 최대 3회이고 공급자 호출 전 원자적 일일 비용 예약이 필수다. KST 09/12/15/18/21 공개 controller는 모델을 호출하지 않으며, 저장된 선택 시도·90점·hard blocker/failure 0건을 다시 확인한다. 공개 상한은 내구성 상태 원장의 `pilot_3 → ramp_10 → max_30`을 따르며 결측 관측값은 승격을 금지하고 심각 사고는 즉시 동결한다. 세부 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
 Last updated: 2026-07-29
 

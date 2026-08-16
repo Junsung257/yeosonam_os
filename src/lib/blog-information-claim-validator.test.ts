@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyBlogInformationStatement,
   extractBlogInformationClaims,
   validateBlogInformationClaims,
   type PersistedBlogInformationClaimRecord,
@@ -8,6 +9,70 @@ import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-l
 import type { BlogInformationEvidenceScope } from './blog-information-evidence';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
+
+describe('V3 editorial decision guidance classification', () => {
+  it.each([
+    '다낭 가볼만한곳을 고를 때 가장 중요한 기준은 자신의 시간과 체력입니다.',
+    '다낭에서 어디를 갈지는 이동 시간과 동행자의 체력, 그리고 탐험 방식에 따라 달라져야 합니다.',
+    '먼저 자신의 여행 스타일을 정한 뒤 장소를 고르는 것이 더 현실적입니다.',
+    '바나힐을 일정에 넣는다면 이동을 감당할 수 있는가가 핵심입니다.',
+    '자세한 다낭 여행 정보는 다낭 여행 가이드에서 확인할 수 있습니다.',
+  ])('does not promote reader guidance to an evidence claim: %s', (sentence) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('keeps an unsupported destination fact inside the factual gate', () => {
+    expect(classifyBlogInformationStatement('다낭은 우기와 건기가 뚜렷한 지역입니다.'))
+      .toMatchObject({ category: 'unknown_unclassified' });
+  });
+
+  it('does not let reader-guidance wording hide a measurable claim', () => {
+    expect(classifyBlogInformationStatement('먼저 오행산이 도심에서 15분 거리인지 확인하세요.'))
+      .toMatchObject({
+        category: 'verified_factual',
+        factualClassification: { claimType: 'duration' },
+      });
+  });
+
+  it('treats a source-neutral direct decision answer as editorial guidance', () => {
+    expect(classifyBlogInformationStatement(
+      '다낭에서 어디를 갈지는 내 일정의 이동 시간과 체력 여유를 먼저 확인한 뒤, 공식 정보에 나온 거리와 위치를 내 우선순위와 비교해 결정하면 됩니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('does not misclassify source-neutral decision instructions as policy requirements', () => {
+    expect(classifyBlogInformationStatement(
+      '다낭에서 갈 곳을 고를 때는 공식 정보에 나온 위치와 이동 시간을 내 일정의 체력·동선과 직접 비교해야 합니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('keeps a source-neutral route-choice explanation out of the factual ledger', () => {
+    expect(classifyBlogInformationStatement(
+      '같은 반나절이라도 도시에서 가까운 곳과 서쪽으로 이동해야 하는 곳은 선택 기준이 달라지므로, 내 우선순위에 따라 하나씩 확인하는 방식이 가장 명확합니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('still blocks a destination fact that merely mentions an itinerary choice', () => {
+    expect(classifyBlogInformationStatement(
+      '마블 마운틴은 다낭 도심 서쪽에 있어 일정에 따라 선택해야 합니다.',
+    )).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind: 'requirement_prohibition' },
+    });
+  });
+});
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
   return extractBlogInformationClaims(markdown).map((claim) => ({
@@ -70,6 +135,28 @@ function supportedRecord(
 }
 
 describe('blog information claim validator', () => {
+  it('uses the persisted structured value for an exact approved translated claim', () => {
+    const markdown = '미케 해변은 손짜 반도 남쪽에 위치해 있습니다.';
+    const record = supportedRecord(markdown, {
+      excerpt: '2026년 일본 오사카 KR 대상 My Khe Beach is south of Son Tra Peninsula',
+    });
+    record.extractedValue = {
+      normalizedValue: 'My Khe Beach is south of Son Tra Peninsula',
+      unit: null,
+      currency: null,
+    };
+    record.evidence[0]!.scope.normalizedValue = 'My Khe Beach is south of Son Tra Peninsula';
+
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [record],
+      claimLedger: ledgerFor(markdown),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+  });
+
   it.each([
     '오사카 지하철은 자정 무렵 운행을 마칩니다.',
     '주말에는 운행하지 않습니다.',
@@ -136,7 +223,7 @@ describe('blog information claim validator', () => {
     expect(extractBlogInformationClaims('1. 준비\n2. 출발\n첫 번째로 동선을 정하세요.')).toEqual([]);
   });
 
-  it('does not turn reading guidance and freshness reminders into unsupported claims', () => {
+  it('keeps non-numeric reading guidance editorial but validates prescriptive timing', () => {
     const guidance = [
       '낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다.',
       '처음 읽는 분은 표와 체크리스트를 먼저 보고, 세부 설명은 필요한 부분만 골라 읽으면 됩니다.',
@@ -145,7 +232,12 @@ describe('blog information claim validator', () => {
       '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
     ].join('\n');
 
-    expect(extractBlogInformationClaims(guidance)).toEqual([]);
+    expect(extractBlogInformationClaims(guidance)).toEqual([
+      expect.objectContaining({
+        claimText: '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
+        candidateKind: 'time_schedule',
+      }),
+    ]);
   });
 
   it.each([

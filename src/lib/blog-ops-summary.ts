@@ -567,7 +567,8 @@ export async function buildBlogOpsSummary(supabase: any) {
     'blog-daily-summary',
     'blog-indexing-worker',
     'blog-orchestrator',
-    'blog-publisher',
+    'blog-generate',
+    'blog-publication-controller',
     'blog-scheduler',
     'gsc-index-rank',
     'rank-tracking',
@@ -580,7 +581,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     .sort((a, b) => String(a.cron_name).localeCompare(String(b.cron_name)));
   const unhealthyCrons = blogCrons.filter((row) => row.last_status && row.last_status !== 'success');
   const coreCrons = blogCrons.filter((row) => blogCronNames.has(String(row.cron_name)));
-  const publisherCron = blogCrons.find((row) => row.cron_name === 'blog-publisher') ?? null;
+  const publisherCron = blogCrons.find((row) => row.cron_name === 'blog-publication-controller') ?? null;
   const currentDayPublisherHealth = evaluateCurrentDayPublisherHealth({
     cronHealth: publisherCron,
     now,
@@ -614,7 +615,9 @@ export async function buildBlogOpsSummary(supabase: any) {
   const indexingLevel: BlogOpsLevel = googleUnknownUrls > 0 || recentIndexingFailures > 0 || indexingCoverage.missing_count > 0
     ? 'risk'
     : indexingActive > 0 ? 'watch' : 'healthy';
-  const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => row.cron_name === 'blog-publisher') ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
+  const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => (
+    row.cron_name === 'blog-generate' || row.cron_name === 'blog-publication-controller'
+  )) ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
   const qualityLevel: BlogOpsLevel = qualitySummary.non_slug_failure_count > 0
     ? 'risk'
     : qualitySummary.slug_only_failure_count > 0 ? 'watch' : 'healthy';

@@ -1,5 +1,7 @@
 # 블로그 시스템 운영 런북 (Runbook)
 
+> 2026-08-15 V4 override: `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 스케줄과 모델 라우팅의 현재 SSOT다. 생성은 `blog-generate`(KST 01:05~06:05), 공개는 모델 호출이 없는 `blog-publication-controller`(KST 09:05/12:05/15:05/18:05/21:05)로 분리한다. 아래 `blog-publisher` 직접 공개 예시는 V4 이전 운영 기록이다.
+
 > 2026-08-13 V3 override: the legacy `scripts/backfill-blog-quality.ts` path is audit-only. Its content-creating write mode and `backfill:blog-quality:write` package command were removed. Apply corpus decisions only through the reviewed V3 disposition/removal workflow.
 
 > 여소남 블로그 자동 발행 시스템 운영 가이드 — 매일/매주/매월 확인 사항

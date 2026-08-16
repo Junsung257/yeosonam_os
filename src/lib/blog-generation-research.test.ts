@@ -10,6 +10,8 @@ import {
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
 import {
+  BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT,
+  BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT,
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
@@ -476,6 +478,14 @@ function localTransportReadiness() {
 }
 
 describe('blog generation research preflight', () => {
+  it('requires three evidence-linked details plus enough supported facts to write a useful itinerary decision', () => {
+    expect(BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT.itinerary).toEqual({
+      duration: 1,
+      factual: 1,
+    });
+    expect(BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT.itinerary).toBe(6);
+  });
+
   it('adds verified destination and purpose-stay context for entry requirements and stays idempotent', () => {
     const initial = [
       '# 미국 입국 요건과 비자',
@@ -778,10 +788,12 @@ describe('blog generation research preflight', () => {
       });
 
     expect(evaluateIntent('itinerary').issues).toEqual(expect.arrayContaining([
-      'claim_semantic_coverage_missing:itinerary:child_or_family',
       'claim_semantic_coverage_missing:itinerary:attraction',
       'claim_semantic_coverage_missing:itinerary:route_duration',
     ]));
+    expect(evaluateIntent('itinerary').issues).not.toContain(
+      'claim_semantic_coverage_missing:itinerary:child_or_family',
+    );
     expect(evaluateIntent('shopping_souvenirs').issues).toEqual(expect.arrayContaining([
       'claim_semantic_coverage_missing:shopping_souvenirs:souvenir_product',
       'claim_semantic_coverage_missing:shopping_souvenirs:purchase_location',

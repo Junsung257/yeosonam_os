@@ -61,6 +61,15 @@ const AUDIENCE_PATTERNS: Array<[BlogInformationAudience, RegExp]> = [
   ['student', /학생|대학생|유학생|student/i],
 ];
 
+const BLOG_INFORMATION_AUDIENCES = new Set<BlogInformationAudience>([
+  'general',
+  'family',
+  'couple',
+  'solo',
+  'senior',
+  'student',
+]);
+
 const TABLE_SLOT_IDS: Partial<Record<BlogInformationIntent, string[]>> = {
   food_budget: ['daily_budget', 'meal_ranges', 'trip_total'],
   monthly_weather: ['monthly_temperature', 'precipitation'],
@@ -81,8 +90,11 @@ function clean(value?: string | null): string {
 }
 
 function inferAudience(input: BlogInformationPlannerInput): BlogInformationAudience {
-  if (input.audience) return input.audience;
-  const text = [input.topic, input.primaryKeyword, input.category, input.microAngle]
+  const explicit = clean(input.audience);
+  if (BLOG_INFORMATION_AUDIENCES.has(explicit as BlogInformationAudience)) {
+    return explicit as BlogInformationAudience;
+  }
+  const text = [explicit, input.topic, input.primaryKeyword, input.category, input.microAngle]
     .filter(Boolean)
     .join(' ');
   return AUDIENCE_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'general';

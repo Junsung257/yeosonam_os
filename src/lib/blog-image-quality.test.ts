@@ -72,6 +72,41 @@ describe('blog-image-quality', () => {
     }).evidence.issues).toContain('image_count_below_minimum');
   });
 
+  it('passes an image-free article when the brief has no image minimum', () => {
+    const report = inspectBlogImageQuality([
+      '## 여행자 유형별 선택',
+      '',
+      '다낭에서 보내는 시간과 이동 동선을 기준으로 방문지를 고릅니다.',
+    ].join('\n'), {
+      destination: '다낭',
+      primaryKeyword: '다낭 가볼만한곳',
+      blogType: 'info',
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.evidence).toMatchObject({
+      imageCount: 0,
+      minImages: 0,
+      contextMatchedImages: 0,
+      issues: [],
+    });
+  });
+
+  it('still checks contextual relevance when at least one image exists', () => {
+    const report = inspectBlogImageQuality(
+      '![세부 리조트 수영장](https://example.com/cebu-resort.webp)',
+      {
+        destination: '다낭',
+        primaryKeyword: '다낭 가볼만한곳',
+        blogType: 'info',
+      },
+    );
+
+    expect(report.passed).toBe(false);
+    expect(report.evidence.imageCount).toBe(1);
+    expect(report.evidence.issues).toContain('no_contextual_alt_or_caption');
+  });
+
   it('does not require image captions to match generated slug fragments', () => {
     const markdown = [
       '![가족 여행 준비 풍경](https://images.pexels.com/photos/1/pexels-photo-1.jpeg)',

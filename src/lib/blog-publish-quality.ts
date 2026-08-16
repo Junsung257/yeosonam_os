@@ -72,6 +72,12 @@ export interface BlogPublishQualityReport {
 
 export const PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE = 95;
 
+const V3_SEO_BLOCKING_DETAILS = new Set([
+  'public_link_integrity',
+  'structured_data',
+  'information_freshness',
+]);
+
 export interface BlogPublicCustomerQualityInput {
   blog_html: string;
   slug: string;
@@ -224,6 +230,7 @@ export async function evaluateBlogPublishQuality(
   input: BlogPublishQualityInput,
 ): Promise<BlogPublishQualityReport> {
   const blogType = input.product_id ? 'product' : 'info';
+  const flexibleV3 = Boolean(input.generation_meta?.content_brief_v3);
   const publishContractIssues = inspectBlogPublishContract(input);
   const destination = input.destination ?? null;
   const primaryKeyword = resolveBlogPrimaryKeyword(input);
@@ -341,14 +348,27 @@ export async function evaluateBlogPublishQuality(
     readingTimeMinutes: renderedSeoQuality?.readingTimeMinutes ?? null,
     blogQualityScore,
   };
+  const v3SeoBlockingFailures = flexibleV3
+    ? seoScore.details.filter((detail) =>
+        detail.status === 'fail' && V3_SEO_BLOCKING_DETAILS.has(detail.name))
+    : [];
+  const passed = flexibleV3
+    ? qualityGate.passed
+      && publishContractIssues.length === 0
+      && publicCustomerGatePassed
+      && v3SeoBlockingFailures.length === 0
+      && (renderedSeoQuality?.passed ?? true)
+    : blogQualityScore.isPerfect
+      && publishContractIssues.length === 0
+      && publicCustomerGatePassed;
 
   return {
     ...report,
-    passed:
-      blogQualityScore.isPerfect
-      && publishContractIssues.length === 0
-      && publicCustomerGatePassed,
-    summary: buildSummary(report),
+    passed,
+    summary: passed && flexibleV3
+      ? `V3 publish contract passed: public customer ${publicCustomerQuality.score}/100, `
+        + 'claim/intent/render gates passed; legacy SEO aggregate retained as diagnostic only'
+      : buildSummary(report),
   };
 }
 
