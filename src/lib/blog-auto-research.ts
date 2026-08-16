@@ -29,6 +29,7 @@ import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   evaluateBlogGenerationResearchReadiness,
 } from '@/lib/blog-generation-research';
+import { inspectBlogInformationClaimTypeCompatibility } from '@/lib/blog-information-claim-validator';
 import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -558,6 +559,22 @@ function toClaimType(value: unknown): BlogInformationClaimType | null {
   return BLOG_INFORMATION_CLAIM_TYPES.includes(normalized) ? normalized : null;
 }
 
+export function isAutoResearchNumericClaimTypeCompatible(
+  claimText: string,
+  claimType: BlogInformationClaimType,
+): boolean {
+  // The deterministic classifier is intentionally narrower than the research
+  // taxonomy. Apply it only to the observed unsafe ambiguity: a digit-bearing
+  // clock/schedule claim mislabeled as elapsed duration. Other claim types keep
+  // their existing evidence and publish-gate validation contracts.
+  if (claimType !== 'duration' || !/\d/.test(claimText)) return true;
+  const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
+  if (compatibility.passed) return true;
+  const hasClockOfDay = /(?:오전|오후|\b(?:a\.?m\.?|p\.?m\.?)\b|\d{1,2}:\d{2}|\d{1,2}\s*시\s*(?:이전|이후|부터|까지|경|정각))/iu.test(claimText);
+  const hasElapsedDuration = /(?:\d+(?:\.\d+)?\s*(?:분|시간)|소요|걸(?:립니다|린다|려)|이동\s*시간|travel\s*time|\bdrive\b|\bminutes?\b|\bhours?\b)/iu.test(claimText);
+  return !hasClockOfDay || hasElapsedDuration;
+}
+
 function toSourceType(
   value: unknown,
   allowedSourceTypes: string[],
@@ -859,6 +876,14 @@ export function buildBlogResearchBundleFromGrounding(input: {
       issues.push(`evidence_rejected:${draftIndex}:currency_required`);
       return [];
     }
+    if (!isAutoResearchNumericClaimTypeCompatible(statement, claimType)) {
+      const compatibility = inspectBlogInformationClaimTypeCompatibility(statement, claimType);
+      issues.push(`evidence_rejected:${draftIndex}`);
+      issues.push(
+        `evidence_rejected:${draftIndex}:claim_type_mismatch:${claimType}:${compatibility.deterministicType ?? 'unclassified'}`,
+      );
+      return [];
+    }
     const requestedValidFrom = safeIsoDate(draft.validFrom);
     const validFrom = requestedValidFrom && Date.parse(requestedValidFrom) <= now.getTime()
       ? requestedValidFrom
@@ -995,6 +1020,14 @@ export function buildBlogResearchBundleFromGrounding(input: {
       if (!claimText) issues.push(`claim_rejected:${draftIndex}:claim_text_missing`);
       if (!claimType) issues.push(`claim_rejected:${draftIndex}:claim_type:${clean(draft.claimType) || 'missing'}`);
       if (linkedEvidence.length === 0) issues.push(`claim_rejected:${draftIndex}:evidence_link_missing`);
+      return [];
+    }
+    if (!isAutoResearchNumericClaimTypeCompatible(claimText, claimType)) {
+      const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
+      issues.push(`claim_rejected:${draftIndex}`);
+      issues.push(
+        `claim_rejected:${draftIndex}:claim_type_mismatch:${claimType}:${compatibility.deterministicType ?? 'unclassified'}`,
+      );
       return [];
     }
     const primaryEvidence = linkedEvidenceItems[0];
@@ -1271,6 +1304,7 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Select facts that satisfy Required decision facts and Minimum independently supported claims before any general background.',
     'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
+    'Use duration only for elapsed travel, transfer, stay, or visit length. A clock-of-day, show time, opening time, or other schedule is not duration.',
     'Omit optional unit, currency, validFrom, or validUntil when the digest does not state it.',
     `Minimum independently supported claims by type: ${claimMinimums}.`,
     `Minimum total independently supported claims: ${minimumTotalClaims}.`,
