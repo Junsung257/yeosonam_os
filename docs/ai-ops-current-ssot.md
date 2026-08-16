@@ -43,9 +43,9 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 
 ## Provider And Prompt Boundary
 
-### Blog DeepSeek V4 exception
+### Blog Orchestrator V4 exception
 
-Scheduled blog generation is an intentionally isolated DeepSeek-only lane. It does not inherit the generic Gemini/Claude fallback chain: Flash creates the grounded draft and Pro may rewrite it at most twice using persisted failure evidence. A provider error stays queued for a later off-peak attempt. Daytime publication reads a durable `approved_for_slot` attempt and makes zero model calls. This exception applies only to the V4 blog generation route; other AI tasks continue to follow `system_ai_policies` and the general provider policy.
+Scheduled blog generation is an isolated, evidence-bounded lane. DeepSeek Flash creates the grounded draft and DeepSeek Pro performs the normal rewrite stages. Gemini 2.5 Pro is not a general fallback: it is permitted only as the final one-shot editor when both persisted research and the claim ledger are valid and every remaining failure is expression or structure. Factual, demand, source, conflict, language-integrity, duplicate, and HIGH-risk failures never reach the rescue model. Every provider call requires a durable pre-call cost reservation, and the candidate has at most three total model calls. A provider error stays queued or quarantined according to the bounded retry contract. Daytime publication reads a durable selected `approved_for_slot` attempt and makes zero model calls. Other AI tasks continue to follow `system_ai_policies` and the general provider policy.
 
 Correct sequence for AI behavior changes:
 

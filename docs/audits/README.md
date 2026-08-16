@@ -100,6 +100,8 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-16 | `blog-orchestrator-v4-production-verification-2026-08-16.md` + `.json` | V4 candidate tests, real provider/model canary, isolated Supabase dry-run, production read-only evidence, blockers, and exact activation sequence. |
+| 2026-08-16 | `blog-corpus-reconciliation-v4-preview-2026-08-16.json` + `.csv` | Read-only review-blocked and failed-queue disposition preview; no production writes. |
 | 2026-08-13 | `blog-image-phash-preview.json` + `blog-image-phash-preview.csv` | Dry-run public-snapshot image hash coverage and actionable cross-destination duplicate-pair evidence; no DB writes. |
 | 2026-07-29 | `2026-07-29-blog-full-process-95-audit.md` | Full blog publication, public-render quality, category coverage, research backlog, crawler stampede root cause, and prevention evidence. |
 | 2026-07-24 | `2026-07-24-blog-autopublish-live-evidence-audit.md` | Live ten-intent direct-source audit with production create, update-publish, immutable revision, public render, and reindex proof. |

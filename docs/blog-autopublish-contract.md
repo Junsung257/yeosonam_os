@@ -6,7 +6,7 @@
 >
 > 2026-08-15 live-ops addendum: 관리자 화면과 일일 SLA는 DB `posts_per_day`만 공개 목표로 사용하지 않는다. 실효 공개 목표는 autopublish mode, policy enabled, `BLOG_DAILY_PUBLISH_CAP`을 함께 적용한다. `draft_only`는 오류가 아니라 공개 목표 0의 안전정지다. Keyword-family 두 테이블은 live readiness 필수 리소스이며, queue scope나 최신 실패가 관리자 첫 화면에서 숨겨져서는 안 된다.
 >
-> 2026-08-15 DeepSeek V4 addendum: 정보성 AI 생성은 DeepSeek-only다. KST 01:05~06:05 계산 cron은 Flash 초안 → 규칙/claim/중복 평가 → Pro 제한 재작성(총 3회 이하) 후 `approved_for_slot` 초안만 만든다. KST 09/12/15/18/21 공개 controller는 모델을 호출하지 않으며 최신 시도 90점 이상, hard blocker/failure 0건을 다시 확인한다. 일일 후보 기본 30건과 공개 상한은 별개이고 공개 상한은 `pilot_3 → ramp_5 → ramp_10 → max_20`의 명시적 단계 승인을 넘을 수 없다. 세부 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
+> 2026-08-16 Orchestrator V4 release addendum: KST 01:05~06:05 계산 cron은 DeepSeek Flash 초안 → 규칙/claim/중복 평가 → DeepSeek Pro 제한 재작성으로 동작한다. 75점 미만 결과도 공식 연구와 claim ledger가 모두 유효하고 실패가 표현·구조에만 한정될 때에만 Gemini 2.5 Pro를 마지막 1회 사용할 수 있다. 후보별 모델 호출은 최대 3회이고 공급자 호출 전 원자적 일일 비용 예약이 필수다. KST 09/12/15/18/21 공개 controller는 모델을 호출하지 않으며, 저장된 선택 시도·90점·hard blocker/failure 0건을 다시 확인한다. 공개 상한은 내구성 상태 원장의 `pilot_3 → ramp_10 → max_30`을 따르며 결측 관측값은 승격을 금지하고 심각 사고는 즉시 동결한다. 세부 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
 Last updated: 2026-07-29
 

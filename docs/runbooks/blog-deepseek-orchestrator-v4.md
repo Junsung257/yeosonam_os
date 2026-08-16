@@ -2,7 +2,7 @@
 
 기준일: 2026-08-15 (Asia/Seoul)
 
-이 런북은 블로그 후보 생성과 공개를 분리한다. 하루 30개는 후보 처리량이며 공개량이 아니다. 운영 공개는 품질·수요·증거·중복·포트폴리오 gate를 통과한 글만 3→5→10→최대 20건으로 단계 상승한다. 이번 변경은 운영 배포와 운영 DB migration을 수행하지 않는다.
+이 런북은 블로그 후보 생성과 공개를 분리한다. 하루 30개는 후보 처리량이며 공개량이 아니다. 운영 공개는 품질·수요·증거·중복·포트폴리오 gate를 통과한 글만 `pilot_3→ramp_10→max_30`으로 단계 상승한다. 환경 변수는 상한일 뿐이고 실제 단계는 DB rollout 원장이 결정한다. 이 문서는 배포 절차를 정의하지만 문서 실행 자체가 운영 배포나 DB 변경을 승인하지 않는다.
 
 ## 실행 구조
 
@@ -11,13 +11,13 @@
 3. DeepSeek V4 Flash(non-thinking)가 첫 초안을 작성한다.
 4. 기존 claim gate, V3 brief, corpus diversity, 한국어·이미지·공개 렌더 gate가 평가한다.
 5. 90점 이상이고 hard blocker와 failure가 모두 0이면 `approved_for_slot`이다.
-6. 75~89점은 DeepSeek V4 Pro `reasoning_effort=high`, 75점 미만의 표현·완결성 실패는 Pro `max`로 재작성한다.
+6. 75~89점은 DeepSeek V4 Pro `reasoning_effort=high`, 두 번째 시도까지 미수렴하면 Pro `max`를 최종 3차 시도로 사용한다.
 7. 사실·수요·claim 충돌은 문장 재작성으로 덮지 않는다. 한 번 재연구 후 계속 실패하면 격리한다.
-8. 한 후보의 모델 호출은 초안을 포함해 최대 3회다. 두 번째 재작성 가능 실패가 미수렴이면 승인 claim만 사용하는 Pro max 최종 시도를 수행하며, 세 번째 완료 후에도 실패할 때만 격리한다. 연구·수요·비재작성 hard blocker는 즉시 안전 보류할 수 있다.
+8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에만 Gemini 2.5 Pro를 마지막 1회 사용한다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 rescue 대상이 아니다. 한 후보의 모델 호출은 초안을 포함해 최대 3회이며 마지막 실패는 격리한다.
 9. `blog-publication-controller`가 KST 09/12/15/18/21에 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
 10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용한다.
 
-생성 실행 원장은 `blog_generation_runs`, 개별 모델 시도는 `blog_generation_attempts`, 가격 근거는 `ai_model_price_catalog`에 저장한다. 기존 `agent_tasks`에는 queue별 `blog_orchestrator` 작업 한 건을 재사용해 stage와 최종 disposition을 남긴다.
+생성 실행 원장은 `blog_generation_runs`, 개별 모델 시도는 `blog_generation_attempts`, 가격 근거는 `ai_model_price_catalog`, 호출 전 비용 예약은 `blog_ai_budget_reservations`에 저장한다. 승인된 run은 반드시 실제 저장된 `selected_attempt_id`를 가져야 한다. 기존 `agent_tasks`에는 queue별 `blog_orchestrator` 작업 한 건을 재사용해 stage와 최종 disposition을 남긴다.
 
 ## DeepSeek 시간·가격 계약
 
@@ -39,7 +39,8 @@ DeepSeek 공식 가격 변경 시점은 2026-08-16 16:00 UTC(2026-08-17 01:00 KS
 - `draft_flash`: `deepseek-v4-flash`, thinking disabled. 검증된 연구 packet 안에서 초안을 빠르게 만든다.
 - `rewrite_pro_high`: `deepseek-v4-pro`, thinking enabled/high. 75~89점의 구조·완결성 실패만 고친다.
 - `rewrite_pro_max`: `deepseek-v4-pro`, thinking enabled/max. 앞선 시도가 미수렴한 경우 승인된 research claim만 사실 경계로 사용해 마지막 3차 초안을 구성한다.
-- Gemini/GPT/Claude fallback은 블로그 V4에서 금지한다. DeepSeek 장애는 다음 off-peak 실행으로 재시도하고 공급자 변경으로 숨기지 않는다.
+- `rescue_gemini`: 기본 `gemini-2.5-pro`. 검증된 연구와 claim ledger가 모두 유효한 75점 미만의 표현·구조 실패에만 허용되는 최종 1회 편집기다. 새 사실·숫자·경험·출처를 만들 수 없다.
+- GPT/Claude와 일반적인 공급자 fallback은 블로그 V4에서 금지한다. DeepSeek 장애나 사실 문제를 Gemini로 숨기지 않는다.
 
 재작성 prompt에는 이전 초안, 실패 evidence, research fingerprint, claim fingerprint가 들어간다. 새 숫자·새 사실·새 경험·새 출처 추가를 금지한다.
 
@@ -70,23 +71,29 @@ NAVER_API_HUB_CLIENT_ID=<server-only>
 NAVER_API_HUB_CLIENT_SECRET=<server-only>
 BLOG_DAILY_CANDIDATE_CAP=30
 BLOG_AUTOPUBLISH_MODE=draft_only
-BLOG_DAILY_PUBLISH_CAP=3
-BLOG_PUBLICATION_RAMP_STAGE=pilot_3
+BLOG_DAILY_PUBLISH_CAP=30
+BLOG_PUBLICATION_RAMP_STAGE=max_30
+BLOG_AUTO_RAMP_ENABLED=true
+BLOG_AUTO_ROLLBACK_ENABLED=true
+BLOG_DAILY_AI_COST_CAP_USD=2
+BLOG_FINAL_REWRITE_PROVIDER=gemini
+BLOG_FINAL_REWRITE_MODEL=gemini-2.5-pro
 BLOG_REQUIRE_DEMAND_SIGNAL=true
 BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
 ```
 
-처음에는 반드시 `draft_only`다. migration과 canary 검증 후에만 `live`로 바꾼다. `BLOG_DAILY_PUBLISH_CAP=20`을 미리 넣어도 기본 `pilot_3`가 실효 상한을 3으로 제한한다.
+처음에는 반드시 `draft_only`다. migration과 canary 검증 후에만 `live`로 바꾼다. 환경에 cap 30과 `max_30`을 넣어도 DB 원장은 `pilot_3`에서 시작하므로 실효 상한은 3이다. 환경 값을 낮추면 즉시 더 낮은 상한이 적용된다.
 
-승격은 자동이 아니다.
+승격과 강등은 DB 원장에 일일 관측을 한 번만 기록해 자동 판단한다. 관측값 하나라도 없으면 healthy streak를 0으로 만들고 승격하지 않는다.
 
 | 단계 | 최소 관찰 | 다음 단계 조건 |
 |---|---:|---|
-| pilot_3 | 7일 | 공개 정정 0, duplicate/cannibalization 신규 0, HIGH 자동공개 0, controller 실패 0 |
-| ramp_5 | 7일 | 위 조건 + 인덱싱 오류율 5% 이하, 품질 거절 원인 분포 확인 |
-| ramp_10 | 14일 | 위 조건 + 28일 검색 데이터가 수집되고 zero-impression URL 추가생성 방지 확인 |
-| max_20 | 지속 | field data와 편집 capacity가 감당할 때만. 20은 상한이지 목표/보장이 아님 |
+| pilot_3 | 완전한 healthy 관측 7일 + 해당 단계 발행 14건 | review/HIGH leak 0, 무승인 발행 0, cap/duplicate 위반 0, blog 5xx 임계 미만, 비용상한 준수, controller 99% 이상, indexing parity 100%, DB fallback 0.5% 이하, snapshot lag 5분 이하, GSC·analytics fresh |
+| ramp_10 | 완전한 healthy 관측 7일 + 해당 단계 발행 50건 | 위 조건을 동일하게 유지하면 `max_30`으로 승격 |
+| max_30 | 지속 | 30은 상한이지 목표가 아니다. 수요·근거·품질을 통과한 후보가 적으면 적게 발행 |
+
+심각 사고(review/HIGH 공개, public leak, 승인 시도 없는 발행, cap/duplicate 위반, 15분 5xx 2건 이상, AI 비용 초과)는 즉시 `frozen`과 `pilot_3` 복귀다. 일반 불건전 관측이 2회 연속이면 한 단계 강등한다. 동결 해제는 원인 수정과 별도 승인 없이는 수행하지 않는다.
 
 ## 운영 조회
 
@@ -144,7 +151,7 @@ where r.status = 'approved_for_slot';
 
 ## 장애·롤백
 
-- DeepSeek 장애: queue와 attempt 오류를 남기고 다음 off-peak로 재시도한다. 낮 시간 controller는 기존 승인 초안만 공개한다.
+- DeepSeek/Gemini 장애: 비용 reservation과 provider receipt 또는 오류 코드를 남긴다. 알 수 없는 비용은 예약액을 당일 종료까지 보유하고 다음 호출 예산에 포함한다. 낮 시간 controller는 기존 승인 초안만 공개한다.
 - Naver HUB 장애: legacy Developers API로 fallback한다. 두 경로가 모두 실패해도 검증된 다른 demand가 있으면 진행하고, 없으면 발행하지 않는다.
 - controller가 공개 commit 전에 실패하면 creative는 draft로 남고 run을 격리한다. 공개 commit 뒤 bookkeeping만 실패하면 공개 글을 격리하지 않고 `published_state_sync_error`로 표시해 원장 동기화를 복구한다.
 - 앱 롤백: 먼저 cron을 기존 publisher 경로로 되돌리고 `BLOG_AUTOPUBLISH_MODE=draft_only`로 전환한다.
