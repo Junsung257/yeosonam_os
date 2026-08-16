@@ -21,4 +21,12 @@ describe('blog public snapshot refresh script', () => {
     expect(script).toContain('detailArtifactSha256}.json');
     expect(script).toContain("version: 'blog-public-snapshot-artifacts-v3'");
   });
+
+  it('fills missing or empty current detail snapshots from the eligible legacy body before parity checks', () => {
+    expect(script).toContain('missingSnapshotDetailSlugs');
+    expect(script).toContain('!snapshot || !hasUsableDetailBody(snapshot)');
+    expect(script).toContain('legacy_detail_gap_fallback_failed:');
+    expect(script).toContain("detailSource = 'blog_public_snapshots_with_legacy_gap_fallback_read_only'");
+    expect(script).toContain('detailRowsRaw.filter((row) => !fallbackSlugSet.has(String(row.slug)))');
+  });
 });

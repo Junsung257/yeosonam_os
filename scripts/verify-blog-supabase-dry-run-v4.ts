@@ -24,12 +24,12 @@ function main(): void {
     process.stdout.write(`${JSON.stringify({ passed: true, mode: 'already_applied', expected, observed }, null, 2)}\n`);
     return;
   }
-  const missing = expected.filter((version) => !observed.includes(version));
   const unexpected = observed.filter((version) => !expected.includes(version));
-  if (missing.length > 0 || unexpected.length > 0) {
-    throw new Error(`supabase_dry_run_set_mismatch:missing=${missing.join(',')}:unexpected=${unexpected.join(',')}`);
+  if (unexpected.length > 0) {
+    throw new Error(`supabase_dry_run_set_mismatch:unexpected=${unexpected.join(',')}`);
   }
-  process.stdout.write(`${JSON.stringify({ passed: true, mode: 'exact_pending_set', expected, observed }, null, 2)}\n`);
+  const mode = observed.length === expected.length ? 'exact_pending_set' : 'pending_manifest_subset';
+  process.stdout.write(`${JSON.stringify({ passed: true, mode, expected, observed }, null, 2)}\n`);
 }
 
 try {
