@@ -130,6 +130,9 @@ import {
   type BlogInformationClaimLedgerEntry,
 } from '@/lib/blog-information-claim-ledger';
 import {
+  countUnsupportedNumericBlogInformationClaims,
+} from '@/lib/blog-information-claim-validator';
+import {
   buildBlogInformationRepresentativeKey,
   canUpgradePublishedBlogForRepresentative,
   readBlogInformationRepresentativeIdentity,
@@ -186,6 +189,7 @@ import {
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
   resolveBlogGenerationModelV4,
+  selectDecisionRelevantRewriteClaimsV4,
   type BlogDeepSeekStage,
 } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
@@ -3144,10 +3148,7 @@ async function processQueueItem(
       destination: item.destination,
     });
     const issueCodes = claimValidation.issues.map((issue) => issue.code);
-    const unsupportedClaimCount = claimValidation.issues.filter((issue) => [
-      'missing_evidence', 'claim_not_supported', 'unclassified_factual_candidate',
-      'claim_ledger_body_mismatch', 'invalid_claim_ledger',
-    ].includes(issue.code)).length;
+    const unsupportedNumberCount = countUnsupportedNumericBlogInformationClaims(claimValidation);
     const staleClaimCount = issueCodes.filter((code) => code === 'stale_evidence').length;
     const engineScore01 = typeof engineEvaluation?.score === 'number'
       ? Math.max(0, Math.min(1, engineEvaluation.score / 100))
@@ -3205,7 +3206,7 @@ async function processQueueItem(
       factualClaimCount: claimValidation.claims.length,
       staleClaimCount,
       conflictingClaimCount: 0,
-      unsupportedNumberCount: unsupportedClaimCount,
+      unsupportedNumberCount,
       destinationSpecificDetailCount: contentBriefV3.destinationDecisionDetails.length,
       informationGainScore: engineScore01,
       titleUniqueness: diversityReport && diversityReport.normalizedTitleClusterSize < 3 ? 1 : 0,
@@ -4388,7 +4389,6 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.35 }
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
-        deepseekThinking: 'disabled',
         temperature: 0.2,
       }, {
         queueId: item.id,
@@ -4680,14 +4680,18 @@ async function generateFromTopic(
     }))];
     return { claim, literalSupport, sourceUrls };
   });
-  const rewriteApprovedClaims = rewriteClaimPacketAudit
+  const rewriteApprovedClaims = selectDecisionRelevantRewriteClaimsV4({
+    primaryQuery: contentBriefV3.primaryQuery,
+    primaryDecision: contentBriefV3.primaryDecision,
+    approvedClaims: rewriteClaimPacketAudit
     .filter((entry) => entry.literalSupport.passed && entry.sourceUrls.length > 0)
     .map((entry) => ({
       claimText: entry.claim.claimText,
       claimType: entry.claim.claimType,
       riskLevel: entry.claim.riskLevel,
       sourceUrls: entry.sourceUrls,
-    }));
+    })),
+  });
   if (generationStage !== 'draft_flash' && rewriteApprovedClaims.length === 0) {
     throw new Error('blog_rewrite_approved_claims_missing');
   }
@@ -4723,7 +4727,6 @@ async function generateFromTopic(
       }
     : {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
-        deepseekThinking: 'disabled',
         temperature: 0.2,
       }, {
         queueId: item.id,

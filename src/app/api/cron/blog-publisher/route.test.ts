@@ -8,6 +8,12 @@ describe('blog publisher quota recovery contract', () => {
     'utf8',
   );
 
+  it('does not override DeepSeek Pro thinking mode on rewrite calls', () => {
+    expect(routeSource()).not.toMatch(
+      /model:\s*BLOG_DEEPSEEK_MODELS\.rewrite,\s*deepseekThinking:\s*'disabled'/,
+    );
+  });
+
   it('keeps attempting replacement candidates until the currently due slot quota is filled or time is unsafe', () => {
     const source = routeSource();
 

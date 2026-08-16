@@ -49,6 +49,88 @@ export interface BlogQualityRoutingDecisionV4 {
   maxAttempts: 3;
 }
 
+export interface BlogRewriteApprovedClaimV4 {
+  claimText: string;
+  claimType: string;
+  riskLevel: string;
+  sourceUrls?: string[];
+}
+
+const MAX_DECISION_REWRITE_CLAIMS = 6;
+
+function rewriteDecisionTokens(value: string): string[] {
+  return [...new Set(value
+    .normalize('NFKC')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2))];
+}
+
+/**
+ * Keep rewrites grounded without turning every research row into a separate
+ * section. A genuinely month-by-month climate assignment may use all twelve
+ * approved rows; other intents receive a deterministic, decision-relevant
+ * subset capped at six.
+ */
+export function selectDecisionRelevantRewriteClaimsV4(input: {
+  primaryQuery: string;
+  primaryDecision: string;
+  approvedClaims: BlogRewriteApprovedClaimV4[];
+  maxClaims?: number;
+}): BlogRewriteApprovedClaimV4[] {
+  const claims = input.approvedClaims;
+  const isCompleteMonthlyClimateAssignment = /(?:월별|12\s*개월)/i.test(input.primaryQuery)
+    && claims.length <= 12
+    && claims.every((claim) => claim.claimType === 'climate');
+  if (isCompleteMonthlyClimateAssignment) return claims;
+
+  const limit = Math.max(1, Math.min(input.maxClaims ?? MAX_DECISION_REWRITE_CLAIMS, MAX_DECISION_REWRITE_CLAIMS));
+  if (claims.length <= limit) return claims;
+
+  const decisionTokens = rewriteDecisionTokens(`${input.primaryQuery} ${input.primaryDecision}`);
+  const scored = claims.map((claim, index) => ({
+    claim,
+    index,
+    score: decisionTokens.reduce(
+      (score, token) => score + (claim.claimText.normalize('NFKC').toLowerCase().includes(token) ? 1 : 0),
+      0,
+    ),
+  }));
+  const selectedIndexes = new Set<number>([0, claims.length - 1]);
+
+  for (const entry of [...scored].sort((left, right) => right.score - left.score || left.index - right.index)) {
+    if (entry.score <= 0 || selectedIndexes.size >= limit) break;
+    selectedIndexes.add(entry.index);
+  }
+
+  // Preserve evidence-type diversity before filling the remaining positions.
+  const seenTypes = new Set<string>();
+  for (const entry of scored) {
+    if (selectedIndexes.has(entry.index)) seenTypes.add(entry.claim.claimType);
+  }
+  for (const entry of scored) {
+    if (selectedIndexes.size >= limit) break;
+    if (!seenTypes.has(entry.claim.claimType)) {
+      selectedIndexes.add(entry.index);
+      seenTypes.add(entry.claim.claimType);
+    }
+  }
+
+  // Evenly sample the evidence packet so an unscored list does not always use
+  // only its first rows (for example, only January through June).
+  for (let slot = 0; selectedIndexes.size < limit && slot < limit; slot += 1) {
+    selectedIndexes.add(Math.round(slot * (claims.length - 1) / Math.max(1, limit - 1)));
+  }
+  for (let index = 0; selectedIndexes.size < limit && index < claims.length; index += 1) {
+    selectedIndexes.add(index);
+  }
+
+  return [...selectedIndexes]
+    .sort((left, right) => left - right)
+    .map((index) => claims[index]!);
+}
+
 const RESEARCH_BLOCKERS = new Set([
   'claim_conflict_present',
   'conflicting_claim',
@@ -374,12 +456,7 @@ export function buildDeepSeekRewritePromptV4(input: {
     primaryQuery: string;
     primaryDecision: string;
     sectionPurposes: string[];
-    approvedClaims: Array<{
-      claimText: string;
-      claimType: string;
-      riskLevel: string;
-      sourceUrls?: string[];
-    }>;
+    approvedClaims: BlogRewriteApprovedClaimV4[];
     officialSourceUrls: string[];
     internalLink: string;
     includeFaq: boolean;
@@ -414,7 +491,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       `- FAQ: ${packet.includeFaq ? 'allowed only for evidence-backed registered questions' : 'do not include'}`,
       `- Checklist: ${packet.includeChecklist ? 'allowed only for evidence-backed actions' : 'do not include'}`,
       '- Do not use a table in this rewrite. Tables encourage unsupported values and implied comparisons.',
-      '- Approved claims (the complete factual universe; copy a whole sentence exactly when used):',
+      '- Selected approved claims (the complete factual universe for this rewrite; copy each whole sentence exactly):',
       ...packet.approvedClaims.flatMap((claim, index) => [
         `  ${index + 1}. [${claim.claimType}/${claim.riskLevel}] ${claim.claimText}`,
         `     exact citation markdown: [공식 근거](${claim.sourceUrls?.[0] || ''})`,
@@ -423,20 +500,21 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- The ledger must contain only the approved claim sentences actually copied into the visible article.',
       `- Required internal link markdown: [${packet.primaryQuery} 글 모아보기](${packet.internalLink})`,
       '- Never emit a bare URL. Copy the exact Markdown link forms supplied above.',
-      `- Use exactly ${packet.approvedClaims.length} factual sentences: each approved claim once. Do not omit or paraphrase them.`,
+      `- Use exactly ${packet.approvedClaims.length} factual sentences: each selected approved claim once. Do not omit or paraphrase them.`,
       '- Apart from those approved sentences, you may write only source-neutral editorial guidance: a direct decision answer, reader-action instructions, headings, and reader-choice questions.',
       '- Editorial guidance must not assert a property of any destination, attraction, hotel, route, weather pattern, price, schedule, crowd, safety condition, or policy.',
       '- Start with one 2-3 sentence paragraph that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',
-      '- Use 4-6 short evidence H2 sections. Claims about the same named entity may share one section, but every approved claim must still appear exactly once with its own citation.',
-      '- After each claim and citation, add at most one distinct reader instruction or question. Vary the wording and do not repeat a four-word Korean phrase more than twice.',
+      `- Group the selected claims into ${packet.approvedClaims.length <= 2 ? '1-2' : '2-4'} short evidence H2 sections by decision purpose. Never create one H2 per claim.`,
+      '- Put 1-4 related approved claims in each evidence section. Every selected claim must still appear exactly once with its own citation.',
+      '- Add at most one distinct reader instruction or question per evidence section, not after every claim. Do not repeat a four-word Korean phrase more than twice.',
       '- Prefer direct reader actions ending in 확인하세요, 비교하세요, or 결정하세요. Do not turn those actions into a new assertion about the place.',
-      '- Keep evidence-section H2 labels neutral: use only the entity already named in that approved claim plus "공식 정보". Do not add a recommendation or an inferred property in a heading.',
+      '- Give every evidence-section H2 a distinct decision purpose. Do not use numbered month/entity + "공식 정보" as a repeated heading template.',
       '- Follow-up questions may refer only to "이 공식 정보", "이 시간", "이 수치", "내 일정", "내 우선순위", or "동행자". Do not introduce a new place property inside a question.',
       '- Safe question examples: "이 공식 정보가 내 일정과 맞는가?", "이 수치를 내 우선순위와 비교하면 어떤 선택이 남는가?".',
       '- Finish with one question-form H2 and a Markdown bullet list of exactly 3 distinct reader-choice questions. Questions must not imply unapproved facts or repeat the evidence-section wording.',
       '- Do not write a table, itinerary, route arrow, warning, FAQ, checklist, destination recommendation, or generic freshness warning.',
       '- Use concise Korean paragraphs of 2-4 sentences. The visible article must be complete enough to make the primary decision; do not pad with generic travel prose.',
-      '- Output order: H1, direct decision-answer paragraph, one evidence section per approved claim with its citation, reader-choice question section, internal link, hidden ledger.',
+      '- Output order: H1, direct decision-answer paragraph, grouped evidence sections with citations, reader-choice question section, internal link, hidden ledger.',
       '- Allowed official links (links are citations, not permission to invent claims):',
       ...packet.officialSourceUrls.map((url) => `  - ${url}`),
       `- Required relevant internal link: ${packet.internalLink}`,
