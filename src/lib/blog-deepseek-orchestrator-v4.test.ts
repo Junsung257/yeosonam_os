@@ -178,16 +178,19 @@ describe('blog DeepSeek orchestrator V4', () => {
 
     expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
     expect(prompt).toContain('what to group first, what to keep separate');
-    expect(prompt).toContain('contain both "일정" and "동선"');
-    expect(prompt).toContain('use "기준으로" and later "비교하세요"');
-    expect(prompt).toContain('H2 named "최종 일정 확정 순서"');
-    expect(prompt).toContain('record the starting point, mark the grouped candidates');
-    expect(prompt).toContain('decision worksheet, not a generic checklist');
+    expect(prompt).toContain('use "일정" and "동선" naturally');
+    expect(prompt).toContain('without forcing a stock phrase');
+    expect(prompt).toContain('three distinct stages (start, middle, finish)');
+    expect(prompt).toContain('booking/official recheck');
+    expect(prompt).toContain('realistic rest checkpoint');
+    expect(prompt).toContain('rain/closure/delay fallback');
+    expect(prompt).toContain('decision aid, not a generic checklist');
     expect(prompt).toContain('Do not merely list claims or finish with generic questions');
-    expect(prompt).toContain('Every non-approved editorial sentence must be an instruction');
-    expect(prompt).toContain('표시하세요, 분리하세요, 정리하세요, 확정하세요, or 보류하세요');
+    expect(prompt).toContain('Write natural Korean with varied sentence shapes');
+    expect(prompt).toContain('do not force every sentence to end in 하세요');
     expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
     expect(prompt).toContain('Never replace duration or climate with a generic factual label');
+    expect(prompt).toContain('force a fixed heading count');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
     expect(prompt).not.toContain('Do not write a table, itinerary');
     expect(prompt).not.toContain('route pairings unless');

@@ -93,11 +93,11 @@ describe('explainable blog quality evaluator v3', () => {
   it('accepts the intent artifact when an itinerary contains a direct grouping and usable order', () => {
     const body = [
       '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
-      '다낭 일정은 오행산과 린응사를 한 동선 후보로 묶고, 바나힐은 별도 순서로 두고 비교하세요.',
-      '## 추천 동선부터 정하기',
-      '- 먼저 오행산과 린응사를 묶어 비교하세요.',
-      '- 바나힐은 별도 후보로 두세요.',
-      '- 드래곤 브리지는 마지막 순서로 검토하세요.',
+      '다낭 일정은 오행산과 린응사를 한 동선 후보로 묶고, 바나힐은 별도 순서로 두는 방식이 이동 부담을 비교하기 쉽습니다.',
+      '## 추천 동선과 실행 순서',
+      '- 먼저 출발점을 정하고 오행산과 린응사를 묶어 비교하세요.',
+      '- 이어서 공식 사이트에서 예약과 운영 여부를 확인하고, 식사와 휴식 시간을 남겨 두세요.',
+      '- 마지막에는 드래곤 브리지를 검토하되 비가 오거나 일정이 지연되면 실내 대체 일정을 선택하세요.',
       '오행산은 도시에서 차로 15분 거리입니다.',
     ].join('\n\n');
     const report = evaluateBlogQualityV3({
@@ -117,5 +117,40 @@ describe('explainable blog quality evaluator v3', () => {
     expect(report.dimensions.intent_completion).toMatchObject({ value: 1, passed: true });
     expect(report.dimensions.decision_completion.passed).toBe(true);
     expect(report.dimensions.section_purpose_coverage.passed).toBe(true);
+  });
+
+  it('rejects a short claim list that looks ordered but omits booking, rest, and contingency decisions', () => {
+    const body = [
+      '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '린응사와 오행산을 가까운 이동 기준으로 묶고, 바나힐은 별도 후보로 두어 동선을 비교하세요.',
+      '## 가까운 거리부터 묶어 비교하세요',
+      '- 린응사와 오행산을 묶어 비교하세요.',
+      '- 다낭에서 린응사까지 차량으로 15분 소요',
+      '## 최종 일정 확정 순서',
+      '- 출발 지점을 기록하세요.',
+      '- 바나힐을 단독 후보로 분리하세요.',
+      '- 마지막 순서로 남기고 최종 동선을 확정하세요.',
+    ].join('\n\n');
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      body,
+      destination: '다낭',
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      archetype: 'itinerary_timeline',
+      intentCompletionScore: 1,
+      serpIntentAlignment: 1,
+      decisionCompletion: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.dimensions.decision_completion.passed).toBe(false);
+    expect(report.dimensions.decision_completion.evidence).toEqual(expect.arrayContaining([
+      'reservation_check=false',
+      'rest_plan=false',
+      'fallback_plan=false',
+    ]));
+    expect(report.passed).toBe(false);
   });
 });

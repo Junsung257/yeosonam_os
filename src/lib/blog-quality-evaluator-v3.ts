@@ -111,20 +111,68 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
   const directAnswer = itineraryIntent
     ? /동선|이동\s*시간|묶|분리|순서/i.test(firstParagraph)
     : /동선|이동\s*시간|이동수단|출발|도착/i.test(firstParagraph);
-  const score = clamp(
-    (directAnswer ? 0.25 : 0)
-    + Math.min(1, sequenceMatches.length / 3) * 0.35
-    + Math.min(1, actionMatches.length / 3) * 0.25
-    + (movementEvidence ? 0.15 : 0),
-  );
+  const sequenceStages = itineraryIntent
+    ? [
+        /먼저|처음|첫날|출발\s*전|시작/iu,
+        /이어서|다음|둘째|오전|점심|오후|중간/iu,
+        /마지막|저녁|밤|도착\s*후|마무리/iu,
+      ].filter((pattern) => pattern.test(prose)).length
+    : [
+        /출발|타는\s*곳|승차|먼저/iu,
+        /이어서|다음|환승|구간|중간/iu,
+        /도착|내리는\s*곳|하차|마지막/iu,
+      ].filter((pattern) => pattern.test(prose)).length;
+  const reservationCheck = /예약|입장\s*(?:가능|여부|조건)|운영\s*(?:여부|시간)|공식\s*(?:채널|사이트|앱).*확인/iu.test(prose);
+  const restPlan = /휴식|쉬(?:고|는|어|세요)|여유|체력|식사\s*(?:시간|간격)|낮잠/iu.test(prose);
+  const fallbackPlan = /우천|비가\s*오|휴무|취소|지연|매진|막차|대체\s*(?:일정|후보|동선|안)|플랜\s*B|일정[\s\S]{0,30}(?:줄이|바꾸|조정)/iu.test(prose);
+  const routeBoardingDetail = /타는\s*곳|내리는\s*곳|승차|하차|환승|출발(?:지|점)|도착(?:지|점)/iu.test(prose);
+  const artifactComplete = itineraryIntent
+    ? directAnswer
+      && sequenceStages === 3
+      && movementEvidence
+      && reservationCheck
+      && restPlan
+      && fallbackPlan
+    : directAnswer
+      && sequenceStages === 3
+      && movementEvidence
+      && routeBoardingDetail
+      && fallbackPlan;
+  const weightedScore = itineraryIntent
+    ? (directAnswer ? 0.2 : 0)
+      + (sequenceStages / 3) * 0.2
+      + (movementEvidence ? 0.15 : 0)
+      + (reservationCheck ? 0.15 : 0)
+      + (restPlan ? 0.15 : 0)
+      + (fallbackPlan ? 0.15 : 0)
+    : (directAnswer ? 0.2 : 0)
+      + (sequenceStages / 3) * 0.25
+      + (movementEvidence ? 0.2 : 0)
+      + (routeBoardingDetail ? 0.2 : 0)
+      + (fallbackPlan ? 0.15 : 0);
+  // A high upstream/LLM task-completion score must never hide a missing
+  // archetype artifact. Missing one required decision block caps the result
+  // below the public threshold; this is deliberately independent of length.
+  const score = clamp(artifactComplete ? weightedScore : Math.min(weightedScore, 0.7));
   return {
     score,
     evidence: [
       `archetype=${input.archetype || (itineraryIntent ? 'itinerary_timeline' : 'route_walkthrough')}`,
       `direct_answer=${directAnswer}`,
       `sequence_markers=${sequenceMatches.length}`,
+      `sequence_stages=${sequenceStages}/3`,
       `action_markers=${actionMatches.length}`,
       `movement_evidence=${movementEvidence}`,
+      ...(itineraryIntent
+        ? [
+            `reservation_check=${reservationCheck}`,
+            `rest_plan=${restPlan}`,
+            `fallback_plan=${fallbackPlan}`,
+          ]
+        : [
+            `boarding_detail=${routeBoardingDetail}`,
+            `fallback_plan=${fallbackPlan}`,
+          ]),
     ],
   };
 }
