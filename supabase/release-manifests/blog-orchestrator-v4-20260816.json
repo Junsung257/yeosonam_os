@@ -57,10 +57,15 @@
       "version": "20260816124500",
       "file": "supabase/migrations/20260816124500_blog_public_slug_registry_security_definer.sql",
       "sha256": "e9f46bf95a9a21f065cf5f8bb6a0321b1c55b0b3b5d6bd51206377e04caa9d24"
+    },
+    {
+      "version": "20260817043000",
+      "file": "supabase/migrations/20260817043000_blog_automated_atomic_replacement_v1.sql",
+      "sha256": "efe7b7b89ef04d53e01aa24542e2bebd6dadbea2cc3670e9a974182a3b192316"
     }
   ],
   "rollback": {
     "file": "supabase/rollbacks/blog-orchestrator-v4-release-rollback.sql",
-    "sha256": "996f090dc9200e5713898d4cb64288ac6c053955641cd9582e7ba71c3b0b5f45"
+    "sha256": "f5c80cb36c07ed50fa036e5af20ef7c78ce503ff389aea4c448e6674d2c74bc9"
   }
 }
