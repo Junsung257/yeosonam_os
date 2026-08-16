@@ -42,6 +42,10 @@ describe('durable blog generation run source contract', () => {
     expect(nextBlogModelCallAttemptNumberV4(3)).toBe(3);
   });
 
+  it('uses the latest completed output as the next rewrite base', () => {
+    expect(source).toContain(".eq('status', 'completed')");
+  });
+
   it('persists provider-neutral Gemini token receipts without fabricating a price', () => {
     expect(source).toContain('cost?.inputTokens ?? usage?.inputTokens ?? null');
     expect(source).toContain('input.receipt.estimatedCostUsd ?? cost?.estimatedCostUsd ?? null');

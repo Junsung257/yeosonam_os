@@ -88,11 +88,11 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
     expect(resolveBlogGenerationModelV4('rewrite_pro_high')).toMatchObject({
       provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
-      deepseekThinking: 'enabled', reasoningEffort: 'high',
+      deepseekThinking: 'disabled',
     });
     expect(resolveBlogGenerationModelV4('rewrite_pro_max')).toMatchObject({
       provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
-      deepseekThinking: 'enabled', reasoningEffort: 'max',
+      deepseekThinking: 'disabled',
     });
   });
 

@@ -217,18 +217,24 @@ export function resolveBlogGenerationModelV4(
   if (stage === 'rewrite_pro_high') {
     return {
       provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
-      deepseekThinking: 'enabled', reasoningEffort: 'high',
+      // A complete article plus its hidden claim ledger must fit in one
+      // response. DeepSeek counts reasoning tokens inside max_tokens; a real
+      // production call exhausted all 8,192 tokens in reasoning and returned
+      // an empty article. Pro remains the rewrite model, but bounded editorial
+      // rewrites run in non-thinking mode so the budget is reserved for the
+      // customer-visible document.
+      deepseekThinking: 'disabled',
     };
   }
   if (stage === 'rewrite_pro_max') {
     return {
       provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
-      deepseekThinking: 'enabled', reasoningEffort: 'max',
+      deepseekThinking: 'disabled',
     };
   }
   return {
     provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
-    deepseekThinking: 'enabled', reasoningEffort: 'max',
+    deepseekThinking: 'disabled',
   };
 }
 
