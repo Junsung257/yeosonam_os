@@ -125,7 +125,7 @@ export function countUnsupportedNumericBlogInformationClaims(
 }
 
 const PRICE_RE = /(?:[₩￦¥￥$€₫]\s*\d[\d,.]*)|(?:\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\s*\d[\d,.]*)|(?:\d[\d,.]*\s*(?:원|엔|달러|위안|유로|바트|동|페소|링깃|루피|파운드|프랑|JPY|KRW|USD|VND|SGD|CNY|EUR|THB))|(?:(?:가격|요금|비용|예산|택시비|교통비|식비|숙박비)\s*(?:은|는|이|가|:)?\s*(?:약\s*)?\d)/i;
-const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?\s*(?:분|시간)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*(?:분|시간))?/i;
+const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?))?/iu;
 const PERCENT_RE = /\d+(?:\.\d+)?\s*%/;
 const DISTANCE_RE = /(?:약|최대|최소|평균)?\s*\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)/i;
 const CLOCK_RE = /(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*(?:~|-|–)\s*(?:[01]?\d|2[0-3]):[0-5]\d)?/;
