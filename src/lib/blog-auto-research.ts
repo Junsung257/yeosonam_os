@@ -1421,6 +1421,16 @@ function payloadHasResearchItems(payload: GroundedBlogResearchPayload): boolean 
   return Boolean(payload.sources?.length || payload.evidence?.length || payload.claims?.length);
 }
 
+export function shouldRetrySanitizedAutoResearchPayload(input: {
+  payload: GroundedBlogResearchPayload;
+  reviewedPageCount: number;
+  remainingMs: number;
+}): boolean {
+  return !payloadHasResearchItems(input.payload)
+    && input.reviewedPageCount > 0
+    && input.remainingMs > 15_000;
+}
+
 const RESEARCH_CLAIM_TYPES_BY_INTENT: Partial<Record<string, BlogInformationClaimType[]>> = {
   food_budget: ['price'],
   monthly_weather: ['climate'],
@@ -3363,6 +3373,18 @@ export async function researchBlogInformationAutomatically(input: {
         payload = parseJsonPayload(rawText);
       }
       payload = sanitizeGroundedResearchPayload(payload, input.brief.intentType);
+      if (shouldRetrySanitizedAutoResearchPayload({
+        payload,
+        reviewedPageCount: reviewedPages.length,
+        remainingMs: deadline - Date.now(),
+      })) {
+        rawText = await generateStructuredResponse(true, ['sanitized_research_payload_empty']);
+        responseTextLength += rawText.length;
+        payload = sanitizeGroundedResearchPayload(
+          parseJsonPayload(rawText),
+          input.brief.intentType,
+        );
+      }
       if (input.brief.intentType === 'food_budget') {
         payload = augmentGuamFoodBudgetPayload(reviewedPages, input.destination, payload);
       }

@@ -212,4 +212,15 @@ describe('blog queue failure policy', () => {
       skipped: false,
     });
   });
+
+  it('retries a source-backed research payload emptied by sanitization', () => {
+    expect(classifyBlogQueueFailure(
+      'auto_research_extraction_empty:missing_sources,missing_evidence,missing_claims',
+    )).toMatchObject({
+      code: 'research_extraction',
+      retryable: true,
+      selfHealAllowed: true,
+      skipped: false,
+    });
+  });
 });
