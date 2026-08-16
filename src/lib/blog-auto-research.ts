@@ -1216,6 +1216,14 @@ export function buildBlogStructuredResearchPrompt(input: {
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
   const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.brief.intentType] ?? 3;
+  const minimumRequiredClaims = Math.max(
+    minimumTotalClaims,
+    Object.values(BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT[input.brief.intentType] ?? { factual: 3 })
+      .reduce((total, minimum) => total + minimum, 0),
+  );
+  const retryIssues = input.retryIssues ?? [];
+  const coverageRetry = retryIssues.some((issue) =>
+    /(?:below_minimum|semantic_coverage_missing|required_(?:decision_)?fact|distinct_evidence_values|claim_source_coverage)/i.test(issue));
   const intentInstructions = input.brief.intentType === 'food_budget'
     ? [
         'FOOD BUDGET PRIORITY:',
@@ -1315,10 +1323,18 @@ export function buildBlogStructuredResearchPrompt(input: {
     ...intentInstructions,
     ...(input.retry ? [
       'RETRY REQUIREMENT:',
-      'The prior JSON response was empty, invalid, too long, or missed required semantic coverage even though reviewed page extracts are present.',
-      'Return a smaller valid JSON object and repair only the listed missing requirements using facts explicitly present in GROUNDED_DIGEST.',
-      ...(input.retryIssues?.length
-        ? [`Prior issues: ${input.retryIssues.slice(0, 16).join(', ')}`]
+      ...(coverageRetry
+        ? [
+            'The prior JSON was structurally usable but did not meet the required claim coverage.',
+            'Rebuild the complete packet from GROUNDED_DIGEST: keep every valid independently supported fact and add the missing claim types or decision facts.',
+            `Do not return fewer than ${minimumRequiredClaims} valid claims, and satisfy every listed per-type minimum. Do not shrink the packet merely to make it valid.`,
+          ]
+        : [
+            'The prior JSON response was empty, invalid, truncated, or too long even though reviewed page extracts are present.',
+            'Return a smaller valid JSON object using only facts explicitly present in GROUNDED_DIGEST.',
+          ]),
+      ...(retryIssues.length
+        ? [`Prior issues: ${retryIssues.slice(0, 16).join(', ')}`]
         : []),
     ] : []),
     'SOURCE_CATALOG:',
