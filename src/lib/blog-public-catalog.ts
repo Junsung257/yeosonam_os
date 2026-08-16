@@ -160,6 +160,22 @@ function loadBundledCatalogPage(input: {
   return loadCatalogBundlePage(BUNDLED_CATALOG_SNAPSHOT, input, 'bundled_snapshot');
 }
 
+/**
+ * Every catalog fallback tier is isolated. A transient database failure in
+ * the durable snapshot must not prevent the remote or bundled last-known-good
+ * snapshot from serving the request.
+ */
+export async function resolveBlogPublicCatalogFallbackV3<T>(input: {
+  durable: () => Promise<T | null>;
+  remote: () => Promise<T | null>;
+  bundled: () => T;
+}): Promise<T> {
+  const durable = await input.durable().catch(() => null);
+  if (durable) return durable;
+  const remote = await input.remote().catch(() => null);
+  return remote ?? input.bundled();
+}
+
 async function loadRemoteCatalogPage(input: {
   page: number; pageSize: number; destination?: string; angle?: string;
 }): Promise<PublicBlogCatalogPage | null> {
@@ -226,10 +242,11 @@ async function loadPublicBlogCatalogUncached(): Promise<PublicBlogCatalogPost[]>
 
   if (!result || result.error) {
     console.info('[blog/catalog][degraded] serving snapshot hierarchy', result?.error);
-    const durable = await loadDurableCatalogPage({ page: 1, pageSize: 500 }).catch(() => null);
-    if (durable) return durable.posts;
-    const remote = await loadRemoteCatalogPage({ page: 1, pageSize: 500 });
-    return remote?.posts ?? loadBundledCatalogPage({ page: 1, pageSize: 500 }).posts;
+    return (await resolveBlogPublicCatalogFallbackV3({
+      durable: () => loadDurableCatalogPage({ page: 1, pageSize: 500 }),
+      remote: () => loadRemoteCatalogPage({ page: 1, pageSize: 500 }),
+      bundled: () => loadBundledCatalogPage({ page: 1, pageSize: 500 }),
+    })).posts;
   }
 
   return ((result.data ?? []) as unknown as PublicBlogCatalogPost[])
@@ -339,11 +356,11 @@ async function loadPublicBlogCatalogPageUncached(input: {
     const facets = await loadFacetSnapshot();
     return { posts, total: Number(result.count || 0), ...facets, servedFrom: 'live_view' };
   } catch {
-    const snapshot = await loadDurableCatalogPage({ page, pageSize, destination: input.destination, angle: input.angle });
-    if (snapshot) return snapshot;
-    const remote = await loadRemoteCatalogPage({ page, pageSize, destination: input.destination, angle: input.angle });
-    if (remote) return remote;
-    return bundled();
+    return resolveBlogPublicCatalogFallbackV3({
+      durable: () => loadDurableCatalogPage({ page, pageSize, destination: input.destination, angle: input.angle }),
+      remote: () => loadRemoteCatalogPage({ page, pageSize, destination: input.destination, angle: input.angle }),
+      bundled,
+    });
   }
 }
 
