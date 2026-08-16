@@ -263,53 +263,6 @@ async function runRankTracking(request: NextRequest) {
         errors.push(`rank_alerts insert failed: ${sanitizeDbError(aErr)}`);
       } else {
         alerts = alertRows.length;
-
-        // 디케이 신호 — rank_alerts 기록 성공 시에만 content_creatives 반영
-        const slugs = [...new Set(alertRows.map((r: { slug: string }) => r.slug))];
-        const { data: creatives } = await supabaseAdmin
-          .from('content_creatives')
-          .select('id, slug, generation_meta')
-          .eq('channel', 'naver_blog')
-          .in('slug', slugs);
-
-        const patchTasks: Promise<unknown>[] = [];
-        for (const c of creatives || []) {
-          const row = c as { id: string; slug: string; generation_meta: unknown };
-          const hits = alertRows.filter((r: { slug: string }) => r.slug === row.slug);
-          const worst = [...hits].sort(
-            (a: { delta: number }, b: { delta: number }) => (b.delta ?? 0) - (a.delta ?? 0),
-          )[0] as { query: string; prev_position: number; curr_position: number; delta: number } | undefined;
-          if (!worst) continue;
-          const prevMeta =
-            row.generation_meta && typeof row.generation_meta === 'object'
-              ? (row.generation_meta as Record<string, unknown>)
-              : {};
-          patchTasks.push(
-            Promise.resolve(
-              supabaseAdmin
-                .from('content_creatives')
-                .update({
-                  generation_meta: {
-                    ...prevMeta,
-                    rank_decay_signal: {
-                      at: new Date().toISOString(),
-                      query: worst.query,
-                      prev_position: worst.prev_position,
-                      curr_position: worst.curr_position,
-                      delta: worst.delta,
-                    },
-                  },
-                })
-                .eq('id', row.id),
-            ),
-          );
-        }
-        const settled = await Promise.allSettled(patchTasks);
-        settled.forEach((r, i) => {
-          if (r.status === 'rejected') {
-            errors.push(`generation_meta patch ${i}: ${sanitizeDbError(r.reason)}`);
-          }
-        });
       }
     }
   }
