@@ -8,12 +8,11 @@ export const BLOG_AI_MODEL_CANARY_STAGES_V4: readonly BlogDeepSeekStage[] = [
   'draft_flash',
   'rewrite_pro_high',
   'rewrite_pro_max',
-  'rescue_gemini',
 ] as const;
 
 export type BlogAiModelCanaryCheckV4 = {
   stage: BlogDeepSeekStage;
-  provider: 'deepseek' | 'gemini';
+  provider: 'deepseek';
   model: string;
   deepseekThinking?: 'enabled' | 'disabled';
   reasoningEffort?: 'high' | 'max';

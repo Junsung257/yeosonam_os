@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-> 2026-08-16 release override: 비용 예약, Gemini 제한 rescue, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
+> 2026-08-16 release override: DeepSeek-only 연구 구조화·초안·재작성, 비용 예약, `pilot_3→ramp_10→max_30` 자동 승격/강등, immutable snapshot, 90일 GSC 보강, 분석 canary, 배포·롤백 순서는 `docs/runbooks/blog-orchestrator-v4-production-rollout.md`와 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
 > 2026-08-15 V4 override: 신규 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`의 생성/공개 분리 계약을 따른다. `blog-generate`는 KST 01:05~06:05 계산 전용이고 `blog-publication-controller`는 KST 09:05/12:05/15:05/18:05/21:05 공개 전용이다. 아래 `blog-publisher` 직접 공개·22:05 catch-up 설명은 V4 이전 사고 기록이며 신규 스케줄 근거로 사용하지 않는다.
 

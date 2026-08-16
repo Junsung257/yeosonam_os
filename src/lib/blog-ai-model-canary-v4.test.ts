@@ -10,7 +10,6 @@ describe('Blog V4 AI model canary', () => {
       expect.objectContaining({ stage: 'draft_flash', provider: 'deepseek', model: 'deepseek-v4-flash', deepseekThinking: 'disabled' }),
       expect.objectContaining({ stage: 'rewrite_pro_high', provider: 'deepseek', model: 'deepseek-v4-pro', deepseekThinking: 'enabled', reasoningEffort: 'high' }),
       expect.objectContaining({ stage: 'rewrite_pro_max', provider: 'deepseek', model: 'deepseek-v4-pro', deepseekThinking: 'enabled', reasoningEffort: 'max' }),
-      expect.objectContaining({ stage: 'rescue_gemini', provider: 'gemini', model: 'gemini-2.5-pro' }),
     ]);
   });
 

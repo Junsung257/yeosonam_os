@@ -39,8 +39,6 @@ BLOG_PUBLICATION_RAMP_STAGE=max_30
 BLOG_AUTO_RAMP_ENABLED=true
 BLOG_AUTO_ROLLBACK_ENABLED=true
 BLOG_DAILY_AI_COST_CAP_USD=2
-BLOG_FINAL_REWRITE_PROVIDER=gemini
-BLOG_FINAL_REWRITE_MODEL=gemini-2.5-pro
 BLOG_DAILY_CANDIDATE_CAP=30
 BLOG_REQUIRE_DEMAND_SIGNAL=true
 BLOG_MAX_WEATHER_SHARE_30D=0.20
@@ -60,7 +58,7 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 7. catalog/detail snapshot을 동일 시각에 생성한다. URL 파일명에 본문 SHA-256을 포함하고, 상세 parity가 하나라도 비면 artifact를 만들지 않는다.
 8. production 환경을 `draft_only`, generation disabled로 바꾼 후 `--prod --skip-domain` candidate를 만든다. 아직 운영 도메인에 연결하지 않는다.
 9. candidate에서 `/blog`, 실제 상세, 존재하지 않는 상세의 hard 404, sitemap, RSS, image sitemap을 확인한다. `BLOG_DATABASE_UNAVAILABLE` 고객 문구, soft-404, review-blocked URL 노출이 없어야 한다. 후보 URL 호출은 Vercel protection bypass secret을 사용한다.
-10. `blog-ai-model-canary`로 Flash, Pro high, Pro max, Gemini rescue를 각각 최소 토큰으로 실호출한다. 네 호출 모두 정확한 `OK`, 정상 stop, 모델·provider·thinking 설정과 usage 영수증이 일치해야 한다. 이 canary는 글과 DB를 쓰지 않는다.
+10. `blog-ai-model-canary`로 DeepSeek Flash, Pro high, Pro max를 각각 최소 토큰으로 실호출한다. 세 호출 모두 정확한 `OK`, 정상 stop, 모델·provider·thinking 설정과 usage 영수증이 일치해야 한다. 이 canary는 글과 DB를 쓰지 않는다.
 11. `blog-analytics-canary`를 실행한다. synthetic row가 재조회되고 external delivery job이 0이어야 한다.
 12. `rank-tracking`을 실행한다. 최근 7일 재수집과 90일 chunk cursor가 저장되며 실패 날짜가 있으면 cursor가 전진하지 않아야 한다.
 13. candidate 로그의 `BLOG_DATABASE_UNAVAILABLE`를 배포 시점 이후로 집계하고 production evidence JSON을 생성한다.

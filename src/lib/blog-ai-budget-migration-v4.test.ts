@@ -10,7 +10,7 @@ const rollback = readFileSync(
   'utf8',
 ).toLowerCase();
 
-describe('blog AI budget and Gemini rescue migration', () => {
+describe('blog DeepSeek-only AI budget migration', () => {
   it('uses an atomic day lock before checking and inserting reservations', () => {
     expect(migration).toContain('pg_advisory_xact_lock');
     expect(migration.indexOf('pg_advisory_xact_lock')).toBeLessThan(
@@ -27,10 +27,11 @@ describe('blog AI budget and Gemini rescue migration', () => {
     expect(migration).not.toContain('grant execute on function public.reserve_blog_ai_budget_v4(uuid,integer,text,text,text,numeric,numeric,date)\n  to anon');
   });
 
-  it('allows Gemini only for the final rescue stage', () => {
-    expect(migration).toContain("provider = 'gemini'");
-    expect(migration).toContain("stage = 'rescue_gemini'");
+  it('allows only the three explicit DeepSeek stages', () => {
     expect(migration).toContain("provider = 'deepseek'");
+    expect(migration).toContain("stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max')");
+    expect(migration).not.toContain("provider = 'gemini'");
+    expect(migration).not.toContain('rescue_gemini');
   });
 
   it('has an explicit application rollback', () => {

@@ -13,7 +13,7 @@
 5. 90점 이상이고 hard blocker와 failure가 모두 0이면 `approved_for_slot`이다.
 6. 75~89점은 DeepSeek V4 Pro `reasoning_effort=high`, 두 번째 시도까지 미수렴하면 Pro `max`를 최종 3차 시도로 사용한다.
 7. 사실·수요·claim 충돌은 문장 재작성으로 덮지 않는다. 한 번 재연구 후 계속 실패하면 격리한다.
-8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에만 Gemini 2.5 Pro를 마지막 1회 사용한다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 rescue 대상이 아니다. 한 후보의 모델 호출은 초안을 포함해 최대 3회이며 마지막 실패는 격리한다.
+8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에만 DeepSeek V4 Pro max로 재작성한다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 재작성 대상이 아니다. 한 후보의 writer 호출은 초안을 포함해 최대 3회이며 마지막 실패는 격리한다.
 9. `blog-publication-controller`가 KST 09/12/15/18/21에 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
 10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용한다.
 
@@ -39,8 +39,8 @@ DeepSeek 공식 가격 변경 시점은 2026-08-16 16:00 UTC(2026-08-17 01:00 KS
 - `draft_flash`: `deepseek-v4-flash`, thinking disabled. 검증된 연구 packet 안에서 초안을 빠르게 만든다.
 - `rewrite_pro_high`: `deepseek-v4-pro`, thinking enabled/high. 75~89점의 구조·완결성 실패만 고친다.
 - `rewrite_pro_max`: `deepseek-v4-pro`, thinking enabled/max. 앞선 시도가 미수렴한 경우 승인된 research claim만 사실 경계로 사용해 마지막 3차 초안을 구성한다.
-- `rescue_gemini`: 기본 `gemini-2.5-pro`. 검증된 연구와 claim ledger가 모두 유효한 75점 미만의 표현·구조 실패에만 허용되는 최종 1회 편집기다. 새 사실·숫자·경험·출처를 만들 수 없다.
-- GPT/Claude와 일반적인 공급자 fallback은 블로그 V4에서 금지한다. DeepSeek 장애나 사실 문제를 Gemini로 숨기지 않는다.
+- 자동 연구 구조화: 검토된 registry의 원문 URL을 직접 fetch한 뒤 `deepseek-v4-pro` JSON mode로만 claim packet을 구성한다. 원문이 없거나 fetch가 실패하면 발행하지 않는다.
+- Gemini/GPT/Claude와 일반적인 공급자 fallback은 블로그 V4에서 금지한다. DeepSeek 장애나 사실 문제는 다른 모델로 숨기지 않는다.
 
 재작성 prompt에는 이전 초안, 실패 evidence, research fingerprint, claim fingerprint가 들어간다. 새 숫자·새 사실·새 경험·새 출처 추가를 금지한다.
 
@@ -76,8 +76,6 @@ BLOG_PUBLICATION_RAMP_STAGE=max_30
 BLOG_AUTO_RAMP_ENABLED=true
 BLOG_AUTO_ROLLBACK_ENABLED=true
 BLOG_DAILY_AI_COST_CAP_USD=2
-BLOG_FINAL_REWRITE_PROVIDER=gemini
-BLOG_FINAL_REWRITE_MODEL=gemini-2.5-pro
 BLOG_REQUIRE_DEMAND_SIGNAL=true
 BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
@@ -151,7 +149,7 @@ where r.status = 'approved_for_slot';
 
 ## 장애·롤백
 
-- DeepSeek/Gemini 장애: 비용 reservation과 provider receipt 또는 오류 코드를 남긴다. 알 수 없는 비용은 예약액을 당일 종료까지 보유하고 다음 호출 예산에 포함한다. 낮 시간 controller는 기존 승인 초안만 공개한다.
+- DeepSeek 장애: 비용 reservation과 provider receipt 또는 오류 코드를 남긴다. 알 수 없는 비용은 예약액을 당일 종료까지 보유하고 다음 호출 예산에 포함한다. 다른 모델로 우회하지 않으며 낮 시간 controller는 기존 승인 초안만 공개한다.
 - Naver HUB 장애: legacy Developers API로 fallback한다. 두 경로가 모두 실패해도 검증된 다른 demand가 있으면 진행하고, 없으면 발행하지 않는다.
 - controller가 공개 commit 전에 실패하면 creative는 draft로 남고 run을 격리한다. 공개 commit 뒤 bookkeeping만 실패하면 공개 글을 격리하지 않고 `published_state_sync_error`로 표시해 원장 동기화를 복구한다.
 - 앱 롤백: 먼저 cron을 기존 publisher 경로로 되돌리고 `BLOG_AUTOPUBLISH_MODE=draft_only`로 전환한다.

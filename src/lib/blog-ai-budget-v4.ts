@@ -6,7 +6,6 @@ import {
 } from './blog-deepseek-orchestrator-v4';
 
 export const BLOG_DAILY_AI_COST_CAP_USD_DEFAULT = 2;
-export const BLOG_GEMINI_RESCUE_RESERVATION_USD_DEFAULT = 0.25;
 export const BLOG_AI_MAX_INPUT_TOKENS_PER_CALL_DEFAULT = 65_536;
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -81,31 +80,18 @@ export function evaluateBlogAiBudgetReservationV4(
 }
 
 /**
- * Reserves a conservative maximum before a call. DeepSeek uses the effective
- * tier price and worst-case cache-miss input/output limits. Gemini retains a
- * fixed conservative reservation for the whole KST day unless a billable
- * provider receipt can settle it precisely.
+ * Reserves a conservative maximum before a call. Every blog publication model
+ * stage is DeepSeek-only and uses the effective tier price with worst-case
+ * cache-miss input/output limits.
  */
 export function estimateBlogAiCallReservationUsdV4(input: {
   stage: BlogDeepSeekStage;
   maxOutputTokens: number;
   now?: Date;
   maxInputTokens?: number;
-  geminiReservationUsd?: number;
-  env?: import('./blog-deepseek-orchestrator-v4').BlogFinalRewriteEnvV4;
 }): number | null {
-  const execution = resolveBlogGenerationModelV4(
-    input.stage,
-    input.env ?? (process.env as import('./blog-deepseek-orchestrator-v4').BlogFinalRewriteEnvV4),
-  );
-  if (!execution) return null;
+  resolveBlogGenerationModelV4(input.stage);
   const maxOutputTokens = Math.max(1, Math.trunc(input.maxOutputTokens));
-  if (execution.provider === 'gemini') {
-    return money(finiteNonNegative(
-      input.geminiReservationUsd ?? process.env.BLOG_GEMINI_RESCUE_RESERVATION_USD,
-      BLOG_GEMINI_RESCUE_RESERVATION_USD_DEFAULT,
-    ));
-  }
   const model = input.stage === 'draft_flash'
     ? BLOG_DEEPSEEK_MODELS.draft
     : BLOG_DEEPSEEK_MODELS.rewrite;

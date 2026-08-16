@@ -3360,7 +3360,7 @@ async function processQueueItem(
       ? { passed: false, error: corpusDiversity.error }
       : diversityReport;
     generationMeta.quality_evaluation_v3 = qualityEvaluationV3;
-    if (['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
+    if (['rewrite_pro_high', 'rewrite_pro_max', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
       const researchAttempts = Number(previousOrchestration?.research_attempts || 0)
         + (qualityRouteV4.route === 'reresearch' ? 1 : 0);
       const reason = `blog_quality_v4_${qualityRouteV4.route}:${qualityRouteV4.reasons.join(',')}`;
@@ -4021,10 +4021,10 @@ async function processQueueItem(
       const requestedStage = String(
         item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash',
       ) as BlogDeepSeekStage;
-      const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini'].includes(requestedStage)
+      const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
         ? requestedStage
         : 'draft_flash';
-      const terminal = attemptNumber >= 3 || stage === 'rescue_gemini';
+      const terminal = attemptNumber >= 3;
       const route = terminal ? 'quarantine' : 'rewrite_pro_max';
       const timeoutDurationMs = Math.max(0, Number(timeoutMatch?.[1] || 0));
       const failureReceipt: BlogAiTextResult['receipt'] = err instanceof BlogAiResponseError
@@ -4335,7 +4335,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     `${baseUrl}/og-image.png`;
 
   const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
-  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini'].includes(requestedStage)
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
     ? requestedStage
     : 'draft_flash';
   const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
@@ -4618,7 +4618,7 @@ async function generateFromTopic(
   });
 
   const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
-  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini'].includes(requestedStage)
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
     ? requestedStage
     : 'draft_flash';
   const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);

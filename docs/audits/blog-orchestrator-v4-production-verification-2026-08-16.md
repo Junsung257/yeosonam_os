@@ -1,5 +1,7 @@
 # Blog Orchestrator V4 Production Verification
 
+> 2026-08-16 추가 결정: 이 문서의 Gemini rescue 관련 모델 라우팅은 더 이상 현재 계약이 아니다. DeepSeek-only 전환 결과는 `blog-orchestrator-v4-deepseek-only-verification-2026-08-16.md`가 우선한다. 나머지 운영 데이터·배포 차단 증거는 이 문서에 그대로 유효하다.
+
 기준일: 2026-08-16, Asia/Seoul
 
 ## 판정

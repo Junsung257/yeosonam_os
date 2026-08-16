@@ -9,7 +9,6 @@ import {
   isDeepSeekPeakAt,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
-  resolveBlogGeminiRescueModelV4,
   resolveBlogGenerationModelV4,
   resolveBlogPublicationRampCapV4,
   resolveDeepSeekPriceV4,
@@ -40,7 +39,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     })).toMatchObject({ route: 'reresearch', nextStage: null });
   });
 
-  it('routes 75-89 to Pro high and grounded sub-75 expression failures to Gemini rescue', () => {
+  it('routes 75-89 to Pro high and grounded sub-75 expression failures to DeepSeek Pro max', () => {
     expect(decideBlogQualityRouteV4({ score: 89.99, completedAttempts: 1 }).nextStage).toBe('rewrite_pro_high');
     expect(decideBlogQualityRouteV4({
       score: 74.99,
@@ -48,7 +47,7 @@ describe('blog DeepSeek orchestrator V4', () => {
       researchValid: true,
       claimLedgerValid: true,
       failureReasons: ['primary_decision_not_answered', 'section_purpose_coverage'],
-    })).toMatchObject({ route: 'rescue_gemini', nextStage: 'rescue_gemini' });
+    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
   });
 
   it('uses the third model call for a final max rewrite even when attempt two did not converge', () => {
@@ -82,18 +81,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     })).toMatchObject({ route: 'reresearch', nextStage: null });
   });
 
-  it('treats Gemini rescue as a one-shot final editor', () => {
-    expect(decideBlogQualityRouteV4({
-      score: 79,
-      completedAttempts: 2,
-      lastStage: 'rescue_gemini',
-      researchValid: true,
-      claimLedgerValid: true,
-      failureReasons: ['section_purpose_coverage'],
-    })).toMatchObject({ route: 'quarantine', nextStage: null });
-  });
-
-  it('resolves explicit stage/provider contracts and fails closed on a non-Gemini rescue config', () => {
+  it('resolves every generation stage to an explicit DeepSeek model contract', () => {
     expect(resolveBlogGenerationModelV4('draft_flash')).toMatchObject({
       provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled',
     });
@@ -101,12 +89,10 @@ describe('blog DeepSeek orchestrator V4', () => {
       provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
       deepseekThinking: 'enabled', reasoningEffort: 'high',
     });
-    expect(resolveBlogGeminiRescueModelV4({
-      BLOG_FINAL_REWRITE_PROVIDER: 'gemini', BLOG_FINAL_REWRITE_MODEL: 'gemini-2.5-pro',
-    })).toBe('gemini-2.5-pro');
-    expect(resolveBlogGenerationModelV4('rescue_gemini', {
-      BLOG_FINAL_REWRITE_PROVIDER: 'claude', BLOG_FINAL_REWRITE_MODEL: 'claude-opus',
-    })).toBeNull();
+    expect(resolveBlogGenerationModelV4('rewrite_pro_max')).toMatchObject({
+      provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
+      deepseekThinking: 'enabled', reasoningEffort: 'max',
+    });
   });
 
   it('quarantines only after the third completed model call', () => {

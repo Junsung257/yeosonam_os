@@ -9,8 +9,8 @@ const passing = {
   aiModelCanary: {
     ok: true,
     read_only: true,
-    model_calls: 4,
-    results: Array.from({ length: 4 }, () => ({ passed: true })),
+    model_calls: 3,
+    results: Array.from({ length: 3 }, () => ({ passed: true })),
   },
   analyticsCanary: { ok: true, stored: true, external_delivery_jobs: 0, errors: [] },
   rankTracking: { ok: true, requested_dates: ['2026-08-15'], errors: [] },
@@ -39,7 +39,7 @@ describe('Blog V4 release candidate response contracts', () => {
   it('rejects a missing provider or incomplete model-stage canary', () => {
     expect(() => verifyBlogReleaseCandidateResponsesV4({
       ...passing,
-      aiModelCanary: { ok: false, read_only: true, model_calls: 3, results: [] },
+      aiModelCanary: { ok: false, read_only: true, model_calls: 2, results: [] },
     })).toThrow('ai_model_canary_contract_failed');
   });
 

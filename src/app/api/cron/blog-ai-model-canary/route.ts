@@ -30,13 +30,10 @@ async function runBlogAiModelCanary(request: NextRequest) {
           model: check.model,
           systemPrompt: 'This is a production connectivity canary. Follow the response format exactly.',
           temperature: 0,
-          maxTokens: check.provider === 'gemini' ? 256 : 128,
+          maxTokens: 128,
           requestTimeoutMs: 45_000,
           deepseekThinking: check.deepseekThinking,
           reasoningEffort: check.reasoningEffort,
-          // Gemini 2.5 Pro cannot disable thinking; 128 is its documented
-          // minimum and keeps this connectivity proof bounded.
-          ...(check.provider === 'gemini' ? { thinkingBudget: 128 } : {}),
         },
       );
       const failures = validateBlogAiModelCanaryResultV4({ check, ...generated });
@@ -55,7 +52,7 @@ async function runBlogAiModelCanary(request: NextRequest) {
     }
   }
   return {
-    ok: results.length === 4 && results.every((result) => result.passed === true),
+    ok: results.length === 3 && results.every((result) => result.passed === true),
     read_only: true,
     model_calls: results.length,
     results,

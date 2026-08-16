@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { GoogleGenAI, Type, type GroundingChunk } from '@google/genai';
 import * as cheerio from 'cheerio';
-import { getProviderApiKey } from '@/lib/ai-provider-policy';
+import { generateBlogJSON } from '@/lib/blog-ai-caller';
 import type { BlogContentBrief } from '@/lib/blog-content-brief';
+import { BLOG_DEEPSEEK_MODELS } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
   BLOG_INFORMATION_CLAIM_TYPES,
   BLOG_INFORMATION_SOURCE_TYPES,
@@ -32,7 +32,7 @@ import {
 import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
 import { supabaseAdmin } from '@/lib/supabase';
 
-const AUTO_RESEARCH_MODEL = process.env.BLOG_RESEARCH_MODEL?.trim() || 'gemini-2.5-flash';
+const AUTO_RESEARCH_MODEL = BLOG_DEEPSEEK_MODELS.rewrite;
 const AUTO_RESEARCH_TIMEOUT_MS = Math.max(
   20_000,
   Math.min(120_000, Number(process.env.BLOG_RESEARCH_TIMEOUT_MS) || 90_000),
@@ -77,6 +77,13 @@ type GroundedEvidenceDraft = {
   validFrom?: string | null;
   validUntil?: string | null;
   conditions?: string[];
+};
+
+type GroundingChunk = {
+  web?: {
+    uri?: string;
+    title?: string;
+  };
 };
 
 type GroundedClaimDraft = {
@@ -136,9 +143,6 @@ export type BlogInformationReputableSourceRegistryEntry = {
   researchUrls?: string[];
   researchDestinations?: string[];
 };
-
-let cachedGeminiKey: string | null = null;
-let cachedGeminiClient: GoogleGenAI | null = null;
 
 function clean(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -703,33 +707,6 @@ function groundedWebChunks(chunks: GroundingChunk[]): Array<{ chunkIndex: number
   });
 }
 
-async function resolveGroundingRedirects(chunks: GroundingChunk[]): Promise<GroundingChunk[]> {
-  return Promise.all(chunks.map(async (chunk) => {
-    const uri = chunk.web?.uri;
-    if (!isSafeHttpsUrl(uri)) return chunk;
-    const parsed = new URL(uri);
-    if (parsed.hostname !== 'vertexaisearch.cloud.google.com') return chunk;
-    try {
-      const response = await fetch(uri, {
-        redirect: 'manual',
-        signal: AbortSignal.timeout(5_000),
-        headers: { 'user-agent': 'yeosonam-grounded-research/1.0' },
-      });
-      const location = response.headers.get('location');
-      if (!isSafeHttpsUrl(location)) return chunk;
-      return {
-        ...chunk,
-        web: {
-          ...chunk.web,
-          uri: location,
-        },
-      };
-    } catch {
-      return chunk;
-    }
-  }));
-}
-
 export function buildBlogResearchBundleFromGrounding(input: {
   contentKey: string;
   destination: string;
@@ -1170,75 +1147,6 @@ export function buildBlogGroundingResearchPrompt(input: {
   ].join('\n');
 }
 
-const COMPACT_RESEARCH_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    sources: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          sourceKey: { type: Type.STRING },
-          groundingChunkIndex: { type: Type.INTEGER },
-          publisher: { type: Type.STRING },
-          sourceType: { type: Type.STRING },
-          claimTypes: { type: Type.ARRAY, items: { type: Type.STRING } },
-          country: { type: Type.STRING },
-        },
-        required: ['sourceKey', 'groundingChunkIndex', 'publisher', 'sourceType', 'claimTypes', 'country'],
-      },
-    },
-    evidence: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          evidenceKey: { type: Type.STRING },
-          sourceKey: { type: Type.STRING },
-          excerpt: { type: Type.STRING },
-          sourceLocator: { type: Type.STRING },
-          claimType: { type: Type.STRING },
-          riskLevel: { type: Type.STRING },
-          country: { type: Type.STRING },
-          applicableTo: { type: Type.STRING },
-          normalizedValue: { type: Type.STRING },
-          unit: { type: Type.STRING },
-          currency: { type: Type.STRING },
-          conditions: { type: Type.ARRAY, items: { type: Type.STRING } },
-        },
-        required: [
-          'evidenceKey',
-          'sourceKey',
-          'excerpt',
-          'claimType',
-          'riskLevel',
-          'country',
-          'applicableTo',
-          'normalizedValue',
-          'conditions',
-        ],
-      },
-    },
-    claims: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          claimText: { type: Type.STRING },
-          claimType: { type: Type.STRING },
-          riskLevel: { type: Type.STRING },
-          evidenceKeys: { type: Type.ARRAY, items: { type: Type.STRING } },
-          normalizedValue: { type: Type.STRING },
-          unit: { type: Type.STRING },
-          currency: { type: Type.STRING },
-        },
-        required: ['claimText', 'claimType', 'riskLevel', 'evidenceKeys', 'normalizedValue'],
-      },
-    },
-  },
-  required: ['sources', 'evidence', 'claims'],
-} as const;
-
 export function buildBlogStructuredResearchPrompt(input: {
   destination: string;
   locale: string;
@@ -1332,7 +1240,7 @@ export function buildBlogStructuredResearchPrompt(input: {
             ]
         : [];
   return [
-    'Convert the supplied Google-Search-grounded digest into the required JSON schema.',
+    'Convert the supplied extracts from pre-reviewed source URLs into the required JSON shape.',
     `Current date: ${input.now.toISOString().slice(0, 10)}.`,
     `Destination: ${input.destination}. Locale: ${input.locale}.`,
     `Intent: ${input.brief.intentType}.`,
@@ -3181,15 +3089,6 @@ function allowedPersistedSourceTypes(sourceTypes: string[]): BlogInformationSour
   return [...values];
 }
 
-function geminiClient(): GoogleGenAI {
-  const apiKey = getProviderApiKey('gemini');
-  if (!apiKey) throw new Error('BLOG_RESEARCH_REQUIRES_GOOGLE_AI_API_KEY');
-  if (cachedGeminiClient && cachedGeminiKey === apiKey) return cachedGeminiClient;
-  cachedGeminiKey = apiKey;
-  cachedGeminiClient = new GoogleGenAI({ apiKey });
-  return cachedGeminiClient;
-}
-
 export async function researchBlogInformationAutomatically(input: {
   contentKey: string;
   destination: string;
@@ -3198,7 +3097,7 @@ export async function researchBlogInformationAutomatically(input: {
   now?: Date;
 }): Promise<BlogAutoResearchResult> {
   const now = input.now ?? new Date();
-  let searchQueries: string[] = [];
+  const searchQueries: string[] = [];
   let groundingSourceCount = 0;
   let directSourceCount = 0;
   let directSourceFailures: string[] = [];
@@ -3223,13 +3122,6 @@ export async function researchBlogInformationAutomatically(input: {
       input.brief.intentType,
       input.destination,
     );
-    const reviewedSources = [
-      ...reviewedRegistry.map((entry) => `${entry.hostname} (${entry.sourceType})`),
-      ...reviewedReputableRegistry.flatMap((entry) =>
-        entry.sourceTypes
-          .filter((sourceType) => allowedSourceTypes.includes(sourceType))
-          .map((sourceType) => `${entry.hostname} (${sourceType}; ${entry.reviewNote ?? 'reviewed editorial source'})`)),
-    ];
     const [officialDirectResult, reputableDirectResult] = await Promise.all([
       fetchReviewedDirectPages(reviewedRegistry),
       fetchReviewedDirectPages(directlyReviewedReputableRegistry),
@@ -3239,36 +3131,11 @@ export async function researchBlogInformationAutomatically(input: {
       failures: [...officialDirectResult.failures, ...reputableDirectResult.failures],
     };
     directSourceFailures = directResult.failures;
-    const canUseReviewedPagesOnly = input.brief.sourcePolicy.primarySourcesRequired
-      && officialDirectResult.pages.length > 0;
-    let trustedSearchPages: ReviewedDirectPage[] = [];
-    if (!canUseReviewedPagesOnly) {
-      const groundedResponse = await geminiClient().models.generateContent({
-        model: AUTO_RESEARCH_MODEL,
-        contents: buildBlogGroundingResearchPrompt({ ...input, reviewedSources, now }),
-        config: {
-          temperature: 0.1,
-          maxOutputTokens: 4_096,
-          thinkingConfig: { thinkingBudget: 0 },
-          abortSignal: AbortSignal.timeout(remainingTimeout()),
-          httpOptions: { timeout: remainingTimeout() },
-          tools: [{ googleSearch: {} }],
-        },
-      });
-      const metadata = groundedResponse.candidates?.[0]?.groundingMetadata;
-      searchQueries = metadata?.webSearchQueries ?? [];
-      const resolvedSearchChunks = await resolveGroundingRedirects(metadata?.groundingChunks ?? []);
-      const trustedSearchResult = await fetchTrustedSearchPages({
-        chunks: groundedWebChunks(resolvedSearchChunks),
-        officialRegistry: reviewedRegistry,
-        reputableRegistry: reviewedReputableRegistry,
-        allowedSourceTypes,
-        intent: input.brief.intentType,
-      });
-      trustedSearchPages = trustedSearchResult.pages;
-      directSourceFailures = [...directSourceFailures, ...trustedSearchResult.failures];
-    }
-    const reviewedPages = [...directResult.pages, ...trustedSearchPages]
+    // Publication research is DeepSeek-only. Search APIs may prioritize a
+    // topic, but factual evidence must already exist in the reviewed registry
+    // and be fetched from the original URL. Missing coverage fails closed
+    // instead of invoking another model or trusting a search snippet.
+    const reviewedPages = directResult.pages
       .filter((page, index, all) => all.findIndex((candidate) => candidate.url === page.url) === index)
       .slice(0, MAX_SOURCE_CATALOG);
     directSourceCount = reviewedPages.length;
@@ -3290,7 +3157,7 @@ export async function researchBlogInformationAutomatically(input: {
     ].filter(Boolean).join('\n');
     const eligibleWebChunks = webChunks;
     if (!groundedDigest || eligibleWebChunks.length === 0) {
-      throw new Error('BLOG_RESEARCH_GROUNDING_EMPTY');
+      throw new Error('BLOG_RESEARCH_REVIEWED_SOURCE_EMPTY');
     }
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
@@ -3332,52 +3199,37 @@ export async function researchBlogInformationAutomatically(input: {
       const generateStructuredResponse = async (
         retry = false,
         retryIssues: string[] = [],
-      ) => geminiClient().models.generateContent({
+      ) => generateBlogJSON(buildBlogStructuredResearchPrompt({
+        ...input,
+        digest: groundedDigest,
+        sourceCatalog,
+        now,
+        retry,
+        retryIssues,
+      }), {
         model: AUTO_RESEARCH_MODEL,
-        contents: buildBlogStructuredResearchPrompt({
-          ...input,
-          digest: groundedDigest,
-          sourceCatalog,
-          now,
-          retry,
-          retryIssues,
-        }),
-        config: {
-          temperature: 0,
-          maxOutputTokens: 16_384,
-          thinkingConfig: { thinkingBudget: 0 },
-          responseMimeType: 'application/json',
-          responseJsonSchema: COMPACT_RESEARCH_SCHEMA,
-          abortSignal: AbortSignal.timeout(remainingTimeout()),
-          httpOptions: { timeout: remainingTimeout() },
-        },
+        cascade: false,
+        temperature: 0,
+        maxTokens: 16_384,
+        requestTimeoutMs: remainingTimeout(),
+        deepseekThinking: 'enabled',
+        reasoningEffort: 'high',
       });
-      let structuredResponse = await generateStructuredResponse();
-      finishReason = structuredResponse.candidates?.[0]?.finishReason
-        ? String(structuredResponse.candidates[0].finishReason)
-        : null;
-      let rawText = structuredResponse.text ?? '';
+      let rawText = await generateStructuredResponse();
+      finishReason = 'DEEPSEEK_JSON_MODE_COMPLETE';
       responseTextLength = rawText.length;
       try {
         payload = parseJsonPayload(rawText);
       } catch (error) {
         if (reviewedPages.length === 0 || remainingTimeout() <= 15_000) throw error;
-        structuredResponse = await generateStructuredResponse(true, [
+        rawText = await generateStructuredResponse(true, [
           `invalid_or_truncated_json:${error instanceof Error ? error.message : String(error)}`,
         ]);
-        finishReason = structuredResponse.candidates?.[0]?.finishReason
-          ? String(structuredResponse.candidates[0].finishReason)
-          : finishReason;
-        rawText = structuredResponse.text ?? '';
         responseTextLength += rawText.length;
         payload = parseJsonPayload(rawText);
       }
       if (!payloadHasResearchItems(payload) && reviewedPages.length > 0 && remainingTimeout() > 15_000) {
-        structuredResponse = await generateStructuredResponse(true, ['empty_research_payload']);
-        finishReason = structuredResponse.candidates?.[0]?.finishReason
-          ? String(structuredResponse.candidates[0].finishReason)
-          : finishReason;
-        rawText = structuredResponse.text ?? '';
+        rawText = await generateStructuredResponse(true, ['empty_research_payload']);
         responseTextLength += rawText.length;
         payload = parseJsonPayload(rawText);
       }
@@ -3428,11 +3280,7 @@ export async function researchBlogInformationAutomatically(input: {
           ...(readiness?.issues ?? []),
         ];
         if ((!preliminary.bundle || !readiness?.passed) && retryIssues.length > 0) {
-          structuredResponse = await generateStructuredResponse(true, retryIssues);
-          finishReason = structuredResponse.candidates?.[0]?.finishReason
-            ? String(structuredResponse.candidates[0].finishReason)
-            : finishReason;
-          rawText = structuredResponse.text ?? '';
+          rawText = await generateStructuredResponse(true, retryIssues);
           responseTextLength += rawText.length;
           payload = parseJsonPayload(rawText);
           payload = sanitizeGroundedResearchPayload(payload, input.brief.intentType);

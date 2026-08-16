@@ -9,7 +9,7 @@ alter table public.blog_generation_runs
   add constraint blog_generation_runs_status_check
     check (status in (
       'queued', 'generating', 'approved_for_slot', 'rewrite_pro_high', 'rewrite_pro_max',
-      'rescue_gemini', 'reresearch', 'human_review', 'quarantine', 'publishing',
+      'reresearch', 'human_review', 'quarantine', 'publishing',
       'published', 'failed', 'cancelled'
     ));
 
@@ -20,19 +20,13 @@ alter table public.blog_generation_attempts
 
 alter table public.blog_generation_attempts
   add constraint blog_generation_attempts_stage_check
-    check (stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini')),
+    check (stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max')),
   add constraint blog_generation_attempts_provider_check
-    check (provider in ('deepseek', 'gemini')),
+    check (provider = 'deepseek'),
   add constraint blog_generation_attempts_provider_model_stage_check check (
-    (
-      provider = 'deepseek'
-      and stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max')
-      and model in ('deepseek-v4-flash', 'deepseek-v4-pro')
-    ) or (
-      provider = 'gemini'
-      and stage = 'rescue_gemini'
-      and model ~ '^gemini-[a-zA-Z0-9][a-zA-Z0-9._-]*$'
-    )
+    provider = 'deepseek'
+    and stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max')
+    and model in ('deepseek-v4-flash', 'deepseek-v4-pro')
   );
 
 create table if not exists public.blog_ai_budget_reservations (
@@ -40,8 +34,8 @@ create table if not exists public.blog_ai_budget_reservations (
   budget_day_kst date not null,
   queue_id uuid not null references public.blog_topic_queue(id) on delete cascade,
   attempt_number integer not null check (attempt_number between 1 and 3),
-  stage text not null check (stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini')),
-  provider text not null check (provider in ('deepseek', 'gemini')),
+  stage text not null check (stage in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max')),
+  provider text not null check (provider = 'deepseek'),
   model text not null,
   cap_usd numeric(12,8) not null check (cap_usd > 0),
   requested_usd numeric(12,8) not null check (requested_usd > 0),
@@ -88,8 +82,8 @@ declare
 begin
   if p_requested_usd <= 0 or p_cap_usd <= 0
     or p_attempt_number not between 1 and 3
-    or p_provider not in ('deepseek', 'gemini')
-    or p_stage not in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini') then
+    or p_provider <> 'deepseek'
+    or p_stage not in ('draft_flash', 'rewrite_pro_high', 'rewrite_pro_max') then
     raise exception 'invalid_blog_ai_budget_reservation';
   end if;
 
@@ -200,7 +194,7 @@ create policy blog_ai_budget_reservations_service_role
   using (true) with check (true);
 
 comment on table public.blog_ai_budget_reservations is
-  'Atomic KST-day model spend reservations. Unknown provider cost retains the conservative reservation.';
+  'Atomic KST-day DeepSeek spend reservations for the blog publication pipeline.';
 
 commit;
 

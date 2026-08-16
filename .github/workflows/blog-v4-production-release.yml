@@ -172,8 +172,6 @@ jobs:
           update_env BLOG_AUTO_RAMP_ENABLED true
           update_env BLOG_AUTO_ROLLBACK_ENABLED true
           update_env BLOG_DAILY_AI_COST_CAP_USD 2
-          update_env BLOG_FINAL_REWRITE_PROVIDER gemini
-          update_env BLOG_FINAL_REWRITE_MODEL gemini-2.5-pro
           update_env BLOG_PUBLIC_CATALOG_LKG_URL "https://www.yeosonam.com/blog-snapshots/v3/${catalog_path}"
           update_env BLOG_PUBLIC_CATALOG_LKG_SHA256 "$catalog_sha"
           update_env BLOG_PUBLIC_DETAIL_LKG_URL "https://www.yeosonam.com/blog-snapshots/v3/${detail_path}"

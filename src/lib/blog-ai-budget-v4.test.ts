@@ -33,7 +33,7 @@ describe('blog AI budget V4', () => {
       .toBe(false);
   });
 
-  it('reserves DeepSeek at worst-case cache-miss prices and Gemini conservatively', () => {
+  it('reserves every DeepSeek stage at worst-case cache-miss prices', () => {
     const deepseek = estimateBlogAiCallReservationUsdV4({
       stage: 'rewrite_pro_high',
       maxInputTokens: 64_000,
@@ -41,12 +41,12 @@ describe('blog AI budget V4', () => {
       now: new Date('2026-08-17T11:00:00.000Z'),
     });
     expect(deepseek).toBeCloseTo((64_000 * 0.66 + 8_192 * 1.98) / 1_000_000, 8);
-    expect(estimateBlogAiCallReservationUsdV4({
-      stage: 'rescue_gemini', maxOutputTokens: 8_192,
-    })).toBe(0.25);
-    expect(estimateBlogAiCallReservationUsdV4({
-      stage: 'rescue_gemini', maxOutputTokens: 8_192,
-      env: { BLOG_FINAL_REWRITE_PROVIDER: 'claude', BLOG_FINAL_REWRITE_MODEL: 'claude-opus' },
-    })).toBeNull();
+    const finalRewrite = estimateBlogAiCallReservationUsdV4({
+      stage: 'rewrite_pro_max',
+      maxInputTokens: 64_000,
+      maxOutputTokens: 8_192,
+      now: new Date('2026-08-17T11:00:00.000Z'),
+    });
+    expect(finalRewrite).toBe(deepseek);
   });
 });

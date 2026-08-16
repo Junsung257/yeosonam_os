@@ -11,23 +11,14 @@ export const BLOG_DEEPSEEK_MODELS = {
   rewrite: 'deepseek-v4-pro',
 } as const;
 
-export const BLOG_GEMINI_RESCUE_DEFAULT_MODEL = 'gemini-2.5-pro' as const;
-
-export interface BlogFinalRewriteEnvV4 {
-  BLOG_FINAL_REWRITE_PROVIDER?: string;
-  BLOG_FINAL_REWRITE_MODEL?: string;
-}
-
 export type BlogDeepSeekStage =
   | 'draft_flash'
   | 'rewrite_pro_high'
-  | 'rewrite_pro_max'
-  | 'rescue_gemini';
+  | 'rewrite_pro_max';
 export type BlogQualityRouteV4 =
   | 'approved_for_slot'
   | 'rewrite_pro_high'
   | 'rewrite_pro_max'
-  | 'rescue_gemini'
   | 'reresearch'
   | 'human_review'
   | 'quarantine';
@@ -44,7 +35,7 @@ export interface BlogQualityRoutingInputV4 {
   researchAttempts?: number;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   humanApproved?: boolean;
-  /** A rescue model is allowed only when both inputs are explicitly true. */
+  /** A final DeepSeek rewrite is allowed only when both inputs are explicitly true. */
   researchValid?: boolean;
   claimLedgerValid?: boolean;
   lastStage?: BlogDeepSeekStage | null;
@@ -130,24 +121,14 @@ function isExpressionOrStructureFailure(reason: string): boolean {
   return EXPRESSION_OR_STRUCTURE_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
-export function resolveBlogGeminiRescueModelV4(
-  env: BlogFinalRewriteEnvV4 = process.env as BlogFinalRewriteEnvV4,
-): string | null {
-  const provider = (env.BLOG_FINAL_REWRITE_PROVIDER || 'gemini').trim().toLowerCase();
-  const model = (env.BLOG_FINAL_REWRITE_MODEL || BLOG_GEMINI_RESCUE_DEFAULT_MODEL).trim();
-  if (provider !== 'gemini' || !/^gemini-[a-z0-9][a-z0-9._-]*$/i.test(model)) return null;
-  return model;
-}
-
 export function resolveBlogGenerationModelV4(
   stage: BlogDeepSeekStage,
-  env: BlogFinalRewriteEnvV4 = process.env as BlogFinalRewriteEnvV4,
 ): {
-  provider: 'deepseek' | 'gemini';
+  provider: 'deepseek';
   model: string;
   deepseekThinking?: 'enabled' | 'disabled';
   reasoningEffort?: 'high' | 'max';
-} | null {
+} {
   if (stage === 'draft_flash') {
     return { provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled' };
   }
@@ -163,8 +144,10 @@ export function resolveBlogGenerationModelV4(
       deepseekThinking: 'enabled', reasoningEffort: 'max',
     };
   }
-  const model = resolveBlogGeminiRescueModelV4(env);
-  return model ? { provider: 'gemini', model } : null;
+  return {
+    provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
+    deepseekThinking: 'enabled', reasoningEffort: 'max',
+  };
 }
 
 export function decideBlogQualityRouteV4(
@@ -216,16 +199,6 @@ export function decideBlogQualityRouteV4(
     };
   }
 
-
-  // A top-tier rescue is a one-shot final editor. If it still fails, another
-  // model pass would be model magic rather than deterministic remediation.
-  if (input.lastStage === 'rescue_gemini') {
-    return {
-      route: 'quarantine', nextStage: null, publishable: false,
-      reasons: unique(['gemini_rescue_failed', ...allReasons]), maxAttempts: 3,
-    };
-  }
-
   if (score >= 75 && completedAttempts >= 2) {
     const improvement = input.previousScore == null ? null : score - input.previousScore;
     return {
@@ -252,7 +225,7 @@ export function decideBlogQualityRouteV4(
   const expressionOnly = allReasons.length > 0 && allReasons.every(isExpressionOrStructureFailure);
   if (explicitlyGrounded && expressionOnly) {
     return {
-      route: 'rescue_gemini', nextStage: 'rescue_gemini', publishable: false,
+      route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max', publishable: false,
       reasons: unique(['quality_score_below_75_expression_or_structure_only', ...allReasons]),
       maxAttempts: 3,
     };

@@ -8,9 +8,9 @@ export function verifyBlogReleaseCandidateResponsesV4(input: {
   const modelResults = input.aiModelCanary.results;
   if (input.aiModelCanary.ok !== true
     || input.aiModelCanary.read_only !== true
-    || Number(input.aiModelCanary.model_calls) !== 4
+    || Number(input.aiModelCanary.model_calls) !== 3
     || !Array.isArray(modelResults)
-    || modelResults.length !== 4
+    || modelResults.length !== 3
     || modelResults.some((result) => (
       !result || typeof result !== 'object' || (result as Record<string, unknown>).passed !== true
     ))) {

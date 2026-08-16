@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('src/app/api/cron/blog-publisher/route.ts', 'utf8');
 const controller = readFileSync('src/app/api/cron/blog-publication-controller/route.ts', 'utf8');
+const autoResearch = readFileSync('src/lib/blog-auto-research.ts', 'utf8');
 
 describe('blog publisher V4 orchestration wiring', () => {
   it('reserves budget before the only provider-call boundary and settles receipts', () => {
@@ -19,11 +20,18 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(1);
   });
 
-  it('queues the grounded Gemini rescue route and never treats it as publishable directly', () => {
-    expect(source).toContain("['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini', 'reresearch', 'quarantine']");
+  it('keeps every publication model stage DeepSeek-only', () => {
+    expect(source).toContain("['rewrite_pro_high', 'rewrite_pro_max', 'reresearch', 'quarantine']");
     expect(source).toContain("researchValid:");
     expect(source).toContain("claimLedgerValid:");
-    expect(source).toContain("stage === 'rescue_gemini'");
+    expect(source).not.toContain('rescue_gemini');
+    expect(source).not.toContain('gemini-2.5-pro');
+    expect(autoResearch).toContain('const AUTO_RESEARCH_MODEL = BLOG_DEEPSEEK_MODELS.rewrite');
+    expect(autoResearch).toContain('generateBlogJSON(buildBlogStructuredResearchPrompt');
+    expect(autoResearch).toContain('cascade: false');
+    expect(autoResearch).not.toContain('GoogleGenAI');
+    expect(autoResearch).not.toContain("getProviderApiKey('gemini')");
+    expect(autoResearch).not.toContain('.models.generateContent({');
   });
 
   it('publishes only the immutable selected attempt, never whichever attempt happens to be latest', () => {

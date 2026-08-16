@@ -26,7 +26,7 @@
     {
       "version": "20260816015102",
       "file": "supabase/migrations/20260816015102_blog_ai_budget_and_gemini_rescue.sql",
-      "sha256": "e7b28fea1eb6890e69e4096b40b274d78b15ed1f4f0219a1ebdacad77fe76c10"
+      "sha256": "b1ffcc6898bddbf6453a04ce787993b1f4bb87daa7543b1a029f22bfc4dfa614"
     },
     {
       "version": "20260816093000",
