@@ -111,6 +111,8 @@ create index if not exists idx_blog_generation_runs_agent_task
   on public.blog_generation_runs(agent_task_id) where agent_task_id is not null;
 create index if not exists idx_blog_generation_runs_creative
   on public.blog_generation_runs(content_creative_id) where content_creative_id is not null;
+create index if not exists idx_blog_generation_runs_selected_attempt
+  on public.blog_generation_runs(selected_attempt_id) where selected_attempt_id is not null;
 create index if not exists idx_blog_generation_attempts_queue
   on public.blog_generation_attempts(queue_id, attempt_number desc);
 create index if not exists idx_blog_generation_attempts_model_cost

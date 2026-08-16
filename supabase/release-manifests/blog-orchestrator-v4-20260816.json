@@ -16,7 +16,7 @@
     {
       "version": "20260815120135",
       "file": "supabase/migrations/20260815120135_blog_deepseek_orchestrator_v4.sql",
-      "sha256": "3a44eea7127f72d59854c7868fcacb25da13f70de6d6906dab6b169be60f28be"
+      "sha256": "09d22b70b596af5c1e063e70269b8dfd3a3174a386c2efbf8758829c0094b1c5"
     },
     {
       "version": "20260815211325",

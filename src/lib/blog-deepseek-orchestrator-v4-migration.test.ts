@@ -16,6 +16,7 @@ describe('blog DeepSeek orchestrator V4 migration contract', () => {
     expect(migration).toContain("conname = 'blog_generation_runs_selected_attempt_fk'");
     expect(migration).toContain('idx_blog_generation_runs_created_at');
     expect(migration).toContain('idx_blog_generation_runs_creative');
+    expect(migration).toContain('idx_blog_generation_runs_selected_attempt');
   });
 
   it('keeps all orchestration evidence service-role only', () => {
