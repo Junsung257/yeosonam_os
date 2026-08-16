@@ -233,9 +233,9 @@ export function checkCliche(blog_html: string, blog_type: 'product' | 'info' = '
 }
 
 /**
- * Hook 게이트 — 첫 H1 다음 200자 안에 구체적 트리거 1개 이상.
- * 트리거: 숫자 1개 이상 + (질문 마크 OR 가격 표현 OR 시간 표현 OR 비교 표현)
- * Why: AI가 쓴 평탄한 도입부 ("...꿈꾸시나요?") 차단. 검색자 3초 이탈 방어.
+ * Hook 게이트 — 첫 H1 다음 200자 안에 독자가 바로 쓸 수 있는 답 또는 구체적 트리거가 있는지 확인한다.
+ * V3 정보성 글은 숫자·질문을 억지로 넣지 않아도, 선택·묶음·분리 기준을 답변 우선으로 제시하면 통과한다.
+ * Legacy 글은 기존 숫자/질문/가격/시간/비교 트리거 정책을 유지한다.
  */
 export function checkHook(blog_html: string, flexibleInformationalBrief = false): GateResult {
   // 마크다운 원문에서 H1 위치를 명시적으로 찾는다 (stripMarkup 후엔 # 마커가 사라져 H1 식별 불가).
@@ -269,14 +269,16 @@ export function checkHook(blog_html: string, flexibleInformationalBrief = false)
   const hasTimeHook = /(\d+분|\d+시간|즉시|당일|바로)/.test(intro);
   const hasCompare = /(시중가|단품|직접|비교|보다|나눠|분리|따로|포함\/불포함)/.test(intro);
   const hasDecisionAnswer = /(?:고르|선택|결정).*(?:확인|비교|우선순위|일정|조건|체력|시간)|(?:확인|비교).*(?:고르|선택|결정)/.test(intro);
+  const hasDecisionGrouping = /(?:묶|함께|같은\s*(?:날|일정)).*(?:따로|별도|나누|분리|비교)|(?:따로|별도|나누|분리).*(?:묶|함께|비교)/.test(intro);
 
-  if (flexibleInformationalBrief && hasDecisionAnswer) {
+  if (flexibleInformationalBrief && (hasDecisionAnswer || hasDecisionGrouping)) {
     return {
       gate: 'hook',
       passed: true,
       evidence: {
         intro_preview: intro.slice(0, 80),
         hasDecisionAnswer,
+        hasDecisionGrouping,
         policy: 'v3_answer_first_without_forced_numeric_hook',
       },
     };
@@ -294,7 +296,8 @@ export function checkHook(blog_html: string, flexibleInformationalBrief = false)
       : '도입부 200자에 구체 갈고리(숫자·질문·가격·시간·비교 트리거) 부족 — AI 평서문 패턴 의심',
     evidence: {
       intro_preview: intro.slice(0, 80),
-      hasNumber, hasQuestion, hasPriceHook, hasTimeHook, hasCompare, triggers,
+      hasNumber, hasQuestion, hasPriceHook, hasTimeHook, hasCompare,
+      hasDecisionAnswer, hasDecisionGrouping, triggers,
     },
   };
 }
