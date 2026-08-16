@@ -483,7 +483,7 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'itinerary_timeline') {
     return [
       '[ARCHETYPE CONTRACT — itinerary_timeline]',
-      '- The first paragraph must give a concrete route-grouping answer, contain "동선" or "이동 시간", and use only entity names already present in the approved claims.',
+      '- The first paragraph must give a concrete route-grouping answer, contain "동선", and use only entity names already present in the approved claims.',
       '- Give the reader an executable sequence: what to group first, what to keep separate, and what to leave for the last slot. These are editorial instructions, not new facts.',
       '- Add one H2 for the recommended grouping and one H2 for the execution order. Use short Markdown bullets with action verbs such as 묶어 비교하세요, 별도 후보로 두세요, 이어서 확인하세요, or 마지막 순서로 검토하세요.',
       '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
@@ -493,7 +493,7 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'route_walkthrough') {
     return [
       '[ARCHETYPE CONTRACT — route_walkthrough]',
-      '- The first paragraph must name the recommended decision rule and contain "동선", "이동 시간", or "이동수단".',
+      '- The first paragraph must name the recommended decision rule and contain "동선" or "이동수단".',
       '- Organize the article by departure choice, movement evidence, and final selection. Use only route/entity names already present in approved claims.',
       '- End with distinct reader actions, not a generic three-question block.',
     ];
@@ -581,12 +581,15 @@ export function buildDeepSeekRewritePromptV4(input: {
       ]),
       '- When an approved claim is used, copy it as its own complete sentence and put one linked citation on the next line.',
       '- The ledger must contain only the approved claim sentences actually copied into the visible article.',
+      '- In the ledger, copy each selected claim label exactly: use its supplied claim_type and risk_level. Never replace duration or climate with a generic factual label.',
       `- Required internal link markdown: [${packet.primaryQuery} 글 모아보기](${packet.internalLink})`,
       '- Never emit a bare URL. Copy the exact Markdown link forms supplied above.',
       `- Use exactly ${packet.approvedClaims.length} factual sentences: each selected approved claim once. Do not omit or paraphrase them.`,
       '- Apart from those approved sentences, you may write only source-neutral editorial guidance: a direct decision answer, reader-action instructions, headings, and reader-choice questions.',
       '- Editorial guidance must not assert a property of any destination, attraction, hotel, route, weather pattern, price, schedule, crowd, safety condition, or policy.',
-      '- Start with one 2-3 sentence paragraph that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',
+      '- Every non-approved editorial sentence must be an instruction ending in 하세요, 두세요, 검토하세요, 비교하세요, or 결정하세요. Do not end editorial prose with 입니다, 합니다, 됩니다, 있습니다, 없습니다, or 수 있습니다.',
+      '- Never shorten or repeat a schedule/measurement outside its exact approved sentence. Words such as 주말, 평일, 오전, 오후, 저녁, 밤, 시, 분, 시간, km, or m belong only inside an exact approved claim.',
+      '- Start with one 2-3 sentence paragraph of source-neutral reader actions that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',
       `- Group the selected claims into ${packet.approvedClaims.length <= 2 ? '1-2' : '2-4'} short evidence H2 sections by decision purpose. Never create one H2 per claim.`,
       '- Put 1-4 related approved claims in each evidence section. Every selected claim must still appear exactly once with its own citation.',
       '- Add at most one distinct reader instruction or question per evidence section, not after every claim. Do not repeat a four-word Korean phrase more than twice.',

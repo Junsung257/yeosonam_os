@@ -175,6 +175,9 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
     expect(prompt).toContain('what to group first, what to keep separate');
     expect(prompt).toContain('Do not finish with generic questions');
+    expect(prompt).toContain('Every non-approved editorial sentence must be an instruction');
+    expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
+    expect(prompt).toContain('Never replace duration or climate with a generic factual label');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
     expect(prompt).not.toContain('Do not write a table, itinerary');
     expect(prompt).not.toContain('route pairings unless');
