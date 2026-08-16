@@ -463,14 +463,16 @@ describe('blog publisher quota recovery contract', () => {
   it('persists incomplete provider calls as failed attempts and never evaluates partial text', () => {
     const source = routeSource();
 
-    expect(source).toContain('const providerFailureCode = err instanceof BlogAiResponseError');
+    expect(source).toContain('const providerFailureCode = classifyBlogAiProviderFailure(err)');
     expect(source).toContain("attemptStatus: 'failed'");
     expect(source).toContain("hardBlockers: ['model_output_incomplete']");
     expect(source).toContain('provider_finish_reason: failureReceipt.finishReason');
-    expect(source).toContain("next_stage: terminal ? null : 'rewrite_pro_max'");
+    expect(source).toContain("next_stage: terminal ? null : retrySameStage ? stage : 'rewrite_pro_max'");
     expect(source).toContain('forceQueue: !terminal');
-    expect(source).toContain("? 'blog_ai_generation_timeout'");
-    expect(source).toContain("finishReason: 'timeout'");
+    expect(source).toContain("'blog_ai_transport_error'");
+    expect(source).toContain("? 'timeout'");
+    expect(source).toContain("readLatestBlogModelCallAttemptNumberV4(");
+    expect(source).toContain('attemptNumber: generationAttemptNumber');
     expect(source).toContain("deepseekThinking: 'disabled'");
     expect(source).toContain('thinking: generation.receipt.thinkingMode');
     expect(source).not.toContain("generationStage === 'rewrite_pro_max' ? 'max' : 'high'");

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { nextBlogModelCallAttemptNumberV4 } from './blog-generation-run-v4';
 
 describe('durable blog generation run source contract', () => {
   const source = readFileSync('src/lib/blog-generation-run-v4.ts', 'utf8');
@@ -30,6 +31,15 @@ describe('durable blog generation run source contract', () => {
     expect(source).toContain(".rpc('settle_blog_ai_budget_v4'");
     expect(source).toContain('p_retain_reservation: actualUsd == null');
     expect(source).toContain('p_receipt: input.receipt ?? {}');
+  });
+
+  it('advances past a retained transport-failure reservation instead of colliding forever', () => {
+    expect(source).toContain(".from('blog_ai_budget_reservations')");
+    expect(source).toContain(".order('attempt_number', { ascending: false })");
+    expect(nextBlogModelCallAttemptNumberV4(0)).toBe(1);
+    expect(nextBlogModelCallAttemptNumberV4(1)).toBe(2);
+    expect(nextBlogModelCallAttemptNumberV4(2)).toBe(3);
+    expect(nextBlogModelCallAttemptNumberV4(3)).toBe(3);
   });
 
   it('persists provider-neutral Gemini token receipts without fabricating a price', () => {

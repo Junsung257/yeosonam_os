@@ -70,6 +70,24 @@ describe('blog-ai-caller — 공개 API', () => {
     mod._resetBlogAiClientCacheForTest();
   });
 
+  it('classifies retryable DeepSeek transport and provider failures without swallowing application bugs', async () => {
+    const { classifyBlogAiProviderFailure } = await import('./blog-ai-caller');
+
+    expect(classifyBlogAiProviderFailure(
+      new Error('Invalid response body while trying to fetch: read ECONNRESET'),
+    )).toBe('blog_ai_transport_error');
+    expect(classifyBlogAiProviderFailure(
+      Object.assign(new Error('Too many requests'), { status: 429 }),
+    )).toBe('blog_ai_rate_limited');
+    expect(classifyBlogAiProviderFailure(
+      Object.assign(new Error('Bad gateway'), { status: 502 }),
+    )).toBe('blog_ai_provider_unavailable');
+    expect(classifyBlogAiProviderFailure(
+      new Error('blog_ai_generation_timeout:40000ms'),
+    )).toBe('blog_ai_generation_timeout');
+    expect(classifyBlogAiProviderFailure(new Error('invalid article schema'))).toBeNull();
+  });
+
   it('_resetBlogAiClientCacheForTest / generateBlogJSON / hasBlogApiKey 가 export', async () => {
     const mod = await import('./blog-ai-caller');
     expect(typeof mod._resetBlogAiClientCacheForTest).toBe('function');

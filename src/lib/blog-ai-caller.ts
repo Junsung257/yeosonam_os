@@ -107,6 +107,12 @@ export type BlogAiResponseErrorCode =
   | 'blog_ai_incomplete_response'
   | 'blog_ai_malformed_json_response';
 
+export type BlogAiProviderFailureCode = BlogAiResponseErrorCode
+  | 'blog_ai_generation_timeout'
+  | 'blog_ai_transport_error'
+  | 'blog_ai_rate_limited'
+  | 'blog_ai_provider_unavailable';
+
 /**
  * Fail-closed provider response error.
  *
@@ -135,6 +141,50 @@ export class BlogAiResponseError extends Error {
     this.receipt = input.receipt;
     this.outputCharacters = input.outputCharacters;
   }
+}
+
+/**
+ * Converts provider failures that happened after a budget reservation into a
+ * durable, retryable error code. Unknown application errors remain null so a
+ * prompt or schema bug is never mislabeled as a transient provider incident.
+ */
+export function classifyBlogAiProviderFailure(
+  error: unknown,
+): BlogAiProviderFailureCode | null {
+  if (error instanceof BlogAiResponseError) return error.code;
+
+  const record = error && typeof error === 'object'
+    ? error as { status?: unknown; code?: unknown; message?: unknown; cause?: unknown }
+    : null;
+  const status = Number(record?.status);
+  const code = String(record?.code ?? '').trim();
+  const message = error instanceof Error
+    ? error.message
+    : String(record?.message ?? error ?? '');
+  const cause = record?.cause instanceof Error
+    ? `${record.cause.name}:${record.cause.message}`
+    : String(record?.cause ?? '');
+  const signal = `${code} ${message} ${cause}`;
+
+  if (/blog_ai_generation_timeout:\d+ms/i.test(signal)) {
+    return 'blog_ai_generation_timeout';
+  }
+  if (status === 429 || /(?:rate.?limit|too many requests|\b429\b)/i.test(signal)) {
+    return 'blog_ai_rate_limited';
+  }
+  if (
+    (Number.isFinite(status) && status >= 500 && status <= 599)
+    || /(?:provider[_ -]?unavailable|bad gateway|service unavailable|gateway timeout)/i.test(signal)
+  ) {
+    return 'blog_ai_provider_unavailable';
+  }
+  if (
+    /(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR_|fetch failed|network|socket hang up|connection (?:error|reset|closed))/i
+      .test(signal)
+  ) {
+    return 'blog_ai_transport_error';
+  }
+  return null;
 }
 
 function assertCompleteProviderResponse(input: {
