@@ -43,6 +43,7 @@ BLOG_DAILY_CANDIDATE_CAP=30
 BLOG_REQUIRE_DEMAND_SIGNAL=true
 BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
+DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1
 ```
 
 DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
