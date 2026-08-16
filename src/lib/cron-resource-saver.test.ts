@@ -67,6 +67,8 @@ describe('cron resource saver', () => {
       'rank-tracking',
       'blog-data-readiness',
       'blog-indexing-worker',
+      'blog-ai-model-canary',
+      'blog-analytics-canary',
       'analytics-delivery',
     ]) {
       expect(
@@ -88,6 +90,8 @@ describe('cron resource saver', () => {
       'rank-tracking',
       'blog-data-readiness',
       'blog-indexing-worker',
+      'blog-ai-model-canary',
+      'blog-analytics-canary',
       'analytics-delivery',
     ]) {
       expect(
