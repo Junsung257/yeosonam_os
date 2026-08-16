@@ -55,4 +55,31 @@ describe('blog quality gate V3 flexible brief', () => {
     });
     expect(checkHook(markdown, false).passed).toBe(false);
   });
+
+  it('accepts an answer-first itinerary grouping rule without clickbait triggers', () => {
+    const markdown = [
+      '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '',
+      '일정을 짤 때는 다낭 시내에서 가까운 Marble Mountains와 Linh Ung Pagoda를 한 묶음으로 두고, 서쪽으로 떨어진 Ba Na Hills와 Hai Van Pass는 별도 후보로 비교하는 방식이 이동 부담을 줄이는 실용적인 기준입니다.',
+    ].join('\n');
+
+    expect(checkHook(markdown, true)).toMatchObject({
+      passed: true,
+      evidence: {
+        hasDecisionGrouping: true,
+        policy: 'v3_answer_first_without_forced_numeric_hook',
+      },
+    });
+    expect(checkHook(markdown, false).passed).toBe(false);
+  });
+
+  it('still rejects a generic inspirational introduction for a flexible brief', () => {
+    const markdown = [
+      '# 다낭 여행',
+      '',
+      '다낭 여행은 누구에게나 설레는 경험이 될 수 있습니다. 다양한 매력을 천천히 둘러보며 나만의 특별한 추억을 만들어 보세요.',
+    ].join('\n');
+
+    expect(checkHook(markdown, true).passed).toBe(false);
+  });
 });
