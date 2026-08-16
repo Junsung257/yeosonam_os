@@ -10,6 +10,7 @@ import {
   createBlogInformationSourceContentHash,
   normalizeBlogInformationSourceSnapshot,
   type BlogInformationAuthorityLevel,
+  type BlogInformationClaimInput,
   type BlogInformationClaimType,
   type BlogInformationEvidenceInput,
   type BlogInformationEvidenceRiskLevel,
@@ -563,16 +564,77 @@ export function isAutoResearchNumericClaimTypeCompatible(
   claimText: string,
   claimType: BlogInformationClaimType,
 ): boolean {
-  // The deterministic classifier is intentionally narrower than the research
-  // taxonomy. Apply it only to the observed unsafe ambiguity: a digit-bearing
-  // clock/schedule claim mislabeled as elapsed duration. Other claim types keep
-  // their existing evidence and publish-gate validation contracts.
+  // A numeric duration must describe elapsed travel, transfer, stay, or visit
+  // length. Reject distances, clock times, dates, and other measurements even
+  // when the model labels them as duration.
   if (claimType !== 'duration' || !/\d/.test(claimText)) return true;
   const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
   if (compatibility.passed) return true;
-  const hasClockOfDay = /(?:오전|오후|\b(?:a\.?m\.?|p\.?m\.?)\b|\d{1,2}:\d{2}|\d{1,2}\s*시\s*(?:이전|이후|부터|까지|경|정각))/iu.test(claimText);
-  const hasElapsedDuration = /(?:\d+(?:\.\d+)?\s*(?:분|시간)|소요|걸(?:립니다|린다|려)|이동\s*시간|travel\s*time|\bdrive\b|\bminutes?\b|\bhours?\b)/iu.test(claimText);
-  return !hasClockOfDay || hasElapsedDuration;
+  const hasShortElapsedDuration = /\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/iu.test(claimText);
+  const hasLongDurationUnit = /(?:\d+(?:\.\d+)?\s*(?:일(?!\s*차)|박|주|개월|달)|\d+(?:\.\d+)?\s*년(?:간|동안|이내|이하|이상))/iu.test(claimText);
+  const hasLongDurationContext = /(?:소요|걸(?:립니다|린다|려)|체류|머물|방문|이동|환승|여정|여행|투숙|숙박|유효|허용|기간|stay|visit|travel)/iu.test(claimText);
+  const hasScheduleContext = /(?:운영|영업|개장|폐장|첫차|막차|상영|공연|매일|주말|평일|연중무휴|opening|closing|open\s+hours?|schedule)/iu.test(claimText);
+  const hasExplicitElapsedContext = /(?:소요|걸(?:립니다|린다|려)|체류|머물|방문|이동|환승|여정|여행|투숙|숙박|기간|travel\s*time|\bdrive\b|stay|visit)/iu.test(claimText);
+  return (hasShortElapsedDuration && (!hasScheduleContext || hasExplicitElapsedContext))
+    || (hasLongDurationUnit && hasLongDurationContext);
+}
+
+const AUTO_RESEARCH_CLAIM_ENTITY_STOP_WORDS = new Set([
+  'the', 'and', 'from', 'to', 'road', 'route', 'city', 'travel', 'tour',
+  '다낭', '베트남', '여행', '여행자', '도로', '도시', '거리', '길이', '높이', '해발',
+  '시간', '차량', '차로', '이동', '소요', '분', '일', '박', '주', '개월', '달', '년',
+  'km', 'm', '입니다', '있습니다', '합니다', '됩니다', '걸립니다',
+]);
+
+function normalizeAutoResearchClaimEntityTokens(claimText: string): Set<string> {
+  return new Set((claimText.toLocaleLowerCase('ko-KR').match(/[a-z0-9]+|[가-힣]+/gu) ?? [])
+    .map((token) => token.replace(/(?:에서는|으로부터|까지는|에게서|에서|까지|으로|로는|에는|은|는|이|가|을|를|의)$/u, ''))
+    .filter((token) => token.length >= 2 && !/^\d+(?:\.\d+)?$/u.test(token))
+    .filter((token) => !AUTO_RESEARCH_CLAIM_ENTITY_STOP_WORDS.has(token)));
+}
+
+function autoResearchClaimsDescribeSameEntity(
+  left: BlogInformationClaimInput,
+  right: BlogInformationClaimInput,
+): boolean {
+  const leftTokens = normalizeAutoResearchClaimEntityTokens(left.claimText);
+  const rightTokens = normalizeAutoResearchClaimEntityTokens(right.claimText);
+  const sharedTokens = [...leftTokens].filter((token) => rightTokens.has(token));
+  return sharedTokens.length >= 2
+    || sharedTokens.some((token) => token.length >= 4);
+}
+
+function autoResearchClaimRiskRank(riskLevel: BlogInformationEvidenceRiskLevel): number {
+  return riskLevel === 'HIGH' ? 3 : riskLevel === 'MEDIUM' ? 2 : 1;
+}
+
+/** Merge the same sourced fact while retaining every supporting evidence key. */
+export function mergeDuplicateAutoResearchClaims(
+  claims: BlogInformationClaimInput[],
+): BlogInformationClaimInput[] {
+  return claims.reduce<BlogInformationClaimInput[]>((merged, claim) => {
+    const normalizedValue = comparableValue(claim.extractedValue?.normalizedValue);
+    const normalizedUnit = comparableValue(claim.extractedValue?.unit);
+    const normalizedCurrency = comparableValue(claim.extractedValue?.currency);
+    const duplicate = merged.find((candidate) =>
+      Boolean(normalizedValue)
+      && Boolean(normalizedUnit || normalizedCurrency)
+      && candidate.claimType === claim.claimType
+      && comparableValue(candidate.extractedValue?.normalizedValue) === normalizedValue
+      && comparableValue(candidate.extractedValue?.unit) === normalizedUnit
+      && comparableValue(candidate.extractedValue?.currency) === normalizedCurrency
+      && autoResearchClaimsDescribeSameEntity(candidate, claim));
+    if (!duplicate) {
+      merged.push({ ...claim, evidenceKeys: [...new Set(claim.evidenceKeys)] });
+      return merged;
+    }
+    duplicate.evidenceKeys = [...new Set([...duplicate.evidenceKeys, ...claim.evidenceKeys])];
+    duplicate.requiresEvidence ||= claim.requiresEvidence;
+    if (autoResearchClaimRiskRank(claim.riskLevel) > autoResearchClaimRiskRank(duplicate.riskLevel)) {
+      duplicate.riskLevel = claim.riskLevel;
+    }
+    return merged;
+  }, []);
 }
 
 function toSourceType(
@@ -963,7 +1025,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
     && Math.min(...claimEvidenceIndexes) >= 1
     ? 1
     : 0;
-  const claims = claimDrafts.flatMap((draft, draftIndex) => {
+  const claims = mergeDuplicateAutoResearchClaims(claimDrafts.flatMap((draft, draftIndex) => {
     const rawClaimText = clean(draft.claimText);
     const claimText = input.brief.intentType === 'food_budget'
       ? normalizeFoodBudgetClaimLabels(rawClaimText)
@@ -1053,7 +1115,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       requiresEvidence: true,
       evidenceKeys: linkedEvidence,
     }];
-  });
+  }));
   const claimedEvidenceKeys = new Set(claims.flatMap((claim) => claim.evidenceKeys));
   const claimFingerprints = new Set(claims.map((claim) => claim.claimFingerprint));
   for (const item of evidence) {
