@@ -29,6 +29,8 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(autoResearch).toContain('const AUTO_RESEARCH_MODEL = BLOG_DEEPSEEK_MODELS.rewrite');
     expect(autoResearch).toContain('generateBlogJSON(buildBlogStructuredResearchPrompt');
     expect(autoResearch).toContain('cascade: false');
+    expect(autoResearch).toContain("deepseekThinking: 'disabled'");
+    expect(autoResearch).not.toContain("deepseekThinking: 'enabled'");
     expect(autoResearch).not.toContain('GoogleGenAI');
     expect(autoResearch).not.toContain("getProviderApiKey('gemini')");
     expect(autoResearch).not.toContain('.models.generateContent({');
