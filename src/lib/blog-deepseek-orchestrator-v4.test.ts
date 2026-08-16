@@ -110,6 +110,7 @@ describe('blog DeepSeek orchestrator V4', () => {
         fixedTitle: '다낭 가볼만한곳: 일정과 체력으로 선택하기',
         primaryQuery: '다낭 가볼만한곳',
         primaryDecision: '내 일정에 어떤 장소가 맞는가?',
+        archetype: 'decision_comparison',
         sectionPurposes: ['선택 기준 — 체력에 맞는 장소는 어디인가?'],
         approvedClaims: [{
           claimText: '오행산은 도시에서 15분 거리입니다.',
@@ -137,13 +138,45 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('The ledger must contain only the approved claim sentences');
     expect(prompt).toContain('exact citation markdown: [공식 근거](https://vietnam.travel/example)');
     expect(prompt).toContain('source-neutral editorial guidance');
-    expect(prompt).toContain('one question-form H2');
-    expect(prompt).toContain('Markdown bullet list of exactly 3 distinct reader-choice questions');
+    expect(prompt).toContain('[ARCHETYPE CONTRACT — decision_comparison]');
+    expect(prompt).toContain('End with a concise choice summary, not generic questions.');
     expect(prompt).toContain('Do not repeat a four-word Korean phrase more than twice');
     expect(prompt).toContain('Give every evidence-section H2 a distinct decision purpose');
-    expect(prompt).toContain('Do not introduce a new place property inside a question');
+    expect(prompt).toContain('never as a new property of a place');
     expect(prompt).toContain('Never create one H2 per claim');
     expect(prompt).not.toContain('one evidence section per approved claim');
+  });
+
+  it('gives itinerary rewrites an executable evidence-bounded structure instead of generic questions', () => {
+    const prompt = buildDeepSeekRewritePromptV4({
+      originalDraft: 'untrusted',
+      failureEvidence: ['public_customer:info_answer_mismatch'],
+      researchFingerprint: 'research-itinerary',
+      claimFingerprint: 'claims-itinerary',
+      evidencePacket: {
+        fixedTitle: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+        primaryQuery: '다낭 여행 일정과 이동 동선',
+        primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+        archetype: 'itinerary_timeline',
+        sectionPurposes: ['날짜보다 이동·예약·휴식 순서로 일정을 만든다'],
+        approvedClaims: [{
+          claimText: '오행산은 도시에서 15분 거리입니다.',
+          claimType: 'duration',
+          riskLevel: 'MEDIUM',
+          sourceUrls: ['https://vietnam.travel/example'],
+        }],
+        officialSourceUrls: ['https://vietnam.travel/example'],
+        internalLink: 'https://www.yeosonam.com/blog/destination/%EB%8B%A4%EB%82%AD',
+        includeFaq: false,
+        includeChecklist: false,
+      },
+    });
+
+    expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
+    expect(prompt).toContain('what to group first, what to keep separate');
+    expect(prompt).toContain('Do not finish with generic questions');
+    expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
+    expect(prompt).not.toContain('Do not write a table, itinerary');
   });
 
   it('selects a diverse deterministic claim subset for non-monthly rewrites', () => {
@@ -161,13 +194,34 @@ describe('blog DeepSeek orchestrator V4', () => {
 
     expect(selected).toHaveLength(6);
     expect(selected).toContainEqual(claims[8]);
-    expect(selected[0]).toEqual(claims[0]);
-    expect(selected.at(-1)).toEqual(claims[9]);
     expect(selectDecisionRelevantRewriteClaimsV4({
       primaryQuery: '다낭 가볼만한곳',
       primaryDecision: '일정과 체력으로 장소를 선택한다',
       approvedClaims: claims,
     })).toEqual(selected);
+  });
+
+  it('prioritizes schedule and movement claims over landmark dimensions for itinerary rewrites', () => {
+    const claims = [
+      { claimText: 'Golden Bridge is 150m long.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/a'] },
+      { claimText: 'Lady Buddha statue is 67m tall.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/b'] },
+      { claimText: '오행산은 도시에서 차로 15분 거리입니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/c'] },
+      { claimText: 'Marble Mountains is 15 minutes from the city by car.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/c'] },
+      { claimText: '린응사는 오행산에서 차량으로 15분 거리입니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/d'] },
+      { claimText: '바나힐은 다낭 시내에서 차로 40분 거리입니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/e'] },
+      { claimText: '드래곤 브리지 쇼는 주말 오후 9시에 열립니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/f'] },
+      { claimText: '오행산은 오전 7시 전에 방문하세요.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/g'] },
+    ];
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      approvedClaims: claims,
+    });
+
+    expect(selected).toHaveLength(6);
+    expect(selected).toEqual(expect.arrayContaining([claims[2], claims[4], claims[5], claims[6], claims[7]]));
+    expect(selected).not.toContainEqual(claims[1]);
+    expect(selected).not.toContainEqual(claims[3]);
   });
 
   it('keeps all twelve approved climate rows only for an explicit monthly assignment', () => {

@@ -3,6 +3,7 @@ import {
   parseBlogPublicationRampStage,
   type BlogPublicationRampStage,
 } from './blog-publication-rollout';
+import type { BlogContentArchetypeV3 } from './blog-content-brief-v3';
 
 export const BLOG_DEEPSEEK_ORCHESTRATOR_VERSION = 'blog-deepseek-orchestrator-v4' as const;
 
@@ -67,6 +68,50 @@ function rewriteDecisionTokens(value: string): string[] {
     .filter((token) => token.length >= 2))];
 }
 
+function rewriteClaimDecisionScore(
+  claim: BlogRewriteApprovedClaimV4,
+  decisionText: string,
+  decisionTokens: string[],
+): number {
+  const text = claim.claimText.normalize('NFKC').toLowerCase();
+  let score = decisionTokens.reduce(
+    (sum, token) => sum + (text.includes(token) ? 1 : 0),
+    0,
+  );
+  const itineraryOrRoute = /일정|코스|동선|이동|교통|route|itinerary/i.test(decisionText);
+  if (itineraryOrRoute) {
+    if (claim.claimType === 'duration') score += 10;
+    if (/주말|평일|오전|오후|저녁|밤|시\b|전(?:에|까지)|후(?:에|부터)|weekend|before|after|\d{1,2}:\d{2}/i.test(text)) score += 14;
+    if (/거리|차로|차량|도시에서|시내에서|에서\s*.+(?:분|시간)|drive|from\s+.+(?:minutes?|hours?)/i.test(text)) score += 8;
+    // A landmark's physical dimensions are valid facts, but they rarely help
+    // a reader execute an itinerary. Keep them behind schedule and movement
+    // evidence unless the query explicitly asks for size or height.
+    if (!/높이|길이|크기|규모|height|length|tall|long/i.test(decisionText)
+      && /높이|동상|다리의?\s*길이|면적|규모|height|statue|bridge\s+is\s+\d|length/i.test(text)) {
+      score -= 12;
+    }
+  }
+  // The public article is Korean. When equivalent translated claims share the
+  // same source and measurement, prefer the Korean approved sentence so the
+  // model does not need to paraphrase it and invalidate the ledger fingerprint.
+  if (/[가-힣]/u.test(claim.claimText)) score += 2;
+  return score;
+}
+
+function rewriteClaimDecisionKey(claim: BlogRewriteApprovedClaimV4, index: number): string {
+  const source = claim.sourceUrls?.[0]?.replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase() || '';
+  const measurements = [...claim.claimText.normalize('NFKC').toLowerCase().matchAll(
+    /\d+(?:\.\d+)?\s*(?:minutes?|hours?|metres?|meters?|분|시간|시|km|mm|미터|m|%|℃|°c)/g,
+  )].map((match) => match[0]
+    .replace(/\s+/g, '')
+    .replace(/minutes?/, '분')
+    .replace(/hours?/, '시간')
+    .replace(/metres?|meters?|미터/, 'm')).join('|');
+  return source && measurements
+    ? `${source}|${claim.claimType}|${measurements}`
+    : `claim:${index}`;
+}
+
 /**
  * Keep rewrites grounded without turning every research row into a separate
  * section. A genuinely month-by-month climate assignment may use all twelve
@@ -88,47 +133,26 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
   const limit = Math.max(1, Math.min(input.maxClaims ?? MAX_DECISION_REWRITE_CLAIMS, MAX_DECISION_REWRITE_CLAIMS));
   if (claims.length <= limit) return claims;
 
-  const decisionTokens = rewriteDecisionTokens(`${input.primaryQuery} ${input.primaryDecision}`);
+  const decisionText = `${input.primaryQuery} ${input.primaryDecision}`;
+  const decisionTokens = rewriteDecisionTokens(decisionText);
   const scored = claims.map((claim, index) => ({
     claim,
     index,
-    score: decisionTokens.reduce(
-      (score, token) => score + (claim.claimText.normalize('NFKC').toLowerCase().includes(token) ? 1 : 0),
-      0,
-    ),
+    score: rewriteClaimDecisionScore(claim, decisionText, decisionTokens),
   }));
-  const selectedIndexes = new Set<number>([0, claims.length - 1]);
-
+  const selected: typeof scored = [];
+  const selectedKeys = new Set<string>();
   for (const entry of [...scored].sort((left, right) => right.score - left.score || left.index - right.index)) {
-    if (entry.score <= 0 || selectedIndexes.size >= limit) break;
-    selectedIndexes.add(entry.index);
+    if (selected.length >= limit) break;
+    const key = rewriteClaimDecisionKey(entry.claim, entry.index);
+    if (selectedKeys.has(key)) continue;
+    selected.push(entry);
+    selectedKeys.add(key);
   }
 
-  // Preserve evidence-type diversity before filling the remaining positions.
-  const seenTypes = new Set<string>();
-  for (const entry of scored) {
-    if (selectedIndexes.has(entry.index)) seenTypes.add(entry.claim.claimType);
-  }
-  for (const entry of scored) {
-    if (selectedIndexes.size >= limit) break;
-    if (!seenTypes.has(entry.claim.claimType)) {
-      selectedIndexes.add(entry.index);
-      seenTypes.add(entry.claim.claimType);
-    }
-  }
-
-  // Evenly sample the evidence packet so an unscored list does not always use
-  // only its first rows (for example, only January through June).
-  for (let slot = 0; selectedIndexes.size < limit && slot < limit; slot += 1) {
-    selectedIndexes.add(Math.round(slot * (claims.length - 1) / Math.max(1, limit - 1)));
-  }
-  for (let index = 0; selectedIndexes.size < limit && index < claims.length; index += 1) {
-    selectedIndexes.add(index);
-  }
-
-  return [...selectedIndexes]
-    .sort((left, right) => left - right)
-    .map((index) => claims[index]!);
+  return selected
+    .sort((left, right) => left.index - right.index)
+    .map((entry) => entry.claim);
 }
 
 const RESEARCH_BLOCKERS = new Set([
@@ -452,6 +476,57 @@ export function nextBlogPublicationSlotKstV4(
   return new Date(dayStartUtcMs + 24 * 60 * 60_000 + candidates[0] * 60_000).toISOString();
 }
 
+function buildRewriteArchetypeContractV4(
+  archetype: BlogContentArchetypeV3,
+  primaryQuery: string,
+): string[] {
+  if (archetype === 'itinerary_timeline') {
+    return [
+      '[ARCHETYPE CONTRACT — itinerary_timeline]',
+      '- The first paragraph must give a concrete route-grouping answer, contain "동선" or "이동 시간", and use only entity names already present in the approved claims.',
+      '- Give the reader an executable sequence: what to group first, what to keep separate, and what to leave for the last slot. These are editorial instructions, not new facts.',
+      '- Add one H2 for the recommended grouping and one H2 for the execution order. Use short Markdown bullets with action verbs such as 묶어 비교하세요, 별도 후보로 두세요, 이어서 확인하세요, or 마지막 순서로 검토하세요.',
+      '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
+      '- Do not finish with generic questions. The ending must leave a usable sequence and the required internal link.',
+    ];
+  }
+  if (archetype === 'route_walkthrough') {
+    return [
+      '[ARCHETYPE CONTRACT — route_walkthrough]',
+      '- The first paragraph must name the recommended decision rule and contain "동선", "이동 시간", or "이동수단".',
+      '- Organize the article by departure choice, movement evidence, and final selection. Use only route/entity names already present in approved claims.',
+      '- End with distinct reader actions, not a generic three-question block.',
+    ];
+  }
+  if (['decision_comparison', 'neighborhood_selector', 'traveler_type_plan', 'budget_scenarios'].includes(archetype)) {
+    return [
+      `[ARCHETYPE CONTRACT — ${archetype}]`,
+      '- State the recommended selection rule in the first paragraph, then group evidence by meaningful choice rather than by source or claim.',
+      '- Name only options already present in approved claims. Explain what the reader should compare without inventing an advantage, price, duration, or traveler fit.',
+      '- End with a concise choice summary, not generic questions.',
+    ];
+  }
+  if (archetype === 'current_change_explainer') {
+    return [
+      '[ARCHETYPE CONTRACT — current_change_explainer]',
+      '- Separate the verified current state, affected reader, and required next action. Do not infer an effective date or eligibility condition.',
+      '- HIGH-risk facts still require human approval; this rewrite contract never waives that gate.',
+    ];
+  }
+  if (archetype === 'seasonal_calendar') {
+    return [
+      '[ARCHETYPE CONTRACT — seasonal_calendar]',
+      '- Group exact climate claims into useful season choices. Do not force a twelve-month table unless all twelve approved rows are supplied.',
+      '- Give an evidence-bounded travel-timing choice and a final official recheck action.',
+    ];
+  }
+  return [
+    `[ARCHETYPE CONTRACT — ${archetype}]`,
+    `- Answer "${primaryQuery}" directly, group evidence by the reader's decision, and end with one concrete next action.`,
+    '- Do not append a generic FAQ, checklist, or three-question closing unless the fixed assignment explicitly allows it.',
+  ];
+}
+
 export function buildDeepSeekRewritePromptV4(input: {
   originalDraft: string;
   failureEvidence: string[];
@@ -461,6 +536,7 @@ export function buildDeepSeekRewritePromptV4(input: {
     fixedTitle: string;
     primaryQuery: string;
     primaryDecision: string;
+    archetype: BlogContentArchetypeV3;
     sectionPurposes: string[];
     approvedClaims: BlogRewriteApprovedClaimV4[];
     officialSourceUrls: string[];
@@ -476,10 +552,10 @@ export function buildDeepSeekRewritePromptV4(input: {
     '- The approved claims in the research packet above are the only factual source of truth.',
     '- Delete every numeric expression that does not appear verbatim in an approved claim. Do not estimate or calculate.',
     '- The visible article and hidden ledger may contain only exact approved factual claim sentences. Do not add derived factual prose.',
-    '- Never infer visit duration, crowd level, route compatibility, waiting time, safety, opening status, or transport time.',
+    '- Never infer visit duration, crowd level, waiting time, safety, opening status, or transport time.',
     '- Do not mention rain, seasons, closures, fees, operating hours, crowds, queues, or route pairings unless an exact approved claim says so.',
-    '- Decision guidance must be framed as a reader choice or question. It must not introduce a new property of a place.',
-    '- Add no new fact, number, source, experience, destination, or recommendation. Do not expand the original topic scope.',
+    '- Decision guidance may choose, group, separate, or sequence only entities already named in approved claims. Write it as an editorial reader action, never as a new property of a place.',
+    '- Add no new fact, number, source, experience, destination, or factual recommendation. Do not expand the original topic scope.',
     '- You may reorder or rename sections only to satisfy the original brief and its section purposes.',
     '- Fix every failure listed below; remove unsupported prose instead of replacing it with a plausible claim.',
     '- Return Markdown only. Preserve exactly one hidden claim-ledger envelope at the end:',
@@ -492,6 +568,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       `- Exact title/H1: ${packet.fixedTitle}`,
       `- Primary query: ${packet.primaryQuery}`,
       `- Primary decision: ${packet.primaryDecision}`,
+      `- Archetype: ${packet.archetype}`,
       '- Section purposes are optional and may be omitted when the approved claims cannot support them:',
       ...packet.sectionPurposes.map((purpose) => `  - ${purpose}`),
       `- FAQ: ${packet.includeFaq ? 'allowed only for evidence-backed registered questions' : 'do not include'}`,
@@ -515,12 +592,10 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Add at most one distinct reader instruction or question per evidence section, not after every claim. Do not repeat a four-word Korean phrase more than twice.',
       '- Prefer direct reader actions ending in 확인하세요, 비교하세요, or 결정하세요. Do not turn those actions into a new assertion about the place.',
       '- Give every evidence-section H2 a distinct decision purpose. Do not use numbered month/entity + "공식 정보" as a repeated heading template.',
-      '- Follow-up questions may refer only to "이 공식 정보", "이 시간", "이 수치", "내 일정", "내 우선순위", or "동행자". Do not introduce a new place property inside a question.',
-      '- Safe question examples: "이 공식 정보가 내 일정과 맞는가?", "이 수치를 내 우선순위와 비교하면 어떤 선택이 남는가?".',
-      '- Finish with one question-form H2 and a Markdown bullet list of exactly 3 distinct reader-choice questions. Questions must not imply unapproved facts or repeat the evidence-section wording.',
-      '- Do not write a table, itinerary, route arrow, warning, FAQ, checklist, destination recommendation, or generic freshness warning.',
+      ...buildRewriteArchetypeContractV4(packet.archetype, packet.primaryQuery),
+      '- Do not write a table, route arrow, generic warning, generic FAQ, or generic checklist.',
       '- Use concise Korean paragraphs of 2-4 sentences. The visible article must be complete enough to make the primary decision; do not pad with generic travel prose.',
-      '- Output order: H1, direct decision-answer paragraph, grouped evidence sections with citations, reader-choice question section, internal link, hidden ledger.',
+      '- Output order: H1, direct decision-answer paragraph, archetype-specific decision section, grouped evidence with citations, concise next action, internal link, hidden ledger.',
       '- Allowed official links (links are citations, not permission to invent claims):',
       ...packet.officialSourceUrls.map((url) => `  - ${url}`),
       `- Required relevant internal link: ${packet.internalLink}`,
