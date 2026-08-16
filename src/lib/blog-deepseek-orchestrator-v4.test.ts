@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { evaluateBlogEngineV2 } from './blog-engine-v2';
+import { inspectPublicBlogCustomerQuality } from './blog-public-customer-quality';
+import { checkAiReadability } from './blog-quality-gate';
+import { renderBlogContentToHtml } from './blog-renderer';
 import {
   BLOG_DEEPSEEK_MODELS,
   buildDeepSeekRewritePromptV4,
@@ -174,13 +178,89 @@ describe('blog DeepSeek orchestrator V4', () => {
 
     expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
     expect(prompt).toContain('what to group first, what to keep separate');
-    expect(prompt).toContain('Do not finish with generic questions');
+    expect(prompt).toContain('contain both "일정" and "동선"');
+    expect(prompt).toContain('use "기준으로" and later "비교하세요"');
+    expect(prompt).toContain('H2 named "최종 일정 확정 순서"');
+    expect(prompt).toContain('record the starting point, mark the grouped candidates');
+    expect(prompt).toContain('decision worksheet, not a generic checklist');
+    expect(prompt).toContain('Do not merely list claims or finish with generic questions');
     expect(prompt).toContain('Every non-approved editorial sentence must be an instruction');
+    expect(prompt).toContain('표시하세요, 분리하세요, 정리하세요, 확정하세요, or 보류하세요');
     expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
     expect(prompt).toContain('Never replace duration or climate with a generic factual label');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
     expect(prompt).not.toContain('Do not write a table, itinerary');
     expect(prompt).not.toContain('route pairings unless');
+  });
+
+  it('keeps a grounded itinerary rewrite complete enough for the customer and answer-first gates', async () => {
+    const markdown = [
+      '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '',
+      '다낭 여행 일정은 이동 구간을 기준으로 방문 후보의 순서를 비교하세요. 가까운 후보를 먼저 표시하고 별도 이동 후보를 분리해 동선을 정리하세요. 공식 일정이 있는 후보는 마지막 단계에서 순서를 확정하세요.',
+      '',
+      '## 같은 흐름으로 묶을 후보',
+      '',
+      '- 출발 지점을 적은 뒤 가장 먼저 확인할 후보에 표시하세요.',
+      '- 서로 이어서 볼 후보와 보류할 후보를 나눠 정리하세요.',
+      '',
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+      '[공식 근거](https://www.vietnam.travel/things-to-do/must-do-da-nang-an-insider-list)',
+      '',
+      '다낭 시내에서 Marble Mountains까지 15분 걸립니다.',
+      '[공식 근거](https://www.vietnam.travel/places-to-go/central-vietnam/da-nang)',
+      '',
+      '## 별도 이동 후보',
+      '',
+      '- 앞 구간과 한 번에 묶지 않을 후보를 따로 표시하세요.',
+      '- 선택한 후보마다 이동 확인 순서를 한 줄로 정리하세요.',
+      '',
+      '다낭 시내에서 Bà Nà Hills까지 차량으로 40분 걸립니다.',
+      '[공식 근거](https://vietnam.travel/things-to-do/must-visit-places-in-da-nang)',
+      '',
+      'Hai Van Pass는 21km 길이의 해안 도로입니다.',
+      '[공식 근거](https://www.vietnam.travel/things-to-do/must-do-da-nang-an-insider-list)',
+      '',
+      'Hai Van Pass의 최고 고도는 496m입니다.',
+      '[공식 근거](https://www.vietnam.travel/things-to-do/must-do-da-nang-an-insider-list)',
+      '',
+      '## 마지막 순서로 확인할 후보',
+      '',
+      'Dragon Bridge는 토·일요일 밤 9시에 불과 물을 뿜는 쇼를 합니다.',
+      '[공식 근거](https://vietnam.travel/things-to-do/must-visit-places-in-da-nang)',
+      '',
+      '- 공식 일정과 앞선 이동 순서를 함께 놓고 마지막 방문 여부를 결정하세요.',
+      '',
+      '## 최종 일정 확정 순서',
+      '',
+      '- 출발 지점을 첫 줄에 기록하세요.',
+      '- 같은 흐름으로 볼 후보에 같은 표시를 하세요.',
+      '- 별도 이동 후보는 다른 칸으로 분리하세요.',
+      '- 마지막 후보까지 확인한 뒤 전체 동선을 확정하세요.',
+      '',
+      '[다낭 여행 일정과 이동 동선 글 모아보기](https://www.yeosonam.com/blog/destination/%EB%8B%A4%EB%82%AD)',
+    ].join('\n');
+
+    expect(checkAiReadability(markdown, 'info', true).passed).toBe(true);
+    expect(evaluateBlogEngineV2({
+      blogHtml: markdown,
+      primaryKeyword: '다낭 여행 일정과 이동 동선',
+      destination: '다낭',
+      generationMeta: {
+        writer: 'info_writer',
+        content_brief_v3: { archetype: 'itinerary_timeline' },
+        content_brief: { search_intent: 'itinerary' },
+      },
+    }).metrics.task_completion).toBe(100);
+
+    const rendered = await renderBlogContentToHtml(markdown);
+    const customer = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      title: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      html: `<article>${rendered}</article>`,
+    });
+    expect(customer.passed).toBe(true);
+    expect(customer.issues.map((issue) => issue.code)).not.toContain('public_body_too_short');
   });
 
   it('selects a diverse deterministic claim subset for non-monthly rewrites', () => {

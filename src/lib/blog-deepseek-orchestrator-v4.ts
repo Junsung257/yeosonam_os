@@ -483,11 +483,14 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'itinerary_timeline') {
     return [
       '[ARCHETYPE CONTRACT — itinerary_timeline]',
-      '- The first paragraph must give a concrete route-grouping answer, contain "동선", and use only entity names already present in the approved claims.',
+      '- The first paragraph must be three complete reader-action sentences, give a concrete route-grouping answer, contain both "일정" and "동선", and use only entity names already present in the approved claims.',
+      '- In that first paragraph, use "기준으로" and later "비교하세요" in the same natural sentence so the decision rule is explicit without inventing a numeric hook.',
       '- Give the reader an executable sequence: what to group first, what to keep separate, and what to leave for the last slot. These are editorial instructions, not new facts.',
       '- Add one H2 for the recommended grouping and one H2 for the execution order. Use short Markdown bullets with action verbs such as 묶어 비교하세요, 별도 후보로 두세요, 이어서 확인하세요, or 마지막 순서로 검토하세요.',
       '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
-      '- Do not finish with generic questions. The ending must leave a usable sequence and the required internal link.',
+      '- After the grouped evidence, add a distinct H2 named "최종 일정 확정 순서" with four different source-neutral actions: record the starting point, mark the grouped candidates, separate a standalone candidate, and confirm the final order. Tailor each action to entities already named in approved claims.',
+      '- The final actions are a decision worksheet, not a generic checklist: do not add packing, booking, weather, price, safety, duration, or operating-condition advice unless an exact approved claim supports it.',
+      '- Do not merely list claims or finish with generic questions. The ending must leave a usable sequence and the required internal link.',
     ];
   }
   if (archetype === 'route_walkthrough') {
@@ -587,7 +590,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       `- Use exactly ${packet.approvedClaims.length} factual sentences: each selected approved claim once. Do not omit or paraphrase them.`,
       '- Apart from those approved sentences, you may write only source-neutral editorial guidance: a direct decision answer, reader-action instructions, headings, and reader-choice questions.',
       '- Editorial guidance must not assert a property of any destination, attraction, hotel, route, weather pattern, price, schedule, crowd, safety condition, or policy.',
-      '- Every non-approved editorial sentence must be an instruction ending in 하세요, 두세요, 검토하세요, 비교하세요, or 결정하세요. Do not end editorial prose with 입니다, 합니다, 됩니다, 있습니다, 없습니다, or 수 있습니다.',
+      '- Every non-approved editorial sentence must be an instruction ending in 하세요, 두세요, 검토하세요, 비교하세요, 결정하세요, 표시하세요, 분리하세요, 정리하세요, 확정하세요, or 보류하세요. Do not end editorial prose with 입니다, 합니다, 됩니다, 있습니다, 없습니다, or 수 있습니다.',
       '- Never shorten or repeat a schedule/measurement outside its exact approved sentence. Words such as 주말, 평일, 오전, 오후, 저녁, 밤, 시, 분, 시간, km, or m belong only inside an exact approved claim.',
       '- Start with one 2-3 sentence paragraph of source-neutral reader actions that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',
       `- Group the selected claims into ${packet.approvedClaims.length <= 2 ? '1-2' : '2-4'} short evidence H2 sections by decision purpose. Never create one H2 per claim.`,
