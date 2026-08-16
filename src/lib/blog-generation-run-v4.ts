@@ -24,7 +24,7 @@ export interface BlogGenerationAttemptRecordV4 {
   tenantId?: string | null;
   attemptNumber: number;
   stage: BlogDeepSeekStage;
-  route: BlogQualityRouteV4;
+  route: BlogQualityRouteV4 | 'failed';
   output: {
     title: string;
     description: string;
@@ -68,6 +68,44 @@ export async function readLatestBlogGenerationAttemptV4(
     claimFingerprint: data.claim_fingerprint ?? null,
     qualityScore: typeof data.quality_score_after === 'number' ? data.quality_score_after : null,
   };
+}
+
+/**
+ * The reservation is written before the provider call, so it is the durable
+ * source of truth when a transport failure occurs before an attempt receipt
+ * can be stored. Taking the maximum prevents a retained failed reservation
+ * from permanently colliding with the next retry's unique attempt number.
+ */
+export async function readLatestBlogModelCallAttemptNumberV4(
+  queueId: string,
+  persistedAttemptNumber = 0,
+): Promise<number> {
+  const [{ data: attempt }, { data: reservation }] = await Promise.all([
+    supabaseAdmin
+      .from('blog_generation_attempts')
+      .select('attempt_number')
+      .eq('queue_id', queueId)
+      .order('attempt_number', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('blog_ai_budget_reservations')
+      .select('attempt_number')
+      .eq('queue_id', queueId)
+      .order('attempt_number', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  return Math.max(
+    0,
+    Number(persistedAttemptNumber || 0),
+    Number(attempt?.attempt_number || 0),
+    Number(reservation?.attempt_number || 0),
+  );
+}
+
+export function nextBlogModelCallAttemptNumberV4(latestAttemptNumber: number): number {
+  return Math.min(3, Math.max(0, Math.trunc(latestAttemptNumber)) + 1);
 }
 
 /**

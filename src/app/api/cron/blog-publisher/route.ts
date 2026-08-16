@@ -6,6 +6,7 @@ import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import {
   BlogAiResponseError,
+  classifyBlogAiProviderFailure,
   generateBlogTextWithReceipt,
   hasBlogApiKey,
   type BlogAiTextResult,
@@ -190,6 +191,8 @@ import {
 import {
   approveBlogGenerationRunForSlotV4,
   readLatestBlogGenerationAttemptV4,
+  readLatestBlogModelCallAttemptNumberV4,
+  nextBlogModelCallAttemptNumberV4,
   recordBlogGenerationAttemptV4,
   reserveBlogAiBudgetBeforeCallV4,
   settleBlogAiBudgetReservationV4,
@@ -4009,15 +4012,15 @@ async function processQueueItem(
     const msg = err instanceof Error ? err.message : '알수없음';
 
     const timeoutMatch = msg.match(/blog_ai_generation_timeout:(\d+)ms/);
-    const timeoutFailureCode = timeoutMatch
-      ? 'blog_ai_generation_timeout'
-      : null;
-    const providerFailureCode = err instanceof BlogAiResponseError
-      ? err.code
-      : timeoutFailureCode;
+    const providerFailureCode = classifyBlogAiProviderFailure(err);
     if (providerFailureCode) {
       const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
-      const attemptNumber = Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1);
+      const attemptNumber = Math.max(1, Math.min(3,
+        await readLatestBlogModelCallAttemptNumberV4(
+          item.id,
+          priorAttempt?.attemptNumber ?? 0,
+        ),
+      ));
       const requestedStage = String(
         item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash',
       ) as BlogDeepSeekStage;
@@ -4025,7 +4028,13 @@ async function processQueueItem(
         ? requestedStage
         : 'draft_flash';
       const terminal = attemptNumber >= 3;
-      const route = terminal ? 'quarantine' : 'rewrite_pro_max';
+      const retrySameStage = [
+        'blog_ai_generation_timeout',
+        'blog_ai_transport_error',
+        'blog_ai_rate_limited',
+        'blog_ai_provider_unavailable',
+      ].includes(providerFailureCode);
+      const route = terminal ? 'quarantine' : retrySameStage ? 'failed' : 'rewrite_pro_max';
       const timeoutDurationMs = Math.max(0, Number(timeoutMatch?.[1] || 0));
       const failureReceipt: BlogAiTextResult['receipt'] = err instanceof BlogAiResponseError
         ? err.receipt
@@ -4036,7 +4045,9 @@ async function processQueueItem(
             startedAt: new Date(Date.now() - timeoutDurationMs).toISOString(),
             completedAt: new Date().toISOString(),
             latencyMs: timeoutDurationMs,
-            finishReason: 'timeout',
+            finishReason: providerFailureCode === 'blog_ai_generation_timeout'
+              ? 'timeout'
+              : providerFailureCode,
             thinkingMode: 'disabled',
             deepseekCost: null,
           };
@@ -4060,7 +4071,7 @@ async function processQueueItem(
         ai_orchestration_v4: {
           version: 'blog-deepseek-orchestrator-v4',
           route,
-          next_stage: terminal ? null : 'rewrite_pro_max',
+          next_stage: terminal ? null : retrySameStage ? stage : 'rewrite_pro_max',
           failure_evidence: [providerFailureCode],
           provider_finish_reason: failureReceipt.finishReason,
           output_characters: err instanceof BlogAiResponseError ? err.outputCharacters : 0,
@@ -4339,6 +4350,12 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     ? requestedStage
     : 'draft_flash';
   const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const generationAttemptNumber = nextBlogModelCallAttemptNumberV4(
+    await readLatestBlogModelCallAttemptNumberV4(
+      item.id,
+      priorAttempt?.attemptNumber ?? 0,
+    ),
+  );
   const failureEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
     ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
     : [];
@@ -4369,7 +4386,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
         temperature: 0.2,
       }, {
         queueId: item.id,
-        attemptNumber: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        attemptNumber: generationAttemptNumber,
         stage: generationStage,
       });
   const blog_html = generation.text
@@ -4622,6 +4639,12 @@ async function generateFromTopic(
     ? requestedStage
     : 'draft_flash';
   const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const generationAttemptNumber = nextBlogModelCallAttemptNumberV4(
+    await readLatestBlogModelCallAttemptNumberV4(
+      item.id,
+      priorAttempt?.attemptNumber ?? 0,
+    ),
+  );
   const rewriteEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
     ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
     : [];
@@ -4692,7 +4715,7 @@ async function generateFromTopic(
         temperature: 0.2,
       }, {
         queueId: item.id,
-        attemptNumber: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        attemptNumber: generationAttemptNumber,
         stage: generationStage,
       });
   const writerOutput = parseBlogInformationWriterOutput(generation.text);
