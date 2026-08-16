@@ -14,6 +14,11 @@ import {
 describe('private blog regeneration contract', () => {
   it('builds a reader-facing queue topic from the canonical slug', () => {
     expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: 'mongolia-weather-packing',
+      destination: '몽골',
+      seo_title: '몽골 날씨와 옷차림 여행 가이드 2026 | 날씨와 옷차림 체크',
+    })).toBe('몽골 날씨와 옷차림');
+    expect(buildPublishedBlogUpgradeQueueTopic({
       slug: 'bohol-monthly-weather_and-clothes|2026',
       destination: '보홀',
     })).toBe('bohol monthly weather and clothes 2026');

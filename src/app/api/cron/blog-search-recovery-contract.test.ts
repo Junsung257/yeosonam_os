@@ -30,8 +30,9 @@ describe('blog search data and published quality recovery contract', () => {
     expect(workflow).toContain('reported data collection errors');
   });
 
-  it('keeps published quality recovery active when rank history is empty', () => {
+  it('requires observed GSC demand before queuing a representative refresh', () => {
     const route = source('src/app/api/cron/blog-regenerate-zero-click/route.ts');
+    const dailySummary = source('src/app/api/cron/blog-daily-summary/route.ts');
     const vercel = source('vercel.json');
     const workflow = source('.github/workflows/blog-external-cron.yml');
 
@@ -41,6 +42,17 @@ describe('blog search data and published quality recovery contract', () => {
     expect(route).toContain('const COOLDOWN_DAYS = 28');
     expect(route).toContain('searchObservationAvailable');
     expect(route).toContain(".in('source', ['gsc', 'gsc-page'])");
+    expect(route).toContain(".select('slug, clicks, impressions, position')");
+    expect(route).toContain('evaluateBlogSearchRefreshOpportunityV4(');
+    expect(route).toContain('gsc_signal: true');
+    expect(route).toContain('gsc_impressions: searchOpportunity.impressions');
+    expect(route).toContain("status: 'demand_signal_missing'");
+    expect(route).toContain("'gsc_position_4_20_material_refresh'");
+    expect(dailySummary).toContain('evaluateBlogSearchRefreshOpportunityV4(');
+    expect(dailySummary).toContain(".in('source', ['gsc', 'gsc-page'])");
+    expect(dailySummary).toContain('gsc_impressions: searchEvidence.impressions');
+    expect(dailySummary).toContain("regenerated_reason: '28일 GSC 관측 순위 4~20 — 대표 URL material refresh'");
+    expect(dailySummary).not.toContain('28일 GSC 노출 0 — 수요·색인·의도 재검토');
     expect(route).toContain('generation_meta,published_at');
     expect(route).toContain('!hasVerifiedResearch(post.generation_meta)');
     expect(route).toContain('publishedAt <= performanceMaturityCutoff');
@@ -52,7 +64,7 @@ describe('blog search data and published quality recovery contract', () => {
     expect(route).toContain('PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE');
     expect(route).toContain('publicQualityGapSet.has(post.id)');
     expect(route).toContain("? 'public_customer_quality'");
-    expect(route).toContain("reason: selectionSource === 'zero_click' ? 'zero_click' : 'quality_gap'");
+    expect(route).toContain("reason: selectionSource === 'search_refresh' ? 'search_refresh' : 'quality_gap'");
     expect(route).toContain("'public_customer_quality_upgrade'");
     expect(route).toContain("priority: selectionSource === 'public_customer_quality'");
     expect(route).toContain('public_quality_gap_candidates: publicQualityGapSet.size');

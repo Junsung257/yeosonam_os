@@ -13,6 +13,7 @@ export interface ReviewedPublishedBlogReplacement {
 interface PublishedBlogUpgradeTopicInput {
   slug?: unknown;
   destination?: unknown;
+  seo_title?: unknown;
 }
 
 interface PublishedBlogUpgradeSlugInput {
@@ -67,6 +68,14 @@ export function readReviewedPublishedBlogReplacement(
 export function buildPublishedBlogUpgradeQueueTopic(
   input: PublishedBlogUpgradeTopicInput,
 ): string {
+  const titleTopic = readTrimmedString(input.seo_title)
+    .split('|')[0]!
+    .replace(/(?:여행\s*)?가이드|체크리스트|총정리|완벽|필수|BEST/gi, ' ')
+    .replace(/\b20\d{2}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/[가-힣]{2,}/.test(titleTopic)) return titleTopic;
+
   const slug = readTrimmedString(input.slug);
   let decodedSlug = slug;
   if (slug) {
