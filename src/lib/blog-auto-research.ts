@@ -3222,13 +3222,12 @@ export async function researchBlogInformationAutomatically(input: {
         model: AUTO_RESEARCH_MODEL,
         cascade: false,
         temperature: 0,
-        // The contract needs at most 12 claims and 24 evidence items. Keeping
-        // the response bounded leaves time for the writer and quality gates in
-        // the same 300-second serverless invocation.
+        // This is source-bounded JSON extraction, not article reasoning. Keep
+        // thinking disabled so hidden reasoning tokens cannot consume the
+        // output ceiling and leave a truncated evidence ledger.
         maxTokens: 8_192,
         requestTimeoutMs: remainingTimeout(),
-        deepseekThinking: 'enabled',
-        reasoningEffort: 'high',
+        deepseekThinking: 'disabled',
       });
       let rawText = await generateStructuredResponse();
       finishReason = 'DEEPSEEK_JSON_MODE_COMPLETE';
