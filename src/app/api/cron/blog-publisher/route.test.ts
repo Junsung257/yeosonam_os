@@ -196,6 +196,11 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('claimValidationPendingHumanApprovalOnly');
     expect(source).toContain('const publicationTimestamp = publishedAtomicUpgrade && originalPublishedAt');
     expect(source).toContain("status: publishedAtomicUpgrade ? 'upgraded' : 'published'");
+    expect(source).toContain('const automatedPublishedReplacement = publishedAtomicUpgrade');
+    expect(source).toContain('buildAutomatedPublishedBlogReplacementDraftSlug');
+    expect(source).toContain('mode: AUTOMATED_PUBLISHED_BLOG_REPLACEMENT_MODE');
+    expect(source).toContain('if (publishedAtomicUpgrade) {');
+    expect(source).toContain('&& !publishedAtomicUpgrade');
   });
 
   it('excludes the in-place replacement draft from its own duplicate check', () => {

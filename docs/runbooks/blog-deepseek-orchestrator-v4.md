@@ -1,6 +1,6 @@
 # Blog DeepSeek Orchestrator V4 Runbook
 
-기준일: 2026-08-15 (Asia/Seoul)
+기준일: 2026-08-17 (Asia/Seoul)
 
 이 런북은 블로그 후보 생성과 공개를 분리한다. 하루 30개는 후보 처리량이며 공개량이 아니다. 운영 공개는 품질·수요·증거·중복·포트폴리오 gate를 통과한 글만 `pilot_3→ramp_10→max_30`으로 단계 상승한다. 환경 변수는 상한일 뿐이고 실제 단계는 DB rollout 원장이 결정한다. 이 문서는 배포 절차를 정의하지만 문서 실행 자체가 운영 배포나 DB 변경을 승인하지 않는다.
 
@@ -16,6 +16,16 @@
 8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에만 DeepSeek V4 Pro max로 재작성한다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 재작성 대상이 아니다. 한 후보의 writer 호출은 초안을 포함해 최대 3회이며 마지막 실패는 격리한다.
 9. `blog-publication-controller`가 KST 09/12/15/18/21에 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
 10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용한다.
+
+### 기존 대표 글의 자동 갱신
+
+- broad query 또는 동일 intent가 이미 활성 representative를 가지면 새 공개 URL을 만들지 않는다.
+- 생성 단계는 기존 공개 행을 수정하지 않고 `--auto-<queue prefix>` 비공개 shadow draft를 만든다. 기존 공개 행의 ID, slug, `published_at`, status는 이 단계에서 불변이다.
+- LOW/MEDIUM이며 `live` 정책, 수요, claim, 품질, 선택된 DeepSeek attempt가 모두 통과한 경우에만 `automated_published_replacement_v1` 계약을 기록한다.
+- publication controller는 `replace_blog_information_automated_draft_atomically()` 안에서 run이 `publishing`인지, 선택 attempt가 DeepSeek/`stop`/90점 이상/차단 0인지, 본문·제목·description이 저장 초안과 같은지, 출력 slug가 기존 canonical과 같은지 다시 확인한다.
+- 트랜잭션은 기존 canonical 행을 갱신하고 shadow draft를 archive하며 claim/evidence 소유권, representative, queue/run, `URL_UPDATED` indexing outbox, 전후 snapshot 원장을 한 번에 기록한다. 어느 검사나 write가 실패해도 기존 공개 글은 그대로 남는다.
+- HIGH-risk 또는 `requires_human_review=true`는 이 함수를 사용할 수 없다. 기존 `reviewed_published_replacement_v1`과 사람 승인 RPC만 사용한다.
+- 긴급 실전 검증은 cron 인증과 정확한 UUID를 함께 사용한 `blog-publication-controller?force=true&runId=<approved run UUID>`만 허용한다. 이 경로도 일일 cap을 우회하지 않으며 다른 승인 run을 처리하지 않는다.
 
 생성 실행 원장은 `blog_generation_runs`, 개별 모델 시도는 `blog_generation_attempts`, 가격 근거는 `ai_model_price_catalog`, 호출 전 비용 예약은 `blog_ai_budget_reservations`에 저장한다. 승인된 run은 반드시 실제 저장된 `selected_attempt_id`를 가져야 한다. 기존 `agent_tasks`에는 queue별 `blog_orchestrator` 작업 한 건을 재사용해 stage와 최종 disposition을 남긴다.
 
@@ -152,5 +162,6 @@ where r.status = 'approved_for_slot';
 - DeepSeek 장애: 비용 reservation과 provider receipt 또는 오류 코드를 남긴다. 알 수 없는 비용은 예약액을 당일 종료까지 보유하고 다음 호출 예산에 포함한다. 다른 모델로 우회하지 않으며 낮 시간 controller는 기존 승인 초안만 공개한다.
 - Naver HUB 장애: legacy Developers API로 fallback한다. 두 경로가 모두 실패해도 검증된 다른 demand가 있으면 진행하고, 없으면 발행하지 않는다.
 - controller가 공개 commit 전에 실패하면 creative는 draft로 남고 run을 격리한다. 공개 commit 뒤 bookkeeping만 실패하면 공개 글을 격리하지 않고 `published_state_sync_error`로 표시해 원장 동기화를 복구한다.
+- 자동 대표 갱신 실패 시 `blog_information_automated_replacements`와 indexing job이 없고 기존 canonical fingerprint가 그대로인지 확인한다. 성공 시 canonical creative ID/slug/원래 `published_at` 불변, shadow draft archived, 원장 1건, outbox 1건을 함께 확인한다.
 - 앱 롤백: 먼저 cron을 기존 publisher 경로로 되돌리고 `BLOG_AUTOPUBLISH_MODE=draft_only`로 전환한다.
 - DB 롤백: 앱 롤백 후에만 migration 하단의 수동 rollback SQL을 실행한다. 원장은 삭제되므로 export와 승인 필요하다.
