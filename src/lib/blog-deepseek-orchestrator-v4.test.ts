@@ -178,19 +178,53 @@ describe('blog DeepSeek orchestrator V4', () => {
 
     expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
     expect(prompt).toContain('what to group first, what to keep separate');
-    expect(prompt).toContain('contain both "일정" and "동선"');
-    expect(prompt).toContain('use "기준으로" and later "비교하세요"');
-    expect(prompt).toContain('H2 named "최종 일정 확정 순서"');
-    expect(prompt).toContain('record the starting point, mark the grouped candidates');
-    expect(prompt).toContain('decision worksheet, not a generic checklist');
+    expect(prompt).toContain('use "일정" and "동선" naturally');
+    expect(prompt).toContain('without forcing a stock phrase');
+    expect(prompt).toContain('three distinct stages (start, middle, finish)');
+    expect(prompt).toContain('booking/official recheck');
+    expect(prompt).toContain('realistic rest checkpoint');
+    expect(prompt).toContain('rain/closure/delay fallback');
+    expect(prompt).toContain('decision aid, not a generic checklist');
     expect(prompt).toContain('Do not merely list claims or finish with generic questions');
-    expect(prompt).toContain('Every non-approved editorial sentence must be an instruction');
-    expect(prompt).toContain('표시하세요, 분리하세요, 정리하세요, 확정하세요, or 보류하세요');
+    expect(prompt).toContain('Write natural Korean with varied sentence shapes');
+    expect(prompt).toContain('do not force every sentence to end in 하세요');
     expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
     expect(prompt).toContain('Never replace duration or climate with a generic factual label');
+    expect(prompt).toContain('force a fixed heading count');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
     expect(prompt).not.toContain('Do not write a table, itinerary');
     expect(prompt).not.toContain('route pairings unless');
+  });
+
+  it('gives route rewrites boarding, connection, arrival, and disruption decisions', () => {
+    const prompt = buildDeepSeekRewritePromptV4({
+      originalDraft: 'untrusted',
+      failureEvidence: ['reader_decision_incomplete'],
+      researchFingerprint: 'research-route',
+      claimFingerprint: 'claims-route',
+      evidencePacket: {
+        fixedTitle: '간사이공항에서 난바 가는 법: 환승 부담으로 고르기',
+        primaryQuery: '간사이공항에서 난바 가는 법',
+        primaryDecision: '어떤 이동수단을 고르는가?',
+        archetype: 'route_walkthrough',
+        sectionPurposes: ['출발점부터 도착점까지 구간을 설명한다'],
+        approvedClaims: [{
+          claimText: '공항철도는 난바까지 40분 걸립니다.',
+          claimType: 'duration',
+          riskLevel: 'MEDIUM',
+          sourceUrls: ['https://example.com/official-route'],
+        }],
+        officialSourceUrls: ['https://example.com/official-route'],
+        internalLink: 'https://www.yeosonam.com/blog/destination/%EC%98%A4%EC%82%AC%EC%B9%B4',
+        includeFaq: false,
+        includeChecklist: false,
+      },
+    });
+
+    expect(prompt).toContain('departure/boarding');
+    expect(prompt).toContain('connection or middle segment');
+    expect(prompt).toContain('arrival/alighting');
+    expect(prompt).toContain('delay, sell-out, or last-service fallback');
   });
 
   it('keeps a grounded itinerary rewrite complete enough for the customer and answer-first gates', async () => {
