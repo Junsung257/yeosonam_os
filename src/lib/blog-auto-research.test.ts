@@ -214,6 +214,29 @@ describe('fetchReviewedDirectPages', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('passes a finite phase-bounded timeout signal to every reviewed source request', async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response(`<main>${'bounded official source content '.repeat(10)}</main>`, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const result = await fetchReviewedDirectPages([{
+        hostname: 'bounded.example',
+        allowSubdomains: false,
+        researchUrls: ['https://bounded.example/research'],
+      }]);
+      expect(result.pages).toHaveLength(1);
+      expect(result.failures).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('selectReputableResearchRegistryForIntent', () => {

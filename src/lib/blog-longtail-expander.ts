@@ -209,6 +209,23 @@ export function isObservedDemandSourceKind(sourceKind: LongtailCandidateSourceKi
   return sourceKind === 'winner_query';
 }
 
+export type ObservedLongtailDisposition =
+  | 'refresh_existing'
+  | 'queue_supporting'
+  | 'reject_unverified';
+
+export function resolveObservedLongtailDisposition(input: {
+  sourceKind: LongtailCandidateSourceKind;
+  seedSlug?: string | null;
+}): ObservedLongtailDisposition {
+  if (!isObservedDemandSourceKind(input.sourceKind)) return 'reject_unverified';
+  // A winner query was observed on seedSlug itself. Creating a second URL for
+  // that exact query causes cannibalization; the existing zero-click/material
+  // refresh pipeline owns this work instead.
+  if (input.seedSlug?.trim()) return 'refresh_existing';
+  return 'queue_supporting';
+}
+
 export function buildLongtailTopic(keyword: string): string {
   // Queue topics are demand observations, not headlines. The V3 brief owns title,
   // structure, and optional components after evidence and intent are known.
@@ -341,7 +358,7 @@ function buildCandidatesForSeed(
 ): Array<Pick<LongtailCandidate, 'keyword' | 'sourceKind'>> {
   const candidates = new Map<string, Pick<LongtailCandidate, 'keyword' | 'sourceKind'>>();
   const add = (keyword: string, sourceKind: LongtailCandidate['sourceKind']) => {
-    if (!isObservedDemandSourceKind(sourceKind)) return;
+    if (resolveObservedLongtailDisposition({ sourceKind, seedSlug: seed.slug }) !== 'queue_supporting') return;
     const cleaned = cleanCandidateKeyword(keyword);
     if (!cleaned || cleaned.length < 3) return;
     const key = normalizeKeyword(cleaned);
@@ -542,8 +559,15 @@ export async function expandGscLongtailTopics(
     sourceKind: LongtailCandidate['sourceKind'];
     seed: LongtailSeed;
   }> = [];
+  const skipped: Array<{ keyword: string; reason: string }> = [];
 
   for (const seed of seeds) {
+    if (resolveObservedLongtailDisposition({ sourceKind: 'winner_query', seedSlug: seed.slug }) === 'refresh_existing') {
+      skipped.push({
+        keyword: seed.query,
+        reason: `existing_seed_refresh_required:${seed.slug}`,
+      });
+    }
     const seedCandidates = buildCandidatesForSeed(seed);
     for (const candidate of seedCandidates) {
       rawCandidates.push({ ...candidate, seed });
@@ -561,7 +585,6 @@ export async function expandGscLongtailTopics(
 
   const existingSurface = await loadExistingKeywordSurface(recentDedupDays);
   const existingFamilyKeys = await loadExistingFamilyKeys().catch(() => new Set<string>());
-  const skipped: Array<{ keyword: string; reason: string }> = [];
   const deduped = [...uniqueCandidateMap.values()].filter((candidate) => {
     const duplicate = isNearDuplicate(candidate.keyword, existingSurface);
     if (duplicate) {

@@ -52,6 +52,42 @@ function isSnapshotSourcePolicySafe(row: Record<string, any>): boolean {
   }) === null;
 }
 
+function hasUsableDetailBody(row: Record<string, any>): boolean {
+  const document = row.content_document as Record<string, unknown> | null;
+  const body = row.legacy_markdown
+    || (typeof document?.markdown === 'string' ? document.markdown : '');
+  return String(body).replace(/\s+/g, '').length >= 200;
+}
+
+function mapLegacyDetailRow(row: Record<string, any>): Record<string, any> {
+  return {
+    creative_id: row.id,
+    slug: row.slug,
+    title: row.seo_title || row.title || row.slug,
+    description: row.seo_description || row.description,
+    content_document: null,
+    legacy_markdown: row.blog_html,
+    generation_meta: row.generation_meta || {},
+    quality_gate: row.quality_gate || {},
+    review_status: row.review_status,
+    product_id: row.product_id,
+    tracking_id: row.tracking_id,
+    content_type: row.content_type,
+    target_audience: row.target_audience,
+    landing_enabled: Boolean(row.landing_enabled),
+    landing_headline: row.landing_headline,
+    landing_subtitle: row.landing_subtitle,
+    hero_image: row.og_image_url ? { url: row.og_image_url } : null,
+    author: null,
+    review: null,
+    destination: row.destination,
+    angle_type: row.angle_type,
+    published_at: row.published_at,
+    content_modified_at: row.content_modified_at ?? row.published_at,
+    fact_checked_at: row.fact_checked_at ?? null,
+  };
+}
+
 async function main(): Promise<void> {
   const applyDb = process.argv.includes('--apply-db');
   const writeBundled = process.argv.includes('--write-bundled');
@@ -114,6 +150,31 @@ async function main(): Promise<void> {
         }
       } else {
         detailRowsRaw = (result.data || []) as Array<Record<string, any>>;
+        const requestedSnapshotSlugs = allDetails
+          ? publicRows.map((row) => String(row.slug))
+          : detailSlugs;
+        const snapshotBySlug = new Map(detailRowsRaw.map((row) => [String(row.slug), row]));
+        const missingSnapshotDetailSlugs = requestedSnapshotSlugs.filter((slug) => {
+          const snapshot = snapshotBySlug.get(slug);
+          return !snapshot || !hasUsableDetailBody(snapshot);
+        });
+        if (missingSnapshotDetailSlugs.length > 0) {
+          const fallbackResult = await client.from('public_blog_content_creatives')
+            .select('id, slug, seo_title, seo_description, og_image_url, blog_html, generation_meta, quality_gate, review_status, product_id, tracking_id, content_type, target_audience, landing_enabled, landing_headline, landing_subtitle, destination, angle_type, published_at, content_modified_at, fact_checked_at')
+            .eq('status', 'published').eq('channel', 'naver_blog')
+            .in('slug', missingSnapshotDetailSlugs)
+            .limit(500);
+          if (fallbackResult.error) {
+            throw new Error(`legacy_detail_gap_fallback_failed:${fallbackResult.error.message}`);
+          }
+          const fallbackRows = (fallbackResult.data || []).map(mapLegacyDetailRow);
+          const fallbackSlugSet = new Set(fallbackRows.map((row) => String(row.slug)));
+          detailRowsRaw = [
+            ...detailRowsRaw.filter((row) => !fallbackSlugSet.has(String(row.slug))),
+            ...fallbackRows,
+          ];
+          detailSource = 'blog_public_snapshots_with_legacy_gap_fallback_read_only';
+        }
       }
     }
     if (snapshotDetailUnavailable) {
@@ -126,32 +187,7 @@ async function main(): Promise<void> {
       if (!allDetails) query = query.in('slug', detailSlugs);
       const result = await query;
       if (result.error) throw new Error(`legacy_detail_snapshot_source_failed:${result.error.message}`);
-      detailRowsRaw = (result.data || []).map((row) => ({
-        creative_id: row.id,
-        slug: row.slug,
-        title: row.seo_title || row.slug,
-        description: row.seo_description,
-        content_document: null,
-        legacy_markdown: row.blog_html,
-        generation_meta: row.generation_meta || {},
-        quality_gate: row.quality_gate || {},
-        review_status: row.review_status,
-        product_id: row.product_id,
-        tracking_id: row.tracking_id,
-        content_type: row.content_type,
-        target_audience: row.target_audience,
-        landing_enabled: Boolean(row.landing_enabled),
-        landing_headline: row.landing_headline,
-        landing_subtitle: row.landing_subtitle,
-        hero_image: row.og_image_url ? { url: row.og_image_url } : null,
-        author: null,
-        review: null,
-        destination: row.destination,
-        angle_type: row.angle_type,
-        published_at: row.published_at,
-        content_modified_at: row.published_at,
-        fact_checked_at: null,
-      }));
+      detailRowsRaw = (result.data || []).map(mapLegacyDetailRow);
     }
   }
   const detailRows: Array<Record<string, any>> = detailRowsRaw.filter(isSnapshotSourcePolicySafe).map((row): Record<string, any> => ({
@@ -159,12 +195,7 @@ async function main(): Promise<void> {
     content_document: row.legacy_markdown ? null : row.content_document,
     generation_meta: compactDetailGenerationMeta(row.generation_meta),
     quality_gate: compactDetailQualityGate(row.quality_gate),
-  })).filter((row) => {
-    const document = row.content_document as Record<string, unknown> | null;
-    const body = row.legacy_markdown
-      || (typeof document?.markdown === 'string' ? document.markdown : '');
-    return body.replace(/\s+/g, '').length >= 200;
-  });
+  })).filter(hasUsableDetailBody);
   const generatedAt = new Date().toISOString();
   const catalogArtifact = `${JSON.stringify({
     generated_at: generatedAt,

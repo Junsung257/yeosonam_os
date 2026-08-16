@@ -4,6 +4,7 @@
 begin;
 
 drop view if exists public.public_blog_slug_registry;
+drop function if exists public.list_public_blog_slug_registry_v1();
 
 drop function if exists public.apply_blog_publication_rollout_evaluation_v1(
   text,date,bigint,text,text,text,boolean,boolean,integer,integer,integer,integer,text[],jsonb

@@ -1,11 +1,11 @@
 {
   "version": "blog-corpus-reconciliation-v4",
-  "generatedAt": "2026-08-16T03:59:43.897Z",
-  "dryRun": true,
+  "generatedAt": "2026-08-16T07:19:49.152Z",
+  "dryRun": false,
   "summary": {
     "reviewBlockedPublished": 8,
-    "reviewBlockedWithDisposition": 0,
-    "dispositionWrites": 0,
+    "reviewBlockedWithDisposition": 8,
+    "dispositionWrites": 8,
     "failedQueue": 91,
     "retryTransient": 0,
     "archiveTerminal": 0,

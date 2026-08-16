@@ -1,0 +1,17 @@
+{
+  "version": "blog-public-snapshot-artifacts-v3",
+  "generated_at": "2026-08-16T07:31:20.506Z",
+  "source_checksum": "e45b04635258d0030d3ec173425110cc288c8489cf13d9f825850dff410301c1",
+  "catalog": {
+    "relative_path": "catalog/6792aeafb77207a683ecf7b6a7c03dd52b1ef5ac2acab3bdd21fffe5f0c5ee54.json",
+    "sha256": "6792aeafb77207a683ecf7b6a7c03dd52b1ef5ac2acab3bdd21fffe5f0c5ee54",
+    "count": 190,
+    "bytes": 204066
+  },
+  "detail": {
+    "relative_path": "detail/7f2d7556cb84197c653213190937fea9b6bc0f75080447ded5cc7e2577f4a4ae.json",
+    "sha256": "7f2d7556cb84197c653213190937fea9b6bc0f75080447ded5cc7e2577f4a4ae",
+    "count": 190,
+    "bytes": 2683829
+  }
+}

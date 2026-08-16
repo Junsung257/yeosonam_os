@@ -6,6 +6,7 @@ import {
   isTravelRelevantKeyword,
   keywordSimilarity,
   normalizeKeyword,
+  resolveObservedLongtailDisposition,
   tokenizeKeyword,
 } from './blog-longtail-expander';
 
@@ -56,5 +57,20 @@ describe('blog longtail keyword helpers', () => {
     expect(isObservedDemandSourceKind('winner_query')).toBe(true);
     expect(isObservedDemandSourceKind('related_query')).toBe(false);
     expect(isObservedDemandSourceKind('modifier_variant')).toBe(false);
+  });
+
+  it('routes a winner query on its existing URL to material refresh instead of a new URL', () => {
+    expect(resolveObservedLongtailDisposition({
+      sourceKind: 'winner_query',
+      seedSlug: 'mongolia-july-weather-clothes-checklist-2026',
+    })).toBe('refresh_existing');
+    expect(resolveObservedLongtailDisposition({
+      sourceKind: 'winner_query',
+      seedSlug: null,
+    })).toBe('queue_supporting');
+    expect(resolveObservedLongtailDisposition({
+      sourceKind: 'modifier_variant',
+      seedSlug: null,
+    })).toBe('reject_unverified');
   });
 });

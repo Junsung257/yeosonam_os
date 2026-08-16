@@ -9,6 +9,11 @@
       "sha256": "a8009e428299f530e1f5d0f20bda6d733c2f15000df119f1f1ef265128b1ccf3"
     },
     {
+      "version": "20260814033000",
+      "file": "supabase/migrations/20260814033000_blog_medication_high_risk_policy.sql",
+      "sha256": "7f08114e29eb4f6e7d2efd7760756c97e6e89de1cf12bf56ace510a7aca5fb00"
+    },
+    {
       "version": "20260815093943",
       "file": "supabase/migrations/20260815093943_blog_keyword_families_service_role_rls.sql",
       "sha256": "4b38b5b8510bd5170a6ee6663a1258b1d29775579dd5c5568d4dbd9f93203f87"
@@ -47,10 +52,15 @@
       "version": "20260816123000",
       "file": "supabase/migrations/20260816123000_blog_public_slug_registry_v1.sql",
       "sha256": "d4f53aefc9636801bae8f2a9b32001702238124e3dad8b909bc7937351bc588f"
+    },
+    {
+      "version": "20260816124500",
+      "file": "supabase/migrations/20260816124500_blog_public_slug_registry_security_definer.sql",
+      "sha256": "e9f46bf95a9a21f065cf5f8bb6a0321b1c55b0b3b5d6bd51206377e04caa9d24"
     }
   ],
   "rollback": {
     "file": "supabase/rollbacks/blog-orchestrator-v4-release-rollback.sql",
-    "sha256": "a96edbf11a6eb30094a39e17755b0810c047d942be97be967b8739ed1a99850b"
+    "sha256": "996f090dc9200e5713898d4cb64288ac6c053955641cd9582e7ba71c3b0b5f45"
   }
 }

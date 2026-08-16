@@ -15,9 +15,9 @@
 - Production evidence collector: `npm run collect:blog-production-evidence-v4 -- ...`
 - Fail-closed decision: `npm run verify:blog-production-readiness-v4 -- --evidence=<json>`
 
-Manifest에는 운영 기준선에서 누락된 migration 9개의 경로와 SHA-256이 고정된다. dry-run 결과는 정확히 이 9개이거나, 재실행 시 이미 모두 적용되어 0개여야 한다. 일부만 보이거나 다른 migration이 섞이면 중단한다.
+Manifest에는 운영 기준선에서 누락된 migration 11개의 경로와 SHA-256이 고정된다. 여기에는 운영에서 이력과 실제 함수 본문이 드리프트한 medication HIGH-risk 정책 복구 및 Next.js 15 스트리밍 전 hard-404 slug registry 권한 복구가 포함된다. dry-run 결과는 아직 적용되지 않은 manifest 부분집합이어야 하며, 재실행 시 이미 모두 적용되어 0개여야 한다. manifest 밖 migration이 섞이면 중단한다.
 
-운영의 기존 migration 이력에는 현재 저장소에서 합쳐진 과거 버전이 포함되어 있다. 따라서 저장소 루트에서 직접 `db push`하거나 remote migration history를 `repair`하지 않는다. 준비 스크립트는 운영 이력을 SELECT로 읽고 `.tmp` 아래에만 임시 Supabase 프로젝트를 만든다. 이미 적용된 과거 버전은 SQL 본문이 없는 자리표시자로 재현하고, manifest의 9개 파일만 실제 SQL과 고정 SHA로 복사한다. 이 임시 폴더는 커밋하지 않으며 dry-run과 승인된 apply에 동일하게 사용한다.
+운영의 기존 migration 이력에는 현재 저장소에서 합쳐진 과거 버전이 포함되어 있다. 따라서 저장소 루트에서 직접 `db push`하거나 remote migration history를 `repair`하지 않는다. 준비 스크립트는 운영 이력을 SELECT로 읽고 `.tmp` 아래에만 임시 Supabase 프로젝트를 만든다. 이미 적용된 과거 버전은 SQL 본문이 없는 자리표시자로 재현하고, manifest의 11개 파일만 실제 SQL과 고정 SHA로 복사한다. 이 임시 폴더는 커밋하지 않으며 dry-run과 승인된 apply에 동일하게 사용한다.
 
 ## 필수 보호 환경
 
@@ -111,7 +111,7 @@ controller 성공률, indexing parity, DB fallback, snapshot lag, GSC/analytics 
 다음 증거 없이는 “완료”나 “완벽히 운영”이라고 보고하지 않는다.
 
 - production branch와 immutable SHA 일치
-- forward migration 9개와 semantic capability 전부 존재
+- forward migration 11개와 semantic capability 전부 존재
 - public eligible/current snapshot 정확한 parity
 - public surface 실패 0, candidate DB unavailable 0
 - review-blocked disposition 100%, demand 없는 due queue 0
