@@ -37,6 +37,10 @@ const AUTO_RESEARCH_TIMEOUT_MS = Math.max(
   20_000,
   Math.min(120_000, Number(process.env.BLOG_RESEARCH_TIMEOUT_MS) || 90_000),
 );
+const AUTO_RESEARCH_DIRECT_FETCH_PHASE_TIMEOUT_MS = Math.max(
+  10_000,
+  Math.min(30_000, Math.floor(AUTO_RESEARCH_TIMEOUT_MS * 0.35)),
+);
 const MAX_GROUNDING_SOURCES = 12;
 const MAX_SOURCE_CATALOG = 40;
 const MAX_RESEARCH_EVIDENCE = 24;
@@ -343,6 +347,7 @@ async function fetchReviewedDirectPage(input: {
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >;
   url: string;
+  deadlineMs?: number;
 }): Promise<ReviewedDirectPage> {
   let currentUrl = input.url;
   if (!input.entry.researchUrls?.includes(currentUrl) || !urlMatchesRegistryEntry(currentUrl, input.entry)) {
@@ -350,9 +355,13 @@ async function fetchReviewedDirectPage(input: {
   }
 
   for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const remainingMs = input.deadlineMs == null
+      ? 8_000
+      : Math.min(8_000, input.deadlineMs - Date.now());
+    if (remainingMs < 250) throw new Error(`reviewed_source_phase_timeout:${input.entry.hostname}`);
     const response = await fetch(currentUrl, {
       redirect: 'manual',
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(remainingMs),
       headers: {
         accept: 'text/html,text/plain;q=0.9',
         'user-agent': 'yeosonam-reviewed-source-research/1.0',
@@ -431,6 +440,7 @@ async function fetchReviewedDirectPageWithRetry(input: {
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >;
   url: string;
+  deadlineMs?: number;
 }): Promise<ReviewedDirectPage> {
   try {
     return await fetchReviewedDirectPage(input);
@@ -447,6 +457,7 @@ function fetchReviewedDirectPageShared(input: {
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >;
   url: string;
+  deadlineMs?: number;
 }): Promise<ReviewedDirectPage> {
   const cacheKey = `${input.entry.hostname.toLowerCase()}|${input.url}`;
   const existing = reviewedDirectPageInFlight.get(cacheKey);
@@ -469,8 +480,9 @@ export async function fetchReviewedDirectPages(
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >>,
 ): Promise<{ pages: ReviewedDirectPage[]; failures: string[] }> {
+  const deadlineMs = Date.now() + AUTO_RESEARCH_DIRECT_FETCH_PHASE_TIMEOUT_MS;
   const candidates = registry
-    .flatMap((entry) => (entry.researchUrls ?? []).map((url) => ({ entry, url })))
+    .flatMap((entry) => (entry.researchUrls ?? []).map((url) => ({ entry, url, deadlineMs })))
     .slice(0, MAX_REVIEWED_DIRECT_PAGES);
   const settled = await Promise.allSettled(candidates.map(fetchReviewedDirectPageShared));
   const pages: ReviewedDirectPage[] = [];
@@ -3210,7 +3222,10 @@ export async function researchBlogInformationAutomatically(input: {
         model: AUTO_RESEARCH_MODEL,
         cascade: false,
         temperature: 0,
-        maxTokens: 16_384,
+        // The contract needs at most 12 claims and 24 evidence items. Keeping
+        // the response bounded leaves time for the writer and quality gates in
+        // the same 300-second serverless invocation.
+        maxTokens: 8_192,
         requestTimeoutMs: remainingTimeout(),
         deepseekThinking: 'enabled',
         reasoningEffort: 'high',
