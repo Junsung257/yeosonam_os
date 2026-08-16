@@ -231,6 +231,8 @@ const V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE = /^(?!.{0,160}(?:입니다|합니다
 const V3_AVAILABILITY_RECHECK_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*여부|가능한?\s*(?:시간|날짜|조건)).*(?:공식|예약|홈페이지|채널).*(?:확인|비교|점검)/i;
 const V3_AVAILABILITY_DECISION_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*(?:여부|시간|날짜|조건)).*(?:맞춰|기준으로).*(?:결정|선택|비교|조정)하세요/i;
 const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
+const V3_ITINERARY_EDITORIAL_GUIDANCE_RE = /^(?!.*(?:\d|현재|실제로|항상|통상|평균|이동\s*시간이\s*(?:길|짧)|도심\s*(?:동|서|남|북)쪽|같은\s*권역|안전|적합|필수|의무|금지|불가|가능합니다))(?=.*(?:일정|동선|이동\s*구간|예약|휴식))(?=.*(?:정하|나누|묶|분리|얹|점검|비교|고르|선택|결정|남겨|두고|두며))(?=.*(?:순서|기준|먼저|마지막|쉽게|무리|부담|대체|흐름)).+$/i;
+const V3_ITINERARY_CONTINGENCY_GUIDANCE_RE = /^(?!.*\d)(?=.*(?:우천|날씨|휴무|변동))(?=.*(?:경우|때|어긋|밀리|밀릴|바뀌))(?=.*(?:대체|조정|바꾸|남겨|정해|확인))(?=.*(?:일정|동선|순서)).+$/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
 export function classifyBlogInformationStatement(segment: string): {
@@ -244,12 +246,15 @@ export function classifyBlogInformationStatement(segment: string): {
   const directDecisionGuidance = V3_DECISION_GUIDANCE_RE.test(segment)
     || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
     || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment);
+    || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment)
+    || V3_ITINERARY_EDITORIAL_GUIDANCE_RE.test(segment);
+  const itineraryContingencyGuidance = V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(segment);
   const availabilityRecheck = factualClassification?.candidateKind === 'availability_status'
     && (V3_AVAILABILITY_RECHECK_RE.test(segment) || V3_AVAILABILITY_DECISION_RE.test(segment));
   if (
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
+    && !(factualClassification.candidateKind === 'time_schedule' && itineraryContingencyGuidance)
     && !availabilityRecheck
   ) {
     return { category: 'verified_factual', factualClassification };
@@ -257,6 +262,7 @@ export function classifyBlogInformationStatement(segment: string): {
   if (
     EDITORIAL_READING_GUIDANCE_RE.test(segment)
     || directDecisionGuidance
+    || itineraryContingencyGuidance
     || availabilityRecheck
     || V3_NAVIGATION_HEADING_RE.test(segment)
   ) {

@@ -165,6 +165,25 @@ describe('V3 editorial decision guidance classification', () => {
     });
   });
 
+  it.each([
+    '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
+    '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
+    '마무리: Bà Nà Hills처럼 이동이 분리되는 일정은 마지막 순서로 두되, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.',
+    '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
+  ])('keeps source-neutral itinerary planning advice out of the factual ledger: %s', (sentence) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it.each([
+    ['바나힐은 이동 시간이 길어 별도 일정으로 분리하는 편이 안전합니다.', 'unknown_unclassified'],
+    ['마블 마운틴은 다낭 도심 서쪽에 있어 먼저 일정에서 분리해야 합니다.', 'verified_factual'],
+  ] as const)('does not let itinerary wording hide a destination assertion: %s', (sentence, category) => {
+    expect(classifyBlogInformationStatement(sentence).category).toBe(category);
+  });
+
   it('still blocks a destination fact that merely mentions an itinerary choice', () => {
     expect(classifyBlogInformationStatement(
       '마블 마운틴은 다낭 도심 서쪽에 있어 일정에 따라 선택해야 합니다.',
@@ -236,6 +255,36 @@ function supportedRecord(
 }
 
 describe('blog information claim validator', () => {
+  it('validates the production itinerary rewrite with only its three ledgered facts', () => {
+    const factualClaims = [
+      '다낭 시내에서 Linh Ung Pagoda까지 차량으로 15분 소요',
+      '다낭 시내에서 Marble Mountains까지 차량으로 15분 소요',
+      '다낭에서 Bà Nà Hills까지 차량으로 40분 소요',
+    ];
+    const markdown = [
+      '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
+      factualClaims[0],
+      factualClaims[1],
+      factualClaims[2],
+      '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
+      '마무리: Bà Nà Hills처럼 이동이 분리되는 일정은 마지막 순서로 두되, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.',
+      '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
+    ].join('\n\n');
+    const claimLedger = factualClaims.flatMap(ledgerFor);
+
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: factualClaims.map((claim) => supportedRecord(claim)),
+      claimLedger,
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.claims.map((claim) => claim.claimText)).toEqual(factualClaims);
+    expect(report.issues).toEqual([]);
+  });
+
   it('uses the persisted structured value for an exact approved translated claim', () => {
     const markdown = '미케 해변은 손짜 반도 남쪽에 위치해 있습니다.';
     const record = supportedRecord(markdown, {
