@@ -97,9 +97,32 @@ export interface BlogContentBriefV3 {
   imageMinimum: 0;
   sections: string[];
   destinationDecisionDetails: EvidenceLinkedDetail[];
+  verifiedFirstPartySourceIds: string[];
   experienceLanguageAllowed: boolean;
   issues: string[];
   passed: boolean;
+}
+
+export function resolveVerifiedFirstPartySourceIdsV3(input: {
+  registeredIds?: string[];
+  sources: Array<{
+    sourceKey: string;
+    internalIdentifier?: string | null;
+    authorityLevel: string;
+    sourceType: string;
+  }>;
+}): string[] {
+  const verified = input.sources.filter(
+    (source) => source.authorityLevel === 'field_observation' || source.sourceType === 'field_research',
+  );
+  const identifiers = new Set(verified.flatMap((source) => [
+    source.sourceKey,
+    ...(source.internalIdentifier ? [source.internalIdentifier] : []),
+  ]));
+  return unique([
+    ...verified.map((source) => source.sourceKey),
+    ...(input.registeredIds ?? []).filter((identifier) => identifiers.has(clean(identifier))),
+  ]);
 }
 
 const clean = (value: string | null | undefined) => String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
@@ -373,6 +396,7 @@ export function buildBlogContentBriefV3(input: BlogContentBriefV3Input): BlogCon
     imageMinimum: 0,
     sections: purposes.map((purpose) => purpose.purpose),
     destinationDecisionDetails: details,
+    verifiedFirstPartySourceIds: unique(input.firstPartySourceIds ?? []),
     experienceLanguageAllowed: (input.firstPartySourceIds || []).length > 0,
     issues,
     passed: issues.length === 0,

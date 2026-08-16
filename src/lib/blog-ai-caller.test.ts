@@ -131,6 +131,55 @@ describe('blog-ai-caller — 공개 API', () => {
     expect(mocks.dsCreate.mock.calls[0]?.[0]).not.toHaveProperty('temperature');
   });
 
+  it('Gemini rescue preserves usage and accepts only an explicit STOP receipt', async () => {
+    process.env.GEMINI_API_KEY = 'gemini-test';
+    mocks.geminiGenContent.mockResolvedValue({
+      response: {
+        text: () => 'grounded rescue response long enough',
+        candidates: [{ finishReason: 'STOP' }],
+        usageMetadata: {
+          promptTokenCount: 1_000,
+          cachedContentTokenCount: 100,
+          candidatesTokenCount: 250,
+        },
+      },
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    const result = await generateBlogTextWithReceipt('prompt', {
+      model: 'gemini-2.5-pro',
+      maxTokens: 8_192,
+      thinkingBudget: 2_048,
+    });
+
+    expect(result.receipt).toMatchObject({
+      provider: 'gemini',
+      model: 'gemini-2.5-pro',
+      finishReason: 'STOP',
+      usage: { inputTokens: 1_000, cachedInputTokens: 100, outputTokens: 250 },
+      estimatedCostUsd: null,
+    });
+  });
+
+  it('fails closed and preserves a Gemini MAX_TOKENS receipt', async () => {
+    process.env.GEMINI_API_KEY = 'gemini-test';
+    mocks.geminiGenContent.mockResolvedValue({
+      response: {
+        text: () => '# partial rescue',
+        candidates: [{ finishReason: 'MAX_TOKENS' }],
+        usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 8_192 },
+      },
+    });
+
+    const { generateBlogTextWithReceipt } = await import('./blog-ai-caller');
+    await expect(generateBlogTextWithReceipt('prompt', {
+      model: 'gemini-2.5-pro', maxTokens: 8_192,
+    })).rejects.toMatchObject({
+      code: 'blog_ai_truncated_response',
+      receipt: { provider: 'gemini', finishReason: 'MAX_TOKENS' },
+    });
+  });
+
   it('hasBlogApiKey: 키 미설정 → false / 설정 → true', async () => {
     const { hasBlogApiKey } = await import('./blog-ai-caller');
     expect(hasBlogApiKey()).toBe(false);

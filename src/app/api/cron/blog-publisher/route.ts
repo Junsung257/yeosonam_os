@@ -161,6 +161,7 @@ import {
 import {
   buildBlogContentBriefV3,
   buildBlogContentBriefV3PromptBlock,
+  resolveVerifiedFirstPartySourceIdsV3,
   type BlogContentBriefV3,
 } from '@/lib/blog-content-brief-v3';
 import {
@@ -183,13 +184,17 @@ import {
   decideBlogQualityRouteV4,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
+  resolveBlogGenerationModelV4,
   type BlogDeepSeekStage,
 } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
   approveBlogGenerationRunForSlotV4,
   readLatestBlogGenerationAttemptV4,
   recordBlogGenerationAttemptV4,
+  reserveBlogAiBudgetBeforeCallV4,
+  settleBlogAiBudgetReservationV4,
 } from '@/lib/blog-generation-run-v4';
+import { estimateBlogAiCallReservationUsdV4 } from '@/lib/blog-ai-budget-v4';
 import {
   BLOG_RUNTIME_RESOURCES_V3,
   probeBlogRuntimeSchemaWithSupabaseV3,
@@ -496,9 +501,10 @@ function buildResearchBackedContentBriefV3(input: {
   const registeredFirstPartyIds = Array.isArray(input.item.meta?.first_party_source_ids)
     ? input.item.meta.first_party_source_ids.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
     : [];
-  const bundleFirstPartyIds = input.researchBundle.sources
-    .filter((source) => source.authorityLevel === 'field_observation' || source.sourceType === 'field_research')
-    .map((source) => source.sourceKey);
+  const verifiedFirstPartyIds = resolveVerifiedFirstPartySourceIdsV3({
+    registeredIds: registeredFirstPartyIds,
+    sources: input.researchBundle.sources,
+  });
   return buildBlogContentBriefV3({
     topic: input.item.topic,
     destination: input.item.destination,
@@ -509,7 +515,10 @@ function buildResearchBackedContentBriefV3(input: {
     ].filter((value): value is string => typeof value === 'string'),
     audience: typeof input.item.meta?.audience === 'string' ? input.item.meta.audience : null,
     availableEvidenceTypes,
-    firstPartySourceIds: [...new Set([...registeredFirstPartyIds, ...bundleFirstPartyIds])],
+    // A queue meta ID is not evidence by itself. Experience language is enabled
+    // only when the ID resolves to a persisted field-observation source in the
+    // current validated research packet.
+    firstPartySourceIds: [...new Set(verifiedFirstPartyIds)],
     customerQuestionIds: Array.isArray(input.item.meta?.customer_question_ids)
       ? input.item.meta.customer_question_ids.filter((value: unknown): value is string => typeof value === 'string')
       : [],
@@ -591,26 +600,86 @@ function withPublisherTimeout<T>(promise: Promise<T>, timeoutMs: number, label: 
   });
 }
 
-function generatePublisherBlogText(
+async function generatePublisherBlogText(
   prompt: string,
   options: Partial<Parameters<typeof generateBlogTextWithReceipt>[1]> = {},
+  context: { queueId: string; attemptNumber: number; stage: BlogDeepSeekStage },
 ): Promise<BlogAiTextResult> {
-  const isRewrite = options.model === BLOG_DEEPSEEK_MODELS.rewrite;
-  return withPublisherTimeout(
-    generateBlogTextWithReceipt(prompt, {
+  const execution = resolveBlogGenerationModelV4(context.stage);
+  if (!execution || !hasBlogApiKey(execution.model)) {
+    throw new Error(`blog_ai_model_unavailable:${context.stage}`);
+  }
+  const isRewrite = context.stage !== 'draft_flash';
+  const maxTokens = options.maxTokens ?? (isRewrite
+    ? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS
+    : BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS);
+  const requestedUsd = estimateBlogAiCallReservationUsdV4({
+    stage: context.stage,
+    maxOutputTokens: maxTokens,
+  });
+  if (requestedUsd == null || requestedUsd <= 0) {
+    throw new Error(`blog_ai_pricing_unavailable:${execution.provider}:${execution.model}`);
+  }
+  const reservation = await reserveBlogAiBudgetBeforeCallV4({
+    queueId: context.queueId,
+    attemptNumber: context.attemptNumber,
+    stage: context.stage,
+    provider: execution.provider,
+    model: execution.model,
+    requestedUsd,
+  });
+  if (!reservation.allowed || !reservation.reservationId) {
+    throw new Error(`blog_ai_budget_blocked:${reservation.reason}`);
+  }
+
+  try {
+    const result = await withPublisherTimeout(
+      generateBlogTextWithReceipt(prompt, {
       ...options,
-      model: options.model ?? BLOG_DEEPSEEK_MODELS.draft,
-      maxTokens: options.maxTokens ?? (isRewrite
-        ? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS
-        : BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS),
-      deepseekThinking: options.deepseekThinking ?? 'disabled',
+      model: execution.model,
+      maxTokens,
+      deepseekThinking: execution.provider === 'deepseek'
+        ? options.deepseekThinking ?? execution.deepseekThinking ?? 'disabled'
+        : undefined,
+      reasoningEffort: execution.reasoningEffort,
       requestTimeoutMs: options.requestTimeoutMs ?? (isRewrite
         ? BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS
         : BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS),
-    }),
-    isRewrite ? BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS : BLOG_PUBLISHER_AI_TIMEOUT_MS,
-    'blog_ai_generation',
-  );
+      }),
+      isRewrite ? BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS : BLOG_PUBLISHER_AI_TIMEOUT_MS,
+      'blog_ai_generation',
+    );
+    const settlementError = await settleBlogAiBudgetReservationV4({
+      reservationId: reservation.reservationId,
+      receipt: result.receipt,
+      status: 'completed',
+    });
+    if (settlementError) {
+      logWarning('[cron/blog-publisher] AI budget settlement retained conservative reservation', {
+        queueId: context.queueId,
+        attemptNumber: context.attemptNumber,
+        error: settlementError,
+      });
+    }
+    return result;
+  } catch (error) {
+    // Network/timeout failures may have no provider receipt. They still settle
+    // the row to `failed` while retaining the conservative reservation, so the
+    // daily cap and operational ledger cannot silently diverge.
+    const settlementError = await settleBlogAiBudgetReservationV4({
+      reservationId: reservation.reservationId,
+      receipt: error instanceof BlogAiResponseError ? error.receipt : null,
+      status: 'failed',
+    });
+    if (settlementError) {
+      logWarning('[cron/blog-publisher] failed AI attempt budget settlement unavailable', {
+        queueId: context.queueId,
+        attemptNumber: context.attemptNumber,
+        error: settlementError,
+      });
+    }
+    throw error;
+  }
 }
 
 function publisherRemainingMs(startedAtMs: number): number {
@@ -1362,7 +1431,11 @@ export async function runBlogPublisher(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
-  const deferPublication = request.nextUrl.searchParams.get('phase') === 'generate_only';
+  // V4 has one public commit boundary: blog-publication-controller.  Keep this
+  // legacy route generation-only even when an operator calls it directly or a
+  // stale scheduler omits `phase=generate_only`; otherwise a valid cron secret
+  // could bypass the immutable selected-attempt controller contract.
+  const deferPublication = true;
 
   const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
     supabaseAdmin,
@@ -2451,14 +2524,10 @@ async function processQueueItem(
     promoteDraftId = privateReplacementDraftId ?? queueReusableDraftId;
 
     if (item.source === 'pillar' && item.destination) {
-      const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
-      const pillarContext = await buildPillarContext(item.destination);
-      if (!pillarContext) {
-        const reason = `${item.destination} context missing: attractions+packages 0`;
-        await handleFailure(item, reason, null, true);
-        return { id: item.id, topic: item.topic, status: 'error', reason };
-      }
-      generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
+      // A pillar is now a representative-refresh strategy, not a fixed writer
+      // template. The normal V3 path enforces official evidence, a flexible
+      // archetype and the broad-query no-new-URL rule before generation.
+      generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item));
     } else if (contentBoundary.lane === 'card_news_bridge') {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
@@ -2986,7 +3055,10 @@ async function processQueueItem(
           primaryKeyword,
           audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
           availableEvidenceTypes: Array.isArray(item.meta?.available_evidence_types) ? item.meta.available_evidence_types : [],
-          firstPartySourceIds: Array.isArray(item.meta?.first_party_source_ids) ? item.meta.first_party_source_ids : [],
+          // Legacy/fallback candidates have no validated research-packet
+          // resolution at this boundary, so a queue meta ID cannot authorize
+          // first-person experience language.
+          firstPartySourceIds: [],
           customerQuestionIds: Array.isArray(item.meta?.customer_question_ids) ? item.meta.customer_question_ids : [],
           destinationDecisionDetails,
         });
@@ -3155,9 +3227,7 @@ async function processQueueItem(
       pillarSupportRelationship: representativeIdentity ? 1 : 0,
       normalizedTitleClusterSize: diversityReport?.normalizedTitleClusterSize ?? 3,
       templateSaturation: !diversityReport || ['queue_reject', 'refresh', 'merge'].includes(diversityReport.disposition),
-      firstPartySourceIds: Array.isArray(item.meta?.first_party_source_ids)
-        ? item.meta.first_party_source_ids.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
-        : [],
+      firstPartySourceIds: contentBriefV3.verifiedFirstPartySourceIds ?? [],
     });
     const publishQualityFailureReasons = [
       ...publishQuality.publishContractIssues.map((issue) => `publish_contract:${issue.code}`),
@@ -3198,6 +3268,11 @@ async function processQueueItem(
           researchAttempts: Number(previousOrchestration?.research_attempts || 0),
           riskLevel: contentBriefV3.riskLevel,
           humanApproved: contentReviewStatus === 'approved',
+          researchValid: (generated.generation_meta?.information_research_preflight as Record<string, unknown> | undefined)?.passed === true,
+          claimLedgerValid: claimValidation.passed && writerClaimLedgerIssues.length === 0,
+          lastStage: typeof aiOrchestrationMeta?.stage === 'string'
+            ? aiOrchestrationMeta.stage as BlogDeepSeekStage
+            : null,
         })
       : {
           route: qualityEvaluationV3.passed && publishQuality.passed ? 'approved_for_slot' : 'human_review',
@@ -3285,7 +3360,7 @@ async function processQueueItem(
       ? { passed: false, error: corpusDiversity.error }
       : diversityReport;
     generationMeta.quality_evaluation_v3 = qualityEvaluationV3;
-    if (['rewrite_pro_high', 'rewrite_pro_max', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
+    if (['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
       const researchAttempts = Number(previousOrchestration?.research_attempts || 0)
         + (qualityRouteV4.route === 'reresearch' ? 1 : 0);
       const reason = `blog_quality_v4_${qualityRouteV4.route}:${qualityRouteV4.reasons.join(',')}`;
@@ -3946,17 +4021,18 @@ async function processQueueItem(
       const requestedStage = String(
         item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash',
       ) as BlogDeepSeekStage;
-      const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+      const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini'].includes(requestedStage)
         ? requestedStage
         : 'draft_flash';
-      const terminal = attemptNumber >= 3;
+      const terminal = attemptNumber >= 3 || stage === 'rescue_gemini';
       const route = terminal ? 'quarantine' : 'rewrite_pro_max';
       const timeoutDurationMs = Math.max(0, Number(timeoutMatch?.[1] || 0));
       const failureReceipt: BlogAiTextResult['receipt'] = err instanceof BlogAiResponseError
         ? err.receipt
         : {
-            provider: 'deepseek',
-            model: stage === 'draft_flash' ? BLOG_DEEPSEEK_MODELS.draft : BLOG_DEEPSEEK_MODELS.rewrite,
+            provider: resolveBlogGenerationModelV4(stage)?.provider ?? 'deepseek',
+            model: resolveBlogGenerationModelV4(stage)?.model
+              ?? (stage === 'draft_flash' ? BLOG_DEEPSEEK_MODELS.draft : BLOG_DEEPSEEK_MODELS.rewrite),
             startedAt: new Date(Date.now() - timeoutDurationMs).toISOString(),
             completedAt: new Date().toISOString(),
             latencyMs: timeoutDurationMs,
@@ -4114,11 +4190,6 @@ interface GeneratedBlog {
   slide_image_urls?: string[];
 }
 
-interface BlogPillarContext {
-  attractions: string[];
-  seasonHint: string;
-}
-
 /**
  * 카드뉴스 기반 블로그 — 확정된 card_news + 슬라이드 PNG.
  * `publisher_bridge` 로 본문만 받아 퍼블리셔가 게이트 통과 후 단일 INSERT (draft 선삽입 없음).
@@ -4187,143 +4258,15 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
 }
 
 /**
- * Pillar 글 생성 — /destinations/[city] 허브 본문
- * 결과는 content_type='pillar', pillar_for=destination 으로 저장됨 (publisher가 처리)
+ * Pillar compatibility entrypoint.
+ *
+ * Pillar generation uses the same research-backed V3 writer as every other
+ * informational article. Broad queries therefore refresh their existing
+ * representative and cannot create a fixed-template duplicate URL.
  */
-async function generatePillar(item: any, prebuiltContext?: BlogPillarContext | null): Promise<GeneratedBlog> {
-  if (!hasBlogApiKey()) throw new Error('AI API 키 없음 — pillar 생성 불가');
-
-  let ctx = prebuiltContext ?? null;
-  if (!ctx) {
-    const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
-    ctx = await buildPillarContext(item.destination);
-  }
-  if (!ctx) throw new Error(`${item.destination} 정보성 컨텍스트 부족 (관광지 0)`);
-
-  const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-
-  // Pillar는 head tier — SERP 경쟁 분석 주입 (7일 캐시 활용)
-  let serpBlock = '';
-  const serpKw = item.primary_keyword || item.destination;
-  if (serpKw) {
-    try {
-      await new Promise(r => setTimeout(r, 500));
-      const serp = await analyzeSerp(serpKw, 'naver_blog');
-      serpBlock = buildSerpPromptBlock(serp);
-    } catch { /* SERP 실패 시 미주입 — 발행 계속 */ }
-  }
-
-  const prompt = `${styleGuide}
-${serpBlock ? `\n${serpBlock}\n` : ''}
----
-
-## Pillar Page 작성 지시 (이건 정보성 최상위 허브)
-
-**목적지**: ${item.destination}
-**섹션 구조** (반드시 아래 H2 순서 지켜라):
-
-# ${item.destination} 여행 준비 가이드
-
-## 1. ${item.destination}는 어디인가요?
-(위치·계절·이동 난이도 중심으로 2~3문단. 광고 문구보다 독자가 출발 전 판단할 정보를 우선)
-
-## 2. 먼저 볼 여행 포인트
-(형광펜 문법 금지. 주요 관광지 3~5개를 나열하되, 왜 가는지보다 이동 시간·체류 시간·피로도 기준으로 설명: ${ctx.attractions.slice(0, 6).join(', ')})
-
-## 3. 언제 가면 좋을까요?
-(월별/계절별 날씨·옷차림·추천시기 표 형태 권장. 현재 ${ctx.seasonHint})
-
-## 4. 추천 여행 일정
-(3박4일, 4박5일 두 가지 추천. Day 1~5 타임라인으로)
-
-## 5. 예상 비용과 가성비 분석
-(숙소 · 식비 · 현지 이동처럼 독자가 별도로 확인할 예산 항목과 비교 기준. 상품 수·내부 가격·예약 신호는 사용하지 말고, 확인 가능한 외부 근거가 없으면 정확한 금액을 쓰지 말 것)
-
-## 6. 여행 준비 체크리스트
-(:::tip 블록으로 준비물·비자·환전 등 꿀팁)
-
-## 7. 자주 묻는 질문
-(Q&A 4~6개. **Q. 질문** 형식)
-
-## 8. 내 일정 기준으로 확인할 것
-(CTA와 판매·상담 URL은 본문에 넣지 않는다. 공개 렌더러가 검증된 중앙 설정으로 하단 CTA를 선택한다.)
-
-## 작성 규칙
-- 총 2,200~3,000자. 필요한 내용만 남기고 공통 블록을 억지로 늘리지 말 것
-- 마크다운만, H1 1개, H2는 6~8개 범위. 고정 개수 채우기 금지
-- 운영팀 직접 답사처럼 보이는 허위 경험 톤 금지. 상품/공식 자료 기준으로 확인 가능한 표현만 사용
-- 체크 가능한 구체 수치 (기온·시간·거리·가격)
-- 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
-- 마크다운 코드블록으로 감싸지 말 것`;
-
-  const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
-  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
-    ? requestedStage
-    : 'draft_flash';
-  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
-  const failureEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
-    ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
-    : [];
-  const generationPrompt = generationStage === 'draft_flash'
-    ? prompt
-    : `${prompt}\n\n${buildDeepSeekRewritePromptV4({
-        originalDraft: priorAttempt?.output.markdown || '(이전 pillar 초안 없음)',
-        failureEvidence,
-        researchFingerprint: priorAttempt?.researchFingerprint || `pillar:${item.destination}`,
-        claimFingerprint: priorAttempt?.claimFingerprint || `pillar:${item.destination}`,
-      })}`;
-  const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
-    ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.65 }
-    : {
-        model: BLOG_DEEPSEEK_MODELS.rewrite,
-        // Thinking mode repeatedly exceeded the serverless response window.
-        // The Pro model remains the rewrite tier; this path prioritizes a
-        // complete, auditable article over an unfinished reasoning stream.
-        deepseekThinking: 'disabled',
-        temperature: 0.2,
-      });
-  const blog_html = generation.text
-    .replace(/^```markdown\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-
-  const dest = item.destination || extractDestination(item.topic) || 'destination';
-  const destEn = romanize(dest) || slugifyTopic(dest);
-  const slug = `${destEn}-complete-guide`;
-  const destDisplay = item.destination || dest;
-  const seoTitle = `${destDisplay} 여행 준비 가이드 | 관광지·일정·비용`.substring(0, 60);
-  const seoDescription = `${destDisplay} 여행 전 확인할 관광지, 일정, 예상 비용, 계절별 준비 기준을 정리했습니다.`.substring(0, 160);
-
-  // OG 이미지: 목적지와 글 의도에 맞는 Pexels 상위 후보만 사용
-  let og_image_url: string | null = null;
-  try {
-    const destForOg = item.destination || extractDestination(item.topic);
-    if (destForOg) {
-      og_image_url = await findOrGenerateBlogCover({
-        destination: destForOg,
-        primaryKeyword: seoTitle,
-        sectionTitle: '관광지 일정 비용 여행 준비',
-      });
-    }
-  } catch { /* OG 이미지 실패는 발행을 막지 않음 */ }
-
-  return {
-    blog_html,
-    slug,
-    seo_title: seoTitle,
-    seo_description: seoDescription,
-    og_image_url,
-    generation_meta: {
-      ai_orchestration_v4: {
-        stage: generationStage,
-        attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
-        receipt: generation.receipt,
-      },
-    },
-  };
+async function generatePillar(item: any): Promise<GeneratedBlog> {
+  return generateFromTopic(item);
 }
-
 // romanize()와 slugifyTopic()은 src/lib/slug-utils.ts로 이관 (SSOT 통합)
 
 async function generateFromProduct(item: any): Promise<GeneratedBlog> {
@@ -4392,7 +4335,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     `${baseUrl}/og-image.png`;
 
   const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
-  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini'].includes(requestedStage)
     ? requestedStage
     : 'draft_flash';
   const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
@@ -4424,6 +4367,10 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         deepseekThinking: 'disabled',
         temperature: 0.2,
+      }, {
+        queueId: item.id,
+        attemptNumber: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        stage: generationStage,
       });
   const blog_html = generation.text
     .replace(/^```markdown\s*/i, '')
@@ -4645,7 +4592,7 @@ async function generateFromTopic(
     `- Category: ${item.category || 'travel_tips'}`,
     `- Primary keyword: ${primaryKw}`,
     `- Final content brief topic: ${effectiveTopic}`,
-    `- Secondary keywords: ${contentBrief.secondaryKeywords.join(', ')}`,
+    `- Secondary keywords: ${contentBriefV3.secondaryQueries.join(', ') || 'none'}`,
     `- Optional related terms: ${(item.meta?.keywords || []).join(', ') || 'none'}`,
   ].join('\n');
   const editorialVariationBlock = buildEditorialVariationPromptBlock(item);
@@ -4671,7 +4618,7 @@ async function generateFromTopic(
   });
 
   const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
-  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max', 'rescue_gemini'].includes(requestedStage)
     ? requestedStage
     : 'draft_flash';
   const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
@@ -4743,6 +4690,10 @@ async function generateFromTopic(
         model: BLOG_DEEPSEEK_MODELS.rewrite,
         deepseekThinking: 'disabled',
         temperature: 0.2,
+      }, {
+        queueId: item.id,
+        attemptNumber: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        stage: generationStage,
       });
   const writerOutput = parseBlogInformationWriterOutput(generation.text);
   let blog_html = writerOutput.markdown
@@ -4769,7 +4720,8 @@ async function generateFromTopic(
   // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시
   const slug = queueSlug;
 
-  // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
+  // Title/H1/OG are fixed by the V3 brief. SERP frequency never adds a power
+  // word, year, or visitor-specific variant at this boundary.
   const seo_title = contentBriefV3.metadata.title.trim().slice(0, 80);
   const seo_description = contentBriefV3.metadata.description;
 
@@ -4780,8 +4732,8 @@ async function generateFromTopic(
     try {
       og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,
-        primaryKeyword: contentBrief.primaryKeyword,
-        sectionTitle: contentBrief.title,
+        primaryKeyword: contentBriefV3.primaryQuery,
+        sectionTitle: contentBriefV3.primaryDecision,
       });
     } catch { /* silent — og_image_url은 null로 유지 */ }
   }
@@ -4800,7 +4752,7 @@ async function generateFromTopic(
     },
     editorial_voice: BLOG_EDITORIAL_VOICE,
     info_guide_brief: infoGuideBrief,
-      content_brief: {
+    content_brief: {
       title: contentBrief.title,
       primary_keyword: contentBrief.primaryKeyword,
       secondary_keywords: contentBrief.secondaryKeywords,

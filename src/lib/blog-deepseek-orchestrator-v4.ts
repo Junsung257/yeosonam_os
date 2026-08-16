@@ -1,3 +1,9 @@
+import {
+  getBlogPublicationRampDefinition,
+  parseBlogPublicationRampStage,
+  type BlogPublicationRampStage,
+} from './blog-publication-rollout';
+
 export const BLOG_DEEPSEEK_ORCHESTRATOR_VERSION = 'blog-deepseek-orchestrator-v4' as const;
 
 export const BLOG_DEEPSEEK_MODELS = {
@@ -5,16 +11,28 @@ export const BLOG_DEEPSEEK_MODELS = {
   rewrite: 'deepseek-v4-pro',
 } as const;
 
-export type BlogDeepSeekStage = 'draft_flash' | 'rewrite_pro_high' | 'rewrite_pro_max';
+export const BLOG_GEMINI_RESCUE_DEFAULT_MODEL = 'gemini-2.5-pro' as const;
+
+export interface BlogFinalRewriteEnvV4 {
+  BLOG_FINAL_REWRITE_PROVIDER?: string;
+  BLOG_FINAL_REWRITE_MODEL?: string;
+}
+
+export type BlogDeepSeekStage =
+  | 'draft_flash'
+  | 'rewrite_pro_high'
+  | 'rewrite_pro_max'
+  | 'rescue_gemini';
 export type BlogQualityRouteV4 =
   | 'approved_for_slot'
   | 'rewrite_pro_high'
   | 'rewrite_pro_max'
+  | 'rescue_gemini'
   | 'reresearch'
   | 'human_review'
   | 'quarantine';
 
-export type BlogPublicationRampStage = 'pilot_3' | 'ramp_5' | 'ramp_10' | 'max_20';
+export type { BlogPublicationRampStage } from './blog-publication-rollout';
 
 export interface BlogQualityRoutingInputV4 {
   score: number;
@@ -26,6 +44,10 @@ export interface BlogQualityRoutingInputV4 {
   researchAttempts?: number;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   humanApproved?: boolean;
+  /** A rescue model is allowed only when both inputs are explicitly true. */
+  researchValid?: boolean;
+  claimLedgerValid?: boolean;
+  lastStage?: BlogDeepSeekStage | null;
 }
 
 export interface BlogQualityRoutingDecisionV4 {
@@ -44,6 +66,11 @@ const RESEARCH_BLOCKERS = new Set([
   'stale_claim',
   'stale_claim_present',
   'verified_demand_signal_missing',
+  'unsupported_number',
+  'unsupported_numeric_claim',
+  'unsupported_first_party_claim',
+  'false_experience_claim',
+  'source_quality_failed',
 ]);
 
 const NON_REWRITABLE_BLOCKERS = new Set([
@@ -55,8 +82,89 @@ const NON_REWRITABLE_BLOCKERS = new Set([
   'title_skeleton_saturated',
 ]);
 
+const RESEARCH_BLOCKER_PATTERNS = [
+  /claim_conflict/,
+  /conflicting_claim/,
+  /invalid_claim_ledger/,
+  /missing_(?:evidence|source)/,
+  /stale_claim/,
+  /unsupported_(?:number|numeric|claim|first_party)/,
+  /false_(?:experience|verification)/,
+  /fabricated_(?:experience|verification)/,
+  /source_quality/,
+  /factual_support/,
+];
+
+const EXPRESSION_OR_STRUCTURE_PATTERNS = [
+  /intent/,
+  /decision/,
+  /section/,
+  /structure/,
+  /opening/,
+  /title_snippet/,
+  /description/,
+  /readability/,
+  /editorial/,
+  /paragraph/,
+  /heading/,
+  /internal_link/,
+  /cta/,
+  /query_cluster/,
+  /information_gain/,
+  /actionability/,
+  /public_customer:(?:primary_decision|opening|paragraph|heading|cta|internal_link)/,
+];
+
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function isResearchBlocker(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  return RESEARCH_BLOCKERS.has(normalized)
+    || RESEARCH_BLOCKER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function isExpressionOrStructureFailure(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  return EXPRESSION_OR_STRUCTURE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function resolveBlogGeminiRescueModelV4(
+  env: BlogFinalRewriteEnvV4 = process.env as BlogFinalRewriteEnvV4,
+): string | null {
+  const provider = (env.BLOG_FINAL_REWRITE_PROVIDER || 'gemini').trim().toLowerCase();
+  const model = (env.BLOG_FINAL_REWRITE_MODEL || BLOG_GEMINI_RESCUE_DEFAULT_MODEL).trim();
+  if (provider !== 'gemini' || !/^gemini-[a-z0-9][a-z0-9._-]*$/i.test(model)) return null;
+  return model;
+}
+
+export function resolveBlogGenerationModelV4(
+  stage: BlogDeepSeekStage,
+  env: BlogFinalRewriteEnvV4 = process.env as BlogFinalRewriteEnvV4,
+): {
+  provider: 'deepseek' | 'gemini';
+  model: string;
+  deepseekThinking?: 'enabled' | 'disabled';
+  reasoningEffort?: 'high' | 'max';
+} | null {
+  if (stage === 'draft_flash') {
+    return { provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled' };
+  }
+  if (stage === 'rewrite_pro_high') {
+    return {
+      provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
+      deepseekThinking: 'enabled', reasoningEffort: 'high',
+    };
+  }
+  if (stage === 'rewrite_pro_max') {
+    return {
+      provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
+      deepseekThinking: 'enabled', reasoningEffort: 'max',
+    };
+  }
+  const model = resolveBlogGeminiRescueModelV4(env);
+  return model ? { provider: 'gemini', model } : null;
 }
 
 export function decideBlogQualityRouteV4(
@@ -75,7 +183,7 @@ export function decideBlogQualityRouteV4(
     };
   }
 
-  const researchBlocked = allReasons.some((reason) => RESEARCH_BLOCKERS.has(reason));
+  const researchBlocked = allReasons.some(isResearchBlocker);
   if (researchBlocked) {
     const canResearchAgain = (input.researchAttempts ?? 0) < 1 && completedAttempts < 3;
     return {
@@ -108,7 +216,17 @@ export function decideBlogQualityRouteV4(
     };
   }
 
-  if (completedAttempts >= 2) {
+
+  // A top-tier rescue is a one-shot final editor. If it still fails, another
+  // model pass would be model magic rather than deterministic remediation.
+  if (input.lastStage === 'rescue_gemini') {
+    return {
+      route: 'quarantine', nextStage: null, publishable: false,
+      reasons: unique(['gemini_rescue_failed', ...allReasons]), maxAttempts: 3,
+    };
+  }
+
+  if (score >= 75 && completedAttempts >= 2) {
     const improvement = input.previousScore == null ? null : score - input.previousScore;
     return {
       route: 'rewrite_pro_max',
@@ -123,12 +241,31 @@ export function decideBlogQualityRouteV4(
     };
   }
 
-  const nextStage: BlogDeepSeekStage = score >= 75 ? 'rewrite_pro_high' : 'rewrite_pro_max';
+  if (score >= 75) {
+    return {
+      route: 'rewrite_pro_high', nextStage: 'rewrite_pro_high', publishable: false,
+      reasons: unique(['quality_score_75_to_89', ...allReasons]), maxAttempts: 3,
+    };
+  }
+
+  const explicitlyGrounded = input.researchValid === true && input.claimLedgerValid === true;
+  const expressionOnly = allReasons.length > 0 && allReasons.every(isExpressionOrStructureFailure);
+  if (explicitlyGrounded && expressionOnly) {
+    return {
+      route: 'rescue_gemini', nextStage: 'rescue_gemini', publishable: false,
+      reasons: unique(['quality_score_below_75_expression_or_structure_only', ...allReasons]),
+      maxAttempts: 3,
+    };
+  }
+
   return {
-    route: nextStage,
-    nextStage,
-    publishable: false,
-    reasons: unique([score >= 75 ? 'quality_score_75_to_89' : 'quality_score_below_75', ...allReasons]),
+    route: 'quarantine', nextStage: null, publishable: false,
+    reasons: unique([
+      'quality_score_below_75_not_rescue_eligible',
+      ...(!explicitlyGrounded ? ['research_or_claim_ledger_not_valid'] : []),
+      ...(!expressionOnly ? ['failure_not_expression_or_structure_only'] : []),
+      ...allReasons,
+    ]),
     maxAttempts: 3,
   };
 }
@@ -217,12 +354,8 @@ export function calculateDeepSeekCostV4(
 export function resolveBlogPublicationRampCapV4(
   stage: string | undefined,
 ): { stage: BlogPublicationRampStage; cap: number } {
-  switch (stage) {
-    case 'ramp_5': return { stage, cap: 5 };
-    case 'ramp_10': return { stage, cap: 10 };
-    case 'max_20': return { stage, cap: 20 };
-    default: return { stage: 'pilot_3', cap: 3 };
-  }
+  const resolvedStage = parseBlogPublicationRampStage(stage);
+  return { stage: resolvedStage, cap: getBlogPublicationRampDefinition(resolvedStage).dailyCap };
 }
 
 /** The overnight KST generation window is deliberately outside DeepSeek's published peak windows. */

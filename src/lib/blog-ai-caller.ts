@@ -86,6 +86,14 @@ export interface BlogAiUsageReceipt {
   finishReason: string | null;
   thinkingMode?: 'enabled' | 'disabled' | null;
   deepseekCost: DeepSeekCostReceiptV4 | null;
+  /** Provider-neutral usage retained even when no trustworthy price is configured. */
+  usage?: {
+    inputTokens: number;
+    cachedInputTokens: number;
+    outputTokens: number;
+  } | null;
+  /** Null means the caller must retain its conservative budget reservation. */
+  estimatedCostUsd?: number | null;
 }
 
 export interface BlogAiTextResult {
@@ -129,7 +137,7 @@ export class BlogAiResponseError extends Error {
   }
 }
 
-function assertCompleteDeepSeekResponse(input: {
+function assertCompleteProviderResponse(input: {
   text: string;
   receipt: BlogAiUsageReceipt;
   jsonMode: boolean;
@@ -148,7 +156,7 @@ function assertCompleteDeepSeekResponse(input: {
   // output off. Accept only an explicit normal stop at this durable boundary;
   // missing or provider-specific termination states are not proof of a
   // complete article.
-  if (input.receipt.finishReason !== 'stop') {
+  if (input.receipt.finishReason?.toLowerCase() !== 'stop') {
     const normalizedReason = input.receipt.finishReason?.toLowerCase() ?? '';
     const truncated = normalizedReason === 'length'
       || normalizedReason === 'max_tokens'
@@ -467,7 +475,13 @@ async function callModelDirectWithReceipt(
         }, completed),
       },
     };
-    assertCompleteDeepSeekResponse({ ...result, jsonMode });
+    result.receipt.usage = {
+      inputTokens,
+      cachedInputTokens: cacheHitInputTokens,
+      outputTokens: Number(rawUsage.completion_tokens || 0),
+    };
+    result.receipt.estimatedCostUsd = result.receipt.deepseekCost?.estimatedCostUsd ?? null;
+    assertCompleteProviderResponse({ ...result, jsonMode });
     return result;
   }
 
@@ -515,13 +529,25 @@ async function callModelDirectWithReceipt(
     opts.requestTimeoutMs ? { timeout: opts.requestTimeoutMs } : undefined,
   );
   const r = await gmodel.generateContent(prompt);
-  return {
-    text: r.response.text(),
+  const response = r.response;
+  const usage = response.usageMetadata;
+  const result: BlogAiTextResult = {
+    text: response.text(),
     receipt: {
       provider: 'gemini', model, startedAt: started.toISOString(), completedAt: new Date().toISOString(),
-      latencyMs: Math.max(0, Date.now() - startedMs), finishReason: null, deepseekCost: null,
+      latencyMs: Math.max(0, Date.now() - startedMs),
+      finishReason: (response.candidates?.[0] as { finishReason?: string } | undefined)?.finishReason ?? null,
+      deepseekCost: null,
+      usage: {
+        inputTokens: Math.max(0, Number(usage?.promptTokenCount || 0)),
+        cachedInputTokens: Math.max(0, Number(usage?.cachedContentTokenCount || 0)),
+        outputTokens: Math.max(0, Number(usage?.candidatesTokenCount || 0)),
+      },
+      estimatedCostUsd: null,
     },
   };
+  assertCompleteProviderResponse({ ...result, jsonMode });
+  return result;
 }
 
 /** API 키가 설정돼 있는지 확인 (fallback 분기용) */

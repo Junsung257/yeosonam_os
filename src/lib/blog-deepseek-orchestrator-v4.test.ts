@@ -9,6 +9,8 @@ import {
   isDeepSeekPeakAt,
   nextBlogPublicationSlotKstV4,
   normalizeBlogWriterHeadingV4,
+  resolveBlogGeminiRescueModelV4,
+  resolveBlogGenerationModelV4,
   resolveBlogPublicationRampCapV4,
   resolveDeepSeekPriceV4,
 } from './blog-deepseek-orchestrator-v4';
@@ -20,27 +22,33 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
     expect(decideBlogQualityRouteV4({
       score: 96, completedAttempts: 1, hardBlockers: ['unsupported_number'],
-    })).toMatchObject({ route: 'rewrite_pro_high', publishable: false });
+    })).toMatchObject({ route: 'reresearch', publishable: false });
     expect(decideBlogQualityRouteV4({
       score: 100, completedAttempts: 1, failureReasons: ['publish_gate:public_customer_quality'],
     })).toMatchObject({ route: 'rewrite_pro_high', publishable: false });
   });
 
-  it('re-researches missing evidence but rewrites removable unsupported prose', () => {
+  it('re-researches missing or unsupported facts instead of asking a model to invent a repair', () => {
     expect(decideBlogQualityRouteV4({
       score: 71, completedAttempts: 1, hardBlockers: ['missing_evidence'],
     })).toMatchObject({ route: 'reresearch', nextStage: null });
     expect(decideBlogQualityRouteV4({
       score: 71, completedAttempts: 1, hardBlockers: ['unsupported_number'],
-    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
+    })).toMatchObject({ route: 'reresearch', nextStage: null });
     expect(decideBlogQualityRouteV4({
       score: 82, completedAttempts: 1, hardBlockers: ['unsupported_first_party_claim'],
-    })).toMatchObject({ route: 'rewrite_pro_high', nextStage: 'rewrite_pro_high' });
+    })).toMatchObject({ route: 'reresearch', nextStage: null });
   });
 
-  it('routes 75-89 to Pro high and lower soft scores to Pro max', () => {
+  it('routes 75-89 to Pro high and grounded sub-75 expression failures to Gemini rescue', () => {
     expect(decideBlogQualityRouteV4({ score: 89.99, completedAttempts: 1 }).nextStage).toBe('rewrite_pro_high');
-    expect(decideBlogQualityRouteV4({ score: 74.99, completedAttempts: 1 }).nextStage).toBe('rewrite_pro_max');
+    expect(decideBlogQualityRouteV4({
+      score: 74.99,
+      completedAttempts: 1,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['primary_decision_not_answered', 'section_purpose_coverage'],
+    })).toMatchObject({ route: 'rescue_gemini', nextStage: 'rescue_gemini' });
   });
 
   it('uses the third model call for a final max rewrite even when attempt two did not converge', () => {
@@ -58,7 +66,47 @@ describe('blog DeepSeek orchestrator V4', () => {
       previousScore: 70,
       completedAttempts: 2,
       hardBlockers: ['unsupported_number'],
-    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
+    })).toMatchObject({ route: 'reresearch', nextStage: null });
+  });
+
+  it('quarantines sub-75 drafts when grounding is not explicit or the failure is factual', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 70, completedAttempts: 1, failureReasons: ['primary_decision_not_answered'],
+    })).toMatchObject({ route: 'quarantine', nextStage: null });
+    expect(decideBlogQualityRouteV4({
+      score: 70,
+      completedAttempts: 1,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['unsupported_numeric_claim'],
+    })).toMatchObject({ route: 'reresearch', nextStage: null });
+  });
+
+  it('treats Gemini rescue as a one-shot final editor', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 79,
+      completedAttempts: 2,
+      lastStage: 'rescue_gemini',
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['section_purpose_coverage'],
+    })).toMatchObject({ route: 'quarantine', nextStage: null });
+  });
+
+  it('resolves explicit stage/provider contracts and fails closed on a non-Gemini rescue config', () => {
+    expect(resolveBlogGenerationModelV4('draft_flash')).toMatchObject({
+      provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled',
+    });
+    expect(resolveBlogGenerationModelV4('rewrite_pro_high')).toMatchObject({
+      provider: 'deepseek', model: BLOG_DEEPSEEK_MODELS.rewrite,
+      deepseekThinking: 'enabled', reasoningEffort: 'high',
+    });
+    expect(resolveBlogGeminiRescueModelV4({
+      BLOG_FINAL_REWRITE_PROVIDER: 'gemini', BLOG_FINAL_REWRITE_MODEL: 'gemini-2.5-pro',
+    })).toBe('gemini-2.5-pro');
+    expect(resolveBlogGenerationModelV4('rescue_gemini', {
+      BLOG_FINAL_REWRITE_PROVIDER: 'claude', BLOG_FINAL_REWRITE_MODEL: 'claude-opus',
+    })).toBeNull();
   });
 
   it('quarantines only after the third completed model call', () => {
@@ -139,7 +187,8 @@ describe('blog DeepSeek orchestrator V4', () => {
   it('recognizes the overnight KST compute window and clamps publication ramp stages', () => {
     expect(isBlogGenerationWindowKstV4(new Date('2026-08-16T16:00:00.000Z'))).toBe(true);
     expect(isBlogGenerationWindowKstV4(new Date('2026-08-16T22:00:00.000Z'))).toBe(false);
-    expect(resolveBlogPublicationRampCapV4('max_20').cap).toBe(20);
+    expect(resolveBlogPublicationRampCapV4('max_30').cap).toBe(30);
+    expect(resolveBlogPublicationRampCapV4('ramp_10').cap).toBe(10);
     expect(resolveBlogPublicationRampCapV4('invalid').cap).toBe(3);
     expect(nextBlogPublicationSlotKstV4(new Date('2026-08-16T17:00:00.000Z')))
       .toBe('2026-08-17T00:00:00.000Z');

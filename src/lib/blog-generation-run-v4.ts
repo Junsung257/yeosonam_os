@@ -1,7 +1,23 @@
 import { createHash } from 'node:crypto';
 import { supabaseAdmin } from './supabase';
 import type { BlogAiUsageReceipt } from './blog-ai-caller';
+import {
+  blogBudgetDayKstV4,
+  resolveBlogDailyAiCostCapUsdV4,
+} from './blog-ai-budget-v4';
 import type { BlogDeepSeekStage, BlogQualityRouteV4 } from './blog-deepseek-orchestrator-v4';
+
+export interface BlogAiBudgetReservationRecordV4 {
+  reservationId: string | null;
+  allowed: boolean;
+  reason: string;
+  budgetDayKst: string;
+  capUsd: number;
+  actualUsd: number;
+  reservedUsd: number;
+  requestedUsd: number;
+  remainingUsd: number;
+}
 
 export interface BlogGenerationAttemptRecordV4 {
   queueId: string;
@@ -52,6 +68,85 @@ export async function readLatestBlogGenerationAttemptV4(
     claimFingerprint: data.claim_fingerprint ?? null,
     qualityScore: typeof data.quality_score_after === 'number' ? data.quality_score_after : null,
   };
+}
+
+/**
+ * Atomically reserves daily AI budget before any provider request. The RPC is
+ * deliberately fail-closed: an unavailable/missing reservation ledger is not
+ * permission to spend outside the cap.
+ */
+export async function reserveBlogAiBudgetBeforeCallV4(input: {
+  queueId: string;
+  attemptNumber: number;
+  stage: BlogDeepSeekStage;
+  provider: 'deepseek' | 'gemini';
+  model: string;
+  requestedUsd: number;
+  now?: Date;
+  capUsd?: number;
+}): Promise<BlogAiBudgetReservationRecordV4> {
+  const budgetDayKst = blogBudgetDayKstV4(input.now);
+  const capUsd = input.capUsd ?? resolveBlogDailyAiCostCapUsdV4();
+  if (!Number.isFinite(input.requestedUsd) || input.requestedUsd <= 0) {
+    return {
+      reservationId: null, allowed: false, reason: 'invalid_budget_request',
+      budgetDayKst, capUsd, actualUsd: 0, reservedUsd: 0,
+      requestedUsd: 0, remainingUsd: 0,
+    };
+  }
+  const { data, error } = await supabaseAdmin.rpc('reserve_blog_ai_budget_v4', {
+    p_queue_id: input.queueId,
+    p_attempt_number: input.attemptNumber,
+    p_stage: input.stage,
+    p_provider: input.provider,
+    p_model: input.model,
+    p_requested_usd: input.requestedUsd,
+    p_cap_usd: capUsd,
+    p_budget_day_kst: budgetDayKst,
+  }).maybeSingle();
+  if (error || !data) {
+    return {
+      reservationId: null, allowed: false,
+      reason: `budget_reservation_unavailable:${error?.message || 'empty_response'}`,
+      budgetDayKst, capUsd, actualUsd: 0, reservedUsd: 0,
+      requestedUsd: input.requestedUsd, remainingUsd: 0,
+    };
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    reservationId: typeof row.reservation_id === 'string' ? row.reservation_id : null,
+    allowed: row.allowed === true,
+    reason: typeof row.reason === 'string' ? row.reason : 'daily_ai_cost_cap_reached',
+    budgetDayKst,
+    capUsd: Number(row.cap_usd ?? capUsd),
+    actualUsd: Number(row.actual_usd ?? 0),
+    reservedUsd: Number(row.reserved_usd ?? 0),
+    requestedUsd: Number(row.requested_usd ?? input.requestedUsd),
+    remainingUsd: Number(row.remaining_usd ?? 0),
+  };
+}
+
+/**
+ * Settles a reservation from a durable provider receipt. If actual cost is
+ * unknown (currently Gemini), the RPC must retain the full reservation until
+ * the KST day closes. This is intentionally conservative.
+ */
+export async function settleBlogAiBudgetReservationV4(input: {
+  reservationId: string;
+  receipt?: BlogAiUsageReceipt | null;
+  status: 'completed' | 'failed';
+}): Promise<string | null> {
+  const actualUsd = input.receipt?.estimatedCostUsd
+    ?? input.receipt?.deepseekCost?.estimatedCostUsd
+    ?? null;
+  const { error } = await supabaseAdmin.rpc('settle_blog_ai_budget_v4', {
+    p_reservation_id: input.reservationId,
+    p_actual_usd: actualUsd,
+    p_receipt: input.receipt ?? {},
+    p_status: input.status,
+    p_retain_reservation: actualUsd == null,
+  });
+  return error?.message ?? null;
 }
 
 export async function recordBlogGenerationAttemptV4(
@@ -105,6 +200,7 @@ export async function recordBlogGenerationAttemptV4(
 
   const outputHash = createHash('sha256').update(JSON.stringify(input.output)).digest('hex');
   const cost = input.receipt.deepseekCost;
+  const usage = input.receipt.usage;
   const attemptPayload = {
     run_id: run.id,
     queue_id: input.queueId,
@@ -118,11 +214,12 @@ export async function recordBlogGenerationAttemptV4(
     claim_fingerprint: input.claimFingerprint ?? null,
     output_hash: outputHash,
     output_document: input.output,
-    input_tokens: cost?.inputTokens ?? null,
-    cache_hit_input_tokens: cost?.cacheHitInputTokens ?? null,
-    cache_miss_input_tokens: cost?.cacheMissInputTokens ?? null,
-    output_tokens: cost?.outputTokens ?? null,
-    estimated_cost_usd: cost?.estimatedCostUsd ?? null,
+    input_tokens: cost?.inputTokens ?? usage?.inputTokens ?? null,
+    cache_hit_input_tokens: cost?.cacheHitInputTokens ?? usage?.cachedInputTokens ?? null,
+    cache_miss_input_tokens: cost?.cacheMissInputTokens
+      ?? (usage ? Math.max(0, usage.inputTokens - usage.cachedInputTokens) : null),
+    output_tokens: cost?.outputTokens ?? usage?.outputTokens ?? null,
+    estimated_cost_usd: input.receipt.estimatedCostUsd ?? cost?.estimatedCostUsd ?? null,
     pricing_tier: cost?.pricing.tier ?? null,
     pricing_version: cost?.pricing.version ?? null,
     quality_score_after: input.qualityScore,
@@ -135,19 +232,33 @@ export async function recordBlogGenerationAttemptV4(
     error_code: input.errorCode ?? null,
     completed_at: input.receipt.completedAt || now,
   };
-  const { error: attemptError } = await supabaseAdmin
+  const { data: insertedAttempt, error: attemptError } = await supabaseAdmin
     .from('blog_generation_attempts')
-    .insert(attemptPayload);
+    .insert(attemptPayload)
+    .select('id')
+    .single();
+  let selectedAttemptId = insertedAttempt?.id ?? null;
   let attemptPersistenceError = attemptError?.message ?? null;
   if (attemptError?.code === '23505') {
     const { data: existingAttempt, error: existingAttemptError } = await supabaseAdmin
       .from('blog_generation_attempts')
-      .select('output_hash')
+      .select('id,output_hash')
       .eq('run_id', run.id)
       .eq('attempt_number', input.attemptNumber)
       .maybeSingle();
     attemptPersistenceError = existingAttemptError?.message
       ?? (existingAttempt?.output_hash === outputHash ? null : 'generation_attempt_number_conflict');
+    selectedAttemptId = attemptPersistenceError ? null : existingAttempt?.id ?? null;
+  }
+  if (!attemptPersistenceError && !selectedAttemptId) {
+    attemptPersistenceError = 'generation_attempt_id_missing';
+  }
+  if (!attemptPersistenceError && input.route === 'approved_for_slot') {
+    const { error: selectAttemptError } = await supabaseAdmin
+      .from('blog_generation_runs')
+      .update({ selected_attempt_id: selectedAttemptId, updated_at: new Date().toISOString() })
+      .eq('id', run.id);
+    attemptPersistenceError = selectAttemptError?.message ?? null;
   }
   if (attemptPersistenceError) {
     await supabaseAdmin.from('blog_generation_runs').update({
@@ -205,6 +316,7 @@ export async function approveBlogGenerationRunForSlotV4(input: {
     .eq('queue_id', input.queueId)
     .eq('generation_key', `queue:${input.queueId}`)
     .eq('status', 'approved_for_slot')
+    .not('selected_attempt_id', 'is', null)
     .select('id')
     .maybeSingle();
   return error?.message ?? (data?.id ? null : 'approved_generation_run_not_found');
