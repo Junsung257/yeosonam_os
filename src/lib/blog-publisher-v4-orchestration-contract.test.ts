@@ -36,6 +36,17 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(autoResearch).not.toContain('.models.generateContent({');
   });
 
+  it('excludes research claims whose type disagrees with the publish classifier', () => {
+    expect(source).toContain('inspectBlogInformationClaimTypeCompatibility(');
+    expect(source).toContain('entry.typeCompatibility.passed');
+    expect(source).toContain("reason: 'claim_type_mismatch'");
+  });
+
+  it('does not route V3 rewrites on diagnostic keyword-density style SEO details', () => {
+    expect(source).toContain('isBlogSeoDetailBlockingForPublish(');
+    expect(source).toContain('Boolean(generated.generation_meta?.content_brief_v3)');
+  });
+
   it('publishes only the immutable selected attempt, never whichever attempt happens to be latest', () => {
     expect(controller).toContain('selected_attempt_id,latest_quality_score');
     expect(controller).toContain(".eq('id', selectedAttemptId)");

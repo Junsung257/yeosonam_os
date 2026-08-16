@@ -2,6 +2,37 @@ import { describe, expect, it } from 'vitest';
 import { inspectBlogIntentQuality } from './blog-content-intent';
 
 describe('blog content intent reading design', () => {
+  it('accepts an actionable three-section itinerary without a fixed H2 minimum', () => {
+    const report = inspectBlogIntentQuality({
+      title: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      primaryKeyword: '다낭 여행 일정과 이동 동선',
+      category: 'itinerary',
+      contentType: 'guide',
+      blogHtml: [
+        '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+        '',
+        '다낭 일정은 남쪽, 도심, 북쪽을 하루씩 묶어 이동 부담을 줄이는 순서로 결정하면 됩니다.',
+        '',
+        '## 첫째 날: 남쪽 동선',
+        '- 오행산을 먼저 확인합니다.',
+        '- 다음 장소로 이동합니다.',
+        '',
+        '## 둘째 날: 도심 동선',
+        '- 숙소에서 가까운 장소부터 고릅니다.',
+        '- 저녁 이동은 한 구간으로 줄입니다.',
+        '',
+        '## 셋째 날: 북쪽 동선',
+        '- 먼 구간은 하루에 묶습니다.',
+        '- 출발 전에 공식 운영 안내를 다시 확인합니다.',
+      ].join('\n'),
+    });
+
+    expect(report.issues).not.toContainEqual(expect.objectContaining({
+      code: 'weak_reading_design',
+      severity: 'critical',
+    }));
+  });
+
   it('accepts real tables and checklists without requiring highlight marks', () => {
     const report = inspectBlogIntentQuality({
       title: '오사카 7월 날씨와 옷차림 준비',

@@ -7,6 +7,7 @@ import {
   blogPublishQualityWarnings,
   evaluateBlogPublicCustomerQuality,
   evaluateBlogPublishQuality,
+  isBlogSeoDetailBlockingForPublish,
   prepareBlogForPublish,
   resolveBlogDestination,
 } from './blog-publish-quality';
@@ -28,6 +29,14 @@ const computeReadabilityMock = vi.mocked(computeReadability);
 const computeSeoScoreMock = vi.mocked(computeSeoScore);
 
 describe('blog publish quality', () => {
+  it('keeps V3 keyword heuristics diagnostic while blocking indexing invariants', () => {
+    expect(isBlogSeoDetailBlockingForPublish('semantic_longtail_coverage', true)).toBe(false);
+    expect(isBlogSeoDetailBlockingForPublish('heading_structure', true)).toBe(false);
+    expect(isBlogSeoDetailBlockingForPublish('information_freshness', true)).toBe(true);
+    expect(isBlogSeoDetailBlockingForPublish('public_link_integrity', true)).toBe(true);
+    expect(isBlogSeoDetailBlockingForPublish('semantic_longtail_coverage', false)).toBe(true);
+  });
+
   beforeEach(() => {
     runQualityGatesMock.mockResolvedValue({
       passed: true,

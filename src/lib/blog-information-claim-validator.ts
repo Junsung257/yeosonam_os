@@ -24,6 +24,13 @@ export interface ExtractedBlogInformationClaim {
   extractedValue: BlogInformationExtractedValue;
 }
 
+export interface BlogInformationClaimTypeCompatibility {
+  passed: boolean;
+  declaredType: BlogInformationClaimType;
+  deterministicType: BlogInformationClaimType | null;
+  candidateKind: BlogInformationFactualCandidateKind | null;
+}
+
 export interface BlogInformationClaimEvidenceRecord {
   evidenceKey: string;
   sourceVersionId: string | null;
@@ -440,6 +447,27 @@ export function extractBlogInformationClaims(markdown: string): ExtractedBlogInf
       extractedValue: extractClaimValue(segment, classification.candidateKind),
     }];
   });
+}
+
+/**
+ * A rewrite may only copy a researched claim when the same deterministic
+ * classifier used by the publish gate assigns the declared claim type.
+ *
+ * This deliberately fails closed for unclassified claims. Rewriting a claim
+ * type here would create new evidence semantics; excluding it keeps the
+ * research packet and the final ledger on the same contract instead.
+ */
+export function inspectBlogInformationClaimTypeCompatibility(
+  claimText: string,
+  declaredType: BlogInformationClaimType,
+): BlogInformationClaimTypeCompatibility {
+  const deterministicClaim = extractBlogInformationClaims(claimText)[0] ?? null;
+  return {
+    passed: deterministicClaim?.claimType === declaredType,
+    declaredType,
+    deterministicType: deterministicClaim?.claimType ?? null,
+    candidateKind: deterministicClaim?.candidateKind ?? null,
+  };
 }
 
 function isEvidenceCurrent(
