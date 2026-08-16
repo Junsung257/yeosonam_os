@@ -159,6 +159,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("status: 'pending_review'");
     expect(source).toContain('createBlogInformationEvidenceWorkflowStore({');
     expect(source).toContain("state: 'pending_review'");
+    expect(source).toContain('markBlogGenerationRunForHumanReviewV4({');
     expect(source).toContain('review_case_research_missing:');
   });
 

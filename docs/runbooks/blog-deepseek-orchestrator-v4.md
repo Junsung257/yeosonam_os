@@ -29,6 +29,8 @@
 
 생성 실행 원장은 `blog_generation_runs`, 개별 모델 시도는 `blog_generation_attempts`, 가격 근거는 `ai_model_price_catalog`, 호출 전 비용 예약은 `blog_ai_budget_reservations`에 저장한다. 승인된 run은 반드시 실제 저장된 `selected_attempt_id`를 가져야 한다. 기존 `agent_tasks`에는 queue별 `blog_orchestrator` 작업 한 건을 재사용해 stage와 최종 disposition을 남긴다.
 
+모델 품질이 90점 이상이어도 `draft_only`, HIGH-risk, 사람 검토, 또는 발행 정책으로 공개할 수 없으면 run은 `approved_for_slot`에 남기지 않고 `human_review`로 전환하며 `scheduled_publish_at`을 비운다. 따라서 publication controller의 슬롯 재고는 실제 공개 가능한 초안만 포함한다.
+
 ## DeepSeek 시간·가격 계약
 
 DeepSeek 공식 가격 변경 시점은 2026-08-16 16:00 UTC(2026-08-17 01:00 KST)다. 이후 공식 peak는 UTC 01:00–04:00, 06:00–10:00, 즉 KST 10:00–13:00, 15:00–19:00다. 그 외 시간은 off-peak이며 현재 공시상 peak의 절반이다.

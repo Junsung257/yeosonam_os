@@ -199,6 +199,7 @@ import {
 } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
   approveBlogGenerationRunForSlotV4,
+  markBlogGenerationRunForHumanReviewV4,
   readLatestBlogGenerationAttemptV4,
   readLatestBlogModelCallAttemptNumberV4,
   nextBlogModelCallAttemptNumberV4,
@@ -3933,6 +3934,23 @@ async function processQueueItem(
     }
 
     if (requiresHumanReview) {
+      const humanReviewReason = requiresClaimReview
+        ? 'informational_claim_review_required'
+        : reviewedPublishedReplacement
+          ? 'published_atomic_upgrade_human_review_required'
+          : autopublishDecision.reasons.join(',') || 'high_risk_human_review_required';
+      const humanReviewRunError = await markBlogGenerationRunForHumanReviewV4({
+        queueId: item.id,
+        creativeId,
+        reason: humanReviewReason,
+      });
+      if (humanReviewRunError) {
+        logWarning('[cron/blog-publisher] human-review run transition failed', {
+          queueId: item.id,
+          creativeId,
+          error: humanReviewRunError,
+        });
+      }
       try {
         const reviewBrief = buildQueueContentBrief(item);
         const reviewResearch = evaluateBlogGenerationResearchReadiness({
@@ -4018,11 +4036,7 @@ async function processQueueItem(
         id: item.id,
         topic: item.topic,
         status: 'pending_review',
-        reason: requiresClaimReview
-          ? 'informational_claim_review_required'
-          : reviewedPublishedReplacement
-            ? 'published_atomic_upgrade_human_review_required'
-            : autopublishDecision.reasons.join(',') || 'high_risk_human_review_required',
+        reason: humanReviewReason,
       };
     }
 
