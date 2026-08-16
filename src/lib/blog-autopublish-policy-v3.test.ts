@@ -13,6 +13,9 @@ describe('blog autopublish policy v3', () => {
       requestedMode: 'draft_only',
       mode: 'draft_only',
       dailyPublishCap: 1,
+      publicationRampStage: 'pilot_3',
+      autoRampEnabled: false,
+      autoRollbackEnabled: true,
       maxWeatherShare30d: 0.2,
       maxSameArchetypeInLast10: 2,
       requireDemandSignal: true,
@@ -119,10 +122,27 @@ describe('blog autopublish policy v3', () => {
 
   it('keeps a requested high cap behind an explicit staged ramp', () => {
     expect(readBlogAutopublishPolicyV3({
-      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '20',
-    })).toMatchObject({ requestedDailyPublishCap: 20, dailyPublishCap: 3, publicationRampStage: 'pilot_3' });
+      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '30',
+    })).toMatchObject({ requestedDailyPublishCap: 30, dailyPublishCap: 3, publicationRampStage: 'pilot_3' });
     expect(readBlogAutopublishPolicyV3({
-      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '20', BLOG_PUBLICATION_RAMP_STAGE: 'ramp_10',
-    })).toMatchObject({ requestedDailyPublishCap: 20, dailyPublishCap: 10, publicationRampStage: 'ramp_10' });
+      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '30', BLOG_PUBLICATION_RAMP_STAGE: 'ramp_10',
+    })).toMatchObject({ requestedDailyPublishCap: 30, dailyPublishCap: 10, publicationRampStage: 'ramp_10' });
+    expect(readBlogAutopublishPolicyV3({
+      BLOG_AUTOPUBLISH_MODE: 'live', BLOG_DAILY_PUBLISH_CAP: '99', BLOG_PUBLICATION_RAMP_STAGE: 'max_30',
+      BLOG_AUTO_RAMP_ENABLED: 'true', BLOG_AUTO_ROLLBACK_ENABLED: 'false',
+    })).toMatchObject({
+      requestedDailyPublishCap: 30,
+      dailyPublishCap: 30,
+      publicationRampStage: 'max_30',
+      autoRampEnabled: true,
+      autoRollbackEnabled: false,
+    });
+  });
+
+  it('treats retired or invalid stages as the fail-closed pilot ceiling', () => {
+    expect(readBlogAutopublishPolicyV3({ BLOG_PUBLICATION_RAMP_STAGE: 'max_20' }))
+      .toMatchObject({ publicationRampStage: 'pilot_3', dailyPublishCap: 1 });
+    expect(readBlogAutopublishPolicyV3({ BLOG_PUBLICATION_RAMP_STAGE: 'ramp_5' }))
+      .toMatchObject({ publicationRampStage: 'pilot_3', dailyPublishCap: 1 });
   });
 });

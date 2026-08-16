@@ -36,7 +36,10 @@ describe('blog search data and published quality recovery contract', () => {
     const workflow = source('.github/workflows/blog-external-cron.yml');
 
     expect(route).toContain('const MAX_BATCH = 2');
-    expect(route).toContain('const PERFORMANCE_MATURITY_DAYS = 14');
+    expect(route).toContain('const PERFORMANCE_MATURITY_DAYS = 28');
+    expect(route).toContain('const WINDOW_DAYS = 28');
+    expect(route).toContain('const COOLDOWN_DAYS = 28');
+    expect(route).toContain('searchObservationAvailable');
     expect(route).toContain(".in('source', ['gsc', 'gsc-page'])");
     expect(route).toContain('generation_meta,published_at');
     expect(route).toContain('!hasVerifiedResearch(post.generation_meta)');

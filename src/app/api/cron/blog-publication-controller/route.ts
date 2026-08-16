@@ -11,6 +11,11 @@ import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { getBlogPublicSurfacePolicyBlockReason } from '@/lib/blog-public-eligibility';
+import {
+  resolveEffectiveBlogPublicationRollout,
+} from '@/lib/blog-publication-rollout';
+import { loadBlogPublicationRolloutState } from '@/lib/blog-publication-rollout-repository';
 
 export const runtime = 'nodejs';
 export const maxDuration = 180;
@@ -31,6 +36,19 @@ async function runBlogPublicationController(request: NextRequest) {
     return { skipped: true, reason: `autopublish_mode_${policy.mode}`, policy };
   }
 
+  const rolloutStateResult = await loadBlogPublicationRolloutState(supabaseAdmin);
+  if (!rolloutStateResult.state) {
+    return { skipped: true, reason: `publication_rollout_state_unavailable:${rolloutStateResult.error}` };
+  }
+  const rollout = resolveEffectiveBlogPublicationRollout({
+    state: rolloutStateResult.state,
+    environmentStageCeiling: policy.publicationRampStage,
+    environmentDailyCap: policy.requestedDailyPublishCap,
+  });
+  if (rollout.frozen || rollout.dailyCap <= 0) {
+    return { skipped: true, reason: 'publication_rollout_frozen', policy, rollout };
+  }
+
   const now = new Date();
   const range = kstDayRange(now);
   const { count: publishedToday, error: countError } = await supabaseAdmin
@@ -44,14 +62,16 @@ async function runBlogPublicationController(request: NextRequest) {
 
   const quota = calculateBlogPublishSlotQuota({
     now,
-    dailyTarget: policy.dailyPublishCap,
+    dailyTarget: rollout.dailyCap,
     alreadyPublished: Number(publishedToday ?? 0),
+    rolloutStage: rollout.stage,
+    cumulativeTargets: rollout.cumulativeSlotCaps,
   });
   if (quota.remainingDueNow <= 0) return { skipped: true, reason: 'publication_slot_not_due', quota };
 
   const { data: dueRuns, error: dueError } = await supabaseAdmin
     .from('blog_generation_runs')
-    .select('id,queue_id,content_creative_id,latest_quality_score,scheduled_publish_at')
+    .select('id,queue_id,content_creative_id,selected_attempt_id,latest_quality_score,scheduled_publish_at')
     .eq('status', 'approved_for_slot')
     .lte('scheduled_publish_at', now.toISOString())
     .order('scheduled_publish_at', { ascending: true })
@@ -63,11 +83,12 @@ async function runBlogPublicationController(request: NextRequest) {
   for (const run of dueRuns ?? []) {
     let publicCommitComplete = false;
     const creativeId = run.content_creative_id as string | null;
-    if (!creativeId || Number(run.latest_quality_score ?? 0) < 90) {
+    const selectedAttemptId = run.selected_attempt_id as string | null;
+    if (!creativeId || !selectedAttemptId || Number(run.latest_quality_score ?? 0) < 90) {
       await supabaseAdmin.from('blog_generation_runs').update({
         status: 'quarantine', disposition: 'controller_precondition_failed', quarantined_at: now.toISOString(),
       }).eq('id', run.id).eq('status', 'approved_for_slot');
-      results.push({ runId: run.id, creativeId, status: 'quarantined', reason: 'missing_creative_or_score_below_90' });
+      results.push({ runId: run.id, creativeId, status: 'quarantined', reason: 'missing_creative_selected_attempt_or_score_below_90' });
       continue;
     }
 
@@ -83,31 +104,59 @@ async function runBlogPublicationController(request: NextRequest) {
     try {
       const { data: attempt, error: attemptError } = await supabaseAdmin
         .from('blog_generation_attempts')
-        .select('hard_blockers,failure_reasons,route')
+        .select('hard_blockers,failure_reasons,route,quality_score_after,output_document')
+        .eq('id', selectedAttemptId)
         .eq('run_id', run.id)
-        .order('attempt_number', { ascending: false })
-        .limit(1)
         .single();
       if (attemptError || attempt?.route !== 'approved_for_slot'
         || (Array.isArray(attempt?.hard_blockers) && attempt.hard_blockers.length > 0)
         || (Array.isArray(attempt?.failure_reasons) && attempt.failure_reasons.length > 0)) {
-        throw new Error('latest_attempt_not_publishable');
+        throw new Error('selected_attempt_not_publishable');
       }
 
       const { data: creative, error: creativeError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,slug,blog_html,seo_title,seo_description,status,review_status,quality_gate,generation_meta,product_id,destination')
+        .select('id,slug,blog_html,seo_title,seo_description,title,channel,category,content_type,status,review_status,quality_gate,generation_meta,product_id,destination')
         .eq('id', creativeId)
         .single();
       if (creativeError || !creative || creative.status !== 'draft') throw new Error('approved_draft_missing');
+      const selectedOutput = attempt.output_document as Record<string, unknown> | null;
+      const selectedOutputMatchesDraft = selectedOutput
+        && String(selectedOutput.title ?? '') === String(creative.seo_title ?? '')
+        && String(selectedOutput.description ?? '') === String(creative.seo_description ?? '')
+        && String(selectedOutput.slug ?? '') === String(creative.slug ?? '')
+        && String(selectedOutput.markdown ?? '') === String(creative.blog_html ?? '');
+      if (!selectedOutputMatchesDraft) throw new Error('selected_attempt_output_mismatch');
       const generationMeta = (creative.generation_meta || {}) as Record<string, unknown>;
       const orchestration = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
-      if (orchestration?.route !== 'approved_for_slot' || Number(orchestration.score || 0) < 90) {
+      const selectedScore = Number(attempt.quality_score_after ?? 0);
+      if (orchestration?.route !== 'approved_for_slot'
+        || Number(orchestration.score || 0) < 90
+        || selectedScore < 90
+        || selectedScore !== Number(run.latest_quality_score ?? 0)) {
         throw new Error('creative_generation_meta_not_approved');
+      }
+      if (creative.channel !== 'naver_blog' || !String(creative.slug || '').trim()) {
+        throw new Error('creative_public_identity_invalid');
+      }
+      const publicSurfaceBlock = getBlogPublicSurfacePolicyBlockReason({
+        productId: creative.product_id,
+        reviewStatus: creative.review_status,
+        title: creative.title,
+        category: creative.category,
+        contentType: creative.content_type,
+        generationMeta,
+      });
+      if (publicSurfaceBlock) throw new Error(`creative_public_policy_blocked:${publicSurfaceBlock}`);
+      if ((creative.quality_gate as Record<string, unknown> | null)?.passed !== true) {
+        throw new Error('creative_quality_gate_not_passed');
       }
 
       const identity = readBlogInformationRepresentativeIdentity(generationMeta);
+      if (!identity && !creative.product_id) throw new Error('information_representative_identity_missing');
       if (identity) {
+        const claimValidation = generationMeta.information_claim_validation as Record<string, unknown> | undefined;
+        if (claimValidation?.passed !== true) throw new Error('information_claim_gate_not_passed');
         await publishBlogInformationAtomically({
           creativeId,
           contentFingerprint: createBlogInformationContentFingerprint({
@@ -126,10 +175,6 @@ async function runBlogPublicationController(request: NextRequest) {
         });
         publicCommitComplete = true;
       } else {
-        const enqueue = await enqueueBlogIndexingJob({
-          slug: String(creative.slug), baseUrl, contentCreativeId: creativeId, source: 'blog_publication_controller',
-        });
-        if (!enqueue.ok) throw new Error(`indexing_enqueue_failed:${enqueue.error}`);
         const { data: promoted, error: promoteError } = await supabaseAdmin
           .from('content_creatives')
           .update({ status: 'published', published_at: now.toISOString() })
@@ -139,6 +184,10 @@ async function runBlogPublicationController(request: NextRequest) {
           .maybeSingle();
         if (promoteError || !promoted) throw new Error('draft_promotion_race');
         publicCommitComplete = true;
+        const enqueue = await enqueueBlogIndexingJob({
+          slug: String(creative.slug), baseUrl, contentCreativeId: creativeId, source: 'blog_publication_controller',
+        });
+        if (!enqueue.ok) throw new Error(`indexing_enqueue_failed_after_public_commit:${enqueue.error}`);
       }
 
       const [runSync, queueSync] = await Promise.all([
@@ -189,7 +238,7 @@ async function runBlogPublicationController(request: NextRequest) {
     revalidatePublicBlogCache();
     await processDueBlogIndexingJobs({ workerName: 'blog-publication-controller', limit: 10, baseUrl });
   }
-  return { processed: results.length, published, quota, results, modelCalls: 0 };
+  return { processed: results.length, published, quota, rollout, results, modelCalls: 0 };
 }
 
 export const GET = withCronLogging('blog-publication-controller', runBlogPublicationController, {

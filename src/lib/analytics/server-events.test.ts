@@ -14,6 +14,7 @@ vi.mock('@/lib/secret-registry', () => ({
 }));
 
 import {
+  isSyntheticAnalyticsServerEvent,
   normalizeServerAttribution,
   recordServerAnalyticsEvent,
 } from './server-events';
@@ -144,5 +145,43 @@ describe('analytics server event boundary', () => {
     }));
     expect(JSON.stringify(eventInsert.mock.calls)).not.toContain('오사카 숙소 위치');
     expect(mocks.deliveryUpsert).toHaveBeenCalledOnce();
+  });
+
+  it('stores an internal synthetic marker without delivering it to GA4 or ads', async () => {
+    const eventInsert = vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn().mockResolvedValue({ data: { id: 'probe-event' }, error: null }),
+      })),
+    }));
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'analytics_server_events') return { insert: eventInsert };
+      throw new Error(`unexpected table: ${table}`);
+    });
+
+    await expect(recordServerAnalyticsEvent({
+      eventName: 'generate_lead',
+      idempotencyKey: 'probe:analytics:2026-08-16',
+      sourceType: 'lead',
+      sourceId: 'probe-2026-08-16',
+      payload: { pipeline: 'blog_assist' },
+      synthetic: true,
+    })).resolves.toEqual({ id: 'probe-event', idempotent: false });
+
+    expect(eventInsert).toHaveBeenCalledWith(expect.objectContaining({
+      event_payload: { pipeline: 'blog_assist', __synthetic: true },
+    }));
+    expect(mocks.deliveryUpsert).not.toHaveBeenCalled();
+    expect(isSyntheticAnalyticsServerEvent({ __synthetic: true })).toBe(true);
+  });
+
+  it('rejects callers attempting to forge the reserved synthetic marker', async () => {
+    await expect(recordServerAnalyticsEvent({
+      eventName: 'generate_lead',
+      idempotencyKey: 'lead:forged',
+      sourceType: 'lead',
+      sourceId: 'forged',
+      payload: { __synthetic: true },
+    })).rejects.toThrow('reserved for internal probes');
+    expect(mocks.from).not.toHaveBeenCalled();
   });
 });

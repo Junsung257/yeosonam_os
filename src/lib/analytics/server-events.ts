@@ -79,6 +79,17 @@ export interface RecordServerAnalyticsEventInput {
   attribution?: unknown;
   payload: Record<string, unknown>;
   occurredAt?: string;
+  /** Internal pipeline probe. Stored for DB-boundary verification but never delivered externally. */
+  synthetic?: boolean;
+}
+
+export function isSyntheticAnalyticsServerEvent(value: unknown): boolean {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && (value as Record<string, unknown>).__synthetic === true,
+  );
 }
 
 function hasAdsClickId(attribution: AttributionSnapshot | null): boolean {
@@ -113,6 +124,9 @@ export async function recordServerAnalyticsEvent(
     throw new Error('analytics event valueKrw must be a non-negative integer');
   }
   assertNoPii(input.payload);
+  if ('__synthetic' in input.payload && input.synthetic !== true) {
+    throw new Error('analytics synthetic marker is reserved for internal probes');
+  }
   const normalizedAttribution = normalizeServerAttribution(input.attribution);
   const attribution = withoutRawSearchTerms(normalizedAttribution);
   const derivedSearchQueryHash = hashAnalyticsSearchQuery(
@@ -136,7 +150,9 @@ export async function recordServerAnalyticsEvent(
     currency: input.valueKrw == null ? null : 'KRW',
     value_krw: input.valueKrw ?? null,
     attribution_snapshot: attribution,
-    event_payload: input.payload,
+    event_payload: input.synthetic === true
+      ? { ...input.payload, __synthetic: true }
+      : input.payload,
     occurred_at: input.occurredAt ?? new Date().toISOString(),
   };
   const { data, error } = await supabaseAdmin
@@ -162,6 +178,9 @@ export async function recordServerAnalyticsEvent(
   }
 
   const jobs: Array<Record<string, unknown>> = [];
+  if (input.synthetic === true) {
+    return { id: eventId, idempotent };
+  }
   if (input.eventName !== 'generate_lead') {
     const ga4Ready = Boolean(
       process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID?.match(/^G-[A-Z0-9]+$/)

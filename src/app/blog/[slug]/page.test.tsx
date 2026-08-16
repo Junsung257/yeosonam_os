@@ -147,7 +147,9 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain("return { state: 'unavailable', post: null }");
     expect(source).toContain("['blog-detail-v6-outage-envelope']");
     expect(source).not.toContain("if (snapshotResult.state === 'missing') return null");
-    expect(source).toContain("const snapshot = snapshotResult.state === 'found'");
+    expect(source).toContain("if (snapshotResult.state === 'found')");
+    expect(source.indexOf(".from(PUBLIC_BLOG_READ_SOURCE)"))
+      .toBeLessThan(source.indexOf('loadBlogPublicFallbackOrThrow(dbSlug)'));
     expect(source).toContain("if (cached.state === 'unavailable') throw createBlogDatabaseUnavailableError()");
     expect(source).not.toContain('function shouldRefreshCachedBlogPost');
     expect(source).not.toContain('unstable_cache(\n  async (slug: string) => getPostFastUncached(slug)');
@@ -162,7 +164,7 @@ describe('/blog/[slug] page smoke', () => {
 
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
-    expect(errorBranch).toContain('throw createBlogDatabaseUnavailableError();');
+    expect(errorBranch).toContain('return loadBlogPublicFallbackOrThrow(dbSlug);');
     expect(errorBranch).not.toContain('return null;');
   });
 

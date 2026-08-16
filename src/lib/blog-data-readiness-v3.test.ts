@@ -16,7 +16,21 @@ describe('blog data readiness v3', () => {
     expect(report.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({ metric: 'searchPerformance30d', reason: 'zero_observed_rows' }),
       expect.objectContaining({ metric: 'engagement7d', reason: 'query_unavailable' }),
+      expect.objectContaining({ metric: 'serverEvents30d', status: 'warning', reason: 'no_natural_attributed_events_yet' }),
     ]));
+  });
+
+  it('does not claim a broken pipeline solely because natural attributed conversions are not observed yet', () => {
+    const report = evaluateBlogDataReadinessV3({
+      searchPerformance30d: 1,
+      engagement7d: 1,
+      serverEvents30d: 0,
+      rum7d: 1,
+      currentSnapshots: 1,
+      outboxDead: 0,
+      outboxReady: 0,
+    });
+    expect(report.status).toBe('warning');
   });
 
   it('reports readiness only when every required source has observed rows', () => {

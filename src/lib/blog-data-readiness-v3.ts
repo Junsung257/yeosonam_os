@@ -35,6 +35,9 @@ export function evaluateBlogDataReadinessV3(
   const checks: BlogDataReadinessCheckV3[] = required.map((metric) => {
     const count = counts[metric];
     if (count == null) return { metric, status: 'critical', count, reason: 'query_unavailable' };
+    if (count === 0 && metric === 'serverEvents30d') {
+      return { metric, status: 'warning', count, reason: 'no_natural_attributed_events_yet' };
+    }
     if (count === 0) return { metric, status: 'critical', count, reason: 'zero_observed_rows' };
     return { metric, status: 'ok', count, reason: 'rows_observed' };
   });

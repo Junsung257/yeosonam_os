@@ -1,3 +1,9 @@
+import {
+  getBlogPublicationRampDefinition,
+  parseBlogPublicationRampStage,
+  type BlogPublicationRampStage,
+} from './blog-publication-rollout';
+
 export const BLOG_AUTOPUBLISH_MODES = ['draft_only', 'reviewed_only', 'live'] as const;
 
 export type BlogAutopublishMode = (typeof BLOG_AUTOPUBLISH_MODES)[number];
@@ -7,7 +13,10 @@ export interface BlogAutopublishPolicyV3 {
   mode: BlogAutopublishMode;
   dailyPublishCap: number;
   requestedDailyPublishCap: number;
-  publicationRampStage: 'pilot_3' | 'ramp_5' | 'ramp_10' | 'max_20';
+  /** Environment hard ceiling. The durable DB rollout state may be lower, never higher. */
+  publicationRampStage: BlogPublicationRampStage;
+  autoRampEnabled: boolean;
+  autoRollbackEnabled: boolean;
   maxWeatherShare30d: number;
   maxSameArchetypeInLast10: number;
   requireDemandSignal: boolean;
@@ -103,22 +112,18 @@ export function readBlogAutopublishPolicyV3(
     : 'draft_only';
   const deploymentProvenance = evaluateBlogDeploymentProvenanceV3(env);
   const mode = deploymentProvenance.passed ? requestedMode : 'draft_only';
-  const requestedDailyPublishCap = Math.floor(boundedNumber(env.BLOG_DAILY_PUBLISH_CAP, 1, 0, 20));
-  const ramp = (() => {
-    switch (env.BLOG_PUBLICATION_RAMP_STAGE) {
-      case 'ramp_5': return { stage: 'ramp_5' as const, cap: 5 };
-      case 'ramp_10': return { stage: 'ramp_10' as const, cap: 10 };
-      case 'max_20': return { stage: 'max_20' as const, cap: 20 };
-      default: return { stage: 'pilot_3' as const, cap: 3 };
-    }
-  })();
+  const requestedDailyPublishCap = Math.floor(boundedNumber(env.BLOG_DAILY_PUBLISH_CAP, 1, 0, 30));
+  const publicationRampStage = parseBlogPublicationRampStage(env.BLOG_PUBLICATION_RAMP_STAGE);
+  const rampCap = getBlogPublicationRampDefinition(publicationRampStage).dailyCap;
 
   return {
     requestedMode,
     mode,
-    dailyPublishCap: Math.min(requestedDailyPublishCap, ramp.cap),
+    dailyPublishCap: Math.min(requestedDailyPublishCap, rampCap),
     requestedDailyPublishCap,
-    publicationRampStage: ramp.stage,
+    publicationRampStage,
+    autoRampEnabled: envBoolean(env.BLOG_AUTO_RAMP_ENABLED, false),
+    autoRollbackEnabled: envBoolean(env.BLOG_AUTO_ROLLBACK_ENABLED, true),
     maxWeatherShare30d: boundedNumber(env.BLOG_MAX_WEATHER_SHARE_30D, 0.2, 0, 1),
     maxSameArchetypeInLast10: Math.floor(
       boundedNumber(env.BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10, 2, 0, 10),

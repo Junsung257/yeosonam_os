@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { getReadOnlySupabaseV3 } from './lib/blog-corpus-v3';
 import { getBlogPublicSurfacePolicyBlockReason } from '../src/lib/blog-public-eligibility';
 
@@ -55,7 +56,10 @@ async function main(): Promise<void> {
   const applyDb = process.argv.includes('--apply-db');
   const writeBundled = process.argv.includes('--write-bundled');
   const writeDetailBundled = process.argv.includes('--write-detail-bundled');
-  const allDetails = process.argv.includes('--all-details');
+  const artifactDirArg = process.argv.find((arg) => arg.startsWith('--artifact-dir='));
+  const artifactDir = artifactDirArg?.slice('--artifact-dir='.length).trim() || null;
+  const writeImmutableArtifacts = Boolean(artifactDir);
+  const allDetails = process.argv.includes('--all-details') || writeImmutableArtifacts;
   const detailSlugArg = process.argv.find((arg) => arg.startsWith('--detail-slugs='));
   const detailSlugs = [...new Set((detailSlugArg?.split('=', 2)[1] || '')
     .split(',')
@@ -161,7 +165,22 @@ async function main(): Promise<void> {
       || (typeof document?.markdown === 'string' ? document.markdown : '');
     return body.replace(/\s+/g, '').length >= 200;
   });
+  const generatedAt = new Date().toISOString();
+  const catalogArtifact = `${JSON.stringify({
+    generated_at: generatedAt,
+    source: 'public_blog_content_creatives_read_only',
+    count: publicRows.length,
+    posts: publicRows,
+  }, null, 2)}\n`;
+  const detailArtifact = `${JSON.stringify({
+    generated_at: generatedAt,
+    source: detailSource,
+    count: detailRows.length,
+    posts: detailRows,
+  }, null, 2)}\n`;
   const checksum = createHash('sha256').update(JSON.stringify(publicRows)).digest('hex');
+  const catalogArtifactSha256 = createHash('sha256').update(catalogArtifact).digest('hex');
+  const detailArtifactSha256 = createHash('sha256').update(detailArtifact).digest('hex');
   const preview = {
     dry_run: !applyDb,
     public_rows: publicRows.length,
@@ -172,28 +191,63 @@ async function main(): Promise<void> {
     requested_detail_slugs: allDetails ? publicRows.length : detailSlugs.length,
     usable_detail_rows: detailRows.length,
     local_detail_artifact_write: writeDetailBundled,
+    immutable_artifact_write: writeImmutableArtifacts,
+    immutable_artifact_dir: artifactDir ? resolve(artifactDir) : null,
+    catalog_artifact_sha256: catalogArtifactSha256,
+    detail_artifact_sha256: detailArtifactSha256,
   };
   console.log(JSON.stringify(preview, null, 2));
   if (writeBundled) {
-    writeFileSync('src/data/blog-public-catalog-snapshot-v3.json', `${JSON.stringify({
-      generated_at: new Date().toISOString(), source: 'public_blog_content_creatives_read_only',
-      count: publicRows.length, posts: publicRows,
-    }, null, 2)}\n`);
+    writeFileSync('src/data/blog-public-catalog-snapshot-v3.json', catalogArtifact);
   }
   if (writeDetailBundled) {
     const requestedDetailSlugs = allDetails ? publicRows.map((row) => String(row.slug)) : detailSlugs;
     const missingSlugs = requestedDetailSlugs.filter((slug) => !detailRows.some((row) => row.slug === slug));
     if (missingSlugs.length > 0) throw new Error(`detail_snapshot_missing_or_empty:${missingSlugs.join(',')}`);
-    const artifact = `${JSON.stringify({
-      generated_at: new Date().toISOString(),
-      source: detailSource,
-      count: detailRows.length,
-      posts: detailRows,
-    }, null, 2)}\n`;
-    if (Buffer.byteLength(artifact, 'utf8') > 8 * 1024 * 1024) {
+    if (Buffer.byteLength(detailArtifact, 'utf8') > 8 * 1024 * 1024) {
       throw new Error('detail_snapshot_bundle_exceeds_8mb');
     }
-    writeFileSync('src/data/blog-public-detail-snapshot-v3.json', artifact);
+    writeFileSync('src/data/blog-public-detail-snapshot-v3.json', detailArtifact);
+  }
+  if (artifactDir) {
+    const missingDetailSlugs = publicRows
+      .map((row) => String(row.slug))
+      .filter((slug) => !detailRows.some((row) => row.slug === slug));
+    if (missingDetailSlugs.length > 0) {
+      throw new Error(`immutable_detail_snapshot_parity_failed:${missingDetailSlugs.join(',')}`);
+    }
+    if (Buffer.byteLength(catalogArtifact, 'utf8') > 8 * 1024 * 1024) {
+      throw new Error('catalog_snapshot_bundle_exceeds_8mb');
+    }
+    if (Buffer.byteLength(detailArtifact, 'utf8') > 8 * 1024 * 1024) {
+      throw new Error('detail_snapshot_bundle_exceeds_8mb');
+    }
+    const root = resolve(artifactDir);
+    const catalogDir = join(root, 'catalog');
+    const detailDir = join(root, 'detail');
+    mkdirSync(catalogDir, { recursive: true });
+    mkdirSync(detailDir, { recursive: true });
+    const catalogRelativePath = `catalog/${catalogArtifactSha256}.json`;
+    const detailRelativePath = `detail/${detailArtifactSha256}.json`;
+    writeFileSync(join(root, catalogRelativePath), catalogArtifact);
+    writeFileSync(join(root, detailRelativePath), detailArtifact);
+    writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
+      version: 'blog-public-snapshot-artifacts-v3',
+      generated_at: generatedAt,
+      source_checksum: checksum,
+      catalog: {
+        relative_path: catalogRelativePath,
+        sha256: catalogArtifactSha256,
+        count: publicRows.length,
+        bytes: Buffer.byteLength(catalogArtifact, 'utf8'),
+      },
+      detail: {
+        relative_path: detailRelativePath,
+        sha256: detailArtifactSha256,
+        count: detailRows.length,
+        bytes: Buffer.byteLength(detailArtifact, 'utf8'),
+      },
+    }, null, 2)}\n`);
   }
   if (!applyDb) return;
   if (process.env.BLOG_SNAPSHOT_APPLY_CONFIRM !== 'PUBLIC_ELIGIBILITY_REVIEWED') throw new Error('snapshot_apply_confirmation_missing');

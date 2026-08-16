@@ -154,6 +154,10 @@
       "schedule": "15 0 * * *"
     },
     {
+      "path": "/api/cron/blog-analytics-canary",
+      "schedule": "25 0 * * *"
+    },
+    {
       "path": "/api/cron/meta-token-refresh",
       "schedule": "36 9 * * *"
     },
