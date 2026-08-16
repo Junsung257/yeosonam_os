@@ -196,6 +196,37 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).not.toContain('route pairings unless');
   });
 
+  it('gives route rewrites boarding, connection, arrival, and disruption decisions', () => {
+    const prompt = buildDeepSeekRewritePromptV4({
+      originalDraft: 'untrusted',
+      failureEvidence: ['reader_decision_incomplete'],
+      researchFingerprint: 'research-route',
+      claimFingerprint: 'claims-route',
+      evidencePacket: {
+        fixedTitle: '간사이공항에서 난바 가는 법: 환승 부담으로 고르기',
+        primaryQuery: '간사이공항에서 난바 가는 법',
+        primaryDecision: '어떤 이동수단을 고르는가?',
+        archetype: 'route_walkthrough',
+        sectionPurposes: ['출발점부터 도착점까지 구간을 설명한다'],
+        approvedClaims: [{
+          claimText: '공항철도는 난바까지 40분 걸립니다.',
+          claimType: 'duration',
+          riskLevel: 'MEDIUM',
+          sourceUrls: ['https://example.com/official-route'],
+        }],
+        officialSourceUrls: ['https://example.com/official-route'],
+        internalLink: 'https://www.yeosonam.com/blog/destination/%EC%98%A4%EC%82%AC%EC%B9%B4',
+        includeFaq: false,
+        includeChecklist: false,
+      },
+    });
+
+    expect(prompt).toContain('departure/boarding');
+    expect(prompt).toContain('connection or middle segment');
+    expect(prompt).toContain('arrival/alighting');
+    expect(prompt).toContain('delay, sell-out, or last-service fallback');
+  });
+
   it('keeps a grounded itinerary rewrite complete enough for the customer and answer-first gates', async () => {
     const markdown = [
       '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',

@@ -498,7 +498,9 @@ function buildRewriteArchetypeContractV4(
     return [
       '[ARCHETYPE CONTRACT — route_walkthrough]',
       '- The first paragraph must name the recommended decision rule and contain "동선" or "이동수단".',
-      '- Organize the article by departure choice, movement evidence, and final selection. Use only route/entity names already present in approved claims.',
+      '- Organize the article as three distinct stages: departure/boarding, connection or middle segment, and arrival/alighting. Use only route/entity names already present in approved claims.',
+      '- Put an exact approved time, distance, fare, or operating claim beside the segment it supports; never infer an unverified stop or duration.',
+      '- Include a source-neutral official recheck and a delay, sell-out, or last-service fallback without asserting that the disruption will occur.',
       '- End with distinct reader actions, not a generic three-question block.',
     ];
   }
