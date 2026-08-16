@@ -147,4 +147,14 @@ describe('blog daily summary report day', () => {
     expect(routeSource).toContain("summary.fleet_phrase_drift.status !== 'pass'");
     expect(routeSource).toContain('.slice(0, 100)');
   });
+
+  it('uses the read-back analytics canary as the rollout freshness signal', () => {
+    const routeSource = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
+
+    expect(routeSource).toContain("supabaseAdmin.from('analytics_server_events')");
+    expect(routeSource).toContain(".eq('event_name', 'generate_lead')");
+    expect(routeSource).toContain("pipeline: 'blog_search_to_consultation'");
+    expect(routeSource).toContain(".gte('occurred_at', reportDay.start.toISOString())");
+    expect(routeSource).not.toContain("supabaseAdmin.from('blog_engagement_logs').select('id', { count: 'exact', head: true })");
+  });
 });

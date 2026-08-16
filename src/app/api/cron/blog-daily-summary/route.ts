@@ -684,9 +684,14 @@ async function runDailySummary(request: NextRequest) {
         .limit(1000),
       supabaseAdmin.from('blog_search_performance').select('id', { count: 'exact', head: true })
         .gte('metric_date', new Date(reportDay.end.getTime() - 3 * 86_400_000).toISOString().slice(0, 10)),
-      supabaseAdmin.from('blog_engagement_logs').select('id', { count: 'exact', head: true })
-        .gte('created_at', reportDay.start.toISOString())
-        .lt('created_at', reportDay.end.toISOString()),
+      supabaseAdmin.from('analytics_server_events').select('id', { count: 'exact', head: true })
+        .eq('event_name', 'generate_lead')
+        .contains('event_payload', {
+          __synthetic: true,
+          pipeline: 'blog_search_to_consultation',
+        })
+        .gte('occurred_at', reportDay.start.toISOString())
+        .lt('occurred_at', reportDay.end.toISOString()),
       supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE)
         .select('id,product_id,review_status,title,category,content_type,generation_meta')
         .limit(1000),
