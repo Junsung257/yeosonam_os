@@ -12,6 +12,7 @@ import {
   resolveBlogGenerationModelV4,
   resolveBlogPublicationRampCapV4,
   resolveDeepSeekPriceV4,
+  selectDecisionRelevantRewriteClaimsV4,
 } from './blog-deepseek-orchestrator-v4';
 
 describe('blog DeepSeek orchestrator V4', () => {
@@ -130,7 +131,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('- unsupported_number');
     expect(prompt).not.toContain('# 다낭\n\n초안 본문');
     expect(prompt).toContain('previous draft is intentionally omitted');
-    expect(prompt).toContain('Approved claims (the complete factual universe');
+    expect(prompt).toContain('Selected approved claims (the complete factual universe');
     expect(prompt).toContain('오행산은 도시에서 15분 거리입니다.');
     expect(prompt).toContain('Do not use a table in this rewrite.');
     expect(prompt).toContain('The ledger must contain only the approved claim sentences');
@@ -138,9 +139,55 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('source-neutral editorial guidance');
     expect(prompt).toContain('one question-form H2');
     expect(prompt).toContain('Markdown bullet list of exactly 3 distinct reader-choice questions');
-    expect(prompt).toContain('do not repeat a four-word Korean phrase more than twice');
-    expect(prompt).toContain('Keep evidence-section H2 labels neutral');
+    expect(prompt).toContain('Do not repeat a four-word Korean phrase more than twice');
+    expect(prompt).toContain('Give every evidence-section H2 a distinct decision purpose');
     expect(prompt).toContain('Do not introduce a new place property inside a question');
+    expect(prompt).toContain('Never create one H2 per claim');
+    expect(prompt).not.toContain('one evidence section per approved claim');
+  });
+
+  it('selects a diverse deterministic claim subset for non-monthly rewrites', () => {
+    const claims = Array.from({ length: 10 }, (_, index) => ({
+      claimText: `${index + 1}번째 장소 공식 정보입니다.`,
+      claimType: index === 8 ? 'duration' : 'factual',
+      riskLevel: 'LOW',
+      sourceUrls: [`https://example.com/${index + 1}`],
+    }));
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 가볼만한곳',
+      primaryDecision: '일정과 체력으로 장소를 선택한다',
+      approvedClaims: claims,
+    });
+
+    expect(selected).toHaveLength(6);
+    expect(selected).toContainEqual(claims[8]);
+    expect(selected[0]).toEqual(claims[0]);
+    expect(selected.at(-1)).toEqual(claims[9]);
+    expect(selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 가볼만한곳',
+      primaryDecision: '일정과 체력으로 장소를 선택한다',
+      approvedClaims: claims,
+    })).toEqual(selected);
+  });
+
+  it('keeps all twelve approved climate rows only for an explicit monthly assignment', () => {
+    const claims = Array.from({ length: 12 }, (_, index) => ({
+      claimText: `${index + 1}월 평균 기온은 ${20 + index}°C입니다.`,
+      claimType: 'climate',
+      riskLevel: 'MEDIUM',
+      sourceUrls: ['https://example.com/climate'],
+    }));
+
+    expect(selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '홍콩 월별 날씨',
+      primaryDecision: '여행 시기를 선택한다',
+      approvedClaims: claims,
+    })).toHaveLength(12);
+    expect(selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '홍콩 여행 시기',
+      primaryDecision: '여행 시기를 선택한다',
+      approvedClaims: claims,
+    })).toHaveLength(6);
   });
 
   it('normalizes only an exact plain fixed title into an H1', () => {

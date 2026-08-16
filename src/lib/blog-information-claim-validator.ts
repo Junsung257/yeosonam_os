@@ -86,6 +86,37 @@ export interface BlogInformationClaimValidationReport {
   };
 }
 
+const NUMERIC_FACTUAL_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
+  'money_price',
+  'percentage',
+  'distance',
+  'time_schedule',
+  'date_period',
+  'quantity_limit',
+  'climate_measurement',
+]);
+
+const UNSUPPORTED_CLAIM_ISSUE_CODES = new Set<BlogInformationClaimValidationIssue['code']>([
+  'missing_evidence',
+  'claim_not_supported',
+  'unclassified_factual_candidate',
+]);
+
+/** Count only unsupported numeric facts present in the visible article. */
+export function countUnsupportedNumericBlogInformationClaims(
+  report: BlogInformationClaimValidationReport,
+): number {
+  const unsupportedFingerprints = new Set(report.issues
+    .filter((issue) => UNSUPPORTED_CLAIM_ISSUE_CODES.has(issue.code))
+    .map((issue) => issue.claimFingerprint));
+
+  return new Set(report.claims
+    .filter((claim) => unsupportedFingerprints.has(claim.claimFingerprint))
+    .filter((claim) => NUMERIC_FACTUAL_CANDIDATE_KINDS.has(claim.candidateKind))
+    .filter((claim) => /\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(claim.claimText))
+    .map((claim) => claim.claimFingerprint)).size;
+}
+
 const PRICE_RE = /(?:[₩￦¥￥$€₫]\s*\d[\d,.]*)|(?:\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\s*\d[\d,.]*)|(?:\d[\d,.]*\s*(?:원|엔|달러|위안|유로|바트|동|페소|링깃|루피|파운드|프랑|JPY|KRW|USD|VND|SGD|CNY|EUR|THB))|(?:(?:가격|요금|비용|예산|택시비|교통비|식비|숙박비)\s*(?:은|는|이|가|:)?\s*(?:약\s*)?\d)/i;
 const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?\s*(?:분|시간)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*(?:분|시간))?/i;
 const PERCENT_RE = /\d+(?:\.\d+)?\s*%/;

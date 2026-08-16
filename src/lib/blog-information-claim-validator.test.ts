@@ -1,14 +1,77 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyBlogInformationStatement,
+  countUnsupportedNumericBlogInformationClaims,
   extractBlogInformationClaims,
   validateBlogInformationClaims,
+  type BlogInformationClaimValidationReport,
   type PersistedBlogInformationClaimRecord,
 } from './blog-information-claim-validator';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
 import type { BlogInformationEvidenceScope } from './blog-information-evidence';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
+
+describe('unsupported numeric claim accounting', () => {
+  it('does not relabel a nonnumeric unclassified sentence as an unsupported number', () => {
+    const report = {
+      passed: false,
+      coverage: 0,
+      requiresHumanReview: false,
+      claims: [{
+        claimFingerprint: 'editorial-1',
+        claimText: '이곳은 여행자에게 가장 좋은 선택입니다.',
+        claimType: 'superlative',
+        riskLevel: 'MEDIUM',
+        candidateKind: 'superlative',
+        extractedValue: {},
+      }],
+      issues: [{
+        code: 'unclassified_factual_candidate',
+        claimFingerprint: 'editorial-1',
+        claimText: '이곳은 여행자에게 가장 좋은 선택입니다.',
+        claimType: 'superlative',
+        message: 'ledger에 없음',
+      }],
+    } as BlogInformationClaimValidationReport;
+
+    expect(countUnsupportedNumericBlogInformationClaims(report)).toBe(0);
+  });
+
+  it('counts each unsupported visible numeric claim once', () => {
+    const report = {
+      passed: false,
+      coverage: 0,
+      requiresHumanReview: false,
+      claims: [{
+        claimFingerprint: 'duration-1',
+        claimText: '공항에서 도심까지 15분이 걸립니다.',
+        claimType: 'duration',
+        riskLevel: 'MEDIUM',
+        candidateKind: 'time_schedule',
+        extractedValue: { normalizedValue: '15', unit: '분' },
+      }],
+      issues: [
+        {
+          code: 'unclassified_factual_candidate',
+          claimFingerprint: 'duration-1',
+          claimText: '공항에서 도심까지 15분이 걸립니다.',
+          claimType: 'duration',
+          message: 'ledger에 없음',
+        },
+        {
+          code: 'missing_evidence',
+          claimFingerprint: 'duration-1',
+          claimText: '공항에서 도심까지 15분이 걸립니다.',
+          claimType: 'duration',
+          message: '근거 없음',
+        },
+      ],
+    } as BlogInformationClaimValidationReport;
+
+    expect(countUnsupportedNumericBlogInformationClaims(report)).toBe(1);
+  });
+});
 
 describe('V3 editorial decision guidance classification', () => {
   it.each([
