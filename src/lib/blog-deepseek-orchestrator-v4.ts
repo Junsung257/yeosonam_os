@@ -171,7 +171,9 @@ export function decideBlogQualityRouteV4(
     const canResearchAgain = (input.researchAttempts ?? 0) < 1 && completedAttempts < 3;
     return {
       route: canResearchAgain ? 'reresearch' : 'quarantine',
-      nextStage: null,
+      nextStage: canResearchAgain
+        ? completedAttempts >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'
+        : null,
       publishable: false,
       reasons: allReasons,
       maxAttempts: 3,

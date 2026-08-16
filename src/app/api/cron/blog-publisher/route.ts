@@ -4345,16 +4345,22 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     firstAttrPhoto ||
     `${baseUrl}/og-image.png`;
 
-  const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const latestModelCallAttemptNumber = await readLatestBlogModelCallAttemptNumberV4(
+    item.id,
+    priorAttempt?.attemptNumber ?? 0,
+  );
+  const requestedStage = String(
+    item.meta?.ai_orchestration_v4?.next_stage
+    || (item.meta?.ai_orchestration_v4?.route === 'reresearch'
+      ? latestModelCallAttemptNumber >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'
+      : 'draft_flash'),
+  ) as BlogDeepSeekStage;
   const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
     ? requestedStage
     : 'draft_flash';
-  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
   const generationAttemptNumber = nextBlogModelCallAttemptNumberV4(
-    await readLatestBlogModelCallAttemptNumberV4(
-      item.id,
-      priorAttempt?.attemptNumber ?? 0,
-    ),
+    latestModelCallAttemptNumber,
   );
   const failureEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
     ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
@@ -4435,7 +4441,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       product_dedup_key: productBrief.dedup_key,
       ai_orchestration_v4: {
         stage: generationStage,
-        attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+        attempt: generationAttemptNumber,
         model: generation.receipt.model,
         thinking: generation.receipt.thinkingMode ?? 'disabled',
         receipt: generation.receipt,
@@ -4634,16 +4640,22 @@ async function generateFromTopic(
     }),
   });
 
-  const requestedStage = String(item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash') as BlogDeepSeekStage;
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const latestModelCallAttemptNumber = await readLatestBlogModelCallAttemptNumberV4(
+    item.id,
+    priorAttempt?.attemptNumber ?? 0,
+  );
+  const requestedStage = String(
+    item.meta?.ai_orchestration_v4?.next_stage
+    || (item.meta?.ai_orchestration_v4?.route === 'reresearch'
+      ? latestModelCallAttemptNumber >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'
+      : 'draft_flash'),
+  ) as BlogDeepSeekStage;
   const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
     ? requestedStage
     : 'draft_flash';
-  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
   const generationAttemptNumber = nextBlogModelCallAttemptNumberV4(
-    await readLatestBlogModelCallAttemptNumberV4(
-      item.id,
-      priorAttempt?.attemptNumber ?? 0,
-    ),
+    latestModelCallAttemptNumber,
   );
   const rewriteEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
     ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
@@ -4768,7 +4780,7 @@ async function generateFromTopic(
     writer: 'info_writer',
     ai_orchestration_v4: {
       stage: generationStage,
-      attempt: Math.min(3, (priorAttempt?.attemptNumber ?? 0) + 1),
+      attempt: generationAttemptNumber,
       model: generation.receipt.model,
       thinking: generation.receipt.thinkingMode ?? 'disabled',
       receipt: generation.receipt,
