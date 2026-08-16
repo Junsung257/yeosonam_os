@@ -217,6 +217,7 @@ import {
   type BlogCorpusCandidateV3,
   type BlogCorpusDiversityEvaluationV3,
 } from '@/lib/blog-corpus-diversity-v3';
+import { belongsToBlogReplacementLineage } from '@/lib/blog-corpus-lineage-v3';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
 import {
@@ -399,6 +400,7 @@ async function loadBlogPortfolioSaturationV3(archetype: string, isWeatherContent
 async function loadBlogCorpusDiversityV3(input: {
   queueItemId: string;
   excludeCreativeId?: string | null;
+  replacementTargetCreativeId?: string | null;
   title: string;
   body: string;
   destination?: string | null;
@@ -406,16 +408,16 @@ async function loadBlogCorpusDiversityV3(input: {
   const [creativesResult, queueResult, representativesResult] = await Promise.all([
     supabaseAdmin
       .from('content_creatives')
-      .select('id, seo_title, title, blog_html, destination, status')
+      .select('id, seo_title, title, blog_html, destination, status, generation_meta')
       .eq('channel', 'naver_blog')
       .in('status', ['published', 'draft']),
     supabaseAdmin
       .from('blog_topic_queue')
-      .select('id, topic, destination, status')
+      .select('id, topic, destination, status, meta')
       .in('status', ['queued', 'generating', 'pending_review']),
     supabaseAdmin
       .from('blog_information_representatives')
-      .select('canonical_slug, destination_id, status')
+      .select('canonical_creative_id, canonical_slug, destination_id, status')
       .eq('status', 'active'),
   ]);
   const failures = [creativesResult.error, queueResult.error, representativesResult.error]
@@ -426,6 +428,11 @@ async function loadBlogCorpusDiversityV3(input: {
   const corpus: BlogCorpusCandidateV3[] = [];
   for (const row of creativesResult.data || []) {
     if (input.excludeCreativeId && row.id === input.excludeCreativeId) continue;
+    if (belongsToBlogReplacementLineage({
+      id: row.id,
+      meta: row.generation_meta,
+      replacementTargetCreativeId: input.replacementTargetCreativeId,
+    })) continue;
     corpus.push({
       title: String(row.seo_title || row.title || ''),
       body: typeof row.blog_html === 'string' ? row.blog_html : null,
@@ -435,6 +442,10 @@ async function loadBlogCorpusDiversityV3(input: {
   }
   for (const row of queueResult.data || []) {
     if (row.id === input.queueItemId) continue;
+    if (belongsToBlogReplacementLineage({
+      meta: row.meta,
+      replacementTargetCreativeId: input.replacementTargetCreativeId,
+    })) continue;
     corpus.push({
       title: String(row.topic || ''),
       destination: typeof row.destination === 'string' ? row.destination : null,
@@ -443,6 +454,7 @@ async function loadBlogCorpusDiversityV3(input: {
   }
   for (const row of representativesResult.data || []) {
     if (!row.canonical_slug) continue;
+    if (row.canonical_creative_id === input.replacementTargetCreativeId) continue;
     corpus.push({
       title: String(row.canonical_slug).replace(/-/g, ' '),
       destination: typeof row.destination_id === 'string' ? row.destination_id : null,
@@ -3152,6 +3164,7 @@ async function processQueueItem(
     const corpusDiversity = await loadBlogCorpusDiversityV3({
       queueItemId: item.id,
       excludeCreativeId: promoteDraftId,
+      replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null,
       title: generated.seo_title,
       body: generated.blog_html,
       destination: item.destination,

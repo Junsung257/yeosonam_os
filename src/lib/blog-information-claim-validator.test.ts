@@ -289,6 +289,8 @@ describe('blog information claim validator', () => {
     '## 목차',
     '[공식 사이트에서 자세히 보기](https://example.com)',
     '저는 골목을 천천히 걷는 일정이 더 좋다고 생각합니다.',
+    '일정을 짤 때는 거리보다 휴식 순서를 먼저 정하세요.',
+    '선택한 장소의 예약 가능 여부를 공식 채널에서 확인하세요.',
   ])('allows clearly non-factual editorial or navigation text: %s', (markdown) => {
     const report = validateBlogInformationClaims({
       markdown,

@@ -209,6 +209,9 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('excludeContentCreativeId: item.content_creative_id ?? null');
     expect(source).toContain('skipDuplicateCheck: isPublishedBlogAtomicUpgradeRequest(');
+    expect(source).toContain('belongsToBlogReplacementLineage');
+    expect(source).toContain('replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null');
+    expect(source).toContain('row.canonical_creative_id === input.replacementTargetCreativeId');
   });
 
   it('supports an authenticated single-item private regeneration without quota refill', () => {

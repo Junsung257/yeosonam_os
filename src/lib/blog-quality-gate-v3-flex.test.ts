@@ -56,6 +56,30 @@ describe('blog quality gate V3 flexible brief', () => {
     expect(checkHook(markdown, false).passed).toBe(false);
   });
 
+  it('accepts a natural imperative decision answer as the flexible opening paragraph', () => {
+    const markdown = [
+      '# 다낭 여행 일정과 이동 동선',
+      '',
+      '일정을 짤 때는 이동보다 예약과 휴식 순서를 먼저 정하세요.',
+      '',
+      '## 시작 순서',
+      '- 첫 후보를 표시하세요.',
+      '- 다음 후보를 비교하세요.',
+      '',
+      '## 마지막 순서',
+      '최신 공식 안내를 다시 확인하세요.',
+    ].join('\n');
+
+    expect(checkAiReadability(markdown, 'info', true)).toMatchObject({
+      passed: true,
+      evidence: {
+        criteria: expect.arrayContaining([
+          expect.objectContaining({ key: 'definition_paragraph', ok: true }),
+        ]),
+      },
+    });
+  });
+
   it('accepts an answer-first itinerary grouping rule without clickbait triggers', () => {
     const markdown = [
       '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',

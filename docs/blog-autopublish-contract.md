@@ -10,6 +10,8 @@
 
 > 2026-08-17 decision-completion addendum: 모델·평균 점수는 archetype의 핵심 결정 요소를 대신할 수 없다. 일정 글은 시작/중간/마무리 순서, 검증된 이동 근거, 예약·공식 채널 재확인, 휴식 지점, 우천·휴무·지연 대안을 모두 포함해야 하며, 경로 글은 승차/중간 구간/하차, 검증된 이동 근거, 장애 대안을 포함해야 한다. 하나라도 빠지면 글자 수나 상위 점수와 무관하게 `decision_completion`과 `section_purpose_coverage`를 실패시킨다. 이 검사는 고정 글자 수·고정 H2 수를 요구하지 않으며, 재작성은 동일한 명령형 어미를 반복하지 않는 자연스러운 한국어와 evidence-bounded 판단 설명을 사용한다.
 
+> 2026-08-17 controlled-retry addendum: 동일 canonical 교체 작업의 이전 비공개 shadow draft와 review queue는 감사 이력으로 보존하되 새 재시도의 corpus 경쟁자로 계산하지 않는다. 첫 재연구 뒤에도 모델 출력만 승인 claim과 어긋난 경우에는 검증된 research packet을 유지한 채 세 번째 DeepSeek Pro 정밀 재작성을 한 번 허용한다. `missing_evidence`, `stale_claim`, claim conflict, source-quality 실패, 허위 경험, unrelated corpus saturation은 이 예외를 사용할 수 없으며 즉시 격리한다. 일정·경로 재작성은 의사결정에 무관한 높이·길이 같은 치수 claim보다 검증된 이동·시간 claim을 우선하고, 승인된 숫자 사실은 본문에서 정확히 한 번만 사용한다.
+
 Last updated: 2026-07-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
