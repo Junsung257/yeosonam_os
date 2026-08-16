@@ -229,6 +229,7 @@ const V3_DIRECT_DECISION_ANSWER_RE = /(?:어디를\s*갈지|무엇을\s*고를�
 const V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE = /^(?:같은|내|자신의|여행자는|일정에|어디를|무엇을|먼저\s).*(?:선택\s*기준|우선순위|일정|체력|동행|비교|결정|확인).*(?:정하|고르|선택|비교|확인|좁히|달라지|방식)/i;
 const V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE = /^(?!.{0,160}(?:입니다|합니다|됩니다|있습니다|없습니다|가능합니다|불가능합니다))(?=.*(?:일정|순서|후보|구간|휴식|우선순위|동선))(?=.*(?:정하세요|나누세요|묶으세요|분리하세요|조정하세요|비교하세요|확인하세요|표시하세요)).+$/i;
 const V3_AVAILABILITY_RECHECK_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*여부|가능한?\s*(?:시간|날짜|조건)).*(?:공식|예약|홈페이지|채널).*(?:확인|비교|점검)/i;
+const V3_AVAILABILITY_DECISION_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*(?:여부|시간|날짜|조건)).*(?:맞춰|기준으로).*(?:결정|선택|비교|조정)하세요/i;
 const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
@@ -245,7 +246,7 @@ export function classifyBlogInformationStatement(segment: string): {
     || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
     || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment);
   const availabilityRecheck = factualClassification?.candidateKind === 'availability_status'
-    && V3_AVAILABILITY_RECHECK_RE.test(segment);
+    && (V3_AVAILABILITY_RECHECK_RE.test(segment) || V3_AVAILABILITY_DECISION_RE.test(segment));
   if (
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
@@ -256,6 +257,7 @@ export function classifyBlogInformationStatement(segment: string): {
   if (
     EDITORIAL_READING_GUIDANCE_RE.test(segment)
     || directDecisionGuidance
+    || availabilityRecheck
     || V3_NAVIGATION_HEADING_RE.test(segment)
   ) {
     return { category: 'navigation_boilerplate', factualClassification: null };

@@ -217,6 +217,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('use "일정" and "동선" naturally');
     expect(prompt).toContain('without forcing a stock phrase');
     expect(prompt).toContain('three distinct stages (start, middle, finish)');
+    expect(prompt).toContain('at least three source-neutral reader actions labelled 시작, 중간, and 마무리');
     expect(prompt).toContain('booking/official recheck');
     expect(prompt).toContain('realistic rest checkpoint');
     expect(prompt).toContain('rain/closure/delay fallback');
@@ -228,6 +229,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Each approved fact may appear only once in the visible article');
     expect(prompt).toContain('Never combine two approved numeric claims into one sentence');
     expect(prompt).toContain('avoid status-like wording such as 예약 가능');
+    expect(prompt).toContain('never write evaluative local assertions');
     expect(prompt).toContain('Never replace duration or climate with a generic factual label');
     expect(prompt).toContain('force a fixed heading count');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
@@ -393,6 +395,23 @@ describe('blog DeepSeek orchestrator V4', () => {
         { claimText: 'Linh Ung Pagoda의 Lady Buddha statue 높이는 67m', claimType: 'factual', riskLevel: 'LOW' },
         { claimText: 'Hai Van Pass는 21km 길이의 도로', claimType: 'factual', riskLevel: 'LOW' },
         { claimText: 'Hai Van Pass의 최고 지점은 해발 496m', claimType: 'factual', riskLevel: 'LOW' },
+      ],
+    });
+
+    expect(selected).toHaveLength(3);
+    expect(selected.every((claim) => claim.claimType === 'duration')).toBe(true);
+  });
+
+  it('drops Korean predicate-form landmark lengths from itinerary rewrites', () => {
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      approvedClaims: [
+        { claimText: '다낭에서 린 응 파고다까지 차량으로 15분 소요', claimType: 'duration', riskLevel: 'LOW' },
+        { claimText: '마블마운틴까지 차량으로 15분 소요', claimType: 'duration', riskLevel: 'LOW' },
+        { claimText: '바나힐까지 차량으로 40분 소요', claimType: 'duration', riskLevel: 'LOW' },
+        { claimText: '골든브릿지 길이는 150m', claimType: 'factual', riskLevel: 'LOW' },
+        { claimText: '하이반 패스 길이는 21km', claimType: 'factual', riskLevel: 'LOW' },
       ],
     });
 

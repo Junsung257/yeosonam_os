@@ -128,7 +128,7 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
   const itineraryOrRoute = /일정|코스|동선|이동|교통|route|itinerary/i.test(decisionText);
   const asksForPhysicalDimension = /높이|길이|크기|규모|면적|고도|height|length|size|altitude/i.test(decisionText);
   const nonDimensionClaims = input.approvedClaims.filter((claim) =>
-    !/높이|동상|다리의?\s*길이|도로.*길이|길이의\s*도로|km\s*길이|해발|고도|면적|규모|height|statue|bridge\s+is\s+\d|road.*\d+\s*km|altitude/i
+    !/높이|동상|(?:^|\s|의)길이(?:는|가|의|\s|$)|길이의\s*도로|해발|고도|면적|규모|height|statue|bridge\s+is\s+\d|road.*\d+\s*km|altitude/i
       .test(claim.claimText),
   );
   const claims = itineraryOrRoute && !asksForPhysicalDimension && nonDimensionClaims.length >= 3
@@ -524,7 +524,8 @@ function buildRewriteArchetypeContractV4(
       '- State the decision rule plainly without forcing a stock phrase, a numeric hook, or repeated command endings.',
       '- Give the reader an executable sequence: what to group first, what to keep separate, and what to leave for the last slot. These are editorial instructions, not new facts.',
       '- Cover three distinct stages (start, middle, finish), and include a booking/official recheck, a realistic rest checkpoint, and a rain/closure/delay fallback. These may be source-neutral planning choices, but must not assert an unverified local fact.',
-      '- Use distinct decision sections for grouping and execution where useful. Mix concise prose and Markdown bullets; do not repeat the same imperative ending in every sentence or force a fixed heading count.',
+      '- Include one Markdown bullet sequence with at least three source-neutral reader actions labelled 시작, 중간, and 마무리. This is an itinerary sequence, not a generic checklist, and it must contain no new facts or numbers.',
+      '- Use distinct decision sections for grouping and execution where useful. Mix concise prose and that one Markdown sequence; do not repeat the same imperative ending in every sentence or force a fixed heading count.',
       '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
       '- After the grouped evidence, add a distinct execution section that turns the evidence into a usable order. Tailor every action to entities already named in approved claims.',
       '- The final actions are a decision aid, not a generic checklist. A source-neutral reminder to recheck a booking, preserve rest time, or choose a fallback is allowed; a destination-specific condition still requires an approved claim.',
@@ -633,6 +634,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Apart from those approved sentences, you may write only source-neutral editorial guidance: a direct decision answer, reasoning about the reader\'s choices, reader actions, headings, and reader-choice questions.',
       '- Editorial guidance must not assert a property of any destination, attraction, hotel, route, weather pattern, price, schedule, crowd, safety condition, or policy.',
       '- Outside an approved claim, avoid status-like wording such as 예약 가능, 운영 중, 영업, 이용 가능, or 이동 부담이 적다/크다. Ask the reader to check the latest official notice without predicting its content.',
+      '- Outside an approved claim, never write evaluative local assertions such as "이동 시간이 길어/짧아", "같은 권역이다", "안전합니다", or "적합합니다". Rewrite them as a reader choice or delete them.',
       '- Write natural Korean with varied sentence shapes. Mix short explanations and actions; do not force every sentence to end in 하세요 or repeat a checklist rhythm.',
       '- Never shorten or repeat a schedule/measurement outside its exact approved sentence. Words such as 주말, 평일, 오전, 오후, 저녁, 밤, 시, 분, 시간, km, or m belong only inside an exact approved claim.',
       '- Start with one 2-3 sentence paragraph of source-neutral reader actions that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',

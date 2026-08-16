@@ -291,6 +291,7 @@ describe('blog information claim validator', () => {
     '저는 골목을 천천히 걷는 일정이 더 좋다고 생각합니다.',
     '일정을 짤 때는 거리보다 휴식 순서를 먼저 정하세요.',
     '선택한 장소의 예약 가능 여부를 공식 채널에서 확인하세요.',
+    '이 두 곳을 같은 날에 둘지, 날짜를 나눌지는 예약 가능 시간과 체력에 맞춰 결정하세요.',
   ])('allows clearly non-factual editorial or navigation text: %s', (markdown) => {
     const report = validateBlogInformationClaims({
       markdown,
