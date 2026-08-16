@@ -29,6 +29,7 @@ import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   evaluateBlogGenerationResearchReadiness,
 } from '@/lib/blog-generation-research';
+import { inspectBlogInformationClaimTypeCompatibility } from '@/lib/blog-information-claim-validator';
 import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -558,6 +559,18 @@ function toClaimType(value: unknown): BlogInformationClaimType | null {
   return BLOG_INFORMATION_CLAIM_TYPES.includes(normalized) ? normalized : null;
 }
 
+export function isAutoResearchNumericClaimTypeCompatible(
+  claimText: string,
+  claimType: BlogInformationClaimType,
+): boolean {
+  // The deterministic classifier is intentionally narrower than the research
+  // taxonomy. Apply it only to the observed unsafe ambiguity: a digit-bearing
+  // clock/schedule claim mislabeled as elapsed duration. Other claim types keep
+  // their existing evidence and publish-gate validation contracts.
+  if (claimType !== 'duration' || !/\d/.test(claimText)) return true;
+  return inspectBlogInformationClaimTypeCompatibility(claimText, claimType).passed;
+}
+
 function toSourceType(
   value: unknown,
   allowedSourceTypes: string[],
@@ -997,6 +1010,14 @@ export function buildBlogResearchBundleFromGrounding(input: {
       if (linkedEvidence.length === 0) issues.push(`claim_rejected:${draftIndex}:evidence_link_missing`);
       return [];
     }
+    if (!isAutoResearchNumericClaimTypeCompatible(claimText, claimType)) {
+      const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
+      issues.push(`claim_rejected:${draftIndex}`);
+      issues.push(
+        `claim_rejected:${draftIndex}:claim_type_mismatch:${claimType}:${compatibility.deterministicType ?? 'unclassified'}`,
+      );
+      return [];
+    }
     const primaryEvidence = linkedEvidenceItems[0];
     const normalizedValue = usesMonthlyClimateComponents
       ? draftedValue
@@ -1271,6 +1292,7 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Select facts that satisfy Required decision facts and Minimum independently supported claims before any general background.',
     'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
+    'Use duration only for elapsed travel, transfer, stay, or visit length. A clock-of-day, show time, opening time, or other schedule is not duration.',
     'Omit optional unit, currency, validFrom, or validUntil when the digest does not state it.',
     `Minimum independently supported claims by type: ${claimMinimums}.`,
     `Minimum total independently supported claims: ${minimumTotalClaims}.`,

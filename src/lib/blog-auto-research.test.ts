@@ -11,6 +11,7 @@ import {
   buildGuamHotelAreasPayload,
   buildBlogResearchBundleFromGrounding,
   buildBlogStructuredResearchPrompt,
+  isAutoResearchNumericClaimTypeCompatible,
   buildJmaMonthlyWeatherPayload,
   buildPagasaMonthlyWeatherPayload,
   buildSingaporeMonthlyWeatherPayload,
@@ -821,6 +822,7 @@ describe('buildBlogStructuredResearchPrompt', () => {
     });
 
     expect(transportPrompt).toContain('two route-duration claims');
+    expect(transportPrompt).toContain('A clock-of-day, show time, opening time, or other schedule is not duration');
     expect(transportPrompt).toContain('vehicle marketing');
     expect(insurancePrompt).toContain('at least four insurance claims');
     expect(insurancePrompt).toContain('Exclude signup discounts');
@@ -882,6 +884,34 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(prompt).toContain('Keep every evidence excerpt and claimText under 240 characters');
     expect(prompt).toContain('Return a smaller valid JSON object');
     expect(prompt).toContain('claim_semantic_coverage_missing:food_budget:breakfast');
+  });
+});
+
+describe('isAutoResearchNumericClaimTypeCompatible', () => {
+  it('rejects clock times mislabeled as elapsed duration before persistence', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Marble Mountains는 오전 7시 이전 방문이 최적입니다.',
+      'duration',
+    )).toBe(false);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+      'duration',
+    )).toBe(true);
+  });
+
+  it('keeps compatible numeric and qualitative facts', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Hai Van Pass는 21km 길이의 해안 도로입니다.',
+      'factual',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Marble Mountains는 석회암 산으로 이루어져 있습니다.',
+      'factual',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '비자 면제 프로그램은 관광 목적 90일 이하 체류에 적용됩니다.',
+      'policy',
+    )).toBe(true);
   });
 });
 
