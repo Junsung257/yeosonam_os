@@ -12,6 +12,7 @@ import {
   buildBlogResearchBundleFromGrounding,
   buildBlogStructuredResearchPrompt,
   isAutoResearchNumericClaimTypeCompatible,
+  mergeDuplicateAutoResearchClaims,
   buildJmaMonthlyWeatherPayload,
   buildPagasaMonthlyWeatherPayload,
   buildSingaporeMonthlyWeatherPayload,
@@ -938,9 +939,180 @@ describe('isAutoResearchNumericClaimTypeCompatible', () => {
       'policy',
     )).toBe(true);
   });
+
+  it('rejects a distance mislabeled as duration and accepts real elapsed or stay durations', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '다낭, 후에, 호이안 세 도시를 잇는 Hai Van Pass 도로는 165km입니다.',
+      'duration',
+    )).toBe(false);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '다낭에서 Ba Na Hills까지 차로 40분 걸립니다.',
+      'duration',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '관광 목적 체류 허용 기간은 90일입니다.',
+      'duration',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '3일차에는 Hai Van Pass를 방문합니다.',
+      'duration',
+    )).toBe(false);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '이 매장은 매일 24시간 운영합니다.',
+      'duration',
+    )).toBe(false);
+  });
+});
+
+describe('mergeDuplicateAutoResearchClaims', () => {
+  it('merges the same entity, value, and unit while retaining all evidence', () => {
+    const claims = mergeDuplicateAutoResearchClaims([
+      {
+        claimFingerprint: 'first',
+        claimText: 'Hai Van Pass는 21km 길이의 산길입니다.',
+        claimType: 'factual',
+        riskLevel: 'LOW',
+        extractedValue: { normalizedValue: '21', unit: 'km', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['official-a'],
+      },
+      {
+        claimFingerprint: 'second',
+        claimText: 'Hai Van Pass는 21km 길이입니다.',
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        extractedValue: { normalizedValue: '21', unit: 'km', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['official-b'],
+      },
+    ]);
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      claimFingerprint: 'first',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: ['official-a', 'official-b'],
+    });
+  });
+
+  it('does not merge equal durations for different routes', () => {
+    const claims = mergeDuplicateAutoResearchClaims([
+      {
+        claimFingerprint: 'marble',
+        claimText: '다낭에서 Marble Mountains까지 차량으로 15분 걸립니다.',
+        claimType: 'duration',
+        riskLevel: 'MEDIUM',
+        extractedValue: { normalizedValue: '15', unit: '분', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['route-a'],
+      },
+      {
+        claimFingerprint: 'linh-ung',
+        claimText: '다낭에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+        claimType: 'duration',
+        riskLevel: 'MEDIUM',
+        extractedValue: { normalizedValue: '15', unit: '분', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['route-b'],
+      },
+    ]);
+
+    expect(claims).toHaveLength(2);
+  });
 });
 
 describe('buildBlogResearchBundleFromGrounding', () => {
+  it('persists one claim with both sources when grounded pages repeat the same numeric fact', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'danang-hai-van-pass',
+      destination: '다낭',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_local_source'],
+        },
+      },
+      payload: {
+        sources: [
+          {
+            sourceKey: 'tourism-a',
+            groundingChunkIndex: 0,
+            publisher: 'Vietnam Tourism A',
+            sourceType: 'reputable_local_source',
+            claimTypes: ['factual'],
+            country: 'VN',
+            destination: '다낭',
+          },
+          {
+            sourceKey: 'tourism-b',
+            groundingChunkIndex: 1,
+            publisher: 'Vietnam Tourism B',
+            sourceType: 'reputable_local_source',
+            claimTypes: ['factual'],
+            country: 'VN',
+            destination: '다낭',
+          },
+        ],
+        evidence: [
+          {
+            evidenceKey: 'official-a',
+            sourceKey: 'tourism-a',
+            excerpt: 'Hai Van Pass는 21km 길이의 산길입니다.',
+            claimType: 'factual',
+            normalizedValue: '21',
+            unit: 'km',
+          },
+          {
+            evidenceKey: 'official-b',
+            sourceKey: 'tourism-b',
+            excerpt: 'Hai Van Pass는 21km 길이입니다.',
+            claimType: 'factual',
+            normalizedValue: '21',
+            unit: 'km',
+          },
+        ],
+        claims: [
+          {
+            claimText: 'Hai Van Pass는 21km 길이의 산길입니다.',
+            claimType: 'factual',
+            evidenceKeys: ['official-a'],
+            normalizedValue: '21',
+            unit: 'km',
+          },
+          {
+            claimText: 'Hai Van Pass는 21km 길이입니다.',
+            claimType: 'factual',
+            evidenceKeys: ['official-b'],
+            normalizedValue: '21',
+            unit: 'km',
+          },
+        ],
+      },
+      groundingChunks: [
+        { web: { uri: 'https://travel.example.com/hai-van-a', title: 'Hai Van A' } },
+        { web: { uri: 'https://travel.example.com/hai-van-b', title: 'Hai Van B' } },
+      ],
+      reputableRegistry: [{
+        id: 'danang-guide',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_local_source'],
+        intents: ['itinerary'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-07-23T00:00:00.000Z'),
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.bundle?.claims).toHaveLength(1);
+    expect(result.bundle?.claims[0]?.evidenceKeys).toHaveLength(2);
+    expect(new Set(result.bundle?.claims[0]?.evidenceKeys).size).toBe(2);
+  });
+
   it('does not persist or auto-promote a clock recommendation labeled as duration', () => {
     const result = buildBlogResearchBundleFromGrounding({
       contentKey: 'danang-itinerary',
@@ -1423,20 +1595,20 @@ describe('buildBlogResearchBundleFromGrounding', () => {
           groundingChunkIndex: 0,
           publisher: 'Guam Airport',
           sourceType: 'airport',
-          claimTypes: ['duration'],
+          claimTypes: ['factual'],
           country: '괌',
         }],
         evidence: [{
           evidenceKey: 'e1',
           sourceKey: 's1',
           excerpt: '2026년 괌 공항의 공식 교통 안내 확인 대상은 한국인 여행자이며 1개 도착 택시 승강장을 안내한다.',
-          claimType: 'duration',
+          claimType: 'factual',
           normalizedValue: '1',
           unit: '승강장',
         }],
         claims: [{
           claimText: '괌 공항은 도착 택시 승강장 1개 위치를 안내한다.',
-          claimType: 'duration',
+          claimType: 'factual',
           evidenceKeys: ['e1'],
           normalizedValue: '1',
           unit: '승강장',
