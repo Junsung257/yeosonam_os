@@ -8,6 +8,8 @@
 >
 > 2026-08-16 DeepSeek-only V4 release addendum: 검토된 공식 URL을 직접 fetch한 연구 자료만 DeepSeek Pro가 구조화한다. KST 01:05~06:05 계산 cron은 DeepSeek Flash 초안 → 규칙/claim/중복 평가 → DeepSeek Pro high/max 제한 재작성으로 동작한다. Gemini, GPT, Claude, generic provider cascade와 검색 snippet grounding은 이 발행 경로에서 금지한다. 후보별 writer 모델 호출은 최대 3회이고 공급자 호출 전 원자적 일일 비용 예약이 필수다. KST 09/12/15/18/21 공개 controller는 모델을 호출하지 않으며, 저장된 선택 시도·90점·hard blocker/failure 0건을 다시 확인한다. 공개 상한은 내구성 상태 원장의 `pilot_3 → ramp_10 → max_30`을 따르며 결측 관측값은 승격을 금지하고 심각 사고는 즉시 동결한다. 세부 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
 
+> 2026-08-17 decision-completion addendum: 모델·평균 점수는 archetype의 핵심 결정 요소를 대신할 수 없다. 일정 글은 시작/중간/마무리 순서, 검증된 이동 근거, 예약·공식 채널 재확인, 휴식 지점, 우천·휴무·지연 대안을 모두 포함해야 하며, 경로 글은 승차/중간 구간/하차, 검증된 이동 근거, 장애 대안을 포함해야 한다. 하나라도 빠지면 글자 수나 상위 점수와 무관하게 `decision_completion`과 `section_purpose_coverage`를 실패시킨다. 이 검사는 고정 글자 수·고정 H2 수를 요구하지 않으며, 재작성은 동일한 명령형 어미를 반복하지 않는 자연스러운 한국어와 evidence-bounded 판단 설명을 사용한다.
+
 Last updated: 2026-07-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
