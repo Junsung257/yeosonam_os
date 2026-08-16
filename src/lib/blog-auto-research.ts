@@ -1216,6 +1216,14 @@ export function buildBlogStructuredResearchPrompt(input: {
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
   const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.brief.intentType] ?? 3;
+  const minimumRequiredClaims = Math.max(
+    minimumTotalClaims,
+    Object.values(BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT[input.brief.intentType] ?? { factual: 3 })
+      .reduce((total, minimum) => total + minimum, 0),
+  );
+  const retryIssues = input.retryIssues ?? [];
+  const coverageRetry = retryIssues.some((issue) =>
+    /(?:below_minimum|semantic_coverage_missing|required_(?:decision_)?fact|distinct_evidence_values|claim_source_coverage)/i.test(issue));
   const intentInstructions = input.brief.intentType === 'food_budget'
     ? [
         'FOOD BUDGET PRIORITY:',
@@ -1301,6 +1309,9 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Keep every evidence excerpt and claimText under 240 characters. Never copy a full table, directory, schedule, policy section, or menu.',
     'Each claim must contain one independently supported fact from one linked evidence excerpt.',
     'Every digit in claimText must occur in that linked excerpt. Never combine a second schedule, distance, date, quantity, or price into the claim.',
+    'Every route-duration claim must name both the origin and destination stated by the digest; a duration with only one endpoint is incomplete.',
+    'For a factual measurement, keep only the supported measurement and entity. Omit comparative or superlative wording such as 가장, 최고, largest, or tallest unless the claimType is superlative and that type is allowed for the intent.',
+    'Do not create two evidence or claim records for the same entity, source, normalized value, and unit, even when wording differs.',
     'Select facts that satisfy Required decision facts and Minimum independently supported claims before any general background.',
     'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
@@ -1315,10 +1326,18 @@ export function buildBlogStructuredResearchPrompt(input: {
     ...intentInstructions,
     ...(input.retry ? [
       'RETRY REQUIREMENT:',
-      'The prior JSON response was empty, invalid, too long, or missed required semantic coverage even though reviewed page extracts are present.',
-      'Return a smaller valid JSON object and repair only the listed missing requirements using facts explicitly present in GROUNDED_DIGEST.',
-      ...(input.retryIssues?.length
-        ? [`Prior issues: ${input.retryIssues.slice(0, 16).join(', ')}`]
+      ...(coverageRetry
+        ? [
+            'The prior JSON was structurally usable but did not meet the required claim coverage.',
+            'Rebuild the complete packet from GROUNDED_DIGEST: keep every valid independently supported fact and add the missing claim types or decision facts.',
+            `Do not return fewer than ${minimumRequiredClaims} valid claims, and satisfy every listed per-type minimum. Do not shrink the packet merely to make it valid.`,
+          ]
+        : [
+            'The prior JSON response was empty, invalid, truncated, or too long even though reviewed page extracts are present.',
+            'Return a smaller valid JSON object using only facts explicitly present in GROUNDED_DIGEST.',
+          ]),
+      ...(retryIssues.length
+        ? [`Prior issues: ${retryIssues.slice(0, 16).join(', ')}`]
         : []),
     ] : []),
     'SOURCE_CATALOG:',

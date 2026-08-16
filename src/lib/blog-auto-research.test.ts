@@ -823,6 +823,11 @@ describe('buildBlogStructuredResearchPrompt', () => {
 
     expect(transportPrompt).toContain('two route-duration claims');
     expect(transportPrompt).toContain('A clock-of-day, show time, opening time, or other schedule is not duration');
+    expect(transportPrompt).toContain('must name both the origin and destination');
+    expect(transportPrompt).toContain('Omit comparative or superlative wording');
+    expect(transportPrompt).toContain(
+      'Do not create two evidence or claim records for the same entity, source, normalized value, and unit',
+    );
     expect(transportPrompt).toContain('vehicle marketing');
     expect(insurancePrompt).toContain('at least four insurance claims');
     expect(insurancePrompt).toContain('Exclude signup discounts');
@@ -866,7 +871,7 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(promptFor('hotel_areas')).toContain('nightly price samples');
   });
 
-  it('turns validation issues into a compact semantic retry contract', () => {
+  it('turns coverage issues into a complete non-shrinking semantic retry contract', () => {
     const prompt = buildBlogStructuredResearchPrompt({
       ...base,
       brief: {
@@ -882,8 +887,28 @@ describe('buildBlogStructuredResearchPrompt', () => {
     });
 
     expect(prompt).toContain('Keep every evidence excerpt and claimText under 240 characters');
-    expect(prompt).toContain('Return a smaller valid JSON object');
+    expect(prompt).toContain('did not meet the required claim coverage');
+    expect(prompt).toContain('keep every valid independently supported fact');
+    expect(prompt).toContain('Do not return fewer than 7 valid claims');
+    expect(prompt).not.toContain('Return a smaller valid JSON object');
     expect(prompt).toContain('claim_semantic_coverage_missing:food_budget:breakfast');
+  });
+
+  it('keeps the compact retry instruction for invalid or truncated JSON only', () => {
+    const prompt = buildBlogStructuredResearchPrompt({
+      ...base,
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy,
+        plan: { requiredFacts: [] },
+      } as never,
+      retry: true,
+      retryIssues: ['invalid_or_truncated_json:Unexpected end of JSON input'],
+    });
+
+    expect(prompt).toContain('empty, invalid, truncated, or too long');
+    expect(prompt).toContain('Return a smaller valid JSON object');
+    expect(prompt).not.toContain('did not meet the required claim coverage');
   });
 });
 
