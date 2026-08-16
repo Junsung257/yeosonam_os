@@ -14,6 +14,15 @@ describe('blog publisher quota recovery contract', () => {
     );
   });
 
+  it('records and bounds source-backed empty research extraction retries', () => {
+    const source = routeSource();
+
+    expect(source).toContain("auto_research_failure: {");
+    expect(source).toContain('researchFailureAttempt < 2');
+    expect(source).toContain("auto_research_extraction_empty:");
+    expect(source).toContain("status: researchRetryQueued ? 'research_retry_queued' : 'error'");
+  });
+
   it('keeps attempting replacement candidates until the currently due slot quota is filled or time is unsafe', () => {
     const source = routeSource();
 

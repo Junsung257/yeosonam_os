@@ -23,6 +23,7 @@ import {
   normalizeAutoResearchStructuredValue,
   sanitizeGroundedResearchPayload,
   selectReputableResearchRegistryForIntent,
+  shouldRetrySanitizedAutoResearchPayload,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
 
@@ -37,6 +38,30 @@ describe('normalizeAutoResearchStructuredValue', () => {
       normalizedValue: value,
       unit: expectedUnit,
     });
+  });
+});
+
+describe('shouldRetrySanitizedAutoResearchPayload', () => {
+  it('retries when reviewed pages exist but sanitization removes every research item', () => {
+    expect(shouldRetrySanitizedAutoResearchPayload({
+      payload: { sources: [], evidence: [], claims: [] },
+      reviewedPageCount: 4,
+      remainingMs: 60_000,
+    })).toBe(true);
+  });
+
+  it('does not retry without source pages or enough time', () => {
+    const payload = { sources: [], evidence: [], claims: [] };
+    expect(shouldRetrySanitizedAutoResearchPayload({
+      payload,
+      reviewedPageCount: 0,
+      remainingMs: 60_000,
+    })).toBe(false);
+    expect(shouldRetrySanitizedAutoResearchPayload({
+      payload,
+      reviewedPageCount: 4,
+      remainingMs: 15_000,
+    })).toBe(false);
   });
 });
 

@@ -11,6 +11,7 @@ type BlogQueueFailureCode =
   | 'article_quality_v2'
   | 'intent_quality'
   | 'engine_v2'
+  | 'research_extraction'
   | 'evidence_insufficient'
   | 'topic_fit'
   | 'candidate_pre_publish_contract'
@@ -107,6 +108,10 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (hasFailedGate(qa, 'intent_quality') || /\[intent_quality\]|intent_quality|weak_reading_design|weak_list_or_table/i.test(text)) {
     return { code: 'intent_quality', retryable: true, selfHealAllowed: true, skipped: false };
+  }
+
+  if (/auto_research_extraction_empty/i.test(text)) {
+    return { code: 'research_extraction', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (/evidence_insufficient|source_support|근거\s*부족/i.test(text)) {

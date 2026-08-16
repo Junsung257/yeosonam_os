@@ -4101,8 +4101,15 @@ async function processQueueItem(
 
     // 정보성 컨텍스트 부족은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
-    await handleFailure(item, msg, null, isUnrecoverable);
-    return { id: item.id, topic: item.topic, status: 'error', reason: msg };
+    const failureStatus = await handleFailure(item, msg, null, isUnrecoverable);
+    const researchRetryQueued = msg.includes('auto_research_extraction_empty:')
+      && failureStatus === 'queued';
+    return {
+      id: item.id,
+      topic: item.topic,
+      status: researchRetryQueued ? 'research_retry_queued' : 'error',
+      reason: msg,
+    };
   }
 }
 
@@ -4521,6 +4528,39 @@ async function generateFromTopic(
       brief: contentBrief,
     });
     if (!autoResearch.passed || !autoResearch.bundle) {
+      const previousResearchFailure = item.meta?.auto_research_failure
+        && typeof item.meta.auto_research_failure === 'object'
+        && !Array.isArray(item.meta.auto_research_failure)
+        ? item.meta.auto_research_failure as Record<string, unknown>
+        : {};
+      const researchFailureAttempt = Number(previousResearchFailure.attempt_count || 0) + 1;
+      const extractionPayloadEmpty = autoResearch.directSourceCount > 0
+        && autoResearch.responseTextLength > 0
+        && autoResearch.observedSources.length === 0
+        && ['missing_sources', 'missing_evidence', 'missing_claims']
+          .every((issue) => autoResearch.issues.includes(issue));
+      const retryableExtractionFailure = extractionPayloadEmpty && researchFailureAttempt < 2;
+      item.meta = {
+        ...(item.meta || {}),
+        auto_research_failure: {
+          version: 'reviewed-source-direct-fetch-v3',
+          attempt_count: researchFailureAttempt,
+          failed_at: new Date().toISOString(),
+          model: autoResearch.model,
+          issues: autoResearch.issues.slice(0, 8),
+          grounding_source_count: autoResearch.groundingSourceCount,
+          direct_source_count: autoResearch.directSourceCount,
+          direct_source_failure_count: autoResearch.directSourceFailures.length,
+          finish_reason: autoResearch.finishReason,
+          response_text_length: autoResearch.responseTextLength,
+          retryable_extraction_empty: retryableExtractionFailure,
+        },
+      };
+      if (retryableExtractionFailure) {
+        throw new Error(
+          `auto_research_extraction_empty:${autoResearch.issues.slice(0, 8).join(',')}`,
+        );
+      }
       throw new Error(
         `evidence_insufficient:auto_research_failed:${autoResearch.issues.slice(0, 8).join(',')}`,
       );
