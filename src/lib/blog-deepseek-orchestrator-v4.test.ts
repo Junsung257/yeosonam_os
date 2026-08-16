@@ -30,13 +30,13 @@ describe('blog DeepSeek orchestrator V4', () => {
   it('re-researches missing or unsupported facts instead of asking a model to invent a repair', () => {
     expect(decideBlogQualityRouteV4({
       score: 71, completedAttempts: 1, hardBlockers: ['missing_evidence'],
-    })).toMatchObject({ route: 'reresearch', nextStage: null });
+    })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_high' });
     expect(decideBlogQualityRouteV4({
       score: 71, completedAttempts: 1, hardBlockers: ['unsupported_number'],
-    })).toMatchObject({ route: 'reresearch', nextStage: null });
+    })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_high' });
     expect(decideBlogQualityRouteV4({
       score: 82, completedAttempts: 1, hardBlockers: ['unsupported_first_party_claim'],
-    })).toMatchObject({ route: 'reresearch', nextStage: null });
+    })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_high' });
   });
 
   it('routes 75-89 to Pro high and grounded sub-75 expression failures to DeepSeek Pro max', () => {
@@ -65,7 +65,7 @@ describe('blog DeepSeek orchestrator V4', () => {
       previousScore: 70,
       completedAttempts: 2,
       hardBlockers: ['unsupported_number'],
-    })).toMatchObject({ route: 'reresearch', nextStage: null });
+    })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_max' });
   });
 
   it('quarantines sub-75 drafts when grounding is not explicit or the failure is factual', () => {
@@ -78,7 +78,7 @@ describe('blog DeepSeek orchestrator V4', () => {
       researchValid: true,
       claimLedgerValid: true,
       failureReasons: ['unsupported_numeric_claim'],
-    })).toMatchObject({ route: 'reresearch', nextStage: null });
+    })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_high' });
   });
 
   it('resolves every generation stage to an explicit DeepSeek model contract', () => {

@@ -473,6 +473,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("? 'timeout'");
     expect(source).toContain("readLatestBlogModelCallAttemptNumberV4(");
     expect(source).toContain('attemptNumber: generationAttemptNumber');
+    expect(source).toContain('attempt: generationAttemptNumber');
+    expect(source).toContain("latestModelCallAttemptNumber >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'");
     expect(source).toContain("deepseekThinking: 'disabled'");
     expect(source).toContain('thinking: generation.receipt.thinkingMode');
     expect(source).not.toContain("generationStage === 'rewrite_pro_max' ? 'max' : 'high'");
