@@ -30,7 +30,11 @@ import { analyzeSerp, buildSerpPromptBlock } from '@/lib/serp-analyzer';
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { extractFaqItems, extractHowToSteps } from '@/lib/blog-jsonld';
-import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
+import {
+  evaluateBlogPublishQuality,
+  isBlogSeoDetailBlockingForPublish,
+  type BlogPublishQualityReport,
+} from '@/lib/blog-publish-quality';
 import { buildBlogQueueSuccessMeta } from '@/lib/blog-queue-success-meta';
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug } from '@/lib/blog-publisher-repair';
@@ -131,6 +135,7 @@ import {
 } from '@/lib/blog-information-claim-ledger';
 import {
   countUnsupportedNumericBlogInformationClaims,
+  inspectBlogInformationClaimTypeCompatibility,
 } from '@/lib/blog-information-claim-validator';
 import {
   buildBlogInformationRepresentativeKey,
@@ -3241,7 +3246,11 @@ async function processQueueItem(
         .filter((gate) => !gate.passed)
         .map((gate) => `publish_gate:${gate.gate}`),
       ...publishQuality.seoScore.details
-        .filter((detail) => detail.status === 'fail')
+        .filter((detail) => detail.status === 'fail'
+          && isBlogSeoDetailBlockingForPublish(
+            detail.name,
+            Boolean(generated.generation_meta?.content_brief_v3),
+          ))
         .map((detail) => `seo:${detail.name}`),
       ...publishQuality.publicCustomerQuality.issues
         .map((issue) => `public_customer:${issue.code}`),
@@ -4680,13 +4689,20 @@ async function generateFromTopic(
       const sourceUrl = researchSourceByKey.get(evidence.sourceKey)?.sourceUrl;
       return sourceUrl ? [sourceUrl] : [];
     }))];
-    return { claim, literalSupport, sourceUrls };
+    const typeCompatibility = inspectBlogInformationClaimTypeCompatibility(
+      claim.claimText,
+      claim.claimType,
+    );
+    return { claim, literalSupport, sourceUrls, typeCompatibility };
   });
   const rewriteApprovedClaims = selectDecisionRelevantRewriteClaimsV4({
     primaryQuery: contentBriefV3.primaryQuery,
     primaryDecision: contentBriefV3.primaryDecision,
     approvedClaims: rewriteClaimPacketAudit
-    .filter((entry) => entry.literalSupport.passed && entry.sourceUrls.length > 0)
+    .filter((entry) =>
+      entry.literalSupport.passed
+      && entry.typeCompatibility.passed
+      && entry.sourceUrls.length > 0)
     .map((entry) => ({
       claimText: entry.claim.claimText,
       claimType: entry.claim.claimType,
@@ -4836,10 +4852,25 @@ async function generateFromTopic(
     },
     rewrite_claim_packet_v4: {
       approved_count: rewriteApprovedClaims.length,
-      excluded: rewriteClaimPacketAudit.flatMap((entry) => entry.literalSupport.passed ? [] : [{
-        claim_fingerprint: entry.claim.claimFingerprint,
-        missing_numeric_tokens: entry.literalSupport.missingNumericTokens,
-      }]),
+      excluded: rewriteClaimPacketAudit.flatMap<Record<string, unknown>>((entry) => {
+        if (!entry.literalSupport.passed) {
+          return [{
+            claim_fingerprint: entry.claim.claimFingerprint,
+            reason: 'literal_support_missing',
+            missing_numeric_tokens: entry.literalSupport.missingNumericTokens,
+          }];
+        }
+        if (!entry.typeCompatibility.passed) {
+          return [{
+            claim_fingerprint: entry.claim.claimFingerprint,
+            reason: 'claim_type_mismatch',
+            declared_type: entry.typeCompatibility.declaredType,
+            deterministic_type: entry.typeCompatibility.deterministicType,
+            candidate_kind: entry.typeCompatibility.candidateKind,
+          }];
+        }
+        return [];
+      }),
     },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
     ...(item.meta?.auto_research

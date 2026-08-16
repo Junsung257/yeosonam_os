@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isBlogPublicCatalogFallbackFreshV3,
+  resolveBlogPublicCatalogFallbackV3,
   type PublicBlogCatalogPost,
 } from './blog-public-catalog';
 
@@ -45,5 +46,33 @@ describe('public catalog fallback freshness', () => {
       review_status: 'approved',
       generation_meta: { content_brief: { risk_level: 'HIGH' } },
     }, '2026-08-15T23:59:00.000Z', new Date('2026-08-16T00:00:00.000Z'))).toBe(false);
+  });
+});
+
+describe('public catalog fallback hierarchy', () => {
+  it('continues to the remote snapshot when the durable database snapshot rejects', async () => {
+    await expect(resolveBlogPublicCatalogFallbackV3({
+      durable: async () => { throw new Error('database timeout'); },
+      remote: async () => 'remote',
+      bundled: () => 'bundled',
+    })).resolves.toBe('remote');
+  });
+
+  it('always reaches the bundled snapshot when both upstream tiers reject', async () => {
+    await expect(resolveBlogPublicCatalogFallbackV3({
+      durable: async () => { throw new Error('database timeout'); },
+      remote: async () => { throw new Error('remote timeout'); },
+      bundled: () => 'bundled',
+    })).resolves.toBe('bundled');
+  });
+
+  it('prefers the durable snapshot when it is available', async () => {
+    let remoteCalled = false;
+    await expect(resolveBlogPublicCatalogFallbackV3({
+      durable: async () => 'durable',
+      remote: async () => { remoteCalled = true; return 'remote'; },
+      bundled: () => 'bundled',
+    })).resolves.toBe('durable');
+    expect(remoteCalled).toBe(false);
   });
 });

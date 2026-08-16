@@ -3,6 +3,7 @@ import {
   classifyBlogInformationStatement,
   countUnsupportedNumericBlogInformationClaims,
   extractBlogInformationClaims,
+  inspectBlogInformationClaimTypeCompatibility,
   validateBlogInformationClaims,
   type BlogInformationClaimValidationReport,
   type PersistedBlogInformationClaimRecord,
@@ -11,6 +12,43 @@ import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-l
 import type { BlogInformationEvidenceScope } from './blog-information-evidence';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
+
+describe('rewrite claim type compatibility', () => {
+  it('rejects a clock-time claim mislabeled as duration', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '마블 마운틴은 오전 7시 전에 방문하기 좋은 고대 유적지입니다.',
+      'duration',
+    )).toEqual({
+      passed: false,
+      declaredType: 'duration',
+      deterministicType: 'factual',
+      candidateKind: 'time_schedule',
+    });
+  });
+
+  it('accepts an actual travel duration with the duration type', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '오행산에서 린응사까지는 차로 약 15분이 소요됩니다.',
+      'duration',
+    )).toEqual({
+      passed: true,
+      declaredType: 'duration',
+      deterministicType: 'duration',
+      candidateKind: 'time_schedule',
+    });
+  });
+
+  it('fails closed when the publish classifier cannot identify the claim', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '이 장소는 일정의 중심으로 삼기 좋습니다.',
+      'factual',
+    )).toMatchObject({
+      passed: false,
+      deterministicType: null,
+      candidateKind: null,
+    });
+  });
+});
 
 describe('unsupported numeric claim accounting', () => {
   it('does not relabel a nonnumeric unclassified sentence as an unsupported number', () => {

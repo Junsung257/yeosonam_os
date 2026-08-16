@@ -78,6 +78,16 @@ const V3_SEO_BLOCKING_DETAILS = new Set([
   'information_freshness',
 ]);
 
+/** Legacy aggregate SEO heuristics remain visible for diagnosis, but a V3
+ * article is blocked only by indexing/freshness invariants. Intent, evidence,
+ * language and rendered usefulness are enforced by their dedicated gates. */
+export function isBlogSeoDetailBlockingForPublish(
+  detailName: string,
+  flexibleV3: boolean,
+): boolean {
+  return flexibleV3 ? V3_SEO_BLOCKING_DETAILS.has(detailName) : true;
+}
+
 export interface BlogPublicCustomerQualityInput {
   blog_html: string;
   slug: string;
@@ -350,7 +360,7 @@ export async function evaluateBlogPublishQuality(
   };
   const v3SeoBlockingFailures = flexibleV3
     ? seoScore.details.filter((detail) =>
-        detail.status === 'fail' && V3_SEO_BLOCKING_DETAILS.has(detail.name))
+        detail.status === 'fail' && isBlogSeoDetailBlockingForPublish(detail.name, true))
     : [];
   const passed = flexibleV3
     ? qualityGate.passed

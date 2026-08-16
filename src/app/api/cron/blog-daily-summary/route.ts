@@ -37,6 +37,7 @@ import {
   getBlogPublicSurfacePolicyBlockReason,
 } from '@/lib/blog-public-eligibility';
 import { normalizeBlogTitleSkeletonV3 } from '@/lib/blog-corpus-diversity-v3';
+import { evaluateBlogSearchRefreshOpportunityV4 } from '@/lib/blog-search-refresh-opportunity-v4';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -45,7 +46,7 @@ import { normalizeBlogTitleSkeletonV3 } from '@/lib/blog-corpus-diversity-v3';
  *
  * 1) 어제 발행 통계 → publishing_policies.daily_summary_webhook 으로 push
  * 2) auto_regenerate_underperformers ON 시:
- *    - 7일 이상 발행 + GSC 클릭 0건 → 큐에 user_seed priority=85 재생성
+ *    - 28일 이상 발행 + GSC 평균 순위 4~20 → 대표 URL material refresh
  *    - 단, 14일 윈도 dedup 통과한 것만
  */
 
@@ -922,8 +923,9 @@ async function runDailySummary(request: NextRequest) {
 }
 
 /**
- * 28일 이상 발행 + GSC 노출 0건 → 대표 URL의 material refresh 후보 생성.
- * Search collection must be non-empty; absence of collector data is not zero.
+ * 28일 이상 발행 + 실제 GSC 노출 + 평균 순위 4~20인 대표 URL만
+ * material refresh 후보로 만든다. 노출 0은 수요 재검토 대상이며 자동
+ * 생성 신호가 아니다.
  */
 async function regenerateUnderperformers(): Promise<{ count: number }> {
   const twentyEightDaysAgo = new Date();
@@ -944,23 +946,39 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
 
   if (!candidates || candidates.length === 0) return { count: 0 };
 
-  // GSC에서 28일 노출 0건 필터. 수집 데이터 자체가 없으면 아무것도 큐잉하지 않는다.
+  // GSC 수집 데이터 자체가 없으면 아무것도 큐잉하지 않는다.
   const slugs = candidates.map((c: any) => c.slug);
   const { data: clickRows } = await supabaseAdmin
     .from('rank_history')
-    .select('slug, clicks, impressions')
+    .select('slug, clicks, impressions, position')
     .in('slug', slugs)
+    .in('source', ['gsc', 'gsc-page'])
     .gte('date', twentyEightDaysAgo.toISOString().split('T')[0]);
 
   if (!clickRows || clickRows.length === 0) return { count: 0 };
 
-  const impressionMap = new Map<string, number>();
-  for (const r of clickRows || []) {
-    const row = r as { slug: string; impressions: number };
-    impressionMap.set(row.slug, (impressionMap.get(row.slug) || 0) + (row.impressions || 0));
+  const observationsBySlug = new Map<string, Array<{
+    impressions: number | null;
+    clicks: number | null;
+    position: number | null;
+  }>>();
+  for (const row of clickRows || []) {
+    const typed = row as {
+      slug: string;
+      impressions: number | null;
+      clicks: number | null;
+      position: number | null;
+    };
+    const observations = observationsBySlug.get(typed.slug) ?? [];
+    observations.push(typed);
+    observationsBySlug.set(typed.slug, observations);
   }
-
-  const underperformers = candidates.filter((c: any) => (impressionMap.get(c.slug) || 0) === 0);
+  const refreshOpportunityBySlug = new Map(candidates.map((candidate: any) => [
+    candidate.slug,
+    evaluateBlogSearchRefreshOpportunityV4(observationsBySlug.get(candidate.slug) ?? []),
+  ]));
+  const underperformers = candidates.filter((candidate: any) =>
+    refreshOpportunityBySlug.get(candidate.slug)?.eligible === true);
   if (underperformers.length === 0) return { count: 0 };
 
   // 14일 윈도 dedup — 동일 글의 업그레이드 큐만 중복 억제한다.
@@ -982,6 +1000,7 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
 
   const rows = fresh.map((c: any) => {
     const queueTopic = buildPublishedBlogUpgradeQueueTopic(c);
+    const searchEvidence = refreshOpportunityBySlug.get(c.slug)!;
     return {
       topic: queueTopic,
       source: 'user_seed',
@@ -992,8 +1011,13 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
       category: c.category || 'travel_tips',
       content_creative_id: c.id,
       meta: {
+        gsc_signal: true,
+        gsc_impressions: searchEvidence.impressions,
+        gsc_clicks: searchEvidence.clicks,
+        gsc_average_position: searchEvidence.averagePosition,
+        demand_source_reference: `rank_history:gsc:28d:${c.slug}`,
         regenerated_from: c.id,
-        regenerated_reason: '28일 GSC 노출 0 — 수요·색인·의도 재검토',
+        regenerated_reason: '28일 GSC 관측 순위 4~20 — 대표 URL material refresh',
         expected_slug: c.slug,
         original_slug: c.slug,
         original_title: c.seo_title,

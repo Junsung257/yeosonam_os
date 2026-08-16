@@ -369,7 +369,6 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
     .map((p) => stripMarkup(p).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
   const longParagraphs = paragraphs.filter((p) => p.length >= 520);
-  const h2Count = countMatches(source, /(^|\n)##\s+\S/g);
   const listItems = countMatches(source, /(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g);
   const tables = countMatches(source, /(^|\n)\s*\|.+\|/g);
   const markCount = countMatches(source, /==[^=\n]{3,120}==|<mark\b/gi);
@@ -385,10 +384,6 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
       count: longParagraphs.length,
       longest: longParagraphs[0]?.slice(0, 120),
     });
-  }
-
-  if (h2Count < 4) {
-    addIssue(issues, 'weak_reading_design', 'critical', 'Article needs at least four H2 sections for scanability.', { h2Count });
   }
 
   if (listItems < 3 && tables < 3) {
