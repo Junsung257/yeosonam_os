@@ -33,6 +33,14 @@ const publicRegistryRollback = readFileSync(
   'supabase/rollbacks/20260816123000_blog_public_slug_registry_v1_rollback.sql',
   'utf8',
 ).toLowerCase();
+const publicRegistrySecurityRepair = readFileSync(
+  'supabase/migrations/20260816124500_blog_public_slug_registry_security_definer.sql',
+  'utf8',
+).toLowerCase();
+const publicRegistrySecurityRepairRollback = readFileSync(
+  'supabase/rollbacks/20260816124500_blog_public_slug_registry_security_definer_rollback.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog Quality V3 public slug eligibility RPC migration', () => {
   it('exposes only a Boolean security-definer probe backed by the canonical view', () => {
@@ -87,5 +95,24 @@ describe('Blog Quality V3 public slug eligibility RPC migration', () => {
     expect(publicRegistryMigration).not.toContain('generation_meta');
     expect(publicRegistryMigration).not.toContain('review_status');
     expect(publicRegistryRollback).toContain('drop view if exists public.public_blog_slug_registry');
+  });
+
+  it('repairs the registry through an id/slug-only security-definer projection', () => {
+    expect(publicRegistrySecurityRepair).toContain(
+      'create or replace function public.list_public_blog_slug_registry_v1()',
+    );
+    expect(publicRegistrySecurityRepair).toContain('returns table(id uuid, slug text)');
+    expect(publicRegistrySecurityRepair).toContain('security definer');
+    expect(publicRegistrySecurityRepair).toContain('set search_path = public, pg_temp');
+    expect(publicRegistrySecurityRepair).toContain('from public.public_blog_content_creatives eligible');
+    expect(publicRegistrySecurityRepair).toContain(
+      'grant execute on function public.list_public_blog_slug_registry_v1()',
+    );
+    expect(publicRegistrySecurityRepair).toContain('select id, slug');
+    expect(publicRegistrySecurityRepair).not.toContain('generation_meta');
+    expect(publicRegistrySecurityRepair).not.toContain('review_status');
+    expect(publicRegistrySecurityRepairRollback).toContain(
+      'drop function if exists public.list_public_blog_slug_registry_v1()',
+    );
   });
 });
