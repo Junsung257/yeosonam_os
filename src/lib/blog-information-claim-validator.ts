@@ -227,6 +227,8 @@ const EDITORIAL_READING_GUIDANCE_RE = /(?:(?:먼저|우선).*(?:봐야|확인해
 const V3_DECISION_GUIDANCE_RE = /(?:고를\s*때|선택할\s*때|일정에\s*넣는다면|자신의\s*여행\s*스타일|먼저\s*.+(?:정한|고른)|(?:무엇|어디|어떤).*(?:기준|질문)|어디를\s*갈지는.*(?:시간|체력|동행|일정|우선순위).*(?:따라\s*달라|정해야|고르면)|(?:이|가)\s*핵심입니다|함께\s*보아야\s*합니다|확인해야\s*합니다|다른\s*.+(?:고르는|바꾸는)\s*것이\s*더\s*현실적입니다|자세한\s*.+에서\s*확인할\s*수\s*있습니다)/i;
 const V3_DIRECT_DECISION_ANSWER_RE = /(?:어디를\s*갈지|무엇을\s*고를지|장소를\s*(?:고르|선택)|후보를\s*(?:고르|선택)).*(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교|결정|고르|선택)|(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교).*(?:결정|고르|선택)/i;
 const V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE = /^(?:같은|내|자신의|여행자는|일정에|어디를|무엇을|먼저\s).*(?:선택\s*기준|우선순위|일정|체력|동행|비교|결정|확인).*(?:정하|고르|선택|비교|확인|좁히|달라지|방식)/i;
+const V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE = /^(?!.{0,160}(?:입니다|합니다|됩니다|있습니다|없습니다|가능합니다|불가능합니다))(?=.*(?:일정|순서|후보|구간|휴식|우선순위|동선))(?=.*(?:정하세요|나누세요|묶으세요|분리하세요|조정하세요|비교하세요|확인하세요|표시하세요)).+$/i;
+const V3_AVAILABILITY_RECHECK_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*여부|가능한?\s*(?:시간|날짜|조건)).*(?:공식|예약|홈페이지|채널).*(?:확인|비교|점검)/i;
 const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
@@ -240,10 +242,14 @@ export function classifyBlogInformationStatement(segment: string): {
   const factualClassification = classifyClaim(segment);
   const directDecisionGuidance = V3_DECISION_GUIDANCE_RE.test(segment)
     || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment);
+    || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment);
+  const availabilityRecheck = factualClassification?.candidateKind === 'availability_status'
+    && V3_AVAILABILITY_RECHECK_RE.test(segment);
   if (
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
+    && !availabilityRecheck
   ) {
     return { category: 'verified_factual', factualClassification };
   }

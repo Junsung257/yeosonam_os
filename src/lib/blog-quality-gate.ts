@@ -556,7 +556,7 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
 }
 
 /**
- * AI-readable Structure 게이트 — Cue / AI Overviews / SGE 인용 최적화.
+ * Extractable content structure gate.
  *
  * 검증 5축 (criteria, 3개 이상 충족 시 PASS):
  *   1. H2 밀도: info=5~9개, product=3~6개 (인용 가능한 의미 단위)
@@ -565,7 +565,8 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
  *   4. 질문형 H2: "?" 로 끝나는 H2 ≥1 (검색쿼리 ↔ 헤딩 매칭)
  *   5. 추출 가능 자료: 숫자 리스트 ≥1 OR 테이블 ≥1 OR bullet list ≥2
  *
- * Why: 네이버 Cue / Google AI Overviews 는 짧은 정의 + Q&A + 리스트를 우선 발췌.
+ * This checks reader-scannable structure only. It does not claim or predict
+ * search ranking, rich-result eligibility, or AI-answer inclusion.
  */
 export function checkAiReadability(
   blog_html: string,
@@ -609,7 +610,7 @@ export function checkAiReadability(
   // table 은 2행 이상이어야 의미. bullet 은 2개 이상.
   const extractableOk = numberedList >= 1 || tableRow >= 2 || bulletList >= 2;
 
-  const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)/.test(intro);
+  const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)|(?:일정|동선|순서|후보).*(?:먼저|우선).*(?:정|나누|묶|분리|비교|확인)하세요/.test(intro);
   const criteria = flexibleInformationalBrief
     ? [
         { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
@@ -631,7 +632,7 @@ export function checkAiReadability(
     passed,
     reason: passed
       ? undefined
-      : `AI 인용 최적화 ${okCount}/5 — 통과 기준 3 미달 (실패: ${criteria.filter(c => !c.ok).map(c => c.key).join(', ')})`,
+      : `AI 가독성 ${okCount}/${criteria.length} — 통과 기준 3 미달 (실패: ${criteria.filter(c => !c.ok).map(c => c.key).join(', ')})`,
     evidence: { score: okCount, criteria },
   };
 }
@@ -1197,7 +1198,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
     ? (adaptive?.infoMinReadability ?? 70)
     : (adaptive?.productMinReadability ?? 60);
   gates.push(checkReadability(input.blog_html, readThreshold));
-  // AI 인용 최적화 (Cue/AIO/SGE) — 9번째 게이트
+  // 읽기 쉽고 추출 가능한 구조 — 9번째 게이트
   gates.push(checkAiReadability(
     input.blog_html,
     blogType,

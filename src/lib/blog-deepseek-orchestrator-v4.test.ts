@@ -71,6 +71,42 @@ describe('blog DeepSeek orchestrator V4', () => {
       completedAttempts: 2,
       hardBlockers: ['unsupported_number'],
     })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_max' });
+    expect(decideBlogQualityRouteV4({
+      score: 93,
+      previousScore: 86,
+      completedAttempts: 2,
+      researchAttempts: 1,
+      researchValid: true,
+      claimLedgerValid: false,
+      lastStage: 'rewrite_pro_high',
+      hardBlockers: ['unsupported_number'],
+      failureReasons: ['claim_support_coverage_below_90_percent', 'unsupported_number_present'],
+    })).toMatchObject({
+      route: 'rewrite_pro_max',
+      nextStage: 'rewrite_pro_max',
+      reasons: expect.arrayContaining(['final_grounded_output_rewrite']),
+    });
+  });
+
+  it('does not rewrite around missing, stale, conflicting, or saturated evidence', () => {
+    for (const blocker of ['missing_evidence', 'stale_claim', 'claim_conflict_present']) {
+      expect(decideBlogQualityRouteV4({
+        score: 93,
+        completedAttempts: 2,
+        researchAttempts: 1,
+        researchValid: true,
+        lastStage: 'rewrite_pro_high',
+        hardBlockers: [blocker],
+      })).toMatchObject({ route: 'quarantine', nextStage: null });
+    }
+    expect(decideBlogQualityRouteV4({
+      score: 93,
+      completedAttempts: 2,
+      researchAttempts: 1,
+      researchValid: true,
+      lastStage: 'rewrite_pro_high',
+      hardBlockers: ['unsupported_number', 'template_saturation'],
+    })).toMatchObject({ route: 'quarantine', nextStage: null });
   });
 
   it('quarantines sub-75 drafts when grounding is not explicit or the failure is factual', () => {
@@ -189,6 +225,9 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Write natural Korean with varied sentence shapes');
     expect(prompt).toContain('do not force every sentence to end in 하세요');
     expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
+    expect(prompt).toContain('Each approved fact may appear only once in the visible article');
+    expect(prompt).toContain('Never combine two approved numeric claims into one sentence');
+    expect(prompt).toContain('avoid status-like wording such as 예약 가능');
     expect(prompt).toContain('Never replace duration or climate with a generic factual label');
     expect(prompt).toContain('force a fixed heading count');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
@@ -336,10 +375,29 @@ describe('blog DeepSeek orchestrator V4', () => {
       approvedClaims: claims,
     });
 
-    expect(selected).toHaveLength(6);
+    expect(selected).toHaveLength(5);
     expect(selected).toEqual(expect.arrayContaining([claims[2], claims[4], claims[5], claims[6], claims[7]]));
+    expect(selected).not.toContainEqual(claims[0]);
     expect(selected).not.toContainEqual(claims[1]);
     expect(selected).not.toContainEqual(claims[3]);
+  });
+
+  it('drops dimension-only facts when three movement facts already complete an itinerary decision', () => {
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      approvedClaims: [
+        { claimText: '다낭에서 Linh Ung Pagoda까지 차량으로 15분 소요', claimType: 'duration', riskLevel: 'LOW' },
+        { claimText: 'Marble Mountains는 다낭 시내에서 15분 거리', claimType: 'duration', riskLevel: 'LOW' },
+        { claimText: 'Ba Na Hills는 다낭에서 서쪽으로 차량 40분 거리', claimType: 'duration', riskLevel: 'LOW' },
+        { claimText: 'Linh Ung Pagoda의 Lady Buddha statue 높이는 67m', claimType: 'factual', riskLevel: 'LOW' },
+        { claimText: 'Hai Van Pass는 21km 길이의 도로', claimType: 'factual', riskLevel: 'LOW' },
+        { claimText: 'Hai Van Pass의 최고 지점은 해발 496m', claimType: 'factual', riskLevel: 'LOW' },
+      ],
+    });
+
+    expect(selected).toHaveLength(3);
+    expect(selected.every((claim) => claim.claimType === 'duration')).toBe(true);
   });
 
   it('keeps all twelve approved climate rows only for an explicit monthly assignment', () => {
