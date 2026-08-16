@@ -58,7 +58,7 @@ release manifest에는 SHA-256으로 고정된 9개 migration만 있다.
 2. `20260815093943_blog_keyword_families_service_role_rls.sql`
 3. `20260815120135_blog_deepseek_orchestrator_v4.sql`
 4. `20260815211325_blog_public_eligibility_rpc_contract.sql`
-5. `20260816015102_blog_ai_budget_and_gemini_rescue.sql`
+5. `20260816015102_blog_ai_budget_deepseek_only.sql`
 6. `20260816093000_add_danang_reviewed_research_sources.sql`
 7. `20260816094500_blog_generation_attempt_finish_reason.sql`
 8. `20260816120000_blog_publication_rollout_control_v1.sql`

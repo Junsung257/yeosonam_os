@@ -25,7 +25,7 @@
     },
     {
       "version": "20260816015102",
-      "file": "supabase/migrations/20260816015102_blog_ai_budget_and_gemini_rescue.sql",
+      "file": "supabase/migrations/20260816015102_blog_ai_budget_deepseek_only.sql",
       "sha256": "b1ffcc6898bddbf6453a04ce787993b1f4bb87daa7543b1a029f22bfc4dfa614"
     },
     {

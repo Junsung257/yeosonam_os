@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const migration = readFileSync(
-  'supabase/migrations/20260816015102_blog_ai_budget_and_gemini_rescue.sql',
+  'supabase/migrations/20260816015102_blog_ai_budget_deepseek_only.sql',
   'utf8',
 ).toLowerCase();
 const rollback = readFileSync(
-  'supabase/rollbacks/20260816015102_blog_ai_budget_and_gemini_rescue_rollback.sql',
+  'supabase/rollbacks/20260816015102_blog_ai_budget_deepseek_only_rollback.sql',
   'utf8',
 ).toLowerCase();
 

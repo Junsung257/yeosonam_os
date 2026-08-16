@@ -12,7 +12,7 @@ const runtimePaths = [
 
 const runtime = runtimePaths.map((path) => readFileSync(path, 'utf8')).join('\n');
 const migration = readFileSync(
-  'supabase/migrations/20260816015102_blog_ai_budget_and_gemini_rescue.sql',
+  'supabase/migrations/20260816015102_blog_ai_budget_deepseek_only.sql',
   'utf8',
 ).toLowerCase();
 const workflow = readFileSync('.github/workflows/blog-v4-production-release.yml', 'utf8');
