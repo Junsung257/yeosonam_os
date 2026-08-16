@@ -177,6 +177,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Do not finish with generic questions');
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
     expect(prompt).not.toContain('Do not write a table, itinerary');
+    expect(prompt).not.toContain('route pairings unless');
   });
 
   it('selects a diverse deterministic claim subset for non-monthly rewrites', () => {

@@ -553,7 +553,7 @@ export function buildDeepSeekRewritePromptV4(input: {
     '- Delete every numeric expression that does not appear verbatim in an approved claim. Do not estimate or calculate.',
     '- The visible article and hidden ledger may contain only exact approved factual claim sentences. Do not add derived factual prose.',
     '- Never infer visit duration, crowd level, waiting time, safety, opening status, or transport time.',
-    '- Do not mention rain, seasons, closures, fees, operating hours, crowds, queues, or route pairings unless an exact approved claim says so.',
+    '- Do not mention rain, seasons, closures, fees, operating hours, crowds, or queues unless an exact approved claim says so.',
     '- Decision guidance may choose, group, separate, or sequence only entities already named in approved claims. Write it as an editorial reader action, never as a new property of a place.',
     '- Add no new fact, number, source, experience, destination, or factual recommendation. Do not expand the original topic scope.',
     '- You may reorder or rename sections only to satisfy the original brief and its section purposes.',
