@@ -664,6 +664,49 @@ describe('sanitizeGroundedResearchPayload', () => {
     expect(payload.evidence?.map((evidence) => evidence.evidenceKey)).toEqual(['e1']);
     expect(payload.claims?.map((claim) => claim.normalizedValue)).toEqual(['12']);
   });
+
+  it('drops mislabeled duration rows before they can poison a valid research bundle', () => {
+    const payload = sanitizeGroundedResearchPayload({
+      sources: [{ sourceKey: 's1', groundingChunkIndex: 0, sourceType: 'official_tourism' }],
+      evidence: [
+        {
+          evidenceKey: 'bad-count',
+          sourceKey: 's1',
+          excerpt: '다낭 일정은 관광지 5곳을 묶는다.',
+          claimType: 'duration',
+          normalizedValue: '5',
+          unit: '곳',
+        },
+        {
+          evidenceKey: 'valid-drive',
+          sourceKey: 's1',
+          excerpt: '미케비치에서 호이안까지 차량 이동은 30분이 소요된다.',
+          claimType: 'duration',
+          normalizedValue: '30',
+          unit: '분',
+        },
+      ],
+      claims: [
+        {
+          claimText: '다낭 일정은 관광지 5곳을 묶는다.',
+          claimType: 'duration',
+          evidenceKeys: ['bad-count'],
+          normalizedValue: '5',
+          unit: '곳',
+        },
+        {
+          claimText: '미케비치에서 호이안까지 차량 이동은 30분이 소요된다.',
+          claimType: 'duration',
+          evidenceKeys: ['valid-drive'],
+          normalizedValue: '30',
+          unit: '분',
+        },
+      ],
+    }, 'itinerary');
+
+    expect(payload.evidence?.map((item) => item.evidenceKey)).toEqual(['valid-drive']);
+    expect(payload.claims?.map((item) => item.evidenceKeys)).toEqual([['valid-drive']]);
+  });
 });
 
 describe('augmentGuamFoodBudgetPayload', () => {
@@ -920,6 +963,24 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(prompt).toContain('claim_semantic_coverage_missing:food_budget:breakfast');
   });
 
+  it('turns duration mismatches into an explicit lexical retry contract', () => {
+    const prompt = buildBlogStructuredResearchPrompt({
+      ...base,
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy,
+        plan: { requiredFacts: [] },
+      } as never,
+      retry: true,
+      retryIssues: ['evidence_rejected:0:claim_type_mismatch:duration:unclassified'],
+    });
+
+    expect(prompt).toContain('DURATION RETRY CONTRACT');
+    expect(prompt).toContain('same numeric value and explicit elapsed unit directly in both excerpt and claimText');
+    expect(prompt).toContain('For a route, name both endpoints');
+    expect(prompt).toContain('unit is invalid');
+  });
+
   it('keeps the compact retry instruction for invalid or truncated JSON only', () => {
     const prompt = buildBlogStructuredResearchPrompt({
       ...base,
@@ -948,6 +1009,17 @@ describe('isAutoResearchNumericClaimTypeCompatible', () => {
       'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
       'duration',
     )).toBe(true);
+  });
+
+  it('accepts common English elapsed units but rejects mixed distance-duration rows', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'My Khe Beach to Hoi An is a 30-minute drive.',
+      'duration',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Hai Van Pass is 21 km long and takes 40 minutes to cross.',
+      'duration',
+    )).toBe(false);
   });
 
   it('keeps compatible numeric and qualitative facts', () => {

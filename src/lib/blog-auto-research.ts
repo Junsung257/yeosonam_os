@@ -568,9 +568,11 @@ export function isAutoResearchNumericClaimTypeCompatible(
   // length. Reject distances, clock times, dates, and other measurements even
   // when the model labels them as duration.
   if (claimType !== 'duration' || !/\d/.test(claimText)) return true;
+  const hasDistanceMeasurement = /\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)\b/iu.test(claimText);
+  if (hasDistanceMeasurement) return false;
   const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
   if (compatibility.passed) return true;
-  const hasShortElapsedDuration = /\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/iu.test(claimText);
+  const hasShortElapsedDuration = /\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)/iu.test(claimText);
   const hasLongDurationUnit = /(?:\d+(?:\.\d+)?\s*(?:일(?!\s*차)|박|주|개월|달)|\d+(?:\.\d+)?\s*년(?:간|동안|이내|이하|이상))/iu.test(claimText);
   const hasLongDurationContext = /(?:소요|걸(?:립니다|린다|려)|체류|머물|방문|이동|환승|여정|여행|투숙|숙박|유효|허용|기간|stay|visit|travel)/iu.test(claimText);
   const hasScheduleContext = /(?:운영|영업|개장|폐장|첫차|막차|상영|공연|매일|주말|평일|연중무휴|opening|closing|open\s+hours?|schedule)/iu.test(claimText);
@@ -1286,6 +1288,8 @@ export function buildBlogStructuredResearchPrompt(input: {
   const retryIssues = input.retryIssues ?? [];
   const coverageRetry = retryIssues.some((issue) =>
     /(?:below_minimum|semantic_coverage_missing|required_(?:decision_)?fact|distinct_evidence_values|claim_source_coverage)/i.test(issue));
+  const durationRetry = retryIssues.some((issue) =>
+    /(?:claim_type_mismatch:duration|below_minimum:duration|claim_type_minimum:duration)/i.test(issue));
   const intentInstructions = input.brief.intentType === 'food_budget'
     ? [
         'FOOD BUDGET PRIORITY:',
@@ -1378,6 +1382,8 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
     'Use duration only for elapsed travel, transfer, stay, or visit length. A clock-of-day, show time, opening time, or other schedule is not duration.',
+    'For every numeric duration, both evidence.excerpt and claim.claimText must contain the same Arabic-digit elapsed value, an explicit elapsed unit (for example 15분, 2시간, 15 minutes, or 2 hours), and an elapsed context such as 소요, 걸립니다, 이동, 체류, 방문, drive, travel time, stay, or visit.',
+    'A duration unit supplied only in normalizedValue or unit is invalid. Omit rather than label a distance, count, date, clock time, service frequency, or itinerary day ordinal as duration.',
     'Omit optional unit, currency, validFrom, or validUntil when the digest does not state it.',
     `Minimum independently supported claims by type: ${claimMinimums}.`,
     `Minimum total independently supported claims: ${minimumTotalClaims}.`,
@@ -1400,6 +1406,13 @@ export function buildBlogStructuredResearchPrompt(input: {
           ]),
       ...(retryIssues.length
         ? [`Prior issues: ${retryIssues.slice(0, 16).join(', ')}`]
+        : []),
+      ...(durationRetry
+        ? [
+            'DURATION RETRY CONTRACT:',
+            'Replace every rejected duration row with a genuinely elapsed fact from GROUNDED_DIGEST. Put the same numeric value and explicit elapsed unit directly in both excerpt and claimText, and include the elapsed context. For a route, name both endpoints.',
+            'If GROUNDED_DIGEST has no compliant elapsed fact, omit that row; never relabel distance, count, date, clock time, frequency, or an itinerary ordinal as duration.',
+          ]
         : []),
     ] : []),
     'SOURCE_CATALOG:',
@@ -1469,6 +1482,7 @@ export function sanitizeGroundedResearchPayload(
       || !clean(evidence.evidenceKey)) {
       return false;
     }
+    if (!isAutoResearchNumericClaimTypeCompatible(statement, claimType)) return false;
     return (claimType !== 'price' && claimType !== 'currency')
       || Boolean(explicitCurrency(evidence.currency, `${statement} ${normalizedValue} ${clean(evidence.unit)}`));
   });
@@ -1479,6 +1493,7 @@ export function sanitizeGroundedResearchPayload(
     const claimType = toClaimType(claim.claimType);
     const claimText = clean(claim.claimText);
     if (!claimType || !allowedClaimTypes.has(claimType) || !claimText) return [];
+    if (!isAutoResearchNumericClaimTypeCompatible(claimText, claimType)) return [];
     const draftedValue = clean(claim.normalizedValue);
     const compatibleEvidenceKeys = normalizeList(claim.evidenceKeys).filter((key) => {
       const evidence = evidenceByKey.get(key);
