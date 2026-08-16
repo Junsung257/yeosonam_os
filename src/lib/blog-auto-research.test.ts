@@ -916,6 +916,88 @@ describe('isAutoResearchNumericClaimTypeCompatible', () => {
 });
 
 describe('buildBlogResearchBundleFromGrounding', () => {
+  it('does not persist or auto-promote a clock recommendation labeled as duration', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'danang-itinerary',
+      destination: '다낭',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_local_source'],
+        },
+      },
+      payload: {
+        sources: [{
+          sourceKey: 'tourism',
+          groundingChunkIndex: 0,
+          publisher: 'Reviewed Danang guide',
+          sourceType: 'reputable_local_source',
+          claimTypes: ['duration'],
+          country: 'VN',
+          destination: '다낭',
+        }],
+        evidence: [
+          {
+            evidenceKey: 'clock',
+            sourceKey: 'tourism',
+            excerpt: 'Marble Mountains는 오전 7시 이전 방문이 최적입니다.',
+            claimType: 'duration',
+            normalizedValue: '7',
+            unit: 'am',
+          },
+          {
+            evidenceKey: 'drive',
+            sourceKey: 'tourism',
+            excerpt: 'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+            claimType: 'duration',
+            normalizedValue: '15',
+            unit: '분',
+          },
+        ],
+        claims: [
+          {
+            claimText: 'Marble Mountains는 오전 7시 이전 방문이 최적입니다.',
+            claimType: 'duration',
+            evidenceKeys: ['clock'],
+            normalizedValue: '7',
+            unit: 'am',
+          },
+          {
+            claimText: 'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+            claimType: 'duration',
+            evidenceKeys: ['drive'],
+            normalizedValue: '15',
+            unit: '분',
+          },
+        ],
+      },
+      groundingChunks: [{
+        web: { uri: 'https://travel.example.com/danang', title: 'Danang guide' },
+      }],
+      reputableRegistry: [{
+        id: 'danang-guide',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_local_source'],
+        intents: ['itinerary'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-08-16T14:00:00.000Z'),
+    });
+
+    expect(result.bundle?.evidence.map((item) => item.metadata?.grounded_statement)).toEqual([
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+    ]);
+    expect(result.bundle?.claims.map((item) => item.claimText)).toEqual([
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+    ]);
+    expect(result.issues).toContain('evidence_rejected:0:claim_type_mismatch:duration:factual');
+  });
+
   it('builds a publish-gate-ready low-risk bundle only from grounded URLs', () => {
     const groundingChunks: GroundingChunk[] = [
       { web: { uri: 'https://prices.example.com/osaka-breakfast', title: 'Osaka price guide' } },

@@ -568,7 +568,11 @@ export function isAutoResearchNumericClaimTypeCompatible(
   // clock/schedule claim mislabeled as elapsed duration. Other claim types keep
   // their existing evidence and publish-gate validation contracts.
   if (claimType !== 'duration' || !/\d/.test(claimText)) return true;
-  return inspectBlogInformationClaimTypeCompatibility(claimText, claimType).passed;
+  const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
+  if (compatibility.passed) return true;
+  const hasClockOfDay = /(?:오전|오후|\b(?:a\.?m\.?|p\.?m\.?)\b|\d{1,2}:\d{2}|\d{1,2}\s*시\s*(?:이전|이후|부터|까지|경|정각))/iu.test(claimText);
+  const hasElapsedDuration = /(?:\d+(?:\.\d+)?\s*(?:분|시간)|소요|걸(?:립니다|린다|려)|이동\s*시간|travel\s*time|\bdrive\b|\bminutes?\b|\bhours?\b)/iu.test(claimText);
+  return !hasClockOfDay || hasElapsedDuration;
 }
 
 function toSourceType(
@@ -870,6 +874,14 @@ export function buildBlogResearchBundleFromGrounding(input: {
     );
     if ((claimType === 'price' || claimType === 'currency') && !currency) {
       issues.push(`evidence_rejected:${draftIndex}:currency_required`);
+      return [];
+    }
+    if (!isAutoResearchNumericClaimTypeCompatible(statement, claimType)) {
+      const compatibility = inspectBlogInformationClaimTypeCompatibility(statement, claimType);
+      issues.push(`evidence_rejected:${draftIndex}`);
+      issues.push(
+        `evidence_rejected:${draftIndex}:claim_type_mismatch:${claimType}:${compatibility.deterministicType ?? 'unclassified'}`,
+      );
       return [];
     }
     const requestedValidFrom = safeIsoDate(draft.validFrom);
