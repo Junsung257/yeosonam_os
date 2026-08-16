@@ -15,7 +15,7 @@
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
-| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
+| `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |

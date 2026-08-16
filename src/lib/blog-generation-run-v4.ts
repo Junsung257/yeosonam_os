@@ -363,3 +363,26 @@ export async function approveBlogGenerationRunForSlotV4(input: {
     .maybeSingle();
   return error?.message ?? (data?.id ? null : 'approved_generation_run_not_found');
 }
+
+export async function markBlogGenerationRunForHumanReviewV4(input: {
+  queueId: string;
+  creativeId: string;
+  reason: string;
+}): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .update({
+      content_creative_id: input.creativeId,
+      status: 'human_review',
+      disposition: 'human_review',
+      scheduled_publish_at: null,
+      last_error: input.reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('queue_id', input.queueId)
+    .eq('generation_key', `queue:${input.queueId}`)
+    .in('status', ['approved_for_slot', 'human_review'])
+    .select('id')
+    .maybeSingle();
+  return error?.message ?? (data?.id ? null : 'generation_run_human_review_transition_failed');
+}

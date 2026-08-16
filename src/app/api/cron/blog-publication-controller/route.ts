@@ -6,12 +6,16 @@ import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 import { calculateBlogPublishSlotQuota } from '@/lib/blog-publish-slot-quota';
 import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
-import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import {
+  publishBlogInformationAtomically,
+  replaceBlogInformationAutomatedDraftAtomically,
+} from '@/lib/blog-information-atomic-publication';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { getBlogPublicSurfacePolicyBlockReason } from '@/lib/blog-public-eligibility';
+import { readAutomatedPublishedBlogReplacement } from '@/lib/blog-private-regeneration';
 import {
   resolveEffectiveBlogPublicationRollout,
 } from '@/lib/blog-publication-rollout';
@@ -50,6 +54,9 @@ async function runBlogPublicationController(request: NextRequest) {
   }
 
   const now = new Date();
+  const targetedRunId = request.nextUrl.searchParams.get('runId')?.trim() ?? '';
+  const forceTargetedRun = request.nextUrl.searchParams.get('force') === 'true'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetedRunId);
   const range = kstDayRange(now);
   const { count: publishedToday, error: countError } = await supabaseAdmin
     .from('content_creatives')
@@ -67,15 +74,23 @@ async function runBlogPublicationController(request: NextRequest) {
     rolloutStage: rollout.stage,
     cumulativeTargets: rollout.cumulativeSlotCaps,
   });
-  if (quota.remainingDueNow <= 0) return { skipped: true, reason: 'publication_slot_not_due', quota };
+  const remainingDailyCapacity = Math.max(0, rollout.dailyCap - Number(publishedToday ?? 0));
+  if (remainingDailyCapacity <= 0) return { skipped: true, reason: 'daily_publish_cap_reached', quota };
+  if (!forceTargetedRun && quota.remainingDueNow <= 0) {
+    return { skipped: true, reason: 'publication_slot_not_due', quota };
+  }
 
-  const { data: dueRuns, error: dueError } = await supabaseAdmin
+  let dueRunsQuery = supabaseAdmin
     .from('blog_generation_runs')
     .select('id,queue_id,content_creative_id,selected_attempt_id,latest_quality_score,scheduled_publish_at')
-    .eq('status', 'approved_for_slot')
-    .lte('scheduled_publish_at', now.toISOString())
-    .order('scheduled_publish_at', { ascending: true })
-    .limit(quota.remainingDueNow);
+    .eq('status', 'approved_for_slot');
+  dueRunsQuery = forceTargetedRun
+    ? dueRunsQuery.eq('id', targetedRunId).limit(1)
+    : dueRunsQuery
+        .lte('scheduled_publish_at', now.toISOString())
+        .order('scheduled_publish_at', { ascending: true })
+        .limit(Math.min(quota.remainingDueNow, remainingDailyCapacity));
+  const { data: dueRuns, error: dueError } = await dueRunsQuery;
   if (dueError) return { skipped: true, reason: `approved_run_query_failed:${dueError.message}`, quota };
 
   const results: Array<{ runId: string; creativeId: string | null; status: string; reason?: string }> = [];
@@ -84,6 +99,8 @@ async function runBlogPublicationController(request: NextRequest) {
     let publicCommitComplete = false;
     const creativeId = run.content_creative_id as string | null;
     const selectedAttemptId = run.selected_attempt_id as string | null;
+    let publishedCreativeId = creativeId;
+    let publishedSlug: string | null = null;
     if (!creativeId || !selectedAttemptId || Number(run.latest_quality_score ?? 0) < 90) {
       await supabaseAdmin.from('blog_generation_runs').update({
         status: 'quarantine', disposition: 'controller_precondition_failed', quarantined_at: now.toISOString(),
@@ -121,10 +138,18 @@ async function runBlogPublicationController(request: NextRequest) {
         .single();
       if (creativeError || !creative || creative.status !== 'draft') throw new Error('approved_draft_missing');
       const selectedOutput = attempt.output_document as Record<string, unknown> | null;
+      const automatedReplacement = readAutomatedPublishedBlogReplacement(creative.generation_meta);
       const selectedOutputMatchesDraft = selectedOutput
         && String(selectedOutput.title ?? '') === String(creative.seo_title ?? '')
         && String(selectedOutput.description ?? '') === String(creative.seo_description ?? '')
-        && String(selectedOutput.slug ?? '') === String(creative.slug ?? '')
+        && (
+          String(selectedOutput.slug ?? '') === String(creative.slug ?? '')
+          || (
+            automatedReplacement !== null
+            && automatedReplacement.draftSlug === String(creative.slug ?? '')
+            && automatedReplacement.canonicalSlug === String(selectedOutput.slug ?? '')
+          )
+        )
         && String(selectedOutput.markdown ?? '') === String(creative.blog_html ?? '');
       if (!selectedOutputMatchesDraft) throw new Error('selected_attempt_output_mismatch');
       const generationMeta = (creative.generation_meta || {}) as Record<string, unknown>;
@@ -157,22 +182,44 @@ async function runBlogPublicationController(request: NextRequest) {
       if (identity) {
         const claimValidation = generationMeta.information_claim_validation as Record<string, unknown> | undefined;
         if (claimValidation?.passed !== true) throw new Error('information_claim_gate_not_passed');
-        await publishBlogInformationAtomically({
-          creativeId,
-          contentFingerprint: createBlogInformationContentFingerprint({
-            blogHtml: String(creative.blog_html || ''),
-            seoTitle: String(creative.seo_title || ''),
-            seoDescription: String(creative.seo_description || ''),
-            slug: String(creative.slug || ''),
-          }),
-          validationMeta: {
-            information_claim_validation: (generationMeta.information_claim_validation || {}) as Record<string, unknown>,
-          },
-          qualityGate: (creative.quality_gate || {}) as Record<string, unknown>,
-          publishedAt: now.toISOString(),
-          identity,
-          reservationOwner: `blog_topic_queue:${run.queue_id}`,
+        const contentFingerprint = createBlogInformationContentFingerprint({
+          blogHtml: String(creative.blog_html || ''),
+          seoTitle: String(creative.seo_title || ''),
+          seoDescription: String(creative.seo_description || ''),
+          slug: String(creative.slug || ''),
         });
+        if (automatedReplacement) {
+          if (automatedReplacement.queueId !== String(run.queue_id)) {
+            throw new Error('automated_replacement_queue_mismatch');
+          }
+          const replacement = await replaceBlogInformationAutomatedDraftAtomically({
+            replacementDraftId: creativeId,
+            targetCreativeId: automatedReplacement.targetCreativeId,
+            runId: String(run.id),
+            selectedAttemptId,
+            sourceFingerprint: contentFingerprint,
+            validationMeta: {
+              information_claim_validation: (generationMeta.information_claim_validation || {}) as Record<string, unknown>,
+            },
+            qualityGate: (creative.quality_gate || {}) as Record<string, unknown>,
+            identity,
+          });
+          publishedCreativeId = replacement.targetCreativeId;
+          publishedSlug = replacement.slug;
+        } else {
+          await publishBlogInformationAtomically({
+            creativeId,
+            contentFingerprint,
+            validationMeta: {
+              information_claim_validation: (generationMeta.information_claim_validation || {}) as Record<string, unknown>,
+            },
+            qualityGate: (creative.quality_gate || {}) as Record<string, unknown>,
+            publishedAt: now.toISOString(),
+            identity,
+            reservationOwner: `blog_topic_queue:${run.queue_id}`,
+          });
+          publishedSlug = String(creative.slug || '');
+        }
         publicCommitComplete = true;
       } else {
         const { data: promoted, error: promoteError } = await supabaseAdmin
@@ -184,6 +231,7 @@ async function runBlogPublicationController(request: NextRequest) {
           .maybeSingle();
         if (promoteError || !promoted) throw new Error('draft_promotion_race');
         publicCommitComplete = true;
+        publishedSlug = String(creative.slug || '');
         const enqueue = await enqueueBlogIndexingJob({
           slug: String(creative.slug), baseUrl, contentCreativeId: creativeId, source: 'blog_publication_controller',
         });
@@ -193,17 +241,19 @@ async function runBlogPublicationController(request: NextRequest) {
       const [runSync, queueSync] = await Promise.all([
         supabaseAdmin.from('blog_generation_runs').update({
           status: 'published', disposition: 'published', published_at: now.toISOString(),
+          content_creative_id: publishedCreativeId,
           last_error: null, lease_owner: null, lease_expires_at: null, updated_at: now.toISOString(),
         }).eq('id', run.id).eq('status', 'publishing'),
         supabaseAdmin.from('blog_topic_queue').update({
           status: 'published', last_error: null, attempts: 0,
-        }).eq('id', run.queue_id).eq('content_creative_id', creativeId),
+          content_creative_id: publishedCreativeId,
+        }).eq('id', run.queue_id),
       ]);
       if (runSync.error || queueSync.error) {
         throw new Error(`post_publish_state_sync_failed:${runSync.error?.message || queueSync.error?.message}`);
       }
-      revalidatePublicBlogCache(String(creative.slug || ''), creative.destination ?? null);
-      results.push({ runId: run.id, creativeId, status: 'published' });
+      revalidatePublicBlogCache(publishedSlug || undefined, creative.destination ?? null);
+      results.push({ runId: run.id, creativeId: publishedCreativeId, status: 'published' });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       if (publicCommitComplete) {
@@ -212,14 +262,16 @@ async function runBlogPublicationController(request: NextRequest) {
         await Promise.allSettled([
           supabaseAdmin.from('blog_generation_runs').update({
             status: 'published', disposition: 'published_state_sync_error', published_at: now.toISOString(),
+            content_creative_id: publishedCreativeId,
             last_error: reason, lease_owner: null, lease_expires_at: null, updated_at: new Date().toISOString(),
           }).eq('id', run.id).eq('status', 'publishing'),
           supabaseAdmin.from('blog_topic_queue').update({
             status: 'published', last_error: `publication_state_sync:${reason}`,
-          }).eq('id', run.queue_id).eq('content_creative_id', creativeId),
+            content_creative_id: publishedCreativeId,
+          }).eq('id', run.queue_id),
         ]);
         revalidatePublicBlogCache();
-        results.push({ runId: run.id, creativeId, status: 'published_state_sync_error', reason });
+        results.push({ runId: run.id, creativeId: publishedCreativeId, status: 'published_state_sync_error', reason });
         continue;
       }
       await supabaseAdmin.from('blog_generation_runs').update({
@@ -238,7 +290,15 @@ async function runBlogPublicationController(request: NextRequest) {
     revalidatePublicBlogCache();
     await processDueBlogIndexingJobs({ workerName: 'blog-publication-controller', limit: 10, baseUrl });
   }
-  return { processed: results.length, published, quota, rollout, results, modelCalls: 0 };
+  return {
+    processed: results.length,
+    published,
+    quota,
+    rollout,
+    targetedRunId: forceTargetedRun ? targetedRunId : null,
+    results,
+    modelCalls: 0,
+  };
 }
 
 export const GET = withCronLogging('blog-publication-controller', runBlogPublicationController, {

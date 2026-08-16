@@ -20,6 +20,8 @@ const CRITICAL_CRONS = new Set([
   'rank-tracking',
   'blog-data-readiness',
   'blog-indexing-worker',
+  'blog-ai-model-canary',
+  'blog-analytics-canary',
   'analytics-delivery',
 ]);
 

@@ -61,6 +61,7 @@ describe('blog daily summary report day', () => {
       crons: Array<{ path: string; schedule: string }>;
     };
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/blog-external-cron.yml'), 'utf8');
+    const releaseWorkflow = readFileSync(join(process.cwd(), '.github/workflows/blog-v4-production-release.yml'), 'utf8');
     const workflowDoc = parse(workflow) as {
       on: { schedule: Array<{ cron: string }> };
       jobs: { trigger: { 'timeout-minutes': number; steps: Array<{ name?: string; run?: string }> } };
@@ -106,6 +107,7 @@ describe('blog daily summary report day', () => {
     expect(workflow).not.toContain('while [ "$attempt"');
     expect(workflow).toContain('timeout-minutes: 45');
     expect(workflow).toContain('Running one model-free publication pass before daily summary.');
+    expect(releaseWorkflow).toContain('update_env DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS 1');
     expect(workflow).toContain('${BASE_URL}/api/cron/blog-publication-controller?force=true');
     expect(workflow).toContain('pre-summary-publisher-response.json');
     expect(workflow).toContain('Publication controller must make zero model calls');
@@ -146,5 +148,15 @@ describe('blog daily summary report day', () => {
     expect(routeSource).toContain("code: 'fleet_phrase_drift'");
     expect(routeSource).toContain("summary.fleet_phrase_drift.status !== 'pass'");
     expect(routeSource).toContain('.slice(0, 100)');
+  });
+
+  it('uses the read-back analytics canary as the rollout freshness signal', () => {
+    const routeSource = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
+
+    expect(routeSource).toContain("supabaseAdmin.from('analytics_server_events')");
+    expect(routeSource).toContain(".eq('event_name', 'generate_lead')");
+    expect(routeSource).toContain("pipeline: 'blog_search_to_consultation'");
+    expect(routeSource).toContain(".gte('occurred_at', reportDay.start.toISOString())");
+    expect(routeSource).not.toContain("supabaseAdmin.from('blog_engagement_logs').select('id', { count: 'exact', head: true })");
   });
 });

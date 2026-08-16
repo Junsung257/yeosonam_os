@@ -35,7 +35,8 @@ describe('informational review policy across publish-capable entrypoints', () =>
     expect(route).toContain('persistBlogInformationClaimFindings({');
     expect(route).toContain('intentType:');
     expect(route).toContain('expectedScope:');
-    expect(route).toContain("reason: requiresClaimReview");
+    expect(route).toContain('const humanReviewReason = requiresClaimReview');
+    expect(route).toContain('reason: humanReviewReason');
     expect(route).toContain("'informational_claim_review_required'");
   });
 

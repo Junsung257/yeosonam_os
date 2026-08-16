@@ -3,6 +3,11 @@
 -- not restore content rows and intentionally does not mutate published posts.
 begin;
 
+drop function if exists public.replace_blog_information_automated_draft_atomically(
+  uuid,uuid,uuid,uuid,char,jsonb,jsonb,text,text
+);
+drop table if exists public.blog_information_automated_replacements;
+
 drop view if exists public.public_blog_slug_registry;
 drop function if exists public.list_public_blog_slug_registry_v1();
 

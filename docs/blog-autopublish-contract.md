@@ -83,8 +83,9 @@ This document defines the required contract for automatic blog generation, publi
 - Published-article recovery remains active when recent `rank_history` is empty. The daily recovery route prioritizes true zero-click posts only from Google sources (`gsc`, `gsc-page`) and only after the article has matured for at least 14 days, then falls back to the oldest published informational rows without verified research. Naver/Serp rank snapshots store zero impressions by design and must never be treated as Google zero-impression evidence. The route may enqueue at most two in-place upgrades per day and must reuse the same explicit-intent, content-brief, high-risk, active-upgrade, and representative-ownership gates as the operator recovery script. Missing or ambiguous evidence never authorizes a public rewrite.
 - Blog Quality V3's complete operating chain is critical under resource-saver
   mode: `rank-tracking`, `blog-data-readiness`, `blog-publisher`,
-  `blog-indexing-worker`, and `analytics-delivery`, together with the existing
-  scheduler, daily summary, and zero-click recovery jobs. Every one remains
+  `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, and
+  `analytics-delivery`, together with the existing scheduler, daily summary,
+  and zero-click recovery jobs. Every one remains
   fail-closed unless `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`. Allowing only
   the publisher is invalid because it would publish without fresh demand or
   silently stop indexing and measurement delivery.

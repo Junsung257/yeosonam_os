@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 import {
+  buildAutomatedPublishedBlogReplacementDraftSlug,
   buildReviewedPublishedBlogReplacementDraftSlug,
   buildPublishedBlogUpgradeQueueTopic,
   hasPrivateBlogRegenerationIntent,
@@ -8,6 +9,7 @@ import {
   isPublishedBlogAtomicUpgradeRequest,
   preservePublishedBlogAtomicUpgradeSlug,
   readPrivateBlogRegenerationRequest,
+  readAutomatedPublishedBlogReplacement,
   readReviewedPublishedBlogReplacement,
 } from './blog-private-regeneration';
 
@@ -101,6 +103,40 @@ describe('private blog regeneration contract', () => {
         mode: 'reviewed_published_replacement_v1',
         target_creative_id: '',
         canonical_slug: 'vietnam-visa-entry-documents-2026',
+        queue_id: 'queue-1',
+      },
+    })).toBeNull();
+  });
+
+  it('builds and validates an isolated shadow slug for an automated low-risk replacement', () => {
+    const draftSlug = buildAutomatedPublishedBlogReplacementDraftSlug({
+      canonicalSlug: 'danang-itinerary-route-guide-2026',
+      queueId: 'a1664132-f06a-4390-bf9e-e254a2cb5f1d',
+    });
+    expect(draftSlug).toBe('danang-itinerary-route-guide-2026--auto-a1664132f06a');
+    expect(readAutomatedPublishedBlogReplacement({
+      automated_published_replacement: {
+        mode: 'automated_published_replacement_v1',
+        target_creative_id: 'creative-public',
+        canonical_slug: 'danang-itinerary-route-guide-2026',
+        draft_slug: draftSlug,
+        original_published_at: '2026-05-31T18:06:45.234Z',
+        queue_id: 'queue-1',
+      },
+    })).toEqual({
+      mode: 'automated_published_replacement_v1',
+      targetCreativeId: 'creative-public',
+      canonicalSlug: 'danang-itinerary-route-guide-2026',
+      draftSlug,
+      originalPublishedAt: '2026-05-31T18:06:45.234Z',
+      queueId: 'queue-1',
+    });
+    expect(readAutomatedPublishedBlogReplacement({
+      automated_published_replacement: {
+        mode: 'automated_published_replacement_v1',
+        target_creative_id: 'creative-public',
+        canonical_slug: 'danang-itinerary-route-guide-2026',
+        draft_slug: '',
         queue_id: 'queue-1',
       },
     })).toBeNull();

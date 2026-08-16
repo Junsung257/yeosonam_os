@@ -1,6 +1,6 @@
 # Blog Orchestrator V4 Production Rollout
 
-기준일: 2026-08-16, Asia/Seoul
+기준일: 2026-08-17, Asia/Seoul
 
 이 런북의 목표는 “배포 성공”이 아니라 안전한 실제 운영 증거다. 코드, DB, 공개 화면, 검색 수집, 분석, 스냅샷, 색인이 한 묶음으로 통과하기 전에는 `live`를 켜지 않는다. 이 문서는 배포 절차를 정의하지만 문서 실행 자체가 운영 변경을 승인하지 않는다.
 
@@ -43,6 +43,7 @@ BLOG_DAILY_CANDIDATE_CAP=30
 BLOG_REQUIRE_DEMAND_SIGNAL=true
 BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
+DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1
 ```
 
 DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
@@ -66,6 +67,8 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 15. `BLOG_AUTOPUBLISH_MODE=live`, `BLOG_GENERATION_CRON_ENABLED=true`로 바꿔 두 번째 unaliased candidate를 배포한다.
 16. live candidate의 blog/data-readiness를 확인한 뒤에만 promote한다.
 17. 운영 도메인에서 catalog, sitemap, analytics canary, data-readiness를 다시 확인하고 10분 로그에서 DB unavailable 0건을 확인한다.
+
+대표 글 자동 갱신 canary는 신규 URL canary와 분리한다. 먼저 `draft_only`에서 기존 canonical ID/slug/`published_at`과 공개 수, indexing outbox가 변하지 않는 shadow draft를 증명한다. 이후 `live`의 `pilot_3`에서 새로 생성한 LOW/MEDIUM run 한 건만 UUID-targeted controller로 실행한다. 기존 `draft_only` shadow draft를 나중에 자동 승인으로 재사용하거나 `review_status`를 임의 변경하지 않는다. 성공 증거는 canonical 행의 material fingerprint 변경, ID/slug/원래 `published_at` 불변, shadow archive, `blog_information_automated_replacements` 1건, 선택 attempt 동일성, `URL_UPDATED` outbox, 공개 surface 200과 sitemap/RSS canonical-only다.
 
 보호 workflow는 위 순서를 구현한다. `release_commit`, migration apply, disposition apply, candidate deploy, live promote를 각각 명시해야 하며, SHA가 현재 `origin/main`과 다르면 시작하지 않는다.
 
