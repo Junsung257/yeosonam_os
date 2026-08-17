@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { withCronLogging } from '@/lib/cron-observability';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { isBlogGenerationWindowKstV4 } from '@/lib/blog-deepseek-orchestrator-v4';
+import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -16,7 +17,15 @@ async function runBlogGenerate(request: NextRequest) {
     String(process.env.BLOG_GENERATION_CRON_ENABLED || '').trim().toLowerCase(),
   );
   if (!forcedManualRun && !scheduledGenerationEnabled) {
-    return { skipped: true, reason: 'blog_generation_cron_paused' };
+    const policy = readBlogAutopublishPolicyV3();
+    return {
+      skipped: true,
+      reason: 'blog_generation_cron_paused',
+      generationCronEnabled: false,
+      autopublishMode: policy.mode,
+      requestedAutopublishMode: policy.requestedMode,
+      nextAction: 'set BLOG_GENERATION_CRON_ENABLED=1 for scheduled DeepSeek generation; publishing still requires BLOG_AUTOPUBLISH_MODE=live',
+    };
   }
   if (!forcedManualRun && !isBlogGenerationWindowKstV4(new Date())) {
     return { skipped: true, reason: 'outside_kst_offpeak_generation_window' };
