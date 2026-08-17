@@ -1450,7 +1450,7 @@ async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
   return { deferred: ids.length };
 }
 
-export async function runBlogPublisher(request: NextRequest) {
+async function runBlogPublisher(request: NextRequest) {
   if (!isCronOrVercelAuthorized(request)) {
     return cronUnauthorizedResponse();
   }

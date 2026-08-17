@@ -179,7 +179,7 @@ begin
     ) values (
       p_tenant_id, p_corpus_source_id, v_index, v_boundary_start, v_boundary_end,
       v_section#>'{boundary,startAnchor}', v_section#>'{boundary,endAnchor}',
-      encode(digest(convert_to(coalesce((v_section->'productIdentity')::text, '{}'), 'utf8'), 'sha256'), 'hex'),
+      encode(extensions.digest(convert_to(coalesce((v_section->'productIdentity')::text, '{}'), 'utf8'), 'sha256'), 'hex'),
       coalesce((v_section->>'sourceSalePricePresent')::boolean, false),
       'product-registration-reviewed-benchmark-2', v_section,
       coalesce(v_section->'evidenceAnchors', '[]'::jsonb), v_state,
@@ -229,7 +229,7 @@ begin
      or p_release_manifest->>'termsPolicyHash' !~ '^[0-9a-f]{64}$' then
     raise exception 'BENCHMARK_RELEASE_MANIFEST_INVALID';
   end if;
-  select encode(digest(convert_to(coalesce(string_agg(
+  select encode(extensions.digest(convert_to(coalesce(string_agg(
     concat_ws('|', c.id::text, c.source_hash, c.lineage_hash, c.input_kind,
       coalesce(c.metadata->>'pasteOrigin', ''), c.split,
       coalesce(c.supplier_key, ''), coalesce(c.document_family, '')),
@@ -310,7 +310,7 @@ as $$
       and c.annotation_schema_version = 'product-registration-reviewed-benchmark-2'
       and (p_input_kind = 'combined' or c.input_kind = p_input_kind)
   ), corpus as (
-    select encode(digest(convert_to(coalesce(string_agg(
+    select encode(extensions.digest(convert_to(coalesce(string_agg(
       concat_ws('|', id::text, source_hash, lineage_hash, input_kind,
         coalesce(metadata->>'pasteOrigin', ''), split,
         coalesce(supplier_key, ''), coalesce(document_family, '')),
@@ -322,7 +322,7 @@ as $$
     max(reference_date) as max_reference_date
     from eligible
   ), profiles as (
-    select encode(digest(convert_to(coalesce(string_agg(profile_hash, E'\n' order by profile_hash), 'none'), 'utf8'), 'sha256'), 'hex') as profile_hash
+    select encode(extensions.digest(convert_to(coalesce(string_agg(profile_hash, E'\n' order by profile_hash), 'none'), 'utf8'), 'sha256'), 'hex') as profile_hash
     from internal_product_registration.supplier_layout_profiles
     where tenant_id = p_tenant_id and activation_state = 'active'
   )
@@ -429,7 +429,7 @@ as $$
     order by created_at desc limit 1
   ), current_profiles as (
     select tenant_id,
-      'registry:' || encode(digest(convert_to(coalesce(string_agg(profile_hash, E'\n' order by profile_hash), 'none'), 'utf8'), 'sha256'), 'hex') as version
+      'registry:' || encode(extensions.digest(convert_to(coalesce(string_agg(profile_hash, E'\n' order by profile_hash), 'none'), 'utf8'), 'sha256'), 'hex') as version
     from internal_product_registration.supplier_layout_profiles
     where activation_state = 'active'
     group by tenant_id
@@ -439,7 +439,7 @@ as $$
     'normalization_version', l.release_manifest->>'normalizationVersion',
     'terms_policy_hash', l.release_manifest->>'termsPolicyHash',
     'supplier_profile_version', l.release_manifest->>'supplierProfileVersion',
-    'current_supplier_profile_version', coalesce(p.version, 'registry:' || encode(digest('none', 'sha256'), 'hex')),
+    'current_supplier_profile_version', coalesce(p.version, 'registry:' || encode(extensions.digest('none', 'sha256'), 'hex')),
     'corpus_hash', l.corpus_hash,
     'reference_date', l.reference_date,
     'annotation_schema_version', l.annotation_schema_version,

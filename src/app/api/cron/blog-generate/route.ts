@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { withCronLogging } from '@/lib/cron-observability';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { isBlogGenerationWindowKstV4 } from '@/lib/blog-deepseek-orchestrator-v4';
-import { runBlogPublisher } from '../blog-publisher/route';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -22,8 +21,16 @@ async function runBlogGenerate(request: NextRequest) {
   if (!forcedManualRun && !isBlogGenerationWindowKstV4(new Date())) {
     return { skipped: true, reason: 'outside_kst_offpeak_generation_window' };
   }
+  url.pathname = '/api/cron/blog-publisher';
   url.searchParams.set('phase', 'generate_only');
-  return runBlogPublisher(new NextRequest(url, { headers: request.headers }));
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: request.headers,
+    cache: 'no-store',
+  });
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return response.json();
+  return { ok: response.ok, status: response.status, body: await response.text() };
 }
 
 export const GET = withCronLogging('blog-generate', runBlogGenerate, {
