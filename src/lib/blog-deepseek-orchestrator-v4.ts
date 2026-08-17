@@ -82,6 +82,7 @@ function rewriteClaimDecisionScore(
   if (itineraryOrRoute) {
     if (claim.claimType === 'duration') score += 10;
     if (/주말|평일|오전|오후|저녁|밤|시\b|전(?:에|까지)|후(?:에|부터)|weekend|before|after|\d{1,2}:\d{2}/i.test(text)) score += 14;
+    if (/예약|입장|계단|엘리베이터|출입|통제|운휴|폐쇄|휴무|reservation|admission|steps?|elevator|restricted|closed/i.test(text)) score += 12;
     if (/거리|차로|차량|도시에서|시내에서|에서\s*.+(?:분|시간)|drive|from\s+.+(?:minutes?|hours?)/i.test(text)) score += 8;
     // A landmark's physical dimensions are valid facts, but they rarely help
     // a reader execute an itinerary. Keep them behind schedule and movement
@@ -214,6 +215,7 @@ const OUTPUT_GROUNDING_REWRITE_PATTERNS = [
 const EXPRESSION_OR_STRUCTURE_PATTERNS = [
   /intent/,
   /decision/,
+  /concrete_itinerary/,
   /section/,
   /structure/,
   /opening/,
@@ -518,21 +520,25 @@ function buildRewriteArchetypeContractV4(
   primaryQuery: string,
 ): string[] {
   if (archetype === 'itinerary_timeline') {
+    const requestedDuration = primaryQuery.match(/(?:^|\s)(\d{1,2})\s*박\s*(\d{1,2})\s*일/u);
+    const dayBlockRule = requestedDuration
+      ? `- The query asks for ${requestedDuration[1]}박${requestedDuration[2]}일. Include distinct 1일차 through ${requestedDuration[2]}일차 blocks, and name at least one approved-claim entity in every day block.`
+      : '- Include at least two distinct time-block or route-option sections. Every block must name an entity already present in an approved claim.';
     return [
       '[ARCHETYPE CONTRACT — itinerary_timeline]',
-      '- The first paragraph must answer the route-grouping decision in 2-4 natural sentences, use "일정" and "동선" naturally, and name only entities already present in the approved claims.',
+      '- The first paragraph must recommend a concrete proposed schedule shape in 2-4 natural sentences, use "일정" and "동선" naturally, and name only entities already present in the approved claims.',
       '- State the decision rule plainly without forcing a stock phrase, a numeric hook, or repeated command endings.',
-      '- Give the reader an executable planning sequence: compare the exact approved movement claims, recheck reservations or operations, then decide from the reader\'s own starting point, pace, and fallback needs.',
-      '- Do not decide which named places belong together or must stay separate unless an exact approved claim explicitly states that relationship. Two duration claims never prove route compatibility or a shared origin.',
-      '- Cover three distinct stages (start, middle, finish), and include a booking/official recheck, a realistic rest checkpoint, and a rain/closure/delay fallback. These may be source-neutral planning choices, but must not assert an unverified local fact.',
-      '- Give movement comparison, booking recheck, rest planning, and fallback planning one distinct job each. Do not restate the same advice in the opening, stage bullets, and conclusion with synonyms.',
+      dayBlockRule,
+      '- You may make an editorial proposal that places approved-claim entities into different day/time/route-option blocks. Label it as a proposed schedule, not an official route.',
+      '- Two unrelated duration claims never prove proximity, compatibility, a shared origin, or that two places belong together. State only the proposed order; explain a local relationship only when an exact approved claim supports it.',
+      '- Put a booking/access/operation recheck beside the one block it changes, a realistic rest decision beside one block, and one rain/closure/delay fallback that names the block it replaces or removes.',
+      '- Give movement evidence, operating/access evidence, rest planning, and fallback planning one distinct job each. Do not restate the same advice in the opening, blocks, and conclusion with synonyms.',
       '- Every paragraph after the opening must add a new decision detail, a supported fact, or a distinct action. Delete summary padding that merely repeats an earlier concept.',
-      '- Include one Markdown bullet sequence with at least three source-neutral reader actions labelled 시작, 중간, and 마무리. This is an itinerary sequence, not a generic checklist, and it must contain no new facts or numbers.',
-      '- Use distinct decision sections for grouping and execution where useful. Mix concise prose and that one Markdown sequence; do not repeat the same imperative ending in every sentence or force a fixed heading count.',
+      '- Never use 시작/중간/마무리 as substitute itinerary stages. Never output a generic planning checklist.',
+      '- Use distinct day/time/route-option sections. Mix concise prose and evidence-backed actions; do not repeat the same imperative ending in every sentence or force an unrelated fixed heading count.',
       '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
-      '- After the evidence, add a distinct execution section that tells the reader how to compare and recheck it without announcing a destination-specific grouping outcome.',
-      '- The final actions are a decision aid, not a generic checklist. A source-neutral reminder to recheck a booking, preserve rest time, or choose a fallback is allowed; a destination-specific condition still requires an approved claim.',
-      '- Do not merely list claims or finish with generic questions. The ending must leave a usable sequence and the required internal link.',
+      '- The ending must state which proposed block the reader should confirm first, without repeating every earlier action, and include the required internal link.',
+      '- Do not merely list claims or finish with generic questions. The visible article must leave a concrete named-place sequence that can be followed.',
     ];
   }
   if (archetype === 'route_walkthrough') {
@@ -597,7 +603,7 @@ export function buildDeepSeekRewritePromptV4(input: {
     '[REWRITE CONTRACT — these rules override the draft]',
     '- Keep the original topic and primary decision. Answer that decision directly in the first paragraph.',
     '- The approved claims in the research packet above are the only factual source of truth.',
-    '- Delete every numeric expression that does not appear verbatim in an approved claim. Do not estimate or calculate.',
+    '- Delete every numeric expression that does not appear verbatim in an approved claim. The fixed title/query duration and itinerary day-ordinal headings explicitly required below are the only exceptions. Do not estimate or calculate.',
     '- The visible article and hidden ledger may contain only exact approved factual claim sentences. Do not add derived factual prose.',
     '- Never infer visit duration, crowd level, waiting time, safety, opening status, or transport time.',
     '- Do not assert destination-specific rain, season, closure, fee, operating-hour, crowd, or queue facts unless an exact approved claim says so. Source-neutral planning advice to recheck an official channel or prepare a fallback is allowed.',
@@ -642,7 +648,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Exact duration or distance claims do not authorize qualitative labels, comparisons, same-day grouping, or separation recommendations. Present the exact claims, then ask the reader to compare them against their own start point and pace.',
       '- Safe evidence headings describe the reader task, for example "공식 이동 시간으로 후보 비교하기". Never write headings such as "짧은 이동 구간" or "이동 시간이 긴 일정".',
       '- Write natural Korean with varied sentence shapes. Mix short explanations and actions; do not force every sentence to end in 하세요 or repeat a checklist rhythm.',
-      '- Never shorten or repeat a schedule/measurement outside its exact approved sentence. Words such as 주말, 평일, 오전, 오후, 저녁, 밤, 시, 분, 시간, km, or m belong only inside an exact approved claim.',
+      '- Never shorten or repeat a schedule/measurement outside its exact approved sentence. Words such as 주말, 평일, 오전, 오후, 저녁, 밤, 시, 분, 시간, km, or m belong only inside an exact approved claim; the required N일차 headings are the sole structural exception.',
       '- Start with one 2-3 sentence paragraph of source-neutral reader actions that directly answers how the reader should make the decision. Do not open with a question or repeat the H1.',
       '- Group selected claims into as many decision-purpose sections as the article needs. Never create one H2 per claim or force a fixed heading count.',
       '- Put 1-4 related approved claims in each evidence section. Every selected claim must still appear exactly once with its own citation.',
@@ -657,7 +663,7 @@ export function buildDeepSeekRewritePromptV4(input: {
       '- Allowed official links (links are citations, not permission to invent claims):',
       ...packet.officialSourceUrls.map((url) => `  - ${url}`),
       `- Required relevant internal link: ${packet.internalLink}`,
-      '- Before returning, inspect every digit-bearing sentence. It must be an exact approved claim or be deleted.',
+      '- Before returning, inspect every digit-bearing sentence. It must be an exact approved claim, the fixed H1/query duration, or a required N일차 heading; otherwise delete it.',
     ] : []),
     `Research identity only (not evidence): ${input.researchFingerprint}`,
     `Claim-set identity only (not evidence): ${input.claimFingerprint}`,

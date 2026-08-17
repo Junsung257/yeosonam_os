@@ -525,6 +525,15 @@ Rules:
 - Sitemap must include blog destination and blog angle collection URLs when corresponding published posts exist.
 - `/blog` list cache revalidation must not turn a transient DB timeout into a production error log or a silent empty list. If the primary list query times out, the page should serve last-good or Korean fallback content and record the event as degraded telemetry, not as a published-post count of zero.
 
+## Decision-grade itinerary contract (2026-08-17)
+
+- A published-article upgrade must preserve an explicit `N박M일` duration found in the existing title, slug, or body. The duration becomes part of the new queue topic and primary decision instead of being collapsed into a generic travel schedule.
+- An explicit-duration itinerary must contain every numbered travel-day block (`1일차` through `M일차`). A durationless itinerary must contain at least two distinct named-place time blocks or route options.
+- Every itinerary block must name an entity that exists in the validated research claim packet. `시작/중간/마무리`, booking reminders, rest reminders, or fallback reminders without named-place blocks are planning boilerplate and fail `concrete_itinerary_blocks_missing`.
+- Itinerary research requires an actual schedule, booking/admission condition, stair/elevator access condition, seasonal restriction, closure, or service interruption. A bare ticket price, fare, physical dimension, or route distance cannot satisfy this semantic requirement.
+- The writer may propose an editorial order for evidence-backed entities, but must not turn separate duration claims into an unsupported proximity, same-origin, compatibility, or official-route claim.
+- These are expression/structure failures eligible for a bounded DeepSeek rewrite only when the persisted research packet and claim ledger remain valid. They never weaken factual, duplicate, language, or publication gates.
+
 ## Daily Verification
 
 Run:

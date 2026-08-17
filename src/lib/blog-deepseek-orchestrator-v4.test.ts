@@ -55,6 +55,20 @@ describe('blog DeepSeek orchestrator V4', () => {
     })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
   });
 
+  it('treats a missing concrete itinerary as rewritable structure when research is valid', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 72,
+      completedAttempts: 1,
+      failureReasons: ['concrete_itinerary_blocks_missing'],
+      researchValid: true,
+      claimLedgerValid: true,
+    })).toMatchObject({
+      route: 'rewrite_pro_max',
+      nextStage: 'rewrite_pro_max',
+      publishable: false,
+    });
+  });
+
   it('uses the third model call for a final max rewrite even when attempt two did not converge', () => {
     expect(decideBlogQualityRouteV4({
       score: 79,
@@ -213,17 +227,17 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
 
     expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
-    expect(prompt).toContain('Two duration claims never prove route compatibility or a shared origin.');
+    expect(prompt).toContain('Two unrelated duration claims never prove proximity, compatibility, a shared origin');
     expect(prompt).toContain('use "일정" and "동선" naturally');
     expect(prompt).toContain('without forcing a stock phrase');
-    expect(prompt).toContain('three distinct stages (start, middle, finish)');
-    expect(prompt).toContain('at least three source-neutral reader actions labelled 시작, 중간, and 마무리');
-    expect(prompt).toContain('booking/official recheck');
+    expect(prompt).toContain('at least two distinct time-block or route-option sections');
+    expect(prompt).toContain('Never use 시작/중간/마무리 as substitute itinerary stages');
+    expect(prompt).toContain('booking/access/operation recheck');
     expect(prompt).toContain('one distinct job each');
     expect(prompt).toContain('Every paragraph after the opening must add a new decision detail');
-    expect(prompt).toContain('realistic rest checkpoint');
+    expect(prompt).toContain('realistic rest decision');
     expect(prompt).toContain('rain/closure/delay fallback');
-    expect(prompt).toContain('decision aid, not a generic checklist');
+    expect(prompt).toContain('Never output a generic planning checklist');
     expect(prompt).toContain('Do not merely list claims or finish with generic questions');
     expect(prompt).toContain('Write natural Korean with varied sentence shapes');
     expect(prompt).toContain('Exact duration or distance claims do not authorize qualitative labels');
@@ -240,6 +254,35 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).not.toContain('exactly 3 distinct reader-choice questions');
     expect(prompt).not.toContain('Do not write a table, itinerary');
     expect(prompt).not.toContain('route pairings unless');
+  });
+
+  it('requires every day block when an itinerary query has an explicit duration', () => {
+    const prompt = buildDeepSeekRewritePromptV4({
+      originalDraft: 'untrusted',
+      failureEvidence: ['concrete_itinerary_blocks_missing'],
+      researchFingerprint: 'research-duration',
+      claimFingerprint: 'claims-duration',
+      evidencePacket: {
+        fixedTitle: '다낭 3박4일 여행 코스와 이동 동선: 장소별 실행 순서와 대체 동선',
+        primaryQuery: '다낭 3박4일 여행 코스와 이동 동선',
+        primaryDecision: '3박4일 동안 어느 날에 어느 장소를 배치해야 하는가?',
+        archetype: 'itinerary_timeline',
+        sectionPurposes: ['3박4일의 각 날짜에 근거가 있는 장소를 배치한다'],
+        approvedClaims: [{
+          claimText: 'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+          claimType: 'duration',
+          riskLevel: 'MEDIUM',
+          sourceUrls: ['https://vietnam.travel/example'],
+        }],
+        officialSourceUrls: ['https://vietnam.travel/example'],
+        internalLink: 'https://www.yeosonam.com/blog/destination/%EB%8B%A4%EB%82%AD',
+        includeFaq: false,
+        includeChecklist: false,
+      },
+    });
+
+    expect(prompt).toContain('Include distinct 1일차 through 4일차 blocks');
+    expect(prompt).toContain('name at least one approved-claim entity in every day block');
   });
 
   it('gives route rewrites boarding, connection, arrival, and disruption decisions', () => {

@@ -98,6 +98,9 @@ export function buildInfoGuideBrief(brief: BlogContentBrief | BlogContentBriefV3
 }
 
 export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: EditorialVoice = BLOG_EDITORIAL_VOICE): string {
+  const structureContract = brief.search_intent === 'itinerary_timeline'
+    ? '- Structure must be: direct route decision -> concrete named-place day/time/route blocks -> exact movement/access evidence beside the relevant block -> one non-repetitive contingency. Generic 시작/중간/마무리 planning reminders are not an itinerary.'
+    : '- Structure must be: answer first -> situation-based judgement -> checklist/table only when useful -> mistakes/risks -> official checks.';
   return [
     '## Writer: info_writer',
     `- Role: ${voice.role}. Tone: ${voice.tone}.`,
@@ -107,7 +110,7 @@ export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: Editori
     `- Search intent: ${brief.search_intent}`,
     `- Official/primary source links required: ${brief.official_sources_required ? 'yes' : 'no'}`,
     `- Destination required unless intentionally generic: ${brief.destination_required ? 'yes' : 'no'}`,
-    '- Structure must be: answer first -> situation-based judgement -> checklist/table only when useful -> mistakes/risks -> official checks.',
+    structureContract,
     '- First paragraph must sound like a Korean travel editor answering a real question. Do not repeat the exact same opening pattern across posts.',
     '- For risky or changeable facts such as visa, fees, weather, airport, insurance, refund, ticketing, customs, or baggage rules, avoid hard certainty and explain that official/current conditions should be checked.',
     '- Keep mobile paragraphs short: usually 1-3 Korean sentences per paragraph, with lists/tables only where they help the reader save or compare.',

@@ -49,6 +49,15 @@ describe('private blog regeneration contract', () => {
     })).toBe('보홀 현지 여행 정보');
   });
 
+  it('preserves an explicit trip duration from the existing article for itinerary upgrades', () => {
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: 'danang-itinerary-route-guide-2026',
+      destination: '다낭',
+      seo_title: '다낭 여행 가이드 2026 | 일정과 이동 동선 체크',
+      blog_html: '<h2>다낭 3박4일 일정</h2><p>날짜별 이동을 정리합니다.</p>',
+    })).toBe('다낭 3박4일 여행 코스와 이동 동선');
+  });
+
   it('produces topics that pass the candidate pre-publish contract', () => {
     for (const slug of [
       '보홀-월별-날씨와-옷차림-가이드',

@@ -3257,6 +3257,7 @@ async function processQueueItem(
       sectionPurposeCoverage: taskCompletion01,
       imageEntityMatch: imageQualityGatePassed ? 1 : 0,
       pillarSupportRelationship: representativeIdentity ? 1 : 0,
+      itineraryEvidenceTexts: contentBriefV3.destinationDecisionDetails.map((detail) => detail.text),
       normalizedTitleClusterSize: diversityReport?.normalizedTitleClusterSize ?? 3,
       templateSaturation: !diversityReport || ['queue_reject', 'refresh', 'merge'].includes(diversityReport.disposition),
       firstPartySourceIds: contentBriefV3.verifiedFirstPartySourceIds ?? [],

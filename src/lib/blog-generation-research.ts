@@ -128,8 +128,11 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
       pattern: /(?:공항|에서|부터|까지|이동|주행|airport|drive|ride|route|panglao|carmen|tumon|hagatna|kmart|giaa)[^\n]{0,120}\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/,
     },
     {
-      key: 'operating_or_access_constraint',
-      pattern: /운영\s*(?:시간|시각|시작|종료)|개장|폐장|입장|예약|티켓|요금|계단|엘리베이터|출입|통제|운휴|폐쇄|opening\s*hours?|opens?|closes?|admission|reservation|tickets?|fares?|steps?|elevator|access|restricted|closed/i,
+      key: 'schedule_or_access_constraint',
+      // Bare prices or ticket/fare mentions do not help a reader place an
+      // attraction into an itinerary. Require an actual schedule, booking,
+      // admission, physical-access, restriction, or closure condition.
+      pattern: /운영\s*(?:시간|시각|시작|종료)|개장|폐장|입장\s*(?:시간|마감|조건|제한|가능|불가)|예약\s*(?:필수|필요|마감|시간|조건)|계단|엘리베이터|출입\s*(?:시간|통제|제한|가능|불가)|통제|운휴|폐쇄|휴무|opening\s*hours?|opens?\s+(?:at|from)|closes?\s+(?:at|on)|admission\s*(?:hours?|closes?|conditions?|restricted)|reservation\s*(?:required|window|deadline)|steps?|elevator|access\s*(?:hours?|restricted|limited)|restricted|closed/i,
     },
   ],
   shopping_souvenirs: [

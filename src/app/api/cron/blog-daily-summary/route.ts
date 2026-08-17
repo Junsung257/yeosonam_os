@@ -941,7 +941,7 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
   // 후보: 7-14일 전 발행, 정보성 위주 (상품은 노출 사이클 다름)
   const { data: candidates } = await supabaseAdmin
     .from('content_creatives')
-    .select('id, slug, seo_title, destination, angle_type, content_type, generation_meta')
+    .select('id, slug, seo_title, destination, angle_type, content_type, generation_meta, blog_html')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .is('product_id', null)
