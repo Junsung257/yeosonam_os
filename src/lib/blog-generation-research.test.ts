@@ -213,6 +213,149 @@ function readiness(bundle: BlogInformationResearchBundle | null) {
   });
 }
 
+const ITINERARY_CONTENT_KEY = 'danang-itinerary-research';
+
+function itineraryBundle(input: {
+  sameAuthorityWithWww?: boolean;
+  includeOperatingConstraint?: boolean;
+} = {}): BlogInformationResearchBundle {
+  const records = [
+    {
+      sourceIndex: 0,
+      type: 'duration' as const,
+      value: '15',
+      unit: '분',
+      text: '다낭 시내에서 오행산까지 차량 이동에는 약 15분이 걸립니다.',
+    },
+    {
+      sourceIndex: 0,
+      type: 'duration' as const,
+      value: '40',
+      unit: '분',
+      text: '다낭 시내에서 바나힐까지 차량 이동에는 약 40분이 걸립니다.',
+    },
+    {
+      sourceIndex: 0,
+      type: 'factual' as const,
+      value: '5',
+      unit: '개 산',
+      text: '오행산 관광지는 5개 산으로 구성됩니다.',
+    },
+    {
+      sourceIndex: 1,
+      type: 'factual' as const,
+      value: '67',
+      unit: 'm',
+      text: '린응 사원의 관음상 높이는 67m입니다.',
+    },
+    {
+      sourceIndex: 1,
+      type: 'factual' as const,
+      value: '150',
+      unit: 'm',
+      text: '바나힐 골든브리지의 길이는 150m입니다.',
+    },
+    input.includeOperatingConstraint
+      ? {
+          sourceIndex: 1,
+          type: 'policy' as const,
+          value: '150',
+          unit: '계단',
+          text: '오행산 정상은 150개가 넘는 계단을 오르거나 엘리베이터를 선택해 입장할 수 있습니다.',
+        }
+      : {
+          sourceIndex: 1,
+          type: 'factual' as const,
+          value: '21',
+          unit: 'km',
+          text: '하이반 산길의 길이는 21km입니다.',
+        },
+  ];
+  const sourceUrls = input.sameAuthorityWithWww
+    ? ['https://vietnam.travel/things-to-do/da-nang', 'https://www.vietnam.travel/places-to-go/da-nang']
+    : ['https://vietnam.travel/things-to-do/da-nang', 'https://danangfantasticity.com/en/the-marble-mountains'];
+  const evidenceText = (record: (typeof records)[number]) =>
+    `${record.text} [검증 범위: 베트남 다낭; 대상: 일반 여행자; 기준일: 2026-08-17; 값: ${record.value} ${record.unit}]`;
+  const snapshots = sourceUrls.map((_, sourceIndex) => records
+    .filter((record) => record.sourceIndex === sourceIndex)
+    .map(evidenceText)
+    .join('\n'));
+
+  return {
+    contentKey: ITINERARY_CONTENT_KEY,
+    sources: sourceUrls.map((sourceUrl, index) => ({
+      sourceKey: `itinerary-source-${index + 1}`,
+      sourceType: 'official_tourism' as const,
+      authorityLevel: 'official_primary' as const,
+      sourceUrl,
+      publisher: index === 0 ? 'Vietnam Tourism' : 'Da Nang Tourism',
+      retrievedAt: '2026-08-17T00:00:00.000Z',
+      snapshotContent: snapshots[index],
+      contentHash: createBlogInformationSourceContentHash(snapshots[index]),
+      destination: '다낭',
+      country: '베트남',
+      claimTypes: [...new Set(records
+        .filter((record) => record.sourceIndex === index)
+        .map((record) => record.type))],
+      riskLevel: 'MEDIUM' as const,
+    })),
+    evidence: records.map((record, index) => {
+      const snapshot = snapshots[record.sourceIndex];
+      const excerpt = evidenceText(record);
+      const spanStart = Array.from(snapshot.slice(0, snapshot.indexOf(excerpt))).length;
+      return {
+        evidenceKey: `itinerary-evidence-${index + 1}`,
+        sourceKey: `itinerary-source-${record.sourceIndex + 1}`,
+        excerpt,
+        spanStart,
+        spanEnd: spanStart + Array.from(excerpt).length,
+        claimType: record.type,
+        riskLevel: 'MEDIUM' as const,
+        observedAt: '2026-08-17T00:00:00.000Z',
+        validUntil: '2026-09-17T00:00:00.000Z',
+        scope: {
+          country: '베트남',
+          destination: '다낭',
+          applicableTo: '일반 여행자',
+          locale: 'ko-KR',
+          claimType: record.type,
+          normalizedValue: record.value,
+          unit: record.unit,
+          currency: null,
+          verifiedAt: '2026-08-17T00:00:00.000Z',
+          nextReviewAt: '2026-09-17T00:00:00.000Z',
+          conditions: ['다낭 일정 선택'],
+        },
+      };
+    }),
+    claims: records.map((record, index) => ({
+      claimFingerprint: createBlogInformationClaimFingerprint(record.text),
+      claimText: record.text,
+      claimType: record.type,
+      riskLevel: 'MEDIUM' as const,
+      extractedValue: {
+        normalizedValue: record.value,
+        unit: record.unit,
+        currency: null,
+      },
+      requiresEvidence: true,
+      evidenceKeys: [`itinerary-evidence-${index + 1}`],
+    })),
+  };
+}
+
+function itineraryReadiness(bundle: BlogInformationResearchBundle) {
+  return evaluateBlogGenerationResearchReadiness({
+    meta: { [BLOG_INFORMATION_RESEARCH_META_KEY]: bundle },
+    expectedContentKey: ITINERARY_CONTENT_KEY,
+    destination: '다낭',
+    intent: 'itinerary',
+    locale: 'ko-KR',
+    sourcePolicy: FOOD_POLICY,
+    now: new Date('2026-08-17T12:00:00.000Z'),
+  });
+}
+
 function entryRequirementsReadiness(destination: string): BlogGenerationResearchReadiness {
   const purposeClaimText = `${destination} 비자면제 입국은 관광 또는 상용 목적의 단기 방문에 적용됩니다.`;
   const stayClaimText = `${destination} 비자면제 입국의 체류 기간은 최대 90일입니다.`;
@@ -484,6 +627,36 @@ describe('blog generation research preflight', () => {
       factual: 1,
     });
     expect(BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT.itinerary).toBe(6);
+  });
+
+  it('treats apex and www URLs as one evidence domain', () => {
+    const result = itineraryReadiness(itineraryBundle({
+      sameAuthorityWithWww: true,
+      includeOperatingConstraint: true,
+    }));
+
+    expect(result.passed).toBe(false);
+    expect(result.issues).toContain('source_domain_diversity_below_minimum:1/2');
+  });
+
+  it('does not let route durations and physical dimensions stand in for itinerary decisions', () => {
+    const result = itineraryReadiness(itineraryBundle());
+
+    expect(result.passed).toBe(false);
+    expect(result.issues).toContain(
+      'claim_semantic_coverage_missing:itinerary:operating_or_access_constraint',
+    );
+  });
+
+  it('accepts an itinerary packet with two authorities and a supported access constraint', () => {
+    const result = itineraryReadiness(itineraryBundle({ includeOperatingConstraint: true }));
+
+    expect(result.issues).not.toContain('source_domain_diversity_below_minimum:1/2');
+    expect(result.issues).not.toContain(
+      'claim_semantic_coverage_missing:itinerary:operating_or_access_constraint',
+    );
+    expect(result.issues).toEqual([]);
+    expect(result.passed).toBe(true);
   });
 
   it('adds verified destination and purpose-stay context for entry requirements and stays idempotent', () => {

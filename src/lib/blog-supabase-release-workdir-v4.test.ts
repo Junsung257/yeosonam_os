@@ -54,8 +54,8 @@ describe('Blog V4 isolated Supabase release workdir', () => {
     const files = readdirSync(migrationDir).sort();
     expect(summary.remoteAppliedCount).toBe(2);
     expect(summary.placeholderCount).toBe(1);
-    expect(summary.pendingReleaseVersions).toHaveLength(11);
-    expect(files).toHaveLength(13);
+    expect(summary.pendingReleaseVersions).toHaveLength(12);
+    expect(files).toHaveLength(14);
     expect(files).toContain('20260101000000_remote_history_placeholder.sql');
     expect(files.filter((file) => file.startsWith(`${alreadyAppliedRelease}_`))).toHaveLength(1);
     expect(readFileSync(join(migrationDir, '20260101000000_remote_history_placeholder.sql'), 'utf8'))

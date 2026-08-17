@@ -127,6 +127,10 @@ const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, 
       key: 'route_duration',
       pattern: /(?:공항|에서|부터|까지|이동|주행|airport|drive|ride|route|panglao|carmen|tumon|hagatna|kmart|giaa)[^\n]{0,120}\d+(?:\.\d+)?\s*(?:분|시간|minutes?|hours?)/,
     },
+    {
+      key: 'operating_or_access_constraint',
+      pattern: /운영\s*(?:시간|시각|시작|종료)|개장|폐장|입장|예약|티켓|요금|계단|엘리베이터|출입|통제|운휴|폐쇄|opening\s*hours?|opens?|closes?|admission|reservation|tickets?|fares?|steps?|elevator|access|restricted|closed/i,
+    },
   ],
   shopping_souvenirs: [
     { key: 'souvenir_product', pattern: /기념품|선물|괌\s*(?:제품|상품)|메이드\s*인\s*괌|souvenir|gift|made\s*in\s*guam|magnet|mug|cookie/ },
@@ -302,11 +306,14 @@ function sourceTypeIsAllowed(
 }
 
 function sourceDomain(source: BlogInformationResearchBundle['sources'][number]): string {
-  if (!source.sourceUrl) return source.internalIdentifier || source.sourceKey;
+  if (!source.sourceUrl) return clean(source.internalIdentifier || source.sourceKey).toLowerCase();
   try {
-    return new URL(source.sourceUrl).hostname.toLowerCase();
+    return new URL(source.sourceUrl).hostname
+      .toLowerCase()
+      .replace(/\.$/, '')
+      .replace(/^www\./, '');
   } catch {
-    return source.sourceKey;
+    return clean(source.sourceKey).toLowerCase();
   }
 }
 

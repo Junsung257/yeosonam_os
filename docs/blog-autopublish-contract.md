@@ -12,6 +12,8 @@
 
 > 2026-08-17 controlled-retry addendum: 동일 canonical 교체 작업의 이전 비공개 shadow draft와 review queue는 감사 이력으로 보존하되 새 재시도의 corpus 경쟁자로 계산하지 않는다. 첫 재연구 뒤에도 모델 출력만 승인 claim과 어긋난 경우에는 검증된 research packet을 유지한 채 세 번째 DeepSeek Pro 정밀 재작성을 한 번 허용한다. `missing_evidence`, `stale_claim`, claim conflict, source-quality 실패, 허위 경험, unrelated corpus saturation은 이 예외를 사용할 수 없으며 즉시 격리한다. 일정·경로 재작성은 의사결정에 무관한 높이·길이 같은 치수 claim보다 검증된 이동·시간 claim을 우선하고, 승인된 숫자 사실은 본문에서 정확히 한 번만 사용한다.
 
+> 2026-08-17 itinerary-research addendum: 출처 다양성은 정규화한 기관 호스트 기준으로 계산한다. `www.example.com`과 `example.com`은 한 기관이며 두 출처로 계산하지 않는다. 일정 연구 패킷은 명소와 실제 구간 이동시간 외에 운영시간·예약·입장·출입통제·계단/엘리베이터 같은 일정 결정 제약을 최소 1개 포함해야 한다. 높이·길이·면적 같은 물리 치수는 이 제약을 대신할 수 없으며, 조건을 충족하지 못한 후보는 모델 작성 전에 보류한다.
+
 Last updated: 2026-07-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
