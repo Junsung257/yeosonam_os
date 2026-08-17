@@ -288,8 +288,13 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Every day block must name an approved-claim entity');
     expect(prompt).toContain('one distinct reader choice or action beyond its heading');
     expect(prompt).toContain('at most one meta instruction about checking, comparing, or deciding evidence in each day block');
+    expect(prompt).toContain('Within the first 200 visible characters, include one concrete reader trigger');
     expect(prompt).toContain('Do not add a "다음 확인 순서" or summary conclusion');
     expect(prompt).toContain('"가장 안전", "최적", or "전체 동선이 완성됩니다"');
+    expect(prompt).toContain('In exactly one day-block body sentence');
+    expect(prompt).toContain('"휴식 시간을 남기세요"');
+    expect(prompt).toContain('The fallback heading alone does not count');
+    expect(prompt).toContain('visible body (not headings) contains one explicit rest action');
   });
 
   it('gives route rewrites boarding, connection, arrival, and disruption decisions', () => {

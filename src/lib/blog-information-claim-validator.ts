@@ -256,6 +256,14 @@ const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s
 const V3_EXPLICIT_OPERATIONAL_STATUS_RE = /(?:(?:현재|오늘|지금)\s*)?(?:(?:예약|판매|입장|이용|운영|영업|접수)(?:은|는|이|가)?\s*(?:가능|불가|마감|매진|중단|종료|휴무|중)(?:합니다|입니다|됩니다)|(?:매일|주말|평일|연중무휴|24시간).*(?:영업|운영|운행|휴무)(?:합니다|입니다|됩니다))/i;
 const V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE = /^(?=.*(?:일정|동선|순서|후보|출발\s*(?:위치|지점)|휴식|체력|대체안|우천|예약\s*(?:가능\s*)?여부|운영\s*공지|공식\s*이동\s*시간))(?=.*(?:확인하세요|비교하세요|고르세요|선택하세요|정하세요|결정하세요|따져보세요|점검하세요|두세요|남겨\s*두세요|준비하세요|조정하세요|확정하세요)).+$/i;
 const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동선|출발\s*(?:위치|지점)|체력|휴식|대체안|우천))(?=.*(?:(?:내|자신의).*(?:맞는|기준)|(?:중간|마지막).*(?:쉴|대체)))(?=.*(?:고르는\s*것이\s*안전합니다|두는\s*쪽(?:에서)?\s*나옵니다|두는\s*편이\s*(?:낫|좋)|결정하는\s*편이\s*(?:낫|좋))).+$/i;
+// A grounded writer may explain *how to judge* a route without asserting a
+// destination fact. These sentences were previously promoted to unknown
+// factual candidates when they used verbs such as 저울질하다 or 판단하다
+// instead of the narrower "고르는 것이 안전합니다" wording. Keep this
+// allowlist source-neutral: it rejects digits, regulated topics, and explicit
+// operational status before it can classify a sentence as editorial guidance.
+const V3_SOURCE_NEUTRAL_DECISION_METHOD_RE = /^(?=.*(?:동선|일정|구간|순서|후보|이동\s*시간|휴식|체력|숙소\s*위치))(?=.*(?:판단|저울질|따져|나란히|맞는|부담|무리|기준|직접)).*(?:해야|하면|두고|두며|고르는|판단하는|저울질|따져|맞춰|무리가\s*없).+$/i;
+const V3_NAMED_PLACE_ASSERTION_RE = /(?:[가-힣]{2,}(?:산|힐|사원|파고다|마운틴|해변|시장|공원|박물관|수족관|반도|다리|브리지|대성당|동굴|유적)\s*(?:은|는|이|가)|\b[A-Z][A-Za-zÀ-ÖØ-öø-ÿ.-]{2,}(?:\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ.-]{2,}){0,3}\s+(?:is|has|offers|takes|requires)\b)/u;
 const V3_ITINERARY_PROPOSAL_RE = /(?:편집\s*제안|(?:제안\s*일정|동선\s*예시).*(?:배치|구성|정리)|동선(?:은|을|이)?[^.。!?]{0,140}제안|(?:일차|날짜별|마지막\s*일정).*(?:순서|동선|흐름).*(?:제안|배치)|(?:장소별\s*실행\s*순서|이동\s*근거).*(?:정리했습니다|비교합니다)|(?:미방문\s*장소|남은\s*장소).*(?:대체\s*블록|후보).*(?:삼|두)|확인할\s*블록(?:은|을).*(?:입니다|정))/i;
 const V3_ITINERARY_SOURCE_NEUTRAL_GUIDANCE_RE = /^(?=.*(?:일정|동선|순서|블록|공식\s*이동\s*시간|운영\s*시간|입장\s*시각|체류\s*순서|숙소\s*위치|당일\s*컨디션))(?=.*(?:구성하세요|정하세요|정하면\s*됩니다|고르세요|고르면\s*됩니다|결정하세요|비교하세요|확인하세요|판단해야\s*합니다|제안합니다|배치하세요|삼을\s*수\s*있습니다)).+$/i;
 const REGULATED_TRAVEL_TOPIC_RE = /(?:세관|면세|반입|반출|입국|출입국|비자|여권|전자여행허가|ETA|ESTA|여행자?\s*보험|보험\s*(?:보장|면책|청구))/i;
@@ -283,7 +291,8 @@ function isSourceNeutralPlanningAdvice(
     return false;
   }
   return V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE.test(segment)
-    || V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment);
+    || V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment);
 }
 
 export function classifyBlogInformationStatement(segment: string): {
@@ -295,8 +304,15 @@ export function classifyBlogInformationStatement(segment: string): {
   // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
   const factualClassification = classifyClaim(segment);
   const planningText = stripItineraryStructureNumerals(segment);
-  const sourceNeutralSafetyChoice = V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
-    && /(?:내|자신의).*(?:맞는|기준).*(?:순서|후보).*(?:고르|선택).*안전합니다/i.test(segment);
+  const sourceNeutralSafetyChoice = (
+    V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment)
+  )
+    && !/\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(segment)
+    && !REGULATED_TRAVEL_TOPIC_RE.test(segment)
+    && !V3_EXPLICIT_OPERATIONAL_STATUS_RE.test(segment)
+    && !V3_NAMED_PLACE_ASSERTION_RE.test(segment)
+    && /(?:내|자신의|독자의|직접|기준|판단|저울질|무리)/i.test(segment);
   const unsupportedLocalEvaluation = V3_UNSUPPORTED_LOCAL_EVALUATION_RE.test(segment)
     && !sourceNeutralSafetyChoice;
   const itineraryProposal = (
@@ -319,6 +335,7 @@ export function classifyBlogInformationStatement(segment: string): {
       || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
       || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment)
       || V3_ITINERARY_EDITORIAL_GUIDANCE_RE.test(segment)
+      || V3_SOURCE_NEUTRAL_DECISION_METHOD_RE.test(segment)
   );
   const itineraryContingencyGuidance = !unsupportedLocalEvaluation
     && V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(planningText);
