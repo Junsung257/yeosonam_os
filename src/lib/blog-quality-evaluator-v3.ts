@@ -155,6 +155,20 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
     return match ? [Number(match[1])] : [];
   }));
   const expectedConcreteBlocks = requestedDays > 0 ? Math.min(requestedDays, 7) : 2;
+  const ordinalDayHeadings = artifactLines
+    .filter((line) => /^#{2,6}\s+/u.test(line))
+    .map((line) => ({
+      line,
+      ordinals: [...line.matchAll(/(?:제?\s*)?(\d{1,2})\s*일차/gu)]
+        .map((match) => Number(match[1])),
+    }))
+    .filter((heading) => heading.ordinals.length > 0);
+  const exactDayHeadingContractPassed = requestedDays <= 0 || (
+    ordinalDayHeadings.length === expectedConcreteBlocks
+    && ordinalDayHeadings.every((heading) => heading.ordinals.length === 1)
+    && Array.from({ length: expectedConcreteBlocks }, (_, index) => index + 1)
+      .every((day) => ordinalDayHeadings.filter((heading) => heading.ordinals[0] === day).length === 1)
+  );
   const requiredDayOrdinalsPresent = requestedDays <= 0
     || Array.from({ length: expectedConcreteBlocks }, (_, index) => index + 1)
       .every((day) => concreteDayOrdinals.has(day));
@@ -162,6 +176,7 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
     concreteStageLines.length >= expectedConcreteBlocks
     && distinctConcreteEntities.size >= Math.min(2, expectedConcreteBlocks)
     && requiredDayOrdinalsPresent
+    && exactDayHeadingContractPassed
   );
   const sequenceMatches = prose.match(
     itineraryIntent
@@ -229,6 +244,7 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
         ? [
             `concrete_itinerary_blocks=${concreteStageLines.length}/${expectedConcreteBlocks}`,
             `itinerary_day_ordinals=${[...concreteDayOrdinals].sort((left, right) => left - right).join(',') || 'none'}`,
+            `itinerary_day_h2_contract=${exactDayHeadingContractPassed}`,
             `named_itinerary_entities=${[...distinctConcreteEntities].join(',') || 'none'}`,
             `reservation_check=${reservationCheck}`,
             `rest_plan=${restPlan}`,

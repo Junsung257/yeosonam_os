@@ -171,11 +171,25 @@ describe('explainable blog quality evaluator v3', () => {
         '## 4일차: Hoi An',
       ].join('\n\n'),
     });
+    const combinedAndDuplicated = evaluateBlogQualityV3({
+      ...common,
+      body: [...shared,
+        '## 1일차와 2일차: Marble Mountains와 Bà Nà Hills',
+        '## 2일차 대안: Bà Nà Hills',
+        '## 3일차: Son Tra Peninsula',
+        '## 4일차: Hoi An',
+      ].join('\n\n'),
+    });
 
     expect(repeatedFirstDay.failureReasons.map((failure) => failure.code))
       .toContain('concrete_itinerary_blocks_missing');
+    expect(combinedAndDuplicated.failureReasons.map((failure) => failure.code))
+      .toContain('concrete_itinerary_blocks_missing');
+    expect(combinedAndDuplicated.dimensions.intent_completion.evidence)
+      .toContain('itinerary_day_h2_contract=false');
     expect(complete.dimensions.intent_completion.passed).toBe(true);
     expect(complete.dimensions.intent_completion.evidence).toContain('itinerary_day_ordinals=1,2,3,4');
+    expect(complete.dimensions.intent_completion.evidence).toContain('itinerary_day_h2_contract=true');
   });
 
   it('recognizes Korean evidence-backed place names without semantic suffixes in day headings', () => {
