@@ -451,6 +451,61 @@ describe('blog information claim validator', () => {
     expect(extractBlogInformationClaims('1. 준비\n2. 출발\n첫 번째로 동선을 정하세요.')).toEqual([]);
   });
 
+  it('does not turn an itinerary duration, proposal, or contingency heading into an external fact', () => {
+    const editorialOnly = [
+      '다낭 3박4일 여행 코스와 이동 동선: 장소별 실행 순서와 대체 동선',
+      '다낭 3박4일 여행 코스와 이동 동선의 장소별 실행 순서와 이동 근거를 정리했습니다.',
+      '3박4일 일정은 공식 이동 시간을 먼저 확인한 뒤, 하루에 묶을 장소를 독자가 직접 비교해 결정하세요.',
+      '아래 제안 일정은 린 응 파고다, 바나힐, 마블 마운틴, 논느억, 호이안을 날짜별로 배치한 하나의 동선 예시입니다.',
+      '3일차에는 마블 마운틴을 먼저 두고 논느억 방향으로 이어가는 순서를 제안합니다.',
+      '4일차에는 논느억에서 호이안으로 이동하는 흐름을 마지막 일정으로 제안합니다.',
+      '우천·휴무·피로 대체 동선',
+      '다낭 3박4일 여행 코스와 이동 동선 글 모아보기',
+    ].join('\n');
+
+    expect(extractBlogInformationClaims(editorialOnly)).toEqual([]);
+  });
+
+  it('still validates facts placed inside an itinerary proposal', () => {
+    expect(extractBlogInformationClaims(
+      '3일차에는 마블 마운틴까지 차량으로 15분이 걸리는 동선을 제안합니다.',
+    )).toEqual([
+      expect.objectContaining({ candidateKind: 'time_schedule' }),
+    ]);
+  });
+
+  it('extracts only the six declared facts from the production 3-night 4-day rewrite shape', () => {
+    const markdown = [
+      '# 다낭 3박4일 여행 코스와 이동 동선: 장소별 실행 순서와 대체 동선',
+      '다낭 3박4일 여행 코스와 이동 동선의 장소별 실행 순서와 이동 근거를 정리했습니다.',
+      '3박4일 일정은 공식 이동 시간을 먼저 확인한 뒤, 하루에 묶을 장소를 독자가 직접 비교해 결정하세요.',
+      '아래 제안 일정은 린 응 파고다, 바나힐, 마블 마운틴, 논느억, 호이안을 날짜별로 배치한 하나의 동선 예시입니다.',
+      '## 1일차: 린 응 파고다와 바나힐을 후보로 비교하기',
+      '린 응 파고다까지 차량으로 15분 소요',
+      '바나힐은 다낭에서 서쪽으로 차량 40분 거리',
+      '## 2일차: 바나힐 운영 시간에 맞춘 일정 확정하기',
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+      '## 3일차: 마블 마운틴과 논느억을 잇는 일정 제안하기',
+      '3일차에는 마블 마운틴을 먼저 두고 논느억 방향으로 이어가는 순서를 제안합니다.',
+      '마블 마운틴은 다낭 시내에서 15분 거리',
+      '마블 마운틴 투이선 입장료는 성인 40,000 VND',
+      '## 4일차: 논느억에서 호이안으로 이동하는 마무리 동선',
+      '4일차에는 논느억에서 호이안으로 이동하는 흐름을 마지막 일정으로 제안합니다.',
+      '논느억에서 호이안까지 차량으로 30분 소요',
+      '## 우천·휴무·피로 대체 동선',
+      '[다낭 3박4일 여행 코스와 이동 동선 글 모아보기](https://www.yeosonam.com/blog/destination/%EB%8B%A4%EB%82%AD)',
+    ].join('\n\n');
+
+    expect(extractBlogInformationClaims(markdown).map((claim) => claim.claimText)).toEqual([
+      '린 응 파고다까지 차량으로 15분 소요',
+      '바나힐은 다낭에서 서쪽으로 차량 40분 거리',
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+      '마블 마운틴은 다낭 시내에서 15분 거리',
+      '마블 마운틴 투이선 입장료는 성인 40,000 VND',
+      '논느억에서 호이안까지 차량으로 30분 소요',
+    ]);
+  });
+
   it('keeps non-numeric reading guidance editorial but validates prescriptive timing', () => {
     const guidance = [
       '낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다.',

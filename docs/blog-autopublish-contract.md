@@ -534,6 +534,14 @@ Rules:
 - The writer may propose an editorial order for evidence-backed entities, but must not turn separate duration claims into an unsupported proximity, same-origin, compatibility, or official-route claim.
 - These are expression/structure failures eligible for a bounded DeepSeek rewrite only when the persisted research packet and claim ledger remain valid. They never weaken factual, duplicate, language, or publication gates.
 
+### Editorial-plan versus factual-claim boundary
+
+- A query duration (`N박M일`), a numbered day heading, an article-scope sentence, an explicitly labelled proposed order, and a contingency heading are editorial structure, not external facts by themselves.
+- A duration, fare, price, operating time, distance, availability statement, regulated condition, or other measurable assertion inside those same sections remains a factual claim and must match the structured claim ledger exactly.
+- Korean place names in itinerary blocks may be recognized from validated claim subjects and the `에서/까지/으로` boundaries. The destination name alone never counts as a decision-grade entity.
+- Flexible V3 articles may use descriptive sections instead of a table, FAQ, or checklist. Scanability is satisfied by short, meaningful sections; no evaluator may force a content asset solely to raise a legacy readability score.
+- Comparison content still needs situation-to-choice criteria, but the criteria may be expressed as prose sections, cards, lists, or tables according to intent and evidence.
+
 ## Daily Verification
 
 Run:

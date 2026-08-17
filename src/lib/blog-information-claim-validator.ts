@@ -145,6 +145,8 @@ const POLICY_RE = /(?:규정|정책|법률|법정|의무|금지|허용|운영시
 const SUPERLATIVE_RE = /(?:가장\s*(?:저렴|비싸|빠르|느리|좋|많|적|높|낮|인기)|최고|최저|유일|1위|최대|최소|압도적)/i;
 const GENERAL_YEAR_ALLOWLIST_RE = /^\d{4}년(?:\s*(?:여행|가이드|목차|판|업데이트|기준))*$/;
 const ITINERARY_ORDINAL_ALLOWLIST_RE = /\d+\s*일\s*차/i;
+const ITINERARY_DURATION_ALLOWLIST_RE = /\d{1,2}\s*박\s*\d{1,2}\s*일/i;
+const ITINERARY_CONTINGENCY_HEADING_RE = /^(?:우천|날씨|휴무|피로|지연|변동)(?:[·,/\s]*(?:우천|날씨|휴무|피로|지연|변동))*\s*(?:대체\s*)?(?:일정|동선|순서|계획)$/i;
 
 const HIGH_RISK_INTENTS = new Set(['entry_requirements', 'travel_insurance']);
 
@@ -189,6 +191,7 @@ function splitClaimSegments(markdown: string): string[] {
 
 function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null {
   if (GENERAL_YEAR_ALLOWLIST_RE.test(segment)) return null;
+  if (ITINERARY_CONTINGENCY_HEADING_RE.test(segment)) return null;
   if (CUSTOMS_RE.test(segment)) return { claimType: 'customs', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
   if (ENTRY_RE.test(segment)) return { claimType: 'entry_visa', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
   if (INSURANCE_RE.test(segment)) return { claimType: 'insurance', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
@@ -200,7 +203,11 @@ function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'cl
     return { claimType: 'factual', riskLevel: 'MEDIUM', candidateKind: 'time_schedule' };
   }
   if (DURATION_RE.test(segment)) return { claimType: 'duration', riskLevel: 'MEDIUM', candidateKind: 'time_schedule' };
-  if (!ITINERARY_ORDINAL_ALLOWLIST_RE.test(segment) && DATE_PERIOD_RE.test(segment)) {
+  if (
+    !ITINERARY_ORDINAL_ALLOWLIST_RE.test(segment)
+    && !ITINERARY_DURATION_ALLOWLIST_RE.test(segment)
+    && DATE_PERIOD_RE.test(segment)
+  ) {
     return { claimType: 'factual', riskLevel: 'MEDIUM', candidateKind: 'date_period' };
   }
   if (QUANTITY_RE.test(segment) || COUNT_KIND_RE.test(segment)) {
@@ -241,6 +248,7 @@ const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s
 const V3_EXPLICIT_OPERATIONAL_STATUS_RE = /(?:(?:현재|오늘|지금)\s*)?(?:(?:예약|판매|입장|이용|운영|영업|접수)(?:은|는|이|가)?\s*(?:가능|불가|마감|매진|중단|종료|휴무|중)(?:합니다|입니다|됩니다)|(?:매일|주말|평일|연중무휴|24시간).*(?:영업|운영|운행|휴무)(?:합니다|입니다|됩니다))/i;
 const V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE = /^(?=.*(?:일정|동선|순서|후보|출발\s*(?:위치|지점)|휴식|체력|대체안|우천|예약\s*(?:가능\s*)?여부|운영\s*공지|공식\s*이동\s*시간))(?=.*(?:확인하세요|비교하세요|고르세요|선택하세요|정하세요|결정하세요|따져보세요|점검하세요|두세요|남겨\s*두세요|준비하세요|조정하세요|확정하세요)).+$/i;
 const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동선|출발\s*(?:위치|지점)|체력|휴식|대체안|우천))(?=.*(?:(?:내|자신의).*(?:맞는|기준)|(?:중간|마지막).*(?:쉴|대체)))(?=.*(?:고르는\s*것이\s*안전합니다|두는\s*쪽(?:에서)?\s*나옵니다|두는\s*편이\s*(?:낫|좋)|결정하는\s*편이\s*(?:낫|좋))).+$/i;
+const V3_ITINERARY_PROPOSAL_RE = /(?:(?:제안\s*일정|동선\s*예시).*(?:배치|구성|정리)|(?:일차|날짜별|마지막\s*일정).*(?:순서|동선|흐름).*(?:제안|배치)|(?:장소별\s*실행\s*순서|이동\s*근거).*(?:정리했습니다|비교합니다))/i;
 const REGULATED_TRAVEL_TOPIC_RE = /(?:세관|면세|반입|반출|입국|출입국|비자|여권|전자여행허가|ETA|ESTA|여행자?\s*보험|보험\s*(?:보장|면책|청구))/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 const SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
@@ -277,6 +285,13 @@ export function classifyBlogInformationStatement(segment: string): {
   // win over editorial-language allowlists. This prevents a sentence such as
   // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
   const factualClassification = classifyClaim(segment);
+  const planningText = segment
+    .replace(/\d{1,2}\s*박\s*\d{1,2}\s*일/gu, '')
+    .replace(/\d{1,2}\s*일\s*차/gu, '');
+  const itineraryProposal = V3_ITINERARY_PROPOSAL_RE.test(segment)
+    && !/\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(planningText)
+    && !REGULATED_TRAVEL_TOPIC_RE.test(segment)
+    && !V3_EXPLICIT_OPERATIONAL_STATUS_RE.test(segment);
   const sourceNeutralSafetyChoice = V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
     && /(?:내|자신의).*(?:맞는|기준).*(?:순서|후보).*(?:고르|선택).*안전합니다/i.test(segment);
   const unsupportedLocalEvaluation = V3_UNSUPPORTED_LOCAL_EVALUATION_RE.test(segment)
@@ -321,6 +336,7 @@ export function classifyBlogInformationStatement(segment: string): {
     || itineraryContingencyGuidance
     || operationalRecheckGuidance
     || reservationPlanningRecheck
+    || itineraryProposal
     || sourceNeutralPlanningAdvice
     || availabilityRecheck
     || V3_NAVIGATION_HEADING_RE.test(segment)

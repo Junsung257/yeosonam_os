@@ -33,6 +33,66 @@ describe('blog content intent reading design', () => {
     }));
   });
 
+  it('accepts descriptive day sections without forcing checklist or table markup', () => {
+    const report = inspectBlogIntentQuality({
+      title: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryKeyword: '다낭 3박4일 여행 코스',
+      category: 'itinerary',
+      contentType: 'guide',
+      blogHtml: [
+        '# 다낭 3박4일 여행 코스와 이동 동선',
+        '',
+        '다낭 일정은 장소별 공식 이동 근거를 비교해 날짜별로 나누면 됩니다.',
+        '',
+        '## 1일차: 린 응 파고다',
+        '첫날은 도착 후 휴식을 남겨 두고 운영 여부를 확인합니다.',
+        '',
+        '## 2일차: 바나힐',
+        '바나힐은 별도 하루 일정으로 두고 공식 공지를 확인합니다.',
+        '',
+        '## 3일차: 마블 마운틴',
+        '마블 마운틴의 입장 조건을 확인한 뒤 남쪽 동선을 결정합니다.',
+        '',
+        '## 4일차: 호이안',
+        '비가 오면 호이안 블록을 대체 일정으로 조정합니다.',
+      ].join('\n'),
+    });
+
+    expect(report.issues).not.toContainEqual(expect.objectContaining({
+      code: 'weak_list_or_table_shape',
+    }));
+    expect(report.issues).not.toContainEqual(expect.objectContaining({
+      code: 'weak_reading_design',
+    }));
+  });
+
+  it('does not require a weather table when decision coverage is present in sections', () => {
+    const report = inspectBlogIntentQuality({
+      title: '다낭 10월 날씨와 옷차림',
+      primaryKeyword: '다낭 10월 날씨',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: [
+        '# 다낭 10월 날씨와 옷차림',
+        '',
+        '다낭 10월은 비 예보와 체감 기온을 확인해 야외 일정을 줄일지 결정합니다.',
+        '',
+        '## 10월 비와 우기 판단',
+        '출발 직전 공식 예보를 확인하고 비가 오면 실내 일정으로 조정합니다.',
+        '',
+        '## 낮과 밤 옷차림',
+        '기온과 냉방 환경에 맞춰 얇은 겉옷과 방수 신발을 선택합니다.',
+        '',
+        '## 우천 대체 일정',
+        '강수 위험이 높으면 이동 시간을 줄이고 실내 후보를 고릅니다.',
+      ].join('\n'),
+    });
+
+    expect(report.issues).not.toContainEqual(expect.objectContaining({
+      code: 'weak_list_or_table_shape',
+    }));
+  });
+
   it('accepts real tables and checklists without requiring highlight marks', () => {
     const report = inspectBlogIntentQuality({
       title: '오사카 7월 날씨와 옷차림 준비',
