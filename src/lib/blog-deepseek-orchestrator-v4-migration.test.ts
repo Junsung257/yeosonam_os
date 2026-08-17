@@ -5,6 +5,10 @@ const migration = readFileSync(
   'supabase/migrations/20260815120135_blog_deepseek_orchestrator_v4.sql',
   'utf8',
 ).toLowerCase();
+const repairMigration = readFileSync(
+  'supabase/migrations/20260818080000_blog_deepseek_auto_repair_budget_v1.sql',
+  'utf8',
+).toLowerCase();
 
 describe('blog DeepSeek orchestrator V4 migration contract', () => {
   it('creates durable run, attempt and effective-dated price tables', () => {
@@ -31,5 +35,14 @@ describe('blog DeepSeek orchestrator V4 migration contract', () => {
     expect(migration).not.toMatch(/update\s+public\.content_creatives/);
     expect(migration).toContain('backfill dry-run');
     expect(migration).toContain('rollback (run manually only after application rollback)');
+  });
+
+  it('raises only the durable repair budget and keeps the budget RPC DeepSeek-only', () => {
+    expect(repairMigration).toContain('attempt_count between 0 and 5');
+    expect(repairMigration).toContain('attempt_number between 1 and 5');
+    expect(repairMigration).toContain('p_attempt_number not between 1 and 5');
+    expect(repairMigration).toContain("p_provider <> 'deepseek'");
+    expect(repairMigration).toContain('rollback');
+    expect(repairMigration).not.toMatch(/update\s+public\.content_creatives/);
   });
 });

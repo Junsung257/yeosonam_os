@@ -47,8 +47,17 @@ export interface BlogQualityRoutingDecisionV4 {
   nextStage: BlogDeepSeekStage | null;
   publishable: boolean;
   reasons: string[];
-  maxAttempts: 3;
+  /** Durable model-call budget. The final two calls are repair-only rewrites. */
+  maxAttempts: 5;
 }
+
+/**
+ * A low score is a repair signal, not a publication disposition. Five durable
+ * calls give DeepSeek one draft, one grounded rewrite, and up to three bounded
+ * repair passes before a candidate is quarantined. Factual blockers still
+ * short-circuit the loop; this budget only applies to model-output weakness.
+ */
+export const BLOG_QUALITY_MAX_ATTEMPTS_V4 = 5 as const;
 
 export interface BlogRewriteApprovedClaimV4 {
   claimText: string;
@@ -317,55 +326,64 @@ export function decideBlogQualityRouteV4(
   if (input.riskLevel === 'HIGH' && !input.humanApproved) {
     return {
       route: 'human_review', nextStage: null, publishable: false,
-      reasons: unique(['high_risk_human_approval_required', ...allReasons]), maxAttempts: 3,
+      reasons: unique(['high_risk_human_approval_required', ...allReasons]), maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
   const researchBlocked = allReasons.some(isResearchBlocker);
   if (researchBlocked) {
-    const canResearchAgain = (input.researchAttempts ?? 0) < 1 && completedAttempts < 3;
+    const canResearchAgain = (input.researchAttempts ?? 0) < 1 && completedAttempts < BLOG_QUALITY_MAX_ATTEMPTS_V4;
     const researchReasons = allReasons.filter(isResearchBlocker);
     const canUseFinalGroundedRewrite = !canResearchAgain
-      && completedAttempts === 2
+      && completedAttempts >= 2
       && input.researchValid === true
       && input.lastStage === 'rewrite_pro_high'
+      && researchReasons.length > 0
+      && researchReasons.every(isOutputGroundingRewriteFailure)
+      && !hardBlockers.some((reason) => NON_REWRITABLE_BLOCKERS.has(reason));
+    const canRepairGroundedOutput = input.researchValid === true
+      && input.claimLedgerValid === true
       && researchReasons.length > 0
       && researchReasons.every(isOutputGroundingRewriteFailure)
       && !hardBlockers.some((reason) => NON_REWRITABLE_BLOCKERS.has(reason));
     return {
       route: canResearchAgain
         ? 'reresearch'
-        : canUseFinalGroundedRewrite ? 'rewrite_pro_max' : 'quarantine',
+        : canUseFinalGroundedRewrite || (canRepairGroundedOutput && completedAttempts < BLOG_QUALITY_MAX_ATTEMPTS_V4)
+          ? 'rewrite_pro_max'
+          : 'quarantine',
       nextStage: canResearchAgain
         ? completedAttempts >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'
-        : canUseFinalGroundedRewrite ? 'rewrite_pro_max' : null,
+        : canUseFinalGroundedRewrite || (canRepairGroundedOutput && completedAttempts < BLOG_QUALITY_MAX_ATTEMPTS_V4)
+          ? 'rewrite_pro_max'
+          : null,
       publishable: false,
       reasons: unique([
         ...(canUseFinalGroundedRewrite ? ['final_grounded_output_rewrite'] : []),
         ...allReasons,
       ]),
-      maxAttempts: 3,
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
   if (hardBlockers.some((reason) => NON_REWRITABLE_BLOCKERS.has(reason))) {
     return {
       route: 'quarantine', nextStage: null, publishable: false,
-      reasons: hardBlockers, maxAttempts: 3,
+      reasons: hardBlockers, maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
   if (score >= 90 && hardBlockers.length === 0 && failures.length === 0) {
     return {
       route: 'approved_for_slot', nextStage: null, publishable: true,
-      reasons: ['quality_score_at_least_90'], maxAttempts: 3,
+      reasons: ['quality_score_at_least_90'], maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
-  if (completedAttempts >= 3) {
+  if (completedAttempts >= BLOG_QUALITY_MAX_ATTEMPTS_V4) {
     return {
       route: 'quarantine', nextStage: null, publishable: false,
-      reasons: unique(['model_attempt_limit_reached', ...allReasons]), maxAttempts: 3,
+      reasons: unique(['model_attempt_limit_reached', ...allReasons]), maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
@@ -380,14 +398,20 @@ export function decideBlogQualityRouteV4(
         ...(improvement != null && improvement < 5 ? ['rewrite_not_converging_observed'] : []),
         ...allReasons,
       ]),
-      maxAttempts: 3,
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
   if (score >= 75) {
     return {
-      route: 'rewrite_pro_high', nextStage: 'rewrite_pro_high', publishable: false,
-      reasons: unique(['quality_score_75_to_89', ...allReasons]), maxAttempts: 3,
+      route: completedAttempts >= 3 ? 'rewrite_pro_max' : 'rewrite_pro_high',
+      nextStage: completedAttempts >= 3 ? 'rewrite_pro_max' : 'rewrite_pro_high',
+      publishable: false,
+      reasons: unique([
+        completedAttempts >= 3 ? 'repair_pass_after_initial_rewrite' : 'quality_score_75_to_89',
+        ...allReasons,
+      ]),
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
@@ -397,7 +421,7 @@ export function decideBlogQualityRouteV4(
     return {
       route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max', publishable: false,
       reasons: unique(['quality_score_below_75_expression_or_structure_only', ...allReasons]),
-      maxAttempts: 3,
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 
@@ -409,7 +433,7 @@ export function decideBlogQualityRouteV4(
       ...(!expressionOnly ? ['failure_not_expression_or_structure_only'] : []),
       ...allReasons,
     ]),
-    maxAttempts: 3,
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
   };
 }
 
