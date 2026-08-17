@@ -70,6 +70,27 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
   });
 
+  it('repairs any grounded low-score output weakness instead of quarantining on score alone', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 61,
+      completedAttempts: 1,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['publish_gate:public_customer_quality', 'seo:content_depth'],
+    })).toMatchObject({
+      route: 'rewrite_pro_max',
+      nextStage: 'rewrite_pro_max',
+      reasons: expect.arrayContaining(['quality_score_below_75_repairable_output_weakness']),
+    });
+    expect(decideBlogQualityRouteV4({
+      score: 61,
+      completedAttempts: 5,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['publish_gate:public_customer_quality'],
+    }).route).toBe('quarantine');
+  });
+
   it('uses bounded Pro repair calls when an earlier rewrite did not converge', () => {
     expect(decideBlogQualityRouteV4({
       score: 79,
