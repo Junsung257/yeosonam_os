@@ -227,14 +227,17 @@ const EDITORIAL_READING_GUIDANCE_RE = /(?:(?:먼저|우선).*(?:봐야|확인해
 const V3_DECISION_GUIDANCE_RE = /(?:고를\s*때|선택할\s*때|일정에\s*넣는다면|자신의\s*여행\s*스타일|먼저\s*.+(?:정한|고른)|(?:무엇|어디|어떤).*(?:기준|질문)|어디를\s*갈지는.*(?:시간|체력|동행|일정|우선순위).*(?:따라\s*달라|정해야|고르면)|(?:이|가)\s*핵심입니다|함께\s*보아야\s*합니다|확인해야\s*합니다|다른\s*.+(?:고르는|바꾸는)\s*것이\s*더\s*현실적입니다|자세한\s*.+에서\s*확인할\s*수\s*있습니다)/i;
 const V3_DIRECT_DECISION_ANSWER_RE = /(?:어디를\s*갈지|무엇을\s*고를지|장소를\s*(?:고르|선택)|후보를\s*(?:고르|선택)).*(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교|결정|고르|선택)|(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교).*(?:결정|고르|선택)/i;
 const V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE = /^(?:같은|내|자신의|여행자는|일정에|어디를|무엇을|먼저\s).*(?:선택\s*기준|우선순위|일정|체력|동행|비교|결정|확인).*(?:정하|고르|선택|비교|확인|좁히|달라지|방식)/i;
-const V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE = /^(?!.{0,160}(?:입니다|합니다|됩니다|있습니다|없습니다|가능합니다|불가능합니다))(?=.*(?:일정|순서|후보|구간|휴식|우선순위|동선))(?=.*(?:정하세요|나누세요|묶으세요|분리하세요|조정하세요|비교하세요|확인하세요|표시하세요)).+$/i;
+const V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE = /^(?!.{0,160}(?:입니다|합니다|됩니다|있습니다|없습니다|가능합니다|불가능합니다))(?=.*(?:일정|순서|후보|구간|휴식|우선순위|동선))(?=.*(?:정하세요|나누세요|묶으세요|분리하세요|조정하세요|비교하세요|확인하세요|표시하세요|배치하세요)).+$/i;
 const V3_AVAILABILITY_RECHECK_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*여부|가능한?\s*(?:시간|날짜|조건)).*(?:공식|예약|홈페이지|채널).*(?:확인|비교|점검)/i;
 const V3_AVAILABILITY_DECISION_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*(?:여부|시간|날짜|조건)).*(?:맞춰|기준으로).*(?:결정|선택|비교|조정)하세요/i;
 const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
+const V3_EDITORIAL_PLANNING_HEADING_RE = /^(?!.*(?:\d|가능|불가|마감|매진|휴무|운영\s*중|입니다|합니다|됩니다|있습니다|없습니다))(?=.*(?:예약|휴식|일정|동선|이동|대체))(?=.*(?:순서|기준|결정|확인|비교|계획|실행)).{2,80}$/i;
+const V3_ARTICLE_SCOPE_DESCRIPTION_RE = /^(?!.*\d)(?=.*(?:정리했습니다|비교합니다|살펴보세요|좁혀\s*보세요))(?=.*(?:찾는\s*분|확인된|공식\s*근거|본문|기준|방법|항목|조건|정보)).+$/i;
+const V3_RESERVATION_PLANNING_RECHECK_RE = /^(?!.*(?:\d|(?:현재|오늘).*(?:가능|불가|마감|매진|휴무|운영)))(?=.*(?:예약\s*(?:가능\s*여부|상태|조건)?|운영\s*공지))(?=.*(?:확인|점검))(?=.*(?:일정|동선|순서|후보|구간|휴식|출발\s*지점))(?=.*(?:확정|결정|정하|배치|비교|맞추)).+$/i;
 const V3_ITINERARY_EDITORIAL_GUIDANCE_RE = /^(?!.*(?:\d|현재|실제로|항상|통상|평균|이동\s*시간이\s*(?:길|짧)|도심\s*(?:동|서|남|북)쪽|같은\s*권역|안전|적합|필수|의무|금지|불가|가능합니다))(?=.*(?:일정|동선|이동\s*구간|예약|휴식))(?=.*(?:정하|나누|묶|분리|얹|점검|비교|고르|선택|결정|남겨|두고|두며))(?=.*(?:순서|기준|먼저|마지막|쉽게|무리|부담|대체|흐름)).+$/i;
 const V3_ITINERARY_CONTINGENCY_GUIDANCE_RE = /^(?!.*\d)(?=.*(?:우천|날씨|휴무|변동))(?=.*(?:경우|때|어긋|밀리|밀릴|바뀌|대비|가능성))(?=.*(?:대체|조정|바꾸|남겨|정해|확인))(?=.*(?:일정|동선|순서)).+$/i;
 const V3_OPERATIONAL_RECHECK_GUIDANCE_RE = /^(?!.*(?:\d|(?:현재|오늘).*(?:가능|불가|휴무|운영)))(?=.*(?:공식\s*(?:채널|홈페이지|공지|사이트)))(?=.*(?:운영\s*여부|예약\s*조건|입장\s*여부|휴무\s*여부|변동\s*여부))(?=.*(?:확인|점검))(?=.*(?:일정|동선|대체|출발)).+$/i;
-const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s*(?:긴|길|짧)|(?:긴|짧은)\s*이동\s*구간|이동(?:이|은)\s*분리되는|같은\s*권역|동선(?:이|은)\s*복잡|(?:안전|적합|최적|효율적)(?:합니다|입니다|한|하))/i;
+const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s*(?:긴|길|짧)|(?:긴|짧은)\s*이동\s*구간|이동(?:이|은)\s*분리되는|같은\s*권역|함께\s*묶을\s*동선|따로\s*둘\s*일정|동선(?:이|은)\s*복잡|(?:안전|적합|최적|효율적)(?:합니다|입니다|한|하))/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
 export function classifyBlogInformationStatement(segment: string): {
@@ -257,11 +260,14 @@ export function classifyBlogInformationStatement(segment: string): {
     && V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(segment);
   const operationalRecheckGuidance = !unsupportedLocalEvaluation
     && V3_OPERATIONAL_RECHECK_GUIDANCE_RE.test(segment);
+  const reservationPlanningRecheck = !unsupportedLocalEvaluation
+    && V3_RESERVATION_PLANNING_RECHECK_RE.test(segment);
   const availabilityRecheck = factualClassification?.candidateKind === 'availability_status'
     && (
       V3_AVAILABILITY_RECHECK_RE.test(segment)
       || V3_AVAILABILITY_DECISION_RE.test(segment)
       || operationalRecheckGuidance
+      || reservationPlanningRecheck
     );
   if (
     factualClassification
@@ -276,8 +282,11 @@ export function classifyBlogInformationStatement(segment: string): {
     || directDecisionGuidance
     || itineraryContingencyGuidance
     || operationalRecheckGuidance
+    || reservationPlanningRecheck
     || availabilityRecheck
     || V3_NAVIGATION_HEADING_RE.test(segment)
+    || (!unsupportedLocalEvaluation && V3_EDITORIAL_PLANNING_HEADING_RE.test(segment))
+    || (!unsupportedLocalEvaluation && V3_ARTICLE_SCOPE_DESCRIPTION_RE.test(segment))
   ) {
     return { category: 'navigation_boilerplate', factualClassification: null };
   }

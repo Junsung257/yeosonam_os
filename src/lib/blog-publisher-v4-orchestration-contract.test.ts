@@ -72,4 +72,9 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(controller).toContain('creative_public_policy_blocked:');
     expect(controller).toContain('information_claim_gate_not_passed');
   });
+
+  it('runs the claim gate across title, description, and body public surfaces', () => {
+    expect(source.match(/\[generated\.seo_title, generated\.seo_description, generated\.blog_html\]/g))
+      .toHaveLength(2);
+  });
 });

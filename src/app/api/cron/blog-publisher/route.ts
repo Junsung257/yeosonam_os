@@ -2895,7 +2895,11 @@ async function processQueueItem(
       const validation = await evaluateBlogInformationClaimPublishGate({
         creativeId: promoteDraftId,
         contentKey: evidenceContentKey,
-        markdown: generated.blog_html,
+        // Title and description are public factual surfaces too. Validate them
+        // with the same claim ledger instead of checking only the article body.
+        markdown: [generated.seo_title, generated.seo_description, generated.blog_html]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .join('\n\n'),
         productId: item.product_id ?? null,
         tenantId: item.tenant_id ?? null,
         reviewStatus: queueReusableDraftReviewStatus,
@@ -3821,7 +3825,9 @@ async function processQueueItem(
       reviewClaimValidation = await evaluateBlogInformationClaimPublishGate({
         creativeId,
         contentKey: reviewEvidenceContentKey,
-        markdown: generated.blog_html,
+        markdown: [generated.seo_title, generated.seo_description, generated.blog_html]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .join('\n\n'),
         productId: null,
         tenantId: item.tenant_id ?? null,
         claimLedger: writerClaimLedger,

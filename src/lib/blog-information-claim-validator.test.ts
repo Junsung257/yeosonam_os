@@ -172,6 +172,11 @@ describe('V3 editorial decision guidance classification', () => {
     '마지막 순서는 공식 채널을 다시 확인해 변동 가능성을 줄이고, 우천이나 휴무에 대비한 대체 일정을 남겨 두는 쪽으로 잡으세요.',
     '마지막 순서는 우천이나 휴무 가능성까지 고려해 대체 일정을 남겨두는 방식으로 결정하세요.',
     '출발 전에 공식 채널에서 운영 여부와 예약 조건을 다시 확인하고, 당일 일정이 어긋날 경우를 대비한 대체 동선을 정해 두세요.',
+    '동선은 예약 가능 여부와 휴식 지점을 다시 확인한 뒤에 확정해야 하며, 비나 일정 지연이 생기면 돌아갈 대체안을 미리 정해 두는 편이 낫다.',
+    '예약과 휴식을 반영한 실행 순서',
+    '시작: 이동 시간이 같은 후보라도 내 숙소에서 실제로 가까운 순서가 아니라, 예약을 먼저 확인할 수 있는 곳부터 배치하세요.',
+    '공식 이동 시간을 비교했으면 예약 가능 여부와 운영 공지를 다시 확인하고, 내 출발 지점과 휴식 시간을 기준으로 순서를 확정하세요.',
+    '다낭 여행 일정과 이동 동선을 계획할 때 필요한 확인 순서를 정리했습니다.',
   ])('keeps source-neutral itinerary planning advice out of the factual ledger: %s', (sentence) => {
     expect(classifyBlogInformationStatement(sentence)).toMatchObject({
       category: 'navigation_boilerplate',
@@ -189,6 +194,7 @@ describe('V3 editorial decision guidance classification', () => {
     ['짧은 이동 구간부터 묶어 동선을 단순하게 만들기', 'unknown_unclassified'],
     ['차량 이동 시간이 짧은 두 곳을 먼저 비교하면 일정의 중심축을 잡기 쉽습니다.', 'unknown_unclassified'],
     ['이동 시간이 긴 일정은 별도로 분리해 여유 확보하기', 'unknown_unclassified'],
+    ['확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나눕니다.', 'unknown_unclassified'],
   ] as const)('does not let itinerary wording hide a destination assertion: %s', (sentence, category) => {
     expect(classifyBlogInformationStatement(sentence).category).toBe(category);
   });
@@ -292,6 +298,49 @@ describe('blog information claim validator', () => {
     expect(report.coverage).toBe(1);
     expect(report.claims.map((claim) => claim.claimText)).toEqual(factualClaims);
     expect(report.issues).toEqual([]);
+  });
+
+  it('validates title, safe description and final-rewrite planning advice without inventing claims', () => {
+    const factualClaims = [
+      '다낭 시내에서 Linh Ung Pagoda까지 차량으로 15분 소요',
+      '다낭에서 Bà Nà Hills까지 차량으로 40분 소요',
+      '다낭 시내에서 Marble Mountains까지 차량으로 15분 소요',
+    ];
+    const publicSurface = [
+      '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '다낭 여행 일정과 이동 동선을 계획할 때 필요한 확인 순서를 정리했습니다. 본문에 연결된 공식 근거를 먼저 확인하고, 출발 지점·예약·휴식 조건에 맞춰 실행 순서를 정하는 방법을 살펴보세요.',
+      '동선은 예약 가능 여부와 휴식 지점을 다시 확인한 뒤에 확정해야 하며, 비나 일정 지연이 생기면 돌아갈 대체안을 미리 정해 두는 편이 낫다.',
+      '예약과 휴식을 반영한 실행 순서',
+      '시작: 이동 시간이 같은 후보라도 내 숙소에서 실제로 가까운 순서가 아니라, 예약을 먼저 확인할 수 있는 곳부터 배치하세요.',
+      '공식 이동 시간을 비교했으면 예약 가능 여부와 운영 공지를 다시 확인하고, 내 출발 지점과 휴식 시간을 기준으로 순서를 확정하세요.',
+      ...factualClaims,
+    ].join('\n\n');
+
+    const report = validateBlogInformationClaims({
+      markdown: publicSurface,
+      persistedClaims: factualClaims.map((claim) => supportedRecord(claim)),
+      claimLedger: factualClaims.flatMap(ledgerFor),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.claims.map((claim) => claim.claimText)).toEqual(factualClaims);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('blocks the legacy metadata description that asserted unsupported route grouping', () => {
+    const report = validateBlogInformationClaims({
+      markdown: '확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나눕니다.',
+      persistedClaims: [],
+      claimLedger: [],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: 'unclassified_factual_candidate',
+    }));
   });
 
   it('uses the persisted structured value for an exact approved translated claim', () => {
