@@ -196,6 +196,15 @@ export async function recordBlogGenerationAttemptV4(
 ): Promise<{ runId: string | null; error: string | null }> {
   const generationKey = `queue:${input.queueId}`;
   const now = new Date().toISOString();
+  // A model-level approval is not yet a publication approval. The publisher
+  // still has to pass representative ownership, persist the private draft,
+  // and complete every downstream publication gate. Keeping the run in
+  // `generating` prevents the publication controller from observing a
+  // half-committed candidate.
+  const runStatus = input.route === 'approved_for_slot' ? 'generating' : input.route;
+  const runDisposition = input.route === 'approved_for_slot'
+    ? 'awaiting_publication_gates'
+    : input.route;
   const taskIdempotencyKey = `blog-generation-v4:${input.queueId}`;
   let { data: task } = await supabaseAdmin
     .from('agent_tasks')
@@ -230,10 +239,10 @@ export async function recordBlogGenerationAttemptV4(
       tenant_id: input.tenantId ?? null,
       agent_task_id: task?.id ?? null,
       generation_key: generationKey,
-      status: input.route,
+      status: runStatus,
       attempt_count: input.attemptNumber,
       latest_quality_score: input.qualityScore,
-      disposition: input.route,
+      disposition: runDisposition,
       updated_at: now,
     }, { onConflict: 'queue_id,generation_key' })
     .select('id')
@@ -322,7 +331,7 @@ export async function recordBlogGenerationAttemptV4(
     return { runId: run.id, error: attemptPersistenceError };
   }
   if (task?.id) {
-    const terminal = input.route === 'approved_for_slot' || input.route === 'human_review' || input.route === 'quarantine';
+    const terminal = input.route === 'human_review' || input.route === 'quarantine';
     await supabaseAdmin.from('agent_tasks').update({
       specialist_id: input.stage,
       status: input.route === 'quarantine' ? 'failed' : terminal ? 'done' : 'running',
@@ -357,7 +366,7 @@ export async function approveBlogGenerationRunForSlotV4(input: {
     })
     .eq('queue_id', input.queueId)
     .eq('generation_key', `queue:${input.queueId}`)
-    .eq('status', 'approved_for_slot')
+    .in('status', ['generating', 'approved_for_slot'])
     .not('selected_attempt_id', 'is', null)
     .select('id')
     .maybeSingle();
@@ -381,7 +390,7 @@ export async function markBlogGenerationRunForHumanReviewV4(input: {
     })
     .eq('queue_id', input.queueId)
     .eq('generation_key', `queue:${input.queueId}`)
-    .in('status', ['approved_for_slot', 'human_review'])
+    .in('status', ['generating', 'approved_for_slot', 'human_review'])
     .select('id')
     .maybeSingle();
   return error?.message ?? (data?.id ? null : 'generation_run_human_review_transition_failed');

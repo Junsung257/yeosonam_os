@@ -12,6 +12,19 @@ describe('blog generation run human review transition', () => {
     expect(helper).toContain("disposition: 'human_review'");
     expect(helper).toContain('scheduled_publish_at: null');
     expect(helper).toContain('content_creative_id: input.creativeId');
-    expect(helper).toContain(".in('status', ['approved_for_slot', 'human_review'])");
+    expect(helper).toContain(".in('status', ['generating', 'approved_for_slot', 'human_review'])");
+  });
+
+  it('keeps a model-approved attempt private until downstream publication gates commit', () => {
+    const recordStart = source.indexOf('export async function recordBlogGenerationAttemptV4');
+    const approveStart = source.indexOf('export async function approveBlogGenerationRunForSlotV4');
+    const recordHelper = source.slice(recordStart, approveStart);
+    const approveHelper = source.slice(approveStart);
+
+    expect(recordStart).toBeGreaterThan(0);
+    expect(recordHelper).toContain("input.route === 'approved_for_slot' ? 'generating' : input.route");
+    expect(recordHelper).toContain("'awaiting_publication_gates'");
+    expect(recordHelper).not.toContain("input.route === 'approved_for_slot' || input.route === 'human_review'");
+    expect(approveHelper).toContain(".in('status', ['generating', 'approved_for_slot'])");
   });
 });

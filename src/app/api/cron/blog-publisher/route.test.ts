@@ -163,6 +163,16 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('review_case_research_missing:');
   });
 
+  it('closes model-approved runs when a downstream publication gate blocks the queue', () => {
+    const source = routeSource();
+    const failureHandler = source.slice(source.indexOf('async function handleFailure'));
+
+    expect(failureHandler).toContain("const blockedRunStatus = finalStatus === 'failed' ? 'quarantine' : 'human_review'");
+    expect(failureHandler).toContain(".eq('status', 'generating')");
+    expect(failureHandler).toContain('scheduled_publish_at: null');
+    expect(failureHandler).toContain('publication_gate_${finalStatus}');
+  });
+
   it('replaces quarantined fallback posts in place and always sends them to private review', () => {
     const source = routeSource();
 

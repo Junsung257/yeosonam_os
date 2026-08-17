@@ -4275,6 +4275,32 @@ async function handleFailure(
     });
   }
 
+  // `recordBlogGenerationAttemptV4` deliberately leaves a model-approved run
+  // in `generating` until all publication gates have committed. If a later
+  // gate fails (for example representative ownership), close that run here so
+  // the publication controller can never publish a candidate whose queue was
+  // failed or skipped.
+  const blockedRunStatus = finalStatus === 'failed' ? 'quarantine' : 'human_review';
+  const { error: runTransitionError } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .update({
+      status: blockedRunStatus,
+      disposition: `publication_gate_${finalStatus}`,
+      scheduled_publish_at: null,
+      last_error: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('queue_id', item.id)
+    .eq('generation_key', `queue:${item.id}`)
+    .eq('status', 'generating');
+  if (runTransitionError) {
+    logWarning('[cron/blog-publisher] blocked generation run transition failed', {
+      id: item.id,
+      targetStatus: blockedRunStatus,
+      error: runTransitionError.message,
+    });
+  }
+
   // 자기학습: 실패 원인을 error_patterns 에 누적 (있는 경우만)
   try {
     await supabaseAdmin.rpc('upsert_error_pattern', {
