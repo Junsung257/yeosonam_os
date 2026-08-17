@@ -5,7 +5,11 @@ import {
   blogBudgetDayKstV4,
   resolveBlogDailyAiCostCapUsdV4,
 } from './blog-ai-budget-v4';
-import type { BlogDeepSeekStage, BlogQualityRouteV4 } from './blog-deepseek-orchestrator-v4';
+import {
+  BLOG_QUALITY_MAX_ATTEMPTS_V4,
+  type BlogDeepSeekStage,
+  type BlogQualityRouteV4,
+} from './blog-deepseek-orchestrator-v4';
 
 export interface BlogAiBudgetReservationRecordV4 {
   reservationId: string | null;
@@ -109,7 +113,10 @@ export async function readLatestBlogModelCallAttemptNumberV4(
 }
 
 export function nextBlogModelCallAttemptNumberV4(latestAttemptNumber: number): number {
-  return Math.min(3, Math.max(0, Math.trunc(latestAttemptNumber)) + 1);
+  return Math.min(
+    BLOG_QUALITY_MAX_ATTEMPTS_V4,
+    Math.max(0, Math.trunc(latestAttemptNumber)) + 1,
+  );
 }
 
 /**

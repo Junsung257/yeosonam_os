@@ -189,6 +189,7 @@ import {
 import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
 import {
   BLOG_DEEPSEEK_MODELS,
+  BLOG_QUALITY_MAX_ATTEMPTS_V4,
   buildDeepSeekRewritePromptV4,
   decideBlogQualityRouteV4,
   nextBlogPublicationSlotKstV4,
@@ -293,10 +294,11 @@ const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_I
 const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
-// A candidate can be regenerated at most three times across durable queue
-// attempts. The research bundle/claim fingerprints remain persisted between
-// attempts, so retries may change expression and structure but not invent facts.
-const MAX_ATTEMPTS = 3;
+// A candidate gets one draft plus up to four DeepSeek repair passes. The
+// research bundle/claim fingerprints remain persisted between attempts, so
+// retries may change expression and structure but never invent facts. Hard
+// factual blockers still terminate before this budget is consumed.
+const MAX_ATTEMPTS = BLOG_QUALITY_MAX_ATTEMPTS_V4;
 // The outer generation budget must be longer than the 165s DeepSeek Pro
 // rewrite budget. Keep 15s below the 285s cron guard and 30s below Vercel.
 const MAX_EXEC_MS = 270_000;
@@ -3289,7 +3291,7 @@ async function processQueueItem(
     ].filter((value, index, values) => value && values.indexOf(value) === index);
     const previousOrchestration = item.meta?.ai_orchestration_v4 as Record<string, unknown> | undefined;
     const aiOrchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
-    const orchestrationAttempt = Math.max(1, Math.min(3, Number(
+    const orchestrationAttempt = Math.max(1, Math.min(BLOG_QUALITY_MAX_ATTEMPTS_V4, Number(
       aiOrchestrationMeta?.attempt || Number(item.attempts || 0) + 1,
     )));
     const generationReceipt = aiOrchestrationMeta?.receipt as BlogAiTextResult['receipt'] | undefined;
@@ -3318,7 +3320,7 @@ async function processQueueItem(
           reasons: qualityEvaluationV3.passed && publishQuality.passed
             ? ['non_model_candidate_quality_passed']
             : ['non_model_candidate_review_required', ...orchestrationFailureReasons],
-          maxAttempts: 3,
+          maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
         };
     generationMeta.ai_orchestration_v4 = {
       ...(aiOrchestrationMeta || {}),
@@ -4111,7 +4113,7 @@ async function processQueueItem(
     const providerFailureCode = classifyBlogAiProviderFailure(err);
     if (providerFailureCode) {
       const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
-      const attemptNumber = Math.max(1, Math.min(3,
+      const attemptNumber = Math.max(1, Math.min(BLOG_QUALITY_MAX_ATTEMPTS_V4,
         await readLatestBlogModelCallAttemptNumberV4(
           item.id,
           priorAttempt?.attemptNumber ?? 0,

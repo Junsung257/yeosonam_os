@@ -39,7 +39,9 @@ describe('durable blog generation run source contract', () => {
     expect(nextBlogModelCallAttemptNumberV4(0)).toBe(1);
     expect(nextBlogModelCallAttemptNumberV4(1)).toBe(2);
     expect(nextBlogModelCallAttemptNumberV4(2)).toBe(3);
-    expect(nextBlogModelCallAttemptNumberV4(3)).toBe(3);
+    expect(nextBlogModelCallAttemptNumberV4(3)).toBe(4);
+    expect(nextBlogModelCallAttemptNumberV4(4)).toBe(5);
+    expect(nextBlogModelCallAttemptNumberV4(5)).toBe(5);
   });
 
   it('uses the latest completed output as the next rewrite base', () => {
