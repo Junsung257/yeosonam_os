@@ -422,6 +422,20 @@ export function decideBlogQualityRouteV4(
   }
 
   const explicitlyGrounded = input.researchValid === true && input.claimLedgerValid === true;
+  const canReResearchWeakDraft = input.researchValid !== true
+    && (input.researchAttempts ?? 0) < 1
+    && hardBlockers.length === 0
+    && !allReasons.some(isNonRewritableQualityFailureV4)
+    && completedAttempts < BLOG_QUALITY_MAX_ATTEMPTS_V4;
+  if (canReResearchWeakDraft) {
+    return {
+      route: 'reresearch', nextStage: completedAttempts >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high',
+      publishable: false,
+      reasons: unique(['quality_score_below_75_research_repair_required', ...allReasons]),
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
+    };
+  }
+
   const qualityWeaknessIsRepairable = explicitlyGrounded
     && hardBlockers.length === 0
     && !allReasons.some(isResearchBlocker)

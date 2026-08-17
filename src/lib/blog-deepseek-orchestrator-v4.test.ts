@@ -145,9 +145,15 @@ describe('blog DeepSeek orchestrator V4', () => {
     })).toMatchObject({ route: 'quarantine', nextStage: null });
   });
 
-  it('quarantines sub-75 drafts when grounding is not explicit or the failure is factual', () => {
+  it('re-researches sub-75 drafts when grounding is not explicit, then quarantines only after the repair budget', () => {
     expect(decideBlogQualityRouteV4({
       score: 70, completedAttempts: 1, failureReasons: ['primary_decision_not_answered'],
+    })).toMatchObject({ route: 'reresearch', nextStage: 'rewrite_pro_high' });
+    expect(decideBlogQualityRouteV4({
+      score: 70,
+      completedAttempts: 2,
+      researchAttempts: 1,
+      failureReasons: ['primary_decision_not_answered'],
     })).toMatchObject({ route: 'quarantine', nextStage: null });
     expect(decideBlogQualityRouteV4({
       score: 70,
