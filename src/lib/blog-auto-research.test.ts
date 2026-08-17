@@ -1292,6 +1292,111 @@ describe('buildBlogResearchBundleFromGrounding', () => {
     expect(result.issues).toContain('evidence_rejected:0:claim_type_mismatch:duration:factual');
   });
 
+  it('does not allow the model to downgrade volatile travel facts to LOW risk', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'danang-itinerary-risk-floor',
+      destination: '다낭',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_local_source'],
+        },
+      },
+      payload: {
+        sources: [{
+          sourceKey: 'tourism',
+          groundingChunkIndex: 0,
+          publisher: 'Reviewed Danang guide',
+          sourceType: 'reputable_local_source',
+          claimTypes: ['duration', 'price', 'factual'],
+          country: 'VN',
+          destination: '다낭',
+        }],
+        evidence: [
+          {
+            evidenceKey: 'duration',
+            sourceKey: 'tourism',
+            excerpt: '논느억 지역에서 호이안까지 차량으로 30분이 소요됩니다.',
+            claimType: 'duration',
+            riskLevel: 'LOW',
+            normalizedValue: '30',
+            unit: '분',
+          },
+          {
+            evidenceKey: 'price',
+            sourceKey: 'tourism',
+            excerpt: '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.',
+            claimType: 'price',
+            riskLevel: 'LOW',
+            normalizedValue: '150000',
+            unit: '1회',
+            currency: 'VND',
+          },
+          {
+            evidenceKey: 'hours',
+            sourceKey: 'tourism',
+            excerpt: '썬월드 바나힐 운영시간은 오전 8시부터 오후 10시까지입니다.',
+            claimType: 'factual',
+            riskLevel: 'LOW',
+            normalizedValue: '8:00 AM – 10:00 PM',
+            unit: '시간',
+          },
+        ],
+        claims: [
+          {
+            claimText: '논느억 지역에서 호이안까지 차량으로 30분이 소요됩니다.',
+            claimType: 'duration',
+            riskLevel: 'LOW',
+            evidenceKeys: ['duration'],
+            normalizedValue: '30',
+            unit: '분',
+          },
+          {
+            claimText: '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.',
+            claimType: 'price',
+            riskLevel: 'LOW',
+            evidenceKeys: ['price'],
+            normalizedValue: '150000',
+            unit: '1회',
+            currency: 'VND',
+          },
+          {
+            claimText: '썬월드 바나힐 운영시간은 오전 8시부터 오후 10시까지입니다.',
+            claimType: 'factual',
+            riskLevel: 'LOW',
+            evidenceKeys: ['hours'],
+            normalizedValue: '8:00 AM – 10:00 PM',
+            unit: '시간',
+          },
+        ],
+      },
+      groundingChunks: [{
+        web: { uri: 'https://travel.example.com/danang-risk', title: 'Danang guide' },
+      }],
+      reputableRegistry: [{
+        id: 'danang-guide',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_local_source'],
+        intents: ['itinerary'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-08-17T00:00:00.000Z'),
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.bundle?.evidence.map((item) => item.riskLevel)).toEqual([
+      'MEDIUM', 'MEDIUM', 'MEDIUM',
+    ]);
+    expect(result.bundle?.claims.map((item) => item.riskLevel)).toEqual([
+      'MEDIUM', 'MEDIUM', 'MEDIUM',
+    ]);
+  });
+
   it('builds a publish-gate-ready low-risk bundle only from grounded URLs', () => {
     const groundingChunks: GroundingChunk[] = [
       { web: { uri: 'https://prices.example.com/osaka-breakfast', title: 'Osaka price guide' } },

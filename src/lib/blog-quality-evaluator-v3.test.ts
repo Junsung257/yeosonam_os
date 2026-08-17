@@ -252,6 +252,45 @@ describe('explainable blog quality evaluator v3', () => {
     expect(report.passed).toBe(false);
   });
 
+  it('does not count a bare mention of traveler stamina as an actual rest decision', () => {
+    const body = [
+      '# 다낭 3박4일 여행 코스와 이동 동선',
+      '공식 이동 시간을 확인한 뒤 출발 지점과 하루 체력에 맞춰 장소 순서를 결정하세요.',
+      '## 1일차: 린 응 파고다',
+      '린 응 파고다까지 차량으로 15분이 소요됩니다.',
+      '## 2일차: 바나힐',
+      '바나힐은 다낭에서 서쪽으로 차량으로 40분 거리에 있습니다.',
+      '출발 전에 공식 운영 공지를 확인하세요.',
+      '## 3일차: 마블 마운틴과 호이안',
+      '논느억 지역에서 호이안까지 차량으로 30분이 소요됩니다.',
+      '## 4일차: 미선 유적지',
+      '우천이나 휴무가 생기면 호이안 블록과 맞바꾸는 대체 동선을 두세요.',
+    ].join('\n\n');
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '다낭 3박4일 여행 코스와 이동 동선',
+      body,
+      destination: '다낭',
+      primaryQuery: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryDecision: '3박4일 동안 어느 날에 어느 장소를 배치해야 하는가?',
+      archetype: 'itinerary_timeline',
+      itineraryEvidenceTexts: [
+        '린 응 파고다까지 차량으로 15분이 소요됩니다.',
+        '바나힐은 다낭에서 서쪽으로 차량으로 40분 거리에 있습니다.',
+        '논느억 지역에서 호이안까지 차량으로 30분이 소요됩니다.',
+        '미선 유적지 입장료는 150,000 VND입니다.',
+      ],
+      intentCompletionScore: 1,
+      serpIntentAlignment: 1,
+      decisionCompletion: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.dimensions.intent_completion.passed).toBe(false);
+    expect(report.dimensions.intent_completion.evidence).toContain('rest_plan=false');
+    expect(report.passed).toBe(false);
+  });
+
   it('rejects an itinerary that repeats the same planning concepts without adding information', () => {
     const body = [
       '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',

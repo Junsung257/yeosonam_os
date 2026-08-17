@@ -38,6 +38,18 @@ describe('rewrite claim type compatibility', () => {
     });
   });
 
+  it('recognizes a compact Korean duration range as duration', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '마블 마운틴 주요 명소를 둘러보는 데 3~4시간이 소요됩니다.',
+      'duration',
+    )).toEqual({
+      passed: true,
+      declaredType: 'duration',
+      deterministicType: 'duration',
+      candidateKind: 'time_schedule',
+    });
+  });
+
   it('fails closed when the publish classifier cannot identify the claim', () => {
     expect(inspectBlogInformationClaimTypeCompatibility(
       '이 장소는 일정의 중심으로 삼기 좋습니다.',
@@ -656,12 +668,12 @@ describe('blog information claim validator', () => {
     const ledger: BlogInformationClaimLedgerEntry[] = [
       {
         ...ledgerFor(priceClaim)[0]!,
-        riskLevel: 'LOW',
+        riskLevel: 'MEDIUM',
       },
       {
         ...ledgerFor(policyClaim)[0]!,
         claimType: 'policy',
-        riskLevel: 'MEDIUM',
+        riskLevel: 'HIGH',
       },
     ];
     const markdown = [
@@ -680,6 +692,7 @@ describe('blog information claim validator', () => {
       persistedClaims,
       claimLedger: ledger,
       intentType: 'local_transport',
+      reviewStatus: 'approved',
       expectedScope: {
         country: '캐나다',
         destination: '캐나다 로키산맥',
@@ -690,11 +703,33 @@ describe('blog information claim validator', () => {
     expect(report.issues).toEqual([]);
     expect(report.passed).toBe(true);
     expect(report.coverage).toBe(1);
-    expect(report.requiresHumanReview).toBe(false);
+    expect(report.requiresHumanReview).toBe(true);
     expect(report.claims).toEqual([
       expect.objectContaining({ claimText: priceClaim, claimType: 'price' }),
       expect.objectContaining({ claimText: policyClaim, claimType: 'policy' }),
     ]);
+  });
+
+  it('fails closed when the writer ledger downgrades deterministic price risk', () => {
+    const claimText = '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.';
+    const ledger = ledgerFor(claimText);
+    ledger[0]!.riskLevel = 'LOW';
+    const report = validateBlogInformationClaims({
+      markdown: claimText,
+      persistedClaims: [supportedRecord(claimText, {
+        scope: { currency: 'VND' },
+      })],
+      claimLedger: ledger,
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'invalid_claim_ledger',
+        message: expect.stringContaining('LOW->MEDIUM'),
+      }),
+    ]));
   });
 
   it('validates only approved ledger claims in a deterministic entry article', () => {

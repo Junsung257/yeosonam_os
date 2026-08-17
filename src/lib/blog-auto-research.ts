@@ -675,14 +675,53 @@ function toSourceType(
   return null;
 }
 
-function toRiskLevel(value: unknown, claimType?: BlogInformationClaimType): BlogInformationEvidenceRiskLevel {
-  const normalized = clean(value).toUpperCase();
-  if (normalized === 'HIGH' || normalized === 'MEDIUM' || normalized === 'LOW') {
-    return normalized;
+const AUTO_RESEARCH_RISK_RANK: Record<BlogInformationEvidenceRiskLevel, number> = {
+  LOW: 1,
+  MEDIUM: 2,
+  HIGH: 3,
+};
+
+function minimumAutoResearchRiskLevel(
+  claimType?: BlogInformationClaimType,
+  statement?: string,
+): BlogInformationEvidenceRiskLevel {
+  if (claimType === 'entry_visa' || claimType === 'insurance' || claimType === 'policy'
+    || claimType === 'customs') return 'HIGH';
+  if (claimType === 'price' || claimType === 'currency' || claimType === 'duration'
+    || claimType === 'climate' || claimType === 'percentage' || claimType === 'superlative') {
+    return 'MEDIUM';
   }
-  if (claimType === 'entry_visa' || claimType === 'insurance' || claimType === 'policy') return 'HIGH';
-  if (claimType === 'price' || claimType === 'currency' || claimType === 'duration') return 'MEDIUM';
+  if (statement && claimType) {
+    const compatibility = inspectBlogInformationClaimTypeCompatibility(statement, claimType);
+    if (compatibility.candidateKind && [
+      'money_price',
+      'percentage',
+      'distance',
+      'time_schedule',
+      'date_period',
+      'quantity_limit',
+      'climate_measurement',
+      'availability_status',
+      'requirement_prohibition',
+      'superlative',
+    ].includes(compatibility.candidateKind)) return 'MEDIUM';
+  }
   return 'LOW';
+}
+
+function toRiskLevel(
+  value: unknown,
+  claimType?: BlogInformationClaimType,
+  statement?: string,
+): BlogInformationEvidenceRiskLevel {
+  const normalized = clean(value).toUpperCase();
+  const supplied = normalized === 'HIGH' || normalized === 'MEDIUM' || normalized === 'LOW'
+    ? normalized
+    : 'LOW';
+  const minimum = minimumAutoResearchRiskLevel(claimType, statement);
+  return AUTO_RESEARCH_RISK_RANK[supplied] >= AUTO_RESEARCH_RISK_RANK[minimum]
+    ? supplied
+    : minimum;
 }
 
 export function normalizeAutoResearchStructuredValue(input: {
@@ -976,7 +1015,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       spanStart: span.start,
       spanEnd: span.end,
       claimType,
-      riskLevel: toRiskLevel(draft.riskLevel, claimType),
+      riskLevel: toRiskLevel(draft.riskLevel, claimType, statement),
       observedAt: retrievedAt,
       validFrom,
       validUntil,
@@ -1108,7 +1147,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       claimFingerprint: createBlogInformationClaimFingerprint(claimText),
       claimText,
       claimType,
-      riskLevel: toRiskLevel(draft.riskLevel, claimType),
+      riskLevel: toRiskLevel(draft.riskLevel, claimType, claimText),
       extractedValue: {
         normalizedValue,
         unit,

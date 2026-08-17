@@ -125,11 +125,11 @@ export function countUnsupportedNumericBlogInformationClaims(
 }
 
 const PRICE_RE = /(?:[₩￦¥￥$€₫]\s*\d[\d,.]*)|(?:\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\s*\d[\d,.]*)|(?:\d[\d,.]*\s*(?:원|엔|달러|위안|유로|바트|동|페소|링깃|루피|파운드|프랑|JPY|KRW|USD|VND|SGD|CNY|EUR|THB))|(?:(?:가격|요금|비용|예산|택시비|교통비|식비|숙박비)\s*(?:은|는|이|가|:)?\s*(?:약\s*)?\d)/i;
-const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?))?/iu;
+const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?))?/iu;
 const PERCENT_RE = /\d+(?:\.\d+)?\s*%/;
 const DISTANCE_RE = /(?:약|최대|최소|평균)?\s*\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)/i;
 const CLOCK_RE = /(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*(?:~|-|–)\s*(?:[01]?\d|2[0-3]):[0-5]\d)?/;
-const HOUR_CLOCK_RE = /(?:오전|오후)?\s*\d{1,2}시(?:\s*\d{1,2}분)?/i;
+const HOUR_CLOCK_RE = /(?:오전|오후)?\s*\d{1,2}시(?!간)(?:\s*\d{1,2}분)?/i;
 const SCHEDULE_RE = /(?:매일|주말|평일|연중무휴|24시간|첫차|막차|휴무)/i;
 const SCHEDULE_ASSERTION_RE = /(?:영업|운영|개장|폐장|첫차|막차|출발|도착|체크인|체크아웃|휴무|혼잡|운행|합니다|됩니다|입니다|가능|불가)/i;
 const DATE_PERIOD_RE = /(?:\d{4}[./-]\d{1,2}(?:[./-]\d{1,2})?|\d{4}년\s*\d{1,2}월(?:\s*\d{1,2}일)?|(?<!\d)\d{1,2}월\s*\d{1,2}일|(?<!\d)\d{1,3}\s*(?:일|주|개월)(?!\s*차)|(?<!\d)\d{1,2}\s*년(?:간|까지|이내|이상|이하|동안)?)/i;
@@ -624,7 +624,8 @@ export function validateBlogInformationClaims(input: {
         claimFingerprint: claim.claimFingerprint,
         claimText: claim.claimText ?? '',
         claimType: claim.claimType,
-        riskLevel: 'MEDIUM' as const,
+        riskLevel: extractBlogInformationClaims(claim.claimText ?? '')[0]?.riskLevel
+          ?? ('MEDIUM' as const),
       }));
     const validationMarkdown = expandDeterministicResearchRowsForValidation(
       input.markdown,
@@ -657,6 +658,11 @@ export function validateBlogInformationClaims(input: {
     const declaredRiskByFingerprint = new Map(
       declaredClaims.map((claim) => [claim.claimFingerprint, claim.riskLevel]),
     );
+    const riskRank: Record<BlogInformationEvidenceRiskLevel, number> = {
+      LOW: 1,
+      MEDIUM: 2,
+      HIGH: 3,
+    };
     const issues: BlogInformationClaimValidationIssue[] = [];
     let supportedClaims = 0;
     let unclassifiedCount = 0;
@@ -705,6 +711,17 @@ export function validateBlogInformationClaims(input: {
           claimText: claim.claimText,
           claimType: claim.claimType,
           message: `최종 본문 factual candidate가 구조화 claim ledger에 없습니다: ${claim.candidateKind}`,
+        });
+        continue;
+      }
+      const declaredRisk = declaredRiskByFingerprint.get(claim.claimFingerprint);
+      if (declaredRisk && riskRank[declaredRisk] < riskRank[claim.riskLevel]) {
+        issues.push({
+          code: 'invalid_claim_ledger',
+          claimFingerprint: claim.claimFingerprint,
+          claimText: claim.claimText,
+          claimType: claim.claimType,
+          message: `writer claim ledger가 결정론적 위험도를 낮췄습니다: ${declaredRisk}->${claim.riskLevel}`,
         });
         continue;
       }
