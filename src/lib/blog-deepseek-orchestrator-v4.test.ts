@@ -213,7 +213,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
 
     expect(prompt).toContain('[ARCHETYPE CONTRACT — itinerary_timeline]');
-    expect(prompt).toContain('what to group first, what to keep separate');
+    expect(prompt).toContain('Two duration claims never prove route compatibility or a shared origin.');
     expect(prompt).toContain('use "일정" and "동선" naturally');
     expect(prompt).toContain('without forcing a stock phrase');
     expect(prompt).toContain('three distinct stages (start, middle, finish)');
@@ -224,6 +224,8 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('decision aid, not a generic checklist');
     expect(prompt).toContain('Do not merely list claims or finish with generic questions');
     expect(prompt).toContain('Write natural Korean with varied sentence shapes');
+    expect(prompt).toContain('Exact duration or distance claims do not authorize qualitative labels');
+    expect(prompt).toContain('Never write headings such as "짧은 이동 구간" or "이동 시간이 긴 일정".');
     expect(prompt).toContain('do not force every sentence to end in 하세요');
     expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
     expect(prompt).toContain('Each approved fact may appear only once in the visible article');

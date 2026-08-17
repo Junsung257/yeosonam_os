@@ -168,9 +168,9 @@ describe('V3 editorial decision guidance classification', () => {
   it.each([
     '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
     '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
-    '마무리: Bà Nà Hills처럼 이동이 분리되는 일정은 마지막 순서로 두되, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.',
     '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
     '마지막 순서는 공식 채널을 다시 확인해 변동 가능성을 줄이고, 우천이나 휴무에 대비한 대체 일정을 남겨 두는 쪽으로 잡으세요.',
+    '마지막 순서는 우천이나 휴무 가능성까지 고려해 대체 일정을 남겨두는 방식으로 결정하세요.',
     '출발 전에 공식 채널에서 운영 여부와 예약 조건을 다시 확인하고, 당일 일정이 어긋날 경우를 대비한 대체 동선을 정해 두세요.',
   ])('keeps source-neutral itinerary planning advice out of the factual ledger: %s', (sentence) => {
     expect(classifyBlogInformationStatement(sentence)).toMatchObject({
@@ -185,6 +185,10 @@ describe('V3 editorial decision guidance classification', () => {
     ['일정을 짤 때는 이동 시간이 긴 곳과 짧은 곳을 나누어 묶고, 예약이 필요한 일정을 먼저 확정한 뒤 나머지를 채우는 순서로 결정하세요.', 'unknown_unclassified'],
     ['동선은 린 응 파고다와 마블마운틴처럼 짧은 이동 구간을 한 흐름으로 두고, 바나힐은 별도 시간대로 분리해 일정 전체의 피로를 줄이는 방향이 무리가 없습니다.', 'unknown_unclassified'],
     ['바나힐은 이동 시간이 길어 다른 일정과 섞으면 동선이 복잡해질 수 있으니, 하루 중 한 블록으로 따로 두는 편이 낫습니다.', 'unknown_unclassified'],
+    ['마무리: Bà Nà Hills처럼 이동이 분리되는 일정은 마지막 순서로 두되, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.', 'verified_factual'],
+    ['짧은 이동 구간부터 묶어 동선을 단순하게 만들기', 'unknown_unclassified'],
+    ['차량 이동 시간이 짧은 두 곳을 먼저 비교하면 일정의 중심축을 잡기 쉽습니다.', 'unknown_unclassified'],
+    ['이동 시간이 긴 일정은 별도로 분리해 여유 확보하기', 'unknown_unclassified'],
   ] as const)('does not let itinerary wording hide a destination assertion: %s', (sentence, category) => {
     expect(classifyBlogInformationStatement(sentence).category).toBe(category);
   });
@@ -272,7 +276,7 @@ describe('blog information claim validator', () => {
       factualClaims[1],
       factualClaims[2],
       '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
-      '마무리: Bà Nà Hills처럼 이동이 분리되는 일정은 마지막 순서로 두되, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.',
+      '마무리에는 공식 채널을 다시 확인하고, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.',
       '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
     ].join('\n\n');
     const claimLedger = factualClaims.flatMap(ledgerFor);
