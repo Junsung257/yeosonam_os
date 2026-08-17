@@ -296,7 +296,7 @@ function buildDescription(primaryQuery: string, intent: SearchDecisionIntent): s
           : intent === 'budget_decision'
             ? `${primaryQuery}에 필요한 비용을 여행 방식별로 나누어 비교합니다. 확인된 가격 근거와 변동 조건을 바탕으로 내 예산에 맞는 선택과 출발 전 확인 항목을 정리했습니다.`
             : intent === 'itinerary_execution'
-              ? `${primaryQuery}을 이동 시간과 일정 순서 기준으로 정리했습니다. 확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나누고, 마지막 순서까지 실행 가능하게 살펴보세요.`
+              ? `${primaryQuery}을 계획할 때 필요한 확인 순서를 정리했습니다. 본문에 연결된 공식 근거를 먼저 확인하고, 출발 지점·예약·휴식 조건에 맞춰 실행 순서를 정하는 방법을 살펴보세요.`
             : `${primaryQuery}에 바로 답할 수 있도록 확인된 정보와 선택 기준을 구분해 정리했습니다. 내 일정과 우선순위에 맞는 결정을 내리고 출발 전에 다시 확인할 항목도 살펴보세요.`;
   const complete = base.length >= 80
     ? base

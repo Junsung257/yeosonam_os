@@ -33,7 +33,8 @@ describe('flexible blog content brief v3', () => {
       primaryDecision: '언제 무엇을 해야 무리가 없는가?',
     });
     expect(brief.title).toContain('이동 부담을 줄이는 순서');
-    expect(brief.metadata.description).toContain('함께 묶을 동선');
+    expect(brief.metadata.description).toContain('본문에 연결된 공식 근거');
+    expect(brief.metadata.description).not.toMatch(/함께 묶을 동선|따로 둘 일정/);
   });
 
   it('defaults FAQ, checklist, year and image minimum off', () => {
