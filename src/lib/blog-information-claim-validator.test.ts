@@ -506,6 +506,34 @@ describe('blog information claim validator', () => {
     ]);
   });
 
+  it('keeps production itinerary decisions editorial while retaining measurable facts', () => {
+    const markdown = [
+      '3박4일 일정은 공식 이동 시간을 먼저 비교한 뒤, 하루에 묶을 장소를 정하고 마지막으로 예약·운영 확인 순서를 잡는 방식으로 구성하세요.',
+      '동선은 린 응 파고다, 마블 마운틴, 논느억, 호이안, 바나힐을 기준으로 제안합니다.',
+      '아래 일정은 편집 제안이며 공식 노선이 아니므로, 출발 지점과 이동 속도에 따라 직접 판단해야 합니다.',
+      '두 장소의 공식 이동 시간을 나란히 놓고, 숙소 위치와 당일 컨디션에 맞는 순서를 고르면 됩니다.',
+      '이 순서는 아래 공식 이동 시간을 근거로 한 편집 제안이며, 실제 출발 지점에 따라 달라질 수 있습니다.',
+      '아래 운영 시간을 확인한 뒤, 입장 시각과 체류 순서를 정하면 됩니다.',
+      '## 4일차: 우천·휴무·피로 대체안과 휴식 결정',
+      '4일차는 앞선 일정 중 날씨나 휴무로 빠진 장소를 다시 넣거나, 휴식을 우선할지 결정하세요.',
+      '1일차 후보였던 린 응 파고다나 마블 마운틴 중 미방문 장소를 4일차 대체 블록으로 삼을 수 있습니다.',
+      '가장 먼저 확인할 블록은 3일차 바나힐입니다.',
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+    ].join('\n\n');
+
+    expect(extractBlogInformationClaims(markdown).map((claim) => claim.claimText)).toEqual([
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+    ]);
+  });
+
+  it('does not let itinerary guidance hide a measurable claim', () => {
+    expect(extractBlogInformationClaims(
+      '3일차에는 바나힐까지 차량으로 40분 이동하는 순서를 제안합니다.',
+    )).toEqual([
+      expect.objectContaining({ claimType: 'duration', candidateKind: 'time_schedule' }),
+    ]);
+  });
+
   it('keeps non-numeric reading guidance editorial but validates prescriptive timing', () => {
     const guidance = [
       '낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다.',
