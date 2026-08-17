@@ -177,6 +177,10 @@ describe('V3 editorial decision guidance classification', () => {
     '시작: 이동 시간이 같은 후보라도 내 숙소에서 실제로 가까운 순서가 아니라, 예약을 먼저 확인할 수 있는 곳부터 배치하세요.',
     '공식 이동 시간을 비교했으면 예약 가능 여부와 운영 공지를 다시 확인하고, 내 출발 지점과 휴식 시간을 기준으로 순서를 확정하세요.',
     '다낭 여행 일정과 이동 동선을 계획할 때 필요한 확인 순서를 정리했습니다.',
+    '시작: Linh Ung Pagoda, Bà Nà Hills, Marble Mountains 중 먼저 갈 후보의 예약 가능 여부와 최신 운영 공지를 확인하세요.',
+    '공식 이동 시간을 다시 읽고, 내 출발 위치와 예약 시각, 휴식 필요량을 함께 따져보세요.',
+    '일정을 짤 때는 먼저 공식 이동 시간을 나란히 놓고 내 출발 지점과 체력에 맞는 순서를 고르는 것이 안전합니다.',
+    '무리가 없는 일정은 한 번에 모든 곳을 담기보다, 중간에 쉴 지점과 우천·휴무 대체안을 함께 두는 쪽에서 나옵니다.',
   ])('keeps source-neutral itinerary planning advice out of the factual ledger: %s', (sentence) => {
     expect(classifyBlogInformationStatement(sentence)).toMatchObject({
       category: 'navigation_boilerplate',
@@ -205,6 +209,19 @@ describe('V3 editorial decision guidance classification', () => {
     )).toMatchObject({
       category: 'verified_factual',
       factualClassification: { candidateKind: 'requirement_prohibition' },
+    });
+  });
+
+  it.each([
+    ['바나힐은 오늘 휴무입니다.', 'time_schedule'],
+    ['해당 호텔은 현재 예약 가능합니다.', 'availability_status'],
+    ['린 응 파고다는 시내에서 차량으로 15분 소요됩니다.', 'time_schedule'],
+    ['관광 비자는 입국 전에 반드시 필요합니다.', 'regulated_policy'],
+    ['일정에 여권 사본을 반드시 준비하세요.', 'requirement_prohibition'],
+  ] as const)('keeps operational, measurable, and regulated facts inside the evidence gate: %s', (sentence, candidateKind) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind },
     });
   });
 });

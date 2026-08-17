@@ -238,7 +238,36 @@ const V3_ITINERARY_EDITORIAL_GUIDANCE_RE = /^(?!.*(?:\d|현재|실제로|항상|
 const V3_ITINERARY_CONTINGENCY_GUIDANCE_RE = /^(?!.*\d)(?=.*(?:우천|날씨|휴무|변동))(?=.*(?:경우|때|어긋|밀리|밀릴|바뀌|대비|가능성))(?=.*(?:대체|조정|바꾸|남겨|정해|확인))(?=.*(?:일정|동선|순서)).+$/i;
 const V3_OPERATIONAL_RECHECK_GUIDANCE_RE = /^(?!.*(?:\d|(?:현재|오늘).*(?:가능|불가|휴무|운영)))(?=.*(?:공식\s*(?:채널|홈페이지|공지|사이트)))(?=.*(?:운영\s*여부|예약\s*조건|입장\s*여부|휴무\s*여부|변동\s*여부))(?=.*(?:확인|점검))(?=.*(?:일정|동선|대체|출발)).+$/i;
 const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s*(?:긴|길|짧)|(?:긴|짧은)\s*이동\s*구간|이동(?:이|은)\s*분리되는|같은\s*권역|함께\s*묶을\s*동선|따로\s*둘\s*일정|동선(?:이|은)\s*복잡|(?:안전|적합|최적|효율적)(?:합니다|입니다|한|하))/i;
+const V3_EXPLICIT_OPERATIONAL_STATUS_RE = /(?:(?:현재|오늘|지금)\s*)?(?:(?:예약|판매|입장|이용|운영|영업|접수)(?:은|는|이|가)?\s*(?:가능|불가|마감|매진|중단|종료|휴무|중)(?:합니다|입니다|됩니다)|(?:매일|주말|평일|연중무휴|24시간).*(?:영업|운영|운행|휴무)(?:합니다|입니다|됩니다))/i;
+const V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE = /^(?=.*(?:일정|동선|순서|후보|출발\s*(?:위치|지점)|휴식|체력|대체안|우천|예약\s*(?:가능\s*)?여부|운영\s*공지|공식\s*이동\s*시간))(?=.*(?:확인하세요|비교하세요|고르세요|선택하세요|정하세요|결정하세요|따져보세요|점검하세요|두세요|남겨\s*두세요|준비하세요|조정하세요|확정하세요)).+$/i;
+const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동선|출발\s*(?:위치|지점)|체력|휴식|대체안|우천))(?=.*(?:(?:내|자신의).*(?:맞는|기준)|(?:중간|마지막).*(?:쉴|대체)))(?=.*(?:고르는\s*것이\s*안전합니다|두는\s*쪽(?:에서)?\s*나옵니다|두는\s*편이\s*(?:낫|좋)|결정하는\s*편이\s*(?:낫|좋))).+$/i;
+const REGULATED_TRAVEL_TOPIC_RE = /(?:세관|면세|반입|반출|입국|출입국|비자|여권|전자여행허가|ETA|ESTA|여행자?\s*보험|보험\s*(?:보장|면책|청구))/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
+const SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
+  'availability_status',
+  'time_schedule',
+  'requirement_prohibition',
+]);
+
+function isSourceNeutralPlanningAdvice(
+  segment: string,
+  factualClassification: Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null,
+  unsupportedLocalEvaluation: boolean,
+): boolean {
+  if (unsupportedLocalEvaluation) return false;
+  if (factualClassification?.riskLevel === 'HIGH') return false;
+  if (REGULATED_TRAVEL_TOPIC_RE.test(segment)) return false;
+  if (/\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(segment)) return false;
+  if (V3_EXPLICIT_OPERATIONAL_STATUS_RE.test(segment)) return false;
+  if (
+    factualClassification
+    && !SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS.has(factualClassification.candidateKind)
+  ) {
+    return false;
+  }
+  return V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment);
+}
 
 export function classifyBlogInformationStatement(segment: string): {
   category: BlogInformationStatementCategory;
@@ -248,7 +277,15 @@ export function classifyBlogInformationStatement(segment: string): {
   // win over editorial-language allowlists. This prevents a sentence such as
   // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
   const factualClassification = classifyClaim(segment);
-  const unsupportedLocalEvaluation = V3_UNSUPPORTED_LOCAL_EVALUATION_RE.test(segment);
+  const sourceNeutralSafetyChoice = V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
+    && /(?:내|자신의).*(?:맞는|기준).*(?:순서|후보).*(?:고르|선택).*안전합니다/i.test(segment);
+  const unsupportedLocalEvaluation = V3_UNSUPPORTED_LOCAL_EVALUATION_RE.test(segment)
+    && !sourceNeutralSafetyChoice;
+  const sourceNeutralPlanningAdvice = isSourceNeutralPlanningAdvice(
+    segment,
+    factualClassification,
+    unsupportedLocalEvaluation,
+  );
   const directDecisionGuidance = !unsupportedLocalEvaluation && (
     V3_DECISION_GUIDANCE_RE.test(segment)
       || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
@@ -273,6 +310,7 @@ export function classifyBlogInformationStatement(segment: string): {
     factualClassification
     && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
     && !(factualClassification.candidateKind === 'time_schedule' && itineraryContingencyGuidance)
+    && !sourceNeutralPlanningAdvice
     && !availabilityRecheck
   ) {
     return { category: 'verified_factual', factualClassification };
@@ -283,6 +321,7 @@ export function classifyBlogInformationStatement(segment: string): {
     || itineraryContingencyGuidance
     || operationalRecheckGuidance
     || reservationPlanningRecheck
+    || sourceNeutralPlanningAdvice
     || availabilityRecheck
     || V3_NAVIGATION_HEADING_RE.test(segment)
     || (!unsupportedLocalEvaluation && V3_EDITORIAL_PLANNING_HEADING_RE.test(segment))
