@@ -153,4 +153,44 @@ describe('explainable blog quality evaluator v3', () => {
     ]));
     expect(report.passed).toBe(false);
   });
+
+  it('rejects an itinerary that repeats the same planning concepts without adding information', () => {
+    const body = [
+      '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '일정을 짤 때는 먼저 공식 이동 시간을 나란히 놓고 내 출발 지점과 체력에 맞는 순서를 고르세요. 예약 상태와 휴식 지점을 다시 확인하고 동선을 결정하세요. 우천이나 일정 지연에 대비한 대체 동선도 미리 정하세요.',
+      '## 공식 이동 시간으로 후보 비교하기',
+      '다낭 시내에서 린응 파고다까지 차량으로 15분 소요',
+      '다낭에서 바나힐까지 차량으로 40분 소요',
+      '다낭 시내에서 마블 마운틴까지 차량으로 15분 소요',
+      '세 구간의 공식 이동 시간을 내 출발 지점과 비교하세요. 어느 구간을 먼저 둘지는 예약 가능 여부와 휴식 여유를 확인한 뒤 결정하세요.',
+      '## 예약과 휴식 순서로 실행하기',
+      '- 시작: 후보의 예약 상태와 운영 공지를 확인하세요.',
+      '- 중간: 이동 사이에 휴식 지점을 두고 공식 이동 시간을 비교하세요.',
+      '- 마무리: 우천이나 지연에 쓸 대체 동선을 정하고 예약을 다시 확인하세요.',
+      '공식 이동 시간은 그대로 두고 내 출발 위치와 체력, 예약 조건에 따라 순서를 바꾸세요. 최신 운영 공지를 확인하고 대체안을 남겨 두세요.',
+    ].join('\n\n');
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      body,
+      destination: '다낭',
+      primaryQuery: '다낭 여행 일정과 이동 동선',
+      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      archetype: 'itinerary_timeline',
+      intentCompletionScore: 1,
+      informationGainScore: 1,
+      comparativeInformationGain: 1,
+      serpIntentAlignment: 1,
+      decisionCompletion: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.dimensions.intent_completion.passed).toBe(true);
+    expect(report.dimensions.information_gain).toMatchObject({ value: 0.5, passed: false });
+    expect(report.dimensions.comparative_information_gain.passed).toBe(false);
+    expect(report.failureReasons.map((failure) => failure.code)).toContain(
+      'decision_concepts_repeated_without_new_information',
+    );
+    expect(report.passed).toBe(false);
+  });
 });

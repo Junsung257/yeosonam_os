@@ -177,6 +177,58 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
   };
 }
 
+function inspectInformationGainArtifactV3(input: BlogQualityEvaluationInputV3): {
+  score: number;
+  evidence: string[];
+  failures: string[];
+} | null {
+  const topic = `${input.primaryQuery || ''} ${input.title} ${input.primaryDecision || ''}`;
+  const itineraryIntent = input.archetype === 'itinerary_timeline'
+    || /일정|코스|동선|\d+박\s*\d+일/i.test(topic);
+  if (!itineraryIntent) return null;
+
+  const units = input.body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^#{1,6}\s|^\[[^\]]+\]\(https?:/i.test(line))
+    .flatMap((line) => line
+      .replace(/^[-*+]\s+/, '')
+      .split(/(?<=[.!?。！？])\s+/)
+      .map((unit) => unit.trim()))
+    .filter((unit) => unit.length >= 8 && !/\d/.test(unit));
+  const concepts: Array<[string, RegExp]> = [
+    ['movement', /이동|동선|구간|출발\s*(?:위치|지점)/iu],
+    ['reservation', /예약|운영\s*(?:공지|여부|상태|조건)|공식\s*채널/iu],
+    ['rest', /휴식|체력|쉬(?:고|는|어|세요)|여유/iu],
+    ['fallback', /우천|휴무|지연|취소|대체\s*(?:일정|후보|동선|안)/iu],
+    ['sequence', /순서|시작|중간|마무리|마지막|먼저|이어서|다음/iu],
+    ['comparison', /비교|공식\s*(?:이동\s*)?시간|수치|근거/iu],
+  ];
+  const counts = concepts.map(([name, pattern]) => ({
+    name,
+    count: units.filter((unit) => pattern.test(unit)).length,
+  }));
+  const repeatedConcepts = counts.filter(({ count }) => count >= 4);
+  const repetitionExcess = counts.reduce((sum, { count }) => sum + Math.max(0, count - 3), 0);
+  const repetitiveDecisionAdvice = units.length >= 6
+    && repeatedConcepts.length >= 2
+    && repetitionExcess >= 6;
+
+  return {
+    score: repetitiveDecisionAdvice ? 0.5 : 1,
+    evidence: [
+      `non_numeric_decision_units=${units.length}`,
+      `concept_counts=${counts.map(({ name, count }) => `${name}:${count}`).join(',')}`,
+      `repeated_concepts=${repeatedConcepts.map(({ name }) => name).join(',') || 'none'}`,
+      `repetition_excess=${repetitionExcess}`,
+    ],
+    failures: repetitiveDecisionAdvice
+      ? ['decision_concepts_repeated_without_new_information']
+      : [],
+  };
+}
+
 export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): BlogQualityEvaluationV3 {
   const hardBlockers: string[] = [];
   const languageFailures = KOREAN_NEGATIVE_FIXTURES
@@ -217,6 +269,18 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
   const effectiveSectionCoverage = intentArtifact
     ? Math.min(clamp(input.sectionPurposeCoverage, intentCompletion), intentArtifact.score)
     : clamp(input.sectionPurposeCoverage, intentCompletion);
+  const informationGainArtifact = inspectInformationGainArtifactV3(input);
+  const measuredInformationGain = clamp(input.informationGainScore);
+  const effectiveInformationGain = informationGainArtifact
+    ? Math.min(measuredInformationGain, informationGainArtifact.score)
+    : measuredInformationGain;
+  const measuredComparativeInformationGain = clamp(
+    input.comparativeInformationGain,
+    input.informationGainScore,
+  );
+  const effectiveComparativeInformationGain = informationGainArtifact
+    ? Math.min(measuredComparativeInformationGain, informationGainArtifact.score)
+    : measuredComparativeInformationGain;
   const truthful = input.authorReviewTruthful !== false && !hardBlockers.includes('unsupported_first_party_claim');
 
   const dimensions: Record<BlogQualityDimensionV3, BlogQualityDimensionResultV3> = {
@@ -226,7 +290,16 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     conflicting_claim_count: result(input.conflictingClaimCount || 0, (input.conflictingClaimCount || 0) === 0, [`count=${input.conflictingClaimCount || 0}`], (input.conflictingClaimCount || 0) ? ['claim_conflict_present'] : []),
     unsupported_number_count: result(input.unsupportedNumberCount || 0, (input.unsupportedNumberCount || 0) === 0, [`count=${input.unsupportedNumberCount || 0}`], (input.unsupportedNumberCount || 0) ? ['unsupported_number_present'] : []),
     destination_specificity: result(destinationSpecificity, destinationSpecificity >= 1, [`details=${input.destinationSpecificDetailCount || 0}`, `generic_here=${genericHereCount}`], destinationSpecificity >= 1 ? [] : ['destination_specific_details_below_three']),
-    information_gain: result(clamp(input.informationGainScore), clamp(input.informationGainScore) >= 0.6, [`score=${input.informationGainScore ?? 0}`], clamp(input.informationGainScore) >= 0.6 ? [] : ['information_gain_low']),
+    information_gain: result(
+      effectiveInformationGain,
+      effectiveInformationGain >= 0.6,
+      informationGainArtifact?.evidence ?? [`score=${input.informationGainScore ?? 0}`],
+      effectiveInformationGain >= 0.6
+        ? []
+        : informationGainArtifact?.failures.length
+          ? informationGainArtifact.failures
+          : ['information_gain_low'],
+    ),
     title_uniqueness: result(clamp(input.titleUniqueness, 1), clamp(input.titleUniqueness, 1) >= 0.75, [`cluster=${input.normalizedTitleClusterSize || 1}`], hardBlockers.includes('title_skeleton_saturated') ? ['title_skeleton_saturated'] : []),
     opening_uniqueness: result(clamp(input.openingUniqueness, 1), clamp(input.openingUniqueness, 1) >= 0.75, [`score=${input.openingUniqueness ?? 1}`], clamp(input.openingUniqueness, 1) >= 0.75 ? [] : ['opening_too_similar']),
     structure_uniqueness: result(clamp(input.structureUniqueness, 1), clamp(input.structureUniqueness, 1) >= 0.35, [`score=${input.structureUniqueness ?? 1}`], clamp(input.structureUniqueness, 1) >= 0.35 ? [] : ['heading_tree_too_similar']),
@@ -240,7 +313,17 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     serp_intent_alignment: result(effectiveSerpAlignment, effectiveSerpAlignment >= 0.75, intentEvidence, effectiveSerpAlignment >= 0.75 ? [] : ['serp_intent_misaligned']),
     decision_completion: result(effectiveDecisionCompletion, effectiveDecisionCompletion >= 0.75, intentEvidence, effectiveDecisionCompletion >= 0.75 ? [] : ['reader_decision_incomplete']),
     query_cluster_coverage: result(clamp(input.queryClusterCoverage, 1), clamp(input.queryClusterCoverage, 1) >= 0.6, [`score=${input.queryClusterCoverage ?? 1}`], clamp(input.queryClusterCoverage, 1) >= 0.6 ? [] : ['query_cluster_undercovered']),
-    comparative_information_gain: result(clamp(input.comparativeInformationGain, input.informationGainScore), clamp(input.comparativeInformationGain, input.informationGainScore) >= 0.6, [`score=${input.comparativeInformationGain ?? input.informationGainScore ?? 0}`], clamp(input.comparativeInformationGain, input.informationGainScore) >= 0.6 ? [] : ['comparative_information_gain_low']),
+    comparative_information_gain: result(
+      effectiveComparativeInformationGain,
+      effectiveComparativeInformationGain >= 0.6,
+      informationGainArtifact?.evidence
+        ?? [`score=${input.comparativeInformationGain ?? input.informationGainScore ?? 0}`],
+      effectiveComparativeInformationGain >= 0.6
+        ? []
+        : informationGainArtifact?.failures.length
+          ? informationGainArtifact.failures
+          : ['comparative_information_gain_low'],
+    ),
     competitor_copy_risk: result(1 - clamp(input.competitorCopyRisk), clamp(input.competitorCopyRisk) <= 0.3, [`risk=${input.competitorCopyRisk ?? 0}`], clamp(input.competitorCopyRisk) <= 0.3 ? [] : ['competitor_phrase_overlap']),
     title_snippet_congruence: result(clamp(input.titleSnippetCongruence, 1), clamp(input.titleSnippetCongruence, 1) >= 0.8, [`score=${input.titleSnippetCongruence ?? 1}`], clamp(input.titleSnippetCongruence, 1) >= 0.8 ? [] : ['title_description_body_mismatch']),
     section_purpose_coverage: result(effectiveSectionCoverage, effectiveSectionCoverage >= 0.75, intentEvidence, effectiveSectionCoverage >= 0.75 ? [] : ['section_purpose_missing']),
