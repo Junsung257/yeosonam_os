@@ -1,381 +1,184 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
-import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
+import { NextRequest } from 'next/server';
 
 import { withAdminGuard } from '@/lib/admin-guard';
-import { postAlert } from '@/lib/admin-alerts';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { prepareUploadRequestIntake } from '@/lib/product-registration/upload-request-intake';
-import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
-import { createProductRegistrationV4Job, transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
-import { ensureSourceDocumentStored } from '@/lib/product-registration-v4/source-documents';
+import { apiResponse } from '@/lib/api-response';
 import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
-import {
-  enqueueUploadTimeoutReplay,
-  scheduleImmediateUploadTimeoutReplay,
-  type UploadTimeoutReplayQueueResult,
-} from '@/lib/product-registration/upload-timeout-replay-queue';
-import {
-  PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-  parseProductRegistrationTenantId,
-} from '@/lib/product-registration-authority/types';
+import { parseProductRegistrationTenantId } from '@/lib/product-registration-authority/types';
+import { prepareUploadRequestIntake } from '@/lib/product-registration/upload-request-intake';
+import { ensureSourceDocumentStored } from '@/lib/product-registration-v4/source-documents';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
-
-function safeAfter(task: () => Promise<void> | void): void {
-  try {
-    nextAfter(task);
-  } catch (e) {
-    if (e instanceof Error && e.message.includes('outside a request scope')) {
-      void Promise.resolve()
-        .then(task)
-        .catch(err => console.warn('[Upload API] deferred task failed:', err instanceof Error ? err.message : err));
-      return;
-    }
-    throw e;
-  }
-}
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
-
-const UPLOAD_PIPELINE_SOFT_TIMEOUT_MS = Math.max(
-  60_000,
-  Math.min(270_000, Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)),
-);
-const UPLOAD_QUEUE_FIRST_TEXT_LENGTH = Math.max(
-  20_000,
-  Math.min(150_000, Number(process.env.UPLOAD_QUEUE_FIRST_TEXT_LENGTH ?? 60_000)),
-);
-const UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH = Math.max(
-  UPLOAD_QUEUE_FIRST_TEXT_LENGTH,
-  Math.min(250_000, Number(process.env.UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH ?? 120_000)),
-);
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function describeUploadError(error: unknown): { message: string; code?: string; status?: number | string; stack?: string } {
-  if (error instanceof Error) {
-    const extended = error as Error & { code?: unknown; status?: unknown; statusCode?: unknown };
-    return {
-      message: error.message,
-      code: typeof extended.code === 'string' ? extended.code : undefined,
-      status: typeof extended.status === 'number' || typeof extended.status === 'string'
-        ? extended.status
-        : typeof extended.statusCode === 'number' || typeof extended.statusCode === 'string'
-          ? extended.statusCode
-          : undefined,
-      stack: error.stack,
-    };
-  }
-  if (error && typeof error === 'object') {
-    const value = error as Record<string, unknown>;
-    return {
-      message: typeof value.message === 'string'
-        ? value.message
-        : typeof value.error === 'string'
-          ? value.error
-          : 'UNKNOWN_UPLOAD_ERROR',
-      code: typeof value.code === 'string' ? value.code : undefined,
-      status: typeof value.status === 'number' || typeof value.status === 'string'
-        ? value.status
-        : typeof value.statusCode === 'number' || typeof value.statusCode === 'string'
-          ? value.statusCode
-          : undefined,
-    };
-  }
-  return { message: String(error) };
-}
+export const maxDuration = 60;
 
 function configuredPlatformRegistrationTenantId(): string | null {
   return parseProductRegistrationTenantId(process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID);
 }
 
-function countLikelyPackageSections(rawText: string | null): number {
-  if (!rawText) return 0;
-  const matches = rawText.match(/(?:^|\n)[^\n]{0,80}(?:PKG|Package|PACKAGE)[^\n]{0,80}/gmu);
-  return matches?.length ?? 0;
+function responseHeaders(requestId: string): HeadersInit {
+  return { 'x-upload-request-id': requestId };
 }
 
-function shouldQueueFirst(rawText: string | null): boolean {
-  if (!rawText) return false;
-  const likelyPackageSections = countLikelyPackageSections(rawText);
-  if (likelyPackageSections >= 4) return true;
-  if (rawText.length >= UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH) return true;
-  return rawText.length >= UPLOAD_QUEUE_FIRST_TEXT_LENGTH && likelyPackageSections >= 2;
-}
-
-async function deferUploadForReplay(input: {
-  intake: Extract<Awaited<ReturnType<typeof prepareUploadRequestIntake>>, { ok: true }>;
-  requestId: string;
-  startedAt: number;
-  requestBaseUrl: string;
-  reasonCode: string;
-}) {
-  const elapsedMs = Date.now() - input.startedAt;
-  const replay = await enqueueUploadTimeoutReplay({
-    supabase: supabaseAdmin,
-    isSupabaseConfigured,
-    intake: input.intake,
-    uploadRequestId: input.requestId,
-    elapsedMs,
-    reasonCode: input.reasonCode,
-    timeoutMs: 8_000,
-  }).catch((error): UploadTimeoutReplayQueueResult => ({
-    queued: false,
-    reason: error instanceof Error ? error.message : String(error),
-  }));
-
-  if (replay.queued) {
-    scheduleImmediateUploadTimeoutReplay({
-      safeAfter,
-      requestBaseUrl: input.requestBaseUrl,
-      queueId: replay.queueId,
-      uploadRequestId: input.requestId,
-    });
+function describeUploadError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const candidate = error as Record<string, unknown>;
+    const fields = ['code', 'message', 'details', 'hint'] as const;
+    const diagnostic = Object.fromEntries(
+      fields
+        .map(field => [field, candidate[field]])
+        .filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    );
+    if (Object.keys(diagnostic).length > 0) return JSON.stringify(diagnostic);
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown non-Error upload failure';
+    }
   }
-
-  return NextResponse.json(
-    {
-      success: false,
-      code: 'UPLOAD_DEFERRED_FOR_REPLAY',
-      error: replay.queued
-        ? '상품등록 처리 시간이 길어 자동 재처리 큐에 넣었습니다. 같은 원문은 중복 방지 후 재처리됩니다.'
-        : '상품등록 처리 시간이 길어 중단했습니다. 같은 원문을 다시 시도해 주세요.',
-      replayQueued: replay.queued,
-      replayQueueId: replay.queueId,
-      replayReason: replay.reason,
-      retrySafe: true,
-      uploadRequestId: input.requestId,
-    },
-    { status: 202, headers: { 'x-upload-request-id': input.requestId } },
-  );
+  return String(error);
 }
 
 const postHandler = async (request: NextRequest) => {
   const requestId = randomUUID();
-  const startedAt = Date.now();
   try {
-    console.log('[Upload API] request start:', {
-      requestId,
-      at: new Date(startedAt).toISOString(),
-      contentType: request.headers.get('content-type') || null,
-    });
-
-    if (!isSupabaseConfigured) {
-      console.warn('[Upload API] Supabase env is not configured; DB writes disabled');
-    }
-
     const intake = await prepareUploadRequestIntake(request);
-    console.log('[Upload API] intake complete:', { requestId, elapsedMs: Date.now() - startedAt, ok: intake.ok });
     if (!intake.ok) {
-      return NextResponse.json(
+      return apiResponse(
         { ...intake.payload, uploadRequestId: requestId },
-        { status: intake.status, headers: { 'x-upload-request-id': requestId } },
+        { status: intake.status, headers: responseHeaders(requestId) },
       );
     }
+
+    if (!isSupabaseConfigured) {
+      return apiResponse({
+        success: false,
+        code: 'REGISTRATION_DATABASE_UNAVAILABLE',
+        error: '상품등록 저장소가 연결되지 않아 업로드를 시작하지 않았습니다.',
+        uploadRequestId: requestId,
+      }, { status: 503, headers: responseHeaders(requestId) });
+    }
+
     const runtimeConfig = getProductRegistrationV6RuntimeConfig();
-    if (runtimeConfig.workflowEnabled && isSupabaseConfigured && intake.sourceType) {
-      const configuredTenantId = configuredPlatformRegistrationTenantId();
-      if (!configuredTenantId) {
-        return NextResponse.json({
-          success: false,
-          code: 'REGISTRATION_TENANT_REQUIRED',
-          error: '통합 상품등록에는 PRODUCT_REGISTRATION_PLATFORM_TENANT_ID 설정이 필요합니다.',
-          uploadRequestId: requestId,
-        }, { status: 503, headers: { 'x-upload-request-id': requestId } });
-      }
-      let sourceDocumentId = intake.sourceDocumentId;
-      let dedupeHit = false;
-      if (!sourceDocumentId) {
-        const { data: existing, error: existingError } = await supabaseAdmin
-          .from('product_source_documents')
-          .select('id')
-          .eq('tenant_id', configuredTenantId)
-          .eq('sha256', intake.fileHash)
-          .eq('byte_size', intake.buffer.byteLength)
-          .maybeSingle();
-        if (existingError) throw existingError;
-        dedupeHit = Boolean(existing);
-        const source = await ensureSourceDocumentStored({
-          supabase: supabaseAdmin,
-          buffer: intake.buffer,
-          filename: intake.fileName,
-          declaredMime: intake.declaredMime,
-          sourceType: intake.sourceType,
-          tenantId: configuredTenantId,
-          metadata: {
-            sourceChannel: 'upload',
-            uploadSourceMetadata: intake.uploadSourceMetadata,
-            ownership: 'platform',
-          },
-          requestKey: requestId,
-          sourceChannel: 'upload',
-        });
-        sourceDocumentId = source.id;
-      }
-      const publicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
-        ?? process.env.NEXT_PUBLIC_SITE_URL
-        ?? request.nextUrl.origin;
-      const started = await startProductRegistrationWorkflowBySourceId({
+    if (!runtimeConfig.workflowEnabled) {
+      return apiResponse({
+        success: false,
+        code: 'REGISTRATION_KERNEL_WORKFLOW_DISABLED',
+        error: '통합 상품등록 엔진이 비활성 상태라 레거시 등록으로 우회하지 않고 안전하게 중단했습니다.',
+        uploadRequestId: requestId,
+      }, { status: 503, headers: responseHeaders(requestId) });
+    }
+    if (!intake.sourceType) {
+      return apiResponse({
+        success: false,
+        code: 'REGISTRATION_SOURCE_TYPE_REQUIRED',
+        error: '처리할 수 있는 원문 유형을 확인하지 못했습니다.',
+        uploadRequestId: requestId,
+      }, { status: 400, headers: responseHeaders(requestId) });
+    }
+
+    const tenantId = configuredPlatformRegistrationTenantId();
+    if (!tenantId) {
+      return apiResponse({
+        success: false,
+        code: 'REGISTRATION_TENANT_REQUIRED',
+        error: '상품등록 플랫폼 tenant 설정이 없어 원문을 저장하지 않았습니다.',
+        uploadRequestId: requestId,
+      }, { status: 503, headers: responseHeaders(requestId) });
+    }
+
+    let sourceDocumentId = intake.sourceDocumentId;
+    let dedupeHit = false;
+    if (!sourceDocumentId) {
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('product_source_documents')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('sha256', intake.fileHash)
+        .eq('byte_size', intake.buffer.byteLength)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      dedupeHit = Boolean(existing?.id);
+
+      const source = await ensureSourceDocumentStored({
         supabase: supabaseAdmin,
-        sourceDocumentId,
-        tenantId: configuredTenantId,
-        requestId,
-        requestBaseUrl: request.nextUrl.origin,
-        publicBaseUrl,
-        uploadSourceMetadata: intake.uploadSourceMetadata as unknown as Record<string, unknown>,
-        sourceChannel: 'upload',
-        forceReprocess: intake.forceReprocess,
-        archiveMode: intake.archiveMode,
-        bulkMode: intake.bulkMode,
-        dedupeHit,
-      });
-      return NextResponse.json({
-        success: true,
-        code: 'PRODUCT_REGISTRATION_V6_ACCEPTED',
-        jobId: started.jobId,
-        workflowRunId: started.workflowRunId,
-        sourceDocumentId: started.sourceDocumentId,
-        state: 'processing',
-        dedupeHit: started.dedupeHit,
-        uploadRequestId: requestId,
-      }, { status: 202, headers: { 'x-upload-request-id': requestId } });
-    }
-
-    // Keep the legacy endpoint as a safe compatibility surface: callers that
-    // do not use the V4 admin screen are still forced through immutable source
-    // archival and receive a V4 job before any product side effects run.
-    let pipelineIntake = intake;
-    if (isSupabaseConfigured && intake.sourceType && (!intake.sourceDocumentId || !intake.registrationJobId)) {
-      try {
-        const sourceDocument = intake.sourceDocumentId
-          ? null
-          : await ensureSourceDocumentStored({
-            supabase: supabaseAdmin,
-            buffer: intake.buffer,
-            filename: intake.fileName,
-            declaredMime: intake.declaredMime,
-            sourceType: intake.sourceType,
-            tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-            metadata: {
-              sourceChannel: 'upload',
-              uploadSourceMetadata: intake.uploadSourceMetadata,
-            },
-            requestKey: requestId,
-            sourceChannel: 'upload',
-          });
-        const sourceDocumentId = intake.sourceDocumentId ?? sourceDocument?.id ?? null;
-        const job = intake.registrationJobId
-          ? null
-          : await createProductRegistrationV4Job({
-            supabase: supabaseAdmin,
-            sourceType: intake.sourceType === 'text' ? 'text' : 'file',
-            sourceDocumentId,
-            normalizedHash: intake.fileHash,
-            tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-          });
-        pipelineIntake = {
-          ...intake,
-          sourceDocumentId,
-          registrationJobId: intake.registrationJobId ?? job?.id ?? null,
-        };
-      } catch (error) {
-        console.error('[Upload API] V4 lineage bootstrap failed:', error);
-        return NextResponse.json(
-          {
-            success: false,
-            code: 'REGISTRATION_LINEAGE_REQUIRED',
-            error: error instanceof Error ? error.message : String(error),
-            uploadRequestId: requestId,
+        buffer: intake.buffer,
+        filename: intake.fileName,
+        declaredMime: intake.declaredMime,
+        sourceType: intake.sourceType,
+        tenantId,
+        metadata: {
+          sourceChannel: 'upload',
+          uploadSourceMetadata: {
+            ...(intake.uploadSourceMetadata as unknown as Record<string, unknown>),
+            sourceBatch: intake.sourceBatch,
+            sourceDepartureYearContext: intake.sourceDepartureYearContext,
           },
-          { status: 502, headers: { 'x-upload-request-id': requestId } },
-        );
-      }
-    }
-    if (shouldQueueFirst(pipelineIntake.directRawText)) {
-      console.warn('[Upload API] queue-first replay for heavy upload:', {
-        requestId,
-        rawTextLength: intake.directRawText?.length ?? 0,
-        likelyPackageSections: countLikelyPackageSections(intake.directRawText),
+          sourceBatch: intake.sourceBatch,
+          sourceDepartureYearContext: intake.sourceDepartureYearContext,
+          sourceLineage: intake.directRawText ? {
+            origin: 'operational_admin_paste',
+            normalizedTextHash: intake.sourceLineageHash,
+            capturedAt: new Date().toISOString(),
+          } : null,
+          ownership: 'platform',
+        },
+        requestKey: requestId,
+        sourceChannel: 'upload',
       });
-      return deferUploadForReplay({
-        intake: pipelineIntake,
-        requestId,
-        startedAt,
-        requestBaseUrl: request.nextUrl.origin,
-        reasonCode: 'UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY',
-      });
+      sourceDocumentId = source.id;
     }
 
-    const pipelinePromise = runUploadRegistrationPipeline({
-      intake: pipelineIntake,
+    const publicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
+      ?? process.env.NEXT_PUBLIC_SITE_URL
+      ?? request.nextUrl.origin;
+    const started = await startProductRegistrationWorkflowBySourceId({
       supabase: supabaseAdmin,
-      isSupabaseConfigured,
-      safeAfter,
-      postAlert,
+      sourceDocumentId,
+      tenantId,
+      requestId,
       requestBaseUrl: request.nextUrl.origin,
-      publicBaseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '',
-    }).catch(async error => {
-      if (pipelineIntake.registrationJobId) {
-        await transitionProductRegistrationV4Job({
-          supabase: supabaseAdmin,
-          jobId: pipelineIntake.registrationJobId,
-          stage: 'failed',
-          status: 'failed',
-          errorCode: error instanceof Error ? error.message.split(':')[0] : 'UPLOAD_PIPELINE_FAILED',
-          errorDetail: error instanceof Error ? error.message : String(error),
-          reviewReasons: ['UPLOAD_PIPELINE_FAILED'],
-        }).catch(stageError => {
-          console.warn('[Upload API] V4 failed stage update failed:', stageError instanceof Error ? stageError.message : String(stageError));
-        });
-      }
-      throw error;
-    });
-    const raced = await Promise.race([
-      pipelinePromise.then(result => ({ kind: 'result' as const, result })),
-      delay(UPLOAD_PIPELINE_SOFT_TIMEOUT_MS).then(() => ({ kind: 'timeout' as const })),
-    ]);
-
-    if (raced.kind === 'timeout') {
-      return deferUploadForReplay({
-        intake: pipelineIntake,
-        requestId,
-        startedAt,
-        requestBaseUrl: request.nextUrl.origin,
-        reasonCode: 'UPLOAD_PIPELINE_SOFT_TIMEOUT',
-      });
-    }
-
-    const { result } = raced;
-
-    console.log('[Upload API] request complete:', {
-      requestId,
-      elapsedMs: Date.now() - startedAt,
-      status: result.status,
-    });
-
-    return NextResponse.json(
-      { ...result.payload, uploadRequestId: requestId },
-      { status: result.status, headers: { 'x-upload-request-id': requestId } },
-    );
-  } catch (error) {
-    const described = describeUploadError(error);
-    console.error('[Upload API] fatal error:', {
-      requestId,
-      elapsedMs: Date.now() - startedAt,
-      ...described,
-    });
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : '파일 처리에 실패했습니다.',
-        details: process.env.NODE_ENV === 'development' ? String(error) : undefined,
-        uploadRequestId: requestId,
+      publicBaseUrl,
+      uploadSourceMetadata: {
+        ...(intake.uploadSourceMetadata as unknown as Record<string, unknown>),
+        sourceBatch: intake.sourceBatch,
+        sourceDepartureYearContext: intake.sourceDepartureYearContext,
+        sourceLineageHash: intake.sourceLineageHash,
       },
-      { status: 500, headers: { 'x-upload-request-id': requestId } },
-    );
+      sourceChannel: 'upload',
+      forceReprocess: intake.forceReprocess,
+      archiveMode: intake.archiveMode,
+      bulkMode: intake.bulkMode,
+      dedupeHit,
+    });
+
+    return apiResponse({
+      success: true,
+      code: 'PRODUCT_REGISTRATION_V6_ACCEPTED',
+      jobId: started.jobId,
+      workflowRunId: started.workflowRunId,
+      sourceDocumentId: started.sourceDocumentId,
+      inputKind: intake.sourceType,
+      state: 'processing',
+      dedupeHit: started.dedupeHit,
+      sourceBatch: intake.sourceBatch,
+      sourceDepartureYearContext: intake.sourceDepartureYearContext,
+      uploadRequestId: requestId,
+    }, { status: 202, headers: responseHeaders(requestId) });
+  } catch (error) {
+    const detail = describeUploadError(error);
+    console.error('[Upload API] kernel intake failed:', { requestId, detail });
+    return apiResponse({
+      success: false,
+      code: 'PRODUCT_REGISTRATION_INTAKE_FAILED',
+      error: '상품등록 원문 접수에 실패했습니다. 고객 공개나 레거시 등록은 실행하지 않았습니다.',
+      details: process.env.NODE_ENV === 'development' ? detail : undefined,
+      uploadRequestId: requestId,
+    }, { status: 500, headers: responseHeaders(requestId) });
   }
 };
 

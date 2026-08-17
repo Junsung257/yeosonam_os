@@ -11,26 +11,24 @@ function pageSourceWithoutComments() {
 }
 
 describe('package customer detail page publication contract', () => {
-  it('uses the exact pointer snapshot before any customer render and limits raw reads to internal proof', () => {
+  it('uses the exact snapshot before any customer render and never reads mutable facts for a V6 proof', () => {
     const source = pageSourceWithoutComments();
     const pointerIndex = source.indexOf('const pointerSnapshot = !allowInternalProof');
-    const rawResultIndex = source.indexOf('let rawPkgResult', pointerIndex);
-    const internalProofIndex = source.indexOf('if (allowInternalProof)', rawResultIndex);
-    const rawQueryIndex = source.indexOf("sb.from('travel_packages')", internalProofIndex);
-    const snapshotIndex = source.indexOf('const publicSnapshot = v6ProofSnapshot ?? pointerSnapshot', rawQueryIndex);
-    const pkgIndex = source.indexOf('const pkg = (v6ProofSnapshot?.package ?? (allowInternalProof ? rawPkg : publicSnapshot?.package))', snapshotIndex);
+    const rawResultIndex = source.indexOf('const rawPkgResult', pointerIndex);
+    const snapshotIndex = source.indexOf('const publicSnapshot = v6ProofSnapshot ?? pointerSnapshot', rawResultIndex);
+    const pkgIndex = source.indexOf('const pkg = publicSnapshot?.package', snapshotIndex);
     const notFoundIndex = source.indexOf('if (!pkg) {', pkgIndex);
     const renderStartIndex = source.indexOf('let matchQuery = sb.from', notFoundIndex);
 
     expect(pointerIndex).toBeGreaterThanOrEqual(0);
     expect(rawResultIndex).toBeGreaterThan(pointerIndex);
-    expect(internalProofIndex).toBeGreaterThan(rawResultIndex);
-    expect(rawQueryIndex).toBeGreaterThan(internalProofIndex);
-    expect(snapshotIndex).toBeGreaterThan(rawQueryIndex);
+    expect(snapshotIndex).toBeGreaterThan(rawResultIndex);
     expect(pkgIndex).toBeGreaterThan(snapshotIndex);
     expect(notFoundIndex).toBeGreaterThan(pkgIndex);
     expect(renderStartIndex).toBeGreaterThan(notFoundIndex);
-    expect(source.slice(rawResultIndex, internalProofIndex)).toContain('pointerSnapshot.package');
+    expect(source).not.toContain("sb.from('travel_packages')");
+    expect(source).not.toContain('isInternalRenderProofRequest');
+    expect(source).toContain('verifyProductRegistrationV6ProofToken');
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {
@@ -46,5 +44,20 @@ describe('package customer detail page publication contract', () => {
     expect(siblingBlock).toContain('if (!publicTitle) return []');
     expect(siblingBlock).not.toContain('?? title');
     expect(siblingBlock).not.toContain('?? display_title');
+  });
+
+  it('keeps V6 proof visits out of customer popularity and behavior signals', () => {
+    const pageSource = pageSourceWithoutComments();
+    const clientSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
+    const webVitalsSource = readFileSync(join(process.cwd(), 'src/components/WebVitalsReporter.tsx'), 'utf8');
+
+    expect(pageSource).toContain('if (!allowInternalProof && pkg?.destination && !skipNonCriticalDbReads)');
+    expect(pageSource).toContain('!v6ProofSnapshot && <UnmatchedActivitiesBeacon');
+    expect(pageSource).toContain('!v6ProofSnapshot && <div className="pb-64 md:pb-12">');
+    expect(clientSource).toContain("const proofMode = searchParams.has('__proof_snapshot')");
+    expect(clientSource).toContain('if (!proofMode) {');
+    expect(clientSource).toContain('if (proofMode && initialPackage)');
+    expect(clientSource).toContain('!proofMode && <ReviewDigestStrip');
+    expect(webVitalsSource).toContain("has('__proof_snapshot')");
   });
 });

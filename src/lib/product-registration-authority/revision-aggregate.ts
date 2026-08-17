@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { ledgerToRenderPackageInputs } from '@/lib/product-registration-v3/render-contract-adapter';
 import type { V3DraftLedger } from '@/lib/product-registration-v3/types';
+import { normalizePublicPackageMedia } from '@/lib/package-publication/public-media';
 
 type JsonObject = Record<string, unknown>;
 
@@ -110,20 +111,14 @@ export function buildPackageProjectionFromRevision(input: {
     : [];
   const media = input.aggregate.media
     .map(row => {
-      const url = typeof row.external_url === 'string'
-        ? row.external_url
-        : typeof row.public_url === 'string'
-          ? row.public_url
-          : null;
-      if (!url) return null;
-      return {
-        url,
-        role: row.role ?? 'reference',
-        source: row.provenance_type ?? 'licensed',
+      return normalizePublicPackageMedia({
+        ...row,
+        url: row.external_url ?? row.public_url,
+        label: row.customer_label,
         alt: row.customer_label ?? render.title ?? destinations[0] ?? '여행 참고 이미지',
-        attribution: row.attribution_text ?? null,
-        reference_only: row.provenance_type === 'destination_reference',
-      };
+        license_url: row.license_reference,
+        attribution_url: row.source_page_url,
+      });
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
   const hero = media.find(row => row.role === 'hero') ?? media[0] ?? null;
@@ -153,6 +148,7 @@ export function buildPackageProjectionFromRevision(input: {
     nights: Number(variant.nights ?? 0) || null,
     price: prices.length > 0 ? Math.min(...prices) : null,
     images_public: media,
+    hero_media: hero,
     hero_image_url: hero?.url ?? null,
     verified_commercial_terms: {
       inclusions: verifiedInclusions,

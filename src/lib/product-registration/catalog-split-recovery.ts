@@ -186,6 +186,20 @@ function splitRepeatedDayOnlyProductHeaders(rawText: string): { sharedPrefix: st
   };
 }
 
+function splitRepeatedPkgBlocks(rawText: string): { sharedPrefix: string; sections: string[] } | null {
+  const text = rawText.replace(/\r\n/g, '\n');
+  const matches = [...text.matchAll(/^\s*PKG\s*$/gimu)];
+  if (matches.length < 2) return null;
+  const starts = matches
+    .map(match => match.index)
+    .filter((value): value is number => typeof value === 'number');
+  if (starts.length < 2) return null;
+  return {
+    sharedPrefix: text.slice(0, starts[0]).trim(),
+    sections: starts.map((start, index) => text.slice(start, starts[index + 1] ?? text.length).trim()),
+  };
+}
+
 function splitReadableRepeatedProductHeaders(rawText: string): { sharedPrefix: string; sections: string[] } | null {
   const text = rawText.replace(/\r\n/g, '\n');
   const lines = text.split('\n');
@@ -262,6 +276,11 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
   if (!rawText?.trim()) return [];
 
   let { sharedPrefix, sections } = splitCatalogByItineraryHeaders(rawText);
+  const repeatedPkgSplit = splitRepeatedPkgBlocks(rawText);
+  if (repeatedPkgSplit && repeatedPkgSplit.sections.length > sections.length) {
+    sharedPrefix = repeatedPkgSplit.sharedPrefix;
+    sections = repeatedPkgSplit.sections;
+  }
   const transportVariantSplit = splitTransportVariantDetailBlocks(rawText);
   if (transportVariantSplit && transportVariantSplit.sections.length > sections.length) {
     sharedPrefix = transportVariantSplit.sharedPrefix;

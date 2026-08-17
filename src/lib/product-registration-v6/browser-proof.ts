@@ -144,6 +144,35 @@ async function proveSurface(input: {
     (error instanceof Error ? error.message : String(error)).slice(0, 500),
   ));
   await page.setViewport(VIEWPORT);
+  // Proof traffic must never become customer analytics, popularity or
+  // recommendation evidence. Proof-aware UI guards are the first layer; this
+  // network boundary prevents future components from accidentally writing.
+  const proofOrigin = new URL(input.url).origin;
+  await page.setRequestInterception(true);
+  page.on('request', request => {
+    const method = request.method().toUpperCase();
+    let pathname = '';
+    let sameOrigin = false;
+    try {
+      const requestUrl = new URL(request.url());
+      pathname = requestUrl.pathname;
+      sameOrigin = requestUrl.origin === proofOrigin;
+    } catch {
+      // Non-HTTP assets continue normally.
+    }
+    const isMutationBeacon = sameOrigin && method !== 'GET' && method !== 'HEAD' && (
+      pathname.startsWith('/api/tracking')
+      || pathname === '/api/web-vitals'
+      || pathname === '/api/unmatched'
+      || pathname === '/api/user-actions'
+    );
+    const isTrackingGet = sameOrigin && pathname.startsWith('/api/influencer/track');
+    if (isMutationBeacon || isTrackingGet) {
+      void request.respond({ status: 204, contentType: 'application/json', body: '' }).catch(() => {});
+      return;
+    }
+    void request.continue().catch(() => {});
+  });
   const vercelProtectionBypass = getSecret('VERCEL_AUTOMATION_BYPASS_SECRET');
   await page.setExtraHTTPHeaders({
     'x-product-registration-v6-proof-token': input.proofToken,

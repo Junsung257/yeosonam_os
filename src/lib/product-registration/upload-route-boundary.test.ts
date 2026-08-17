@@ -165,24 +165,20 @@ describe('upload route registration pipeline boundary', () => {
     expect(config).toContain("hostname: 'www.yeosonam.com'");
   });
 
-  it('keeps the production upload request within a long-running Node function envelope', () => {
+  it('keeps the production upload request as a short durable-workflow intake', () => {
     const route = readUploadRoute();
 
     expect(route).toContain("export const runtime = 'nodejs'");
     expect(route).toContain("export const dynamic = 'force-dynamic'");
-    expect(route).toContain('export const maxDuration = 300');
-    expect(route).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT_MS');
-    expect(route).toContain('Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)');
-    expect(route).toContain('Math.min(270_000');
-    expect(route).toContain('Number(process.env.UPLOAD_QUEUE_FIRST_TEXT_LENGTH ?? 60_000)');
-    expect(route).toContain('Number(process.env.UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH ?? 120_000)');
-    expect(route).toContain('if (likelyPackageSections >= 4) return true;');
-    expect(route).toContain('rawText.length >= UPLOAD_QUEUE_FIRST_TEXT_LENGTH && likelyPackageSections >= 2');
-    expect(route).toContain('enqueueUploadTimeoutReplay({');
-    expect(route).toContain("code: 'UPLOAD_DEFERRED_FOR_REPLAY'");
+    expect(route).toContain('export const maxDuration = 60');
+    expect(route).toContain('startProductRegistrationWorkflowBySourceId({');
+    expect(route).toContain("code: 'REGISTRATION_KERNEL_WORKFLOW_DISABLED'");
+    expect(route).not.toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT_MS');
+    expect(route).not.toContain('enqueueUploadTimeoutReplay({');
+    expect(route).not.toContain('runUploadRegistrationPipeline({');
     expect(route).toContain('x-upload-request-id');
     expect(route).toContain('uploadRequestId');
-    expect(route).toContain('[Upload API] request complete:');
+    expect(route).toContain('[Upload API] kernel intake failed:');
   });
 
   it('serializes admin text registration requests to avoid overloading the upload engine', () => {
@@ -210,9 +206,9 @@ describe('upload route registration pipeline boundary', () => {
 
     expect(route).toContain("from '@/lib/product-registration/upload-request-intake'");
     expect(route).toContain('const intake = await prepareUploadRequestIntake(request)');
-    expect(route).toContain("from '@/lib/product-registration/upload-registration-pipeline'");
-    expect(route).toContain('const pipelinePromise = runUploadRegistrationPipeline({');
-    expect(route).toContain('const raced = await Promise.race([');
+    expect(route).toContain("from '@/lib/product-registration-authority/start-workflow'");
+    expect(route).toContain('startProductRegistrationWorkflowBySourceId({');
+    expect(route).not.toContain("from '@/lib/product-registration/upload-registration-pipeline'");
     expect(route).not.toContain("from '@/lib/upload-source-metadata'");
     expect(route).not.toContain("from '@/lib/product-registration-input-guard'");
     expect(route).not.toContain('parseUploadSourceMetadata({');
@@ -233,12 +229,13 @@ describe('upload route registration pipeline boundary', () => {
     expect(intake).toContain('createHash(');
   });
 
-  it('keeps the per-product registration loop outside the route', () => {
+  it('keeps the per-product registration loop behind the single Kernel workflow', () => {
     const route = readUploadRoute();
     const pipeline = readUploadRegistrationPipeline();
     const runner = readUploadProductRunner();
 
-    expect(route).toContain('runUploadRegistrationPipeline({');
+    expect(route).toContain('startProductRegistrationWorkflowBySourceId({');
+    expect(route).not.toContain('runUploadRegistrationPipeline({');
     expect(route).not.toContain('await processUploadRegistrationProducts({');
     expect(pipeline).toContain('await processUploadRegistrationProducts({');
     expect(route).not.toMatch(/for\s*\(\s*let\s+productIndex\s*=\s*0;\s*productIndex\s*</);
@@ -407,21 +404,18 @@ describe('upload route registration pipeline boundary', () => {
     expect(contextLoader).not.toContain('bulkMode ? Promise.resolve([] as AttractionData[])');
   });
 
-  it('post-save mobile QA blocks customer visibility on high or critical incidents', () => {
+  it('post-save mobile QA records incidents without mutating customer package facts', () => {
     const autoMobileQa = readFileSync(join(process.cwd(), 'src/lib/auto-mobile-qa.ts'), 'utf8');
 
-    expect(autoMobileQa).toContain("status: 'pending_review'");
-    expect(autoMobileQa).toContain("audit_status: 'blocked'");
-    expect(autoMobileQa).toContain(".from('travel_packages')");
-    expect(autoMobileQa).toContain(".from('products')");
+    expect(autoMobileQa).toContain(".from('ai_quality_log')");
+    expect(autoMobileQa).not.toMatch(/\.from\('travel_packages'\)[\s\S]{0,180}\.update\(/u);
+    expect(autoMobileQa).not.toMatch(/\.from\('products'\)[\s\S]{0,180}\.update\(/u);
     expect(autoMobileQa).toContain('persistImprovementLedgerEvents');
     expect(autoMobileQa).toContain("detectedFormat: 'post_save_mobile_landing'");
     expect(autoMobileQa).toContain("source: 'auto-mobile-fetch-proof'");
-    expect(autoMobileQa).toContain('auto_mobile_fetch_proof');
     expect(autoMobileQa).toContain('screen_hash');
     expect(autoMobileQa).toContain('customer_visible_hash');
     expect(autoMobileQa).toContain('surface_results');
-    expect(autoMobileQa).toContain('auto mobile QA found customer render incidents below hard-block severity');
     expect(autoMobileQa).toContain("rule.id === 'room_pax_config'");
   });
 
@@ -435,7 +429,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(autoMobileQa).toContain('customer_copy_internal_distribution_leak');
   });
 
-  it('keeps archive-mode product persistence outside the route body', () => {
+  it('keeps archive-mode source inspection read-only while V6 intake owns persistence', () => {
     const route = readUploadRoute();
     const pipeline = readUploadRegistrationPipeline();
     const archive = readUploadArchive();
@@ -448,8 +442,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).not.toContain(".from('products').upsert");
     expect(route).not.toContain('raw_extracted_text: rawText');
     expect(route).not.toContain('ARCH-${filenameRule.cleanName');
-    expect(archive).toContain(".from('products').upsert");
-    expect(archive).toContain('raw_extracted_text: rawText');
+    expect(archive).toContain('source_documents ledger');
+    expect(archive).not.toContain(".from('products')");
     expect(archive).toContain('export async function archiveUploadRawProduct');
   });
 
@@ -574,7 +568,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).not.toContain(".from('travel_packages')");
     expect(postTasks).toContain('runProductRegistrationV3(input.rawText');
     expect(postTasks).toContain('runCoVeInBackground(input.packageId)');
-    expect(postTasks).toContain('runAutoPhotoMatch({');
+    expect(postTasks).not.toContain('runAutoPhotoMatch({');
+    expect(postTasks).not.toContain("from '@/lib/auto-photo-match'");
     expect(postTasks).toContain('export async function logUploadPostSaveAuditStatus');
     expect(postTasks).toContain(".from('travel_packages')");
     expect(postTasks).toContain('export function scheduleUploadL3BackfillTasks');
@@ -695,7 +690,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(persistCallIndex).toBeGreaterThan(persistenceBuildIndex);
   });
 
-  it('upserts the products ledger with the recovered representative price', () => {
+  it('retires the mutable products/package persistence after building compatibility rows', () => {
     const route = readUploadRoute();
     const runner = readUploadProductRunner();
     const rows = readPersistenceRows();
@@ -711,35 +706,31 @@ describe('upload route registration pipeline boundary', () => {
     expect(persistCallIndex).toBeGreaterThan(persistenceBuildIndex);
     expect(rows).toContain('net_price: input.netPrice');
     expect(rows).toContain('price_dates: input.priceDates');
-    expect(persistence).toContain(".from('products')");
-    expect(persistence).toContain(".upsert(input.rows.productRow, { onConflict: 'internal_code' })");
-    expect(persistence).toContain('replaceProductPricesForProduct({');
-    expect(persistence).toContain(".from('travel_packages')");
+    expect(persistence).toContain('LEGACY_UPLOAD_PERSISTENCE_RETIRED_USE_REGISTRATION_KERNEL_WORKFLOW');
+    expect(persistence).not.toContain(".from('products')");
+    expect(persistence).not.toContain(".from('travel_packages')");
     expect(route).not.toContain('selling_price:');
   });
 
-  it('treats product_prices persistence as mandatory for customer deliverables', () => {
+  it('never persists compatibility price rows outside the immutable Kernel commit', () => {
     const rows = readPersistenceRows();
     const persistence = readPersistenceExecutor();
 
-    expect(rows).toContain('adult_selling_price: row.adult_selling_price ?? row.net_price');
-    expect(persistence).toContain('replaceProductPricesForProduct({');
-    expect(persistence).toContain('throw new Error(priceErrorMessage)');
-    expect(persistence).toContain(".from('products')");
-    expect(persistence).toContain(".delete()");
-    expect(persistence).not.toContain('keeping product for review');
+    expect(rows).toContain('adult_selling_price: row.adult_selling_price');
+    expect(rows).not.toContain('adult_selling_price: row.adult_selling_price ?? row.net_price');
+    expect(persistence).toContain('LEGACY_UPLOAD_PERSISTENCE_RETIRED_USE_REGISTRATION_KERNEL_WORKFLOW');
+    expect(persistence).not.toContain('replaceProductPricesForProduct({');
+    expect(persistence).not.toMatch(/\.(?:insert|upsert|update|delete)\(/u);
   });
 
-  it('does not treat an updated existing product as a rollback-created product', () => {
+  it('retires rollback deletion in favor of immutable correction revisions', () => {
     const runner = readUploadProductRunner();
     const persistence = readPersistenceExecutor();
-    const existingLookupIndex = persistence.indexOf('const { data: existingProductBeforeWriteRow }');
-    const productInsertedIndex = persistence.indexOf('result.productInserted = !existingProductBeforeWrite');
     const rollbackCallIndex = runner.indexOf('const rollback = await rollbackInsertedUploadProduct({');
 
-    expect(existingLookupIndex).toBeGreaterThan(-1);
-    expect(productInsertedIndex).toBeGreaterThan(existingLookupIndex);
     expect(rollbackCallIndex).toBeGreaterThan(runner.indexOf('productInserted = persistenceResult.productInserted'));
+    expect(persistence).toContain('LEGACY_UPLOAD_ROLLBACK_RETIRED_IMMUTABLE_REVISION_REQUIRES_NEW_CORRECTION');
+    expect(persistence).not.toContain(".delete()");
   });
 
   it('fails strict mobile/A4 audit when products ledger price drifts from the package price', () => {
@@ -921,16 +912,13 @@ describe('upload route registration pipeline boundary', () => {
   it('routes saved package re-extraction through the central registration engine', () => {
     const reextract = readPackageReextractRoute();
 
-    expect(reextract).toContain("from '@/lib/product-registration/register-product-from-raw'");
-    expect(reextract).toContain("from '@/lib/product-registration/finalize-registration'");
-    expect(reextract).toContain("from '@/lib/product-registration/auto-qa'");
-    expect(reextract).toContain("from '@/lib/product-registration/improvement-ledger-persistence'");
-    expect(reextract).toContain("from '@/lib/product-registration/product-price-replacement'");
-    expect(reextract).toContain('let registration = await registerProductFromRaw({');
-    expect(reextract).toContain('let finalized = finalizeUploadRegistration({');
-    expect(reextract).toContain('runMicroAutoQA({');
-    expect(reextract).toContain('persistImprovementLedgerEvents({');
-    expect(reextract).toContain('replaceProductPricesForProduct({');
+    expect(reextract).toContain('getProductRegistrationV6RuntimeConfig().workflowEnabled');
+    expect(reextract).toContain('enqueue_product_registration_correction');
+    expect(reextract).toContain('startProductRegistrationWorkflowForSource');
+    expect(reextract).toContain('PRODUCT_REGISTRATION_KERNEL_REQUIRED');
+    expect(reextract).not.toContain("from '@/lib/product-registration/register-product-from-raw'");
+    expect(reextract).not.toContain('registerProductFromRaw({');
+    expect(reextract).not.toContain('replaceProductPricesForProduct({');
     expect(reextract).not.toContain(".from('product_prices')");
     expect(reextract).not.toContain('.delete()');
     expect(reextract).not.toContain('.insert(priceRowsToInsert)');
@@ -953,26 +941,30 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT');
     expect(cron).toContain('shouldUseDuplicateGuard');
     expect(cron).toContain('forceReprocess: !shouldUseDuplicateGuard');
-    expect(cron).toContain('extractDuplicateInternalCode');
-    expect(cron).toContain('savedIds.length > 0 || duplicateInternalCode');
-    expect(cron).toContain('duplicate already processed');
+    expect(cron).toContain('startProductRegistrationWorkflowBySourceId');
+    expect(cron).toContain('startProductRegistrationTextWorkflow');
+    expect(cron).toContain("sourceChannel: 'cron-review-replay'");
+    expect(cron).toContain("status: 'pending'");
+    expect(cron).not.toContain('runUploadRegistrationPipeline');
     expect(cron).toContain("request.nextUrl.searchParams.get('queueId')");
     expect(cron).toContain(".eq('id', queueId)");
     expect(cron).not.toContain('.or(RECOVERABLE_REASON_FILTER)');
     expect(cron).not.toContain('error_reason.ilike');
     expect(cron).toContain("order('created_at', { ascending: false })");
     expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
-    expect(cron).toContain('runUploadRegistrationPipeline({');
   });
 
-  it('resolves manual upload replay rows when the duplicate guard proves the product was saved', () => {
+  it('hands manual upload replay rows to the immutable Kernel workflow', () => {
     const route = readAdminUploadReplayReviewQueueRoute();
 
-    expect(route).toContain('extractDuplicateInternalCode');
     expect(route).toContain('forceReprocess: body.forceReprocess === true');
-    expect(route).toContain('savedIds.length > 0 || duplicateInternalCode');
+    expect(route).toContain('startProductRegistrationWorkflowBySourceId');
+    expect(route).toContain('startProductRegistrationTextWorkflow');
+    expect(route).toContain('REGISTRATION_REPLAY_TENANT_REQUIRED');
+    expect(route).toContain('REGISTRATION_REPLAY_IMMUTABLE_SOURCE_REQUIRED');
+    expect(route).toContain("sourceChannel: 'admin-review-replay'");
     expect(route).toContain('replayResolved');
-    expect(route).toContain('duplicateInternalCode');
+    expect(route).not.toContain('runUploadRegistrationPipeline');
   });
 
   it('exposes deferred replay status so admin upload can finish successful background registrations', () => {
@@ -983,15 +975,17 @@ describe('upload route registration pipeline boundary', () => {
     expect(replayStatus).toContain("from('upload_review_queue')");
     expect(replayStatus).toContain('queueId or uploadRequestId is required');
     expect(replayStatus).toContain("status === 'resolved' || status === 'replayed'");
-    expect(replayStatus).toContain('const replayState = normalizeState(replayResult.status)');
+    expect(replayStatus).toContain('const replayState = jobId ? terminalReplayState(terminalOutcome) : normalizeState(replayResult.status)');
     expect(replayStatus).toContain('const state = replayState ===');
-    expect(replayStatus).toContain("from('travel_packages')");
+    expect(replayStatus).toContain("from('upload_jobs')");
+    expect(replayStatus).not.toContain("from('travel_packages')");
     expect(replayStatus).toContain('registerReport');
     expect(replayCron).toContain('replayResult');
-    expect(replayCron).toContain("status: 'replayed'");
-    expect(replayCron).toContain("status: 'failed'");
+    expect(replayCron).toContain("status: 'pending'");
+    expect(replayCron).toContain('workflowRunId: started.workflowRunId');
     expect(manualReplay).toContain('replayResult');
-    expect(manualReplay).toContain("status: 'replayed'");
+    expect(manualReplay).toContain("status: 'pending'");
+    expect(manualReplay).toContain('workflowRunId: started.workflowRunId');
   });
 
   it('wires saved uploads into the upload-to-open autopilot instead of stopping at blocked review', () => {
@@ -1010,7 +1004,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(postTasks).toContain("authorization: `Bearer ${secret}`");
   });
 
-  it('keeps upload-to-open autopilot behind source, V3, mobile, and publish gates before activating packages', () => {
+  it('keeps legacy autopilot analysis but retires mutable repair and activation', () => {
     const cron = readUploadToOpenAutopilotCron();
     const lib = readUploadToOpenAutopilotLib();
     const verify = readUploadVerifyLib();
@@ -1025,9 +1019,12 @@ describe('upload route registration pipeline boundary', () => {
     expect(lib).toContain('price_dates:${priceRepair.reason}');
     expect(lib).toContain('price_dates_sync_requires_review:c12_failed');
     expect(lib).toContain("price_dates:existing_source_backed_dates_synced_to_dependent_stores");
-    expect(lib).toContain('replaceProductPricesForProduct({');
+    expect(lib).toContain('price_stores:correction_revision_candidate_prepared');
     expect(lib).toContain("input.updates.price_tiers = priceTiersFromPriceDates(input.priceDates)");
-    expect(lib).toContain("net_price: minPrice");
+    expect(lib).toContain('LEGACY_AUTOPILOT_CORRECTION_REQUIRES_REGISTRATION_KERNEL');
+    expect(lib).toContain('LEGACY_AUTOPILOT_PUBLICATION_RETIRED_USE_SNAPSHOT_CAS');
+    expect(lib).not.toMatch(/\.from\('products'\)[\s\S]{0,160}\.update\(/u);
+    expect(lib).not.toMatch(/\.from\('travel_packages'\)[\s\S]{0,160}\.update\(/u);
     expect(verify).toContain('selectSourceBackedPriceRows(pkg, expected.rows)');
     expect(lib).toContain('buildSourceBackedFieldRepair');
     expect(lib).toContain('buildSourceBackedTermsRepair');

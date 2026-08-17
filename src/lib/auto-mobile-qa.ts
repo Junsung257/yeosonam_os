@@ -875,97 +875,7 @@ export async function runAutoMobileQA(
 
       // G5: high/critical incident 시 admin_alerts 적재 (사장님 어드민 대시보드 빨간 배지)
       const hiSev = incidents.filter(i => i.severity === 'high' || i.severity === 'critical');
-      if (hiSev.length === 0) {
-        const checkedAt = new Date().toISOString();
-        try {
-          const { data: pkgRow } = await supabaseAdmin
-            .from('travel_packages')
-            .select('audit_report')
-            .eq('id', packageId)
-            .maybeSingle();
-          const existingReport = (pkgRow as { audit_report?: Record<string, unknown> | null } | null)?.audit_report;
-          await supabaseAdmin
-            .from('travel_packages')
-            .update({
-              audit_checked_at: checkedAt,
-              audit_report: {
-                ...clearStaleMobileQaFailures(existingReport),
-                source: 'auto_mobile_qa',
-                incidents,
-                checked_at: checkedAt,
-                auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
-                  status: 'pass',
-                  checkedAt,
-                  packageUpdatedAt: expected.updatedAt,
-                  packageRevision: expected.proofPackageRevision,
-                  publicSnapshotHash: expected.proofPublicSnapshotHash,
-                  appBuildId: expected.proofAppBuildId,
-                  surfaces,
-                  surfaceProofResults,
-                }),
-                mobile_browser_proof_warnings: {
-                  status: 'warn',
-                  reason: 'auto mobile QA found customer render incidents below hard-block severity',
-                  incidents,
-                  checked_at: checkedAt,
-                },
-              },
-            })
-            .eq('id', packageId);
-        } catch (e) {
-          console.warn('[AutoQA] failed to persist mobile proof incidents:', e instanceof Error ? e.message : e);
-        }
-      }
       if (hiSev.length > 0) {
-        const checkedAt = new Date().toISOString();
-        try {
-          const { data: pkgRow } = await supabaseAdmin
-            .from('travel_packages')
-            .select('audit_report')
-            .eq('id', packageId)
-            .maybeSingle();
-          const existingReport = (pkgRow as { audit_report?: Record<string, unknown> | null } | null)?.audit_report;
-          await supabaseAdmin
-            .from('travel_packages')
-            .update({
-              status: 'pending_review',
-              audit_status: 'blocked',
-              audit_checked_at: checkedAt,
-              audit_report: {
-                ...clearStaleMobileQaFailures(existingReport),
-                source: 'auto_mobile_qa',
-                incidents: hiSev,
-                checked_at: checkedAt,
-                auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
-                  status: 'fail',
-                  checkedAt,
-                  packageUpdatedAt: expected.updatedAt,
-                  packageRevision: expected.proofPackageRevision,
-                  publicSnapshotHash: expected.proofPublicSnapshotHash,
-                  appBuildId: expected.proofAppBuildId,
-                  surfaces,
-                  surfaceProofResults,
-                }),
-                mobile_browser_proof_required: {
-                  status: 'fail',
-                  reason: 'auto mobile QA found high/critical customer render incidents',
-                  checked_at: checkedAt,
-                },
-              },
-              updated_at: checkedAt,
-            })
-            .eq('id', packageId);
-
-          if (expected.internalCode) {
-            await supabaseAdmin
-              .from('products')
-              .update({ status: 'pending_review', updated_at: checkedAt })
-              .eq('internal_code', expected.internalCode);
-          }
-        } catch (e) {
-          console.warn('[AutoQA] failed to block customer-visible package:', e instanceof Error ? e.message : e);
-        }
-
         try {
           const { postAlert } = await import('@/lib/admin-alerts');
           const summary = hiSev.slice(0, 3).map(i => `[${i.severity}] ${i.message}`).join(' / ');
@@ -984,36 +894,6 @@ export async function runAutoMobileQA(
         }
       }
     } else {
-      const checkedAt = new Date().toISOString();
-      try {
-        const { data: pkgRow } = await supabaseAdmin
-          .from('travel_packages')
-          .select('audit_report')
-          .eq('id', packageId)
-          .maybeSingle();
-        const existingReport = (pkgRow as { audit_report?: Record<string, unknown> | null } | null)?.audit_report;
-        await supabaseAdmin
-          .from('travel_packages')
-          .update({
-            audit_report: {
-              ...clearStaleMobileQaFailures(existingReport),
-              auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
-                status: 'pass',
-                checkedAt,
-                packageUpdatedAt: expected.updatedAt,
-                packageRevision: expected.proofPackageRevision,
-                publicSnapshotHash: expected.proofPublicSnapshotHash,
-                appBuildId: expected.proofAppBuildId,
-                surfaces,
-                surfaceProofResults,
-              }),
-            },
-            audit_checked_at: checkedAt,
-          })
-          .eq('id', packageId);
-      } catch (e) {
-        console.warn('[AutoQA] mobile proof save failed:', e instanceof Error ? e.message : e);
-      }
       console.log(`[AutoQA] ${packageId}: mobile clean ✓`);
     }
   } catch (e) {

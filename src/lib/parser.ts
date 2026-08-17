@@ -171,6 +171,10 @@ export interface PriceTier {
   adult_price?: number;
   child_price?: number;
   infant_price?: number;
+  list_price?: number | null;
+  min_travelers?: number | null;
+  max_travelers?: number | null;
+  price_relation?: 'final_sale' | 'standard_sale' | null;
   status: 'available' | 'confirmed' | 'soldout';
   note?: string;
 }

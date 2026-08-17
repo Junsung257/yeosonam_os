@@ -11,21 +11,21 @@ function source(file: string): string {
 describe('product registration strict cutover policy', () => {
   it('runs upload input quality checks before duplicate handling and parsing work', () => {
     const upload = source('src/app/api/upload/route.ts');
-    const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
     const intake = source('src/lib/product-registration/upload-request-intake.ts');
     const intakeCallIndex = upload.indexOf('const intake = await prepareUploadRequestIntake(request)');
     const qualityIndex = intake.indexOf(
       'const inputAnalysis = analyzeUploadInputText(originalRawText ?? directRawText)'
     );
-    const pipelineCallIndex = upload.indexOf('const pipelinePromise = runUploadRegistrationPipeline({');
-    const duplicateIndex = pipeline.indexOf('const initialDuplicate = await checkInitialUploadDuplicate({');
-    const parseIndex = pipeline.indexOf('const parsedForRegistration = await parseUploadDocumentForRegistration({');
+    const duplicateIndex = upload.indexOf(".eq('sha256', intake.fileHash)");
+    const sourceStoreIndex = upload.indexOf('const source = await ensureSourceDocumentStored({');
+    const workflowIndex = upload.indexOf('const started = await startProductRegistrationWorkflowBySourceId({');
 
     expect(intakeCallIndex).toBeGreaterThanOrEqual(0);
-    expect(pipelineCallIndex).toBeGreaterThan(intakeCallIndex);
     expect(qualityIndex).toBeGreaterThanOrEqual(0);
-    expect(duplicateIndex).toBeGreaterThanOrEqual(0);
-    expect(parseIndex).toBeGreaterThan(duplicateIndex);
+    expect(duplicateIndex).toBeGreaterThan(intakeCallIndex);
+    expect(sourceStoreIndex).toBeGreaterThan(duplicateIndex);
+    expect(workflowIndex).toBeGreaterThan(sourceStoreIndex);
+    expect(upload).not.toContain('runUploadRegistrationPipeline');
     expect(intake).toContain('INPUT_ENCODING_CORRUPTED');
     expect(intake).toContain('INPUT_WEB_PAGE_COPY');
     expect(intake).toContain('INPUT_NOT_PRODUCT_SOURCE');
@@ -81,21 +81,16 @@ describe('product registration strict cutover policy', () => {
 
   it('centralizes missing destination resolution before internal code generation', () => {
     const upload = source('src/app/api/upload/route.ts');
-    const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
-    const runner = source('src/lib/product-registration/upload-product-runner.ts');
-    const registrationIndex = runner.indexOf('const registrationResult: StandardProductRegistrationObject = await registerProductFromRaw({');
-    const gateIndex = runner.indexOf('const deliverability = registrationResult.deliverability', registrationIndex);
-    const resolutionIndex = runner.indexOf('const destinationResolution = registrationResult.destination', gateIndex);
-    const internalCodeIndex = runner.indexOf('issueUploadInternalCode({', resolutionIndex);
+    const workflow = source('src/workflows/product-registration-v6.ts');
+    const normalizationIndex = workflow.indexOf('const canonical = await normalizeStep(input, preflight');
+    const compatibilityIndex = workflow.indexOf('const compatibility = await projectCompatibilityStep(input, canonical)');
 
-    expect(registrationIndex).toBeGreaterThanOrEqual(0);
-    expect(gateIndex).toBeGreaterThan(registrationIndex);
-    expect(resolutionIndex).toBeGreaterThan(gateIndex);
-    expect(internalCodeIndex).toBeGreaterThan(resolutionIndex);
-    expect(upload).toContain('runUploadRegistrationPipeline');
+    expect(normalizationIndex).toBeGreaterThanOrEqual(0);
+    expect(compatibilityIndex).toBeGreaterThan(normalizationIndex);
+    expect(workflow).toContain('buildPackageProjectionFromRevision');
+    expect(upload).toContain('startProductRegistrationWorkflowBySourceId');
+    expect(upload).not.toContain('runUploadRegistrationPipeline');
     expect(upload).not.toContain('processUploadRegistrationProducts');
-    expect(pipeline).toContain('processUploadRegistrationProducts');
-    expect(pipeline).toContain('resolveUploadSourceForRegistration');
     expect(upload).not.toContain('extractUploadDestinationFromFilename');
     expect(upload).not.toContain('resolveUploadDestinationAndCodes({');
     expect(upload).not.toContain('applyDeterministicExtractedDataFixes(ed)');
@@ -122,18 +117,14 @@ describe('product registration strict cutover policy', () => {
     expect(upload).not.toContain('let priceRows = priceTiersToRows(ed)');
   });
 
-  it('keeps approval blocked by latest V3 draft even when force approval is requested', () => {
+  it('retires mutable package approval so force cannot bypass CAS publication', () => {
     const approve = source('src/app/api/packages/[id]/approve/route.ts');
-    const v3GateIndex = approve.indexOf('if (v3NoticeGate.blocksApproval)');
-    const forceRequiredIndex = approve.indexOf("if (publishGate.decision === 'force_required' && !force)");
-    const activeIndex = approve.indexOf("status: 'active'", forceRequiredIndex);
 
-    expect(v3GateIndex).toBeGreaterThanOrEqual(0);
-    expect(forceRequiredIndex).toBeGreaterThan(v3GateIndex);
-    expect(activeIndex).toBeGreaterThan(v3GateIndex);
-    expect(approve.slice(v3GateIndex, forceRequiredIndex)).toContain('{ status: 409 }');
-    expect(approve).toContain('calculateProductRegistrationTrustScore');
-    expect(approve).toContain('trust_score: approvalTrustScore');
+    expect(approve).toContain('LEGACY_PACKAGE_APPROVAL_RETIRED');
+    expect(approve).toContain('CAS publication pointer');
+    expect(approve).toContain('{ status: 410');
+    expect(approve).not.toContain("status: 'active'");
+    expect(approve).not.toContain("from('travel_packages').update");
   });
 
   it('keeps upload registration free of automatic attraction inserts', () => {
@@ -159,42 +150,26 @@ describe('product registration strict cutover policy', () => {
     expect(upload).not.toContain('extractAttractionCandidates');
   });
 
-  it('blocks unsafe manual customer notice mutations outside the V3 review save API', () => {
+  it('retires unsafe manual customer notice mutations', () => {
     const packagesRoute = source('src/app/api/packages/route.ts');
     const adminReview = source('src/app/admin/packages/[id]/review/page.tsx');
     const standardNoticeRoute = source('src/app/api/admin/packages/[id]/standard-notices/route.ts');
 
-    expect(packagesRoute).toContain('hasUnsafeCustomerNoticeMutation');
-    expect(packagesRoute).toContain('assertPackageV3NoticePatchAllowed');
-    expect(packagesRoute).toContain('UNSAFE_CUSTOMER_NOTICE_MUTATION');
+    expect(packagesRoute).toContain('LEGACY_PACKAGE_UPDATE_RETIRED');
     expect(adminReview).toContain('/api/admin/packages/${pkg.id}/standard-notices');
     expect(adminReview).toContain('quality?.v3_draft?.structured_facts');
     expect(adminReview).toContain('정형 키워드 추출 테이블');
     expect(adminReview).toContain('REMARK 표준언어 검수 테이블');
-    expect(standardNoticeRoute).toContain('product_registration_drafts');
-    expect(standardNoticeRoute).toContain('ledger: nextLedger');
-    expect(standardNoticeRoute).toContain('notices_parsed: built.payload.notices_parsed');
-    expect(standardNoticeRoute).toContain('customer_notes: built.payload.customer_notes');
+    expect(standardNoticeRoute).toContain('MUTABLE_STANDARD_NOTICE_UPDATE_RETIRED');
+    expect(standardNoticeRoute).toContain('/api/admin/product-registration/products/{catalogProductId}/corrections');
   });
 
-  it('keeps legacy package approval endpoints behind the V3 draft gate', () => {
+  it('retires legacy package approval endpoints in favor of CAS publication', () => {
     const packagesRoute = source('src/app/api/packages/route.ts');
-    const approveActionIndex = packagesRoute.indexOf("if (action === 'approve')");
-    const sourceAuditIndex = packagesRoute.indexOf('assertPackageSourceAuditAllowsPublication(packageId)', approveActionIndex);
-    const gateIndex = packagesRoute.indexOf('assertPackageV3ApprovalAllowed(packageId)', approveActionIndex);
-    const approvePackageIndex = packagesRoute.indexOf('approvePackage(packageId)', approveActionIndex);
-    const bulkApproveIndex = packagesRoute.indexOf("if (action === 'bulk_approve')");
-    const bulkSourceAuditIndex = packagesRoute.indexOf('assertPackageSourceAuditAllowsPublication(id)', bulkApproveIndex);
-    const bulkGateIndex = packagesRoute.indexOf('V3_DRAFT_BLOCKS_BULK_APPROVAL', bulkApproveIndex);
-    const bulkUpdateIndex = packagesRoute.indexOf("status: 'approved'", bulkApproveIndex);
-
-    expect(sourceAuditIndex).toBeGreaterThan(approveActionIndex);
-    expect(gateIndex).toBeGreaterThan(approveActionIndex);
-    expect(gateIndex).toBeGreaterThan(sourceAuditIndex);
-    expect(approvePackageIndex).toBeGreaterThan(gateIndex);
-    expect(bulkSourceAuditIndex).toBeGreaterThan(bulkApproveIndex);
-    expect(bulkGateIndex).toBeGreaterThan(bulkApproveIndex);
-    expect(bulkUpdateIndex).toBeGreaterThan(bulkGateIndex);
+    expect(packagesRoute).toContain('LEGACY_PACKAGE_UPDATE_RETIRED');
+    expect(packagesRoute).not.toContain("if (action === 'approve')");
+    expect(packagesRoute).not.toContain("if (action === 'bulk_approve')");
+    expect(packagesRoute).not.toContain('approvePackage(packageId)');
   });
 
   it('keeps product-registration paths free of automatic attraction inserts', () => {

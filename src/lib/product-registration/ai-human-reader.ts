@@ -702,8 +702,11 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
   const spans: SourceEvidenceSpan[] = [];
   const seen = new Set<string>();
   const golfWeekdayRows = extractGolfWeekdayRangePriceRows(input);
+  const candidateGraphAmbiguous = ir.resolution?.status === 'ambiguous';
 
-  const candidateRows = golfWeekdayRows.length > 0
+  const candidateRows = candidateGraphAmbiguous
+    ? []
+    : golfWeekdayRows.length > 0
     ? [
       ...golfWeekdayRows,
       // Keep explicit spot/special departures from the same source table;
@@ -747,8 +750,8 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
   }
 
   return {
-    priceSource: ir.source,
-    tiers: ir.tiers,
+    priceSource: candidateGraphAmbiguous ? 'candidate_graph_ambiguous' : ir.source,
+    tiers: candidateGraphAmbiguous ? [] : ir.tiers,
     pairs,
     spans,
   };

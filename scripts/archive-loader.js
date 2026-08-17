@@ -389,13 +389,9 @@ async function generateProductCode(depCode, supCode, destCode, dur) {
 
 async function insertProduct(row) {
   if (DRY_RUN) return true;
-  const { error } = await supabase.from('products').insert(row);
-  if (error) {
-    if (error.code === '23505') return true; // 중복 OK
-    console.error(`  ❌ 상품 실패: ${error.message}`);
-    return false;
-  }
-  return true;
+  void row;
+  console.error('  ❌ RETIRED_ARCHIVE_PRODUCT_WRITER: source must enter the Registration Kernel workflow');
+  return false;
 }
 
 // ══════════════════════════════════════════════════════════════

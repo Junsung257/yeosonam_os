@@ -13,7 +13,10 @@ export async function runProductRegistrationV3(
 ): Promise<V3PipelineResult> {
   const sourceIndex = createSourceLineIndex(rawText);
   const structurePlan = planProductRegistrationV3(sourceIndex);
-  const initialLedger = buildProductRegistrationV3Ledger(sourceIndex, structurePlan);
+  const initialLedger = buildProductRegistrationV3Ledger(sourceIndex, structurePlan, {
+    year: options.year,
+    referenceDate: options.referenceDate,
+  });
   const { ledger, matchSummary } = applyProductRegistrationV3Matching(
     initialLedger,
     options.attractions ?? [],

@@ -129,3 +129,18 @@ export async function resolveAdminActorLabel(req: NextRequest): Promise<string> 
   if (typeof v.payload.sub === 'string' && v.payload.sub) return v.payload.sub;
   return 'admin';
 }
+
+/** Returns the authenticated Supabase user id for actions that legally or
+ * commercially require one accountable human. An API token or dev cookie is
+ * sufficient for ordinary admin automation, but deliberately not for an
+ * evidence-selection exception. */
+export async function resolveAdminActorId(req: NextRequest): Promise<string | null> {
+  const token = req.cookies.get('sb-access-token')?.value;
+  if (!token || !legacyJwtExpValid(token)) return null;
+  const verified = await verifySupabaseAccessToken(token);
+  if (!verified.ok) return null;
+  const subject = typeof verified.payload.sub === 'string' ? verified.payload.sub : '';
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(subject)
+    ? subject
+    : null;
+}

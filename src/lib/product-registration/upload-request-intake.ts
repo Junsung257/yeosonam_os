@@ -2,9 +2,19 @@ import { createHash } from 'crypto';
 import type { NextRequest } from 'next/server';
 
 import { analyzeUploadInputText, normalizePastedSupplierText, type UploadInputAnalysis } from '@/lib/product-registration-input-guard';
-import { parseUploadSourceMetadata, type UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import {
+  DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
+  parseUploadSourceMetadata,
+  type UploadSourceMetadataResult,
+} from '@/lib/upload-source-metadata';
 import { inferProductSourceType } from '@/lib/product-registration-v4/source-documents';
 import { PRODUCT_REGISTRATION_V4_MAX_BYTES, type ProductSourceType } from '@/lib/product-registration-v4/types';
+import { parseProductSourceUploadBatch, type ProductSourceUploadBatch } from './source-upload-batch';
+import { productSourceLineageHash } from './source-lineage-fingerprint';
+import {
+  parseProductSourceDepartureYearContext,
+  type ProductSourceDepartureYearContext,
+} from './source-departure-year-context';
 
 const ALLOWED_UPLOAD_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx', '.txt', '.md'];
 
@@ -23,6 +33,9 @@ export type UploadRequestIntakeResult = {
   registrationJobId?: string | null;
   analysisNormalizedText: string | null;
   uploadSourceMetadata: UploadSourceMetadataResult;
+  sourceBatch?: ProductSourceUploadBatch | null;
+  sourceDepartureYearContext?: ProductSourceDepartureYearContext | null;
+  sourceLineageHash?: string | null;
   inputAnalysisForTrust: UploadInputAnalysis | null;
   archiveMode: boolean;
   bulkMode: boolean;
@@ -84,9 +97,17 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   let uploadSourceMetadata: UploadSourceMetadataResult | null = null;
   let file: File | null = null;
   let declaredMime: string | null = null;
+  let sourceBatchInput: { id?: unknown; index?: unknown; size?: unknown } = {};
+  let sourceDepartureYearInput: unknown = null;
 
   if (contentType.includes('application/json')) {
     const body = await request.json();
+    sourceBatchInput = {
+      id: body.sourceBatchId,
+      index: body.sourceBatchIndex,
+      size: body.sourceBatchSize,
+    };
+    sourceDepartureYearInput = body.sourceDepartureYear;
     originalRawText = typeof body.rawText === 'string' ? body.rawText : '';
     directRawText = originalRawText;
     declaredMime = 'text/plain';
@@ -96,7 +117,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
       sourceLabel: textSourceLabel,
       explicitLandOperator: typeof body.landOperator === 'string' ? body.landOperator : undefined,
       explicitCommissionRate: typeof body.commissionRate !== 'undefined' ? body.commissionRate : undefined,
-      defaultCommissionRate: 10,
+      defaultCommissionRate: DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
     });
 
     const invalidCommission = uploadSourceMetadata.issues.find(issue => issue.code === 'commission_rate_out_of_range');
@@ -135,6 +156,12 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     });
   } else {
     const formData = await request.formData();
+    sourceBatchInput = {
+      id: formData.get('sourceBatchId'),
+      index: formData.get('sourceBatchIndex'),
+      size: formData.get('sourceBatchSize'),
+    };
+    sourceDepartureYearInput = formData.get('sourceDepartureYear');
     file = formData.get('file') as File;
     if (!file) {
       return {
@@ -151,6 +178,32 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
         payload: { error: '파일 크기는 10MB 이하여야 합니다.' },
       };
     }
+  }
+
+  const sourceBatchResult = parseProductSourceUploadBatch(sourceBatchInput);
+  if (!sourceBatchResult.ok) {
+    return {
+      ok: false,
+      status: 422,
+      payload: {
+        success: false,
+        code: sourceBatchResult.code,
+        error: sourceBatchResult.message,
+      },
+    };
+  }
+
+  const sourceDepartureYearResult = parseProductSourceDepartureYearContext(sourceDepartureYearInput);
+  if (!sourceDepartureYearResult.ok) {
+    return {
+      ok: false,
+      status: 422,
+      payload: {
+        success: false,
+        code: sourceDepartureYearResult.code,
+        error: sourceDepartureYearResult.message,
+      },
+    };
   }
 
   const archiveMode = !directRawText && urlParams.get('mode') === 'archive';
@@ -170,7 +223,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   if (!uploadSourceMetadata) {
     uploadSourceMetadata = parseUploadSourceMetadata({
       fileName,
-      defaultCommissionRate: 10,
+      defaultCommissionRate: DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
     });
   }
 
@@ -222,6 +275,9 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     registrationJobId,
     analysisNormalizedText,
     uploadSourceMetadata,
+    sourceBatch: sourceBatchResult.value,
+    sourceDepartureYearContext: sourceDepartureYearResult.value,
+    sourceLineageHash: directRawText ? productSourceLineageHash(parserRawText ?? directRawText) : null,
     inputAnalysisForTrust,
     archiveMode,
     bulkMode,

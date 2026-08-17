@@ -266,6 +266,13 @@ export interface GatewayCallParams {
   escalateIfLowConfidence?: (data: unknown, rawText?: string) => boolean;
   /** tenant_id (어필리에이트 스코프) — null이면 platform 소속 */
   tenantId?: string | null;
+  /**
+   * Safety-critical independent verification only. A pinned call never uses
+   * the task route's advisor or fallback, so two legs cannot silently collapse
+   * to the same provider.
+   */
+  pinnedProvider?: 'deepseek' | 'gemini' | 'claude';
+  pinnedModel?: string;
 }
 
 export interface GatewayResult<T = unknown> {
@@ -330,6 +337,14 @@ async function callDeepSeek(
       max_tokens: params.maxTokens || 2000,
       temperature: params.temperature ?? 0.3,
       ...(params.jsonSchema ? { response_format: { type: 'json_object' as const } } : {}),
+      // DeepSeek V4 defaults to thinking mode. For source-backed registration
+      // JSON, the reasoning tokens can consume the entire output budget and
+      // leave an empty content field (finish_reason=length). Pinned
+      // product-registration calls use the documented non-thinking toggle;
+      // ordinary unpinned LLM tasks retain their existing routing behavior.
+      ...(params.pinnedProvider === 'deepseek'
+        ? { extra_body: { thinking: { type: 'disabled' as const } } }
+        : {}),
     };
 
     // signal 전달 — timeout 시 SDK 가 AbortError throw → 비용/span leak 방지
@@ -635,16 +650,28 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
 
   const complexityScore = estimateComplexity(params.userPrompt);
   const route = ROUTING[effectiveTask];
-  const policy = await resolveAiPolicyRuntime(
-    effectiveTask,
-    route.executor.model.includes('pro') ? 'pro' : 'fast',
-  );
-  const executor: ModelRef = { provider: policy.provider, model: policy.model };
-  const fallback: ModelRef | null = policy.fallbackProvider
-    ? { provider: policy.fallbackProvider, model: policy.fallbackModel || route.fallback?.model || route.executor.model }
-    : route.fallback;
+  const policy = params.pinnedProvider
+    ? null
+    : await resolveAiPolicyRuntime(
+        effectiveTask,
+        route.executor.model.includes('pro') ? 'pro' : 'fast',
+      );
+  const defaultPinnedModel = params.pinnedProvider === 'claude'
+    ? process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_CLAUDE_MODEL || 'claude-sonnet-4-6'
+    : params.pinnedProvider === 'gemini'
+      ? process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_GEMINI_MODEL || MODELS.GEMINI_FLASH
+      : route.executor.model;
+  const executor: ModelRef = params.pinnedProvider
+    ? { provider: params.pinnedProvider, model: params.pinnedModel || defaultPinnedModel }
+    : { provider: policy!.provider, model: policy!.model };
+  const fallback: ModelRef | null = params.pinnedProvider
+    ? null
+    : policy!.fallbackProvider
+      ? { provider: policy!.fallbackProvider, model: policy!.fallbackModel || route.fallback?.model || route.executor.model }
+      : route.fallback;
+  const advisor = params.pinnedProvider ? null : route.advisor ?? null;
   const envTimeout = Number(process.env.AI_EXECUTOR_TIMEOUT_MS || 0);
-  const timeoutMs = policy.timeoutMs ?? (envTimeout > 0 ? envTimeout : null);
+  const timeoutMs = policy?.timeoutMs ?? (envTimeout > 0 ? envTimeout : null);
   const errors: string[] = [];
   // 호출자 override (params.maxRetries) > ROUTING 기본 (route.maxRetries) > fallback 2
   const maxRetries = params.maxRetries ?? route.maxRetries ?? 2;
@@ -689,7 +716,7 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
 
         // Confidence-gated escalation (Trust-or-Escalate, ICLR 2025).
         // 호출자가 응답 데이터를 보고 "확신 부족" 으로 판단하면 advisor 모델로 재실행.
-        if (route.advisor && params.escalateIfLowConfidence) {
+        if (advisor && params.escalateIfLowConfidence) {
           let lowConf = false;
           try {
             lowConf = !!params.escalateIfLowConfidence(primary.data, primary.rawText);
@@ -697,10 +724,10 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
             console.warn(`[llm-gateway] confidence predicate threw: ${e instanceof Error ? e.message : String(e)}`);
           }
           if (lowConf) {
-            console.log(`[llm-gateway] confidence-gated escalation: ${executor.provider}/${executor.model} → ${route.advisor.provider}/${route.advisor.model} (task=${effectiveTask})`);
-            const escalated = await callModelWithTimeout(route.advisor, params, timeoutMs);
+            console.log(`[llm-gateway] confidence-gated escalation: ${executor.provider}/${executor.model} → ${advisor.provider}/${advisor.model} (task=${effectiveTask})`);
+            const escalated = await callModelWithTimeout(advisor, params, timeoutMs);
             if (escalated.success) {
-              recordCost(escalated, route.advisor.model, route.advisor.provider);
+              recordCost(escalated, advisor.model, advisor.provider);
               return {
                 ...escalated,
                 advisorUsed: true,
@@ -717,8 +744,8 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
       errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${executor.provider}/${executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);
 
       // 2회 이상 실패하고 advisor 있으면 조언 구해서 재시도
-      if (attempt >= 1 && route.advisor) {
-        const advice = await consultAdvisor(route.advisor, params, errors[errors.length - 1]);
+      if (attempt >= 1 && advisor) {
+        const advice = await consultAdvisor(advisor, params, errors[errors.length - 1]);
         if (advice) {
           const enhancedParams: GatewayCallParams = {
             ...params,

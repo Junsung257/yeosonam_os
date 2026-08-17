@@ -150,6 +150,30 @@ export function evaluateProductRegistrationV3Gate(
       'source shopping section is reflected in ledger',
     );
     const highRiskNotices = variant.standard_notices.filter(n => n.risk_level === 'high');
+    const noticeKeys = new Set(variant.standard_notices
+      .filter(notice => notice.review_status !== 'rejected')
+      .map(notice => notice.template_key));
+    check(
+      checks,
+      `${variant.variant_key}.guide_tip_not_contradictory`,
+      !(noticeKeys.has('guide.tip_included') && noticeKeys.has('guide.tip_amount_local_payment')),
+      'critical',
+      'guide/driver tip cannot be both included and payable locally',
+    );
+    check(
+      checks,
+      `${variant.variant_key}.optional_tour_not_contradictory`,
+      !(noticeKeys.has('optional.none') && variant.options.length > 0),
+      'critical',
+      'no-option notice cannot coexist with customer-visible optional tours',
+    );
+    check(
+      checks,
+      `${variant.variant_key}.shopping_not_contradictory`,
+      !(noticeKeys.has('shopping.none') && variant.shopping.length > 0),
+      'critical',
+      'no-shopping notice cannot coexist with shopping visits',
+    );
     check(
       checks,
       `${variant.variant_key}.high_risk_notice_values`,

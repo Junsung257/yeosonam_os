@@ -106,10 +106,10 @@ describe('Jangjiajie BX371 upload regression', () => {
     expect(result.source).toBe('deterministic:product_price_vertical_date_table');
     expect(result.minPrice).toBe(499000);
     expect(result.priceDates).toEqual([
-      { date: '2026-06-08', price: 499000, confirmed: false },
-      { date: '2026-06-27', price: 499000, confirmed: false },
-      { date: '2026-07-11', price: 599000, confirmed: false },
-      { date: '2026-08-08', price: 599000, confirmed: false },
+      { date: '2026-06-08', price: 499000, child_price: 499000, confirmed: false },
+      { date: '2026-06-27', price: 499000, child_price: 499000, confirmed: false },
+      { date: '2026-07-11', price: 599000, child_price: 599000, confirmed: false },
+      { date: '2026-08-08', price: 599000, child_price: 599000, confirmed: false },
     ]);
   });
 });

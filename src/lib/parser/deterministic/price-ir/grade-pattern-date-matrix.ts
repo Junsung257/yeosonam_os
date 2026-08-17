@@ -1,4 +1,5 @@
 import type { MatrixPriceRow, PriceIROptions } from './types.ts';
+import { parseSourceWonAmount } from './source-money.ts';
 
 type GradeKey = 'save' | 'standard' | 'premium' | 'crown';
 
@@ -19,7 +20,6 @@ const GRADE_ALIASES: Record<GradeKey, string[]> = {
   crown: ['크라운', 'crown'],
 };
 
-const PRICE_RE = /^(\d{1,3}(?:,\d{3})+|\d{5,8}|\d{3,4})(?:\s*원|\s*,-)?$/;
 const MONTH_RE = /^(\d{1,2})월$/;
 const WEEKDAY_RE = /^[월화수목금토일]요일$/;
 const PATTERN_RE = /^(\d+)박\s*(\d+)일$/;
@@ -30,11 +30,10 @@ function compact(value: string): string {
 }
 
 function parsePrice(line: string): number {
-  const match = compact(line).match(PRICE_RE);
-  if (!match) return 0;
-  const value = Number(match[1].replace(/,/g, ''));
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  return value < 10000 ? value * 1000 : value;
+  return parseSourceWonAmount(compact(line), {
+    allowBareSaleShorthand: true,
+    minAmount: 100_000,
+  })?.amount ?? 0;
 }
 
 function parseGradeLabel(line: string): GradeLabel | null {

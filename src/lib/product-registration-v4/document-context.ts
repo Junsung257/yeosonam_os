@@ -14,8 +14,8 @@ export type SharedDocumentContextBlock = {
 // Keep Korean tokens as Unicode escapes so Windows, Linux and Vercel parse the
 // exact same source bytes even when a supplier filename or shell locale is not UTF-8.
 const HEADING_PATTERNS: Array<{ kind: SharedDocumentContextKind; pattern: RegExp }> = [
-  { kind: 'inclusions', pattern: /^\s*(?:\uD3EC\uD568\s*(?:\uC0AC\uD56D|\uB0B4\uC6A9|\uB0B4\uC5ED)?|INCLUSIONS?)\s*[:\uFF1A]?\s*$/iu },
-  { kind: 'exclusions', pattern: /^\s*(?:(?:\uBD88\uD3EC\uD568|\uC81C\uC678)\s*(?:\uC0AC\uD56D|\uB0B4\uC6A9|\uB0B4\uC5ED)?|EXCLUSIONS?)\s*[:\uFF1A]?\s*$/iu },
+  { kind: 'inclusions', pattern: /^\s*(?:\uD3EC\s*\uD568\s*(?:\uC0AC\uD56D|\uB0B4\uC6A9|\uB0B4\uC5ED)?|INCLUSIONS?)\s*(?:[:\uFF1A]\s*.+)?\s*$/iu },
+  { kind: 'exclusions', pattern: /^\s*(?:(?:\uBD88\s*\uD3EC\s*\uD568|\uC81C\uC678)\s*(?:\uC0AC\uD56D|\uB0B4\uC6A9|\uB0B4\uC5ED)?|EXCLUSIONS?)\s*(?:[:\uFF1A]\s*.+)?\s*$/iu },
   { kind: 'cancellation', pattern: /^\s*(?:(?:\uCDE8\uC18C(?:\s*(?:\uBC0F|\/)?\s*\uD658\uBD88)?|\uD658\uBD88)\s*(?:\uADDC\uC815|\uC870\uAC74|\uC548\uB0B4|\uB8CC)?|CANCELLATION(?:\s*POLICY)?)\s*[:\uFF1A]?\s*$/iu },
   { kind: 'booking_notice', pattern: /^\s*(?:\uC608\uC57D\s*(?:\uC548\uB0B4|\uC2DC\s*\uC720\uC758\uC0AC\uD56D)|\uC911\uC694\s*\uC548\uB0B4|IMPORTANT\s*NOTICE)\s*[:\uFF1A]?\s*$/iu },
 ];
@@ -36,7 +36,7 @@ function lineRanges(text: string): Array<{ text: string; start: number; end: num
 }
 
 function lastItineraryOffset(text: string): number {
-  const expression = /(?:^|\n)\s*(?:DAY\s*\d+|\uC81C\s*\d+\s*\uC77C|\d+\s*\uC77C\uCC28)(?=\s|$)/giu;
+  const expression = /(?:^|\n)\s*(?:DAY\s*\d+|\uC81C\s*\d+\s*\uC77C|\d+\s*\uC77C\s*\uCC28)(?=\s|[:\uFF1A]|$)/giu;
   let last = -1;
   for (const match of text.matchAll(expression)) last = Math.max(last, match.index ?? -1);
   return last;
@@ -70,7 +70,8 @@ export function inferSharedDocumentContext(text: string): SharedDocumentContextB
     const next = headings[index + 1];
     const end = next?.start ?? normalized.length;
     const blockText = normalized.slice(heading.start, end).trim();
-    const body = blockText.split('\n').slice(1).join(' ').trim();
+    const firstLineBody = heading.text.split(/[:\uFF1A]/u).slice(1).join(':').trim();
+    const body = [firstLineBody, ...blockText.split('\n').slice(1)].join(' ').trim();
     if (body.length < 2 || blockText.length > 12_000) return [];
     return [{ kind: heading.kind, text: blockText, start: heading.start, end }];
   });

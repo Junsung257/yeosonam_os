@@ -23,7 +23,7 @@ import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
-import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
+import { getEffectivePriceDates, getPriceBoundDeparture, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
 import GlobalNav from '@/components/customer/GlobalNav';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
@@ -39,6 +39,14 @@ import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { trackAnalyticsEvent } from '@/lib/analytics';
+import type { CustomerBudget } from '@/lib/package-publication/customer-budget';
+import {
+  normalizePublicPackageMedia,
+  publicMediaFromLegacyUrl,
+  selectPublicHeroMedia,
+  shouldBypassImageOptimization,
+} from '@/lib/package-publication/public-media';
+import type { PublicPackageMedia } from '@/lib/package-publication/types';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -92,6 +100,12 @@ interface DaySchedule {
   hotel?: { name: string; grade?: string; note?: string } | null;
 }
 
+interface ItineraryAlternative {
+  label: string;
+  consultation_selection_required?: boolean;
+  days: DaySchedule[];
+}
+
 interface Package {
   id: string;
   title: string;
@@ -106,9 +120,14 @@ interface Package {
   min_participants?: number;
   min_people?: number;
   ticketing_deadline?: string;
+  ticketing_deadline_status?: 'open' | 'expired' | 'conditional' | 'conflicting';
+  ticketing_condition?: {
+    customerNotice?: string;
+    consultationOnly?: boolean;
+  } | null;
   product_type?: string;
   price_tiers?: PriceTier[];
-  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
+  price_dates?: PriceDate[];
   product_prices?: CustomerProductPriceRow[];
   inclusions?: string[];
   excludes?: string[];
@@ -121,14 +140,21 @@ interface Package {
   customer_notes?: string;
   internal_notes?: string;
   notices_parsed?: (string | CustomerSafeNotice | { type: string; title: string; text: string })[];
-  itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
+  itinerary_data?: {
+    days?: DaySchedule[];
+    highlights?: { remarks?: string[] };
+    itinerary_alternatives?: ItineraryAlternative[];
+  } | DaySchedule[];
   display_title?: string;
   hero_tagline?: string;
   product_summary?: string;
   lp_hero_image_url?: string | null;
   thumbnail_urls?: string[] | null;
+  hero_media?: PublicPackageMedia | null;
+  images_public?: PublicPackageMedia[] | null;
   products?: { display_name?: string; internal_code?: string };
   _canonical_view?: CanonicalView | null;
+  customer_budget?: CustomerBudget;
 }
 
 interface AttractionInfo {
@@ -504,6 +530,7 @@ function createDecisionGuide({
 
 export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [], initialNotices = [], climateData = null, representativeMonth = new Date().getMonth() + 1, departureDistribution = {}, scoreRows = [], rivalsByDate = {}, socialProof, catalogSiblings = [] }: DetailClientProps) {
   const searchParams = useSearchParams();
+  const proofMode = searchParams.has('__proof_snapshot');
   const router = useRouter();
 
   /**
@@ -571,6 +598,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     });
   };
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedItineraryChoice, setSelectedItineraryChoice] = useState(0);
   const [activeSection, setActiveSection] = useState<NavSection>('상품정보');
   const [activeDay, setActiveDay] = useState(1);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -580,52 +608,55 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const scheduleSectionRef = useRef<HTMLDivElement | null>(null);
   const termsSectionRef = useRef<HTMLDivElement | null>(null);
   const openInquiryForm = useCallback((source: string) => {
-    trackAnalyticsEvent('begin_checkout', {
-      package_id: id,
-      package_name: pkg?.title ?? undefined,
-      destination: pkg?.destination ?? undefined,
-      departure_date: selectedDate || selectedTier?.period_label,
-      currency: 'KRW',
-      value: selectedTier?.adult_price && selectedTier.adult_price > 0
-        ? selectedTier.adult_price
-        : undefined,
-    }, { dedupeKey: `${id}:${selectedDate || selectedTier?.period_label || 'none'}` });
-    trackEngagement({
-      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
-      product_id: id,
-      product_name: pkg?.title ?? '',
-      page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
-      metadata: {
-        source,
-        selectedDate,
-        selectedTier: selectedTier?.period_label ?? null,
-      },
-    });
-    fetch('/api/tracking/score-signal', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+    if (!proofMode) {
+      trackAnalyticsEvent('begin_checkout', {
         package_id: id,
-        signal_type: 'lead_sheet_open',
-        group_key: source,
-        session_id: getSessionId(),
-      }),
-    }).catch(() => {});
-    fetch('/api/tracking/recommendation', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        package_id: id,
-        outcome: 'inquiry',
-        session_id: getSessionId(),
-      }),
-    }).catch(() => {});
+        package_name: pkg?.title ?? undefined,
+        destination: pkg?.destination ?? undefined,
+        departure_date: selectedDate || selectedTier?.period_label,
+        currency: 'KRW',
+        value: selectedTier?.adult_price && selectedTier.adult_price > 0
+          ? selectedTier.adult_price
+          : undefined,
+      }, { dedupeKey: `${id}:${selectedDate || selectedTier?.period_label || 'none'}` });
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+        product_id: id,
+        product_name: pkg?.title ?? '',
+        page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+        metadata: {
+          source,
+          selectedDate,
+          selectedTier: selectedTier?.period_label ?? null,
+        },
+      });
+      fetch('/api/tracking/score-signal', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          package_id: id,
+          signal_type: 'lead_sheet_open',
+          group_key: source,
+          session_id: getSessionId(),
+        }),
+      }).catch(() => {});
+      fetch('/api/tracking/recommendation', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          package_id: id,
+          outcome: 'inquiry',
+          session_id: getSessionId(),
+        }),
+      }).catch(() => {});
+    }
     setReservationSubmitAttempted(false);
     setReservationSubmitError('');
     setReservationConsent(false);
     setShowForm(true);
   }, [
     id,
+    proofMode,
     pkg?.destination,
     pkg?.title,
     selectedDate,
@@ -634,13 +665,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   ]);
 
   useEffect(() => {
+    if (proofMode) return;
     const ref = searchParams.get('ref');
     if (ref) fetch(`/api/influencer/track?ref=${encodeURIComponent(ref)}&pkg=${encodeURIComponent(id)}`).catch(() => {});
-  }, [id, searchParams]);
+  }, [id, proofMode, searchParams]);
 
   // 캘린더 초기 월 자동 이동은 DepartureCalendar 컴포넌트가 priceDates로부터 처리
 
   useEffect(() => {
+    if (proofMode && initialPackage) {
+      setIsLoading(false);
+      return;
+    }
     // 서버에서 초기 데이터를 받은 경우 fetch 스킵
     if (initialPackage) {
       trackViewContent({
@@ -705,7 +741,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         .then(d => setAttractions(d.attractions || []))
         .catch((e) => console.warn('[DetailClient] attractions fallback fetch failed:', e?.message ?? e));
     }
-  }, [id, initialPackage, initialAttractions.length]);
+  }, [id, initialPackage, initialAttractions.length, proofMode]);
 
   const updateActiveSection = useCallback(() => {
     const anchorY = 132;
@@ -894,8 +930,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     },
     [pkg],
   );
+  const itineraryAlternatives = useMemo<ItineraryAlternative[]>(() => {
+    if (!pkg?.itinerary_data || Array.isArray(pkg.itinerary_data)) return [];
+    return Array.isArray(pkg.itinerary_data.itinerary_alternatives)
+      ? pkg.itinerary_data.itinerary_alternatives.filter(choice => Array.isArray(choice.days) && choice.days.length > 0)
+      : [];
+  }, [pkg]);
   const days: DaySchedule[] = useMemo(() => {
     if (!pkg) return [];
+    const selectedAlternative = itineraryAlternatives[selectedItineraryChoice];
+    if (selectedAlternative) return selectedAlternative.days;
     const sourceDays = normalizeDays<DaySchedule>(pkg.itinerary_data);
     if (!view?.days?.length) return sourceDays;
     return view.days.map((day, index) => {
@@ -910,7 +954,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           : null),
       };
     });
-  }, [pkg, view]);
+  }, [itineraryAlternatives, pkg, selectedItineraryChoice, view]);
   const tiers = useMemo(
     () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers as unknown as import('@/lib/parser').PriceTier[] ?? [], pkg.departure_days) as unknown as import('@/lib/parser').PriceTier[]) : []),
     [pkg],
@@ -937,21 +981,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     const d = new Date(confirmed[0].date);
     return `${d.getMonth() + 1}/${d.getDate()} 확정`;
   }, [pkg]);
-  const heroUrl = useMemo(() => {
+  const heroMedia = useMemo(() => {
     if (!pkg) return null;
-    if (isSafeImageSrc(pkg.lp_hero_image_url)) return pkg.lp_hero_image_url.trim();
-    // destination "다낭/호이안", "방콕/파타야" 등 slash/공백 구분 → 토큰 분리 후 양방향 매칭
-    const destTokens = (pkg.destination || '').split(/[\/·, ]+/).map(t => t.trim()).filter(Boolean);
-    const photo = attractions.find(a =>
-      a.photos && a.photos.length > 0 &&
-      destTokens.some(t =>
-        (a.country && (a.country.includes(t) || t.includes(a.country))) ||
-        (a.region && (a.region.includes(t) || t.includes(a.region)))
-      )
-    )?.photos?.[0];
-    const raw = photo?.src_large || photo?.src_medium;
-    return isSafeImageSrc(raw) ? raw.trim() : null;
-  }, [pkg, attractions]);
+    return normalizePublicPackageMedia(pkg.hero_media, `${pkg.destination || '여행'} 이미지`)
+      ?? selectPublicHeroMedia(pkg.images_public)
+      ?? publicMediaFromLegacyUrl({
+        url: pkg.lp_hero_image_url,
+        source: 'legacy_package',
+        role: 'hero',
+        alt: `${pkg.destination || '여행'} 참고 이미지`,
+      });
+  }, [pkg]);
+  const heroUrl = heroMedia?.url ?? null;
   const [heroImgBroken, setHeroImgBroken] = useState(false);
   useEffect(() => {
     setHeroImgBroken(false);
@@ -971,34 +1012,27 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   }, [pkg, attractions]);
 
   // Hero 멀티 슬라이드 갤러리
-  const heroPhotos = useMemo(() => {
+  const heroPhotos = useMemo<PublicPackageMedia[]>(() => {
     if (!pkg) return [];
-    if (isSafeImageSrc(pkg.lp_hero_image_url)) {
-      const src = pkg.lp_hero_image_url.trim();
-      return [{ src_large: src, src_medium: src, photographer: '', pexels_id: 0 }];
-    }
-    const destTokens = (pkg.destination || '').split(/[\/·, ]+/).map(t => t.trim()).filter(Boolean);
-    const attrPhotos = attractions
-      .filter(a => a.photos && a.photos.length > 0 && destTokens.some(t =>
-        (a.country && (a.country.includes(t) || t.includes(a.country))) ||
-        (a.region && (a.region.includes(t) || t.includes(a.region)))
-      ))
-      .flatMap(a => a.photos || [])
+    const canonical = (pkg.images_public ?? [])
+      .map(item => normalizePublicPackageMedia(item, `${pkg.destination || '여행'} 이미지`))
+      .filter((item): item is PublicPackageMedia => Boolean(item))
       .slice(0, 5);
-    if (attrPhotos.length > 0) return attrPhotos;
-    // attraction 사진 없을 때 상품 thumbnail_urls로 폴백
-    return (pkg.thumbnail_urls || [])
-      .filter(u => isSafeImageSrc(u))
-      .slice(0, 5)
-      .map(u => ({ src_large: u, src_medium: u, photographer: '', pexels_id: 0 }));
-  }, [attractions, pkg]);
-  // A catalog/destination photo is useful as a visual placeholder, but it is
-  // not evidence that the exact hotel, course, or activity appears in the
-  // uploaded source document. Make that distinction explicit to customers.
-  const heroSourceUrl = pkg?.lp_hero_image_url?.trim() ?? '';
-  const heroIsReferenceImage = !isSafeImageSrc(heroSourceUrl)
-    || /(?:pexels\.com|unsplash\.com|images\.unsplash\.com)/i.test(heroSourceUrl);
+    if (canonical.length > 0) return canonical;
+    if (heroMedia) return [heroMedia];
+    return (pkg.thumbnail_urls ?? [])
+      .map(url => publicMediaFromLegacyUrl({
+        url,
+        source: 'legacy_package',
+        role: 'reference',
+        alt: `${pkg.destination || '여행'} 참고 이미지`,
+      }))
+      .filter((item): item is PublicPackageMedia => Boolean(item))
+      .slice(0, 5);
+  }, [heroMedia, pkg]);
   const [heroSlide, setHeroSlide] = useState(0);
+  const activeHeroMedia = heroPhotos[heroSlide] ?? heroMedia;
+  const heroIsReferenceImage = activeHeroMedia?.reference_only === true;
   const heroTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startHeroTimer = useCallback(() => {
     if (heroTimerRef.current) clearInterval(heroTimerRef.current);
@@ -1049,7 +1083,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const firstScreenPriceLabel = Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
     ? `₩${(displayPrice as number).toLocaleString()}~`
     : '가격 문의';
-  const firstScreenDepartureLabel = nextConfirmedDate ?? nextAvailableDepartureLabel ?? '출발일 확인';
+  const priceBoundDeparture = getPriceBoundDeparture(allPriceDates, displayPrice, todayForDeparture);
+  const selectedDepartureLabel = selectedDate ? formatCompactDepartureDate(selectedDate) : null;
+  const priceBoundDepartureLabel = formatCompactDepartureDate(priceBoundDeparture?.date);
+  const firstScreenDepartureLabel = selectedDepartureLabel
+    ? `${selectedDepartureLabel} 선택 가격`
+    : priceBoundDepartureLabel
+      ? `${priceBoundDepartureLabel} 기준`
+      : allPriceDates.length > 0
+        ? '출발일별 가격은 아래에서 확인'
+        : nextConfirmedDate ?? nextAvailableDepartureLabel ?? '출발일 확인';
   const firstScreenBadges = [productTypeLabel, durationLabel, airlineName]
     .filter((item): item is string => Boolean(item))
     .slice(0, 3);
@@ -1214,16 +1257,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         >
           {heroPhotos.length > 0 && !heroImgBroken ? (
             heroPhotos.map((photo, idx) => {
-              const src = photo.src_large || photo.src_medium;
+              const src = photo.url;
               if (!isSafeImageSrc(src)) return null;
               return (
                 <Image
                   key={idx}
                   src={src.trim()}
-                  alt={`${pkg.destination || '여행'}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
+                  alt={photo.alt}
                   fill
                   className={`object-cover transition-opacity duration-700 ${idx === heroSlide ? 'opacity-100' : 'opacity-0'}`}
                   sizes="100vw"
+                  unoptimized={shouldBypassImageOptimization(photo)}
                   priority={idx === 0}
                   onError={() => { if (idx === heroSlide) setHeroImgBroken(true); }}
                 />
@@ -1232,10 +1276,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           ) : heroUrl && !heroImgBroken ? (
             <Image
               src={heroUrl}
-              alt={`${pkg.destination || '여행'}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
+              alt={heroMedia?.alt ?? `${pkg.destination || '여행'}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
               fill
               className="object-cover"
               sizes="100vw"
+              unoptimized={shouldBypassImageOptimization(heroMedia)}
               priority
               onError={() => setHeroImgBroken(true)}
             />
@@ -1246,8 +1291,30 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/10" />
         {heroIsReferenceImage && heroPhotos.length > 0 && (
           <span className="absolute top-24 right-4 z-10 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-sm">
-            참고 이미지
+            {activeHeroMedia?.label ?? '여행지 참고 이미지'}
           </span>
+        )}
+        {activeHeroMedia?.attribution_text && activeHeroMedia.attribution_url && (
+          <div className="absolute top-32 right-4 z-10 flex max-w-[78%] flex-wrap justify-end gap-x-2 gap-y-1 rounded bg-black/55 px-2 py-1 text-[9px] leading-tight text-white/85 backdrop-blur-sm">
+            <a
+              href={activeHeroMedia.attribution_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-white/40"
+            >
+              {activeHeroMedia.attribution_text}
+            </a>
+            {activeHeroMedia.license_url && (
+              <a
+                href={activeHeroMedia.license_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-white/40"
+              >
+                {activeHeroMedia.license_code ? `${activeHeroMedia.license_code} 확인` : '라이선스 확인'}
+              </a>
+            )}
+          </div>
         )}
 
         {/* 상단 네비 */}
@@ -1389,7 +1456,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 리뷰 1줄 요약 strip (PR-F, cron review-digest 산출물) ═══ */}
-      <ReviewDigestStrip packageId={pkg.id} />
+      {!proofMode && <ReviewDigestStrip packageId={pkg.id} />}
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}
       <section className="px-4 mt-3 relative z-10">
@@ -1446,13 +1513,27 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 )}
               </div>
             </div>
-            {pkg.ticketing_deadline && (() => {
+            {(pkg.ticketing_deadline || pkg.ticketing_condition?.customerNotice) && (() => {
+              if (pkg.ticketing_deadline_status === 'expired' || pkg.ticketing_deadline_status === 'conflicting') {
+                return (
+                  <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900">
+                    {pkg.ticketing_condition?.customerNotice ?? '발권기한 경과 · 현재 좌석과 요금 상담 확인'}
+                  </span>
+                );
+              }
+              if (!pkg.ticketing_deadline) {
+                return (
+                  <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700">
+                    {pkg.ticketing_condition?.customerNotice}
+                  </span>
+                );
+              }
               const deadline = new Date(pkg.ticketing_deadline);
               const today = new Date();
               today.setHours(0,0,0,0); deadline.setHours(0,0,0,0);
               const diffDays = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              const dDayText = diffDays <= 0 ? '마감' : `D-${diffDays}`;
-              const urgentColor = diffDays <= 3 ? 'bg-red-500 text-white animate-pulse' : diffDays <= 7 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600';
+              const dDayText = diffDays <= 0 ? '상담 확인' : `D-${diffDays}`;
+              const urgentColor = diffDays <= 0 ? 'bg-amber-100 text-amber-900' : diffDays <= 3 ? 'bg-red-500 text-white animate-pulse' : diffDays <= 7 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600';
               return (
                 <span className={`text-xs font-bold px-2.5 py-1.5 rounded-lg ${urgentColor}`}>
                   ⏰ {dDayText} ({(deadline.getMonth()+1)}/{deadline.getDate()} 마감)
@@ -1460,6 +1541,42 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               );
             })()}
           </div>
+
+          {pkg.customer_budget?.calculation === 'base_plus_fuel'
+            && pkg.customer_budget.expected_budget != null
+            && pkg.customer_budget.fuel_surcharge.amount != null && (
+              <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-bold text-blue-950">예상 부담금액</p>
+                  <p className="text-lg font-black tabular-nums text-blue-950">
+                    ₩{pkg.customer_budget.expected_budget.toLocaleString('ko-KR')}
+                  </p>
+                </div>
+                <p className="mt-1 text-xs text-blue-800">
+                  상품가 {(pkg.customer_budget.base_product_price ?? displayPrice ?? 0).toLocaleString('ko-KR')}원
+                  {' + '}유류할증료 {pkg.customer_budget.fuel_surcharge.amount.toLocaleString('ko-KR')}원
+                </p>
+              </div>
+            )}
+          {pkg.customer_budget?.calculation === 'fuel_confirmation_required' && (
+            <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3.5 py-3 text-sm font-semibold text-amber-950">
+              예상 부담금액은 유류할증료 확인 후 안내됩니다.
+            </div>
+          )}
+          {pkg.customer_budget?.guide_fee_excluded && (
+            <p className="mt-2 text-xs leading-relaxed text-gray-500">
+              가이드/기사 경비는 불포함 항목이며 예상 부담금액에는 포함되지 않습니다.
+            </p>
+          )}
+          {(pkg.product_highlights ?? []).filter(item => /상담\s*시\s*최종\s*확인/.test(item)).map((notice, index) => (
+            <div
+              key={`customer-confirmation-${index}`}
+              className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm font-semibold leading-relaxed text-amber-950"
+              role="note"
+            >
+              {notice}
+            </div>
+          ))}
 
           {/* 핵심 특전 — UX-1 강화: 진짜 특전(화이트리스트)만 표시, 0건이면 섹션 숨김 (2026-05-14) */}
           {(() => {
@@ -1641,7 +1758,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <p className="text-xs font-bold text-brand mb-2.5">가는편</p>
               <div className="flex items-center justify-between">
                 <div className="text-center min-w-[60px]">
-                  {flightDep.time && <p className="text-xl font-black text-gray-900 tabular-nums">{flightDep.time}</p>}
+                  <p className="text-xl font-black text-gray-900 tabular-nums">{flightDep.time || UNKNOWN_FLIGHT_TIME_LABEL}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{(pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '')}</p>
                 </div>
                 <div className="flex flex-col items-center flex-1 px-2">
@@ -1908,6 +2025,32 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <div ref={el => { sectionRefs.current['일정표'] = el; scheduleSectionRef.current = el; }} data-section="일정표" className="px-4 py-8 scroll-mt-[108px]">
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">여행 일정</h2>
 
+          {itineraryAlternatives.length > 1 && (
+            <div className="mb-5 rounded-2xl border border-brand/20 bg-brand-light/40 p-4">
+              <p className="text-sm font-extrabold text-slate-900">같은 상품에서 일정 코스를 선택할 수 있어요</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">가격·항공·숙소 조건은 같고 관광 코스만 다릅니다. 상담할 때 원하는 일정을 선택해 주세요.</p>
+              <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar" aria-label="일정 코스 선택">
+                {itineraryAlternatives.map((choice, index) => (
+                  <button
+                    key={`${choice.label}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      setSelectedItineraryChoice(index);
+                      setActiveDay(choice.days[0]?.day ?? 1);
+                    }}
+                    className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold transition ${
+                      selectedItineraryChoice === index
+                        ? 'bg-slate-950 text-white'
+                        : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Day 탭 (Voyager 스타일 pill) — 클릭 시 해당 day로 스크롤 */}
           <div className={`${activeSection === '일정표' ? 'sticky' : 'hidden'} top-[41px] z-20 bg-[#F8FAFC]/95 backdrop-blur-md -mx-4 px-4 pb-3 pt-2 border-b border-slate-100`}>
             <div className="flex gap-2 overflow-x-auto scrollbar-hide">
@@ -2033,7 +2176,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                         <div className="bg-white rounded-xl border border-gray-200 p-3">
                           <div className="flex gap-3">
                             <div className="flex flex-col items-center shrink-0 w-12">
-                              <p className="text-sm font-black text-gray-900">{item.time}</p>
+                              <p className="text-sm font-black text-gray-900">{item.time || UNKNOWN_FLIGHT_TIME_LABEL}</p>
                               <div className="w-[2px] flex-1 bg-brand-light my-1 min-h-[28px]" />
                               <p className="text-sm font-black text-gray-900">{arrTimeFinal || UNKNOWN_FLIGHT_TIME_LABEL}</p>
                             </div>

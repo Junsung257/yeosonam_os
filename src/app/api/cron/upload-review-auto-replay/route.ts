@@ -1,17 +1,21 @@
 import { randomUUID } from 'crypto';
 
-import { after as nextAfter, NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-import { postAlert } from '@/lib/admin-alerts';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
+import {
+  startProductRegistrationTextWorkflow,
+  startProductRegistrationWorkflowBySourceId,
+} from '@/lib/product-registration-authority/start-workflow';
+import { parseProductRegistrationTenantId } from '@/lib/product-registration-authority/types';
 import type { UploadReviewQueueFixtureRow } from '@/lib/product-registration/review-queue-fixture-candidates';
 import { buildUploadReviewRegressionReport } from '@/lib/product-registration/upload-review-regression-verifier';
-import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import { DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE, parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,6 +28,8 @@ type ReplaySummary = {
   reason: string;
   httpStatus?: number;
   savedIds?: string[];
+  jobId?: string;
+  workflowRunId?: string;
 };
 
 const RECOVERABLE_REASON_PATTERNS = [
@@ -45,20 +51,6 @@ const RECOVERABLE_REASON_PATTERNS = [
   /UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY/i,
 ];
 
-function safeAfter(task: () => Promise<void> | void): void {
-  try {
-    nextAfter(task);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('outside a request scope')) {
-      void Promise.resolve()
-        .then(task)
-        .catch(err => console.warn('[upload-review-auto-replay] deferred task failed:', err instanceof Error ? err.message : err));
-      return;
-    }
-    throw error;
-  }
-}
-
 function clampLimit(value: string | null): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 10;
@@ -74,28 +66,39 @@ function isRecoverableReviewQueueReason(errorReason: string | null | undefined):
   return RECOVERABLE_REASON_PATTERNS.some(pattern => pattern.test(errorReason));
 }
 
-function extractSavedIds(payload: Record<string, unknown>): string[] {
-  if (Array.isArray(payload.dbIds)) {
-    return payload.dbIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
-  }
-  return typeof payload.dbId === 'string' && payload.dbId.trim() ? [payload.dbId] : [];
-}
-
-function extractDuplicateInternalCode(payload: Record<string, unknown>): string | null {
-  if (payload.duplicate !== true) return null;
-  return typeof payload.internal_code === 'string' && payload.internal_code.trim()
-    ? payload.internal_code.trim()
-    : null;
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest): Promise<ReplaySummary> {
   const rawText = row.raw_text_chunk?.trim() ?? '';
-  if (rawText.length < 50) {
+  const tenantId = parseProductRegistrationTenantId(row.tenant_id);
+  if (!tenantId) {
     return {
       id: row.id,
       title: row.product_title,
       status: 'skipped',
-      reason: 'saved raw text is missing or too short',
+      reason: 'tenant ownership is missing; automatic replay is not allowed',
+    };
+  }
+  const sourceDocumentId = row.source_document_id?.trim() || null;
+  const parsedDraftJson = asRecord(row.parsed_draft_json);
+  if (!sourceDocumentId && rawText.length < 50) {
+    return {
+      id: row.id,
+      title: row.product_title,
+      status: 'skipped',
+      reason: 'immutable source and replayable raw text are both missing',
+    };
+  }
+  if (!sourceDocumentId && parsedDraftJson.rawTextTruncated === true) {
+    return {
+      id: row.id,
+      title: row.product_title,
+      status: 'skipped',
+      reason: 'legacy replay text is truncated; immutable source is required',
     };
   }
 
@@ -111,7 +114,7 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
   }
 
   const inputAnalysisForTrust = analyzeUploadInputText(rawText);
-  if (inputAnalysisForTrust.blocked) {
+  if (!sourceDocumentId && inputAnalysisForTrust.blocked) {
     return {
       id: row.id,
       title: row.product_title,
@@ -124,84 +127,51 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
   const metadata = parseUploadSourceMetadata({
     rawText,
     sourceLabel,
-    defaultCommissionRate: 10,
+    defaultCommissionRate: DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
   });
 
   const shouldUseDuplicateGuard = row.error_reason?.includes('UPLOAD_PIPELINE_SOFT_TIMEOUT') ?? false;
-  const result = await runUploadRegistrationPipeline({
-    intake: {
-      ok: true,
-      buffer: Buffer.from(rawText, 'utf8'),
-      fileHash: row.file_hash || randomUUID(),
-      fileName: sourceLabel,
-      directRawText: rawText,
-      originalRawText: rawText,
-      parserRawText: metadata.parserRawText ?? rawText,
-      documentRawText: rawText,
-      analysisNormalizedText: inputAnalysisForTrust.normalizedText,
-      uploadSourceMetadata: metadata,
-      inputAnalysisForTrust,
-      archiveMode: false,
-      bulkMode: false,
-      forceReprocess: !shouldUseDuplicateGuard,
-    },
-    supabase: supabaseAdmin,
-    isSupabaseConfigured,
-    safeAfter,
-    postAlert,
-    requestBaseUrl: request.nextUrl.origin,
-    publicBaseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '',
-  });
-
-  const payload = result.payload as Record<string, unknown>;
-  const savedIds = extractSavedIds(payload);
-  const duplicateInternalCode = extractDuplicateInternalCode(payload);
-  if (result.status >= 200 && result.status < 300 && (savedIds.length > 0 || duplicateInternalCode)) {
-    const parsedDraftJson = row.parsed_draft_json && typeof row.parsed_draft_json === 'object' && !Array.isArray(row.parsed_draft_json)
-      ? row.parsed_draft_json as Record<string, unknown>
-      : {};
-    await supabaseAdmin
-      .from('upload_review_queue')
-      .update({
-        status: 'resolved',
-        parsed_draft_json: {
-          ...parsedDraftJson,
-          replayResult: {
-            status: 'replayed',
-            reason: duplicateInternalCode ? `duplicate already processed: ${duplicateInternalCode}` : check.reason,
-            httpStatus: result.status,
-            savedIds,
-            duplicateInternalCode,
-            replayedAt: new Date().toISOString(),
-          },
-        },
-        updated_at: new Date().toISOString(),
+  const requestId = randomUUID();
+  const publicBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
+    ?? process.env.NEXT_PUBLIC_SITE_URL
+    ?? request.nextUrl.origin;
+  const started = sourceDocumentId
+    ? await startProductRegistrationWorkflowBySourceId({
+        supabase: supabaseAdmin,
+        tenantId,
+        sourceDocumentId,
+        requestId,
+        requestBaseUrl: request.nextUrl.origin,
+        publicBaseUrl,
+        uploadSourceMetadata: metadata as unknown as Record<string, unknown>,
+        sourceChannel: 'cron-review-replay',
+        forceReprocess: !shouldUseDuplicateGuard,
       })
-      .eq('id', row.id);
-
-    return {
-      id: row.id,
-      title: row.product_title,
-      status: 'replayed',
-      reason: duplicateInternalCode ? `duplicate already processed: ${duplicateInternalCode}` : check.reason,
-      httpStatus: result.status,
-      savedIds,
-    };
-  }
-
-  const parsedDraftJson = row.parsed_draft_json && typeof row.parsed_draft_json === 'object' && !Array.isArray(row.parsed_draft_json)
-    ? row.parsed_draft_json as Record<string, unknown>
-    : {};
+    : await startProductRegistrationTextWorkflow({
+        supabase: supabaseAdmin,
+        tenantId,
+        rawText,
+        fileName: sourceLabel,
+        requestId,
+        requestBaseUrl: request.nextUrl.origin,
+        publicBaseUrl,
+        uploadSourceMetadata: metadata as unknown as Record<string, unknown>,
+        sourceChannel: 'cron-review-replay',
+        forceReprocess: !shouldUseDuplicateGuard,
+        metadata: { replayQueueId: row.id },
+      });
   await supabaseAdmin
     .from('upload_review_queue')
     .update({
+      status: 'resolved',
       parsed_draft_json: {
         ...parsedDraftJson,
         replayResult: {
-          status: 'failed',
-          reason: typeof payload.error === 'string' ? payload.error : 'replay did not save a product',
-          httpStatus: result.status,
-          savedIds,
+          status: 'pending',
+          reason: check.reason,
+          jobId: started.jobId,
+          workflowRunId: started.workflowRunId,
+          sourceDocumentId: started.sourceDocumentId,
           replayedAt: new Date().toISOString(),
         },
       },
@@ -212,10 +182,11 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
   return {
     id: row.id,
     title: row.product_title,
-    status: 'failed',
-    reason: typeof payload.error === 'string' ? payload.error : 'replay did not save a product',
-    httpStatus: result.status,
-    savedIds,
+    status: 'replayed',
+    reason: check.reason,
+    httpStatus: 202,
+    jobId: started.jobId,
+    workflowRunId: started.workflowRunId,
   };
 }
 
@@ -227,15 +198,22 @@ export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
   }
+  if (!getProductRegistrationV6RuntimeConfig().workflowEnabled) {
+    return NextResponse.json({
+      ok: false,
+      code: 'REGISTRATION_KERNEL_WORKFLOW_DISABLED',
+      error: '통합 상품등록 Workflow가 비활성 상태라 구형 저장 엔진으로 우회하지 않았습니다.',
+    }, { status: 503 });
+  }
 
   const limit = clampLimit(request.nextUrl.searchParams.get('limit'));
   const queueId = request.nextUrl.searchParams.get('queueId')?.trim();
   let query = supabaseAdmin
     .from('upload_review_queue')
-    .select('id,created_at,status,severity,error_reason,source_filename,file_hash,normalized_content_hash,raw_text_chunk,parsed_draft_json,product_title,land_operator_id')
+    .select('id,tenant_id,source_document_id,upload_job_id,created_at,status,severity,error_reason,source_filename,file_hash,normalized_content_hash,raw_text_chunk,parsed_draft_json,product_title,land_operator_id')
     .eq('status', 'pending')
     .in('severity', ['critical', 'high'])
-    .not('raw_text_chunk', 'is', null);
+    .not('tenant_id', 'is', null);
 
   if (queueId) {
     query = query.eq('id', queueId);

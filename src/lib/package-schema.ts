@@ -104,6 +104,11 @@ export const PriceDateSchema = z.object({
   price: z.number().positive('price는 양수'),
   child_price: z.number().nonnegative().optional(),
   confirmed: z.boolean().default(false),
+  list_price: z.number().positive().optional(),
+  min_travelers: z.number().int().positive().optional(),
+  max_travelers: z.number().int().positive().optional(),
+  price_relation: z.enum(['final_sale', 'standard_sale']).optional(),
+  price_note: z.string().optional(),
 });
 
 /** 가격 티어 (레거시 + 기간형) */
@@ -116,6 +121,10 @@ export const PriceTierSchema = z.object({
   child_price: z.number().nonnegative().optional(),
   status: z.enum(['available', 'soldout', 'confirmed']).optional(),
   note: z.string().optional(),
+  list_price: z.number().positive().optional(),
+  min_travelers: z.number().int().positive().optional(),
+  max_travelers: z.number().int().positive().optional(),
+  price_relation: z.enum(['final_sale', 'standard_sale']).optional(),
 });
 
 /** 유의사항 구조화 타입 */
@@ -172,6 +181,28 @@ export const PackageCoreSchema = z.object({
   departure_days: DepartureDaysSchema.optional(),
   min_participants: z.number().int().positive().nullable().optional(),
   ticketing_deadline: z.string().nullable().optional(),
+  ticketing_deadline_status: z.enum(['open', 'expired', 'conditional', 'conflicting']).nullable().optional(),
+  ticketing_condition: z.object({
+    kind: z.enum(['fixed_deadline', 'relative_condition', 'multiple_deadlines']),
+    status: z.enum(['open', 'expired', 'conditional', 'conflicting']),
+    deadline: z.string().nullable(),
+    relativeDays: z.number().int().nonnegative().nullable(),
+    customerNotice: z.string().min(1),
+    consultationOnly: z.boolean(),
+    marketingEligible: z.boolean(),
+    sourceText: z.string().min(1),
+    conditionHash: z.string().regex(/^[0-9a-f]{64}$/),
+    evidence: z.object({
+      line_start: z.number().int().positive(),
+      line_end: z.number().int().positive(),
+      char_start: z.number().int().nonnegative(),
+      char_end: z.number().int().nonnegative(),
+      quote: z.string().min(1),
+      extraction_method: z.literal('text_line'),
+    }),
+  }).nullable().optional(),
+  booking_mode: z.enum(['standard_inquiry', 'consultation_only']).optional(),
+  marketing_eligible: z.boolean().optional(),
 
   // 가격
   price_tiers: z.array(PriceTierSchema).default([]),

@@ -17,6 +17,15 @@ vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
   supabaseAdmin: {
     rpc(name: string) {
+      if (name === 'resolve_product_registration_public_route') {
+        return Promise.resolve({
+          data: {
+            catalog_product_id: 'catalog-product-test',
+            package_id: 'pkg-1',
+          },
+          error: null,
+        });
+      }
       if (name === 'get_product_registration_availability_overlays') {
         return Promise.resolve({ data: [], error: null });
       }
@@ -260,7 +269,8 @@ describe('fetchLpPackageUncached', () => {
       created_at: '2026-07-10T00:00:00.000Z',
     };
     mocks.publicationPointerRow = {
-      tenant_id: null,
+      tenant_id: '00000000-0000-0000-0000-000000000001',
+      package_id: 'pkg-1',
       catalog_product_id: 'catalog-product-test',
       current_revision_id: 'rev-1',
       current_snapshot_id: 'snap-1',
@@ -322,7 +332,7 @@ describe('fetchLpPackageUncached', () => {
     expect(mocks.mappedInput).toBeNull();
   });
 
-  it('allows blocked packages only for internal mobile proof rendering', async () => {
+  it('rejects unsigned raw-row mobile proof rendering', async () => {
     mocks.packageRow = {
       id: 'pkg-1',
       title: 'Blocked proof package',
@@ -330,11 +340,13 @@ describe('fetchLpPackageUncached', () => {
       audit_status: 'blocked',
       price: 100000,
     };
+    mocks.publicSnapshotRow = null;
+    mocks.publicationPointerRow = null;
 
-    const result = await fetchLpPackageUncached('pkg-1', { allowNonPublicProof: true });
+    const result = await fetchLpPackageUncached('pkg-1');
 
-    expect(result).toMatchObject({ id: 'pkg-1', title: 'Blocked proof package' });
-    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', audit_status: 'blocked' });
+    expect(result).toBeNull();
+    expect(mocks.mappedInput).toBeNull();
   });
 
   it('blocks stale active packages when the live source audit now fails', async () => {
@@ -473,6 +485,7 @@ premium villa golf package 3n5d
       status: 'published',
       created_at: '2026-07-10T00:00:00.000Z',
     };
+    mocks.publicationPointerRow = null;
 
     const result = await fetchLpPackageUncached('pkg-1');
 
@@ -480,7 +493,7 @@ premium villa golf package 3n5d
     expect(mocks.mappedInput).toBeNull();
   });
 
-  it('allows live-audit-blocked packages only for internal mobile proof rendering', async () => {
+  it('does not bypass the publication pointer for a legacy proof header', async () => {
     mocks.packageRow = {
       id: 'pkg-1',
       title: 'Stale proof package',
@@ -509,10 +522,12 @@ premium villa golf package 3n5d
         { date: '2027-07-09', price: 999000 },
       ],
     };
+    mocks.publicSnapshotRow = null;
+    mocks.publicationPointerRow = null;
 
-    const result = await fetchLpPackageUncached('pkg-1', { allowNonPublicProof: true });
+    const result = await fetchLpPackageUncached('pkg-1');
 
-    expect(result).toMatchObject({ id: 'pkg-1', title: 'Stale proof package' });
-    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', status: 'active' });
+    expect(result).toBeNull();
+    expect(mocks.mappedInput).toBeNull();
   });
 });

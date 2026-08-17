@@ -117,6 +117,16 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
       if (name === 'get_product_registration_availability_overlays') {
         return Promise.resolve({ data: [], error: null });
       }
+      if (name === 'resolve_product_registration_public_route') {
+        return Promise.resolve({
+          data: effectiveRow ? {
+            tenant_id: 'tenant-1',
+            catalog_product_id: effectiveRow.catalog_product_id,
+            package_id: effectiveRow.package_id,
+          } : null,
+          error: null,
+        });
+      }
       throw new Error(`unexpected rpc ${name}`);
     },
     from(table: string) {
@@ -136,6 +146,7 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
           maybeSingle: () => Promise.resolve({
             data: effectiveRow ? {
               tenant_id: null,
+              package_id: effectiveRow.package_id,
               catalog_product_id: effectiveRow.catalog_product_id,
               current_revision_id: effectiveRow.canonical_revision_id,
               current_snapshot_id: effectiveRow.id,
@@ -418,7 +429,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     expect(snapshot).toBeNull();
   });
 
-  it('does not return legacy public snapshots with non-customer-publishable attraction ids', async () => {
+  it('does not re-evaluate a proved immutable snapshot against mutable attraction state', async () => {
     const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
     const snapshot = await fetchLatestPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
@@ -460,10 +471,10 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
-    expect(snapshot).toBeNull();
+    expect(snapshot?.row.id).toBe('snap-non-public-attraction');
   });
 
-  it('does not return legacy public snapshots when attraction approval lookup fails', async () => {
+  it('does not make customer reads depend on attraction lookup availability', async () => {
     const attractionId = '55555555-5555-4555-8555-555555555555';
     const snapshot = await fetchLatestPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
@@ -496,10 +507,10 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
-    expect(snapshot).toBeNull();
+    expect(snapshot?.row.id).toBe('snap-attraction-lookup-error');
   });
 
-  it('does not return legacy public snapshots with product-like customer-publishable attraction names', async () => {
+  it('does not reinterpret snapshot attraction names from mutable master data', async () => {
     const productLikeAttractionId = '66666666-6666-4666-8666-666666666666';
     const snapshot = await fetchLatestPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
@@ -535,10 +546,19 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       { tenantId: 'tenant-1', expectedPackageRevision: 3 },
     );
 
-    expect(snapshot).toBeNull();
+    expect(snapshot?.row.id).toBe('snap-product-like-attraction');
   });
 
-  it('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
+  it('retires the mutable package publication writer without making an RPC call', async () => {
+    const { supabase, calls } = makeSupabaseMock();
+    await expect(createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      publishablePackage(),
+    )).rejects.toThrow('LEGACY_PUBLICATION_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
+    expect(calls).toEqual([]);
+  });
+
+  it.skip('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
     const { supabase, calls } = makeSupabaseMock();
     const pkg = publishablePackage();
     const { snapshotHash } = buildPublicPackageSnapshot(pkg);
@@ -579,7 +599,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     });
   });
 
-  it('blocks the central snapshot writer when a V4 package lacks canonical normalization', async () => {
+  it.skip('blocks the central snapshot writer when a V4 package lacks canonical normalization', async () => {
     const { supabase, calls } = makeSupabaseMock({
       v4Job: {
         id: 'job-v4-1',
@@ -612,7 +632,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     });
   });
 
-  it('evaluates customer title claims from the public snapshot title, not the raw supplier title', async () => {
+  it.skip('evaluates customer title claims from the public snapshot title, not the raw supplier title', async () => {
     const { supabase, calls } = makeSupabaseMock();
     const pkg = publishablePackage({
       id: '22222222-2222-4222-8222-222222222222',
@@ -654,7 +674,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     expect(snapshot.route_text_dump?.join('\n')).not.toMatch(/출발확정|온천|5성/);
   });
 
-  it('blocks publication when itinerary attraction ids do not exist in active attractions', async () => {
+  it.skip('blocks publication when itinerary attraction ids do not exist in active attractions', async () => {
     const missingAttractionId = '22222222-2222-4222-8222-222222222222';
     const { supabase, calls } = makeSupabaseMock({ activeAttractionIds: [] });
 
@@ -697,7 +717,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     });
   });
 
-  it('blocks publication when itinerary attraction ids are not customer-publishable', async () => {
+  it.skip('blocks publication when itinerary attraction ids are not customer-publishable', async () => {
     const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
     const { supabase, calls } = makeSupabaseMock({
       activeAttractionIds: [nonPublicAttractionId],
@@ -731,7 +751,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     });
   });
 
-  it('fails closed when active attraction lookup fails before publication', async () => {
+  it.skip('fails closed when active attraction lookup fails before publication', async () => {
     const attractionId = '33333333-3333-4333-8333-333333333333';
     const { supabase, calls } = makeSupabaseMock({
       attractionLookupError: new Error('attractions unavailable'),
@@ -761,7 +781,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     });
   });
 
-  it('throws when the atomic publication RPC fails', async () => {
+  it.skip('throws when the atomic publication RPC fails', async () => {
     const { supabase, calls } = makeSupabaseMock({
       rpcError: new Error('atomic publish failed'),
     });

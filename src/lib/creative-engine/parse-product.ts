@@ -159,17 +159,9 @@ export async function parseProduct(productId: string): Promise<ParsedProductData
 
   parsed.product_id = productId;
 
-  // DB 저장 (캐시)
-  await supabaseAdmin
-    .from('travel_packages')
-    .update({
-      parsed_data: parsed,
-      parsed_at: new Date().toISOString(),
-      raw_text_hash: currentHash,
-      country: parsed.country || null,
-      nights: parsed.nights || null,
-    })
-    .eq('id', productId);
+  // Derived creative parsing is read-only. It must never rewrite catalog
+  // facts or proof-bound customer payloads on the mutable compatibility row.
+  // A future cache belongs to an immutable snapshot/build-keyed projection.
 
   return parsed;
 }

@@ -210,8 +210,8 @@ function recommendDeterministicFixes(input: {
   if (input.triggers.includes('customer_selling_price_missing')) {
     fixes.push({
       field: 'product_prices.adult_selling_price',
-      kind: 'deterministic',
-      reason: 'fill missing customer selling price from net_price before deliverability',
+      kind: 'manual_review_candidate',
+      reason: 'do not derive a customer selling price from NET; resolve an explicit source sale price instead',
       confidence: 1,
     });
   }
@@ -249,24 +249,12 @@ function applyDeterministicRepairs(input: {
   rawText: string;
 }): StandardProductRegistrationObject {
   const registration = input.registration;
-  const hasCustomerPriceRepair = input.fixes.some(fix => (
-    fix.kind === 'deterministic' && fix.field === 'product_prices.adult_selling_price'
-  ));
   const hasPriceDateRepair = input.fixes.some(fix => (
     fix.kind === 'deterministic' && fix.field === 'price_dates'
   ));
-  if (!hasCustomerPriceRepair && !hasPriceDateRepair) return registration;
+  if (!hasPriceDateRepair) return registration;
 
-  const productPrices = hasCustomerPriceRepair
-    ? registration.pricing.productPrices.map(row => (
-      (typeof row.adult_selling_price !== 'number' || row.adult_selling_price <= 0)
-      && typeof row.net_price === 'number'
-      && Number.isFinite(row.net_price)
-      && row.net_price > 0
-        ? { ...row, adult_selling_price: row.net_price }
-        : row
-    ))
-    : registration.pricing.productPrices;
+  const productPrices = registration.pricing.productPrices;
   const rebuiltPriceDates = hasPriceDateRepair
     ? rebuildPriceDatesFromProductPrices(productPrices, registration.pricing.priceDates)
     : null;
@@ -324,7 +312,6 @@ function finalStatusFor(input: {
   if (input.packagesAudit.status === 'fail' || input.a4Audit.status === 'fail') return 'BLOCKED';
   if (input.fixes.some(fix => fix.kind === 'deterministic') && input.triggers.every(trigger => (
     trigger === 'schedule_pollution_removed'
-    || trigger === 'customer_selling_price_missing'
   ))) {
     return 'AUTO_FIXED';
   }
@@ -376,8 +363,7 @@ export function runMicroAutoQA(input: {
     return !recommendedFixes.some(fix => (
       fix.kind === 'deterministic'
       && (
-        (trigger === 'customer_selling_price_missing' && fix.field === 'product_prices.adult_selling_price')
-        || (trigger === 'price_storage_mismatch' && fix.field === 'price_dates')
+        trigger === 'price_storage_mismatch' && fix.field === 'price_dates'
       )
     ));
   });
@@ -417,7 +403,9 @@ export function runMicroAutoQA(input: {
       blockersBefore: isInitialAudit || isRepairPhase ? blockersBefore : blockersAfter,
       blockersAfter: isInitialAudit ? blockersBefore : blockersAfter,
       comparedFields: COMPARED_FIELDS,
-      autoFixesApplied: isRepairPhase ? recommendedFixes : [],
+      autoFixesApplied: isRepairPhase
+        ? recommendedFixes.filter(fix => fix.kind === 'deterministic')
+        : [],
       packagesAudit: isInitialAudit ? initialPackagesAudit : packagesAudit,
       a4Audit: isInitialAudit ? initialA4Audit : a4Audit,
       finalStatus: status,

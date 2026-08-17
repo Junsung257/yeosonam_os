@@ -5,7 +5,6 @@ import type { Metadata } from 'next';
 import { fetchLpPackageUncached, loadLpPackageForPage } from '@/lib/load-lp-package';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { getSecret } from '@/lib/secret-registry';
 import { LandingClient } from './LandingClient';
 import { LpRouteSkeleton } from './LpRouteSkeleton';
 
@@ -25,7 +24,6 @@ function getRouteParam(value: string | string[] | undefined): string {
 }
 
 async function safeLoadLpPackage(id: string, options: {
-  allowNonPublicProof?: boolean;
   proofSnapshotId?: string | null;
   proofToken?: string | null;
 } = {}) {
@@ -39,18 +37,10 @@ async function safeLoadLpPackage(id: string, options: {
         proofToken: options.proofToken,
       });
     }
-    if (options.allowNonPublicProof) return await fetchLpPackageUncached(normalizedId, { allowNonPublicProof: true });
     return await loadLpPackageForPage(normalizedId);
   } catch {
     return null;
   }
-}
-
-async function hasRenderProofAccess(): Promise<boolean> {
-  const incomingHeaders = await headers();
-  const proofHeader = incomingHeaders.get('x-yeosonam-render-proof')?.trim();
-  const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
-  return Boolean(proofHeader && proofSecret && proofHeader === proofSecret);
 }
 
 async function proofLoadOptions(
@@ -61,7 +51,7 @@ async function proofLoadOptions(
   const incomingHeaders = await headers();
   const proofToken = incomingHeaders.get('x-product-registration-v6-proof-token');
   if (snapshotId && proofToken) return { proofSnapshotId: snapshotId, proofToken };
-  return { allowNonPublicProof: await hasRenderProofAccess() };
+  return {};
 }
 
 export async function generateMetadata(

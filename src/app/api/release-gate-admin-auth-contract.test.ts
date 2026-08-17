@@ -41,7 +41,12 @@ describe('release gate: platform-admin authorization boundaries', () => {
 
   it.each(['POST', 'PATCH', 'DELETE'])('guards %s /api/packages before mutation input or DB work', (method) => {
     const body = handlerBody('src/app/api/packages/route.ts', method);
-    expectAdminGuardBefore(body, method === 'DELETE' ? 'searchParams' : 'request.json');
+    const retiredCode = method === 'POST'
+      ? 'LEGACY_PACKAGE_CREATE_RETIRED'
+      : method === 'PATCH'
+        ? 'LEGACY_PACKAGE_UPDATE_RETIRED'
+        : 'LEGACY_PACKAGE_DELETE_RETIRED';
+    expectAdminGuardBefore(body, retiredCode);
   });
 
   it('never puts the authenticated package payload in a shared cache', () => {

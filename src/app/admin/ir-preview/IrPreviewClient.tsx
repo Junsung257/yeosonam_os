@@ -5,6 +5,7 @@ import { fmtDateTime } from '@/lib/admin-utils';
 import Button from '@/components/ui/Button';
 import { Inbox } from 'lucide-react';
 import SensitiveRawText from '@/components/admin/SensitiveRawText';
+import { DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE } from '@/lib/upload-source-metadata';
 
 interface DraftRow {
   id: string;
@@ -57,7 +58,8 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
           engine: 'direct',
           ir,
           landOperator: row.land_operator,
-          commissionRate: (ir as { meta?: { commissionRate?: number } })?.meta?.commissionRate ?? 10,
+          commissionRate: (ir as { meta?: { commissionRate?: number } })?.meta?.commissionRate
+            ?? DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
           rawText,
         }),
       });

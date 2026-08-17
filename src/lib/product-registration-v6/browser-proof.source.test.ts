@@ -15,6 +15,10 @@ describe('product registration V6 Korean visual proof contract', () => {
     expect(proofSource).toContain("failures.push('KOREAN_WEBFONT_NOT_READY')");
     expect(proofSource).toContain("screenshotState = 'customer-first-viewport-before-cta'");
     expect(proofSource).toContain("page.screenshot({ type: 'png' })");
+    expect(proofSource).toContain('await page.setRequestInterception(true)');
+    expect(proofSource).toContain("pathname.startsWith('/api/tracking')");
+    expect(proofSource).toContain("pathname === '/api/web-vitals'");
+    expect(proofSource).toContain("pathname === '/api/unmatched'");
     expect(proofSource.indexOf("screenshotState = 'customer-first-viewport-before-cta'"))
       .toBeLessThan(proofSource.indexOf('element.click();'));
   });

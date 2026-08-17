@@ -195,7 +195,7 @@ function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boun
 
 function collectSectionLocations(lines: V3SourceLine[], pattern: RegExp, label: string) {
   return lines
-    .filter(line => pattern.test(line.quote))
+    .filter(line => pattern.test(line.quote) || pattern.test(line.quote.replace(/\s+/gu, '')))
     .map(line => ({ line_start: line.lineNumber, line_end: line.lineNumber, label }));
 }
 

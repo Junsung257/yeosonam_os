@@ -35,6 +35,13 @@ export interface RegistrationTermsPolicySnapshot {
   product_notice_hash: string | null;
   has_cancellation_policy: boolean;
   has_special_terms: boolean;
+  /** New snapshots pin whether cancellation authority came from the uploaded
+   * product or an approved platform template. Optional keeps historical
+   * immutable snapshots readable. */
+  cancellation_authority?: 'source' | 'approved_standard' | 'missing';
+  cancellation_template_ref?: RegistrationTermsTemplateRef | null;
+  cancellation_conflict?: boolean;
+  cancellation_conflict_reasons?: string[];
 }
 
 /** Reads only the immutable, customer-safe terms contract embedded in a

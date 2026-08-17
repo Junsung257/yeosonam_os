@@ -113,21 +113,6 @@ export async function POST(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // travel_packages.review_count / avg_rating 갱신 트리거가 없으면 직접 계산 후 업데이트
-  const { data: agg } = await supabaseAdmin
-    .from('post_trip_reviews')
-    .select('overall_rating')
-    .eq('package_id', packageId)
-    .eq('status', 'approved');
-
-  if (agg && agg.length > 0) {
-    const avg = agg.reduce((s: number, r: { overall_rating: number | string }) => s + Number(r.overall_rating), 0) / agg.length;
-    await supabaseAdmin
-      .from('travel_packages')
-      .update({ avg_rating: avg, review_count: agg.length })
-      .eq('id', packageId);
-  }
-
   return NextResponse.json({ id: data?.id }, { status: 201 });
 }
 
@@ -151,21 +136,6 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // avg_rating / review_count 재계산
-  const { data: agg } = await supabaseAdmin
-    .from('post_trip_reviews')
-    .select('overall_rating')
-    .eq('package_id', packageId)
-    .eq('status', 'approved');
-
-  if (agg) {
-    const avg = agg.length > 0 ? agg.reduce((s: number, r: { overall_rating: number | string }) => s + Number(r.overall_rating), 0) / agg.length : 0;
-    await supabaseAdmin
-      .from('travel_packages')
-      .update({ avg_rating: agg.length > 0 ? avg : null, review_count: agg.length })
-      .eq('id', packageId);
-  }
-
   return NextResponse.json({ ok: true });
 }
 
@@ -184,21 +154,6 @@ export async function DELETE(
     .delete()
     .eq('id', reviewId)
     .eq('package_id', packageId);
-
-  // avg_rating / review_count 재계산
-  const { data: agg } = await supabaseAdmin
-    .from('post_trip_reviews')
-    .select('overall_rating')
-    .eq('package_id', packageId)
-    .eq('status', 'approved');
-
-  if (agg) {
-    const avg = agg.length > 0 ? agg.reduce((s: number, r: { overall_rating: number | string }) => s + Number(r.overall_rating), 0) / agg.length : 0;
-    await supabaseAdmin
-      .from('travel_packages')
-      .update({ avg_rating: agg.length > 0 ? avg : null, review_count: agg.length })
-      .eq('id', packageId);
-  }
 
   return NextResponse.json({ ok: true });
 }

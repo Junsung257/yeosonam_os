@@ -320,6 +320,7 @@ function ReviewSummaryStrip({
 
 export interface LpDeferSectionsProps {
   days: ItineraryDay[];
+  alternatives: LandingProductData['itinerary']['alternatives'];
   onItineraryViewed: () => void;
   includes: string[];
   excludes: string[];
@@ -334,6 +335,7 @@ export interface LpDeferSectionsProps {
 
 export function LpDeferSections({
   days,
+  alternatives,
   onItineraryViewed,
   includes,
   excludes,
@@ -345,12 +347,42 @@ export function LpDeferSections({
   reviewCount,
   recommendation,
 }: LpDeferSectionsProps) {
+  const [selectedItineraryChoice, setSelectedItineraryChoice] = useState(0);
   const safeSourcePreparationNotices = Array.isArray(sourcePreparationNotices)
     ? sourcePreparationNotices
     : [];
+  const safeAlternatives = Array.isArray(alternatives)
+    ? alternatives.filter(choice => Array.isArray(choice.days) && choice.days.length > 0)
+    : [];
+  const selectedDays = safeAlternatives[selectedItineraryChoice]?.days ?? days;
   return (
     <>
-      <ItinerarySection days={days} onViewed={onItineraryViewed} />
+      {safeAlternatives.length > 1 && (
+        <section className="mt-2 border-t border-blue-100 bg-blue-50/70 px-5 py-4">
+          <p className="text-sm font-extrabold text-gray-900">같은 상품에서 일정 코스를 선택할 수 있어요</p>
+          <p className="mt-1 text-xs leading-relaxed text-gray-600">
+            가격·항공·숙소 조건은 같고 관광 코스만 다릅니다. 상담할 때 원하는 일정을 선택해 주세요.
+          </p>
+          <div className="mt-3 flex gap-2 overflow-x-auto" aria-label="일정 코스 선택">
+            {safeAlternatives.map((choice, index) => (
+              <button
+                key={`${choice.label}-${index}`}
+                type="button"
+                aria-pressed={selectedItineraryChoice === index}
+                onClick={() => setSelectedItineraryChoice(index)}
+                className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold transition ${
+                  selectedItineraryChoice === index
+                    ? 'bg-gray-950 text-white'
+                    : 'border border-gray-200 bg-white text-gray-700'
+                }`}
+              >
+                {choice.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      <ItinerarySection days={selectedDays} onViewed={onItineraryViewed} />
       <OptionalToursSection tours={optionalTours} />
       <IncludeExclude includes={includes} excludes={excludes} packageId={packageId} />
       <SourcePreparationNotice lines={safeSourcePreparationNotices} />

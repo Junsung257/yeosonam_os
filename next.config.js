@@ -1,4 +1,12 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
+// `vercel env pull` can write VERCEL_URL="" for local preview files. Workflow
+// treats any defined VERCEL_URL as a hosted deployment and would build
+// `https://`, which is not a valid URL. Keep real Vercel values untouched while
+// restoring Workflow's documented localhost auto-detection for an empty value.
+if (typeof process.env.VERCEL_URL === 'string' && process.env.VERCEL_URL.trim() === '') {
+  delete process.env.VERCEL_URL;
+}
+
 const withSerwist = require('@serwist/next').default({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',

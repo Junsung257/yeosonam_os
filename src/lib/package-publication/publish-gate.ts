@@ -109,6 +109,12 @@ function hasOptionalTourPollution(pkg: AnyRecord): boolean {
   return tours.some(isOptionalTourFragment);
 }
 
+function hasConflictingFuelScope(pkg: AnyRecord): boolean {
+  const customerBudget = asRecord(pkg.customer_budget);
+  const fuelSurcharge = asRecord(customerBudget?.fuel_surcharge);
+  return fuelSurcharge?.status === 'conflicting';
+}
+
 function coveredPublicNoticeSourcePaths(input: PublicSnapshotGateInput): Set<string> {
   return new Set([
     ...(input.publicNoticeSourcePaths ?? []),
@@ -491,6 +497,15 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   });
   if (priceDateProblem) {
     addBlocker(hard, 'price_source_missing', priceDateProblem, 'price_dates');
+  }
+
+  if (hasConflictingFuelScope(input.pkg)) {
+    addBlocker(
+      hard,
+      'commercial_terms_conflict',
+      'fuel surcharge is marked as both included and excluded in the customer budget',
+      'customer_budget.fuel_surcharge.status',
+    );
   }
 
   if (!hasPublicImageCandidate(input.pkg)) {

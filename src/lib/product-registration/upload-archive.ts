@@ -1,11 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import {
-  resolveLandOperatorId,
-  resolveSupplierCode,
-  type UploadFilenameRule,
-  type UploadLandOperatorRow,
-} from '@/lib/product-registration/upload-supplier-context';
+import type { UploadFilenameRule, UploadLandOperatorRow } from '@/lib/product-registration/upload-supplier-context';
 
 export type ArchiveUploadRawProductResult = {
   sku: string;
@@ -36,23 +31,11 @@ export async function archiveUploadRawProduct(input: {
   const expired = departureDate ? new Date(departureDate) < new Date() : false;
   const status = expired ? 'expired' : 'DRAFT';
   const sku = `ARCH-${input.filenameRule.cleanName.slice(0, 20).replace(/\s/g, '-')}-${Date.now()}`;
-  const supplierCode = resolveSupplierCode(input.filenameRule.supplierRaw);
-  const landOperatorId = resolveLandOperatorId(input.filenameRule.supplierRaw, input.landOperators);
-
-  if (input.isSupabaseConfigured) {
-    await input.supabase.from('products').upsert({
-      internal_code: sku,
-      display_name: input.filenameRule.cleanName ?? input.fileName,
-      status,
-      source_filename: input.fileName,
-      raw_extracted_text: rawText,
-      departure_date: departureDate,
-      supplier_code: supplierCode,
-      land_operator_id: landOperatorId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'internal_code', ignoreDuplicates: true });
-  }
+  // Source retention now belongs to the tenant-scoped V6 intake and
+  // source_documents ledger. Never create a mutable product from raw bytes.
+  void input.supabase;
+  void input.isSupabaseConfigured;
+  void input.landOperators;
 
   return {
     sku,

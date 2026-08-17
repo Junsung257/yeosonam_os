@@ -38,7 +38,7 @@ interface MetadataCandidate {
   metadataOnly: boolean;
 }
 
-const DEFAULT_COMMISSION_RATE = 10;
+export const DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE = 9;
 const MAX_COMMISSION_RATE = 50;
 
 function compact(value: string | null | undefined): string {
@@ -133,7 +133,7 @@ function findRawTextMetadata(rawText: string | null | undefined): {
 }
 
 export function parseUploadSourceMetadata(input: UploadSourceMetadataInput): UploadSourceMetadataResult {
-  const defaultCommissionRate = input.defaultCommissionRate ?? DEFAULT_COMMISSION_RATE;
+  const defaultCommissionRate = input.defaultCommissionRate ?? DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE;
   const explicitRate = parseRate(input.explicitCommissionRate);
   const rawMetadata = findRawTextMetadata(input.rawText);
   const sourceLabelCandidate = parseMetadataCandidate(input.sourceLabel);

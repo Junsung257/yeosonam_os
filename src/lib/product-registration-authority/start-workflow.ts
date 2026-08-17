@@ -7,9 +7,18 @@ import { createProductRegistrationV4Job } from '@/lib/product-registration-v4/jo
 import { ensureSourceDocumentStored } from '@/lib/product-registration-v4/source-documents';
 import type { SourceDocumentRecord } from '@/lib/product-registration-v4/types';
 import {
+  mergeProductSourceUploadMetadata,
+  parseProductSourceDepartureYearContext,
+} from '@/lib/product-registration/source-departure-year-context';
+import {
   PRODUCT_REGISTRATION_V6_POLICY_VERSION,
   type ProductRegistrationV6WorkflowInput,
 } from '@/lib/product-registration-v6/types';
+import {
+  assertProductDepartureReferenceDate,
+  PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION,
+  PRODUCT_SOURCE_DEPARTURE_TIMEZONE,
+} from '@/lib/product-registration/future-departure-date-policy';
 import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
 
 type CorrectionBinding = {
@@ -29,6 +38,24 @@ type IdentityBinding = {
   targetTitle?: string | null;
   targetInternalCode?: string | null;
 };
+
+type DepartureDateReferenceOverride = {
+  referenceDate: string;
+  rollingInferenceEligible: boolean;
+};
+
+function defaultRollingDepartureDateInferenceEligible(input: {
+  sourceChannel: string;
+  archiveMode: boolean;
+}): boolean {
+  return !input.archiveMode && [
+    'upload',
+    'admin-reprocess',
+    'admin-critical-fact-review',
+    'admin-extract',
+    'admin-job',
+  ].includes(input.sourceChannel);
+}
 
 export type KernelWorkflowStartResult = {
   jobId: string;
@@ -131,11 +158,22 @@ export async function startProductRegistrationWorkflowForSource(input: {
   correction?: CorrectionBinding;
   identityBinding?: IdentityBinding;
   dedupeHit?: boolean;
+  departureDateReferenceOverride?: DepartureDateReferenceOverride;
 }): Promise<KernelWorkflowStartResult> {
   const requestId = input.requestId ?? randomUUID();
+  const sourceDepartureYearContext = parseProductSourceDepartureYearContext(
+    input.uploadSourceMetadata.sourceDepartureYearContext,
+  );
+  if (!sourceDepartureYearContext.ok) throw new Error(sourceDepartureYearContext.code);
   let jobId: string | null = null;
   let fencingToken: number | null = null;
   try {
+    const rollingDepartureDateInferenceEligible = input.departureDateReferenceOverride
+      ?.rollingInferenceEligible
+      ?? defaultRollingDepartureDateInferenceEligible({
+        sourceChannel: input.sourceChannel,
+        archiveMode: input.archiveMode ?? false,
+      });
     const job = await createProductRegistrationV4Job({
       supabase: input.supabase,
       sourceType: input.source.source_type === 'text' ? 'text' : 'file',
@@ -144,6 +182,16 @@ export async function startProductRegistrationWorkflowForSource(input: {
       tenantId: input.tenantId,
       initialState: {
         sourceChannel: input.sourceChannel,
+        archiveMode: input.archiveMode ?? false,
+        bulkMode: input.bulkMode ?? false,
+        rollingDepartureDateInferenceEligible,
+        sourceDepartureYearContext: sourceDepartureYearContext.value,
+        ...(Array.isArray(input.uploadSourceMetadata.criticalFactHumanOverrides)
+          ? {
+              criticalFactOverrides: input.uploadSourceMetadata.criticalFactHumanOverrides,
+              criticalFactOverrideAuthority: 'authorized_human_evidence_selection',
+            }
+          : {}),
         ...(input.identityBinding ? {
           authorityBindingKind: input.identityBinding.bindingKind,
           correctionCatalogProductId: input.identityBinding.catalogProductId,
@@ -161,8 +209,16 @@ export async function startProductRegistrationWorkflowForSource(input: {
           correctionOperationKey: input.correction.operationKey,
         } : {}),
       },
+      referenceDate: input.departureDateReferenceOverride?.referenceDate,
     });
     jobId = job.id;
+    if (typeof job.v6_reference_date !== 'string') {
+      throw new Error('PRODUCT_REGISTRATION_DEPARTURE_REFERENCE_DATE_MISSING');
+    }
+    const referenceDate = assertProductDepartureReferenceDate(job.v6_reference_date);
+    if (job.v6_date_policy_version !== PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION) {
+      throw new Error('PRODUCT_REGISTRATION_DEPARTURE_DATE_POLICY_VERSION_MISMATCH');
+    }
     if (input.correction) {
       const { error: bindError } = await input.supabase.rpc('bind_product_registration_correction_workflow', {
         p_payload: {
@@ -201,9 +257,24 @@ export async function startProductRegistrationWorkflowForSource(input: {
       forceReprocess: input.forceReprocess ?? false,
       fencingToken,
       policyVersion: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+      departureDateReference: {
+        referenceDate,
+        timezone: PRODUCT_SOURCE_DEPARTURE_TIMEZONE,
+        policyVersion: PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION,
+        rollingInferenceEligible: rollingDepartureDateInferenceEligible,
+      },
       correctionJobId: input.correction?.correctionJobId,
     };
     const run = await start(productRegistrationV6Workflow, [workflowInput]);
+    const { error: bindRunError } = await input.supabase.rpc('bind_product_registration_v6_workflow_run', {
+      p_job_id: jobId,
+      p_fencing_token: fencingToken,
+      p_workflow_run_id: run.runId,
+    });
+    if (bindRunError) {
+      await run.cancel().catch(() => undefined);
+      throw bindRunError;
+    }
     return {
       jobId,
       workflowRunId: run.runId,
@@ -266,6 +337,7 @@ export async function startProductRegistrationWorkflowBySourceId(input: {
   correction?: CorrectionBinding;
   identityBinding?: IdentityBinding;
   dedupeHit?: boolean;
+  departureDateReferenceOverride?: DepartureDateReferenceOverride;
 }): Promise<KernelWorkflowStartResult> {
   const source = await loadProductRegistrationSource({
     supabase: input.supabase,
@@ -275,15 +347,14 @@ export async function startProductRegistrationWorkflowBySourceId(input: {
   const sourceMetadata = source.metadata && typeof source.metadata === 'object'
     ? source.metadata
     : {};
-  const embeddedUploadMetadata = sourceMetadata.uploadSourceMetadata;
   return startProductRegistrationWorkflowForSource({
     ...input,
     tenantId: source.tenant_id!,
     source,
-    uploadSourceMetadata: input.uploadSourceMetadata
-      ?? (embeddedUploadMetadata && typeof embeddedUploadMetadata === 'object' && !Array.isArray(embeddedUploadMetadata)
-        ? embeddedUploadMetadata as Record<string, unknown>
-        : {}),
+    uploadSourceMetadata: mergeProductSourceUploadMetadata({
+      sourceMetadata,
+      requestMetadata: input.uploadSourceMetadata,
+    }),
   });
 }
 
@@ -302,6 +373,7 @@ export async function startProductRegistrationTextWorkflow(input: {
   archiveMode?: boolean;
   bulkMode?: boolean;
   identityBinding?: IdentityBinding;
+  departureDateReferenceOverride?: DepartureDateReferenceOverride;
 }): Promise<KernelWorkflowStartResult> {
   const stored = await storeProductRegistrationTextSource(input);
   return startProductRegistrationWorkflowForSource({

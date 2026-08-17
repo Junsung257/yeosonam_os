@@ -1,6 +1,6 @@
 import type { MatrixPriceRow, PriceIROptions } from './types.ts';
+import { parseSourceWonAmount } from './source-money.ts';
 
-const PRICE_LINE_RE = /^([\d,]{3,10})\s*(?:원|[,，\-])?\s*$/;
 const PRICE_RANGE_RE = /^(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(\d{1,2})[./](\d{1,2})$/;
 const LOOSE_PRICE_RANGE_RE = /(\d{1,2})[./](\d{1,2})[^\n~\-–—]*[~\-–—][^\n\d]*(\d{1,2})[./](\d{1,2})/;
 const KOREAN_DOW_MAP: Record<string, number> = {
@@ -14,11 +14,10 @@ const KOREAN_DOW_MAP: Record<string, number> = {
 };
 
 function parseKrwPrice(line: string): number {
-  const match = line.trim().match(PRICE_LINE_RE);
-  if (!match) return 0;
-  const value = parseInt(match[1].replace(/[, ]/g, ''), 10);
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  return value < 10000 ? value * 1000 : value;
+  return parseSourceWonAmount(line, {
+    allowBareSaleShorthand: true,
+    minAmount: 100_000,
+  })?.amount ?? 0;
 }
 
 function parseKrwAmountInText(line: string): number {

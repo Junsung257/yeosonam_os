@@ -19,6 +19,19 @@ describe('channel pointer reader convergence', () => {
     expect(helper).not.toContain(".from('travel_packages')");
   });
 
+  it('does not re-run mutable registration or attraction validation during customer reads', () => {
+    const repository = source('src/lib/package-publication/repository.ts');
+    const projection = source('src/lib/package-publication/snapshot-projection.ts');
+    for (const reader of [repository, projection]) {
+      expect(reader).not.toContain('loadProductRegistrationV4PublicationGate');
+      expect(reader).not.toContain('validateCustomerPublishableAttractionIds');
+      expect(reader).not.toContain(".from('product_registration_drafts')");
+      expect(reader).not.toContain(".from('product_registration_v4_normalizations')");
+      expect(reader).not.toContain(".from('upload_jobs')");
+      expect(reader).not.toContain(".from('attractions')");
+    }
+  });
+
   it('uses pointer-only list, detail, and aggregate paths for every customer request', () => {
     const route = source('src/app/api/packages/route.ts');
     expect(route).toContain('const pointerOnly = !isAdmin;');

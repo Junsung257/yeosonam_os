@@ -23,7 +23,7 @@ export async function replaceProductPricesForProduct(input: {
     target_date: row.target_date ?? null,
     day_of_week: row.day_of_week ?? null,
     net_price: row.net_price,
-    adult_selling_price: row.adult_selling_price ?? row.net_price,
+    adult_selling_price: row.adult_selling_price ?? null,
     child_price: row.child_price ?? null,
     note: row.note ?? null,
   }));

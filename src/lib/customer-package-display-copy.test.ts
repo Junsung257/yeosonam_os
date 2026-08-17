@@ -3,6 +3,51 @@ import { describe, expect, it } from 'vitest';
 import { buildCustomerPackageDisplayCopy } from './customer-package-display-copy';
 
 describe('buildCustomerPackageDisplayCopy', () => {
+  it('removes a no-tip claim when the detailed exclusions require guide/driver tip', () => {
+    const copy = buildCustomerPackageDisplayCopy({
+      title: '몽골 노팁 노옵션 3박5일',
+      destination: '몽골',
+      duration: 5,
+      nights: 3,
+      excludes: ['가이드/기사 팁 $40은 현지 별도 지불입니다.'],
+      optional_tours: [{ name: '승마 체험', note: '희망자만 선택하는 유료 체험' }],
+    });
+    expect(copy.badges).not.toContain('노팁');
+    expect(copy.badges).toContain('노옵션');
+    expect(copy.heroHeadline).not.toContain('노팁');
+  });
+
+  it('keeps no-option for genuinely optional paid activities but removes it for mandatory options', () => {
+    const optional = buildCustomerPackageDisplayCopy({
+      title: '방콕 노옵션 3박5일',
+      destination: '방콕',
+      duration: 5,
+      nights: 3,
+      optional_tours: [{ name: '수상스포츠', note: '희망자 선택, $20~$80' }],
+    });
+    expect(optional.badges).toContain('노옵션');
+
+    const mandatory = buildCustomerPackageDisplayCopy({
+      title: '방콕 노옵션 3박5일',
+      destination: '방콕',
+      duration: 5,
+      nights: 3,
+      excludes: ['선택관광 1회는 필수 진행이며 현지 별도 지불'],
+    });
+    expect(mandatory.badges).not.toContain('노옵션');
+    expect(mandatory.heroHeadline).not.toContain('노옵션');
+  });
+
+  it('removes supplier price-volatility warnings from customer copy', () => {
+    const copy = buildCustomerPackageDisplayCopy({
+      title: '청도 골프 3박4일',
+      destination: '청도',
+      duration: 4,
+      nights: 3,
+      product_summary: '청도 골프 일정입니다. 항공 블럭 마감 시 추가 항공료가 발생합니다. 예약시 상품가 재체크 바랍니다.',
+    });
+    expect(`${copy.summaryLead} ${copy.summaryBody}`).not.toMatch(/항공\s*블럭|상품가\s*재체크/u);
+  });
   it('builds customer-first titles with duration and strong selling conditions', () => {
     const copy = buildCustomerPackageDisplayCopy({
       title: 'LJ 저녁출발] 푸꾸옥 노옵션 패키지 3박5일',

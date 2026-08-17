@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildProductRegistrationV6DomainProjection } from './domain-projections';
+import { buildProductRegistrationV6DomainProjection, classifyLodgingState } from './domain-projections';
 
 describe('V6 domain projections', () => {
   it('projects dated departures, source flights, lodging and core golf rounds without inventing facts', () => {
@@ -40,5 +40,12 @@ describe('V6 domain projections', () => {
       canonicalPayload: { sections: [{ v3: { ledger: { variants: [{ days: [{ day: 1, events: [{ type: 'option', raw_text: '선택 골프 18홀 추가 비용' }] }] }] } } }] },
     });
     expect(result.golfRounds).toHaveLength(0);
+  });
+
+  it('treats supplier placeholders as unconfirmed lodging', () => {
+    expect(classifyLodgingState('해당숙소')).toBe('to_be_confirmed');
+    expect(classifyLodgingState('호텔 미정')).toBe('to_be_confirmed');
+    expect(classifyLodgingState('다낭 4성급 또는 동급')).toBe('equivalent');
+    expect(classifyLodgingState('헤난 알로나 비치 리조트')).toBe('confirmed');
   });
 });

@@ -1,10 +1,14 @@
 import type { MatrixPriceRow, PriceIROptions } from './types.ts';
+import { parseSourceWonAmount } from './source-money.ts';
 
 const WON = '\uC6D0';
 const MONTH_KO = '\uC6D4';
 const MONTH_CJK = '\u6708';
-const PRICE_TOKEN_RE = /\d{1,2},\d{3},-|\d{3},-|\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8}/g;
-const PRICE_TOKEN_SOURCE = '\\d{1,2},\\d{3},-|\\d{3},-|\\d{1,3},\\d{3},\\d{2}|\\d{1,3}(?:,\\d{3})+|\\d{5,8}';
+const PRICE_TOKEN_RE = /\d{1,2},\d{3},-|\d{3},-|\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{1,3}\.\d{3}|\d{5,8}/g;
+const PRICE_TOKEN_SOURCE = '\\d{1,2},\\d{3},-|\\d{3},-|\\d{1,3},\\d{3},\\d{2}|\\d{1,3}(?:,\\d{3})+|\\d{1,3}\\.\\d{3}|\\d{5,8}';
+const EXACT_OVERRIDE_HEADING_RE = /(?:\uD2B9\s*\uC1A1|\uC9C0\s*\uC815|\uC2A4\s*\uD31F|\uD2B9\s*\uAC00)\s*\uC77C\s*\uC790/u;
+const EXACT_OVERRIDE_NOTE = 'pdf_exact_date_override_price';
+const EXCLUDED_DEPARTURE_HEADING_RE = /(?:\uCD9C\s*\uBC1C\s*)?\uC81C\s*\uC678\s*\uC77C\s*\uC790/u;
 
 const EXCLUDED_CONTEXT_RE = new RegExp([
   '\uD3EC\uD568',
@@ -22,6 +26,15 @@ const EXCLUDED_CONTEXT_RE = new RegExp([
   '\uC608\uC57D\uAE08',
   '\uAC1C\uC778\uACBD\uBE44',
   '\uCD94\uAC00',
+  '\uB9C8\uAC10',
+  '\uC120\uCC29\uC21C',
+  '\uC81C\uC6D0',
+  '\uCD1D\s*\uD1A4\uC218',
+  '\uC804\uC7A5',
+  '\uC804\uD3ED',
+  '\uC804\uACE0',
+  '\uD0D1\uC2B9\uAC1D',
+  '\uC2B9\uBB34\uC6D0\uC218',
 ].join('|'));
 
 function inferYearForMonth(month: number, explicitYear?: number): number {
@@ -38,6 +51,17 @@ function isoDate(year: number, month: number, day: number): string | null {
 
 function parsePrice(value: string): number | null {
   const trimmed = value.trim();
+  const sourceAmount = parseSourceWonAmount(trimmed, {
+    allowBareSaleShorthand: true,
+    minAmount: 250_000,
+    maxAmount: 8_000_000,
+  });
+  if (sourceAmount) return sourceAmount.amount;
+  const koreanDotThousands = trimmed.match(/^(\d{1,3})\.(\d{3})(?:\s*\uC6D0)?$/);
+  if (koreanDotThousands) {
+    const price = Number(`${koreanDotThousands[1]}${koreanDotThousands[2]}`);
+    return Number.isInteger(price) && price >= 250_000 && price <= 8_000_000 ? price : null;
+  }
   const abbreviatedMillion = trimmed.match(/^(\d{1,2}),(\d{3}),-$/);
   if (abbreviatedMillion) {
     const price = Number(`${abbreviatedMillion[1]}${abbreviatedMillion[2]}000`);
@@ -75,7 +99,9 @@ function hasDateHint(line: string): boolean {
 }
 
 function isDepartureDateCandidateLine(line: string): boolean {
-  return hasDateHint(line) && !/[\uBC1C\uAD8C\uB9C8\uAC10\uAE4C\uC9C0]/.test(line);
+  return hasDateHint(line)
+    && !line.trim().startsWith('*')
+    && !/[\uBC1C\uAD8C\uB9C8\uAC10\uAE4C\uC9C0]/.test(line);
 }
 
 function prepareLines(rawText: string): string[] {
@@ -101,6 +127,20 @@ function prepareLines(rawText: string): string[] {
     const current = priceJoined[i];
     const next = priceJoined[i + 1] ?? '';
     const afterNext = priceJoined[i + 2] ?? '';
+    if (
+      hasPrice(current)
+      && !hasDateHint(current)
+      && !EXCLUDED_CONTEXT_RE.test(current)
+      && isDepartureDateCandidateLine(next)
+      && !hasPrice(next)
+    ) {
+      // HWP table flattening commonly emits the price cell before the date
+      // cell. Reorder only an adjacent, price-only/date-only pair. This keeps
+      // option/single-supplement amounts out of the adult price calendar.
+      lines.push(`${next} ${current}`);
+      i++;
+      continue;
+    }
     if (
       isDepartureDateCandidateLine(current)
       && !hasPrice(current)
@@ -189,6 +229,15 @@ function dateObjectsFromSegment(segment: string, fallbackYear: number, fallbackM
     return ' ';
   });
 
+  cleaned = cleaned.replace(/(\d{1,2})\s*~\s*(\d{1,2})/g, (match, startDayText, endDayText) => {
+    if (!activeMonth) return match;
+    const startDay = Number(startDayText);
+    const endDay = Number(endDayText);
+    const year = inferYearForMonth(activeMonth, fallbackYear);
+    for (const date of expandRange(year, activeMonth, startDay, activeMonth, endDay)) push(date);
+    return ' ';
+  });
+
   for (const match of cleaned.matchAll(/(?:^|[^\d])(\d{1,2})(?=$|[^\d])/g)) {
     if (!activeMonth) continue;
     const day = Number(match[1]);
@@ -244,7 +293,29 @@ function splitConcatenatedTail(line: string): {
 function rowsFromSpacedMonthDayPriceLine(line: string, fallbackYear: number): MatrixPriceRow[] {
   const rows: MatrixPriceRow[] = [];
   const seen = new Set<string>();
-  const spacedRe = /(?:^|[^\d])(\d{1,2})\s*(?:월)?\s+((?:\d{1,2}\s*(?:,|일)?\s*){1,16})\s*(?:일)?\s+((?:\d{1,3}(?:,\d{3})+|\d{5,8})(?:\s+(?:\d{1,3}(?:,\d{3})+|\d{5,8}))*)/g;
+  const koreanDotThousands = line.match(/(?:^|[^\d])(\d{1,2})\s*\uC6D4\s*((?:\d{1,2}\s*\uC77C?\s*,?\s*){1,16})\s*(?::|：|-)?\s*(\d{1,3}\.\d{3})(?:\s*\uC6D0)?/);
+  if (koreanDotThousands) {
+    const month = Number(koreanDotThousands[1]);
+    const price = parsePrice(`${koreanDotThousands[3]}${WON}`);
+    const days = [...koreanDotThousands[2].matchAll(/\d{1,2}/g)]
+      .map(dayMatch => Number(dayMatch[0]))
+      .filter(day => day >= 1 && day <= 31);
+    if (month >= 1 && month <= 12 && price) {
+      for (const day of days) {
+        const date = isoDate(inferYearForMonth(month, fallbackYear), month, day);
+        if (!date) continue;
+        rows.push({
+          date,
+          adult_price: price,
+          child_price: null,
+          note: 'pdf_korean_dot_thousands_price',
+          status: 'available',
+        });
+      }
+      return rows;
+    }
+  }
+  const spacedRe = /(?:^|[^\d])(\d{1,2})\s*(?:월)?\s+((?:\d{1,2}\s*(?:일)?\s*(?:,)?\s*){1,16})\s*(?:일)?(?:\s*(?::|：|-)\s*|\s+)((?:\d{1,3}(?:,\d{3})+|\d{1,3}\.\d{3}|\d{5,8})(?:\s+(?:\d{1,3}(?:,\d{3})+|\d{1,3}\.\d{3}|\d{5,8}))*)/g;
 
   for (const match of line.matchAll(spacedRe)) {
     const month = Number(match[1]);
@@ -277,6 +348,23 @@ function rowsFromSpacedMonthDayPriceLine(line: string, fallbackYear: number): Ma
   }
 
   return rows;
+}
+
+function explicitExcludedDepartureDates(rawText: string, fallbackYear: number): Set<string> {
+  const sourceLines = rawText.split(/\r?\n/u).map(normalizeLine).filter(Boolean);
+  const excluded = new Set<string>();
+  for (let index = 0; index < sourceLines.length; index += 1) {
+    const line = sourceLines[index]!;
+    if (!EXCLUDED_DEPARTURE_HEADING_RE.test(line)) continue;
+    const inline = line.replace(EXCLUDED_DEPARTURE_HEADING_RE, ' ').trim();
+    const candidate = hasDateHint(inline)
+      ? inline
+      : isDepartureDateCandidateLine(sourceLines[index + 1] ?? '')
+        ? sourceLines[index + 1]!
+        : '';
+    for (const date of dateObjectsFromSegment(candidate, fallbackYear, null)) excluded.add(date);
+  }
+  return excluded;
 }
 
 function rowsFromLine(line: string, fallbackYear: number, currentMonth: number | null): MatrixPriceRow[] {
@@ -331,12 +419,18 @@ export function extractPdfDatePriceRows(
 ): MatrixPriceRow[] {
   if (!rawText || rawText.length < 40) return [];
   const fallbackYear = options.year && options.year >= 2000 ? options.year : new Date().getFullYear();
+  const explicitlyExcludedDates = explicitExcludedDepartureDates(rawText, fallbackYear);
   const rows: MatrixPriceRow[] = [];
   const seen = new Set<string>();
   let currentMonth: number | null = null;
   let hasKoreanMonthSections = false;
+  let pendingExactOverride = false;
 
   for (const line of prepareLines(rawText)) {
+    if (EXACT_OVERRIDE_HEADING_RE.test(line) && !hasPrice(line)) {
+      pendingExactOverride = true;
+      continue;
+    }
     const month = monthFromHeader(line);
     if (month && month >= 1 && month <= 12) {
       currentMonth = month;
@@ -344,6 +438,10 @@ export function extractPdfDatePriceRows(
       continue;
     }
     const extracted = rowsFromLine(line, fallbackYear, currentMonth);
+    if (pendingExactOverride && extracted.length > 0) {
+      extracted.forEach(row => { row.note = EXACT_OVERRIDE_NOTE; });
+      pendingExactOverride = false;
+    }
     for (const row of extracted) {
       const key = `${row.date}|${row.adult_price}`;
       if (seen.has(key)) continue;
@@ -352,13 +450,21 @@ export function extractPdfDatePriceRows(
     }
   }
 
+  const overrideDates = new Set(rows
+    .filter(row => row.note === EXACT_OVERRIDE_NOTE)
+    .map(row => row.date));
+  const precedenceResolvedRows = rows.filter(row => (
+    !explicitlyExcludedDates.has(row.date)
+    && (!overrideDates.has(row.date) || row.note === EXACT_OVERRIDE_NOTE)
+  ));
+
   if (hasKoreanMonthSections) {
     const latestByDate = new Map<string, MatrixPriceRow>();
-    for (const row of rows) {
+    for (const row of precedenceResolvedRows) {
       latestByDate.set(row.date, row);
     }
     return [...latestByDate.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
   }
 
-  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+  return precedenceResolvedRows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
 }

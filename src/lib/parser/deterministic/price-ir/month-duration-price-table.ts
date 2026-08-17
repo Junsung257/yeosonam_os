@@ -1,4 +1,5 @@
 import type { MatrixPriceRow, PriceIROptions } from './types.ts';
+import { extractSourceWonAmounts } from './source-money.ts';
 
 const DOW_MAP: Record<string, number> = {
   일: 0,
@@ -23,11 +24,11 @@ function isoDate(year: number, month: number, day: number): string | null {
 }
 
 function parsePrice(value: string): number {
-  const match = value.trim().match(/^(\d{1,3}(?:,\d{3})+|\d{5,8}|\d{3,4})/);
-  if (!match) return 0;
-  const price = Number(match[1].replace(/,/g, ''));
-  if (!Number.isFinite(price) || price <= 0) return 0;
-  return price < 10000 ? price * 1000 : price;
+  const amounts = extractSourceWonAmounts(value, {
+    allowBareSaleShorthand: true,
+    minAmount: 100_000,
+  }).map(candidate => candidate.amount);
+  return amounts.length === 1 ? amounts[0]! : 0;
 }
 
 function parseDurationDays(value: string): number | null {

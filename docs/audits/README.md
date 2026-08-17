@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-08-11
+Last updated: 2026-08-17
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,19 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-17 | `2026-08-17-product-registration-real-hwp-mobile-proof.md` | Real Phu Quoc HWP production workflow, source-backed revision/snapshot, exact-hash 390×844 package and LP proof, customer-fact corrections, proof-analytics isolation, DB advisor hardening, and remaining corpus launch gate. |
+| 2026-08-16 | `2026-08-16-product-registration-v138-guide-commercial-scope.md` | V138 actual-source replay, guide-fee commercial/heading/clause scoping, genuine contradiction preservation, zero comparable regression, 5,626-test verification, and remaining launch gates. |
+| 2026-08-16 | `2026-08-16-product-registration-v95-grade-duration-customer-facts.md` | V95 actual-source replay, Xian grade/duration product identity, customer-fact isolation, year/deadline corrections, contradiction gates, 5,590-test verification, and remaining launch gates. |
+| 2026-08-16 | `2026-08-16-product-registration-v82-full-audit.md` | V82 full actual-source replay, false split and cross-product price contamination fixes, deposit suppression, fuel conflict hard block, 1,253-test verification, and remaining customer-open gates. |
+| 2026-08-16 | `2026-08-16-product-registration-v80-budget-and-duration-pattern.md` | V80 guide-fee/fuel expected-budget contract, broad-range versus explicit-duration table binding, actual double-onsen/Biei and Kota HWP checks, 1,171-file replay, two recoveries, zero regression, and remaining launch gate. |
+| 2026-08-15 | `2026-08-15-product-registration-v78-owner-decisions.md` | V78 exception-price/inquiry-date, lodging-axis, missing-departure-date decisions; 1,171-file replay, three safe recoveries, zero regression, and remaining launch gate. |
+| 2026-08-15 | `2026-08-15-product-registration-v75-policy-implementation.md` | V75 actual-source aggregate, row-spanned product/duration price binding, sale-context safeguards, 907-test verification, and remaining 95%/customer-open gates. |
+| 2026-08-15 | `2026-08-15-product-registration-product-axis-source-validation.md` | 1,171-file HWP V68 rerun, duration/hotel axes, monthly calendar and bare-DAY replay, ticketing lifecycle, strict attraction fallback, AI fact-authority removal, and 81.98% active structural automation measurement. |
+| 2026-08-15 | `2026-08-15-product-registration-source-format-audit.md` | 731-source non-frozen HWP price-format audit, deterministic normalization contract, measured recovery, and remaining structural blockers; no supplier-file cleanup required. |
+| 2026-08-15 | `2026-08-15-product-registration-missing-sale-price-discard-policy.md` | Source-incomplete terminal outcome, false-discard protections, 1,171-file private shadow rerun, and required double-reviewed sale-price-presence benchmark contract. |
+| 2026-08-14 | `2026-08-14-product-registration-future-date-policy.md` | Pinned Korea reference date, nearest-future yearless schedule handling, explicit-past exclusion, application/DB guards, and 1,171-file private shadow aggregate. |
+| 2026-08-14 | `2026-08-14-product-registration-active-learning-loop.md` | Frozen-safe active-learning cycle, blind review and silver-candidate separation, actual-source weekday/date-price corrections, and promotion safeguards. |
+| 2026-08-13 | `2026-08-13-product-registration-95-actual-source-validation.md` | Actual 1,155-HWP private corpus aggregate, conservative structural/terminal measurements, price-evidence and source-year fixes, multi-source bundle lineage, and remaining 95% customer-open gates. |
 | 2026-08-12 | `2026-08-12-product-registration-authority-live-cutover.md` | Production authority hardening plus a real HWP source-to-revision-to-snapshot-to-mobile-Chrome terminal canary, customer assessment, private screenshot evidence, and remaining cohort launch gates. |
 | 2026-08-11 | `2026-08-11-product-registration-v6-implementation.md` | V6 durable workflow, private schema, real HWP 40/40 recheck, production Supabase permission boundary, and remaining launch prerequisites. |
 | 2026-08-10 | `2026-08-10-product-registration-v5-shadow-corpus.md` | 40개 HWP 원문을 고객 비노출 격리 상태에서 V5 정규화·근거·가격·일정·고객 화면 계약까지 전수 검증한 결과. |

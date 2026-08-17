@@ -7,6 +7,7 @@ import {
   type ProductRegistrationV4Stage,
 } from './types';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION } from '@/lib/product-registration/future-departure-date-policy';
 
 const JOB_SELECT = [
   'id',
@@ -31,6 +32,9 @@ const JOB_SELECT = [
   'v6_publication_state',
   'v6_publication_blockers',
   'v6_policy_version',
+  'v6_reference_date',
+  'v6_date_policy_version',
+  'v6_source_channel',
   'v6_last_heartbeat_at',
   'v6_terminal_at',
   'v6_degraded_reasons',
@@ -48,6 +52,7 @@ export async function createProductRegistrationV4Job(input: {
   normalizedHash?: string | null;
   tenantId?: string | null;
   initialState?: Record<string, unknown>;
+  referenceDate?: string | null;
 }): Promise<ProductRegistrationV4JobRecord> {
   const { data, error } = await input.supabase
     .from('upload_jobs')
@@ -62,6 +67,11 @@ export async function createProductRegistrationV4Job(input: {
       v4_parser_version: PRODUCT_REGISTRATION_V4_PARSER_VERSION,
       v4_stage_state: input.initialState ?? {},
       v4_review_reasons: [],
+      v6_date_policy_version: PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION,
+      v6_source_channel: typeof input.initialState?.sourceChannel === 'string'
+        ? input.initialState.sourceChannel
+        : 'upload',
+      ...(input.referenceDate ? { v6_reference_date: input.referenceDate } : {}),
     })
     .select(JOB_SELECT)
     .single();

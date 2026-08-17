@@ -836,6 +836,19 @@ begin
   where singleton = true
   for share;
 
+  update internal_product_registration.catalog_products
+  set metadata = metadata || jsonb_strip_nulls(jsonb_build_object(
+        'supplier_key', coalesce(
+          nullif(p_payload->>'land_operator', ''),
+          nullif(p_payload->>'supplier_code', '')
+        ),
+        'land_operator', nullif(p_payload->>'land_operator', ''),
+        'supplier_code', nullif(p_payload->>'supplier_code', '')
+      )),
+      updated_at = now()
+  where id = v_catalog_product_id and tenant_id = v_tenant_id;
+  if not found then raise exception 'REGISTRATION_COMPATIBILITY_CATALOG_IDENTITY_MISMATCH'; end if;
+
   select count(*), min(internal_code) into v_count, v_internal_code
   from public.products
   where catalog_product_id = v_catalog_product_id and tenant_id = v_tenant_id;
@@ -1085,12 +1098,20 @@ begin
     raise exception 'REGISTRATION_PUBLICATION_REVISION_NOT_PUBLISHABLE:%', v_revision.status;
   end if;
 
-  select p.land_operator into v_supplier
-  from public.travel_packages p
-  where p.id = v_package_id
-    and p.catalog_product_id = v_catalog_product_id
-    and p.tenant_id = v_tenant_id;
-  if not found then raise exception 'REGISTRATION_PUBLICATION_PACKAGE_IDENTITY_MISMATCH'; end if;
+  select coalesce(
+    nullif(cp.metadata->>'supplier_key', ''),
+    nullif(cp.metadata->>'land_operator', ''),
+    nullif(cp.metadata->>'supplier_code', '')
+  ) into v_supplier
+  from internal_product_registration.catalog_products cp
+  where cp.id = v_catalog_product_id and cp.tenant_id = v_tenant_id;
+  if not found then raise exception 'REGISTRATION_PUBLICATION_CATALOG_IDENTITY_MISMATCH'; end if;
+  if not exists (
+    select 1 from public.travel_packages p
+    where p.id = v_package_id
+      and p.catalog_product_id = v_catalog_product_id
+      and p.tenant_id = v_tenant_id
+  ) then raise exception 'REGISTRATION_PUBLICATION_PACKAGE_IDENTITY_MISMATCH'; end if;
 
   execute $sql$
     select coalesce((

@@ -21,6 +21,8 @@ type StaleJob = {
   v6_workflow_run_id: string | null;
   v6_fencing_token: number;
   v6_last_heartbeat_at: string | null;
+  v6_reference_date: string;
+  v4_stage_state: Record<string, unknown>;
   created_at: string;
 };
 
@@ -93,6 +95,11 @@ async function restartStaleJob(input: {
     publicBaseUrl: input.baseUrl,
     sourceChannel: 'v6-watchdog-recovery',
     forceReprocess: true,
+    departureDateReferenceOverride: {
+      referenceDate: input.job.v6_reference_date,
+      rollingInferenceEligible:
+        input.job.v4_stage_state.rollingDepartureDateInferenceEligible === true,
+    },
   });
   return { jobId: started.jobId, workflowRunId: started.workflowRunId };
 }
@@ -105,7 +112,7 @@ async function handler(): Promise<NextResponse> {
   const staleBefore = new Date(now - 30 * 60_000).toISOString();
   const { data, error } = await supabase
     .from('upload_jobs')
-    .select('id,tenant_id,source_document_id,v6_workflow_run_id,v6_fencing_token,v6_last_heartbeat_at,created_at')
+    .select('id,tenant_id,source_document_id,v6_workflow_run_id,v6_fencing_token,v6_last_heartbeat_at,v6_reference_date,v4_stage_state,created_at')
     .is('v6_outcome', null)
     .not('source_document_id', 'is', null)
     .or(`v6_last_heartbeat_at.lt.${staleBefore},and(v6_last_heartbeat_at.is.null,created_at.lt.${staleBefore})`)

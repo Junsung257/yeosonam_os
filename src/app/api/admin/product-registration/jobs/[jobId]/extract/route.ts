@@ -34,6 +34,9 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
       tenantId: prior.tenant_id,
       requestBaseUrl: request.nextUrl.origin,
       publicBaseUrl,
+      uploadSourceMetadata: prior.v4_stage_state.sourceDepartureYearContext
+        ? { sourceDepartureYearContext: prior.v4_stage_state.sourceDepartureYearContext }
+        : undefined,
       sourceChannel: 'admin-extract',
     });
     return NextResponse.json({

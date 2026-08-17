@@ -82,6 +82,21 @@ describe('product registration authority repository', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it('rejects a past canonical departure before calling the database', async () => {
+    const rpc = vi.fn();
+    const commit = commitInput();
+    commit.build.canonicalPayload = {
+      sections: [{
+        departureDatePolicy: { referenceDate: '2026-08-14' },
+        v3: { ledger: { variants: [] } },
+      }],
+    };
+    commit.domainProjection.departures = [{ departure_date: '2026-08-13' }];
+    await expect(commitCanonicalRevisionAtomic({ supabase: { rpc } as never, commit }))
+      .rejects.toThrow('REGISTRATION_PAST_DEPARTURE_INSTANCE_FORBIDDEN');
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it('projects legacy compatibility rows only from an immutable revision payload', async () => {
     const rpc = vi.fn().mockResolvedValue({
       data: { package_id: 'package-1', internal_code: 'KRN-ABC' },

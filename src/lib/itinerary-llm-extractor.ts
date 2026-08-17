@@ -447,28 +447,16 @@ export async function backfillPackageAttractionsL3(
     newDays.push({ ...d, schedule: newSchedule });
   }
   const newItin = { ...existingItin, days: newDays };
-
-  const { error: upErr } = await supabaseAdmin
-    .from('travel_packages')
-    .update({ itinerary_data: newItin, updated_at: new Date().toISOString() })
-    .eq('id', packageId);
-  if (upErr) return { ok: false, reason: upErr.message, before: beforeRate, llmCalls };
-
-  // 2026-05-17 박제 (ERR-audit-stale-snapshot): backfill 후 audit_report 자동 정정
-  try {
-    const { refreshAuditAfterBackfill } = await import('./parser/llm/section-extractors');
-    await refreshAuditAfterBackfill(packageId);
-  } catch { /* no-op */ }
-
-  // 2026-05-17 박제 (ERR-dev-revalidate-누락): prod + dev 동시 revalidate
-  try {
-    const { revalidatePackagePaths } = await import('./revalidate-helper');
-    await revalidatePackagePaths(packageId, { alsoServerContext: true });
-  } catch { /* no-op */ }
-
   const afterStats = countMatchStats(newItin);
   const afterRate = afterStats.total > 0 ? afterStats.matched / afterStats.total : 0;
-  return { ok: true, before: beforeRate, after: afterRate, llmCalls, cleaned: cleanedCount };
+  return {
+    ok: false,
+    reason: 'LEGACY_ATTRACTION_BACKFILL_RETIRED_USE_CORRECTION_REVISION_WORKFLOW',
+    before: beforeRate,
+    after: afterRate,
+    llmCalls,
+    cleaned: cleanedCount,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -955,22 +943,14 @@ export async function backfillScheduleMappingByPackageId(
     };
   });
   const newItin = { ...existingItin, days: newDays };
-
-  const { error: upErr } = await supabaseAdmin
-    .from('travel_packages')
-    .update({ itinerary_data: newItin, updated_at: new Date().toISOString() })
-    .eq('id', packageId);
-  if (upErr) return { ok: false, reason: upErr.message, before: beforeRate };
-
-  try {
-    const { revalidatePath } = await import('next/cache');
-    revalidatePath(`/packages/${packageId}`);
-    revalidatePath(`/m/packages/${packageId}`);
-  } catch { /* no-op */ }
-
   const afterStats = countMatchStats(newItin);
   const afterRate = afterStats.total > 0 ? afterStats.matched / afterStats.total : 0;
-  return { ok: true, before: beforeRate, after: afterRate };
+  return {
+    ok: false,
+    reason: 'LEGACY_SCHEDULE_MAPPING_RETIRED_USE_CORRECTION_REVISION_WORKFLOW',
+    before: beforeRate,
+    after: afterRate,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1045,22 +1025,15 @@ export async function reExtractAndUpdateItineraryByPackageId(
 
   // 5) DB UPDATE
   const newItin = enriched.itineraryData ?? { days: merged.days };
-  const { error: upErr } = await supabaseAdmin
-    .from('travel_packages')
-    .update({ itinerary_data: newItin, updated_at: new Date().toISOString() })
-    .eq('id', packageId);
-  if (upErr) return { ok: false, reason: upErr.message, matchRate: beforeRate };
-
-  // 6) ISR revalidate (server context 외에선 throw 가능 — 무시)
-  try {
-    const { revalidatePath } = await import('next/cache');
-    revalidatePath(`/packages/${packageId}`);
-    revalidatePath(`/m/packages/${packageId}`);
-  } catch { /* no-op */ }
-
   const afterStats = countMatchStats(newItin as { days?: Day[] });
   const afterRate = afterStats.total > 0 ? afterStats.matched / afterStats.total : 0;
-  return { ok: true, before: beforeRate, after: afterRate, matchRate: afterRate };
+  return {
+    ok: false,
+    reason: 'LEGACY_ITINERARY_REEXTRACT_RETIRED_USE_CORRECTION_REVISION_WORKFLOW',
+    before: beforeRate,
+    after: afterRate,
+    matchRate: afterRate,
+  };
 }
 
 function countMatchStats(itin: { days?: Array<{ schedule?: Array<{ activity?: string; attraction_ids?: string[]; type?: string }> }> } | null): { total: number; matched: number } {

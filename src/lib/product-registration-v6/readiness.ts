@@ -1,4 +1,5 @@
 import type { ProductRegistrationV6RuntimeConfig } from './runtime-config';
+import { PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION } from '@/lib/product-registration-v4/canonical-worker';
 
 export type ProductRegistrationV6ReadinessStatus = 'pass' | 'warning' | 'blocked';
 
@@ -30,9 +31,39 @@ export type ProductRegistrationV6ReadinessDatabase = {
   benchmarkPassedCount: number | null;
   benchmarkExactMatchRate: number | null;
   benchmarkCriticalFalsePublishCount: number | null;
+  hwpSafeOpenRate: number | null;
+  textPasteSafeOpenRate: number | null;
+  safeOpenWilsonLowerBound: number | null;
+  segmentExactMatchRate: number | null;
+  hwpExtractionSuccessRate: number | null;
+  parserFallbackRate: number | null;
+  parserDisagreementRate: number | null;
+  frozenHoldoutSectionCount: number | null;
+  frozenHwpSourceCount: number | null;
+  frozenTextSourceCount: number | null;
+  operationalPasteSectionCount: number | null;
+  operationalPasteSourceCount: number | null;
+  hwpPasteComparableLineageCount: number | null;
+  hwpPasteExactLineageCandidateCount: number | null;
+  hwpPasteParityRate: number | null;
+  benchmarkBuildIds: string[];
   cohortSampleCount: number | null;
   cohortCriticalDefectCount: number | null;
+  majorCohortMinSafeOpenRate: number | null;
   eligibleCohortCount: number | null;
+  benchmarkReleaseManifestHash: string | null;
+  benchmarkNormalizationVersion: string | null;
+  benchmarkTermsPolicyHash: string | null;
+  benchmarkSupplierProfileVersion: string | null;
+  currentSupplierProfileVersion: string | null;
+  benchmarkCorpusHash: string | null;
+  benchmarkReferenceDate: string | null;
+  benchmarkAnnotationSchemaVersion: string | null;
+  benchmarkObservedSafeOpenRate: number | null;
+  benchmarkNegativeTerminalOutcomeExactRate: number | null;
+  benchmarkSourceIncompleteDiscardExactRate: number | null;
+  benchmarkFalseSourceIncompleteDiscardCount: number | null;
+  benchmarkInvalidSourcePublishedCount: number | null;
 };
 
 export type ProductRegistrationV6ReadinessReport = {
@@ -58,6 +89,8 @@ export type ProductRegistrationV6ReadinessInput = {
     mediaProvider: boolean;
   };
   database: ProductRegistrationV6ReadinessDatabase;
+  currentBuildId?: string | null;
+  currentTermsPolicyHash?: string | null;
   generatedAt?: string;
 };
 
@@ -156,15 +189,89 @@ export function buildProductRegistrationV6ReadinessReport(
     staleJobs === 0 ? '30분 넘게 멈춘 작업이 없습니다.' : `30분 넘게 멈춘 작업이 ${staleJobs ?? '확인 불가'}건 있습니다.`,
   );
 
+  const benchmarkBuildMatches = !input.currentBuildId
+    || input.database.benchmarkBuildIds.includes(input.currentBuildId);
+  const releaseManifestMatches = Boolean(input.database.benchmarkReleaseManifestHash)
+    && input.database.benchmarkNormalizationVersion === PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION
+    && input.database.benchmarkAnnotationSchemaVersion === 'product-registration-reviewed-benchmark-2'
+    && Boolean(input.database.benchmarkCorpusHash)
+    && Boolean(input.database.benchmarkReferenceDate)
+    && input.database.benchmarkSupplierProfileVersion === input.database.currentSupplierProfileVersion
+    && (!input.currentTermsPolicyHash || input.database.benchmarkTermsPolicyHash === input.currentTermsPolicyHash);
   const benchmarkPassed = (input.database.benchmarkPassedCount ?? 0) > 0
+    && (input.database.frozenHoldoutSectionCount ?? 0) >= 400
+    && (input.database.operationalPasteSectionCount ?? 0) >= 100
+    && (input.database.hwpPasteComparableLineageCount ?? 0) >= 100
+    && input.database.hwpPasteParityRate === 1
+    && input.database.benchmarkNegativeTerminalOutcomeExactRate === 1
+    && input.database.benchmarkSourceIncompleteDiscardExactRate === 1
+    && input.database.benchmarkFalseSourceIncompleteDiscardCount === 0
+    && input.database.benchmarkInvalidSourcePublishedCount === 0
+    && (input.database.hwpSafeOpenRate ?? 0) >= 0.97
+    && (input.database.textPasteSafeOpenRate ?? 0) >= 0.97
+    && (input.database.benchmarkObservedSafeOpenRate ?? 0) >= 0.97
+    && (input.database.safeOpenWilsonLowerBound ?? 0) >= 0.95
     && (input.database.benchmarkExactMatchRate ?? 0) >= 0.995
-    && input.database.benchmarkCriticalFalsePublishCount === 0;
+    && (input.database.segmentExactMatchRate ?? 0) >= 0.995
+    && (input.database.hwpExtractionSuccessRate ?? 0) >= 0.995
+    && input.database.benchmarkCriticalFalsePublishCount === 0
+    && benchmarkBuildMatches
+    && releaseManifestMatches;
   add(
     benchmarkPassed ? 'V6_CORPUS_BENCHMARK_PASSED' : 'V6_CORPUS_BENCHMARK_NOT_PASSED',
     benchmarkPassed ? 'pass' : 'blocked',
     benchmarkPassed
       ? `고정 표본 정확도 ${((input.database.benchmarkExactMatchRate ?? 0) * 100).toFixed(2)}%, 치명적 오공개 0건입니다.`
       : '고정 표본의 99.5% exact match·치명적 오공개 0건 기준이 아직 DB에 증명되지 않았습니다.',
+  );
+  const sourceDispositionPassed = input.database.benchmarkNegativeTerminalOutcomeExactRate === 1
+    && input.database.benchmarkSourceIncompleteDiscardExactRate === 1
+    && input.database.benchmarkFalseSourceIncompleteDiscardCount === 0
+    && input.database.benchmarkInvalidSourcePublishedCount === 0;
+  add(
+    sourceDispositionPassed
+      ? 'V6_SOURCE_DISPOSITION_EXACT'
+      : 'V6_SOURCE_DISPOSITION_NOT_PROVEN',
+    sourceDispositionPassed ? 'pass' : 'blocked',
+    sourceDispositionPassed
+      ? '판매가 없는 원문은 모두 비공개 종결됐고 정상 판매상품을 잘못 폐기한 건이 없습니다.'
+      : `음성 원문 종결 정확도=${((input.database.benchmarkNegativeTerminalOutcomeExactRate ?? 0) * 100).toFixed(2)}%, 판매가 부재 판정 정확도=${((input.database.benchmarkSourceIncompleteDiscardExactRate ?? 0) * 100).toFixed(2)}%, 정상상품 오폐기=${input.database.benchmarkFalseSourceIncompleteDiscardCount ?? '확인 불가'}건, 무효 원문 오공개=${input.database.benchmarkInvalidSourcePublishedCount ?? '확인 불가'}건입니다.`,
+  );
+  add(
+    (input.database.frozenHoldoutSectionCount ?? 0) >= 400
+      ? 'V6_FROZEN_HOLDOUT_SUFFICIENT'
+      : 'V6_FROZEN_HOLDOUT_INSUFFICIENT',
+    (input.database.frozenHoldoutSectionCount ?? 0) >= 400 ? 'pass' : 'blocked',
+    `독립 이중검수 frozen 상품 구간: ${input.database.frozenHoldoutSectionCount ?? 0}/400`,
+  );
+  add(
+    (input.database.safeOpenWilsonLowerBound ?? 0) >= 0.95
+      ? 'V6_SAFE_OPEN_WILSON_PASSED'
+      : 'V6_SAFE_OPEN_WILSON_NOT_PASSED',
+    (input.database.safeOpenWilsonLowerBound ?? 0) >= 0.95 ? 'pass' : 'blocked',
+    `안전 자동공개율 단측 95% Wilson 하한: ${((input.database.safeOpenWilsonLowerBound ?? 0) * 100).toFixed(2)}%`,
+  );
+  add(
+    releaseManifestMatches ? 'V6_BENCHMARK_RELEASE_PINNED' : 'V6_BENCHMARK_RELEASE_STALE',
+    releaseManifestMatches ? 'pass' : 'blocked',
+    releaseManifestMatches
+      ? '현재 parser·약관·공급사 profile·corpus와 같은 release manifest로 검증됐습니다.'
+      : 'benchmark의 parser·약관·공급사 profile·corpus 중 하나가 현재 배포와 다릅니다.',
+  );
+  const pasteParityPassed = (input.database.operationalPasteSectionCount ?? 0) >= 100
+    && (input.database.hwpPasteComparableLineageCount ?? 0) >= 100
+    && input.database.hwpPasteParityRate === 1;
+  add(
+    pasteParityPassed ? 'V6_HWP_PASTE_PARITY_PASSED' : 'V6_HWP_PASTE_PARITY_NOT_PASSED',
+    pasteParityPassed ? 'pass' : 'blocked',
+    `Operational paste sections=${input.database.operationalPasteSectionCount ?? 0}/100, captured sources=${input.database.operationalPasteSourceCount ?? 0}, comparable reviewed HWP/paste lineages=${input.database.hwpPasteComparableLineageCount ?? 0}/100, exact-lineage candidates=${input.database.hwpPasteExactLineageCandidateCount ?? 0}, critical parity=${((input.database.hwpPasteParityRate ?? 0) * 100).toFixed(2)}%.`,
+  );
+  add(
+    benchmarkBuildMatches ? 'V6_BENCHMARK_BUILD_MATCH' : 'V6_BENCHMARK_BUILD_MISMATCH',
+    benchmarkBuildMatches ? 'pass' : 'blocked',
+    benchmarkBuildMatches
+      ? '현재 배포 build와 합격 benchmark build가 일치합니다.'
+      : `현재 build(${input.currentBuildId ?? 'unknown'})가 합격 benchmark build에 없습니다.`,
   );
 
   const inventory = input.database.legacyInventoryCount ?? 0;
@@ -204,6 +311,7 @@ export function buildProductRegistrationV6ReadinessReport(
 
   const cohortReady = (input.database.cohortSampleCount ?? 0) >= 30
     && input.database.cohortCriticalDefectCount === 0
+    && (input.database.majorCohortMinSafeOpenRate ?? 0) >= 0.9
     && (input.database.eligibleCohortCount ?? 0) > 0;
   add(
     cohortReady ? 'V6_COHORT_QUALITY_PASSED' : 'V6_COHORT_QUALITY_INCOMPLETE',

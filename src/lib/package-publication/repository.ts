@@ -4,17 +4,9 @@ import {
   auditCustomerVisibleScreenText,
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
-import {
-  collectItineraryAttractionIds,
-  validateCustomerPublishableAttractionIds,
-} from './attraction-validation';
-import { buildPublicPackageSnapshot } from './public-snapshot';
 import { evaluateCustomerSurfaceParity } from './customer-surface-parity';
-import { evaluatePublicSnapshotPublishGate, type PublicSnapshotGateInput } from './publish-gate';
+import type { PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
-import { loadProductRegistrationV4PublicationGate } from '@/lib/product-registration-v4/publication-gate';
-import { linkV5ShadowRevisionToSnapshot } from '@/lib/product-registration-v4/snapshot-link';
-import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -125,8 +117,8 @@ export async function fetchPublicPackageSnapshotById(
   return pkg ? { row: data as SnapshotRow, package: pkg } : null;
 }
 
-/** Single pointer-first customer read. Content comes only from one immutable
- * snapshot; travel_packages may be used only to resolve a legacy short code. */
+/** Single pointer-first customer read. Route aliases, catalog identity,
+ * publication pointer and immutable snapshot are the complete read path. */
 export async function getCurrentPublicPackage(
   supabase: SupabaseClient,
   input: {
@@ -136,27 +128,56 @@ export async function getCurrentPublicPackage(
     locale?: string;
   },
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
-  let packageId = input.packageRef;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageId)) {
-    const { data: identity, error: identityError } = await supabase
-      .from('travel_packages')
-      .select('id')
-      .eq('tenant_id', input.tenantId)
-      .eq('short_code', packageId)
-      .maybeSingle();
-    if (identityError || !identity?.id) return null;
-    packageId = String(identity.id);
+  const channel = input.channel ?? 'customer';
+  const locale = input.locale ?? 'ko-KR';
+  const uuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.packageRef);
+  let catalogProductId: string | null = uuidRef ? input.packageRef : null;
+  let legacyPackageId: string | null = uuidRef ? input.packageRef : null;
+  if (!uuidRef) {
+    const { data: resolved, error: resolveError } = await supabase.rpc(
+      'resolve_product_registration_public_route',
+      {
+        p_tenant_id: input.tenantId,
+        p_route_ref: input.packageRef,
+        p_channel: channel,
+        p_locale: locale,
+      },
+    );
+    const route = asRecord(resolved);
+    if (resolveError || !route) return null;
+    catalogProductId = asNonEmptyString(route.catalog_product_id);
+    legacyPackageId = asNonEmptyString(route.package_id);
   }
-  const pointerQuery = supabase
-    .from('product_registration_v5_publication_pointers')
-    .select('tenant_id,catalog_product_id,current_revision_id,current_snapshot_id,state')
-    .eq('package_id', packageId)
-    .eq('tenant_id', input.tenantId)
-    .eq('channel', input.channel ?? 'customer')
-    .eq('locale', input.locale ?? 'ko-KR');
-  const { data: pointer, error: pointerError } = await pointerQuery.maybeSingle();
+
+  const pointerSelect = 'tenant_id,package_id,catalog_product_id,current_revision_id,current_snapshot_id,state';
+  let pointerResult = catalogProductId
+    ? await supabase
+      .from('product_registration_v5_publication_pointers')
+      .select(pointerSelect)
+      .eq('catalog_product_id', catalogProductId)
+      .eq('tenant_id', input.tenantId)
+      .eq('channel', channel)
+      .eq('locale', locale)
+      .maybeSingle()
+    : { data: null, error: null };
+  // A UUID route can be either the stable catalog id or the historical
+  // package id. Try catalog first, then the compatibility id without guessing
+  // which namespace the incoming UUID belongs to.
+  if (!pointerResult.data && legacyPackageId) {
+    pointerResult = await supabase
+      .from('product_registration_v5_publication_pointers')
+      .select(pointerSelect)
+      .eq('package_id', legacyPackageId)
+      .eq('tenant_id', input.tenantId)
+      .eq('channel', channel)
+      .eq('locale', locale)
+      .maybeSingle();
+  }
+  const { data: pointer, error: pointerError } = pointerResult;
   if (pointerError || !pointer || pointer.state !== 'published'
-    || !pointer.catalog_product_id || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
+    || !pointer.package_id || !pointer.catalog_product_id
+    || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
+  const packageId = String(pointer.package_id);
 
   const { data, error } = await supabase
     .from('public_package_snapshots')
@@ -199,13 +220,11 @@ export async function getCurrentPublicPackage(
       && ['closed', 'sold_out', 'suspended'].includes(String(overlay.sale_state ?? ''));
   })) return null;
 
-  const v4PublicationGate = await loadProductRegistrationV4PublicationGate({ supabase, packageId }).catch(() => null);
-  if (!v4PublicationGate || (v4PublicationGate.required && !v4PublicationGate.ok)) return null;
-  const attractionValidation = await validateCustomerPublishableAttractionIds(
-    supabase,
-    collectItineraryAttractionIds(pkg.itinerary_data),
-  );
-  if (attractionValidation.lookupError || attractionValidation.invalidIds.length > 0) return null;
+  // Canonical lineage and attraction publishability are revision/snapshot
+  // validation concerns. Re-querying mutable registration or attraction rows
+  // here would make an already-proved immutable snapshot change meaning between
+  // customer requests. Runtime reads are therefore pointer + immutable
+  // snapshot + operational kill/availability controls only.
   return { row, package: pkg };
 }
 
@@ -229,145 +248,17 @@ export async function fetchLatestPublicPackageSnapshot(
 }
 
 export async function createPublicPackageSnapshotAndDecision(
-  supabase: SupabaseClient,
-  pkg: AnyRecord,
-  gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'sourcePkg' | 'publicSnapshotHash' | 'publicSnapshotTitle' | 'snapshotExists' | 'routeTextDump'> = {},
-  options: { packagePatch?: AnyRecord; blockedPackagePatch?: AnyRecord } = {},
+  _supabase: SupabaseClient,
+  _pkg: AnyRecord,
+  _gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'sourcePkg' | 'publicSnapshotHash' | 'publicSnapshotTitle' | 'snapshotExists' | 'routeTextDump'> = {},
+  _options: { packagePatch?: AnyRecord; blockedPackagePatch?: AnyRecord } = {},
 ): Promise<{
   snapshot: PublicPackageSnapshot;
   snapshotHash: string;
   publicationState: string;
   publishable: boolean;
   blockers: unknown[];
-  v5ShadowLink: Awaited<ReturnType<typeof linkV5ShadowRevisionToSnapshot>> | null;
+  v5ShadowLink: null;
 }> {
-  const authorityBlocker = productRegistrationLegacyWriterBlocker();
-  if (authorityBlocker) throw new Error(authorityBlocker);
-  const packageId = String(pkg.id ?? '');
-  const v4PublicationGate = packageId
-    ? await loadProductRegistrationV4PublicationGate({ supabase, packageId })
-    : null;
-  const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
-  const publicSnapshotPackage = asRecord(snapshot.package) ?? {};
-  const gatePackage = {
-    ...pkg,
-    title: snapshot.public_title,
-    display_title: snapshot.public_title,
-    hero_tagline: snapshot.public_subtitle ?? pkg.hero_tagline,
-    product_summary: publicSnapshotPackage.product_summary ?? pkg.product_summary,
-    product_highlights: publicSnapshotPackage.product_highlights ?? [],
-    marketing_copies: publicSnapshotPackage.marketing_copies ?? [],
-    inclusions: snapshot.inclusions_public,
-    excludes: snapshot.exclusions_public,
-    optional_tours: snapshot.optional_tours_public,
-    customer_notes: publicSnapshotPackage.customer_notes ?? null,
-    itinerary_data: snapshot.itinerary_public,
-    price: publicSnapshotPackage.price ?? pkg.price,
-    price_dates: publicSnapshotPackage.price_dates ?? pkg.price_dates,
-    product_prices: publicSnapshotPackage.product_prices ?? pkg.product_prices,
-    images_public: snapshot.images_public,
-    hero_image_url: publicSnapshotPackage.hero_image_url ?? pkg.hero_image_url,
-    lp_hero_image_url: publicSnapshotPackage.lp_hero_image_url ?? pkg.lp_hero_image_url,
-    thumbnail_urls: publicSnapshotPackage.thumbnail_urls ?? pkg.thumbnail_urls,
-    _public_notice_source_paths: snapshot.public_notice_source_paths,
-    _card_projection: snapshot.card_projection,
-    _lp_projection: snapshot.lp_projection,
-  };
-  const resolvedPackageId = packageId || String(snapshot.package_id);
-  const packageRevision = Number(pkg.package_revision ?? snapshot.package_revision ?? 1);
-  const attractionIds = collectItineraryAttractionIds(pkg.itinerary_data);
-  const attractionValidation = await validateCustomerPublishableAttractionIds(supabase, attractionIds);
-  const auditQueryFailed = [
-    gateInput.auditQueryFailed,
-    attractionValidation.lookupError,
-  ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join('; ') || null;
-  const gate = evaluatePublicSnapshotPublishGate({
-    ...gateInput,
-    pkg: gatePackage,
-    sourcePkg: pkg,
-    publicSnapshotHash: snapshotHash,
-    publicSnapshotTitle: snapshot.public_title,
-    snapshotExists: true,
-    routeTextDump: snapshot.route_text_dump,
-    publicNoticeSourcePaths: snapshot.public_notice_source_paths,
-    auditQueryFailed,
-    invalidAttractionIds: attractionValidation.invalidIds,
-    customerSurfaceParity: evaluateCustomerSurfaceParity({
-      package: snapshot.package,
-      cardProjection: snapshot.card_projection,
-      lpProjection: snapshot.lp_projection,
-    }),
-    v4PublicationGate,
-  });
-  const snapshotStatus = gate.publishable ? 'published' : 'blocked';
-  const callerPatch = gate.publishable
-    ? options.packagePatch ?? {}
-    : options.blockedPackagePatch ?? options.packagePatch ?? {};
-  const patchUpdatedAt = typeof callerPatch.updated_at === 'string'
-    ? callerPatch.updated_at
-    : new Date().toISOString();
-  const packagePatch = {
-    ...callerPatch,
-    status: gate.publishable ? 'active' : 'draft',
-    publication_state: gate.publication_state,
-    package_revision: packageRevision,
-    updated_at: patchUpdatedAt,
-  };
-
-  const { error: publishError } = await supabase.rpc('publish_package_snapshot_atomic', {
-    p_package_id: resolvedPackageId,
-    p_package_revision: packageRevision,
-    p_package_patch: packagePatch,
-    p_snapshot_hash: snapshotHash,
-    p_snapshot_json: snapshot,
-    p_card_projection: snapshot.card_projection,
-    p_lp_projection: snapshot.lp_projection,
-    p_route_text_dump: snapshot.route_text_dump,
-    p_source_raw_text_hash: typeof pkg.raw_text_hash === 'string' ? pkg.raw_text_hash : null,
-    p_audit_revision: typeof pkg.audit_checked_at === 'string' ? pkg.audit_checked_at : null,
-    p_mobile_proof_revision: typeof gateInput.mobileProof?.proof?.checked_at === 'string'
-      ? gateInput.mobileProof.proof.checked_at
-      : null,
-    p_app_build_id: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
-    p_snapshot_status: snapshotStatus,
-    p_publication_state: gate.publication_state,
-    p_publishable: gate.publishable,
-    p_hard_blockers: gate.hard_blockers,
-    p_soft_warnings: gate.soft_warnings,
-    p_required_actions: gate.required_actions,
-    p_audit_run_ref: null,
-    p_mobile_proof_ref: typeof gateInput.mobileProof?.proof?.checked_at === 'string'
-      ? gateInput.mobileProof.proof.checked_at
-      : null,
-    p_decision_source: 'publish_gate_v1',
-  });
-
-  if (publishError) throw publishError;
-
-  // During the V5 shadow rollout, bind only a successfully published legacy
-  // snapshot to a source-backed V5 revision. This is intentionally best
-  // effort so a missing V5 migration/revision cannot change legacy customer
-  // publication behavior; the V5 CAS writer will make this atomic later.
-  let v5ShadowLink: Awaited<ReturnType<typeof linkV5ShadowRevisionToSnapshot>> | null = null;
-  if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1' && gate.publishable) {
-    v5ShadowLink = await linkV5ShadowRevisionToSnapshot({
-      supabase,
-      packageId: resolvedPackageId,
-      snapshotHash,
-      revisionId: typeof pkg.canonical_revision_id === 'string' ? pkg.canonical_revision_id : null,
-      rendererBuildId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
-    });
-    if (v5ShadowLink.status === 'unavailable') {
-      console.warn('[Product Registration V5] shadow snapshot lineage link unavailable:', v5ShadowLink.reason);
-    }
-  }
-
-  return {
-    snapshot,
-    snapshotHash,
-    publicationState: gate.publication_state,
-    publishable: gate.publishable,
-    blockers: gate.hard_blockers,
-    v5ShadowLink,
-  };
+  throw new Error('LEGACY_PUBLICATION_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
 }

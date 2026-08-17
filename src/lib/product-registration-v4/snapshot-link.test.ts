@@ -36,8 +36,8 @@ function fakeSupabase(input: {
   return { supabase: supabase as unknown as SupabaseClient, update };
 }
 
-describe('V5 shadow snapshot lineage link', () => {
-  it('binds a published snapshot to the latest linkable revision', async () => {
+describe('retired V5 shadow snapshot lineage link', () => {
+  it('requires the immutable snapshot CAS instead of mutating a published snapshot', async () => {
     const fake = fakeSupabase({
       revision: { id: 'revision-1', status: 'candidate', package_id: 'package-1' },
       snapshot: { id: 'snapshot-1', canonical_revision_id: null },
@@ -51,8 +51,8 @@ describe('V5 shadow snapshot lineage link', () => {
       rendererBuildId: 'build-1',
     });
 
-    expect(result).toEqual({ status: 'linked', snapshotId: 'snapshot-1', revisionId: 'revision-1' });
-    expect(fake.update).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ status: 'skipped', reason: 'V5_SHADOW_LINK_WRITER_RETIRED_USE_SNAPSHOT_CAS' });
+    expect(fake.update).not.toHaveBeenCalled();
   });
 
   it('does not overwrite an already-bound snapshot', async () => {
@@ -68,7 +68,7 @@ describe('V5 shadow snapshot lineage link', () => {
       revisionId: 'revision-2',
     });
 
-    expect(result).toEqual({ status: 'skipped', reason: 'PUBLIC_SNAPSHOT_ALREADY_BOUND_TO_OTHER_REVISION' });
+    expect(result).toEqual({ status: 'skipped', reason: 'V5_SHADOW_LINK_WRITER_RETIRED_USE_SNAPSHOT_CAS' });
     expect(fake.update).not.toHaveBeenCalled();
   });
 });

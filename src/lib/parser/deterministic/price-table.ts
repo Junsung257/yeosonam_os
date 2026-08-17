@@ -17,12 +17,12 @@
  *   L327-358 의 패턴을 일반화. 모든 지역·랜드사 공용.
  */
 
+import { parseSourceWonAmount } from './price-ir/source-money.ts';
+
 // 출처: 부관훼리·베트남 카탈로그·다낭·서안 등 4 fixture 에서 공통 추출된 표준 패턴.
 const MONTH_HEADER = /^(\d{1,2})월\s*$/;
 const DOW_LABEL = /^([일월화수목금토](?:[,，·~\-][일월화수목금토])*)\s*$/;
 const DATE_LIST = /^(\d{1,2}(?:[~\-]\d{1,2})?(?:[,，]\s*\d{1,2}(?:[~\-]\d{1,2})?)*)\s*$/;
-// 가격: "159,000" / "159,000원" / "159,-" / "1,599,-" (콤마 단위 천원 약식)
-const PRICE_LINE = /^([\d,]{3,9})(?:\s*[,\-]|\s*원)?\s*$/;
 
 const DOW_MAP: Record<string, number> = {
   '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6,
@@ -35,6 +35,11 @@ export interface PriceTier {
   date_range: { start: string; end: string } | null;
   adult_price: number;
   child_price: number | null;
+  infant_price?: number | null;
+  list_price?: number | null;
+  min_travelers?: number | null;
+  max_travelers?: number | null;
+  price_relation?: 'final_sale' | 'standard_sale' | null;
   status: 'available' | 'soldout' | 'tentative';
   note: string | null;
 }
@@ -83,10 +88,10 @@ function expandDateList(label: string): number[] {
 
 /** 가격 토큰 → 원화 정수. "159,000" → 159000. "1,599,-" → 1599000 (천원 약식). */
 function parsePriceToken(tok: string): number {
-  const cleaned = tok.replace(/[, ]/g, '');
-  const n = parseInt(cleaned, 10);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return n < 10000 ? n * 1000 : n;
+  return parseSourceWonAmount(tok, {
+    allowBareSaleShorthand: true,
+    minAmount: 30_000,
+  })?.amount ?? 0;
 }
 
 /**
@@ -169,17 +174,17 @@ export function extractPriceTable(rawText: string, todayYear?: number): PriceTie
     //   여러 번 처리. 부관훼리 5월 "일-수" 그룹 아래 3개 (date,price) 쌍이 연속 등장하는 패턴.
     if (DATE_LIST.test(line) && pendingDow) {
       pendingDates = expandDateList(line);
-      const priceOnSameLine = line.match(PRICE_LINE);
-      if (priceOnSameLine && !DATE_LIST.test(line.split(/\s+/)[0])) {
-        flush(parsePriceToken(priceOnSameLine[1]));
+      const priceOnSameLine = parsePriceToken(line);
+      if (priceOnSameLine > 0 && !DATE_LIST.test(line.split(/\s+/)[0])) {
+        flush(priceOnSameLine);
       }
       continue;
     }
 
     // 가격 라인 — 같은 요일 그룹 안의 다음 쌍을 기다리도록 pendingDow 유지 (NOT reset)
-    const priceM = line.match(PRICE_LINE);
-    if (priceM && pendingDates) {
-      flush(parsePriceToken(priceM[1]));
+    const price = parsePriceToken(line);
+    if (price > 0 && pendingDates) {
+      flush(price);
       // pendingDow 는 유지 — 다음 date_list 가 또 나오면 같은 요일 그룹으로 재사용
     }
   }

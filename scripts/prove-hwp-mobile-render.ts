@@ -654,66 +654,13 @@ function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', 
 }
 
 async function persistPassProof(result: PackageProofResult) {
-  const { data: current, error: loadError } = await supabaseAdmin
-    .from('travel_packages')
-    .select('audit_status,audit_report')
-    .eq('id', result.id)
-    .maybeSingle();
-  if (loadError) throw new Error(loadError.message);
-
-  const existing = current?.audit_report && typeof current.audit_report === 'object' && !Array.isArray(current.audit_report)
-    ? current.audit_report as Record<string, unknown>
-    : {};
-  const wasBlockedByMobileProof = current?.audit_status === 'blocked' && Boolean(existing.mobile_browser_proof_required);
-  const nextReport = { ...existing };
-  delete nextReport.mobile_browser_proof_required;
-  nextReport.mobile_browser_proof = buildProofPayload(result, 'pass');
-
-  const update: Record<string, unknown> = {
-    audit_report: nextReport,
-    audit_checked_at: result.checked_at,
-  };
-  if (wasBlockedByMobileProof) {
-    update.audit_status = 'warnings';
-  }
-
-  const { error } = await supabaseAdmin
-    .from('travel_packages')
-    .update(update)
-    .eq('id', result.id);
-  if (error) throw new Error(error.message);
+  void result;
+  throw new Error('LEGACY_PROOF_PERSISTENCE_RETIRED_USE_SIGNED_IMMUTABLE_SNAPSHOT_PROOF');
 }
 
 async function persistFailProof(result: PackageProofResult) {
-  const { data: current, error: loadError } = await supabaseAdmin
-    .from('travel_packages')
-    .select('audit_report')
-    .eq('id', result.id)
-    .maybeSingle();
-  if (loadError) throw new Error(loadError.message);
-
-  const existing = current?.audit_report && typeof current.audit_report === 'object' && !Array.isArray(current.audit_report)
-    ? current.audit_report as Record<string, unknown>
-    : {};
-  const failedChecks = [...result.mobile_checks, ...result.a4_checks].filter(check => !check.ok);
-  const nextReport = {
-    ...existing,
-    mobile_browser_proof: buildProofPayload(result, 'fail', failedChecks),
-    mobile_browser_proof_required: {
-      reason: failedChecks.map(check => `${check.name}${check.detail ? `: ${check.detail}` : ''}`).join(' / '),
-      checked_at: result.checked_at,
-    },
-  };
-
-  const { error } = await supabaseAdmin
-    .from('travel_packages')
-    .update({
-      audit_status: 'blocked',
-      audit_report: nextReport,
-      audit_checked_at: result.checked_at,
-    })
-    .eq('id', result.id);
-  if (error) throw new Error(error.message);
+  void result;
+  throw new Error('LEGACY_PROOF_PERSISTENCE_RETIRED_USE_SIGNED_IMMUTABLE_SNAPSHOT_PROOF');
 }
 
 async function persistV5ProofRunsIfEnabled(result: PackageProofResult) {

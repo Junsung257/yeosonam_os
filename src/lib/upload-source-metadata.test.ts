@@ -54,14 +54,14 @@ describe('parseUploadSourceMetadata', () => {
     expect(result.source).toBe('explicit');
   });
 
-  it('defaults commission rate to 10 percent when missing', () => {
+  it('defaults commission rate to 9 percent when missing', () => {
     const result = parseUploadSourceMetadata({
       rawText: '연길/백두산 상품 원문입니다. 가격표와 일정이 충분히 들어있습니다.',
     });
 
     expect(result.landOperator).toBeUndefined();
-    expect(result.commissionRate).toBe(10);
-    expect(result.marginRate).toBe(0.1);
+    expect(result.commissionRate).toBe(9);
+    expect(result.marginRate).toBe(0.09);
     expect(result.source).toBe('default');
   });
 

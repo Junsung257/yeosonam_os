@@ -43,81 +43,29 @@ describe('packages bulk/customer publication gate', () => {
     expect(aggregateSnapshotIndex).toBeGreaterThan(aggregateIndex);
   });
 
-  it('blocks publication when source repair changes customer-visible data before mobile re-proof', () => {
+  it('retires mutable source repair and requires correction revision proof', () => {
     const source = routeSourceWithoutComments();
-    const proofImportIndex = source.indexOf('extractCustomerMobileProof');
-    const proofExtractIndex = source.indexOf('const existingMobileProof = extractCustomerMobileProof');
-    const repairBlockIndex = source.indexOf("if (repair.status === 'repaired')", proofExtractIndex);
-    const reproofCodeIndex = source.indexOf('SOURCE_REPAIR_REQUIRES_MOBILE_REPROOF', repairBlockIndex);
-    const mobileProofIndex = source.indexOf('const mobileProof = evaluateCustomerMobileProof', repairBlockIndex);
-    const approveUpdateIndex = source.indexOf("status: 'approved'", mobileProofIndex);
-
-    expect(proofImportIndex).toBeGreaterThanOrEqual(0);
-    expect(proofExtractIndex).toBeGreaterThanOrEqual(0);
-    expect(repairBlockIndex).toBeGreaterThan(proofExtractIndex);
-    expect(reproofCodeIndex).toBeGreaterThan(repairBlockIndex);
-    expect(mobileProofIndex).toBeGreaterThan(reproofCodeIndex);
-    expect(approveUpdateIndex).toBeGreaterThan(mobileProofIndex);
+    expect(source).toContain('LEGACY_PACKAGE_MUTATION_RETIRED');
+    expect(source).toContain('/api/admin/product-registration/products/{catalogProductId}/corrections');
   });
 
-  it('checks source audit and v3 gate before bulk public status update', () => {
+  it('removes bulk mutable approval in favor of CAS publication', () => {
     const source = routeSourceWithoutComments();
-    const bulkIndex = source.indexOf("if (action === 'bulk_approve')");
-    const sourceGateIndex = source.indexOf('const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(id)');
-    const v3GateIndex = source.indexOf('const gate = evaluateV3CustomerNoticeGate(id, latestDraft)');
-    const mobileProofIndex = source.indexOf('const mobileProofBlocks = packageIds', v3GateIndex);
-    const mobileProofGateIndex = source.indexOf('MOBILE_BROWSER_PROOF_REQUIRED_FOR_BULK_APPROVAL', mobileProofIndex);
-    const sourceAuditHelperIndex = source.indexOf('async function assertPackageSourceAuditAllowsPublication');
-    const customerOpenContractIndex = source.indexOf('CUSTOMER_OPEN_CONTRACT_BLOCKED', sourceAuditHelperIndex);
-    const updateIndex = source.indexOf("status: 'approved'", mobileProofGateIndex);
-
-    expect(bulkIndex).toBeGreaterThanOrEqual(0);
-    expect(sourceGateIndex).toBeGreaterThan(bulkIndex);
-    expect(v3GateIndex).toBeGreaterThan(sourceGateIndex);
-    expect(mobileProofIndex).toBeGreaterThan(v3GateIndex);
-    expect(mobileProofGateIndex).toBeGreaterThan(mobileProofIndex);
-    expect(customerOpenContractIndex).toBeGreaterThan(sourceAuditHelperIndex);
-    expect(updateIndex).toBeGreaterThan(mobileProofGateIndex);
+    expect(source).not.toContain("if (action === 'bulk_approve')");
+    expect(source).toContain('LEGACY_PACKAGE_UPDATE_RETIRED');
+    expect(source).not.toMatch(/\.from\(\s*['"]travel_packages['"]\s*\)[\s\S]{0,900}\.\s*update\s*\(/);
   });
 
-  it('keeps legacy approvals blocked from customer publication without atomic public snapshots', () => {
+  it('keeps legacy helper exports fail-closed', () => {
     const source = routeSourceWithoutComments();
     const dbHelper = sourceWithoutComments('src/lib/db/packages.ts');
-    const bulkIndex = source.indexOf("if (action === 'bulk_approve')");
-    const bulkUpdateIndex = source.indexOf("status: 'approved'", bulkIndex);
-    const bulkBlockedIndex = source.indexOf("publication_state: 'blocked'", bulkUpdateIndex);
-    const approveIndex = source.indexOf("if (action === 'approve')");
-    const approvePackageIndex = source.indexOf('approvePackage(packageId)', approveIndex);
-    const helperIndex = dbHelper.indexOf('export async function approvePackage');
-    const helperApprovedIndex = dbHelper.indexOf("status: 'approved'", helperIndex);
-    const helperBlockedIndex = dbHelper.indexOf("publication_state: 'blocked'", helperApprovedIndex);
-
-    expect(bulkBlockedIndex).toBeGreaterThan(bulkUpdateIndex);
-    expect(approvePackageIndex).toBeGreaterThan(approveIndex);
-    expect(source).toContain("publication_state: 'blocked'");
-    expect(helperBlockedIndex).toBeGreaterThan(helperApprovedIndex);
+    expect(source).toContain('LEGACY_PACKAGE_CREATE_RETIRED');
+    expect(dbHelper).toContain('LEGACY_PACKAGE_APPROVAL_RETIRED_USE_PUBLISH_SNAPSHOT_ATOMIC');
   });
 
-  it('invalidates public snapshots when generic PATCH changes customer-visible fields', () => {
+  it('routes generic PATCH callers to correction revisions', () => {
     const source = routeSourceWithoutComments();
-    const helperIndex = source.indexOf('const CUSTOMER_PUBLIC_REAUDIT_FIELDS = new Set');
-    const keysIndex = source.indexOf('const publicReauditKeys = customerPublicReauditKeys(sanitized)');
-    const beforeRowIndex = source.indexOf('trackedKeysChanged.length > 0 || publicReauditKeys.length > 0');
-    const revisionIndex = source.indexOf('sanitized.package_revision = nextRevision', beforeRowIndex);
-    const auditIndex = source.indexOf("sanitized.audit_status = 'blocked'", revisionIndex);
-    const needsReauditIndex = source.indexOf("'needs_reaudit'", auditIndex);
-    const updateIndex = source.indexOf('.update(sanitized)', needsReauditIndex);
-
-    expect(helperIndex).toBeGreaterThanOrEqual(0);
-    expect(keysIndex).toBeGreaterThan(helperIndex);
-    expect(beforeRowIndex).toBeGreaterThan(keysIndex);
-    expect(revisionIndex).toBeGreaterThan(beforeRowIndex);
-    expect(auditIndex).toBeGreaterThan(revisionIndex);
-    expect(needsReauditIndex).toBeGreaterThan(auditIndex);
-    expect(updateIndex).toBeGreaterThan(needsReauditIndex);
-    expect(source).toContain("'title'");
-    expect(source).toContain("'optional_tours'");
-    expect(source).toContain("'itinerary_data'");
-    expect(source).toContain("'price_dates'");
+    expect(source).toContain('LEGACY_PACKAGE_UPDATE_RETIRED');
+    expect(source).toContain('/api/admin/product-registration/products/{catalogProductId}/corrections');
   });
 });

@@ -1,9 +1,7 @@
 /**
  * GET    /api/products           — 목록 조회
  * GET    /api/products?id=...    — 단건 조회
- * POST   /api/products           — 신규 저장 (scan 미리보기 확정 시)
- * PATCH  /api/products           — 수정 (status 변경, 필드 업데이트)
- * DELETE /api/products?id=...    — 삭제
+ * POST/PATCH/DELETE              — retired: immutable registration Kernel only
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,7 +9,6 @@ import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { getSecret } from '@/lib/secret-registry';
-import { productRegistrationLegacyWriterBlocker } from '@/lib/product-registration-v6/runtime-config';
 
 const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
 
@@ -115,137 +112,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
-  const authorityBlocker = productRegistrationLegacyWriterBlocker();
-  if (authorityBlocker) {
-    return NextResponse.json({ error: '원문 업로드 workflow를 사용해 주세요.', code: authorityBlocker }, { status: 409 });
-  }
-
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
-  }
-
-  try {
-    const body = await request.json();
-
-    // 필수 필드 검증
-    const required = [
-      'internal_code', 'display_name',
-      'departure_region', 'departure_region_code',
-      'supplier_code', 'destination_code',
-      'duration_days', 'net_price',
-    ] as const;
-
-    for (const field of required) {
-      if (body[field] === undefined || body[field] === null || body[field] === '') {
-        return NextResponse.json(
-          { error: `필수 필드가 누락되었습니다: ${field}` },
-          { status: 400 },
-        );
-      }
-    }
-
-    // 중복 코드 방지
-    const { data: existing } = await supabaseAdmin
-      .from('products')
-      .select('internal_code')
-      .eq('internal_code', body.internal_code)
-      .single();
-
-    if (existing) {
-      return NextResponse.json(
-        { error: `이미 존재하는 상품 코드입니다: ${body.internal_code}` },
-        { status: 409 },
-      );
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('products')
-      .insert({
-        internal_code:         body.internal_code,
-        display_name:          body.display_name,
-        departure_region:      body.departure_region,
-        departure_region_code: body.departure_region_code,
-        supplier_name:         body.supplier_name ?? null,
-        supplier_code:         body.supplier_code,
-        destination:           body.destination ?? null,
-        destination_code:      body.destination_code,
-        duration_days:         body.duration_days,
-        departure_date:        body.departure_date ?? null,
-        net_price:             body.net_price,
-        margin_rate:           body.margin_rate ?? 0.10,
-        discount_amount:       body.discount_amount ?? 0,
-        ai_tags:               body.ai_tags ?? [],
-        status:                body.status ?? 'draft',
-        internal_memo:         body.internal_memo ?? null,
-        source_filename:       body.source_filename ?? null,
-      })
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ product: data }, { status: 201 });
-
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '상품 저장 실패' },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    error: '정규화 필드를 직접 저장하는 경로는 종료되었습니다. 원문은 /api/upload로 등록해 주세요.',
+    code: 'PRODUCT_DIRECT_CREATE_RETIRED',
+    next: '/api/upload',
+  }, { status: 410, headers: NO_STORE_HEADERS });
 }
 
 // ─── PATCH ────────────────────────────────────────────────────
 
-const PATCHABLE_FIELDS = [
-  'display_name', 'departure_region', 'departure_region_code',
-  'supplier_name', 'supplier_code', 'destination', 'destination_code',
-  'duration_days', 'departure_date', 'net_price', 'margin_rate',
-  'discount_amount', 'ai_tags', 'status', 'internal_memo',
-  'land_operator_id',  // 정규화 FK
-] as const;
-
 export async function PATCH(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
-  const authorityBlocker = productRegistrationLegacyWriterBlocker();
-  if (authorityBlocker) {
-    return NextResponse.json({ error: '사실 수정은 correction revision으로 처리해야 합니다.', code: authorityBlocker }, { status: 409 });
-  }
-
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
-  }
-
-  try {
-    const body = await request.json();
-    const { id } = body;
-    if (!id) return NextResponse.json({ error: 'id(internal_code)가 필요합니다.' }, { status: 400 });
-
-    // 허용된 필드만 추출
-    const updates: Record<string, unknown> = {};
-    for (const field of PATCHABLE_FIELDS) {
-      if (field in body) updates[field] = body[field];
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: '변경할 필드가 없습니다.' }, { status: 400 });
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('products')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('internal_code', id)
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ product: data });
-
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '수정 실패' },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    error: '상품 사실 직접 수정은 종료되었습니다. 변경 원문을 첨부해 correction revision을 생성해 주세요.',
+    code: 'PRODUCT_DIRECT_UPDATE_RETIRED',
+    next: '/api/admin/product-registration/products/{catalogProductId}/corrections',
+  }, { status: 410, headers: NO_STORE_HEADERS });
 }
 
 // ─── DELETE ───────────────────────────────────────────────────
@@ -253,24 +136,8 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
-  const authorityBlocker = productRegistrationLegacyWriterBlocker();
-  if (authorityBlocker) {
-    return NextResponse.json({ error: '상품 삭제 대신 lifecycle 또는 판매중단 overlay를 사용해야 합니다.', code: authorityBlocker }, { status: 409 });
-  }
-
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'id(internal_code)가 필요합니다.' }, { status: 400 });
-
-  const { error } = await supabaseAdmin
-    .from('products')
-    .delete()
-    .eq('internal_code', id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ deleted: id });
+  return NextResponse.json({
+    error: '상품 row 삭제는 종료되었습니다. 판매중단 overlay 또는 lifecycle 전환을 사용해 주세요.',
+    code: 'PRODUCT_DIRECT_DELETE_RETIRED',
+  }, { status: 410, headers: NO_STORE_HEADERS });
 }

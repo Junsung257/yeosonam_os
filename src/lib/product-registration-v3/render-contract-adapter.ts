@@ -1,7 +1,7 @@
 ﻿import type { DayInput, HotelInfo, MealInfo, RenderPackageInput } from '@/lib/render-contract';
 import { isPublishableStandardNoticeDraft } from './customer-payload';
 import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
-import type { V3DraftLedger } from './types';
+import type { V3DraftLedger, V3LedgerVariant } from './types';
 
 function renderMeal(value: Record<string, unknown>): { enabled: boolean; note: string | null } {
   const raw = typeof value.raw_text === 'string' ? value.raw_text : null;
@@ -18,6 +18,36 @@ function renderHotel(value: Record<string, unknown>): HotelInfo {
     grade: null,
     note: raw,
   };
+}
+
+function renderDays(sourceDays: V3LedgerVariant['days']): DayInput[] {
+  return sourceDays.map(day => {
+    const breakfast = renderMeal(day.meals.breakfast);
+    const lunch = renderMeal(day.meals.lunch);
+    const dinner = renderMeal(day.meals.dinner);
+    const meals: MealInfo = {
+      breakfast: breakfast.enabled,
+      lunch: lunch.enabled,
+      dinner: dinner.enabled,
+      breakfast_note: breakfast.note,
+      lunch_note: lunch.note,
+      dinner_note: dinner.note,
+    };
+    return {
+      day: day.day,
+      regions: day.route,
+      schedule: day.events
+        .filter(event => event.type !== 'price_noise')
+        .map(event => ({
+          type: event.type === 'meeting' || event.type === 'activity' ? 'normal' : event.type,
+          time: event.time,
+          activity: event.raw_text,
+          attraction_ids: event.canonical_id ? [event.canonical_id] : undefined,
+        })),
+      meals,
+      hotel: renderHotel(day.hotel),
+    };
+  });
 }
 
 function customerTitleFromParts(parts: string[], fallback: string): string {
@@ -39,56 +69,66 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
       .filter(isPublishableStandardNoticeDraft)
       .filter(notice => notice.category !== 'meal_plan');
     const title = customerTitleFromParts(variant.title_parts, variant.variant_key);
+    const ticketingCondition = variant.ticketing_condition ?? null;
+    const ticketingNotice = ticketingCondition
+      ? {
+          type: 'SOURCE_TICKETING_CONDITION',
+          title: '발권 조건',
+          text: ticketingCondition.customerNotice,
+          category: 'ticketing_condition',
+          review_status: ticketingCondition.status === 'expired' || ticketingCondition.status === 'conflicting'
+            ? 'safe_degraded'
+            : 'source_confirmed',
+        }
+      : null;
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
-    const days: DayInput[] = variant.days.map(day => {
-      const breakfast = renderMeal(day.meals.breakfast);
-      const lunch = renderMeal(day.meals.lunch);
-      const dinner = renderMeal(day.meals.dinner);
-      const meals: MealInfo = {
-        breakfast: breakfast.enabled,
-        lunch: lunch.enabled,
-        dinner: dinner.enabled,
-        breakfast_note: breakfast.note,
-        lunch_note: lunch.note,
-        dinner_note: dinner.note,
-      };
-      return {
-        day: day.day,
-        regions: day.route,
-        schedule: day.events
-          .filter(event => event.type !== 'price_noise')
-          .map(event => ({
-            type: event.type === 'meeting' || event.type === 'activity' ? 'normal' : event.type,
-            time: event.time,
-            activity: event.raw_text,
-            attraction_ids: event.canonical_id ? [event.canonical_id] : undefined,
-          })),
-        meals,
-        hotel: renderHotel(day.hotel),
-      };
-    });
+    const days = renderDays(variant.days);
     return {
       title,
       product_type: 'package',
+      ticketing_deadline: ticketingCondition?.deadline ?? null,
+      ticketing_deadline_status: ticketingCondition?.status ?? null,
+      ticketing_condition: ticketingCondition,
+      booking_mode: ticketingCondition?.consultationOnly ? 'consultation_only' : 'standard_inquiry',
+      marketing_eligible: ticketingCondition?.marketingEligible ?? true,
       price_dates: variant.price_calendar.map(price => ({
         date: price.date ?? price.label,
         price: price.amount,
-        confirmed: true,
+        child_price: price.child_amount ?? price.amount,
+        infant_price: price.infant_amount ?? undefined,
+        infant_consultation_required: price.infant_price_state === 'consultation_required',
+        // A dated sale price means the departure can be displayed; it does not
+        // by itself prove that the departure is confirmed.  Only an explicit
+        // source phrase such as "출발확정" may turn this on.
+        confirmed: price.departure_confirmed === true,
+        ...(price.list_price != null ? { list_price: price.list_price } : {}),
+        ...(price.min_travelers != null ? { min_travelers: price.min_travelers } : {}),
+        ...(price.max_travelers != null ? { max_travelers: price.max_travelers } : {}),
+        ...(price.price_relation ? { price_relation: price.price_relation } : {}),
+        price_note: price.min_travelers != null
+          ? price.max_travelers != null && price.max_travelers !== price.min_travelers
+            ? `${price.min_travelers}~${price.max_travelers}명 기준`
+            : price.max_travelers === price.min_travelers
+              ? `${price.min_travelers}명 기준`
+              : `${price.min_travelers}명 이상 기준`
+          : undefined,
       })),
       airline: outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
       inclusions: variant.inclusions.map(item => item.value),
       excludes: variant.exclusions.map(item => item.value),
-      notices_parsed: publishableNotices.map(notice => ({
+      notices_parsed: [...publishableNotices.map(notice => ({
         type: notice.risk_level === 'high' ? 'CRITICAL' : notice.risk_level === 'medium' ? 'POLICY' : 'INFO',
         title: '유의사항',
         text: `• ${notice.standard_text}`,
         category: notice.category,
         template_key: notice.template_key,
         review_status: notice.review_status,
-      })),
-      customer_notes: publishableNotices
-        .map(notice => notice.standard_text)
+      })), ...(ticketingNotice ? [ticketingNotice] : [])],
+      customer_notes: [
+        ...publishableNotices.map(notice => notice.standard_text),
+        ...(ticketingCondition ? [ticketingCondition.customerNotice] : []),
+      ]
         .join('\n'),
       optional_tours: variant.options
         .filter(option => isCustomerOptionalTourCandidate([
@@ -108,6 +148,9 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
           flight_in: inbound?.code ?? null,
           airline: outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
           departure_airport: null,
+          ticketing_deadline: ticketingCondition?.deadline ?? null,
+          ticketing_deadline_status: ticketingCondition?.status ?? null,
+          ticketing_notice: ticketingCondition?.customerNotice ?? null,
         },
         flight_segments: variant.flight_segments.map(segment => ({
           leg: segment.leg === 'inbound' ? 'inbound' as const : 'outbound' as const,
@@ -124,6 +167,11 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
           excludes: variant.exclusions.map(item => item.value),
         },
         days,
+        itinerary_alternatives: variant.itinerary_choices?.map(choice => ({
+          label: choice.label,
+          consultation_selection_required: true,
+          days: renderDays(choice.days),
+        })) ?? [],
       },
     };
   });

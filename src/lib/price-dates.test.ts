@@ -19,7 +19,28 @@ import {
   groupForPoster,
   getMinPriceFromDates,
   getNextDepartureFromDates,
+  getLowestPriceDisclosure,
+  getPriceBoundDeparture,
 } from './price-dates';
+
+describe('getPriceBoundDeparture — 대표가격과 출발일 결속', () => {
+  const dates: PriceDate[] = [
+    { date: '2026-09-10', price: 799_000, confirmed: true },
+    { date: '2026-09-18', price: 699_000, confirmed: true },
+  ];
+
+  it('대표 최저가와 같은 실제 출발일만 반환한다', () => {
+    expect(getPriceBoundDeparture(dates, 699_000, '2026-08-17')?.date).toBe('2026-09-18');
+  });
+
+  it('다른 가격의 첫 출발일을 대표가격 옆에 붙이지 않는다', () => {
+    expect(getPriceBoundDeparture(dates, 750_000, '2026-08-17')).toBeNull();
+  });
+
+  it('지난 출발일은 대표가격 근거로 사용하지 않는다', () => {
+    expect(getPriceBoundDeparture(dates, 699_000, '2026-09-19')).toBeNull();
+  });
+});
 
 describe('getMinPriceFromDates', () => {
   it('빈 배열 → 0', () => {
@@ -97,6 +118,23 @@ describe('getStrictPriceDates — 폴백 없음', () => {
 });
 
 describe('tiersToDatePrices — tier → date 확장', () => {
+  it('같은 출발일의 인원별 가격을 버리지 않고 고객 조건을 보존', () => {
+    const rows = tiersToDatePrices([
+      {
+        period_label: '9월', adult_price: 699_000, departure_dates: ['2026-09-20'],
+        min_travelers: 6, max_travelers: 9,
+      } as never,
+      {
+        period_label: '9월', adult_price: 599_000, departure_dates: ['2026-09-20'],
+        min_travelers: 10, max_travelers: 14,
+      } as never,
+    ]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map(row => row.price_note)).toEqual(['6~9명 기준', '10~14명 기준']);
+    expect(getLowestPriceDisclosure(rows)).toEqual({ price: 599_000, scopeLabel: '10~14명 기준' });
+  });
+
   it('departure_dates 명시 배열', () => {
     const r = tiersToDatePrices([
       { period_label: '4월', adult_price: 1_000_000, departure_dates: ['2026-04-01', '2026-04-08'] } as never,

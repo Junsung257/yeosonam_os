@@ -3,14 +3,15 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
 import { logError, logWarning } from '@/lib/sentry-logger';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { automaticArchiveReason } from '@/lib/product-registration/package-archive-policy';
 
 /**
  * 자동 아카이브 크론 — 매일 새벽 1시 실행
  *
- * 조건 (OR):
- * 1. 발권기한(ticketing_deadline)이 지난 상품
- * 2. 등록 후 30일 이상 경과한 상품 (created_at + 30d < today) — 사장님 정책 2026-04-27
- * 3. 마지막 출발일(price_dates / price_tiers)이 모두 지난 상품
+ * 조건: 원문에 근거한 모든 출발일(price_dates / price_tiers)이 지난 상품
+ *
+ * 발권기한 경과는 상품 만료가 아니다. 출발일과 가격은 유지하고
+ * V6가 상담 전용 축약 공개와 현재 좌석·요금 재확인 안내를 맡는다.
  *
  * 대상: status가 approved, active, pending, pending_review, draft 인 상품만
  */
@@ -27,7 +28,7 @@ const getHandler = async () => {
     // 판매 중/승인/검토 대기 상품만 조회
     const { data: packages, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, ticketing_deadline, price_tiers, price_dates, created_at')
+      .select('id, tenant_id, catalog_product_id, price_tiers, price_dates')
       .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'pending', 'pending_review', 'draft']);
 
     if (error) throw error;
@@ -35,78 +36,55 @@ const getHandler = async () => {
       return apiResponse({ archivedCount: 0, message: 'No packages to archive' });
     }
 
-    const toArchive: string[] = [];
+    const toArchive: Array<{ id: string; tenant_id: string; catalog_product_id: string }> = [];
+    let identityMissingCount = 0;
 
     for (const pkg of packages) {
-      let shouldArchive = false;
-
-      // 조건 1: 발권기한 만료
-      if (pkg.ticketing_deadline && pkg.ticketing_deadline < today) {
-        shouldArchive = true;
-      }
-
-      // 조건 2: 등록 후 30일 이상 경과 (모든 상품 무조건 적용 — 사장님 정책 2026-04-27)
-      if (!shouldArchive && pkg.created_at) {
-        const created = new Date(pkg.created_at);
-        const expiry = new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000);
-        if (expiry.toISOString().split('T')[0] < today) {
-          shouldArchive = true;
+      if (automaticArchiveReason(pkg, today)) {
+        if (pkg.tenant_id && pkg.catalog_product_id) {
+          toArchive.push({
+            id: String(pkg.id),
+            tenant_id: String(pkg.tenant_id),
+            catalog_product_id: String(pkg.catalog_product_id),
+          });
+        } else {
+          identityMissingCount += 1;
+          logWarning('[cron/auto-archive] immutable catalog identity missing; left unchanged', {
+            packageId: pkg.id,
+          });
         }
-      }
-
-      // 조건 3: 모든 출발일이 지남 — price_dates 우선, price_tiers 폴백
-      if (!shouldArchive) {
-        const priceDates = (pkg.price_dates || []) as { date: string }[];
-
-        if (priceDates.length > 0) {
-          const latestDate = priceDates.map(pd => pd.date).sort().pop()!;
-          if (latestDate < today) {
-            shouldArchive = true;
-          }
-        } else if (pkg.price_tiers && Array.isArray(pkg.price_tiers)) {
-          const allDates = (pkg.price_tiers as unknown as Array<Record<string, unknown>>)
-            .flatMap(t => t.departure_dates || [])
-            .filter(Boolean);
-
-          const allEndDates = (pkg.price_tiers as unknown as Array<Record<string, unknown>>)
-            .map(t => (t.date_range as { end?: string } | undefined)?.end)
-            .filter(Boolean);
-
-          const allRelevantDates = [...allDates, ...allEndDates];
-
-          if (allRelevantDates.length > 0) {
-            const latestDate = allRelevantDates.sort().pop()!;
-            if (latestDate < today) {
-              shouldArchive = true;
-            }
-          }
-        }
-      }
-
-      if (shouldArchive) {
-        toArchive.push(pkg.id);
       }
     }
 
     if (toArchive.length > 0) {
-      const { error: updateError } = await supabaseAdmin
-        .from('travel_packages')
-        .update({ status: 'archived', updated_at: new Date().toISOString() })
-        .in('id', toArchive);
-
-      if (updateError) throw updateError;
+      for (const pkg of toArchive) {
+        const { error: overlayError } = await supabaseAdmin.rpc('set_product_registration_availability_overlay', {
+          p_payload: {
+            tenant_id: pkg.tenant_id,
+            catalog_product_id: pkg.catalog_product_id,
+            channel: 'customer',
+            sale_state: 'closed',
+            reason: `AUTO_ARCHIVED_NO_FUTURE_DEPARTURES:${today}`,
+          },
+        });
+        if (overlayError) throw overlayError;
+      }
       archivedCount = toArchive.length;
 
       try {
         const { skipBlogQueueForPackages } = await import('@/lib/blog-queue-lifecycle');
-        await skipBlogQueueForPackages(toArchive, 'auto_archived_package');
+        await skipBlogQueueForPackages(toArchive.map(item => item.id), 'auto_archived_package');
       } catch (e) {
         logWarning('[cron/auto-archive] blog queue skip failed (non-blocking)', e);
       }
     }
 
     console.log(`[auto-archive] archived ${archivedCount} packages`);
-    return apiResponse({ archivedCount, message: `Archived ${archivedCount} packages` });
+    return apiResponse({
+      archivedCount,
+      identityMissingCount,
+      message: `Closed ${archivedCount} products through availability overlays`,
+    });
 
   } catch (err) {
     logError('[cron/auto-archive] archive failed', err);

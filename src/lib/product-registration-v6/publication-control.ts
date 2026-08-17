@@ -10,20 +10,14 @@ type KillSwitch = {
 
 export async function loadProductRegistrationV6PublicationBlockers(input: {
   supabase: SupabaseClient;
-  packageIds: string[];
+  catalogProductIds: string[];
+  supplierKeys?: string[];
 }): Promise<string[]> {
   const blockers: string[] = [];
   const runtimeBlocker = productRegistrationV6PublicationBlocker();
   if (runtimeBlocker) blockers.push(runtimeBlocker);
 
-  const { data: packages, error: packageError } = await input.supabase
-    .from('travel_packages')
-    .select('id,land_operator')
-    .in('id', input.packageIds);
-  if (packageError) throw packageError;
-  const suppliers = new Set((packages ?? [])
-    .map(row => typeof row.land_operator === 'string' ? row.land_operator : null)
-    .filter((value): value is string => Boolean(value)));
+  const suppliers = new Set((input.supplierKeys ?? []).map(value => value.trim()).filter(Boolean));
 
   const { data: switches, error: switchError } = await input.supabase
     .from('product_registration_v5_kill_switches')
@@ -33,7 +27,7 @@ export async function loadProductRegistrationV6PublicationBlockers(input: {
   if (switchError) throw switchError;
   for (const item of (switches ?? []) as KillSwitch[]) {
     const applies = item.scope === 'global'
-      || (item.scope === 'product' && (item.scope_key === '*' || input.packageIds.includes(item.scope_key)))
+      || (item.scope === 'product' && (item.scope_key === '*' || input.catalogProductIds.includes(item.scope_key)))
       || (item.scope === 'supplier' && (item.scope_key === '*' || suppliers.has(item.scope_key)))
       || (item.scope === 'parser' && ['*', 'product-registration-v6'].includes(item.scope_key))
       || ['model', 'ocr_provider', 'transport_provider'].includes(item.scope);

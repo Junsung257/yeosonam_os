@@ -231,7 +231,12 @@ function normalizeAttractionReviewText(rawText: string): string | null {
 }
 
 function blocksPublish(category: V3EntityCategory, event: V3LedgerEvent): boolean {
-  if (category === 'attraction') return event.match_status !== 'matched';
+  // STRICT attraction SSOT: an unmatched source line is queued for alias/new
+  // attraction review, but the source-backed itinerary sentence itself may be
+  // shown without a destination card, description, photo, or canonical link.
+  // The review item remains `needs_review`; it simply is not a publication
+  // blocker on its own.
+  if (category === 'attraction') return false;
   if (category === 'optional_tour' && optionalEventHasCustomerSafeDisclosure(event.raw_text)) return false;
   if (category === 'shopping' && shoppingEventHasCustomerSafeDisclosure(event.raw_text)) return false;
   if (category === 'shopping' || category === 'optional_tour' || category === 'notice') return event.match_status === 'review';

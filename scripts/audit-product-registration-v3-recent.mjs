@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+// Product Registration V3 compatibility audit (read-only).
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -145,26 +145,16 @@ console.log(JSON.stringify(summary, null, 2));
 
 if (repairCustomerNotices) {
   const repairTargets = rows.filter(row => !isPublicStatus(row.status) && row.raw_notice_leak_risk);
-  const repaired = [];
-  for (const row of repairTargets) {
-    const { error: repairError } = await supabase
-      .from('travel_packages')
-      .update({
-        notices_parsed: [],
-        customer_notes: '',
-        status: String(row.status ?? '').toLowerCase() === 'pending' ? row.status : 'pending_review',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id);
-    if (repairError) {
-      repaired.push({ id: row.id, ok: false, error: repairError.message });
-    } else {
-      repaired.push({ id: row.id, ok: true, title: row.title });
-    }
-  }
+  const repaired = repairTargets.map(row => ({
+    id: row.id,
+    ok: false,
+    title: row.title,
+    correction_revision_required: true,
+    error: 'LEGACY_V3_NOTICE_REPAIR_RETIRED_USE_REGISTRATION_KERNEL',
+  }));
   console.log(JSON.stringify({
     repair: 'customer_notice_raw_leak_clear',
-    dry_run: false,
+    dry_run: true,
     target_count: repairTargets.length,
     repaired,
   }, null, 2));

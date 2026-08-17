@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
@@ -25,6 +27,26 @@ export function productRegistrationProofScreenshotPath(input: {
 }): string {
   const safeBuild = input.rendererBuildId.replace(/[^a-zA-Z0-9._-]/g, '_');
   return `${input.tenantId}/proofs/${input.snapshotId}/${safeBuild}/${input.surface}-${input.screenshotHash}.png`;
+}
+
+export function productRegistrationProofSuiteVersion(
+  chromeProof: Awaited<ReturnType<typeof runProductRegistrationV6ChromeProof>>,
+): string {
+  const evidence = chromeProof.surfaces.map(surface => ({
+    surface: surface.surface,
+    status: surface.status,
+    snapshotHash: surface.snapshotHash,
+    rendererBuildId: surface.rendererBuildId,
+    screenshotHash: surface.screenshotHash,
+    bodyTextHash: surface.bodyTextHash,
+    ctaOpened: surface.ctaOpened,
+    failures: surface.failures,
+    missingRequiredText: surface.missingRequiredText,
+    forbiddenTextFound: surface.forbiddenTextFound,
+    hydrationErrors: surface.hydrationErrors,
+  }));
+  const resultHash = createHash('sha256').update(JSON.stringify({ status: chromeProof.status, evidence })).digest('hex');
+  return `product-registration-v6-mobile-chrome-3+result.${resultHash.slice(0, 24)}`;
 }
 
 async function persistPrivateProofScreenshots(input: {
@@ -98,6 +120,9 @@ function customerProofAssertions(input: {
   const notices = Array.isArray(termsSnapshot.notices)
     ? termsSnapshot.notices.filter((item): item is JsonObject => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
     : [];
+  const packageNotices = Array.isArray(pkg.notices_parsed)
+    ? pkg.notices_parsed.filter((item): item is JsonObject => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    : [];
   const price = typeof pkg.price === 'number' && Number.isFinite(pkg.price)
     ? `${pkg.price.toLocaleString('ko-KR')}원`
     : null;
@@ -108,6 +133,8 @@ function customerProofAssertions(input: {
     ...(Array.isArray(pkg.inclusions) ? pkg.inclusions : []),
     ...(Array.isArray(pkg.excludes) ? pkg.excludes : []),
     ...notices.filter(notice => notice.type === 'AUTO_TICKETING').map(notice => notice.text),
+    ...packageNotices.filter(notice => notice.template_key === 'schedule_and_lodging_confirmation').map(notice => notice.text),
+    ...packageNotices.filter(notice => notice.type === 'SOURCE_TICKETING_CONDITION').map(notice => notice.text),
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
   const forbiddenText = input.resolvedTransport
     .filter(item => item.packageId === input.packageId && (!item.verifiedByCurrentProviders || item.state === 'conflicting'))
@@ -119,13 +146,29 @@ function customerProofAssertions(input: {
   };
 }
 
-function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrationV6Decision): JsonObject {
+const DEGRADED_SCHEDULE_LODGING_NOTICE = '항공 운항 시각과 미정 숙소는 상담 시 최종 확인해 드립니다.';
+
+export function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrationV6Decision): JsonObject {
   if (decision.outcome !== 'degraded') return pkg;
-  const notice = '항공 운항 시각·미정 호텔 등 일부 정보는 운항일 기준 상담 시 최종 확인해 드립니다.';
+  const ticketingReconfirmation = decision.degradedReasons.some(reason => reason.includes('TICKETING_'));
+  const scheduleOrLodgingReconfirmation = decision.degradedReasons.some(reason =>
+    /FLIGHT_|HOTEL|LODGING|숙소|항공/i.test(reason));
+  const notices = [
+    ...(ticketingReconfirmation
+      ? ['발권기한 경과 또는 출발일별 조건 차이로 현재 좌석과 요금은 상담 시 최종 확인해 드립니다.']
+      : []),
+    ...(scheduleOrLodgingReconfirmation ? [DEGRADED_SCHEDULE_LODGING_NOTICE] : []),
+  ];
+  if (notices.length === 0) notices.push('일부 정보는 상담 시 최종 확인해 드립니다.');
+  const notice = notices.join('\n');
   const existingNotes = typeof pkg.customer_notes === 'string' ? pkg.customer_notes.trim() : '';
+  const existingHighlights = Array.isArray(pkg.product_highlights)
+    ? pkg.product_highlights.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
   return {
     ...pkg,
     customer_notes: existingNotes ? `${existingNotes}\n${notice}` : notice,
+    product_highlights: [...new Set([...existingHighlights, ...notices])],
     product_registration_disclosure: {
       state: 'published_degraded',
       notice,
@@ -153,7 +196,22 @@ export function applyResolvedTransport(
       && item.leg === leg
       && item.serviceNumber === serviceNumber,
     );
-    if (matchingFacts.length === 0) return row;
+    if (matchingFacts.length === 0) {
+      const {
+        dep_time: _departureTime,
+        arr_time: _arrivalTime,
+        arr_day_offset: _arrivalDayOffset,
+        departure_local_time: _departureLocalTime,
+        arrival_local_time: _arrivalLocalTime,
+        arrival_day_offset: _arrivalLocalDayOffset,
+        ...safeRow
+      } = row;
+      return {
+        ...safeRow,
+        v6_fact_state: 'degraded',
+        v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+      };
+    }
 
     const candidates = matchingFacts.filter(item => {
       const sourceConfirmed = item.state === 'source_confirmed'
@@ -195,40 +253,134 @@ export function applyResolvedTransport(
       v6_fact_basis: resolved.resolutionBasis ?? (resolved.verifiedByCurrentProviders ? 'schedule_providers' : 'source'),
     };
   });
-  return { ...pkg, itinerary_data: { ...itinerary, flight_segments: segments } };
+  const unsafeServiceNumbers = new Set(segments
+    .filter(segment => segment && typeof segment === 'object' && !Array.isArray(segment)
+      && ['degraded', 'conflicting'].includes(String((segment as JsonObject).v6_fact_state ?? '')))
+    .map(segment => String((segment as JsonObject).flight_no ?? (segment as JsonObject).code ?? '')
+      .replace(/\s+/g, '').toUpperCase())
+    .filter(Boolean));
+  const days = Array.isArray(itinerary.days)
+    ? itinerary.days.map(value => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+        const day = value as JsonObject;
+        if (!Array.isArray(day.schedule)) return day;
+        const schedule = day.schedule.map(rawItem => {
+          if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) return rawItem;
+          const item = rawItem as JsonObject;
+          const serviceNumber = String(item.transport ?? item.flight_no ?? item.code ?? '')
+            .replace(/\s+/g, '').toUpperCase();
+          if (!unsafeServiceNumbers.has(serviceNumber)) return item;
+          const scrubText = (value: unknown): unknown => {
+            if (typeof value !== 'string') return value;
+            return value
+              .replace(/\([^)]*\b\d{1,2}:\d{2}\b[^)]*\)/g, '(운항일 기준 상담 시 최종 확인)')
+              .replace(/\b\d{1,2}:\d{2}\b/g, '')
+              .replace(/\s+/g, ' ')
+              .trim();
+          };
+          const {
+            time: _time,
+            dep_time: _departureTime,
+            arr_time: _arrivalTime,
+            departure_local_time: _departureLocalTime,
+            arrival_local_time: _arrivalLocalTime,
+            ...safeItem
+          } = item;
+          return {
+            ...safeItem,
+            activity: scrubText(item.activity),
+            note: scrubText(item.note),
+            a4_sentence: scrubText(item.a4_sentence),
+            landing_sentence: scrubText(item.landing_sentence),
+            v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+          };
+        });
+        return { ...day, schedule };
+      })
+    : itinerary.days;
+  return { ...pkg, itinerary_data: { ...itinerary, flight_segments: segments, ...(days ? { days } : {}) } };
+}
+
+function isGenericUnconfirmedLodgingName(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return /^(?:해당\s*(?:숙소|호텔)|숙소\s*미정|호텔\s*미정|미정|추후\s*확정)$/i.test(value.trim());
+}
+
+export function applySafeLodgingCopy(pkg: JsonObject, lodgingStays: JsonObject[]): JsonObject {
+  const itinerary = pkg.itinerary_data && typeof pkg.itinerary_data === 'object' && !Array.isArray(pkg.itinerary_data)
+    ? { ...(pkg.itinerary_data as JsonObject) }
+    : null;
+  if (!itinerary || !Array.isArray(itinerary.days)) return pkg;
+  const unsafeDays = new Set(lodgingStays
+    .filter(row => ['to_be_confirmed', 'equivalent'].includes(String(row.lodging_state ?? '')))
+    .map(row => Number(row.day_index))
+    .filter(Number.isFinite));
+  if (unsafeDays.size === 0) return pkg;
+  const days = itinerary.days.map((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const day = value as JsonObject;
+    const dayIndex = Number(day.day ?? index + 1);
+    const publicRegions = Array.isArray(day.regions)
+      ? day.regions.filter(region => typeof region !== 'string' || !/^HOTEL\s*:\s*해당\s*숙소$/i.test(region.trim()))
+      : day.regions;
+    if (!unsafeDays.has(dayIndex)) return publicRegions === day.regions ? day : { ...day, regions: publicRegions };
+    const hotel = day.hotel;
+    if (!hotel || typeof hotel !== 'object' || Array.isArray(hotel)) {
+      return publicRegions === day.regions ? day : { ...day, regions: publicRegions };
+    }
+    const hotelRow = hotel as JsonObject;
+    const rawName = hotelRow.name ?? hotelRow.raw_text;
+    if (!isGenericUnconfirmedLodgingName(rawName)) {
+      return publicRegions === day.regions ? day : { ...day, regions: publicRegions };
+    }
+    return {
+      ...day,
+      ...(publicRegions ? { regions: publicRegions } : {}),
+      hotel: {
+        ...hotelRow,
+        name: '숙소 미정 · 상담 시 최종 확인',
+        raw_text: '숙소 미정 · 상담 시 최종 확인',
+        note: '원문에서 숙소가 확정되지 않아 상담 시 최종 안내합니다.',
+      },
+    };
+  });
+  return { ...pkg, itinerary_data: { ...itinerary, days } };
 }
 
 export async function buildProductRegistrationV6CandidateSnapshots(input: {
   supabase: SupabaseClient;
   decision: ProductRegistrationV6Decision;
+  compatibilityBindings: Array<{
+    catalogProductId: string;
+    packageId: string;
+    operationalIdentity?: JsonObject;
+  }>;
   resolvedTransport?: ResolvedTransportForSnapshot[];
 }): Promise<ProductRegistrationV6CandidateSnapshot[]> {
-  const pairs = input.decision.packageIds.map((packageId, index) => ({
-    packageId,
+  const bindingByCatalogProduct = new Map(input.compatibilityBindings.map(binding => [binding.catalogProductId, binding]));
+  const pairs = input.decision.packageIds.map((catalogProductId, index) => ({
+    catalogProductId,
+    binding: bindingByCatalogProduct.get(catalogProductId),
     revisionId: input.decision.revisionIds[index] ?? input.decision.revisionIds[0],
-  })).filter((pair): pair is { packageId: string; revisionId: string } => Boolean(pair.packageId && pair.revisionId));
+  })).filter((pair): pair is {
+    catalogProductId: string;
+    binding: { catalogProductId: string; packageId: string; operationalIdentity?: JsonObject };
+    revisionId: string;
+  } => Boolean(pair.catalogProductId && pair.binding?.packageId && pair.revisionId));
+  if (pairs.length !== input.decision.packageIds.length) {
+    throw new Error('V6_SNAPSHOT_COMPATIBILITY_BINDING_MISSING');
+  }
   const results: ProductRegistrationV6CandidateSnapshot[] = [];
   for (const pair of pairs) {
-    const [{ data: identity, error: packageError }, aggregate] = await Promise.all([
-      input.supabase
-      .from('travel_packages')
-      .select('id,tenant_id,catalog_product_id,short_code,land_operator,land_operator_id')
-      .eq('id', pair.packageId)
-      .single(),
-      loadProductRegistrationRevisionAggregate({ supabase: input.supabase, revisionId: pair.revisionId }),
-    ]);
-    if (packageError || !identity) throw packageError ?? new Error('V6_PACKAGE_NOT_FOUND');
+    const aggregate = await loadProductRegistrationRevisionAggregate({
+      supabase: input.supabase,
+      revisionId: pair.revisionId,
+    });
     const revision = aggregate.revision;
-    const catalogProductId = typeof (identity as JsonObject).catalog_product_id === 'string'
-      ? String((identity as JsonObject).catalog_product_id)
-      : null;
-    if (!catalogProductId || revision.catalog_product_id !== catalogProductId) {
+    if (revision.catalog_product_id !== pair.catalogProductId) {
       throw new Error('V6_SNAPSHOT_CATALOG_IDENTITY_MISMATCH');
     }
-    const tenantId = typeof (identity as JsonObject).tenant_id === 'string'
-      ? String((identity as JsonObject).tenant_id)
-      : null;
-    if (!tenantId || revision.tenant_id !== tenantId) throw new Error('V6_SNAPSHOT_TENANT_MISMATCH');
+    const tenantId = revision.tenant_id;
 
     const { data: copyResult, error: copyError } = await input.supabase.rpc('get_product_registration_v6_verified_copy', {
       p_revision_id: pair.revisionId,
@@ -244,19 +396,19 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     const copy = copyPayload as JsonObject;
 
     const revisionPackage = buildPackageProjectionFromRevision({
-      packageId: pair.packageId,
+      packageId: pair.binding.packageId,
       aggregate,
-      operationalIdentity: identity as JsonObject,
+      operationalIdentity: pair.binding.operationalIdentity,
     });
     const source = degradedPackageCopy(
-      applyResolvedTransport({
+      applySafeLodgingCopy(applyResolvedTransport({
         ...revisionPackage,
         title: copy.title ?? revisionPackage.title,
         product_summary: copy.summary ?? revisionPackage.product_summary,
         product_highlights: copy.highlights ?? revisionPackage.product_highlights,
         product_registration_copy: copy,
         terms_snapshot: input.decision.termsPolicies?.find(policy => policy.revisionId === pair.revisionId),
-      }, pair.packageId, input.resolvedTransport ?? []),
+      }, pair.catalogProductId, input.resolvedTransport ?? []), aggregate.lodgingStays),
       input.decision,
     );
     if (!source.terms_snapshot) throw new Error('V6_TERMS_POLICY_SNAPSHOT_MISSING');
@@ -268,8 +420,9 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     });
     const rendererBuildId = currentProductRegistrationRendererBuildId();
     const row = {
-      package_id: pair.packageId,
-      catalog_product_id: catalogProductId,
+      tenant_id: tenantId,
+      package_id: pair.binding.packageId,
+      catalog_product_id: pair.catalogProductId,
       package_revision: Number(revision.revision_no),
       canonical_revision_id: pair.revisionId,
       snapshot_hash: snapshotHash,
@@ -293,15 +446,15 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     const snapshotId = persistedSnapshot.snapshotId;
     results.push({
       tenantId,
-      catalogProductId,
-      packageId: pair.packageId,
+      catalogProductId: pair.catalogProductId,
+      packageId: pair.binding.packageId,
       revisionId: pair.revisionId,
       snapshotId,
       snapshotHash,
       rendererBuildId,
       proofAssertions: customerProofAssertions({
         snapshot: snapshot as unknown as JsonObject,
-        packageId: pair.packageId,
+        packageId: pair.catalogProductId,
         resolvedTransport: input.resolvedTransport ?? [],
       }),
     });
@@ -355,7 +508,10 @@ export async function proveProductRegistrationV6Snapshot(input: {
       publicSnapshotId: input.snapshot.snapshotId,
       snapshotHash: input.snapshot.snapshotHash,
       rendererBuildId: input.snapshot.rendererBuildId,
-      proofSuiteVersion: 'product-registration-v6-mobile-chrome-2',
+      // Failed and successful attempts for the same immutable snapshot are
+      // distinct immutable proof evidence. Fingerprinting the browser result
+      // avoids reusing an earlier failed row after a transient retry succeeds.
+      proofSuiteVersion: productRegistrationProofSuiteVersion(chromeProof),
       route: `${surfaceUrls.packages}|${surfaceUrls.lp}`,
       viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
       locale: 'ko-KR',
@@ -390,6 +546,8 @@ export async function publishProductRegistrationV6Snapshot(input: {
   const { data: pointer, error: pointerError } = await input.supabase
     .from('product_registration_v5_publication_pointers')
     .select('pointer_version')
+    .eq('tenant_id', input.snapshot.tenantId)
+    .eq('catalog_product_id', input.snapshot.catalogProductId)
     .eq('package_id', input.snapshot.packageId)
     .eq('channel', channel)
     .eq('locale', locale)

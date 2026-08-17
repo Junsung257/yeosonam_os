@@ -10,7 +10,7 @@ export type PublicContentPackage = {
   nights?: number;
   price?: number;
   price_tiers?: Array<{ adult_price?: number; period_label?: string }>;
-  price_dates?: Array<{ date: string; price: number; confirmed: boolean }>;
+  price_dates?: Array<{ date: string; price: number; confirmed: boolean; min_travelers?: number; max_travelers?: number; price_note?: string }>;
   product_type?: string;
   airline?: string;
   departure_airport?: string;
@@ -47,7 +47,7 @@ function asPriceTiers(value: unknown): Array<{ adult_price?: number; period_labe
   }));
 }
 
-function asPriceDates(value: unknown): Array<{ date: string; price: number; confirmed: boolean }> {
+function asPriceDates(value: unknown): Array<{ date: string; price: number; confirmed: boolean; min_travelers?: number; max_travelers?: number; price_note?: string }> {
   return asRecordArray(value)
     .map((item) => {
       const date = asString(item.date) ?? asString(item.departure_date);
@@ -57,9 +57,12 @@ function asPriceDates(value: unknown): Array<{ date: string; price: number; conf
         date,
         price,
         confirmed: Boolean(item.confirmed),
+        ...(asNumber(item.min_travelers) != null ? { min_travelers: asNumber(item.min_travelers)! } : {}),
+        ...(asNumber(item.max_travelers) != null ? { max_travelers: asNumber(item.max_travelers)! } : {}),
+        ...(asString(item.price_note) ? { price_note: asString(item.price_note)! } : {}),
       };
     })
-    .filter((item): item is { date: string; price: number; confirmed: boolean } => Boolean(item));
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 }
 
 function toPublicContentPackage(row: Record<string, unknown>): PublicContentPackage | null {

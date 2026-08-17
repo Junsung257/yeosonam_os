@@ -96,6 +96,10 @@ export function resolveRhwpBinary(): string {
   return process.platform === 'win32' ? 'rhwp.exe' : 'rhwp';
 }
 
+export function hasRhwpNativeBinary(): boolean {
+  return getRhwpBinaryCandidates().some(candidate => existsSync(candidate));
+}
+
 function parseJsonPayload<T>(stdout: string, label: string): T {
   const trimmed = stdout.replace(/^\uFEFF/, '').trim();
   if (!trimmed) throw new Error(`RHWP_${label.toUpperCase()}_EMPTY`);

@@ -192,13 +192,8 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
     }
   },
 
-  create_package: async (args) => {
-    const { data, error } = await supabaseAdmin
-      .from('travel_packages')
-      .insert(args)
-      .select()
-    if (error) throw error
-    return data?.[0]
+  create_package: async (_args) => {
+    throw new Error('AGENT_PACKAGE_CREATE_RETIRED_USE_SOURCE_REGISTRATION_WORKFLOW')
   },
 
   create_booking: async (args) => {
@@ -261,13 +256,8 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
     return { sent: true }
   },
 
-  update_package_status: async (args) => {
-    const { error } = await supabaseAdmin
-      .from('travel_packages')
-      .update({ status: args.status })
-      .eq('id', args.package_id)
-    if (error) throw error
-    return { updated: true }
+  update_package_status: async (_args) => {
+    throw new Error('AGENT_PACKAGE_STATUS_MUTATION_RETIRED_USE_AVAILABILITY_OVERLAY')
   },
 
   create_settlement: async (args) => {

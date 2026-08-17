@@ -634,20 +634,6 @@ function applyCrossFieldAndSummaryRecovery(ed: ExtractedData, rawText: string): 
   return warnings;
 }
 
-function ensureCustomerSellingPrices(rows: ProductPriceRowInput[]): ProductPriceRowInput[] {
-  return rows.map(row => {
-    if (
-      (typeof row.adult_selling_price !== 'number' || row.adult_selling_price <= 0)
-      && typeof row.net_price === 'number'
-      && Number.isFinite(row.net_price)
-      && row.net_price > 0
-    ) {
-      return { ...row, adult_selling_price: row.net_price };
-    }
-    return row;
-  });
-}
-
 function parseKoreanDuration(value: unknown): { nights: number; days: number } | null {
   const match = String(value ?? '').match(/([1-9]\d*)\s*\uBC15\s*([1-9]\d*)\s*\uC77C/u);
   if (!match) return null;
@@ -788,7 +774,6 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
       };
     }
   }
-  priceRecovery.priceRows = ensureCustomerSellingPrices(priceRecovery.priceRows);
   ed.price_tiers = priceRecovery.tiers;
   if (priceRecovery.minPrice != null) ed.price = priceRecovery.minPrice;
 

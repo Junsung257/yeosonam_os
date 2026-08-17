@@ -1,0 +1,1106 @@
+{
+  "ok": true,
+  "mode": "migration-baseline",
+  "authorized": [
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-authority/repository.ts",
+      "line": 258,
+      "table": "public_package_snapshots",
+      "operation": "insert",
+      "signature": "src/lib/product-registration-authority/repository.ts|public_package_snapshots|insert"
+    }
+  ],
+  "legacy": [
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/admin/packages/[id]/clone/route.ts",
+      "line": 73,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/app/api/admin/packages/[id]/clone/route.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/admin/packages/[id]/standard-notices/route.ts",
+      "line": 129,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/admin/packages/[id]/standard-notices/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/cron/auto-archive/route.ts",
+      "line": 49,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/cron/auto-archive/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/cron/dynamic-pricing/route.ts",
+      "line": 158,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/cron/dynamic-pricing/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/cron/embed-products/route.ts",
+      "line": 110,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/cron/embed-products/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 229,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 256,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 282,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 309,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 967,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 1070,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 1102,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 1127,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 1154,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 1204,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/route.ts",
+      "line": 1306,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 177,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 211,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 230,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 392,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 450,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 537,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 633,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 851,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/approve/route.ts",
+      "line": 868,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/approve/route.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/regenerate-copies/route.ts",
+      "line": 51,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/regenerate-copies/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/reviews/route.ts",
+      "line": 126,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/reviews/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/reviews/route.ts",
+      "line": 164,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/reviews/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/packages/[id]/reviews/route.ts",
+      "line": 198,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/packages/[id]/reviews/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/assemble-free-travel/route.ts",
+      "line": 186,
+      "table": "products",
+      "operation": "insert",
+      "signature": "src/app/api/products/assemble-free-travel/route.ts|products|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/from-mrt/route.ts",
+      "line": 111,
+      "table": "products",
+      "operation": "insert",
+      "signature": "src/app/api/products/from-mrt/route.ts|products|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/review/route.ts",
+      "line": 255,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/app/api/products/review/route.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/review/route.ts",
+      "line": 263,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/app/api/products/review/route.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/review/route.ts",
+      "line": 322,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/app/api/products/review/route.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/route.ts",
+      "line": 162,
+      "table": "products",
+      "operation": "insert",
+      "signature": "src/app/api/products/route.ts|products|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/route.ts",
+      "line": 234,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/app/api/products/route.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/route.ts",
+      "line": 270,
+      "table": "products",
+      "operation": "delete",
+      "signature": "src/app/api/products/route.ts|products|delete"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/app/api/products/stub/route.ts",
+      "line": 113,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/app/api/products/stub/route.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/agent-action-executor.ts",
+      "line": 197,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/lib/agent-action-executor.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/agent-action-executor.ts",
+      "line": 266,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/agent-action-executor.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/auto-mobile-qa.ts",
+      "line": 888,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/auto-mobile-qa.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/auto-mobile-qa.ts",
+      "line": 929,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/auto-mobile-qa.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/auto-mobile-qa.ts",
+      "line": 961,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/lib/auto-mobile-qa.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/auto-mobile-qa.ts",
+      "line": 996,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/auto-mobile-qa.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/cove-audit-bridge.ts",
+      "line": 94,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/cove-audit-bridge.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/creative-engine/parse-product.ts",
+      "line": 164,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/creative-engine/parse-product.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/db/packages.ts",
+      "line": 84,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/lib/db/packages.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/db/packages.ts",
+      "line": 99,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/db/packages.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/db/packages.ts",
+      "line": 113,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/db/packages.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/db/packages.ts",
+      "line": 224,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/db/packages.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/db/tenant.ts",
+      "line": 165,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/db/tenant.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/db/tenant.ts",
+      "line": 167,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/lib/db/tenant.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/itinerary-llm-extractor.ts",
+      "line": 452,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/itinerary-llm-extractor.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/itinerary-llm-extractor.ts",
+      "line": 960,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/itinerary-llm-extractor.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/itinerary-llm-extractor.ts",
+      "line": 1049,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/itinerary-llm-extractor.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/jarvis/agents/products.ts",
+      "line": 696,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/lib/jarvis/agents/products.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/jarvis/agents/products.ts",
+      "line": 746,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/jarvis/agents/products.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/jarvis/agents/products.ts",
+      "line": 752,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/jarvis/agents/products.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/jarvis/agents/products.ts",
+      "line": 775,
+      "table": "travel_packages",
+      "operation": "delete",
+      "signature": "src/lib/jarvis/agents/products.ts|travel_packages|delete"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/jarvis/agents/products.ts",
+      "line": 782,
+      "table": "travel_packages",
+      "operation": "delete",
+      "signature": "src/lib/jarvis/agents/products.ts|travel_packages|delete"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/merge-conflict-resolver.ts",
+      "line": 60,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/merge-conflict-resolver.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/merge-conflict-resolver.ts",
+      "line": 91,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/merge-conflict-resolver.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/merge-conflict-resolver.ts",
+      "line": 103,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/merge-conflict-resolver.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/package-reenrich-on-attraction-change.ts",
+      "line": 175,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/package-reenrich-on-attraction-change.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/parser/llm/section-extractors.ts",
+      "line": 511,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/parser/llm/section-extractors.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/parser/llm/section-extractors.ts",
+      "line": 662,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/parser/llm/section-extractors.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/parser/llm/section-extractors.ts",
+      "line": 727,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/parser/llm/section-extractors.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-archive.ts",
+      "line": 43,
+      "table": "products",
+      "operation": "upsert",
+      "signature": "src/lib/product-registration/upload-archive.ts|products|upsert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-persistence.ts",
+      "line": 41,
+      "table": "products",
+      "operation": "upsert",
+      "signature": "src/lib/product-registration/upload-persistence.ts|products|upsert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-persistence.ts",
+      "line": 63,
+      "table": "products",
+      "operation": "delete",
+      "signature": "src/lib/product-registration/upload-persistence.ts|products|delete"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-persistence.ts",
+      "line": 71,
+      "table": "products",
+      "operation": "upsert",
+      "signature": "src/lib/product-registration/upload-persistence.ts|products|upsert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-persistence.ts",
+      "line": 87,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/lib/product-registration/upload-persistence.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-persistence.ts",
+      "line": 113,
+      "table": "products",
+      "operation": "delete",
+      "signature": "src/lib/product-registration/upload-persistence.ts|products|delete"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-to-open-autopilot.ts",
+      "line": 3044,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/lib/product-registration/upload-to-open-autopilot.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-to-open-autopilot.ts",
+      "line": 3105,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/product-registration/upload-to-open-autopilot.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-to-open-autopilot.ts",
+      "line": 3172,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/product-registration/upload-to-open-autopilot.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-to-open-autopilot.ts",
+      "line": 3224,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/product-registration/upload-to-open-autopilot.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-to-open-autopilot.ts",
+      "line": 3680,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/product-registration/upload-to-open-autopilot.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration/upload-to-open-autopilot.ts",
+      "line": 4614,
+      "table": "products",
+      "operation": "update",
+      "signature": "src/lib/product-registration/upload-to-open-autopilot.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "line": 398,
+      "table": "product_registration_v5_revisions",
+      "operation": "insert",
+      "signature": "src/lib/product-registration-v4/revision.ts|product_registration_v5_revisions|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "line": 436,
+      "table": "product_registration_v5_claims",
+      "operation": "insert",
+      "signature": "src/lib/product-registration-v4/revision.ts|product_registration_v5_claims|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "line": 459,
+      "table": "product_registration_v5_claim_evidence",
+      "operation": "insert",
+      "signature": "src/lib/product-registration-v4/revision.ts|product_registration_v5_claim_evidence|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-v4/snapshot-link.ts",
+      "line": 71,
+      "table": "public_package_snapshots",
+      "operation": "update",
+      "signature": "src/lib/product-registration-v4/snapshot-link.ts|public_package_snapshots|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-v4/typed-projections.ts",
+      "line": 370,
+      "table": "product_registration_v5_price_rules",
+      "operation": "insert",
+      "signature": "src/lib/product-registration-v4/typed-projections.ts|product_registration_v5_price_rules|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/product-registration-v4/typed-projections.ts",
+      "line": 398,
+      "table": "product_registration_v5_itinerary_items",
+      "operation": "insert",
+      "signature": "src/lib/product-registration-v4/typed-projections.ts|product_registration_v5_itinerary_items|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/scoring/match-land-operators.ts",
+      "line": 97,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/scoring/match-land-operators.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/supabase.ts",
+      "line": 175,
+      "table": "travel_packages",
+      "operation": "insert",
+      "signature": "src/lib/supabase.ts|travel_packages|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/supabase.ts",
+      "line": 233,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/supabase.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/supabase.ts",
+      "line": 255,
+      "table": "travel_packages",
+      "operation": "delete",
+      "signature": "src/lib/supabase.ts|travel_packages|delete"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "src/lib/upload-verify.ts",
+      "line": 1011,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "src/lib/upload-verify.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/archive-loader.js",
+      "line": 392,
+      "table": "products",
+      "operation": "insert",
+      "signature": "scripts/archive-loader.js|products|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-customer-visible-product-text.ts",
+      "line": 361,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-customer-visible-product-text.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-customer-visible-product-text.ts",
+      "line": 371,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-customer-visible-product-text.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-customer-visible-product-text.ts",
+      "line": 401,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-customer-visible-product-text.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-open-archive-ticketing-products.ts",
+      "line": 537,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-open-archive-ticketing-products.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-open-archive-ticketing-products.ts",
+      "line": 550,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-open-archive-ticketing-products.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-open-archive-ticketing-products.ts",
+      "line": 583,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-open-archive-ticketing-products.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-open-archive-ticketing-products.ts",
+      "line": 590,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-open-archive-ticketing-products.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-package-public-eligibility.ts",
+      "line": 172,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-package-public-eligibility.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-package-public-eligibility.ts",
+      "line": 199,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-package-public-eligibility.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2146,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2160,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2223,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2314,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2337,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2407,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2428,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2470,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2506,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2542,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2579,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2734,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2796,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2813,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2855,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-mobile-landing-readiness.mjs",
+      "line": 2872,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/audit-product-mobile-landing-readiness.mjs|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/audit-product-registration-v3-recent.mjs",
+      "line": 151,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/audit-product-registration-v3-recent.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/backfill-active-product-answerability.ts",
+      "line": 183,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/backfill-active-product-answerability.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/fix-optional-tours-region-drift.mjs",
+      "line": 127,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/fix-optional-tours-region-drift.mjs|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/prove-hwp-mobile-render.ts",
+      "line": 681,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/prove-hwp-mobile-render.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/prove-hwp-mobile-render.ts",
+      "line": 709,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/prove-hwp-mobile-render.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/publish-product-registration-v5-sample.ts",
+      "line": 159,
+      "table": "public_package_snapshots",
+      "operation": "insert",
+      "signature": "scripts/publish-product-registration-v5-sample.ts|public_package_snapshots|insert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/refresh-baselines.js",
+      "line": 211,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/refresh-baselines.js|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-attraction-references.ts",
+      "line": 199,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-attraction-references.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-baekdu-flight-and-source-lines.ts",
+      "line": 327,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-baekdu-flight-and-source-lines.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-baekdu-mobile-landing.ts",
+      "line": 238,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-baekdu-mobile-landing.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-pending-placeholder-attractions.ts",
+      "line": 204,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-pending-placeholder-attractions.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-product-mobile-readiness-candidates.ts",
+      "line": 318,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-product-mobile-readiness-candidates.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-public-eligibility-blockers.ts",
+      "line": 497,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-public-eligibility-blockers.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-saved-product-identities.ts",
+      "line": 460,
+      "table": "products",
+      "operation": "upsert",
+      "signature": "scripts/repair-saved-product-identities.ts|products|upsert"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-saved-product-identities.ts",
+      "line": 516,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-saved-product-identities.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-saved-product-price-storage.ts",
+      "line": 385,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-saved-product-price-storage.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-saved-product-price-storage.ts",
+      "line": 408,
+      "table": "products",
+      "operation": "update",
+      "signature": "scripts/repair-saved-product-price-storage.ts|products|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/repair-structured-meal-hotel-schedule.ts",
+      "line": 70,
+      "table": "travel_packages",
+      "operation": "update",
+      "signature": "scripts/repair-structured-meal-hotel-schedule.ts|travel_packages|update"
+    },
+    {
+      "kind": "table_mutation",
+      "file": "scripts/run-product-registration-v5-live-proof.ts",
+      "line": 92,
+      "table": "public_package_snapshots",
+      "operation": "insert",
+      "signature": "scripts/run-product-registration-v5-live-proof.ts|public_package_snapshots|insert"
+    },
+    {
+      "kind": "retired_publication_rpc",
+      "file": "scripts/verify-product-registration-v5.ts",
+      "line": 68,
+      "rpc": "publish_product_registration_v5_snapshot_atomic",
+      "signature": "scripts/verify-product-registration-v5.ts|rpc|publish_product_registration_v5_snapshot_atomic"
+    }
+  ],
+  "unapproved": [],
+  "staleBaseline": [],
+  "failures": []
+}

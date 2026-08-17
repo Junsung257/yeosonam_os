@@ -12,7 +12,6 @@ import {
   getIrCanaryConcurrency,
   getIrCanaryMaxProducts,
   isIrCanaryMultiEnabled,
-  pickCanaryEngine,
 } from './ir-canary';
 import { splitCatalogSmart } from './parser/catalog-pre-split';
 import type { ExtractedData, MultiProductResult } from './parser';
@@ -345,7 +344,7 @@ export function buildCatalogChunkText(
 async function extractSingleChunk(
   chunkText: string,
   input: UploadIrExtractInput,
-  engine: ReturnType<typeof pickCanaryEngine>,
+  engine: 'deepseek',
   productIndex: number,
 ): Promise<
   | {
@@ -438,7 +437,7 @@ async function extractSingleChunk(
     sectionCacheTelemetry,
   );
   if ('product' in converted && converted.product.extractedData._llm_meta) {
-    converted.product.extractedData._llm_meta.provider = engine === 'gemini' ? 'gemini' : 'deepseek';
+    converted.product.extractedData._llm_meta.provider = 'deepseek';
   }
   return converted;
 }
@@ -470,7 +469,9 @@ async function runWithConcurrency<T, R>(
 export async function tryExtractUploadViaIr(
   input: UploadIrExtractInput,
 ): Promise<UploadIrExtractResult> {
-  const engine = pickCanaryEngine();
+  // 등록 정규화는 DeepSeek-only 정책으로 고정한다. Canary 설정에서
+  // Gemini/Claude를 요청해도 상품 사실 추출에는 절대 전달하지 않는다.
+  const engine = 'deepseek' as const;
   const split = await splitCatalogSmart(input.rawText);
   const sectionCount = split.sections.length;
 

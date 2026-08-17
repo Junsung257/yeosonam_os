@@ -478,7 +478,6 @@ async function main(): Promise<void> {
       && mobileFailures.length === 0
       && sourceFailures.length === 0;
     const archiveReasons = [
-      expiredTicketing ? 'ticketing_deadline_expired' : null,
       allDepartureDatesPast ? 'all_departure_dates_past' : null,
       mobileFailures.length > 0 ? `mobile_landing_error:${mobileFailures.join('|')}` : null,
     ].filter((item): item is string => Boolean(item));
@@ -502,6 +501,7 @@ async function main(): Promise<void> {
       sourceFailures,
       auditReport: auditReportRecord(pkg),
       openEligible,
+      ticketingReconfirmationRequired: expiredTicketing,
       archiveReasons,
     });
   }
@@ -509,96 +509,18 @@ async function main(): Promise<void> {
   const toOpen = audited.filter(row => row.openEligible);
   const toArchive = audited.filter(row =>
     row.archiveReasons.some(reason =>
-      reason === 'ticketing_deadline_expired'
-      || reason === 'all_departure_dates_past'
+      reason === 'all_departure_dates_past'
       || (reason.startsWith('mobile_landing_error') && isCustomerVisible(row.status)),
     ) && !isArchived(row.status),
   );
 
   const applied = { opened: 0, archived: 0, productRowsOpened: 0, productRowsArchived: 0 };
-  const now = new Date().toISOString();
   if (options.apply) {
-    for (const row of toOpen) {
-      const auditReport = {
-        ...row.auditReport,
-        source: 'ticketing-mobile-landing-open-audit',
-        customer_opening: {
-          status: 'opened',
-          checked_at: now,
-          ticketing_deadline: row.ticketingDeadline,
-          latest_departure: row.latestDeparture,
-          v3_status: row.v3Status,
-          standard_notices: row.standardNotices,
-          structured_facts: row.structuredFacts,
-          mobile_failures: row.mobileFailures,
-          source_failures: row.sourceFailures,
-        },
-      };
-      const { error: updateError } = await supabase
-        .from('travel_packages')
-        .update({
-          status: 'active',
-          audit_status: 'clean',
-          audit_checked_at: now,
-          audit_report: auditReport,
-          updated_at: now,
-        })
-        .eq('id', row.id);
-      if (updateError) throw new Error(updateError.message);
-      applied.opened += 1;
-      if (row.code) {
-        const { error: productError } = await supabase
-          .from('products')
-          .update({ status: 'active', updated_at: now })
-          .eq('internal_code', row.code);
-        if (productError) throw new Error(productError.message);
-        applied.productRowsOpened += 1;
-      }
-    }
-
-    for (const row of toArchive) {
-      const auditReport = {
-        ...row.auditReport,
-        source: 'ticketing-mobile-landing-archive-audit',
-        customer_opening: {
-          status: 'archived',
-          checked_at: now,
-          reasons: row.archiveReasons,
-          ticketing_deadline: row.ticketingDeadline,
-          latest_departure: row.latestDeparture,
-          v3_status: row.v3Status,
-          mobile_failures: row.mobileFailures,
-        },
-      };
-      const statusPatch: Record<string, unknown> = {
-        status: 'archived',
-        ticketing_deadline: row.ticketingDeadline,
-        audit_checked_at: now,
-        audit_report: auditReport,
-        updated_at: now,
-      };
-      if (row.archiveReasons.some(reason => reason.startsWith('mobile_landing_error'))) {
-        statusPatch.audit_status = 'blocked';
-      }
-      const { error: updateError } = await supabase
-        .from('travel_packages')
-        .update(statusPatch)
-        .eq('id', row.id);
-      if (updateError) throw new Error(updateError.message);
-      applied.archived += 1;
-      if (row.code) {
-        const { error: productError } = await supabase
-          .from('products')
-          .update({ status: 'expired', updated_at: now })
-          .eq('internal_code', row.code);
-        if (productError) throw new Error(productError.message);
-        applied.productRowsArchived += 1;
-      }
-    }
+    console.warn('LEGACY_OPEN_ARCHIVE_APPLY_RETIRED: candidates were audited but customer rows were not changed.');
   }
 
   const report = {
-    mode: options.apply ? 'apply' : 'dry-run',
+    mode: options.apply ? 'correction-candidates' : 'dry-run',
     today: options.today,
     scanned: audited.length,
     summary: {
@@ -607,7 +529,7 @@ async function main(): Promise<void> {
       applied,
       futureTicketingNonPublic: audited.filter(row => row.futureTicketing && !isCustomerVisible(row.status)).length,
       mobileErrorCandidates: audited.filter(row => row.mobileFailures.length > 0).length,
-      expiredTicketingCandidates: audited.filter(row => row.archiveReasons.includes('ticketing_deadline_expired')).length,
+      expiredTicketingReconfirmationCandidates: audited.filter(row => row.ticketingReconfirmationRequired).length,
       allDepartureDatesPastCandidates: audited.filter(row => row.archiveReasons.includes('all_departure_dates_past')).length,
     },
     toOpen,

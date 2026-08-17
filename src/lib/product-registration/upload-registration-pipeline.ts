@@ -13,6 +13,8 @@ import { prepareUploadRegistrationProducts } from './upload-registration-prepara
 import type { UploadRequestIntakeSuccess } from './upload-request-intake';
 import { resolveUploadSourceForRegistration } from './upload-source-resolution';
 import { transitionProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
+import { createTextDocumentIR } from '@/lib/product-registration-v4/document-ir';
+import { classifyProductSourceDocument } from '@/lib/product-registration-v6/document-classifier';
 
 type PostAlert = (input: AlertInput) => Promise<unknown> | unknown;
 
@@ -134,7 +136,46 @@ export async function runUploadRegistrationPipeline(input: {
   let parsedDocument = parsedForRegistration.parsedDocument;
   const productRegistrationV2GateFailures = parsedForRegistration.productRegistrationV2GateFailures;
   const normalizedCatalogHash = parsedForRegistration.normalizedCatalogHash;
-  const classification = { productCount: 1, isTravel: true, documentType: 'package' as const, estimatedConfidence: 0.9 };
+  const sourceClassification = classifyProductSourceDocument({
+    sourceType: fileName.toLowerCase().endsWith('.hwp') ? 'hwp' : 'text',
+    documentIr: createTextDocumentIR({
+      filename: fileName,
+      sourceType: 'text',
+      text: parsedDocument.rawText,
+      parserEngine: 'legacy-upload-classification',
+      parserVersion: '1',
+    }),
+  });
+  const classification = {
+    productCount: parsedDocument.multiProducts?.length ?? 1,
+    isTravel: sourceClassification.documentClass === 'travel_product',
+    documentType: sourceClassification.documentClass === 'travel_product' ? 'package' as const : 'non_travel' as const,
+    estimatedConfidence: sourceClassification.confidence,
+    reasonCode: sourceClassification.reasonCode,
+  };
+  if (!classification.isTravel) {
+    if (registrationJobId) {
+      await transitionProductRegistrationV4Job({
+        supabase: input.supabase,
+        jobId: registrationJobId,
+        stage: 'needs_review',
+        status: 'done',
+        errorCode: sourceClassification.reasonCode,
+        reviewReasons: [sourceClassification.reasonCode],
+        state: { documentClassification: sourceClassification },
+        clearLease: true,
+      });
+    }
+    return {
+      status: 422,
+      payload: {
+        success: false,
+        code: sourceClassification.reasonCode,
+        error: '여행상품 원문으로 확인되지 않아 상품을 만들지 않았습니다.',
+        classification,
+      },
+    };
+  }
 
   console.log('[Upload API] parsed document ready:', {
     title: parsedDocument.extractedData.title,

@@ -217,16 +217,17 @@ describe('customer package client payload', () => {
   it('uses public snapshots before rendering package detail rival comparison titles', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
     const rivalScoreIndex = pageSource.indexOf("label: 'package.score-rivals'");
-    const rivalPackageIndex = pageSource.indexOf("label: 'package.score-rival-packages'");
-    const snapshotMergeIndex = pageSource.indexOf('const publicRivals = await fetchAndMergeCurrentPublicPackageCardSnapshots', rivalPackageIndex);
-    const titleMapIndex = pageSource.indexOf('const titleByRivalId = new Map', snapshotMergeIndex);
+    const rivalPackageIndex = pageSource.indexOf('const rivalPackageIds', rivalScoreIndex);
+    const snapshotReaderIndex = pageSource.indexOf('listCurrentPublicPackageCardSnapshots');
+    const snapshotLoadIndex = pageSource.indexOf('await loadPublishedCatalog()', rivalPackageIndex);
+    const titleMapIndex = pageSource.indexOf('const titleByRivalId = new Map', snapshotLoadIndex);
     const pushIndex = pageSource.indexOf('title: publicTitle', titleMapIndex);
 
     expect(pageSource).not.toContain('travel_packages!inner(title)');
-    expect(pageSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(snapshotReaderIndex).toBeGreaterThanOrEqual(0);
     expect(rivalPackageIndex).toBeGreaterThan(rivalScoreIndex);
-    expect(snapshotMergeIndex).toBeGreaterThan(rivalPackageIndex);
-    expect(titleMapIndex).toBeGreaterThan(snapshotMergeIndex);
+    expect(snapshotLoadIndex).toBeGreaterThan(rivalPackageIndex);
+    expect(titleMapIndex).toBeGreaterThan(snapshotLoadIndex);
     expect(pushIndex).toBeGreaterThan(titleMapIndex);
   });
 });

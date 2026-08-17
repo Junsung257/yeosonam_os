@@ -29,6 +29,14 @@ type RhwpDocumentReader = Pick<
   'pageCount' | 'getPageTextLayout' | 'getTableDimensions' | 'getCellInfo'
 >;
 
+export type RhwpWasmTolerantWarning = {
+  code: 'INVALID_TABLE_CONTROL' | 'INVALID_TABLE_CELL';
+  tableKey: string;
+  cellIndex?: number;
+  critical: boolean;
+  detail: string;
+};
+
 let wasmInitialized = false;
 
 function pushRootAndParents(target: string[], value: string | undefined): void {
@@ -186,6 +194,7 @@ export function buildRhwpWasmDocumentIR(input: {
   base.pages = pageCount;
   base.nodes = [];
   base.tables = [];
+  const tolerantWarnings: RhwpWasmTolerantWarning[] = [];
 
   for (let page = 0; page < pageCount; page += 1) {
     base.nodes.push({ id: `page-${page}`, kind: 'page', page, order: base.nodes.length });
@@ -215,10 +224,22 @@ export function buildRhwpWasmDocumentIR(input: {
 
   for (const [key, cellGroups] of tableGroups) {
     const [section, parentParagraph, control] = key.split(':').map(Number);
-    const dimensions = parseJson<RhwpTableDimensions>(
-      input.document.getTableDimensions(section, parentParagraph, control),
-      `TABLE_${key}_DIMENSIONS`,
-    );
+    let dimensions: RhwpTableDimensions;
+    try {
+      dimensions = parseJson<RhwpTableDimensions>(
+        input.document.getTableDimensions(section, parentParagraph, control),
+        `TABLE_${key}_DIMENSIONS`,
+      );
+    } catch (error) {
+      const tableText = cellGroups.map(groupText).filter(Boolean).join('\n');
+      tolerantWarnings.push({
+        code: 'INVALID_TABLE_CONTROL',
+        tableKey: key,
+        critical: /(?:\d{1,3}(?:,\d{3})+\s*원?|출발일|성인|아동|포함|불포함|취소|환불|DAY\s*\d+|\d+\s*일차)/iu.test(tableText),
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
     const rows = numberOrZero(dimensions.rowCount);
     const columns = numberOrZero(dimensions.colCount);
     const cellCount = numberOrZero(dimensions.cellCount);
@@ -237,14 +258,26 @@ export function buildRhwpWasmDocumentIR(input: {
     base.nodes.push(tableNode);
 
     for (let cellIndex = 0; cellIndex < cellCount; cellIndex += 1) {
-      const info = parseJson<RhwpCellInfo>(
-        input.document.getCellInfo(section, parentParagraph, control, cellIndex),
-        `TABLE_${key}_CELL_${cellIndex}`,
-      );
       const matching = cellGroups
         .filter(group => group.cell === cellIndex)
         .sort((left, right) => numberOrZero(left.cellParagraph) - numberOrZero(right.cellParagraph));
       const cellText = matching.map(groupText).filter(Boolean).join('\n');
+      let info: RhwpCellInfo;
+      try {
+        info = parseJson<RhwpCellInfo>(
+          input.document.getCellInfo(section, parentParagraph, control, cellIndex),
+          `TABLE_${key}_CELL_${cellIndex}`,
+        );
+      } catch (error) {
+        tolerantWarnings.push({
+          code: 'INVALID_TABLE_CELL',
+          tableKey: key,
+          cellIndex,
+          critical: /(?:\d{1,3}(?:,\d{3})+\s*원?|출발일|성인|아동|포함|불포함|취소|환불|DAY\s*\d+|\d+\s*일차)/iu.test(cellText),
+          detail: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
       const cellPage = matching.length > 0 ? Math.min(...matching.map(group => group.page)) : page;
       const row = numberOrZero(info.row);
       const column = numberOrZero(info.col);
@@ -277,7 +310,27 @@ export function buildRhwpWasmDocumentIR(input: {
     base.tables.push(table);
   }
 
+  if (tolerantWarnings.length > 0) {
+    base.assets.push({
+      id: 'rhwp-wasm-tolerant-warnings',
+      kind: 'image',
+      metadata: {
+        warningCount: tolerantWarnings.length,
+        criticalWarningCount: tolerantWarnings.filter(warning => warning.critical).length,
+        warnings: tolerantWarnings,
+      },
+    });
+  }
+
   return base;
+}
+
+export function getRhwpWasmTolerantWarnings(ir: DocumentIR): RhwpWasmTolerantWarning[] {
+  const metadata = ir.assets.find(asset => asset.id === 'rhwp-wasm-tolerant-warnings')?.metadata;
+  if (!metadata || !Array.isArray(metadata.warnings)) return [];
+  return metadata.warnings.filter((warning): warning is RhwpWasmTolerantWarning => (
+    Boolean(warning) && typeof warning === 'object' && typeof warning.code === 'string'
+  ));
 }
 
 export async function parseHwpWithRhwpWasm(input: {

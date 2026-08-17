@@ -5,19 +5,28 @@ export interface MatchResult {
   total: number;
   matched_via_bookings: number;
   matched_via_aliases: number;
+  correction_candidate_count: number;
+  correction_candidates: Array<{
+    package_id: string;
+    title: string;
+    land_operator_id: string;
+    evidence: 'bookings_mode' | 'registered_alias';
+  }>;
   unmapped_count: number;
   unmapped_packages: Array<{ id: string; title: string }>;
 }
 
 /**
- * travel_packages.land_operator_id 자동 매핑.
+ * travel_packages.land_operator_id 교정 후보를 읽기 전용으로 계산한다.
  *
  * 우선순위:
  *   1) bookings 에서 해당 패키지의 가장 자주 등장한 land_operator_id (mode)
  *   2) title/internal_code 에서 land_operators.name 또는 aliases 매칭
  *   3) 매칭 실패 → unmapped_packages 리포트
  *
- * 이미 land_operator_id 가 있는 패키지는 건너뜀.
+ * 이미 land_operator_id 가 있는 패키지는 건너뜀. 이 함수는 고객 상품을
+ * 직접 수정하지 않는다. 실제 반영은 Registration Kernel의 correction
+ * revision workflow에서 원문/tenant 증거를 다시 검증한 뒤 수행해야 한다.
  */
 export async function matchPackagesToLandOperators(): Promise<MatchResult> {
   // 1) 매핑 안 된 활성 패키지
@@ -29,7 +38,15 @@ export async function matchPackagesToLandOperators(): Promise<MatchResult> {
   if (pkgErr) throw new Error(`패키지 조회 실패: ${pkgErr.message}`);
   const packages = pkgs ?? [];
   if (packages.length === 0) {
-    return { total: 0, matched_via_bookings: 0, matched_via_aliases: 0, unmapped_count: 0, unmapped_packages: [] };
+    return {
+      total: 0,
+      matched_via_bookings: 0,
+      matched_via_aliases: 0,
+      correction_candidate_count: 0,
+      correction_candidates: [],
+      unmapped_count: 0,
+      unmapped_packages: [],
+    };
   }
 
   // 2) bookings 기반 매핑
@@ -76,28 +93,37 @@ export async function matchPackagesToLandOperators(): Promise<MatchResult> {
 
   let viaBookings = 0;
   let viaAliases = 0;
+  const correctionCandidates: MatchResult['correction_candidates'] = [];
   const unmapped: Array<{ id: string; title: string }> = [];
 
   for (const pkg of packages) {
     let opId: string | null = null;
+    let evidence: MatchResult['correction_candidates'][number]['evidence'] | null = null;
 
     const freq = freqByPkg.get(pkg.id);
     if (freq) {
       opId = mode(freq);
-      if (opId) viaBookings++;
+      if (opId) {
+        viaBookings++;
+        evidence = 'bookings_mode';
+      }
     }
     if (!opId) {
       const text = `${pkg.title ?? ''} ${pkg.internal_code ?? ''}`;
       opId = matchByText(text);
-      if (opId) viaAliases++;
+      if (opId) {
+        viaAliases++;
+        evidence = 'registered_alias';
+      }
     }
 
-    if (opId) {
-      const { error: upErr } = await supabaseAdmin
-        .from('travel_packages')
-        .update({ land_operator_id: opId })
-        .eq('id', pkg.id);
-      if (upErr) console.error(`[match-land-ops] ${pkg.id} update 실패:`, upErr.message);
+    if (opId && evidence) {
+      correctionCandidates.push({
+        package_id: pkg.id,
+        title: pkg.title ?? '(제목 없음)',
+        land_operator_id: opId,
+        evidence,
+      });
     } else {
       unmapped.push({ id: pkg.id, title: pkg.title ?? '(제목 없음)' });
     }
@@ -107,6 +133,8 @@ export async function matchPackagesToLandOperators(): Promise<MatchResult> {
     total: packages.length,
     matched_via_bookings: viaBookings,
     matched_via_aliases: viaAliases,
+    correction_candidate_count: correctionCandidates.length,
+    correction_candidates: correctionCandidates,
     unmapped_count: unmapped.length,
     unmapped_packages: unmapped,
   };

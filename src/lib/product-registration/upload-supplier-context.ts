@@ -2,6 +2,10 @@ import { createHash } from 'crypto';
 
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin } from '@/lib/supabase';
+import { llmCall } from '@/lib/llm-gateway';
+
+const PRODUCT_REGISTRATION_DEEPSEEK_MODEL =
+  process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro';
 
 export type UploadLandOperatorRow = {
   id: string;
@@ -142,18 +146,30 @@ export async function identifySupplierFromText(
   }
 
   try {
-    const apiKey = getSecret('GOOGLE_AI_API_KEY') || getSecret('GOOGLE_GEMINI_API_KEY') || getSecret('GOOGLE_API_KEY') || '';
+    const apiKey = getSecret('DEEPSEEK_API_KEY') || '';
     if (!apiKey) return unknown;
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const snippet = extractedText.slice(0, 400) + '\n...\n' + extractedText.slice(-300);
     const prompt = 'Find the land operator or supplier name in this travel document. Return JSON only: {"supplier_name": "name or null"}\n\n' + snippet;
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text().trim();
-    const match = responseText.match(/\{[\s\S]*\}/);
-    if (!match) return unknown;
-    const inferred: string | null = JSON.parse(match[0])?.supplier_name ?? null;
+    const result = await llmCall<{ supplier_name?: unknown }>({
+      task: 'classify',
+      systemPrompt: '여행상품 원문에서 랜드사/공급사 이름을 찾는다. 원문에 없는 이름을 만들지 말고 JSON만 반환한다.',
+      userPrompt: prompt,
+      jsonSchema: {
+        type: 'object',
+        properties: { supplier_name: { type: ['string', 'null'] } },
+        required: ['supplier_name'],
+      },
+      maxTokens: 120,
+      temperature: 0,
+      maxRetries: 1,
+      autoEscalate: false,
+      pinnedProvider: 'deepseek',
+      pinnedModel: PRODUCT_REGISTRATION_DEEPSEEK_MODEL,
+    });
+    if (!result.success) return unknown;
+    const inferred: string | null = typeof result.data?.supplier_name === 'string'
+      ? result.data.supplier_name
+      : null;
     if (!inferred || inferred === 'null') return unknown;
     const found = ops.find(op => (
       inferred.toLowerCase().includes(op.name.toLowerCase())

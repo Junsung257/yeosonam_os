@@ -12,6 +12,47 @@ import type {
 
 type RpcResult = Record<string, unknown>;
 
+function object(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function canonicalDepartureReferenceDate(payload: Record<string, unknown>): string | null {
+  const sections = Array.isArray(payload.sections) ? payload.sections : [];
+  const references = [...new Set(sections.map(section => {
+    const policy = object(object(section)?.departureDatePolicy);
+    return typeof policy?.referenceDate === 'string' ? policy.referenceDate : null;
+  }).filter((value): value is string => Boolean(value)))];
+  if (references.length > 1) throw new Error('REGISTRATION_DEPARTURE_REFERENCE_DATE_CONFLICT');
+  return references[0] ?? null;
+}
+
+function assertNoPastCanonicalFacts(input: {
+  referenceDate: string | null;
+  priceRules: ReturnType<typeof buildV5PriceRules>;
+  departures: Record<string, unknown>[];
+}) {
+  if (!input.referenceDate) return;
+  for (const rule of input.priceRules) {
+    if (rule.specificDate && rule.specificDate < input.referenceDate) {
+      throw new Error('REGISTRATION_PAST_PRICE_DATE_FORBIDDEN');
+    }
+    if (rule.effectiveEnd && rule.effectiveEnd < input.referenceDate) {
+      throw new Error('REGISTRATION_PAST_PRICE_RANGE_FORBIDDEN');
+    }
+    if (rule.effectiveStart && rule.effectiveStart < input.referenceDate) {
+      throw new Error('REGISTRATION_UNCLIPPED_PAST_PRICE_RANGE_FORBIDDEN');
+    }
+  }
+  for (const departure of input.departures) {
+    const date = typeof departure.departure_date === 'string' ? departure.departure_date : null;
+    if (date && date < input.referenceDate) {
+      throw new Error('REGISTRATION_PAST_DEPARTURE_INSTANCE_FORBIDDEN');
+    }
+  }
+}
+
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`REGISTRATION_AUTHORITY_RESPONSE_MISSING:${field}`);
   return value;
@@ -28,6 +69,12 @@ export async function commitCanonicalRevisionAtomic(input: {
   const priceRules = buildV5PriceRules({ revisionId: 'pending', canonicalPayload: build.canonicalPayload });
   const itineraryItems = buildV5ItineraryItems({ revisionId: 'pending', canonicalPayload: build.canonicalPayload });
   const terms = buildCanonicalTermsRevisions(build.canonicalPayload);
+  const departureReferenceDate = canonicalDepartureReferenceDate(build.canonicalPayload);
+  assertNoPastCanonicalFacts({
+    referenceDate: departureReferenceDate,
+    priceRules,
+    departures: domainProjection.departures,
+  });
   const { data, error } = await input.supabase.rpc('commit_product_registration_revision_atomic', {
     p_payload: {
       tenant_id: input.commit.tenantId,
@@ -40,6 +87,7 @@ export async function commitCanonicalRevisionAtomic(input: {
         job_id: build.jobId,
         source_document_id: build.sourceDocumentId,
         section_keys: sections.map(section => section.sectionKey),
+        departure_reference_date: departureReferenceDate,
       },
       job_id: build.jobId,
       normalization_id: build.normalizationId,
@@ -199,6 +247,7 @@ export async function projectCompatibilityFromRevisionAtomic(input: {
 export async function createCandidateSnapshot(input: {
   supabase: SupabaseClient;
   row: Record<string, unknown> & {
+    tenant_id: string;
     package_id: string;
     catalog_product_id: string;
     canonical_revision_id: string;
@@ -215,6 +264,7 @@ export async function createCandidateSnapshot(input: {
   const { data: existing, error: existingError } = await input.supabase
     .from('public_package_snapshots')
     .select('id,catalog_product_id,canonical_revision_id')
+    .eq('tenant_id', input.row.tenant_id)
     .eq('package_id', input.row.package_id)
     .eq('snapshot_hash', input.row.snapshot_hash)
     .maybeSingle();

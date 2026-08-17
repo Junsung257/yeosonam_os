@@ -61,4 +61,69 @@ describe('V3 ledger render adapter', () => {
       dinner_note: '석:미제공',
     });
   });
+
+  it('projects an expired source ticketing condition into consultation-only customer data', () => {
+    const ledger: V3DraftLedger = {
+      document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+      variants: [{
+        variant_key: 'v1', grade: null, course: null, duration_days: 5, nights: 3,
+        title_parts: ['다낭 3박5일'], price_calendar: [], flight_segments: [], days: [],
+        inclusions: [], exclusions: [], options: [], shopping: [], structured_facts: [],
+        standard_notices: [], minimum_departure: null, evidence_coverage: {},
+        ticketing_condition: {
+          kind: 'fixed_deadline',
+          status: 'expired',
+          deadline: '2026-08-14',
+          relativeDays: null,
+          customerNotice: '발권기한 경과 · 현재 좌석과 요금 상담 확인',
+          consultationOnly: true,
+          marketingEligible: false,
+          sourceText: '8/14까지 발권조건',
+          conditionHash: 'a'.repeat(64),
+          evidence: {
+            line_start: 1,
+            line_end: 1,
+            char_start: 0,
+            char_end: 12,
+            quote: '8/14까지 발권조건',
+            extraction_method: 'text_line',
+          },
+        },
+      }],
+    };
+
+    const [rendered] = ledgerToRenderPackageInputs(ledger);
+    expect(rendered).toMatchObject({
+      ticketing_deadline: '2026-08-14',
+      ticketing_deadline_status: 'expired',
+      booking_mode: 'consultation_only',
+      marketing_eligible: false,
+    });
+    expect(rendered?.customer_notes).toContain('현재 좌석과 요금 상담 확인');
+    expect(rendered?.notices_parsed).toContainEqual(expect.objectContaining({
+      type: 'SOURCE_TICKETING_CONDITION',
+    }));
+  });
+
+  it('does not label a dated price as departure-confirmed without explicit source proof', () => {
+    const evidence = { line_start: 1, line_end: 1, char_start: 0, char_end: 8, quote: '699,000원' };
+    const baseVariant: V3DraftLedger['variants'][number] = {
+      variant_key: 'v1', grade: null, course: null, duration_days: 5, nights: 3,
+      title_parts: ['푸꾸옥 3박5일'], flight_segments: [], days: [],
+      inclusions: [], exclusions: [], options: [], shopping: [], structured_facts: [],
+      standard_notices: [], minimum_departure: null, evidence_coverage: {},
+      price_calendar: [
+        { date: '2026-09-10', label: '출발일', amount: 799000, currency: 'KRW', evidence },
+        { date: '2026-09-18', label: '출발확정', amount: 699000, currency: 'KRW', evidence, departure_confirmed: true },
+      ],
+    };
+    const [rendered] = ledgerToRenderPackageInputs({
+      document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+      variants: [baseVariant],
+    });
+    expect(rendered?.price_dates).toEqual([
+      expect.objectContaining({ date: '2026-09-10', confirmed: false }),
+      expect.objectContaining({ date: '2026-09-18', confirmed: true }),
+    ]);
+  });
 });

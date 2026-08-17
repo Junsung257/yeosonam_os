@@ -170,94 +170,21 @@ export async function saveTravelPackage(data: {
   price_list?: unknown[];     // 다중 조건 구조화 가격표
   price_dates?: unknown[];    // 날짜별 개별 가격 (tiersToDatePrices 결과)
 }) {
-  try {
-    const { data: result, error } = await supabaseAdmin
-      .from('travel_packages')
-      .insert([{
-        title: data.title,
-        destination: data.destination,
-        duration: data.duration,
-        price: data.price,
-        filename: data.filename,
-        file_type: data.fileType,
-        raw_text: data.rawText,
-        itinerary: data.itinerary || [],
-        inclusions: data.inclusions || [],
-        excludes: data.excludes || [],
-        accommodations: data.accommodations || [],
-        special_notes: data.specialNotes,
-        confidence: data.confidence,
-        status: 'pending',
-        // v2
-        category: data.category || 'package',
-        product_type: data.product_type,
-        trip_style: data.trip_style,
-        departure_days: data.departure_days,
-        departure_airport: data.departure_airport ?? null,
-        airline: data.airline,
-        min_participants: data.min_participants ?? null,
-        ticketing_deadline: data.ticketing_deadline || null,
-        guide_tip: data.guide_tip,
-        single_supplement: data.single_supplement,
-        small_group_surcharge: data.small_group_surcharge,
-        price_tiers: data.price_tiers || [],
-        surcharges: data.surcharges || [],
-        excluded_dates: data.excluded_dates || [],
-        optional_tours: data.optional_tours || [],
-        cancellation_policy: data.cancellation_policy || [],
-        category_attrs: data.category_attrs || {},
-        land_operator: data.land_operator || null,
-        product_tags: data.product_tags || [],
-        product_highlights: data.product_highlights || [],
-        product_summary: data.product_summary || null,
-        commission_rate: data.commission_rate ?? null,
-        itinerary_data: data.itinerary_data ?? null,
-        notices_parsed: data.notices_parsed ?? [],
-        price_list: data.price_list ?? [],
-        price_dates: data.price_dates ?? [],
-      }])
-      .select();
-
-    if (error) throw error;
-    return result?.[0];
-  } catch (error) {
-    console.error('여행 상품 저장 실패:', error);
-    throw new Error(`여행 상품 저장 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-  }
+  void data;
+  throw new Error('LEGACY_PACKAGE_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
 }
 
 // 여행 상품 수정
 export async function updatePackage(id: string, data: Record<string, unknown>) {
-  try {
-    const { data: result, error } = await supabase
-      .from('travel_packages')
-      .update({ ...data, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select();
-    if (error) throw error;
-    return result?.[0];
-  } catch (error) {
-    console.error('상품 수정 실패:', error);
-    throw error;
-  }
+  void id;
+  void data;
+  throw new Error('LEGACY_PACKAGE_WRITER_RETIRED_USE_CORRECTION_REVISION');
 }
 
 // 여행 상품 삭제 (연관 document_hashes도 함께 삭제 → 재업로드 가능)
 export async function deletePackage(id: string) {
-  try {
-    // 1) 해당 상품의 internal_code 조회
-    const { data: pkg } = await supabaseAdmin.from('travel_packages').select('internal_code').eq('id', id).maybeSingle();
-    // 2) document_hashes에서 해당 product_id(internal_code) 삭제
-    if (pkg?.internal_code) {
-      await supabaseAdmin.from('document_hashes').delete().eq('product_id', pkg.internal_code);
-    }
-    // 3) 상품 삭제
-    const { error } = await supabaseAdmin.from('travel_packages').delete().eq('id', id);
-    if (error) throw error;
-  } catch (error) {
-    console.error('상품 삭제 실패:', error);
-    throw error;
-  }
+  void id;
+  throw new Error('LEGACY_PACKAGE_DELETE_RETIRED_USE_AVAILABILITY_OVERLAY');
 }
 
 // 상품 목록 조회 (필터 지원)

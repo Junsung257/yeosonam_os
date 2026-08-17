@@ -155,6 +155,36 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.ledger.variants[0]?.price_calendar[0]?.amount).toBe(1_299_000);
   });
 
+  it('does not turn cruise capacity or dimensions into a sale price', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: Tokyo Cruise 5D',
+      '\u25C6 \uCD1D \uD1A4\uC218 171.598\uD1A4 \u25C6 \uC804\uC7A5/\uC804\uD3ED/\uC804\uACE0 316m/43m/76m \u25C6 \uCD1D \uD0D1\uC2B9\uAC1D 5,655\uBA85 \u25C6 \uC2B9\uBB34\uC6D0\uC218 1,595\uBA85',
+      'DAY 1 BX123 departure 10:00 arrival 12:00',
+      'DAY 2 Tokyo city tour',
+      'DAY 5 BX124 departure 13:00 arrival 15:00',
+      'Include cruise cabin and meal',
+      'Exclude personal expense',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.price_calendar).toEqual([]);
+    expect(result.ledger.variants[0]?.evidence_coverage.price).toBe(false);
+  });
+
+  it('does not turn a comma-formatted attraction count into a sale price', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: Jiuzhaigou 5D',
+      '바위 3,400여개의 에메랄드 빛 석회암층 연못 관광',
+      'DAY 1 BX123 departure 10:00 arrival 12:00',
+      'DAY 2 Jiuzhaigou tour',
+      'DAY 5 BX124 departure 13:00 arrival 15:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.price_calendar).toEqual([]);
+    expect(result.ledger.variants[0]?.evidence_coverage.price).toBe(false);
+  });
+
   it('does not block golf notices as optional tours and recovers separated ZE flight times', async () => {
     const raw = `
 상품: 푸꾸옥 2색골프 3박5일
@@ -634,7 +664,12 @@ ZE982
       destination: 'City',
     });
     expect(unmatched.match_summary.unmatched.length).toBeGreaterThanOrEqual(1);
-    expect(unmatched.gate_result.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('fail');
+    expect(unmatched.gate_result.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('pass');
+    expect(unmatched.match_summary.entity_summary.review_items.some(item => (
+      item.category === 'attraction'
+      && item.suggested_action === 'needs_review'
+      && item.blocks_publish === false
+    ))).toBe(true);
   });
 
   it('does not queue price-table and legal-tail lines as unmatched attractions', async () => {
@@ -1369,8 +1404,12 @@ ZE982
     });
 
     expect(summary.review_items.some(item => item.raw_text === '만복산' && item.blocks_publish)).toBe(false);
-    expect(summary.review_items.some(item => item.raw_text === '대불사' && item.blocks_publish)).toBe(true);
-    expect(summary.attraction_unresolved_count).toBe(1);
+    expect(summary.review_items.some(item => (
+      item.raw_text === '대불사'
+      && item.suggested_action === 'needs_review'
+      && item.blocks_publish === false
+    ))).toBe(true);
+    expect(summary.attraction_unresolved_count).toBe(0);
   });
 
   it('keeps normal Korean HWP notices and service fragments out of unresolved attraction review', () => {
@@ -1571,7 +1610,8 @@ ZE982
 
     expect(summary.review_items.map(item => item.raw_text)).toEqual(['한시장', '호이안 야경', '잔교', '긴린호수']);
     expect(summary.review_items.every(item => item.category === 'attraction')).toBe(true);
-    expect(summary.attraction_unresolved_count).toBe(4);
+    expect(summary.attraction_unresolved_count).toBe(0);
+    expect(summary.review_items.every(item => item.blocks_publish === false)).toBe(true);
   });
 
   it('uses entity unresolved attraction count ahead of legacy unmatched event count in V3 gate', () => {
@@ -2249,6 +2289,217 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(result.match_summary.entity_summary.shopping_review_needed_count).toBe(0);
   });
 
+  it('does not treat nearby shopping-mall access as a package shopping visit', async () => {
+    const raw = [
+      '상품명: 방콕 노쇼핑 에어텔 3박5일',
+      '가격 599,000원 / 최소출발 4명',
+      'DAY 1 BX747 부산 출발 18:00 방콕 도착 22:00',
+      'DAY 2 호텔 자유시간',
+      '♥ 이외 다른 쇼핑몰 및 관광지 도보이동 가능',
+      'DAY 5 BX748 방콕 출발 23:00 부산 도착 07:00',
+      '포함 왕복항공, 호텔, 조식',
+      '불포함 개인경비',
+      '노쇼핑',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.shopping).toEqual([]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('keeps no-shopping policy and free-time mall recommendations out of package shopping visits', async () => {
+    const raw = [
+      '상품명: 싱가포르 1일 자유 노쇼핑 3박5일',
+      '가격 999,000원 / 최소출발 4명',
+      'DAY 1 7C4055 부산 출발 18:00 싱가포르 도착 23:30',
+      'DAY 2 싱가포르 관광',
+      '* 노쇼핑 / 옵션가능 상품이며 현지에서 개별관광 및 리턴변경 불가합니다',
+      '**자유시간에 가볼만한 관광지** 오챠드로드 및 마리나베이샌즈 쇼핑몰 & 푸드코트, 기타 자료는 싱가포르 관광청 참조',
+      'DAY 5 7C4056 싱가포르 출발 00:30 부산 도착 08:00',
+      '포함 왕복항공, 호텔, 조식',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.shopping).toEqual([]);
+    expect(variant.standard_notices.some(notice => notice.template_key === 'shopping.none')).toBe(true);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('treats no-shopping with separate-price inquiry as an alternative, not the current product policy', async () => {
+    const raw = [
+      '상품명: 북경 3박4일 쇼핑 1회',
+      '가격 799,000원 / 최소출발 4명',
+      '노팁 노옵션 쇼핑 1회',
+      '노쇼핑시 별도 요금문의',
+      'DAY 1 KE123 부산 출발 10:00 북경 도착 12:00',
+      'DAY 2 만리장성 관광 및 쇼핑센터 1회 방문',
+      'DAY 4 KE124 북경 출발 13:00 부산 도착 15:00',
+      '포함 왕복항공, 호텔, 식사',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.standard_notices.some(notice => notice.template_key === 'shopping.none')).toBe(false);
+    expect(variant.shopping.length).toBeGreaterThan(0);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('does not combine a shopping-center header with a following no-option/no-shopping policy cell', async () => {
+    const raw = [
+      '상품명: 보홀 솔레아 노노노 3박5일',
+      '가격 699,000원 / 최소출발 4명',
+      '쇼핑센터',
+      '♦ 노옵션, 노쇼핑',
+      'DAY 1 7C2151 부산 출발 20:00 보홀 도착 23:30',
+      'DAY 2 보홀 관광 HOTEL: 솔레아 또는 동급',
+      'DAY 5 7C2152 보홀 출발 00:30 부산 도착 06:00',
+      '포함 왕복항공, 호텔, 조식',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.shopping).toEqual([]);
+    expect(variant.standard_notices.some(notice => notice.template_key === 'shopping.none')).toBe(true);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('does not publish a bare shopping-information heading as a shopping visit', async () => {
+    const raw = [
+      '상품명: 방콕 파타야 노쇼핑 3박5일',
+      '가격 699,000원 / 최소출발 4명',
+      '쇼핑안내',
+      '노옵션 / 노쇼핑',
+      'DAY 1 BX747 부산 출발 19:00 방콕 도착 23:00',
+      'DAY 2 파타야 관광 HOTEL: 파타야 4성급 또는 동급',
+      'DAY 5 BX748 방콕 출발 01:00 부산 도착 08:00',
+      '포함 왕복항공, 호텔, 조식',
+      '불포함 가이드비, 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.shopping).toEqual([]);
+    expect(variant.standard_notices.some(notice => notice.template_key === 'shopping.none')).toBe(true);
+  });
+
+  it('does not create a shopping visit when HWP cell order puts no-shopping before the heading', async () => {
+    const raw = [
+      '상품명: 장가계 천문산 골프 노쇼핑 3박4일',
+      '가격 899,000원 / 최소출발 4명',
+      '노쇼핑!!',
+      '쇼핑센터',
+      '강력추천옵션: 발마사지 $30/인',
+      'DAY 1 BX371 부산 출발 09:00 장가계 도착 12:00',
+      'DAY 2 천문산 골프 18홀 HOTEL: 천문산 호텔 또는 동급',
+      'DAY 4 BX372 장가계 출발 13:00 부산 도착 16:00',
+      '포함 왕복항공, 호텔, 조식',
+      '불포함 가이드경비 $40, 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.shopping).toEqual([]);
+    expect(variant.standard_notices.some(notice => notice.template_key === 'shopping.none')).toBe(true);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('keeps an inline HWP shopping heading and its visit list as customer disclosure', async () => {
+    const raw = [
+      '상품명: 장가계 세이브 3박4일',
+      '가격 899,000원 / 최소출발 4명',
+      '쇼 핑 센 터\t라텍스, 한약방, 게르마늄 중 3회',
+      'DAY 1 BX371 부산 출발 09:00 장가계 도착 12:00',
+      'DAY 2 천문산 관광 HOTEL: 블루베이 또는 동급',
+      'DAY 4 BX372 장가계 출발 13:00 부산 도착 16:00',
+      '포함 왕복항공, 호텔, 조식',
+      '불포함 가이드경비 $40, 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(result.structure_plan.shopping_section_locations).toHaveLength(1);
+    expect(variant.shopping).toEqual([
+      expect.objectContaining({ value: expect.stringContaining('라텍스') }),
+    ]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_reflected'))?.status).toBe('pass');
+  });
+
+  it('keeps a souvenir market attraction distinct from a contracted shopping-center visit', async () => {
+    const raw = [
+      '상품명: 계림 노쇼핑 노옵션 4박6일',
+      '가격 899,000원 / 최소출발 4명',
+      '노쇼핑',
+      'DAY 1 LJ161 부산 출발 20:00 계림 도착 23:00',
+      'DAY 2 소수민족들이 만든 생활용품이나 기념품 등을 파는 서가재래시장 관광',
+      'DAY 6 LJ162 계림 출발 01:00 부산 도착 06:00',
+      '포함 왕복항공, 호텔, 식사',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(variant.shopping).toEqual([]);
+    expect(variant.standard_notices.some(notice => notice.template_key === 'shopping.none')).toBe(true);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('keeps named market and shopping-mall sightseeing in the itinerary of a no-shopping product', async () => {
+    const raw = [
+      '상품명: 시즈오카 반나절 자유 노쇼핑 2박3일',
+      '가격 799,000원 / 최소출발 4명',
+      '◆반나절자유/노쇼핑◆',
+      'DAY 1 BX164 부산 출발 10:00 시즈오카 도착 12:00',
+      '▶수산물 특화 종합시장 아이즈 사카나 센터 관광',
+      'DAY 2 ▶시미즈항 복합 쇼핑몰 에스펄 드림 프라자 관광',
+      'DAY 3 BX165 시즈오카 출발 15:00 부산 도착 17:00',
+      '포함 왕복항공, 호텔, 식사',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+    const eventTypes = variant.days.flatMap(day => day.events.map(event => event.type));
+
+    expect(variant.shopping).toEqual([]);
+    expect(eventTypes).toContain('activity');
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('treats a named local mart visit as leisure retail, not a contracted shopping stop', async () => {
+    const raw = [
+      '상품명: 푸꾸옥 5성 노쇼핑 프리팩 3박5일',
+      '가격 899,000원 / 최소출발 4명',
+      'DAY 1 VJ975 부산 출발 18:00 푸꾸옥 도착 22:00',
+      'DAY 2 ▶ 푸꾸옥의 대형쇼핑몰 킹콩마트 방문',
+      'DAY 5 VJ974 푸꾸옥 출발 23:00 부산 도착 06:00',
+      '포함 왕복항공, 호텔, 식사',
+      '불포함 개인경비',
+      '노쇼핑',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+    const retailEvent = variant.days.flatMap(day => day.events)
+      .find(event => event.raw_text.includes('킹콩마트'));
+
+    expect(variant.shopping).toEqual([]);
+    expect(retailEvent?.type).toBe('activity');
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
+  });
+
   it('allows unpriced join/application optional-tour notices without blocking publish', async () => {
     const raw = [
       '상품명: 선택관광 고지 회귀',
@@ -2332,5 +2583,145 @@ DAY 3 KE124 출발 13:00 도착 15:00
       { code: 'BX134', dep_airport: 'PUS', arr_airport: 'MYJ', dep_time: '16:30', arr_time: '17:35' },
       { code: 'BX133', dep_airport: 'MYJ', arr_airport: 'PUS', dep_time: '18:30', arr_time: '20:00' },
     ]);
+  });
+
+  it('preserves every departure date when equal prices are grouped into one IR tier', async () => {
+    const result = await runProductRegistrationV3([
+      '\uC0C1\uD488: \uBD80\uC0B0 \uACC4\uB9BC 3\uBC155\uC77C PKG',
+      '\uCD9C\uBC1C\uC77C / \uC0C1\uD488\uAC00',
+      '999,000',
+      '4/7',
+      '1,069,000',
+      '4/14, 21',
+      'DAY 1 LJ779 \uBD80\uC0B0 \uCD9C\uBC1C 22:05 \uACC4\uB9BC \uB3C4\uCC29 01:05',
+      'DAY 2 \uACC4\uB9BC \uAD00\uAD11 HOTEL : \uACC4\uB9BC\uD638\uD154',
+      'DAY 3 \uC591\uC0AD \uAD00\uAD11 HOTEL : \uC591\uC0AD\uD638\uD154',
+      'DAY 4 \uC790\uC720\uC77C\uC815 HOTEL : \uACC4\uB9BC\uD638\uD154',
+      'DAY 5 LJ780 \uACC4\uB9BC \uCD9C\uBC1C 02:05 \uBD80\uC0B0 \uB3C4\uCC29 06:40',
+      '\uD3EC\uD568 \uD56D\uACF5\uB8CC \uD638\uD154 \uC2DD\uC0AC',
+      '\uBD88\uD3EC\uD568 \uC2F1\uAE00\uCC28\uC9C0 \uAC1C\uC778\uACBD\uBE44',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.price_calendar.map(item => item.date)).toEqual([
+      '2026-04-07',
+      '2026-04-14',
+      '2026-04-21',
+    ]);
+    expect(result.ledger.variants[0]?.price_calendar.every(item => (
+      item.evidence.quote.includes(item.amount.toLocaleString('en-US'))
+    ))).toBe(true);
+  });
+
+  it('binds Korean dot-thousands price rows to the amount line instead of a heading', async () => {
+    const result = await runProductRegistrationV3([
+      '\uC0C1\uD488: [BX] \uC138\uBD80 3\uBC155\uC77C',
+      '\u2665 SPECIAL PRICE \u2665',
+      '8\uC6D4 24\uC77C, 29\uC77C : 399.000\uC6D0',
+      '9\uC6D4 14\uC77C, 20\uC77C, 29\uC77C : 299.000\uC6D0',
+      'DAY 1 BX711 \uBD80\uC0B0 \uCD9C\uBC1C 21:00 \uC138\uBD80 \uB3C4\uCC29 00:30',
+      'DAY 2 \uC138\uBD80 \uAD00\uAD11 HOTEL : \uC608\uC57D\uD638\uD154',
+      'DAY 3 \uC138\uBD80 \uAD00\uAD11 HOTEL : \uC608\uC57D\uD638\uD154',
+      'DAY 4 \uC790\uC720\uC77C\uC815 HOTEL : \uC608\uC57D\uD638\uD154',
+      'DAY 5 BX712 \uC138\uBD80 \uCD9C\uBC1C 01:30 \uBD80\uC0B0 \uB3C4\uCC29 07:00',
+      '\uD3EC\uD568 \uD56D\uACF5\uB8CC \uD638\uD154 \uC2DD\uC0AC',
+      '\uBD88\uD3EC\uD568 \uC2F1\uAE00\uCC28\uC9C0 \uAC1C\uC778\uACBD\uBE44',
+    ].join('\n'));
+
+    const prices = result.ledger.variants[0]?.price_calendar ?? [];
+    expect(prices).toHaveLength(5);
+    expect(prices.every(item => item.evidence.quote.includes(item.amount === 399000 ? '399.000' : '299.000'))).toBe(true);
+  });
+
+  it('does not promote a guide fee or single supplement into the base selling-price calendar', async () => {
+    const result = await runProductRegistrationV3([
+      '상품: 북큐슈 온천패키지 3일',
+      '포함 항공료 호텔 차량 식사',
+      '불포함 기사/가이드 경비 1인 30,000원(성인/아동), 싱글차지, 개인경비',
+      '제1일 7C1401 인천 출발 06:30 후쿠오카 도착 08:00',
+      '제2일 유후인 관광 HOTEL: 온천호텔 또는 동급',
+      '제3일 7C1404 후쿠오카 출발 12:00 인천 도착 13:30',
+    ].join('\n'), { year: 2026 });
+
+    expect(result.ledger.variants[0]?.price_calendar).toEqual([]);
+  });
+
+  it('never reads 포함 inside 불포함 as a guide-tip inclusion', async () => {
+    const result = await runProductRegistrationV3([
+      '발리 솔리아 3박5일 PKG',
+      '출발일 8/30 상품가 879,000원',
+      '* 불포함 : 기사&기사팁[3박-$30/4박-$40], 발리 도착비자($35/1인)',
+      '제1일 BX601 부산 출발 17:00 발리 도착 22:55',
+      '제2일 발리 관광 HOTEL: 솔리아 또는 동급',
+      '제5일 BX602 발리 출발 00:05 부산 도착 08:00',
+      '포함 왕복항공료 호텔 차량 식사',
+    ].join('\n'), { year: 2026 });
+
+    const notices = result.ledger.variants[0]?.standard_notices ?? [];
+    expect(notices.some(notice => notice.template_key === 'guide.tip_included')).toBe(false);
+    expect(notices.some(notice => notice.template_key === 'guide.tip_amount_local_payment')).toBe(true);
+  });
+
+  it('keeps a guide fee under a bare 불포함 table heading out of the selling price and inclusions', async () => {
+    const result = await runProductRegistrationV3([
+      '싱가포르 3박5일 패키지',
+      '출발일 9/1 상품가 899,000원',
+      '포함',
+      '항공료, 호텔, 식사, 차량, 현지 가이드',
+      '불포함',
+      '가이드 경비 $40/1인(아동 동일), 개인경비, 3일차 차량/가이드/중,석식',
+      'DAY 1 7C4055 부산 출발 18:00 싱가포르 도착 23:30',
+      'DAY 2 싱가포르 관광 HOTEL: 4성급 또는 동급',
+      'DAY 5 7C4056 싱가포르 출발 00:30 부산 도착 08:00',
+    ].join('\n'), { year: 2026 });
+
+    const variant = result.ledger.variants[0];
+    const notices = variant.standard_notices ?? [];
+
+    expect(notices.some(notice => notice.template_key === 'guide.tip_included')).toBe(false);
+    expect(notices.some(notice => notice.template_key === 'guide.tip_amount_local_payment')).toBe(true);
+    expect(variant.price_calendar.some(price => price.amount === 40)).toBe(false);
+  });
+
+  it('recognizes a reversed HWP exclusion row where the guide fee precedes its 불포함 label', async () => {
+    const result = await runProductRegistrationV3([
+      '하노이 3박5일 실속',
+      '출발일 9/1 상품가 899,000원',
+      '포    함',
+      '왕복 항공료, 호텔, 차량, 전일정 식사, 현지 가이드',
+      '▶ 기사&가이드 팁 1인 $50 – 성인, 소인 동일',
+      '불 포 함',
+      '선택관광 및 개인 비용',
+      'DAY 1 VN427 부산 출발 10:00 하노이 도착 13:00',
+      'DAY 2 하롱베이 관광 HOTEL: 4성급 또는 동급',
+      'DAY 5 VN426 하노이 출발 01:00 부산 도착 07:00',
+    ].join('\n'), { year: 2026 });
+
+    const notices = result.ledger.variants[0]?.standard_notices ?? [];
+    expect(notices.some(notice => notice.template_key === 'guide.tip_included')).toBe(false);
+    expect(notices.some(notice => (
+      notice.template_key === 'guide.tip_amount_local_payment'
+      && notice.values.amount === 50
+    ))).toBe(true);
+  });
+
+  it('normalizes a backslash-prefixed Korean guide fee in a reversed HWP exclusion row', async () => {
+    const result = await runProductRegistrationV3([
+      '대마도 관광 1박2일',
+      '출발일 9/1 상품가 399,000원',
+      '포함 사항',
+      '왕복 훼리비, 전용버스, 관광지입장료, 가이드',
+      '▶ 가이드&기사 경비 \\20,000',
+      '불포함사항',
+      '개인경비, 현지식사',
+      'DAY 1 부산항 출발 대마도 도착 관광 HOTEL: 소아루리조트',
+      'DAY 2 대마도 출발 부산항 도착',
+    ].join('\n'), { year: 2026 });
+
+    const notices = result.ledger.variants[0]?.standard_notices ?? [];
+    const localPayment = notices.find(notice => notice.template_key === 'guide.tip_amount_local_payment');
+
+    expect(notices.some(notice => notice.template_key === 'guide.tip_included')).toBe(false);
+    expect(localPayment?.values).toMatchObject({ amount: 20_000, currency: '원' });
+    expect(localPayment?.standard_text).toContain('2만 원');
   });
 });

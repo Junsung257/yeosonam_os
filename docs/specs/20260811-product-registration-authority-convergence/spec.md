@@ -6,7 +6,7 @@
 
 ## Success Criteria
 
-- [ ] 신규 입력은 `published_verified`, `published_degraded`, `blocked_action_required` 중 하나로 자동 종결된다.
+- [ ] 신규 입력은 `published_verified`, `published_degraded`, `discarded_source_incomplete`, `blocked_action_required` 중 하나로 자동 종결된다.
 - [ ] 권위 writer 이외의 상품 사실·snapshot 직접 DML은 정적 검사와 DB 권한으로 차단된다.
 - [ ] canonical revision이 호환 projection보다 먼저 원자적으로 저장된다.
 - [ ] 모든 고객 채널은 동일 publication pointer의 immutable snapshot을 읽는다.

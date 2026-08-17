@@ -7,7 +7,7 @@
  * Strategy:
  *   1. 결정적 분할 우선 (&, +, /, 콤마)
  *   2. 각 component 정제 (▶ 접두사 / 괄호 안 부가설명 분리 / 동사 분리)
- *   3. LLM mini (Gemini Flash, 200 토큰) — 결정적이 못 처리한 복잡 케이스만
+ *   3. LLM mini (DeepSeek, 200 토큰) — 결정적이 못 처리한 복잡 케이스만
  */
 
 import { llmCall } from '@/lib/llm-gateway';
@@ -67,7 +67,7 @@ export function normalizeActivityDeterministic(raw: string): NormalizedActivity 
 
 /**
  * LLM-aware 정규화 — 결정적이 component 1개로 끝났는데 원문이 길 때 (>30자) 호출.
- * Gemini Flash 200 토큰. 실패 시 결정적 결과 그대로.
+ * DeepSeek 200 토큰. 실패 시 결정적 결과 그대로.
  */
 export async function normalizeActivitySmart(raw: string): Promise<NormalizedActivity> {
   const det = normalizeActivityDeterministic(raw);
@@ -95,6 +95,10 @@ JSON 형식:
 JSON 만 반환.`,
       maxTokens: 300,
       temperature: 0.1,
+      maxRetries: 1,
+      autoEscalate: false,
+      pinnedProvider: 'deepseek',
+      pinnedModel: process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro',
     });
     if (r.success && r.rawText) {
       const cleaned = r.rawText.trim().replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();

@@ -74,9 +74,30 @@ const ARCHITECTURE_CONTRACTS = [
   {
     file: 'src/lib/package-publication/repository.ts',
     required: [
-      ['kernel legacy-writer runtime blocker', /productRegistrationLegacyWriterBlocker\(\)/],
+      ['retired mutable publication writer', /LEGACY_PUBLICATION_WRITER_RETIRED_USE_REGISTRATION_KERNEL/],
     ],
-    forbidden: [],
+    forbidden: [
+      ['retired mutable publication RPC', /\.rpc\(\s*['"]publish_package_snapshot_atomic['"]/],
+    ],
+  },
+  {
+    file: 'src/lib/product-registration-v4/publication.ts',
+    required: [
+      ['retired V5 publication writer', /V5_PUBLICATION_WRITER_RETIRED_USE_REGISTRATION_KERNEL/],
+    ],
+    forbidden: [
+      ['retired V5 publication RPC', /\.rpc\(\s*['"]publish_product_registration_v5_snapshot_atomic['"]/],
+    ],
+  },
+  {
+    file: 'src/app/api/register-via-ir/route.ts',
+    required: [
+      ['IR adapter starts Registration Kernel workflow', /startProductRegistrationTextWorkflow/],
+      ['IR dry run is non-persistent', /persisted:\s*false/],
+    ],
+    forbidden: [
+      ['IR adapter direct package mutation', /\.from\(\s*['"]travel_packages['"]\s*\)[\s\S]{0,900}\.\s*(?:insert|upsert|update|delete)\s*\(/],
+    ],
   },
   {
     file: 'src/lib/product-registration/upload-to-open-autopilot.ts',

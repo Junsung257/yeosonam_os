@@ -4,14 +4,22 @@
  * 골프·리조트 카탈로그의 "기간 헤더 → 요일 라벨 → 가격" grid 패턴.
  */
 
+import { parseSourceWonAmount } from './price-ir/source-money.ts';
+
 export interface MatrixPriceRow {
   date: string;
+  /** Source-declared weekday (0=Sunday ... 6=Saturday), when present. */
+  weekday?: number | null;
   adult_price: number;
   child_price?: number | null;
+  list_price?: number | null;
+  min_travelers?: number | null;
+  max_travelers?: number | null;
+  price_relation?: 'final_sale' | 'standard_sale' | null;
   note?: string | null;
   status?: string | null;
   option_label?: string | null;
-  option_type?: 'hotel' | null;
+  option_type?: 'hotel' | 'duration' | null;
 }
 
 export interface MatrixPriceExtractOptions {
@@ -29,8 +37,7 @@ const PERIOD_RE = /(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(\d{1,2})[./](\d{1,2})
 /** 단일일 또는 쉼표 구분 개별일 — e.g. "6/3", "10/3,10/9" */
 const SINGLE_DATE_RE = /^(\d{1,2})[./](\d{1,2})(?:,\s*(\d{1,2})[./](\d{1,2}))*$/;
 const DOW_LINE_RE = /^([일월화수목금토](?:[~\-][일월화수목금토])?|[일월화수목금토]{2,7}|매일)\s*$/;
-const PRICE_RE = /^([\d,]{3,10})(?:\s*[,\-]|\s*원)?\s*$/;
-const SPOT_LINE_RE = /^(\d{1,2})[./](\d{1,2})\s+([\d,]{3,10})/;
+const SPOT_LINE_RE = /^(\d{1,2})[./](\d{1,2})\s+(.+)$/;
 const EXCLUDE_HINT_RE = /제외|except|exclude/i;
 
 function compactLabel(label: string): string {
@@ -43,16 +50,21 @@ function isDowLine(line: string): boolean {
 
 function parseDowPriceLine(line: string): { dowLabel: string; price: number } | null {
   const compact = compactLabel(line);
-  const m = compact.match(/^([일월화수목금토]{1,7}|매일)([\d,]{3,10})(?:원)?$/);
+  const m = compact.match(/^([일월화수목금토]{1,7}|매일)(.+)$/);
   if (!m) return null;
   const price = parsePrice(m[2]);
   return price > 0 ? { dowLabel: m[1], price } : null;
 }
 
 function parsePrice(tok: string): number {
-  const n = parseInt(tok.replace(/[, ]/g, ''), 10);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return n < 10000 ? n * 1000 : n;
+  return parseSourceWonAmount(tok, {
+    allowBareSaleShorthand: true,
+    minAmount: 100_000,
+  })?.amount ?? 0;
+}
+
+function isPriceLine(line: string): boolean {
+  return parsePrice(line) > 0;
 }
 
 function expandDow(label: string): number[] {
@@ -205,7 +217,7 @@ function findHorizontalHotelHeader(lines: string[]): { headerStart: number; labe
     .slice(departureIdx + 1, periodIndex)
     .filter(line => compactLabel(line) !== '요일')
     .filter(line => !isDowLine(line))
-    .filter(line => !PRICE_RE.test(line));
+    .filter(line => !isPriceLine(line));
 
   return labels.length >= 2 ? { headerStart: departureIdx, labels, periodIndex } : null;
 }
@@ -248,9 +260,9 @@ function extractHorizontalHotelMatrix(
     const prices: number[] = dowPrice ? [dowPrice.price] : [];
     let j = i + 1;
     while (j < lines.length && prices.length < header.labels.length) {
-      const priceM = lines[j].match(PRICE_RE);
-      if (!priceM) break;
-      prices.push(parsePrice(priceM[1]));
+      const price = parsePrice(lines[j]);
+      if (price <= 0) break;
+      prices.push(price);
       j++;
     }
     if (prices.length < header.labels.length) continue;
@@ -390,9 +402,8 @@ export function extractPriceMatrix(rawText: string, todayYear?: number, options:
       continue;
     }
 
-    const priceM = line.match(PRICE_RE);
-    if (priceM && pendingDow.length > 0) {
-      const price = parsePrice(priceM[1]);
+    const price = parsePrice(line);
+    if (price > 0 && pendingDow.length > 0) {
       if (price > 0) {
         const note = pendingDow.length === 7 ? '매일' : DOW_NAMES.filter((_, idx) => pendingDow.includes(idx)).join('');
         for (const p of periods) {

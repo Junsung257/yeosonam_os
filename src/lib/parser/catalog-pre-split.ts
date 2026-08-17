@@ -1,3 +1,10 @@
+import { createHash } from 'node:crypto';
+import { llmCall } from '@/lib/llm-gateway';
+import { getSecret } from '@/lib/secret-registry';
+
+const PRODUCT_REGISTRATION_DEEPSEEK_MODEL =
+  process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro';
+
 const VARIANT_LABEL_RE =
   /^(?:\uC138\uC774\uBE0C(?:\s*\uC2E4\uC18D)?|\uC2E4\uC18D|\uC2A4\uD0E0\uB2E4\uB4DC|\uD488\uACA9(?:\s*\uB178\uB178)?|\uD504\uB9AC\uBBF8\uC5C4(?:\s*\uB178\uB178\uB178|\uB178\uB178\uB178)?|\uD06C\uB77C\uC6B4(?:\s*\uB178\uB178\uB178\+?)?)\s*$/;
 const VARIANT_COMPACT_LABEL_RE =
@@ -15,6 +22,18 @@ const DURATION_SURCHARGE_NOTICE_RE =
 
 function hasReadableDurationSignal(line: string): boolean {
   return READABLE_DURATION_RE.test(line) || KOREAN_DURATION_TITLE_RE.test(line);
+}
+
+function hasStrictDayOnlyProductDuration(line: string, immediateContext: string): boolean {
+  if (hasReadableDurationSignal(line)) return false;
+  if (/\d{1,2}\s*일\s*(?:까지|이내|이상|이하|전|후|간|동안|기준)/u.test(line)) return false;
+  if (/(?:입국|체류|여권|취소|패널티|여행\s*기간|행사\s*기간)/u.test(line)) return false;
+  const values = [...line.normalize('NFKC').matchAll(/(?:^|[^\p{L}\d])(\d{1,2})\s*일(?:$|[^\p{L}\d])/gu)]
+    .map(match => Number(match[1]))
+    .filter(value => value >= 2 && value <= 21);
+  if (values.length !== 1) return false;
+  if (!/골프/u.test(line)) return false;
+  return /(?:출\s*발\s*일|행\s*사\s*날\s*짜|여\s*행\s*경\s*비|상\s*품\s*가|판\s*매\s*가|인\s*원)/u.test(immediateContext);
 }
 
 function hasReadableTitleText(line: string): boolean {
@@ -233,7 +252,42 @@ export function collectItineraryHeaderStarts(raw: string): number[] {
   run(HEADER_NOBAK_RE);
   collectReadableDurationHeaderStarts(text).forEach(start => starts.add(start));
 
-  const sorted = [...starts].sort((a, b) => a - b);
+  const sorted = [...starts]
+    .filter(start => {
+      const lineStart = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      const lineEnd = text.indexOf('\n', start);
+      const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd).trim();
+      const semanticLine = line.replace(/^[★☆◆◇■□●○▶▷▪·\s]+|[★☆◆◇■□●○▶▷▪·\s]+$/gu, '').trim();
+      // "일정표 상의 식사" is an inclusion, not a new product boundary.
+      // Splitting at that phrase disconnects the price table from its itinerary.
+      if (/(?:일정표\s*상의|일정\s*상의|일정표에\s*(?:포함|기재))/u.test(line)) return false;
+      if (/^\s*(?:[월화수목금토일](?:요일)?\s*)?출발\s*\d+\s*박\s*\d+\s*일\s*$/u.test(semanticLine)) return false;
+      if (/^\s*\d+\s*박\s*\d+\s*일\s*\(?(?:[월화수목금토일](?:요일)?\s*)?출발\)?\s*$/u.test(semanticLine)) return false;
+      // A price-table operating pattern is not a product title. Example:
+      // `월/수요일 - 4박6일` beside a duration-specific price roster.
+      if (/^(?:[월화수목금토일](?:요일)?)(?:\s*[/,&·]\s*[월화수목금토일](?:요일)?)*\s*[-–—:]?\s*\d+\s*박\s*\d+\s*일\s*$/u.test(semanticLine)) return false;
+      // An itinerary continuation for the longer duration remains inside the
+      // same product; it is not another catalog card.
+      if (/\d+\s*박\s*\d+\s*일\s*일정\s*시/u.test(semanticLine)) return false;
+      return true;
+    })
+    .map(start => {
+      const currentLineStart = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      if (currentLineStart <= 0) return start;
+      const previousLineEnd = currentLineStart - 1;
+      const previousLineStart = text.lastIndexOf('\n', Math.max(0, previousLineEnd - 1)) + 1;
+      const previousLine = text.slice(previousLineStart, previousLineEnd).trim();
+      const isOrdinalVariantLabel = /^[\u2460-\u2473\u2776-\u277F]\s*[^\n\d,]{2,28}$/u.test(previousLine);
+      const normalizedPreviousLine = previousLine
+        .normalize('NFKC')
+        .replace(/^[★☆◆◇■□●○▶▷▪·♥♡♕✿\s]+|[★☆◆◇■□●○▶▷▪·♥♡♕✿\s]+$/gu, '')
+        .trim();
+      const isDecoratedVariantLabel = /^(?:실속|高?품격|고품격|럭셔리|LUXURY|PREMIUM|CROWN)$/iu.test(normalizedPreviousLine);
+      return isOrdinalVariantLabel || isDecoratedVariantLabel
+        ? previousLineStart + text.slice(previousLineStart, previousLineEnd).search(/\S/u)
+        : start;
+    })
+    .sort((a, b) => a - b);
   if (sorted.length <= 1) return sorted;
 
   // MIN_GAP 8 — 두 헤더 패턴이 같은 줄에서 중복 매칭되는 경우만 dedupe.
@@ -242,9 +296,87 @@ export function collectItineraryHeaderStarts(raw: string): number[] {
   const deduped: number[] = [sorted[0]];
   const MIN_GAP = 8;
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] - deduped[deduped.length - 1] >= MIN_GAP) deduped.push(sorted[i]);
+    const previous = deduped[deduped.length - 1]!;
+    const current = sorted[i]!;
+    const previousPhysicalLineStart = text.lastIndexOf('\n', Math.max(0, previous - 1)) + 1;
+    const currentPhysicalLineStart = text.lastIndexOf('\n', Math.max(0, current - 1)) + 1;
+    // Different header detectors can match different substrings of the same
+    // physical title. One source line can establish only one boundary.
+    if (previousPhysicalLineStart === currentPhysicalLineStart) continue;
+    const currentLineEnd = text.indexOf('\n', current);
+    const currentLine = text.slice(current, currentLineEnd < 0 ? text.length : currentLineEnd).trim();
+    const previousLineEnd = text.indexOf('\n', previous);
+    const previousLine = text.slice(previous, previousLineEnd < 0 ? text.length : previousLineEnd).trim();
+    // `[BX] ... 3박5일 PKG` followed by a standalone `일정표` is one HWP
+    // table heading. Two regexes intentionally see both lines, but the latter
+    // must not become a second boundary or the customer title is pushed into
+    // the shared prefix and attached to the following product.
+    const standaloneItineraryContinuation = current - previous <= 100
+      && /^일정\s*표$/u.test(currentLine)
+      && /\d{1,2}\s*박\s*\d{1,2}\s*일/u.test(previousLine);
+    if (!standaloneItineraryContinuation && current - previous >= MIN_GAP) deduped.push(current);
   }
   return deduped;
+}
+
+export type CatalogSegmentationProfileHints = {
+  /**
+   * Literal supplier-specific header tokens. They may suggest a boundary only
+   * when the same line also has a duration and the following block proves a
+   * real itinerary or departure-price body. They never inject product facts.
+   */
+  productHeaderTokens?: string[];
+};
+
+function collectProfileHeaderStarts(raw: string, hints?: CatalogSegmentationProfileHints): number[] {
+  const tokens = [...new Set((hints?.productHeaderTokens ?? [])
+    .map(value => value.normalize('NFKC').trim().toLocaleLowerCase('ko-KR'))
+    .filter(value => value.length >= 2 && value.length <= 80))]
+    .slice(0, 20);
+  if (tokens.length === 0) return [];
+  const text = raw.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+  const starts: number[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!.trim();
+    const normalizedLine = line.normalize('NFKC').toLocaleLowerCase('ko-KR');
+    if (!tokens.some(token => normalizedLine.includes(token))) continue;
+    if (!/\d{1,2}\s*박\s*\d{1,2}\s*일/u.test(line)) continue;
+    if (MONEY_RE.test(line)) continue;
+    const context = lines.slice(index + 1, Math.min(lines.length, index + 80)).join('\n');
+    const nearContext = lines.slice(index + 1, Math.min(lines.length, index + 45)).join('\n');
+    const hasItinerary = /(?:^|\n)\s*(?:제\s*)?1\s*(?:일|일차)\b/mu.test(context)
+      || /(?:^|\n)\s*DAY\s*1\b/imu.test(context);
+    const hasDeparturePrice = /(?:출\s*발\s*일|출발일자|적용\s*일자)/u.test(nearContext)
+      && /(?:판\s*매\s*가|상\s*품\s*가|요\s*금)/u.test(nearContext)
+      && MONEY_RE.test(nearContext);
+    if (!hasItinerary && !hasDeparturePrice) continue;
+    starts.push(offsets[index]! + lines[index]!.search(/\S/u));
+  }
+  return starts;
+}
+
+export function shouldTryEvidenceAiCatalogSplit(raw: string): boolean {
+  if (raw.length < 2_000) return false;
+  const lines = raw.replace(/\r\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
+  const repeatedEnvelopeHeading = [
+    /^(?:상품\s*명|여행\s*기간|출발\s*인원|여행\s*경비)$/u,
+    /^(?:포\s*함|포함\s*사항)$/u,
+    /^(?:불\s*포함|불포함\s*사항)$/u,
+  ].some(pattern => lines.filter(line => pattern.test(line)).length >= 2);
+  const plausibleDurationTitles = lines.filter((line, index) => {
+    if (line.length > 160 || MONEY_RE.test(line) || DURATION_SURCHARGE_NOTICE_RE.test(line)) return false;
+    if (!hasReadableDurationSignal(line) || !hasReadableTitleText(line)) return false;
+    const next = lines.slice(index + 1, index + 35).join('\n');
+    return /(?:출\s*발\s*일|상\s*품\s*가|여행\s*경비|(?:제\s*)?1\s*(?:일|일차)|DAY\s*1)/iu.test(next);
+  }).length;
+  return repeatedEnvelopeHeading || plausibleDurationTitles >= 2;
 }
 
 function collectReadableDurationHeaderStarts(raw: string): number[] {
@@ -260,19 +392,35 @@ function collectReadableDurationHeaderStarts(raw: string): number[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line || line.length > 140) continue;
-    if (!hasReadableDurationSignal(line)) continue;
+    const immediateContext = lines.slice(i + 1, Math.min(lines.length, i + 12)).join('\n');
+    if (!hasReadableDurationSignal(line) && !hasStrictDayOnlyProductDuration(line, immediateContext)) continue;
     if (!hasReadableTitleText(line)) continue;
     if (MONEY_RE.test(line)) continue;
     if (DURATION_SURCHARGE_NOTICE_RE.test(line)) continue;
-    if (/^(?:출발|출발일|출발날짜|상품가|요금|요금표|행사일자|패턴|비고)\b/u.test(line)) continue;
+    if (/(?:\d+\s*박\s*\d+\s*일|\d+\s*일)\s*(?:일\s*)?경우/u.test(line)) continue;
+    if (/^(?:출발|출발일|출발날짜|상품가|요금|요금표|행사일자|패턴|비고)(?:\s|$)/u.test(line)) continue;
+    if (/(?:출발\s*기준|적용\s*기간|여행\s*기간|행사\s*기간)/u.test(line)) continue;
+    if (/^\s*20\d{2}\s*년[^\n]*출발[^\n]*\d+\s*박\s*\d+\s*일/u.test(line)) continue;
+    // A dated duration axis below an already explicit product title is an
+    // applicability row, not a second product. Example: `26년 4/14 (화)
+    // 3박5일`. It contains no destination/hotel/grade discriminator.
+    if (/^(?:20)?\d{2}\s*년?\s*\d{1,2}\s*[./-]\s*\d{1,2}\s*(?:\([월화수목금토일](?:요일)?\))?\s*\d{1,2}\s*박\s*\d{1,2}\s*일\s*$/u.test(line)) continue;
     if (/(?:\uC5F0\uD569\uD589\uC0AC|\uC635\uC158\uC548\uB0B4|\uD328\uB110\uD2F0|\uD604\uC9C0\uC5D0\uC11C|\uD300\uACFC)/u.test(line)) continue;
+    if (/패\s*턴/u.test(immediateContext)
+      && /날\s*짜/u.test(immediateContext)
+      && /\d{1,3}(?:,\d{3})+/u.test(immediateContext)) continue;
 
     const context = lines.slice(i + 1, Math.min(lines.length, i + 80)).join('\n');
-    const hasItineraryEvidence = /\b[A-Z]{2}\d{2,4}\b/.test(context)
+    const hasItineraryEvidence = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{2,4}\b/.test(context)
       || /^\s*(?:제\s*)?1\s*(?:일|일차)\b/mu.test(context)
       || /^\s*DAY\s*1\b/im.test(context)
       || /^\s*1\s+\d{1,2}:\d{2}\b/m.test(context);
     if (!hasItineraryEvidence) continue;
+    const nearContext = lines.slice(i + 1, Math.min(lines.length, i + 45)).join('\n');
+    const hasProductBody = /(?:포\s*함\s*(?:사항|내역)|불\s*포\s*함|출\s*발\s*일|상\s*품\s*가)/u.test(nearContext)
+      || /^\s*(?:제\s*)?1\s*(?:일|일차)\b/mu.test(nearContext)
+      || /^\s*DAY\s*1\b/im.test(nearContext);
+    if (!hasProductBody) continue;
     starts.push(offsets[i] + lines[i].indexOf(line));
   }
 
@@ -367,6 +515,7 @@ export function collectPkgBlockStarts(raw: string): number[] {
 
   const looksLikeDurationTitle = (value: string) =>
     /\d+\s*박\s*\d+\s*일/.test(value) ||
+    /<[^>\n]*\d+\s*박[^>\n]*>[^\n]{0,100}\bPKG\b/i.test(value) ||
     // OCR/encoding-damaged supplier raws often preserve only the night marker as mojibake.
     /\d+\s*諛/.test(value);
 
@@ -416,9 +565,22 @@ export function collectPkgBlockStarts(raw: string): number[] {
       deduped.push(start);
     }
   }
+  const startsWithDecoratedLabels = deduped.map(start => {
+    const currentLineStart = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    if (currentLineStart <= 0) return start;
+    const previousLineEnd = currentLineStart - 1;
+    const previousLineStart = text.lastIndexOf('\n', Math.max(0, previousLineEnd - 1)) + 1;
+    const previousLine = text.slice(previousLineStart, previousLineEnd)
+      .normalize('NFKC')
+      .replace(/^[★☆◆◇■□●○▶▷▪·♥♡♕✿\s]+|[★☆◆◇■□●○▶▷▪·♥♡♕✿\s]+$/gu, '')
+      .trim();
+    return /^(?:실속|高?품격|고품격|럭셔리|LUXURY|PREMIUM|CROWN)$/iu.test(previousLine)
+      ? previousLineStart + text.slice(previousLineStart, previousLineEnd).search(/\S/u)
+      : start;
+  });
   const byRepeatedTitle: number[] = [];
   const seenSignatures = new Map<string, number>();
-  for (const start of deduped) {
+  for (const start of startsWithDecoratedLabels) {
     const signature = pkgStartSignature(text, start);
     const previous = signature ? seenSignatures.get(signature) : undefined;
     if (previous != null && start - previous < 2_000) continue;
@@ -531,22 +693,159 @@ export function stripSharedCatalogPrefixForProductDetail(rawText: string | null 
   return hasItineraryEvidence || hasProductFacts ? detail : text;
 }
 
-export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult {
+export function splitCatalogByItineraryHeaders(
+  raw: string,
+  options: { profileHints?: CatalogSegmentationProfileHints } = {},
+): CatalogSplitResult {
   const text = raw.replace(/\r\n/g, '\n');
   const variantStarts = collectVariantCatalogBlockStarts(text);
   const specialPriceStarts = collectSpecialPriceBlockStarts(text);
   const transportStarts = collectTransportVariantDetailBlockStarts(text);
   const itineraryStarts = collectItineraryHeaderStarts(text);
   const pkgStarts = collectPkgBlockStarts(text);
-  const starts = pkgStarts.length >= 2
-    ? pkgStarts
-    : specialPriceStarts.length >= 2
+  const profileStarts = collectProfileHeaderStarts(text, options.profileHints);
+  const combinedItineraryPkgStarts = [...new Set([...itineraryStarts, ...pkgStarts])]
+    .sort((left, right) => left - right)
+    .filter((start, index, values) => index === 0 || start - values[index - 1]! > 24);
+  // `collectPkgBlockStarts` is intentionally strict, but a supplier can wrap
+  // `품격PKG` onto the next line while keeping `2박3일` on the title line.
+  // In that mixed layout the broader itinerary detector sees every explicit
+  // product heading and the PKG detector sees only the unwrapped subset. Never
+  // let that subset erase otherwise proven product boundaries.
+  const heuristicStarts = variantStarts.length >= 2
+    && variantStarts.length >= itineraryStarts.length
+    && pkgStarts.length < 2
+    ? variantStarts
+    : combinedItineraryPkgStarts.length > Math.max(itineraryStarts.length, pkgStarts.length)
+    ? combinedItineraryPkgStarts
+    : itineraryStarts.length >= 2 && itineraryStarts.length > pkgStarts.length
+      ? itineraryStarts
+      : pkgStarts.length >= 2
+        ? pkgStarts
+      : specialPriceStarts.length >= 2
       ? specialPriceStarts
       : transportStarts.length >= 2 && transportStarts.length > Math.max(variantStarts.length, itineraryStarts.length)
         ? transportStarts
-        : variantStarts.length >= 2
+        : variantStarts.length >= 2 && variantStarts.length >= itineraryStarts.length
           ? variantStarts
           : itineraryStarts;
+  const initiallyDetectedStarts = [...new Set([...heuristicStarts, ...profileStarts])]
+    .sort((left, right) => left - right);
+  const normalizedBoundaryIdentity = (start: number): string => {
+    const end = text.indexOf('\n', start);
+    return text
+      .slice(start, end < 0 ? text.length : end)
+      .normalize('NFKC')
+      .replace(/\b(?:PKG|PACKAGE)\b/giu, '')
+      .replace(/(?:\uD328\uD0A4\uC9C0|\uC77C\uC815\uD45C|\uC694\uAE08\uD45C)/gu, '')
+      .replace(/[^0-9A-Za-z\p{Script=Hangul}]+/gu, '')
+      .toLocaleLowerCase('ko-KR');
+  };
+  const boundaryIdentityTokens = (start: number): string[] => {
+    const end = text.indexOf('\n', start);
+    const line = text.slice(start, end < 0 ? text.length : end).normalize('NFKC').toLocaleLowerCase('ko-KR');
+    const generic = new Set([
+      'pkg', 'package', '\uD328\uD0A4\uC9C0', '\uAD00\uAD11pkg', '\uAD00\uAD11', '\uC0C1\uD488',
+      '\uB9E4\uC77C\uCD9C\uBC1C', '\uCD9C\uBC1C\uD655\uC815', '\uCD9C\uD655', '\uC77C\uC815\uD45C', '\uC694\uAE08\uD45C',
+    ]);
+    return [...new Set(line
+      .replace(/(?:^|\s)['\u2018\u2019]?\d{2,4}\s*\uB144?/gu, ' ')
+      .replace(/\d{1,2}\s*\uC6D4(?:\s*[-~]\s*\d{1,2}\s*\uC6D4)?/gu, ' ')
+      .replace(/\d{1,2}\s*\uBC15\s*\d{1,2}\s*\uC77C/gu, ' ')
+      .split(/[^0-9a-z\p{Script=Hangul}]+/u)
+      .map(value => value.trim())
+      .filter(value => value.length >= 2 && !generic.has(value) && !/^\d+$/u.test(value)))];
+  };
+  const continuationIdentityMatches = (leftStart: number, rightStart: number): boolean => {
+    const leftIdentity = normalizedBoundaryIdentity(leftStart);
+    const rightIdentity = normalizedBoundaryIdentity(rightStart);
+    if (leftIdentity.length >= 6 && leftIdentity === rightIdentity) return true;
+    const leftTokens = boundaryIdentityTokens(leftStart);
+    const rightTokens = boundaryIdentityTokens(rightStart);
+    const shared = leftTokens.filter(value => rightTokens.includes(value));
+    const union = new Set([...leftTokens, ...rightTokens]);
+    const discriminators = ['\uC2E4\uC18D', '\uD488\uACA9', '\uACE0\uD488\uACA9', '\uB77C\uC774\uD2B8', '\uC138\uC774\uBE0C', '\uC2A4\uD0E0\uB2E4\uB4DC', '\uD504\uB9AC\uBBF8\uC5C4'];
+    const leftDiscriminators = discriminators.filter(value => leftIdentity.includes(value));
+    const rightDiscriminators = discriminators.filter(value => rightIdentity.includes(value));
+    if (leftDiscriminators.length > 0 && rightDiscriminators.length > 0
+      && !leftDiscriminators.some(value => rightDiscriminators.includes(value))) return false;
+    return shared.length >= 3 && union.size > 0 && shared.length / union.size >= 0.55;
+  };
+  const hasDaySequenceIn = (segment: string): boolean =>
+    /(?:\uC81C\s*1\s*\uC77C|DAY\s*1|(?:^|\n)\s*1\s*\uC77C\s*\uCC28)/iu.test(segment)
+    && /(?:\uC81C\s*2\s*\uC77C|DAY\s*2|(?:^|\n)\s*2\s*\uC77C\s*\uCC28)/iu.test(segment);
+  const hasDeparturePriceTableIn = (segment: string): boolean => {
+    const explicitTable = /(?:\uCD9C\s*\uBC1C\s*\uC77C|\uCD9C\uBC1C\uC77C\uC790|\uC801\uC6A9\s*\uC77C\uC790)/u.test(segment)
+      && /(?:\uD310\s*\uB9E4\s*\uAC00|\uC0C1\s*\uD488\s*\uAC00|\uC694\s*\uAE08)/u.test(segment);
+    const calendarTable = /20\d{2}\s*\uB144\s*\d{1,2}\s*\uC6D4/u.test(segment)
+      && /\uC77C\s*\n\s*\uC6D4\s*\n\s*\uD654\s*\n\s*\uC218\s*\n\s*\uBAA9\s*\n\s*\uAE08\s*\n\s*\uD1A0/u.test(segment);
+    const amountCount = [...segment.matchAll(/\d{1,3}(?:,\s*\d{3})+\s*(?:\uC6D0)?/gu)].length;
+    const monthRosterCount = [...segment.matchAll(/(?:^|\n)\s*\d{1,2}\s*\uC6D4\s*(?:\n|$)/gu)].length;
+    const datedRosterCount = [...segment.matchAll(/(?:^|\n)\s*\d{1,2}(?:\s*,\s*\d{1,2})*\s*[\uC77C\uC6D4\uD654\uC218\uBAA9\uAE08\uD1A0](?:\s*[-~]\s*[\uC77C\uC6D4\uD654\uC218\uBAA9\uAE08\uD1A0])?\s*(?:\n|$)/gu)].length;
+    const monthRosterTable = monthRosterCount >= 1 && datedRosterCount >= 2 && amountCount >= 3;
+    const rangeCount = [...segment.matchAll(/\d{1,2}\s*\/\s*\d{1,2}\s*\n\s*[-~\u301C\u2013\u2014]\s*\n\s*\d{1,2}\s*\/\s*\d{1,2}/gu)].length;
+    const weekdayCount = [...segment.matchAll(/(?:^|\n)\s*(?:[\uC77C\uC6D4\uD654\uC218\uBAA9\uAE08\uD1A0](?:\s*\/\s*[\uC77C\uC6D4\uD654\uC218\uBAA9\uAE08\uD1A0])*)\s*(?:\n|$)/gu)].length;
+    const rowSpannedWeekdayTable = /\uCD9C\s*\uBC1C\s*\uC77C/u.test(segment)
+      && (rangeCount >= 1 || weekdayCount >= 5)
+      && weekdayCount >= 3
+      && amountCount >= 3;
+    return ((explicitTable || calendarTable) && amountCount >= (calendarTable ? 3 : 1))
+      || monthRosterTable
+      || rowSpannedWeekdayTable;
+  };
+
+  // Some supplier HWP files repeat the same product title: the first card is
+  // the price calendar and the second card is the detailed itinerary. Treating
+  // the repeated heading as a second product separates the price from the DAY
+  // rows. Collapse only this narrow, evidence-backed continuation pattern.
+  const continuationStartsToDrop = new Set<number>();
+  for (let index = 0; index + 1 < initiallyDetectedStarts.length; index += 1) {
+    const current = initiallyDetectedStarts[index]!;
+    const next = initiallyDetectedStarts[index + 1]!;
+    const following = initiallyDetectedStarts[index + 2] ?? text.length;
+    const currentIdentity = normalizedBoundaryIdentity(current);
+    const nextIdentity = normalizedBoundaryIdentity(next);
+    if (currentIdentity.length < 6 || nextIdentity.length < 6 || !continuationIdentityMatches(current, next)) continue;
+    const priceCard = text.slice(current, next);
+    const detailCard = text.slice(next, following);
+    if (!hasDaySequenceIn(priceCard) && hasDeparturePriceTableIn(priceCard) && hasDaySequenceIn(detailCard)) {
+      continuationStartsToDrop.add(next);
+    }
+  }
+  const detectedStarts = initiallyDetectedStarts.filter(start => !continuationStartsToDrop.has(start));
+  const hasProductBody = (start: number, end: number): boolean => {
+      const segment = text.slice(start, end);
+      const hasDaySequence = hasDaySequenceIn(segment);
+      const hasCommercialPair = /\uD3EC\s*\uD568/u.test(segment) && /\uBD88\s*\uD3EC\s*\uD568/u.test(segment);
+      return hasDaySequence || hasCommercialPair;
+  };
+  const boundaryLine = (start: number): string => {
+    const end = text.indexOf('\n', start);
+    return text.slice(start, end < 0 ? text.length : end).normalize('NFKC').replace(/[^0-9A-Za-z\p{Script=Hangul}]+/gu, '').toLocaleLowerCase('ko-KR');
+  };
+  const isDurationRosterContinuation = (start: number, end: number): boolean => {
+    const lineEnd = text.indexOf('\n', start);
+    const line = text.slice(start, lineEnd < 0 ? text.length : lineEnd).normalize('NFKC').trim();
+    const looksLikeRosterAxis = /^(?:[월화수목금토일](?:요일)?)\s+\d{1,2}\s*박\s*\d{1,2}\s*일\s*[-–—:]/u.test(line);
+    if (!looksLikeRosterAxis) return false;
+    const segment = text.slice(start, end);
+    return !hasDaySequenceIn(segment) && !hasDeparturePriceTableIn(segment);
+  };
+  const starts = detectedStarts.length >= 3 && text.length >= 1_500
+    ? detectedStarts.filter((start, index) => {
+      if (index === detectedStarts.length - 1) return true;
+      if (index > 0 && isDurationRosterContinuation(start, detectedStarts[index + 1]!)) return false;
+      return hasProductBody(start, detectedStarts[index + 1]);
+    })
+    : detectedStarts.length === 2 && text.length >= 1_500
+      && !hasProductBody(detectedStarts[0], detectedStarts[1])
+      && hasProductBody(detectedStarts[1], text.length)
+      && (
+        boundaryLine(detectedStarts[0]) === boundaryLine(detectedStarts[1])
+        || hasDeparturePriceTableIn(text.slice(detectedStarts[0], detectedStarts[1]))
+      )
+      ? [detectedStarts[1]!]
+    : detectedStarts;
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };
@@ -589,6 +888,10 @@ export interface LLMSplitResult {
   skipped?: boolean;
 }
 
+export type EvidenceBoundLLMSplitResult = LLMSplitResult & {
+  evidence?: Array<{ start_char: number; quote: string; quote_hash: string }>;
+};
+
 /**
  * regex 가 0/1개만 잡으면 LLM 이 진짜 별개 상품 개수 + 시작 char offset 결정.
  *
@@ -610,55 +913,10 @@ export async function detectCatalogBoundariesWithLLM(
     return { products: [], skipped: true, reason: 'env-disabled' };
   }
 
-  // 동적 import — 직렬 dependency 안 만듦. Vercel cold start 0 영향.
-  type SecretMod = typeof import('@/lib/secret-registry');
-  type GenAIMod = typeof import('@google/generative-ai');
-  type TracerMod = typeof import('@/lib/telemetry/llm-tracer');
-  let secretMod: SecretMod;
-  let genAIMod: GenAIMod;
-  let tracerMod: TracerMod;
-  try {
-    secretMod = await import('@/lib/secret-registry');
-    genAIMod = await import('@google/generative-ai');
-    tracerMod = await import('@/lib/telemetry/llm-tracer');
-  } catch {
-    return { products: [], skipped: true, reason: 'import-failed' };
-  }
-
-  const apiKey = secretMod.getSecret('GOOGLE_AI_API_KEY');
-  if (!apiKey) return { products: [], skipped: true, reason: 'no-api-key' };
-  const { GoogleGenerativeAI, SchemaType } = genAIMod;
-  const { traceLlmCall, recordLlmUsage } = tracerMod;
+  if (!getSecret('DEEPSEEK_API_KEY')) return { products: [], skipped: true, reason: 'no-api-key' };
 
   // 토큰 절약: 첫 8000자만 (대부분 카탈로그는 헤더+요금표가 앞에 옴)
   const snippet = rawText.slice(0, maxChars);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 512,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          products: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                start_char: { type: SchemaType.INTEGER, description: '상품 시작 character offset (0-based)' },
-                name_hint: { type: SchemaType.STRING, description: '상품명 힌트 (헤더 첫 줄)' },
-              },
-              required: ['start_char', 'name_hint'],
-            },
-          },
-        },
-        required: ['products'],
-      },
-    },
-  });
 
   const prompt = `한국 여행상품 카탈로그 원문에서 별개 상품의 시작 위치를 char offset 으로 알려줘.
 
@@ -683,35 +941,51 @@ ${snippet}
 
 JSON: {"products": [{"start_char": 0, "name_hint": "[BX] 대만 단수이 3박 4일"}, ...]}`;
 
-  const start = Date.now();
   try {
-    const result = await traceLlmCall(
-      { task: 'judge', provider: 'gemini', model: 'gemini-2.5-flash', phase: 'executor' },
-      async (span) => {
-        const res = await model.generateContent(prompt);
-        const usage = res.response.usageMetadata;
-        recordLlmUsage(span, {
-          input: usage?.promptTokenCount,
-          output: usage?.candidatesTokenCount,
-          latency_ms: Date.now() - start,
-        });
-        const txt = res.response.text();
-        const parsed = JSON.parse(txt) as { products?: LLMSplitProduct[] };
-        const products = Array.isArray(parsed.products) ? parsed.products : [];
-        // start_char 범위 검증 (0 ~ rawText.length)
-        const valid = products.filter(p =>
-          typeof p.start_char === 'number' &&
-          p.start_char >= 0 &&
-          p.start_char < rawText.length &&
-          typeof p.name_hint === 'string' &&
-          p.name_hint.length > 0
-        );
-        // start_char 오름차순 정렬
-        valid.sort((a, b) => a.start_char - b.start_char);
-        return { products: valid };
+    const result = await llmCall<{ products?: unknown }>({
+      task: 'judge',
+      systemPrompt: '한국 여행상품 카탈로그의 상품 경계를 원문 근거로 찾는 분석기. JSON만 반환한다.',
+      userPrompt: prompt,
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          products: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                start_char: { type: 'integer' },
+                name_hint: { type: 'string' },
+              },
+              required: ['start_char', 'name_hint'],
+            },
+          },
+        },
+        required: ['products'],
       },
-    );
-    return result;
+      temperature: 0,
+      maxTokens: 512,
+      maxRetries: 1,
+      autoEscalate: false,
+      pinnedProvider: 'deepseek',
+      pinnedModel: PRODUCT_REGISTRATION_DEEPSEEK_MODEL,
+    });
+    if (!result.success) {
+      return { products: [], skipped: true, reason: `deepseek split 실패: ${(result.errors ?? []).join('; ') || 'unknown'}` };
+    }
+    const payload = result.data && typeof result.data === 'object' ? result.data as { products?: unknown } : {};
+    const products = Array.isArray(payload.products) ? payload.products : [];
+    const valid = products.filter((value): value is LLMSplitProduct => {
+      if (!value || typeof value !== 'object') return false;
+      const p = value as Partial<LLMSplitProduct>;
+      return typeof p.start_char === 'number'
+        && p.start_char >= 0
+        && p.start_char < rawText.length
+        && typeof p.name_hint === 'string'
+        && p.name_hint.length > 0;
+    });
+    valid.sort((a, b) => a.start_char - b.start_char);
+    return { products: valid };
   } catch (e) {
     return {
       products: [],
@@ -740,6 +1014,45 @@ export function applyLLMSplit(rawText: string, llm: LLMSplitResult): CatalogSpli
 }
 
 /**
+ * AI may suggest boundaries, but one stochastic answer has no authority. Two
+ * independent calls must agree and every accepted offset must resolve to a
+ * source heading. The source quote/hash, not the model, is the evidence.
+ */
+export async function detectEvidenceBoundCatalogBoundariesWithLLM(
+  rawText: string,
+  detector: (text: string) => Promise<LLMSplitResult> = text => detectCatalogBoundariesWithLLM(text),
+): Promise<EvidenceBoundLLMSplitResult> {
+  const [first, second] = await Promise.all([detector(rawText), detector(rawText)]);
+  if (first.skipped || second.skipped || first.products.length < 2 || first.products.length !== second.products.length) {
+    return { products: [], skipped: true, reason: 'evidence-consensus-unavailable' };
+  }
+  const normalizeName = (value: string) => value.normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('ko-KR');
+  const evidence: NonNullable<EvidenceBoundLLMSplitResult['evidence']> = [];
+  for (const [index, left] of first.products.entries()) {
+    const right = second.products[index];
+    if (!right || left.start_char !== right.start_char || normalizeName(left.name_hint) !== normalizeName(right.name_hint)) {
+      return { products: [], skipped: true, reason: 'evidence-consensus-mismatch' };
+    }
+    const lineStart = rawText.lastIndexOf('\n', Math.max(0, left.start_char - 1)) + 1;
+    const lineEnd = rawText.indexOf('\n', left.start_char);
+    const physicalLine = rawText.slice(lineStart, lineEnd < 0 ? rawText.length : lineEnd);
+    const firstNonWhitespace = lineStart + Math.max(0, physicalLine.search(/\S/u));
+    const quote = physicalLine.trim();
+    if (left.start_char !== firstNonWhitespace
+      || quote.length < 4
+      || !/(?:\d{1,2}\s*박\s*\d{1,2}\s*일|무박\s*\d{1,2}\s*일|일정\s*표|상품\s*명)/u.test(quote)) {
+      return { products: [], skipped: true, reason: 'evidence-source-anchor-invalid' };
+    }
+    evidence.push({
+      start_char: left.start_char,
+      quote,
+      quote_hash: createHash('sha256').update(quote).digest('hex'),
+    });
+  }
+  return { products: first.products, evidence };
+}
+
+/**
  * Smart split: regex 우선, miss 시 LLM fallback.
  */
 export async function splitCatalogSmart(rawText: string): Promise<CatalogSplitResult & {
@@ -751,7 +1064,7 @@ export async function splitCatalogSmart(rawText: string): Promise<CatalogSplitRe
   }
   // regex miss → LLM fallback (rawText 충분히 길고 env 활성 시)
   if (rawText.length >= 2000) {
-    const llm = await detectCatalogBoundariesWithLLM(rawText);
+    const llm = await detectEvidenceBoundCatalogBoundariesWithLLM(rawText);
     if (!llm.skipped && llm.products.length >= 2) {
       const llmSplit = applyLLMSplit(rawText, llm);
       return { ...llmSplit, source: 'llm-fallback' };

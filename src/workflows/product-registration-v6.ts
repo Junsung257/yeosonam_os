@@ -1,8 +1,10 @@
-import { FatalError, getWorkflowMetadata } from 'workflow';
+import { FatalError, getWorkflowMetadata, sleep } from 'workflow';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  parseCriticalPriceFactOverrides,
   processProductRegistrationV4CanonicalNormalizationJob,
+  segmentDocumentIR,
   sliceCanonicalNormalizationForRevisionSections,
 } from '@/lib/product-registration-v4/canonical-worker';
 import { processProductRegistrationV4ExtractionJob } from '@/lib/product-registration-v4/extractions';
@@ -11,6 +13,9 @@ import { observeProductRegistrationV5ConvergenceBatch } from '@/lib/product-regi
 import { processProductRegistrationV5OutboxBatch } from '@/lib/product-registration-v4/outbox-worker';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { sha256Hex } from '@/lib/product-registration-v4/document-ir';
+import { buildSupplierFormatFingerprint } from '@/lib/supplier-format-fingerprint';
+import { classifyProductSourceDocument, classifyProductSourceFilename } from '@/lib/product-registration-v6/document-classifier';
+import { resolveSourceBundleForWorkflow } from '@/lib/product-registration-v6/source-bundle-orchestrator';
 import {
   catalogProductsEligibleForScheduleDriftClear,
   resolveSharedFactsForJob,
@@ -22,7 +27,7 @@ import {
   publishProductRegistrationV6Snapshot,
   type ProductRegistrationV6CandidateSnapshot,
 } from '@/lib/product-registration-v6/snapshot-publication';
-import { evaluateProductRegistrationV6Policy } from '@/lib/product-registration-v6/terminal-policy';
+import { evaluateRegistrationPublicationPolicy } from '@/lib/product-registration-kernel/publication-policy';
 import { loadProductRegistrationV6PublicationBlockers } from '@/lib/product-registration-v6/publication-control';
 import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from '@/lib/product-registration-v6/copy-revision';
 import {
@@ -41,6 +46,13 @@ import {
   type ProductRegistrationV6WorkflowInput,
   type ProductRegistrationV6WorkflowResult,
 } from '@/lib/product-registration-v6/types';
+import { DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE } from '@/lib/upload-source-metadata';
+import { runCriticalPriceFactAutomation } from '@/lib/product-registration-v6/critical-fact-automation';
+import type { DocumentIR } from '@/lib/product-registration-v4/types';
+import {
+  resolveQualifiedSupplierLayoutProfile,
+  type SupplierProfileResolution,
+} from '@/lib/product-registration-v6/supplier-profile-registry';
 
 type JsonObject = Record<string, unknown>;
 
@@ -129,7 +141,16 @@ async function bindWorkflowStep(input: ProductRegistrationV6WorkflowInput, workf
     p_workflow_run_id: workflowRunId,
   });
   if (error) throw new FatalError(error.message);
-  await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'intake', status: 'succeeded', output: { workflowRunId } });
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'intake',
+    status: 'succeeded',
+    output: {
+      workflowRunId,
+      departureDateReference: input.departureDateReference,
+    },
+  });
 }
 
 async function preflightStep(input: ProductRegistrationV6WorkflowInput) {
@@ -137,14 +158,16 @@ async function preflightStep(input: ProductRegistrationV6WorkflowInput) {
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'preflight', status: 'running' });
   const supabase = db();
   const [{ data: job, error: jobError }, { data: source, error: sourceError }] = await Promise.all([
-    supabase.from('upload_jobs').select('id,tenant_id,source_document_id,v6_fencing_token,v6_outcome').eq('id', input.jobId).single(),
+    supabase.from('upload_jobs').select('id,tenant_id,source_document_id,v6_fencing_token,v6_outcome,v6_reference_date,v6_date_policy_version').eq('id', input.jobId).single(),
     supabase.from('product_source_documents').select('id,sha256,status,source_type,byte_size,tenant_id').eq('id', input.sourceDocumentId).single(),
   ]);
   if (jobError || sourceError || !job || !source) throw new FatalError('V6_PREFLIGHT_LINEAGE_UNAVAILABLE');
   if (job.source_document_id !== source.id
     || job.tenant_id !== input.tenantId
     || source.tenant_id !== input.tenantId
-    || Number(job.v6_fencing_token) !== input.fencingToken) {
+    || Number(job.v6_fencing_token) !== input.fencingToken
+    || job.v6_reference_date !== input.departureDateReference.referenceDate
+    || job.v6_date_policy_version !== input.departureDateReference.policyVersion) {
     throw new FatalError('V6_PREFLIGHT_LINEAGE_MISMATCH');
   }
   if (source.status === 'quarantined' || Number(source.byte_size) <= 0) throw new FatalError('V6_SOURCE_QUARANTINED');
@@ -153,7 +176,11 @@ async function preflightStep(input: ProductRegistrationV6WorkflowInput) {
     fencingToken: input.fencingToken,
     stage: 'preflight',
     status: 'succeeded',
-    output: { sourceHash: source.sha256, sourceTenantId: source.tenant_id ?? null },
+    output: {
+      sourceHash: source.sha256,
+      sourceTenantId: source.tenant_id ?? null,
+      departureDateReference: input.departureDateReference,
+    },
   });
   return { sourceHash: String(source.sha256), sourceTenantId: input.tenantId };
 }
@@ -169,10 +196,24 @@ async function deduplicateStep(input: ProductRegistrationV6WorkflowInput) {
   });
 }
 
+async function classifyInputStep(input: ProductRegistrationV6WorkflowInput) {
+  'use step';
+  const cohort = classifyProductSourceDocument({ sourceType: input.sourceType });
+  const filenameClassification = classifyProductSourceFilename({
+    sourceType: input.sourceType,
+    filename: input.fileName,
+  });
+  return { cohort, filenameClassification };
+}
+
 async function extractStep(input: ProductRegistrationV6WorkflowInput) {
   'use step';
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'extract', status: 'running' });
   const result = await processProductRegistrationV4ExtractionJob({ supabase: db(), jobId: input.jobId });
+  const classification = classifyProductSourceDocument({
+    sourceType: input.sourceType,
+    documentIr: result.documentIr,
+  });
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -183,9 +224,230 @@ async function extractStep(input: ProductRegistrationV6WorkflowInput) {
       extractionHash: result.extraction.extractionHash,
       pages: result.documentIr.pages,
       tables: result.documentIr.tables.length,
+      documentClassification: classification,
     },
   });
-  return { extractionId: result.extraction.id, extractionHash: result.extraction.extractionHash };
+  return { extractionId: result.extraction.id, extractionHash: result.extraction.extractionHash, classification };
+}
+
+async function bundleSourcesStep(
+  input: ProductRegistrationV6WorkflowInput,
+  extracted: { extractionId: string; extractionHash: string; classification: ReturnType<typeof classifyProductSourceDocument> },
+  attempt = 0,
+) {
+  'use step';
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'bundle_sources',
+    status: 'running',
+  });
+  const result = await resolveSourceBundleForWorkflow({
+    supabase: db(),
+    tenantId: input.tenantId,
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    sourceDocumentId: input.sourceDocumentId,
+    extractionId: extracted.extractionId,
+    uploadSourceMetadata: input.uploadSourceMetadata,
+  });
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'bundle_sources',
+    status: 'succeeded',
+    output: { ...result, attempt },
+  });
+  return { ...extracted, ...result };
+}
+
+async function resolveSupplierProfileStep(
+  input: ProductRegistrationV6WorkflowInput,
+): Promise<SupplierProfileResolution> {
+  'use step';
+  const supabase = db();
+  const { data: job, error: jobError } = await supabase
+    .from('upload_jobs')
+    .select('extraction_id')
+    .eq('id', input.jobId)
+    .eq('v6_fencing_token', input.fencingToken)
+    .single();
+  if (jobError || !job?.extraction_id) throw jobError ?? new FatalError('V6_PROFILE_EXTRACTION_LINEAGE_MISSING');
+  const { data: extraction, error: extractionError } = await supabase
+    .from('product_document_extractions')
+    .select('document_ir')
+    .eq('id', job.extraction_id)
+    .eq('tenant_id', input.tenantId)
+    .single();
+  if (extractionError || !extraction?.document_ir) {
+    throw extractionError ?? new FatalError('V6_PROFILE_DOCUMENT_IR_MISSING');
+  }
+  const documentText = String((extraction.document_ir as { text?: unknown }).text ?? '');
+  const fingerprint = buildSupplierFormatFingerprint(documentText);
+  const documentFamily = `${input.sourceType}:${fingerprint.formatHash}`;
+  return resolveQualifiedSupplierLayoutProfile({
+    supabase,
+    tenantId: input.tenantId,
+    supplierName: metadataString(input.uploadSourceMetadata, 'landOperator'),
+    documentFamily,
+  });
+}
+
+async function resolveCriticalFactsStep(
+  input: ProductRegistrationV6WorkflowInput,
+  supplierProfile: SupplierProfileResolution,
+) {
+  'use step';
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'resolve_critical_facts',
+    status: 'running',
+  });
+  const supabase = db();
+  const { data: job, error: jobError } = await supabase
+    .from('upload_jobs')
+    .select('extraction_id,v4_stage_state')
+    .eq('id', input.jobId)
+    .eq('tenant_id', input.tenantId)
+    .eq('v6_fencing_token', input.fencingToken)
+    .single();
+  if (jobError || !job?.extraction_id) {
+    throw jobError ?? new FatalError('V6_CRITICAL_FACT_EXTRACTION_LINEAGE_MISSING');
+  }
+  const { data: extraction, error: extractionError } = await supabase
+    .from('product_document_extractions')
+    .select('document_ir')
+    .eq('id', job.extraction_id)
+    .eq('tenant_id', input.tenantId)
+    .eq('source_document_id', input.sourceDocumentId)
+    .single();
+  if (extractionError || !extraction?.document_ir) {
+    throw extractionError ?? new FatalError('V6_CRITICAL_FACT_DOCUMENT_IR_MISSING');
+  }
+  const currentState = job.v4_stage_state && typeof job.v4_stage_state === 'object'
+    ? job.v4_stage_state as JsonObject
+    : {};
+  const existingOverrides = parseCriticalPriceFactOverrides(currentState.criticalFactOverrides);
+  const sourceYearContext = currentState.sourceDepartureYearContext
+    && typeof currentState.sourceDepartureYearContext === 'object'
+    && !Array.isArray(currentState.sourceDepartureYearContext)
+    ? currentState.sourceDepartureYearContext as JsonObject
+    : null;
+  const explicitYear = Number(sourceYearContext?.year);
+  const sections = segmentDocumentIR(
+    extraction.document_ir as DocumentIR,
+    input.sourceDocumentId,
+    supplierProfile.profile?.segmentationHints,
+  ).sections;
+  const automated = await runCriticalPriceFactAutomation({
+    supabase,
+    tenantId: input.tenantId,
+    jobId: input.jobId,
+    sourceHash: input.fileHash,
+    sections,
+    existingOverrides,
+    referenceDate: input.departureDateReference.referenceDate,
+    rollingInferenceEligible: input.departureDateReference.rollingInferenceEligible,
+    explicitYear: Number.isInteger(explicitYear) ? explicitYear : null,
+    datePolicyVersion: input.departureDateReference.policyVersion,
+  });
+  const priorAuthority = typeof currentState.criticalFactOverrideAuthority === 'string'
+    ? currentState.criticalFactOverrideAuthority
+    : null;
+  const authority = priorAuthority === 'authorized_human_evidence_selection'
+    ? 'authorized_human_evidence_selection_and_dual_ai_source_replay'
+    : 'dual_ai_consensus_and_deterministic_source_replay';
+  const { overrides: _persistedSeparately, ...automationStats } = automated;
+  const { data: updated, error: updateError } = await supabase
+    .from('upload_jobs')
+    .update({
+      v4_stage_state: {
+        ...currentState,
+        criticalFactOverrides: automated.overrides,
+        criticalFactOverrideAuthority: authority,
+        criticalFactAutomation: {
+          enginePolicyVersion: input.policyVersion,
+          ...automationStats,
+        },
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.jobId)
+    .eq('tenant_id', input.tenantId)
+    .eq('v6_fencing_token', input.fencingToken)
+    .select('id')
+    .maybeSingle();
+  if (updateError) throw updateError;
+  if (!updated) throw new FatalError('V6_WORKFLOW_FENCING_CONFLICT');
+  await recordStage({
+    jobId: input.jobId,
+    fencingToken: input.fencingToken,
+    stage: 'resolve_critical_facts',
+    status: 'succeeded',
+    output: {
+      enabled: true,
+      authority,
+      candidateSectionCount: automated.candidateSectionCount,
+      overrideCount: automated.overrides.length,
+      autoAgreedCount: automated.agreedCount,
+      humanRequiredCount: automated.humanRequiredCount,
+      providerUnavailableCount: automated.providerUnavailableCount,
+      invalidCount: automated.invalidCount,
+      overflowCount: automated.overflowCount,
+    },
+  });
+
+}
+
+function terminalDocumentDecision(
+  reasonCode: string,
+  terminalOutcome: ProductRegistrationV6Decision['terminalOutcome'],
+): ProductRegistrationV6Decision {
+  return {
+    outcome: 'blocked',
+    terminalOutcome,
+    degradedReasons: [],
+    blockers: [reasonCode],
+    packageIds: [],
+    revisionIds: [],
+  };
+}
+
+function unpublishedReadyDecision(
+  decision: ProductRegistrationV6Decision,
+): ProductRegistrationV6Decision {
+  return {
+    ...decision,
+    terminalOutcome: decision.outcome === 'verified'
+      ? 'ready_verified_not_published'
+      : 'ready_degraded_not_published',
+  };
+}
+
+function allDeparturesPastDecision(): ProductRegistrationV6Decision {
+  return {
+    outcome: 'blocked',
+    terminalOutcome: 'archived_all_departures_past',
+    degradedReasons: [],
+    blockers: ['ALL_DEPARTURES_PAST'],
+    packageIds: [],
+    revisionIds: [],
+  };
+}
+
+function discardedSourceIncompleteDecision(sectionIndexes: number[]): ProductRegistrationV6Decision {
+  return {
+    outcome: 'blocked',
+    terminalOutcome: 'discarded_source_incomplete',
+    degradedReasons: [],
+    blockers: [
+      'SOURCE_SALE_PRICE_ABSENT',
+      `DISCARDED_SOURCE_SECTION_INDEXES:${sectionIndexes.join(',')}`,
+    ],
+    packageIds: [],
+    revisionIds: [],
+  };
 }
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
@@ -211,9 +473,15 @@ async function projectCompatibilityStep(
   'use step';
   const supabase = db();
   const landOperator = metadataString(input.uploadSourceMetadata, 'landOperator');
-  const commissionRate = metadataNumber(input.uploadSourceMetadata, 'commissionRate');
+  const commissionRate = metadataNumber(input.uploadSourceMetadata, 'commissionRate')
+    ?? DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE;
   const supplierCode = compatibilitySupplierCode(landOperator);
   const packageIds: string[] = [];
+  const bindings: Array<{
+    catalogProductId: string;
+    packageId: string;
+    operationalIdentity: JsonObject;
+  }> = [];
 
   for (const [index] of normalized.revisionIds.entries()) {
     const revisionId = normalized.revisionIds[index];
@@ -245,7 +513,31 @@ async function projectCompatibilityStep(
       landOperator,
       commissionRate,
     });
+    for (const channel of ['customer', 'b2b', 'partner'] as const) {
+      const { error: routeAliasError } = await supabase.rpc(
+        'register_product_registration_public_route_aliases',
+        {
+          p_payload: {
+            tenant_id: input.tenantId,
+            catalog_product_id: catalogProductId,
+            package_id: projected.packageId,
+            channel,
+            locale: 'ko-KR',
+            route_refs: [catalogProductId, projected.packageId],
+          },
+        },
+      );
+      if (routeAliasError) throw routeAliasError;
+    }
     packageIds.push(projected.packageId);
+    bindings.push({
+      catalogProductId,
+      packageId: projected.packageId,
+      operationalIdentity: {
+        internal_code: projected.internalCode,
+        land_operator: landOperator,
+      },
+    });
   }
 
   if (packageIds.length !== normalized.revisionIds.length) {
@@ -253,6 +545,7 @@ async function projectCompatibilityStep(
   }
   return {
     packageIds,
+    bindings,
     projectionPayload: {
       source: 'immutable-revision',
       supplierCode,
@@ -264,6 +557,7 @@ async function projectCompatibilityStep(
 async function normalizeStep(
   input: ProductRegistrationV6WorkflowInput,
   preflight: { sourceHash: string; sourceTenantId: string | null },
+  supplierProfile: SupplierProfileResolution,
 ) {
   'use step';
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'segment', status: 'running' });
@@ -271,7 +565,12 @@ async function normalizeStep(
   const supabase = db();
   const job = await getProductRegistrationV4Job({ supabase, jobId: input.jobId });
   if (!job) throw new FatalError('V6_JOB_NOT_FOUND_FOR_NORMALIZATION');
-  const result = await processProductRegistrationV4CanonicalNormalizationJob({ supabase, job });
+  const result = await processProductRegistrationV4CanonicalNormalizationJob({
+    supabase,
+    job,
+    supplierProfileHints: supplierProfile.profile?.segmentationHints,
+    allowEvidenceAiSegmentation: true,
+  });
   const revisionIds = Array.isArray(result.job.v4_stage_state.v5RevisionIds)
     ? result.job.v4_stage_state.v5RevisionIds.map(String).filter(Boolean)
     : [];
@@ -282,7 +581,19 @@ async function normalizeStep(
     ? result.job.v4_stage_state.revisionSectionIndexes
         .map(Number)
         .filter(index => Number.isInteger(index) && index >= 0)
-    : result.normalization.sections.map((_, index) => index);
+    : [];
+  const pastOnlySectionIndexes = Array.isArray(result.job.v4_stage_state.pastOnlySectionIndexes)
+    ? result.job.v4_stage_state.pastOnlySectionIndexes
+        .map(Number)
+        .filter(index => Number.isInteger(index) && index >= 0)
+    : [];
+  const discardedMissingSalePriceSectionIndexes = Array.isArray(
+    result.job.v4_stage_state.discardedMissingSalePriceSectionIndexes,
+  )
+    ? result.job.v4_stage_state.discardedMissingSalePriceSectionIndexes
+        .map(Number)
+        .filter(index => Number.isInteger(index) && index >= 0)
+    : [];
   if (revisionIds.length !== revisionSectionIndexes.length
     || catalogProductIds.length !== revisionIds.length) {
     throw new FatalError('V6_KERNEL_REVISION_COUNT_MISMATCH');
@@ -318,6 +629,26 @@ async function normalizeStep(
   }
   if (revisionTenantIds.size > 1) lineageBlockers.push('REVISION_TENANT_LINEAGE_MISMATCH');
   const tenantId = [...revisionTenantIds][0] ?? input.tenantId;
+  const sourceBundleId = typeof result.job.v4_stage_state.sourceBundleId === 'string'
+    ? result.job.v4_stage_state.sourceBundleId
+    : null;
+  const sourceBundleHash = typeof result.job.v4_stage_state.sourceBundleHash === 'string'
+    ? result.job.v4_stage_state.sourceBundleHash
+    : null;
+  if (sourceBundleId && sourceBundleHash) {
+    for (const revisionId of revisionIds) {
+      const { error: bundleLinkError } = await supabase.rpc('link_product_registration_revision_source_bundle', {
+        p_payload: {
+          tenant_id: tenantId,
+          job_id: input.jobId,
+          product_revision_id: revisionId,
+          source_bundle_id: sourceBundleId,
+          bundle_hash: sourceBundleHash,
+        },
+      });
+      if (bundleLinkError) throw bundleLinkError;
+    }
+  }
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -328,6 +659,17 @@ async function normalizeStep(
       sourceSectionCount: result.normalization.sections.length,
       revisionSectionIndexes,
       catalogProductIds,
+      pastOnlySectionIndexes,
+      discardedMissingSalePriceSectionIndexes,
+      departureDateReference: input.departureDateReference,
+      supplierProfile: {
+        supplierKey: supplierProfile.supplierKey,
+        documentFamily: supplierProfile.documentFamily,
+        reason: supplierProfile.reason,
+        profileId: supplierProfile.profile?.id ?? null,
+        profileVersion: supplierProfile.profile?.profileVersion ?? null,
+        profileHash: supplierProfile.profile?.profileHash ?? null,
+      },
     },
   });
   await recordStage({
@@ -342,6 +684,20 @@ async function normalizeStep(
       normalizationStatus: revisionNormalization.status,
       tenantId,
       lineageBlockers,
+      pastOnlySectionIndexes,
+      discardedMissingSalePriceSectionIndexes,
+      inferredDepartureDateCount: Number(result.job.v4_stage_state.inferredDepartureDateCount ?? 0),
+      excludedPastDateCount: Number(result.job.v4_stage_state.excludedPastDateCount ?? 0),
+      futureDepartureCount: Number(result.job.v4_stage_state.futureDepartureCount ?? 0),
+      departureDateReference: input.departureDateReference,
+      supplierProfile: {
+        supplierKey: supplierProfile.supplierKey,
+        documentFamily: supplierProfile.documentFamily,
+        reason: supplierProfile.reason,
+        profileId: supplierProfile.profile?.id ?? null,
+        profileVersion: supplierProfile.profile?.profileVersion ?? null,
+        profileHash: supplierProfile.profile?.profileHash ?? null,
+      },
     },
   });
   return {
@@ -354,6 +710,11 @@ async function normalizeStep(
     revisionSectionIndexes,
     tenantId,
     lineageBlockers,
+    pastOnlySectionIndexes,
+    discardedMissingSalePriceSectionIndexes,
+    inferredDepartureDateCount: Number(result.job.v4_stage_state.inferredDepartureDateCount ?? 0),
+    excludedPastDateCount: Number(result.job.v4_stage_state.excludedPastDateCount ?? 0),
+    futureDepartureCount: Number(result.job.v4_stage_state.futureDepartureCount ?? 0),
   };
 }
 
@@ -478,7 +839,7 @@ async function validateStep(
         row.terms_type === 'cancellation' && row.validation_state === 'verified'),
     };
   }))).filter((policy): policy is NonNullable<typeof policy> => Boolean(policy));
-  const decision = evaluateProductRegistrationV6Policy({
+  const decision = evaluateRegistrationPublicationPolicy({
     canonicalPayload: normalized.normalization.canonicalPayload,
     packageIds: normalized.packageIds,
     revisionIds: normalized.revisionIds,
@@ -495,7 +856,10 @@ async function validateStep(
       catalogProductId: policy.catalogProductId,
       covered: policy.has_cancellation_policy,
       policyHash: policy.policy_hash,
+      conflict: policy.cancellation_conflict === true,
+      conflictReasons: policy.cancellation_conflict_reasons ?? [],
     })),
+    departureDateReference: input.departureDateReference,
   });
   decision.termsPolicies = termsPolicies;
   await recordStage({
@@ -507,6 +871,7 @@ async function validateStep(
       outcome: decision.outcome,
       blockers: decision.blockers,
       degradedReasons: decision.degradedReasons,
+      findings: decision.findings,
       decisionHash: decision.decisionHash,
       termsPolicyHashes: termsPolicies.map(policy => policy.policy_hash),
       projectionBlockers,
@@ -582,12 +947,22 @@ async function generateCopyStep(
   return nextDecision;
 }
 
-async function buildSnapshotsStep(input: ProductRegistrationV6WorkflowInput, decision: ProductRegistrationV6Decision, shared: SharedFactJobResult) {
+async function buildSnapshotsStep(
+  input: ProductRegistrationV6WorkflowInput,
+  decision: ProductRegistrationV6Decision,
+  shared: SharedFactJobResult,
+  compatibilityBindings: Array<{
+    catalogProductId: string;
+    packageId: string;
+    operationalIdentity?: JsonObject;
+  }>,
+) {
   'use step';
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'build_snapshot', status: 'running' });
   const snapshots = await buildProductRegistrationV6CandidateSnapshots({
     supabase: db(),
     decision,
+    compatibilityBindings,
     resolvedTransport: shared.resolvedTransport,
   });
   await recordStage({
@@ -660,7 +1035,10 @@ async function publicationControlStep(
   'use step';
   const blockers = await loadProductRegistrationV6PublicationBlockers({
     supabase: db(),
-    packageIds: decision.packageIds,
+    catalogProductIds: decision.packageIds,
+    supplierKeys: [metadataString(input.uploadSourceMetadata, 'landOperator')].filter(
+      (value): value is string => Boolean(value),
+    ),
   });
   if (blockers.length === 0) {
     return { allowed: true, publicationState: 'proof_passed', blockers: [] };
@@ -740,12 +1118,47 @@ async function terminalStep(
     },
   });
   if (error) throw new FatalError(error.message);
+  let reviewAlertId: string | null = null;
+  if (decision.terminalOutcome === 'discarded_source_incomplete'
+    || decision.terminalOutcome === 'blocked_action_required') {
+    const resolutionConditions = decision.terminalOutcome === 'discarded_source_incomplete'
+      ? [
+          '원문에서 성인 판매가와 통화를 확인합니다.',
+          '요금표가 별도 파일이면 일정표와 같은 다중 파일 업로드 묶음으로 다시 올립니다.',
+        ]
+      : [
+          '차단 사유의 원문 위치에서 가격·출발일·포함조건 중 충돌한 값을 확인합니다.',
+          '수정된 원문을 재업로드하거나 correction revision을 생성합니다.',
+        ];
+    const { data: alertId, error: alertError } = await supabase.rpc(
+      'enqueue_product_registration_review_alert',
+      {
+        p_payload: {
+          job_id: input.jobId,
+          tenant_id: input.tenantId,
+          source_document_id: input.sourceDocumentId,
+          source_filename: input.fileName,
+          file_hash: input.fileHash,
+          workflow_run_id: workflowRunId,
+          policy_version: input.policyVersion,
+          terminal_outcome: decision.terminalOutcome,
+          blockers: decision.blockers,
+          resolution_conditions: resolutionConditions,
+        },
+      },
+    );
+    if (alertError) throw new FatalError(alertError.message);
+    reviewAlertId = typeof alertId === 'string' ? alertId : null;
+  }
   if (input.correctionJobId) {
     const { error: correctionError } = await supabase.rpc('finalize_product_registration_correction', {
       p_payload: {
         correction_job_id: input.correctionJobId,
         workflow_job_id: input.jobId,
-        status: decision.terminalOutcome === 'blocked_action_required' ? 'blocked' : 'completed',
+        status: decision.terminalOutcome === 'blocked_action_required'
+          || decision.terminalOutcome.startsWith('quarantined_')
+          ? 'blocked'
+          : 'completed',
         resulting_revision_id: decision.revisionIds[0] ?? null,
       },
     });
@@ -756,7 +1169,13 @@ async function terminalStep(
     fencingToken: input.fencingToken,
     stage: 'complete',
     status: 'succeeded',
-    output: { terminalOutcome: decision.terminalOutcome, analysisOutcome: decision.outcome, publicationState, publicationBlockers },
+    output: {
+      terminalOutcome: decision.terminalOutcome,
+      analysisOutcome: decision.outcome,
+      publicationState,
+      publicationBlockers,
+      reviewAlertId,
+    },
   });
   return {
     ...decision,
@@ -778,7 +1197,9 @@ async function blockFailedWorkflowStep(
   const expectedIdentityBlock = error.includes('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
   const decision: ProductRegistrationV6Decision = {
     outcome: 'blocked',
-    terminalOutcome: 'blocked_action_required',
+    terminalOutcome: expectedIdentityBlock
+      ? 'blocked_action_required'
+      : 'quarantined_system_failure',
     degradedReasons: [],
     blockers: expectedIdentityBlock
       ? ['IDENTITY_BINDING_AMBIGUOUS']
@@ -877,8 +1298,79 @@ export async function productRegistrationV6Workflow(
     await bindWorkflowStep(input, workflowRunId);
     const preflight = await preflightStep(input);
     await deduplicateStep(input);
-    await extractStep(input);
-    const canonical = await normalizeStep(input, preflight);
+    const { cohort, filenameClassification } = await classifyInputStep(input);
+    if (cohort.documentClass === 'unsupported') {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        terminalDocumentDecision(cohort.reasonCode, 'quarantined_unsupported_or_corrupt'),
+        'not_requested',
+      );
+    }
+    if (filenameClassification) {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        terminalDocumentDecision(filenameClassification.reasonCode, 'discarded_non_travel'),
+        'not_requested',
+      );
+    }
+    const extracted = await extractStep(input);
+    if (extracted.classification.documentClass !== 'travel_product') {
+      const terminalOutcome = extracted.classification.documentClass === 'non_travel'
+        ? 'discarded_non_travel'
+        : 'quarantined_unsupported_or_corrupt';
+      return await terminalStep(
+        input,
+        workflowRunId,
+        terminalDocumentDecision(extracted.classification.reasonCode, terminalOutcome),
+        'not_requested',
+      );
+    }
+    let bundled = await bundleSourcesStep(input, extracted, 0);
+    // Keep the total wait below the 30 minute stale-job threshold. Each retry
+    // has a distinct attempt argument so Workflow DevKit does not replay a
+    // memoized step result while another member of the upload batch arrives.
+    const bundleWaits = ['30s', '90s', '3m', '5m', '10m'] as const;
+    for (const [waitIndex, waitDuration] of bundleWaits.entries()) {
+      if (bundled.state !== 'waiting_for_peer') break;
+      await sleep(waitDuration);
+      bundled = await bundleSourcesStep(input, extracted, waitIndex + 1);
+    }
+    if (bundled.state === 'waiting_for_peer') {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        terminalDocumentDecision('SOURCE_BATCH_MEMBERS_TIMEOUT', 'blocked_action_required'),
+        'not_requested',
+      );
+    }
+    if (bundled.state === 'consolidated_by_peer') {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        terminalDocumentDecision(
+          `SOURCE_BATCH_CONSOLIDATED_BY:${bundled.coordinatorJobId ?? 'peer'}`,
+          'discarded_duplicate_or_consolidated',
+        ),
+        'not_requested',
+      );
+    }
+    const supplierProfile = await resolveSupplierProfileStep(input);
+    await resolveCriticalFactsStep(input, supplierProfile);
+    const canonical = await normalizeStep(input, preflight, supplierProfile);
+    if (canonical.revisionIds.length === 0
+      && canonical.discardedMissingSalePriceSectionIndexes.length > 0) {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        discardedSourceIncompleteDecision(canonical.discardedMissingSalePriceSectionIndexes),
+        'not_requested',
+      );
+    }
+    if (canonical.revisionIds.length === 0 && canonical.pastOnlySectionIndexes.length > 0) {
+      return await terminalStep(input, workflowRunId, allDeparturesPastDecision(), 'not_requested');
+    }
     const normalized = { ...canonical, packageIds: canonical.catalogProductIds };
     const shared = await resolveSharedFactsStep(input, normalized, preflight);
     const decision = await validateStep(input, normalized, shared, preflight);
@@ -886,36 +1378,21 @@ export async function productRegistrationV6Workflow(
     const copyDecision = await generateCopyStep(input, decision);
     if (copyDecision.outcome === 'blocked') return await terminalStep(input, workflowRunId, copyDecision, 'not_requested');
     const compatibility = await projectCompatibilityStep(input, canonical);
-    const projectedDecision = { ...copyDecision, packageIds: compatibility.packageIds };
-    const projectedShared: SharedFactJobResult = {
-      ...shared,
-      resolvedTransport: shared.resolvedTransport.map(item => {
-        const catalogIndex = item.packageId
-          ? canonical.catalogProductIds.indexOf(item.packageId)
-          : -1;
-        return {
-          ...item,
-          packageId: catalogIndex >= 0
-            ? compatibility.packageIds[catalogIndex] ?? item.packageId
-            : item.packageId,
-        };
-      }),
-    };
-    const snapshots = await buildSnapshotsStep(input, projectedDecision, projectedShared);
+    const snapshots = await buildSnapshotsStep(input, copyDecision, shared, compatibility.bindings);
     const proofs = await proveSnapshotsStep(input, snapshots);
-    const publication = await publicationControlStep(input, projectedDecision);
+    const publication = await publicationControlStep(input, copyDecision);
     if (!publication.allowed) {
       return await terminalStep(
         input,
         workflowRunId,
-        projectedDecision,
+        unpublishedReadyDecision(copyDecision),
         publication.publicationState,
         publication.blockers,
       );
     }
-    await publishSnapshotsStep(input, projectedDecision, proofs);
+    await publishSnapshotsStep(input, copyDecision, proofs);
     await convergeStep(input, snapshots);
-    return await terminalStep(input, workflowRunId, projectedDecision, 'converged');
+    return await terminalStep(input, workflowRunId, copyDecision, 'converged');
   } catch (error) {
     return await blockFailedWorkflowStep(input, workflowRunId, error instanceof Error ? error.message : String(error));
   }

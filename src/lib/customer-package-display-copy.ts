@@ -70,12 +70,16 @@ const CUSTOMER_NOISE_PATTERNS: Array<[RegExp, string]> = [
   [/\s{2,}/g, ' '],
 ];
 
+const CUSTOMER_VOLATILE_PRICE_SENTENCE_RE =
+  /(?:항공\s*블럭\s*마감\s*시[^.!?。]*(?:추가\s*항공료|추가\s*요금)[^.!?。]*|예약\s*시[^.!?。]*(?:상품가|요금|가격)\s*(?:재\s*체크|재\s*확인|변동\s*확인)[^.!?。]*)(?:[.!?。]|$)/giu;
+
 function clean(value: string | null | undefined): string {
   return normalizeCustomerAirlineCodeCopy(normalizeCustomerVisibleCopy(value)).replace(/\s+/g, ' ').trim();
 }
 
 function normalizeForCustomer(value: string | null | undefined): string {
   let text = clean(value);
+  text = text.replace(CUSTOMER_VOLATILE_PRICE_SENTENCE_RE, ' ');
   for (const [pattern, replacement] of CUSTOMER_NOISE_PATTERNS) {
     text = text.replace(pattern, replacement);
   }
@@ -147,9 +151,26 @@ function normalizeDestination(input: CustomerPackageDisplayCopyInput, text: stri
   return destination || '추천 여행';
 }
 
-function detectBestCondition(text: string): string | null {
-  const noTip = /(?:노팁|NO\s*팁|팁\s*없)/i.test(text);
-  const noOption = /(?:노옵션|NO\s*옵션|선택관광\s*없)/i.test(text);
+function hasMandatoryTipDisclosure(input: CustomerPackageDisplayCopyInput): boolean {
+  const detail = [
+    ...(input.excludes ?? []),
+    input.customer_notes,
+  ].map(normalizeForCustomer).filter(Boolean).join(' ');
+  return /(?:(?:가이드|기사|드라이버).{0,16}(?:팁|경비)|(?:팁|경비).{0,16}(?:가이드|기사|드라이버)).{0,18}(?:불포함|별도|현지\s*지불|현지\s*납부|\$\s*\d+)|(?:불포함|별도|현지\s*지불|현지\s*납부).{0,18}(?:(?:가이드|기사|드라이버).{0,10}(?:팁|경비))/iu.test(detail);
+}
+
+function hasMandatoryPaidOptionDisclosure(input: CustomerPackageDisplayCopyInput): boolean {
+  const detail = [
+    ...(input.excludes ?? []),
+    input.customer_notes,
+    ...(input.optional_tours ?? []).flatMap(optionalTourCopyParts),
+  ].map(normalizeForCustomer).filter(Boolean).join(' ');
+  return /(?:(?:선택\s*관광|옵션).{0,14}(?:필수|의무|반드시|필히)|(?:필수|의무|반드시|필히).{0,14}(?:선택\s*관광|옵션)|기본\s*일정.{0,14}(?:옵션|추가\s*비용).{0,12}(?:대체|진행))/iu.test(detail);
+}
+
+function detectBestCondition(text: string, input: CustomerPackageDisplayCopyInput): string | null {
+  const noTip = /(?:노팁|NO\s*팁|팁\s*없)/i.test(text) && !hasMandatoryTipDisclosure(input);
+  const noOption = /(?:노옵션|NO\s*옵션|선택관광\s*없)/i.test(text) && !hasMandatoryPaidOptionDisclosure(input);
   const noShopping = /(?:노쇼핑|NO\s*쇼핑|쇼핑\s*없)/i.test(text);
 
   if (noTip && noOption) return '노팁·노옵션';
@@ -218,8 +239,8 @@ function buildBadges(text: string, input: CustomerPackageDisplayCopyInput): stri
   };
   const claimEvidenceText = collectClaimEvidenceText(input);
 
-  push('노팁', /노팁|NO\s*팁/i);
-  push('노옵션', /노옵션|NO\s*옵션|선택관광\s*없/i);
+  if (!hasMandatoryTipDisclosure(input)) push('노팁', /노팁|NO\s*팁/i);
+  if (!hasMandatoryPaidOptionDisclosure(input)) push('노옵션', /노옵션|NO\s*옵션|선택관광\s*없/i);
   push('노쇼핑', /노쇼핑|NO\s*쇼핑|쇼핑\s*없/i);
   if (hasHotelGradeEvidence(claimEvidenceText)) push('5성호텔', /./);
   if (hasPremiumHotelEvidence(claimEvidenceText)) push('특급호텔', /./);
@@ -273,7 +294,7 @@ function buildTitle(input: CustomerPackageDisplayCopyInput): { title: string; ba
   const titleThemeText = collectTitleThemeText(input);
   const duration = formatDuration(input, text);
   const destination = normalizeDestination(input, text);
-  const condition = detectBestCondition(text);
+  const condition = detectBestCondition(text, input);
   const theme = detectTheme(titleThemeText, destination);
   const themeForTitle = destination.includes(theme) || (condition ? theme.includes(condition) : false) ? '' : theme;
   const badges = buildBadges(text, input);
@@ -293,7 +314,9 @@ function truncateByChars(text: string, max: number): string {
 
 function buildSummary(input: CustomerPackageDisplayCopyInput, title: string, badges: string[]): { lead: string; body: string; issues: string[] } {
   const issues: string[] = [];
-  const existing = clean(input.product_summary);
+  // Supplier-facing volatility notices remain preserved in source evidence, but
+  // must not leak back into the customer summary through this fast path.
+  const existing = normalizeForCustomer(input.product_summary);
   if (
     existing &&
     existing.length >= 24 &&

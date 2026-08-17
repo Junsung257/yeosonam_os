@@ -150,57 +150,7 @@ async function main() {
       });
     }
     if (options.demoteUnsafePublic) {
-      const checkedAt = new Date().toISOString();
       const blockerCodes = blockers.map((blocker) => blocker.code);
-      const previousReport = row.audit_report && typeof row.audit_report === 'object' && !Array.isArray(row.audit_report)
-        ? row.audit_report as Record<string, unknown>
-        : {};
-      const auditReport = {
-        ...previousReport,
-        public_eligibility_demotion: {
-          source: 'audit-package-public-eligibility',
-          checked_at: checkedAt,
-          previous_status: row.status,
-          blockers: blockers.map((blocker) => ({
-            code: blocker.code,
-            message: blocker.message,
-          })),
-          next_action: 'repair_customer_open_contract_and_mobile_proof_before_publication',
-        },
-      };
-      const { error: packageError } = await supabaseAdmin
-        .from('travel_packages')
-        .update({
-          status: 'pending_review',
-          audit_status: 'blocked',
-          audit_report: auditReport,
-          audit_checked_at: checkedAt,
-          updated_at: checkedAt,
-        })
-        .eq('id', row.id);
-      if (packageError) {
-        demotions.push({
-          id: row.id,
-          internal_code: row.internal_code,
-          title: row.title,
-          destination: row.destination,
-          previous_status: row.status,
-          new_status: 'pending_review',
-          product_status_updated: false,
-          blockers: blockerCodes,
-          error: packageError.message,
-        });
-        continue;
-      }
-
-      let productStatusUpdated = false;
-      if (row.internal_code) {
-        const { error: productError } = await supabaseAdmin
-          .from('products')
-          .update({ status: 'REVIEW_NEEDED', updated_at: checkedAt })
-          .eq('internal_code', row.internal_code);
-        productStatusUpdated = !productError;
-      }
       demotions.push({
         id: row.id,
         internal_code: row.internal_code,
@@ -208,8 +158,9 @@ async function main() {
         destination: row.destination,
         previous_status: row.status,
         new_status: 'pending_review',
-        product_status_updated: productStatusUpdated,
+        product_status_updated: false,
         blockers: blockerCodes,
+        error: 'LEGACY_PUBLIC_ELIGIBILITY_DEMOTION_RETIRED_USE_KILL_SWITCH_OR_CORRECTION_REVISION',
       });
     }
   }

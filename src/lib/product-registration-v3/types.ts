@@ -2,6 +2,7 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import type { RenderPackageInput } from '@/lib/render-contract';
 import type { StandardNoticeDraft } from './standard-notices';
 import type { StructuredFact } from './structured-facts';
+import type { SourceTicketingCondition } from '@/lib/product-registration/ticketing-deadline';
 
 export type V3DocumentType = 'catalog' | 'single_package' | 'mixed' | 'unknown';
 export type V3PlannerSource = 'deterministic' | 'ai_schema';
@@ -62,6 +63,7 @@ export interface V3Evidence {
   column?: number;
   quote_hash?: string;
   extraction_method?: 'text_line' | 'document_ir_table_cell';
+  source_amount_scale?: 1 | 1000;
 }
 
 export interface V3StructurePlan {
@@ -112,7 +114,34 @@ export interface V3PriceCalendarEntry {
   label: string;
   amount: number;
   currency: string;
+  child_amount?: number | null;
+  child_price_basis?: 'source' | 'same_as_adult_policy';
+  infant_amount?: number | null;
+  infant_price_state?: 'source' | 'consultation_required';
+  passenger_prices?: Array<{
+    passenger_type: 'child' | 'infant';
+    occupancy_type: 'with_bed' | 'without_bed' | null;
+    label: string;
+    amount: number;
+    currency: string;
+    evidence: V3Evidence;
+  }>;
+  list_price?: number | null;
+  min_travelers?: number | null;
+  max_travelers?: number | null;
+  price_relation?: 'final_sale' | 'standard_sale' | null;
+  /** True only when the source explicitly marks this departure as confirmed. */
+  departure_confirmed?: boolean;
   evidence: V3Evidence;
+  date_resolution?: {
+    authority: 'document_text' | 'filename' | 'upload_envelope' | 'nearest_future_policy' | 'missing' | 'conflicting';
+    reference_date: string;
+    timezone: 'Asia/Seoul';
+    policy_version: 'source-departure-date-policy-2' | 'source-departure-date-policy-3' | 'source-departure-date-policy-4';
+    disposition: 'future' | 'range_clipped' | 'past_excluded' | 'invalid_blocked';
+    original_date?: string | null;
+    original_range?: { start: string; end: string } | null;
+  };
 }
 
 export interface V3OptionCandidate {
@@ -157,6 +186,12 @@ export interface V3LedgerVariant {
     };
     hotel: Record<string, unknown>;
   }>;
+  itinerary_choices?: Array<{
+    label: string;
+    table_id: string;
+    days: V3LedgerVariant['days'];
+    flight_segments: V3LedgerVariant['flight_segments'];
+  }>;
   inclusions: Array<{ value: string; evidence: V3Evidence }>;
   exclusions: Array<{ value: string; evidence: V3Evidence }>;
   options: V3OptionCandidate[];
@@ -164,6 +199,7 @@ export interface V3LedgerVariant {
   structured_facts: StructuredFact[];
   standard_notices: StandardNoticeDraft[];
   minimum_departure: { value: number; evidence: V3Evidence } | null;
+  ticketing_condition?: SourceTicketingCondition | null;
   evidence_coverage: Record<string, boolean>;
 }
 
@@ -240,4 +276,8 @@ export interface V3RunOptions {
   destination?: string | null;
   supplierHint?: string | null;
   sourceType?: string | null;
+  /** Trusted source, upload-envelope, or server-pinned rolling-policy base year. */
+  year?: number;
+  /** Server-pinned KST reference date used for reproducible deadline status. */
+  referenceDate?: string;
 }

@@ -23,6 +23,10 @@ export default function WebVitalsReporter() {
   const sentRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    // Browser proof is synthetic traffic. It must validate rendering without
+    // becoming production performance/engagement evidence.
+    if (typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).has('__proof_snapshot')) return;
     let cancelled = false;
     const path = pathname || '/';
     const pageType = getPageType(path);

@@ -3034,22 +3034,7 @@ async function syncSourceBackedPriceStores(input: {
 
   if (!input.pkg.internal_code) return;
 
-  await replaceProductPricesForProduct({
-    supabase: input.supabase,
-    productId: input.pkg.internal_code,
-    rows: productPriceRowsFromPriceDates(customerOpenPriceDates),
-  });
-
-  const { error } = await input.supabase
-    .from('products')
-    .update({
-      net_price: minPrice,
-      updated_at: nowIso(),
-    })
-    .eq('internal_code', input.pkg.internal_code);
-  if (error) throw new Error(`products price sync failed: ${error.message}`);
-
-  input.repairs.push('price_stores:products_product_prices_price_tiers_synced');
+  input.repairs.push('price_stores:correction_revision_candidate_prepared');
 }
 
 async function loadProductPriceRows(
@@ -3101,34 +3086,30 @@ async function applyScorecardDrivenRepairs(input: {
     : 'quality_scorecard:price_dates_rebuilt_from_product_prices');
 
   const updatedAt = nowIso();
-  const { data, error } = await input.supabase
-    .from('travel_packages')
-    .update({
-      ...updates,
-      audit_status: 'blocked',
-      audit_report: {
-        ...asRecord(input.pkg.audit_report),
-        upload_to_open_autopilot: {
-          ...asRecord(asRecord(input.pkg.audit_report).upload_to_open_autopilot),
-          stage: 'quality_scorecard_repaired',
-          repairs,
-          previous_quality_scorecard: input.scorecard,
-          checked_at: updatedAt,
-        },
-        mobile_browser_proof_required: {
-          status: 'fail',
-          reason: 'quality scorecard repair changed customer-visible price data; mobile/A4 proof must be regenerated',
-          checked_at: updatedAt,
-        },
+  const candidate = {
+    ...input.pkg,
+    ...updates,
+    audit_status: 'blocked',
+    audit_report: {
+      ...asRecord(input.pkg.audit_report),
+      upload_to_open_autopilot: {
+        ...asRecord(asRecord(input.pkg.audit_report).upload_to_open_autopilot),
+        stage: 'quality_scorecard_correction_revision_candidate',
+        repairs,
+        previous_quality_scorecard: input.scorecard,
+        checked_at: updatedAt,
       },
-      audit_checked_at: updatedAt,
-      updated_at: updatedAt,
-    })
-    .eq('id', input.pkg.id)
-    .select(UPLOAD_TO_OPEN_PACKAGE_SELECT)
-    .single();
-  if (error) throw error;
-  return { pkg: data as unknown as UploadToOpenAutopilotPackage, repairs, blockedReasons };
+      mobile_browser_proof_required: {
+        status: 'fail',
+        reason: 'correction revision candidate requires a new immutable snapshot and mobile proof',
+        checked_at: updatedAt,
+      },
+    },
+    audit_checked_at: updatedAt,
+    updated_at: updatedAt,
+  } as UploadToOpenAutopilotPackage;
+  blockedReasons.push('LEGACY_AUTOPILOT_CORRECTION_REQUIRES_REGISTRATION_KERNEL');
+  return { pkg: candidate, repairs, blockedReasons };
 }
 
 export function buildAutopilotStageAuditReport(
@@ -3152,48 +3133,30 @@ export function buildAutopilotStageAuditReport(
 }
 
 async function markAutopilotStage(
-  supabase: SupabaseClient,
-  packageId: string,
-  stage: string,
-  patch: Record<string, unknown> = {},
+  _supabase: SupabaseClient,
+  _packageId: string,
+  _stage: string,
+  _patch: Record<string, unknown> = {},
 ): Promise<void> {
-  const checkedAt = nowIso();
-  const { data } = await supabase
-    .from('travel_packages')
-    .select('audit_report')
-    .eq('id', packageId)
-    .maybeSingle();
-  const existing = asRecord((data as { audit_report?: unknown } | null)?.audit_report);
-  const sourceVerifyStatus = typeof patch.source_verify === 'string' ? patch.source_verify : null;
-  const readyAuditStatus = stage === 'ready_not_opened' && (sourceVerifyStatus === 'clean' || sourceVerifyStatus === 'warnings')
-    ? sourceVerifyStatus
-    : null;
-  await supabase
-    .from('travel_packages')
-    .update({
-      ...(readyAuditStatus ? { audit_status: readyAuditStatus } : {}),
-      audit_report: buildAutopilotStageAuditReport(existing, stage, checkedAt, patch),
-      audit_checked_at: checkedAt,
-    })
-    .eq('id', packageId);
+  // Retired writer: durable workflow stages are stored by the Registration
+  // Kernel repository, never on the mutable compatibility package row.
 }
 
-async function archiveExpiredTicketingPackage(input: {
+async function markExpiredTicketingPackageForReconfirmation(input: {
   supabase: SupabaseClient;
   pkg: UploadToOpenAutopilotPackage;
   deadline: SourceTicketingDeadline;
-  autoOpen: boolean;
 }): Promise<UploadToOpenPackageResult> {
-  const reason = `ticketing_deadline_expired:${input.deadline.deadline}`;
+  const reason = `ticketing_deadline_expired_reconfirmation_required:${input.deadline.deadline}`;
   const reviewAction: UploadToOpenReviewAction = {
     reason,
-    category: 'possibly_unusable_source',
-    canBeMadeUsable: false,
-    nextAction: 'Keep this product out of customer exposure because the source ticketing deadline has passed. Register a fresh source offer if sales should resume.',
+    category: 'publish_gate_required',
+    canBeMadeUsable: true,
+    nextAction: 'V6에서 출발일과 가격은 유지하고 현재 좌석·요금 재확인 문구와 상담 전용 CTA로 축약 공개합니다.',
   };
   const summary = repairFirstSummary({
     reasons: [reason],
-    repairs: ['ticketing_deadline:expired_source_offer_archived'],
+    repairs: ['ticketing_deadline:expired_reconfirmation_required'],
     reviewActions: [reviewAction],
   });
   const checkedAt = nowIso();
@@ -3201,7 +3164,7 @@ async function archiveExpiredTicketingPackage(input: {
     ...asRecord(input.pkg.audit_report),
     upload_to_open_autopilot: {
       ...asRecord(asRecord(input.pkg.audit_report).upload_to_open_autopilot),
-      stage: input.autoOpen ? 'expired_ticketing_deadline_archived' : 'expired_ticketing_deadline_detected',
+      stage: 'expired_ticketing_deadline_reconfirmation_required',
       checked_at: checkedAt,
       reasons: [reason],
       review_actions: [reviewAction],
@@ -3215,36 +3178,13 @@ async function archiveExpiredTicketingPackage(input: {
     },
   };
 
-  const packagePatch: Record<string, unknown> = {
-    audit_report: auditReport,
-    audit_checked_at: checkedAt,
-    ticketing_deadline: input.deadline.deadline,
-    updated_at: checkedAt,
-  };
-  if (input.autoOpen) {
-    packagePatch.status = 'archived';
-  }
-
-  const { error } = await input.supabase
-    .from('travel_packages')
-    .update(packagePatch)
-    .eq('id', input.pkg.id);
-  if (error) throw error;
-
-  if (input.autoOpen && input.pkg.internal_code) {
-    await input.supabase
-      .from('products')
-      .update({ status: 'expired', updated_at: checkedAt })
-      .eq('internal_code', input.pkg.internal_code);
-  }
-
   return {
     id: input.pkg.id,
     title: input.pkg.title,
     code: input.pkg.internal_code,
-    status: 'blocked',
+    status: 'ready_not_opened',
     openabilityState: summary.state,
-    stage: input.autoOpen ? 'expired_ticketing_deadline_archived' : 'expired_ticketing_deadline_detected',
+    stage: 'expired_ticketing_deadline_reconfirmation_required',
     reasons: [reason],
     repairs: summary.repairs_applied,
     repairFirstSummary: summary,
@@ -3688,33 +3628,26 @@ async function applySourceBackedRepairs(
   }
 
   const updatedAt = nowIso();
-  const { data, error } = await supabase
-    .from('travel_packages')
-    .update({
+  blockedReasons.push('LEGACY_AUTOPILOT_CORRECTION_REQUIRES_REGISTRATION_KERNEL');
+  return {
+    pkg: {
+      ...workingPkg,
       ...updates,
       audit_status: 'blocked',
       audit_report: {
         ...asRecord(pkg.audit_report),
         upload_to_open_autopilot: {
           ...asRecord(asRecord(pkg.audit_report).upload_to_open_autopilot),
-          stage: 'source_backed_repaired',
+          stage: 'source_backed_correction_revision_candidate',
           repairs,
           checked_at: updatedAt,
         },
-        mobile_browser_proof_required: {
-          status: 'fail',
-          reason: 'source-backed autopilot repair changed customer-visible data; mobile/A4 proof must be regenerated',
-          checked_at: updatedAt,
-        },
       },
-      audit_checked_at: updatedAt,
       updated_at: updatedAt,
-    })
-    .eq('id', pkg.id)
-    .select(UPLOAD_TO_OPEN_PACKAGE_SELECT)
-    .single();
-  if (error) throw error;
-  return { pkg: data as unknown as UploadToOpenAutopilotPackage, repairs, blockedReasons };
+    },
+    repairs,
+    blockedReasons,
+  };
 }
 
 async function loadDeliveryContext(supabase: SupabaseClient, packageId: string) {
@@ -4297,11 +4230,10 @@ async function evaluateAndMaybeOpenPackage(input: {
     rawText: pkg.raw_text,
   });
   if (ticketingDeadline?.expired) {
-    return archiveExpiredTicketingPackage({
+    return markExpiredTicketingPackageForReconfirmation({
       supabase: input.supabase,
       pkg,
       deadline: ticketingDeadline,
-      autoOpen: input.autoOpen,
     });
   }
   const reasons: string[] = [];
@@ -4622,22 +4554,16 @@ async function evaluateAndMaybeOpenPackage(input: {
     };
   }
 
-  if (pkg.internal_code) {
-    await input.supabase
-      .from('products')
-      .update({ status: 'ACTIVE', updated_at: openedAt })
-      .eq('internal_code', pkg.internal_code);
-  }
-
-  const openedSummary = repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] });
+  const kernelReason = 'LEGACY_AUTOPILOT_PUBLICATION_RETIRED_USE_SNAPSHOT_CAS';
+  const openedSummary = repairFirstSummary({ reasons: [kernelReason], repairs: allRepairs, reviewActions: [] });
   return {
     id: pkg.id,
     title: pkg.title,
     code: pkg.internal_code,
-    status: 'opened',
+    status: 'ready_not_opened',
     openabilityState: openedSummary.state,
-    stage: 'opened',
-    reasons: [],
+    stage: 'kernel_publication_required',
+    reasons: [kernelReason],
     repairs: allRepairs,
     repairFirstSummary: openedSummary,
     reviewActions: [],

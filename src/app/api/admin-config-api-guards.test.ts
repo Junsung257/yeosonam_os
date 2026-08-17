@@ -47,6 +47,8 @@ const sensitiveNeedles = [
   'invalidatePromptCache',
   'getTopRecommendedPackages',
   'generateBriefingPPT',
+  'PRODUCT_STUB_CREATE_RETIRED',
+  'PRODUCT_REGISTRATION_KERNEL_ADAPTER_REQUIRED',
 ];
 
 describe('admin configuration API authorization boundary', () => {

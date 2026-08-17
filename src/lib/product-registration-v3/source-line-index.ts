@@ -40,6 +40,16 @@ export function evidenceFromLines(lines: V3SourceLine[], startLine: number, endL
   };
 }
 
+export function evidenceFromSourceLine(line: V3SourceLine): V3Evidence {
+  return {
+    line_start: line.lineNumber,
+    line_end: line.lineNumber,
+    char_start: line.charStart,
+    char_end: line.charEnd,
+    quote: line.quote,
+  };
+}
+
 export function findLineEvidence(lines: V3SourceLine[], predicate: (line: V3SourceLine) => boolean): V3Evidence | null {
   const found = lines.find(predicate);
   return found ? evidenceFromLines(lines, found.lineNumber) : null;

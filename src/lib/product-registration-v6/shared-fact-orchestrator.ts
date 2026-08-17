@@ -60,7 +60,27 @@ function normalizeAirport(value: unknown): string | null {
   const text = string(value)?.toUpperCase() ?? null;
   if (!text) return null;
   const match = text.match(/\b[A-Z]{3}\b/);
-  return match?.[0] ?? text;
+  // The shared schedule providers and observation index are keyed by IATA
+  // airport code. A Korean place label such as "부산" is still useful source
+  // evidence, but treating it as an airport code would create a false shared
+  // fact. Keep the source segment and safely degrade the public schedule until
+  // a resolver can establish the code.
+  return match?.[0] ?? null;
+}
+
+export function sourceTransportSharedFactIssue(segment: JsonObject): string | null {
+  const serviceNumber = string(segment.service_number ?? segment.flight_no ?? segment.code)
+    ?.replace(/\s+/g, '')
+    .toUpperCase() ?? null;
+  const departureAirport = normalizeAirport(
+    segment.departure_place_code ?? segment.dep_airport ?? segment.departure_airport,
+  );
+  const arrivalAirport = normalizeAirport(
+    segment.arrival_place_code ?? segment.arr_airport ?? segment.arrival_airport,
+  );
+  return serviceNumber && departureAirport && arrivalAirport
+    ? null
+    : 'FLIGHT_IDENTITY_OR_ROUTE_UNRESOLVED_HIDDEN';
 }
 
 function observationFromSource(input: {
@@ -202,7 +222,13 @@ export async function resolveSharedFactsForJob(input: {
           date,
         });
         if (!currentObservation) {
-          result.blockers.push(`package:${packageId}:segment:${segmentIndex}:FLIGHT_IDENTITY_OR_ROUTE_MISSING`);
+          // Missing IATA identity is not a commercial blocker. The source
+          // flight remains in the revision, while customer-visible times are
+          // removed by applyResolvedTransport() and an explicit final-check
+          // notice is shown. Price/date/currency/terms still fail closed.
+          result.degradedReasons.push(
+            `package:${packageId}:segment:${segmentIndex}:${sourceTransportSharedFactIssue(segment) ?? 'FLIGHT_IDENTITY_OR_ROUTE_UNRESOLVED_HIDDEN'}`,
+          );
           continue;
         }
         await recordTransportObservation({ supabase: input.supabase, observation: currentObservation });

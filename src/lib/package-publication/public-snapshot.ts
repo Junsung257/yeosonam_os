@@ -11,7 +11,6 @@ import {
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
 import { normalizeCustomerAirlineCodeCopy } from '@/lib/airline-display';
-import { isSafeImageSrc } from '@/lib/image-url';
 import { attachSourceBackedGolfRemarks, postProcessItineraryData } from '@/lib/package-post-process';
 import { renderPackage } from '@/lib/render-contract';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
@@ -20,18 +19,16 @@ import {
   composeCustomerPublicSubtitle,
   composeCustomerPublicSummary,
 } from './public-summary-policy';
+import { buildCustomerBudget } from './customer-budget';
 import { buildPublicTermsPolicy } from './public-terms-policy';
 import { composeCustomerPublicTitle } from './public-title-policy';
-import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
+import { normalizePublicPackageMedia, publicMediaFromLegacyUrl } from './public-media';
+import type { OptionalTourStatus, PublicPackageMedia, PublicPackageSnapshot } from './types';
 
 type AnyRecord = Record<string, unknown>;
-type PublicImageCandidate = {
-  url: string;
-  source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og' | 'brand_fallback';
-  alt: string | null;
-};
 type PublicNoticeTemplateKey =
   | 'reservation_availability_check'
+  | 'schedule_and_lodging_confirmation'
   | 'cancellation_policy_check'
   | 'shopping_disclosure_check'
   | 'passport_validity_check';
@@ -104,6 +101,16 @@ const APPROVED_OPERATIONAL_NOTICE_TEMPLATES: Record<PublicNoticeTemplateKey, Pub
     review_status: 'auto_clean',
     source_line: null,
   },
+  schedule_and_lodging_confirmation: {
+    type: 'INFO',
+    title: '항공·숙소 확인 안내',
+    text: '항공 운항 시각과 미정 숙소는 상담 시 최종 확인해 드립니다.',
+    category: 'reservation',
+    values: {},
+    template_key: 'schedule_and_lodging_confirmation',
+    review_status: 'auto_clean',
+    source_line: null,
+  },
   cancellation_policy_check: {
     type: 'POLICY',
     title: '취소 규정 안내',
@@ -135,6 +142,31 @@ const APPROVED_OPERATIONAL_NOTICE_TEMPLATES: Record<PublicNoticeTemplateKey, Pub
     source_line: null,
   },
 };
+
+function sourceBackedShoppingNotice(text: string): PublicNoticeCandidate {
+  const base = APPROVED_OPERATIONAL_NOTICE_TEMPLATES.shopping_disclosure_check;
+  const count = text.match(/(\d{1,2})\s*회/u)?.[1] ?? null;
+  const itemGroup = text.match(/\[([^\]]+)\]/u)?.[1]
+    ?? text.match(/\(([^)]+)\)/u)?.[1]
+    ?? null;
+  const items = itemGroup
+    ?.replace(/\s*[&+]\s*/gu, '·')
+    .replace(/\s*,\s*/gu, ', ')
+    .replace(/^방문\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!count) return { ...base };
+  return {
+    ...base,
+    text: items
+      ? `쇼핑 ${count}회 예정(${items})`
+      : `쇼핑 ${count}회가 일정에 포함되어 있습니다.`,
+    values: {
+      count: Number(count),
+      ...(items ? { items } : {}),
+    },
+  };
+}
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
@@ -261,7 +293,8 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
     || /^product_summary/.test(path)
     || /^hero_tagline/.test(path)
     || /^customer_notes/.test(path)
-    || /^notices_parsed/.test(path);
+    || /^notices_parsed/.test(path)
+    || /^product_registration_disclosure/.test(path);
   if (!isOperationalPath) return keys;
 
   if (/\uC608\uC57D\s*\uC989\uC2DC|\uC989\uC2DC\s*\uD655\uC815|\uCD9C\uBC1C\s*\uD655\uC815|\uC88C\uC11D\s*(?:\uD655\uBCF4|\uD655\uC815|\uBCF4\uC7A5)|\uD56D\uACF5\s*\uC694\uAE08|\uBC1C\uAD8C|\uC608\uC57D\uAE08|\uC785\uAE08|\uBBF8\s*\uD655\uBCF4|\uAC00\uB2A5\s*\uC5EC\uBD80|\uBB38\uC758/i.test(text)) {
@@ -279,6 +312,10 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
 
   if (/예약\s*즉시|즉시\s*확정|출발\s*확정|좌석\s*(?:확보|확정|보장)|항공\s*요금|발권|예약금|입금/i.test(text)) {
     keys.push('reservation_availability_check');
+  }
+  if (/항공\s*운항\s*시각|미정\s*호텔|미정\s*숙소|운항일\s*기준|상담\s*시\s*최종\s*확인/i.test(text)
+    && /^product_registration_disclosure/.test(path)) {
+    keys.push('schedule_and_lodging_confirmation');
   }
   if (/취소|환불|수수료|차지|위약/i.test(text)) {
     keys.push('cancellation_policy_check');
@@ -315,6 +352,7 @@ function buildPublicOperationalNotices(pkg: AnyRecord): {
     { root: 'hero_tagline', value: pkg.hero_tagline },
     { root: 'customer_notes', value: pkg.customer_notes },
     { root: 'notices_parsed', value: pkg.notices_parsed },
+    { root: 'product_registration_disclosure', value: pkg.product_registration_disclosure },
   ];
 
   for (const source of sources) {
@@ -335,7 +373,9 @@ function buildPublicOperationalNotices(pkg: AnyRecord): {
       for (const template of templates) {
         if (seenTemplates.has(template)) continue;
         seenTemplates.add(template);
-        notices.push({ ...APPROVED_OPERATIONAL_NOTICE_TEMPLATES[template] });
+        notices.push(template === 'shopping_disclosure_check'
+          ? sourceBackedShoppingNotice(text)
+          : { ...APPROVED_OPERATIONAL_NOTICE_TEMPLATES[template] });
       }
     });
   }
@@ -375,28 +415,23 @@ function buildSourceBackedItineraryCandidate(pkg: AnyRecord, existingItinerary: 
 }
 
 function addPublicImageCandidate(
-  candidates: PublicImageCandidate[],
+  candidates: PublicPackageMedia[],
   seen: Set<string>,
   rawUrl: unknown,
-  source: PublicImageCandidate['source'],
+  source: string,
   alt: unknown = null,
 ) {
-  if (!isSafeImageSrc(rawUrl)) return;
-  const url = rawUrl.trim();
-  if (seen.has(url)) return;
-  seen.add(url);
-  candidates.push({
-    url,
-    source,
-    alt: asString(alt),
-  });
+  const media = publicMediaFromLegacyUrl({ url: rawUrl, source, alt });
+  if (!media || seen.has(media.url)) return;
+  seen.add(media.url);
+  candidates.push(media);
 }
 
 function addPublicImageUrlList(
-  candidates: PublicImageCandidate[],
+  candidates: PublicPackageMedia[],
   seen: Set<string>,
   value: unknown,
-  source: PublicImageCandidate['source'],
+  source: string,
   alt: unknown = null,
 ) {
   if (!Array.isArray(value)) return;
@@ -406,7 +441,7 @@ function addPublicImageUrlList(
 }
 
 function addPublicPhotoArray(
-  candidates: PublicImageCandidate[],
+  candidates: PublicPackageMedia[],
   seen: Set<string>,
   value: unknown,
   alt: unknown = null,
@@ -427,7 +462,7 @@ function addPublicPhotoArray(
 
 function collectNestedPublicPhotos(
   value: unknown,
-  candidates: PublicImageCandidate[],
+  candidates: PublicPackageMedia[],
   seen: Set<string>,
   depth = 0,
 ) {
@@ -449,7 +484,7 @@ function collectNestedPublicPhotos(
 }
 
 function collectProductThumbnailImages(
-  candidates: PublicImageCandidate[],
+  candidates: PublicPackageMedia[],
   seen: Set<string>,
   products: unknown,
 ) {
@@ -468,10 +503,21 @@ function collectProductThumbnailImages(
   );
 }
 
-function collectPublicImages(pkg: AnyRecord): PublicImageCandidate[] {
-  const candidates: PublicImageCandidate[] = [];
+function collectPublicImages(pkg: AnyRecord): PublicPackageMedia[] {
+  const candidates: PublicPackageMedia[] = [];
   const seen = new Set<string>();
-  const title = pkg.display_title ?? pkg.title ?? pkg.destination ?? null;
+  // Raw supplier titles frequently contain internal codes and table fragments.
+  // They must never be copied into public image alt text.
+  const title = pkg.destination ?? '여행 이미지';
+
+  if (Array.isArray(pkg.images_public)) {
+    for (const item of pkg.images_public) {
+      const media = normalizePublicPackageMedia(item, asString(title) ?? '여행 이미지');
+      if (!media || seen.has(media.url)) continue;
+      seen.add(media.url);
+      candidates.push(media);
+    }
+  }
 
   for (const key of ['lp_hero_image_url', 'hero_image_url', 'main_image', 'thumbnail_url']) {
     addPublicImageCandidate(candidates, seen, pkg[key], 'package_hero', title);
@@ -879,6 +925,7 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     snapshot.public_title,
     snapshot.public_subtitle,
     snapshot.price_display,
+    snapshot.expected_budget_display,
     snapshot.cta_copy.primary,
     snapshot.cta_copy.helper,
     ...snapshot.option_policy.badges,
@@ -931,6 +978,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   applySourceBackedPublicPriceRepair(pkg, publicPackage);
   const imagesPublic = collectPublicImages({ ...pkg, ...publicPackage });
   const imageUrls = imagesPublic.map(image => image.url);
+  const heroMedia = imagesPublic.find(image => image.role === 'hero') ?? imagesPublic[0] ?? null;
   if (imageUrls.length > 0) {
     publicPackage.hero_image_url = imageUrls[0];
     publicPackage.lp_hero_image_url = imageUrls[0];
@@ -954,6 +1002,11 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     verifiedExclusions: verifiedCommercialTerms?.exclusions,
     rawText: asString(pkg.raw_text),
   });
+  const customerBudget = buildCustomerBudget({
+    baseProductPrice: customerPrice,
+    inclusions: publicTerms.inclusionsPublic,
+    exclusions: publicTerms.exclusionsPublic,
+  });
   const sourceBackedItinerary = postProcessItineraryData(
     attachSourceBackedGolfRemarks(
       buildSourceBackedItineraryCandidate(pkg, publicPackage.itinerary_data) as Parameters<typeof postProcessItineraryData>[0],
@@ -967,6 +1020,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   const publicItinerary = sanitizePublicCustomerValue(sourceBackedItinerary);
   publicPackage.inclusions = publicTerms.inclusionsPublic;
   publicPackage.excludes = publicTerms.exclusionsPublic;
+  publicPackage.customer_budget = customerBudget;
   publicPackage.optional_tours = optionalTourClassification.publicTours;
   publicPackage.itinerary_data = publicItinerary;
   publicPackage.product_highlights = sanitizePublicHighlightList(publicPackage.product_highlights);
@@ -1010,6 +1064,9 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     optionalTourStatus: optionalTourClassification.status,
   }) || displayCopy.heroSubline || null;
   const rawTitleEchoes = rawTitleEchoCandidates(pkg);
+  for (const image of imagesPublic) {
+    if (rawTitleEchoes.has(normalizeText(image.alt))) image.alt = publicTitle;
+  }
   publicPackage.itinerary_data = normalizeRawTitleEchoes(
     publicPackage.itinerary_data,
     publicTitle,
@@ -1034,6 +1091,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       ? publicOperationalNotices.notices.map(notice => notice.text).join('\n')
       : publicPackage.customer_notes,
     images_public: imagesPublic,
+    hero_media: heroMedia,
     hero_image_url: imageUrls[0] ?? null,
     lp_hero_image_url: imageUrls[0] ?? null,
     thumbnail_urls: imageUrls,
@@ -1068,6 +1126,8 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     duration,
     destinations: destinations(publicPackage),
     price_display: priceDisplay(publicPackage),
+    customer_budget: customerBudget,
+    expected_budget_display: customerBudget.expected_budget_display,
     option_policy: {
       status: optionalTourClassification.status,
       badges: optionalTourClassification.badges,
@@ -1093,8 +1153,12 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       nights: asNumber(publicPackage.nights),
       price: asNumber(publicPackage.price),
       price_display: priceDisplay(publicPackage),
+      customer_budget: customerBudget,
+      expected_budget: customerBudget.expected_budget,
+      expected_budget_display: customerBudget.expected_budget_display,
       hero_image_url: imageUrls[0] ?? null,
       thumbnail_urls: imageUrls,
+      hero_media: heroMedia,
       badges: displayCopy.badges,
     },
     lp_projection: {
@@ -1105,9 +1169,13 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       summary: publicSummary,
       price: asNumber(publicPackage.price),
       price_display: priceDisplay(publicPackage),
+      customer_budget: customerBudget,
+      expected_budget: customerBudget.expected_budget,
+      expected_budget_display: customerBudget.expected_budget_display,
       hero_image_url: imageUrls[0] ?? null,
       lp_hero_image_url: imageUrls[0] ?? null,
       thumbnail_urls: imageUrls,
+      hero_media: heroMedia,
       cta_copy: '예약 가능 여부 확인',
     },
   };

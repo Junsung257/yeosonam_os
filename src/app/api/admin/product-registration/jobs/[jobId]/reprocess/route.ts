@@ -5,7 +5,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import { DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE, parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,8 +43,16 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
     sourceDocumentId: source.id,
     requestBaseUrl: request.nextUrl.origin,
     publicBaseUrl: baseUrl,
-    uploadSourceMetadata: (metadata.uploadSourceMetadata as Record<string, unknown> | undefined)
-      ?? parseUploadSourceMetadata({ fileName: source.original_filename, defaultCommissionRate: 10 }) as unknown as Record<string, unknown>,
+    uploadSourceMetadata: {
+      ...((metadata.uploadSourceMetadata as Record<string, unknown> | undefined)
+        ?? parseUploadSourceMetadata({
+          fileName: source.original_filename,
+          defaultCommissionRate: DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
+        }) as unknown as Record<string, unknown>),
+      ...(prior.v4_stage_state.sourceDepartureYearContext
+        ? { sourceDepartureYearContext: prior.v4_stage_state.sourceDepartureYearContext }
+        : {}),
+    },
     sourceChannel: 'admin-reprocess',
     forceReprocess: true,
   });

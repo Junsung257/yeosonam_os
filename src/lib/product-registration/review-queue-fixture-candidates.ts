@@ -9,6 +9,9 @@ import {
 
 export type UploadReviewQueueFixtureRow = {
   id: string;
+  tenant_id?: string | null;
+  source_document_id?: string | null;
+  upload_job_id?: string | null;
   created_at: string | null;
   status: string | null;
   severity: string | null;

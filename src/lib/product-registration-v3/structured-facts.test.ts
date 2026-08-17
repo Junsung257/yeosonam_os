@@ -253,6 +253,127 @@ describe('product-registration-v3 structured facts', () => {
     expect(noTip.gate_result.checks.find(check => check.id.endsWith('high_risk_structured_fact_values'))?.status).toBe('pass');
   });
 
+  it('reads a won-symbol guide fee as excluded even when the source word contains 불포함', async () => {
+    const result = await runProductRegistrationV3([
+      '상품: 북큐슈 2박3일 PKG',
+      '가격: 599,000원 / 최소출발 4명',
+      'DAY 1 BX142 출발 10:00 도착 10:55',
+      'DAY 2 유후인 관광',
+      '★ 불포함 – 개인경비, 기사&가이드경비 ￦30,000',
+      'DAY 3 BX143 출발 19:55 도착 21:00',
+      '포함 호텔 식사',
+    ].join('\n'));
+    const guideTip = result.ledger.variants[0]?.structured_facts.find(fact => fact.category === 'guide_tip');
+
+    expect(guideTip?.values).toMatchObject({ included: false, amount: 30_000, currency: '원', payment: 'local' });
+    expect(guideTip?.review_status).toBe('auto_clean');
+    expect(result.gate_result.checks.find(check => check.id.endsWith('high_risk_structured_fact_values'))?.status).toBe('pass');
+  });
+
+  it('does not borrow a single-room charge as the guide-tip amount', () => {
+    const source = '유류변동분, 싱글차지(200,000원/인/전일정), 개인경비 및 매너팁, 기사 가이드팁';
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const fact = result.structuredFacts.find(row => row.category === 'guide_tip');
+    const notice = result.standardNotices.find(row => row.template_key === 'guide.tip_amount_local_payment');
+
+    expect(fact?.values).toMatchObject({ included: false, amount: null, currency: null });
+    expect(notice?.values.amount).toBeNull();
+    expect(notice?.review_status).toBe('review_needed');
+  });
+
+  it('does not apply a massage-tip exclusion to an included guide expense in another clause', () => {
+    const source = [
+      '포 함 내 역',
+      '여행자보험(1억원), 발+전신마사지(90분/팁별도), 특급호텔숙박+온천욕, 특식3회, 기사/가이드경비',
+      '불포함 내역',
+      '기타개인경비',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
+    expect(guideTips[0]?.review_status).toBe('auto_clean');
+    expect(result.standardNotices.some(notice => notice.template_key === 'guide.tip_amount_local_payment')).toBe(false);
+  });
+
+  it('keeps an amount-less guide benefit in the active inclusion section when a later exclusion heading is nearby', () => {
+    const source = [
+      '포 함',
+      '기사/가이드팁, 왕조성지온천욕, 발+전신마사지(60분), 특식 2회',
+      '연길 핫플 민속촌',
+      '불 포 함',
+      '유류할증료 변동분, 싱글차지, 개인경비 및 매너팁',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
+    expect(guideTips[0]?.review_status).toBe('auto_clean');
+  });
+
+  it('treats an amount-bearing guide fee before a reversed exclusion heading as local payment', () => {
+    const source = [
+      '포 함 내 역',
+      '항공료, 호텔, 일정상 표기된 식사',
+      '기사 & 가이드 경비 $50/인, 아시아 관광세 MYR10/룸/박, 개인 경비 및 매너팁',
+      '불포함 내역',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: false, amount: 50, currency: 'USD', payment: 'local' });
+    expect(guideTips[0]?.review_status).toBe('auto_clean');
+  });
+
+  it('recognizes a spaced inclusion heading and keeps the following guide tip included', () => {
+    const source = [
+      '[BX] 다낭/호이안 노팁노옵션 PKG 3박5일',
+      '포 함 사 항',
+      '일정상의 관광지입장료 및 식사, 기사 및 한국인가이드 팁',
+      '불 포 함',
+      '개인경비 및 매너 팁, 싱글차지',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
+  });
+
+  it('does not join a free-day guide service clause with a separate etiquette-tip clause', () => {
+    const source = [
+      '[BX] 나트랑 노팁/노쇼핑 3박5일',
+      '포 함',
+      '나트랑 야간시티투어+가이드/기사 팁',
+      '불 포 함',
+      '1일차 석식, 2일차 가이드/차량/중석식 ▶ 에티켓팁, 기타 개인경비',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
+  });
+
+  it('preserves an amount-less guide tip inside an explicit exclusion section when no-tip conflicts', () => {
+    const source = [
+      '포함사항: 기사/가이드팁 포함, 노팁 상품',
+      '불 포 함',
+      '유류변동분, 싱글차지(200,000원/인/전일정), 개인경비 및 매너팁, 기사 가이드팁',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText: source });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+
+    expect(guideTips.some(row => (
+      row.values.included === false
+      && row.values.amount == null
+      && row.review_status === 'review_needed'
+    ))).toBe(true);
+  });
+
   it('does not treat ordinary Korean syllables in visa or attraction lines as meal/surcharge facts', () => {
     const result = extractStructuredFactsFromSupplierText({
       rawText: [
@@ -280,5 +401,57 @@ describe('product-registration-v3 structured facts', () => {
 
     expect(result.standardNotices.some(notice => notice.category === 'meal_plan')).toBe(false);
     expect(result.structuredFacts.some(fact => fact.category === 'meal_plan')).toBe(false);
+  });
+
+  it('does not describe optional-tour transport as included transportation', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '선택관광: 노산 케이블카 $100/인',
+        '관광: 야경유람선 $50, 노산(케이블카) $100',
+        '♣추천선택관광: 해천뷰전망대 케이블카왕복 $50/인',
+        '제2일 전용차량으로 시내 이동',
+      ].join('\n'),
+    });
+    const transports = result.structuredFacts
+      .filter(fact => fact.category === 'transport')
+      .flatMap(fact => fact.values.items as string[]);
+
+    expect(transports).toEqual(['전용차량']);
+    expect(result.standardNotices.some(notice => (
+      notice.template_key === 'transport.included'
+      && (notice.values.items as string[]).includes('케이블카')
+    ))).toBe(false);
+  });
+
+  it('uses natural Korean particles in customer meal copy', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: ['특식', '중:현지식', '석:샤브샤브'].join('\n'),
+    });
+    const messages = result.standardNotices
+      .filter(notice => notice.category === 'meal_plan')
+      .map(notice => notice.standard_text);
+
+    expect(messages).toEqual(expect.arrayContaining([
+      '일정표 기준 식사는 특식으로 제공됩니다.',
+      '일정표 기준 식사는 중식 현지식으로 제공됩니다.',
+      '일정표 기준 식사는 석식 샤브샤브로 제공됩니다.',
+    ]));
+  });
+
+  it('does not publish incomplete meal fragments created by HWP cell wrapping', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '하산 후 석식 및 호텔투숙',
+        '중:김밥 또는',
+        '도시락',
+        '석:호텔식',
+      ].join('\n'),
+    });
+    const messages = result.standardNotices
+      .filter(notice => notice.category === 'meal_plan')
+      .map(notice => notice.standard_text);
+
+    expect(messages).toEqual(['일정표 기준 식사는 석식 호텔식으로 제공됩니다.']);
+    expect(messages.some(message => /또는으로|호텔투숙으로/u.test(message))).toBe(false);
   });
 });

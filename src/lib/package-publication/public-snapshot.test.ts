@@ -92,6 +92,21 @@ function mobileProofForSnapshot(snapshotHash: string) {
 }
 
 describe('public package snapshot gate', () => {
+  it('turns an exact source shopping row into a precise customer notice', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      itinerary_data: {
+        highlights: { shopping: '쇼  핑 ▶ 2회 [노니&침향, 커피&잡화]' },
+        days: [{ day: 1, schedule: [{ activity: '푸꾸옥 도착' }] }],
+      },
+    }));
+
+    expect(snapshot.package.notices_parsed).toContainEqual(expect.objectContaining({
+      template_key: 'shopping_disclosure_check',
+      text: '쇼핑 2회 예정(노니·침향, 커피·잡화)',
+      values: { count: 2, items: '노니·침향, 커피·잡화' },
+    }));
+    expect(snapshot.package.customer_notes).toContain('쇼핑 2회 예정(노니·침향, 커피·잡화)');
+  });
   it('keeps the public hash stable across audit-only timestamp writes', () => {
     const first = buildPublicPackageSnapshot(yanjiPackage({ updated_at: '2026-08-10T03:00:00.000Z' }));
     const second = buildPublicPackageSnapshot(yanjiPackage({ updated_at: '2026-08-10T04:00:00.000Z' }));
@@ -112,6 +127,77 @@ describe('public package snapshot gate', () => {
     expect(snapshot.optional_tours_public).toEqual([]);
     expect(snapshot.package.optional_tours).toEqual([]);
     expect(snapshot.option_policy.badges).toContain('노옵션');
+  });
+
+  it('publishes base price plus fixed fuel as the expected budget while leaving guide fee excluded', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      inclusions: ['왕복 항공료', '숙박'],
+      excludes: ['유류할증료 126,000원', '기사/가이드경비 40,000원'],
+    }));
+
+    expect(snapshot.price_display).toBe('599,000원~');
+    expect(snapshot.customer_budget).toMatchObject({
+      base_product_price: 599_000,
+      fuel_surcharge: { status: 'excluded_fixed', amount: 126_000 },
+      expected_budget: 725_000,
+      expected_budget_display: '725,000원',
+      guide_fee_excluded: true,
+    });
+    expect(snapshot.expected_budget_display).toBe('725,000원');
+    expect(snapshot.card_projection).toMatchObject({
+      price: 599_000,
+      expected_budget: 725_000,
+    });
+    expect(snapshot.lp_projection).toMatchObject({
+      price: 599_000,
+      expected_budget: 725_000,
+    });
+    expect(snapshot.exclusions_public.join(' ')).toMatch(/가이드/);
+  });
+
+  it('does not invent an expected total for an unpriced excluded fuel surcharge', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      inclusions: ['왕복 항공료', '숙박'],
+      excludes: ['유류할증료 변동분 별도', '가이드비 40,000원'],
+    }));
+
+    expect(snapshot.customer_budget.fuel_surcharge.status).toBe('excluded_unpriced');
+    expect(snapshot.customer_budget.expected_budget).toBeNull();
+    expect(snapshot.customer_budget.guide_fee_excluded).toBe(true);
+  });
+
+  it('blocks publication when fuel surcharge is both included and excluded', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      inclusions: ['왕복 항공료', '유류할증료 포함'],
+      excludes: ['유류할증료 126,000원 별도'],
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        customer_budget: snapshot.customer_budget,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.customer_budget.fuel_surcharge.status).toBe('conflicting');
+    expect(snapshot.customer_budget.expected_budget).toBeNull();
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'commercial_terms_conflict',
+        fieldPath: 'customer_budget.fuel_surcharge.status',
+      }),
+    ]));
   });
 
   it('filters low-information status copy from customer route text without fixing an individual product', () => {
@@ -1330,6 +1416,40 @@ describe('public package snapshot gate', () => {
 
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('placeholder_or_mojibake');
+  });
+
+  it('preserves reference labels, attribution and license metadata across every customer projection', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      images_public: [{
+        url: 'https://upload.wikimedia.org/yanji.jpg',
+        source: 'destination_reference',
+        kind: 'destination_reference',
+        role: 'hero',
+        label: '연길 여행지 참고 이미지 · 실제 일정과 다를 수 있습니다.',
+        alt: '연길 여행지 참고 이미지',
+        reference_only: true,
+        provider: 'wikimedia_commons',
+        provider_asset_id: 'Yanji.jpg',
+        attribution_text: 'Author / Wikimedia Commons',
+        attribution_url: 'https://commons.wikimedia.org/wiki/File:Yanji.jpg',
+        source_page_url: 'https://commons.wikimedia.org/wiki/File:Yanji.jpg',
+        license_code: 'CC-BY-4.0',
+        license_url: 'https://creativecommons.org/licenses/by/4.0/',
+      }],
+    }));
+
+    const media = snapshot.images_public[0];
+    expect(media).toEqual(expect.objectContaining({
+      kind: 'destination_reference',
+      reference_only: true,
+      provider: 'wikimedia_commons',
+      attribution_text: 'Author / Wikimedia Commons',
+      source_page_url: 'https://commons.wikimedia.org/wiki/File:Yanji.jpg',
+      license_code: 'CC-BY-4.0',
+    }));
+    expect(snapshot.package.hero_media).toEqual(media);
+    expect(snapshot.card_projection.hero_media).toEqual(media);
+    expect(snapshot.lp_projection.hero_media).toEqual(media);
   });
 
   it('invalidates mobile proof when the expected public snapshot hash differs', () => {

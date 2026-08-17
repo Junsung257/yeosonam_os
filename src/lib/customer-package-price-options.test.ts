@@ -43,11 +43,11 @@ describe('customer package price options', () => {
     ]);
   });
 
-  it('keeps the customer package detail query away from internal net prices', () => {
+  it('loads customer prices from the immutable snapshot instead of raw product price rows', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
 
-    expect(pageSource).toContain(".select('target_date, adult_selling_price, note')");
-    expect(pageSource).not.toContain(".select('target_date, net_price, note')");
+    expect(pageSource).toContain('getCurrentPublicPackage');
+    expect(pageSource).not.toMatch(/from\('product_prices'\)/);
     expect(pageSource).not.toMatch(/from\('product_prices'\)[\s\S]{0,240}\.select\([^)]*net_price/);
   });
 });

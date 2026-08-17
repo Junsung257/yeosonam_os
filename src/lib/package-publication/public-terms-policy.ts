@@ -1,3 +1,5 @@
+import { extractSourceWonAmounts } from '@/lib/parser/deterministic/price-ir/source-money';
+
 type PublicTermKind = 'inclusion' | 'exclusion';
 
 type PublicTermPolicyInput = {
@@ -44,7 +46,8 @@ const PUBLIC_TERM_FRAGMENT_PATTERNS = [
 ];
 
 const INCLUSION_RULES: Array<[RegExp, string]> = [
-  [/왕복\s*항공|항공\s*료|항공권/, '왕복항공료'],
+  [/왕복\s*항공|국제선\s*항공\s*요금|항공\s*(?:료|요금)|항공권/, '왕복항공료'],
+  [/(?:^|\s)(?:TAX|텍스|제세공과금)(?:\s|$)/i, 'TAX'],
   [/유류\s*할증료/, '유류할증료'],
   [/숙박|호텔/, '숙박'],
   [/식사/, '일정표상 식사'],
@@ -57,15 +60,18 @@ const INCLUSION_RULES: Array<[RegExp, string]> = [
 const EXCLUSION_RULES: Array<[RegExp, string]> = [
   [/개인\s*경비/, '개인경비'],
   [/매너\s*팁/, '매너팁'],
+  [/에티켓\s*팁/, '에티켓팁'],
   [/기사\s*\/?\s*가이드\s*경비|가이드\s*경비|기사\s*경비/, '기사/가이드 경비'],
   [/선택\s*관광.*비용|선택\s*관광/, '선택관광 비용'],
   [/싱글\s*룸|싱글\s*차지|1\s*인\s*실/, '싱글룸 추가비'],
   [/비자\s*비|비자/, '비자비'],
   [/불\s*포\s*함.*식사|식사.*불\s*포\s*함/, '불포함 식사'],
+  [/유류\s*(?:할증료|세|비)|연료\s*할증료/, '유류할증료 별도'],
 ];
 
 const READABLE_INCLUSION_RULES: Array<[RegExp, string]> = [
-  [/\uC655\uBCF5\s*\uD56D\uACF5\uB8CC|\uD56D\uACF5\s*\uB8CC|\uD56D\uACF5\uAD8C/, '\uC655\uBCF5\uD56D\uACF5\uB8CC'],
+  [/\uC655\uBCF5\s*\uD56D\uACF5\uB8CC|\uAD6D\uC81C\uC120\s*\uD56D\uACF5\s*\uC694\uAE08|\uD56D\uACF5\s*(?:\uB8CC|\uC694\uAE08)|\uD56D\uACF5\uAD8C/, '\uC655\uBCF5\uD56D\uACF5\uB8CC'],
+  [/(?:^|\s)(?:TAX|\uD14D\uC2A4|\uC81C\uC138\uACF5\uACFC\uAE08)(?:\s|$)/i, 'TAX'],
   [/\uC720\uB958\s*\uD560\uC99D\uB8CC/, '\uC720\uB958\uD560\uC99D\uB8CC'],
   [/\uC219\uBC15|\uD638\uD154|\uB9AC\uC870\uD2B8/, '\uC219\uBC15'],
   [/\uC2DD\uC0AC|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD/, '\uC77C\uC815\uD45C\uC0C1 \uC2DD\uC0AC'],
@@ -78,15 +84,19 @@ const READABLE_INCLUSION_RULES: Array<[RegExp, string]> = [
 const READABLE_EXCLUSION_RULES: Array<[RegExp, string]> = [
   [/\uAC1C\uC778\s*\uACBD\uBE44/, '\uAC1C\uC778\uACBD\uBE44'],
   [/\uB9E4\uB108\s*\uD301/, '\uB9E4\uB108\uD301'],
+  [/\uC5D0\uD2F0\uCF13\s*\uD301/, '\uC5D0\uD2F0\uCF13\uD301'],
   [/\uAE30\uC0AC\s*[&/+]?\s*\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301|\uBD09\uC0AC\uB8CC/, '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44'],
   [/\uC120\uD0DD\s*(?:\uAD00\uAD11|\uC635\uC158).*(?:\uBE44\uC6A9|\uC694\uAE08|\uBCC4\uB3C4)/, '\uC120\uD0DD\uAD00\uAD11 \uBE44\uC6A9'],
   [/\uC2F1\uAE00\s*\uCC28\uC9C0|\uC2F1\uAE00\s*\uB8F8/, '\uC2F1\uAE00\uB8F8 \uCD94\uAC00\uBE44'],
   [/\uBE44\uC790\s*\uBE44?/, '\uBE44\uC790\uBE44'],
+  [/\uC720\uB958\s*(?:\uD560\uC99D\uB8CC|\uC138|\uBE44)|\uC5F0\uB8CC\s*\uD560\uC99D\uB8CC/, '\uC720\uB958\uD560\uC99D\uB8CC \uBCC4\uB3C4'],
 ];
 
 const RAW_INCLUSION_LINE_CUES = READABLE_INCLUSION_RULES.map(([pattern]) => pattern);
 const RAW_EXCLUSION_LINE_CUES = [
-  ...READABLE_EXCLUSION_RULES.map(([pattern]) => pattern),
+  ...READABLE_EXCLUSION_RULES
+    .filter(([, label]) => label !== '\uC720\uB958\uD560\uC99D\uB8CC \uBCC4\uB3C4')
+    .map(([pattern]) => pattern),
   /\uC720\uB958\s*\uBCC0\uB3D9\uBD84/,
 ];
 
@@ -115,9 +125,10 @@ function normalizeTermText(value: unknown): string {
 }
 
 function splitTermText(value: string): string[] {
-  return value
+  const protectedThousands = value.replace(/(?<=\d),(?=\d{3}\b)/gu, '\uE000');
+  return protectedThousands
     .split(/[\r\n|,，•ㆍ·*]+/)
-    .map(part => normalizeTermText(part))
+    .map(part => normalizeTermText(part.replace(/\uE000/gu, ',')))
     .filter(Boolean);
 }
 
@@ -193,11 +204,46 @@ function inferRawTermCandidates(rawText: string, kind: PublicTermKind): string[]
 function classifyTerm(kind: PublicTermKind, value: string): string | null {
   if (kind === 'inclusion' && /가이드\s*경비|기사\s*\/?\s*가이드/.test(value)) return null;
   if (kind === 'exclusion' && /^\s*선택\s*(?:관광|옵션)\s*$/.test(value)) return null;
+  if (kind === 'exclusion') {
+    const commercialFee = canonicalExcludedCommercialFee(value);
+    if (commercialFee) return commercialFee;
+  }
   const rules = kind === 'inclusion'
     ? [...READABLE_INCLUSION_RULES, ...INCLUSION_RULES]
     : [...READABLE_EXCLUSION_RULES, ...EXCLUSION_RULES];
   for (const [pattern, publicLabel] of rules) {
     if (pattern.test(value)) return publicLabel;
+  }
+  return null;
+}
+
+function oneWonAmount(value: string): number | null {
+  const amounts = [...new Set(extractSourceWonAmounts(value, {
+    allowBareSaleShorthand: false,
+    minAmount: 1_000,
+    maxAmount: 5_000_000,
+  }).map(candidate => candidate.amount))];
+  return amounts.length === 1 ? amounts[0]! : null;
+}
+
+function canonicalExcludedCommercialFee(value: string): string | null {
+  const text = normalizeTermText(value);
+  const wonAmount = oneWonAmount(text);
+  if (/(?:유류\s*(?:할증료|세|비)|연료\s*할증료)/u.test(text)) {
+    if (/(?:변동\s*분?|인상\s*분?|차액|추후|변경)/u.test(text)) {
+      return wonAmount == null
+        ? '유류할증료 변동분 별도'
+        : `유류할증료 변동분(기준 ${wonAmount.toLocaleString('ko-KR')}원)`;
+    }
+    return wonAmount == null
+      ? '유류할증료 별도'
+      : `유류할증료 ${wonAmount.toLocaleString('ko-KR')}원`;
+  }
+  if (/(?:기사\s*[\/&·ㆍ+]?\s*가이드\s*(?:경비|비용|비|팁|수고비)|가이드\s*(?:경비|비용|비|팁|수고비)|기사\s*(?:경비|비용|팁))/u.test(text)) {
+    const usdAmount = text.match(/(?:US\$|USD|\$)\s*(\d+(?:\.\d+)?)/iu)?.[1];
+    if (usdAmount) return `기사/가이드 경비 $${usdAmount}/인`;
+    if (wonAmount != null) return `기사/가이드 경비 ${wonAmount.toLocaleString('ko-KR')}원`;
+    return '기사/가이드 경비';
   }
   return null;
 }
@@ -209,7 +255,7 @@ function buildTerms(
   rejected: PublicTermsPolicyResult['rejected'],
 ): string[] {
   const output: string[] = [];
-  const seen = new Set<string>();
+  const indexByIdentity = new Map<string, number>();
 
   for (const candidate of [...explicitCandidates, ...rawCandidates]) {
     const text = normalizeTermText(candidate);
@@ -226,9 +272,20 @@ function buildTerms(
       rejected.push({ kind, value: text, reason: 'unsupported' });
       continue;
     }
-    if (seen.has(publicLabel)) continue;
-    seen.add(publicLabel);
-    output.push(publicLabel);
+    const identity = publicLabel.startsWith('기사/가이드 경비')
+      ? '기사/가이드 경비'
+      : publicLabel.startsWith('유류할증료')
+        ? '유류할증료'
+        : publicLabel;
+    const previousIndex = indexByIdentity.get(identity);
+    if (previousIndex == null) {
+      indexByIdentity.set(identity, output.length);
+      output.push(publicLabel);
+      continue;
+    }
+    const previous = output[previousIndex]!;
+    const specificity = (label: string): number => (/\d|\$/u.test(label) ? 2 : /변동분/u.test(label) ? 1 : 0);
+    if (specificity(publicLabel) > specificity(previous)) output[previousIndex] = publicLabel;
   }
 
   return output;
@@ -250,6 +307,8 @@ function canonicalVerifiedTerm(kind: PublicTermKind, value: string): string | nu
       return '왕복 항공료·유류할증료·TAX';
     }
   } else {
+    const commercialFee = canonicalExcludedCommercialFee(text);
+    if (commercialFee) return commercialFee;
     if (/클럽\s*중식|골프장\s*중식/.test(text)) return '골프장 중식';
     if (/^석식$/.test(text)) return '석식';
     if (/기타\s*개인\s*비용/.test(text)) return '기타 개인비용';

@@ -120,6 +120,20 @@ function hashTermsValue(value: unknown): string {
   return createHash('sha256').update(stableStringify(value)).digest('hex');
 }
 
+export function calculateRegistrationTermsPolicyHash(
+  snapshot: Omit<RegistrationTermsPolicySnapshot, 'policy_hash'>,
+): string {
+  return hashTermsValue(snapshot);
+}
+
+export function hasValidRegistrationTermsPolicyHash(
+  snapshot: RegistrationTermsPolicySnapshot,
+): boolean {
+  const { policy_hash: policyHash, ...content } = snapshot;
+  return /^[0-9a-f]{64}$/iu.test(policyHash)
+    && calculateRegistrationTermsPolicyHash(content) === policyHash;
+}
+
 // ── Scope 매칭 ───────────────────────────────────────────────
 function tokenizeProductType(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -333,6 +347,46 @@ export function buildRegistrationTermsPolicySnapshot(input: {
     ['RESERVATION', 'AUTO_TICKETING'].includes(notice.type)
       || /(?:취소|취소료|해약|여행약관|특별약관|위약금|cancel|cancellation)/iu
         .test(`${notice.type} ${notice.title ?? ''} ${notice.text ?? ''}`));
+  const sourceCancellationNotice = input.notices.find(notice => {
+    if ((notice._tier ?? 0) < 4) return false;
+    const combined = `${notice.type} ${notice.title ?? ''} ${notice.text ?? ''}`;
+    return ['RESERVATION', 'AUTO_TICKETING'].includes(notice.type)
+      || /(?:취소|취소료|해약|여행약관|특별약관|위약금|패널티|cancel|cancellation)/iu.test(combined);
+  });
+  const standardCancellationNotice = input.notices.find(notice => {
+    if ((notice._tier ?? 4) >= 4) return false;
+    const combined = `${notice.type} ${notice.title ?? ''} ${notice.text ?? ''}`;
+    return ['RESERVATION', 'AUTO_TICKETING'].includes(notice.type)
+      || /(?:취소|취소료|해약|여행약관|특별약관|위약금|패널티|cancel|cancellation)/iu.test(combined);
+  });
+  const sourceCancellationLines = input.notices
+    .filter(notice => (notice._tier ?? 0) >= 4)
+    .flatMap(notice => `${notice.title ?? ''}\n${notice.text ?? ''}`.split(/\r?\n/u))
+    .map(line => line.trim())
+    .filter(line => /(?:취소|환불|위약|수수료|패널티)/u.test(line));
+  const penaltyRatesByDay = new Map<number, Set<number>>();
+  for (const line of sourceCancellationLines) {
+    for (const match of line.matchAll(/(\d{1,3})\s*일\s*전[^\n%]{0,80}?(\d{1,3})\s*%/gu)) {
+      const day = Number(match[1]);
+      const rate = Number(match[2]);
+      if (!Number.isInteger(day) || !Number.isInteger(rate) || rate > 100) continue;
+      const rates = penaltyRatesByDay.get(day) ?? new Set<number>();
+      rates.add(rate);
+      penaltyRatesByDay.set(day, rates);
+    }
+  }
+  const cancellationConflictReasons = [...penaltyRatesByDay.entries()]
+    .filter(([, rates]) => rates.size > 1)
+    .map(([day, rates]) => `SOURCE_CANCELLATION_RATE_CONFLICT:${day}D:${[...rates].sort((a, b) => a - b).join(',')}`);
+  const cancellationConflict = cancellationConflictReasons.length > 0;
+  const cancellationAuthority = sourceCancellationNotice
+    ? 'source' as const
+    : standardCancellationNotice
+      ? 'approved_standard' as const
+      : 'missing' as const;
+  const cancellationTemplateRef = cancellationAuthority === 'approved_standard'
+    ? input.templateRefs.find(ref => ref.name === standardCancellationNotice?._source) ?? null
+    : null;
   const content = {
     policy_version: 'registration-terms-policy-v1' as const,
     surface,
@@ -340,10 +394,15 @@ export function buildRegistrationTermsPolicySnapshot(input: {
     template_refs: input.templateRefs,
     source_notices_hash: hashTermsValue(input.notices),
     product_notice_hash: productNotices.length > 0 ? hashTermsValue(productNotices) : null,
-    has_cancellation_policy: sourceHasCancellationPolicy && customerHasCancellationPolicy,
+    has_cancellation_policy: sourceHasCancellationPolicy && customerHasCancellationPolicy
+      && cancellationAuthority !== 'missing' && !cancellationConflict,
     has_special_terms: hasSpecialTermsBanner(customerNotices),
+    cancellation_authority: cancellationAuthority,
+    cancellation_template_ref: cancellationTemplateRef,
+    cancellation_conflict: cancellationConflict,
+    cancellation_conflict_reasons: cancellationConflictReasons,
   };
-  return { ...content, policy_hash: hashTermsValue(content) };
+  return { ...content, policy_hash: calculateRegistrationTermsPolicyHash(content) };
 }
 
 /** Resolves the exact legal/commercial policy that V6 validates and freezes

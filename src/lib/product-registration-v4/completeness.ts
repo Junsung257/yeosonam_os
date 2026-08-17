@@ -42,6 +42,47 @@ function hasText(text: string, pattern: RegExp): boolean {
   return pattern.test(text);
 }
 
+function hasProvenOvernightTimeline(rawText: string): boolean {
+  return /(?:기내\s*박|선내\s*박|야간\s*출발|심야\s*출발|밤\s*출발|익일\s*(?:도착|귀국|입항)|다음\s*날\s*(?:도착|귀국|입항)|새벽\s*(?:도착|귀국|입항))/u.test(rawText);
+}
+
+function timeMinutes(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/u);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
+    ? hours * 60 + minutes
+    : null;
+}
+
+function hasProvenOvernightTransport(variant: JsonObject): boolean {
+  return asArray(variant.flight_segments).some(raw => {
+    const segment = asObject(raw);
+    if (!segment) return false;
+    const dayOffset = Number(segment.arr_day_offset ?? segment.arrival_day_offset);
+    if (Number.isInteger(dayOffset) && dayOffset >= 1) return true;
+    const departure = timeMinutes(segment.dep_time ?? segment.departure_time);
+    const arrival = timeMinutes(segment.arr_time ?? segment.arrival_time);
+    return departure != null && arrival != null && departure > arrival;
+  });
+}
+
+function itineraryDayCountMatchesDuration(input: {
+  rawText: string;
+  durationDays: number;
+  days: unknown[];
+  variant: JsonObject;
+}): boolean {
+  if (input.days.length === input.durationDays) return true;
+  // Some suppliers omit a separate DAY row for the arrival-only calendar day
+  // of an overnight flight or ferry. Accept exactly one missing row only when
+  // the original source proves the overnight transition.
+  return input.days.length === input.durationDays - 1
+    && (hasProvenOvernightTimeline(input.rawText) || hasProvenOvernightTransport(input.variant));
+}
+
 function hasSubstantiveCommercialTerm(values: unknown[]): boolean {
   return values.some(raw => {
     const item = asObject(raw);
@@ -49,6 +90,25 @@ function hasSubstantiveCommercialTerm(values: unknown[]): boolean {
     const normalized = (typeof value === 'string' ? value.trim() : '').replace(/\s+/g, '').replace(/[:\uff1a]$/, '');
     return normalized.length >= 2
       && !/^(?:include|included|exclude|excluded|\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d|\uc870\uac74)?|\ubd88\ud3ec\ud568(?:\ub0b4\uc5ed|\uc0ac\ud56d)?|\uc81c\uc678\uc0ac\ud56d)$/i.test(normalized);
+  });
+}
+
+function hasScopedSellingPrice(values: unknown[]): boolean {
+  return values.some(raw => {
+    const price = asObject(raw);
+    if (!price) return false;
+    const amount = Number(price.amount);
+    const currency = typeof price.currency === 'string' ? price.currency.trim() : '';
+    const range = asObject(price.date_range);
+    const date = typeof price.date === 'string' ? price.date.trim() : '';
+    const label = typeof price.label === 'string' ? price.label.trim() : '';
+    const weekday = Number(price.weekday);
+    const hasScope = /^\d{4}-\d{2}-\d{2}$/u.test(date)
+      || Boolean(range && /^\d{4}-\d{2}-\d{2}$/u.test(String(range.start ?? ''))
+        && /^\d{4}-\d{2}-\d{2}$/u.test(String(range.end ?? '')))
+      || (Number.isInteger(weekday) && weekday >= 0 && weekday <= 6)
+      || /\d{1,2}[./-]\d{1,2}/u.test(label);
+    return Number.isFinite(amount) && amount > 0 && /^[A-Z]{3}$/u.test(currency) && hasScope;
   });
 }
 
@@ -107,6 +167,20 @@ export function evaluateCanonicalCompleteness(input: {
     /(?:추후\s*확정|미정|동급|예정|별도\s*안내|별도\s*문의|상담\s*시\s*확인|출시\s*예정)/u,
   );
   const sourceIsNonAir = hasText(rawText, /(?:훼리|페리|선박|배편|카멜리아|부산항|크루즈)/u);
+  const sourceExplicitlyHasNoHotelNight = hasText(
+    rawText,
+    /(?:무박\s*\d{1,2}\s*일|당일\s*(?:여행|관광|투어|상품))/u,
+  );
+  const multiItineraryResolution = asObject(input.canonicalSection.multiItineraryResolution);
+
+  if (multiItineraryResolution?.state === 'ambiguous') {
+    fields.push(field(
+      `sections[${input.sectionIndex}].itinerary_variants`,
+      'conflicting',
+      'critical',
+      '여러 일정표의 기간별 가격·약관 적용 범위를 일의적으로 연결할 수 없습니다.',
+    ));
+  }
 
   if (variants.length === 0) {
     fields.push(field(
@@ -121,17 +195,26 @@ export function evaluateCanonicalCompleteness(input: {
     const prefix = `sections[${input.sectionIndex}].variants[${variantIndex}]`;
     const prices = asArray(variant.price_calendar);
     fields.push(
-      prices.length > 0
+      hasScopedSellingPrice(prices)
         ? field(`${prefix}.price`, 'confirmed', 'critical', '원문 근거 가격이 연결되었습니다.')
-        : field(`${prefix}.price`, 'unavailable', 'critical', '출발일에 적용되는 성인 기준 판매가가 없습니다.'),
+        : field(`${prefix}.price`, 'unavailable', 'critical', prices.length > 0
+            ? '판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다.'
+            : '출발일에 적용되는 성인 기준 판매가가 없습니다.'),
     );
 
     const days = asArray(variant.days);
-    fields.push(
-      days.length > 0
-        ? field(`${prefix}.itinerary`, 'confirmed', 'high', 'DAY 일정 구조가 생성되었습니다.')
-        : field(`${prefix}.itinerary`, 'unavailable', 'high', '고객에게 보여줄 DAY 일정 구조가 없습니다.'),
-    );
+    const durationDays = Number(variant.duration_days);
+    const hasDurationContract = Number.isInteger(durationDays) && durationDays > 0;
+    fields.push(days.length === 0
+      ? field(`${prefix}.itinerary`, 'unavailable', 'high', '고객에게 보여줄 DAY 일정 구조가 없습니다.')
+      : hasDurationContract && !itineraryDayCountMatchesDuration({ rawText, durationDays, days, variant })
+        ? field(
+            `${prefix}.itinerary`,
+            'conflicting',
+            'critical',
+            `상품 기간은 ${durationDays}일인데 원문 DAY 일정은 ${days.length}일로 재생되었습니다.`,
+          )
+        : field(`${prefix}.itinerary`, 'confirmed', 'high', 'DAY 일정 구조가 생성되었습니다.'));
 
     const flights = asArray(variant.flight_segments).map(asObject).filter((value): value is JsonObject => Boolean(value));
     if (flights.length === 0) {
@@ -173,6 +256,8 @@ export function evaluateCanonicalCompleteness(input: {
     fields.push(
       hotels.some(hotel => typeof hotel.raw_text === 'string' && hotel.raw_text.trim())
         ? field(`${prefix}.lodging`, 'confirmed', 'critical', '숙박 근거가 일정에 연결되었습니다.')
+        : sourceExplicitlyHasNoHotelNight
+          ? field(`${prefix}.lodging`, 'not_applicable', 'critical', '원문상 지상 호텔 숙박이 없는 무박 또는 당일 상품입니다.')
         : sourceExplicitlyPending
           ? field(
               `${prefix}.lodging`,

@@ -77,7 +77,7 @@ describe('recoverUploadPriceData', () => {
         target_date: '2026-07-23',
         day_of_week: 'THU',
         net_price: 529000,
-        child_price: null,
+        child_price: 529000,
       }),
     ]);
   });

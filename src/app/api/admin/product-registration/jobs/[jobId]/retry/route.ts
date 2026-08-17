@@ -53,8 +53,18 @@ const postHandler = async (request: NextRequest, context?: { params: Promise<{ j
       tenantId: job.tenant_id,
       requestBaseUrl: request.nextUrl.origin,
       publicBaseUrl,
+      uploadSourceMetadata: job.v4_stage_state.sourceDepartureYearContext
+        ? { sourceDepartureYearContext: job.v4_stage_state.sourceDepartureYearContext }
+        : undefined,
       sourceChannel: 'admin-retry',
       forceReprocess: false,
+      ...(job.v6_reference_date ? {
+        departureDateReferenceOverride: {
+          referenceDate: job.v6_reference_date,
+          rollingInferenceEligible:
+            job.v4_stage_state.rollingDepartureDateInferenceEligible === true,
+        },
+      } : {}),
     });
     return NextResponse.json({
       success: true,

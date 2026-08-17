@@ -10,6 +10,13 @@ import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-d
 import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { readRegistrationTermsPolicySnapshot, type NoticeBlock } from '@/lib/standard-terms-client';
+import type { CustomerBudget } from '@/lib/package-publication/customer-budget';
+import {
+  normalizePublicPackageMedia,
+  publicMediaFromLegacyUrl,
+  selectPublicHeroMedia,
+} from '@/lib/package-publication/public-media';
+import type { PublicPackageMedia } from '@/lib/package-publication/types';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -49,15 +56,32 @@ export interface LandingProductData {
   duration: string;
   heroImageA: string;
   heroImageB: string;
+  heroMedia: PublicPackageMedia | null;
   scarcityRemaining: number | null;
   departureDateLabel: string;
   departureFullDate: string | null;
   deadlineDays: number | null;
+  ticketingCondition: {
+    status: 'open' | 'expired' | 'conditional' | 'conflicting';
+    notice: string;
+    consultationOnly: boolean;
+  } | null;
   customMessage: Record<ChannelSource, ChannelMessage>;
   priceFrom: number;
   compareAtPrice: number | null;
+  customerBudget?: CustomerBudget;
   price_list?: PriceListItem[];
-  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
+  price_dates?: {
+    date: string;
+    price: number;
+    child_price?: number;
+    confirmed: boolean;
+    list_price?: number;
+    min_travelers?: number;
+    max_travelers?: number;
+    price_relation?: 'final_sale' | 'standard_sale';
+    price_note?: string;
+  }[];
   singleSupplement?: string;
   guideTrip?: string;
   kakaoChannelUrl: string;
@@ -71,6 +95,11 @@ export interface LandingProductData {
   };
   itinerary: {
     days: ItineraryDay[];
+    alternatives: Array<{
+      label: string;
+      consultationSelectionRequired: boolean;
+      days: ItineraryDay[];
+    }>;
     highlights: string[];
     includes: string[];
     excludes: string[];
@@ -184,6 +213,42 @@ function toLpActivities(
     .filter(activity => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames, regions));
 }
 
+function mapRawItineraryDays(value: unknown): ItineraryDay[] {
+  const rows = normalizeDays<Record<string, unknown>>(
+    value as Parameters<typeof normalizeDays<Record<string, unknown>>>[0],
+  );
+  return rows.map((row): ItineraryDay => {
+    const regions = asStringArray(row.regions);
+    const meals = asRecord(row.meals);
+    const hotel = asRecord(row.hotel);
+    const schedule = Array.isArray(row.schedule)
+      ? row.schedule as Array<{
+          activity?: string | null;
+          type?: string | null;
+          note?: string | null;
+          attraction_ids?: string[];
+          attraction_names?: string[];
+          entity_kind?: string | null;
+          landing_sentence?: string | null;
+        }>
+      : [];
+    return {
+      day: Number(row.day) || 1,
+      title: regions.length > 0 ? regions.join(' · ') : '상세 일정',
+      regions: regions.join(' · '),
+      meals: {
+        breakfast: Boolean(meals?.breakfast),
+        lunch: Boolean(meals?.lunch),
+        dinner: Boolean(meals?.dinner),
+      },
+      activities: toLpActivities(schedule, regions),
+      hotel: typeof hotel?.name === 'string' && hotel.name.trim()
+        ? normalizeCustomerVisibleCopy(hotel.name)
+        : undefined,
+    };
+  });
+}
+
 function readInternalCode(pkg: Record<string, unknown>): string | undefined {
   const products = pkg.products as
     | { internal_code?: string }
@@ -228,6 +293,63 @@ function projectionNumber(projection: Record<string, unknown>, key: string): num
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function readCustomerBudget(
+  pkg: Record<string, unknown>,
+  projection: Record<string, unknown>,
+): CustomerBudget | undefined {
+  const source = asRecord(projection.customer_budget) ?? asRecord(pkg.customer_budget);
+  const fuel = asRecord(source?.fuel_surcharge);
+  const base = numericField(source?.base_product_price);
+  const expected = source?.expected_budget == null ? null : numericField(source.expected_budget);
+  const fuelAmount = fuel?.amount == null ? null : numericField(fuel.amount);
+  const fuelStatus = typeof fuel?.status === 'string'
+    && ['included', 'excluded_fixed', 'excluded_unpriced', 'conflicting', 'not_stated'].includes(fuel.status)
+    ? fuel.status as CustomerBudget['fuel_surcharge']['status']
+    : 'not_stated';
+  if (!source || base == null) return undefined;
+  return {
+    currency: 'KRW',
+    base_product_price: base,
+    fuel_surcharge: {
+      status: fuelStatus,
+      amount: fuelAmount,
+      source_text: typeof fuel?.source_text === 'string' ? fuel.source_text : null,
+    },
+    expected_budget: expected,
+    expected_budget_display: typeof source.expected_budget_display === 'string'
+      ? source.expected_budget_display
+      : expected == null
+        ? null
+        : `${expected.toLocaleString('ko-KR')}원`,
+    calculation: ['base_only', 'base_plus_fuel', 'fuel_confirmation_required', 'unavailable'].includes(String(source.calculation))
+      ? source.calculation as CustomerBudget['calculation']
+      : fuelStatus === 'excluded_fixed'
+        ? 'base_plus_fuel'
+        : 'base_only',
+    guide_fee_excluded: source.guide_fee_excluded === true,
+    guide_fee_source_text: typeof source.guide_fee_source_text === 'string'
+      ? source.guide_fee_source_text
+      : null,
+  };
+}
+
+export function getExplicitSourceCompareAtPrice(
+  rows: Array<{
+    price: number;
+    list_price?: number;
+    price_relation?: 'final_sale' | 'standard_sale';
+  }>,
+  displayedPrice: number,
+): number | null {
+  const sourceDiscount = rows.find(row => (
+    row.price === displayedPrice
+    && row.price_relation === 'final_sale'
+    && typeof row.list_price === 'number'
+    && row.list_price > row.price
+  ));
+  return sourceDiscount?.list_price ?? null;
+}
+
 export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
   lpHeroImageUrl: string | null,
@@ -250,6 +372,16 @@ export function mapTravelPackageToLandingData(
   const termsPolicy = readRegistrationTermsPolicySnapshot(pkg.terms_snapshot);
   const internalCode = readInternalCode(pkg);
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
+  const projectionHeroMedia = normalizePublicPackageMedia(lpProjection.hero_media, `${cleanDestination} 이미지`);
+  const packageHeroMedia = normalizePublicPackageMedia(pkg.hero_media, `${cleanDestination} 이미지`)
+    ?? selectPublicHeroMedia(pkg.images_public);
+  const legacyHeroMedia = publicMediaFromLegacyUrl({
+    url: lpHeroImageUrl,
+    source: 'attraction_photo',
+    role: 'hero',
+    alt: `${cleanDestination} 참고 이미지`,
+  });
+  const heroMedia = projectionHeroMedia ?? packageHeroMedia ?? legacyHeroMedia;
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: String(pkg.title || ''),
     display_title: typeof pkg.display_title === 'string' ? pkg.display_title : null,
@@ -279,8 +411,11 @@ export function mapTravelPackageToLandingData(
   const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
   const minPrice = projectionNumber(lpProjection, 'price')
     ?? (priceNums.length > 0 ? Math.min(...priceNums) : 0);
-  const maxPrice = priceNums.length > 0 ? Math.max(...priceNums) : null;
-  const compareAtPrice = maxPrice != null && maxPrice > minPrice ? maxPrice : null;
+  const customerBudget = readCustomerBudget(pkg, lpProjection);
+  // A different departure date's higher selling price is not a crossed-out
+  // list price. Show a comparison only when the same source price row carries
+  // an explicit list-price -> final-sale relation.
+  const compareAtPrice = getExplicitSourceCompareAtPrice(effectiveDates, minPrice);
 
   const held = typeof pkg.seats_held === 'number' ? pkg.seats_held : 0;
   const confirmed = typeof pkg.seats_confirmed === 'number' ? pkg.seats_confirmed : 0;
@@ -289,7 +424,28 @@ export function mapTravelPackageToLandingData(
 
   let deadlineDays: number | null = null;
   const ticketingDeadline = pkg.ticketing_deadline;
-  if (ticketingDeadline && /^\d{4}-\d{2}-\d{2}/.test(String(ticketingDeadline))) {
+  const ticketingConditionRaw = asRecord(pkg.ticketing_condition);
+  const ticketingStatusRaw = typeof pkg.ticketing_deadline_status === 'string'
+    ? pkg.ticketing_deadline_status
+    : typeof ticketingConditionRaw?.status === 'string'
+      ? ticketingConditionRaw.status
+      : null;
+  const ticketingStatus = ['open', 'expired', 'conditional', 'conflicting'].includes(String(ticketingStatusRaw))
+    ? ticketingStatusRaw as 'open' | 'expired' | 'conditional' | 'conflicting'
+    : null;
+  const ticketingNotice = typeof ticketingConditionRaw?.customerNotice === 'string'
+    ? ticketingConditionRaw.customerNotice
+    : ticketingStatus === 'expired'
+      ? '발권기한 경과 · 현재 좌석과 요금 상담 확인'
+      : null;
+  const ticketingCondition = ticketingStatus && ticketingNotice
+    ? {
+        status: ticketingStatus,
+        notice: ticketingNotice,
+        consultationOnly: ticketingStatus === 'expired' || ticketingStatus === 'conflicting',
+      }
+    : null;
+  if (ticketingStatus !== 'expired' && ticketingStatus !== 'conflicting' && ticketingDeadline && /^\d{4}-\d{2}-\d{2}/.test(String(ticketingDeadline))) {
     const deadline = new Date(`${String(ticketingDeadline).slice(0, 10)}T23:59:59`);
     const diff = Math.ceil((deadline.getTime() - Date.now()) / 86400000);
     if (diff >= 0 && diff <= 30) deadlineDays = diff;
@@ -313,6 +469,23 @@ export function mapTravelPackageToLandingData(
 
   const dayRows = normalizeDays(pkg.itinerary_data as Parameters<typeof normalizeDays>[0]) as Record<string, unknown>[];
   const canonicalDays = view.days;
+  const itineraryData = asRecord(pkg.itinerary_data);
+  const itineraryAlternatives = Array.isArray(itineraryData?.itinerary_alternatives)
+    ? itineraryData.itinerary_alternatives.flatMap((value) => {
+        const alternative = asRecord(value);
+        const label = typeof alternative?.label === 'string'
+          ? normalizeCustomerVisibleCopy(alternative.label)
+          : '';
+        const days = mapRawItineraryDays(alternative?.days);
+        return label && days.length > 0
+          ? [{
+              label,
+              consultationSelectionRequired: alternative?.consultation_selection_required !== false,
+              days,
+            }]
+          : [];
+      })
+    : [];
   const legalNotices = Array.from(new Set([
     ...extractLegalNoticeLinesFromPkg(pkg, 3),
     ...extractSourcePreparationNoticeLinesFromPkg(pkg, 12),
@@ -331,12 +504,14 @@ export function mapTravelPackageToLandingData(
     internalCode: internalCode || undefined,
     destination: cleanDestination,
     duration,
-    heroImageA: lpHeroImageUrl || '',
-    heroImageB: lpHeroImageUrl || '',
+    heroImageA: heroMedia?.url ?? '',
+    heroImageB: heroMedia?.url ?? '',
+    heroMedia,
     scarcityRemaining,
     departureDateLabel,
     departureFullDate,
     deadlineDays,
+    ticketingCondition,
     customMessage: {
       insta: {
         headline: `${cleanDestination}의\n추천 일정`,
@@ -356,6 +531,7 @@ export function mapTravelPackageToLandingData(
     },
     priceFrom: minPrice,
     compareAtPrice,
+    customerBudget,
     price_list: (pkg.price_list as PriceListItem[]) || [],
     price_dates:
       Array.isArray(pkg.price_dates) && (pkg.price_dates as unknown[]).length > 0
@@ -392,6 +568,7 @@ export function mapTravelPackageToLandingData(
       } : null,
     },
     itinerary: {
+      alternatives: itineraryAlternatives,
       highlights: asStringArray(pkg.product_highlights),
       includes: view.inclusions.flat.length > 0
         ? view.inclusions.flat.map(item => normalizeCustomerVisibleCopy(item))

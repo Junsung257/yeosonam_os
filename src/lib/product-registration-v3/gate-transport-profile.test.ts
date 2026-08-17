@@ -87,6 +87,37 @@ describe('evaluateProductRegistrationV3Gate transport profile', () => {
     expect(gate.status).toBe('blocked');
   });
 
+  it('blocks contradictory guide-tip, no-option, and no-shopping customer facts', () => {
+    const ledger = baseLedger([]);
+    const variant = ledger.variants[0];
+    const notice = (templateKey: string, category: string) => ({
+      source_text: templateKey,
+      category,
+      template_key: templateKey,
+      values: {},
+      evidence: [evidence],
+      visibility: 'customer_visible',
+      risk_level: 'high',
+      review_status: 'auto_clean',
+      standard_text: templateKey,
+    });
+    variant.standard_notices = [
+      notice('guide.tip_included', 'tip_guideline'),
+      notice('guide.tip_amount_local_payment', 'tip_guideline'),
+      notice('optional.none', 'optional_tour'),
+      notice('shopping.none', 'shopping_visit'),
+    ] as typeof variant.standard_notices;
+    variant.options = [{ raw_name: '선택관광', normalized_name: '선택관광' }] as typeof variant.options;
+    variant.shopping = [{ value: '쇼핑 1회', evidence }];
+
+    const gate = evaluateProductRegistrationV3Gate(basePlan(false), ledger);
+
+    expect(gate.checks.find(check => check.id.endsWith('guide_tip_not_contradictory'))?.status).toBe('fail');
+    expect(gate.checks.find(check => check.id.endsWith('optional_tour_not_contradictory'))?.status).toBe('fail');
+    expect(gate.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('fail');
+    expect(gate.status).toBe('blocked');
+  });
+
   it('accepts source-backed meal and hotel inclusions as V3 gate evidence', () => {
     const ledger = baseLedger([]);
     const variant = ledger.variants[0];

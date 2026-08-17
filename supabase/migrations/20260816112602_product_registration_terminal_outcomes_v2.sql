@@ -1,0 +1,6 @@
+-- Historical production migration placeholder.
+--
+-- Production applied the first terminal-outcome contract at this version before
+-- the missing product-registration prerequisites were reconciled. A clean
+-- database applies the final authority contract after those prerequisites in
+-- 20260816143544.

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { PriceDate } from '@/lib/price-dates';
+import { getPriceScopeLabel, type PriceDate } from '@/lib/price-dates';
 
 interface Props {
   priceDates?: PriceDate[];
@@ -35,8 +35,11 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
   const [pastToast, setPastToast] = useState<string | null>(null);
 
   const dateMap = useMemo(() => {
-    const m = new Map<string, PriceDate>();
-    (priceDates || []).forEach(d => { if (d?.date) m.set(d.date, d); });
+    const m = new Map<string, PriceDate[]>();
+    (priceDates || []).forEach(d => {
+      if (!d?.date) return;
+      m.set(d.date, [...(m.get(d.date) ?? []), d].sort((left, right) => left.price - right.price));
+    });
     return m;
   }, [priceDates]);
 
@@ -71,9 +74,9 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
   const availableMonths = useMemo(() => {
     const today = todayYMD();
     const buckets = new Map<string, number>();
-    [...dateMap.entries()].forEach(([ymd, pd]) => {
+    [...dateMap.entries()].forEach(([ymd, options]) => {
       if (ymd < today) return;
-      if (!pd || pd.price <= 0) return;
+      if (!options.some(option => option.price > 0)) return;
       const ym = ymd.slice(0, 7);
       buckets.set(ym, (buckets.get(ym) || 0) + 1);
     });
@@ -146,12 +149,13 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
         {grid.map((cell, i) => {
           if (!cell) return <div key={i} className="aspect-square" />;
           const ymd = cell.ymd;
-          const pd = dateMap.get(ymd);
+          const options = dateMap.get(ymd) ?? [];
+          const pd = options[0];
           const isAvailable = !!pd;
           const isPast = ymd < today;
           const isSelected = ymd === selectedDate;
           const isLowest = pd && minPrice > 0 && pd.price === minPrice;
-          const isConfirmed = pd?.confirmed;
+          const isConfirmed = options.some(option => option.confirmed);
           const dow = cell.dow;
 
           const baseTextColor = isPast
@@ -221,6 +225,37 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           );
         })}
       </div>
+
+      {selectedDate && (dateMap.get(selectedDate)?.length ?? 0) > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-xs font-bold text-slate-800">선택한 날짜의 1인 상품가</p>
+          <div className="mt-2 space-y-1.5">
+            {(dateMap.get(selectedDate) ?? []).map((option, index) => (
+              <div key={`${selectedDate}-${option.price}-${option.min_travelers ?? 'all'}-${index}`} className="rounded-lg bg-white px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-600">{getPriceScopeLabel(option) ?? '성인 1인 기준'}</span>
+                  <span className="font-extrabold text-slate-900">{option.price.toLocaleString()}원</span>
+                </div>
+                {option.child_price != null && (
+                  <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                    <span>아동 1인</span>
+                    <span>{option.child_price.toLocaleString()}원</span>
+                  </div>
+                )}
+                {(option.infant_price != null || option.infant_consultation_required) && (
+                  <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                    <span>유아 1인</span>
+                    <span>{option.infant_price != null ? `${option.infant_price.toLocaleString()}원` : '상담 시 확인'}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {(dateMap.get(selectedDate) ?? []).some(option => getPriceScopeLabel(option)) && (
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">인원 구성에 따라 적용되는 가격이 다릅니다. 상담할 때 실제 출발 인원 기준으로 확인해 드립니다.</p>
+          )}
+        </div>
+      )}
 
       {/* 범례 */}
       <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-slate-500">

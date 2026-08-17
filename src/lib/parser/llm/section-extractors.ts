@@ -23,6 +23,9 @@ import { KOREAN_DESTINATION_TO_ISO } from '../../destination-iso';
 import { looksLikeCommaSplitBroken } from '../deterministic/comma-split-signature';
 import { extractPriceIR } from '../deterministic/price-ir';
 
+const PRODUCT_REGISTRATION_DEEPSEEK_MODEL =
+  process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro';
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  공통 헬퍼
 // ═══════════════════════════════════════════════════════════════════════════
@@ -56,6 +59,12 @@ async function callJsonLLM<T>(
         maxTokens,
         jsonSchema,
         maxRetries: 1,
+        // Product registration is DeepSeek-only. Pinning the provider also
+        // disables the gateway's Gemini/Claude fallback and keeps the
+        // evidence trail honest when the provider is unavailable.
+        pinnedProvider: 'deepseek',
+        pinnedModel: PRODUCT_REGISTRATION_DEEPSEEK_MODEL,
+        autoEscalate: false,
       });
       if (!r.success) throw new Error(r.errors?.join('; ') || 'LLM 실패');
       const data = (r as { data?: unknown }).data;
@@ -507,21 +516,11 @@ export async function backfillSectionsByPackageId(
         const { sanitizePackageUpdate } = await import('../../customer-leak-sanitizer');
         const l0San = sanitizePackageUpdate(l0Update, p as Record<string, unknown>);
         Object.assign(l0Update, l0San.cleaned);
-        const { error: tierUpErr } = await supabaseAdmin
-          .from('travel_packages')
-          .update(l0Update)
-          .eq('id', packageId);
-        if (!tierUpErr) {
-          await refreshAuditAfterBackfill(packageId);
-          try {
-            const { revalidatePackagePaths } = await import('../../revalidate-helper');
-            await revalidatePackagePaths(packageId, { alsoServerContext: true });
-          } catch { /* no-op */ }
-          return {
-            ok: true,
-            price: { applied: true, rowCount: priceDates.length, reason: 'L0-price-tiers' },
-          };
-        }
+        return {
+          ok: false,
+          reason: 'LEGACY_SECTION_BACKFILL_RETIRED_USE_CORRECTION_REVISION_WORKFLOW',
+          price: { applied: false, rowCount: priceDates.length, reason: 'correction-revision-required' },
+        };
       }
     }
   }
@@ -658,22 +657,11 @@ export async function backfillSectionsByPackageId(
     console.warn(`[backfill-sections] Customer-Leak sanitizer ${sanitized.incidents.length}건:`, sanitized.incidents.map(i => i.patternId).join(', '));
   }
 
-  const { error: upErr } = await supabaseAdmin
-    .from('travel_packages')
-    .update(update)
-    .eq('id', packageId);
-  if (upErr) return { ok: false, reason: upErr.message };
-
-  // 2026-05-17 박제 (ERR-audit-stale-snapshot): audit check 자동 정정
-  await refreshAuditAfterBackfill(packageId);
-
-  // 2026-05-17 박제 (ERR-dev-revalidate-누락): prod + dev 동시 revalidate
-  try {
-    const { revalidatePackagePaths } = await import('../../revalidate-helper');
-    await revalidatePackagePaths(packageId, { alsoServerContext: true });
-  } catch { /* no-op */ }
-
-  return result;
+  return {
+    ...result,
+    ok: false,
+    reason: 'LEGACY_SECTION_BACKFILL_RETIRED_USE_CORRECTION_REVISION_WORKFLOW',
+  };
 }
 
 /**
@@ -723,8 +711,8 @@ export async function refreshAuditAfterBackfill(packageId: string): Promise<void
   const stillWarn = newChecks.filter(c => c.status === 'warn').length;
   const newAuditStatus = stillWarn === 0 ? 'clean' : (p.audit_status === 'blocked' ? 'blocked' : 'warnings');
 
-  await supabaseAdmin
-    .from('travel_packages')
-    .update({ audit_report: { ...report, checks: newChecks }, audit_status: newAuditStatus, updated_at: new Date().toISOString() })
-    .eq('id', packageId);
+  // Audit findings belong to the immutable proof/revision trail. Legacy
+  // package rows are deliberately read-only; callers must enqueue a
+  // correction revision and create a new snapshot/proof instead.
+  void newAuditStatus;
 }

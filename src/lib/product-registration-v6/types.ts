@@ -1,15 +1,17 @@
 import type { ProductSourceType } from '@/lib/product-registration-v4/types';
 import type { RegistrationTermsPolicySnapshot } from '@/lib/standard-terms-client';
 
-export const PRODUCT_REGISTRATION_V6_POLICY_VERSION = 'product-registration-v6-policy-1';
-export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'product-registration-v6-workflow-2';
+export const PRODUCT_REGISTRATION_V6_POLICY_VERSION = 'product-registration-v6-policy-10-deepseek';
+export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'product-registration-v6-workflow-23';
 
 export const PRODUCT_REGISTRATION_V6_STAGES = [
   'intake',
   'preflight',
   'deduplicate',
   'extract',
+  'bundle_sources',
   'segment',
+  'resolve_critical_facts',
   'normalize',
   'resolve_shared_facts',
   'validate',
@@ -26,7 +28,15 @@ export type ProductRegistrationV6Stage = typeof PRODUCT_REGISTRATION_V6_STAGES[n
 export type ProductRegistrationV6TerminalOutcome =
   | 'published_verified'
   | 'published_degraded'
-  | 'blocked_action_required';
+  | 'ready_verified_not_published'
+  | 'ready_degraded_not_published'
+  | 'discarded_source_incomplete'
+  | 'discarded_non_travel'
+  | 'discarded_duplicate_or_consolidated'
+  | 'archived_all_departures_past'
+  | 'blocked_action_required'
+  | 'quarantined_unsupported_or_corrupt'
+  | 'quarantined_system_failure';
 
 export type ProductRegistrationV6PublicationState =
   | 'not_requested'
@@ -58,6 +68,12 @@ export type ProductRegistrationV6WorkflowInput = {
   forceReprocess: boolean;
   fencingToken: number;
   policyVersion: string;
+  departureDateReference: {
+    referenceDate: string;
+    timezone: 'Asia/Seoul';
+    policyVersion: string;
+    rollingInferenceEligible: boolean;
+  };
   correctionJobId?: string | null;
 };
 

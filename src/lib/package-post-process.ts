@@ -254,13 +254,66 @@ function alignItineraryFlightCodes<T extends ItineraryLike>(itin: T): T {
   return changed ? next as T : itin;
 }
 
+function enforcePublicationTransportSafety<T extends ItineraryLike>(itin: T): T {
+  const root = asRecord(itin);
+  const segments = Array.isArray(root.flight_segments)
+    ? root.flight_segments.map(asRecord)
+    : [];
+  const unsafeServiceNumbers = new Set(segments
+    .filter(segment => ['degraded', 'conflicting'].includes(String(segment.v6_fact_state ?? '')))
+    .map(segment => String(segment.flight_no ?? segment.code ?? '').replace(/\s+/g, '').toUpperCase())
+    .filter(Boolean));
+  if (unsafeServiceNumbers.size === 0 || !Array.isArray(root.days)) return itin;
+  const next = cloneItineraryData(root) as Record<string, unknown>;
+  next.days = (next.days as unknown[]).map(rawDay => {
+    const day = asRecord(rawDay);
+    if (!Array.isArray(day.schedule)) return day;
+    return {
+      ...day,
+      schedule: day.schedule.map(rawItem => {
+        const item = asRecord(rawItem);
+        const serviceNumber = String(item.transport ?? item.flight_no ?? item.code ?? '')
+          .replace(/\s+/g, '').toUpperCase();
+        if (!unsafeServiceNumbers.has(serviceNumber)) return item;
+        const scrubText = (value: unknown): unknown => {
+          if (typeof value !== 'string') return value;
+          return value
+            .replace(/\([^)]*\b\d{1,2}:\d{2}\b[^)]*\)/g, '(운항일 기준 상담 시 최종 확인)')
+            .replace(/\b\d{1,2}:\d{2}\b/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        };
+        const {
+          time: _time,
+          dep_time: _departureTime,
+          arr_time: _arrivalTime,
+          departure_local_time: _departureLocalTime,
+          arrival_local_time: _arrivalLocalTime,
+          ...safeItem
+        } = item;
+        return {
+          ...safeItem,
+          activity: scrubText(item.activity),
+          note: scrubText(item.note),
+          a4_sentence: scrubText(item.a4_sentence),
+          landing_sentence: scrubText(item.landing_sentence),
+          v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+        };
+      }),
+    };
+  });
+  return next as T;
+}
+
 export function postProcessItineraryData<T extends ItineraryLike>(itin: T): T {
   const unwrapped = unwrapItineraryData(itin);
   const draft = alignItineraryFlightCodes(cloneItineraryData(unwrapped));
   const enriched = enrichItineraryForDisplay(draft, data =>
     normalizeFlightSegments(data as Parameters<typeof normalizeFlightSegments>[0]),
   );
-  return alignItineraryFlightCodes(sanitizeItineraryScheduleForPublicSource(enriched));
+  return enforcePublicationTransportSafety(
+    alignItineraryFlightCodes(sanitizeItineraryScheduleForPublicSource(enriched)),
+  );
 }
 
 export interface PostProcessCatalogInput {

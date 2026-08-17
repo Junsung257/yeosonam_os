@@ -77,6 +77,42 @@ describe('product registration V5 revision', () => {
     expect(revision.claims.every(claim => claim.evidence.length === 1)).toBe(true);
   });
 
+  it('keeps evidence on its actual bundle member instead of the primary source', () => {
+    const bundled = structuredClone(normalization) as Parameters<
+      typeof buildProductRegistrationV5Revision
+    >[0]['normalization'];
+    bundled.sections[0]!.evidence = [{
+      nodeId: 'bundle-price-node',
+      quoteHash: 'd'.repeat(64),
+      quote: '599,000\uC6D0 2026-09-01',
+      sourceDocumentId: 'source-price-sheet',
+      extractionId: 'extraction-price-sheet',
+      sourceHash: 'e'.repeat(64),
+    }];
+    const section = bundled.canonicalPayload.sections[0] as {
+      v3: { ledger: { variants: Array<{ price_calendar: Array<{ evidence: Record<string, unknown> }> }> } };
+    };
+    section.v3.ledger.variants[0].price_calendar[0].evidence = {
+      node_id: 'bundle-price-node',
+      quote: '599,000\uC6D0 2026-09-01',
+    };
+    const revision = buildProductRegistrationV5Revision({
+      tenantId: 'tenant-1',
+      jobId: 'job-1',
+      normalizationId: 'normalization-1',
+      sourceDocumentId: 'source-primary-itinerary',
+      extractionId: 'extraction-primary-itinerary',
+      normalization: bundled,
+    });
+    const priceClaim = revision.claims.find(claim => claim.fieldPath.endsWith('.price_calendar'));
+
+    expect(priceClaim?.evidence[0]).toEqual(expect.objectContaining({
+      sourceDocumentId: 'source-price-sheet',
+      extractionId: 'extraction-price-sheet',
+      nodeId: 'bundle-price-node',
+    }));
+  });
+
   it('fails closed when canonical normalization needs review', () => {
     const revision = buildProductRegistrationV5Revision({
       jobId: 'job-1',

@@ -93,6 +93,36 @@ describe('normalizeFlightSegments explicit segment preservation', () => {
       day_pair: [3, 4],
     });
   });
+
+  it('never rebuilds a V6-hidden schedule from legacy day rows', () => {
+    const result = normalizeFlightSegments({
+      flight_segments: [{
+        leg: 'outbound',
+        flight_no: 'LJ119',
+        dep_airport: '부산',
+        dep_time: null,
+        arr_airport: null,
+        arr_time: null,
+        arr_day_offset: 0,
+        day_pair: [0, 0],
+        v6_fact_state: 'degraded',
+        v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+      }],
+      days: [{
+        day: 1,
+        schedule: [
+          { type: 'flight', activity: '부산 국제공항 출발', time: '20:05', transport: 'LJ119' },
+          { type: 'flight', activity: '푸꾸옥 국제공항 도착', time: '23:25', transport: 'LJ119' },
+        ],
+      }],
+    });
+    expect(result?.flight_segments?.[0]).toMatchObject({
+      flight_no: 'LJ119',
+      dep_time: null,
+      arr_time: null,
+      v6_fact_state: 'degraded',
+    });
+  });
 });
 
 /**

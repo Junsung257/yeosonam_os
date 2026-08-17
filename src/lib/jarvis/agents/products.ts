@@ -236,7 +236,7 @@ const PRODUCTS_TOOLS_RAW = [
   },
   {
     name: 'register_product_draft',
-    description: '신규 상품을 DRAFT 상태로 travel_packages 에 직접 생성합니다. (HITL — 사장님 승인 후 ACTIVE/APPROVED 전환) 최초 등록 시 사용. country, title, destination, duration, price 등 최소 필수값 필요.',
+    description: '신규 상품 등록 후보를 생성합니다. 고객 상품을 직접 만들지 않고 원문 기반 Registration Kernel 입력 후보로 기록합니다.',
     input_schema: {
       type: 'object' as const,
       required: ['title', 'destination', 'country', 'duration_days'],
@@ -262,7 +262,7 @@ const PRODUCTS_TOOLS_RAW = [
   },
   {
     name: 'update_package_field',
-    description: 'travel_packages 의 단일 필드를 수정합니다. (HITL — 사장님 재확인 필수) package_id 와 수정할 field (컬럼명), value (새 값) 필요.',
+    description: '상품 단일 필드의 correction revision 후보를 생성합니다. 현재 고객 상품은 직접 수정하지 않습니다.',
     input_schema: {
       type: 'object' as const,
       required: ['package_id', 'field', 'value'],
@@ -275,7 +275,7 @@ const PRODUCTS_TOOLS_RAW = [
   },
   {
     name: 'delete_package',
-    description: 'travel_packages 에서 패키지를 삭제합니다. (HITL — 사장님 최종 확인 필요) 삭제 전 confirm 메시지를 보내고, package_id 확인 후 실행.',
+    description: '상품 판매중단·퇴역 후보를 생성합니다. 상품 row와 검증 snapshot은 직접 삭제하지 않습니다.',
     input_schema: {
       type: 'object' as const,
       required: ['package_id'],
@@ -657,67 +657,44 @@ async function executeTool(toolName: string, args: any): Promise<any> {
     }
     case 'register_product_draft': {
       const nights = args.nights ?? (args.duration_days > 1 ? args.duration_days - 1 : 0)
-      const insertData: Record<string, unknown> = {
-        title: args.title,
-        destination: args.destination,
-        country: args.country,
-        duration: args.duration_days,
-        nights,
-        base_price: args.base_price ?? null,
-        price: args.base_price ?? null,
-        departure_airport: args.departure_airport ?? null,
-        departure_days: args.departure_days ?? null,
-        airline: args.airline ?? null,
-        product_type: args.product_type ?? null,
-        inclusions: args.inclusions ? args.inclusions.split(',').map((s: string) => s.trim()) : [],
-        excludes: args.excludes ? [args.excludes] : [],
-        highlights: args.highlights ? args.highlights.split(',').map((s: string) => s.trim()) : [],
-        itinerary_summary: args.itinerary_summary ?? null,
-        status: 'DRAFT',
-        source: args.source_url ?? null,
-        product_highlights: args.highlights ? args.highlights.split(',').map((s: string) => s.trim()) : [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      // 랜드사명 → ID 매핑
-      if (args.land_operator_name) {
-        const { data: lo } = await supabaseAdmin
-          .from('land_operators')
-          .select('id')
-          .ilike('name', `%${args.land_operator_name}%`)
-          .limit(1)
-        if (lo && lo.length > 0) {
-          insertData.land_operator_id = lo[0].id
-        }
-      }
-
       const { data, error } = await supabaseAdmin
-        .from('travel_packages')
-        .insert(insertData)
+        .from('agent_actions')
+        .insert({
+          agent_type: 'products',
+          action_type: 'register_product',
+          summary: `[Registration Kernel 입력 후보] ${args.destination} · ${args.title}`,
+          payload: {
+            source_channel: 'jarvis_candidate',
+            title: args.title,
+            destination: args.destination,
+            country: args.country,
+            duration_days: args.duration_days,
+            nights,
+            base_price_candidate: args.base_price ?? null,
+            departure_airport: args.departure_airport ?? null,
+            departure_days: args.departure_days ?? null,
+            airline: args.airline ?? null,
+            product_type: args.product_type ?? null,
+            inclusions_candidate: args.inclusions ?? null,
+            exclusions_candidate: args.excludes ?? null,
+            itinerary_candidate: args.itinerary_summary ?? null,
+            highlights_candidate: args.highlights ?? null,
+            land_operator_name_candidate: args.land_operator_name ?? null,
+            source_url: args.source_url ?? null,
+            fact_authority: 'none_requires_source_evidence',
+          },
+          requested_by: 'jarvis',
+          priority: 'normal',
+        })
         .select()
       if (error) throw error
 
-      const pkg = data?.[0]
-      // 관리자 알림
-      try {
-        const { postAlert } = await import('@/lib/admin-alerts')
-        await postAlert({
-          category: 'general',
-          severity: 'info',
-          title: `자비스가 신규 상품 등록: ${args.title}`,
-          message: `${args.destination} ${args.duration_days}일 · ${args.base_price ? args.base_price.toLocaleString() + '원' : '가격 미지정'} · DRAFT 상태`,
-          ref_type: 'package',
-          ref_id: pkg?.id,
-        })
-      } catch { /* alert 실패 무시 */ }
-
       return {
-        ok: true,
-        package_id: pkg?.id,
+        proposed: true,
+        action_id: data?.[0]?.id,
         title: args.title,
-        status: 'DRAFT',
-        next_step: '관리자가 승인 후 ACTIVE/APPROVED 로 전환 가능. "이 상품 승인해줘" 라고 말씀하세요.',
+        status: 'SOURCE_EVIDENCE_REQUIRED',
+        next_step: '원문을 연결해 Registration Kernel workflow로 처리해야 합니다.',
       }
     }
     case 'update_package_field': {
@@ -746,28 +723,36 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         .from('travel_packages')
         .select(args.field)
         .eq('id', args.package_id)
-        .limit(1)
+        .limit(1);
 
-      const { error } = await supabaseAdmin
-        .from('travel_packages')
-        .update({ [args.field]: value, updated_at: new Date().toISOString() })
-        .eq('id', args.package_id)
+      const { data: actionRows, error } = await supabaseAdmin
+        .from('agent_actions')
+        .insert({
+          agent_type: 'products',
+          action_type: 'correct_product',
+          summary: `[Correction revision 후보] ${args.package_id.slice(0, 8)} · ${args.field}`,
+          payload: {
+            package_id: args.package_id,
+            field: args.field,
+            previous_value: before?.[0]?.[args.field] ?? null,
+            proposed_value: value,
+            fact_authority: 'none_requires_source_evidence',
+          },
+          requested_by: 'jarvis',
+          priority: 'normal',
+        })
+        .select('id')
       if (error) throw error
 
-      // 알림
-      try {
-        const { postAlert } = await import('@/lib/admin-alerts')
-        await postAlert({
-          category: 'general',
-          severity: 'info',
-          title: `자비스가 상품 필드 수정: ${args.field}`,
-          message: `${args.package_id.slice(0, 8)} — ${args.field}: ${JSON.stringify(before?.[0]?.[args.field] ?? '(없음)')} → ${JSON.stringify(value)}`,
-          ref_type: 'package',
-          ref_id: args.package_id,
-        })
-      } catch { /* ignore */ }
-
-      return { ok: true, package_id: args.package_id, field: args.field, old_value: before?.[0]?.[args.field] ?? null, new_value: value }
+      return {
+        proposed: true,
+        action_id: actionRows?.[0]?.id,
+        package_id: args.package_id,
+        field: args.field,
+        old_value: before?.[0]?.[args.field] ?? null,
+        proposed_value: value,
+        next_step: '원문 evidence를 연결한 correction revision 검증이 필요합니다.',
+      }
     }
     case 'delete_package': {
       if (!args.package_id) throw new Error('package_id 필수')
@@ -775,27 +760,34 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         .from('travel_packages')
         .select('id, title')
         .eq('id', args.package_id)
-        .limit(1)
+        .limit(1);
       if (!pkg || pkg.length === 0) throw new Error('패키지를 찾을 수 없습니다')
 
-      const { error } = await supabaseAdmin
-        .from('travel_packages')
-        .delete()
-        .eq('id', args.package_id)
+      const { data: actionRows, error } = await supabaseAdmin
+        .from('agent_actions')
+        .insert({
+          agent_type: 'products',
+          action_type: 'retire_product',
+          summary: `[판매중단 후보] ${pkg[0].title}`,
+          payload: {
+            package_id: args.package_id,
+            reason: args.reason ?? '사유 미지정',
+            requested_effect: 'availability_overlay_block',
+            preserve_revision_and_snapshot_history: true,
+          },
+          requested_by: 'jarvis',
+          priority: 'high',
+        })
+        .select('id')
       if (error) throw error
 
-      try {
-        const { postAlert } = await import('@/lib/admin-alerts')
-        await postAlert({
-          category: 'general', severity: 'warning' as const,
-          title: `자비스가 상품 삭제: ${pkg[0].title}`,
-          message: `삭제 사유: ${args.reason ?? '사유 미지정'}`,
-          ref_type: 'package',
-          ref_id: args.package_id,
-        })
-      } catch { /* ignore */ }
-
-      return { ok: true, deleted_package_id: args.package_id, deleted_title: pkg[0].title }
+      return {
+        proposed: true,
+        action_id: actionRows?.[0]?.id,
+        package_id: args.package_id,
+        title: pkg[0].title,
+        next_step: '상품 row 삭제 없이 availability overlay 판매중단으로 처리해야 합니다.',
+      }
     }
     default:
       throw new Error(`Unknown tool: ${toolName}`)

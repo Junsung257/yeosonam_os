@@ -17,7 +17,6 @@
  * 안전: fire-and-forget 가능 (사장님 응답 블로킹하지 않음).
  */
 
-import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from './itinerary-attraction-enricher';
 import type { AttractionData } from './attraction-matcher';
@@ -25,6 +24,7 @@ import type { AttractionData } from './attraction-matcher';
 export interface ReEnrichResult {
   scanned_packages: number;
   updated_packages: number;
+  correction_candidates: number;
   revalidated_paths: number;
   duration_ms: number;
   errors: number;
@@ -46,6 +46,7 @@ export async function reEnrichAffectedPackages(
   const result: ReEnrichResult = {
     scanned_packages: 0,
     updated_packages: 0,
+    correction_candidates: 0,
     revalidated_paths: 0,
     duration_ms: 0,
     errors: 0,
@@ -170,29 +171,11 @@ export async function reEnrichAffectedPackages(
         //   모바일은 attraction_ids 로 attractions 테이블 직접 fetch 하므로 ISR 캐시 무효화 필요.
         if (!hasChange && !options.forceRevalidate) continue;
 
-        if (hasChange) {
-          const { error: upErr } = await supabaseAdmin
-            .from('travel_packages')
-            .update({
-              itinerary_data: re.itineraryData,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', pid);
-          if (upErr) {
-            result.errors++;
-            continue;
-          }
-          result.updated_packages++;
-        }
-
-        // ISR revalidate (모바일 즉시 반영) — hasChange 또는 forceRevalidate 시 호출
-        try {
-          revalidatePath(`/packages/${pid}`);
-          revalidatePath(`/m/packages/${pid}`);
-          result.revalidated_paths += 2;
-        } catch {
-          // revalidatePath 가 server context 외 호출 시 throw — 무시
-        }
+        // Attraction SSOT changes may propose new references, but an immutable
+        // customer snapshot can only change through a correction revision and
+        // a new proof. Keep this legacy sweep read-only and report candidates;
+        // never patch travel_packages or revalidate a stale snapshot in place.
+        if (hasChange) result.correction_candidates++;
       } catch {
         result.errors++;
       }

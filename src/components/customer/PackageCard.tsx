@@ -3,12 +3,19 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getMinPriceFromDates } from '@/lib/price-dates';
+import { getLowestPriceDisclosure, getMinPriceFromDates } from '@/lib/price-dates';
 import { getAirlineName } from '@/lib/render-contract';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { getSessionId } from '@/lib/tracker';
 import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import {
+  normalizePublicPackageMedia,
+  publicMediaFromLegacyUrl,
+  selectPublicHeroMedia,
+  shouldBypassImageOptimization,
+} from '@/lib/package-publication/public-media';
+import type { PublicPackageMedia } from '@/lib/package-publication/types';
 
 export interface PackageCardData {
   id: string;
@@ -20,7 +27,14 @@ export interface PackageCardData {
   nights?: number | null;
   price?: number | null;
   price_tiers?: { period_label?: string; departure_dates?: string[]; adult_price?: number }[] | null;
-  price_dates?: { date: string; price: number; confirmed?: boolean }[] | null;
+  price_dates?: {
+    date: string;
+    price: number;
+    confirmed?: boolean;
+    min_travelers?: number;
+    max_travelers?: number;
+    price_note?: string;
+  }[] | null;
   product_type?: string | null;
   airline?: string | null;
   departure_airport?: string | null;
@@ -28,6 +42,8 @@ export interface PackageCardData {
   is_airtel?: boolean | null;
   hero_image_url?: string | null;
   thumbnail_urls?: string[] | null;
+  hero_media?: PublicPackageMedia | null;
+  images_public?: PublicPackageMedia[] | null;
   avg_rating?: number | null;
   review_count?: number | null;
   seats_held?: number | null;
@@ -78,12 +94,16 @@ function computeMinPrice(pkg: PackageCardData): number {
   return pkg.price ?? 0;
 }
 
-function pickImage(pkg: PackageCardData, override?: string | null): string | null {
-  if (override) return override;
-  if (pkg.hero_image_url) return pkg.hero_image_url;
-  if (pkg.thumbnail_urls && pkg.thumbnail_urls.length > 0) return pkg.thumbnail_urls[0];
-  if (pkg.products?.thumbnail_urls && pkg.products.thumbnail_urls.length > 0) return pkg.products.thumbnail_urls[0];
-  return null;
+function pickMedia(pkg: PackageCardData, override?: string | null): PublicPackageMedia | null {
+  if (override) return publicMediaFromLegacyUrl({ url: override, source: 'legacy_override', role: 'hero', alt: pkg.title });
+  const canonical = normalizePublicPackageMedia(pkg.hero_media, pkg.title)
+    ?? selectPublicHeroMedia(pkg.images_public);
+  if (canonical) return canonical;
+  const fallback = pkg.hero_image_url
+    ?? pkg.thumbnail_urls?.[0]
+    ?? pkg.products?.thumbnail_urls?.[0]
+    ?? null;
+  return publicMediaFromLegacyUrl({ url: fallback, source: 'legacy_package', role: 'hero', alt: pkg.title });
 }
 
 function pickTitle(pkg: PackageCardData): string {
@@ -183,7 +203,8 @@ export default function PackageCard({
 }: Props) {
   const title = pickTitle(pkg);
   const minPrice = precomputedMinPrice ?? computeMinPrice(pkg);
-  const img = pickImage(pkg, image);
+  const media = pickMedia(pkg, image);
+  const img = media?.url ?? null;
   const airlineName = getAirlineName(pkg.airline ?? undefined) ?? pkg.airline ?? null;
   const duration = formatDuration(pkg);
   const nextDate = findNextDeparture(pkg);
@@ -261,6 +282,7 @@ export default function PackageCard({
             sizes="(max-width: 768px) 128px, (max-width: 1024px) 50vw, 33vw"
             isYeosonamPick={isYeosonamPick}
             rankNumber={rankNumber}
+            media={media}
           />
           <CardBody
             pkg={pkg} title={title} airlineName={airlineName} duration={duration} nextDate={nextDate} minPrice={minPrice} compact
@@ -299,6 +321,7 @@ export default function PackageCard({
         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
         isYeosonamPick={isYeosonamPick}
         rankNumber={rankNumber}
+        media={media}
       />
       <CardBody
         pkg={pkg} title={title} airlineName={airlineName} duration={duration} nextDate={nextDate} minPrice={minPrice}
@@ -319,7 +342,7 @@ export default function PackageCard({
 
 function CardImage({
   img, packageId, title, destination, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
-  trackingIntent, isYeosonamPick, rankNumber,
+  trackingIntent, isYeosonamPick, rankNumber, media,
 }: {
   img: string | null; packageId: string; title: string; destination?: string | null; airlineName: string | null;
   isRecommended: boolean; isReasonOpen: boolean; recommendedReasons: string[];
@@ -328,6 +351,7 @@ function CardImage({
   sizeClass: string; sizes: string;
   isYeosonamPick?: boolean;
   rankNumber?: number;
+  media?: PublicPackageMedia | null;
 }) {
   const safeSrc = img && isSafeImageSrc(img) ? img.trim() : null;
   const [imgBroken, setImgBroken] = useState(false);
@@ -347,15 +371,22 @@ function CardImage({
       {showImage && safeSrc ? (
         <Image
           src={safeSrc}
-          alt={title}
+          alt={media?.alt ?? title}
           fill
           className={`object-cover group-hover:scale-105 transition-transform duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
           sizes={sizes}
+          unoptimized={shouldBypassImageOptimization(media)}
           onLoad={() => setImgLoaded(true)}
           onError={() => setImgBroken(true)}
         />
       ) : (
         <DestinationImageFallback title={title} destination={destination} compact={sizeClass.includes('128px')} />
+      )}
+
+      {showImage && media?.reference_only && (
+        <span className="absolute bottom-1.5 right-1.5 z-10 max-w-[75%] rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">
+          {media.label}
+        </span>
       )}
 
       {/* 랭킹 번호 오버레이 */}
@@ -449,6 +480,9 @@ function CardBody({
   const hasReviews = pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0;
   const showComparisonTrust = !hasReviews && Boolean(comparisonLabel || comparisonSummary);
   const safeComparisonReasons = (comparisonReasons ?? []).slice(0, 3);
+  const lowestPriceDisclosure = getLowestPriceDisclosure(
+    (pkg.price_dates ?? []).map(item => ({ ...item, confirmed: item.confirmed === true })),
+  );
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: pkg.title,
     display_title: pkg.display_title,
@@ -565,7 +599,9 @@ function CardBody({
                 {minPrice.toLocaleString()}
               </span>
               <span className="text-micro font-medium text-text-secondary ml-0.5">원~</span>
-              <span className="ml-1.5 text-[10px] font-medium text-text-secondary bg-slate-100 px-1.5 py-0.5 rounded-md">최저가</span>
+              <span className="ml-1.5 text-[10px] font-medium text-text-secondary bg-slate-100 px-1.5 py-0.5 rounded-md">
+                {lowestPriceDisclosure?.scopeLabel ?? '최저가'}
+              </span>
             </>
           ) : (
             <span className="text-body text-text-secondary">가격 문의</span>

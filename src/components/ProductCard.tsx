@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { trackEngagement } from '@/lib/tracker';
 import { trackAnalyticsEvent } from '@/lib/analytics';
-import { getMinPriceFromDates, getNextDepartureFromDates } from '@/lib/price-dates';
+import { getLowestPriceDisclosure, getMinPriceFromDates, getNextDepartureFromDates } from '@/lib/price-dates';
 import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
 interface Package {
@@ -14,7 +14,7 @@ interface Package {
   nights?: number;
   price?: number;
   price_tiers?: { period_label?: string; departure_dates?: string[]; adult_price?: number }[];
-  price_dates?: { date: string; price: number; confirmed: boolean }[];
+  price_dates?: { date: string; price: number; confirmed: boolean; min_travelers?: number; max_travelers?: number; price_note?: string }[];
   product_type?: string;
   airline?: string;
   product_highlights?: string[];
@@ -33,6 +33,7 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
   const nextDate = getNextDeparture(pkg);
   const airlineName = AIRLINES[pkg.airline || ''] || pkg.airline;
   const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
+  const priceDisclosure = getLowestPriceDisclosure(pkg.price_dates ?? []);
 
   function handleClick() {
     trackAnalyticsEvent('select_item', {
@@ -106,10 +107,15 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
         <div className="flex items-end justify-between">
           <div>
             {minPrice > 0 ? (
-              <p className="text-lg font-black text-gray-900">
-                ₩{minPrice.toLocaleString()}
-                <span className="text-xs font-normal text-gray-400">~ /인</span>
-              </p>
+              <>
+                <p className="text-lg font-black text-gray-900">
+                  ₩{minPrice.toLocaleString()}
+                  <span className="text-xs font-normal text-gray-400">~ /인</span>
+                </p>
+                {priceDisclosure?.scopeLabel && (
+                  <p className="mt-0.5 text-[10px] font-medium text-amber-700">{priceDisclosure.scopeLabel}</p>
+                )}
+              </>
             ) : (
               <p className="text-sm text-gray-400">가격 문의</p>
             )}

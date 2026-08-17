@@ -9,10 +9,10 @@ export type ProductRegistrationV6RuntimeConfig = {
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
   const configured = process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE?.trim().toLowerCase();
   if (configured === 'legacy' || configured === 'shadow' || configured === 'kernel') return configured;
-  // Authority must never be inferred from a compatibility feature flag. The
-  // database authority mode and the deployment mode are compared separately
-  // by the readiness gate; an unset/invalid value therefore stays fail-closed.
-  return 'legacy';
+  // An unset deployment still runs the Kernel in non-publishing shadow mode.
+  // Publication remains independently frozen and requires explicit kernel
+  // authority, so analysis cannot silently fall back to a legacy writer.
+  return 'shadow';
 }
 
 function enabled(name: string, defaultValue = false): boolean {
@@ -43,7 +43,7 @@ export function productRegistrationV6PublicationBlocker(): string | null {
 }
 
 export function productRegistrationLegacyWriterBlocker(): string | null {
-  return getProductRegistrationV6RuntimeConfig().authorityMode === 'kernel'
+  return getProductRegistrationV6RuntimeConfig().authorityMode !== 'legacy'
     ? 'REGISTRATION_KERNEL_REQUIRES_SOURCE_OR_CORRECTION_REVISION'
     : null;
 }

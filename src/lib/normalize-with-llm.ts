@@ -4,9 +4,8 @@
  * 원문 텍스트 → NormalizedIntake (IR) 변환.
  *
  * V3 변경 (2026-05-01):
- *   - 기본 엔진: DeepSeek V4-Pro (OpenAI 호환 API)
- *   - fallback: Gemini 2.5 Flash (기존 유지)
- *   - Claude 엔진: 레거시 유지 (engine='claude' 명시 시만)
+ *   - 기본·유일한 등록 엔진: DeepSeek V4-Pro (OpenAI 호환 API)
+ *   - 등록 경로에서는 Gemini/Claude fallback을 사용하지 않음
  *   - DeepSeek는 response_format: json_object + Zod 검증
  *
  * 보호 장치:
@@ -22,14 +21,12 @@
 
 import crypto from 'crypto';
 import OpenAI from 'openai';
-import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import {
   NormalizedIntakeSchema,
   validateIntake,
   NORMALIZER_VERSION,
   type NormalizedIntake,
 } from './intake-normalizer';
-import { zodToGeminiSchema } from './llm-structured-output';
 import { retrieveSimilarExamples, buildFewShotPromptFragment, type SimilarExample } from './few-shot-retriever';
 import { getRelevantReflections, buildReflectionPromptFragment, trackReflectionApplied } from './reflection-memory';
 import { createClient } from '@supabase/supabase-js';
@@ -124,22 +121,16 @@ function getDeepSeekClient(): OpenAI {
   return new OpenAI({ apiKey: key, baseURL: 'https://api.deepseek.com' });
 }
 
-function getGeminiClient(): GoogleGenerativeAI {
-  const key = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
-  if (!key) throw new Error('GEMINI_API_KEY 누락 — .env.local 확인');
-  return new GoogleGenerativeAI(key);
-}
-
 /**
  * 원문을 IR 로 정형화.
  *
  * @param input  원문 + 랜드사 + 마진율 + (옵션) 지역/국가 힌트
- * @param options engine('deepseek'|'gemini'|'claude'), 재시도, 모델 선택
+ * @param options engine('deepseek'), 재시도, 모델 선택
  */
 export async function normalizeWithLlm(
   input: NormalizerInput,
   options: {
-    engine?: 'deepseek' | 'gemini' | 'claude';
+    engine?: 'deepseek';
     model?: string;
     maxRetries?: number;
     fewShotEnabled?: boolean;          // EPR (Rubin et al. 2022) — 기본 ON
@@ -155,7 +146,6 @@ export async function normalizeWithLlm(
   let sb: ReturnType<typeof createClient> | null = null;
   const supabaseUrl = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL');
   const supabaseKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-  const geminiKey = getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
   if (supabaseUrl && supabaseKey) {
     sb = createClient(supabaseUrl, supabaseKey);
   }
@@ -167,12 +157,15 @@ export async function normalizeWithLlm(
   let reflectionIds: string[] = [];
 
   const [eprResult, reflexionResult] = await Promise.all([
-    (fewShotEnabled && sb && geminiKey)
-      ? retrieveSimilarExamples(input.rawText, sb as unknown as Parameters<typeof retrieveSimilarExamples>[1], geminiKey, {
+    // EPR의 기존 임베딩 공급자는 Gemini 전용이므로 DeepSeek-only 등록
+    // 정책에서는 호출하지 않는다. 원문 사실을 다른 모델의 임베딩 결과로
+    // 보강하지 않고, reflection(내부 DB 규칙)만 유지한다.
+    (fewShotEnabled && false && sb)
+      ? retrieveSimilarExamples(input.rawText, sb as unknown as Parameters<typeof retrieveSimilarExamples>[1], '', {
           limit: fewShotLimit,
           minSimilarity: 0.55,
         }).catch((e: unknown) => {
-          console.warn('[normalize-with-llm EPR] retrieval 실패 (폴백: few-shot 없이 진행):', e instanceof Error ? e.message : e);
+          console.warn('[normalize-with-llm EPR] retrieval disabled:', e instanceof Error ? e.message : e);
           return [];
         })
       : Promise.resolve([]),
@@ -220,34 +213,20 @@ export async function normalizeWithLlm(
 
   const userMessage = buildUserMessage();
 
-  // ── 1차 호출 (DeepSeek 기본, Gemini/Claude 선택 가능) ─
-  let result: NormalizerResult;
-  if (engine === 'gemini') {
-    result = await runGemini(input, { maxRetries, userMessage, model: options.model || 'gemini-2.5-flash' });
-  } else if (engine === 'claude') {
-    // 레거시 Claude 엔진 — 필요 시 명시적으로만 사용
-    console.warn('[normalize-with-llm] Claude 엔진 사용 — 비용 주의');
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const { zodToClaudeSchema } = await import('./llm-structured-output');
-    result = await runClaudeLegacy(input, { maxRetries, userMessage, model: options.model || 'claude-sonnet-4-6' }, Anthropic, zodToClaudeSchema);
-  } else {
-    // DeepSeek V4 (기본 엔진)
-    result = await runDeepSeek(input, { maxRetries, userMessage, model: options.model || 'deepseek-v4-pro' });
+  // ── 등록 호출은 DeepSeek만 허용 ─
+  if (engine !== 'deepseek') {
+    return {
+      success: false,
+      errors: ['PRODUCT_REGISTRATION_DEEPSEEK_ONLY'],
+      retryCount: 0,
+    };
   }
 
-  // ── AI Gateway fallback — DeepSeek 실패 시 Gemini Flash 시도 ─
-  if (!result.success && engine === 'deepseek') {
-    console.warn('[normalize-with-llm fallback] DeepSeek 실패 → Gemini 2.5 Flash 폴백 시도');
-    const fallbackResult = await runGemini(input, {
-      maxRetries: 1,
-      userMessage,
-      model: 'gemini-2.5-flash',
-    });
-    if (fallbackResult.success) {
-      console.log('[normalize-with-llm fallback] Gemini 폴백 성공');
-      result = { ...fallbackResult, retryCount: (fallbackResult.retryCount || 0) + (result.retryCount || 0) };
-    }
-  }
+  const result: NormalizerResult = await runDeepSeek(input, {
+    maxRetries,
+    userMessage,
+    model: options.model || 'deepseek-v4-pro',
+  });
 
   // Reflexion applied_count 증가 (성공 시만)
   if (result.success && sb && reflectionIds.length > 0) {
@@ -337,156 +316,5 @@ async function runDeepSeek(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Gemini 엔진 (fallback — structured output via responseSchema)
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function runGemini(
-  input: NormalizerInput,
-  opts: { maxRetries: number; userMessage: string; model: string },
-): Promise<NormalizerResult> {
-  const client = getGeminiClient();
-  const systemPrompt = await getPrompt('normalize-system', SYSTEM_PROMPT_FALLBACK);
-  let lastErrors: string[] = [];
-  let feedback: string | null = null;
-
-  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
-    try {
-      const model = client.getGenerativeModel({
-        model: opts.model,
-        systemInstruction: systemPrompt,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: zodToGeminiSchema(NormalizedIntakeSchema) as ResponseSchema,
-          temperature: 0.1,
-          maxOutputTokens: 8192,
-        },
-      });
-
-      const prompt = feedback
-        ? `${opts.userMessage}\n\n## 이전 시도 오류 (수정 요망):\n${feedback}`
-        : opts.userMessage;
-
-      const res = await model.generateContent(prompt);
-      const txt = res.response.text();
-      let raw: Record<string, unknown>;
-      try {
-        raw = JSON.parse(txt);
-      } catch {
-        lastErrors = ['Gemini 응답이 유효한 JSON 이 아님'];
-        feedback = lastErrors.join('\n');
-        continue;
-      }
-      raw.rawText = input.rawText;
-      raw.rawTextHash = crypto.createHash('sha256').update(input.rawText).digest('hex');
-      raw.normalizerVersion = `${NORMALIZER_VERSION}-gemini`;
-      raw.extractedAt = new Date().toISOString();
-
-      const validation = validateIntake(raw);
-      if (validation.success && validation.data) {
-        return {
-          success: true,
-          ir: validation.data,
-          rawLlmResponse: raw,
-          tokensUsed: {
-            input: res.response.usageMetadata?.promptTokenCount || 0,
-            output: res.response.usageMetadata?.candidatesTokenCount || 0,
-          },
-          retryCount: attempt,
-        };
-      }
-      lastErrors = validation.errors?.map((e) => `[${e.path.join('.')}] ${e.message}`) || ['알 수 없는 검증 실패'];
-      feedback = lastErrors.slice(0, 10).join('\n');
-    } catch (err) {
-      lastErrors = [err instanceof Error ? err.message : 'Gemini 오류'];
-      feedback = lastErrors.join('\n');
-    }
-  }
-  return { success: false, errors: lastErrors, retryCount: opts.maxRetries };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Claude 엔진 (레거시 — engine='claude' 명시 시만 사용)
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function runClaudeLegacy(
-  input: NormalizerInput,
-  opts: { maxRetries: number; userMessage: string; model: string },
-  Anthropic: any,
-  zodToClaudeSchema: any,
-): Promise<NormalizerResult> {
-  const key = getSecret('ANTHROPIC_API_KEY');
-  if (!key) return { success: false, errors: ['ANTHROPIC_API_KEY 누락 — Claude 레거시 엔진 사용 불가'] };
-  const client = new Anthropic({ apiKey: key });
-  const schema = zodToClaudeSchema(NormalizedIntakeSchema);
-  const systemPrompt = await getPrompt('normalize-system', SYSTEM_PROMPT_FALLBACK);
-
-  let lastErrors: string[] = [];
-  let feedbackMessage: string | null = null;
-
-  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
-    try {
-      const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-        { role: 'user', content: opts.userMessage },
-      ];
-      if (feedbackMessage) {
-        messages.push({
-          role: 'user',
-          content: `이전 시도에 Zod 검증 실패가 있었습니다. 다음 오류를 수정하여 재시도하세요:\n${feedbackMessage}`,
-        });
-      }
-
-      const response = await client.messages.create({
-        model: opts.model,
-        max_tokens: 8192,
-        system: [
-          {
-            type: 'text',
-            text: systemPrompt,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        tools: [
-          {
-            name: 'emit_normalized_intake',
-            description: '원문을 NormalizedIntake 로 구조화 출력',
-            input_schema: schema,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        tool_choice: { type: 'tool', name: 'emit_normalized_intake' },
-        messages,
-      });
-
-      const toolUse = response.content.find((c: any) => c.type === 'tool_use');
-      if (!toolUse) {
-        lastErrors = ['LLM 응답에 tool_use 블록 없음'];
-        feedbackMessage = lastErrors.join('\n');
-        continue;
-      }
-
-      const raw = (toolUse as Record<string, unknown>).input as Record<string, unknown>;
-      raw.rawText = input.rawText;
-      raw.rawTextHash = sha256(input.rawText);
-      raw.normalizerVersion = NORMALIZER_VERSION;
-      raw.extractedAt = new Date().toISOString();
-
-      const validation = validateIntake(raw);
-      if (validation.success && validation.data) {
-        return {
-          success: true,
-          ir: validation.data,
-          rawLlmResponse: (toolUse as Record<string, unknown>).input,
-          tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
-          retryCount: attempt,
-        };
-      }
-      lastErrors = validation.errors?.map((e) => `[${e.path.join('.')}] ${e.message}`) || ['알 수 없는 검증 실패'];
-      feedbackMessage = lastErrors.slice(0, 10).join('\n');
-    } catch (err) {
-      lastErrors = [err instanceof Error ? err.message : '알 수 없는 LLM 오류'];
-      feedbackMessage = lastErrors.join('\n');
-    }
-  }
-
-  return { success: false, errors: lastErrors, retryCount: opts.maxRetries };
-}
+// Gemini/Claude 직접 실행기와 fallback은 등록 경로에서 제거했습니다.
+// 모든 정규화 호출은 위의 runDeepSeek만 통과합니다.

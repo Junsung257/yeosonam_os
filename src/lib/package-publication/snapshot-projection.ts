@@ -6,10 +6,6 @@ import {
 } from '@/lib/customer-visible-text-audit';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import {
-  collectItineraryAttractionIds,
-  validateCustomerPublishableAttractionIds,
-} from './attraction-validation';
 import { isPublicPublicationState } from './types';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
@@ -91,6 +87,9 @@ const RAW_CUSTOMER_FIELD_KEYS = [
   'nights',
   'price',
   'price_display',
+  'customer_budget',
+  'expected_budget',
+  'expected_budget_display',
   'price_tiers',
   'price_dates',
   'summary',
@@ -147,168 +146,6 @@ function hasBlockingSnapshotCopy(row: SnapshotProjectionRow, projection: 'card' 
   const routeText = Array.isArray(row.route_text_dump) ? row.route_text_dump.join('\n') : '';
   return auditCustomerVisibleScreenText(routeText, { surface: 'public_snapshot' })
     .some(issue => !issue.safeFixable);
-}
-
-function snapshotItineraryAttractionIds(row: SnapshotProjectionRow): string[] {
-  return collectItineraryAttractionIds(snapshotPackage(row).itinerary_data);
-}
-
-async function filterSnapshotsWithPublishableAttractions(
-  supabase: SupabaseClient,
-  snapshotRows: SnapshotProjectionRow[],
-): Promise<SnapshotProjectionRow[]> {
-  const idsByRow = new Map<SnapshotProjectionRow, string[]>();
-  const allIds = new Set<string>();
-  for (const row of snapshotRows) {
-    const ids = snapshotItineraryAttractionIds(row);
-    idsByRow.set(row, ids);
-    ids.forEach(id => allIds.add(id));
-  }
-  if (allIds.size === 0) return snapshotRows;
-
-  const validation = await validateCustomerPublishableAttractionIds(supabase, [...allIds]);
-  const invalidIds = new Set(validation.invalidIds);
-  if (validation.lookupError) {
-    return snapshotRows.filter(row => (idsByRow.get(row) ?? []).length === 0);
-  }
-
-  return snapshotRows.filter((row) => {
-    const ids = idsByRow.get(row) ?? [];
-    return ids.every(id => !invalidIds.has(id));
-  });
-}
-
-function packageIdsFromState(state: unknown): string[] {
-  if (!state || typeof state !== 'object' || Array.isArray(state)) return [];
-  const record = state as AnyRecord;
-  const ids = Array.isArray(record.packageIds)
-    ? record.packageIds.filter((value): value is string => typeof value === 'string')
-    : [];
-  return [
-    ...(typeof record.packageId === 'string' ? [record.packageId] : []),
-    ...ids,
-  ];
-}
-
-function hasCanonicalSections(payload: unknown): boolean {
-  const record = asRecord(payload);
-  return Array.isArray(record?.sections) && record.sections.length > 0;
-}
-
-async function filterSnapshotsWithReadyV4Lineage(
-  supabase: SupabaseClient,
-  snapshotRows: SnapshotProjectionRow[],
-): Promise<SnapshotProjectionRow[]> {
-  const packageIds = [...new Set(snapshotRows.map(row => row.package_id).filter(Boolean))];
-  if (packageIds.length === 0) return snapshotRows;
-
-  const { data: drafts, error: draftsError } = await supabase
-    .from('product_registration_drafts')
-    .select('package_id, upload_job_id')
-    .in('package_id', packageIds)
-    .not('upload_job_id', 'is', null);
-  if (draftsError) throw draftsError;
-
-  const draftRows = (drafts ?? []) as Array<{ package_id?: string | null; upload_job_id?: string | null }>;
-  const draftJobIds = [...new Set(draftRows.map(row => row.upload_job_id).filter((id): id is string => typeof id === 'string' && id.length > 0))];
-  const draftPackageIds = new Set(
-    draftRows.map(row => row.package_id).filter((id): id is string => typeof id === 'string' && id.length > 0),
-  );
-
-  let directJobs: unknown[] = [];
-  if (draftJobIds.length > 0) {
-    const { data, error } = await supabase
-      .from('upload_jobs')
-      .select('id, source_document_id, extraction_id, v4_stage, v4_stage_state, v4_canonical_normalization_id')
-      .in('id', draftJobIds);
-    if (error) throw error;
-    directJobs = (data ?? []) as unknown[];
-  }
-  const { data: fallbackJobs, error: fallbackJobsError } = await supabase
-    .from('upload_jobs')
-    .select('id, source_document_id, extraction_id, v4_stage, v4_stage_state, v4_canonical_normalization_id')
-    .in('v4_stage', ['normalized', 'verified', 'proofed', 'published', 'needs_review', 'failed'])
-    .not('source_document_id', 'is', null)
-    .order('updated_at', { ascending: false })
-    .limit(2000);
-  if (fallbackJobsError) throw fallbackJobsError;
-
-  type LineageJob = {
-    id?: string | null;
-    source_document_id?: string | null;
-    extraction_id?: string | null;
-    v4_stage?: string | null;
-    v4_stage_state?: unknown;
-    v4_canonical_normalization_id?: string | null;
-  };
-  const jobsById = new Map<string, LineageJob>();
-  for (const row of [...directJobs, ...(fallbackJobs ?? [])] as LineageJob[]) {
-    if (typeof row.id === 'string' && !jobsById.has(row.id)) jobsById.set(row.id, row);
-  }
-
-  const packageIdsByJobId = new Map<string, Set<string>>();
-  const addJobPackage = (jobId: string, packageId: string) => {
-    const ids = packageIdsByJobId.get(jobId) ?? new Set<string>();
-    ids.add(packageId);
-    packageIdsByJobId.set(jobId, ids);
-  };
-  for (const row of draftRows) {
-    if (row.package_id && row.upload_job_id) addJobPackage(row.upload_job_id, row.package_id);
-  }
-  for (const job of jobsById.values()) {
-    if (!job.id) continue;
-    for (const packageId of packageIdsFromState(job.v4_stage_state)) addJobPackage(job.id, packageId);
-  }
-
-  const normalizationIds = [...new Set(
-    [...jobsById.values()]
-      .map(job => job.v4_canonical_normalization_id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-  )];
-  const { data: normalizations, error: normalizationsError } = normalizationIds.length > 0
-    ? await supabase
-      .from('product_registration_v4_normalizations')
-      .select('id, job_id, source_document_id, extraction_id, canonical_payload, status')
-      .in('id', normalizationIds)
-      .eq('status', 'complete')
-    : { data: [], error: null };
-  if (normalizationsError) throw normalizationsError;
-  const completeNormalizations = new Map<string, {
-    job_id?: string | null;
-    source_document_id?: string | null;
-    extraction_id?: string | null;
-    canonical_payload?: unknown;
-  }>();
-  for (const row of (normalizations ?? []) as Array<Record<string, unknown>>) {
-    if (typeof row.id === 'string') completeNormalizations.set(row.id, row);
-  }
-
-  const v4PackageIds = new Set<string>(draftPackageIds);
-  const readyPackageIds = new Set<string>();
-  for (const [jobId, jobPackageIds] of packageIdsByJobId.entries()) {
-    const job = jobsById.get(jobId);
-    if (!job) continue;
-    const normalizationId = typeof job.v4_canonical_normalization_id === 'string'
-      ? job.v4_canonical_normalization_id
-      : null;
-    const normalization = normalizationId ? completeNormalizations.get(normalizationId) : null;
-    const ready = Boolean(
-      job.source_document_id
-      && job.extraction_id
-      && ['normalized', 'verified', 'proofed', 'published'].includes(job.v4_stage ?? '')
-      && normalization
-      && normalization.job_id === job.id
-      && normalization.source_document_id === job.source_document_id
-      && normalization.extraction_id === job.extraction_id
-      && hasCanonicalSections(normalization.canonical_payload),
-    );
-    for (const packageId of jobPackageIds) {
-      v4PackageIds.add(packageId);
-      if (ready) readyPackageIds.add(packageId);
-    }
-  }
-
-  return snapshotRows.filter(row => !v4PackageIds.has(row.package_id) || readyPackageIds.has(row.package_id));
 }
 
 export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
@@ -448,12 +285,10 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
       && pointer.current_revision_id === row.canonical_revision_id
       && row.status === 'published';
   });
-  const publishableSnapshotRows = await filterSnapshotsWithPublishableAttractions(
-    supabase,
-    pointerBoundRows,
-  );
-  const v4ReadySnapshotRows = await filterSnapshotsWithReadyV4Lineage(supabase, publishableSnapshotRows);
-  return mergePackageRowsWithCurrentPublicSnapshots(safePackages, v4ReadySnapshotRows, 'card')
+  // Canonical lineage and attraction references were validated before the
+  // immutable snapshot was published. Customer discovery must not change when
+  // mutable registration/master rows change after proof.
+  return mergePackageRowsWithCurrentPublicSnapshots(safePackages, pointerBoundRows, 'card')
     .filter(pkg => {
       const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
       return !blockedSuppliers.has('*') && !blockedSuppliers.has(supplier);

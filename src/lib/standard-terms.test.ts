@@ -59,8 +59,71 @@ describe('registration terms policy snapshot', () => {
     expect(first.policy_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(first.source_notices_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(first.has_cancellation_policy).toBe(true);
+    expect(first.cancellation_authority).toBe('approved_standard');
+    expect(first.cancellation_template_ref).toEqual(input.templateRefs[0]);
     expect(first.notices[0]?.text).not.toContain('최대 100%');
     expect(first.notices[0]?.title).toBe('발권 후 취소 비용 안내');
+  });
+
+  it('treats uploaded product cancellation terms as the authority over the pinned standard', () => {
+    const snapshot = buildRegistrationTermsPolicySnapshot({
+      notices: [
+        notice({
+          type: 'RESERVATION',
+          title: '표준 취소 규정',
+          text: '출발 30일 전까지 취소 가능합니다.',
+          _source: 'platform-v3',
+          _tier: 1,
+        }),
+        notice({
+          type: 'POLICY',
+          title: '이 상품의 특별 취소 규정',
+          text: '발권 후 취소 시 항공사 위약금이 적용됩니다.',
+          _source: '상품 특약',
+          _tier: 4,
+        }),
+      ],
+      templateRefs: [{
+        id: 'template-standard',
+        name: 'platform-v3',
+        tier: 1,
+        version: 7,
+        starts_at: '2026-08-01T00:00:00Z',
+      }],
+      surface: 'mobile',
+    });
+
+    expect(snapshot.has_cancellation_policy).toBe(true);
+    expect(snapshot.cancellation_authority).toBe('source');
+    expect(snapshot.cancellation_template_ref).toBeNull();
+    expect(snapshot.notices.some(item => item._tier === 4)).toBe(true);
+  });
+
+  it('marks contradictory source penalty rates for the same deadline as a blocking conflict', () => {
+    const snapshot = buildRegistrationTermsPolicySnapshot({
+      notices: [
+        notice({
+          type: 'POLICY',
+          title: '이 상품의 취소 규정',
+          text: '출발 7일 전 취소 시 30% 위약금',
+          _source: '상품 특약',
+          _tier: 4,
+        }),
+        notice({
+          type: 'POLICY',
+          title: '추가 취소 안내',
+          text: '출발 7일 전 취소 시 50% 수수료',
+          _source: '상품 특약',
+          _tier: 4,
+        }),
+      ],
+      templateRefs: [],
+      surface: 'mobile',
+    });
+
+    expect(snapshot.cancellation_conflict).toBe(true);
+    expect(snapshot.cancellation_conflict_reasons).toEqual(['SOURCE_CANCELLATION_RATE_CONFLICT:7D:30,50']);
+    expect(snapshot.has_cancellation_policy).toBe(false);
   });
 });
 

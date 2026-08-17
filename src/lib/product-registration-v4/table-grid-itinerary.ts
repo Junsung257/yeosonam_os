@@ -16,7 +16,10 @@ export type DocumentIrTableItinerary = {
   sourceNodeIds: string[];
 };
 
-const DAY_RE = /^(?:제\s*(\d{1,2})\s*일(?:차)?|DAY\s*(\d{1,2})|([1-9]\d?)\s*일차)$/i;
+// Some supplier itinerary tables use a bare `1일`, `2일`, `3일` value in
+// the dedicated date column. Keep the expression fully anchored so prose such
+// as `2일차 중식` cannot become a product duration or an itinerary boundary.
+const DAY_RE = /^(?:제\s*(\d{1,2})\s*일(?:차)?|DAY\s*(\d{1,2})|([1-9]\d?)\s*일차|([1-9]\d?)\s*일)$/i;
 const FLIGHT_RE = /\b([A-Z][A-Z0-9]|[0-9][A-Z])\s*(\d{3,4})\b/;
 const IATA_RE = /^[A-Z]{3}$/;
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -31,7 +34,7 @@ function lines(value: string): string[] {
 
 function dayNumber(value: string): number | null {
   const match = compact(value).match(DAY_RE);
-  const number = Number(match?.[1] ?? match?.[2] ?? match?.[3] ?? 0);
+  const number = Number(match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4] ?? 0);
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
@@ -40,11 +43,11 @@ function headerColumns(table: DocumentIrTable): Map<string, number> | null {
     const headers = new Map<string, number>();
     for (const cell of table.cells.filter(candidate => candidate.row === row)) {
       const value = compact(cell.text);
-      if (/^(?:일자|행사날짜)$/.test(value)) headers.set('day', cell.column);
-      else if (/^지역$/.test(value)) headers.set('region', cell.column);
+      if (/^(?:일자|날짜|일시|행사날짜)$/.test(value)) headers.set('day', cell.column);
+      else if (/^(?:지역|도시명|행선지)$/.test(value)) headers.set('region', cell.column);
       else if (/^교통편?$/.test(value)) headers.set('transport', cell.column);
       else if (/^시간$/.test(value)) headers.set('time', cell.column);
-      else if (/^(?:일정|주요행사일정|행사일정)$/.test(value)) headers.set('schedule', cell.column);
+      else if (/^(?:일정|세부일정|상세일정|세부사항|주요행사일정|행사일정)$/.test(value)) headers.set('schedule', cell.column);
       else if (/^식사$/.test(value)) headers.set('meal', cell.column);
     }
     if (['day', 'region', 'transport', 'time', 'schedule', 'meal'].every(key => headers.has(key))) {
@@ -150,42 +153,58 @@ function mealKey(value: string): keyof ReturnType<typeof emptyMeals> | null {
 }
 
 function sectionContainsTable(sectionRawText: string, table: DocumentIrTable): boolean {
+  const productTitles = table.cells
+    .filter(cell => cell.row <= 1)
+    .flatMap(cell => lines(cell.text))
+    .filter(value => value.length >= 6 && (
+      /(?:\bPKG\b|PACKAGE|\uD328\uD0A4\uC9C0)/iu.test(value)
+      || /(?:^|[\[【(])(?:\uC2E4\uC18D|\uD488\uACA9|\uACE0\uD488\uACA9|\uB77C\uC774\uD2B8|\uD504\uB9AC\uBBF8\uC5C4)[\]】)]?[^\n]{0,100}\d{1,2}\s*\uBC15\s*\d{1,2}\s*\uC77C/iu.test(value)
+    ));
+  if (productTitles.length > 0 && !productTitles.some(title => sectionRawText.includes(title))) return false;
   const anchors = table.cells
     .flatMap(cell => lines(cell.text))
     .filter(value => DAY_RE.test(compact(value)) || FLIGHT_RE.test(value));
   return anchors.length > 0 && anchors.every(anchor => sectionRawText.includes(anchor));
 }
 
-/**
- * Reconstructs supplier itinerary rows from EvidenceIR instead of the flat
- * text order. Merged DAY/route/time cells are expanded only for row ownership;
- * their facts are emitted once from the originating cell.
- */
-export function buildDocumentIrTableItinerary(input: {
-  documentIr: DocumentIR;
-  sectionRawText: string;
-}): DocumentIrTableItinerary | null {
-  const candidates = input.documentIr.tables
-    .map(table => ({ table, headers: headerColumns(table) }))
-    .filter((candidate): candidate is { table: DocumentIrTable; headers: Map<string, number> } => (
-      Boolean(candidate.headers) && sectionContainsTable(input.sectionRawText, candidate.table)
-    ));
-  if (candidates.length !== 1) return null;
+function declaredDurationDays(sectionRawText: string): Set<number> {
+  const heading = sectionRawText.slice(0, 1_200);
+  const durations = new Set<number>();
+  for (const match of heading.matchAll(/(\d{1,2})\s*\uBC15\s*(\d{1,2})\s*\uC77C/gu)) {
+    const days = Number(match[2]);
+    if (days >= 2 && days <= 31) durations.add(days);
+  }
+  for (const match of heading.matchAll(/(?:^|[^\d])(\d{1,2})\s*\uC77C\s*[,/&]\s*(\d{1,2})\s*\uC77C(?:[^\d]|$)/gu)) {
+    for (const value of [match[1], match[2]]) {
+      const days = Number(value);
+      if (days >= 2 && days <= 31) durations.add(days);
+    }
+  }
+  return durations;
+}
 
-  const { table, headers } = candidates[0]!;
+function parseTableItinerary(input: {
+  sectionRawText: string;
+  table: DocumentIrTable;
+  headers: Map<string, number>;
+}): DocumentIrTableItinerary | null {
+  const { table, headers } = input;
   const grid = buildGrid(table);
   const days = new Map<number, V3LedgerVariant['days'][number]>();
   const flights: V3LedgerVariant['flight_segments'] = [];
   let previousHotel: Record<string, unknown> | null = null;
+  let currentDay: number | null = null;
 
   for (let row = (headers.get('headerRow') ?? 0) + 1; row < table.rows; row += 1) {
     const dayCell = grid[row]![headers.get('day')!];
-    const day = dayCell ? dayNumber(dayCell.text) : null;
+    const parsedDay = dayCell ? dayNumber(dayCell.text) : null;
+    if (parsedDay) currentDay = parsedDay;
+    const day = parsedDay ?? currentDay;
     if (!day) continue;
     const current = days.get(day) ?? { day, route: [], events: [], meals: emptyMeals(), hotel: {} };
 
     const regionCell = grid[row]![headers.get('region')!];
-    if (regionCell?.originRow === row) {
+    if (parsedDay && regionCell?.originRow === row) {
       current.route = [...new Set([...current.route, ...lines(regionCell.text)])];
     }
 
@@ -193,7 +212,8 @@ export function buildDocumentIrTableItinerary(input: {
     if (scheduleCell?.originRow === row) {
       const scheduleEvidence = evidenceForCell(input.sectionRawText, table, scheduleCell);
       for (const scheduleLine of lines(scheduleCell.text)) {
-        const hotelMatch = scheduleLine.match(/^HOTEL\s*:\s*(.+)$/i);
+        const hotelMatch = scheduleLine.match(/^(?:HOTEL|H)\s*:\s*(.+)$/i)
+          ?? scheduleLine.match(/^:\s*(.+(?:동급|호텔|리조트|\d\s*성).*)$/u);
         if (hotelMatch) {
           const isSame = /^(?:상동|전일과\s*동일)$/.test(hotelMatch[1]!.trim());
           const hotel: Record<string, unknown> = isSame && previousHotel
@@ -208,7 +228,7 @@ export function buildDocumentIrTableItinerary(input: {
     }
 
     const mealCell = grid[row]![headers.get('meal')!];
-    if (mealCell?.originRow === row) {
+    if (parsedDay && mealCell?.originRow === row) {
       const mealEvidence = evidenceForCell(input.sectionRawText, table, mealCell);
       for (const mealLine of lines(mealCell.text)) {
         const key = mealKey(mealLine);
@@ -217,7 +237,7 @@ export function buildDocumentIrTableItinerary(input: {
     }
 
     const transportCell = grid[row]![headers.get('transport')!];
-    if (transportCell?.originRow === row) {
+    if (parsedDay && transportCell?.originRow === row) {
       const codeMatch = transportCell.text.match(FLIGHT_RE);
       if (codeMatch) {
         const routeCodes = lines(regionCell?.text ?? '').map(value => compact(value).toUpperCase()).filter(value => IATA_RE.test(value));
@@ -250,4 +270,49 @@ export function buildDocumentIrTableItinerary(input: {
     flightSegments: flights,
     sourceNodeIds: table.cells.map(cell => cell.nodeId),
   };
+}
+
+/**
+ * Reconstructs supplier itinerary rows from EvidenceIR instead of the flat
+ * text order. Merged DAY/route/time cells are expanded only for row ownership;
+ * their facts are emitted once from the originating cell.
+ *
+ * Multiple itinerary tables may represent duration variants of one product.
+ * A duration is returned only when exactly one source table owns it; duplicate
+ * tables of the same duration remain ambiguous and are therefore excluded.
+ */
+export function buildDocumentIrTableItineraries(input: {
+  documentIr: DocumentIR;
+  sectionRawText: string;
+}): DocumentIrTableItinerary[] {
+  const localSection = input.sectionRawText.split(/\n\s*---\s*\n/u).at(-1) ?? input.sectionRawText;
+  const durations = declaredDurationDays(localSection);
+  const parsed = input.documentIr.tables
+    .map(table => ({ table, headers: headerColumns(table) }))
+    .filter((candidate): candidate is { table: DocumentIrTable; headers: Map<string, number> } => (
+      Boolean(candidate.headers) && sectionContainsTable(localSection, candidate.table)
+    ))
+    .flatMap(candidate => {
+      const itinerary = parseTableItinerary({
+        sectionRawText: input.sectionRawText,
+        table: candidate.table,
+        headers: candidate.headers,
+      });
+      return itinerary ? [itinerary] : [];
+    })
+    .filter(itinerary => durations.size === 0 || durations.has(itinerary.days.length));
+  const countsByDuration = parsed.reduce<Map<number, number>>((counts, itinerary) => (
+    counts.set(itinerary.days.length, (counts.get(itinerary.days.length) ?? 0) + 1)
+  ), new Map());
+  return parsed
+    .filter(itinerary => countsByDuration.get(itinerary.days.length) === 1)
+    .sort((left, right) => left.days.length - right.days.length || left.tableId.localeCompare(right.tableId));
+}
+
+export function buildDocumentIrTableItinerary(input: {
+  documentIr: DocumentIR;
+  sectionRawText: string;
+}): DocumentIrTableItinerary | null {
+  const candidates = buildDocumentIrTableItineraries(input);
+  return candidates.length === 1 ? candidates[0]! : null;
 }

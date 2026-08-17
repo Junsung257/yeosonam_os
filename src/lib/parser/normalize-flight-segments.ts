@@ -25,6 +25,8 @@ export interface FlightSegment {
   arr_time:       string | null;
   arr_day_offset: 0 | 1;
   day_pair:       [number, number]; // [출발 day index (0-based), 도착 day index]
+  v6_fact_state?: 'source_confirmed' | 'corroborated' | 'degraded' | 'conflicting';
+  v6_schedule_notice?: string | null;
 }
 
 // 다른 필드 보존을 위해 [key: string]: unknown 허용 — TravelItinerary 와 호환
@@ -143,6 +145,22 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
 
   // 모든 flight item을 (day_index, item) 으로 수집
   if (Array.isArray(itin.flight_segments) && itin.flight_segments.length > 0) {
+    const safetyControlled = itin.flight_segments.some(segment =>
+      segment.v6_fact_state === 'degraded' || segment.v6_fact_state === 'conflicting');
+    if (safetyControlled) {
+      // A publication safety decision must never be undone by the legacy
+      // display normalizer rebuilding times from day rows.
+      const safeSegments = itin.flight_segments.map(segment => {
+        if (segment.v6_fact_state !== 'degraded' && segment.v6_fact_state !== 'conflicting') return segment;
+        return {
+          ...segment,
+          dep_time: null,
+          arr_time: null,
+          v6_schedule_notice: segment.v6_schedule_notice ?? '운항일 기준 상담 시 최종 확인',
+        };
+      });
+      return { ...itin, days, flight_segments: safeSegments };
+    }
     const everySegmentComplete = itin.flight_segments.every(seg => Boolean(seg.dep_time && seg.arr_time));
     if (everySegmentComplete) {
       return { ...itin, days, flight_segments: itin.flight_segments };

@@ -271,7 +271,7 @@ export default function ScoringAdminPage() {
       if (!r.ok) throw new Error(j.error ?? '매핑 실패');
       setUnmapped(j.unmapped_packages ?? []);
       showToast('success',
-        `매핑 완료 — 부킹 ${j.matched_via_bookings}, 별칭 ${j.matched_via_aliases}, 미매핑 ${j.unmapped_count}/${j.total}`);
+        `교정 후보 계산 완료 — 부킹 ${j.matched_via_bookings}, 별칭 ${j.matched_via_aliases}, 미매핑 ${j.unmapped_count}/${j.total}. 상품은 직접 변경하지 않았습니다.`);
     } catch (e) {
       showToast('error', e instanceof Error ? e.message : '매핑 실패');
     } finally {
@@ -714,7 +714,7 @@ export default function ScoringAdminPage() {
         <button type="button"
           onClick={handleMatchLandOps} disabled={matching}
           className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50"
-        >{matching ? '매핑 중...' : '랜드사 자동 매핑'}</button>
+        >{matching ? '후보 계산 중...' : '랜드사 교정 후보 찾기'}</button>
         <button type="button"
           onClick={handleReliabilityFit} disabled={reliabilityFitting}
           className="px-4 py-2 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700 disabled:opacity-50"

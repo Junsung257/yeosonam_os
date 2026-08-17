@@ -119,22 +119,14 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RETIRED_MUTATION_ERROR = {
+  message: 'LEGACY_MOBILE_READINESS_MUTATION_RETIRED_USE_REGISTRATION_KERNEL_CORRECTION',
+};
 
 async function replaceProductPricesForProduct(productId, rows) {
-  const payload = rows.map(row => ({
-    target_date: row.target_date ?? null,
-    day_of_week: row.day_of_week ?? null,
-    net_price: Number(row.net_price),
-    adult_selling_price: Number(row.adult_selling_price ?? row.net_price),
-    child_price: row.child_price ?? null,
-    note: row.note ?? null,
-  }));
-  const { data, error } = await supabase.rpc('replace_product_prices_for_product', {
-    p_product_id: productId,
-    p_rows: payload,
-  });
-  if (error) throw new Error(error.message);
-  return Number(data ?? payload.length);
+  void productId;
+  void rows;
+  throw new Error(RETIRED_MUTATION_ERROR.message);
 }
 
 async function checkSupabaseRestHealth() {
@@ -1626,7 +1618,7 @@ function isExpiredSourceOffer(row) {
   const repairsApplied = repairSummaryList(repairFirstSummary, 'repairs_applied');
   return unresolvedReasons.some(reason => /ticketing_deadline_expired/i.test(String(reason)))
     || unresolvedCategories.includes('possibly_unusable_source')
-    || repairsApplied.some(repair => /ticketing_deadline:expired_source_offer_archived/i.test(String(repair)));
+    || repairsApplied.some(repair => /ticketing_deadline:(?:expired_source_offer_archived|expired_reconfirmation_required)/i.test(String(repair)));
 }
 
 function hasNeedsHumanSourceReview(row) {
@@ -2142,10 +2134,7 @@ if (repairPriceStorage) {
       ...(nextPriceTiers.length > 0 ? { price_tiers: nextPriceTiers } : {}),
       updated_at: now,
     };
-    const { error: packageUpdateError } = await supabase
-      .from('travel_packages')
-      .update(packagePatch)
-      .eq('id', pkg.id);
+    const packageUpdateError = RETIRED_MUTATION_ERROR;
     if (packageUpdateError) {
       priceStorageRepairs.push({
         code: pkg.internal_code,
@@ -2156,10 +2145,7 @@ if (repairPriceStorage) {
       continue;
     }
     if (minPrice != null) {
-      const { error: productUpdateError } = await supabase
-        .from('products')
-        .update({ net_price: minPrice, updated_at: now })
-        .eq('internal_code', pkg.internal_code);
+      const productUpdateError = RETIRED_MUTATION_ERROR;
       if (productUpdateError) {
         priceStorageRepairs.push({
           code: pkg.internal_code,
@@ -2219,15 +2205,7 @@ async function persistPriceSourceNeedsHumanReview(pkg, mismatch, pruned, checked
     },
   };
 
-  const { error } = await supabase
-    .from('travel_packages')
-    .update({
-      audit_status: 'needs_review',
-      audit_checked_at: checkedAt,
-      audit_report: nextAuditReport,
-      updated_at: checkedAt,
-    })
-    .eq('id', pkg.id);
+  const error = RETIRED_MUTATION_ERROR;
   if (error) return { ok: false, reason: error.message };
 
   pkg.audit_status = 'needs_review';
@@ -2310,15 +2288,7 @@ if (repairPriceSourceEvidence) {
       continue;
     }
 
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        price: minPrice,
-        price_dates: pruned.price_dates,
-        price_tiers: nextPriceTiers,
-        updated_at: checkedAt,
-      })
-      .eq('id', pkg.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       priceSourceEvidenceRepairs.push({
         code: pkg.internal_code,
@@ -2333,13 +2303,7 @@ if (repairPriceSourceEvidence) {
 
     let productLedgerSynced = false;
     let productLedgerSyncError = null;
-    const { error: productError } = await supabase
-      .from('products')
-      .update({
-        net_price: minPrice,
-        updated_at: checkedAt,
-      })
-      .eq('internal_code', pkg.internal_code);
+    const productError = RETIRED_MUTATION_ERROR;
     productLedgerSynced = !productError;
     productLedgerSyncError = productError?.message ?? null;
     if (!productError) {
@@ -2403,14 +2367,7 @@ if (repairPriceTiers) {
     }
 
     const nextPriceTiers = priceTiersFromPackagePriceDates(priceDates);
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        price: minPrice,
-        price_tiers: nextPriceTiers,
-        updated_at: checkedAt,
-      })
-      .eq('id', pkg.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       priceTierRepairs.push({
         code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
@@ -2424,13 +2381,7 @@ if (repairPriceTiers) {
     let productLedgerSynced = false;
     let productLedgerSyncError = null;
     if (pkg.internal_code) {
-      const { error: productError } = await supabase
-        .from('products')
-        .update({
-          net_price: minPrice,
-          updated_at: checkedAt,
-        })
-        .eq('internal_code', pkg.internal_code);
+      const productError = RETIRED_MUTATION_ERROR;
       productLedgerSynced = !productError;
       productLedgerSyncError = productError?.message ?? null;
       if (!productError) {
@@ -2466,13 +2417,7 @@ if (repairItineraryDisplay) {
     const repaired = repairItineraryDisplayQuality(pkg);
     if (!repaired) continue;
 
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        itinerary_data: repaired.itinerary_data,
-        updated_at: checkedAt,
-      })
-      .eq('id', pkg.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       itineraryDisplayRepairs.push({
         code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
@@ -2502,13 +2447,7 @@ if (repairEmptyItineraryDays) {
     const repaired = repairEmptyItineraryDaysQuality(pkg);
     if (!repaired) continue;
 
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        itinerary_data: repaired.itinerary_data,
-        updated_at: checkedAt,
-      })
-      .eq('id', pkg.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       emptyItineraryDayRepairs.push({
         code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
@@ -2538,13 +2477,7 @@ if (repairExcludeFragments) {
     const repaired = repairExcludeFragmentList(pkg.excludes);
     if (!repaired) continue;
 
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        excludes: repaired.excludes,
-        updated_at: checkedAt,
-      })
-      .eq('id', pkg.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       excludeFragmentRepairs.push({
         code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
@@ -2575,13 +2508,7 @@ if (repairDurationTripStyle) {
     const repaired = repairDurationTripStyleValues(pkg);
     if (!repaired) continue;
 
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        ...repaired.patch,
-        updated_at: checkedAt,
-      })
-      .eq('id', pkg.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       durationTripStyleRepairs.push({
         code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
@@ -2730,13 +2657,7 @@ if (persistReadinessResult) {
         malformed_attraction_ids_skipped: malformedAttractionIds.size,
       },
     };
-    const { error } = await supabase
-      .from('travel_packages')
-      .update({
-        audit_report: nextAuditReport,
-        audit_checked_at: checkedAt,
-      })
-      .eq('id', row.id);
+    const error = RETIRED_MUTATION_ERROR;
     readinessPersistence.push({
       id: row.id,
       code: row.code,
@@ -2792,16 +2713,7 @@ if (demoteUnsafePublic) {
       render_failure: row.render_failure,
       public_html_failure: row.public_html_failure,
     };
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        status: 'pending_review',
-        audit_status: 'blocked',
-        audit_checked_at: checkedAt,
-        audit_report: auditReport,
-        updated_at: checkedAt,
-      })
-      .eq('id', row.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       demotions.push({ id: row.id, code: row.code, title: row.title, ok: false, reason: packageError.message });
       continue;
@@ -2809,10 +2721,7 @@ if (demoteUnsafePublic) {
 
     let productStatusUpdated = false;
     if (row.code) {
-      const { error: productError } = await supabase
-        .from('products')
-        .update({ status: 'pending_review', updated_at: checkedAt })
-        .eq('internal_code', row.code);
+      const productError = RETIRED_MUTATION_ERROR;
       productStatusUpdated = !productError;
     }
     demotions.push({
@@ -2851,16 +2760,7 @@ if (archiveFailedNonPublic) {
       price_tiers_mismatch: row.price_tiers_mismatch,
       render_failure: row.render_failure,
     };
-    const { error: packageError } = await supabase
-      .from('travel_packages')
-      .update({
-        status: 'archived',
-        audit_status: 'blocked',
-        audit_checked_at: checkedAt,
-        audit_report: auditReport,
-        updated_at: checkedAt,
-      })
-      .eq('id', row.id);
+    const packageError = RETIRED_MUTATION_ERROR;
     if (packageError) {
       archives.push({ id: row.id, code: row.code, title: row.title, ok: false, reason: packageError.message });
       continue;
@@ -2868,10 +2768,7 @@ if (archiveFailedNonPublic) {
 
     let productStatusUpdated = false;
     if (row.code) {
-      const { error: productError } = await supabase
-        .from('products')
-        .update({ status: 'archived', updated_at: checkedAt })
-        .eq('internal_code', row.code);
+      const productError = RETIRED_MUTATION_ERROR;
       productStatusUpdated = !productError;
     }
     archives.push({

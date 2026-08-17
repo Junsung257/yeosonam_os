@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { startProductRegistrationWorkflowBySourceId } from '@/lib/product-registration-authority/start-workflow';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
+import { DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE, parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
 
 export const runtime = 'nodejs';
@@ -106,7 +106,10 @@ const postHandler = async (
       publicBaseUrl: baseUrl,
       uploadSourceMetadata: object(sourceMetadata.uploadSourceMetadata).landOperator
         ? object(sourceMetadata.uploadSourceMetadata)
-        : parseUploadSourceMetadata({ fileName: source.original_filename, defaultCommissionRate: 10 }) as unknown as Record<string, unknown>,
+        : parseUploadSourceMetadata({
+            fileName: source.original_filename,
+            defaultCommissionRate: DEFAULT_PRODUCT_REGISTRATION_COMMISSION_RATE,
+          }) as unknown as Record<string, unknown>,
       sourceChannel: 'admin-correction',
       forceReprocess: true,
       correction: {

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { STANDARD_PRODUCT_MARKDOWN_TEMPLATE } from '@/lib/standard-product-markdown';
+import type { ProductRegistrationV6TerminalOutcome } from '@/lib/product-registration-v6/types';
 
 interface VerifyCheck {
   id: string;
@@ -23,9 +24,22 @@ interface QueueItem {
   sourceDocumentId?: string;
   registrationJobId?: string;
   workflowRunId?: string;
-  v6Outcome?: 'published_verified' | 'published_degraded' | 'blocked_action_required' | null;
+  sourceBatchId?: string;
+  sourceBatchIndex?: number;
+  sourceBatchSize?: number;
+  sourceDepartureYear?: string;
+  v6Outcome?: ProductRegistrationV6TerminalOutcome | null;
   v6DegradedReasons?: string[];
   v6Blockers?: string[];
+  dateResolution?: {
+    referenceDate: string | null;
+    policyVersion: string | null;
+    rollingInferenceEligible: boolean;
+    inferredDateCount: number;
+    excludedPastDateCount: number;
+    futureDepartureCount: number;
+    pastOnlySectionIndexes: number[];
+  };
   v4Stage?: string;
   v4Error?: string | null;
   v5Revision?: {
@@ -111,6 +125,44 @@ interface QueueItem {
   catalogSplitWarning?: { headerCount: number; processedCount: number };
 }
 
+const SUCCESSFUL_V6_OUTCOMES = new Set<ProductRegistrationV6TerminalOutcome>([
+  'published_verified',
+  'published_degraded',
+  'ready_verified_not_published',
+  'ready_degraded_not_published',
+  'discarded_source_incomplete',
+  'discarded_non_travel',
+  'discarded_duplicate_or_consolidated',
+  'archived_all_departures_past',
+]);
+
+function v6OutcomeLabel(item: QueueItem): string {
+  switch (item.v6Outcome) {
+    case 'published_verified': return '검증 공개 완료';
+    case 'published_degraded': return `안전 축약 공개 (${item.v6DegradedReasons?.length ?? 0})`;
+    case 'ready_verified_not_published': return '검증 완료 · 고객 공개 대기';
+    case 'ready_degraded_not_published': return `안전 축약 검증 완료 · 공개 대기 (${item.v6DegradedReasons?.length ?? 0})`;
+    case 'discarded_source_incomplete': return '판매가 없는 원문 — 자동 제외 완료';
+    case 'discarded_non_travel': return '여행상품 문서 아님 — 자동 제외 완료';
+    case 'discarded_duplicate_or_consolidated': return '중복·통합 원문 — 자동 정리 완료';
+    case 'archived_all_departures_past': return '과거 일정 — 자동 보관 완료';
+    case 'quarantined_unsupported_or_corrupt': return '지원 불가·손상 파일 — 안전 격리';
+    case 'quarantined_system_failure': return '시스템 처리 실패 — 자동 격리';
+    case 'blocked_action_required': return `중요 판매정보 확인 필요 (${item.v6Blockers?.length ?? 0})`;
+    default: return '처리 중';
+  }
+}
+
+function v6OutcomeClass(outcome: ProductRegistrationV6TerminalOutcome): string {
+  if (outcome === 'published_verified') return 'text-emerald-700 font-semibold';
+  if (outcome === 'published_degraded') return 'text-amber-700 font-semibold';
+  if (outcome === 'ready_verified_not_published' || outcome === 'ready_degraded_not_published') {
+    return 'text-violet-700 font-semibold';
+  }
+  if (SUCCESSFUL_V6_OUTCOMES.has(outcome)) return 'text-slate-600 font-semibold';
+  return 'text-red-600 font-semibold';
+}
+
 interface PackageVerifyResult {
   packageId: string;
   status: Exclude<QueueItem['verifyStatus'], 'verifying'>;
@@ -126,6 +178,10 @@ interface PendingTextItem {
   sourceLabel?: string;
   landOperator?: string;
   commissionRate?: number;
+  sourceBatchId?: string;
+  sourceBatchIndex?: number;
+  sourceBatchSize?: number;
+  sourceDepartureYear?: string;
 }
 
 type VerifyDisplayStatus = NonNullable<QueueItem['verifyStatus']>;
@@ -355,7 +411,8 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [textInput, setTextInput] = useState('');
   const [textLandOperator, setTextLandOperator] = useState('');
-  const [textCommissionRate, setTextCommissionRate] = useState('10');
+  const [textCommissionRate, setTextCommissionRate] = useState('9');
+  const [sourceDepartureYear, setSourceDepartureYear] = useState('');
 
   const activeCountRef = useRef(0);
   const pendingTextRef = useRef<PendingTextItem[]>([]);
@@ -383,11 +440,16 @@ export default function UploadPage() {
       return allowed.includes(ext);
     }).slice(0, 50);
 
+    const sourceBatchId = crypto.randomUUID();
     setQueue(prev => [
       ...prev,
-      ...valid.map(f => ({
+      ...valid.map((f, index) => ({
         id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file: f,
+        sourceBatchId,
+        sourceBatchIndex: index,
+        sourceBatchSize: valid.length,
+        sourceDepartureYear: sourceDepartureYear.trim() || undefined,
         status: 'waiting' as const,
       })),
     ]);
@@ -406,34 +468,6 @@ export default function UploadPage() {
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   };
 
-  const archiveV4Source = async (input: { file?: File; rawText?: string; sourceLabel?: string }): Promise<{ sourceDocumentId: string; registrationJobId: string }> => {
-    const sourceBody = input.file
-      ? (() => { const form = new FormData(); form.append('file', input.file!); return { body: form, headers: undefined as Record<string, string> | undefined }; })()
-      : {
-          body: JSON.stringify({ rawText: input.rawText ?? '', sourceLabel: input.sourceLabel ?? 'text-input' }),
-          headers: { 'Content-Type': 'application/json' },
-        };
-    const sourceResponse = await fetchWithSessionRefresh('/api/admin/product-source-documents', {
-      method: 'POST',
-      body: sourceBody.body,
-      ...(sourceBody.headers ? { headers: sourceBody.headers } : {}),
-    });
-    const sourceData = await safeResJson(sourceResponse);
-    if (!sourceResponse.ok || sourceData?.success !== true || typeof sourceData.sourceDocument?.id !== 'string') {
-      throw new Error(uploadFailureMessage(sourceData));
-    }
-    const jobResponse = await fetchWithSessionRefresh('/api/admin/product-registration/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sourceDocumentId: sourceData.sourceDocument.id, sourceType: input.rawText ? 'text' : 'file' }),
-    });
-    const jobData = await safeResJson(jobResponse);
-    if (!jobResponse.ok || jobData?.success !== true || typeof jobData.job?.id !== 'string') {
-      throw new Error(uploadFailureMessage(jobData));
-    }
-    return { sourceDocumentId: sourceData.sourceDocument.id, registrationJobId: jobData.job.id };
-  };
-
   const pollV4Job = useCallback((id: string, jobId: string, attempt = 0) => {
     window.setTimeout(async () => {
       try {
@@ -443,6 +477,7 @@ export default function UploadPage() {
         if (!response.ok || !job) throw new Error(body?.error || `V4 job HTTP ${response.status}`);
         const stage = typeof job.v4_stage === 'string' ? job.v4_stage : 'uploaded';
         const v6Outcome = typeof body?.v6?.outcome === 'string' ? body.v6.outcome as QueueItem['v6Outcome'] : null;
+        const v6Blockers = Array.isArray(body?.v6?.blockers) ? body.v6.blockers.map(String) : [];
         const latestV5 = body?.v5?.latestRevision;
         const completeness = body?.v5?.latestNormalization?.quality_diagnostics?.completeness;
         setQueue(prev => prev.map(item => item.id === id ? {
@@ -452,18 +487,37 @@ export default function UploadPage() {
           workflowRunId: typeof body?.v6?.workflowRunId === 'string' ? body.v6.workflowRunId : item.workflowRunId,
           v6Outcome,
           v6DegradedReasons: Array.isArray(body?.v6?.degradedReasons) ? body.v6.degradedReasons.map(String) : [],
-          v6Blockers: Array.isArray(body?.v6?.blockers) ? body.v6.blockers.map(String) : [],
-          status: v6Outcome === 'blocked_action_required'
-            ? 'error'
-            : v6Outcome === 'published_verified' || v6Outcome === 'published_degraded'
-              ? 'done'
+          v6Blockers,
+          dateResolution: body?.v6?.dateResolution && typeof body.v6.dateResolution === 'object'
+            ? {
+                referenceDate: typeof body.v6.dateResolution.referenceDate === 'string'
+                  ? body.v6.dateResolution.referenceDate
+                  : null,
+                policyVersion: typeof body.v6.dateResolution.policyVersion === 'string'
+                  ? body.v6.dateResolution.policyVersion
+                  : null,
+                rollingInferenceEligible: body.v6.dateResolution.rollingInferenceEligible === true,
+                inferredDateCount: Number(body.v6.dateResolution.inferredDateCount ?? 0),
+                excludedPastDateCount: Number(body.v6.dateResolution.excludedPastDateCount ?? 0),
+                futureDepartureCount: Number(body.v6.dateResolution.futureDepartureCount ?? 0),
+                pastOnlySectionIndexes: Array.isArray(body.v6.dateResolution.pastOnlySectionIndexes)
+                  ? body.v6.dateResolution.pastOnlySectionIndexes.map(Number)
+                  : [],
+              }
+            : undefined,
+          status: v6Outcome && SUCCESSFUL_V6_OUTCOMES.has(v6Outcome)
+            ? 'done'
+            : v6Outcome
+              ? 'error'
               : item.status,
           v5Revision: latestV5 && typeof latestV5 === 'object'
             ? {
                 revisionCount: Number(body?.v5?.revisionCount ?? 0),
                 status: typeof latestV5.status === 'string' ? latestV5.status : null,
                 revisionNo: Number.isFinite(Number(latestV5.revision_no)) ? Number(latestV5.revision_no) : null,
-                packageId: typeof latestV5.package_id === 'string' ? latestV5.package_id : null,
+                packageId: typeof latestV5.catalog_product_id === 'string'
+                  ? latestV5.catalog_product_id
+                  : typeof latestV5.package_id === 'string' ? latestV5.package_id : null,
                 payloadHash: typeof latestV5.payload_hash === 'string' ? latestV5.payload_hash : null,
                 completeness: completeness && typeof completeness === 'object'
                   ? {
@@ -507,18 +561,19 @@ export default function UploadPage() {
     }
   }, [pollV4Job]);
 
-  const uploadSingle = async (file: File): Promise<Partial<QueueItem>> => {
-    const v4Source = await archiveV4Source({ file });
+  const uploadSingle = async (item: QueueItem): Promise<Partial<QueueItem>> => {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', item.file);
+    if (item.sourceBatchId && typeof item.sourceBatchIndex === 'number' && typeof item.sourceBatchSize === 'number') {
+      formData.append('sourceBatchId', item.sourceBatchId);
+      formData.append('sourceBatchIndex', String(item.sourceBatchIndex));
+      formData.append('sourceBatchSize', String(item.sourceBatchSize));
+    }
+    if (item.sourceDepartureYear) formData.append('sourceDepartureYear', item.sourceDepartureYear);
     const uploadUrl = buildUploadUrl();
     const res = await fetchWithSessionRefresh(uploadUrl, {
       method: 'POST',
       body: formData,
-      headers: {
-        'x-product-source-document-id': v4Source.sourceDocumentId,
-        'x-product-registration-job-id': v4Source.registrationJobId,
-      },
     });
     const data = await safeResJson(res);
     if (!res.ok) throw new Error(uploadFailureMessage(data));
@@ -526,23 +581,26 @@ export default function UploadPage() {
     if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
     if (data?.code === 'PRODUCT_REGISTRATION_V6_ACCEPTED') {
+      if (typeof data.sourceDocumentId !== 'string' || typeof data.jobId !== 'string') {
+        throw new Error('상품등록 작업 식별자가 누락되었습니다. 다시 시도해 주세요.');
+      }
       return {
         status: 'processing',
-        sourceDocumentId: v4Source.sourceDocumentId,
-        registrationJobId: v4Source.registrationJobId,
+        sourceDocumentId: data.sourceDocumentId,
+        registrationJobId: data.jobId,
         workflowRunId: typeof data.workflowRunId === 'string' ? data.workflowRunId : undefined,
-        title: file.name,
+        title: item.file.name,
       };
     }
 
     const ed = data.data?.extractedData;
-    const match = file.name.match(/^\[([^_\]]+)_(\d+(?:\.\d+)?)%?\]/);
+    const match = item.file.name.match(/^\[([^_\]]+)_(\d+(?:\.\d+)?)%?\]/);
     return {
       dbId: data.dbId,
       dbIds: Array.isArray(data.dbIds) ? data.dbIds : (data.dbId ? [data.dbId] : []),
-      sourceDocumentId: v4Source.sourceDocumentId,
-      registrationJobId: v4Source.registrationJobId,
-      title: data.productCount > 1 ? `${data.productCount}개 상품` : (ed?.title || file.name),
+      sourceDocumentId: typeof data.sourceDocumentId === 'string' ? data.sourceDocumentId : undefined,
+      registrationJobId: typeof data.jobId === 'string' ? data.jobId : undefined,
+      title: data.productCount > 1 ? `${data.productCount}개 상품` : (ed?.title || item.file.name),
       confidence: data.finalConfidence ?? data.data?.confidence,
       landOperator: data.uploadMetadata?.landOperator ?? (match ? match[1] : ed?.land_operator),
       commissionRate: data.uploadMetadata?.commissionRate ?? (match ? parseFloat(match[2]) : undefined),
@@ -568,7 +626,7 @@ export default function UploadPage() {
       setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: 'processing' } : it));
 
       try {
-        const result = await uploadSingle(items[i].file);
+        const result = await uploadSingle(items[i]);
         setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: result.status ?? 'done', ...result } : it));
         if (result.registrationJobId) pollV4Job(items[i].id, result.registrationJobId);
         if (result.status === 'deferred') {
@@ -719,20 +777,21 @@ export default function UploadPage() {
     setQueue(prev => prev.map(it => it.id === id ? { ...it, status: 'processing' } : it));
 
     try {
-      const v4Source = await archiveV4Source({ rawText, sourceLabel: item.sourceLabel });
       const uploadUrl = buildUploadUrl();
       const res = await fetchWithSessionRefresh(uploadUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-product-source-document-id': v4Source.sourceDocumentId,
-          'x-product-registration-job-id': v4Source.registrationJobId,
         },
         body: JSON.stringify({
           rawText,
           sourceLabel: item.sourceLabel,
           landOperator: item.landOperator,
           commissionRate: item.commissionRate,
+          sourceBatchId: item.sourceBatchId,
+          sourceBatchIndex: item.sourceBatchIndex,
+          sourceBatchSize: item.sourceBatchSize,
+          sourceDepartureYear: item.sourceDepartureYear,
         }),
       });
       const data = await safeResJson(res);
@@ -752,15 +811,18 @@ export default function UploadPage() {
       if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
       if (data?.code === 'PRODUCT_REGISTRATION_V6_ACCEPTED') {
+        if (typeof data.sourceDocumentId !== 'string' || typeof data.jobId !== 'string') {
+          throw new Error('상품등록 작업 식별자가 누락되었습니다. 다시 시도해 주세요.');
+        }
         setQueue(prev => prev.map(it => it.id === id ? {
           ...it,
           status: 'processing',
-          sourceDocumentId: v4Source.sourceDocumentId,
-          registrationJobId: v4Source.registrationJobId,
+          sourceDocumentId: data.sourceDocumentId,
+          registrationJobId: data.jobId,
           workflowRunId: typeof data.workflowRunId === 'string' ? data.workflowRunId : undefined,
           title: it.sourceLabel || '자동 처리 중',
         } : it));
-        pollV4Job(id, v4Source.registrationJobId);
+        pollV4Job(id, data.jobId);
         return;
       }
 
@@ -780,8 +842,8 @@ export default function UploadPage() {
          titles,
          dbId,
          dbIds,
-         sourceDocumentId: v4Source.sourceDocumentId,
-         registrationJobId: v4Source.registrationJobId,
+         sourceDocumentId: typeof data.sourceDocumentId === 'string' ? data.sourceDocumentId : undefined,
+         registrationJobId: typeof data.jobId === 'string' ? data.jobId : undefined,
         confidence: data.finalConfidence ?? data.data?.confidence,
         landOperator: data.uploadMetadata?.landOperator ?? item.landOperator ?? ed?.land_operator,
         commissionRate: data.uploadMetadata?.commissionRate ?? item.commissionRate,
@@ -793,7 +855,7 @@ export default function UploadPage() {
         catalogSplitWarning: data.catalogSplitWarning ?? null,
       } : it));
 
-      pollV4Job(id, v4Source.registrationJobId);
+      if (typeof data.jobId === 'string') pollV4Job(id, data.jobId);
 
       const packageIds = packageIdsForItem({ dbId, dbIds, registerReport });
       if (packageIds.length > 0) runVerify(id, packageIds);
@@ -822,6 +884,7 @@ export default function UploadPage() {
     const landOperator = textLandOperator.trim() || undefined;
     const commissionRate = Number(textCommissionRate);
     const safeCommissionRate = Number.isFinite(commissionRate) ? commissionRate : undefined;
+    const sourceBatchId = chunks.length > 1 ? crypto.randomUUID() : undefined;
     const newItems: QueueItem[] = chunks.map((chunk, i) => {
       itemSeqRef.current++;
       const fallback = `텍스트 #${itemSeqRef.current}`;
@@ -833,6 +896,10 @@ export default function UploadPage() {
         sourceLabel,
         landOperator,
         commissionRate: safeCommissionRate,
+        sourceBatchId,
+        sourceBatchIndex: sourceBatchId ? i : undefined,
+        sourceBatchSize: sourceBatchId ? chunks.length : undefined,
+        sourceDepartureYear: sourceDepartureYear.trim() || undefined,
         status: 'waiting',
         title: sourceLabel,
       };
@@ -856,6 +923,10 @@ export default function UploadPage() {
           sourceLabel: item.sourceLabel,
           landOperator: item.landOperator,
           commissionRate: item.commissionRate,
+          sourceBatchId: item.sourceBatchId,
+          sourceBatchIndex: item.sourceBatchIndex,
+          sourceBatchSize: item.sourceBatchSize,
+          sourceDepartureYear: item.sourceDepartureYear,
         });
       } else {
         pendingTextRef.current.push({
@@ -864,6 +935,10 @@ export default function UploadPage() {
           sourceLabel: item.sourceLabel,
           landOperator: item.landOperator,
           commissionRate: item.commissionRate,
+          sourceBatchId: item.sourceBatchId,
+          sourceBatchIndex: item.sourceBatchIndex,
+          sourceBatchSize: item.sourceBatchSize,
+          sourceDepartureYear: item.sourceDepartureYear,
         });
       }
     }
@@ -887,6 +962,10 @@ export default function UploadPage() {
         sourceLabel: item.sourceLabel,
         landOperator: item.landOperator,
         commissionRate: item.commissionRate,
+        sourceBatchId: item.sourceBatchId,
+        sourceBatchIndex: item.sourceBatchIndex,
+        sourceBatchSize: item.sourceBatchSize,
+        sourceDepartureYear: item.sourceDepartureYear,
       });
     } else {
       pendingTextRef.current.push({
@@ -895,6 +974,10 @@ export default function UploadPage() {
         sourceLabel: item.sourceLabel,
         landOperator: item.landOperator,
         commissionRate: item.commissionRate,
+        sourceBatchId: item.sourceBatchId,
+        sourceBatchIndex: item.sourceBatchIndex,
+        sourceBatchSize: item.sourceBatchSize,
+        sourceDepartureYear: item.sourceDepartureYear,
       });
     }
   }, [processTextItem]);
@@ -937,6 +1020,38 @@ export default function UploadPage() {
         <p className="text-admin-sm text-admin-muted mt-1">
           텍스트를 붙여넣고 &ldquo;큐에 추가&rdquo;를 누르면 즉시 처리 시작 — 처리 중에도 계속 추가 가능, 최대 {MAX_CONCURRENT}개 병렬
         </p>
+      </div>
+
+      <div className="rounded-admin-md border border-amber-200 bg-amber-50 px-4 py-3">
+        <label className="hidden">
+          <span className="text-admin-xs font-semibold text-admin-text-2">출발연도 보조정보 (선택)</span>
+          <input
+            value={sourceDepartureYear}
+            onChange={event => setSourceDepartureYear(event.target.value.replace(/\D/g, '').slice(0, 4))}
+            inputMode="numeric"
+            placeholder="예: 2026"
+            aria-label="원문에서 생략된 출발연도"
+            className="w-32 rounded-lg border border-amber-300 bg-white px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+          <span className="text-[11px] text-amber-800">
+            원문·파일명에 연도가 없고 확인 가능한 경우만 입력하세요. 새로 큐에 넣는 파일·텍스트에만 적용되며, 원문 연도를 덮어쓰지 않습니다.
+          </span>
+        </label>
+        <label className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <span className="text-admin-xs font-semibold text-admin-text-2">출발연도 직접 확인값 (선택)</span>
+          <input
+            value={sourceDepartureYear}
+            onChange={event => setSourceDepartureYear(event.target.value.replace(/\D/g, '').slice(0, 4))}
+            inputMode="numeric"
+            placeholder="예: 2026"
+            aria-label="공급사에서 직접 확인한 출발연도"
+            className="w-32 rounded-lg border border-amber-300 bg-white px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+          <span className="text-[11px] leading-5 text-amber-900">
+            비워두면 접수한 한국 날짜를 기준으로 가장 가까운 미래 날짜를 자동 적용합니다.
+            예: 9월은 올해, 이미 지난 1월은 내년입니다. 원문에 연도가 있으면 원문이 항상 우선합니다.
+          </span>
+        </label>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1230,18 +1345,19 @@ export default function UploadPage() {
                         <span className="text-slate-500">원문 처리: {item.v4Stage ?? 'uploaded'}</span>
                         {item.v6Outcome && (
                           <span
-                            className={item.v6Outcome === 'blocked_action_required'
-                              ? 'text-red-600 font-semibold'
-                              : item.v6Outcome === 'published_degraded'
-                                ? 'text-amber-700 font-semibold'
-                                : 'text-emerald-700 font-semibold'}
+                            className={v6OutcomeClass(item.v6Outcome)}
                             title={[...(item.v6DegradedReasons ?? []), ...(item.v6Blockers ?? [])].join('\n')}
                           >
-                            {item.v6Outcome === 'published_verified'
-                              ? 'V6 검증 공개 완료'
-                              : item.v6Outcome === 'published_degraded'
-                                ? `V6 안전 축약 공개 (${item.v6DegradedReasons?.length ?? 0})`
-                                : `V6 자동 차단 (${item.v6Blockers?.length ?? 0})`}
+                            {v6OutcomeLabel(item)}
+                          </span>
+                        )}
+                        {item.dateResolution && (
+                          <span
+                            className="text-slate-600"
+                            title={`기준일 ${item.dateResolution.referenceDate ?? '-'} · 정책 ${item.dateResolution.policyVersion ?? '-'}`}
+                          >
+                            날짜 기준 {item.dateResolution.referenceDate ?? '-'} · 미래 귀속 {item.dateResolution.inferredDateCount}
+                            · 과거 제외 {item.dateResolution.excludedPastDateCount} · 판매 가능 {item.dateResolution.futureDepartureCount}
                           </span>
                         )}
                         {item.v5Revision && (

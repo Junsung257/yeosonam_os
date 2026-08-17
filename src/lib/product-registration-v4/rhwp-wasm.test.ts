@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildRhwpWasmDocumentIR, getRhwpWasmCandidates } from './rhwp-wasm';
+import { buildRhwpWasmDocumentIR, getRhwpWasmCandidates, getRhwpWasmTolerantWarnings } from './rhwp-wasm';
 
 describe('rhwp WASM EvidenceIR adapter', () => {
   it('discovers the pinned WASM module from the Lambda task root', () => {
@@ -43,5 +43,28 @@ describe('rhwp WASM EvidenceIR adapter', () => {
     expect(ir.tables[0]).toMatchObject({ rows: 1, columns: 2 });
     expect(ir.tables[0].cells[1]).toMatchObject({ row: 0, column: 1, text: '8/28 999,000원' });
     expect(ir.tables[0].cells[1].evidence.quoteHash).toHaveLength(64);
+  });
+
+  it('keeps readable page text when a malformed table control is encountered', () => {
+    const ir = buildRhwpWasmDocumentIR({
+      filename: 'malformed-table-control.hwp',
+      sourceType: 'hwp',
+      document: {
+        pageCount: () => 1,
+        getPageTextLayout: () => JSON.stringify({
+          runs: [
+            { text: '다낭 패키지 일정', x: 10, y: 10, secIdx: 0, paraIdx: 0, charStart: 0 },
+            { text: '장식 표', x: 10, y: 30, secIdx: 0, parentParaIdx: 1, controlIdx: 9, cellIdx: 0, cellParaIdx: 0, charStart: 0 },
+          ],
+        }),
+        getTableDimensions: () => { throw new Error('지정된 컨트롤이 표가 아닙니다'); },
+        getCellInfo: () => JSON.stringify({ row: 0, col: 0, rowSpan: 1, colSpan: 1 }),
+      },
+    });
+
+    expect(ir.text).toContain('다낭 패키지 일정');
+    expect(getRhwpWasmTolerantWarnings(ir)).toEqual([
+      expect.objectContaining({ code: 'INVALID_TABLE_CONTROL', critical: false }),
+    ]);
   });
 });

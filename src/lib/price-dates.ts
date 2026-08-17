@@ -14,7 +14,50 @@ export interface PriceDate {
   date: string;          // YYYY-MM-DD
   price: number;         // 성인가격
   child_price?: number;  // 아동가격 (선택)
+  infant_price?: number;
+  infant_consultation_required?: boolean;
   confirmed: boolean;    // 출발확정 여부
+  list_price?: number;
+  min_travelers?: number;
+  max_travelers?: number;
+  price_relation?: 'final_sale' | 'standard_sale';
+  price_note?: string;
+}
+
+export function getPriceScopeLabel(price: Pick<PriceDate, 'min_travelers' | 'max_travelers' | 'price_note'>): string | null {
+  if (price.price_note?.trim()) return price.price_note.trim();
+  if (price.min_travelers == null) return null;
+  if (price.max_travelers == null) return `${price.min_travelers}명 이상 기준`;
+  if (price.max_travelers === price.min_travelers) return `${price.min_travelers}명 기준`;
+  return `${price.min_travelers}~${price.max_travelers}명 기준`;
+}
+
+export function getLowestPriceDisclosure(dates: PriceDate[]): { price: number; scopeLabel: string | null } | null {
+  const eligible = dates.filter(item => Number.isFinite(item.price) && item.price > 0)
+    .sort((left, right) => left.price - right.price || left.date.localeCompare(right.date));
+  const lowest = eligible[0];
+  return lowest ? { price: lowest.price, scopeLabel: getPriceScopeLabel(lowest) } : null;
+}
+
+/**
+ * Returns the exact future departure row that supports a headline price.
+ * A customer-facing price must never be displayed beside an unrelated first
+ * departure date, because that visually implies the date is sold at that price.
+ */
+export function getPriceBoundDeparture(
+  dates: PriceDate[],
+  headlinePrice: number | null | undefined,
+  today: string,
+): PriceDate | null {
+  if (!Number.isFinite(headlinePrice) || (headlinePrice ?? 0) <= 0) return null;
+  return dates
+    .filter(item => (
+      item.date >= today
+      && Number.isFinite(item.price)
+      && item.price > 0
+      && item.price === headlinePrice
+    ))
+    .sort((left, right) => left.date.localeCompare(right.date))[0] ?? null;
 }
 
 export interface MonthGroup {
@@ -94,13 +137,25 @@ export function tiersToDatePrices(
       || !!(tier.note && /출확|출발확정/.test(tier.note));
 
     for (const date of dates) {
-      if (!date || seen.has(date) || excluded.has(date)) continue;
-      seen.add(date);
+      const scopeKey = [date, tier.adult_price ?? 0, tier.min_travelers ?? '', tier.max_travelers ?? ''].join(':');
+      if (!date || seen.has(scopeKey) || excluded.has(date)) continue;
+      seen.add(scopeKey);
       result.push({
         date,
         price: tier.adult_price ?? 0,
         ...(tier.child_price ? { child_price: tier.child_price } : {}),
         confirmed: isConfirmed,
+        ...(tier.list_price != null ? { list_price: tier.list_price } : {}),
+        ...(tier.min_travelers != null ? { min_travelers: tier.min_travelers } : {}),
+        ...(tier.max_travelers != null ? { max_travelers: tier.max_travelers } : {}),
+        ...(tier.price_relation ? { price_relation: tier.price_relation } : {}),
+        ...(tier.min_travelers != null ? {
+          price_note: tier.max_travelers == null
+            ? `${tier.min_travelers}명 이상 기준`
+            : tier.max_travelers === tier.min_travelers
+              ? `${tier.min_travelers}명 기준`
+              : `${tier.min_travelers}~${tier.max_travelers}명 기준`,
+        } : {}),
       });
     }
   }

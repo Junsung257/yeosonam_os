@@ -21,6 +21,7 @@ import type { ChannelSource, LandingProductData } from '@/lib/map-travel-package
 import type { NoticeBlock } from '@/lib/standard-terms';
 import { sanitizeNoticeForCustomerSurface } from '@/lib/standard-terms-client';
 import { trackAnalyticsEvent } from '@/lib/analytics';
+import { getPriceScopeLabel } from '@/lib/price-dates';
 
 const PriceSectionCard = dynamic(() => import('@/components/lp/PriceSection'));
 const LeadBottomSheet = dynamic(() => import('@/components/lp/LeadBottomSheet'), { ssr: false });
@@ -80,7 +81,7 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
       <div className="flex flex-col items-center gap-1">
         <Award className="w-6 h-6 text-amber-500" />
         <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-          직판<br />최저가
+          출발일별<br />가격 확인
         </span>
       </div>
       {hasReviewStats ? (
@@ -95,14 +96,14 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
         <div className="flex flex-col items-center gap-1">
           <Clock className="w-6 h-6 text-[var(--brand)]" />
           <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-            빠른<br />상담 응답
+            카톡<br />상담 연결
           </span>
         </div>
       )}
       <div className="flex flex-col items-center gap-1">
         <Phone className="w-6 h-6 text-[var(--success)]" />
         <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
-          24시간<br />현지 지원
+          예약 전<br />최종 확인
         </span>
       </div>
     </div>
@@ -110,12 +111,14 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
 }
 
 /** 가격 섹션 — compareAt 은 동일 상품 요금표 내 최고가 대비일 때만 표시 */
-function PriceSection({ priceFrom, compareAtPrice, deadlineDays, packageId, destination }: {
+function PriceSection({ priceFrom, compareAtPrice, deadlineDays, ticketingCondition, packageId, destination, customerBudget }: {
   priceFrom: number;
   compareAtPrice: number | null;
   deadlineDays: number | null;
+  ticketingCondition: LandingProductData['ticketingCondition'];
   packageId: string;
   destination: string;
+  customerBudget?: LandingProductData['customerBudget'];
 }) {
   const sectionRef = useRef<HTMLElement>(null);
   const discount =
@@ -144,7 +147,11 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, packageId, dest
   return (
     <section ref={sectionRef} className="px-5 py-6 bg-white">
       <div className="flex flex-wrap items-center gap-2 mb-1">
-        {deadlineDays != null && deadlineDays >= 0 && deadlineDays <= 30 && (
+        {ticketingCondition?.consultationOnly ? (
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900">
+            {ticketingCondition.notice}
+          </span>
+        ) : deadlineDays != null && deadlineDays >= 0 && deadlineDays <= 30 ? (
           <span
             className={`text-xs font-bold px-2.5 py-1 rounded-full ${
               deadlineDays <= 3 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
@@ -152,14 +159,18 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, packageId, dest
           >
             예약 마감 D-{deadlineDays}
           </span>
-        )}
+        ) : ticketingCondition ? (
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+            {ticketingCondition.notice}
+          </span>
+        ) : null}
         {discount != null && discount > 0 && (
           <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--brand-light)] text-[var(--brand-dark)]">
-            요금표 최고가 대비 {discount}%
+            랜드사 정상가 대비 {discount}%
           </span>
         )}
       </div>
-      <div className="flex items-end gap-3 mt-2">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-1 mt-2">
         <div>
           {compareAtPrice != null && compareAtPrice > priceFrom && (
             <p className="text-sm text-[var(--text-muted)] line-through">{fmt(compareAtPrice)}원</p>
@@ -168,8 +179,43 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays, packageId, dest
             {fmt(priceFrom)}<span className="text-lg font-semibold text-[var(--text-body)]">원~</span>
           </p>
         </div>
-        <p className="text-sm text-[var(--text-muted)] pb-1">1인 기준 · 유류세 포함</p>
+        <p className="text-sm text-[var(--text-muted)] pb-1">
+          {customerBudget?.fuel_surcharge.status === 'included'
+            ? '1인 기준 · 유류할증료 포함'
+            : customerBudget?.fuel_surcharge.status === 'excluded_fixed'
+              ? `1인 기준 상품가 · 유류할증료 ${fmt(customerBudget.fuel_surcharge.amount ?? 0)}원 별도`
+              : customerBudget?.fuel_surcharge.status === 'excluded_unpriced'
+                  || customerBudget?.fuel_surcharge.status === 'conflicting'
+                ? '1인 기준 상품가 · 유류할증료 별도'
+                : '1인 기준 상품가'}
+        </p>
       </div>
+      {customerBudget?.calculation === 'base_plus_fuel'
+        && customerBudget.expected_budget != null
+        && customerBudget.fuel_surcharge.amount != null && (
+          <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-sm font-bold text-blue-950">예상 부담금액</p>
+              <p className="text-xl font-black tabular-nums text-blue-950">
+                {fmt(customerBudget.expected_budget)}원
+              </p>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-blue-800">
+              상품가 {fmt(customerBudget.base_product_price ?? priceFrom)}원 + 유류할증료 {fmt(customerBudget.fuel_surcharge.amount)}원
+            </p>
+          </div>
+        )}
+      {customerBudget?.calculation === 'fuel_confirmation_required' && (
+        <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3.5 py-3">
+          <p className="text-sm font-bold text-amber-950">예상 부담금액은 유류할증료 확인 후 안내됩니다.</p>
+          <p className="mt-1 text-xs text-amber-800">확인되지 않은 금액을 상품가에 임의로 더하지 않습니다.</p>
+        </div>
+      )}
+      {customerBudget?.guide_fee_excluded && (
+        <p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">
+          가이드/기사 경비는 불포함 항목이며 위 예상 부담금액에는 포함되지 않습니다.
+        </p>
+      )}
     </section>
   );
 }
@@ -203,12 +249,18 @@ function DepartureDatesSummary({ priceDates }: { priceDates?: LandingProductData
         )}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        {rows.map(row => (
-          <div key={`${row.date}-${row.price}`} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+        {rows.map((row, index) => (
+          <div key={`${row.date}-${row.price}-${row.min_travelers ?? 'all'}-${index}`} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
             <p className="text-sm font-bold text-gray-900">{formatShortDate(row.date)}</p>
             <p className="mt-0.5 text-xs font-semibold text-gray-500">
+              {row.price_relation === 'final_sale' && row.list_price && row.list_price > row.price && (
+                <span className="mr-1 font-medium text-gray-400 line-through">{fmt(row.list_price)}원</span>
+              )}
               {fmt(row.price)}원부터 {row.confirmed ? '조건 확인' : '상담 가능'}
             </p>
+            {getPriceScopeLabel(row) && (
+              <p className="mt-1 text-[11px] font-medium text-amber-700">{getPriceScopeLabel(row)}</p>
+            )}
           </div>
         ))}
       </div>
@@ -417,7 +469,8 @@ export function LandingClient({
   const isInsta = validSource === 'insta';
   const isKakao = validSource === 'kakao';
   const heroImage = isInsta ? data.heroImageA : data.heroImageB;
-  const heroIsReferenceImage = /(?:pexels\.com|unsplash\.com|images\.unsplash\.com)/i.test(heroImage || '');
+  const heroMedia = data.heroMedia;
+  const heroIsReferenceImage = heroMedia?.reference_only === true;
 
   const fabText = '일정·인원 입력하고 상담받기';
 
@@ -443,7 +496,7 @@ export function LandingClient({
       <section className="relative overflow-hidden min-h-[240px]" style={{ height: '72vw', maxHeight: 360 }}>
         <SafeCoverImg
           src={heroImage}
-          alt={`${data.destination}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
+          alt={heroMedia?.alt ?? `${data.destination}${heroIsReferenceImage ? ' 참고 이미지' : ''}`}
           className="absolute inset-0 h-full w-full object-cover"
           loading="eager"
           fetchPriority="high"
@@ -451,8 +504,30 @@ export function LandingClient({
         />
         {heroIsReferenceImage && (
           <span className="absolute top-3 right-4 z-[1] rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/90 backdrop-blur-sm">
-            참고 이미지
+            {heroMedia?.label ?? '여행지 참고 이미지'}
           </span>
+        )}
+        {heroMedia?.attribution_text && heroMedia.attribution_url && (
+          <div className="absolute top-12 right-4 z-[2] flex max-w-[78%] flex-wrap justify-end gap-x-2 gap-y-1 rounded bg-black/55 px-2 py-1 text-[9px] leading-tight text-white/85 backdrop-blur-sm">
+            <a
+              href={heroMedia.attribution_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-white/40"
+            >
+              {heroMedia.attribution_text}
+            </a>
+            {heroMedia.license_url && (
+              <a
+                href={heroMedia.license_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-white/40"
+              >
+                {heroMedia.license_code ? `${heroMedia.license_code} 확인` : '라이선스 확인'}
+              </a>
+            )}
+          </div>
         )}
         <div
           className={`absolute inset-0 pointer-events-none ${
@@ -540,8 +615,10 @@ export function LandingClient({
         priceFrom={data.priceFrom}
         compareAtPrice={data.compareAtPrice}
         deadlineDays={data.deadlineDays}
+        ticketingCondition={data.ticketingCondition}
         packageId={data.id}
         destination={data.destination}
+        customerBudget={data.customerBudget}
       />
 
       <DepartureDatesSummary priceDates={data.price_dates} />
@@ -556,6 +633,7 @@ export function LandingClient({
           priceList={data.price_list}
           singleSupplement={data.singleSupplement}
           guideTrip={data.guideTrip}
+          customerBudget={data.customerBudget}
         />
       )}
 
@@ -567,6 +645,7 @@ export function LandingClient({
 
       <LpDeferSectionsDyn
         days={data.itinerary.days}
+        alternatives={data.itinerary.alternatives}
         onItineraryViewed={handleItineraryViewed}
         includes={data.itinerary.includes}
         excludes={data.itinerary.excludes}

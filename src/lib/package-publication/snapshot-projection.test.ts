@@ -459,7 +459,7 @@ describe('public snapshot card projection', () => {
     expect(merged).toEqual([]);
   });
 
-  it('drops fetched card snapshots with non-customer-publishable attraction ids', async () => {
+  it('does not re-evaluate immutable card snapshots against mutable attraction state', async () => {
     const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
     const packages = [
       openPackage({ title: 'raw supplier title' }),
@@ -499,10 +499,13 @@ describe('public snapshot card projection', () => {
       packages,
     );
 
+    // The mock has no publication pointer, so no snapshot is discoverable.
+    // The source contract below guards that no mutable attraction lookup is
+    // reintroduced into the customer reader.
     expect(merged).toEqual([]);
   });
 
-  it('fails closed for fetched card snapshots with attraction ids when approval lookup fails', async () => {
+  it('does not make immutable card reads depend on attraction lookup availability', async () => {
     const attractionId = '55555555-5555-4555-8555-555555555555';
     const packages = [
       openPackage({ title: 'raw supplier title' }),
@@ -539,7 +542,7 @@ describe('public snapshot card projection', () => {
     expect(merged).toEqual([]);
   });
 
-  it('drops fetched card snapshots with product-like customer-publishable attraction names', async () => {
+  it('does not reinterpret snapshot attraction names from mutable master data', async () => {
     const productLikeAttractionId = '66666666-6666-4666-8666-666666666666';
     const packages = [
       openPackage({ title: 'raw supplier title' }),

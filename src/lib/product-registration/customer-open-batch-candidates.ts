@@ -40,7 +40,8 @@ export function customerOpenBatchStage(row: Pick<CustomerOpenBatchCandidateRow, 
 
 export function isTerminalCustomerOpenBatchStage(stage: string | null): boolean {
   return stage === 'expired_ticketing_deadline_detected'
-    || stage === 'expired_ticketing_deadline_archived';
+    || stage === 'expired_ticketing_deadline_archived'
+    || stage === 'expired_ticketing_deadline_reconfirmation_required';
 }
 
 function isRetryStage(stage: string | null): boolean {

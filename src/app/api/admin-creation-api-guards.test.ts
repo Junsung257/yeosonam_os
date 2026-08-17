@@ -16,17 +16,13 @@ const guardedRoutes: GuardedRoute[] = [
     label: 'free-travel product assembly',
     routePath: 'src/app/api/products/assemble-free-travel/route.ts',
     handler: 'POST',
-    sensitiveNeedles: ['isSupabaseConfigured', 'request.json', 'supabaseAdmin'],
+    sensitiveNeedles: ['PRODUCT_REGISTRATION_KERNEL_ADAPTER_REQUIRED'],
   },
   {
     label: 'package marketing copy regeneration',
     routePath: 'src/app/api/packages/[id]/regenerate-copies/route.ts',
     handler: 'POST',
-    sensitiveNeedles: [
-      'loadPublicContentPackageForGeneration',
-      'generateMarketingCopies',
-      'supabaseAdmin',
-    ],
+    sensitiveNeedles: ['MUTABLE_COPY_REGENERATION_RETIRED'],
   },
   {
     label: 'card-news variant creation',

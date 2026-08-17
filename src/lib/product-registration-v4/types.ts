@@ -80,7 +80,7 @@ export type DocumentIR = {
   text: string;
   nodes: DocumentIrNode[];
   tables: DocumentIrTable[];
-  assets: Array<{ id: string; kind: 'image' | 'svg' | 'pdf'; nodeId?: string; metadata?: Record<string, unknown> }>;
+  assets: Array<{ id: string; kind: 'image' | 'svg' | 'pdf' | 'manifest'; nodeId?: string; metadata?: Record<string, unknown> }>;
   parser: {
     engine: string;
     version: string;
@@ -125,11 +125,14 @@ export type ProductRegistrationV4JobRecord = {
   v4_last_error_code: string | null;
   v4_last_error_detail: string | null;
   v6_workflow_run_id?: string | null;
-  v6_outcome?: 'published_verified' | 'published_degraded' | 'blocked_action_required' | null;
+  v6_outcome?: 'published_verified' | 'published_degraded' | 'discarded_source_incomplete' | 'blocked_action_required' | null;
   v6_analysis_outcome?: 'verified' | 'degraded' | 'blocked' | null;
   v6_publication_state?: 'not_requested' | 'frozen' | 'blocked' | 'proof_passed' | 'pointer_committed' | 'converged' | 'convergence_failed' | null;
   v6_publication_blockers?: string[];
   v6_policy_version?: string | null;
+  v6_reference_date?: string | null;
+  v6_date_policy_version?: string | null;
+  v6_source_channel?: string | null;
   v6_last_heartbeat_at?: string | null;
   v6_terminal_at?: string | null;
   v6_degraded_reasons?: string[];

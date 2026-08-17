@@ -31,8 +31,8 @@ describe('tenant/admin API boundary', () => {
     const inventory = routeSource('src/app/api/tenant/inventory/route.ts');
 
     expectGuardBefore(products, 'GET', "searchParams.get('tenant_id')");
-    expectGuardBefore(products, 'POST', 'await request.json()');
-    expectGuardBefore(products, 'PUT', 'await request.json()');
+    expectGuardBefore(products, 'POST', 'TENANT_PRODUCT_DIRECT_WRITE_RETIRED');
+    expectGuardBefore(products, 'PUT', 'TENANT_PRODUCT_DIRECT_WRITE_RETIRED');
 
     expectGuardBefore(inventory, 'GET', "searchParams.get('tenant_id')");
     expectGuardBefore(inventory, 'POST', 'await request.json()');

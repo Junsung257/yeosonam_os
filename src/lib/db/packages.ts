@@ -77,47 +77,19 @@ export async function saveTravelPackage(data: {
   data_completeness?: number;
   field_confidences?: unknown;
 }): Promise<{ id: string } | null> {
-  if (!isSupabaseConfigured) return null;
-  try {
-    const insertPayload = { ...data };
-    const { data: result, error } = await supabaseAdmin
-      .from('travel_packages')
-      .insert([insertPayload])
-      .select('id')
-      .single();
-    if (error) throw error;
-    return result;
-  } catch (error) {
-    console.error('패키지 저장 실패:', error);
-    throw error;
-  }
+  void data;
+  throw new Error('LEGACY_PACKAGE_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
 }
 
 export async function updatePackage(id: string, data: Record<string, unknown>) {
-  try {
-    const { error } = await supabaseAdmin
-      .from('travel_packages')
-      .update(data)
-      .eq('id', id);
-    if (error) throw error;
-  } catch (error) {
-    console.error('패키지 수정 실패:', error);
-    throw error;
-  }
+  void id;
+  void data;
+  throw new Error('LEGACY_PACKAGE_WRITER_RETIRED_USE_CORRECTION_REVISION');
 }
 
 export async function deletePackage(id: string) {
-  try {
-    // 감사 추적: soft delete 전에 audit_status 기록
-    const { error: auditError } = await supabaseAdmin
-      .from('travel_packages')
-      .update({ audit_status: 'blocked', status: 'archived', deleted_at: new Date().toISOString() })
-      .eq('id', id);
-    if (auditError) throw auditError;
-  } catch (error) {
-    console.error('패키지 삭제 실패:', error);
-    throw error;
-  }
+  void id;
+  throw new Error('LEGACY_PACKAGE_DELETE_RETIRED_USE_AVAILABILITY_OVERLAY');
 }
 
 // ── 조회 ─────────────────────────────────────────────────────
@@ -219,25 +191,8 @@ export async function getPendingPackages() {
 }
 
 export async function approvePackage(packageId: string) {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('travel_packages')
-      .update({
-        status: 'approved',
-        publication_state: 'blocked',
-        audit_status: 'clean',
-        audit_checked_at: new Date().toISOString(),
-        baseline_requested_at: new Date().toISOString(),
-      })
-      .eq('id', packageId)
-      .select('id, short_code')
-      .single();
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('패키지 승인 실패:', error);
-    throw error;
-  }
+  void packageId;
+  throw new Error('LEGACY_PACKAGE_APPROVAL_RETIRED_USE_PUBLISH_SNAPSHOT_ATOMIC');
 }
 
 // 특정 패키지 단건 조회

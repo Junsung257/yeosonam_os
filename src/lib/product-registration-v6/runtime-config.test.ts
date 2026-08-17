@@ -31,8 +31,8 @@ describe('product registration V6 runtime config', () => {
     for (const name of ENV_NAMES) delete process.env[name];
 
     expect(getProductRegistrationV6RuntimeConfig()).toEqual({
-      authorityMode: 'legacy',
-      workflowEnabled: false,
+      authorityMode: 'shadow',
+      workflowEnabled: true,
       shadowEnabled: true,
       publishEnabled: false,
       publicationFrozen: true,
@@ -61,13 +61,13 @@ describe('product registration V6 runtime config', () => {
     delete process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE;
     process.env.PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED = '1';
 
-    expect(getProductRegistrationV6RuntimeConfig().authorityMode).toBe('legacy');
-    expect(getProductRegistrationV6RuntimeConfig().workflowEnabled).toBe(false);
+    expect(getProductRegistrationV6RuntimeConfig().authorityMode).toBe('shadow');
+    expect(getProductRegistrationV6RuntimeConfig().workflowEnabled).toBe(true);
   });
 
-  it('retires mutable legacy endpoints only after kernel authority is active', () => {
+  it('retires mutable legacy endpoints whenever the Kernel workflow owns intake', () => {
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
-    expect(productRegistrationLegacyWriterBlocker()).toBeNull();
+    expect(productRegistrationLegacyWriterBlocker()).toBe('REGISTRATION_KERNEL_REQUIRES_SOURCE_OR_CORRECTION_REVISION');
 
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'kernel';
     expect(productRegistrationLegacyWriterBlocker()).toBe('REGISTRATION_KERNEL_REQUIRES_SOURCE_OR_CORRECTION_REVISION');

@@ -7,7 +7,7 @@ export type V5PriceRule = {
   revisionId: string;
   sectionIndex: number;
   variantKey: string;
-  componentType: 'base' | 'optional_tour';
+  componentType: 'base' | 'child' | 'infant' | 'optional_tour';
   scope: 'specific_departure' | 'date_range' | 'weekday' | 'always';
   specificDate: string | null;
   effectiveStart: string | null;
@@ -17,6 +17,10 @@ export type V5PriceRule = {
   currency: string;
   chargeBasis: 'per_person';
   inclusion: 'included' | 'optional';
+  listAmount: number | null;
+  minTravelers: number | null;
+  maxTravelers: number | null;
+  priceRelation: 'final_sale' | 'standard_sale' | null;
   sourceFieldPath: string;
   evidenceRef: Record<string, unknown>;
   ruleHash: string;
@@ -54,6 +58,7 @@ function asString(value: unknown): string | null {
 }
 
 function asNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -123,6 +128,18 @@ export function buildV5PriceRules(input: {
               : 'always';
         const sourceFieldPath = `sections[${sectionIndex}].v3.ledger.variants[${variantIndex}].price_calendar[${priceIndex}]`;
         const evidence = evidenceRef(price?.evidence, { fieldPath: sourceFieldPath });
+        const listAmount = asNumber(price?.list_price);
+        const minTravelers = asNumber(price?.min_travelers);
+        const maxTravelers = asNumber(price?.max_travelers);
+        const priceRelation = ['final_sale', 'standard_sale'].includes(String(price?.price_relation))
+          ? String(price?.price_relation) as V5PriceRule['priceRelation']
+          : null;
+        const commercialScope = {
+          list_amount: listAmount,
+          min_travelers: minTravelers,
+          max_travelers: maxTravelers,
+          price_relation: priceRelation,
+        };
         rules.push({
           revisionId: input.revisionId,
           sectionIndex,
@@ -137,10 +154,123 @@ export function buildV5PriceRules(input: {
           currency,
           chargeBasis: 'per_person',
           inclusion: 'included',
+          listAmount,
+          minTravelers,
+          maxTravelers,
+          priceRelation,
           sourceFieldPath,
-          evidenceRef: evidence,
-          ruleHash: sha256Hex(stableJson({ variantKey, componentType: 'base', scope, date, range, weekday, amount, currency, sourceFieldPath })),
+          evidenceRef: { ...evidence, commercial_scope: commercialScope },
+          ruleHash: sha256Hex(stableJson({ variantKey, componentType: 'base', scope, date, range, weekday, amount, currency, commercialScope, sourceFieldPath })),
         });
+        const passengerPrices = asArray(price?.passenger_prices);
+        if (passengerPrices.length > 0) {
+          passengerPrices.forEach((rawPassengerPrice, passengerPriceIndex) => {
+            const passengerPrice = asObject(rawPassengerPrice);
+            const passengerType = asString(passengerPrice?.passenger_type);
+            const passengerAmount = asNumber(passengerPrice?.amount);
+            if (!['child', 'infant'].includes(passengerType ?? '') || passengerAmount === null || passengerAmount < 0) return;
+            const componentType = passengerType as 'child' | 'infant';
+            const occupancyType = ['with_bed', 'without_bed'].includes(String(passengerPrice?.occupancy_type))
+              ? String(passengerPrice?.occupancy_type)
+              : null;
+            const passengerSourceFieldPath = `${sourceFieldPath}.passenger_prices[${passengerPriceIndex}]`;
+            const passengerEvidence = evidenceRef(passengerPrice?.evidence, { fieldPath: passengerSourceFieldPath });
+            const passengerCurrency = asString(passengerPrice?.currency) ?? currency;
+            rules.push({
+              revisionId: input.revisionId,
+              sectionIndex,
+              variantKey,
+              componentType,
+              scope,
+              specificDate: date,
+              effectiveStart: range?.start ?? null,
+              effectiveEnd: range?.end ?? null,
+              weekday,
+              amount: passengerAmount,
+              currency: passengerCurrency,
+              chargeBasis: 'per_person',
+              inclusion: 'included',
+              listAmount: null,
+              minTravelers,
+              maxTravelers,
+              priceRelation: null,
+              sourceFieldPath: passengerSourceFieldPath,
+              evidenceRef: {
+                ...passengerEvidence,
+                passenger_type: componentType,
+                occupancy_type: occupancyType,
+                passenger_label: asString(passengerPrice?.label),
+                derived_policy: 'source',
+              },
+              ruleHash: sha256Hex(stableJson({
+                variantKey,
+                componentType,
+                occupancyType,
+                scope,
+                date,
+                range,
+                weekday,
+                amount: passengerAmount,
+                currency: passengerCurrency,
+                sourceFieldPath: passengerSourceFieldPath,
+              })),
+            });
+          });
+          return;
+        }
+        const childAmount = asNumber(price?.child_amount) ?? amount;
+        const childBasis = asString(price?.child_price_basis) ?? 'same_as_adult_policy';
+        rules.push({
+          revisionId: input.revisionId,
+          sectionIndex,
+          variantKey,
+          componentType: 'child',
+          scope,
+          specificDate: date,
+          effectiveStart: range?.start ?? null,
+          effectiveEnd: range?.end ?? null,
+          weekday,
+          amount: childAmount,
+          currency,
+          chargeBasis: 'per_person',
+          inclusion: 'included',
+          listAmount: null,
+          minTravelers,
+          maxTravelers,
+          priceRelation: null,
+          sourceFieldPath: `${sourceFieldPath}.child_amount`,
+          evidenceRef: {
+            ...evidence,
+            derived_policy: childBasis,
+            derived_from_adult_amount: childBasis === 'same_as_adult_policy',
+          },
+          ruleHash: sha256Hex(stableJson({ variantKey, componentType: 'child', scope, date, range, weekday, amount: childAmount, currency, childBasis, sourceFieldPath })),
+        });
+        const infantAmount = asNumber(price?.infant_amount);
+        if (infantAmount !== null && infantAmount >= 0) {
+          rules.push({
+            revisionId: input.revisionId,
+            sectionIndex,
+            variantKey,
+            componentType: 'infant',
+            scope,
+            specificDate: date,
+            effectiveStart: range?.start ?? null,
+            effectiveEnd: range?.end ?? null,
+            weekday,
+            amount: infantAmount,
+            currency,
+            chargeBasis: 'per_person',
+            inclusion: 'included',
+            listAmount: null,
+            minTravelers,
+            maxTravelers,
+            priceRelation: null,
+            sourceFieldPath: `${sourceFieldPath}.infant_amount`,
+            evidenceRef: { ...evidence, derived_policy: 'source' },
+            ruleHash: sha256Hex(stableJson({ variantKey, componentType: 'infant', scope, date, range, weekday, amount: infantAmount, currency, sourceFieldPath })),
+          });
+        }
       });
       asArray(variant?.options).forEach((rawOption, optionIndex) => {
         const option = asObject(rawOption);
@@ -161,6 +291,10 @@ export function buildV5PriceRules(input: {
           currency: asString(option?.currency) ?? 'KRW',
           chargeBasis: 'per_person',
           inclusion: 'optional',
+          listAmount: null,
+          minTravelers: null,
+          maxTravelers: null,
+          priceRelation: null,
           sourceFieldPath,
           evidenceRef: evidenceRef(option?.evidence, { fieldPath: sourceFieldPath }),
           ruleHash: sha256Hex(stableJson({ variantKey, componentType: 'optional_tour', amount, sourceFieldPath })),
@@ -223,61 +357,6 @@ export async function persistV5TypedProjections(input: {
   revisionId: string;
   canonicalPayload: Record<string, unknown>;
 }): Promise<{ priceRuleCount: number; itineraryItemCount: number }> {
-  const priceRules = buildV5PriceRules({ revisionId: input.revisionId, canonicalPayload: input.canonicalPayload });
-  const itineraryItems = buildV5ItineraryItems({ revisionId: input.revisionId, canonicalPayload: input.canonicalPayload });
-  const { data: existingPriceRules, error: existingPriceError } = await input.supabase
-    .from('product_registration_v5_price_rules')
-    .select('rule_hash')
-    .eq('revision_id', input.revisionId);
-  if (existingPriceError) throw existingPriceError;
-  const existingRuleHashes = new Set((existingPriceRules ?? []).map(row => String((row as { rule_hash: string }).rule_hash)));
-  const missingPriceRules = priceRules.filter(rule => !existingRuleHashes.has(rule.ruleHash));
-  if (missingPriceRules.length > 0) {
-    const { error } = await input.supabase.from('product_registration_v5_price_rules').insert(missingPriceRules.map(rule => ({
-      revision_id: rule.revisionId,
-      section_index: rule.sectionIndex,
-      variant_key: rule.variantKey,
-      component_type: rule.componentType,
-      scope: rule.scope,
-      specific_date: rule.specificDate,
-      effective_start: rule.effectiveStart,
-      effective_end: rule.effectiveEnd,
-      weekday: rule.weekday,
-      amount: rule.amount,
-      currency: rule.currency,
-      charge_basis: rule.chargeBasis,
-      inclusion: rule.inclusion,
-      source_field_path: rule.sourceFieldPath,
-      evidence_ref: rule.evidenceRef,
-      rule_hash: rule.ruleHash,
-    })));
-    if (error) throw error;
-  }
-  const { data: existingItineraryItems, error: existingItineraryError } = await input.supabase
-    .from('product_registration_v5_itinerary_items')
-    .select('item_hash')
-    .eq('revision_id', input.revisionId);
-  if (existingItineraryError) throw existingItineraryError;
-  const existingItemHashes = new Set((existingItineraryItems ?? []).map(row => String((row as { item_hash: string }).item_hash)));
-  const missingItineraryItems = itineraryItems.filter(item => !existingItemHashes.has(item.itemHash));
-  if (missingItineraryItems.length > 0) {
-    const { error } = await input.supabase.from('product_registration_v5_itinerary_items').insert(missingItineraryItems.map(item => ({
-      revision_id: item.revisionId,
-      section_index: item.sectionIndex,
-      variant_key: item.variantKey,
-      day_index: item.dayIndex,
-      sequence_no: item.sequenceNo,
-      item_type: item.itemType,
-      start_time: item.startTime,
-      timezone: item.timezone,
-      title: item.title,
-      description: item.description,
-      canonical_id: item.canonicalId,
-      source_field_path: item.sourceFieldPath,
-      evidence_ref: item.evidenceRef,
-      item_hash: item.itemHash,
-    })));
-    if (error) throw error;
-  }
-  return { priceRuleCount: priceRules.length, itineraryItemCount: itineraryItems.length };
+  void input;
+  throw new Error('V5_TYPED_PROJECTION_WRITER_RETIRED_USE_COMMIT_REVISION_ATOMIC');
 }

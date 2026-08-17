@@ -10,7 +10,7 @@
  * 환경 변수:
  *   - IR_CANARY_ENABLED=true         → Canary 활성 (전체 토글)
  *   - IR_CANARY_ROLLOUT_PCT=1        → 트래픽 샘플 비율 (기본 1%, 0~100 정수/소수)
- *   - IR_CANARY_DEFAULT_ENGINE=...   → 'deepseek' (기본) | 'gemini' | 'claude'
+ *   - IR_CANARY_DEFAULT_ENGINE=...   → 등록 경로에서는 항상 'deepseek'
  *
  * 호출 패턴:
  *   if (shouldSampleToIrCanary(rawTextHash)) {
@@ -24,15 +24,13 @@
  *   `llm-gateway.ts` 의 primary 이므로 비용/품질 손실 없음.
  */
 
-import { getSecret } from '@/lib/secret-registry';
-
-export type IrCanaryEngine = 'deepseek' | 'gemini' | 'claude';
+export type IrCanaryEngine = 'deepseek';
 
 export interface IrCanaryStatus {
   enabled: boolean;
   rolloutPct: number;
   defaultEngine: IrCanaryEngine;
-  anthropicAvailable: boolean;
+  anthropicAvailable: false;
 }
 
 export function isIrCanaryEnabled(): boolean {
@@ -90,24 +88,12 @@ export function shouldSampleToIrCanary(seed: string): boolean {
   return bucket < Math.round(pct * 100);
 }
 
-/**
- * Claude 엔진 요청을 받았으나 ANTHROPIC_API_KEY 가 비어있으면 DeepSeek 로 강등.
- * 호출자가 engine 을 명시하지 않으면 IR_CANARY_DEFAULT_ENGINE 또는 'deepseek'.
- */
+/** 등록 정규화 엔진은 DeepSeek 하나로 고정한다. */
 export function pickCanaryEngine(requested?: IrCanaryEngine | null): IrCanaryEngine {
-  const fallback: IrCanaryEngine = (() => {
-    const env = process.env.IR_CANARY_DEFAULT_ENGINE as IrCanaryEngine | undefined;
-    if (env === 'gemini' || env === 'claude' || env === 'deepseek') return env;
-    return 'deepseek';
-  })();
-  const target = requested || fallback;
-  if (target === 'claude' && !getSecret('ANTHROPIC_API_KEY')) {
-    // Claude 키 부재 — DeepSeek 로 graceful degrade.
-    // 조용한 강등이 2주간 미발견되는 것을 막기 위해 명시적으로 경고 로깅.
-    console.warn('[ir-canary] ANTHROPIC_API_KEY 부재 — claude → deepseek graceful degrade');
-    return 'deepseek';
+  if (requested && requested !== 'deepseek') {
+    console.warn('[ir-canary] non-DeepSeek registration engine ignored');
   }
-  return target;
+  return 'deepseek';
 }
 
 export function getIrCanaryStatus(): IrCanaryStatus {
@@ -115,6 +101,6 @@ export function getIrCanaryStatus(): IrCanaryStatus {
     enabled: isIrCanaryEnabled(),
     rolloutPct: getIrCanaryRolloutPct(),
     defaultEngine: pickCanaryEngine(),
-    anthropicAvailable: !!getSecret('ANTHROPIC_API_KEY'),
+    anthropicAvailable: false,
   };
 }

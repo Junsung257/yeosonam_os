@@ -2,7 +2,6 @@ import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
-import { runAutoPhotoMatch } from '@/lib/auto-photo-match';
 import { runCoVeInBackground } from '@/lib/cove-audit-bridge';
 import { getIrCanaryStatus } from '@/lib/ir-canary';
 import { accumulateLandOperatorProfile } from '@/lib/land-operator-profile';
@@ -361,32 +360,6 @@ export function scheduleUploadPostRegistrationTasks(input: {
     });
   }
 
-  if (input.internalCode) {
-    input.safeAfter(async () => {
-      try {
-        await runAutoPhotoMatch({
-          internalCode: input.internalCode as string,
-          destination: input.destination,
-          title: input.packageTitle,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn('[Upload API] autoPhotoMatch failed:', msg);
-        if (input.isSupabaseConfigured) {
-          void input.postAlert({
-            category: 'register-backfill',
-            severity: 'warning',
-            title: `autoPhotoMatch failed: ${input.internalCode}`,
-            message: msg.slice(0, 500),
-            ref_type: 'travel_package',
-            ref_id: input.packageId,
-            meta: { phase: 'auto-photo-match', error: msg.slice(0, 500) },
-            dedupe: true,
-          });
-        }
-      }
-    });
-  }
 }
 
 export function scheduleUploadL3BackfillTasks(input: {

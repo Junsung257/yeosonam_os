@@ -1,4 +1,5 @@
 import type { MatrixPriceRow, PriceIROptions } from './types.ts';
+import { parseSourceWonAmount } from './source-money.ts';
 
 type PeriodSlot = {
   sm: number;
@@ -19,7 +20,6 @@ const DOW_MAP: Record<string, number> = {
 };
 const DOW_CHARS = '\uC77C\uC6D4\uD654\uC218\uBAA9\uAE08\uD1A0';
 const PERIOD_RE = /(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(?:(\d{1,2})[./])?(\d{1,2})/g;
-const PRICE_RE = /^(\d{1,3}(?:,\d{3})?|\d{3,4})\s*(?:,-|원)?\s*$/;
 
 function inferYearForMonth(month: number, explicitYear?: number): number {
   if (explicitYear && explicitYear >= 2000) return explicitYear;
@@ -34,11 +34,10 @@ function toIsoDate(year: number, month: number, day: number): string | null {
 }
 
 function parsePrice(line: string): number {
-  const match = line.trim().match(PRICE_RE);
-  if (!match) return 0;
-  const value = Number(match[1].replace(/,/g, ''));
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  return value < 10000 ? value * 1000 : value;
+  return parseSourceWonAmount(line, {
+    allowBareSaleShorthand: true,
+    minAmount: 100_000,
+  })?.amount ?? 0;
 }
 
 function parsePeriods(line: string): PeriodSlot[] {

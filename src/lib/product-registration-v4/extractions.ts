@@ -3,14 +3,46 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseDocument } from '@/lib/parser';
 
 import { createOcrDocumentIR, createTextDocumentIR, getDocumentIRValidationErrors, sha256Hex } from './document-ir';
-import { parseHwpWithRhwpWasm } from './rhwp-wasm';
+import { getRhwpWasmTolerantWarnings, parseHwpWithRhwpWasm } from './rhwp-wasm';
+import { hasRhwpNativeBinary, parseHwpWithRhwp } from './rhwp';
 import { extractOcrWithCrossValidation } from '@/lib/product-registration-v6/ocr-providers';
 import type { DocumentIR, ProductSourceType } from './types';
 import { getProductRegistrationV4Job, transitionProductRegistrationV4Job } from './jobs';
 import type { ProductRegistrationV4JobRecord, SourceDocumentRecord } from './types';
 import { hashSourceBytes, validateSourceBytes } from './source-documents';
+import {
+  PRODUCT_SOURCE_LINEAGE_FINGERPRINT_VERSION,
+  productSourceLineageHash,
+} from '@/lib/product-registration/source-lineage-fingerprint';
 
 export type PersistedDocumentExtraction = { id: string; extractionHash: string };
+
+function criticalParserTokens(text: string): Set<string> {
+  const normalized = text.normalize('NFKC').replace(/\s+/g, ' ');
+  const patterns = [
+    /\b(?:20\d{2}[./-])?\d{1,2}[./-]\d{1,2}\b/g,
+    /\b[A-Z][A-Z0-9]\s*\d{2,4}\b/gi,
+    /(?:₩|￦|KRW|USD|\$)?\s*\d{1,3}(?:,\d{3})+\s*(?:원|달러)?/gi,
+    /(?:포함|불포함|취소|환불|성인|아동|싱글차지)/g,
+  ];
+  return new Set(patterns.flatMap(pattern => normalized.match(pattern) ?? []).map(token => token.replace(/\s+/g, '').toUpperCase()));
+}
+
+export function compareCriticalHwpParserParity(primaryText: string, fallbackText: string): {
+  matches: boolean;
+  missingFromPrimary: string[];
+  missingFromFallback: string[];
+} {
+  const primary = criticalParserTokens(primaryText);
+  const fallback = criticalParserTokens(fallbackText);
+  const missingFromPrimary = [...fallback].filter(token => !primary.has(token));
+  const missingFromFallback = [...primary].filter(token => !fallback.has(token));
+  return {
+    matches: missingFromPrimary.length === 0 && missingFromFallback.length === 0,
+    missingFromPrimary,
+    missingFromFallback,
+  };
+}
 
 export async function extractSourceDocumentToIR(input: {
   buffer: Buffer;
@@ -19,11 +51,48 @@ export async function extractSourceDocumentToIR(input: {
   disabledOcrProviders?: string[];
 }): Promise<DocumentIR> {
   if (input.sourceType === 'hwp' || input.sourceType === 'hwpx') {
-    return (await parseHwpWithRhwpWasm({
-      buffer: input.buffer,
-      filename: input.filename,
-      sourceType: input.sourceType,
-    })).ir;
+    let wasmIr: DocumentIR | null = null;
+    let wasmError: unknown = null;
+    try {
+      wasmIr = (await parseHwpWithRhwpWasm({
+        buffer: input.buffer,
+        filename: input.filename,
+        sourceType: input.sourceType,
+      })).ir;
+    } catch (error) {
+      wasmError = error;
+    }
+    const warnings = wasmIr ? getRhwpWasmTolerantWarnings(wasmIr) : [];
+    const needsFallback = !wasmIr || warnings.length > 0;
+    if (needsFallback && hasRhwpNativeBinary()) {
+      const native = await parseHwpWithRhwp({
+        buffer: input.buffer,
+        filename: input.filename,
+        sourceType: input.sourceType,
+      });
+      if (wasmIr) {
+        const parity = compareCriticalHwpParserParity(wasmIr.text, native.text);
+        if (!parity.matches) {
+          throw new Error(`HWP_PARSER_CRITICAL_VALUE_CONFLICT:${JSON.stringify(parity)}`);
+        }
+      }
+      native.ir.assets.push({
+        id: 'rhwp-native-fallback',
+        kind: 'image',
+        metadata: {
+          reason: wasmError instanceof Error ? wasmError.message : warnings.length > 0 ? 'WASM_TOLERANT_WARNING' : 'WASM_FAILED',
+          warningCount: warnings.length,
+          criticalWarningCount: warnings.filter(warning => warning.critical).length,
+          parserParityChecked: Boolean(wasmIr),
+        },
+      });
+      return native.ir;
+    }
+    if (!wasmIr) throw wasmError;
+    if (warnings.some(warning => warning.critical)) {
+      throw new Error('HWP_PARSER_CRITICAL_TABLE_LOSS:NATIVE_FALLBACK_UNAVAILABLE');
+    }
+    return wasmIr;
   }
 
   if (input.sourceType === 'text') {
@@ -210,7 +279,14 @@ export async function processProductRegistrationV4ExtractionJob(input: {
       sourceDocumentId: sourceDocument.id,
       tenantId: job.tenant_id,
       documentIr: ir,
-      qualityDiagnostics: { pages: ir.pages, nodes: ir.nodes.length, tables: ir.tables.length, chars: ir.text.length },
+      qualityDiagnostics: {
+        pages: ir.pages,
+        nodes: ir.nodes.length,
+        tables: ir.tables.length,
+        chars: ir.text.length,
+        normalizedTextHash: productSourceLineageHash(ir.text),
+        normalizedTextHashVersion: PRODUCT_SOURCE_LINEAGE_FINGERPRINT_VERSION,
+      },
     });
     const ocrAsset = ir.assets.find(asset => asset.id === 'ocr-provider-run');
     const ocrMetadata = ocrAsset?.metadata && typeof ocrAsset.metadata === 'object' ? ocrAsset.metadata : null;

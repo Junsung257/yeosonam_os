@@ -356,31 +356,12 @@ async function applySafeFixes(packageRows: TravelPackageRow[], issuesByPackage: 
     }
   }
 
-  for (const update of updates) {
-    const { error } = await supabaseAdmin
-      .from('travel_packages')
-      .update({
-        ...update.patch,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', update.id);
-    if (error) throw new Error(error.message);
-  }
-  for (const update of productUpdates) {
-    const { error } = await supabaseAdmin
-      .from('products')
-      .update({
-        display_name: update.displayName,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('internal_code', update.internalCode);
-    if (error) throw new Error(error.message);
-  }
   return [
-    ...updates,
+    ...updates.map(update => ({ ...update, correction_revision_required: true })),
     ...productUpdates.map(update => ({
       id: `products:${update.internalCode}`,
       patch: { display_name: update.displayName },
+      correction_revision_required: true,
     })),
   ];
 }
@@ -394,32 +375,6 @@ async function markBlockingPackages(
   for (const row of packageRows) {
     const issues = (issuesByPackage.get(row.id) ?? []).filter(issue => !issue.safe_fixable);
     if (issues.length === 0) continue;
-    const existing = row.audit_report && typeof row.audit_report === 'object' && !Array.isArray(row.audit_report)
-      ? row.audit_report
-      : {};
-    const { error } = await supabaseAdmin
-      .from('travel_packages')
-      .update({
-        audit_status: 'blocked',
-        audit_checked_at: now,
-        audit_report: {
-          ...existing,
-          customer_visible_text_audit: {
-            status: 'blocked',
-            checked_at: now,
-            issue_count: issues.length,
-            issues: issues.slice(0, 20).map(issue => ({
-              field_path: issue.field_path,
-              code: issue.code,
-              value: issue.value,
-              detail: issue.detail,
-            })),
-          },
-        },
-        updated_at: now,
-      })
-      .eq('id', row.id);
-    if (error) throw new Error(error.message);
     updates.push({ id: row.id, issueCount: issues.length });
   }
   return updates;

@@ -82,6 +82,35 @@ describe('postProcessItineraryData', () => {
     expect(out.days?.[1]?.schedule?.map(item => item.transport)).toEqual(['BX516', 'BX516']);
   });
 
+  it('does not re-expose a V6-hidden flight time from legacy day rows', () => {
+    const out = postProcessItineraryData({
+      days: [{
+        day: 1,
+        schedule: [{
+          time: '20:05',
+          type: 'flight',
+          activity: '부산 김해 국제공항 출발 (목,일 20:05 출발)',
+          transport: 'LJ119',
+        }],
+      }],
+      flight_segments: [{
+        leg: 'outbound',
+        flight_no: 'LJ119',
+        dep_airport: '부산',
+        dep_time: null,
+        arr_airport: null,
+        arr_time: null,
+        arr_day_offset: 0,
+        day_pair: [0, 0],
+        v6_fact_state: 'degraded',
+        v6_schedule_notice: '운항일 기준 상담 시 최종 확인',
+      }] as FlightSegment[],
+    });
+    expect(out?.flight_segments?.[0]?.dep_time).toBeNull();
+    expect(out?.days?.[0]?.schedule?.[0]).not.toHaveProperty('time');
+    expect(out?.days?.[0]?.schedule?.[0]?.activity).not.toContain('20:05');
+  });
+
   it('removes optional-tour fragments from saved schedule rows before public snapshot generation', () => {
     const out = postProcessItineraryData({
       days: [{

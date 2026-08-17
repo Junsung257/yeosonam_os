@@ -157,18 +157,8 @@ export async function upsertTenantProduct(data: {
   min_participants?: number;
   notes?: string;
 }): Promise<TenantProduct | null> {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const payload = { ...data, status: 'approved', updated_at: new Date().toISOString() };
-  let query;
-  if (data.id) {
-    query = sb.from('travel_packages').update(payload as never).eq('id', data.id).select().single();
-  } else {
-    query = sb.from('travel_packages').insert(payload as never).select().single();
-  }
-  const { data: row, error } = await query;
-  if (error) { console.error('테넌트 상품 저장 실패:', error); return null; }
-  return row as TenantProduct;
+  void data;
+  throw new Error('TENANT_PRODUCT_DIRECT_WRITE_RETIRED_USE_REGISTRATION_KERNEL');
 }
 
 // ── Inventory Blocks ─────────────────────────────────────────

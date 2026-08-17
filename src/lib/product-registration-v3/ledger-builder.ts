@@ -7,10 +7,15 @@ import type {
   V3SourceLine,
   V3StructurePlan,
 } from './types';
-import { evidenceFromLines } from './source-line-index';
+import { extractSourceTicketingCondition } from '@/lib/product-registration/ticketing-deadline';
+import { evidenceFromLines, evidenceFromSourceLine } from './source-line-index';
 import { extractStandardNoticesFromRemarkLines } from './standard-notices';
 import { extractStructuredFactsFromSupplierText } from './structured-facts';
-import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
+import {
+  extractPriceIR,
+  parseFinalSalePriceFromLine,
+  sourceWonEvidenceContainsAmount,
+} from '@/lib/parser/deterministic/price-ir';
 import { isCustomerOptionalTourCandidate, isNonCustomerOptionText } from '@/lib/customer-option-classifier';
 
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
@@ -53,6 +58,15 @@ const GOLF_ROUND_RE =
   /(?:\uace8\ud504\uc7a5.*\uc774\ub3d9|(?:CC|cc|\uace8\ud504\uc7a5|[\w\uac00-\ud7a3]+\s*\/\s*[\w\uac00-\ud7a3]+).*?(?:18|27|36|54)\s*\ud640.*?(?:\ub77c\uc6b4\ub529|\uc140\ud504\ub77c\uc6b4\ub529)|(?:18|27|36|54)\s*\ud640.*?(?:\ub77c\uc6b4\ub529|\uc140\ud504\ub77c\uc6b4\ub529)|\ub77c\uc6b4\ub529\s*\ud6c4)/i;
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const SHOPPING_DETAIL_RE = /\uae30\ub150\ud488|\ud1a0\uc0b0\ud488|\uac74\uac15\ubcf4\uc870\uc2dd\ud488|\uc7a1\ud654|\uc9c4\uc8fc/i;
+const SHOPPING_AMENITY_RE =
+  /(?:\uc778\uadfc|\uadfc\ucc98|\uc8fc\ubcc0|\uc704\uce58|\uc811\uadfc|\uac00\uae4c|\ub3c4\ubcf4\s*(?:\uc774\ub3d9|\d+\s*\ubd84)|\uc774\ub3d9\s*\uac00\ub2a5|\uc790\uc720\s*\uc2dc\uac04.*(?:\uc1fc\ud551\ubab0|\uc1fc\ud551)|(?:\uac00\ubcfc\s*\ub9cc\ud55c|\ucd94\ucc9c\s*\uad00\uad11\uc9c0).*\uc1fc\ud551\ubab0|\uad00\uad11\uccad\s*\ucc38\uc870)/i;
+const SHOPPING_VISIT_RE =
+  /(?:\ubc29\ubb38|\uc785\uc810|\uc774\ub3d9\ud558\uc5ec|\uacbd\uc720|\uc790\uc728\s*\uc1fc\ud551|\uc1fc\ud551\s*\d+\s*\ud68c|\d+\s*\uacf3|\ud1a0\uc0b0\ud488\s*\uad00\uad11)/i;
+const NO_SHOPPING_POLICY_RE = /(?:\ub178\s*\uc1fc\ud551|NO\s*SHOPPING)/i;
+const TOURIST_MARKET_ATTRACTION_RE =
+  /^(?:(?:DAY|제)\s*\d+\s*(?:일)?\s*)?[▶●•·◆◇■□★☆+\-○▪◦*♣].*(?:\uc2dc\uc7a5|\uc1fc\ud551\ubab0|\uc13c\ud130).*(?:\uad00\uad11|\ub458\ub7ec|\uc0b0\ucc45)/i;
+const LEISURE_RETAIL_VISIT_RE =
+  /^(?:(?:DAY|제)\s*\d+\s*(?:일)?\s*)?[▶●•·◆◇■□★☆+\-○▪◦*♣].*(?:\uc2dc\uc7a5|\uc1fc\ud551\ubab0|\ub9c8\ud2b8|\ud504\ub77c\uc790).*(?:\ubc29\ubb38|\uad00\uad11|\ub458\ub7ec|\uc0b0\ucc45)/i;
 const INCLUDED_ACTIVITY_RE = /\ub514\uc2a4\ucee4\ubc84\ub9ac\s*\ud22c\uc5b4|\uc2dc\ub0b4\uad00\uad11|\uc2a4\ucfe0\ubc84\ub2e4\uc774\ube59|\uc218\uc601\uc7a5\s*\uc2e4\uc2b5|\uc624\uc77c\ub9c8\uc0ac\uc9c0|\ud638\ud551\ud22c\uc5b4/i;
 const OPTION_PRICE_CANDIDATE_RE = /\uc120\ud0dd|\uc635\uc158|\ud638\ud551|\ubc14\ub098\ub098\s*\ubcf4\ud2b8|\ud30c\ub77c\uc138\uc77c\ub9c1|\ud328\ub7ec\uc138\uc77c\ub9c1|\ud30c\ub77c\uc140\ub9c1|\uc81c\ud2b8\s*\uc2a4\ud0a4|\uc528\s*\uc6cc\ud06c|\uc528\s*\uc6cc\ud0b9|\ub2e4\uc774\ube59|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\uc1fc|\ud22c\uc5b4/i;
 const TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22c\uc5b4|\ub9c8\ucf13|\uc2dc\uc7a5|\uc57c\uc2dc\uc7a5|\uc0ac\uc6d0|\ud574\ubcc0|\ube44\uce58|\ub18d\uc7a5|\uc218\uc6a9\uc18c|\ud3ec\ud1a0\uc874|\uc57c\uacbd|\ubc14\uc790|\uc120\uc14b\ud0c0\uc6b4|\ud56b\ud50c\s*\uce74\ud398)/i;
@@ -81,9 +95,19 @@ const BAKEKDU_DESCRIPTION_FRAGMENT_RE =
 
 const TIME_WITH_ARRIVAL_OFFSET_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+?\d+\))?$/;
 const SOURCE_EVIDENCE_HEADER_RE = /^\[\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\]$/;
+
+function isShoppingAmenityDescription(text: string): boolean {
+  return SHOPPING_RE.test(text)
+    && SHOPPING_AMENITY_RE.test(text)
+    && !SHOPPING_VISIT_RE.test(text);
+}
 const POST_ITINERARY_PRICE_EVIDENCE_SECTION_RE =
   /^(?:\[\s*\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\s*\]|.*\bPKG\b.*(?:\d+\s*\ubc15\s*\d+\s*\uc77c|\d+N\d+D)|\*{2,}.*\ubc1c\uad8c\uc870\uac74.*\*{2,})/i;
 const HOLIDAY_PRICE_NOISE_RE = /^[\s\u25cf\u2605\u2606*]+.*\uc5f0\ud734\s*\ucd9c\ubc1c/;
+const CAPACITY_AND_DIMENSION_PRICE_DECOY_RE =
+  /(?:\uCD1D\s*\uD1A4\s*\uC218|\uC804\s*\uC7A5|\uC804\s*\uD3ED|\uC804\s*\uACE0|\uCD1D\s*\uD0D1\s*\uC2B9\s*\uAC1D|\uC2B9\s*\uBB34\s*\uC6D0\s*\uC218|\uC218\s*\uC6A9\s*\uC778\s*\uC6D0|\uAC1D\s*\uC2E4\s*\uC218)/u;
+const QUANTITY_AND_MEASURE_PRICE_DECOY_RE =
+  /\b[1-9]\d{0,2}(?:[,.]\d{3})+\s*(?:\uC5EC\s*)?(?:\uAC1C(?:\uC18C)?|\uBA85|\uACF3|\uC11D|\uC2E4|\uD68C|\uB300|\uD640|\uB9C8\uB9AC|\uD1A4|\uD3C9|m\b|km\b|㎡)/iu;
 const KOREAN_REGION_CELL_ONLY_RE =
   /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
 const BRACKETED_DESCRIPTION_ONLY_RE = /^\[[^\]]{8,80}\]$/;
@@ -149,11 +173,14 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (/\uc804\uc6a9\ucc28(?:\ub7c9|\ub791)/.test(text)) return 'transfer';
   if (/\uacf5\ud56d.*\ucd9c\uad6d\s*\uc218\uc18d|\ucd9c\uad6d\s*\uc218\uc18d/.test(text)) return 'transfer';
   if (/\ud0d1\uc2b9\ud558\uc5ec.*(?:\uc790\uc5f0\uacbd\uad00|\uad00\uad11)/.test(text)) return 'notice';
+  if (TOURIST_MARKET_ATTRACTION_RE.test(text)) return 'activity';
+  if (LEISURE_RETAIL_VISIT_RE.test(text) && !/(?:\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\ub77c\ud14d\uc2a4|\uce68\ud5a5|\ud55c\uc57d\ubc29|\ub178\ub2c8|\uac74\uac15\ubcf4\uc870\uc2dd\ud488)/i.test(text)) return 'activity';
   if (/(?:\ud2b9\uc0b0\ud488|\uc1fc\ud551).*(?:\uad00\uad11|\ubc29\ubb38|\d+\s*\ud68c)/.test(text)) return 'shopping';
   if (ABBREVIATED_PRICE_RE.test(compact)) return 'price_noise';
   if (/^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(compact)) return 'notice';
   if (/^(?:\ub178\uc635\uc158|no\s*option)$/i.test(compact)) return 'notice';
-  if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return 'shopping';
+  if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)/.test(compact)
+    && !isShoppingAmenityDescription(text)) return 'shopping';
   if (/^\(\+\d+\)$/.test(compact)) return null;
   if (/^(?:부산|클락|푸꾸옥|세부|다낭|나트랑|호치민|방콕)$/.test(compact)) return null;
   if (/^(?:살펴보기|여권|입국|이트래블|eTravel)/i.test(compact)) return 'notice';
@@ -200,7 +227,10 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (/(?:\uc1fc|show|\ud06c\ub8e8\uc988|\uc720\ub78c\uc120|\uccb4\ud5d8)/i.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc635\uc158/i.test(text)) return 'activity';
   if (FREE_TIME_RE.test(text)) return 'free_time';
   if (OPTION_RE.test(text)) return 'option';
-  if (SHOPPING_RE.test(text) || SHOPPING_DETAIL_RE.test(text)) return 'shopping';
+  if (NO_SHOPPING_POLICY_RE.test(text)) return 'notice';
+  if (isShoppingAmenityDescription(text)) return 'notice';
+  if (SHOPPING_RE.test(text) || SHOPPING_RE.test(compact)
+    || (SHOPPING_DETAIL_RE.test(text) && SHOPPING_VISIT_RE.test(text))) return 'shopping';
   if (NOTICE_RE.test(text)) return 'notice';
   if (INCLUDED_ACTIVITY_RE.test(text)) return 'activity';
   if (/^\s*[▶●•·◆◇■□★☆+\-○▪◦*♣]/.test(text) && TOUR_ACTIVITY_LINE_RE.test(text)) return 'activity';
@@ -297,9 +327,17 @@ function isOptionPriceCandidate(text: string): boolean {
     && isCustomerOptionalTourCandidate(text);
 }
 
-function buildPriceCalendarFromIR(sectionLines: V3SourceLine[], title: string): V3LedgerVariant['price_calendar'] {
+function sourceLineContainsPriceAmount(line: string, expectedAmount: number): boolean {
+  return sourceWonEvidenceContainsAmount(line, expectedAmount);
+}
+
+function buildPriceCalendarFromIR(
+  sectionLines: V3SourceLine[],
+  title: string,
+  year?: number,
+): V3LedgerVariant['price_calendar'] {
   const rawText = sectionLines.map(line => line.quote).join('\n');
-  const result = extractPriceIR(rawText, { title });
+  const result = extractPriceIR(rawText, { title, year });
   return result.tiers
     // An unscoped IR tier is not enough to override the guarded line fallback:
     // itinerary prose can contain elevations, penalties, or optional fees that
@@ -307,22 +345,38 @@ function buildPriceCalendarFromIR(sectionLines: V3SourceLine[], title: string): 
     // date (or an explicit range) that can be shown to a customer.
     .filter(tier => (tier.departure_dates?.length ?? 0) > 0 || Boolean(tier.date_range?.start && tier.date_range?.end))
     .filter(tier => typeof tier.adult_price === 'number' && tier.adult_price > 0)
-    .map(tier => {
-      const evidenceLine = sectionLines.find(line =>
-        line.quote.includes(String(tier.adult_price))
-        || line.quote.includes(tier.adult_price.toLocaleString('ko-KR'))
-        || (tier.period_label && line.quote.includes(tier.period_label.slice(0, 8)))
-      ) ?? sectionLines[0];
-      return {
-        date: tier.departure_dates?.[0] ?? tier.date_range?.start ?? null,
+    .flatMap(tier => {
+      const evidenceLine = sectionLines.find(line => sourceLineContainsPriceAmount(line.quote, tier.adult_price))
+        ?? sectionLines.find(line => (
+        tier.period_label && line.quote.includes(tier.period_label.slice(0, 8))
+      )) ?? sectionLines[0];
+      const departureDates = [...new Set(tier.departure_dates ?? [])];
+      const dates = departureDates.length > 0
+        ? departureDates
+        : [tier.date_range?.start ?? null];
+      return dates.map(date => ({
+        date,
         date_range: tier.date_range,
         weekday: weekdayNumber(tier.departure_day_of_week),
         label: tier.period_label || result.source,
         amount: tier.adult_price,
         currency: 'KRW',
-        evidence: evidenceFromLines(sectionLines, evidenceLine.lineNumber),
-      };
-    });
+        child_amount: tier.child_price ?? null,
+        child_price_basis: tier.child_price != null ? 'source' as const : undefined,
+        infant_amount: tier.infant_price ?? null,
+        infant_price_state: tier.infant_price != null ? 'source' as const : undefined,
+        list_price: tier.list_price ?? null,
+        min_travelers: tier.min_travelers ?? null,
+        max_travelers: tier.max_travelers ?? null,
+        price_relation: tier.price_relation ?? null,
+        // sectionLines may begin at a non-1 global line number. Passing that
+        // global number back into the sliced array points at an unrelated
+        // heading (often just "상품가"). Build evidence from the matched line
+        // object itself so the amount can always be replayed from the source.
+        evidence: evidenceFromSourceLine(evidenceLine),
+      }));
+    })
+    .sort((left, right) => (left.date ?? '').localeCompare(right.date ?? '') || left.amount - right.amount);
 }
 
 function titleParts(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): string[] {
@@ -348,7 +402,7 @@ function buildEvent(line: V3SourceLine, type: V3EventType, rawText = line.quote.
     canonical_id: null,
     canonical_type: null,
     match_status: type === 'attraction' ? 'unmatched' : type === 'option' ? 'review' : 'ignored',
-    evidence: evidenceFromLines([line], 1),
+    evidence: evidenceFromSourceLine(line),
   };
 }
 
@@ -460,21 +514,38 @@ function itineraryLinesBeforePriceEvidenceTail(sectionLines: V3SourceLine[]): V3
   return sectionLines;
 }
 
-function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): V3LedgerVariant {
+function buildVariant(
+  lines: V3SourceLine[],
+  boundary: V3StructurePlan['product_boundaries'][number],
+  buildOptions: { year?: number; referenceDate?: string } = {},
+): V3LedgerVariant {
   const sectionLines = lines.slice(boundary.line_start - 1, boundary.line_end);
   const linePrices = sectionLines
-    .map(line => ({ line, match: line.quote.match(PRICE_RE) }))
-    .filter((row): row is { line: V3SourceLine; match: RegExpMatchArray } => Boolean(row.match))
-    .map(({ line, match }) => ({
-      date: line.quote.match(/\b20\d{2}[./-]\d{1,2}[./-]\d{1,2}\b/)?.[0]?.replace(/[./]/g, '-') ?? null,
-      label: line.quote.trim(),
-      amount: normalizePrice(match[1]),
-      currency: match[2] === '$' || match[2]?.toUpperCase() === 'USD' ? 'USD' : 'KRW',
-      evidence: evidenceFromLines(lines, line.lineNumber),
-    }))
+    .map(line => {
+      const finalSale = parseFinalSalePriceFromLine(line.quote);
+      const match = line.quote.match(PRICE_RE);
+      if (!finalSale && !match) return null;
+      return {
+        date: line.quote.match(/\b20\d{2}[./-]\d{1,2}[./-]\d{1,2}\b/)?.[0]?.replace(/[./]/g, '-') ?? null,
+        label: line.quote.trim(),
+        amount: finalSale?.finalSalePrice ?? normalizePrice(match![1]),
+        currency: match?.[2] === '$' || match?.[2]?.toUpperCase() === 'USD' ? 'USD' : 'KRW',
+        list_price: finalSale?.listPrice ?? null,
+        min_travelers: finalSale?.minTravelers ?? null,
+        max_travelers: finalSale?.maxTravelers ?? null,
+        price_relation: finalSale?.relation ?? null,
+        evidence: evidenceFromLines(lines, line.lineNumber),
+      };
+    })
+    .filter((price): price is NonNullable<typeof price> => Boolean(price))
     .filter(price => {
       const text = price.label;
+      if (CAPACITY_AND_DIMENSION_PRICE_DECOY_RE.test(text)
+        || QUANTITY_AND_MEASURE_PRICE_DECOY_RE.test(text)) return false;
       const explicitPriceCue = /(?:price|가격|요금|판매가|성인|아동|출발일|스팟특가|원|KRW)/i.test(text);
+      const explicitBaseSaleCue = /(?:상품가|판매가|행사가|성인\s*(?:기준)?\s*(?:가격|요금|상품가))/u.test(text);
+      const excludedComponentCue = /(?:기사\s*[\/&·]?\s*가이드\s*(?:경비|팁)|가이드\s*[\/&·]?\s*기사\s*(?:경비|팁)|싱글\s*(?:차지|룸|추가)|유류\s*할증|현지\s*(?:지불|경비|비용)|선택\s*관광|옵션|커미션|commission|\bcomm?\b|예약금|계약금|취소\s*수수료|아동\s*(?:가|요금)|소아\s*(?:가|요금))/iu.test(text);
+      if (excludedComponentCue && !explicitBaseSaleCue) return false;
       if (/\$|\b(?:USD|달러)\b|(?:해발|고도|높이|\b\d+\s*M\b)/i.test(text) && !explicitPriceCue) return false;
       if (DAY_HEADER_RE.test(text) && !explicitPriceCue) return false;
       // A bare table cell may be a valid base price, but tiny values are much
@@ -489,7 +560,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   // single free-form `Price: ...` fact, but using it first turns every number
   // in a supplier table (fees, supplements, dates) into an unscoped base
   // price and loses the date/weekday relationship needed by V5.
-  const structuredPrices = buildPriceCalendarFromIR(sectionLines, boundary.title_hint);
+  const structuredPrices = buildPriceCalendarFromIR(sectionLines, boundary.title_hint, buildOptions.year);
   const prices = structuredPrices.length > 0 ? structuredPrices : linePrices;
   const itinerarySectionLines = itineraryLinesBeforePriceEvidenceTail(sectionLines);
 
@@ -621,7 +692,21 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     const line = sectionLines[index];
     if (eventTypeForLine(line.quote) !== 'shopping') continue;
     const value = line.quote.trim();
+    // Re-check at the collection boundary as well. Upstream event
+    // classification can evolve independently, but a hotel/location amenity
+    // sentence must never become a customer shopping stop.
+    if (isShoppingAmenityDescription(value)) continue;
     const compactValue = value.replace(/\s+/g, '');
+    const previousDetail = sectionLines
+      .slice(Math.max(0, index - 3), index)
+      .reverse()
+      .find(previous => {
+        const candidate = previous.quote.trim();
+        return candidate
+          && !DAY_HEADER_RE.test(candidate)
+          && !/^(?:비\s*고|REMARK|선택관광)$/i.test(candidate)
+          && eventTypeForLine(candidate) !== 'price_noise';
+      });
     const nextDetail = sectionLines
       .slice(index + 1, Math.min(sectionLines.length, index + 4))
       .find(next => {
@@ -631,16 +716,17 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
           && !/^(?:비\s*고|REMARK|선택관광)$/i.test(candidate)
           && eventTypeForLine(candidate) !== 'price_noise';
       });
-    if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compactValue)) {
+    if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551|\uc1fc\ud551\uc548\ub0b4|\uc1fc\ud551\uc815\ubcf4|\uc1fc\ud551\uc13c\ud130\uc548\ub0b4)$/.test(compactValue)) {
+      if (NO_SHOPPING_POLICY_RE.test(previousDetail?.quote.trim() ?? '')) continue;
       const detailText = nextDetail?.quote.trim() ?? '';
-      if (!detailText || /^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(detailText.replace(/\s+/g, ''))) continue;
+      if (!detailText || NO_SHOPPING_POLICY_RE.test(detailText)) continue;
       shopping.push({
         value: `${value} ${detailText}`.trim(),
         evidence: evidenceFromLines(lines, line.lineNumber),
       });
       continue;
     }
-    if (/^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(compactValue)) continue;
+    if (NO_SHOPPING_POLICY_RE.test(compactValue)) continue;
     shopping.push({ value, evidence: evidenceFromLines(lines, line.lineNumber) });
   }
   const remarkLines = sectionLines
@@ -700,10 +786,16 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   );
   const minDepartureHeader = minDepartureHeaderIndex >= 0 ? sectionLines[minDepartureHeaderIndex] : null;
   const minDepartureValueLine = minDepartureHeader && /\d+/.test(minDepartureHeader.quote)
-    ? minDepartureHeader
-    : minDepartureHeaderIndex >= 0
+      ? minDepartureHeader
+      : minDepartureHeaderIndex >= 0
       ? sectionLines.slice(minDepartureHeaderIndex + 1, minDepartureHeaderIndex + 4)
-        .find(line => /\d+\s*(?:\uba85|\uc778)(?:\s*(?:\uc774\uc0c1|\ubd80\ud130)|\s*[~+]|\b)/i.test(line.quote)) ?? null
+        .find(line => /\d+\s*(?:\uba85|\uc778)(?:\s*(?:\uc774\uc0c1|\ubd80\ud130)|\s*[~+]|\b)/i.test(line.quote))
+        // HWP visual tables occasionally emit the value cell before its
+        // `인원` label. Accept only a nearby explicit person count.
+        ?? sectionLines.slice(Math.max(0, minDepartureHeaderIndex - 3), minDepartureHeaderIndex)
+          .reverse()
+          .find(line => /\d+\s*(?:\uba85|\uc778)(?:\s*(?:\uc774\uc0c1|\ubd80\ud130)|\s*[~+]|\b)/i.test(line.quote))
+        ?? null
       : null;
   const structuredMinPaxFact = structured.structuredFacts.find(fact =>
     fact.category === 'min_pax'
@@ -735,6 +827,14 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     : null;
   const title = boundary.title_hint;
   const duration = parseDuration(title, days.length);
+  const ticketing_condition = extractSourceTicketingCondition(
+    sectionLines.map(line => line.quote).join('\n'),
+    {
+      priceDates: prices,
+      yearHint: buildOptions.year,
+      today: buildOptions.referenceDate,
+    },
+  );
 
   return {
     variant_key: `v${boundary.index + 1}`,
@@ -753,6 +853,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     structured_facts: structured.structuredFacts,
     standard_notices: customerSafeStandardNotices,
     minimum_departure,
+    ticketing_condition,
     evidence_coverage: {
       price: prices.length > 0,
       flight: flight_segments.length > 0,
@@ -762,14 +863,19 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       inclusions: inclusions.length > 0,
       exclusions: exclusions.length > 0,
       minimum_departure: Boolean(minimum_departure),
+      ticketing_condition: Boolean(ticketing_condition),
       options: options.length > 0,
       shopping: shopping.length > 0,
     },
   };
 }
 
-export function buildProductRegistrationV3Ledger(lines: V3SourceLine[], plan: V3StructurePlan): V3DraftLedger {
-  const variants = plan.product_boundaries.map(boundary => buildVariant(lines, boundary));
+export function buildProductRegistrationV3Ledger(
+  lines: V3SourceLine[],
+  plan: V3StructurePlan,
+  options: { year?: number; referenceDate?: string } = {},
+): V3DraftLedger {
+  const variants = plan.product_boundaries.map(boundary => buildVariant(lines, boundary, options));
   return {
     document: {
       type: plan.document_type,

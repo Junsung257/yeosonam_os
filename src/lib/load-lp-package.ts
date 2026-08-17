@@ -1,8 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
-import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
@@ -10,7 +8,7 @@ import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registrat
 
 export async function fetchLpPackageUncached(
   id: string,
-  options: { allowNonPublicProof?: boolean; proofSnapshotId?: string | null; proofToken?: string | null } = {},
+  options: { proofSnapshotId?: string | null; proofToken?: string | null } = {},
 ): Promise<LandingProductData | null> {
   if (!isSupabaseConfigured || !supabaseAdmin) return null;
 
@@ -27,31 +25,14 @@ export async function fetchLpPackageUncached(
   const exactProofAllowed = Boolean(proofClaims && exactProofSnapshot);
   const publicSnapshot = exactProofAllowed
     ? exactProofSnapshot
-    : options.allowNonPublicProof
-      ? null
-      : await getCurrentPublicPackage(supabaseAdmin, {
-        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-        packageRef: id,
-        channel: 'customer',
-        locale: 'ko-KR',
-      }).catch(() => null);
-  let rawProofPackage: Record<string, unknown> | null = null;
-  if (options.allowNonPublicProof && !exactProofAllowed) {
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    const { data } = await supabaseAdmin
-      .from('travel_packages')
-      .select('*, products(internal_code, display_name, departure_region)')
-      .eq(isUUID ? 'id' : 'short_code', id)
-      .maybeSingle();
-    rawProofPackage = data as Record<string, unknown> | null;
-  }
-  const pkg = exactProofAllowed ? exactProofSnapshot?.package : options.allowNonPublicProof ? rawProofPackage : publicSnapshot?.package;
+    : await getCurrentPublicPackage(supabaseAdmin, {
+      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+      packageRef: id,
+      channel: 'customer',
+      locale: 'ko-KR',
+    }).catch(() => null);
+  const pkg = publicSnapshot?.package;
   if (!pkg) return null;
-
-  const liveVerify = publicSnapshot || !rawProofPackage
-    ? null
-    : evaluateVerifyChecks(rawProofPackage as Parameters<typeof evaluateVerifyChecks>[0]);
-  if (!options.allowNonPublicProof && !exactProofAllowed && liveVerify?.status === 'blocked') return null;
 
   const { data: scores } = await supabaseAdmin
     .from('package_scores')
@@ -59,13 +40,6 @@ export async function fetchLpPackageUncached(
     .eq('package_id', (pkg as { id: string }).id)
     .order('group_size', { ascending: false })
     .order('rank_in_group', { ascending: true });
-
-  let lpHero: string | null = null;
-  try {
-    lpHero = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
-  } catch {
-    // 히어로 실패 시 그라디언트만
-  }
 
   const packageSnapshot = (pkg as Record<string, unknown>)._public_snapshot;
   const snapshotMetadata = packageSnapshot && typeof packageSnapshot === 'object' && !Array.isArray(packageSnapshot)
@@ -80,7 +54,7 @@ export async function fetchLpPackageUncached(
         renderer_build_id: currentProductRegistrationRendererBuildId(),
       },
     },
-    lpHero,
+    null,
   );
 }
 

@@ -1,5 +1,5 @@
 import type { V3Evidence, V3SourceLine } from './types';
-import { buildStandardNoticeDraft, type StandardNoticeDraft } from './standard-notices';
+import { buildStandardNoticeDraft, formatMealProvision, type StandardNoticeDraft } from './standard-notices';
 
 export type StructuredFactCategory =
   | 'guide_presence'
@@ -138,6 +138,8 @@ function parseUsd(text: string): number | null {
 }
 
 function parseKrw(text: string): number | null {
+  const wonPrefixed = text.match(/[₩￦\\]\s*(\d{1,3}(?:,\d{3})+|\d{4,})/u);
+  if (wonPrefixed) return Number(wonPrefixed[1].replace(/,/g, ''));
   const koreanMan = text.match(/(\d+(?:\.\d+)?)\s*만\s*원/);
   if (koreanMan) return Math.round(Number(koreanMan[1]) * 10000);
   const koreanWon = text.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/);
@@ -146,6 +148,21 @@ function parseKrw(text: string): number | null {
   if (man) return Math.round(Number(man[1]) * 10000);
   const won = text.match(/(\d{2,3}(?:,\d{3})+|\d{5,})\s*원/);
   return won ? Number(won[1].replace(/,/g, '')) : null;
+}
+
+function guideTipClauses(text: string): string[] {
+  return text
+    .split(/[,，](?!\d{3}(?:[,，]|\D|$))|[;；▶►]/u)
+    .map(value => value.trim())
+    .filter(value => /(?:기사|가이드).*(?:팁|경비)|(?:팁|경비).*(?:기사|가이드)/u.test(value));
+}
+
+function guideTipAmountScope(text: string): string {
+  // A comma inside `30,000` is a thousands separator, not a clause break.
+  // Supplier rows frequently mix multiple fees in one cell, so splitting
+  // every comma can silently turn a valid guide-tip amount into `30`.
+  const clauses = guideTipClauses(text);
+  return clauses.length > 0 ? clauses.join(' ') : text;
 }
 
 function parsePercent(text: string): number | null {
@@ -162,12 +179,17 @@ function isCleanIncludedGuideTipLine(source: string): boolean {
   const hasGuideTip = /(?:\uAE30\uC0AC\s*(?:\/|&)?\s*\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAC00\uC774\uB4DC\s*(?:\/|&)?\s*\uAE30\uC0AC\s*(?:\uD301|\uACBD\uBE44)|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301|\uAE30\uC0AC\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAC00\uC774\uB4DC\uAE30\uC0AC\s*(?:\uD301|\uACBD\uBE44)|\uB178\s*\uD301|NO\s*TIP)/iu.test(source);
   if (!hasGuideTip) return false;
   if (isCleanExcludedGuideTipLine(source)) return false;
+  if (guideTipClauses(source).some(clause => /(?:불포함|별도|현지\s*지불|현지지불|개인경비)/u.test(clause))) return false;
   return /(?:\uD3EC\uD568\uC0AC\uD56D|\uD3EC\uD568\uB0B4\uC5ED|\uD3EC\uD568|\uD56D\uACF5\uB8CC|TAX|\uD638\uD154|\uCC28\uB7C9|\uC2DD\uC0AC|\uC785\uC7A5\uB8CC|\uC5EC\uD589\uC790\uBCF4\uD5D8)/iu.test(source);
 }
 
-function isCleanExcludedGuideTipLine(source: string): boolean {
-  return /(?:\uBD88\uD3EC\uD568|\uD604\uC9C0\s*\uC9C0\uBD88|\uD604\uC9C0\uC9C0\uBD88|\uBCC4\uB3C4|\uAC1C\uC778\uACBD\uBE44|\uB9E4\uB108\uD301)/u.test(source)
-    && /(?:\uAE30\uC0AC\s*(?:\/|&)?\s*\uAC00\uC774\uB4DC\s*\uD301|\uAC00\uC774\uB4DC\s*(?:\/|&)?\s*\uAE30\uC0AC\s*\uD301|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301)/u.test(source);
+function isCleanExcludedGuideTipLine(source: string, explicitExclusionContext = false): boolean {
+  const clauses = guideTipClauses(source);
+  if (clauses.length === 0) return false;
+  const lineStartsWithExclusion = /^(?:\s*[-•·▪▶※★]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：-]?/u.test(source);
+  return explicitExclusionContext
+    || lineStartsWithExclusion
+    || clauses.some(clause => /(?:불포함|현지\s*지불|현지지불|별도|개인경비|매너팁)/u.test(clause));
 }
 
 function isSourceBackedIncludedGuideTipLine(source: string): boolean {
@@ -182,18 +204,30 @@ function hasHardExcludedGuidePaymentMarker(source: string): boolean {
   return /(?:\uBD88\uD3EC\uD568|\uBCC4\uB3C4|\uD604\uC9C0\s*\uC9C0\uBD88|\uD604\uC9C0\uC9C0\uBD88)/u.test(source);
 }
 
-function isAmountlessDerivedGuideTipReview(fact: StructuredFact): boolean {
+function guideEvidenceKey(evidence: Pick<V3Evidence, 'line_start' | 'quote'>): string {
+  return `${evidence.line_start}:${evidence.quote}`;
+}
+
+function isAmountlessDerivedGuideTipReview(
+  fact: StructuredFact,
+  explicitExclusionEvidence: ReadonlySet<string>,
+): boolean {
   if (fact.category !== 'guide_tip') return false;
   if (fact.review_status !== 'review_needed') return false;
   if (fact.values.included !== false || fact.values.amount != null) return false;
+  if (fact.evidence.some(item => explicitExclusionEvidence.has(guideEvidenceKey(item)))) return false;
   const source = fact.evidence.map(item => item.quote).join(' ');
   return !hasHardExcludedGuidePaymentMarker(source);
 }
 
-function isAmountlessDerivedGuideTipNotice(notice: StandardNoticeDraft): boolean {
+function isAmountlessDerivedGuideTipNotice(
+  notice: StandardNoticeDraft,
+  explicitExclusionEvidence: ReadonlySet<string>,
+): boolean {
   if (notice.category !== 'tip_guideline') return false;
   if (notice.template_key !== 'guide.tip_amount_local_payment') return false;
   if (notice.review_status !== 'review_needed' || notice.values.amount != null) return false;
+  if (notice.evidence.some(item => explicitExclusionEvidence.has(guideEvidenceKey(item)))) return false;
   return !hasHardExcludedGuidePaymentMarker(notice.source_text);
 }
 
@@ -220,7 +254,12 @@ function isSourceBackedShoppingVisitLine(source: string): boolean {
 
 function formatGuideTip(values: Record<string, unknown>): string {
   if (values.included) return '가이드/기사 팁은 포함되어 있습니다.';
-  if (typeof values.amount === 'number') return `가이드/기사 팁은 1인 기준 $${values.amount} 현지 지불입니다.`;
+  if (typeof values.amount === 'number') {
+    const amount = values.currency === '원'
+      ? `${values.amount.toLocaleString('ko-KR')}원`
+      : `$${values.amount}`;
+    return `가이드/기사 팁은 1인 기준 ${amount} 현지 지불입니다.`;
+  }
   return '가이드/기사 팁은 예약 시 확인이 필요합니다.';
 }
 
@@ -241,22 +280,28 @@ function parseMealSummary(text: string): string | null {
   if (/(?:\ud328\ud0a4\uc9c0\s*\uc0c1\ud488|\uc77c\uc815\s*\uc911|\uac1c\ubcc4\s*\ud65c\ub3d9|\uc790\uc720\s*\ud65c\ub3d9|\ubd88\uac00|\uc2e4\uc2dc\ubd88\uac00)/.test(compact)) return null;
   const explicitMealLine = compact.match(/(?:^|[\s,])([조중석])\s*[:：]\s*([^,|/]{1,18})/g);
   if (explicitMealLine?.length) {
-    return explicitMealLine
+    const parts = explicitMealLine
       .map(part => {
         const match = part.match(/([조중석])\s*[:：]\s*([^,|/]{1,18})/);
         if (!match) return null;
         const label = match[1] === '조' ? '조식' : match[1] === '중' ? '중식' : '석식';
-        return `${label} ${match[2].trim()}`;
+        const meal = match[2].trim();
+        // HWP meal cells can wrap `중:김밥 또는` and `도시락` into separate
+        // lines. Publishing the first fragment creates broken customer copy;
+        // the typed itinerary still preserves the table value, so omit this
+        // low-risk summary until the complete cell is available.
+        if (/(?:또는|및|or)$/iu.test(meal)) return null;
+        return `${label} ${meal}`;
       })
-      .filter((part): part is string => Boolean(part))
-      .join(', ');
+      .filter((part): part is string => Boolean(part));
+    return parts.length > 0 ? parts.join(', ') : null;
   }
-  if (/(조식|중식|석식)\s*후/.test(compact)) return null;
+  if (/(조식|중식|석식)\s*(?:후|전|및)/.test(compact)) return null;
   if (!/(조식|중식|석식|식사|특식|호텔식|현지식|무제한)/.test(compact)) return null;
   const parts: string[] = [];
-  const breakfast = compact.match(/(?:조|조식)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
-  const lunch = compact.match(/(?:중|중식)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
-  const dinner = compact.match(/(?:석|석식)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
+  const breakfast = compact.match(/(?:조식|조)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
+  const lunch = compact.match(/(?:중식|중)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
+  const dinner = compact.match(/(?:석식|석)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
   if (breakfast) parts.push(`조식 ${breakfast[1].trim()}`);
   if (lunch) parts.push(`중식 ${lunch[1].trim()}`);
   if (dinner) parts.push(`석식 ${dinner[1].trim()}`);
@@ -289,15 +334,36 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
   const notices: StandardNoticeDraft[] = [];
   const patch: StructuredFactCustomerFieldPatch = {};
   const lines = sourceLines(input);
+  const explicitExcludedGuideEvidence = new Set<string>();
   let currentCostSection: 'include' | 'exclude' | null = null;
+  let currentDisclosureSection: 'option' | 'shopping' | null = null;
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]!;
     const source = line.quote.trim();
     if (!source) continue;
     const evidence = evidenceFromLine(line);
-    if (isCleanExcludedGuideTipLine(source)) {
-      const usdAmount = parseUsd(source);
-      const krwAmount = usdAmount == null ? parseKrw(source) : null;
+    // Some HWP tables flatten a value cell before its row label. A guide-fee
+    // amount immediately followed by an exclusion heading belongs to that
+    // exclusion row even if an older include heading is still active.
+    const followedByExcludeHeading = lines
+      .slice(lineIndex + 1, lineIndex + 3)
+      .some(next => /^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(next.quote.trim()));
+    const sourceBackedIncludedGuideTip = isSourceBackedIncludedGuideTipLine(source);
+    const guideAmountScope = guideTipAmountScope(source);
+    const hasExplicitGuideAmount = parseUsd(guideAmountScope) != null
+      || parseKrw(guideAmountScope) != null;
+    const explicitGuideExclusionContext = currentCostSection === 'exclude'
+      || (followedByExcludeHeading && (
+        currentCostSection !== 'include' || hasExplicitGuideAmount
+      ));
+    if (isCleanExcludedGuideTipLine(source, explicitGuideExclusionContext)) {
+      if (currentCostSection === 'exclude' || followedByExcludeHeading || hasHardExcludedGuidePaymentMarker(source)) {
+        explicitExcludedGuideEvidence.add(guideEvidenceKey(evidence));
+      }
+      const amountScope = guideTipAmountScope(source);
+      const usdAmount = parseUsd(amountScope);
+      const krwAmount = usdAmount == null ? parseKrw(amountScope) : null;
       const amount = usdAmount ?? krwAmount;
       const currency = usdAmount ? 'USD' : krwAmount ? '\uC6D0' : null;
       const reviewStatus = amount ? 'auto_clean' : 'review_needed';
@@ -321,7 +387,11 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
       continue;
     }
-    if (isSourceBackedIncludedGuideTipLine(source)) {
+    // HWP table flattening can append service words such as `차량/가이드/식사`
+    // to an excluded guide-fee cell. The active commercial section is stronger
+    // evidence than those incidental words, so an exclusion row must not be
+    // reinterpreted as an included tip.
+    if (currentCostSection !== 'exclude' && sourceBackedIncludedGuideTip) {
       const values = { included: true, amount: null, currency: null, payment: null };
       addFact(facts, makeFact({
         category: 'guide_tip',
@@ -405,16 +475,25 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         continue;
       }
     }
-    if (/^(?:포\s*함\s*내\s*역|포함사항|포함\s*내역)$/i.test(source)) {
+    if (/^(?:포\s*함(?:\s*내\s*역|\s*사\s*항)?|포함사항|포함\s*내역)\s*[:：]?$/i.test(source)) {
       currentCostSection = 'include';
+      currentDisclosureSection = null;
       continue;
     }
-    if (/^(?:불\s*포\s*함\s*내\s*역|불포함사항|불포함\s*내역)$/i.test(source)) {
+    if (/^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(source)) {
       currentCostSection = 'exclude';
+      currentDisclosureSection = null;
       continue;
     }
-    if (/^(?:선택관광|쇼핑센터|비\s*고|일\s*자|REMARK)$/i.test(source)) {
+    if (/^선택관광(?:\s|[:：]|$)/i.test(source)) {
       currentCostSection = null;
+      currentDisclosureSection = 'option';
+    } else if (/^쇼핑센터(?:\s|[:：]|$)/i.test(source)) {
+      currentCostSection = null;
+      currentDisclosureSection = 'shopping';
+    } else if (/^(?:비\s*고|일\s*자|REMARK|제\s*\d+\s*일)(?:\s|[:：]|$)/i.test(source)) {
+      currentCostSection = null;
+      currentDisclosureSection = null;
     }
 
     if (/한국어\s*가이드|현지\s*가이드|가이드\s*(동행|미팅|안내|포함|없음|불포함|미포함|NO|전문)|인솔자\s*(동행|포함|없음|불포함|미동행)/i.test(source)) {
@@ -429,10 +508,12 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     }
 
     if ((/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) || /노\s*팁|NO\s*TIP/i.test(source)) {
-      const included = /포함|노\s*팁|NO\s*TIP/i.test(source)
-        || (currentCostSection === 'include' && !/불포함|별도|현지\s*지불|현지지불|개인경비/i.test(source));
-      const usdAmount = parseUsd(source);
-      const krwAmount = usdAmount == null ? parseKrw(source) : null;
+      const explicitlyExcluded = isCleanExcludedGuideTipLine(source, explicitGuideExclusionContext);
+      const included = (!explicitlyExcluded && /포함|노\s*팁|NO\s*TIP/i.test(source))
+        || (currentCostSection === 'include' && !explicitlyExcluded);
+      const amountScope = guideTipAmountScope(source);
+      const usdAmount = parseUsd(amountScope);
+      const krwAmount = usdAmount == null ? parseKrw(amountScope) : null;
       const amount = usdAmount ?? krwAmount;
       const currency = usdAmount ? 'USD' : krwAmount ? '원' : null;
       const values = included
@@ -447,18 +528,25 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         review_status: reviewStatus,
         standard_text: formatGuideTip(values),
       }));
-      patch.guide_tip = included ? '포함' : amount ? `$${amount}/인` : null;
+      patch.guide_tip = included
+        ? '포함'
+        : amount
+          ? `${currency === '원' ? `${amount.toLocaleString('ko-KR')}원` : `$${amount}`}/인`
+          : null;
       addNotice(notices, buildStandardNoticeDraft({
         source_text: source,
         category: 'tip_guideline',
         template_key: included ? 'guide.tip_included' : 'guide.tip_amount_local_payment',
-        values: included ? { included: true } : { amount, currency: amount ? 'USD' : null, per: '1인' },
+        values: included ? { included: true } : { amount, currency, per: '1인' },
         evidence: [evidence],
         review_status: reviewStatus,
       }));
     }
 
-    if (/노\s*옵션|NO\s*OPTION|선택\s*관광\s*(없|무|0회)/i.test(source)) {
+    const conditionalNoOptionAlternative = /(?:노\s*옵션|NO\s*OPTION)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
+    const conditionalNoShoppingAlternative = /(?:노\s*쇼핑|NO\s*SHOPPING)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
+
+    if (!conditionalNoOptionAlternative && /노\s*옵션|NO\s*OPTION|선택\s*관광\s*(없|무|0회)/i.test(source)) {
       addFact(facts, makeFact({
         category: 'optional_tour',
         values: { none: true },
@@ -474,7 +562,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         values: { none: true },
         evidence: [evidence],
       }));
-    } else if (/선택\s*관광|옵션|optional/i.test(source) && /\$|USD|현지\s*지불|별도/i.test(source)) {
+    } else if (!conditionalNoOptionAlternative && /선택\s*관광|옵션|optional/i.test(source) && /\$|USD|현지\s*지불|별도/i.test(source)) {
       const amount = parseUsd(source);
       addFact(facts, makeFact({
         category: 'optional_tour',
@@ -493,7 +581,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    if (/노\s*쇼핑|NO\s*SHOPPING|쇼핑\s*0\s*회/i.test(source)) {
+    if (!conditionalNoShoppingAlternative && /노\s*쇼핑|NO\s*SHOPPING|쇼핑\s*0\s*회/i.test(source)) {
       addFact(facts, makeFact({
         category: 'shopping_policy',
         values: { none: true, count: 0, items: [] },
@@ -586,7 +674,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
         values: { summary: mealSummary },
         evidence,
         risk_level: 'low',
-        standard_text: `일정표 기준 식사는 ${mealSummary}로 제공됩니다.`,
+        standard_text: formatMealProvision(mealSummary),
       }));
       addNotice(notices, buildStandardNoticeDraft({
         source_text: source,
@@ -597,7 +685,11 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    const transportItems = detectTransportItems(source);
+    const optionalTransportContext = currentDisclosureSection === 'option'
+      || /(?:선택\s*관광|추천\s*(?:선택\s*관광|옵션)|\bOPTIONAL\b)/iu.test(source);
+    const explicitlyExcludedTransport = currentCostSection === 'exclude'
+      || /(?:불포함|별도\s*(?:비용|요금)|현지\s*지불)/u.test(source);
+    const transportItems = optionalTransportContext || explicitlyExcludedTransport ? [] : detectTransportItems(source);
     if (transportItems.length) {
       addFact(facts, makeFact({
         category: 'transport',
@@ -722,10 +814,10 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     && fact.values.included === true
   );
   const resolvedFacts = hasIncludedGuideTip
-    ? facts.filter(fact => !isAmountlessDerivedGuideTipReview(fact))
+    ? facts.filter(fact => !isAmountlessDerivedGuideTipReview(fact, explicitExcludedGuideEvidence))
     : facts;
   const resolvedNotices = hasIncludedGuideTip
-    ? notices.filter(notice => !isAmountlessDerivedGuideTipNotice(notice))
+    ? notices.filter(notice => !isAmountlessDerivedGuideTipNotice(notice, explicitExcludedGuideEvidence))
     : notices;
 
   patch.category_attrs = summarizeCategoryAttrs(resolvedFacts);

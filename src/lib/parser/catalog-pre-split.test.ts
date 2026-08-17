@@ -5,6 +5,8 @@ import {
   splitCatalogByItineraryHeaders,
   applyLLMSplit,
   detectCatalogBoundariesWithLLM,
+  detectEvidenceBoundCatalogBoundariesWithLLM,
+  shouldTryEvidenceAiCatalogSplit,
   splitCatalogSmart,
   collectPkgBlockStarts,
   extractProductRawTextSection,
@@ -12,6 +14,75 @@ import {
 } from './catalog-pre-split';
 
 describe('splitCatalogByItineraryHeaders', () => {
+  it('does not split one product at an inclusion mentioning itinerary meals', () => {
+    const raw = [
+      '[KE] 다낭/호이안 3박4일 노팁노옵션',
+      '499,000원',
+      '9/13, 14, 15',
+      '▶ 왕복 국제선 항공료',
+      '▶ 호텔 숙박, 차량, 관광지 입장료, 일정표 상의 식사',
+      '포함사항',
+      '▶ 호이안 관광과 바나힐',
+      '불포함사항',
+      '▶ 개인경비',
+      'DAY 1 인천 출발',
+      'DAY 2 호이안 관광',
+    ].join('\n');
+
+    expect(collectItineraryHeaderStarts(raw)).toEqual([0]);
+    expect(splitCatalogByItineraryHeaders(raw).sections).toHaveLength(1);
+  });
+
+  it('does not turn a price-matrix duration column into an extra product', () => {
+    const raw = [
+      '공통 가격표',
+      '울란바토르+테를지+엘승사막 4박6일',
+      '패 턴', '날 짜', '요 일', '1,299,000', '9/9~9/19',
+      '몽골 울란바토르 테를지 노팁 노옵션 3박5일',
+      '출 발 일', '요금표 참고', '상 품 가', '요금표 참고',
+      '포함사항', '왕복항공료, 호텔, 차량', '불포함사항', '개인경비',
+      '제1일차', '7C5257 부산 출발',
+      '몽골 울란바토르 엘승 노팁 노옵션 4박6일',
+      '출 발 일', '요금표 참고', '상 품 가', '요금표 참고',
+      '포함사항', '왕복항공료, 호텔, 차량', '불포함사항', '개인경비',
+      '제1일차', '7C5257 부산 출발',
+    ].join('\n');
+
+    const result = splitCatalogByItineraryHeaders(raw);
+    expect(result.sections).toHaveLength(2);
+    expect(result.sharedPrefix).toContain('1,299,000');
+    expect(result.sections[0]).toContain('3박5일');
+    expect(result.sections[1]).toContain('4박6일');
+  });
+
+  it('keeps every duration and grade product when PKG is line-wrapped for one grade', () => {
+    const raw = [
+      '공통 출발일 가격표',
+      '출발일 | 실속 | 품격(노팁+노옵션)',
+      '8/29 (토) | 849,000 | 1,049,000',
+      '부산출발 연길/백두산(북파) 2박3일 실속PKG',
+      '포함 왕복항공료 호텔', '불포함 개인경비', '제1일 BX337 부산 출발', '제2일 관광', '제3일 부산 도착',
+      '부산출발 연길/백두산(북+서파) 3박4일 실속PKG',
+      '포함 왕복항공료 호텔', '불포함 개인경비', '제1일 BX337 부산 출발', '제2일 관광', '제3일 관광', '제4일 부산 도착',
+      '부산출발 연길/백두산(북파) 2박3일',
+      '품격PKG (노팁+노옵션)',
+      '포함 왕복항공료 호텔 가이드팁', '불포함 개인경비', '제1일 BX337 부산 출발', '제2일 관광', '제3일 부산 도착',
+      '부산출발 연길/백두산(북+서파) 3박4일',
+      '품격PKG (노팁+노옵션)',
+      '포함 왕복항공료 호텔 가이드팁', '불포함 개인경비', '제1일 BX337 부산 출발', '제2일 관광', '제3일 관광', '제4일 부산 도착',
+    ].join('\n');
+
+    const result = splitCatalogByItineraryHeaders(raw);
+
+    expect(result.sections).toHaveLength(4);
+    expect(result.sharedPrefix).toContain('공통 출발일 가격표');
+    expect(result.sections.map(section => section.split('\n').slice(0, 2).join(' '))).toEqual([
+      expect.stringContaining('2박3일 실속PKG'),
+      expect.stringContaining('3박4일 실속PKG'),
+      expect.stringContaining('2박3일 품격PKG'),
+      expect.stringContaining('3박4일 품격PKG'),
+    ]);
+  });
   it('각 일정표 헤더마다 한 섹션(공통 가격은 sharedPrefix)', () => {
     const raw = `공통 가격표
 성인 100만
@@ -29,6 +100,109 @@ describe('splitCatalogByItineraryHeaders', () => {
     expect(sections[1]).toMatch(/^\[BK\]/);
     expect(sections[2]).toMatch(/^\[CJ\]/);
     expect(countCatalogItineraryHeaders(raw)).toBe(3);
+  });
+
+  it('splits strict golf product headers written as 4일 and 5일', () => {
+    const raw = `송백 골프 공통 안내
+【노쇼핑】 황산 송백CC 무제한 골프 4일 BX (에어부산)
+출 발 일 4월10일부터 ~ 5월29일까지 매주 화 출발
+인 원 8명
+여 행 경 비
+5월 19, 26일 849,000원
+5월 5일 999,000원
+제1일 BX321 부산 출발
+제4일 부산 도착
+
+【노쇼핑】 황산 송백CC 무제한 골프 5일 BX (에어부산)
+출 발 일 4월10일부터 ~ 5월29일까지 매주 금 출발
+인 원 8명
+여 행 경 비
+5월 15, 22, 29일 1,069,000원
+제1일 BX321 부산 출발
+제5일 부산 도착`;
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sharedPrefix).toContain('송백 골프 공통 안내');
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('골프 4일');
+    expect(sections[0]).not.toContain('골프 5일');
+    expect(sections[1]).toContain('골프 5일');
+  });
+
+  it('does not split a day-count sentence without product-commercial context', () => {
+    const raw = `황산 골프 4일 체류 안내
+현지에서 4일 동안 자유시간을 드립니다.
+참고사항과 준비물 안내입니다.`;
+
+    expect(collectItineraryHeaderStarts(raw)).toHaveLength(0);
+  });
+
+  it('does not treat a 30-day visa notice as a tour duration header', () => {
+    const raw = `BX 장가계 3박4일
+여행기간 2026년 6월~8월
+출발일 매주 토요일
+포함 왕복항공료 호텔
+불포함 개인비용
+중국 입국 관광 목적 시 30일까지 무비자 체류가능
+제1일 BX321 부산 출발
+제4일 부산 도착`;
+
+    expect(splitCatalogByItineraryHeaders(raw).sections).toHaveLength(1);
+  });
+
+  it('does not treat 전용차량2일 in an inclusion line as a product duration', () => {
+    const raw = `부산-후쿠오카 온천 2박3일 관광PKG
+출발일 6/7
+상품가 519,000원
+포함 왕복항공료, 호텔, 식사, 전용차량2일, 관광지 입장료
+불포함 싱글차지, 개인경비
+제1일 부산 출발
+제3일 부산 도착`;
+
+    expect(splitCatalogByItineraryHeaders(raw).sections).toHaveLength(1);
+  });
+
+  it('does not split an itinerary at a duration-specific conditional day note', () => {
+    const raw = `보홀 직항 슬림패키지 5일/6일
+행사일자 상부 기재 일자
+포함내역 왕복 항공료 숙박
+불포함내역 개인경비
+제1일 부산 출발
+*제3일* 4박6일일 경우: 하루 자유시간 (중/석식 불포함)
+HOTEL: 예약호텔(리조트)
+제5일 부산 도착`;
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('4박6일일 경우');
+    expect(sections[0]).toContain('HOTEL: 예약호텔');
+  });
+
+  it('does not split one resort product at weekday-duration price patterns or longer-duration day conditions', () => {
+    const raw = [
+      '발리 솔리아(4성) 스팟특가',
+      '출발기간 2026년 8월~10월 특정일',
+      '금/일요일 – 3박5일',
+      '월/수요일 - 4박6일',
+      '출발일',
+      '8/30 | 879,000',
+      '발리 솔리아 스팟특가 패키지 [3박5일 / 4박6일]',
+      '포함 왕복항공료, 호텔, 차량',
+      '불포함 가이드기사팁, 개인경비',
+      '제1일 BX601 부산 출발',
+      '제2일 발리 관광',
+      '호텔 조식 후 전일 자유시간 [4박6일 일정 시]',
+      '(제4일) 전일 자유일정',
+      '제5일 BX602 부산 도착',
+    ].join('\n');
+
+    expect(collectItineraryHeaderStarts(raw)).toHaveLength(1);
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('월/수요일 - 4박6일');
+    expect(sections[0]).toContain('[4박6일 일정 시]');
   });
 
   it('헤더가 1개면 단일 섹션', () => {
@@ -180,20 +354,56 @@ ${'VN 일정 상세 본문 '.repeat(30)}`;
       expect(sections[1]).toContain('[VN]');
     });
 
-    it('[부관훼리] 한글 코드 + 무박3일 — 2 카드 1 상품 (헤더 2건이 같은 이름이면 분리)', () => {
+    it('[부관훼리] 한글 코드 + 무박3일 — 같은 상품의 요금 카드와 일정 카드를 합친다', () => {
       const raw = `${'사전 안내 텍스트 '.repeat(10)}
 [부관훼리] 초특가 가성비 무박3일 패키지
 선박 스케쥴 부산-시모노세키 21:00-08:00
+출 발 일 판 매 가 (아동동일)
+4/1~4/30 159,000원
 포함 사항 왕복훼리비 부두세 가이드 전용버스
 ${'요금표 행 '.repeat(40)}
 
 [부관훼리] 초특가 가성비 무박3일 PKG
 인원 10명부터 출발 확정
 일정표
+제1일 부산항 출항
+제2일 시모노세키 관광
+제3일 부산 도착
 ${'일정 본문 '.repeat(30)}`;
       const { sections } = splitCatalogByItineraryHeaders(raw);
-      // 헤더 이름이 거의 같지만 분리는 됨 (LLM/judge가 통합 판단 별도 단계)
-      expect(sections.length, '[부관훼리] 2 카드 분리 감지').toBeGreaterThanOrEqual(2);
+      expect(sections, '가격과 일정이 한 상품에 함께 남아야 한다').toHaveLength(1);
+      expect(sections[0]).toContain('159,000원');
+      expect(sections[0]).toContain('제3일 부산 도착');
+    });
+
+    it('합계 라벨이 없는 월력형 요금 카드도 같은 상품의 일정 카드와 합친다', () => {
+      const raw = `[카멜리아] 후쿠오카 시내숙박 2박3일 패키지
+2026년 5월
+일
+월
+화
+수
+목
+금
+토
+1
+2
+249,000
+259,000
+269,000
+
+[카멜리아] 후쿠오카 시내숙박 2박3일 PKG
+포함사항 왕복훼리비 호텔식
+불포함사항 개인경비
+제1일 부산항 출항
+제2일 후쿠오카 관광
+제3일 부산 도착`;
+
+      const { sections } = splitCatalogByItineraryHeaders(raw);
+
+      expect(sections).toHaveLength(1);
+      expect(sections[0]).toContain('249,000');
+      expect(sections[0]).toContain('제3일 부산 도착');
     });
 
     // false positive 차단(본문 "3박 5일" 표기)은 별도 layer (consistency-judge, LLM validate)
@@ -308,7 +518,7 @@ ${'일정 본문 '.repeat(30)}`;
 5/31 (일)
 판 매 가
 499,000/인
-제1일 부산 출발
+제1일 VN421 부산 출발
 제2일 보홀
 제3일 보홀
 제4일 보홀
@@ -320,7 +530,7 @@ PKG
 5/30 (토)
 판 매 가
 519,000/인
-제1일 부산 출발
+제1일 VN423 부산 출발
 제2일 보홀
 제3일 보홀
 제4일 보홀
@@ -547,5 +757,304 @@ PKG
     expect(sections[0]).toContain('BX 서안/진시황릉+병마용 4박6일');
     expect(sections[0]).not.toContain('[노팁/노옵션/노쇼핑]');
     expect(sections[1]).toContain('[노팁/노옵션/노쇼핑] BX 서안/화산 품격 패키지 4박6일');
+  });
+
+  it('does not split a product again at its duration applicability line', () => {
+    const raw = `공통 요금표
+[7C 저녁출발] 싱가포르 1일자유 패키지 3박5일
+26년 8월 ~ 10월 출발기준 (3박5일)
+2026년 8월~11월 출발 3박5일
+제1일
+부산 출발
+포함사항 항공 및 호텔
+불포함사항 개인경비
+
+[7C 저녁출발] 싱가포르 전일관광 패키지 3박5일
+26년 8월 ~ 10월 출발기준 (3박5일)
+2026년 8월~11월 출발 3박5일
+제1일
+부산 출발
+포함사항 항공 및 호텔
+불포함사항 개인경비`;
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sharedPrefix).toContain('공통 요금표');
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('1일자유 패키지');
+    expect(sections[0]).toContain('26년 8월 ~ 10월 출발기준');
+    expect(sections[1]).toContain('전일관광 패키지');
+  });
+
+  it('keeps a dated duration applicability row inside its product', () => {
+    const raw = `부산-계림 3박5일 품격PKG [노팁/노옵션]
+정부 운항 허가 조건 안내
+26년 4/14 (화) 3박5일
+출발날짜
+4/14 출발 969,000원/인
+상품가
+포함
+왕복항공료, 호텔, 식사
+불포함
+개인경비
+제1일 부산 출발
+제2일 계림 관광`;
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('969,000원');
+  });
+
+  it('drops a duration roster boundary that contains only a previous itinerary tail and shared terms', () => {
+    const raw = `[D7] 쿠알라룸푸르/싱가포르/말라카 3박5일
+출발일
+6/17
+상품가
+1,249,000
+제1일
+부산 출발
+제2일
+싱가포르 관광
+포함 왕복항공권
+불포함 개인경비
+금 4박 6일 – 쿠알라룸푸르 & 싱가포르 & 말라카 & 겐팅
+왕복항공권, 텍스 및 유류할증료
+포함
+전일정 숙박, 식사, 차량
+제5일
+쿠알라룸푸르 공항 출발
+불포함
+가이드 팁, 기타 개인경비
+[D7] 쿠알라룸푸르/싱가포르/말라카/겐팅 4박6일
+출발일
+6/19
+상품가
+1,399,000
+포함
+전일정 숙박, 식사, 차량
+불포함
+가이드 팁, 기타 개인경비
+제1일
+부산 출발
+제2일
+싱가포르 관광`;
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('3박5일');
+    expect(sections[1]).toContain('[D7] 쿠알라룸푸르/싱가포르/말라카/겐팅 4박6일');
+  });
+
+  it('accepts AI boundaries only after two exact source-anchored runs agree', async () => {
+    const raw = `[BX] 방콕 3박5일\n제1일 부산 출발\n${'본문 '.repeat(40)}\n[VJ] 다낭 4박6일\n제1일 부산 출발`;
+    const secondStart = raw.indexOf('[VJ]');
+    const proposal = {
+      products: [
+        { start_char: 0, name_hint: '[BX] 방콕 3박5일' },
+        { start_char: secondStart, name_hint: '[VJ] 다낭 4박6일' },
+      ],
+    };
+    const result = await detectEvidenceBoundCatalogBoundariesWithLLM(raw, async () => proposal);
+    expect(result.products).toHaveLength(2);
+    expect(result.evidence).toHaveLength(2);
+    expect(result.evidence?.[1]?.quote_hash).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it('requests the evidence AI fallback only for a repeated product envelope', () => {
+    expect(shouldTryEvidenceAiCatalogSplit(`상품명\n방콕 A\n여행기간\n3박5일\n포함\n항공\n불포함\n개인경비\n${'본문 '.repeat(800)}\n상품명\n방콕 B\n여행기간\n4박6일\n포함\n항공\n불포함\n개인경비`)).toBe(true);
+    expect(shouldTryEvidenceAiCatalogSplit(`[BX] 방콕 3박5일\n상품명\n방콕\n포함\n항공\n불포함\n개인경비\n${'일정 '.repeat(500)}`)).toBe(false);
+  });
+
+  it('rejects a repeated AI answer when its offset is not a source heading anchor', async () => {
+    const raw = `[BX] 방콕 3박5일\n제1일 부산 출발\n본문\n[VJ] 다낭 4박6일\n제1일 부산 출발`;
+    const proposal = {
+      products: [
+        { start_char: 0, name_hint: '[BX] 방콕 3박5일' },
+        { start_char: raw.indexOf('다낭'), name_hint: '[VJ] 다낭 4박6일' },
+      ],
+    };
+    const result = await detectEvidenceBoundCatalogBoundariesWithLLM(raw, async () => proposal);
+    expect(result.products).toEqual([]);
+    expect(result.reason).toBe('evidence-source-anchor-invalid');
+  });
+
+  it('combines full-duration headers with a composite-night PKG title', () => {
+    const raw = `하노이/옌뜨/하롱베이 3박5일
+포함사항 항공 및 호텔
+불포함사항 개인경비
+제1일 부산 출발
+
+하노이/메가월드/하롱베이 3박5일
+포함사항 항공 및 호텔
+불포함사항 개인경비
+제1일 부산 출발
+
+베트남<사파2박+하노이1박> 노팁노옵션 PKG
+포함사항 항공 및 호텔
+불포함사항 개인경비
+제1일 VN425 부산 출발`;
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(3);
+    expect(sections[2]).toContain('<사파2박+하노이1박>');
+  });
+
+  it('ignores departure-only duration lines and keeps the ordinal grade with its product', () => {
+    const raw = `공통 요금표
+4박6일(일 출발)
+729,000
+
+❶스마트
+라오스 (비엔티엔1/방비엥2) 3박5일
+출발날짜
+목 출발 3박5일
+포함사항 항공 및 호텔
+불포함사항 개인경비
+제1일 BX746 부산 출발
+
+❶프리미엄
+라오스 (비엔티엔1/방비엥2) 3박5일
+출발날짜
+목 출발 3박5일
+포함사항 항공 및 호텔
+불포함사항 개인경비
+제1일 BX746 부산 출발`;
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sharedPrefix).toContain('4박6일(일 출발)');
+    expect(sections).toHaveLength(2);
+    expect(sections[0].startsWith('❶스마트')).toBe(true);
+    expect(sections[1].startsWith('❶프리미엄')).toBe(true);
+  });
+
+  it('drops a long catalog cover price block that has no product body', () => {
+    const cover = `방콕 파타야 관광 PKG 3박5일 (스팟+선발특가)\n${'요금표 안내 '.repeat(320)}`;
+    const product = (grade: string, code: string) => `${grade} 방콕 파타야 PKG 3박5일 [BX]
+포함사항 항공 및 호텔
+불포함사항 개인경비
+제1일 ${code} 부산 출발
+제2일 파타야 관광`;
+    const raw = [cover, product('❶ 실속', 'BX721'), product('❷ 품격', 'BX723'), product('❸ 특급', 'BX725')].join('\n');
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sharedPrefix).toContain('스팟+선발특가');
+    expect(sections).toHaveLength(3);
+    expect(sections[0]).toContain('❶ 실속');
+  });
+
+  it('keeps an orphan price-table card with the only detailed product', () => {
+    const raw = `출발일 [3박 4일]
+상품가
+9/14
+1,079,000
+9/21
+1,109,000
+${'요금 행 '.repeat(320)}
+
+서안 3박 4일 노팁,노옵션 [쇼핑 2회]
+포함내역 왕복 항공권, 호텔, 식사
+불포함내역 개인경비
+제1일 KE141 인천 출발
+제2일 병마용 관광
+제3일 서안 관광
+제4일 KE142 인천 도착`;
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('1,079,000');
+    expect(sections[0]).toContain('제4일 KE142');
+  });
+
+  it('keeps a monthly roster price card with its adjacent same-product itinerary', () => {
+    const raw = [
+      '부산-후쿠오카 조석 정석패키지 2박3일',
+      '5월',
+      '23 토',
+      '1,029,000',
+      '25, 26, 27 월-수',
+      '519,000',
+      '6월',
+      '1, 2 월,화',
+      '699,000',
+      '부산-후쿠오카 조석 정석패키지 2박3일 관광PKG',
+      '포함 왕복항공료, 호텔, 식사',
+      '불포함 개인경비',
+      '제1일 BX142 부산 출발',
+      '제2일 아소 관광',
+      '제3일 BX143 부산 도착',
+    ].join('\n');
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('1,029,000');
+    expect(sections[0]).toContain('제3일 BX143');
+  });
+
+  it('keeps a row-spanned weekday price card with its repeated same-product itinerary', () => {
+    const raw = [
+      '부산-청도 골프 실속3색특가PKG 3박4일 54H',
+      '출 발 일 [컴 12%]',
+      '3박4일 54H',
+      '8/1',
+      '–',
+      '8/16',
+      '월',
+      '709,000',
+      '화/수',
+      '769,000',
+      '목',
+      '879,000',
+      '금/토',
+      '919,000',
+      '부산-청도 3박4일 54H 골프 실속3색특가PKG',
+      '포함 왕복항공료, 호텔3박, 그린피',
+      '불포함 기사가이드팁, 개인경비',
+      '제1일 BX321 부산 출발',
+      '제2일 청도 골프',
+      '제3일 청도 골프',
+      '제4일 BX322 부산 도착',
+    ].join('\n');
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('709,000');
+    expect(sections[0]).toContain('제4일 BX322');
+  });
+
+  it('keeps a standalone itinerary label attached to the product title above it', () => {
+    const pricePrefix = [
+      '[BX-에어부산] 지정일 특가',
+      '출발일 상품가 라이트 품격',
+      '9/18 529,000 659,000',
+    ].join('\n');
+    const product = (grade: string, flight: string) => [
+      grade === '라이트' ? '♥ 실속 ♥' : '★ 高품격 ★',
+      `[BX] 나트랑/달랏 ${grade}(노팁/노옵션) 3박5일 PKG`,
+      '일정표',
+      '요금표 참고 지정일 (3박5일)',
+      '포함 항공, 호텔, 식사',
+      '불포함 개인경비, 싱글차지',
+      `제1일 ${flight} 부산 출발`,
+      '제2일 달랏 관광',
+      '제3일 달랏 관광',
+      '제4일 나트랑 관광',
+      '제5일 부산 도착',
+    ].join('\n');
+    const raw = [pricePrefix, product('라이트', 'BX751'), product('품격', 'BX753')].join('\n');
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sharedPrefix).toContain('[BX-에어부산] 지정일 특가');
+    expect(sections).toHaveLength(2);
+    expect(sections[0]?.startsWith('♥ 실속 ♥\n[BX] 나트랑/달랏 라이트')).toBe(true);
+    expect(sections[1]?.startsWith('★ 高품격 ★\n[BX] 나트랑/달랏 품격')).toBe(true);
   });
 });

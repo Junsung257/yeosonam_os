@@ -1,23 +1,26 @@
 /**
- * Zod 검증 실패 시 Gemini Flash로 필드만 최소 수정 (1회, 저비용).
+ * Zod 검증 실패 시 DeepSeek로 필드만 최소 수정 (1회, 저비용).
  * UPLOAD_ZOD_REPAIR=0 이면 호출하지 않음.
  */
 
-import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import type { ExtractedData } from '@/lib/parser';
 import { getSecret } from '@/lib/secret-registry';
+import { llmCall } from '@/lib/llm-gateway';
 
-const REPAIR_SCHEMA: ResponseSchema = {
-  type: SchemaType.OBJECT,
+const PRODUCT_REGISTRATION_DEEPSEEK_MODEL =
+  process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro';
+
+const REPAIR_SCHEMA = {
+  type: 'object',
   properties: {
-    title: { type: SchemaType.STRING, nullable: true },
-    destination: { type: SchemaType.STRING, nullable: true },
-    duration: { type: SchemaType.INTEGER, nullable: true },
-    net_price: { type: SchemaType.INTEGER, nullable: true },
-    flight_depart: { type: SchemaType.STRING, nullable: true },
-    flight_arrive: { type: SchemaType.STRING, nullable: true },
-    flight_return_depart: { type: SchemaType.STRING, nullable: true },
-    flight_return_arrive: { type: SchemaType.STRING, nullable: true },
+    title: { type: ['string', 'null'] },
+    destination: { type: ['string', 'null'] },
+    duration: { type: ['integer', 'null'] },
+    net_price: { type: ['integer', 'null'] },
+    flight_depart: { type: ['string', 'null'] },
+    flight_arrive: { type: ['string', 'null'] },
+    flight_return_depart: { type: ['string', 'null'] },
+    flight_return_arrive: { type: ['string', 'null'] },
   },
 };
 
@@ -58,19 +61,8 @@ export async function repairExtractedDataWithGemini(
   rawExcerpt: string,
 ): Promise<boolean> {
   if (process.env.UPLOAD_ZOD_REPAIR === '0') return false;
-  const apiKey = getSecret('GOOGLE_AI_API_KEY');
+  const apiKey = getSecret('DEEPSEEK_API_KEY');
   if (!apiKey || zodErrors.length === 0) return false;
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 512,
-      responseMimeType: 'application/json',
-      responseSchema: REPAIR_SCHEMA,
-    },
-  });
 
   const current = {
     title: ed.title ?? '',
@@ -94,13 +86,24 @@ ${rawExcerpt.slice(0, 8000)}
 ---`;
 
   try {
-    const res = await model.generateContent(prompt);
-    const txt = res.response.text();
-    const patch = JSON.parse(txt) as Record<string, unknown>;
+    const res = await llmCall<Record<string, unknown>>({
+      task: 'classify',
+      systemPrompt: '여행상품 추출 결과의 형식 오류만 원문 근거로 보정한다. JSON만 반환한다.',
+      userPrompt: prompt,
+      jsonSchema: REPAIR_SCHEMA,
+      temperature: 0,
+      maxTokens: 512,
+      maxRetries: 1,
+      autoEscalate: false,
+      pinnedProvider: 'deepseek',
+      pinnedModel: PRODUCT_REGISTRATION_DEEPSEEK_MODEL,
+    });
+    if (!res.success || !res.data) return false;
+    const patch = res.data;
     mergeGeminiRepairIntoExtractedData(ed, patch);
     return true;
   } catch (e) {
-    console.warn('[extracted-field-repair] Gemini 보정 실패:', e instanceof Error ? e.message : e);
+    console.warn('[extracted-field-repair] DeepSeek 보정 실패:', e instanceof Error ? e.message : e);
     return false;
   }
 }

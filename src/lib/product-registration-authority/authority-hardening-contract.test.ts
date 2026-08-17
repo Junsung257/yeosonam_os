@@ -119,6 +119,33 @@ describe('product registration authority hardening contracts', () => {
       .toContain('greatest(total_attempt_count, attempt_count)');
   });
 
+  it('pins the Korea reference date and rejects past canonical facts in the database', () => {
+    const migration = source('supabase/migrations/20260816143528_product_registration_future_departure_guard.sql');
+    const weekdayPolicyMigration = source('supabase/migrations/20260816143534_product_registration_source_weekday_policy_v3.sql');
+    const boundedYearlessPolicyMigration = source('supabase/migrations/20260816143541_product_registration_yearless_departure_policy_v4.sql');
+    expect(migration).toContain('v6_reference_date');
+    expect(migration).toContain("timezone('Asia/Seoul', now())::date");
+    expect(migration).toContain('REGISTRATION_DEPARTURE_REFERENCE_IMMUTABLE');
+    expect(migration).toContain('REGISTRATION_PAST_DEPARTURE_REJECTED');
+    expect(migration).toContain('REGISTRATION_PAST_PRICE_DATE_REJECTED');
+    expect(migration).toContain('REGISTRATION_UNCLIPPED_PRICE_RANGE_REJECTED');
+    expect(migration).toContain('security definer');
+    expect(migration).toContain('set search_path = pg_catalog, pg_temp');
+    expect(migration).toContain('revoke all on function internal_product_registration.reject_past_product_fact_write()');
+    expect(weekdayPolicyMigration).toContain("set default 'source-departure-date-policy-3'");
+    expect(weekdayPolicyMigration).toContain("'source-departure-date-policy-2'");
+    expect(weekdayPolicyMigration).toContain("'source-departure-date-policy-3'");
+    expect(weekdayPolicyMigration).toContain('REGISTRATION_PAST_DEPARTURE_REJECTED');
+    expect(weekdayPolicyMigration).toContain('set search_path = pg_catalog, pg_temp');
+    expect(weekdayPolicyMigration).toContain('revoke all on function internal_product_registration.reject_past_product_fact_write()');
+    expect(boundedYearlessPolicyMigration).toContain("set default 'source-departure-date-policy-4'");
+    expect(boundedYearlessPolicyMigration).toContain("'source-departure-date-policy-2'");
+    expect(boundedYearlessPolicyMigration).toContain("'source-departure-date-policy-3'");
+    expect(boundedYearlessPolicyMigration).toContain("'source-departure-date-policy-4'");
+    expect(boundedYearlessPolicyMigration).toContain('set search_path = pg_catalog, pg_temp');
+    expect(boundedYearlessPolicyMigration).toContain('revoke all on function internal_product_registration.reject_past_product_fact_write()');
+  });
+
   it('keeps golf facts immutable while permitting atomic aggregate construction', () => {
     const migration = source('supabase/migrations/20260812113000_product_registration_atomic_golf_linkage.sql');
     const jsonSafeMigration = source('supabase/migrations/20260812123000_product_registration_atomic_golf_linkage_json_safe.sql');
@@ -133,5 +160,61 @@ describe('product registration authority hardening contracts', () => {
     expect(jsonSafeMigration).toContain("v_new->'observation_ids'");
     expect(jsonSafeMigration).not.toContain('new.observed_at');
     expect(jsonSafeMigration).not.toContain('old.observation_ids <@ new.observation_ids');
+  });
+
+  it('terminates a genuinely price-less source without creating a publishable failure', () => {
+    const migration = source('supabase/migrations/20260816143538_product_registration_discard_missing_sale_price_source.sql');
+    expect(migration).toContain("'discarded_source_incomplete'");
+    expect(migration).toContain('V6_DISCARDED_SOURCE_PUBLICATION_FORBIDDEN');
+    expect(migration).toContain("then 'done'");
+    expect(migration).toContain("then 'verified'");
+    expect(migration).toContain('v_job.v6_outcome is distinct from v_compatibility_outcome');
+    expect(migration).toMatch(/revoke all on function internal_product_registration\.record_terminal_state\(jsonb\)[\s\S]*from public, anon, authenticated/iu);
+  });
+
+  it('only allows dual-AI candidates through source replay before canonical facts', () => {
+    const workflow = source('src/workflows/product-registration-v6.ts');
+    expect(workflow).toContain('async function resolveCriticalFactsStep(');
+    expect(workflow).toContain('runCriticalPriceFactAutomation');
+    expect(workflow).toContain('dual_ai_consensus_and_deterministic_source_replay');
+    expect(workflow).toContain('criticalFactOverrides: automated.overrides');
+    expect(workflow).not.toContain('AI_FACT_AUTHORITY_PROHIBITED');
+  });
+
+  it('prevents agent actions from creating or mutating mutable package rows', () => {
+    const executor = source('src/lib/agent-action-executor.ts');
+    expect(executor).toContain('AGENT_PACKAGE_CREATE_RETIRED_USE_SOURCE_REGISTRATION_WORKFLOW');
+    expect(executor).toContain('AGENT_PACKAGE_STATUS_MUTATION_RETIRED_USE_AVAILABILITY_OVERLAY');
+    expect(executor).not.toMatch(/create_package:[\s\S]{0,500}from\('travel_packages'\)/u);
+    expect(executor).not.toMatch(/update_package_status:[\s\S]{0,500}from\('travel_packages'\)/u);
+  });
+
+  it('keeps scoring matches and upload verification read-only against customer package facts', () => {
+    const matcher = source('src/lib/scoring/match-land-operators.ts');
+    const verifier = source('src/lib/upload-verify.ts');
+
+    expect(matcher).toContain('correction_candidates');
+    expect(matcher).toContain("evidence: 'bookings_mode' | 'registered_alias'");
+    expect(matcher).not.toMatch(/\.from\('travel_packages'\)[\s\S]{0,120}\.update\(/u);
+    expect(verifier).toContain(".from('ai_quality_log')");
+    expect(verifier).not.toMatch(/\.from\('travel_packages'\)[\s\S]{0,160}\.update\(/u);
+  });
+
+  it('turns Jarvis product commands into Kernel candidates instead of mutable package writes', () => {
+    const productsAgent = source('src/lib/jarvis/agents/products.ts');
+
+    expect(productsAgent).toContain("action_type: 'register_product'");
+    expect(productsAgent).toContain("action_type: 'correct_product'");
+    expect(productsAgent).toContain("action_type: 'retire_product'");
+    expect(productsAgent).toContain("fact_authority: 'none_requires_source_evidence'");
+    expect(productsAgent).not.toMatch(/\.from\('travel_packages'\)[\s\S]{0,180}\.(?:insert|update|delete)\(/u);
+  });
+
+  it('has no legacy product-registration writer allowlist', () => {
+    const baseline = JSON.parse(source('scripts/product-registration-authority-legacy-writers.json')) as {
+      legacyWriters?: unknown[];
+    };
+
+    expect(baseline.legacyWriters).toEqual([]);
   });
 });

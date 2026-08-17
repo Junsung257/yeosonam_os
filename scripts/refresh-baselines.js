@@ -206,17 +206,7 @@ async function run() {
     throw new Error(`Playwright baseline update failed (exit ${result.status}).`);
   }
 
-  const now = new Date().toISOString();
-  const { error: updateError } = await sb
-    .from('travel_packages')
-    .update({ baseline_created_at: now })
-    .in('id', ids);
-
-  if (updateError) {
-    throw new Error(`Failed to update baseline_created_at: ${updateError.message}`);
-  }
-
-  console.log(`Baseline refresh complete. Updated ${ids.length} package(s).`);
+  console.log(`Baseline refresh complete for ${ids.length} package(s). Mutable package markers were not changed.`);
 }
 
 if (require.main === module) {

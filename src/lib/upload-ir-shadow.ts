@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeWithLlm } from './normalize-with-llm';
-import { pickCanaryEngine, shouldSampleToIrCanary } from './ir-canary';
+import { shouldSampleToIrCanary } from './ir-canary';
 
 export interface UploadIrShadowInput {
   rawText: string;
@@ -25,7 +25,7 @@ export async function runUploadIrShadowIfSampled(
     return { sampled: false };
   }
 
-  const engine = pickCanaryEngine();
+  const engine = 'deepseek' as const;
   const norm = await normalizeWithLlm(
     {
       rawText: input.rawText,

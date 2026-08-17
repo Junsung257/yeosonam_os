@@ -37,7 +37,7 @@ import {
 } from './upload-to-open-autopilot';
 
 describe('buildAutopilotStageAuditReport', () => {
-  it('routes the final auto-open step through the immutable public snapshot gate before product activation', () => {
+  it('retires product activation and requires Kernel snapshot CAS after the immutable snapshot gate', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/lib/product-registration/upload-to-open-autopilot.ts'),
       'utf8',
@@ -45,12 +45,13 @@ describe('buildAutopilotStageAuditReport', () => {
     const finalOpenStart = source.indexOf('const openedAt = nowIso();');
     const snapshotGate = source.indexOf('createPublicPackageSnapshotAndDecision(', finalOpenStart);
     const blockedStage = source.indexOf("stage: 'blocked_after_public_snapshot'", snapshotGate);
-    const productActivation = source.indexOf(".from('products')", snapshotGate);
+    const kernelPublication = source.indexOf('LEGACY_AUTOPILOT_PUBLICATION_RETIRED_USE_SNAPSHOT_CAS', snapshotGate);
 
     expect(finalOpenStart).toBeGreaterThan(-1);
     expect(snapshotGate).toBeGreaterThan(finalOpenStart);
     expect(blockedStage).toBeGreaterThan(snapshotGate);
-    expect(productActivation).toBeGreaterThan(snapshotGate);
+    expect(kernelPublication).toBeGreaterThan(snapshotGate);
+    expect(source.slice(snapshotGate)).not.toMatch(/\.from\('products'\)[\s\S]{0,120}\.update\(/u);
   });
 
   it('persists the customer open contract at the standard top level and inside the autopilot snapshot', () => {

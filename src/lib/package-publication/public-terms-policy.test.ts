@@ -81,11 +81,36 @@ describe('public terms policy', () => {
     expect(result.exclusionsPublic).toEqual([
       '개인경비',
       '매너팁',
-      '기사/가이드 경비',
+      '기사/가이드 경비 $50/인',
       '선택관광 비용',
     ]);
     expect(result.inclusionsPublic).not.toEqual(expect.arrayContaining(['노옵션', '599', '000원/인', '상품가']));
     expect(result.exclusionsPublic).not.toEqual(expect.arrayContaining(['7월 5', '불포함 내역']));
+  });
+
+  it('preserves source-backed international airfare, tax, and etiquette tip', () => {
+    const result = buildPublicTermsPolicy({
+      inclusions: [],
+      exclusions: [],
+      verifiedInclusions: ['국제선 항공요금', '텍스', '현지 행사비 (호텔', '차량', '식사', '가이드', '관광지 입장료)', '여행자보험'],
+      verifiedExclusions: ['기사/가이드경비 1인 $50', '에티켓팁', '기타 개인경비'],
+    });
+
+    expect(result.inclusionsPublic).toEqual([
+      '왕복항공료',
+      'TAX',
+      '숙박',
+      '현지차량',
+      '일정표상 식사',
+      '가이드',
+      '관광지 입장료',
+      '여행자보험',
+    ]);
+    expect(result.exclusionsPublic).toEqual([
+      '기사/가이드 경비 $50/인',
+      '에티켓팁',
+      '개인경비',
+    ]);
   });
 
   it('regenerates public terms from raw source sections when saved arrays are polluted', () => {
@@ -118,7 +143,7 @@ describe('public terms policy', () => {
       '현지차량',
       '가이드',
     ]);
-    expect(result.exclusionsPublic).toEqual(['개인경비', '기사/가이드 경비']);
+    expect(result.exclusionsPublic).toEqual(['개인경비', '기사/가이드 경비 $50/인']);
   });
 
   it('infers customer-safe terms from raw supplier lines when headings are missing', () => {
@@ -139,6 +164,7 @@ describe('public terms policy', () => {
       '\uC219\uBC15',
       '\uC77C\uC815\uD45C\uC0C1 \uC2DD\uC0AC',
       '\uD604\uC9C0\uCC28\uB7C9',
+      'TAX',
       '\uAC00\uC774\uB4DC',
       '\uAD00\uAD11\uC9C0 \uC785\uC7A5\uB8CC',
       '\uC5EC\uD589\uC790\uBCF4\uD5D8',
@@ -146,7 +172,7 @@ describe('public terms policy', () => {
     expect(result.exclusionsPublic).toEqual([
       '\uAC1C\uC778\uACBD\uBE44',
       '\uB9E4\uB108\uD301',
-      '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44',
+      '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44 $40/\uC778',
       '\uC2F1\uAE00\uB8F8 \uCD94\uAC00\uBE44',
     ]);
   });
@@ -172,7 +198,7 @@ describe('public terms policy', () => {
     ]);
     expect(result.exclusionsPublic).toEqual([
       '\uAC1C\uC778\uACBD\uBE44',
-      '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44',
+      '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44 40,000\uC6D0',
       '\uC2F1\uAE00\uB8F8 \uCD94\uAC00\uBE44',
     ]);
   });
@@ -228,7 +254,7 @@ describe('public terms policy', () => {
       '일정표상 식사',
       '관광지 입장료',
     ]);
-    expect(snapshot.exclusions_public).toEqual(['개인경비', '기사/가이드 경비']);
+    expect(snapshot.exclusions_public).toEqual(['개인경비', '기사/가이드 경비 $50/인']);
     expect(snapshot.optional_tours_public).toEqual([]);
     expect(snapshot.package.inclusions).toEqual(snapshot.inclusions_public);
     expect(snapshot.package.excludes).toEqual(snapshot.exclusions_public);

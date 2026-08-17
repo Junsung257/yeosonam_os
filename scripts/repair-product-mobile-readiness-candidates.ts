@@ -310,40 +310,9 @@ async function repairPackage(pkg: PackageRow, activeAttractions: AttractionRow[]
   }
 
   if (actions.length > 0 && apply) {
-    const now = new Date().toISOString();
     updates.audit_report = auditReportWithRepair(pkg, { actions, details });
-    updates.updated_at = now;
-    try {
-      const { error } = await supabase
-        .from('travel_packages')
-        .update(updates)
-        .eq('id', pkg.id);
-      if (error) {
-        details.update_error = error.message || String(error);
-        return {
-          id: pkg.id,
-          code: pkg.internal_code,
-          title: pkg.title,
-          status: pkg.status,
-          action: 'repair_failed',
-          actions,
-          details,
-          updated_fields: Object.keys(updates),
-        };
-      }
-    } catch (error) {
-      details.update_error = error instanceof Error ? error.message : String(error);
-      return {
-        id: pkg.id,
-        code: pkg.internal_code,
-        title: pkg.title,
-        status: pkg.status,
-        action: 'repair_failed',
-        actions,
-        details,
-        updated_fields: Object.keys(updates),
-      };
-    }
+    details.correction_revision_required = true;
+    details.update_error = 'LEGACY_MOBILE_READINESS_REPAIR_RETIRED_USE_REGISTRATION_KERNEL';
   }
 
   return {

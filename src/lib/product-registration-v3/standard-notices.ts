@@ -60,6 +60,15 @@ function formatList(value: unknown): string {
   return asText(value);
 }
 
+export function formatMealProvision(summary: unknown): string {
+  const value = String(summary ?? '').trim();
+  if (!value) return '일정표 기준 식사가 제공됩니다.';
+  const last = value.charCodeAt(value.length - 1);
+  const jongseong = last >= 0xac00 && last <= 0xd7a3 ? (last - 0xac00) % 28 : 0;
+  const particle = jongseong !== 0 && jongseong !== 8 ? '으로' : '로';
+  return `일정표 기준 식사는 ${value}${particle} 제공됩니다.`;
+}
+
 export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
   'single_room_surcharge.full_trip': {
     category: 'single_room_surcharge',
@@ -203,7 +212,7 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     risk: 'low',
     visibility: 'customer_visible',
     required: ['summary'],
-    render: ({ summary }) => `일정표 기준 식사는 ${summary}로 제공됩니다.`,
+    render: ({ summary }) => formatMealProvision(summary),
   },
   'transport.included': {
     category: 'transport_notice',
@@ -286,6 +295,8 @@ export function buildStandardNoticeDraft(input: {
 }
 
 function parseKrw(textValue: string): { amount: number | null; currency: string | null } {
+  const wonPrefixed = textValue.match(/[₩￦\\]\s*(\d{1,3}(?:,\d{3})+|\d{4,})/u);
+  if (wonPrefixed) return { amount: Number(wonPrefixed[1].replace(/,/g, '')), currency: '원' };
   const koreanMan = textValue.match(/(\d+(?:\.\d+)?)\s*만\s*원/);
   if (koreanMan) return { amount: Math.round(Number(koreanMan[1]) * 10000), currency: '원' };
   const koreanWon = textValue.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/);
@@ -302,6 +313,26 @@ function parseUsd(textValue: string): number | null {
   if (prefixed) return Number(prefixed[1]);
   const suffixed = textValue.match(/(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|달러)/i);
   return suffixed ? Number(suffixed[1]) : null;
+}
+
+function guideTipAmountScope(text: string): string {
+  const clauses = text
+    // Preserve monetary thousands separators while isolating the clause that
+    // actually describes the guide tip. Otherwise `30,000원` is split and the
+    // notice loses the amount or borrows a different fee from the same row.
+    .split(/[,，](?!\d{3}(?:[,，]|\D|$))|[;；▶►]/u)
+    .map(value => value.trim())
+    .filter(value => /(?:기사|가이드).*(?:팁|경비)|(?:팁|경비).*(?:기사|가이드)/u.test(value));
+  return clauses.length > 0 ? clauses.join(' ') : text;
+}
+
+function hasGuideScopedExclusionMarker(text: string): boolean {
+  const guideClauses = text
+    .split(/[,，](?!\d{3}(?:[,，]|\D|$))|[;；▶►]/u)
+    .map(value => value.trim())
+    .filter(value => /(?:기사|가이드).*(?:팁|경비)|(?:팁|경비).*(?:기사|가이드)/u.test(value));
+  return /^(?:\s*[-•·▪▶※★]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：-]?/u.test(text)
+    || guideClauses.some(clause => /(?:불포함|별도|현지\s*지불|현지지불|개인경비|매너팁|팁\s*별도)/u.test(clause));
 }
 
 function detectCountry(source: string): string | null {
@@ -386,14 +417,19 @@ export function detectStandardNoticeFromLine(
   }
 
   if (/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) {
-    const usdAmount = parseUsd(source);
-    const krwAmount = usdAmount == null ? parseKrw(source) : { amount: null, currency: null };
+    const amountScope = guideTipAmountScope(source);
+    const usdAmount = parseUsd(amountScope);
+    const krwAmount = usdAmount == null ? parseKrw(amountScope) : { amount: null, currency: null };
     const amount = usdAmount ?? krwAmount.amount;
     const currency = usdAmount ? 'USD' : krwAmount.currency;
-    const explicitlyIncluded = /포함|특전|노팁|노\s*팁|NO\s*TIP/i.test(source);
+    // `포함` is a substring of `불포함`. An exclusion line must never create
+    // the opposite customer claim, even when a supplier uses a nonstandard
+    // label such as `기사&기사팁`.
+    const explicitlyExcluded = hasGuideScopedExclusionMarker(source);
+    const explicitlyIncluded = !explicitlyExcluded && /포함|특전|노팁|노\s*팁|NO\s*TIP/i.test(source);
     const includedByNoAmountCostContext = amount == null
       && /경비/.test(source)
-      && !/불포함|별도|현지\s*지불|현지지불|개인경비|매너팁|팁\s*별도/i.test(source);
+      && !explicitlyExcluded;
     const included = explicitlyIncluded || includedByNoAmountCostContext;
     return buildStandardNoticeDraft({
       source_text: source,
@@ -438,7 +474,10 @@ export function detectStandardNoticeFromLine(
     });
   }
 
-  if (/노\s*옵션|NO\s*OPTION|선택\s*관광\s*(없|무|0회)/i.test(source)) {
+  const conditionalNoOptionAlternative = /(?:노\s*옵션|NO\s*OPTION)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
+  const conditionalNoShoppingAlternative = /(?:노\s*쇼핑|NO\s*SHOPPING)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
+
+  if (!conditionalNoOptionAlternative && /노\s*옵션|NO\s*OPTION|선택\s*관광\s*(없|무|0회)/i.test(source)) {
     return buildStandardNoticeDraft({
       source_text: source,
       category: 'optional_tour',
@@ -448,7 +487,7 @@ export function detectStandardNoticeFromLine(
     });
   }
 
-  if (/노\s*쇼핑|NO\s*SHOPPING|쇼핑\s*0\s*회/i.test(source)) {
+  if (!conditionalNoShoppingAlternative && /노\s*쇼핑|NO\s*SHOPPING|쇼핑\s*0\s*회/i.test(source)) {
     return buildStandardNoticeDraft({
       source_text: source,
       category: 'shopping_visit',
@@ -476,13 +515,17 @@ export function extractStandardNoticesFromRemarkLines(lines: Array<{ text: strin
   const out: StandardNoticeDraft[] = [];
   const seen = new Set<string>();
   let currentCostSection: 'include' | 'exclude' | null = null;
-  for (const item of lines) {
+  for (let itemIndex = 0; itemIndex < lines.length; itemIndex += 1) {
+    const item = lines[itemIndex]!;
     const text = item.text.trim();
-    if (/^(?:포\s*함\s*내\s*역|포함사항|포함\s*내역)$/i.test(text)) {
+    const followedByExcludeHeading = lines
+      .slice(itemIndex + 1, itemIndex + 3)
+      .some(next => /^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(next.text.trim()));
+    if (/^(?:포\s*함(?:\s*내\s*역|\s*사\s*항)?|포함사항|포함\s*내역)\s*[:：]?$/i.test(text)) {
       currentCostSection = 'include';
       continue;
     }
-    if (/^(?:불\s*포\s*함\s*내\s*역|불포함사항|불포함\s*내역)$/i.test(text)) {
+    if (/^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(text)) {
       currentCostSection = 'exclude';
       continue;
     }
@@ -490,12 +533,16 @@ export function extractStandardNoticesFromRemarkLines(lines: Array<{ text: strin
       currentCostSection = null;
     }
     let parsed = detectStandardNoticeFromLine(item.text, item.evidence);
+    const guideAmountScope = guideTipAmountScope(text);
+    const hasExplicitGuideAmount = parseUsd(guideAmountScope) != null
+      || parseKrw(guideAmountScope).amount != null;
     if (
       parsed?.category === 'tip_guideline'
       && parsed.review_status === 'review_needed'
       && currentCostSection === 'include'
+      && (!followedByExcludeHeading || !hasExplicitGuideAmount)
       && /가이드|기사/.test(text)
-      && !/불포함|별도|현지\s*지불|현지지불|개인경비/i.test(text)
+      && !hasGuideScopedExclusionMarker(text)
     ) {
       parsed = buildStandardNoticeDraft({
         source_text: text,

@@ -155,7 +155,7 @@ describe('runMicroAutoQA', () => {
     expect(result.attempts[3]?.autoFixesApplied).toEqual([]);
   });
 
-  it('applies deterministic customer selling price repair before final render audit', () => {
+  it('does not manufacture a customer selling price from NET', () => {
     const result = runMicroAutoQA({
       rawText: 'Cebu golf package raw with price 859,000',
       registration: registration({
@@ -191,13 +191,14 @@ describe('runMicroAutoQA', () => {
       createdAt: '2026-06-07T00:00:00.000Z',
     });
 
-    expect(result.status).toBe('AUTO_FIXED');
-    expect(result.remainingTriggers).toEqual([]);
-    expect(result.repairedRegistration.deliverability.ok).toBe(true);
-    expect(result.repairedRegistration.pricing.productPrices[0]?.adult_selling_price).toBe(859000);
-    expect(result.attempts[1]?.autoFixesApplied).toEqual(expect.arrayContaining([
-      expect.objectContaining({ field: 'product_prices.adult_selling_price', kind: 'deterministic' }),
+    expect(result.status).toBe('BLOCKED');
+    expect(result.remainingTriggers).toContain('customer_selling_price_missing');
+    expect(result.repairedRegistration.deliverability.ok).toBe(false);
+    expect(result.repairedRegistration.pricing.productPrices[0]?.adult_selling_price).toBeNull();
+    expect(result.recommendedFixes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'product_prices.adult_selling_price', kind: 'manual_review_candidate' }),
     ]));
+    expect(result.attempts[1]?.autoFixesApplied).toEqual([]);
     expect(result.attempts[2]?.autoFixesApplied).toEqual([]);
     expect(result.attempts[3]?.autoFixesApplied).toEqual([]);
   });

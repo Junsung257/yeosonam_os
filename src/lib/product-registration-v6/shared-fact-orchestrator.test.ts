@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   catalogProductsEligibleForScheduleDriftClear,
+  sourceTransportSharedFactIssue,
   type ResolvedTransportForSnapshot,
   type SharedFactJobResult,
 } from './shared-fact-orchestrator';
@@ -61,5 +62,22 @@ describe('schedule drift overlay recovery eligibility', () => {
       catalogProductIds: [],
       shared: shared({ resolvedTransport: [] }),
     })).toEqual([]);
+  });
+});
+
+describe('source transport shared-fact safety', () => {
+  it('requires IATA route identity before a source flight can enter the shared fact index', () => {
+    expect(sourceTransportSharedFactIssue({
+      service_number: 'LJ119',
+      departure_place_code: null,
+      arrival_place_code: null,
+      departure_local_time: '19:55',
+      arrival_local_time: '23:25',
+    })).toBe('FLIGHT_IDENTITY_OR_ROUTE_UNRESOLVED_HIDDEN');
+    expect(sourceTransportSharedFactIssue({
+      service_number: 'LJ119',
+      departure_place_code: 'PUS',
+      arrival_place_code: 'PQC',
+    })).toBeNull();
   });
 });

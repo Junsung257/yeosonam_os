@@ -26,9 +26,11 @@ const payload = {
 describe('V5 typed projections', () => {
   it('projects dated base and optional prices without inventing missing values', () => {
     const rules = buildV5PriceRules({ revisionId: 'revision', canonicalPayload: payload });
-    expect(rules).toHaveLength(2);
+    expect(rules).toHaveLength(3);
     expect(rules[0]).toMatchObject({ componentType: 'base', scope: 'specific_departure', specificDate: '2026-09-01', amount: 599000 });
-    expect(rules[1]).toMatchObject({ componentType: 'optional_tour', scope: 'always', inclusion: 'optional', amount: 50000 });
+    expect(rules[1]).toMatchObject({ componentType: 'child', scope: 'specific_departure', specificDate: '2026-09-01', amount: 599000 });
+    expect(rules[1]?.evidenceRef).toMatchObject({ derived_policy: 'same_as_adult_policy' });
+    expect(rules[2]).toMatchObject({ componentType: 'optional_tour', scope: 'always', inclusion: 'optional', amount: 50000 });
   });
 
   it('keeps itinerary order and typed event categories source-bound', () => {
@@ -64,9 +66,59 @@ describe('V5 typed projections', () => {
       },
     });
 
-    expect(rules).toMatchObject([
+    expect(rules.filter(rule => rule.componentType === 'base')).toMatchObject([
       { scope: 'date_range', effectiveStart: '2026-08-01', effectiveEnd: '2026-08-31' },
       { scope: 'weekday', weekday: 4 },
+    ]);
+    expect(rules.filter(rule => rule.componentType === 'child')).toHaveLength(2);
+  });
+
+  it('projects occupancy-specific child prices as separate source-bound components', () => {
+    const rules = buildV5PriceRules({
+      revisionId: 'revision',
+      canonicalPayload: {
+        sections: [{
+          v3: {
+            ledger: {
+              variants: [{
+                variant_key: 'airtel',
+                price_calendar: [{
+                  date: '2026-09-01',
+                  label: '성인',
+                  amount: 1339000,
+                  currency: 'KRW',
+                  evidence: { quote: '성인 1,339,000원' },
+                  passenger_prices: [
+                    {
+                      passenger_type: 'child',
+                      occupancy_type: 'without_bed',
+                      label: '아동 노베드',
+                      amount: 979000,
+                      currency: 'KRW',
+                      evidence: { quote: '아동 노베드 979,000원' },
+                    },
+                    {
+                      passenger_type: 'child',
+                      occupancy_type: 'with_bed',
+                      label: '아동 엑베적용',
+                      amount: 1059000,
+                      currency: 'KRW',
+                      evidence: { quote: '아동 엑베적용 1,059,000원' },
+                    },
+                  ],
+                }],
+              }],
+            },
+          },
+        }],
+      },
+    });
+
+    expect(rules).toHaveLength(3);
+    expect(rules[0]).toMatchObject({ componentType: 'base', amount: 1339000 });
+    expect(rules.slice(1)).toMatchObject([
+      { componentType: 'child', amount: 979000, evidenceRef: { occupancy_type: 'without_bed', derived_policy: 'source' } },
+      { componentType: 'child', amount: 1059000, evidenceRef: { occupancy_type: 'with_bed', derived_policy: 'source' } },
     ]);
   });
 });

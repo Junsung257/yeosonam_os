@@ -51,6 +51,7 @@ import {
   type NormalizedTermLine,
 } from '@/lib/terms-catalog';
 import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
+import type { SourceTicketingCondition } from '@/lib/product-registration/ticketing-deadline';
 import { normalizeStructuredDayEntities } from '@/lib/itinerary-structured-entities';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
@@ -123,9 +124,26 @@ export interface RenderPackageInput {
   title?: string | null;
   /** 'cruise' | 'ferry' | 'package' | 'golf' 등 — ferry 분류 우선 신호 */
   product_type?: string | null;
+  ticketing_deadline?: string | null;
+  ticketing_deadline_status?: SourceTicketingCondition['status'] | null;
+  ticketing_condition?: SourceTicketingCondition | null;
+  booking_mode?: 'standard_inquiry' | 'consultation_only';
+  marketing_eligible?: boolean;
   departure_airport?: string | null;
   destination?: string | null;
-  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[] | null;
+  price_dates?: Array<{
+    date: string;
+    price: number;
+    child_price?: number;
+    infant_price?: number;
+    infant_consultation_required?: boolean;
+    confirmed: boolean;
+    list_price?: number;
+    min_travelers?: number;
+    max_travelers?: number;
+    price_relation?: 'final_sale' | 'standard_sale';
+    price_note?: string;
+  }> | null;
   excludes?: string[] | null;
   surcharges?: SurchargeObject[] | null;
   optional_tours?: OptionalTourInput[] | null;
@@ -143,6 +161,9 @@ export interface RenderPackageInput {
       flight_in?: string | null;
       airline?: string | null;
       departure_airport?: string | null;
+      ticketing_deadline?: string | null;
+      ticketing_deadline_status?: SourceTicketingCondition['status'] | null;
+      ticketing_notice?: string | null;
     } | null;
     flight_segments?: Array<{
       leg: 'outbound' | 'inbound';
@@ -161,6 +182,11 @@ export interface RenderPackageInput {
       inclusions?: string[] | null;
     } | null;
     days?: DayInput[] | null;
+    itinerary_alternatives?: Array<{
+      label: string;
+      consultation_selection_required?: boolean;
+      days: DayInput[];
+    }> | null;
   } | null;
 }
 

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { getProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
+import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,7 @@ const getHandler = async (_request: NextRequest, context?: { params: Promise<{ j
     if (!job) return NextResponse.json({ success: false, code: 'JOB_NOT_FOUND' }, { status: 404 });
     let v5: Record<string, unknown> | null = null;
     if (process.env.PRODUCT_REGISTRATION_V5_SHADOW === '1'
-      || process.env.PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED === '1') {
+      || getProductRegistrationV6RuntimeConfig().workflowEnabled) {
       const { data: normalizations, error: normalizationError } = await supabaseAdmin
         .from('product_registration_v4_normalizations')
         .select('id, status, normalization_version, raw_text_hash, quality_diagnostics, created_at')
@@ -34,7 +35,7 @@ const getHandler = async (_request: NextRequest, context?: { params: Promise<{ j
       }
       const { data: revisions, error: revisionError } = await supabaseAdmin
         .from('product_registration_v5_revisions')
-        .select('id, package_id, status, revision_no, schema_version, normalization_version, payload_hash, lineage_hash, created_at')
+        .select('id, package_id, catalog_product_id, status, revision_no, schema_version, normalization_version, payload_hash, lineage_hash, created_at')
         .eq('job_id', job.id)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -65,6 +66,26 @@ const getHandler = async (_request: NextRequest, context?: { params: Promise<{ j
       blockers: job.v6_blockers ?? [],
       externalCostKrw: Number(job.v6_external_cost_krw ?? 0),
       currentStage: (job.v4_stage_state?.v6 as Record<string, unknown> | undefined)?.stage ?? null,
+      dateResolution: {
+        referenceDate: job.v6_reference_date ?? null,
+        policyVersion: job.v6_date_policy_version ?? null,
+        sourceChannel: job.v6_source_channel ?? null,
+        rollingInferenceEligible:
+          job.v4_stage_state?.rollingDepartureDateInferenceEligible === true,
+        inferredDateCount: Number(job.v4_stage_state?.inferredDepartureDateCount ?? 0),
+        excludedPastDateCount: Number(job.v4_stage_state?.excludedPastDateCount ?? 0),
+        futureDepartureCount: Number(job.v4_stage_state?.futureDepartureCount ?? 0),
+        pastOnlySectionIndexes: Array.isArray(job.v4_stage_state?.pastOnlySectionIndexes)
+          ? job.v4_stage_state.pastOnlySectionIndexes
+          : [],
+      },
+      sourceDisposition: {
+        discardedMissingSalePriceSectionIndexes: Array.isArray(
+          job.v4_stage_state?.discardedMissingSalePriceSectionIndexes,
+        )
+          ? job.v4_stage_state.discardedMissingSalePriceSectionIndexes
+          : [],
+      },
     };
     return NextResponse.json({ success: true, job, v5, v6 }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

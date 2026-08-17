@@ -90,8 +90,8 @@ function evidenceForSection(input: {
   extractionId: string;
 }): ProductRegistrationV5Claim['evidence'] {
   return input.section.evidence.map(item => ({
-    sourceDocumentId: input.sourceDocumentId,
-    extractionId: input.extractionId,
+    sourceDocumentId: item.sourceDocumentId ?? input.sourceDocumentId,
+    extractionId: item.extractionId ?? input.extractionId,
     nodeId: item.nodeId,
     quoteHash: item.quoteHash,
     sourceQuote: item.quote,
@@ -123,8 +123,8 @@ function evidenceForValue(input: {
     if (seen.has(key)) return;
     seen.add(key);
     found.push({
-      sourceDocumentId: input.sourceDocumentId,
-      extractionId: input.extractionId,
+      sourceDocumentId: matchingSectionEvidence?.sourceDocumentId ?? input.sourceDocumentId,
+      extractionId: matchingSectionEvidence?.extractionId ?? input.extractionId,
       nodeId,
       page: typeof evidence.page === 'number' ? evidence.page : undefined,
       quoteHash,
@@ -382,84 +382,6 @@ export async function persistProductRegistrationV5Revision(input: {
   build: ProductRegistrationV5RevisionBuild;
   sections?: CanonicalSection[];
 }): Promise<{ revisionId: string; inserted: boolean; claimCount: number }> {
-  if (input.sections) {
-    await persistSegments({ supabase: input.supabase, build: input.build, sections: input.sections });
-  }
-  const existing = await findExistingRevision(input.supabase, input.build);
-  if (existing) return { revisionId: existing.id, inserted: false, claimCount: input.build.claims.length };
-
-  // A package can be written by the V3 compatibility path after the V5
-  // normalization worker has already run.  Never mutate the unbound row:
-  // create a new immutable package-bound revision and keep the old row as a
-  // quarantined lineage witness.  The publication RPC rejects unbound rows.
-  const unbound = await findUnboundRevision(input.supabase, input.build);
-
-  const { data: revision, error: revisionError } = await input.supabase
-    .from('product_registration_v5_revisions')
-    .insert({
-      tenant_id: input.build.tenantId,
-      package_id: input.build.packageId,
-      job_id: input.build.jobId,
-      normalization_id: input.build.normalizationId,
-      source_document_id: input.build.sourceDocumentId,
-      extraction_id: input.build.extractionId,
-      revision_no: input.build.revisionNo,
-      schema_version: PRODUCT_REGISTRATION_V5_SCHEMA_VERSION,
-      normalization_version: input.build.normalizationVersion,
-      canonical_payload: input.build.canonicalPayload,
-      payload_hash: input.build.payloadHash,
-      lineage_hash: input.build.lineageHash,
-      status: input.build.status,
-      supersedes_revision_id: unbound?.id ?? input.build.supersedesRevisionId ?? null,
-    })
-    .select('id')
-    .single();
-  if (revisionError) {
-    const raced = await findExistingRevision(input.supabase, input.build);
-    if (raced) return { revisionId: raced.id, inserted: false, claimCount: input.build.claims.length };
-    throw revisionError;
-  }
-
-  const revisionId = String((revision as RevisionRow).id);
-  if (input.build.claims.length > 0) {
-    const claimRows = input.build.claims.map(claim => ({
-      revision_id: revisionId,
-      field_path: claim.fieldPath,
-      normalized_value: claim.normalizedValue,
-      criticality: claim.criticality,
-      extraction_method: claim.extractionMethod,
-      evidence_status: claim.evidenceStatus,
-      conflict_status: claim.conflictStatus,
-      claim_hash: claim.claimHash,
-    }));
-    const { data: insertedClaims, error: claimError } = await input.supabase
-      .from('product_registration_v5_claims')
-      .insert(claimRows)
-      .select('id, claim_hash');
-    if (claimError) throw claimError;
-    const claimIds = new Map<string, string>();
-    for (const row of (insertedClaims ?? []) as Array<{ id: string; claim_hash: string }>) {
-      claimIds.set(row.claim_hash, row.id);
-    }
-    const evidenceRows = input.build.claims.flatMap(claim => {
-      const claimId = claimIds.get(claim.claimHash);
-      if (!claimId) return [];
-      return claim.evidence.map(evidence => ({
-        claim_id: claimId,
-        source_document_id: evidence.sourceDocumentId,
-        extraction_id: evidence.extractionId,
-        node_id: evidence.nodeId,
-        page: evidence.page ?? null,
-        quote_hash: evidence.quoteHash,
-        source_quote: evidence.sourceQuote ?? null,
-      }));
-    });
-    if (evidenceRows.length > 0) {
-      const { error: evidenceError } = await input.supabase
-        .from('product_registration_v5_claim_evidence')
-        .insert(evidenceRows);
-      if (evidenceError) throw evidenceError;
-    }
-  }
-  return { revisionId, inserted: true, claimCount: input.build.claims.length };
+  void input;
+  throw new Error('V5_REVISION_WRITER_RETIRED_USE_COMMIT_REVISION_ATOMIC');
 }

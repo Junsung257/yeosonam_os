@@ -39,6 +39,14 @@ function flightIdentity(value: unknown): { carrierCode: string | null; serviceNu
   };
 }
 
+export function classifyLodgingState(value: unknown): 'confirmed' | 'equivalent' | 'to_be_confirmed' {
+  const lodgingName = text(value) ?? '';
+  if (/미정|추후\s*확정|해당\s*(?:숙소|호텔)|예정\s*(?:숙소|호텔)/i.test(lodgingName)) {
+    return 'to_be_confirmed';
+  }
+  return /동급|또는/i.test(lodgingName) ? 'equivalent' : 'confirmed';
+}
+
 export function buildProductRegistrationV6DomainProjection(input: {
   canonicalPayload: JsonObject;
   packageId?: string | null;
@@ -109,7 +117,7 @@ export function buildProductRegistrationV6DomainProjection(input: {
             day_index: dayIndex,
             nights: 1,
             lodging_name: lodgingName,
-            lodging_state: /미정|추후\s*확정/i.test(lodgingName) ? 'to_be_confirmed' : /동급|또는/i.test(lodgingName) ? 'equivalent' : 'confirmed',
+            lodging_state: classifyLodgingState(lodgingName),
             source_field_path: fieldPath,
             evidence: evidence(hotel?.evidence, fieldPath),
           });

@@ -51,8 +51,10 @@ function priceDatesToRows(priceDates: PriceDate[]): ProductPriceRowInput[] {
     target_date: row.date,
     day_of_week: null,
     net_price: row.price,
-    adult_selling_price: null,
-    child_price: row.child_price ?? null,
+    // priceDates are produced only from source-backed sale-price parsers.
+    // Keep that provenance explicit here; never fill this later from NET.
+    adult_selling_price: row.price,
+    child_price: row.child_price ?? row.price,
     note: row.confirmed ? 'confirmed' : null,
   }));
 }
@@ -111,8 +113,8 @@ function tiersToProductPriceRows(tiers: PriceTier[]): ProductPriceRowInput[] {
         target_date: date,
         day_of_week: normalizeProductPriceDayOfWeek(tier.departure_day_of_week ?? tier.note),
         net_price: netPrice,
-        adult_selling_price: null,
-        child_price: tier.child_price ?? null,
+        adult_selling_price: netPrice,
+        child_price: tier.child_price ?? netPrice,
         note,
       });
     }
@@ -533,6 +535,7 @@ async function extractPriceTiersWithAiGateway(rawText: string): Promise<{
   errors: string[];
 }> {
   const { llmCall } = await import('@/lib/llm-gateway');
+  const deepSeekModel = process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro';
   const result = await llmCall<{ price_tiers?: unknown }>({
     task: 'parse_travel_doc',
     systemPrompt: [
@@ -579,6 +582,9 @@ async function extractPriceTiersWithAiGateway(rawText: string): Promise<{
     maxTokens: 1200,
     maxRetries: 1,
     autoEscalate: false,
+    // Do not silently change the source of a price when DeepSeek is down.
+    pinnedProvider: 'deepseek',
+    pinnedModel: deepSeekModel,
   });
 
   if (!result.success) {
@@ -635,7 +641,17 @@ export async function recoverUploadPriceData(
       durationDays: options.durationDays ?? ed.duration,
       departureDays: recoveredDepartureDays,
     });
-    const candidate = evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText), ctx);
+    const candidateGraphAmbiguous = det.resolution?.status === 'ambiguous';
+    const candidate = evaluateCandidate(
+      ed,
+      candidateGraphAmbiguous
+        ? []
+        : removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText),
+      ctx,
+    );
+    if (candidateGraphAmbiguous) {
+      failures.push('PRICE_CANDIDATE_GRAPH_AMBIGUOUS: equally authoritative source-backed price candidates disagree');
+    }
     deterministicCandidate = { source: det.source, ...candidate };
 
     // Golf tables are frequently emitted as weekday/range rows where the
@@ -734,7 +750,20 @@ export async function recoverUploadPriceData(
         durationDays: options.durationDays ?? ed.duration,
         departureDays: recoveredDepartureDays,
       });
-      return { source: det.source, ...evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText), ctx) };
+      const candidateGraphAmbiguous = det.resolution?.status === 'ambiguous';
+      if (candidateGraphAmbiguous) {
+        failures.push('PRICE_CANDIDATE_GRAPH_AMBIGUOUS: equally authoritative source-backed price candidates disagree');
+      }
+      return {
+        source: candidateGraphAmbiguous ? 'candidate_graph_ambiguous' : det.source,
+        ...evaluateCandidate(
+          ed,
+          candidateGraphAmbiguous
+            ? []
+            : removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText),
+          ctx,
+        ),
+      };
     })();
     if (detCandidate.priceRows.length > 0 && detCandidate.priceDates.length > 0) {
       const { source: detSource, ...candidate } = detCandidate;

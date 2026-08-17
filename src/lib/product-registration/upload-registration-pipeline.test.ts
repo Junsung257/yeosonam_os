@@ -79,11 +79,21 @@ function intake(overrides: Partial<UploadRequestIntakeSuccess> = {}): UploadRequ
 }
 
 function parsedDocument() {
+  const rawText = [
+    '다낭 패키지 3박5일',
+    '출발일 2026-10-01',
+    '성인 판매가 599,000원',
+    'DAY 1 부산공항 출발 BX321',
+    '호텔 숙박 및 조식',
+    '포함 항공료 호텔 식사',
+    '불포함 개인경비 싱글차지',
+    '취소 및 환불 규정',
+  ].join('\n');
   return {
     filename: 'upload.txt',
     fileType: 'hwp',
-    rawText: 'supplier raw text',
-    extractedData: { title: 'Sample Package', rawText: 'supplier raw text' },
+    rawText,
+    extractedData: { title: 'Sample Package', rawText },
     parsedAt: new Date(),
     confidence: 0.8,
   };

@@ -1,3 +1,5 @@
+import type { CustomerBudget } from './customer-budget';
+
 export const PUBLICATION_STATES = [
   'draft',
   'needs_review',
@@ -9,6 +11,32 @@ export const PUBLICATION_STATES = [
 ] as const;
 
 export type PublicationState = (typeof PUBLICATION_STATES)[number];
+
+export type PublicMediaKind =
+  | 'product'
+  | 'destination_reference'
+  | 'entity_reference'
+  | 'legacy_reference'
+  | 'brand';
+
+export type PublicMediaRole = 'hero' | 'gallery' | 'itinerary' | 'hotel' | 'golf' | 'reference';
+
+export type PublicPackageMedia = {
+  url: string;
+  source: string | null;
+  kind: PublicMediaKind;
+  role: PublicMediaRole;
+  label: string;
+  alt: string;
+  reference_only: boolean;
+  provider: string | null;
+  provider_asset_id: string | null;
+  attribution_text: string | null;
+  attribution_url: string | null;
+  source_page_url: string | null;
+  license_code: string | null;
+  license_url: string | null;
+};
 
 export const PUBLIC_CUSTOMER_STATES: readonly PublicationState[] = ['approved', 'published'];
 
@@ -50,6 +78,8 @@ export type PublicPackageSnapshot = {
   duration: number | null;
   destinations: string[];
   price_display: string | null;
+  customer_budget: CustomerBudget;
+  expected_budget_display: string | null;
   option_policy: {
     status: OptionalTourStatus;
     badges: string[];
@@ -62,7 +92,7 @@ export type PublicPackageSnapshot = {
   public_notices: unknown[];
   public_notice_source_paths: string[];
   optional_tours_public: unknown[];
-  images_public: unknown[];
+  images_public: PublicPackageMedia[];
   cta_copy: {
     primary: '상담 요청하기' | '예약 가능 여부 확인' | '출발일 상담하기' | '견적 문의하기';
     helper: string;

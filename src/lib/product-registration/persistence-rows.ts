@@ -157,7 +157,7 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
     productPriceRows: input.internalCode
       ? input.priceRows.map(row => ({
           ...row,
-          adult_selling_price: row.adult_selling_price ?? row.net_price,
+          adult_selling_price: row.adult_selling_price ?? null,
           product_id: input.internalCode as string,
         }))
       : [],

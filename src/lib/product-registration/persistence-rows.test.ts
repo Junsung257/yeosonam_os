@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildUploadPersistenceRows } from './persistence-rows';
 
 describe('buildUploadPersistenceRows', () => {
-  it('fills customer selling prices for product price rows before persistence', () => {
+  it('does not expose a NET-only amount as a customer selling price', () => {
     const rows = buildUploadPersistenceRows({
       registration: {
         extractedData: {
@@ -57,7 +57,7 @@ describe('buildUploadPersistenceRows', () => {
         target_date: '2026-07-24',
         day_of_week: null,
         net_price: 859000,
-        adult_selling_price: 859000,
+        adult_selling_price: null,
         child_price: null,
         note: 'Solea',
       },

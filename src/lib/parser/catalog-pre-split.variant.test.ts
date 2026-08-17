@@ -157,6 +157,8 @@ describe('supplier grade variant catalog split', () => {
     expect(sections).toHaveLength(8);
     expect(sharedPrefix).toContain('6/11(목)');
     expect(sharedPrefix).toContain('세이브');
+    expect(sections[0]).toMatch(/^세이브\s*\n실속/u);
+    expect(sections[1]).toMatch(/^스탠다드\s*\n품격 노노/u);
     expect(sections[0]).toContain('연길/백두산(북파) 2박3일');
     expect(sections[1]).toContain('특식2회');
     expect(sections[7]).toContain('연길/백두산(북+서파) 3박4일');

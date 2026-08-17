@@ -83,7 +83,7 @@ type SourceOutcome = {
   rawTextHash: string | null;
   charCount: number;
   savedPackageIds: string[];
-  finalState: 'active' | 'auto_fixed_active' | 'needs_human_source_review' | 'expired_ticketing_archived' | 'extraction_failed' | 'registration_failed';
+  finalState: 'active' | 'auto_fixed_active' | 'needs_human_source_review' | 'ticketing_reconfirmation_required' | 'expired_ticketing_archived' | 'extraction_failed' | 'registration_failed';
   reasons: string[];
   repairs: string[];
   packageStatuses: Array<{
@@ -269,6 +269,8 @@ function classifySourceOutcome(input: {
     finalState = 'extraction_failed';
   } else if (savedPackageIds.length === 0 || input.registrations.some(row => row.status === 'registration_failed')) {
     finalState = 'registration_failed';
+  } else if (savedPackageIds.some(id => input.autopilotById.get(id)?.stage === 'expired_ticketing_deadline_reconfirmation_required')) {
+    finalState = 'ticketing_reconfirmation_required';
   } else if (savedPackageIds.some(id => input.autopilotById.get(id)?.stage === 'expired_ticketing_deadline_archived')) {
     finalState = 'expired_ticketing_archived';
   } else if (savedPackageIds.length > 0 && savedPackageIds.every(id => input.autopilotById.get(id)?.status === 'opened')) {
@@ -536,7 +538,7 @@ async function main(): Promise<void> {
     '## Needs Review',
     '',
     ...sourceOutcomes
-      .filter(item => !['active', 'auto_fixed_active', 'expired_ticketing_archived'].includes(item.finalState))
+      .filter(item => !['active', 'auto_fixed_active', 'ticketing_reconfirmation_required', 'expired_ticketing_archived'].includes(item.finalState))
       .slice(0, 80)
       .flatMap(item => [
         `### ${item.fileName}`,

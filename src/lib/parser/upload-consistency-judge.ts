@@ -1,17 +1,19 @@
-import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import { getSecret } from '@/lib/secret-registry';
-import { traceLlmCall, recordLlmUsage } from '@/lib/telemetry/llm-tracer';
+import { llmCall } from '@/lib/llm-gateway';
 
-const JUDGE_SCHEMA: ResponseSchema = {
-  type: SchemaType.OBJECT,
+const JUDGE_SCHEMA = {
+  type: 'object',
   properties: {
-    consistent: { type: SchemaType.BOOLEAN, description: '원문 일정표 헤더 수와 추출 상품 수가 같으면 true' },
+    consistent: { type: 'boolean', description: '원문 일정표 헤더 수와 추출 상품 수가 같으면 true' },
   },
   required: ['consistent'],
 };
 
+const PRODUCT_REGISTRATION_DEEPSEEK_MODEL =
+  process.env.PRODUCT_REGISTRATION_CRITICAL_FACT_DEEPSEEK_MODEL || 'deepseek-v4-pro';
+
 /**
- * 카탈로그 갯수 정합 검증 (Gemini Flash, ~$0.0001/호출).
+ * 카탈로그 갯수 정합 검증 (DeepSeek 전용).
  *
  * 2026-05-19 박제 (사장님 5 카탈로그 사고 종결):
  *   - 기본 ON 으로 변경 (기존: UPLOAD_CATALOG_JUDGE=1 명시해야만 동작 → 사실상 호출 0).
@@ -28,21 +30,10 @@ export async function judgeCatalogProductCountConsistency(
   if (process.env.UPLOAD_CATALOG_JUDGE === '0') {
     return { consistent: true, skipped: true, reason: 'env-disabled' };
   }
-  const apiKey = getSecret('GOOGLE_AI_API_KEY');
+  const apiKey = getSecret('DEEPSEEK_API_KEY');
   if (!apiKey || extractedProductCount < 1) {
     return { consistent: true, skipped: true, reason: 'no-api-key-or-zero-products' };
   }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0,
-      maxOutputTokens: 128,
-      responseMimeType: 'application/json',
-      responseSchema: JUDGE_SCHEMA,
-    },
-  });
 
   const prompt = `한국 여행상품 카탈로그 원문에서 별개 상품 개수를 센다.
 
@@ -68,26 +59,27 @@ export async function judgeCatalogProductCountConsistency(
 ${rawTextSnippet.slice(0, 6000)}
 ---`;
 
-  // 2026-05-18 박제: OTel span + usage 추적 (llm-gateway 우회 비용 미집계 정정)
-  const start = Date.now();
   try {
-    const result = await traceLlmCall(
-      { task: 'judge', provider: 'gemini', model: 'gemini-2.5-flash', phase: 'executor' },
-      async (span) => {
-        const res = await model.generateContent(prompt);
-        const usage = res.response.usageMetadata;
-        recordLlmUsage(span, {
-          input: usage?.promptTokenCount,
-          output: usage?.candidatesTokenCount,
-          latency_ms: Date.now() - start,
-        });
-        const txt = res.response.text();
-        const parsed = JSON.parse(txt) as { consistent?: boolean };
-        return { consistent: parsed.consistent !== false, skipped: false };
-      },
-    );
-    return result;
+    const result = await llmCall<{ consistent?: unknown }>({
+      task: 'judge',
+      systemPrompt: '여행상품 카탈로그 상품 개수 정합성 판정기. 원문에 근거해 JSON만 반환한다.',
+      userPrompt: prompt,
+      jsonSchema: JUDGE_SCHEMA,
+      temperature: 0,
+      maxTokens: 128,
+      maxRetries: 1,
+      autoEscalate: false,
+      pinnedProvider: 'deepseek',
+      pinnedModel: PRODUCT_REGISTRATION_DEEPSEEK_MODEL,
+    });
+    if (!result.success) {
+      return { consistent: false, skipped: false, reason: 'deepseek-unavailable' };
+    }
+    const data = result.data && typeof result.data === 'object' ? result.data as { consistent?: unknown } : {};
+    return { consistent: data.consistent === true, skipped: false };
   } catch {
-    return { consistent: true, skipped: false };
+    // 검증을 못 한 경우 true로 통과시키지 않는다. 기존 추출 결과는
+    // 유지하되, caller가 admin alert/재처리 대상으로 볼 수 있게 한다.
+    return { consistent: false, skipped: false, reason: 'deepseek-error' };
   }
 }

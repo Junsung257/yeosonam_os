@@ -9,6 +9,7 @@ import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
 import TrackedPhoneLink from '@/components/customer/TrackedPhoneLink';
 import PackageCard from '@/components/customer/PackageCard';
+import type { PublicPackageMedia } from '@/lib/package-publication/types';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
@@ -86,6 +87,8 @@ interface Package {
   hero_tagline?: string | null;
   hero_image_url?: string | null;
   thumbnail_urls?: string[] | null;
+  hero_media?: PublicPackageMedia | null;
+  images_public?: PublicPackageMedia[] | null;
   avg_rating?: number | null;
   review_count?: number | null;
   products?: { display_name?: string; internal_code?: string };

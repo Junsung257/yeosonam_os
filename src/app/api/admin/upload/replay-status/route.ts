@@ -33,33 +33,40 @@ function normalizeState(value: unknown): ReplayState {
   return 'unknown';
 }
 
-async function loadPackagesByIds(ids: string[]) {
-  if (ids.length === 0) return [];
-  const { data, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id,internal_code,title,price,airline,status,departure_days,price_dates,itinerary_data,updated_at')
-    .in('id', ids);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(row => {
-    const priceDates = Array.isArray(row.price_dates) ? row.price_dates : [];
-    const days = row.itinerary_data && typeof row.itinerary_data === 'object' && !Array.isArray(row.itinerary_data)
-      ? (row.itinerary_data as { days?: unknown }).days
-      : null;
-    return {
-      package_id: row.id,
-      short_code: row.internal_code ?? null,
-      title: row.title ?? null,
-      price: row.price ?? null,
-      airline: row.airline ?? null,
-      status: row.status ?? null,
-      departure_days: row.departure_days ?? null,
-      mobile_url: `/packages/${row.id}`,
-      lp_url: `/lp/${row.id}`,
-      a4_url: `/admin/packages/${row.id}/a4`,
-      price_dates_count: priceDates.length,
-      itinerary_days_count: Array.isArray(days) ? days.length : 0,
-    };
-  });
+function terminalReplayState(outcome: string | null): ReplayState {
+  if (!outcome) return 'pending';
+  if (outcome === 'published_verified' || outcome === 'published_degraded'
+    || outcome === 'ready_verified_not_published' || outcome === 'ready_degraded_not_published') return 'resolved';
+  if (outcome === 'discarded_source_incomplete' || outcome === 'discarded_non_travel'
+    || outcome === 'discarded_duplicate_or_consolidated' || outcome === 'archived_all_departures_past') return 'skipped';
+  if (outcome === 'blocked_action_required' || outcome.startsWith('quarantined_')) return 'failed';
+  return 'unknown';
+}
+
+function packageIdsFromKernelState(state: unknown): string[] {
+  const record = asRecord(state);
+  return [...new Set([
+    ...stringArray(record.packageIds),
+    ...(stringValue(record.packageId) ? [stringValue(record.packageId)!] : []),
+  ])];
+}
+
+function kernelRegisterReport(packageIds: string[], terminalOutcome: string | null) {
+  const isPublished = terminalOutcome === 'published_verified' || terminalOutcome === 'published_degraded';
+  return packageIds.map(packageId => ({
+    package_id: packageId,
+    short_code: null,
+    title: null,
+    price: null,
+    airline: null,
+    status: isPublished ? 'published' : 'review',
+    departure_days: null,
+    mobile_url: `/packages/${packageId}`,
+    lp_url: `/lp/${packageId}`,
+    a4_url: `/admin/packages/${packageId}/a4`,
+    price_dates_count: null,
+    itinerary_days_count: null,
+  }));
 }
 
 const getHandler = async (request: NextRequest) => {
@@ -97,20 +104,30 @@ const getHandler = async (request: NextRequest) => {
 
   const draft = asRecord(data.parsed_draft_json);
   const replayResult = asRecord(draft.replayResult);
-  const savedIds = stringArray(replayResult.savedIds);
-  const duplicateInternalCode = stringValue(replayResult.duplicateInternalCode);
-  let packageIds = savedIds;
-  if (packageIds.length === 0 && duplicateInternalCode) {
-    const { data: duplicateRows, error: duplicateError } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id')
-      .eq('internal_code', duplicateInternalCode)
-      .limit(10);
-    if (duplicateError) throw new Error(duplicateError.message);
-    packageIds = (duplicateRows ?? []).map(row => row.id).filter(Boolean);
+  const jobId = stringValue(replayResult.jobId);
+  const workflowRunId = stringValue(replayResult.workflowRunId);
+  let terminalOutcome: string | null = null;
+  let publicationState: string | null = null;
+  let blockers: string[] = [];
+  let degradedReasons: string[] = [];
+  let packageIds: string[] = [];
+  if (jobId) {
+    const { data: job, error: jobError } = await supabaseAdmin
+      .from('upload_jobs')
+      .select('id,v6_workflow_run_id,v6_outcome,v6_publication_state,v6_blockers,v6_degraded_reasons,v4_stage_state')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (jobError) throw new Error(jobError.message);
+    if (job) {
+      terminalOutcome = stringValue(job.v6_outcome);
+      publicationState = stringValue(job.v6_publication_state);
+      blockers = stringArray(job.v6_blockers);
+      degradedReasons = stringArray(job.v6_degraded_reasons);
+      packageIds = packageIdsFromKernelState(job.v4_stage_state);
+    }
   }
-  const registerReport = await loadPackagesByIds(packageIds);
-  const replayState = normalizeState(replayResult.status);
+  const registerReport = kernelRegisterReport(packageIds, terminalOutcome);
+  const replayState = jobId ? terminalReplayState(terminalOutcome) : normalizeState(replayResult.status);
   const queueState = normalizeState(data.status);
   const state = replayState === 'unknown' ? queueState : replayState;
 
@@ -121,10 +138,15 @@ const getHandler = async (request: NextRequest) => {
     state,
     title: data.product_title ?? null,
     updatedAt: data.updated_at ?? null,
+    jobId,
+    workflowRunId,
+    terminalOutcome,
+    publicationState,
+    blockers,
+    degradedReasons,
     savedIds: packageIds,
-    duplicateInternalCode,
     registerReport,
-    message: replayResult.reason ?? data.error_reason ?? null,
+    message: blockers[0] ?? replayResult.reason ?? data.error_reason ?? null,
   });
 };
 

@@ -1,9 +1,12 @@
 import type { MatrixPriceRow, PriceIROptions } from './types.ts';
+import { extractSourceWonAmounts } from './source-money.ts';
 
 function parseKoreanWonPrice(line: string): number {
-  const prices = [...line.matchAll(/(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?/gi)]
-    .map(match => Number(match[1].replace(/,/g, '')))
-    .filter(price => Number.isInteger(price) && price >= 10_000 && price <= 50_000_000);
+  const prices = extractSourceWonAmounts(line, {
+    allowBareSaleShorthand: true,
+    minAmount: 30_000,
+    maxAmount: 50_000_000,
+  }).map(candidate => candidate.amount);
   if (prices.length === 0) return 0;
   if (/[→>]/.test(line) && prices.length >= 2) return prices[prices.length - 1];
   return Math.min(...prices);
@@ -43,21 +46,30 @@ function extractKoreanDepartureLinePriceRows(rawText: string, options: PriceIROp
   const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const rows: MatrixPriceRow[] = [];
   const seen = new Set<string>();
+  const nonSaleContext = /(?:\uCEE4\s*\uBBF8\s*\uC158|commission|\bcomm?\b|\uC218\s*\uC218\s*\uB8CC|\uC2F1\s*\uAE00|\uC544\s*\uB3D9|\uC18C\s*\uC544|\uC720\s*\uB958|\uD604\s*\uC9C0\s*\uBE44|\uC635\s*\uC158|\uC120\s*\uD0DD|\uACC4\s*\uC57D\s*\uAE08)/iu;
 
   for (let i = 0; i < Math.min(lines.length, 80); i++) {
     const dates = parseKoreanDepartureDates(lines[i], options.year);
     if (dates.length === 0 || dates.length > 20) continue;
 
-    let price = /(?:판매가|상품가|요금|행사가)/.test(lines[i])
+    const candidatePrices: number[] = [];
+    const priceOnDepartureLine = /(?:판매가|상품가|요금|행사가)/.test(lines[i])
+      && !nonSaleContext.test(lines[i])
       ? parseKoreanWonPrice(lines[i])
       : 0;
+    if (priceOnDepartureLine > 0) candidatePrices.push(priceOnDepartureLine);
     for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
-      if (price > 0) break;
       if (isKoreanStopSection(lines[j])) break;
-      price = parseKoreanWonPrice(lines[j]);
-      if (price > 0) break;
+      if (nonSaleContext.test(lines[j])) continue;
+      const candidate = parseKoreanWonPrice(lines[j]);
+      if (candidate > 0) candidatePrices.push(candidate);
     }
-    if (price <= 0) continue;
+    const uniquePrices = [...new Set(candidatePrices)];
+    // Multiple amounts near one departure are commercially ambiguous (for
+    // example list/sale, adult/child, or two product grades). A later typed
+    // resolver must establish their relation instead of selecting the first.
+    if (uniquePrices.length !== 1) continue;
+    const price = uniquePrices[0]!;
 
     for (const date of dates) {
       const key = `${date}|${price}`;
@@ -92,6 +104,12 @@ function extractKoreanGradeDatePriceRows(rawText: string, options: PriceIROption
     ? options.durationDays
     : null;
   const preferred = selectedGradeIndex(options.title);
+  // This flattened layout contains only numbers after each date; without a
+  // product title naming the grade there is no source-backed way to know which
+  // column belongs to the current section. Product segmentation/profile logic
+  // must establish that axis first. Emitting every column would attach other
+  // products' prices to one product and later look like a same-date conflict.
+  if (preferred == null) return [];
   let currentDuration: number | null = null;
 
   for (let i = 0; i < Math.min(lines.length, 140); i++) {
@@ -113,9 +131,7 @@ function extractKoreanGradeDatePriceRows(rawText: string, options: PriceIROption
     if (prices.length === 0) continue;
     if (wantedDuration != null && currentDuration != null && currentDuration !== wantedDuration) continue;
 
-    const indexes = preferred != null && prices[preferred] != null
-      ? [preferred]
-      : prices.map((_, index) => index);
+    const indexes = prices[preferred] != null ? [preferred] : [];
     const labels = ['실속', '품격', '고품격'];
     for (const date of dates) {
       for (const index of indexes) {
@@ -314,12 +330,14 @@ function isoDate(year: number, month: number, day: number): string | null {
 }
 
 function parseKrwPrice(line: string): number {
-  const text = line.replace(/\s+/g, '');
-  const match = text.match(/^(\d{1,3}(?:,\d{3})+|\d{5,8}|\d{3,4})(?:원|\/인|,-)?/);
-  if (!match) return 0;
-  const value = Number(match[1].replace(/,/g, ''));
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  return value < 10000 ? value * 1000 : value;
+  const values = extractSourceWonAmounts(line, {
+    allowBareSaleShorthand: true,
+    minAmount: 100_000,
+    maxAmount: 50_000_000,
+  }).map(candidate => candidate.amount);
+  if (values.length === 0) return 0;
+  if (/(?:→|⇒|➜|⟶|▶|->|=>)/u.test(line) && values.length >= 2) return values.at(-1) ?? 0;
+  return values.length === 1 ? values[0]! : 0;
 }
 
 function preferredGradePriceIndex(title?: string | null): number | null {
@@ -369,13 +387,46 @@ function parseDateListLine(line: string, yearHint?: number): string[] {
   return [...new Set(dates)];
 }
 
+function extractBareVerticalGradeDateRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const headerIndex = lines.findIndex(line => /^(?:상품\s*가|판매\s*가)$/.test(line));
+  if (headerIndex < 0) return [];
+  const byDate = new Map<string, MatrixPriceRow>();
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    const dates = parseDateListLine(lines[i], options.year);
+    if (dates.length === 0) continue;
+    const prices: number[] = [];
+    let cursor = i + 1;
+    for (; cursor < Math.min(lines.length, i + 8); cursor++) {
+      if (parseDateListLine(lines[cursor], options.year).length > 0) break;
+      if (isKoreanStopSection(lines[cursor])) break;
+      const price = parseKrwPrice(lines[cursor]);
+      if (price > 0) prices.push(price);
+      else if (prices.length > 0) break;
+    }
+    const price = pickProductPrice(prices, options);
+    if (price <= 0) continue;
+    for (const date of dates) {
+      byDate.set(date, {
+        date,
+        adult_price: price,
+        child_price: null,
+        note: 'source_vertical_grade_price',
+        status: 'available',
+      });
+    }
+    i = Math.max(i, cursor - 1);
+  }
+  return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function sliceProductPriceSection(rawText: string): string {
   const startMatch = rawText.match(/^\s*(?:상품\s*가|판매\s*가|요금\s*표|출발\s*일\s*(?:&|및)?\s*상품\s*가|출발\s*일자|출발\s*날짜)\s*$/m);
   if (!startMatch?.index && startMatch?.index !== 0) return '';
 
   const start = startMatch.index;
   const tail = rawText.slice(start);
-  const stop = tail.search(/^\s*(?:포\s*함\s*(?:내역|사항)|불\s*포함|일정표?|여행\s*일정|일\s*시|1\s*일|DAY\s*1|취소|예약|호텔|항공|비\s*고|쇼핑|옵션)\b/m);
+  const stop = tail.search(/^\s*(?:포\s*함\s*(?:내역|사항)|불\s*포함|일정표?|여행\s*일정|일\s*시|1\s*일|DAY\s*1|취소|예약|호텔|항공|비\s*고|쇼핑|옵션)(?=\s|$)/m);
   return stop > 0 ? tail.slice(0, stop) : tail;
 }
 
@@ -397,9 +448,14 @@ function parseKoreanDateLine(line: string, context: { month: number | null; year
     .replace(/[，、]/g, ',')
     .trim();
   const dates: string[] = [];
+  let currentMonth = context.month;
 
   for (const match of cleaned.matchAll(/(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일?/g)) {
-    const month = Number(match[1] ?? context.month);
+    const explicitMonth = Number(match[1]);
+    if (Number.isInteger(explicitMonth) && explicitMonth >= 1 && explicitMonth <= 12) {
+      currentMonth = explicitMonth;
+    }
+    const month = Number(currentMonth);
     const day = Number(match[2]);
     if (!Number.isInteger(month) || !Number.isInteger(day)) continue;
     if (month < 1 || month > 12 || day < 1 || day > 31) continue;
@@ -408,6 +464,196 @@ function parseKoreanDateLine(line: string, context: { month: number | null; year
   }
 
   return [...new Set(dates)];
+}
+
+function compactDurationDays(line: string): number | null {
+  const compact = line.replace(/\s+/gu, '').toUpperCase();
+  const latin = compact.match(/\b\d{1,2}N(\d{1,2})D\b/u);
+  const korean = compact.match(/\d{1,2}박(\d{1,2})일/u);
+  const value = Number(latin?.[1] ?? korean?.[1] ?? '');
+  return Number.isInteger(value) && value > 1 && value < 31 ? value : null;
+}
+
+/**
+ * Resolves a strict HWP visual-row inversion where the exported text is
+ * `amount -> date` instead of `date -> amount`. The rule only activates when
+ * the source declares both date and amount columns, the lines are adjacent,
+ * and a duration axis is present. This prevents a nearby guide fee, ticketing
+ * deadline, or closed-date notice from being paired as a package price.
+ */
+function extractKoreanAmountBeforeDateRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+  const header = lines.slice(0, 24).join(' ');
+  if (!/(?:날\s*짜|출\s*발\s*일)/u.test(header) || !/(?:금\s*액|상\s*품\s*가|판\s*매\s*가)/u.test(header)) return [];
+
+  const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
+    ? options.durationDays
+    : null;
+  const rows: MatrixPriceRow[] = [];
+  const durationMarkers = lines.slice(0, 100).flatMap((line, index) => {
+    const duration = compactDurationDays(line);
+    return duration == null ? [] : [{ index, duration }];
+  });
+  for (let markerIndex = 0; markerIndex < durationMarkers.length; markerIndex += 1) {
+    const marker = durationMarkers[markerIndex]!;
+    if (wantedDuration != null && marker.duration !== wantedDuration) continue;
+    const end = Math.min(durationMarkers[markerIndex + 1]?.index ?? lines.length, 100);
+    const blockIndexes = Array.from({ length: Math.max(0, end - marker.index - 1) }, (_, offset) => marker.index + offset + 1);
+    const firstPriceIndex = blockIndexes.find(index => parseKrwPrice(lines[index]!) > 0) ?? -1;
+    const firstDateIndex = blockIndexes.find(index => (
+      /\d{1,2}\s*월/u.test(lines[index]!)
+      && /\d{1,2}\s*일/u.test(lines[index]!)
+      && !/(?:발권|예약|입금|마감|싱글|추가|불포함|포함)/u.test(lines[index]!)
+    )) ?? -1;
+    // Do not reinterpret an ordinary date->amount table by pairing each
+    // amount with the following row's date. The visual inversion must be
+    // proven once for the whole duration block.
+    if (firstPriceIndex < 0 || firstDateIndex < 0 || firstPriceIndex >= firstDateIndex) continue;
+
+    for (const index of blockIndexes) {
+      if (index + 1 >= end) continue;
+      if (/(?:커미션|commission|\bcomm?\b|수수료|싱글|아동|소아|유류|가이드|기사|현지비|옵션|선택|발권|마감|잔여)/iu.test(lines[index]!)) continue;
+      const price = parseKrwPrice(lines[index]!);
+      if (price <= 0) continue;
+      const dateLine = lines[index + 1]!;
+      if (!/\d{1,2}\s*월/u.test(dateLine) || !/\d{1,2}\s*일/u.test(dateLine)) continue;
+      if (/(?:발권|예약|입금|마감|싱글|추가|불포함|포함)/u.test(dateLine)) continue;
+      const dates = parseKoreanDateLine(dateLine, { month: null, year: options.year });
+      if (dates.length === 0 || dates.length > 31) continue;
+      for (const date of dates) {
+        rows.push({
+          date,
+          adult_price: price,
+          child_price: null,
+          note: `source_korean_amount_before_date:${marker.duration}d`,
+          status: 'available',
+          option_type: wantedDuration == null ? 'duration' : null,
+          option_label: wantedDuration == null ? `${marker.duration}일` : null,
+        });
+      }
+    }
+  }
+
+  const byKey = new Map<string, MatrixPriceRow>();
+  for (const row of rows) byKey.set(`${row.date}|${row.adult_price}|${row.option_label ?? ''}`, row);
+  return [...byKey.values()].sort((left, right) => left.date.localeCompare(right.date) || left.adult_price - right.adult_price);
+}
+
+function extractKoreanDateBeforeAmountRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+  const header = lines.slice(0, 24).join(' ');
+  if (!/(?:날\s*짜|출\s*발\s*일)/u.test(header) || !/(?:금\s*액|상\s*품\s*가|판\s*매\s*가)/u.test(header)) return [];
+  const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
+    ? options.durationDays
+    : null;
+  const markers = lines.slice(0, 100).flatMap((line, index) => {
+    const duration = compactDurationDays(line);
+    return duration == null ? [] : [{ index, duration }];
+  });
+  const rows: MatrixPriceRow[] = [];
+  for (let markerIndex = 0; markerIndex < markers.length; markerIndex += 1) {
+    const marker = markers[markerIndex]!;
+    if (wantedDuration != null && marker.duration !== wantedDuration) continue;
+    const end = Math.min(markers[markerIndex + 1]?.index ?? lines.length, 100);
+    const indexes = Array.from({ length: Math.max(0, end - marker.index - 1) }, (_, offset) => marker.index + offset + 1);
+    const firstDateIndex = indexes.find(index => (
+      /\d{1,2}\s*월/u.test(lines[index]!)
+      && /\d{1,2}\s*일/u.test(lines[index]!)
+      && !/(?:발권|예약|입금|마감|싱글|추가|불포함|포함)/u.test(lines[index]!)
+    )) ?? -1;
+    const firstPriceIndex = indexes.find(index => parseKrwPrice(lines[index]!) > 0) ?? -1;
+    if (firstDateIndex < 0 || firstPriceIndex < 0 || firstDateIndex >= firstPriceIndex) continue;
+
+    for (const index of indexes) {
+      if (index + 1 >= end) continue;
+      const dateLine = lines[index]!;
+      if (!/\d{1,2}\s*월/u.test(dateLine) || !/\d{1,2}\s*일/u.test(dateLine)) continue;
+      if (/(?:발권|예약|입금|마감|싱글|추가|불포함|포함)/u.test(dateLine)) continue;
+      const immediate = lines[index + 1]!;
+      const priceLine = /^(?:(?:추석|설(?:날)?)연휴?|연휴|성수기|공휴일|특별기)$/u.test(immediate.replace(/\s+/gu, ''))
+        && index + 2 < end
+        ? lines[index + 2]!
+        : immediate;
+      if (/(?:커미션|commission|\bcomm?\b|수수료|싱글|아동|소아|유류|가이드|기사|현지비|옵션|선택|발권|마감|잔여)/iu.test(priceLine)) continue;
+      const price = parseKrwPrice(priceLine);
+      if (price <= 0) continue;
+      const dates = parseKoreanDateLine(dateLine, { month: null, year: options.year });
+      if (dates.length === 0 || dates.length > 31) continue;
+      for (const date of dates) {
+        rows.push({
+          date,
+          adult_price: price,
+          child_price: null,
+          note: `source_korean_date_before_amount:${marker.duration}d`,
+          status: 'available',
+          option_type: wantedDuration == null ? 'duration' : null,
+          option_label: wantedDuration == null ? `${marker.duration}일` : null,
+        });
+      }
+    }
+  }
+  const byKey = new Map<string, MatrixPriceRow>();
+  for (const row of rows) byKey.set(`${row.date}|${row.adult_price}|${row.option_label ?? ''}`, row);
+  return [...byKey.values()].sort((left, right) => left.date.localeCompare(right.date) || left.adult_price - right.adult_price);
+}
+
+/**
+ * Resolves supplier headers that list one or more departure dates followed by
+ * their shared amount. `별도문의`/`마감` closes the pending date group without
+ * inventing a price. Parsing stops before the itinerary/commercial body so a
+ * later fee cannot be attached to header dates.
+ */
+function extractKoreanGroupedDatesBeforePriceRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  if (!options.year || compactDurationDays(rawText.split(/\r?\n/u).slice(0, 12).join(' ')) == null) return [];
+  const allLines = rawText.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+  const stop = allLines.findIndex((line, index) => index > 4 && (
+    /^---+$/u.test(line)
+    || /^(?:최소\s*출발|포\s*함\s*(?:내역|사항)|불\s*포함|일\s*자)$/u.test(line.replace(/\s+/gu, ''))
+    || /\b[A-Z0-9]{2}\d{3,4}\b/u.test(line)
+  ));
+  const lines = allLines.slice(0, stop > 0 ? stop : Math.min(allLines.length, 70));
+  const gradeLabels = new Set(lines.flatMap(line => line.match(/(?:실속|품격|고품격)/gu) ?? []));
+  if (gradeLabels.size >= 2) return [];
+  const dateLineCount = lines.filter(line => /\d{1,2}\s*월\s*\d{1,2}\s*일/u.test(line)).length;
+  const saleLineCount = lines.filter(line => parseKrwPrice(line) > 0).length;
+  if (dateLineCount < 2 || saleLineCount < 2) return [];
+  const firstDateIndex = lines.findIndex(line => /\d{1,2}\s*월\s*\d{1,2}\s*일/u.test(line));
+  const firstPriceIndex = lines.findIndex(line => parseKrwPrice(line) > 0);
+  if (firstDateIndex < 0 || firstPriceIndex < 0 || firstDateIndex >= firstPriceIndex) return [];
+
+  const rows: MatrixPriceRow[] = [];
+  let pendingDates: string[] = [];
+  for (const line of lines) {
+    const dates = /^\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s*[,，]\s*\d{1,2}\s*일?)*$/u.test(line)
+      ? parseKoreanDateLine(line, { month: null, year: options.year })
+      : [];
+    if (dates.length > 0) {
+      pendingDates.push(...dates);
+      continue;
+    }
+    if (/^(?:별도\s*문의|문의|마감|대기|판매\s*종료)/u.test(line)) {
+      pendingDates = [];
+      continue;
+    }
+    if (pendingDates.length === 0) continue;
+    if (/^(?:(?:추석|설(?:날)?)연휴?|연휴|성수기|공휴일|한글날연휴|개천절연휴)$/u.test(line.replace(/[\[\]()\s]/gu, ''))) continue;
+    if (/(?:커미션|commission|\bcomm?\b|수수료|싱글|아동|소아|유류|가이드|기사|현지비|옵션|선택|발권|예약금)/iu.test(line)) continue;
+    const price = parseKrwPrice(line);
+    if (price <= 0) continue;
+    for (const date of [...new Set(pendingDates)]) {
+      rows.push({
+        date,
+        adult_price: price,
+        child_price: null,
+        note: 'source_korean_grouped_dates_before_price',
+        status: 'available',
+      });
+    }
+    pendingDates = [];
+  }
+  const byKey = new Map<string, MatrixPriceRow>();
+  for (const row of rows) byKey.set(`${row.date}|${row.adult_price}`, row);
+  return [...byKey.values()].sort((left, right) => left.date.localeCompare(right.date) || left.adult_price - right.adult_price);
 }
 
 function distributePrices(dates: string[], prices: number[]): MatrixPriceRow[] {
@@ -444,7 +690,10 @@ function extractKoreanDepartureDateBlockRows(rawText: string, options: PriceIROp
     : null;
 
   for (let i = 0; i < lines.length; i++) {
-    if (!/^출\s*발\s*(?:날짜|일|일자)$/.test(lines[i])) continue;
+    // Some supplier tables label the commercial departure row as `여행일`
+    // instead of `출발일`. Keep this exact-label only: `여행일정` is an
+    // itinerary heading and must never open a price/date block.
+    if (!/^(?:출\s*발\s*(?:날짜|일|일자)|여\s*행\s*일)$/.test(lines[i])) continue;
     const nearbyTitle = lines.slice(Math.max(0, i - 4), i).reverse().find(line => /PKG|패키지|박\s*\d+\s*일/.test(line));
     const durationMatch = nearbyTitle?.match(/(\d+)\s*박\s*(\d+)\s*일/);
     if (wantedDuration != null && durationMatch && Number(durationMatch[2]) !== wantedDuration) continue;
@@ -463,12 +712,23 @@ function extractKoreanDepartureDateBlockRows(rawText: string, options: PriceIROp
       dates.push(...parseKoreanDateLine(lines[j], { month, year: options.year }));
     }
 
+    // HWP visual cells can be emitted in a different text order from their
+    // row/column order. Accept one explicitly sale-labelled amount immediately
+    // before the following 상품가 header; multiple amounts remain ambiguous.
+    const precedingPrices = lines
+      .slice(i + 1, j)
+      .filter(line => /(?:특가|판매가|상품가|행사가)/.test(line))
+      .map(parseKrwPrice)
+      .filter(price => price > 0);
     while (j < lines.length && !/^상\s*품\s*가$|^상품가$|^판매가$/.test(lines[j])) j++;
     const prices: number[] = [];
     for (let k = j + 1; k < lines.length && k < j + 8; k++) {
       const price = parseKrwPrice(lines[k]);
       if (price > 0) prices.push(price);
       else if (prices.length > 0) break;
+    }
+    if (prices.length === 0 && new Set(precedingPrices).size === 1) {
+      prices.push(precedingPrices[0]!);
     }
 
     for (const row of distributePrices([...new Set(dates)], prices)) byDate.set(row.date, row);
@@ -530,6 +790,9 @@ export function extractProductPriceVerticalDateRows(
 ): MatrixPriceRow[] {
   const sourceKoreanRows = [
     ...extractKoreanDepartureLinePriceRows(rawText, options),
+    ...extractKoreanAmountBeforeDateRows(rawText, options),
+    ...extractKoreanDateBeforeAmountRows(rawText, options),
+    ...extractKoreanGroupedDatesBeforePriceRows(rawText, options),
     ...extractKoreanDurationSectionPriceRows(rawText, options),
     ...extractKoreanGradeDatePriceRows(rawText, options),
     ...extractKoreanHotelMonthDayRows(rawText, options),
@@ -539,6 +802,9 @@ export function extractProductPriceVerticalDateRows(
     for (const row of sourceKoreanRows) byKey.set(`${row.date}|${row.adult_price}|${row.note ?? ''}`, row);
     return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
   }
+
+  const bareVerticalGradeRows = extractBareVerticalGradeDateRows(rawText, options);
+  if (bareVerticalGradeRows.length > 0) return bareVerticalGradeRows;
 
   if (hasNormalKoreanVerticalPriceSignal(rawText)) {
     const koreanRows = [

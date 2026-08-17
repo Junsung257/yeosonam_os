@@ -942,8 +942,11 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
  * 동작:
  *   1. travel_packages 다시 로드 (INSERT 직후라 동일 row 존재 보장)
  *   2. evaluateVerifyChecks() 로 C1~C6 평가
- *   3. travel_packages.audit_status / audit_report / audit_checked_at UPDATE
+ *   3. 검증 결과를 읽기 전용으로 계산
  *   4. ai_quality_log 최신 행에 verify_checks 추가 (컨펌 큐 SSOT)
+ *
+ * travel_packages의 사실·감사 본문을 직접 수정하지 않는다. 고객 상품에
+ * 반영할 변경은 Registration Kernel의 correction revision으로만 만든다.
  */
 export async function runUploadVerify(packageId: string): Promise<VerifyResult | null> {
   if (!isSupabaseConfigured) return null;
@@ -979,10 +982,6 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       productPrices,
       mobileProof,
     });
-    const existingAuditReport =
-      pkg.audit_report && typeof pkg.audit_report === 'object' && !Array.isArray(pkg.audit_report)
-        ? (pkg.audit_report as Record<string, unknown>)
-        : {};
     const scorecardCheck: VerifyCheck = {
       id: 'C19',
       label: 'registration quality scorecard',
@@ -1006,28 +1005,6 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       : [];
     const qualityStatus = qualityStatusFromFailedChecks(existingQualityChecks);
     const mergedStatus = mergeAuditStatus(result.status, qualityStatus);
-
-    await supabaseAdmin
-      .from('travel_packages')
-      .update({
-        audit_status: mergedStatus,
-        audit_report: {
-          // Verification is a partial audit update. Preserve proof and
-          // publication lineage written by the browser-proof/publication
-          // stages; replacing the JSON document here would make a successful
-          // proof disappear on the next C13/C19 verification pass.
-          ...existingAuditReport,
-          checks: result.checks,
-          fixable: result.fixable,
-          source: 'auto-upload-verify',
-          version: 2,
-          quality_scorecard: qualityScorecard,
-          quality_status: qualityStatus,
-          quality_failed_checks: existingQualityChecks.filter(c => c && c.passed === false).slice(0, 20),
-        },
-        audit_checked_at: new Date().toISOString(),
-      })
-      .eq('id', packageId);
 
     // ai_quality_log 최신 행에 verify failed_checks 병합 (컨펌 큐가 한 화면에 보도록)
     if (result.status !== 'clean') {

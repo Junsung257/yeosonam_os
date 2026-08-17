@@ -10,6 +10,58 @@ const MONTH_KO = '\uC6D4';
 const MONTH_CJK = '\u6708';
 
 describe('extractPriceIR PDF date price tables', () => {
+  it('binds one product price to date cells split around HWP table labels', () => {
+    const rawText = [
+      '[LJ] \uB2E4\uB0AD 3\uBC155\uC77C',
+      '3/14, 24',
+      '12% COMM',
+      '\uAE30    \uAC04',
+      '1\uC778 399,000\uC6D0',
+      '/',
+      '*2/25\uAE4C\uC9C0 \uBC1C\uAD8C',
+      '\uC0C1 \uD488 \uAC00',
+      '4/5, 26',
+      '\uD3EC\uD568 \uC655\uBCF5\uD56D\uACF5\uB8CC',
+      '\uBD88\uD3EC\uD568 \uAC1C\uC778\uACBD\uBE44',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-03-14', 399000],
+      ['2026-03-24', 399000],
+      ['2026-04-05', 399000],
+      ['2026-04-26', 399000],
+    ]);
+  });
+
+  it('does not use an excluded adult guide or fuel fee as the package price', () => {
+    const rawText = [
+      '출발일& 상품가',
+      '4/30(목)',
+      '1,089,000원',
+      '5/1(금)',
+      '1,289,000원',
+      '5/2(토)',
+      '1,199,000원',
+      '5/3(일)',
+      '1,199,000원',
+      '포함 사항',
+      '왕복항공료, 호텔, 식사',
+      '불포함 사항',
+      '유류 26,500원, 가이드경비 3만원 성인/아동 동일',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-04-30', 1_089_000],
+      ['2026-05-01', 1_289_000],
+      ['2026-05-02', 1_199_000],
+      ['2026-05-03', 1_199_000],
+    ]);
+  });
+
   it('recovers departure ranges and prices from compact PDF text', () => {
     const rawText = `
 5/6~5/17 , 409,000 5/24~5/28 , 429,000
@@ -74,6 +126,34 @@ ${MONTH_KO}7
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-07-25', adult_price: 1649000 }));
   });
 
+  it('recovers HWP table cells flattened as price before departure dates', () => {
+    const rawText = [
+      '\u2605\uCDE8\uD56D\uD2B9\uAC00\u2605',
+      '999,000',
+      '4/7',
+      '1,069,000',
+      '4/14, 21',
+      '1,129,000',
+      '4/28, 5/5',
+      '1,069,000',
+      '5/12, 19, 26',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(pricesByDate).toEqual(new Map([
+      ['2026-04-07', 999000],
+      ['2026-04-14', 1069000],
+      ['2026-04-21', 1069000],
+      ['2026-04-28', 1129000],
+      ['2026-05-05', 1129000],
+      ['2026-05-12', 1069000],
+      ['2026-05-19', 1069000],
+      ['2026-05-26', 1069000],
+    ]));
+  });
+
   it('does not turn per-person labels into phantom day-one departures', () => {
     const rawText = [
       '[LJ] Da Nang Hoi An 3N5D',
@@ -106,6 +186,16 @@ ${MONTH_KO}7
     expect(byDate.has('2026-08-01')).toBe(false);
   });
 
+  it('does not turn cruise vessel specifications into a selling price', () => {
+    const rawText = [
+      '2026\uB144 5\uC6D4 14\uC77C \uB3D9\uACBD \uD06C\uB8E8\uC988 4\uBC15 5\uC77C',
+      '\uD06C\uB8E8\uC988 \uC81C\uC6D0',
+      '\u25C6 \uCD1D \uD1A4\uC218 171.598\uD1A4 \u25C6 \uC804\uC7A5/\uC804\uD3ED/\uC804\uACE0 316m/43m/76M \u25C6 \uCD1D \uD0D1\uC2B9\uAC1D 5,655\uBA85 \u25C6 \uC2B9\uBB34\uC6D0\uC218 1,595\uBA85',
+    ].join('\n');
+
+    expect(extractPriceIR(rawText, { year: 2026 }).rows).toEqual([]);
+  });
+
   it('recovers spaced month day price rows without slash separators', () => {
     const rawText = [
       '\uAD6C\uCC44\uAD6C \uC2E0\uC120\uC9C0 \uD669\uB8E1',
@@ -128,6 +218,32 @@ ${MONTH_KO}7
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-04-08', adult_price: 1029000 }));
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-20', adult_price: 879000 }));
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-17', adult_price: 829000 }));
+  });
+
+  it('treats a dot as a Korean thousands separator in a date-price context', () => {
+    const rawText = [
+      '8월 25일, 30일, 31일 : 299.000원',
+      '9월 14일, 20일, 29일 : 269.000원',
+      '10월 5일, 12일, 19일 : 339.000원',
+      '11월 5일, 12일, 19일 : 339.000원',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(pricesByDate.get('2026-08-25')).toBe(299000);
+    expect(pricesByDate.get('2026-09-29')).toBe(269000);
+    expect(pricesByDate.get('2026-10-12')).toBe(339000);
+    expect(pricesByDate.get('2026-11-19')).toBe(339000);
+    expect(extractPriceIR([
+      '다낭 3박5일 상품 요금표',
+      '출발일 및 성인 판매가',
+      '8월 25일 : 299.000',
+      '포함사항 왕복항공 호텔 조식',
+    ].join('\n'), { year: 2026 }).rows).toEqual([
+      expect.objectContaining({ date: '2026-08-25', adult_price: 299_000 }),
+    ]);
   });
 
   it('uses later monthly rows as corrections and repairs one missing trailing zero', () => {
@@ -164,6 +280,42 @@ ${MONTH_KO}7
     expect(result.rows.filter(row => row.date === '2026-08-07')).toHaveLength(1);
     expect(result.rows.filter(row => row.date === '2026-09-21')).toHaveLength(1);
   });
+
+  it('lets an explicitly labeled special-date price override a general period price', () => {
+    const rawText = [
+      '8/1~8/31 1,039,000\uC6D0',
+      '\uD2B9\uC1A1\uC77C\uC790',
+      '8/14, 15',
+      '1,149,000\uC6D0',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+    const august14 = result.rows.filter(row => row.date === '2026-08-14');
+    const august13 = result.rows.filter(row => row.date === '2026-08-13');
+
+    expect(august13).toEqual([expect.objectContaining({ adult_price: 1_039_000 })]);
+    expect(august14).toEqual([expect.objectContaining({
+      adult_price: 1_149_000,
+      note: 'pdf_exact_date_override_price',
+    })]);
+  });
+
+  it('removes exact and same-month range dates listed under the departure exclusion heading', () => {
+    const rawText = [
+      '\uC778\uCC9C \uCD9C\uBC1C \uC7A5\uAC00\uACC4 \uD328\uD0A4\uC9C0 \uC0C1\uD488 \uCD9C\uBC1C\uC77C \uAC00\uACA9\uD45C',
+      '9/1~9/30 1,429,000\uC6D0',
+      '\uC81C\uC678\uC77C\uC790: 9/3~4, 23, 24',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+    const dates = new Set(result.rows.map(row => row.date));
+
+    expect(dates.has('2026-09-02')).toBe(true);
+    expect(dates.has('2026-09-03')).toBe(false);
+    expect(dates.has('2026-09-04')).toBe(false);
+    expect(dates.has('2026-09-23')).toBe(false);
+    expect(dates.has('2026-09-24')).toBe(false);
+  });
 });
 
 describe('extractPriceIR cruise cabin price tables', () => {
@@ -193,6 +345,28 @@ describe('extractPriceIR cruise cabin price tables', () => {
 });
 
 describe('extractPriceIR Korean vertical supplier price tables', () => {
+  it('binds an exact 여행일 row to the following single 상품가 row', () => {
+    const rawText = `
+[청주공항-청도 3일]
+여행일
+3월 23일, 24일
+2026년
+6명 이상 출발
+[특가] 299,000원/인
+상품가
+(현금결재)
+포함 내역
+왕복항공료`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 3 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-03-23', adult_price: 299000 }),
+      expect.objectContaining({ date: '2026-03-24', adult_price: 299000 }),
+    ]);
+  });
+
   it('recovers departure-date blocks followed by multiple package prices', () => {
     const rawText = `
 부산출발 장가계 3박4일 실속특가 PKG
@@ -312,6 +486,74 @@ BX341 21:55 01:25
       }),
     ]);
     expect(result.rows.some(row => row.date === '2026-08-30' || row.date === '2026-09-19')).toBe(false);
+  });
+
+  it('binds an HWP amount-before-date table to the matching duration only', () => {
+    const rawText = [
+      '날 짜',
+      '3N5D',
+      '금 액',
+      '499,000',
+      '9월 9일',
+      '599,000',
+      '9월 16일',
+      '799,000',
+      '9월 23일 추석연휴',
+      '날 짜',
+      '4N6D',
+      '금 액',
+      '599,000',
+      '9월 5일',
+      '699,000',
+      '9월 12, 19, 26일',
+      '불포함 내역',
+      '싱글비용($55 / 9월 30일 출발시 $125)',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-09-09', 499000],
+      ['2026-09-16', 599000],
+      ['2026-09-23', 799000],
+    ]);
+    expect(result.rows.some(row => row.date === '2026-09-30' || row.adult_price === 125000)).toBe(false);
+  });
+
+  it('binds grouped Korean dates to the following amount and leaves inquiry dates unpriced', () => {
+    const rawText = [
+      '수요일【3박5일】',
+      '광저우,천저우 5일',
+      '9월 2일',
+      '1,179,000',
+      '9월 9일',
+      '9월 16일',
+      '1,199,000',
+      '9월 23일',
+      '[추석 연휴]',
+      '1,449,000',
+      '9월 30일',
+      '별도문의',
+      '10월 7일',
+      '[한글날 연휴]',
+      '1,399,000',
+      '---',
+      '불포함 내역',
+      '싱글비용 $80',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-09-02', 1179000],
+      ['2026-09-09', 1199000],
+      ['2026-09-16', 1199000],
+      ['2026-09-23', 1449000],
+      ['2026-10-07', 1399000],
+    ]);
+    expect(result.rows.some(row => row.date === '2026-09-30')).toBe(false);
   });
 });
 
@@ -895,6 +1137,18 @@ describe('extractPriceIR product price vertical date table', () => {
     expect(economy.rows.find(row => row.date === '2026-09-30')?.adult_price).toBe(799000);
     expect(premium.rows.find(row => row.date === '2026-09-30')?.adult_price).toBe(1269000);
     expect(deluxe.rows.find(row => row.date === '2026-09-30')?.adult_price).toBe(1429000);
+  });
+
+  it('does not attach unlabeled grade columns when the product grade axis is unknown', () => {
+    const rawText = [
+      '상품가',
+      '9월 30일',
+      '799,000',
+      '1,269,000',
+      '1,429,000',
+    ].join('\n');
+
+    expect(extractPriceIR(rawText, { year: 2026, title: '부산-계림 3박5일' }).rows).toEqual([]);
   });
 });
 
