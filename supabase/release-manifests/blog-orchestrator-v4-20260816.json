@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "release": "blog-orchestrator-v4-20260816",
+  "apply_mode": "supabase-db-push-include-all-after-exact-dry-run",
+  "migrations": [
+    {
+      "version": "20260606115000",
+      "file": "supabase/migrations/20260606115000_blog_keyword_families.sql",
+      "sha256": "a8009e428299f530e1f5d0f20bda6d733c2f15000df119f1f1ef265128b1ccf3"
+    },
+    {
+      "version": "20260814033000",
+      "file": "supabase/migrations/20260814033000_blog_medication_high_risk_policy.sql",
+      "sha256": "7f08114e29eb4f6e7d2efd7760756c97e6e89de1cf12bf56ace510a7aca5fb00"
+    },
+    {
+      "version": "20260815093943",
+      "file": "supabase/migrations/20260815093943_blog_keyword_families_service_role_rls.sql",
+      "sha256": "4b38b5b8510bd5170a6ee6663a1258b1d29775579dd5c5568d4dbd9f93203f87"
+    },
+    {
+      "version": "20260815120135",
+      "file": "supabase/migrations/20260815120135_blog_deepseek_orchestrator_v4.sql",
+      "sha256": "09d22b70b596af5c1e063e70269b8dfd3a3174a386c2efbf8758829c0094b1c5"
+    },
+    {
+      "version": "20260815211325",
+      "file": "supabase/migrations/20260815211325_blog_public_eligibility_rpc_contract.sql",
+      "sha256": "b075fcecbe04d812bf26370a1e2fae79a9ae53d9edc442e5a142528e2a5761d4"
+    },
+    {
+      "version": "20260816015102",
+      "file": "supabase/migrations/20260816015102_blog_ai_budget_deepseek_only.sql",
+      "sha256": "b1ffcc6898bddbf6453a04ce787993b1f4bb87daa7543b1a029f22bfc4dfa614"
+    },
+    {
+      "version": "20260816093000",
+      "file": "supabase/migrations/20260816093000_add_danang_reviewed_research_sources.sql",
+      "sha256": "a5feb9c4f80154fc7c1cb2e9da9911b333a9ac68dba227d77e3d9782e7a89e38"
+    },
+    {
+      "version": "20260816094500",
+      "file": "supabase/migrations/20260816094500_blog_generation_attempt_finish_reason.sql",
+      "sha256": "b0a59ed03485370c1ed27fcbf3f2d7a58a1ef6e4b5886fdcd06c9cb285c9c94a"
+    },
+    {
+      "version": "20260816120000",
+      "file": "supabase/migrations/20260816120000_blog_publication_rollout_control_v1.sql",
+      "sha256": "9cf484c00e19e4b442069127f361e80f751f5a174ce8e9a44a411ea3c8c389f6"
+    },
+    {
+      "version": "20260816123000",
+      "file": "supabase/migrations/20260816123000_blog_public_slug_registry_v1.sql",
+      "sha256": "d4f53aefc9636801bae8f2a9b32001702238124e3dad8b909bc7937351bc588f"
+    },
+    {
+      "version": "20260816124500",
+      "file": "supabase/migrations/20260816124500_blog_public_slug_registry_security_definer.sql",
+      "sha256": "e9f46bf95a9a21f065cf5f8bb6a0321b1c55b0b3b5d6bd51206377e04caa9d24"
+    },
+    {
+      "version": "20260817043000",
+      "file": "supabase/migrations/20260817043000_blog_automated_atomic_replacement_v1.sql",
+      "sha256": "efe7b7b89ef04d53e01aa24542e2bebd6dadbea2cc3670e9a974182a3b192316"
+    },
+    {
+      "version": "20260817121500",
+      "file": "supabase/migrations/20260817121500_add_danang_itinerary_decision_sources.sql",
+      "sha256": "1803b708fad6b3f5636d8ed6cd75afe3c185892a96132d0e28740b6ecaa57f3a"
+    }
+  ],
+  "rollback": {
+    "file": "supabase/rollbacks/blog-orchestrator-v4-release-rollback.sql",
+    "sha256": "f5c80cb36c07ed50fa036e5af20ef7c78ce503ff389aea4c448e6674d2c74bc9"
+  }
+}

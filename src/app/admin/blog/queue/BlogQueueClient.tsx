@@ -22,6 +22,7 @@ import {
 import { DetailDrawer, EmptyState, PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { fmtDateTime } from '@/lib/admin-utils';
+import type { BlogQueueAdminViewKey } from '@/lib/blog-queue-admin-view';
 
 interface QueueItem {
   id: string;
@@ -181,13 +182,17 @@ function statusLabel(status: string | null | undefined) {
   return STATUS_LABELS[status] || status;
 }
 
-export default function BlogQueueClient() {
+interface BlogQueueClientProps {
+  initialView?: BlogQueueAdminViewKey;
+}
+
+export default function BlogQueueClient({ initialView = 'active' }: BlogQueueClientProps) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [summary, setSummary] = useState<QueueSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [view, setView] = useState<(typeof VIEW_TABS)[number]['key']>('active');
+  const [view, setView] = useState<(typeof VIEW_TABS)[number]['key']>(initialView);
   const [source, setSource] = useState('all');
   const [age, setAge] = useState('all');
   const [query, setQuery] = useState('');

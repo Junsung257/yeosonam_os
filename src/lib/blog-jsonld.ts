@@ -1,401 +1,130 @@
-/**
- * Blog JSON-LD Builder — schema.org 구조화 데이터 자동 생성
- *
- * 지원 schema:
- *   - BlogPosting (EEAT 풀 필드 — 블로그 상세 단일 진입점)
- *   - BreadcrumbList
- *   - FAQPage (Q. ... A. ... 패턴 자동 추출)
- *   - HowTo (3박4일 일정/Day 1~N 패턴 자동 추출)
- *   - TouristTrip (상품 블로그 — destination/duration/price 있을 때, 본문 일정 연동)
- *
- * Why: rich snippet 노출 시 CTR 18-30% 상승. Naver는 표준 schema.org 미지원이지만
- *      Google에서 큰 효과 + Bing/Yandex/Daum 모두 인식.
- *
- * 타입 안전 (PR-C): schema-dts 의 WithContext<X> 타입으로 컴파일 타임 검증.
- *   잘못된 schema 사용은 build 단계에서 차단 → rich result 누락 0건 보장.
- */
-
-import type {
-  WithContext,
-  BlogPosting,
-  BreadcrumbList,
-  FAQPage,
-  HowTo,
-  TouristTrip,
-  Product,
-} from 'schema-dts';
-import { normalizeJsonLdText, normalizeJsonLdUrl } from '@/lib/json-ld';
+import type { BlogPosting, BreadcrumbList, FAQPage, HowTo, Product, TouristTrip, WithContext } from 'schema-dts';
+import { normalizeJsonLdText, normalizeJsonLdUrl } from './json-ld';
 
 export interface FaqItem { q: string; a: string }
+export interface HowToStep { name: string; text: string }
 
-export interface HowToStep {
-  name: string;
-  text: string
-}
-
-/** 상품 연동 시 BlogPosting.about 에 넣는 최소 필드 */
 export interface BlogJsonLdPackageLite {
-  id: string
-  title: string
-  destination: string
-  price: number | null
+  id: string;
+  title: string;
+  destination: string;
+  price: number | null;
+  isCurrentlyAvailable?: boolean;
 }
 
-/**
- * FAQ 추출 — 다양한 마크다운 패턴 지원
- *   1) **Q. 질문** / **Q: 질문**  \n\n  A. / A: 답
- *   2) ### Q. / Q: 질문
- *   3) Q. / Q: 평문
- *
- * 구분자: 점(`.`)·콜론(`:`)·공백 어느 쪽도 허용 — Gemini/Claude 생성기 둘 다 커버.
- * (실측: `**Q: 답?` 형식 글이 FAQPage JSON-LD 추출 실패 → 구글 rich result 누락 — 2026-05-17)
- */
-export function extractFaqItems(blogHtml: string): FaqItem[] {
-  const items: FaqItem[] = []
-  if (!blogHtml) return items
-
-  const re1 = /\*\*Q\d{0,2}[.:]\s*(.+?)\*\*\s*\n+\s*A[.:]\s*([\s\S]+?)(?=\n\n\*\*Q\d{0,2}[.:]|\n\n##|\n\n###|$)/g
-  let m
-  while ((m = re1.exec(blogHtml)) !== null) {
-    items.push({
-      q: normalizeJsonLdText(m[1], 240),
-      a: normalizeJsonLdText(m[2], 800),
-    })
-  }
-
-  if (items.length === 0) {
-    const re2 = /^###\s+Q\d{0,2}[.:]?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm
-    while ((m = re2.exec(blogHtml)) !== null) {
+export function extractFaqItems(markdown: string): FaqItem[] {
+  if (!markdown) return [];
+  const items: FaqItem[] = [];
+  const patterns = [
+    /\*\*Q\d{0,2}[.:]\s*(.+?)\*\*\s*\n+\s*A[.:]\s*([\s\S]+?)(?=\n\n\*\*Q\d{0,2}[.:]|\n\n##|\n\n###|$)/g,
+    /^###\s+Q\d{0,2}[.:]?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm,
+    /^Q\d{0,2}[.:]?\s+(.+?)$\n+\s*A[.:]?\s+([\s\S]+?)(?=\n\nQ\d{0,2}[.:]|\n##|$)/gm,
+  ];
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(markdown)) !== null) {
       items.push({
-        q: normalizeJsonLdText(m[1], 240),
-        a: normalizeJsonLdText(m[2], 800),
-      })
+        q: normalizeJsonLdText(match[1], 240),
+        a: normalizeJsonLdText(match[2], 800),
+      });
+      if (items.length >= 10) return items;
     }
+    if (items.length) break;
   }
-
-  if (items.length === 0) {
-    const re3 = /^Q\d{0,2}[.:]?\s+(.+?)$\n+\s*A[.:]?\s+([\s\S]+?)(?=\n\nQ\d{0,2}[.:]|\n##|$)/gm
-    while ((m = re3.exec(blogHtml)) !== null) {
-      items.push({
-        q: normalizeJsonLdText(m[1], 240),
-        a: normalizeJsonLdText(m[2], 800),
-      })
-    }
-  }
-
-  return items.slice(0, 10)
+  return items;
 }
 
-/**
- * HowTo step 추출 — Day 1·Day 2·1일차·2일차 패턴
- */
-export function extractHowToSteps(blogHtml: string): HowToStep[] {
-  const steps: HowToStep[] = []
-  if (!blogHtml) return steps
-
-  const re =
-    /^##?#?\s+(?:Day\s*(\d+)|(\d+)\s*일차)[\s:·\-—]+(.+?)$\n+([\s\S]+?)(?=^##?\s*(?:Day\s*\d+|\d+\s*일차)|^##|$)/gm
-  let m
-  while ((m = re.exec(blogHtml)) !== null) {
-    const dayNum = m[1] || m[2]
-    const title = m[3].trim()
-    const content = m[4].trim().slice(0, 500)
+export function extractHowToSteps(markdown: string): HowToStep[] {
+  if (!markdown) return [];
+  const steps: HowToStep[] = [];
+  const pattern = /^#{2,3}\s+(?:Day\s*(\d+)|(\d+)\s*일차)[\s:·\-–]+(.+?)$\n+([\s\S]+?)(?=^#{2,3}\s*(?:Day\s*\d+|\d+\s*일차)|^##|$)/gim;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(markdown)) !== null && steps.length < 14) {
     steps.push({
-      name: normalizeJsonLdText(`Day ${dayNum}: ${title}`, 160),
-      text: normalizeJsonLdText(content, 500),
-    })
-    if (steps.length >= 14) break
+      name: normalizeJsonLdText(`Day ${match[1] || match[2]}: ${match[3]}`, 160),
+      text: normalizeJsonLdText(match[4], 500),
+    });
   }
-
-  return steps
+  return steps;
 }
 
-interface HowToTouristInput {
-  baseUrl: string
-  title: string
-  description: string
-  imageUrl?: string | null
-  blogHtml: string
-  destination?: string | null
-  duration?: number | null
-  price?: number | null
-  productId?: string | null
-}
-
-function buildHowToSchema(
-  opts: HowToTouristInput,
-  howToSteps: HowToStep[],
-): WithContext<HowTo> | null {
-  if (howToSteps.length < 3) return null
-  const dur = opts.duration
-  const totalTime =
-    typeof dur === 'number' && Number.isFinite(dur) && dur >= 2 ? `P${dur - 1}DT0H` : undefined
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'HowTo',
-    name: opts.title,
-    description: opts.description,
-    image: opts.imageUrl,
-    estimatedCost: opts.price
-      ? {
-          '@type': 'MonetaryAmount',
-          currency: 'KRW',
-          value: opts.price,
-        }
-      : undefined,
-    ...(totalTime ? { totalTime } : {}),
-    step: howToSteps.map((s, idx) => ({
-      '@type': 'HowToStep',
-      position: idx + 1,
-      name: s.name,
-      text: s.text,
-    })),
-  } as WithContext<HowTo>
-}
-
-function buildStandaloneTouristTripSchema(
-  opts: HowToTouristInput,
-  howToSteps: HowToStep[],
-): WithContext<TouristTrip> | null {
-  if (!opts.productId || !opts.destination) return null
-  const itinerary =
-    howToSteps.length > 0
-      ? {
-          '@type': 'ItemList' as const,
-          itemListElement: howToSteps.map((s, idx) => ({
-            '@type': 'ListItem' as const,
-            position: idx + 1,
-            name: s.name,
-          })),
-        }
-      : undefined
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'TouristTrip',
-    name: opts.title,
-    description: opts.description,
-    image: opts.imageUrl,
-    touristType: '한국 여행자',
-    ...(itinerary ? { itinerary } : {}),
-    offers: opts.price
-      ? {
-          '@type': 'Offer',
-          url: `${opts.baseUrl}/packages/${encodeURIComponent(opts.productId)}`,
-          priceCurrency: 'KRW',
-          price: opts.price,
-          availability: 'https://schema.org/InStock',
-        }
-      : undefined,
-    provider: {
-      '@type': 'Organization',
-      name: '여소남',
-      url: opts.baseUrl,
-    },
-  } as WithContext<TouristTrip>
-}
-
-/** 블로그 상세 페이지 — 모든 JSON-LD를 한 번에 생성 (드리프트 방지) */
 export interface BlogPostPageJsonLdInput {
-  baseUrl: string
-  pageUrl: string
-  title: string
-  description: string
-  publishedAt: string
-  modifiedAt: string | null
-  ogImageUrl: string | null
-  /** 마크다운 원본 — FAQ·HowTo 추출 */
-  blogHtmlMarkdown: string
-  /** sanitize된 HTML — wordCount */
-  bodyHtmlForWordCount: string
-  readingMinutes: number
-  angleLabel: string
-  pkg: BlogJsonLdPackageLite | null
-  /** formatDuration 결과 — about.description 용 */
-  durationStr: string
-  /** 상품 일수 — HowTo totalTime (travel_packages.duration 숫자) */
-  productDurationDays?: number | null
+  baseUrl: string;
+  pageUrl: string;
+  title: string;
+  description: string;
+  publishedAt: string;
+  modifiedAt: string | null;
+  ogImageUrl: string | null;
+  blogHtmlMarkdown: string;
+  bodyHtmlForWordCount: string;
+  readingMinutes: number;
+  angleLabel: string;
+  pkg: BlogJsonLdPackageLite | null;
+  durationStr: string;
+  productDurationDays?: number | null;
+  includeFaqSchema?: boolean;
+  includeHowToSchema?: boolean;
+  includeTouristTripSchema?: boolean;
+  authorProfile?: { name: string; url: string } | null;
+  reviewer?: { name: string; url?: string | null; reviewedAt: string; scope: string } | null;
 }
 
 export interface BlogPostPageJsonLdBundle {
-  blogPosting: WithContext<BlogPosting>
-  breadcrumbList: WithContext<BreadcrumbList>
-  faqPage: WithContext<FAQPage> | null
-  howTo: WithContext<HowTo> | null
-  touristTrip: WithContext<TouristTrip> | null
-  product: WithContext<Product> | null
+  blogPosting: WithContext<BlogPosting>;
+  breadcrumbList: WithContext<BreadcrumbList>;
+  faqPage: WithContext<FAQPage> | null;
+  howTo: WithContext<HowTo> | null;
+  touristTrip: WithContext<TouristTrip> | null;
+  product: WithContext<Product> | null;
 }
 
 export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPostPageJsonLdBundle {
-  const {
-    baseUrl: rawBaseUrl,
-    pageUrl: rawPageUrl,
-    title: rawTitle,
-    description: rawDescription,
-    publishedAt: rawPublishedAt,
-    modifiedAt: rawModifiedAt,
-    ogImageUrl: rawOgImageUrl,
-    blogHtmlMarkdown,
-    bodyHtmlForWordCount,
-    readingMinutes: rawReadingMinutes,
-    angleLabel: rawAngleLabel,
-    pkg: rawPkg,
-    durationStr: rawDurationStr,
-    productDurationDays,
-  } = input
+  const safeBase = normalizeJsonLdUrl(input.baseUrl, { fallback: 'https://www.yeosonam.com' })
+    || 'https://www.yeosonam.com';
+  const baseUrl = new URL(safeBase).origin;
+  const pageUrl = normalizeJsonLdUrl(input.pageUrl, { fallback: `${baseUrl}/blog`, allowedOrigin: baseUrl })
+    || `${baseUrl}/blog`;
+  const title = normalizeJsonLdText(input.title, 110, '여소남 여행 정보');
+  const description = normalizeJsonLdText(input.description, 500, title);
+  const publishedAt = normalizeJsonLdText(input.publishedAt, 64, '1970-01-01T00:00:00.000Z');
+  const modifiedAt = input.modifiedAt ? normalizeJsonLdText(input.modifiedAt, 64, publishedAt) : publishedAt;
+  const image = normalizeJsonLdUrl(input.ogImageUrl, { fallback: `${baseUrl}/og-image.png` });
+  const faqItems = input.includeFaqSchema ? extractFaqItems(input.blogHtmlMarkdown) : [];
+  const steps = input.includeHowToSchema || input.includeTouristTripSchema
+    ? extractHowToSteps(input.blogHtmlMarkdown)
+    : [];
 
-  const safeBaseUrl = normalizeJsonLdUrl(rawBaseUrl, {
-    fallback: 'https://www.yeosonam.com',
-  }) ?? 'https://www.yeosonam.com'
-  const baseUrl = new URL(safeBaseUrl).origin
-  const pageUrl = normalizeJsonLdUrl(rawPageUrl, {
-    fallback: `${baseUrl}/blog`,
-    allowedOrigin: baseUrl,
-  }) ?? `${baseUrl}/blog`
-  const title = normalizeJsonLdText(rawTitle, 110, '여소남 여행 가이드')
-  const description = normalizeJsonLdText(rawDescription, 500, title)
-  const publishedAt = normalizeJsonLdText(rawPublishedAt, 64, '1970-01-01T00:00:00.000Z')
-  const modifiedAt = rawModifiedAt
-    ? normalizeJsonLdText(rawModifiedAt, 64, publishedAt)
-    : null
-  const ogImageUrl = normalizeJsonLdUrl(rawOgImageUrl, { fallback: null })
-  const readingMinutes = Number.isFinite(rawReadingMinutes)
-    ? Math.min(999, Math.max(1, Math.round(rawReadingMinutes)))
-    : 1
-  const angleLabel = normalizeJsonLdText(rawAngleLabel, 80, '여행 정보')
-  const durationStr = normalizeJsonLdText(rawDurationStr, 40)
-  const pkg: BlogJsonLdPackageLite | null = rawPkg
-    ? {
-        id: normalizeJsonLdText(rawPkg.id, 128),
-        title: normalizeJsonLdText(rawPkg.title, 200, title),
-        destination: normalizeJsonLdText(rawPkg.destination, 120),
-        price:
-          typeof rawPkg.price === 'number' && Number.isFinite(rawPkg.price) && rawPkg.price >= 0
-            ? Math.min(rawPkg.price, 1_000_000_000)
-            : null,
-      }
-    : null
-
-  const wordCount = bodyHtmlForWordCount.replace(/<[^>]+>/g, '').length
-  const faqItems = extractFaqItems(blogHtmlMarkdown)
-  const howToSteps = extractHowToSteps(blogHtmlMarkdown)
-
-  const howToTouristBase: HowToTouristInput = {
-    baseUrl,
-    title,
-    description,
-    imageUrl: ogImageUrl,
-    blogHtml: blogHtmlMarkdown,
-    destination: pkg?.destination ?? null,
-    duration:
-      productDurationDays != null && !Number.isNaN(productDurationDays)
-        ? productDurationDays
-        : null,
-    price: pkg?.price ?? null,
-    productId: pkg?.id ?? null,
-  }
-
-  const howTo = buildHowToSchema(howToTouristBase, howToSteps)
-  const touristTrip = buildStandaloneTouristTripSchema(howToTouristBase, howToSteps)
-
-  const faqPage: WithContext<FAQPage> | null =
-    faqItems.length > 0
-      ? ({
-          '@context': 'https://schema.org',
-          '@type': 'FAQPage',
-          mainEntity: faqItems.map(faq => ({
-            '@type': 'Question',
-            name: faq.q,
-            acceptedAnswer: { '@type': 'Answer', text: faq.a },
-          })),
-        } as WithContext<FAQPage>)
-      : null
-
+  const author = input.authorProfile
+    ? { '@type': 'Person' as const, name: input.authorProfile.name, url: input.authorProfile.url }
+    : { '@type': 'Organization' as const, name: '여소남', url: baseUrl };
   const blogPosting = ({
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: title,
     description,
-    image: ogImageUrl || `${baseUrl}/og-image.png`,
+    image,
     datePublished: publishedAt,
-    dateModified: modifiedAt || publishedAt,
+    dateModified: modifiedAt,
     inLanguage: 'ko-KR',
-    wordCount,
-    timeRequired: `PT${readingMinutes}M`,
-    articleSection: angleLabel,
-    keywords: [pkg?.destination, angleLabel, '여행', '패키지여행', '단체여행'].filter(Boolean).join(','),
-    author: [
-      {
-        '@type': 'Organization',
-        name: '여소남',
-        url: baseUrl,
-        sameAs: [
-          'https://blog.naver.com/yeosonam_official',
-          'https://blog.naver.com/yeosonam_',
-          'https://www.instagram.com/yeosonam/',
-          'https://www.threads.com/@yeosonam',
-          'https://www.youtube.com/@yeosonam',
-        ],
-      },
-      {
+    wordCount: input.bodyHtmlForWordCount.replace(/<[^>]+>/g, '').trim().length,
+    timeRequired: `PT${Math.max(1, Math.round(input.readingMinutes || 1))}M`,
+    articleSection: normalizeJsonLdText(input.angleLabel, 80, '여행 정보'),
+    author,
+    ...(input.reviewer ? {
+      reviewedBy: {
         '@type': 'Person',
-        name: '여소남 운영팀',
-        jobTitle: '여행 큐레이션 에디터',
-        worksFor: { '@type': 'Organization', name: '여소남', url: baseUrl },
-        url: `${baseUrl}/about`,
+        name: input.reviewer.name,
+        ...(input.reviewer.url ? { url: input.reviewer.url } : {}),
       },
-    ],
-    reviewedBy: {
-      '@type': 'Organization',
-      name: '여소남 운영팀',
-      url: baseUrl,
-    },
+    } : {}),
     publisher: {
       '@type': 'Organization',
       name: '여소남',
       logo: { '@type': 'ImageObject', url: `${baseUrl}/logo.png` },
     },
-    // mainEntityOfPage 는 string 보다 WebPage 객체가 schema-dts 표준 + Google rich-result parser 안정성 ↑ (2026-05-17 PR #105)
     mainEntityOfPage: { '@type': 'WebPage', '@id': pageUrl },
-    // speakable — Google Assistant / Gemini / Perplexity 등 음성·AI Overview 인용 시 발췌 대상 영역 지정.
-    // h1·본문 첫 문단·TL;DR 박스를 후보로 노출. 2026 Google docs: voice/AI 트래픽 핵심 신호
-    // (https://developers.google.com/search/docs/appearance/structured-data/speakable)
-    speakable: {
-      '@type': 'SpeakableSpecification',
-      cssSelector: ['article h1', '.prose-blog > p:first-of-type', '[data-tldr]', '[data-ai-overview]'],
-    },
-    ...(pkg && {
-      about: {
-        '@type': 'TouristTrip',
-        name: pkg.title,
-        description: `${pkg.destination}${durationStr ? ` ${durationStr}` : ''} 여행 패키지`,
-        touristType: angleLabel,
-        ...(pkg.destination && {
-          itinerary: {
-            '@type': 'TouristDestination',
-            name: pkg.destination,
-          },
-        }),
-        ...(pkg.price && {
-          offers: {
-            '@type': 'Offer',
-            price: pkg.price,
-            priceCurrency: 'KRW',
-            availability: 'https://schema.org/InStock',
-            url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
-            validThrough: new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10),
-          },
-        }),
-      },
-      ...(pkg.destination && {
-        mentions: [
-          {
-            '@type': 'TouristDestination',
-            name: pkg.destination,
-          },
-        ],
-      }),
-    }),
-  } as WithContext<BlogPosting>)
+  } as WithContext<BlogPosting>);
 
   const breadcrumbList = ({
     '@context': 'https://schema.org',
@@ -403,49 +132,52 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: '홈', item: baseUrl },
       { '@type': 'ListItem', position: 2, name: '블로그', item: `${baseUrl}/blog` },
-      ...(pkg?.destination
-        ? [
-            {
-              '@type': 'ListItem',
-              position: 3,
-              name: pkg.destination,
-              item: `${baseUrl}/blog/destination/${encodeURIComponent(pkg.destination)}`,
-            },
-            { '@type': 'ListItem', position: 4, name: title, item: pageUrl },
-          ]
-        : [{ '@type': 'ListItem', position: 3, name: title, item: pageUrl }]),
+      ...(input.pkg?.destination ? [
+        { '@type': 'ListItem' as const, position: 3, name: input.pkg.destination, item: `${baseUrl}/blog/destination/${encodeURIComponent(input.pkg.destination)}` },
+        { '@type': 'ListItem' as const, position: 4, name: title, item: pageUrl },
+      ] : [{ '@type': 'ListItem' as const, position: 3, name: title, item: pageUrl }]),
     ],
-  } as WithContext<BreadcrumbList>)
+  } as WithContext<BreadcrumbList>);
 
-  // 상품 리뷰 글(pkg 존재)에 한해 Product + AggregateRating 스키마 조건부 추가
-  // Google review snippet 노출 조건: 상품명, 설명, 평점.
-  // blog_type='product' 등의 구분이 없으므로 pkg 존재 여부로 판단 (상품이 있으면 상품 리뷰)
-  const product: WithContext<Product> | null = pkg
+  const faqPage = faqItems.length ? ({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqItems.map((item) => ({
+      '@type': 'Question', name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a },
+    })),
+  } as WithContext<FAQPage>) : null;
+
+  const howTo = input.includeHowToSchema && steps.length >= 3 ? ({
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: title,
+    description,
+    image,
+    step: steps.map((step, index) => ({
+      '@type': 'HowToStep', position: index + 1, name: step.name, text: step.text,
+    })),
+  } as WithContext<HowTo>) : null;
+
+  const pkg = input.pkg;
+  const touristTrip = input.includeTouristTripSchema && pkg?.isCurrentlyAvailable === true && pkg.destination
     ? ({
-        '@context': 'https://schema.org',
-        '@type': 'Product',
-        name: pkg.title,
-        description: `${pkg.destination}${durationStr ? ` ${durationStr}` : ''} 여행 패키지 — 여소남`,
-        ...(pkg.destination
-          ? { category: pkg.destination }
-          : {}),
-        offers: {
-          '@type': 'Offer',
-          price: pkg.price ?? 0,
-          priceCurrency: 'KRW',
-          availability: 'https://schema.org/InStock',
-          url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
-          seller: { '@type': 'Organization', name: '여소남' },
-        },
-        aggregateRating: {
-          '@type': 'AggregateRating',
-          ratingValue: '4.5',
-          reviewCount: '1',
-          bestRating: '5',
-          worstRating: '1',
-        },
-      } as WithContext<Product>)
-    : null
+        '@context': 'https://schema.org', '@type': 'TouristTrip', name: pkg.title,
+        description, image, touristType: '여행자',
+        ...(steps.length ? { itinerary: { '@type': 'ItemList', itemListElement: steps.map((step, index) => ({ '@type': 'ListItem', position: index + 1, name: step.name })) } } : {}),
+        ...(pkg.price != null ? { offers: { '@type': 'Offer', url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`, price: pkg.price, priceCurrency: 'KRW', availability: 'https://schema.org/InStock' } } : {}),
+      } as WithContext<TouristTrip>)
+    : null;
 
-  return { blogPosting, breadcrumbList, faqPage, howTo, touristTrip, product }
+  const product = pkg?.isCurrentlyAvailable === true && pkg.price != null ? ({
+    '@context': 'https://schema.org', '@type': 'Product', name: pkg.title, description,
+    category: pkg.destination,
+    offers: {
+      '@type': 'Offer', price: pkg.price, priceCurrency: 'KRW', availability: 'https://schema.org/InStock',
+      url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
+      seller: { '@type': 'Organization', name: '여소남' },
+    },
+  } as WithContext<Product>) : null;
+
+  return { blogPosting, breadcrumbList, faqPage, howTo, touristTrip, product };
 }

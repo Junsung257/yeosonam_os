@@ -22,7 +22,9 @@ describe('informational representative enforcement across publish entrypoints', 
     const atomicPublish = route.indexOf('await publishBlogInformationAtomically({', insert);
     expect(insert).toBeGreaterThan(0);
     expect(atomicPublish).toBeGreaterThan(insert);
-    expect(route).toContain("contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'");
+    expect(route).toContain("status: publishAllowed ? 'published' : 'draft'");
+    expect(route).toContain('quality_evaluation_v3');
+    expect(route).toContain('blog_publication_decisions');
     expect(route).not.toContain('await activateBlogInformationRepresentative({');
     expect(route).toContain("status: 'skipped_duplicate'");
     expect(route).toContain("proposed_action: 'update_existing'");
@@ -34,7 +36,8 @@ describe('informational representative enforcement across publish entrypoints', 
     expect(sitemap).toContain("import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog'");
     expect(sitemap).toContain('loadPublicBlogCatalog()');
     expect(catalog).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
-    expect(catalog).not.toContain('generation_meta');
+    expect(catalog).toContain('noindex:generation_meta->noindex');
+    expect(catalog).not.toContain('prompt_manifest');
     expect(sitemap).toContain('for (const post of canonicalPosts)');
     expect(sitemap).not.toContain('isCanonicalInformationSitemapPost');
   });

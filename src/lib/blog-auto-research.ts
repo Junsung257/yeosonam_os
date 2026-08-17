@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { GoogleGenAI, Type, type GroundingChunk } from '@google/genai';
 import * as cheerio from 'cheerio';
-import { getProviderApiKey } from '@/lib/ai-provider-policy';
+import { generateBlogJSON } from '@/lib/blog-ai-caller';
 import type { BlogContentBrief } from '@/lib/blog-content-brief';
+import { BLOG_DEEPSEEK_MODELS } from '@/lib/blog-deepseek-orchestrator-v4';
 import {
   BLOG_INFORMATION_CLAIM_TYPES,
   BLOG_INFORMATION_SOURCE_TYPES,
@@ -10,6 +10,7 @@ import {
   createBlogInformationSourceContentHash,
   normalizeBlogInformationSourceSnapshot,
   type BlogInformationAuthorityLevel,
+  type BlogInformationClaimInput,
   type BlogInformationClaimType,
   type BlogInformationEvidenceInput,
   type BlogInformationEvidenceRiskLevel,
@@ -25,16 +26,22 @@ import {
 } from '@/lib/blog-information-official-source';
 import {
   BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT,
+  BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT,
   BLOG_INFORMATION_RESEARCH_META_KEY,
   evaluateBlogGenerationResearchReadiness,
 } from '@/lib/blog-generation-research';
+import { inspectBlogInformationClaimTypeCompatibility } from '@/lib/blog-information-claim-validator';
 import { matchesBlogResearchDestinationScope } from '@/lib/blog-research-destination-scope';
 import { supabaseAdmin } from '@/lib/supabase';
 
-const AUTO_RESEARCH_MODEL = process.env.BLOG_RESEARCH_MODEL?.trim() || 'gemini-2.5-flash';
+const AUTO_RESEARCH_MODEL = BLOG_DEEPSEEK_MODELS.rewrite;
 const AUTO_RESEARCH_TIMEOUT_MS = Math.max(
   20_000,
   Math.min(120_000, Number(process.env.BLOG_RESEARCH_TIMEOUT_MS) || 90_000),
+);
+const AUTO_RESEARCH_DIRECT_FETCH_PHASE_TIMEOUT_MS = Math.max(
+  10_000,
+  Math.min(30_000, Math.floor(AUTO_RESEARCH_TIMEOUT_MS * 0.35)),
 );
 const MAX_GROUNDING_SOURCES = 12;
 const MAX_SOURCE_CATALOG = 40;
@@ -76,6 +83,13 @@ type GroundedEvidenceDraft = {
   validFrom?: string | null;
   validUntil?: string | null;
   conditions?: string[];
+};
+
+type GroundingChunk = {
+  web?: {
+    uri?: string;
+    title?: string;
+  };
 };
 
 type GroundedClaimDraft = {
@@ -135,9 +149,6 @@ export type BlogInformationReputableSourceRegistryEntry = {
   researchUrls?: string[];
   researchDestinations?: string[];
 };
-
-let cachedGeminiKey: string | null = null;
-let cachedGeminiClient: GoogleGenAI | null = null;
 
 function clean(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -338,6 +349,7 @@ async function fetchReviewedDirectPage(input: {
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >;
   url: string;
+  deadlineMs?: number;
 }): Promise<ReviewedDirectPage> {
   let currentUrl = input.url;
   if (!input.entry.researchUrls?.includes(currentUrl) || !urlMatchesRegistryEntry(currentUrl, input.entry)) {
@@ -345,9 +357,13 @@ async function fetchReviewedDirectPage(input: {
   }
 
   for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const remainingMs = input.deadlineMs == null
+      ? 8_000
+      : Math.min(8_000, input.deadlineMs - Date.now());
+    if (remainingMs < 250) throw new Error(`reviewed_source_phase_timeout:${input.entry.hostname}`);
     const response = await fetch(currentUrl, {
       redirect: 'manual',
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(remainingMs),
       headers: {
         accept: 'text/html,text/plain;q=0.9',
         'user-agent': 'yeosonam-reviewed-source-research/1.0',
@@ -426,6 +442,7 @@ async function fetchReviewedDirectPageWithRetry(input: {
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >;
   url: string;
+  deadlineMs?: number;
 }): Promise<ReviewedDirectPage> {
   try {
     return await fetchReviewedDirectPage(input);
@@ -442,6 +459,7 @@ function fetchReviewedDirectPageShared(input: {
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >;
   url: string;
+  deadlineMs?: number;
 }): Promise<ReviewedDirectPage> {
   const cacheKey = `${input.entry.hostname.toLowerCase()}|${input.url}`;
   const existing = reviewedDirectPageInFlight.get(cacheKey);
@@ -464,8 +482,9 @@ export async function fetchReviewedDirectPages(
     'hostname' | 'allowSubdomains' | 'researchUrls'
   >>,
 ): Promise<{ pages: ReviewedDirectPage[]; failures: string[] }> {
+  const deadlineMs = Date.now() + AUTO_RESEARCH_DIRECT_FETCH_PHASE_TIMEOUT_MS;
   const candidates = registry
-    .flatMap((entry) => (entry.researchUrls ?? []).map((url) => ({ entry, url })))
+    .flatMap((entry) => (entry.researchUrls ?? []).map((url) => ({ entry, url, deadlineMs })))
     .slice(0, MAX_REVIEWED_DIRECT_PAGES);
   const settled = await Promise.allSettled(candidates.map(fetchReviewedDirectPageShared));
   const pages: ReviewedDirectPage[] = [];
@@ -541,6 +560,85 @@ function toClaimType(value: unknown): BlogInformationClaimType | null {
   return BLOG_INFORMATION_CLAIM_TYPES.includes(normalized) ? normalized : null;
 }
 
+export function isAutoResearchNumericClaimTypeCompatible(
+  claimText: string,
+  claimType: BlogInformationClaimType,
+): boolean {
+  // A numeric duration must describe elapsed travel, transfer, stay, or visit
+  // length. Reject distances, clock times, dates, and other measurements even
+  // when the model labels them as duration.
+  if (claimType !== 'duration' || !/\d/.test(claimText)) return true;
+  const hasDistanceMeasurement = /\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)\b/iu.test(claimText);
+  if (hasDistanceMeasurement) return false;
+  const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
+  if (compatibility.passed) return true;
+  const hasShortElapsedDuration = /\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)/iu.test(claimText);
+  const hasLongDurationUnit = /(?:\d+(?:\.\d+)?\s*(?:일(?!\s*차)|박|주|개월|달)|\d+(?:\.\d+)?\s*년(?:간|동안|이내|이하|이상))/iu.test(claimText);
+  const hasLongDurationContext = /(?:소요|걸(?:립니다|린다|려)|체류|머물|방문|이동|환승|여정|여행|투숙|숙박|유효|허용|기간|stay|visit|travel)/iu.test(claimText);
+  const hasScheduleContext = /(?:운영|영업|개장|폐장|첫차|막차|상영|공연|매일|주말|평일|연중무휴|opening|closing|open\s+hours?|schedule)/iu.test(claimText);
+  const hasExplicitElapsedContext = /(?:소요|걸(?:립니다|린다|려)|체류|머물|방문|이동|환승|여정|여행|투숙|숙박|기간|travel\s*time|\bdrive\b|stay|visit)/iu.test(claimText);
+  return (hasShortElapsedDuration && (!hasScheduleContext || hasExplicitElapsedContext))
+    || (hasLongDurationUnit && hasLongDurationContext);
+}
+
+const AUTO_RESEARCH_CLAIM_ENTITY_STOP_WORDS = new Set([
+  'the', 'and', 'from', 'to', 'road', 'route', 'city', 'travel', 'tour',
+  '다낭', '베트남', '여행', '여행자', '도로', '도시', '거리', '길이', '높이', '해발',
+  '시간', '차량', '차로', '이동', '소요', '분', '일', '박', '주', '개월', '달', '년',
+  'km', 'm', '입니다', '있습니다', '합니다', '됩니다', '걸립니다',
+]);
+
+function normalizeAutoResearchClaimEntityTokens(claimText: string): Set<string> {
+  return new Set((claimText.toLocaleLowerCase('ko-KR').match(/[a-z0-9]+|[가-힣]+/gu) ?? [])
+    .map((token) => token.replace(/(?:에서는|으로부터|까지는|에게서|에서|까지|으로|로는|에는|은|는|이|가|을|를|의)$/u, ''))
+    .filter((token) => token.length >= 2 && !/^\d+(?:\.\d+)?$/u.test(token))
+    .filter((token) => !AUTO_RESEARCH_CLAIM_ENTITY_STOP_WORDS.has(token)));
+}
+
+function autoResearchClaimsDescribeSameEntity(
+  left: BlogInformationClaimInput,
+  right: BlogInformationClaimInput,
+): boolean {
+  const leftTokens = normalizeAutoResearchClaimEntityTokens(left.claimText);
+  const rightTokens = normalizeAutoResearchClaimEntityTokens(right.claimText);
+  const sharedTokens = [...leftTokens].filter((token) => rightTokens.has(token));
+  return sharedTokens.length >= 2
+    || sharedTokens.some((token) => token.length >= 4);
+}
+
+function autoResearchClaimRiskRank(riskLevel: BlogInformationEvidenceRiskLevel): number {
+  return riskLevel === 'HIGH' ? 3 : riskLevel === 'MEDIUM' ? 2 : 1;
+}
+
+/** Merge the same sourced fact while retaining every supporting evidence key. */
+export function mergeDuplicateAutoResearchClaims(
+  claims: BlogInformationClaimInput[],
+): BlogInformationClaimInput[] {
+  return claims.reduce<BlogInformationClaimInput[]>((merged, claim) => {
+    const normalizedValue = comparableValue(claim.extractedValue?.normalizedValue);
+    const normalizedUnit = comparableValue(claim.extractedValue?.unit);
+    const normalizedCurrency = comparableValue(claim.extractedValue?.currency);
+    const duplicate = merged.find((candidate) =>
+      Boolean(normalizedValue)
+      && Boolean(normalizedUnit || normalizedCurrency)
+      && candidate.claimType === claim.claimType
+      && comparableValue(candidate.extractedValue?.normalizedValue) === normalizedValue
+      && comparableValue(candidate.extractedValue?.unit) === normalizedUnit
+      && comparableValue(candidate.extractedValue?.currency) === normalizedCurrency
+      && autoResearchClaimsDescribeSameEntity(candidate, claim));
+    if (!duplicate) {
+      merged.push({ ...claim, evidenceKeys: [...new Set(claim.evidenceKeys)] });
+      return merged;
+    }
+    duplicate.evidenceKeys = [...new Set([...duplicate.evidenceKeys, ...claim.evidenceKeys])];
+    duplicate.requiresEvidence ||= claim.requiresEvidence;
+    if (autoResearchClaimRiskRank(claim.riskLevel) > autoResearchClaimRiskRank(duplicate.riskLevel)) {
+      duplicate.riskLevel = claim.riskLevel;
+    }
+    return merged;
+  }, []);
+}
+
 function toSourceType(
   value: unknown,
   allowedSourceTypes: string[],
@@ -577,14 +675,72 @@ function toSourceType(
   return null;
 }
 
-function toRiskLevel(value: unknown, claimType?: BlogInformationClaimType): BlogInformationEvidenceRiskLevel {
-  const normalized = clean(value).toUpperCase();
-  if (normalized === 'HIGH' || normalized === 'MEDIUM' || normalized === 'LOW') {
-    return normalized;
+const AUTO_RESEARCH_RISK_RANK: Record<BlogInformationEvidenceRiskLevel, number> = {
+  LOW: 1,
+  MEDIUM: 2,
+  HIGH: 3,
+};
+
+function minimumAutoResearchRiskLevel(
+  claimType?: BlogInformationClaimType,
+  statement?: string,
+): BlogInformationEvidenceRiskLevel {
+  if (claimType === 'entry_visa' || claimType === 'insurance' || claimType === 'policy'
+    || claimType === 'customs') return 'HIGH';
+  if (claimType === 'price' || claimType === 'currency' || claimType === 'duration'
+    || claimType === 'climate' || claimType === 'percentage' || claimType === 'superlative') {
+    return 'MEDIUM';
   }
-  if (claimType === 'entry_visa' || claimType === 'insurance' || claimType === 'policy') return 'HIGH';
-  if (claimType === 'price' || claimType === 'currency' || claimType === 'duration') return 'MEDIUM';
+  if (statement && claimType) {
+    const compatibility = inspectBlogInformationClaimTypeCompatibility(statement, claimType);
+    if (compatibility.candidateKind && [
+      'money_price',
+      'percentage',
+      'distance',
+      'time_schedule',
+      'date_period',
+      'quantity_limit',
+      'climate_measurement',
+      'availability_status',
+      'requirement_prohibition',
+      'superlative',
+    ].includes(compatibility.candidateKind)) return 'MEDIUM';
+  }
   return 'LOW';
+}
+
+function toRiskLevel(
+  value: unknown,
+  claimType?: BlogInformationClaimType,
+  statement?: string,
+): BlogInformationEvidenceRiskLevel {
+  const normalized = clean(value).toUpperCase();
+  const supplied = normalized === 'HIGH' || normalized === 'MEDIUM' || normalized === 'LOW'
+    ? normalized
+    : 'LOW';
+  const minimum = minimumAutoResearchRiskLevel(claimType, statement);
+  return AUTO_RESEARCH_RISK_RANK[supplied] >= AUTO_RESEARCH_RISK_RANK[minimum]
+    ? supplied
+    : minimum;
+}
+
+export function normalizeAutoResearchStructuredValue(input: {
+  normalizedValue: unknown;
+  unit: unknown;
+}): { normalizedValue: string; unit: string | null } {
+  const normalizedValue = clean(input.normalizedValue);
+  const explicitUnit = clean(input.unit) || null;
+  if (!normalizedValue || explicitUnit || normalizedValue.includes('|')) {
+    return { normalizedValue, unit: explicitUnit };
+  }
+  const embedded = normalizedValue.match(
+    /(-?\d+(?:[.,]\d+)?)\s*(°C|℃|km|mm|m|분|시간|시|일|박|개|명|회|%)/i,
+  );
+  if (!embedded) return { normalizedValue, unit: null };
+  return {
+    normalizedValue: embedded[1].replace(/,/g, ''),
+    unit: embedded[2] === '℃' ? '°C' : embedded[2],
+  };
 }
 
 function sourceKey(url: string, index: number): string {
@@ -681,33 +837,6 @@ function groundedWebChunks(chunks: GroundingChunk[]): Array<{ chunkIndex: number
     seen.add(uri);
     return [{ chunkIndex, uri, title: clean(chunk.web?.title) || new URL(uri).hostname }];
   });
-}
-
-async function resolveGroundingRedirects(chunks: GroundingChunk[]): Promise<GroundingChunk[]> {
-  return Promise.all(chunks.map(async (chunk) => {
-    const uri = chunk.web?.uri;
-    if (!isSafeHttpsUrl(uri)) return chunk;
-    const parsed = new URL(uri);
-    if (parsed.hostname !== 'vertexaisearch.cloud.google.com') return chunk;
-    try {
-      const response = await fetch(uri, {
-        redirect: 'manual',
-        signal: AbortSignal.timeout(5_000),
-        headers: { 'user-agent': 'yeosonam-grounded-research/1.0' },
-      });
-      const location = response.headers.get('location');
-      if (!isSafeHttpsUrl(location)) return chunk;
-      return {
-        ...chunk,
-        web: {
-          ...chunk.web,
-          uri: location,
-        },
-      };
-    } catch {
-      return chunk;
-    }
-  }));
 }
 
 export function buildBlogResearchBundleFromGrounding(input: {
@@ -825,7 +954,11 @@ export function buildBlogResearchBundleFromGrounding(input: {
       : sourceByDraftIndex.get(Number(draft.sourceIndex) - evidenceSourceOffset);
     const statement = clean(draft.excerpt);
     const claimType = toClaimType(draft.claimType);
-    const normalizedValue = clean(draft.normalizedValue);
+    const structuredValue = normalizeAutoResearchStructuredValue({
+      normalizedValue: draft.normalizedValue,
+      unit: draft.unit,
+    });
+    const normalizedValue = structuredValue.normalizedValue;
     if (!source || !statement || !claimType || !normalizedValue) {
       issues.push(`evidence_rejected:${draftIndex}`);
       if (!source) issues.push(`evidence_rejected:${draftIndex}:source:${payloadSourceKey || clean(draft.sourceIndex) || 'missing'}`);
@@ -837,13 +970,21 @@ export function buildBlogResearchBundleFromGrounding(input: {
     const country = source.country || clean(draft.country) || input.destination;
     const destination = input.destination;
     const applicableTo = clean(draft.applicableTo) || '여행자';
-    const unit = clean(draft.unit) || null;
+    const unit = structuredValue.unit;
     const currency = explicitCurrency(
       draft.currency,
       [statement, normalizedValue, clean(draft.unit)].filter(Boolean).join(' '),
     );
     if ((claimType === 'price' || claimType === 'currency') && !currency) {
       issues.push(`evidence_rejected:${draftIndex}:currency_required`);
+      return [];
+    }
+    if (!isAutoResearchNumericClaimTypeCompatible(statement, claimType)) {
+      const compatibility = inspectBlogInformationClaimTypeCompatibility(statement, claimType);
+      issues.push(`evidence_rejected:${draftIndex}`);
+      issues.push(
+        `evidence_rejected:${draftIndex}:claim_type_mismatch:${claimType}:${compatibility.deterministicType ?? 'unclassified'}`,
+      );
       return [];
     }
     const requestedValidFrom = safeIsoDate(draft.validFrom);
@@ -874,7 +1015,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       spanStart: span.start,
       spanEnd: span.end,
       claimType,
-      riskLevel: toRiskLevel(draft.riskLevel, claimType),
+      riskLevel: toRiskLevel(draft.riskLevel, claimType, statement),
       observedAt: retrievedAt,
       validFrom,
       validUntil,
@@ -925,7 +1066,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
     && Math.min(...claimEvidenceIndexes) >= 1
     ? 1
     : 0;
-  const claims = claimDrafts.flatMap((draft, draftIndex) => {
+  const claims = mergeDuplicateAutoResearchClaims(claimDrafts.flatMap((draft, draftIndex) => {
     const rawClaimText = clean(draft.claimText);
     const claimText = input.brief.intentType === 'food_budget'
       ? normalizeFoodBudgetClaimLabels(rawClaimText)
@@ -984,6 +1125,14 @@ export function buildBlogResearchBundleFromGrounding(input: {
       if (linkedEvidence.length === 0) issues.push(`claim_rejected:${draftIndex}:evidence_link_missing`);
       return [];
     }
+    if (!isAutoResearchNumericClaimTypeCompatible(claimText, claimType)) {
+      const compatibility = inspectBlogInformationClaimTypeCompatibility(claimText, claimType);
+      issues.push(`claim_rejected:${draftIndex}`);
+      issues.push(
+        `claim_rejected:${draftIndex}:claim_type_mismatch:${claimType}:${compatibility.deterministicType ?? 'unclassified'}`,
+      );
+      return [];
+    }
     const primaryEvidence = linkedEvidenceItems[0];
     const normalizedValue = usesMonthlyClimateComponents
       ? draftedValue
@@ -998,7 +1147,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       claimFingerprint: createBlogInformationClaimFingerprint(claimText),
       claimText,
       claimType,
-      riskLevel: toRiskLevel(draft.riskLevel, claimType),
+      riskLevel: toRiskLevel(draft.riskLevel, claimType, claimText),
       extractedValue: {
         normalizedValue,
         unit,
@@ -1007,7 +1156,7 @@ export function buildBlogResearchBundleFromGrounding(input: {
       requiresEvidence: true,
       evidenceKeys: linkedEvidence,
     }];
-  });
+  }));
   const claimedEvidenceKeys = new Set(claims.flatMap((claim) => claim.evidenceKeys));
   const claimFingerprints = new Set(claims.map((claim) => claim.claimFingerprint));
   for (const item of evidence) {
@@ -1107,6 +1256,7 @@ export function buildBlogGroundingResearchPrompt(input: {
   )
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
+  const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.brief.intentType] ?? 3;
   return [
     'You are a source-first travel researcher. Use Google Search before answering.',
     `Current date: ${input.now.toISOString().slice(0, 10)}.`,
@@ -1123,12 +1273,15 @@ export function buildBlogGroundingResearchPrompt(input: {
     'Research in Korean, English, and the local language when useful.',
     'Prefer current official first-party pages and reviewed operator, price, timetable, or reputable local sources.',
     'Never infer a number, price, duration, climate value, policy, superlative, or trend.',
+    'Each claim must contain one independently supported fact from its linked evidence excerpt.',
+    'Every digit in claimText must occur in the linked evidence excerpt. Never merge a second schedule, distance, date, quantity, or price into the claim.',
     'Every fact must be a short exact factual statement supported by the search grounding and must visibly include:',
     'the destination or country, applicable traveler/group, a date or year, and its normalized value with unit/currency when relevant.',
     'Do not use a search snippet as ranking proof. Do not use another travel blog as the only support for a high-risk claim.',
     'Required decision facts:',
     requiredFacts,
     `Minimum independently supported claims by type: ${claimMinimums}.`,
+    `Minimum total independently supported claims: ${minimumTotalClaims}.`,
     'Run separate searches for each required decision fact before selecting sources.',
     'Prioritize exact decision facts over general background, provider directories, contact details, addresses, or marketing descriptions.',
     'Do not use company names, telephone numbers, email addresses, or street addresses merely to fill the claim quota unless a required decision fact explicitly asks for them.',
@@ -1141,75 +1294,6 @@ export function buildBlogGroundingResearchPrompt(input: {
     'For airport transport, include at least two supported fare or price-range claims and two supported duration claims from at least two reviewed domains; a taxi-company directory is not transport-cost evidence.',
   ].join('\n');
 }
-
-const COMPACT_RESEARCH_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    sources: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          sourceKey: { type: Type.STRING },
-          groundingChunkIndex: { type: Type.INTEGER },
-          publisher: { type: Type.STRING },
-          sourceType: { type: Type.STRING },
-          claimTypes: { type: Type.ARRAY, items: { type: Type.STRING } },
-          country: { type: Type.STRING },
-        },
-        required: ['sourceKey', 'groundingChunkIndex', 'publisher', 'sourceType', 'claimTypes', 'country'],
-      },
-    },
-    evidence: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          evidenceKey: { type: Type.STRING },
-          sourceKey: { type: Type.STRING },
-          excerpt: { type: Type.STRING },
-          sourceLocator: { type: Type.STRING },
-          claimType: { type: Type.STRING },
-          riskLevel: { type: Type.STRING },
-          country: { type: Type.STRING },
-          applicableTo: { type: Type.STRING },
-          normalizedValue: { type: Type.STRING },
-          unit: { type: Type.STRING },
-          currency: { type: Type.STRING },
-          conditions: { type: Type.ARRAY, items: { type: Type.STRING } },
-        },
-        required: [
-          'evidenceKey',
-          'sourceKey',
-          'excerpt',
-          'claimType',
-          'riskLevel',
-          'country',
-          'applicableTo',
-          'normalizedValue',
-          'conditions',
-        ],
-      },
-    },
-    claims: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          claimText: { type: Type.STRING },
-          claimType: { type: Type.STRING },
-          riskLevel: { type: Type.STRING },
-          evidenceKeys: { type: Type.ARRAY, items: { type: Type.STRING } },
-          normalizedValue: { type: Type.STRING },
-          unit: { type: Type.STRING },
-          currency: { type: Type.STRING },
-        },
-        required: ['claimText', 'claimType', 'riskLevel', 'evidenceKeys', 'normalizedValue'],
-      },
-    },
-  },
-  required: ['sources', 'evidence', 'claims'],
-} as const;
 
 export function buildBlogStructuredResearchPrompt(input: {
   destination: string;
@@ -1234,6 +1318,17 @@ export function buildBlogStructuredResearchPrompt(input: {
   )
     .map(([claimType, minimum]) => `${claimType}>=${minimum}`)
     .join(', ');
+  const minimumTotalClaims = BLOG_INFORMATION_MINIMUM_TOTAL_CLAIMS_BY_INTENT[input.brief.intentType] ?? 3;
+  const minimumRequiredClaims = Math.max(
+    minimumTotalClaims,
+    Object.values(BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT[input.brief.intentType] ?? { factual: 3 })
+      .reduce((total, minimum) => total + minimum, 0),
+  );
+  const retryIssues = input.retryIssues ?? [];
+  const coverageRetry = retryIssues.some((issue) =>
+    /(?:below_minimum|semantic_coverage_missing|required_(?:decision_)?fact|distinct_evidence_values|claim_source_coverage)/i.test(issue));
+  const durationRetry = retryIssues.some((issue) =>
+    /(?:claim_type_mismatch:duration|below_minimum:duration|claim_type_minimum:duration)/i.test(issue));
   const intentInstructions = input.brief.intentType === 'food_budget'
     ? [
         'FOOD BUDGET PRIORITY:',
@@ -1271,7 +1366,12 @@ export function buildBlogStructuredResearchPrompt(input: {
           : input.brief.intentType === 'itinerary'
             ? [
                 'ITINERARY PRIORITY:',
-                'Select child/family-suitable attractions, current operating constraints, and route travel durations before climate, language, visa, or general destination facts.',
+                'Select named attractions that answer the queued traveler decision, current operating or access constraints, and route travel durations before climate, language, visa, or general destination facts.',
+                'The packet must include at least one verified opening/closing schedule, required booking, admission deadline/condition, stair/elevator access condition, seasonal access restriction, closure, or service interruption that changes how the itinerary is planned. A bare ticket price, fare, physical dimension, monument height, or route distance does not satisfy this requirement.',
+                'Prioritize a schedule/access constraint for an attraction already named in a selected route-duration claim. Do not fill this requirement with an unrelated show or ticket product unless the primary query explicitly names it.',
+                'Use materially different authorities for cross-domain coverage. The apex host and its www subdomain are one authority, not two independent domains.',
+                'Only select child/family suitability when the topic, audience, or reviewed source explicitly asks for it; never force a family angle into a general itinerary.',
+                'Keep the attraction entity type in claimText (for example beach, peninsula, mountain, market, museum, bridge, park, temple, or historic site) so the decision detail remains understandable without its source page.',
                 'A visa stay limit is not an itinerary duration. A bus frequency is not a route travel duration.',
               ]
             : input.brief.intentType === 'shopping_souvenirs'
@@ -1301,7 +1401,7 @@ export function buildBlogStructuredResearchPrompt(input: {
             ]
         : [];
   return [
-    'Convert the supplied Google-Search-grounded digest into the required JSON schema.',
+    'Convert the supplied extracts from pre-reviewed source URLs into the required JSON shape.',
     `Current date: ${input.now.toISOString().slice(0, 10)}.`,
     `Destination: ${input.destination}. Locale: ${input.locale}.`,
     `Intent: ${input.brief.intentType}.`,
@@ -1315,11 +1415,20 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Every evidence sourceKey must exist in sources. Every claim evidenceKey must exist in evidence.',
     'Copy only facts present in GROUNDED_DIGEST. Do not infer missing values.',
     'Keep every evidence excerpt and claimText under 240 characters. Never copy a full table, directory, schedule, policy section, or menu.',
+    'Each claim must contain one independently supported fact from one linked evidence excerpt.',
+    'Every digit in claimText must occur in that linked excerpt. Never combine a second schedule, distance, date, quantity, or price into the claim.',
+    'Every route-duration claim must name both the origin and destination stated by the digest; a duration with only one endpoint is incomplete.',
+    'For a factual measurement, keep only the supported measurement and entity. Omit comparative or superlative wording such as 가장, 최고, largest, or tallest unless the claimType is superlative and that type is allowed for the intent.',
+    'Do not create two evidence or claim records for the same entity, source, normalized value, and unit, even when wording differs.',
     'Select facts that satisfy Required decision facts and Minimum independently supported claims before any general background.',
     'Exclude contact-directory filler such as company names, presidents, telephone numbers, email addresses, and street addresses unless a required decision fact explicitly requests it.',
     'For price or currency evidence, currency must be an explicit ISO currency code.',
+    'Use duration only for elapsed travel, transfer, stay, or visit length. A clock-of-day, show time, opening time, or other schedule is not duration.',
+    'For every numeric duration, both evidence.excerpt and claim.claimText must contain the same Arabic-digit elapsed value, an explicit elapsed unit (for example 15분, 2시간, 15 minutes, or 2 hours), and an elapsed context such as 소요, 걸립니다, 이동, 체류, 방문, drive, travel time, stay, or visit.',
+    'A duration unit supplied only in normalizedValue or unit is invalid. Omit rather than label a distance, count, date, clock time, service frequency, or itinerary day ordinal as duration.',
     'Omit optional unit, currency, validFrom, or validUntil when the digest does not state it.',
     `Minimum independently supported claims by type: ${claimMinimums}.`,
+    `Minimum total independently supported claims: ${minimumTotalClaims}.`,
     'Return exactly one compact JSON object with this shape:',
     '{"sources":[{"sourceKey":"s1","groundingChunkIndex":0,"publisher":"...","sourceType":"...","claimTypes":["price"],"country":"...","destination":"..."}],"evidence":[{"evidenceKey":"e1","sourceKey":"s1","excerpt":"...","sourceLocator":"...","claimType":"price","riskLevel":"MEDIUM","country":"...","destination":"...","applicableTo":"한국인 여행자","normalizedValue":"100","unit":"1회","currency":"USD","conditions":["..."]}],"claims":[{"claimText":"...","claimType":"price","riskLevel":"MEDIUM","evidenceKeys":["e1"],"normalizedValue":"100","unit":"1회","currency":"USD"}]}',
     'Required decision facts:',
@@ -1327,10 +1436,25 @@ export function buildBlogStructuredResearchPrompt(input: {
     ...intentInstructions,
     ...(input.retry ? [
       'RETRY REQUIREMENT:',
-      'The prior JSON response was empty, invalid, too long, or missed required semantic coverage even though reviewed page extracts are present.',
-      'Return a smaller valid JSON object and repair only the listed missing requirements using facts explicitly present in GROUNDED_DIGEST.',
-      ...(input.retryIssues?.length
-        ? [`Prior issues: ${input.retryIssues.slice(0, 16).join(', ')}`]
+      ...(coverageRetry
+        ? [
+            'The prior JSON was structurally usable but did not meet the required claim coverage.',
+            'Rebuild the complete packet from GROUNDED_DIGEST: keep every valid independently supported fact and add the missing claim types or decision facts.',
+            `Do not return fewer than ${minimumRequiredClaims} valid claims, and satisfy every listed per-type minimum. Do not shrink the packet merely to make it valid.`,
+          ]
+        : [
+            'The prior JSON response was empty, invalid, truncated, or too long even though reviewed page extracts are present.',
+            'Return a smaller valid JSON object using only facts explicitly present in GROUNDED_DIGEST.',
+          ]),
+      ...(retryIssues.length
+        ? [`Prior issues: ${retryIssues.slice(0, 16).join(', ')}`]
+        : []),
+      ...(durationRetry
+        ? [
+            'DURATION RETRY CONTRACT:',
+            'Replace every rejected duration row with a genuinely elapsed fact from GROUNDED_DIGEST. Put the same numeric value and explicit elapsed unit directly in both excerpt and claimText, and include the elapsed context. For a route, name both endpoints.',
+            'If GROUNDED_DIGEST has no compliant elapsed fact, omit that row; never relabel distance, count, date, clock time, frequency, or an itinerary ordinal as duration.',
+          ]
         : []),
     ] : []),
     'SOURCE_CATALOG:',
@@ -1350,6 +1474,16 @@ function parseJsonPayload(raw: string): GroundedBlogResearchPayload {
 
 function payloadHasResearchItems(payload: GroundedBlogResearchPayload): boolean {
   return Boolean(payload.sources?.length || payload.evidence?.length || payload.claims?.length);
+}
+
+export function shouldRetrySanitizedAutoResearchPayload(input: {
+  payload: GroundedBlogResearchPayload;
+  reviewedPageCount: number;
+  remainingMs: number;
+}): boolean {
+  return !payloadHasResearchItems(input.payload)
+    && input.reviewedPageCount > 0
+    && input.remainingMs > 15_000;
 }
 
 const RESEARCH_CLAIM_TYPES_BY_INTENT: Partial<Record<string, BlogInformationClaimType[]>> = {
@@ -1390,6 +1524,7 @@ export function sanitizeGroundedResearchPayload(
       || !clean(evidence.evidenceKey)) {
       return false;
     }
+    if (!isAutoResearchNumericClaimTypeCompatible(statement, claimType)) return false;
     return (claimType !== 'price' && claimType !== 'currency')
       || Boolean(explicitCurrency(evidence.currency, `${statement} ${normalizedValue} ${clean(evidence.unit)}`));
   });
@@ -1400,6 +1535,7 @@ export function sanitizeGroundedResearchPayload(
     const claimType = toClaimType(claim.claimType);
     const claimText = clean(claim.claimText);
     if (!claimType || !allowedClaimTypes.has(claimType) || !claimText) return [];
+    if (!isAutoResearchNumericClaimTypeCompatible(claimText, claimType)) return [];
     const draftedValue = clean(claim.normalizedValue);
     const compatibleEvidenceKeys = normalizeList(claim.evidenceKeys).filter((key) => {
       const evidence = evidenceByKey.get(key);
@@ -3147,15 +3283,6 @@ function allowedPersistedSourceTypes(sourceTypes: string[]): BlogInformationSour
   return [...values];
 }
 
-function geminiClient(): GoogleGenAI {
-  const apiKey = getProviderApiKey('gemini');
-  if (!apiKey) throw new Error('BLOG_RESEARCH_REQUIRES_GOOGLE_AI_API_KEY');
-  if (cachedGeminiClient && cachedGeminiKey === apiKey) return cachedGeminiClient;
-  cachedGeminiKey = apiKey;
-  cachedGeminiClient = new GoogleGenAI({ apiKey });
-  return cachedGeminiClient;
-}
-
 export async function researchBlogInformationAutomatically(input: {
   contentKey: string;
   destination: string;
@@ -3164,7 +3291,7 @@ export async function researchBlogInformationAutomatically(input: {
   now?: Date;
 }): Promise<BlogAutoResearchResult> {
   const now = input.now ?? new Date();
-  let searchQueries: string[] = [];
+  const searchQueries: string[] = [];
   let groundingSourceCount = 0;
   let directSourceCount = 0;
   let directSourceFailures: string[] = [];
@@ -3189,13 +3316,6 @@ export async function researchBlogInformationAutomatically(input: {
       input.brief.intentType,
       input.destination,
     );
-    const reviewedSources = [
-      ...reviewedRegistry.map((entry) => `${entry.hostname} (${entry.sourceType})`),
-      ...reviewedReputableRegistry.flatMap((entry) =>
-        entry.sourceTypes
-          .filter((sourceType) => allowedSourceTypes.includes(sourceType))
-          .map((sourceType) => `${entry.hostname} (${sourceType}; ${entry.reviewNote ?? 'reviewed editorial source'})`)),
-    ];
     const [officialDirectResult, reputableDirectResult] = await Promise.all([
       fetchReviewedDirectPages(reviewedRegistry),
       fetchReviewedDirectPages(directlyReviewedReputableRegistry),
@@ -3205,36 +3325,11 @@ export async function researchBlogInformationAutomatically(input: {
       failures: [...officialDirectResult.failures, ...reputableDirectResult.failures],
     };
     directSourceFailures = directResult.failures;
-    const canUseReviewedPagesOnly = input.brief.sourcePolicy.primarySourcesRequired
-      && officialDirectResult.pages.length > 0;
-    let trustedSearchPages: ReviewedDirectPage[] = [];
-    if (!canUseReviewedPagesOnly) {
-      const groundedResponse = await geminiClient().models.generateContent({
-        model: AUTO_RESEARCH_MODEL,
-        contents: buildBlogGroundingResearchPrompt({ ...input, reviewedSources, now }),
-        config: {
-          temperature: 0.1,
-          maxOutputTokens: 4_096,
-          thinkingConfig: { thinkingBudget: 0 },
-          abortSignal: AbortSignal.timeout(remainingTimeout()),
-          httpOptions: { timeout: remainingTimeout() },
-          tools: [{ googleSearch: {} }],
-        },
-      });
-      const metadata = groundedResponse.candidates?.[0]?.groundingMetadata;
-      searchQueries = metadata?.webSearchQueries ?? [];
-      const resolvedSearchChunks = await resolveGroundingRedirects(metadata?.groundingChunks ?? []);
-      const trustedSearchResult = await fetchTrustedSearchPages({
-        chunks: groundedWebChunks(resolvedSearchChunks),
-        officialRegistry: reviewedRegistry,
-        reputableRegistry: reviewedReputableRegistry,
-        allowedSourceTypes,
-        intent: input.brief.intentType,
-      });
-      trustedSearchPages = trustedSearchResult.pages;
-      directSourceFailures = [...directSourceFailures, ...trustedSearchResult.failures];
-    }
-    const reviewedPages = [...directResult.pages, ...trustedSearchPages]
+    // Publication research is DeepSeek-only. Search APIs may prioritize a
+    // topic, but factual evidence must already exist in the reviewed registry
+    // and be fetched from the original URL. Missing coverage fails closed
+    // instead of invoking another model or trusting a search snippet.
+    const reviewedPages = directResult.pages
       .filter((page, index, all) => all.findIndex((candidate) => candidate.url === page.url) === index)
       .slice(0, MAX_SOURCE_CATALOG);
     directSourceCount = reviewedPages.length;
@@ -3256,7 +3351,7 @@ export async function researchBlogInformationAutomatically(input: {
     ].filter(Boolean).join('\n');
     const eligibleWebChunks = webChunks;
     if (!groundedDigest || eligibleWebChunks.length === 0) {
-      throw new Error('BLOG_RESEARCH_GROUNDING_EMPTY');
+      throw new Error('BLOG_RESEARCH_REVIEWED_SOURCE_EMPTY');
     }
     let payload = input.brief.intentType === 'monthly_weather'
       ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
@@ -3298,56 +3393,55 @@ export async function researchBlogInformationAutomatically(input: {
       const generateStructuredResponse = async (
         retry = false,
         retryIssues: string[] = [],
-      ) => geminiClient().models.generateContent({
+      ) => generateBlogJSON(buildBlogStructuredResearchPrompt({
+        ...input,
+        digest: groundedDigest,
+        sourceCatalog,
+        now,
+        retry,
+        retryIssues,
+      }), {
         model: AUTO_RESEARCH_MODEL,
-        contents: buildBlogStructuredResearchPrompt({
-          ...input,
-          digest: groundedDigest,
-          sourceCatalog,
-          now,
-          retry,
-          retryIssues,
-        }),
-        config: {
-          temperature: 0,
-          maxOutputTokens: 16_384,
-          thinkingConfig: { thinkingBudget: 0 },
-          responseMimeType: 'application/json',
-          responseJsonSchema: COMPACT_RESEARCH_SCHEMA,
-          abortSignal: AbortSignal.timeout(remainingTimeout()),
-          httpOptions: { timeout: remainingTimeout() },
-        },
+        cascade: false,
+        temperature: 0,
+        // This is source-bounded JSON extraction, not article reasoning. Keep
+        // thinking disabled so hidden reasoning tokens cannot consume the
+        // output ceiling and leave a truncated evidence ledger.
+        maxTokens: 8_192,
+        requestTimeoutMs: remainingTimeout(),
+        deepseekThinking: 'disabled',
       });
-      let structuredResponse = await generateStructuredResponse();
-      finishReason = structuredResponse.candidates?.[0]?.finishReason
-        ? String(structuredResponse.candidates[0].finishReason)
-        : null;
-      let rawText = structuredResponse.text ?? '';
+      let rawText = await generateStructuredResponse();
+      finishReason = 'DEEPSEEK_JSON_MODE_COMPLETE';
       responseTextLength = rawText.length;
       try {
         payload = parseJsonPayload(rawText);
       } catch (error) {
         if (reviewedPages.length === 0 || remainingTimeout() <= 15_000) throw error;
-        structuredResponse = await generateStructuredResponse(true, [
+        rawText = await generateStructuredResponse(true, [
           `invalid_or_truncated_json:${error instanceof Error ? error.message : String(error)}`,
         ]);
-        finishReason = structuredResponse.candidates?.[0]?.finishReason
-          ? String(structuredResponse.candidates[0].finishReason)
-          : finishReason;
-        rawText = structuredResponse.text ?? '';
         responseTextLength += rawText.length;
         payload = parseJsonPayload(rawText);
       }
       if (!payloadHasResearchItems(payload) && reviewedPages.length > 0 && remainingTimeout() > 15_000) {
-        structuredResponse = await generateStructuredResponse(true, ['empty_research_payload']);
-        finishReason = structuredResponse.candidates?.[0]?.finishReason
-          ? String(structuredResponse.candidates[0].finishReason)
-          : finishReason;
-        rawText = structuredResponse.text ?? '';
+        rawText = await generateStructuredResponse(true, ['empty_research_payload']);
         responseTextLength += rawText.length;
         payload = parseJsonPayload(rawText);
       }
       payload = sanitizeGroundedResearchPayload(payload, input.brief.intentType);
+      if (shouldRetrySanitizedAutoResearchPayload({
+        payload,
+        reviewedPageCount: reviewedPages.length,
+        remainingMs: deadline - Date.now(),
+      })) {
+        rawText = await generateStructuredResponse(true, ['sanitized_research_payload_empty']);
+        responseTextLength += rawText.length;
+        payload = sanitizeGroundedResearchPayload(
+          parseJsonPayload(rawText),
+          input.brief.intentType,
+        );
+      }
       if (input.brief.intentType === 'food_budget') {
         payload = augmentGuamFoodBudgetPayload(reviewedPages, input.destination, payload);
       }
@@ -3394,11 +3488,7 @@ export async function researchBlogInformationAutomatically(input: {
           ...(readiness?.issues ?? []),
         ];
         if ((!preliminary.bundle || !readiness?.passed) && retryIssues.length > 0) {
-          structuredResponse = await generateStructuredResponse(true, retryIssues);
-          finishReason = structuredResponse.candidates?.[0]?.finishReason
-            ? String(structuredResponse.candidates[0].finishReason)
-            : finishReason;
-          rawText = structuredResponse.text ?? '';
+          rawText = await generateStructuredResponse(true, retryIssues);
           responseTextLength += rawText.length;
           payload = parseJsonPayload(rawText);
           payload = sanitizeGroundedResearchPayload(payload, input.brief.intentType);

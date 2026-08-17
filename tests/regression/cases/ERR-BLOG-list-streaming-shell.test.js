@@ -18,7 +18,8 @@ test('ERR-BLOG-list-streaming-shell: /blog list renders BlogData without Suspens
   assert.doesNotMatch(source, /from ['"]react['"]/);
   assert.doesNotMatch(source, /<Suspense\b/);
   assert.doesNotMatch(source, /fallback=\{<Loading \/>}/);
-  assert.match(source, /export const dynamic = ['"]force-dynamic['"]/);
+  assert.match(source, /export const revalidate = 300/);
+  assert.doesNotMatch(source, /export const dynamic = ['"]force-dynamic['"]/);
   assert.match(source, /return <BlogData searchParams=\{searchParams\} \/>;/);
 });
 

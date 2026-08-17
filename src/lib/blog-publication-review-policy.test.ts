@@ -10,8 +10,14 @@ describe('informational publication review policy', () => {
     '미국 ESTA 신청 방법',
     '해외여행 보험 보장과 면책',
     '면세 한도와 세관 신고',
+    '해외여행 약',
+    '처방약 해외 반입과 영문 처방전',
   ])('classifies high-risk informational topics: %s', (title) => {
     expect(isHighRiskInformationalTopic({ title })).toBe(true);
+  });
+
+  it('does not confuse reservation terms with medication queries', () => {
+    expect(isHighRiskInformationalTopic({ title: '여행 예약 약관 안내' })).toBe(false);
   });
 
   it('requires explicit approval for high-risk information', () => {
@@ -28,7 +34,7 @@ describe('informational publication review policy', () => {
     })).toBe('review_not_approved');
   });
 
-  it('allows approved high-risk information and leaves product content unchanged', () => {
+  it('allows approved high-risk information and blocks review-state products too', () => {
     expect(getInformationalReviewBlockReason({
       title: '일본 입국 비자 안내',
       reviewStatus: 'approved',
@@ -37,6 +43,6 @@ describe('informational publication review policy', () => {
       productId: 'product-1',
       title: '비자 포함 상품',
       reviewStatus: 'pending_review',
-    })).toBeNull();
+    })).toBe('review_not_approved');
   });
 });

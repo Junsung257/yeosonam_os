@@ -1,6 +1,6 @@
 # AI Ops Current SSOT
 
-Last updated: 2026-06-29
+Last updated: 2026-08-15
 
 This is the current operating contract for AI provider policy, Jarvis, RAG, QA, prompt routing, evals, model fallback, and learning-loop evidence.
 
@@ -22,6 +22,7 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 | Area | Current source |
 |---|---|
 | AI provider routing | `src/lib/ai-provider-policy.ts`, `scripts/ai-provider-switch.mjs` |
+| Blog generation V4 exception | `src/lib/blog-deepseek-orchestrator-v4.ts`, `src/lib/blog-ai-caller.ts`, `docs/runbooks/blog-deepseek-orchestrator-v4.md` |
 | Jarvis APIs | `/api/jarvis`, `/api/jarvis/stream`, `/api/admin/jarvis/**` |
 | Jarvis orchestration | `src/lib/jarvis/orchestration/**`, `src/lib/jarvis/v2-dispatch.ts` |
 | Jarvis RAG/evals | `src/lib/jarvis/rag/**`, `src/lib/jarvis/eval/**` |
@@ -41,6 +42,10 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 - Prompt fixes for repeated failures must become an eval, regression test, deterministic gate, or error-registry entry.
 
 ## Provider And Prompt Boundary
+
+### Blog Orchestrator V4 exception
+
+Scheduled blog publication is a DeepSeek-only, evidence-bounded lane. DeepSeek V4 Pro structures directly fetched, pre-reviewed source pages; DeepSeek V4 Flash creates the grounded draft; and DeepSeek V4 Pro performs high/max rewrites. Gemini, GPT, Claude, generic provider cascades, and search-snippet grounding are not permitted anywhere in this publication lane. Missing reviewed source coverage fails closed. Every article-generation provider call requires a durable pre-call cost reservation, and a candidate has at most three writer calls. A provider error stays queued or quarantined according to the bounded retry contract. Daytime publication reads a durable selected `approved_for_slot` attempt and makes zero model calls. Other non-blog AI tasks continue to follow `system_ai_policies` and the general provider policy.
 
 Correct sequence for AI behavior changes:
 

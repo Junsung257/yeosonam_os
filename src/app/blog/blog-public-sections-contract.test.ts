@@ -39,7 +39,7 @@ describe('blog public sections contract', () => {
 
     for (const file of files) {
       const source = readSource(file);
-      expect(source).toContain('toBlogImageDisplaySrc');
+      expect(source).toContain('SafeCoverImg');
       expect(source).not.toContain('src={post.og_image_url}');
     }
   });
@@ -62,8 +62,8 @@ describe('blog public sections contract', () => {
   it('derives destination guide cards from the shared public blog catalog', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
-    expect(source).toContain('loadPublicBlogCatalog()');
-    expect(source).toContain('destinationsFromPosts(catalog)');
+    expect(source).toContain('loadPublicBlogCatalogPage({');
+    expect(source).toContain('result.destinations.length');
     expect(source).toContain('b.post_count - a.post_count');
     expect(source).toContain('/blog/destination/${encodeDestinationPathSegment(d.destination)}');
     expect(source).not.toContain('getDestinationUrl(d.destination)');
@@ -72,19 +72,18 @@ describe('blog public sections contract', () => {
   it('does not expose empty style filters without site-wide angle evidence', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
-    expect(source).toContain('countAnglesFromPosts(catalog)');
+    expect(source).toContain('countAnglesFromPosts(posts)');
     expect(source).toContain('(angleCounts[candidate.key] ?? 0) > 0');
     expect(source).not.toContain('const visibleAngleChips = BLOG_PUBLIC_ANGLES;');
   });
 
-  it('uses the complete shared catalog for exact pagination', () => {
+  it('uses server-side pagination totals instead of loading 2,000 rows into the list route', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
-    expect(source).toContain('const exactTotal = matchingPosts.length');
-    expect(source).toContain('matchingPosts.slice(offset, offset + PER_PAGE)');
+    expect(source).toContain('const exactTotal = result.total');
+    expect(source).toContain('pageSize: PER_PAGE');
     expect(source).toContain('total: exactTotal');
-    expect(source).not.toContain('approximateTotal');
-    expect(source).not.toContain('offset + PER_PAGE + 1');
+    expect(source).not.toContain('.limit(2000)');
   });
 
   it('keeps fallback-only sample posts out of public detail URLs', () => {
@@ -119,12 +118,14 @@ describe('blog public sections contract', () => {
     }
 
     const catalogSource = readSource('src/lib/blog-public-catalog.ts');
-    expect(catalogSource).toContain("['blog-public-catalog-v2']");
-    expect(catalogSource).toContain('.limit(2000)');
+    expect(catalogSource).toContain("['blog-public-catalog-v3-medication-policy']");
+    expect(catalogSource).toContain('loadPublicBlogCatalogPage');
+    expect(catalogSource).not.toContain('.limit(2000)');
     expect(catalogSource).toContain('isBlogSlugRedirectSource');
     expect(catalogSource).not.toContain('blog_html');
     expect(catalogSource).not.toContain('quality_gate');
-    expect(catalogSource).not.toContain('generation_meta');
+    expect(catalogSource).toContain('noindex:generation_meta->noindex');
+    expect(catalogSource).not.toContain('prompt_manifest');
   });
 
   it('does not redirect legacy slugs to archived blog posts', () => {

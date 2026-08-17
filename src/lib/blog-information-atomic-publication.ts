@@ -47,6 +47,18 @@ interface AtomicReplacementRpcRow {
   idempotent: boolean;
 }
 
+export interface BlogInformationAutomatedReplacementInput {
+  replacementDraftId: string;
+  targetCreativeId: string;
+  runId: string;
+  selectedAttemptId: string;
+  sourceFingerprint: string;
+  validationMeta: Record<string, unknown>;
+  qualityGate: object;
+  identity: BlogInformationRepresentativeIdentity;
+  idempotencyKey?: string;
+}
+
 export interface BlogInformationAtomicReplacementInput {
   replacementDraftId: string;
   targetCreativeId: string;
@@ -136,6 +148,71 @@ export function buildBlogInformationReplacementIdempotencyKey(input: {
     ].join('|'), 'utf8')
     .digest('hex');
   return `info-replace-v1:${digest}`;
+}
+
+export function buildBlogInformationAutomatedReplacementIdempotencyKey(input: {
+  replacementDraftId: string;
+  targetCreativeId: string;
+  runId: string;
+  selectedAttemptId: string;
+  sourceFingerprint: string;
+  representativeKey: string;
+}): string {
+  const digest = createHash('sha256')
+    .update([
+      input.replacementDraftId,
+      input.targetCreativeId,
+      input.runId,
+      input.selectedAttemptId,
+      input.sourceFingerprint,
+      input.representativeKey,
+    ].join('|'), 'utf8')
+    .digest('hex');
+  return `info-auto-replace-v1:${digest}`;
+}
+
+export async function replaceBlogInformationAutomatedDraftAtomically(
+  input: BlogInformationAutomatedReplacementInput,
+): Promise<BlogInformationAtomicReplacementResult> {
+  const representativeKey = buildBlogInformationRepresentativeKey(input.identity);
+  const idempotencyKey = input.idempotencyKey
+    ?? buildBlogInformationAutomatedReplacementIdempotencyKey({
+      replacementDraftId: input.replacementDraftId,
+      targetCreativeId: input.targetCreativeId,
+      runId: input.runId,
+      selectedAttemptId: input.selectedAttemptId,
+      sourceFingerprint: input.sourceFingerprint,
+      representativeKey,
+    });
+  const { data, error } = await supabaseAdmin.rpc(
+    'replace_blog_information_automated_draft_atomically',
+    {
+      p_replacement_draft_id: input.replacementDraftId,
+      p_target_creative_id: input.targetCreativeId,
+      p_run_id: input.runId,
+      p_selected_attempt_id: input.selectedAttemptId,
+      p_source_fingerprint: input.sourceFingerprint,
+      p_validation_meta: input.validationMeta,
+      p_quality_gate: input.qualityGate,
+      p_representative_key: representativeKey,
+      p_idempotency_key: idempotencyKey,
+    },
+  );
+  if (error) {
+    throw new Error(`blog_information_atomic_auto_replace_failed:${error.message}`);
+  }
+  const row = (data as AtomicReplacementRpcRow[] | null)?.[0];
+  if (!row) throw new Error('blog_information_atomic_auto_replace_missing_result');
+  return {
+    targetCreativeId: row.target_creative_id,
+    replacementDraftId: row.replacement_draft_id,
+    slug: row.slug,
+    publishedAt: row.published_at,
+    representativeKey: row.representative_key,
+    replacementId: row.replacement_id,
+    indexingJobId: row.indexing_job_id,
+    idempotent: row.idempotent,
+  };
 }
 
 export async function replaceBlogInformationReviewedDraftAtomically(

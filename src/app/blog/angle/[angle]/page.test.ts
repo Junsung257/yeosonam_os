@@ -13,7 +13,7 @@ describe('/blog/angle/[angle] rendering contract', () => {
     expect(source).toContain("export const dynamic = 'force-dynamic';");
     expect(source).toContain('export const dynamicParams = true;');
     expect(source).not.toContain('generateStaticParams');
-    expect(source).toContain('loadPublicBlogCatalog()');
+    expect(source).toContain('loadPublicBlogCatalogPage({');
     expect(source).not.toContain('unstable_cache');
   });
 });

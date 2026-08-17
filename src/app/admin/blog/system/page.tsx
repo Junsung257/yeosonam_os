@@ -36,7 +36,18 @@ interface BlogSystemPayload {
 
 interface BlogOpsSummary {
   level: OpsLevel;
-  publish: { published_today: number; daily_target: number; remaining_today: number; level: string };
+  publish: {
+    published_today: number;
+    daily_target: number;
+    configured_daily_target?: number;
+    effective_daily_target?: number;
+    daily_publish_cap?: number;
+    autopublish_mode?: 'draft_only' | 'reviewed_only' | 'live';
+    requested_autopublish_mode?: 'draft_only' | 'reviewed_only' | 'live';
+    public_publication_enabled?: boolean;
+    remaining_today: number;
+    level: string;
+  };
   queue: {
     counts: Record<string, number>;
     failure_groups?: Record<string, number>;
@@ -101,6 +112,13 @@ interface BlogOpsSummary {
     }>;
   };
   contract: { passed: boolean; failed_checks: string[] };
+  runtime_schema?: {
+    fullyReady: boolean;
+    publishReady: boolean;
+    deliveryReady: boolean;
+    measurementReady: boolean;
+    missing: string[];
+  };
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -116,6 +134,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const CHECK_LABELS: Record<string, string> = {
+  autopublish_mode_draft_only: '자동발행 안전정지',
   daily_publish_sla: '오늘 발행 목표 미달',
   queue_failures_or_stale_generation: '큐 실패 또는 생성 정체',
   published_state_mismatch: '발행 완료/실제 글 상태 불일치',
@@ -166,6 +185,8 @@ const CORE_CRON_COPY: Record<string, { label: string; description: string }> = {
   'blog-indexing-worker': { label: '색인 작업 처리', description: '구글/네이버 색인 요청 큐를 처리합니다.' },
   'blog-orchestrator': { label: '자동 발행 총괄', description: '후보 발굴, 큐 보충, 발행 흐름을 조율합니다.' },
   'blog-publisher': { label: '글 발행자', description: '품질 점검을 통과한 큐를 실제 글로 발행합니다.' },
+  'blog-generate': { label: '야간 글 생성', description: 'DeepSeek로 후보를 생성·재작성하고 공개 승인 원장에 적재합니다.' },
+  'blog-publication-controller': { label: '주간 공개 제어', description: '모델 호출 없이 승인된 초안만 공개합니다.' },
   'blog-scheduler': { label: '발행 일정 정리', description: '오늘 처리할 큐와 발행 슬롯을 맞춥니다.' },
   'gsc-index-rank': { label: '구글 색인/순위 확인', description: '구글 기준 색인과 노출 상태를 확인합니다.' },
   'rank-tracking': { label: '순위 추적', description: '발행 글의 검색 노출 변화를 추적합니다.' },
@@ -379,7 +400,17 @@ export default function BlogSystemPage() {
       {ops && (
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           {[
-            ['오늘 발행', `${ops.publish.published_today}/${ops.publish.daily_target}`, ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성', Activity, ops.publish.remaining_today ? 'text-danger' : 'text-success'],
+            [
+              '오늘 발행',
+              ops.publish.public_publication_enabled === false
+                ? '안전정지'
+                : `${ops.publish.published_today}/${ops.publish.daily_target}`,
+              ops.publish.public_publication_enabled === false
+                ? `모드 ${ops.publish.autopublish_mode || 'draft_only'} · 생성물은 공개하지 않음`
+                : ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성',
+              Activity,
+              ops.publish.public_publication_enabled === false || ops.publish.remaining_today ? 'text-danger' : 'text-success',
+            ],
             ['큐 문제', `${ops.queue.counts.failed || 0}`, `지연 ${ops.queue.overdue_queued} · 정체 ${ops.queue.stale_generating}`, AlertTriangle, (ops.queue.counts.failed || 0) ? 'text-danger' : 'text-success'],
             ['발행 불일치', `${ops.queue.published_state_mismatch || 0}`, '큐 완료와 실제 글 상태 비교', AlertTriangle, (ops.queue.published_state_mismatch || 0) ? 'text-danger' : 'text-success'],
             ['색인 작업', `${ops.indexing.active_jobs}`, ops.indexing.google_unknown_urls ? `구글 미인지 ${ops.indexing.google_unknown_urls}건` : '대기 작업 기준', Search, ops.indexing.active_jobs || ops.indexing.google_unknown_urls ? 'text-warning' : 'text-success'],
@@ -394,6 +425,33 @@ export default function BlogSystemPage() {
               <p className="mt-1 text-admin-xs leading-5 text-admin-muted">{String(hint)}</p>
             </div>
           ))}
+        </section>
+      )}
+
+      {ops && (
+        <section className="grid gap-3 md:grid-cols-2">
+          <div className="admin-card p-4">
+            <h2 className="text-admin-sm font-semibold text-admin-text">자동발행 실효 정책</h2>
+            <p className="mt-2 text-admin-xs leading-5 text-admin-muted">
+              DB 정책 {ops.publish.configured_daily_target ?? '-'}편 · 환경 상한 {ops.publish.daily_publish_cap ?? '-'}편 · 실효 상한 {ops.publish.effective_daily_target ?? '-'}편
+            </p>
+            <p className={`mt-1 text-admin-xs font-semibold ${ops.publish.public_publication_enabled ? 'text-success' : 'text-danger'}`}>
+              {ops.publish.public_publication_enabled
+                ? `${ops.publish.autopublish_mode || 'live'} 모드로 공개 발행 가능`
+                : `${ops.publish.autopublish_mode || 'draft_only'} 모드로 공개 발행 중지`}
+            </p>
+          </div>
+          <div className="admin-card p-4">
+            <h2 className="text-admin-sm font-semibold text-admin-text">V3 운영 DB 준비상태</h2>
+            <p className={`mt-2 text-admin-xs font-semibold ${ops.runtime_schema?.fullyReady ? 'text-success' : 'text-danger'}`}>
+              {ops.runtime_schema?.fullyReady ? '발행·공개·측정 스키마 준비 완료' : '필수 스키마 누락으로 live 전환 금지'}
+            </p>
+            {!ops.runtime_schema?.fullyReady && (
+              <p className="mt-1 break-words text-admin-2xs leading-5 text-admin-muted">
+                누락: {ops.runtime_schema?.missing?.join(', ') || '준비상태를 불러오지 못했습니다.'}
+              </p>
+            )}
+          </div>
         </section>
       )}
 

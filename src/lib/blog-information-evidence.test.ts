@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createBlogInformationClaimFingerprint,
   createBlogInformationSourceContentHash,
+  inspectBlogInformationClaimLiteralSupport,
   isOfficialInformationAuthority,
   isPrimaryInformationAuthority,
   validateBlogInformationResearchBundle,
@@ -69,6 +70,40 @@ function validBundle(): BlogInformationResearchBundle {
 }
 
 describe('blog informational evidence contract', () => {
+  it('rejects a second numeric fact that is absent from the linked source excerpt', () => {
+    expect(inspectBlogInformationClaimLiteralSupport({
+      claimText: '오행산은 오전 7시 전에 방문하고 린응사는 차량으로 15분 거리입니다.',
+      evidence: [{ excerpt: 'Just before 7am is the perfect time to visit Marble Mountains.' }],
+    })).toEqual({
+      passed: false,
+      numericTokens: ['7', '15'],
+      missingNumericTokens: ['15'],
+    });
+  });
+
+  it('recognizes literal digits and small English number words in the source excerpt', () => {
+    expect(inspectBlogInformationClaimLiteralSupport({
+      claimText: '오행산은 도시에서 15분 거리의 5개 봉우리입니다.',
+      evidence: [{ excerpt: 'Marble Mountains is a collection of five outcrops, only 15 minutes from the city.' }],
+    }).passed).toBe(true);
+  });
+
+  it('does not accept a number that appears only in the verification audit suffix', () => {
+    expect(inspectBlogInformationClaimLiteralSupport({
+      claimText: '용다리 쇼는 밤 9시에 열립니다.',
+      evidence: [{ excerpt: 'Dragon Bridge is a suspension bridge. [검증 범위: 기준일 2026-08-15; 값: 용다리]' }],
+    }).missingNumericTokens).toContain('9');
+  });
+
+  it('fails the complete research bundle when a compound claim adds an unsupported number', () => {
+    const bundle = validBundle();
+    bundle.claims[0].claimText = `${bundle.claims[0].claimText} 추가 이동은 99분입니다.`;
+    bundle.claims[0].claimFingerprint = createBlogInformationClaimFingerprint(bundle.claims[0].claimText);
+    expect(validateBlogInformationResearchBundle(bundle).issues).toContain(
+      `claim:unsupported_numeric_token:99:${bundle.claims[0].claimFingerprint}`,
+    );
+  });
+
   it('accepts a complete source-evidence-claim chain', () => {
     expect(validateBlogInformationResearchBundle(validBundle())).toEqual({
       passed: true,

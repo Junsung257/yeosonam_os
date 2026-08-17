@@ -6,6 +6,11 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { expandGscLongtailTopics } from '@/lib/blog-longtail-expander';
 import { buildBlogGscQueryRankHistoryRows } from '@/lib/blog-gsc-rank-history-rows';
+import { buildBlogGscSearchPerformanceRowsV3 } from '@/lib/blog-search-performance-import-v3';
+import {
+  buildBlogGscCollectionPlanV3,
+  readBlogGscBackfillCursorV3,
+} from '@/lib/blog-gsc-collection-plan-v3';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -30,6 +35,24 @@ export const dynamic = 'force-dynamic';
 
 const RANK_DROP_THRESHOLD = 5;       // 5계단 이상 하락 시 경보
 const LOOKBACK_AVG_DAYS = 7;
+
+async function upsertInChunks(
+  table: 'rank_history' | 'blog_search_performance',
+  rows: Array<Record<string, unknown>>,
+  onConflict: string,
+): Promise<{ inserted: number; error: string | null }> {
+  let inserted = 0;
+  for (let offset = 0; offset < rows.length; offset += 500) {
+    const chunk = rows.slice(offset, offset + 500);
+    const { error } = await supabaseAdmin.from(table).upsert(chunk, {
+      onConflict,
+      ignoreDuplicates: false,
+    });
+    if (error) return { inserted, error: sanitizeDbError(error) };
+    inserted += chunk.length;
+  }
+  return { inserted, error: null };
+}
 
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -60,31 +83,98 @@ async function runRankTracking(request: NextRequest) {
   const siteUrl = process.env.GSC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com/';
   const errors: string[] = [];
 
-  // 1) 어제 데이터 (GSC는 보통 1-2일 지연)
+  // 1) 최근 7일은 매번 재수집하고, 그 이전 90일은 작은 청크로
+  //    역방향 보강한다. GSC 수정 데이터도 반영하면서 한 번의 크론이
+  //    과도한 API 호출이나 함수 시간을 쓰지 않게 한다.
   const targetDate = new Date();
   targetDate.setDate(targetDate.getDate() - 2);
   const dateStr = targetDate.toISOString().split('T')[0];
-
-  const metrics = await fetchBlogSearchMetrics(siteUrl, dateStr, true).catch(err => {
-    errors.push(`GSC fetch failed: ${sanitizeDbError(err)}`);
-    return [];
+  const previousRuns = await supabaseAdmin
+    .from('cron_run_logs')
+    .select('summary')
+    .eq('cron_name', 'rank-tracking')
+    .order('started_at', { ascending: false })
+    .limit(20);
+  const priorRows = previousRuns.error ? [] : previousRuns.data || [];
+  const hasPreviousBackfillState = priorRows.some((row: any) => (
+    row?.summary?.gsc_collection
+    && Object.prototype.hasOwnProperty.call(row.summary.gsc_collection, 'nextBackfillEndDate')
+  ));
+  const previousBackfillEndDate = readBlogGscBackfillCursorV3(priorRows);
+  const collectionPlan = buildBlogGscCollectionPlanV3({
+    now: new Date(),
+    catchupDays: Number(process.env.BLOG_GSC_CATCHUP_DAYS || 7),
+    backfillDays: Number(process.env.BLOG_GSC_BACKFILL_DAYS || 90),
+    backfillChunkDays: Number(process.env.BLOG_GSC_BACKFILL_CHUNK_DAYS || 7),
+    previousBackfillEndDate,
+    hasPreviousState: hasPreviousBackfillState,
   });
+  const targetDates = collectionPlan.requestedDates;
+  const metrics = [] as Awaited<ReturnType<typeof fetchBlogSearchMetrics>>;
+  const failedDates: string[] = [];
+  for (const target of targetDates) {
+    const daily = await fetchBlogSearchMetrics(siteUrl, target, true).catch(err => {
+      errors.push(`GSC fetch failed (${target}): ${sanitizeDbError(err)}`);
+      failedDates.push(target);
+      return [];
+    });
+    metrics.push(...daily);
+  }
+  const gscCollection = {
+    ...collectionPlan,
+    nextBackfillEndDate: failedDates.length > 0
+      ? (hasPreviousBackfillState ? previousBackfillEndDate : collectionPlan.backfillDates.at(-1) ?? null)
+      : collectionPlan.nextBackfillEndDate,
+    fetchedDates: targetDates.filter((date) => !failedDates.includes(date)),
+    failedDates,
+    stateReadError: previousRuns.error ? sanitizeDbError(previousRuns.error) : null,
+  };
   const selectedGscSiteUrl = metrics[0]?.gscSiteUrl ?? siteUrl;
 
   if (metrics.length === 0) {
-    return { date: dateStr, fetched: 0, inserted: 0, alerts: 0, errors, message: 'GSC 데이터 없음' };
+    errors.push(`gsc_observed_metrics_empty:${targetDates[0]}:${dateStr}`);
+    return {
+      ok: false,
+      date: dateStr,
+      catchup_days: collectionPlan.catchupDates.length,
+      gsc_collection: gscCollection,
+      fetched: 0,
+      inserted: 0,
+      performance_inserted: 0,
+      alerts: 0,
+      errors,
+      message: 'GSC observed query-page metrics are empty',
+    };
   }
 
   // 2) rank_history 일괄 upsert (slug 추출)
-  const rows = buildBlogGscQueryRankHistoryRows(metrics, dateStr);
+  const rows = targetDates.flatMap((date) => buildBlogGscQueryRankHistoryRows(
+    metrics.filter((metric) => metric.date === date),
+    date,
+  ));
 
   let inserted = 0;
   if (rows.length > 0) {
-    const { error: insErr } = await supabaseAdmin
-      .from('rank_history')
-      .upsert(rows, { onConflict: 'slug,query,date,source', ignoreDuplicates: false });
-    if (insErr) errors.push(`rank_history upsert failed: ${sanitizeDbError(insErr)}`);
-    else inserted = rows.length;
+    const result = await upsertInChunks(
+      'rank_history',
+      rows as unknown as Array<Record<string, unknown>>,
+      'slug,query,date,source',
+    );
+    inserted = result.inserted;
+    if (result.error) errors.push(`rank_history upsert failed: ${result.error}`);
+  }
+
+  const performanceRows = buildBlogGscSearchPerformanceRowsV3(
+    metrics,
+    `gsc-api-${targetDates[0]}-${dateStr}`,
+  );
+  const performanceResult = await upsertInChunks(
+    'blog_search_performance',
+    performanceRows as unknown as Array<Record<string, unknown>>,
+    'provider,source_row_hash',
+  );
+  if (performanceResult.error) {
+    errors.push(`blog_search_performance upsert failed: ${performanceResult.error}`);
   }
 
   let longtailExpansion: Record<string, unknown> | null = null;
@@ -173,61 +263,19 @@ async function runRankTracking(request: NextRequest) {
         errors.push(`rank_alerts insert failed: ${sanitizeDbError(aErr)}`);
       } else {
         alerts = alertRows.length;
-
-        // 디케이 신호 — rank_alerts 기록 성공 시에만 content_creatives 반영
-        const slugs = [...new Set(alertRows.map((r: { slug: string }) => r.slug))];
-        const { data: creatives } = await supabaseAdmin
-          .from('content_creatives')
-          .select('id, slug, generation_meta')
-          .eq('channel', 'naver_blog')
-          .in('slug', slugs);
-
-        const patchTasks: Promise<unknown>[] = [];
-        for (const c of creatives || []) {
-          const row = c as { id: string; slug: string; generation_meta: unknown };
-          const hits = alertRows.filter((r: { slug: string }) => r.slug === row.slug);
-          const worst = [...hits].sort(
-            (a: { delta: number }, b: { delta: number }) => (b.delta ?? 0) - (a.delta ?? 0),
-          )[0] as { query: string; prev_position: number; curr_position: number; delta: number } | undefined;
-          if (!worst) continue;
-          const prevMeta =
-            row.generation_meta && typeof row.generation_meta === 'object'
-              ? (row.generation_meta as Record<string, unknown>)
-              : {};
-          patchTasks.push(
-            Promise.resolve(
-              supabaseAdmin
-                .from('content_creatives')
-                .update({
-                  generation_meta: {
-                    ...prevMeta,
-                    rank_decay_signal: {
-                      at: new Date().toISOString(),
-                      query: worst.query,
-                      prev_position: worst.prev_position,
-                      curr_position: worst.curr_position,
-                      delta: worst.delta,
-                    },
-                  },
-                })
-                .eq('id', row.id),
-            ),
-          );
-        }
-        const settled = await Promise.allSettled(patchTasks);
-        settled.forEach((r, i) => {
-          if (r.status === 'rejected') {
-            errors.push(`generation_meta patch ${i}: ${sanitizeDbError(r.reason)}`);
-          }
-        });
       }
     }
   }
 
   return {
+    ok: errors.length === 0,
     date: dateStr,
+    catchup_days: collectionPlan.catchupDates.length,
+    requested_dates: targetDates,
+    gsc_collection: gscCollection,
     fetched: metrics.length,
     inserted,
+    performance_inserted: performanceResult.inserted,
     alerts,
     siteUrl: selectedGscSiteUrl,
     fallback_used: selectedGscSiteUrl !== siteUrl,

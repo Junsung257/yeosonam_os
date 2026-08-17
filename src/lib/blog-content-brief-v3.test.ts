@@ -1,0 +1,175 @@
+import { describe, expect, it } from 'vitest';
+import {
+  assertNoFabricatedExperienceV3,
+  buildBlogContentBriefV3,
+  resolveVerifiedFirstPartySourceIdsV3,
+} from './blog-content-brief-v3';
+import type { SerpResearchPacketV3 } from './blog-serp-research-v3';
+
+const details = [1, 2, 3].map((n) => ({ text: `destination detail ${n}`, evidenceId: `evidence-${n}` }));
+
+describe('flexible blog content brief v3', () => {
+  it.each([
+    ['오사카 숙소 위치', 'neighborhood_selector'],
+    ['간사이공항에서 난바 이동', 'route_walkthrough'],
+    ['ETIAS 변경', 'current_change_explainer'],
+    ['부모님과 장가계', 'traveler_type_plan'],
+    ['다낭 4박5일 비용', 'budget_scenarios'],
+    ['다낭 여행 일정과 이동 동선', 'itinerary_timeline'],
+  ] as const)('selects %s by intent and evidence', (topic, archetype) => {
+    expect(buildBlogContentBriefV3({ topic, destinationDecisionDetails: details }).archetype).toBe(archetype);
+  });
+
+  it('resolves schedule plus movement wording as an itinerary before the generic route matcher', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '다낭 여행 일정과 이동 동선',
+      primaryKeyword: '다낭 여행 일정과 이동 동선',
+      destination: '다낭',
+      destinationDecisionDetails: details,
+    });
+
+    expect(brief).toMatchObject({
+      archetype: 'itinerary_timeline',
+      primaryDecision: '어떤 장소를 같은 날 또는 별도 동선으로 배치할 것인가?',
+    });
+    expect(brief.title).toContain('장소별 실행 순서와 대체 동선');
+    expect(brief.metadata.description).toContain('장소별 실행 순서와 이동 근거');
+    expect(brief.metadata.description).not.toContain('필요한 확인 순서');
+  });
+
+  it('turns an explicit trip duration into a day-by-day decision contract', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryKeyword: '다낭 3박4일 여행 코스와 이동 동선',
+      destination: '다낭',
+      destinationDecisionDetails: details,
+    });
+
+    expect(brief).toMatchObject({
+      archetype: 'itinerary_timeline',
+      primaryDecision: '3박4일 동안 어느 날에 어느 장소를 배치해야 하는가?',
+    });
+    expect(brief.sectionPurposes[0]?.purpose).toContain('각 날짜');
+  });
+
+  it('defaults FAQ, checklist, year and image minimum off', () => {
+    expect(buildBlogContentBriefV3({ topic: '오사카 첫 여행', destinationDecisionDetails: details })).toMatchObject({
+      includeFaq: false,
+      includeChecklist: false,
+      includeYearInTitle: false,
+      imageMinimum: 0,
+    });
+  });
+
+  it('uses mistake prevention only when preparation is the actual query intent', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '몽골 여행 준비물 체크 리스트',
+      primaryKeyword: '몽골 여행 준비물 체크 리스트',
+      destination: '몽골',
+      destinationDecisionDetails: details,
+    });
+
+    expect(brief.archetype).toBe('mistake_prevention');
+    expect(brief.includeChecklist).toBe(true);
+    expect(brief.includeFaq).toBe(false);
+    expect(brief.includeTable).toBe(false);
+  });
+
+  it('requires three evidence-backed destination details', () => {
+    expect(buildBlogContentBriefV3({ topic: '오사카 숙소 위치' })).toMatchObject({
+      passed: false,
+      issues: ['destination_specific_evidence_below_three'],
+    });
+  });
+
+  it('classifies travel medication queries as HIGH risk before writing', () => {
+    expect(buildBlogContentBriefV3({
+      topic: '해외여행 약',
+      primaryKeyword: '해외여행 약',
+      destinationDecisionDetails: details,
+    }).riskLevel).toBe('HIGH');
+  });
+
+  it('builds decision-first structures for the first operating candidates', () => {
+    const weather = buildBlogContentBriefV3({
+      topic: '다낭 10월 날씨', primaryKeyword: '다낭 10월 날씨', destination: '다낭',
+      destinationDecisionDetails: details,
+    });
+    const attractions = buildBlogContentBriefV3({
+      topic: '다낭 가볼만한곳', primaryKeyword: '다낭 가볼만한곳', destination: '다낭',
+      destinationDecisionDetails: details,
+    });
+    const hotels = buildBlogContentBriefV3({
+      topic: '세부 호텔 추천', primaryKeyword: '세부 호텔 추천', destination: '세부',
+      destinationDecisionDetails: details,
+    });
+
+    expect(weather.title).toBe('다낭 10월 날씨, 여행해도 괜찮을까?');
+    expect(weather.sections).toContain('우천 시 실행 가능한 대안을 제시한다');
+    expect(weather.includeTwelveMonthTable).toBe(false);
+    expect(attractions.archetype).toBe('decision_comparison');
+    expect(attractions.sections).toContain('함께 묶을 수 있는 동선을 제시한다');
+    expect(hotels.archetype).toBe('neighborhood_selector');
+    expect(hotels.sections[0]).toBe('개별 호텔보다 숙소 지역을 먼저 고르게 한다');
+  });
+
+  it('keeps H1, metadata and OG title fixed to one deterministic variant', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '세부 호텔 추천', primaryKeyword: '세부 호텔 추천', destination: '세부',
+      destinationDecisionDetails: details,
+    });
+    expect(brief.title).toBe(brief.metadata.title);
+    expect(brief.metadata.ogTitle).toBe(brief.metadata.title);
+    expect(brief.metadata.description.length).toBeGreaterThanOrEqual(80);
+    expect(brief.metadata.description.length).toBeLessThanOrEqual(150);
+    expect(brief.metadata.description).not.toMatch(/제시.*제시|기준과 출발 전 다시 확인할 공식 정보/);
+    expect(brief.title).not.toMatch(/2026|완벽|총정리|BEST/i);
+  });
+
+  it('blocks invented first-party experience language', () => {
+    expect(assertNoFabricatedExperienceV3('지난달 다녀온 지인이 좋다고 말했다.', [])).not.toHaveLength(0);
+    expect(assertNoFabricatedExperienceV3('운영팀이 직접 확인했다.', ['field-note-1'])).toEqual([]);
+  });
+
+  it('carries only caller-verified first-party IDs into the quality contract', () => {
+    expect(buildBlogContentBriefV3({
+      topic: '다낭 호텔 현장 노트',
+      destinationDecisionDetails: details,
+      availableEvidenceTypes: ['first_party'],
+      firstPartySourceIds: ['field-source-1', 'field-source-1'],
+    })).toMatchObject({
+      verifiedFirstPartySourceIds: ['field-source-1'],
+      experienceLanguageAllowed: true,
+      archetype: 'first_party_field_note',
+    });
+  });
+
+  it('does not trust a queue first-party ID unless the validated packet resolves it', () => {
+    expect(resolveVerifiedFirstPartySourceIdsV3({
+      registeredIds: ['invented-note', 'field-note-internal'],
+      sources: [{
+        sourceKey: 'field-source-1',
+        internalIdentifier: 'field-note-internal',
+        authorityLevel: 'field_observation',
+        sourceType: 'field_research',
+      }, {
+        sourceKey: 'official-source',
+        authorityLevel: 'official_primary',
+        sourceType: 'government',
+      }],
+    })).toEqual(['field-source-1', 'field-note-internal']);
+  });
+
+  it('routes a broad destination query to representative refresh instead of a new URL', () => {
+    const serpResearch = {
+      queryCluster: { primaryQuery: '다낭 여행', secondaryQueries: [], tier: 'broad', destination: '다낭' },
+      intent: 'destination_overview',
+      archetypeCandidates: ['direct_answer'],
+    } as unknown as SerpResearchPacketV3;
+    const brief = buildBlogContentBriefV3({
+      topic: '다낭 여행', primaryKeyword: '다낭 여행', destination: '다낭',
+      destinationDecisionDetails: details, serpResearch,
+    });
+    expect(brief.publicationStrategy).toBe('refresh_representative');
+  });
+});

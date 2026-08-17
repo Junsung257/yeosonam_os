@@ -29,6 +29,7 @@ import {
   isNaverAdsConfigured,
   isGoogleAdsConfigured,
   generateGoogleHistoricalMetrics,
+  parseNaverKeywordMetric,
 } from '@/lib/search-ads-api';
 
 // ── 설정 상수 ────────────────────────────────────────────────
@@ -310,7 +311,8 @@ export async function discoverLongtailKeywords(params: {
         const chunk = params.seedKeywords.slice(i, i + 5);
         const ideas = await fetchNaverKeywordIdeas(chunk);
         for (const idea of ideas) {
-          const monthly = (idea.monthlyPcQcCnt || 0) + (idea.monthlyMobileQcCnt || 0);
+          const monthly = (parseNaverKeywordMetric(idea.monthlyPcQcCnt) ?? 0)
+            + (parseNaverKeywordMetric(idea.monthlyMobileQcCnt) ?? 0);
           // CPC 추정: 경쟁도 × 기준단가 — 네이버는 직접 CPC 안 줌, 경쟁도 → CPC 매핑
           const compIdx = Number(idea.compIdx || 0);
           const compFactor = compIdx >= 80 ? 200 : compIdx >= 40 ? 100 : 50;

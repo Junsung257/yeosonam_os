@@ -105,14 +105,14 @@ const checks = [
     remediation: 'When a package inquiry arrives, update recommendation_outcomes/recommendation_events for the same session/package.',
   },
   {
-    id: 'daily_publish_target_is_exactly_5',
+    id: 'daily_publish_target_is_v3_capped',
     weight: 7,
-    passed: /MIN_POSTS_PER_DAY\s*=\s*5/.test(source.scheduler) &&
-      /MAX_POSTS_PER_DAY\s*=\s*5/.test(source.scheduler) &&
-      /DEFAULT_POSTS_PER_DAY\s*=\s*5/.test(source.scheduler) &&
-      /Math\.min\(MAX_POSTS_PER_DAY,\s*Math\.max\(MIN_POSTS_PER_DAY/.test(source.scheduler),
+    passed: /DEFAULT_POSTS_PER_DAY\s*=\s*1/.test(source.scheduler) &&
+      /readBlogAutopublishPolicyV3/.test(source.scheduler) &&
+      /Math\.min\(configured,\s*readBlogAutopublishPolicyV3\(\)\.dailyPublishCap\)/.test(source.scheduler) &&
+      /BLOG_AUTOPUBLISH_POLICY_V3\.dailyPublishCap/.test(source.publisher),
     evidence: files.scheduler,
-    remediation: 'Keep the scheduler policy fixed at five researched posts per KST day.',
+    remediation: 'Clamp scheduler, publisher, and operational audits to BLOG_DAILY_PUBLISH_CAP (default 1).',
   },
   {
     id: 'publisher_respects_cumulative_slot_quota',
@@ -134,7 +134,7 @@ const checks = [
       /under_daily_target:\s*\(pubRes\.count\s*\|\|\s*0\)\s*<\s*dailyTarget/.test(source.dailySummary) &&
       /if\s*\(summary\.under_daily_target\)/.test(source.dailySummary),
     evidence: files.dailySummary,
-    remediation: 'Alert and trigger recovery whenever the configured five-post daily target is missed.',
+    remediation: 'Alert and trigger recovery whenever the configured V3-capped daily target is missed.',
   },
   {
     id: 'blog_learning_consumes_editorial_and_funnel_failures',

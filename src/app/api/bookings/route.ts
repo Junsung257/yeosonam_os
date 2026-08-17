@@ -986,6 +986,8 @@ export async function PATCH(request: NextRequest) {
         departure_date?: string;
         attribution_snapshot?: {
           analytics?: unknown;
+          assisting_content_creative_id?: string | null;
+          search_query_hash?: string | null;
         } | null;
       };
       try {
@@ -1001,6 +1003,8 @@ export async function PATCH(request: NextRequest) {
             ? Math.max(0, Math.round(conversionBooking.total_price ?? 0))
             : null,
           attribution: conversionBooking.attribution_snapshot?.analytics,
+          assistingContentCreativeId: conversionBooking.attribution_snapshot?.assisting_content_creative_id,
+          searchQueryHash: conversionBooking.attribution_snapshot?.search_query_hash,
           payload: {
             transaction_id: `booking:${id}`,
             currency: 'KRW',

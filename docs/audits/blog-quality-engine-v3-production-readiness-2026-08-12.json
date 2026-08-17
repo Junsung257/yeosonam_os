@@ -1,0 +1,482 @@
+{
+  "readOnly": true,
+  "base": "https://www.yeosonam.com",
+  "schema": {
+    "version": "blog-runtime-schema-v3",
+    "checkedAt": "2026-08-12T06:59:17.726Z",
+    "publishReady": false,
+    "deliveryReady": false,
+    "measurementReady": false,
+    "fullyReady": false,
+    "missing": [
+      "content_creatives_v3_columns",
+      "public_eligibility_policy_v3",
+      "publication_decisions",
+      "quality_evaluations",
+      "demand_signals",
+      "content_signatures",
+      "claim_ledger",
+      "author_profiles",
+      "media_assets",
+      "content_media",
+      "public_snapshots",
+      "public_snapshot_history",
+      "public_catalog_facets",
+      "search_performance",
+      "analytics_outbox",
+      "engagement_dimensions",
+      "rum_dimensions",
+      "server_event_attribution"
+    ],
+    "checks": [
+      {
+        "key": "content_creatives_v3_columns",
+        "table": "content_creatives",
+        "columns": "id,content_document,content_modified_at,fact_checked_at,last_verified_at,material_update_reason,author_profile_id",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "content_document,content_modified_at,fact_checked_at,last_verified_at,material_update_reason,author_profile_id"
+      },
+      {
+        "key": "public_eligibility_policy_v3",
+        "table": "public_blog_content_creatives",
+        "columns": "id,public_eligibility_lane,public_eligibility_reason",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "public_eligibility_reason"
+      },
+      {
+        "key": "publication_decisions",
+        "table": "blog_publication_decisions",
+        "columns": "id",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "quality_evaluations",
+        "table": "blog_quality_evaluations",
+        "columns": "id",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "demand_signals",
+        "table": "blog_demand_signals",
+        "columns": "id,queue_id,provider,signal_value,source_reference,verified_at,expires_at",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id,queue_id,provider,signal_value,source_reference,verified_at,expires_at"
+      },
+      {
+        "key": "content_signatures",
+        "table": "blog_content_signatures",
+        "columns": "id",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "claim_ledger",
+        "table": "blog_information_claim_ledger_v3",
+        "columns": "claim_id",
+        "scope": "publish",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "claim_id"
+      },
+      {
+        "key": "author_profiles",
+        "table": "blog_author_profiles",
+        "columns": "id",
+        "scope": "delivery",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "media_assets",
+        "table": "blog_media_assets",
+        "columns": "id",
+        "scope": "delivery",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "content_media",
+        "table": "blog_content_media",
+        "columns": "creative_id",
+        "scope": "delivery",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "creative_id"
+      },
+      {
+        "key": "public_snapshots",
+        "table": "blog_public_snapshots",
+        "columns": "creative_id,is_current",
+        "scope": "delivery",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "creative_id,is_current"
+      },
+      {
+        "key": "public_snapshot_history",
+        "table": "blog_public_snapshot_history",
+        "columns": "id",
+        "scope": "delivery",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "public_catalog_facets",
+        "table": "blog_public_catalog_facets",
+        "columns": "facet_type,facet_key",
+        "scope": "delivery",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "facet_type,facet_key"
+      },
+      {
+        "key": "search_performance",
+        "table": "blog_search_performance",
+        "columns": "id",
+        "scope": "measurement",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id"
+      },
+      {
+        "key": "analytics_outbox",
+        "table": "analytics_server_event_outbox",
+        "columns": "id,status",
+        "scope": "measurement",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "id,status"
+      },
+      {
+        "key": "engagement_dimensions",
+        "table": "blog_engagement_logs",
+        "columns": "id,route,device,connection_type,navigation_type,consent_state,search_query_hash",
+        "scope": "measurement",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "route,device,connection_type,navigation_type,consent_state,search_query_hash"
+      },
+      {
+        "key": "rum_dimensions",
+        "table": "web_vitals",
+        "columns": "id,route,device,connection_type,navigation_type,consent_state",
+        "scope": "measurement",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "route,device,connection_type,navigation_type,consent_state"
+      },
+      {
+        "key": "server_event_attribution",
+        "table": "analytics_server_events",
+        "columns": "id,assisting_content_creative_id,search_query_hash",
+        "scope": "measurement",
+        "ready": false,
+        "errorCode": "schema_inventory_missing",
+        "errorMessage": "assisting_content_creative_id,search_query_hash"
+      }
+    ]
+  },
+  "data": {
+    "status": "critical",
+    "checks": [
+      {
+        "metric": "searchPerformance30d",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      },
+      {
+        "metric": "engagement7d",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      },
+      {
+        "metric": "serverEvents30d",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      },
+      {
+        "metric": "rum7d",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      },
+      {
+        "metric": "currentSnapshots",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      },
+      {
+        "metric": "outboxDead",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      },
+      {
+        "metric": "outboxReady",
+        "status": "critical",
+        "count": null,
+        "reason": "query_unavailable"
+      }
+    ],
+    "generatedAt": "2026-08-12T06:59:31.524Z"
+  },
+  "corpus": {
+    "analytics_server_events_30d": 0,
+    "blog_engagement_7d": 453,
+    "public_eligible": 192,
+    "published": 200,
+    "queued_without_demand": 9,
+    "rank_history_30d": 1228,
+    "review_blocked_published": 8,
+    "sample_slug": "fukuoka-3",
+    "web_vitals_7d": 2526
+  },
+  "surfaces": [
+    {
+      "key": "catalog",
+      "url": "https://www.yeosonam.com/blog",
+      "passed": true,
+      "statusCode": 200,
+      "reason": "passed"
+    },
+    {
+      "key": "sitemap",
+      "url": "https://www.yeosonam.com/sitemap.xml",
+      "passed": true,
+      "statusCode": 200,
+      "reason": "passed"
+    },
+    {
+      "key": "rss",
+      "url": "https://www.yeosonam.com/api/rss",
+      "passed": true,
+      "statusCode": 200,
+      "reason": "passed"
+    },
+    {
+      "key": "image_sitemap",
+      "url": "https://www.yeosonam.com/blog/image-sitemap.xml",
+      "passed": false,
+      "statusCode": 200,
+      "reason": "unexpected_content_type"
+    },
+    {
+      "key": "detail",
+      "url": "https://www.yeosonam.com/blog/fukuoka-3",
+      "passed": true,
+      "statusCode": 200,
+      "reason": "passed"
+    }
+  ],
+  "report": {
+    "version": "blog-production-readiness-v3",
+    "generatedAt": "2026-08-12T06:59:31.524Z",
+    "deliveryReady": false,
+    "measurementReady": false,
+    "corpusReady": false,
+    "safeToEnableLive": false,
+    "checks": [
+      {
+        "key": "production_source_branch",
+        "status": "pass",
+        "evidence": {
+          "expectedBranch": "main",
+          "productionBranch": "main",
+          "productionCommitSha": "54043ebdc5e7b787b304de9a932ecd3d50d7bdc6"
+        },
+        "reason": "immutable production commit is sourced from the allowed branch"
+      },
+      {
+        "key": "required_migrations",
+        "status": "block",
+        "evidence": {
+          "missingMigrations": [
+            "20260811132017",
+            "20260811132023",
+            "20260811132031",
+            "20260811132037",
+            "20260811210920"
+          ],
+          "outOfOrderMigrations": [
+            "20260811132017",
+            "20260811132023",
+            "20260811132031",
+            "20260811132037",
+            "20260811210920"
+          ]
+        },
+        "reason": "one or more required V3 migrations are absent"
+      },
+      {
+        "key": "runtime_schema",
+        "status": "block",
+        "evidence": {
+          "missing": [
+            "content_creatives_v3_columns",
+            "public_eligibility_policy_v3",
+            "publication_decisions",
+            "quality_evaluations",
+            "demand_signals",
+            "content_signatures",
+            "claim_ledger",
+            "author_profiles",
+            "media_assets",
+            "content_media",
+            "public_snapshots",
+            "public_snapshot_history",
+            "public_catalog_facets",
+            "search_performance",
+            "analytics_outbox",
+            "engagement_dimensions",
+            "rum_dimensions",
+            "server_event_attribution"
+          ]
+        },
+        "reason": "publication or durable delivery resources are unavailable"
+      },
+      {
+        "key": "snapshot_parity",
+        "status": "block",
+        "evidence": {
+          "publicEligible": 192,
+          "currentSnapshots": null
+        },
+        "reason": "eligible article and current snapshot counts differ or are unavailable"
+      },
+      {
+        "key": "public_surfaces",
+        "status": "block",
+        "evidence": [
+          {
+            "key": "catalog",
+            "url": "https://www.yeosonam.com/blog",
+            "passed": true,
+            "statusCode": 200,
+            "reason": "passed"
+          },
+          {
+            "key": "sitemap",
+            "url": "https://www.yeosonam.com/sitemap.xml",
+            "passed": true,
+            "statusCode": 200,
+            "reason": "passed"
+          },
+          {
+            "key": "rss",
+            "url": "https://www.yeosonam.com/api/rss",
+            "passed": true,
+            "statusCode": 200,
+            "reason": "passed"
+          },
+          {
+            "key": "image_sitemap",
+            "url": "https://www.yeosonam.com/blog/image-sitemap.xml",
+            "passed": false,
+            "statusCode": 200,
+            "reason": "unexpected_content_type"
+          },
+          {
+            "key": "detail",
+            "url": "https://www.yeosonam.com/blog/fukuoka-3",
+            "passed": true,
+            "statusCode": 200,
+            "reason": "passed"
+          }
+        ],
+        "reason": "one or more public surfaces are degraded or unverified"
+      },
+      {
+        "key": "runtime_database_reliability",
+        "status": "block",
+        "evidence": 131,
+        "reason": "BLOG_DATABASE_UNAVAILABLE errors remain in the 7-day production window"
+      },
+      {
+        "key": "measurement_pipeline",
+        "status": "block",
+        "evidence": {
+          "status": "critical",
+          "checks": [
+            {
+              "metric": "searchPerformance30d",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            },
+            {
+              "metric": "engagement7d",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            },
+            {
+              "metric": "serverEvents30d",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            },
+            {
+              "metric": "rum7d",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            },
+            {
+              "metric": "currentSnapshots",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            },
+            {
+              "metric": "outboxDead",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            },
+            {
+              "metric": "outboxReady",
+              "status": "critical",
+              "count": null,
+              "reason": "query_unavailable"
+            }
+          ],
+          "generatedAt": "2026-08-12T06:59:31.524Z"
+        },
+        "reason": "measurement schema or recent observations are incomplete"
+      },
+      {
+        "key": "review_blocked_published_rows",
+        "status": "block",
+        "evidence": 8,
+        "reason": "published review-blocked rows still require an approved disposition"
+      },
+      {
+        "key": "queued_demand_evidence",
+        "status": "block",
+        "evidence": 9,
+        "reason": "one or more queued topics have no verified demand signal"
+      }
+    ]
+  }
+}

@@ -58,6 +58,60 @@ describe('calculateBlogPublishSlotQuota', () => {
     });
   });
 
+  it('spreads a three-post cap across all five cron windows', () => {
+    const slots = ['09:00', '12:00', '15:00', '18:00', '21:00'];
+    const targetAt = (utc: string) => calculateBlogPublishSlotQuota({
+      now: new Date(utc),
+      dailyTarget: 3,
+      alreadyPublished: 0,
+      slotTimes: slots,
+    }).scheduledTargetNow;
+
+    expect(targetAt('2026-08-14T00:01:00.000Z')).toBe(1);
+    expect(targetAt('2026-08-14T03:01:00.000Z')).toBe(1);
+    expect(targetAt('2026-08-14T06:01:00.000Z')).toBe(2);
+    expect(targetAt('2026-08-14T09:01:00.000Z')).toBe(2);
+    expect(targetAt('2026-08-14T12:01:00.000Z')).toBe(3);
+  });
+
+  it('reaches high ramp caps without leaving posts stranded after the final slot', () => {
+    const slots = ['09:00', '12:00', '15:00', '18:00', '21:00'];
+    const targets = [
+      '2026-08-14T00:01:00.000Z', '2026-08-14T03:01:00.000Z',
+      '2026-08-14T06:01:00.000Z', '2026-08-14T09:01:00.000Z',
+      '2026-08-14T12:01:00.000Z',
+    ].map((utc) => calculateBlogPublishSlotQuota({
+      now: new Date(utc), dailyTarget: 20, alreadyPublished: 0, slotTimes: slots,
+    }).scheduledTargetNow);
+    expect(targets).toEqual([4, 8, 12, 16, 20]);
+  });
+
+  it.each([
+    ['pilot_3', 3, [1, 1, 2, 2, 3]],
+    ['ramp_10', 10, [2, 4, 6, 8, 10]],
+    ['max_30', 30, [3, 8, 14, 22, 30]],
+  ] as const)('uses the exact %s cumulative rollout schedule', (rolloutStage, dailyTarget, expected) => {
+    const slots = ['09:00', '12:00', '15:00', '18:00', '21:00'];
+    const targets = [
+      '2026-08-14T00:01:00.000Z', '2026-08-14T03:01:00.000Z',
+      '2026-08-14T06:01:00.000Z', '2026-08-14T09:01:00.000Z',
+      '2026-08-14T12:01:00.000Z',
+    ].map((utc) => calculateBlogPublishSlotQuota({
+      now: new Date(utc), dailyTarget, alreadyPublished: 0, slotTimes: slots, rolloutStage,
+    }).scheduledTargetNow);
+
+    expect(targets).toEqual(expected);
+  });
+
+  it('allows a zero hard cap without opening a slot', () => {
+    expect(calculateBlogPublishSlotQuota({
+      now: new Date('2026-08-14T12:01:00.000Z'),
+      dailyTarget: 0,
+      alreadyPublished: 0,
+      rolloutStage: 'max_30',
+    })).toMatchObject({ scheduledTargetNow: 0, remainingDueNow: 0, remainingDaily: 0 });
+  });
+
   it('falls back to the reviewed five-slot contract when policy slots are malformed', () => {
     const quota = calculateBlogPublishSlotQuota({
       now: new Date('2026-07-28T06:01:00.000Z'),

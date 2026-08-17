@@ -37,6 +37,39 @@ describe('middleware cron resource saver', () => {
     });
   });
 
+  it.each([
+    'rank-tracking',
+    'blog-data-readiness',
+    'blog-publisher',
+    'blog-generate',
+    'blog-publication-controller',
+    'blog-indexing-worker',
+    'analytics-delivery',
+  ])('allows the verified blog operating chain when critical crons are explicitly enabled: %s', async (cron) => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+    vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS', '1');
+
+    const response = await middleware(new NextRequest(
+      `https://www.yeosonam.com/api/cron/${cron}`,
+      { headers: { 'x-vercel-cron': '1' } },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it.each([
+    'blog-ai-model-canary',
+    'blog-analytics-canary',
+  ])('lets release canaries reach their route-local bearer guard: %s', async (cron) => {
+    const response = await middleware(new NextRequest(
+      `https://www.yeosonam.com/api/cron/${cron}`,
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('lets the Clobe bank sync reach its route-local cron bearer guard', async () => {
     const response = await middleware(new NextRequest(
       'https://www.yeosonam.com/api/cron/clobe-bank-sync',
@@ -75,6 +108,73 @@ describe('middleware cron resource saver', () => {
 
     expect(response.status).toBe(410);
     expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  it.each([
+    'travel-emergency-medicine-summer-checklist',
+    'post-hv01',
+  ])('returns 410 for unsafe medication content and its legacy alias: %s', async (slug) => {
+    const response = await middleware(new NextRequest(
+      `https://www.yeosonam.com/blog/${slug}`,
+    ));
+
+    expect(response.status).toBe(410);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+});
+
+describe('middleware blog public status contract', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('returns a hard 404 only when the least-privilege public registry proves the slug is absent', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/blog/review-blocked-fixture'));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/rest/v1/public_blog_slug_registry' }),
+      expect.not.objectContaining({ headers: expect.objectContaining({ apikey: 'service-key' }) }),
+    );
+  });
+
+  it('passes through present slugs and fails open to durable snapshots when the registry is unavailable', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    fetchSpy.mockResolvedValueOnce(new Response('[{"id":"creative-a"}]', { status: 200 }));
+
+    const found = await middleware(new NextRequest('https://www.yeosonam.com/blog/public-fixture'));
+    expect(found.status).toBe(200);
+    expect(found.headers.get('x-middleware-next')).toBe('1');
+
+    fetchSpy.mockRejectedValueOnce(new Error('registry unavailable'));
+    const unavailable = await middleware(new NextRequest('https://www.yeosonam.com/blog/outage-fixture'));
+    expect(unavailable.status).toBe(200);
+    expect(unavailable.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not treat the image sitemap route as a dynamic article slug', async () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/blog/image-sitemap.xml',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

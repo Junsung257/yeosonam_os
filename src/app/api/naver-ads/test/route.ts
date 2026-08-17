@@ -11,6 +11,7 @@ import {
   getGoogleAdsConfigStatus,
   getNaverAdsConfigStatus,
   isNaverAdsConfigured,
+  parseNaverKeywordMetric,
 } from '@/lib/search-ads-api';
 import { getSecret } from '@/lib/secret-registry';
 
@@ -41,7 +42,8 @@ export async function GET(request: NextRequest) {
           keyword: k.relKeyword,
           pcSearches: k.monthlyPcQcCnt,
           mobileSearches: k.monthlyMobileQcCnt,
-          totalSearches: k.monthlyPcQcCnt + k.monthlyMobileQcCnt,
+          totalSearches: (parseNaverKeywordMetric(k.monthlyPcQcCnt) ?? 0)
+            + (parseNaverKeywordMetric(k.monthlyMobileQcCnt) ?? 0),
           competition: k.compIdx,
           lowBid: k.lowPrice,
           highBid: k.highPrice,

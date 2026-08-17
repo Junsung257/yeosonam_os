@@ -24,6 +24,13 @@ export interface ExtractedBlogInformationClaim {
   extractedValue: BlogInformationExtractedValue;
 }
 
+export interface BlogInformationClaimTypeCompatibility {
+  passed: boolean;
+  declaredType: BlogInformationClaimType;
+  deterministicType: BlogInformationClaimType | null;
+  candidateKind: BlogInformationFactualCandidateKind | null;
+}
+
 export interface BlogInformationClaimEvidenceRecord {
   evidenceKey: string;
   sourceVersionId: string | null;
@@ -86,12 +93,43 @@ export interface BlogInformationClaimValidationReport {
   };
 }
 
+const NUMERIC_FACTUAL_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
+  'money_price',
+  'percentage',
+  'distance',
+  'time_schedule',
+  'date_period',
+  'quantity_limit',
+  'climate_measurement',
+]);
+
+const UNSUPPORTED_CLAIM_ISSUE_CODES = new Set<BlogInformationClaimValidationIssue['code']>([
+  'missing_evidence',
+  'claim_not_supported',
+  'unclassified_factual_candidate',
+]);
+
+/** Count only unsupported numeric facts present in the visible article. */
+export function countUnsupportedNumericBlogInformationClaims(
+  report: BlogInformationClaimValidationReport,
+): number {
+  const unsupportedFingerprints = new Set(report.issues
+    .filter((issue) => UNSUPPORTED_CLAIM_ISSUE_CODES.has(issue.code))
+    .map((issue) => issue.claimFingerprint));
+
+  return new Set(report.claims
+    .filter((claim) => unsupportedFingerprints.has(claim.claimFingerprint))
+    .filter((claim) => NUMERIC_FACTUAL_CANDIDATE_KINDS.has(claim.candidateKind))
+    .filter((claim) => /\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(claim.claimText))
+    .map((claim) => claim.claimFingerprint)).size;
+}
+
 const PRICE_RE = /(?:[₩￦¥￥$€₫]\s*\d[\d,.]*)|(?:\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\s*\d[\d,.]*)|(?:\d[\d,.]*\s*(?:원|엔|달러|위안|유로|바트|동|페소|링깃|루피|파운드|프랑|JPY|KRW|USD|VND|SGD|CNY|EUR|THB))|(?:(?:가격|요금|비용|예산|택시비|교통비|식비|숙박비)\s*(?:은|는|이|가|:)?\s*(?:약\s*)?\d)/i;
-const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?\s*(?:분|시간)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*(?:분|시간))?/i;
+const DURATION_RE = /(?:약\s*)?\d+(?:\.\d+)?(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?)(?:\s*(?:~|-|–)\s*\d+(?:\.\d+)?\s*-?\s*(?:분|시간|mins?|minutes?|hrs?|hours?))?/iu;
 const PERCENT_RE = /\d+(?:\.\d+)?\s*%/;
 const DISTANCE_RE = /(?:약|최대|최소|평균)?\s*\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)/i;
 const CLOCK_RE = /(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*(?:~|-|–)\s*(?:[01]?\d|2[0-3]):[0-5]\d)?/;
-const HOUR_CLOCK_RE = /(?:오전|오후)?\s*\d{1,2}시(?:\s*\d{1,2}분)?/i;
+const HOUR_CLOCK_RE = /(?:오전|오후)?\s*\d{1,2}시(?!간)(?:\s*\d{1,2}분)?/i;
 const SCHEDULE_RE = /(?:매일|주말|평일|연중무휴|24시간|첫차|막차|휴무)/i;
 const SCHEDULE_ASSERTION_RE = /(?:영업|운영|개장|폐장|첫차|막차|출발|도착|체크인|체크아웃|휴무|혼잡|운행|합니다|됩니다|입니다|가능|불가)/i;
 const DATE_PERIOD_RE = /(?:\d{4}[./-]\d{1,2}(?:[./-]\d{1,2})?|\d{4}년\s*\d{1,2}월(?:\s*\d{1,2}일)?|(?<!\d)\d{1,2}월\s*\d{1,2}일|(?<!\d)\d{1,3}\s*(?:일|주|개월)(?!\s*차)|(?<!\d)\d{1,2}\s*년(?:간|까지|이내|이상|이하|동안)?)/i;
@@ -107,6 +145,16 @@ const POLICY_RE = /(?:규정|정책|법률|법정|의무|금지|허용|운영시
 const SUPERLATIVE_RE = /(?:가장\s*(?:저렴|비싸|빠르|느리|좋|많|적|높|낮|인기)|최고|최저|유일|1위|최대|최소|압도적)/i;
 const GENERAL_YEAR_ALLOWLIST_RE = /^\d{4}년(?:\s*(?:여행|가이드|목차|판|업데이트|기준))*$/;
 const ITINERARY_ORDINAL_ALLOWLIST_RE = /\d+\s*일\s*차/i;
+const ITINERARY_DURATION_ALLOWLIST_RE = /\d{1,2}\s*박\s*\d{1,2}\s*일/i;
+const ITINERARY_CONTINGENCY_HEADING_RE = /^(?:우천|날씨|휴무|피로|지연|변동)(?:[·,/\s]*(?:우천|날씨|휴무|피로|지연|변동))*\s*(?:(?:시|때|경우)\s*)?(?:대체(?:안)?(?:과\s*휴식)?\s*)?(?:일정|동선|순서|계획|결정)$/i;
+
+function stripItineraryStructureNumerals(segment: string): string {
+  return segment
+    .replace(/\d{1,2}\s*박\s*\d{1,2}\s*일/gu, '')
+    .replace(/\d{1,2}\s*일\s*차(?:에는|는|에|:)?/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 const HIGH_RISK_INTENTS = new Set(['entry_requirements', 'travel_insurance']);
 
@@ -151,6 +199,7 @@ function splitClaimSegments(markdown: string): string[] {
 
 function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null {
   if (GENERAL_YEAR_ALLOWLIST_RE.test(segment)) return null;
+  if (ITINERARY_CONTINGENCY_HEADING_RE.test(stripItineraryStructureNumerals(segment))) return null;
   if (CUSTOMS_RE.test(segment)) return { claimType: 'customs', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
   if (ENTRY_RE.test(segment)) return { claimType: 'entry_visa', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
   if (INSURANCE_RE.test(segment)) return { claimType: 'insurance', riskLevel: 'HIGH', candidateKind: 'regulated_policy' };
@@ -162,7 +211,11 @@ function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'cl
     return { claimType: 'factual', riskLevel: 'MEDIUM', candidateKind: 'time_schedule' };
   }
   if (DURATION_RE.test(segment)) return { claimType: 'duration', riskLevel: 'MEDIUM', candidateKind: 'time_schedule' };
-  if (!ITINERARY_ORDINAL_ALLOWLIST_RE.test(segment) && DATE_PERIOD_RE.test(segment)) {
+  if (
+    !ITINERARY_ORDINAL_ALLOWLIST_RE.test(segment)
+    && !ITINERARY_DURATION_ALLOWLIST_RE.test(segment)
+    && DATE_PERIOD_RE.test(segment)
+  ) {
     return { claimType: 'factual', riskLevel: 'MEDIUM', candidateKind: 'date_period' };
   }
   if (QUANTITY_RE.test(segment) || COUNT_KIND_RE.test(segment)) {
@@ -186,22 +239,140 @@ export type BlogInformationStatementCategory =
 const NAVIGATION_OR_BOILERPLATE_RE = /(?:^|\s)(?:목차|FAQ|가이드|체크리스트|요약|마무리|공식 사이트|자세히 보기)(?:$|\s)|(?:비교|확인|참고|선택|살펴|알아|둘러|정)해?\s*보세요|(?:확인|참고)하세요/i;
 const SUBJECTIVE_EDITORIAL_RE = /(?:저는|개인적으로|제 생각|느낌|취향|여행 스타일|선호).*(?:생각|느끼|좋|달라|추천)|(?:매력적|인상적|낭만적|즐겁|좋다고 생각)/i;
 const EDITORIAL_READING_GUIDANCE_RE = /(?:(?:먼저|우선).*(?:봐야|확인해야).*(?:실수|혼선|누락).*(?:줄일|피할)\s*수\s*있)|(?:(?:처음 읽는 분|먼저).*(?:표|요약|체크리스트).*(?:골라 읽|저장해도|보면 됩니다|확인))|(?:숫자는\s*(?:확정값|실시간값)이\s*아니라\s*(?:비교|참고)\s*기준)|(?:출발\s*\d+\s*(?:일|시간)\s*전.*(?:공식 안내|예약 조건).*다시\s*확인)/i;
+const V3_DECISION_GUIDANCE_RE = /(?:고를\s*때|선택할\s*때|일정에\s*넣는다면|자신의\s*여행\s*스타일|먼저\s*.+(?:정한|고른)|(?:무엇|어디|어떤).*(?:기준|질문)|어디를\s*갈지는.*(?:시간|체력|동행|일정|우선순위).*(?:따라\s*달라|정해야|고르면)|(?:이|가)\s*핵심입니다|함께\s*보아야\s*합니다|확인해야\s*합니다|다른\s*.+(?:고르는|바꾸는)\s*것이\s*더\s*현실적입니다|자세한\s*.+에서\s*확인할\s*수\s*있습니다)/i;
+const V3_DIRECT_DECISION_ANSWER_RE = /(?:어디를\s*갈지|무엇을\s*고를지|장소를\s*(?:고르|선택)|후보를\s*(?:고르|선택)).*(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교|결정|고르|선택)|(?:일정|시간|체력|동행|우선순위|조건).*(?:확인|비교).*(?:결정|고르|선택)/i;
+const V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE = /^(?:같은|내|자신의|여행자는|일정에|어디를|무엇을|먼저\s).*(?:선택\s*기준|우선순위|일정|체력|동행|비교|결정|확인).*(?:정하|고르|선택|비교|확인|좁히|달라지|방식)/i;
+const V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE = /^(?!.{0,160}(?:입니다|합니다|됩니다|있습니다|없습니다|가능합니다|불가능합니다))(?=.*(?:일정|순서|후보|구간|휴식|우선순위|동선))(?=.*(?:정하세요|나누세요|묶으세요|분리하세요|조정하세요|비교하세요|확인하세요|표시하세요|배치하세요)).+$/i;
+const V3_AVAILABILITY_RECHECK_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*여부|가능한?\s*(?:시간|날짜|조건)).*(?:공식|예약|홈페이지|채널).*(?:확인|비교|점검)/i;
+const V3_AVAILABILITY_DECISION_RE = /(?:예약|입장|이용|운영|영업).*(?:가능\s*(?:여부|시간|날짜|조건)).*(?:맞춰|기준으로).*(?:결정|선택|비교|조정)하세요/i;
+const V3_NAVIGATION_HEADING_RE = /^(?:선택\s*기준|결정\s*질문|출발\s*전\s*확인|계획이\s*틀어질\s*때)\s*:/i;
+const V3_EDITORIAL_PLANNING_HEADING_RE = /^(?!.*(?:\d|가능|불가|마감|매진|휴무|운영\s*중|입니다|합니다|됩니다|있습니다|없습니다))(?=.*(?:예약|휴식|일정|동선|이동|대체))(?=.*(?:순서|기준|결정|확인|비교|계획|실행)).{2,80}$/i;
+const V3_ARTICLE_SCOPE_DESCRIPTION_RE = /^(?!.*\d)(?=.*(?:정리했습니다|비교합니다|살펴보세요|좁혀\s*보세요))(?=.*(?:찾는\s*분|확인된|공식\s*근거|본문|기준|방법|항목|조건|정보)).+$/i;
+const V3_RESERVATION_PLANNING_RECHECK_RE = /^(?!.*(?:\d|(?:현재|오늘).*(?:가능|불가|마감|매진|휴무|운영)))(?=.*(?:예약\s*(?:가능\s*여부|상태|조건)?|운영\s*공지))(?=.*(?:확인|점검))(?=.*(?:일정|동선|순서|후보|구간|휴식|출발\s*지점))(?=.*(?:확정|결정|정하|배치|비교|맞추)).+$/i;
+const V3_ITINERARY_EDITORIAL_GUIDANCE_RE = /^(?!.*(?:\d|현재|실제로|항상|통상|평균|이동\s*시간이\s*(?:길|짧)|도심\s*(?:동|서|남|북)쪽|같은\s*권역|안전|적합|필수|의무|금지|불가|가능합니다))(?=.*(?:일정|동선|이동\s*구간|예약|휴식))(?=.*(?:정하|나누|묶|분리|얹|점검|비교|고르|선택|결정|남겨|두고|두며))(?=.*(?:순서|기준|먼저|마지막|쉽게|무리|부담|대체|흐름)).+$/i;
+const V3_ITINERARY_CONTINGENCY_GUIDANCE_RE = /^(?!.*\d)(?=.*(?:우천|날씨|휴무|변동))(?=.*(?:경우|때|어긋|밀리|밀릴|바뀌|대비|가능성|어려우면|어렵다면))(?=.*(?:대체|조정|바꾸|남겨|정해|확인|빼|제외|앞당기|미루))(?=.*(?:일정|동선|순서|블록)).+$/i;
+const V3_OPERATIONAL_RECHECK_GUIDANCE_RE = /^(?!.*(?:\d|(?:현재|오늘).*(?:가능|불가|휴무|운영)))(?=.*(?:공식\s*(?:채널|홈페이지|공지|사이트)))(?=.*(?:운영\s*여부|예약\s*조건|입장\s*여부|휴무\s*여부|변동\s*여부))(?=.*(?:확인|점검))(?=.*(?:일정|동선|대체|출발)).+$/i;
+const V3_UNSUPPORTED_LOCAL_EVALUATION_RE = /(?:이동\s*시간(?:이|은|가)?\s*(?:긴|길|짧)|(?:긴|짧은)\s*이동\s*구간|이동(?:이|은)\s*분리되는|같은\s*권역|함께\s*묶을\s*동선|따로\s*둘\s*일정|동선(?:이|은)\s*복잡|(?:안전|적합|최적|효율적)(?:합니다|입니다|한|하))/i;
+const V3_EXPLICIT_OPERATIONAL_STATUS_RE = /(?:(?:현재|오늘|지금)\s*)?(?:(?:예약|판매|입장|이용|운영|영업|접수)(?:은|는|이|가)?\s*(?:가능|불가|마감|매진|중단|종료|휴무|중)(?:합니다|입니다|됩니다)|(?:매일|주말|평일|연중무휴|24시간).*(?:영업|운영|운행|휴무)(?:합니다|입니다|됩니다))/i;
+const V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE = /^(?=.*(?:일정|동선|순서|후보|출발\s*(?:위치|지점)|휴식|체력|대체안|우천|예약\s*(?:가능\s*)?여부|운영\s*공지|공식\s*이동\s*시간))(?=.*(?:확인하세요|비교하세요|고르세요|선택하세요|정하세요|결정하세요|따져보세요|점검하세요|두세요|남겨\s*두세요|준비하세요|조정하세요|확정하세요)).+$/i;
+const V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE = /^(?=.*(?:일정|순서|후보|동선|출발\s*(?:위치|지점)|체력|휴식|대체안|우천))(?=.*(?:(?:내|자신의).*(?:맞는|기준)|(?:중간|마지막).*(?:쉴|대체)))(?=.*(?:고르는\s*것이\s*안전합니다|두는\s*쪽(?:에서)?\s*나옵니다|두는\s*편이\s*(?:낫|좋)|결정하는\s*편이\s*(?:낫|좋))).+$/i;
+const V3_ITINERARY_PROPOSAL_RE = /(?:편집\s*제안|(?:제안\s*일정|동선\s*예시).*(?:배치|구성|정리)|동선(?:은|을|이)?[^.。!?]{0,140}제안|(?:일차|날짜별|마지막\s*일정).*(?:순서|동선|흐름).*(?:제안|배치)|(?:장소별\s*실행\s*순서|이동\s*근거).*(?:정리했습니다|비교합니다)|(?:미방문\s*장소|남은\s*장소).*(?:대체\s*블록|후보).*(?:삼|두)|확인할\s*블록(?:은|을).*(?:입니다|정))/i;
+const V3_ITINERARY_SOURCE_NEUTRAL_GUIDANCE_RE = /^(?=.*(?:일정|동선|순서|블록|공식\s*이동\s*시간|운영\s*시간|입장\s*시각|체류\s*순서|숙소\s*위치|당일\s*컨디션))(?=.*(?:구성하세요|정하세요|정하면\s*됩니다|고르세요|고르면\s*됩니다|결정하세요|비교하세요|확인하세요|판단해야\s*합니다|제안합니다|배치하세요|삼을\s*수\s*있습니다)).+$/i;
+const REGULATED_TRAVEL_TOPIC_RE = /(?:세관|면세|반입|반출|입국|출입국|비자|여권|전자여행허가|ETA|ESTA|여행자?\s*보험|보험\s*(?:보장|면책|청구))/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
+const SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS = new Set<BlogInformationFactualCandidateKind>([
+  'availability_status',
+  'time_schedule',
+  'requirement_prohibition',
+]);
+
+function isSourceNeutralPlanningAdvice(
+  segment: string,
+  factualClassification: Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null,
+  unsupportedLocalEvaluation: boolean,
+): boolean {
+  if (unsupportedLocalEvaluation) return false;
+  if (factualClassification?.riskLevel === 'HIGH') return false;
+  if (REGULATED_TRAVEL_TOPIC_RE.test(segment)) return false;
+  if (/\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(segment)) return false;
+  if (V3_EXPLICIT_OPERATIONAL_STATUS_RE.test(segment)) return false;
+  if (
+    factualClassification
+    && !SOURCE_NEUTRAL_PLANNING_CANDIDATE_KINDS.has(factualClassification.candidateKind)
+  ) {
+    return false;
+  }
+  return V3_SOURCE_NEUTRAL_PLANNING_IMPERATIVE_RE.test(segment)
+    || V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment);
+}
 
 export function classifyBlogInformationStatement(segment: string): {
   category: BlogInformationStatementCategory;
   factualClassification: Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null;
 } {
-  if (EDITORIAL_READING_GUIDANCE_RE.test(segment)) {
+  // Measurable, regulated, availability and other explicit fact shapes always
+  // win over editorial-language allowlists. This prevents a sentence such as
+  // "먼저 15분 거리인지 확인하세요" from bypassing evidence validation.
+  const factualClassification = classifyClaim(segment);
+  const planningText = stripItineraryStructureNumerals(segment);
+  const sourceNeutralSafetyChoice = V3_SOURCE_NEUTRAL_PLANNING_MODAL_RE.test(segment)
+    && /(?:내|자신의).*(?:맞는|기준).*(?:순서|후보).*(?:고르|선택).*안전합니다/i.test(segment);
+  const unsupportedLocalEvaluation = V3_UNSUPPORTED_LOCAL_EVALUATION_RE.test(segment)
+    && !sourceNeutralSafetyChoice;
+  const itineraryProposal = (
+    V3_ITINERARY_PROPOSAL_RE.test(segment)
+    || V3_ITINERARY_SOURCE_NEUTRAL_GUIDANCE_RE.test(planningText)
+    || ITINERARY_CONTINGENCY_HEADING_RE.test(planningText)
+  )
+    && !unsupportedLocalEvaluation
+    && !/\d|[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB)\b/i.test(planningText)
+    && !REGULATED_TRAVEL_TOPIC_RE.test(segment)
+    && !V3_EXPLICIT_OPERATIONAL_STATUS_RE.test(segment);
+  const sourceNeutralPlanningAdvice = isSourceNeutralPlanningAdvice(
+    segment,
+    factualClassification,
+    unsupportedLocalEvaluation,
+  );
+  const directDecisionGuidance = !unsupportedLocalEvaluation && (
+    V3_DECISION_GUIDANCE_RE.test(segment)
+      || V3_DIRECT_DECISION_ANSWER_RE.test(segment)
+      || V3_SOURCE_NEUTRAL_DECISION_GUIDANCE_RE.test(segment)
+      || V3_SOURCE_NEUTRAL_PLANNING_ACTION_RE.test(segment)
+      || V3_ITINERARY_EDITORIAL_GUIDANCE_RE.test(segment)
+  );
+  const itineraryContingencyGuidance = !unsupportedLocalEvaluation
+    && V3_ITINERARY_CONTINGENCY_GUIDANCE_RE.test(planningText);
+  const operationalRecheckGuidance = !unsupportedLocalEvaluation
+    && V3_OPERATIONAL_RECHECK_GUIDANCE_RE.test(segment);
+  const reservationPlanningRecheck = !unsupportedLocalEvaluation
+    && V3_RESERVATION_PLANNING_RECHECK_RE.test(segment);
+  const availabilityRecheck = factualClassification?.candidateKind === 'availability_status'
+    && (
+      V3_AVAILABILITY_RECHECK_RE.test(segment)
+      || V3_AVAILABILITY_DECISION_RE.test(segment)
+      || operationalRecheckGuidance
+      || reservationPlanningRecheck
+    );
+  if (
+    factualClassification
+    && !(factualClassification.candidateKind === 'requirement_prohibition' && directDecisionGuidance)
+    && !(factualClassification.candidateKind === 'time_schedule' && itineraryContingencyGuidance)
+    && !itineraryProposal
+    && !sourceNeutralPlanningAdvice
+    && !availabilityRecheck
+  ) {
+    return { category: 'verified_factual', factualClassification };
+  }
+  if (
+    EDITORIAL_READING_GUIDANCE_RE.test(segment)
+    || directDecisionGuidance
+    || itineraryContingencyGuidance
+    || operationalRecheckGuidance
+    || reservationPlanningRecheck
+    || itineraryProposal
+    || sourceNeutralPlanningAdvice
+    || availabilityRecheck
+    || V3_NAVIGATION_HEADING_RE.test(segment)
+    || (!unsupportedLocalEvaluation && V3_EDITORIAL_PLANNING_HEADING_RE.test(segment))
+    || (!unsupportedLocalEvaluation && V3_ARTICLE_SCOPE_DESCRIPTION_RE.test(segment))
+  ) {
     return { category: 'navigation_boilerplate', factualClassification: null };
   }
-  const factualClassification = classifyClaim(segment);
-  if (factualClassification) return { category: 'verified_factual', factualClassification };
   if (SUBJECTIVE_EDITORIAL_RE.test(segment)) {
     return { category: 'subjective_editorial', factualClassification: null };
   }
   if (NAVIGATION_OR_BOILERPLATE_RE.test(segment)) {
     return { category: 'navigation_boilerplate', factualClassification: null };
+  }
+  if (unsupportedLocalEvaluation) {
+    return {
+      category: 'unknown_unclassified',
+      factualClassification: {
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        candidateKind: 'unknown_statement',
+      },
+    };
   }
   if (!ASSERTIVE_STATEMENT_RE.test(segment)) {
     return { category: 'navigation_boilerplate', factualClassification: null };
@@ -392,6 +563,27 @@ export function extractBlogInformationClaims(markdown: string): ExtractedBlogInf
   });
 }
 
+/**
+ * A rewrite may only copy a researched claim when the same deterministic
+ * classifier used by the publish gate assigns the declared claim type.
+ *
+ * This deliberately fails closed for unclassified claims. Rewriting a claim
+ * type here would create new evidence semantics; excluding it keeps the
+ * research packet and the final ledger on the same contract instead.
+ */
+export function inspectBlogInformationClaimTypeCompatibility(
+  claimText: string,
+  declaredType: BlogInformationClaimType,
+): BlogInformationClaimTypeCompatibility {
+  const deterministicClaim = extractBlogInformationClaims(claimText)[0] ?? null;
+  return {
+    passed: deterministicClaim?.claimType === declaredType,
+    declaredType,
+    deterministicType: deterministicClaim?.claimType ?? null,
+    candidateKind: deterministicClaim?.candidateKind ?? null,
+  };
+}
+
 function isEvidenceCurrent(
   evidence: BlogInformationClaimEvidenceRecord,
   claimType: BlogInformationClaimType,
@@ -432,7 +624,8 @@ export function validateBlogInformationClaims(input: {
         claimFingerprint: claim.claimFingerprint,
         claimText: claim.claimText ?? '',
         claimType: claim.claimType,
-        riskLevel: 'MEDIUM' as const,
+        riskLevel: extractBlogInformationClaims(claim.claimText ?? '')[0]?.riskLevel
+          ?? ('MEDIUM' as const),
       }));
     const validationMarkdown = expandDeterministicResearchRowsForValidation(
       input.markdown,
@@ -465,6 +658,11 @@ export function validateBlogInformationClaims(input: {
     const declaredRiskByFingerprint = new Map(
       declaredClaims.map((claim) => [claim.claimFingerprint, claim.riskLevel]),
     );
+    const riskRank: Record<BlogInformationEvidenceRiskLevel, number> = {
+      LOW: 1,
+      MEDIUM: 2,
+      HIGH: 3,
+    };
     const issues: BlogInformationClaimValidationIssue[] = [];
     let supportedClaims = 0;
     let unclassifiedCount = 0;
@@ -513,6 +711,17 @@ export function validateBlogInformationClaims(input: {
           claimText: claim.claimText,
           claimType: claim.claimType,
           message: `최종 본문 factual candidate가 구조화 claim ledger에 없습니다: ${claim.candidateKind}`,
+        });
+        continue;
+      }
+      const declaredRisk = declaredRiskByFingerprint.get(claim.claimFingerprint);
+      if (declaredRisk && riskRank[declaredRisk] < riskRank[claim.riskLevel]) {
+        issues.push({
+          code: 'invalid_claim_ledger',
+          claimFingerprint: claim.claimFingerprint,
+          claimText: claim.claimText,
+          claimType: claim.claimType,
+          message: `writer claim ledger가 결정론적 위험도를 낮췄습니다: ${declaredRisk}->${claim.riskLevel}`,
         });
         continue;
       }
@@ -573,7 +782,13 @@ export function validateBlogInformationClaims(input: {
       const semanticReport = blogInformationEvidenceSetSupportsClaim({
         evidence: authorityEligibleEvidence,
         claimType: claim.claimType,
-        extractedValue: claim.extractedValue,
+        // An exact fingerprint means the visible sentence is byte-for-byte the
+        // approved persisted claim. Its persisted structured value already
+        // passed bundle validation (including literal numeric support), while
+        // re-extracting a translated factual sentence can produce a different
+        // free-text value or a localized unit such as "분" vs "minutes".
+        // Paraphrases never reach this branch because their fingerprint differs.
+        extractedValue: persisted.extractedValue ?? claim.extractedValue,
         expectedScope: input.expectedScope,
       });
       if (!semanticReport.passed) {

@@ -23,8 +23,16 @@ export interface BlogIndexingWorkerSummary {
   failed?: number;
   ineligible?: number;
   stale_reset: number;
+  snapshot_refresh?: 'not_needed' | 'succeeded' | 'failed';
+  snapshot_refresh_result?: unknown;
   results: Array<{ id: string; slug: string; status: string; error?: string }>;
   errors: string[];
+}
+
+async function refreshBlogPublicSnapshotsForIndexingV3(): Promise<unknown> {
+  const { data, error } = await supabaseAdmin.rpc('refresh_blog_public_snapshots_v3');
+  if (error) throw new Error(`public snapshot refresh failed:${error.message}`);
+  return data;
 }
 
 function batchSize(limit?: number): number {
@@ -162,7 +170,35 @@ export async function processDueBlogIndexingJobs(options: {
     return { processed: 0, stale_reset: staleReset, errors, results };
   }
 
-  for (const job of (jobs ?? []) as BlogIndexingJobRow[]) {
+  const dueJobs = (jobs ?? []) as BlogIndexingJobRow[];
+  if (dueJobs.length === 0) {
+    return {
+      processed: 0,
+      stale_reset: staleReset,
+      snapshot_refresh: 'not_needed',
+      results,
+      errors,
+    };
+  }
+
+  let snapshotRefreshResult: unknown;
+  try {
+    // Indexing must reflect the same durable snapshot served to visitors.
+    // If this refresh fails, leave every outbox row unclaimed for a retry.
+    snapshotRefreshResult = await refreshBlogPublicSnapshotsForIndexingV3();
+  } catch (err) {
+    const message = errorMessage(err);
+    errors.push(message);
+    return {
+      processed: 0,
+      stale_reset: staleReset,
+      snapshot_refresh: 'failed',
+      results,
+      errors,
+    };
+  }
+
+  for (const job of dueJobs) {
     const attempt = (job.attempts ?? 0) + 1;
     const claimedAt = new Date().toISOString();
     const { data: claimed, error: claimError } = await supabaseAdmin
@@ -274,6 +310,8 @@ export async function processDueBlogIndexingJobs(options: {
     failed: results.filter((result) => result.status === 'failed').length,
     ineligible: results.filter((result) => result.status === 'skipped_ineligible').length,
     stale_reset: staleReset,
+    snapshot_refresh: 'succeeded',
+    snapshot_refresh_result: snapshotRefreshResult,
     results,
     errors,
   };

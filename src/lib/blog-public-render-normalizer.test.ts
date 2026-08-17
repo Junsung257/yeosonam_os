@@ -28,6 +28,16 @@ describe('public blog render normalizer', () => {
     expect(html.match(/<hr/g)).toHaveLength(2);
   });
 
+  it('makes non-descriptive legacy image labels decorative without inventing a scene', () => {
+    const html = sanitizePublicBlogBodyHtml(
+      '<img src="/generic.jpg" alt="후쿠오카 10초 판단">'
+      + '<img src="/real.jpg" alt="후쿠오카 모모치 해변과 후쿠오카 타워">',
+    );
+
+    expect(html).toContain('src="/generic.jpg" alt=""');
+    expect(html).toContain('src="/real.jpg" alt="후쿠오카 모모치 해변과 후쿠오카 타워"');
+  });
+
   it('removes only a leading body heading that repeats the page title', () => {
     expect(
       stripPublicDuplicateBodyTitleHeading(

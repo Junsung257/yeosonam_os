@@ -110,9 +110,10 @@ export default function DestinationCuration({
               <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
                 <SafeCoverImg
                   src={p.hero_image_url}
-                  alt={`${p.destination} ${p.title}`}
+                  alt=""
                   className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
                   loading="lazy"
+                  sizes="(max-width: 768px) 100vw, 33vw"
                   fallback={
                     <DestinationImageFallback
                       title={p.title}

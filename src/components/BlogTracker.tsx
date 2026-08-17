@@ -3,20 +3,24 @@
 import { useEffect } from 'react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackContentView, trackEngagement } from '@/lib/tracker';
-
-const LAST_CONTENT_KEY = 'ys_last_content_creative_id';
-const LAST_CONTENT_TS_KEY = 'ys_last_content_creative_ts';
-const ATTRIBUTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+import { hasAnalyticsConsent } from '@/lib/analytics/consent';
+import { readLastBlogAssist, rememberBlogAssist } from '@/lib/analytics/blog-assist';
 const SCROLL_MILESTONES = [25, 50, 75, 90] as const;
 
 type BlogEngagementEventType =
   | 'summary'
+  | 'engaged_60_seconds'
   | 'scroll_25'
   | 'scroll_50'
   | 'scroll_75'
   | 'scroll_90'
   | 'cta_impression'
-  | 'cta_click';
+  | 'cta_click'
+  | 'source_link_click'
+  | 'related_article_click'
+  | 'destination_hub_click'
+  | 'product_click'
+  | 'consultation_click';
 
 type CtaMeta = {
   href: string;
@@ -26,24 +30,7 @@ type CtaMeta = {
 };
 
 export function readLastContentCreativeId(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const id = sessionStorage.getItem(LAST_CONTENT_KEY) || localStorage.getItem(LAST_CONTENT_KEY);
-    const ts = Number(sessionStorage.getItem(LAST_CONTENT_TS_KEY) || localStorage.getItem(LAST_CONTENT_TS_KEY));
-    if (!id || !ts) return null;
-    if (Date.now() - ts > ATTRIBUTION_WINDOW_MS) return null;
-    return id;
-  } catch {
-    return null;
-  }
-}
-
-function readUserId(): string | null {
-  try {
-    return localStorage.getItem('ys_user_id');
-  } catch {
-    return null;
-  }
+  return readLastBlogAssist();
 }
 
 function getCtaMeta(link: HTMLAnchorElement): CtaMeta | null {
@@ -76,18 +63,11 @@ function clampScroll(pct: number) {
 export default function BlogTracker({ contentCreativeId }: { contentCreativeId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!hasAnalyticsConsent()) return;
 
     trackContentView(contentCreativeId);
 
-    try {
-      const now = String(Date.now());
-      sessionStorage.setItem(LAST_CONTENT_KEY, contentCreativeId);
-      sessionStorage.setItem(LAST_CONTENT_TS_KEY, now);
-      localStorage.setItem(LAST_CONTENT_KEY, contentCreativeId);
-      localStorage.setItem(LAST_CONTENT_TS_KEY, now);
-    } catch {
-      // Ignore storage failures in private browsing modes.
-    }
+    rememberBlogAssist(contentCreativeId);
 
     const startedAt = Date.now();
     const params = new URLSearchParams(window.location.search);
@@ -106,7 +86,7 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
     ) => ({
       content_creative_id: contentCreativeId,
       session_id: sessionId,
-      user_id: readUserId(),
+      user_id: null,
       event_type: eventType,
       time_on_page_seconds: clampTime((Date.now() - startedAt) / 1000),
       max_scroll_depth_pct: clampScroll(maxScrollPct),
@@ -117,6 +97,13 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
       utm_medium: params.get('utm_medium'),
       utm_campaign: params.get('utm_campaign'),
       utm_term: params.get('utm_term'),
+      route: window.location.pathname,
+      device: window.matchMedia('(max-width: 767px)').matches ? 'mobile' : 'desktop',
+      connection_type: (navigator as Navigator & { connection?: { effectiveType?: string } }).connection?.effectiveType || null,
+      navigation_type: performance.getEntriesByType('navigation')[0]
+        ? (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming).type
+        : null,
+      consent_state: 'granted',
       ...overrides,
     });
 
@@ -178,6 +165,15 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
       const target = event.target as HTMLElement | null;
       const link = target?.closest('a') as HTMLAnchorElement | null;
       if (!link) return;
+
+      const href = link.getAttribute('href') || '';
+      const linkEvent: BlogEngagementEventType | null = link.dataset.citationId || /^https?:\/\//i.test(href)
+        ? 'source_link_click'
+        : href.startsWith('/blog/destination/') ? 'destination_hub_click'
+          : href.startsWith('/blog/') ? 'related_article_click'
+            : href.startsWith('/packages') ? 'product_click'
+              : /consult|inquiry|pf\.kakao\.com/i.test(href) ? 'consultation_click' : null;
+      if (linkEvent) sendEvent(linkEvent, { cta_href: href }, true);
 
       const cta = getCtaMeta(link);
       if (!cta) return;
@@ -259,6 +255,7 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
 
     observeCtas();
     onScroll();
+    const engagedTimer = window.setTimeout(() => sendEvent('engaged_60_seconds'), 60_000);
 
     window.addEventListener('scroll', onScroll, { passive: true });
     document.addEventListener('click', onClick);
@@ -274,6 +271,7 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
       window.removeEventListener('beforeunload', sendSummary);
       window.removeEventListener('pagehide', sendSummary);
       observer.disconnect();
+      window.clearTimeout(engagedTimer);
       sendSummary();
     };
   }, [contentCreativeId]);

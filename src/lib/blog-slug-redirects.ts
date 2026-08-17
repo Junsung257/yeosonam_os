@@ -67,10 +67,21 @@ export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
 
 export const BLOG_SLUG_REDIRECT_TOMBSTONES = new Set([
   'july-family-travel-weather-clothes-checklist-2026',
+  'travel-emergency-medicine-summer-checklist',
 ]);
 
 export function isBlogSlugRedirectTombstone(slug: string): boolean {
-  return BLOG_SLUG_REDIRECT_TOMBSTONES.has(slug);
+  let current = slug;
+  const seen = new Set<string>();
+  for (let depth = 0; depth < 12; depth += 1) {
+    if (BLOG_SLUG_REDIRECT_TOMBSTONES.has(current)) return true;
+    if (seen.has(current)) return false;
+    seen.add(current);
+    const target = BLOG_SLUG_REDIRECTS[current];
+    if (!target) return false;
+    current = target;
+  }
+  return false;
 }
 
 export function resolveBlogSlugRedirect(slug: string): string | null {

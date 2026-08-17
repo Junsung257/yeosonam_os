@@ -1,6 +1,7 @@
 export const PRIVATE_BLOG_REGENERATION_MODE = 'replace_existing_fallback_draft' as const;
 export const PUBLISHED_BLOG_ATOMIC_UPGRADE_MODE = 'replace_published_after_quality_gate' as const;
 export const REVIEWED_PUBLISHED_BLOG_REPLACEMENT_MODE = 'reviewed_published_replacement_v1' as const;
+export const AUTOMATED_PUBLISHED_BLOG_REPLACEMENT_MODE = 'automated_published_replacement_v1' as const;
 
 export interface ReviewedPublishedBlogReplacement {
   mode: typeof REVIEWED_PUBLISHED_BLOG_REPLACEMENT_MODE;
@@ -10,9 +11,20 @@ export interface ReviewedPublishedBlogReplacement {
   queueId: string;
 }
 
+export interface AutomatedPublishedBlogReplacement {
+  mode: typeof AUTOMATED_PUBLISHED_BLOG_REPLACEMENT_MODE;
+  targetCreativeId: string;
+  canonicalSlug: string;
+  draftSlug: string;
+  originalPublishedAt: string | null;
+  queueId: string;
+}
+
 interface PublishedBlogUpgradeTopicInput {
   slug?: unknown;
   destination?: unknown;
+  seo_title?: unknown;
+  blog_html?: unknown;
 }
 
 interface PublishedBlogUpgradeSlugInput {
@@ -33,6 +45,16 @@ export function buildReviewedPublishedBlogReplacementDraftSlug(input: {
   const queueId = readTrimmedString(input.queueId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
   if (!canonicalSlug || !queueId) return '';
   return `${canonicalSlug}--review-${queueId}`.slice(0, 240);
+}
+
+export function buildAutomatedPublishedBlogReplacementDraftSlug(input: {
+  canonicalSlug: unknown;
+  queueId: unknown;
+}): string {
+  const canonicalSlug = readTrimmedString(input.canonicalSlug);
+  const queueId = readTrimmedString(input.queueId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+  if (!canonicalSlug || !queueId) return '';
+  return `${canonicalSlug}--auto-${queueId}`.slice(0, 240);
 }
 
 export function readReviewedPublishedBlogReplacement(
@@ -64,10 +86,63 @@ export function readReviewedPublishedBlogReplacement(
   };
 }
 
+export function readAutomatedPublishedBlogReplacement(
+  generationMeta: unknown,
+): AutomatedPublishedBlogReplacement | null {
+  const metadata = record(generationMeta);
+  const replacement = record(metadata?.automated_published_replacement);
+  const mode = replacement?.mode;
+  const targetCreativeId = readTrimmedString(replacement?.target_creative_id);
+  const canonicalSlug = readTrimmedString(replacement?.canonical_slug);
+  const draftSlug = readTrimmedString(replacement?.draft_slug);
+  const queueId = readTrimmedString(replacement?.queue_id);
+  const originalPublishedAt = replacement?.original_published_at === null
+    ? null
+    : readTrimmedString(replacement?.original_published_at);
+  if (
+    mode !== AUTOMATED_PUBLISHED_BLOG_REPLACEMENT_MODE
+    || !targetCreativeId
+    || !canonicalSlug
+    || !draftSlug
+    || !queueId
+  ) {
+    return null;
+  }
+  return {
+    mode,
+    targetCreativeId,
+    canonicalSlug,
+    draftSlug,
+    originalPublishedAt: originalPublishedAt || null,
+    queueId,
+  };
+}
+
 export function buildPublishedBlogUpgradeQueueTopic(
   input: PublishedBlogUpgradeTopicInput,
 ): string {
-  const slug = readTrimmedString(input.slug);
+  const seoTitle = readTrimmedString(input.seo_title);
+  const slugValue = readTrimmedString(input.slug);
+  const existingBody = readTrimmedString(input.blog_html);
+  const itineraryContext = `${seoTitle} ${slugValue} ${existingBody.slice(0, 4_000)}`;
+  const duration = itineraryContext.match(/(?:^|\s)(\d{1,2})\s*박\s*(\d{1,2})\s*일/u);
+  const destination = readTrimmedString(input.destination)
+    .replace(/[|\u00b7\u2022]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (duration && /일정|코스|동선|여정|itinerary|route/i.test(itineraryContext)) {
+    return `${destination || '여행지'} ${duration[1]}박${duration[2]}일 여행 코스와 이동 동선`;
+  }
+
+  const titleTopic = seoTitle
+    .split('|')[0]!
+    .replace(/(?:여행\s*)?가이드|체크리스트|총정리|완벽|필수|BEST/gi, ' ')
+    .replace(/\b20\d{2}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/[가-힣]{2,}/.test(titleTopic)) return titleTopic;
+
+  const slug = slugValue;
   let decodedSlug = slug;
   if (slug) {
     try {
@@ -81,10 +156,6 @@ export function buildPublishedBlogUpgradeQueueTopic(
     .replace(/[-_]+/g, ' ')
     .replace(/[|\u00b7\u2022]+/g, ' ')
     .replace(/(?:총정리|완벽\s*(?:가이드|정리|체크리스트)|완벽한)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const destination = readTrimmedString(input.destination)
-    .replace(/[|\u00b7\u2022]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (slugTopic) {

@@ -1,13 +1,242 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyBlogInformationStatement,
+  countUnsupportedNumericBlogInformationClaims,
   extractBlogInformationClaims,
+  inspectBlogInformationClaimTypeCompatibility,
   validateBlogInformationClaims,
+  type BlogInformationClaimValidationReport,
   type PersistedBlogInformationClaimRecord,
 } from './blog-information-claim-validator';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
 import type { BlogInformationEvidenceScope } from './blog-information-evidence';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
+
+describe('rewrite claim type compatibility', () => {
+  it('rejects a clock-time claim mislabeled as duration', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '마블 마운틴은 오전 7시 전에 방문하기 좋은 고대 유적지입니다.',
+      'duration',
+    )).toEqual({
+      passed: false,
+      declaredType: 'duration',
+      deterministicType: 'factual',
+      candidateKind: 'time_schedule',
+    });
+  });
+
+  it('accepts an actual travel duration with the duration type', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '오행산에서 린응사까지는 차로 약 15분이 소요됩니다.',
+      'duration',
+    )).toEqual({
+      passed: true,
+      declaredType: 'duration',
+      deterministicType: 'duration',
+      candidateKind: 'time_schedule',
+    });
+  });
+
+  it('recognizes a compact Korean duration range as duration', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '마블 마운틴 주요 명소를 둘러보는 데 3~4시간이 소요됩니다.',
+      'duration',
+    )).toEqual({
+      passed: true,
+      declaredType: 'duration',
+      deterministicType: 'duration',
+      candidateKind: 'time_schedule',
+    });
+  });
+
+  it('fails closed when the publish classifier cannot identify the claim', () => {
+    expect(inspectBlogInformationClaimTypeCompatibility(
+      '이 장소는 일정의 중심으로 삼기 좋습니다.',
+      'factual',
+    )).toMatchObject({
+      passed: false,
+      deterministicType: null,
+      candidateKind: null,
+    });
+  });
+});
+
+describe('unsupported numeric claim accounting', () => {
+  it('does not relabel a nonnumeric unclassified sentence as an unsupported number', () => {
+    const report = {
+      passed: false,
+      coverage: 0,
+      requiresHumanReview: false,
+      claims: [{
+        claimFingerprint: 'editorial-1',
+        claimText: '이곳은 여행자에게 가장 좋은 선택입니다.',
+        claimType: 'superlative',
+        riskLevel: 'MEDIUM',
+        candidateKind: 'superlative',
+        extractedValue: {},
+      }],
+      issues: [{
+        code: 'unclassified_factual_candidate',
+        claimFingerprint: 'editorial-1',
+        claimText: '이곳은 여행자에게 가장 좋은 선택입니다.',
+        claimType: 'superlative',
+        message: 'ledger에 없음',
+      }],
+    } as BlogInformationClaimValidationReport;
+
+    expect(countUnsupportedNumericBlogInformationClaims(report)).toBe(0);
+  });
+
+  it('counts each unsupported visible numeric claim once', () => {
+    const report = {
+      passed: false,
+      coverage: 0,
+      requiresHumanReview: false,
+      claims: [{
+        claimFingerprint: 'duration-1',
+        claimText: '공항에서 도심까지 15분이 걸립니다.',
+        claimType: 'duration',
+        riskLevel: 'MEDIUM',
+        candidateKind: 'time_schedule',
+        extractedValue: { normalizedValue: '15', unit: '분' },
+      }],
+      issues: [
+        {
+          code: 'unclassified_factual_candidate',
+          claimFingerprint: 'duration-1',
+          claimText: '공항에서 도심까지 15분이 걸립니다.',
+          claimType: 'duration',
+          message: 'ledger에 없음',
+        },
+        {
+          code: 'missing_evidence',
+          claimFingerprint: 'duration-1',
+          claimText: '공항에서 도심까지 15분이 걸립니다.',
+          claimType: 'duration',
+          message: '근거 없음',
+        },
+      ],
+    } as BlogInformationClaimValidationReport;
+
+    expect(countUnsupportedNumericBlogInformationClaims(report)).toBe(1);
+  });
+});
+
+describe('V3 editorial decision guidance classification', () => {
+  it.each([
+    '다낭 가볼만한곳을 고를 때 가장 중요한 기준은 자신의 시간과 체력입니다.',
+    '다낭에서 어디를 갈지는 이동 시간과 동행자의 체력, 그리고 탐험 방식에 따라 달라져야 합니다.',
+    '먼저 자신의 여행 스타일을 정한 뒤 장소를 고르는 것이 더 현실적입니다.',
+    '바나힐을 일정에 넣는다면 이동을 감당할 수 있는가가 핵심입니다.',
+    '자세한 다낭 여행 정보는 다낭 여행 가이드에서 확인할 수 있습니다.',
+  ])('does not promote reader guidance to an evidence claim: %s', (sentence) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('keeps an unsupported destination fact inside the factual gate', () => {
+    expect(classifyBlogInformationStatement('다낭은 우기와 건기가 뚜렷한 지역입니다.'))
+      .toMatchObject({ category: 'unknown_unclassified' });
+  });
+
+  it('does not let reader-guidance wording hide a measurable claim', () => {
+    expect(classifyBlogInformationStatement('먼저 오행산이 도심에서 15분 거리인지 확인하세요.'))
+      .toMatchObject({
+        category: 'verified_factual',
+        factualClassification: { claimType: 'duration' },
+      });
+  });
+
+  it('treats a source-neutral direct decision answer as editorial guidance', () => {
+    expect(classifyBlogInformationStatement(
+      '다낭에서 어디를 갈지는 내 일정의 이동 시간과 체력 여유를 먼저 확인한 뒤, 공식 정보에 나온 거리와 위치를 내 우선순위와 비교해 결정하면 됩니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('does not misclassify source-neutral decision instructions as policy requirements', () => {
+    expect(classifyBlogInformationStatement(
+      '다낭에서 갈 곳을 고를 때는 공식 정보에 나온 위치와 이동 시간을 내 일정의 체력·동선과 직접 비교해야 합니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('keeps a source-neutral route-choice explanation out of the factual ledger', () => {
+    expect(classifyBlogInformationStatement(
+      '같은 반나절이라도 도시에서 가까운 곳과 서쪽으로 이동해야 하는 곳은 선택 기준이 달라지므로, 내 우선순위에 따라 하나씩 확인하는 방식이 가장 명확합니다.',
+    )).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it.each([
+    '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
+    '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
+    '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
+    '마지막 순서는 공식 채널을 다시 확인해 변동 가능성을 줄이고, 우천이나 휴무에 대비한 대체 일정을 남겨 두는 쪽으로 잡으세요.',
+    '마지막 순서는 우천이나 휴무 가능성까지 고려해 대체 일정을 남겨두는 방식으로 결정하세요.',
+    '출발 전에 공식 채널에서 운영 여부와 예약 조건을 다시 확인하고, 당일 일정이 어긋날 경우를 대비한 대체 동선을 정해 두세요.',
+    '동선은 예약 가능 여부와 휴식 지점을 다시 확인한 뒤에 확정해야 하며, 비나 일정 지연이 생기면 돌아갈 대체안을 미리 정해 두는 편이 낫다.',
+    '예약과 휴식을 반영한 실행 순서',
+    '시작: 이동 시간이 같은 후보라도 내 숙소에서 실제로 가까운 순서가 아니라, 예약을 먼저 확인할 수 있는 곳부터 배치하세요.',
+    '공식 이동 시간을 비교했으면 예약 가능 여부와 운영 공지를 다시 확인하고, 내 출발 지점과 휴식 시간을 기준으로 순서를 확정하세요.',
+    '다낭 여행 일정과 이동 동선을 계획할 때 필요한 확인 순서를 정리했습니다.',
+    '시작: Linh Ung Pagoda, Bà Nà Hills, Marble Mountains 중 먼저 갈 후보의 예약 가능 여부와 최신 운영 공지를 확인하세요.',
+    '공식 이동 시간을 다시 읽고, 내 출발 위치와 예약 시각, 휴식 필요량을 함께 따져보세요.',
+    '일정을 짤 때는 먼저 공식 이동 시간을 나란히 놓고 내 출발 지점과 체력에 맞는 순서를 고르는 것이 안전합니다.',
+    '무리가 없는 일정은 한 번에 모든 곳을 담기보다, 중간에 쉴 지점과 우천·휴무 대체안을 함께 두는 쪽에서 나옵니다.',
+  ])('keeps source-neutral itinerary planning advice out of the factual ledger: %s', (sentence) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it.each([
+    ['바나힐은 이동 시간이 길어 별도 일정으로 분리하는 편이 안전합니다.', 'unknown_unclassified'],
+    ['마블 마운틴은 다낭 도심 서쪽에 있어 먼저 일정에서 분리해야 합니다.', 'verified_factual'],
+    ['일정을 짤 때는 이동 시간이 긴 곳과 짧은 곳을 나누어 묶고, 예약이 필요한 일정을 먼저 확정한 뒤 나머지를 채우는 순서로 결정하세요.', 'unknown_unclassified'],
+    ['동선은 린 응 파고다와 마블마운틴처럼 짧은 이동 구간을 한 흐름으로 두고, 바나힐은 별도 시간대로 분리해 일정 전체의 피로를 줄이는 방향이 무리가 없습니다.', 'unknown_unclassified'],
+    ['바나힐은 이동 시간이 길어 다른 일정과 섞으면 동선이 복잡해질 수 있으니, 하루 중 한 블록으로 따로 두는 편이 낫습니다.', 'unknown_unclassified'],
+    ['마무리: Bà Nà Hills처럼 이동이 분리되는 일정은 마지막 순서로 두되, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.', 'verified_factual'],
+    ['짧은 이동 구간부터 묶어 동선을 단순하게 만들기', 'unknown_unclassified'],
+    ['차량 이동 시간이 짧은 두 곳을 먼저 비교하면 일정의 중심축을 잡기 쉽습니다.', 'unknown_unclassified'],
+    ['이동 시간이 긴 일정은 별도로 분리해 여유 확보하기', 'unknown_unclassified'],
+    ['확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나눕니다.', 'unknown_unclassified'],
+  ] as const)('does not let itinerary wording hide a destination assertion: %s', (sentence, category) => {
+    expect(classifyBlogInformationStatement(sentence).category).toBe(category);
+  });
+
+  it('still blocks a destination fact that merely mentions an itinerary choice', () => {
+    expect(classifyBlogInformationStatement(
+      '마블 마운틴은 다낭 도심 서쪽에 있어 일정에 따라 선택해야 합니다.',
+    )).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind: 'requirement_prohibition' },
+    });
+  });
+
+  it.each([
+    ['바나힐은 오늘 휴무입니다.', 'time_schedule'],
+    ['해당 호텔은 현재 예약 가능합니다.', 'availability_status'],
+    ['린 응 파고다는 시내에서 차량으로 15분 소요됩니다.', 'time_schedule'],
+    ['관광 비자는 입국 전에 반드시 필요합니다.', 'regulated_policy'],
+    ['일정에 여권 사본을 반드시 준비하세요.', 'requirement_prohibition'],
+  ] as const)('keeps operational, measurable, and regulated facts inside the evidence gate: %s', (sentence, candidateKind) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind },
+    });
+  });
+});
 
 function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
   return extractBlogInformationClaims(markdown).map((claim) => ({
@@ -70,6 +299,101 @@ function supportedRecord(
 }
 
 describe('blog information claim validator', () => {
+  it('validates the production itinerary rewrite with only its three ledgered facts', () => {
+    const factualClaims = [
+      '다낭 시내에서 Linh Ung Pagoda까지 차량으로 15분 소요',
+      '다낭 시내에서 Marble Mountains까지 차량으로 15분 소요',
+      '다낭에서 Bà Nà Hills까지 차량으로 40분 소요',
+    ];
+    const markdown = [
+      '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
+      factualClaims[0],
+      factualClaims[1],
+      factualClaims[2],
+      '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
+      '마무리에는 공식 채널을 다시 확인하고, 날씨나 휴무로 일정이 어긋날 때 바꿀 대체 동선을 미리 정해 두세요.',
+      '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
+    ].join('\n\n');
+    const claimLedger = factualClaims.flatMap(ledgerFor);
+
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: factualClaims.map((claim) => supportedRecord(claim)),
+      claimLedger,
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.claims.map((claim) => claim.claimText)).toEqual(factualClaims);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('validates title, safe description and final-rewrite planning advice without inventing claims', () => {
+    const factualClaims = [
+      '다낭 시내에서 Linh Ung Pagoda까지 차량으로 15분 소요',
+      '다낭에서 Bà Nà Hills까지 차량으로 40분 소요',
+      '다낭 시내에서 Marble Mountains까지 차량으로 15분 소요',
+    ];
+    const publicSurface = [
+      '다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
+      '다낭 여행 일정과 이동 동선을 계획할 때 필요한 확인 순서를 정리했습니다. 본문에 연결된 공식 근거를 먼저 확인하고, 출발 지점·예약·휴식 조건에 맞춰 실행 순서를 정하는 방법을 살펴보세요.',
+      '동선은 예약 가능 여부와 휴식 지점을 다시 확인한 뒤에 확정해야 하며, 비나 일정 지연이 생기면 돌아갈 대체안을 미리 정해 두는 편이 낫다.',
+      '예약과 휴식을 반영한 실행 순서',
+      '시작: 이동 시간이 같은 후보라도 내 숙소에서 실제로 가까운 순서가 아니라, 예약을 먼저 확인할 수 있는 곳부터 배치하세요.',
+      '공식 이동 시간을 비교했으면 예약 가능 여부와 운영 공지를 다시 확인하고, 내 출발 지점과 휴식 시간을 기준으로 순서를 확정하세요.',
+      ...factualClaims,
+    ].join('\n\n');
+
+    const report = validateBlogInformationClaims({
+      markdown: publicSurface,
+      persistedClaims: factualClaims.map((claim) => supportedRecord(claim)),
+      claimLedger: factualClaims.flatMap(ledgerFor),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.coverage).toBe(1);
+    expect(report.claims.map((claim) => claim.claimText)).toEqual(factualClaims);
+    expect(report.issues).toEqual([]);
+  });
+
+  it('blocks the legacy metadata description that asserted unsupported route grouping', () => {
+    const report = validateBlogInformationClaims({
+      markdown: '확인된 공식 정보를 바탕으로 함께 묶을 동선과 따로 둘 일정을 나눕니다.',
+      persistedClaims: [],
+      claimLedger: [],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: 'unclassified_factual_candidate',
+    }));
+  });
+
+  it('uses the persisted structured value for an exact approved translated claim', () => {
+    const markdown = '미케 해변은 손짜 반도 남쪽에 위치해 있습니다.';
+    const record = supportedRecord(markdown, {
+      excerpt: '2026년 일본 오사카 KR 대상 My Khe Beach is south of Son Tra Peninsula',
+    });
+    record.extractedValue = {
+      normalizedValue: 'My Khe Beach is south of Son Tra Peninsula',
+      unit: null,
+      currency: null,
+    };
+    record.evidence[0]!.scope.normalizedValue = 'My Khe Beach is south of Son Tra Peninsula';
+
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [record],
+      claimLedger: ledgerFor(markdown),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+  });
+
   it.each([
     '오사카 지하철은 자정 무렵 운행을 마칩니다.',
     '주말에는 운행하지 않습니다.',
@@ -101,6 +425,9 @@ describe('blog information claim validator', () => {
     '## 목차',
     '[공식 사이트에서 자세히 보기](https://example.com)',
     '저는 골목을 천천히 걷는 일정이 더 좋다고 생각합니다.',
+    '일정을 짤 때는 거리보다 휴식 순서를 먼저 정하세요.',
+    '선택한 장소의 예약 가능 여부를 공식 채널에서 확인하세요.',
+    '이 두 곳을 같은 날에 둘지, 날짜를 나눌지는 예약 가능 시간과 체력에 맞춰 결정하세요.',
   ])('allows clearly non-factual editorial or navigation text: %s', (markdown) => {
     const report = validateBlogInformationClaims({
       markdown,
@@ -136,7 +463,105 @@ describe('blog information claim validator', () => {
     expect(extractBlogInformationClaims('1. 준비\n2. 출발\n첫 번째로 동선을 정하세요.')).toEqual([]);
   });
 
-  it('does not turn reading guidance and freshness reminders into unsupported claims', () => {
+  it('does not turn an itinerary duration, proposal, or contingency heading into an external fact', () => {
+    const editorialOnly = [
+      '다낭 3박4일 여행 코스와 이동 동선: 장소별 실행 순서와 대체 동선',
+      '다낭 3박4일 여행 코스와 이동 동선의 장소별 실행 순서와 이동 근거를 정리했습니다.',
+      '3박4일 일정은 공식 이동 시간을 먼저 확인한 뒤, 하루에 묶을 장소를 독자가 직접 비교해 결정하세요.',
+      '아래 제안 일정은 린 응 파고다, 바나힐, 마블 마운틴, 논느억, 호이안을 날짜별로 배치한 하나의 동선 예시입니다.',
+      '3일차에는 마블 마운틴을 먼저 두고 논느억 방향으로 이어가는 순서를 제안합니다.',
+      '4일차에는 논느억에서 호이안으로 이동하는 흐름을 마지막 일정으로 제안합니다.',
+      '우천·휴무·피로 대체 동선',
+      '우천·휴무·피로 시 대체 동선',
+      '다낭 3박4일 여행 코스와 이동 동선 글 모아보기',
+    ].join('\n');
+
+    expect(extractBlogInformationClaims(editorialOnly)).toEqual([]);
+  });
+
+  it('keeps a day-numbered contingency edit editorial without hiding a real closure fact', () => {
+    const editorial = '우천이나 휴무로 3일차 일정이 어려우면 해당 블록을 빼고 4일차 일정을 앞당기거나 제외하는 안을 먼저 검토하세요.';
+    expect(classifyBlogInformationStatement(editorial)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+    expect(extractBlogInformationClaims(editorial)).toEqual([]);
+
+    expect(classifyBlogInformationStatement('오늘 3일차 Marble Mountains는 휴무입니다.')).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind: 'time_schedule' },
+    });
+  });
+
+  it('still validates facts placed inside an itinerary proposal', () => {
+    expect(extractBlogInformationClaims(
+      '3일차에는 마블 마운틴까지 차량으로 15분이 걸리는 동선을 제안합니다.',
+    )).toEqual([
+      expect.objectContaining({ candidateKind: 'time_schedule' }),
+    ]);
+  });
+
+  it('extracts only the six declared facts from the production 3-night 4-day rewrite shape', () => {
+    const markdown = [
+      '# 다낭 3박4일 여행 코스와 이동 동선: 장소별 실행 순서와 대체 동선',
+      '다낭 3박4일 여행 코스와 이동 동선의 장소별 실행 순서와 이동 근거를 정리했습니다.',
+      '3박4일 일정은 공식 이동 시간을 먼저 확인한 뒤, 하루에 묶을 장소를 독자가 직접 비교해 결정하세요.',
+      '아래 제안 일정은 린 응 파고다, 바나힐, 마블 마운틴, 논느억, 호이안을 날짜별로 배치한 하나의 동선 예시입니다.',
+      '## 1일차: 린 응 파고다와 바나힐을 후보로 비교하기',
+      '린 응 파고다까지 차량으로 15분 소요',
+      '바나힐은 다낭에서 서쪽으로 차량 40분 거리',
+      '## 2일차: 바나힐 운영 시간에 맞춘 일정 확정하기',
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+      '## 3일차: 마블 마운틴과 논느억을 잇는 일정 제안하기',
+      '3일차에는 마블 마운틴을 먼저 두고 논느억 방향으로 이어가는 순서를 제안합니다.',
+      '마블 마운틴은 다낭 시내에서 15분 거리',
+      '마블 마운틴 투이선 입장료는 성인 40,000 VND',
+      '## 4일차: 논느억에서 호이안으로 이동하는 마무리 동선',
+      '4일차에는 논느억에서 호이안으로 이동하는 흐름을 마지막 일정으로 제안합니다.',
+      '논느억에서 호이안까지 차량으로 30분 소요',
+      '## 우천·휴무·피로 대체 동선',
+      '[다낭 3박4일 여행 코스와 이동 동선 글 모아보기](https://www.yeosonam.com/blog/destination/%EB%8B%A4%EB%82%AD)',
+    ].join('\n\n');
+
+    expect(extractBlogInformationClaims(markdown).map((claim) => claim.claimText)).toEqual([
+      '린 응 파고다까지 차량으로 15분 소요',
+      '바나힐은 다낭에서 서쪽으로 차량 40분 거리',
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+      '마블 마운틴은 다낭 시내에서 15분 거리',
+      '마블 마운틴 투이선 입장료는 성인 40,000 VND',
+      '논느억에서 호이안까지 차량으로 30분 소요',
+    ]);
+  });
+
+  it('keeps production itinerary decisions editorial while retaining measurable facts', () => {
+    const markdown = [
+      '3박4일 일정은 공식 이동 시간을 먼저 비교한 뒤, 하루에 묶을 장소를 정하고 마지막으로 예약·운영 확인 순서를 잡는 방식으로 구성하세요.',
+      '동선은 린 응 파고다, 마블 마운틴, 논느억, 호이안, 바나힐을 기준으로 제안합니다.',
+      '아래 일정은 편집 제안이며 공식 노선이 아니므로, 출발 지점과 이동 속도에 따라 직접 판단해야 합니다.',
+      '두 장소의 공식 이동 시간을 나란히 놓고, 숙소 위치와 당일 컨디션에 맞는 순서를 고르면 됩니다.',
+      '이 순서는 아래 공식 이동 시간을 근거로 한 편집 제안이며, 실제 출발 지점에 따라 달라질 수 있습니다.',
+      '아래 운영 시간을 확인한 뒤, 입장 시각과 체류 순서를 정하면 됩니다.',
+      '## 4일차: 우천·휴무·피로 대체안과 휴식 결정',
+      '4일차는 앞선 일정 중 날씨나 휴무로 빠진 장소를 다시 넣거나, 휴식을 우선할지 결정하세요.',
+      '1일차 후보였던 린 응 파고다나 마블 마운틴 중 미방문 장소를 4일차 대체 블록으로 삼을 수 있습니다.',
+      '가장 먼저 확인할 블록은 3일차 바나힐입니다.',
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+    ].join('\n\n');
+
+    expect(extractBlogInformationClaims(markdown).map((claim) => claim.claimText)).toEqual([
+      '선월드 바나힐 운영시간은 오전 8시부터 오후 10시',
+    ]);
+  });
+
+  it('does not let itinerary guidance hide a measurable claim', () => {
+    expect(extractBlogInformationClaims(
+      '3일차에는 바나힐까지 차량으로 40분 이동하는 순서를 제안합니다.',
+    )).toEqual([
+      expect.objectContaining({ claimType: 'duration', candidateKind: 'time_schedule' }),
+    ]);
+  });
+
+  it('keeps non-numeric reading guidance editorial but validates prescriptive timing', () => {
     const guidance = [
       '낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다.',
       '처음 읽는 분은 표와 체크리스트를 먼저 보고, 세부 설명은 필요한 부분만 골라 읽으면 됩니다.',
@@ -145,7 +570,12 @@ describe('blog information claim validator', () => {
       '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
     ].join('\n');
 
-    expect(extractBlogInformationClaims(guidance)).toEqual([]);
+    expect(extractBlogInformationClaims(guidance)).toEqual([
+      expect.objectContaining({
+        claimText: '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
+        candidateKind: 'time_schedule',
+      }),
+    ]);
   });
 
   it.each([
@@ -253,12 +683,12 @@ describe('blog information claim validator', () => {
     const ledger: BlogInformationClaimLedgerEntry[] = [
       {
         ...ledgerFor(priceClaim)[0]!,
-        riskLevel: 'LOW',
+        riskLevel: 'MEDIUM',
       },
       {
         ...ledgerFor(policyClaim)[0]!,
         claimType: 'policy',
-        riskLevel: 'MEDIUM',
+        riskLevel: 'HIGH',
       },
     ];
     const markdown = [
@@ -277,6 +707,7 @@ describe('blog information claim validator', () => {
       persistedClaims,
       claimLedger: ledger,
       intentType: 'local_transport',
+      reviewStatus: 'approved',
       expectedScope: {
         country: '캐나다',
         destination: '캐나다 로키산맥',
@@ -287,11 +718,33 @@ describe('blog information claim validator', () => {
     expect(report.issues).toEqual([]);
     expect(report.passed).toBe(true);
     expect(report.coverage).toBe(1);
-    expect(report.requiresHumanReview).toBe(false);
+    expect(report.requiresHumanReview).toBe(true);
     expect(report.claims).toEqual([
       expect.objectContaining({ claimText: priceClaim, claimType: 'price' }),
       expect.objectContaining({ claimText: policyClaim, claimType: 'policy' }),
     ]);
+  });
+
+  it('fails closed when the writer ledger downgrades deterministic price risk', () => {
+    const claimText = '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.';
+    const ledger = ledgerFor(claimText);
+    ledger[0]!.riskLevel = 'LOW';
+    const report = validateBlogInformationClaims({
+      markdown: claimText,
+      persistedClaims: [supportedRecord(claimText, {
+        scope: { currency: 'VND' },
+      })],
+      claimLedger: ledger,
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'invalid_claim_ledger',
+        message: expect.stringContaining('LOW->MEDIUM'),
+      }),
+    ]));
   });
 
   it('validates only approved ledger claims in a deterministic entry article', () => {

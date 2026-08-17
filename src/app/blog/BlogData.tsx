@@ -6,7 +6,6 @@ import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
-import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import {
   BLOG_PUBLIC_ANGLES,
@@ -17,7 +16,7 @@ import { isBlogDatabaseUnavailableError } from '@/lib/blog-cache';
 import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import {
-  loadPublicBlogCatalog,
+  loadPublicBlogCatalogPage,
   type PublicBlogCatalogPost,
 } from '@/lib/blog-public-catalog';
 
@@ -68,7 +67,7 @@ function isGenericBlogImageUrl(url: string | null | undefined): boolean {
 }
 
 function getDisplayImageUrl(post: BlogPost): string | null {
-  if (!isGenericBlogImageUrl(post.og_image_url)) return toBlogImageDisplaySrc(post.og_image_url);
+  if (!isGenericBlogImageUrl(post.og_image_url)) return post.og_image_url?.trim() || null;
   return null;
 }
 
@@ -163,23 +162,20 @@ function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Recor
 }
 
 async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
-  const catalog = stripRawPackageDataFromBlogListPosts(
-    (await loadPublicBlogCatalog()) as BlogPost[],
-  );
-  const offset = (page - 1) * PER_PAGE;
-  const matchingPosts = catalog.filter((post) => {
-    if (filter.angle && post.angle_type !== filter.angle) return false;
-    if (filter.destination && post.destination !== filter.destination) return false;
-    return true;
+  const result = await loadPublicBlogCatalogPage({
+    page,
+    pageSize: PER_PAGE,
+    destination: filter.destination,
+    angle: filter.angle,
   });
-  const exactTotal = matchingPosts.length;
-  const fetchedPosts = matchingPosts.slice(offset, offset + PER_PAGE);
-  const posts = fetchedPosts.slice(0, PER_PAGE);
+  const posts = stripRawPackageDataFromBlogListPosts(result.posts as BlogPost[]);
+  const exactTotal = result.total;
 
   const pageAngleCounts = countAnglesFromPosts(posts);
-  const angleCounts = catalog.length > 0 ? countAnglesFromPosts(catalog) : pageAngleCounts;
-  const destinations = destinationsFromPosts(catalog)
-    .sort((a, b) => b.post_count - a.post_count);
+  const angleCounts = Object.keys(result.angleCounts).length ? result.angleCounts : pageAngleCounts;
+  const destinations = result.destinations.length
+    ? result.destinations
+    : destinationsFromPosts(posts).sort((a, b) => b.post_count - a.post_count);
 
   const featured = posts
     .filter((post) => Boolean(getDisplayImageUrl(post)))
@@ -233,14 +229,15 @@ function HeroCard({ post }: { post: BlogPost }) {
       <div className="aspect-[16/9] overflow-hidden relative">
         <SafeCoverImg
           src={imageUrl}
-          alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           loading="eager"
           fetchPriority="high"
+          sizes="(max-width: 768px) 100vw, 66vw"
           fallback={
             <img
               src="/og-image.png"
-              alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
+              alt=""
               className="absolute inset-0 h-full w-full object-cover"
               loading="eager"
             />
@@ -291,13 +288,14 @@ function SideCard({ post }: { post: BlogPost }) {
       <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-bg-section relative">
         <SafeCoverImg
           src={imageUrl}
-          alt={dest || ''}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          sizes="112px"
           fallback={
             <img
               src="/og-image.png"
-              alt={dest || '여소남 매거진'}
+              alt=""
               className="w-full h-full object-cover"
               loading="lazy"
             />
@@ -352,13 +350,14 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>
         <SafeCoverImg
           src={imageUrl}
-          alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '블로그 썸네일'}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           loading="lazy"
+          sizes="(max-width: 768px) 100vw, 33vw"
           fallback={
             <img
               src="/og-image.png"
-              alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '여소남 매거진'}
+              alt=""
               className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
             />

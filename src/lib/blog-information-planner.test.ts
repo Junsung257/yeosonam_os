@@ -2,6 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { buildBlogInformationPlan } from './blog-information-planner';
 
 describe('blog information planner', () => {
+  it('normalizes descriptive queue audience text to a representative-safe audience', () => {
+    const plan = buildBlogInformationPlan({
+      topic: '다낭 가볼만한곳과 이동 동선',
+      destination: '다낭',
+      primaryKeyword: '다낭 가볼만한곳',
+      audience: '제한된 시간과 체력에 맞는 장소를 고르려는 여행자' as never,
+    });
+
+    expect(plan.audience).toBe('general');
+  });
+
+  it('infers a supported audience from descriptive queue text', () => {
+    const plan = buildBlogInformationPlan({
+      topic: '세부 호텔 추천',
+      destination: '세부',
+      primaryKeyword: '세부 호텔 추천',
+      audience: '아이와 함께 막탄 숙소를 고르는 여행자' as never,
+    });
+
+    expect(plan.audience).toBe('family');
+  });
+
   it.each([
     ['삿포로 식비', '삿포로', 'food_budget', 'LOW'],
     ['광저우 월별 날씨', '광저우', 'monthly_weather', 'MEDIUM'],

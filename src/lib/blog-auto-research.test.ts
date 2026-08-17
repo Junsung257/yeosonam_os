@@ -11,6 +11,8 @@ import {
   buildGuamHotelAreasPayload,
   buildBlogResearchBundleFromGrounding,
   buildBlogStructuredResearchPrompt,
+  isAutoResearchNumericClaimTypeCompatible,
+  mergeDuplicateAutoResearchClaims,
   buildJmaMonthlyWeatherPayload,
   buildPagasaMonthlyWeatherPayload,
   buildSingaporeMonthlyWeatherPayload,
@@ -18,10 +20,50 @@ import {
   extractReviewedHtmlTextForResearch,
   extractReviewedPageTextForResearch,
   fetchReviewedDirectPages,
+  normalizeAutoResearchStructuredValue,
   sanitizeGroundedResearchPayload,
   selectReputableResearchRegistryForIntent,
+  shouldRetrySanitizedAutoResearchPayload,
 } from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
+
+describe('normalizeAutoResearchStructuredValue', () => {
+  it.each([
+    ['15분', null, '15', '분'],
+    ['40분', null, '40', '분'],
+    ['67m', null, '67', 'm'],
+    ['오전 7시 이전', null, '7', '시'],
+  ])('separates %s into a canonical value and unit', (normalizedValue, unit, value, expectedUnit) => {
+    expect(normalizeAutoResearchStructuredValue({ normalizedValue, unit })).toEqual({
+      normalizedValue: value,
+      unit: expectedUnit,
+    });
+  });
+});
+
+describe('shouldRetrySanitizedAutoResearchPayload', () => {
+  it('retries when reviewed pages exist but sanitization removes every research item', () => {
+    expect(shouldRetrySanitizedAutoResearchPayload({
+      payload: { sources: [], evidence: [], claims: [] },
+      reviewedPageCount: 4,
+      remainingMs: 60_000,
+    })).toBe(true);
+  });
+
+  it('does not retry without source pages or enough time', () => {
+    const payload = { sources: [], evidence: [], claims: [] };
+    expect(shouldRetrySanitizedAutoResearchPayload({
+      payload,
+      reviewedPageCount: 0,
+      remainingMs: 60_000,
+    })).toBe(false);
+    expect(shouldRetrySanitizedAutoResearchPayload({
+      payload,
+      reviewedPageCount: 4,
+      remainingMs: 15_000,
+    })).toBe(false);
+  });
+});
 
 const sourcePolicy = {
   minimumClaimSourceCoverage: 0.9,
@@ -195,6 +237,29 @@ describe('fetchReviewedDirectPages', () => {
       expect(result.pages).toHaveLength(1);
       expect(result.failures).toHaveLength(0);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('passes a finite phase-bounded timeout signal to every reviewed source request', async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response(`<main>${'bounded official source content '.repeat(10)}</main>`, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const result = await fetchReviewedDirectPages([{
+        hostname: 'bounded.example',
+        allowSubdomains: false,
+        researchUrls: ['https://bounded.example/research'],
+      }]);
+      expect(result.pages).toHaveLength(1);
+      expect(result.failures).toHaveLength(0);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -599,6 +664,49 @@ describe('sanitizeGroundedResearchPayload', () => {
     expect(payload.evidence?.map((evidence) => evidence.evidenceKey)).toEqual(['e1']);
     expect(payload.claims?.map((claim) => claim.normalizedValue)).toEqual(['12']);
   });
+
+  it('drops mislabeled duration rows before they can poison a valid research bundle', () => {
+    const payload = sanitizeGroundedResearchPayload({
+      sources: [{ sourceKey: 's1', groundingChunkIndex: 0, sourceType: 'official_tourism' }],
+      evidence: [
+        {
+          evidenceKey: 'bad-count',
+          sourceKey: 's1',
+          excerpt: '다낭 일정은 관광지 5곳을 묶는다.',
+          claimType: 'duration',
+          normalizedValue: '5',
+          unit: '곳',
+        },
+        {
+          evidenceKey: 'valid-drive',
+          sourceKey: 's1',
+          excerpt: '미케비치에서 호이안까지 차량 이동은 30분이 소요된다.',
+          claimType: 'duration',
+          normalizedValue: '30',
+          unit: '분',
+        },
+      ],
+      claims: [
+        {
+          claimText: '다낭 일정은 관광지 5곳을 묶는다.',
+          claimType: 'duration',
+          evidenceKeys: ['bad-count'],
+          normalizedValue: '5',
+          unit: '곳',
+        },
+        {
+          claimText: '미케비치에서 호이안까지 차량 이동은 30분이 소요된다.',
+          claimType: 'duration',
+          evidenceKeys: ['valid-drive'],
+          normalizedValue: '30',
+          unit: '분',
+        },
+      ],
+    }, 'itinerary');
+
+    expect(payload.evidence?.map((item) => item.evidenceKey)).toEqual(['valid-drive']);
+    expect(payload.claims?.map((item) => item.evidenceKeys)).toEqual([['valid-drive']]);
+  });
 });
 
 describe('augmentGuamFoodBudgetPayload', () => {
@@ -783,6 +891,12 @@ describe('buildBlogStructuredResearchPrompt', () => {
     });
 
     expect(transportPrompt).toContain('two route-duration claims');
+    expect(transportPrompt).toContain('A clock-of-day, show time, opening time, or other schedule is not duration');
+    expect(transportPrompt).toContain('must name both the origin and destination');
+    expect(transportPrompt).toContain('Omit comparative or superlative wording');
+    expect(transportPrompt).toContain(
+      'Do not create two evidence or claim records for the same entity, source, normalized value, and unit',
+    );
     expect(transportPrompt).toContain('vehicle marketing');
     expect(insurancePrompt).toContain('at least four insurance claims');
     expect(insurancePrompt).toContain('Exclude signup discounts');
@@ -821,11 +935,12 @@ describe('buildBlogStructuredResearchPrompt', () => {
     expect(promptFor('family_budget')).toContain('Exclude rent, gym membership, preschool tuition');
     expect(promptFor('family_budget')).toContain('newest reviewed official operator fare sheet');
     expect(promptFor('itinerary')).toContain('A visa stay limit is not an itinerary duration');
+    expect(promptFor('itinerary')).toContain('Minimum total independently supported claims: 6');
     expect(promptFor('shopping_souvenirs')).toContain('Exclude generic clothing, shoes, rent, restaurant');
     expect(promptFor('hotel_areas')).toContain('nightly price samples');
   });
 
-  it('turns validation issues into a compact semantic retry contract', () => {
+  it('turns coverage issues into a complete non-shrinking semantic retry contract', () => {
     const prompt = buildBlogStructuredResearchPrompt({
       ...base,
       brief: {
@@ -841,12 +956,447 @@ describe('buildBlogStructuredResearchPrompt', () => {
     });
 
     expect(prompt).toContain('Keep every evidence excerpt and claimText under 240 characters');
-    expect(prompt).toContain('Return a smaller valid JSON object');
+    expect(prompt).toContain('did not meet the required claim coverage');
+    expect(prompt).toContain('keep every valid independently supported fact');
+    expect(prompt).toContain('Do not return fewer than 7 valid claims');
+    expect(prompt).not.toContain('Return a smaller valid JSON object');
     expect(prompt).toContain('claim_semantic_coverage_missing:food_budget:breakfast');
+  });
+
+  it('turns duration mismatches into an explicit lexical retry contract', () => {
+    const prompt = buildBlogStructuredResearchPrompt({
+      ...base,
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy,
+        plan: { requiredFacts: [] },
+      } as never,
+      retry: true,
+      retryIssues: ['evidence_rejected:0:claim_type_mismatch:duration:unclassified'],
+    });
+
+    expect(prompt).toContain('DURATION RETRY CONTRACT');
+    expect(prompt).toContain('same numeric value and explicit elapsed unit directly in both excerpt and claimText');
+    expect(prompt).toContain('For a route, name both endpoints');
+    expect(prompt).toContain('unit is invalid');
+  });
+
+  it('keeps the compact retry instruction for invalid or truncated JSON only', () => {
+    const prompt = buildBlogStructuredResearchPrompt({
+      ...base,
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy,
+        plan: { requiredFacts: [] },
+      } as never,
+      retry: true,
+      retryIssues: ['invalid_or_truncated_json:Unexpected end of JSON input'],
+    });
+
+    expect(prompt).toContain('empty, invalid, truncated, or too long');
+    expect(prompt).toContain('Return a smaller valid JSON object');
+    expect(prompt).not.toContain('did not meet the required claim coverage');
+  });
+});
+
+describe('isAutoResearchNumericClaimTypeCompatible', () => {
+  it('rejects clock times mislabeled as elapsed duration before persistence', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Marble Mountains는 오전 7시 이전 방문이 최적입니다.',
+      'duration',
+    )).toBe(false);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+      'duration',
+    )).toBe(true);
+  });
+
+  it('accepts common English elapsed units but rejects mixed distance-duration rows', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'My Khe Beach to Hoi An is a 30-minute drive.',
+      'duration',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Hai Van Pass is 21 km long and takes 40 minutes to cross.',
+      'duration',
+    )).toBe(false);
+  });
+
+  it('keeps compatible numeric and qualitative facts', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Hai Van Pass는 21km 길이의 해안 도로입니다.',
+      'factual',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      'Marble Mountains는 석회암 산으로 이루어져 있습니다.',
+      'factual',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '비자 면제 프로그램은 관광 목적 90일 이하 체류에 적용됩니다.',
+      'policy',
+    )).toBe(true);
+  });
+
+  it('rejects a distance mislabeled as duration and accepts real elapsed or stay durations', () => {
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '다낭, 후에, 호이안 세 도시를 잇는 Hai Van Pass 도로는 165km입니다.',
+      'duration',
+    )).toBe(false);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '다낭에서 Ba Na Hills까지 차로 40분 걸립니다.',
+      'duration',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '관광 목적 체류 허용 기간은 90일입니다.',
+      'duration',
+    )).toBe(true);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '3일차에는 Hai Van Pass를 방문합니다.',
+      'duration',
+    )).toBe(false);
+    expect(isAutoResearchNumericClaimTypeCompatible(
+      '이 매장은 매일 24시간 운영합니다.',
+      'duration',
+    )).toBe(false);
+  });
+});
+
+describe('mergeDuplicateAutoResearchClaims', () => {
+  it('merges the same entity, value, and unit while retaining all evidence', () => {
+    const claims = mergeDuplicateAutoResearchClaims([
+      {
+        claimFingerprint: 'first',
+        claimText: 'Hai Van Pass는 21km 길이의 산길입니다.',
+        claimType: 'factual',
+        riskLevel: 'LOW',
+        extractedValue: { normalizedValue: '21', unit: 'km', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['official-a'],
+      },
+      {
+        claimFingerprint: 'second',
+        claimText: 'Hai Van Pass는 21km 길이입니다.',
+        claimType: 'factual',
+        riskLevel: 'MEDIUM',
+        extractedValue: { normalizedValue: '21', unit: 'km', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['official-b'],
+      },
+    ]);
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatchObject({
+      claimFingerprint: 'first',
+      riskLevel: 'MEDIUM',
+      evidenceKeys: ['official-a', 'official-b'],
+    });
+  });
+
+  it('does not merge equal durations for different routes', () => {
+    const claims = mergeDuplicateAutoResearchClaims([
+      {
+        claimFingerprint: 'marble',
+        claimText: '다낭에서 Marble Mountains까지 차량으로 15분 걸립니다.',
+        claimType: 'duration',
+        riskLevel: 'MEDIUM',
+        extractedValue: { normalizedValue: '15', unit: '분', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['route-a'],
+      },
+      {
+        claimFingerprint: 'linh-ung',
+        claimText: '다낭에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+        claimType: 'duration',
+        riskLevel: 'MEDIUM',
+        extractedValue: { normalizedValue: '15', unit: '분', currency: null },
+        requiresEvidence: true,
+        evidenceKeys: ['route-b'],
+      },
+    ]);
+
+    expect(claims).toHaveLength(2);
   });
 });
 
 describe('buildBlogResearchBundleFromGrounding', () => {
+  it('persists one claim with both sources when grounded pages repeat the same numeric fact', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'danang-hai-van-pass',
+      destination: '다낭',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_local_source'],
+        },
+      },
+      payload: {
+        sources: [
+          {
+            sourceKey: 'tourism-a',
+            groundingChunkIndex: 0,
+            publisher: 'Vietnam Tourism A',
+            sourceType: 'reputable_local_source',
+            claimTypes: ['factual'],
+            country: 'VN',
+            destination: '다낭',
+          },
+          {
+            sourceKey: 'tourism-b',
+            groundingChunkIndex: 1,
+            publisher: 'Vietnam Tourism B',
+            sourceType: 'reputable_local_source',
+            claimTypes: ['factual'],
+            country: 'VN',
+            destination: '다낭',
+          },
+        ],
+        evidence: [
+          {
+            evidenceKey: 'official-a',
+            sourceKey: 'tourism-a',
+            excerpt: 'Hai Van Pass는 21km 길이의 산길입니다.',
+            claimType: 'factual',
+            normalizedValue: '21',
+            unit: 'km',
+          },
+          {
+            evidenceKey: 'official-b',
+            sourceKey: 'tourism-b',
+            excerpt: 'Hai Van Pass는 21km 길이입니다.',
+            claimType: 'factual',
+            normalizedValue: '21',
+            unit: 'km',
+          },
+        ],
+        claims: [
+          {
+            claimText: 'Hai Van Pass는 21km 길이의 산길입니다.',
+            claimType: 'factual',
+            evidenceKeys: ['official-a'],
+            normalizedValue: '21',
+            unit: 'km',
+          },
+          {
+            claimText: 'Hai Van Pass는 21km 길이입니다.',
+            claimType: 'factual',
+            evidenceKeys: ['official-b'],
+            normalizedValue: '21',
+            unit: 'km',
+          },
+        ],
+      },
+      groundingChunks: [
+        { web: { uri: 'https://travel.example.com/hai-van-a', title: 'Hai Van A' } },
+        { web: { uri: 'https://travel.example.com/hai-van-b', title: 'Hai Van B' } },
+      ],
+      reputableRegistry: [{
+        id: 'danang-guide',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_local_source'],
+        intents: ['itinerary'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-07-23T00:00:00.000Z'),
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.bundle?.claims).toHaveLength(1);
+    expect(result.bundle?.claims[0]?.evidenceKeys).toHaveLength(2);
+    expect(new Set(result.bundle?.claims[0]?.evidenceKeys).size).toBe(2);
+  });
+
+  it('does not persist or auto-promote a clock recommendation labeled as duration', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'danang-itinerary',
+      destination: '다낭',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_local_source'],
+        },
+      },
+      payload: {
+        sources: [{
+          sourceKey: 'tourism',
+          groundingChunkIndex: 0,
+          publisher: 'Reviewed Danang guide',
+          sourceType: 'reputable_local_source',
+          claimTypes: ['duration'],
+          country: 'VN',
+          destination: '다낭',
+        }],
+        evidence: [
+          {
+            evidenceKey: 'clock',
+            sourceKey: 'tourism',
+            excerpt: 'Marble Mountains는 오전 7시 이전 방문이 최적입니다.',
+            claimType: 'duration',
+            normalizedValue: '7',
+            unit: 'am',
+          },
+          {
+            evidenceKey: 'drive',
+            sourceKey: 'tourism',
+            excerpt: 'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+            claimType: 'duration',
+            normalizedValue: '15',
+            unit: '분',
+          },
+        ],
+        claims: [
+          {
+            claimText: 'Marble Mountains는 오전 7시 이전 방문이 최적입니다.',
+            claimType: 'duration',
+            evidenceKeys: ['clock'],
+            normalizedValue: '7',
+            unit: 'am',
+          },
+          {
+            claimText: 'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+            claimType: 'duration',
+            evidenceKeys: ['drive'],
+            normalizedValue: '15',
+            unit: '분',
+          },
+        ],
+      },
+      groundingChunks: [{
+        web: { uri: 'https://travel.example.com/danang', title: 'Danang guide' },
+      }],
+      reputableRegistry: [{
+        id: 'danang-guide',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_local_source'],
+        intents: ['itinerary'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-08-16T14:00:00.000Z'),
+    });
+
+    expect(result.bundle?.evidence.map((item) => item.metadata?.grounded_statement)).toEqual([
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+    ]);
+    expect(result.bundle?.claims.map((item) => item.claimText)).toEqual([
+      'Marble Mountains에서 Linh Ung Pagoda까지 차량으로 15분 걸립니다.',
+    ]);
+    expect(result.issues).toContain('evidence_rejected:0:claim_type_mismatch:duration:factual');
+  });
+
+  it('does not allow the model to downgrade volatile travel facts to LOW risk', () => {
+    const result = buildBlogResearchBundleFromGrounding({
+      contentKey: 'danang-itinerary-risk-floor',
+      destination: '다낭',
+      locale: 'ko-KR',
+      brief: {
+        intentType: 'itinerary',
+        sourcePolicy: {
+          minimumClaimSourceCoverage: 0.9,
+          primarySourcesRequired: false,
+          exactNumbersRequireSource: true,
+          retrievedAtRequired: true,
+          sourceTypes: ['reputable_local_source'],
+        },
+      },
+      payload: {
+        sources: [{
+          sourceKey: 'tourism',
+          groundingChunkIndex: 0,
+          publisher: 'Reviewed Danang guide',
+          sourceType: 'reputable_local_source',
+          claimTypes: ['duration', 'price', 'factual'],
+          country: 'VN',
+          destination: '다낭',
+        }],
+        evidence: [
+          {
+            evidenceKey: 'duration',
+            sourceKey: 'tourism',
+            excerpt: '논느억 지역에서 호이안까지 차량으로 30분이 소요됩니다.',
+            claimType: 'duration',
+            riskLevel: 'LOW',
+            normalizedValue: '30',
+            unit: '분',
+          },
+          {
+            evidenceKey: 'price',
+            sourceKey: 'tourism',
+            excerpt: '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.',
+            claimType: 'price',
+            riskLevel: 'LOW',
+            normalizedValue: '150000',
+            unit: '1회',
+            currency: 'VND',
+          },
+          {
+            evidenceKey: 'hours',
+            sourceKey: 'tourism',
+            excerpt: '썬월드 바나힐 운영시간은 오전 8시부터 오후 10시까지입니다.',
+            claimType: 'factual',
+            riskLevel: 'LOW',
+            normalizedValue: '8:00 AM – 10:00 PM',
+            unit: '시간',
+          },
+        ],
+        claims: [
+          {
+            claimText: '논느억 지역에서 호이안까지 차량으로 30분이 소요됩니다.',
+            claimType: 'duration',
+            riskLevel: 'LOW',
+            evidenceKeys: ['duration'],
+            normalizedValue: '30',
+            unit: '분',
+          },
+          {
+            claimText: '미선 유적지 입장료는 국제 방문객 기준 150,000 VND입니다.',
+            claimType: 'price',
+            riskLevel: 'LOW',
+            evidenceKeys: ['price'],
+            normalizedValue: '150000',
+            unit: '1회',
+            currency: 'VND',
+          },
+          {
+            claimText: '썬월드 바나힐 운영시간은 오전 8시부터 오후 10시까지입니다.',
+            claimType: 'factual',
+            riskLevel: 'LOW',
+            evidenceKeys: ['hours'],
+            normalizedValue: '8:00 AM – 10:00 PM',
+            unit: '시간',
+          },
+        ],
+      },
+      groundingChunks: [{
+        web: { uri: 'https://travel.example.com/danang-risk', title: 'Danang guide' },
+      }],
+      reputableRegistry: [{
+        id: 'danang-guide',
+        hostname: 'example.com',
+        sourceTypes: ['reputable_local_source'],
+        intents: ['itinerary'],
+        allowSubdomains: true,
+      }],
+      now: new Date('2026-08-17T00:00:00.000Z'),
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.bundle?.evidence.map((item) => item.riskLevel)).toEqual([
+      'MEDIUM', 'MEDIUM', 'MEDIUM',
+    ]);
+    expect(result.bundle?.claims.map((item) => item.riskLevel)).toEqual([
+      'MEDIUM', 'MEDIUM', 'MEDIUM',
+    ]);
+  });
+
   it('builds a publish-gate-ready low-risk bundle only from grounded URLs', () => {
     const groundingChunks: GroundingChunk[] = [
       { web: { uri: 'https://prices.example.com/osaka-breakfast', title: 'Osaka price guide' } },
@@ -1247,20 +1797,20 @@ describe('buildBlogResearchBundleFromGrounding', () => {
           groundingChunkIndex: 0,
           publisher: 'Guam Airport',
           sourceType: 'airport',
-          claimTypes: ['duration'],
+          claimTypes: ['factual'],
           country: '괌',
         }],
         evidence: [{
           evidenceKey: 'e1',
           sourceKey: 's1',
           excerpt: '2026년 괌 공항의 공식 교통 안내 확인 대상은 한국인 여행자이며 1개 도착 택시 승강장을 안내한다.',
-          claimType: 'duration',
+          claimType: 'factual',
           normalizedValue: '1',
           unit: '승강장',
         }],
         claims: [{
           claimText: '괌 공항은 도착 택시 승강장 1개 위치를 안내한다.',
-          claimType: 'duration',
+          claimType: 'factual',
           evidenceKeys: ['e1'],
           normalizedValue: '1',
           unit: '승강장',

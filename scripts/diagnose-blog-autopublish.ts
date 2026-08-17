@@ -1,6 +1,10 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS } from '../src/lib/blog-scheduler';
+import {
+  countPublishableQueueCandidates,
+  loadQueueDemandSignalMapV3,
+  MIN_PUBLISHABLE_BUFFER_DAYS,
+} from '../src/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
 import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
@@ -14,6 +18,10 @@ import { buildProductGeneratedCanaryRows } from '../src/lib/blog-product-generat
 import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
 import { classifyBlogAutopublishDiagnosisBuckets } from '../src/lib/blog-autopublish-diagnosis';
 import { inspectBlogFleetPhraseDrift } from '../src/lib/blog-fleet-phrase-drift';
+import {
+  hasVerifiedBlogDemandSignal,
+  readBlogAutopublishPolicyV3,
+} from '../src/lib/blog-autopublish-policy-v3';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -37,6 +45,7 @@ type BucketCode =
   | 'generated_canary_quality_incomplete'
   | 'generated_canary_quality_failed'
   | 'fleet_phrase_drift'
+  | 'demand_repository_missing'
   | 'current_day_publisher_failure';
 
 type Bucket = {
@@ -273,12 +282,12 @@ async function main() {
       .limit(1000),
     supabase
       .from('blog_topic_queue')
-      .select('id, product_id, content_creative_id, destination, angle_type, topic, source, priority, created_at, updated_at, target_publish_at, primary_keyword, category, meta')
+      .select('id, product_id, content_creative_id, destination, angle_type, topic, source, priority, created_at, updated_at, target_publish_at, primary_keyword, category, monthly_search_volume, trend_score, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
     supabase
       .from('blog_topic_queue')
-      .select('id, status, product_id, destination, topic, source, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+      .select('id, status, product_id, destination, topic, source, attempts, last_error, created_at, updated_at, target_publish_at, monthly_search_volume, trend_score, meta')
       .in('status', ['queued', 'generating', 'failed'])
       .limit(1000),
     supabase
@@ -317,14 +326,33 @@ async function main() {
   }
 
   const policy = policyRes.data?.[0] ?? null;
-  const dailyTarget = numberFrom(policy?.posts_per_day) || 4;
+  const dailyTarget = Math.min(
+    numberFrom(policy?.posts_per_day) || 1,
+    readBlogAutopublishPolicyV3().dailyPublishCap,
+  );
   const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
   const cronHealth = Object.fromEntries((cronHealthRes.data ?? []).map((row: any) => [row.cron_name, row]));
   const publisherHealth = cronHealth['blog-publisher'];
   const publisherLogs = publisherLogsRes.data ?? [];
+  const activeQueue = activeQueueRes.data ?? [];
+  const [demandSignalProbe, searchPerformanceProbe] = await Promise.all([
+    supabase.from('blog_demand_signals').select('id').limit(1),
+    supabase.from('blog_search_performance').select('id').limit(1),
+  ]);
+  const demandRepositoryErrors = [
+    demandSignalProbe.error ? `blog_demand_signals:${demandSignalProbe.error.message}` : null,
+    searchPerformanceProbe.error ? `blog_search_performance:${searchPerformanceProbe.error.message}` : null,
+  ].filter((value): value is string => Boolean(value));
+  const demandRepositoryReady = demandRepositoryErrors.length === 0;
+  const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(activeQueue, supabase);
+  const observedDemandMissingCount = activeQueue.filter((row: any) => (
+    row.source !== 'pillar'
+      && !hasVerifiedBlogDemandSignal(demandSignalsByQueueId.get(String(row.id)) ?? {})
+  )).length;
   const publishabilityStats = countPublishableQueueCandidates({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
+    demandSignalsByQueueId,
   });
   const indexingOutboxCoverage = summarizeBlogIndexingCoverage({
     posts: recentPublishedRes.data ?? [],
@@ -375,14 +403,17 @@ async function main() {
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidence_insufficient_count: publishabilityStats.evidenceInsufficient
       + publishabilityStats.productOpenContractBlocked
-      + publishabilityStats.researchNotReady,
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing,
+    demand_missing_count: observedDemandMissingCount,
     destinationless_info_count: publishabilityStats.destinationlessInfoBlocked,
     candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
     next_action: publishabilityStats.evidenceInsufficient
       + publishabilityStats.productOpenContractBlocked
-      + publishabilityStats.researchNotReady > 0
-      ? 'collect_evidence'
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing > 0
+      ? (observedDemandMissingCount > 0 ? 'collect_demand' : 'collect_evidence')
       : publishabilityStats.destinationlessInfoBlocked > 0
         ? 'repair_destinationless_info'
       : publishabilityStats.candidateContractBlocked > 0
@@ -400,7 +431,8 @@ async function main() {
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidenceInsufficientCount: publishabilityStats.evidenceInsufficient
       + publishabilityStats.productOpenContractBlocked
-      + publishabilityStats.researchNotReady,
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing,
     candidateShortage: publishabilitySnapshot.candidate_shortage,
     actionableFailedCount: queueOperationalHealth.actionable_failed_count,
     staleGeneratingCount: queueOperationalHealth.stale_generating_count,
@@ -448,6 +480,14 @@ async function main() {
   });
 
   const buckets: Bucket[] = [];
+  if (!demandRepositoryReady) {
+    buckets.push({
+      code: 'demand_repository_missing',
+      severity: 'critical',
+      detail: 'V3 demand repositories are unavailable; automatic publication must remain fail-closed.',
+      evidence: demandRepositoryErrors,
+    });
+  }
   const selectedDayRawPublished = publishedTodayRes.count ?? 0;
   const dailySummaryPublished = publishedFromDailySummary(cronHealth, day.dayKey);
   const publisherQuotaPublished = Math.max(
@@ -746,6 +786,10 @@ async function main() {
     destinationless_info_work: destinationlessInfoWork,
     published_info_destination_work: publishedInfoDestinationWork,
     publishability: publishabilitySnapshot,
+    demand_repository: {
+      ready: demandRepositoryReady,
+      errors: demandRepositoryErrors,
+    },
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
     generated_canary_quality: generatedCanaryQuality,

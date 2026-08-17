@@ -60,6 +60,47 @@ describe('cron resource saver', () => {
         'blog-regenerate-zero-click',
       ),
     ).toBeNull();
+
+    for (const cron of [
+      'blog-generate',
+      'blog-publication-controller',
+      'rank-tracking',
+      'blog-data-readiness',
+      'blog-indexing-worker',
+      'blog-ai-model-canary',
+      'blog-analytics-canary',
+      'analytics-delivery',
+    ]) {
+      expect(
+        maybeSkipCronForResourceSaver(
+          cronRequest(`https://www.yeosonam.com/api/cron/${cron}`),
+          cron,
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it('keeps the complete blog operating chain blocked without explicit critical-cron approval', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+
+    for (const cron of [
+      'blog-publisher',
+      'blog-generate',
+      'blog-publication-controller',
+      'rank-tracking',
+      'blog-data-readiness',
+      'blog-indexing-worker',
+      'blog-ai-model-canary',
+      'blog-analytics-canary',
+      'analytics-delivery',
+    ]) {
+      expect(
+        maybeSkipCronForResourceSaver(
+          cronRequest(`https://www.yeosonam.com/api/cron/${cron}`),
+          cron,
+        ),
+      ).toBeInstanceOf(Response);
+    }
   });
 
   it('allows forced crons and keeps product-readiness crons closed unless explicitly enabled', () => {

@@ -301,10 +301,25 @@ function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoSc
   );
 }
 
-function scorePrimaryKeyword(plainText: string, keyword: string, blogType: 'product' | 'info'): SeoScoreDetail {
+function scorePrimaryKeyword(
+  plainText: string,
+  keyword: string,
+  blogType: 'product' | 'info',
+  flexibleV3 = false,
+): SeoScoreDetail {
   if (!keyword) return detail('primary_keyword', 2, 8, 6, 3, 'primary keyword 없음');
   const count = countOccurrences(plainText, keyword);
   const density = plainText.length > 0 ? (count * keyword.length / plainText.length) * 100 : 0;
+  if (flexibleV3) {
+    return detail(
+      'primary_keyword',
+      count > 0 ? 8 : 0,
+      8,
+      7,
+      4,
+      `${keyword} ${count}회, V3 natural occurrence policy (density is diagnostic only)`,
+    );
+  }
   const min = blogType === 'product' ? 0.45 : 0.35;
   const max = blogType === 'product' ? 2.8 : 2.2;
   let score = 0;
@@ -350,6 +365,13 @@ function scoreImages(input: ScorerInput, keyword: string, dest: string): SeoScor
   const imageCount = input.imageCount ?? images.length;
   const altCount = input.imagesWithAlt ?? images.filter((image) => image.alt.trim().length >= 3).length;
   const altText = images.map((image) => image.alt).join(' ');
+  const contentBriefV3 = input.generationMeta?.content_brief_v3;
+  const imageMinimum = contentBriefV3 && typeof contentBriefV3 === 'object' && !Array.isArray(contentBriefV3)
+    ? (contentBriefV3 as Record<string, unknown>).imageMinimum
+    : null;
+  if (imageCount === 0 && imageMinimum === 0) {
+    return detail('image_seo', 8, 8, 7, 4, 'images 0, V3 brief explicitly permits an image-free article');
+  }
   let score = 0;
 
   if (imageCount >= 3) score += 3;
@@ -623,12 +645,13 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
   const plainText = stripMarkdownAndHtml(input.blogHtml);
   const keyword = input.primaryKeyword?.trim() || '';
   const dest = input.destination?.trim() || '';
+  const flexibleV3 = Boolean(input.generationMeta?.content_brief_v3);
 
   const details = [
     scoreTitle(input, keyword, dest),
     scoreMeta(input, keyword),
     scoreHeadings(input, keyword, dest),
-    scorePrimaryKeyword(plainText, keyword, input.blogType),
+    scorePrimaryKeyword(plainText, keyword, input.blogType, flexibleV3),
     scoreSemanticCoverage(plainText, input.secondaryKeywords),
     scoreImages(input, keyword, dest),
     scoreInternalLinks(input.blogHtml, input.blogType, input.hasRuntimeInformationalCta),

@@ -264,13 +264,6 @@ function inspectInfoContract(
         hasSeasonRisk,
       });
     }
-    if (tableRows < 4) {
-      addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Weather posts need a real month/season table, not only prose.', { tableRows });
-    }
-  }
-
-  if (subtype === 'preparation' && listItems < 5) {
-    addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Preparation posts need at least five checklist items.', { listItems });
   }
 
   if (subtype === 'itinerary' && countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째|일정\s*체감|출발|도착|귀국|이동\s*동선|숙박\s*수)/gi) < 2) {
@@ -294,9 +287,14 @@ function inspectInfoContract(
       plain,
       /(compare|recommend|best|pros|cons|\uBE44\uAD50|\uCD94\uCC9C|\uC120\uD0DD|\uC0C1\uD669\uBCC4|\uB9DE\uB294\s*\uC0AC\uB78C|\uC548\s*\uB9DE\uB294\s*\uC0AC\uB78C|\uC544\uC774|\uAC00\uC871|\uC548\uC804)/i,
     );
-    if (!hasDecisionCue || (tableRows < 4 && listItems < 5)) {
+    const hasSituationBasedCriteria = hasAny(
+      plain,
+      /(?:상황별|선택\s*기준|맞는\s*사람|안\s*맞는\s*사람|아이\s*동반|첫\s*해외여행|예산\s*중심|휴양\s*중심|관광\s*중심)/i,
+    );
+    if (!hasDecisionCue || !hasSituationBasedCriteria) {
       addIssue(issues, 'missing_required_block', 'critical', 'Comparison/recommendation posts need situation-based decision criteria.', {
         hasDecisionCue,
+        hasSituationBasedCriteria,
         tableRows,
         listItems,
       });
@@ -369,7 +367,6 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
     .map((p) => stripMarkup(p).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
   const longParagraphs = paragraphs.filter((p) => p.length >= 520);
-  const h2Count = countMatches(source, /(^|\n)##\s+\S/g);
   const listItems = countMatches(source, /(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g);
   const tables = countMatches(source, /(^|\n)\s*\|.+\|/g);
   const markCount = countMatches(source, /==[^=\n]{3,120}==|<mark\b/gi);
@@ -378,7 +375,11 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
   const numericFacts = countMatches(plain, /\d[\d,]*(?:\s*(?:원|만원|엔|달러|위안|페소|바트|%|℃|도|분|시간|박|일|km|m))?/g);
   const htmlTables = countMatches(source, /<table\b/gi);
   const decisionTableRows = tables + htmlTables * 4;
-  const strongScanBlocks = decisionTableRows >= 4 || listItems >= 5 || tipCount + warnCount >= 1;
+  const semanticSectionCount = countMatches(source, /(^|\n)#{2,3}\s+\S/g);
+  const strongScanBlocks = decisionTableRows >= 4
+    || listItems >= 5
+    || tipCount + warnCount >= 1
+    || semanticSectionCount >= 3;
 
   if (longParagraphs.length > 0) {
     addIssue(issues, 'paragraph_wall', longParagraphs.length >= 2 ? 'critical' : 'warning', 'Article has wall-of-text paragraphs that reduce scanability.', {
@@ -387,12 +388,12 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
     });
   }
 
-  if (h2Count < 4) {
-    addIssue(issues, 'weak_reading_design', 'critical', 'Article needs at least four H2 sections for scanability.', { h2Count });
-  }
-
-  if (listItems < 3 && tables < 3) {
-    addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Article needs real lists or tables so readers can scan the answer.', { listItems, tableRows: tables });
+  if (listItems < 3 && tables < 3 && semanticSectionCount < 3) {
+    addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Article needs lists, tables, or descriptive sections so readers can scan the answer.', {
+      listItems,
+      tableRows: tables,
+      semanticSectionCount,
+    });
   }
 
   if (!strongScanBlocks && (markCount + tipCount + warnCount < 2 || numericFacts < 6)) {

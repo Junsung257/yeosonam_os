@@ -2,7 +2,13 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
 import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
-import { countPublishableQueueCandidates, MIN_PUBLISHABLE_BUFFER_DAYS } from '@/lib/blog-scheduler';
+import {
+  countPublishableQueueCandidates,
+  loadQueueDemandSignalMapV3,
+  MIN_PUBLISHABLE_BUFFER_DAYS,
+  normalizeDailyPostTarget,
+} from '@/lib/blog-scheduler';
+import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
 import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
@@ -516,8 +522,14 @@ export async function buildBlogOpsSummary(supabase: any) {
   const publishedToday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= todayStart && new Date(row.published_at) < tomorrowStart).length;
   const publishedYesterday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= yesterdayStart && new Date(row.published_at) < todayStart).length;
   const policy = policyRows[0] || {};
-  const dailyTarget = Math.max(1, Math.round(asNumber(policy.posts_per_day) || 3));
-  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
+  const autopublishPolicy = readBlogAutopublishPolicyV3();
+  const configuredDailyTarget = Math.max(1, Math.round(asNumber(policy.posts_per_day) || 3));
+  const effectiveDailyTarget = normalizeDailyPostTarget(configuredDailyTarget);
+  const publicPublicationEnabled = policy.enabled !== false
+    && autopublishPolicy.mode !== 'draft_only'
+    && effectiveDailyTarget > 0;
+  const publicDailyTarget = publicPublicationEnabled ? effectiveDailyTarget : 0;
+  const generatedCanaryRequested = Math.min(5, Math.max(3, effectiveDailyTarget));
   const qualitySummary = summarizePublishedBlogQuality(publishedRows, 30);
   const engineCategoryScorecard = summarizeEngineCategoryScorecard(publishedRows, 30);
   const lowQualityRecent = qualitySummary.non_slug_failure_count;
@@ -555,7 +567,8 @@ export async function buildBlogOpsSummary(supabase: any) {
     'blog-daily-summary',
     'blog-indexing-worker',
     'blog-orchestrator',
-    'blog-publisher',
+    'blog-generate',
+    'blog-publication-controller',
     'blog-scheduler',
     'gsc-index-rank',
     'rank-tracking',
@@ -568,12 +581,12 @@ export async function buildBlogOpsSummary(supabase: any) {
     .sort((a, b) => String(a.cron_name).localeCompare(String(b.cron_name)));
   const unhealthyCrons = blogCrons.filter((row) => row.last_status && row.last_status !== 'success');
   const coreCrons = blogCrons.filter((row) => blogCronNames.has(String(row.cron_name)));
-  const publisherCron = blogCrons.find((row) => row.cron_name === 'blog-publisher') ?? null;
+  const publisherCron = blogCrons.find((row) => row.cron_name === 'blog-publication-controller') ?? null;
   const currentDayPublisherHealth = evaluateCurrentDayPublisherHealth({
     cronHealth: publisherCron,
     now,
     currentDayPublishedCount: publishedToday,
-    dailyTarget,
+    dailyTarget: effectiveDailyTarget,
   });
 
   const programmaticCounts = countBy(programmaticRows, (row) => row.status);
@@ -593,30 +606,40 @@ export async function buildBlogOpsSummary(supabase: any) {
     sources: countBy(rankRows, (row) => row.source),
   };
 
-  const dailyLevel: BlogOpsLevel = publishedToday >= dailyTarget ? 'healthy' : publishedYesterday < dailyTarget ? 'risk' : 'watch';
+  const dailyLevel: BlogOpsLevel = !publicPublicationEnabled
+    ? 'blocked'
+    : publishedToday >= publicDailyTarget ? 'healthy' : publishedYesterday < publicDailyTarget ? 'risk' : 'watch';
   const queueLevel: BlogOpsLevel = retryableFailedQueue.length > 0 || staleGenerating > 0 || publishedStateMismatches.length > 0
     ? 'risk'
     : overdueQueued > 0 || manualReviewQueue.length > 0 ? 'watch' : 'healthy';
   const indexingLevel: BlogOpsLevel = googleUnknownUrls > 0 || recentIndexingFailures > 0 || indexingCoverage.missing_count > 0
     ? 'risk'
     : indexingActive > 0 ? 'watch' : 'healthy';
-  const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => row.cron_name === 'blog-publisher') ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
+  const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => (
+    row.cron_name === 'blog-generate' || row.cron_name === 'blog-publication-controller'
+  )) ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
   const qualityLevel: BlogOpsLevel = qualitySummary.non_slug_failure_count > 0
     ? 'risk'
     : qualitySummary.slug_only_failure_count > 0 ? 'watch' : 'healthy';
   const currentDayPublisherLevel: BlogOpsLevel = currentDayPublisherHealth.status === 'risk' ? 'blocked' : 'healthy';
+  const publishableQueueRows = queueRows.filter((row) => row.status === 'queued' || row.status === 'generating');
+  const demandSignalsByQueueId = await loadQueueDemandSignalMapV3(publishableQueueRows, supabase);
   const publishabilityStats = countPublishableQueueCandidates({
-    activeQueue: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
+    activeQueue: publishableQueueRows,
     recentPublished: publishedRows.slice(0, 100),
+    demandSignalsByQueueId,
   });
   const candidateContractBlocked = publishabilityStats.candidateContractBlocked;
   const preflight = evaluateBlogPublishPreflight({
-    dailyTarget,
+    dailyTarget: effectiveDailyTarget,
     publishedToday,
     publishableCandidateCount: publishabilityStats.publishableCount,
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
-    candidateShortage: publishabilityStats.publishableCount < dailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient
+      + publishabilityStats.productOpenContractBlocked
+      + publishabilityStats.researchNotReady
+      + publishabilityStats.demandMissing,
+    candidateShortage: publishabilityStats.publishableCount < effectiveDailyTarget * MIN_PUBLISHABLE_BUFFER_DAYS,
     actionableFailedCount: retryableFailedQueue.length,
     staleGeneratingCount: staleGenerating,
     manualReviewCount: manualReviewQueue.length,
@@ -670,11 +693,18 @@ export async function buildBlogOpsSummary(supabase: any) {
   const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
-  if (publishedToday < dailyTarget) {
+  if (!publicPublicationEnabled) {
+    nextActions.push({
+      severity: 'blocked',
+      title: '자동발행 안전정지 확인',
+      detail: `현재 ${autopublishPolicy.mode} 모드입니다. 공개 발행은 중지되고 초안·검수 대기까지만 진행됩니다.`,
+      href: '/admin/blog/policy',
+    });
+  } else if (publishedToday < publicDailyTarget) {
     nextActions.push({
       severity: dailyLevel,
       title: '오늘 발행 목표 미달',
-      detail: `오늘 ${publishedToday}/${dailyTarget}편 발행됨. 발행 큐와 글 발행자 상태를 같이 확인하세요.`,
+      detail: `오늘 ${publishedToday}/${publicDailyTarget}편 발행됨. 발행 큐와 글 발행자 상태를 같이 확인하세요.`,
       href: '/admin/blog/queue',
       action: 'run_publisher',
     });
@@ -832,7 +862,8 @@ export async function buildBlogOpsSummary(supabase: any) {
       current_version: '2026-06-16',
       passed: overallLevel === 'healthy' || overallLevel === 'watch',
       failed_checks: [
-        ...(dailyLevel === 'risk' ? ['daily_publish_sla'] : []),
+        ...(!publicPublicationEnabled ? ['autopublish_mode_draft_only'] : []),
+        ...(publicPublicationEnabled && dailyLevel === 'risk' ? ['daily_publish_sla'] : []),
         ...(queueLevel === 'risk' ? ['queue_failures_or_stale_generation'] : []),
         ...(publishedStateMismatches.length > 0 ? ['published_state_mismatch'] : []),
         ...(cronLevel === 'risk' || cronLevel === 'blocked' ? ['cron_health'] : []),
@@ -849,8 +880,10 @@ export async function buildBlogOpsSummary(supabase: any) {
     health_sections: {
       publish: {
         level: dailyLevel,
-        failed: dailyLevel === 'risk',
-        checks: publishedToday >= dailyTarget ? [] : ['daily_publish_sla'],
+        failed: dailyLevel === 'risk' || dailyLevel === 'blocked',
+        checks: !publicPublicationEnabled
+          ? ['autopublish_mode_draft_only']
+          : publishedToday >= publicDailyTarget ? [] : ['daily_publish_sla'],
       },
       queue: {
         level: maxLevel(queueLevel, candidateContractLevel),
@@ -887,10 +920,16 @@ export async function buildBlogOpsSummary(supabase: any) {
       },
     },
     publish: {
-      daily_target: dailyTarget,
+      configured_daily_target: configuredDailyTarget,
+      effective_daily_target: effectiveDailyTarget,
+      daily_publish_cap: autopublishPolicy.dailyPublishCap,
+      autopublish_mode: autopublishPolicy.mode,
+      requested_autopublish_mode: autopublishPolicy.requestedMode,
+      public_publication_enabled: publicPublicationEnabled,
+      daily_target: publicDailyTarget,
       published_today: publishedToday,
       published_yesterday: publishedYesterday,
-      remaining_today: Math.max(0, dailyTarget - publishedToday),
+      remaining_today: Math.max(0, publicDailyTarget - publishedToday),
       policy_enabled: policy.enabled !== false,
       per_destination_daily_cap: asNumber(policy.per_destination_daily_cap) || null,
       product_ratio: typeof policy.product_ratio === 'number' ? policy.product_ratio : null,

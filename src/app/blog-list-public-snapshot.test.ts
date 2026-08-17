@@ -30,11 +30,11 @@ describe('blog list public package data boundary', () => {
 
   it('strips accidental raw package data from the public blog list before rendering', () => {
     const text = source('src/app/blog/BlogData.tsx');
-    const fetchIndex = text.indexOf('const catalog = stripRawPackageDataFromBlogListPosts');
+    const fetchIndex = text.indexOf('const posts = stripRawPackageDataFromBlogListPosts');
 
     expect(text).toContain('function stripRawPackageDataFromBlogListPosts');
     expect(text).toContain('travel_packages: null');
-    expect(text).toContain('loadPublicBlogCatalog()');
+    expect(text).toContain('loadPublicBlogCatalogPage({');
     expect(text).not.toContain('getFallbackBlogPosts');
     expect(fetchIndex).toBeGreaterThan(text.indexOf('async function getBlogDataUncached'));
     expect(text).not.toContain('travel_packages(');

@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
-import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
+import {
+  BlogAiResponseError,
+  classifyBlogAiProviderFailure,
+  generateBlogTextWithReceipt,
+  hasBlogApiKey,
+  type BlogAiTextResult,
+} from '@/lib/blog-ai-caller';
 import { generateBlogSeo, type AngleType } from '@/lib/content-generator';
 import { buildProductBlogBrief, buildProductSlugSuffix } from '@/lib/blog-product-brief';
 import { generateProductConsultantBlogPost } from '@/lib/blog-product-consultant-writer';
@@ -19,15 +26,18 @@ import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { withCronLogging } from '@/lib/cron-observability';
-import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
+import { analyzeSerp, buildSerpPromptBlock } from '@/lib/serp-analyzer';
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
-import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { extractFaqItems, extractHowToSteps } from '@/lib/blog-jsonld';
-import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
+import {
+  evaluateBlogPublishQuality,
+  isBlogSeoDetailBlockingForPublish,
+  type BlogPublishQualityReport,
+} from '@/lib/blog-publish-quality';
 import { buildBlogQueueSuccessMeta } from '@/lib/blog-queue-success-meta';
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
-import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
+import { repairPublisherSeoSlug } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import {
   ensureBlogInlineImages,
@@ -35,28 +45,18 @@ import {
   findRelevantBlogPexelsImage,
 } from '@/lib/blog-inline-images';
 import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
-import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
-import { repairBlogImageQuality } from '@/lib/blog-image-quality';
-import { repairBlogAiReadableStructure } from '@/lib/blog-ai-readable-repair';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { calculateBlogPublishSlotQuota } from '@/lib/blog-publish-slot-quota';
-import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
-import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
-import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
+import { buildBlogPackageCtaUrl, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { boundBlogWriterOutput } from '@/lib/blog-writer-output-boundary';
 import { repairBlogLiteralNewlines } from '@/lib/blog-literal-newline-repair';
-import {
-  appendPublishReadinessSupport,
-  ensurePublisherInternalLinks,
-  repairPublishReadiness,
-} from '@/lib/blog-publish-readiness-repair';
+import { repairBlogPublishFormattingV3 } from '@/lib/blog-safe-publish-repair-v3';
 import {
   fetchApprovedReviewSnippets,
   formatReviewQuotesAppendMarkdown,
   formatReviewQuotesForPrompt,
 } from '@/lib/blog-review-quotes';
-import { maybeApplyChainOfDensity } from '@/lib/blog-chain-of-density';
 import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from '@/lib/card-news-render-readiness';
 import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
@@ -88,13 +88,11 @@ import {
   buildInformationalWriterPrompt,
 } from '@/lib/blog-informational-writer-prompt';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
-import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
-import { buildBlogInformationalSeoDescription } from '@/lib/blog-informational-seo-description';
+import { buildBlogContentBrief } from '@/lib/blog-content-brief';
 import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
-  repairBlogGenerationResearchStructure,
   summarizeBlogGenerationResearch,
 } from '@/lib/blog-generation-research';
 import {
@@ -103,18 +101,6 @@ import {
 } from '@/lib/blog-information-evidence-repository';
 import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
-import {
-  normalizeBlogVisualAccents,
-  repairBlogEditorialQuality,
-  repairBlogStructureQuality,
-  repairKeywordDensityToTarget,
-} from '@/lib/blog-editorial-repair';
-import {
-  repairBlogFinalCustomerSurface,
-  repairBlogFinalInlineSurface,
-} from '@/lib/blog-final-customer-surface';
-import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
-import { repairArticleQualityV2Specifics } from '@/lib/blog-article-quality-v2-repair';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, MIN_PUBLISHABLE_BUFFER_DAYS, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
@@ -148,6 +134,10 @@ import {
   type BlogInformationClaimLedgerEntry,
 } from '@/lib/blog-information-claim-ledger';
 import {
+  countUnsupportedNumericBlogInformationClaims,
+  inspectBlogInformationClaimTypeCompatibility,
+} from '@/lib/blog-information-claim-validator';
+import {
   buildBlogInformationRepresentativeKey,
   canUpgradePublishedBlogForRepresentative,
   readBlogInformationRepresentativeIdentity,
@@ -162,8 +152,77 @@ import {
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 import { createBlogInformationEvidenceWorkflowStore } from '@/lib/blog-information-review-repository';
+import {
+  evaluateBlogAutopublishDecisionV3,
+  hasVerifiedBlogDemandSignal,
+  readBlogAutopublishPolicyV3,
+  type BlogDemandSignalInput,
+} from '@/lib/blog-autopublish-policy-v3';
+import {
+  mergePersistedBlogDemandSignalsV3,
+  readEmbeddedBlogQueueDemandSignalV3,
+  type PersistedBlogDemandSignalV3,
+} from '@/lib/blog-demand-repository-v3';
+import {
+  aggregateObservedBlogSearchMetricsV3,
+  scoreBlogDemandCandidateV3,
+} from '@/lib/blog-demand-engine-v3';
+import {
+  buildBlogContentBriefV3,
+  buildBlogContentBriefV3PromptBlock,
+  resolveVerifiedFirstPartySourceIdsV3,
+  type BlogContentBriefV3,
+} from '@/lib/blog-content-brief-v3';
+import {
+  buildSerpResearchPromptBlockV3,
+  findCompetitorPhraseMatchesV3,
+  prioritizeBlogSerpInitialCandidatesV3,
+  researchSerpNaverFirstV3,
+  type SerpResearchPacketV3,
+} from '@/lib/blog-serp-research-v3';
+import { enrichBlogDemandWithNaverV3 } from '@/lib/blog-live-demand-v3';
+import {
+  inspectBlogInformationClaimLiteralSupport,
+  isPrimaryInformationAuthority,
+  type BlogInformationResearchBundle,
+} from '@/lib/blog-information-evidence';
+import { evaluateBlogQualityV3 } from '@/lib/blog-quality-evaluator-v3';
+import {
+  BLOG_DEEPSEEK_MODELS,
+  buildDeepSeekRewritePromptV4,
+  decideBlogQualityRouteV4,
+  nextBlogPublicationSlotKstV4,
+  normalizeBlogWriterHeadingV4,
+  resolveBlogGenerationModelV4,
+  selectDecisionRelevantRewriteClaimsV4,
+  type BlogDeepSeekStage,
+} from '@/lib/blog-deepseek-orchestrator-v4';
+import {
+  approveBlogGenerationRunForSlotV4,
+  markBlogGenerationRunForHumanReviewV4,
+  readLatestBlogGenerationAttemptV4,
+  readLatestBlogModelCallAttemptNumberV4,
+  nextBlogModelCallAttemptNumberV4,
+  recordBlogGenerationAttemptV4,
+  reserveBlogAiBudgetBeforeCallV4,
+  settleBlogAiBudgetReservationV4,
+} from '@/lib/blog-generation-run-v4';
+import { estimateBlogAiCallReservationUsdV4 } from '@/lib/blog-ai-budget-v4';
+import {
+  BLOG_RUNTIME_RESOURCES_V3,
+  probeBlogRuntimeSchemaWithSupabaseV3,
+} from '@/lib/blog-runtime-readiness-v3';
+import {
+  evaluateBlogCorpusCandidateV3,
+  type BlogCorpusCandidateV3,
+  type BlogCorpusDiversityEvaluationV3,
+} from '@/lib/blog-corpus-diversity-v3';
+import { belongsToBlogReplacementLineage } from '@/lib/blog-corpus-lineage-v3';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
 import {
+  AUTOMATED_PUBLISHED_BLOG_REPLACEMENT_MODE,
+  buildAutomatedPublishedBlogReplacementDraftSlug,
   buildReviewedPublishedBlogReplacementDraftSlug,
   hasPrivateBlogRegenerationIntent,
   isEligiblePrivateBlogRegenerationTarget,
@@ -176,7 +235,7 @@ import {
 } from '@/lib/blog-private-regeneration';
 
 /**
- * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
+ * 블로그 생성/검증 실행기. V4 production schedule은 blog-generate wrapper에서 야간에 호출한다.
  *
  * 로직:
  *   1) blog_topic_queue WHERE target_publish_at <= NOW() AND status='queued' 스캔 (최대 MAX_BATCH)
@@ -186,10 +245,10 @@ import {
  *         - pillar       → /destinations/[city] 허브 (장문 AI)
  *         - card_news    → from-card-news `publisher_bridge`(본문만) + 퍼블리셔가 단일 INSERT/승격
  *         - product      → product_consultant_writer (템플릿)
- *         - 나머지       → Gemini 2.5 Flash + style guide
- *      c. 4-Gate 검증 (length·cliche·duplicate·keyword_density)
- *      d. Pass → content_creatives insert 또는 draft 승격(status='published') + 색인 알림 + ISR revalidate
- *         Fail → attempts++ / 2회 초과 시 status='failed'
+ *         - 나머지       → DeepSeek V4 Flash 초안, 필요 시 Pro 제한 재작성
+ *      c. claim·수요·중복·언어·공개표면 품질 검증
+ *      d. generate_only는 승인 초안만 적재하고, 주간 controller가 모델 호출 없이 공개
+ *         Fail → 최대 3회 내 재작성/재연구 후 격리
  *   3) 실패 사유는 error_patterns RAG 에 자동 기록 (자기학습)
  *
  * 멀티테넌시: blog_topic_queue.tenant_id 그대로 content_creatives 에 전파
@@ -204,22 +263,213 @@ export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
-const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 8, MAX_BATCH, 8);
+const MAX_CANDIDATE_ATTEMPTS_PER_RUN = 8;
+const BLOG_DAILY_CANDIDATE_CAP = readBoundedIntEnv('BLOG_DAILY_CANDIDATE_CAP', 30, 1, 30);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
-const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 3, 0, 3);
+// V3 never deterministically invents or appends content to satisfy a gate.
+const BLOG_AUTOPUBLISH_POLICY_V3 = readBlogAutopublishPolicyV3();
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
+const BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS = readBoundedIntEnv(
+  'BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS',
+  165_000,
+  90_000,
+  190_000,
+);
 const BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS = 55_000;
-const BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS = 30_000;
+const BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS = 150_000;
 const BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS = 8_192;
+// Pro rewrite runs without thinking tokens in the serverless path, leaving the
+// full budget for the complete article and hidden claim ledger.
+const BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS = 8_192;
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
-const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
+const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv(
+  'BLOG_PUBLISHER_GENERATION_TIMEOUT_MS',
+  190_000,
+  30_000,
+  210_000,
+);
 const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
 const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
-const MAX_ATTEMPTS = 2;
-const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
+// A candidate can be regenerated at most three times across durable queue
+// attempts. The research bundle/claim fingerprints remain persisted between
+// attempts, so retries may change expression and structure but not invent facts.
+const MAX_ATTEMPTS = 3;
+// The outer generation budget must be longer than the 165s DeepSeek Pro
+// rewrite budget. Keep 15s below the 285s cron guard and 30s below Vercel.
+const MAX_EXEC_MS = 270_000;
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
+
+function readQueueDemandSignalV3(item: any): BlogDemandSignalInput {
+  return readEmbeddedBlogQueueDemandSignalV3(item);
+}
+
+async function loadQueueDemandEvidenceV3(item: any): Promise<{
+  repositoryReady: boolean;
+  signal: BlogDemandSignalInput;
+  acceptedProviders: string[];
+  rejectedCount: number;
+  error: string | null;
+  performance: ReturnType<typeof aggregateObservedBlogSearchMetricsV3>;
+}> {
+  const base = readQueueDemandSignalV3(item);
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [demandResult, activeProductResult, performanceResult] = await Promise.all([
+    supabaseAdmin
+      .from('blog_demand_signals')
+      .select('provider, signal_value, source_reference, verified_at, expires_at')
+      .eq('queue_id', item.id),
+    item.product_id
+      ? supabaseAdmin
+          .from('travel_packages')
+          .select('id')
+          .eq('id', item.product_id)
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+          .in('publication_state', ['approved', 'published'])
+          .limit(1)
+      : Promise.resolve({ data: [], error: null }),
+    item.primary_keyword
+      ? supabaseAdmin
+          .from('blog_search_performance')
+          .select('metric_date, clicks, impressions, average_position')
+          .eq('query', String(item.primary_keyword).trim())
+          .gte('metric_date', since)
+          .order('metric_date', { ascending: false })
+          .limit(500)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const { data, error } = demandResult;
+  if (error) {
+    return {
+      repositoryReady: false,
+      signal: base,
+      acceptedProviders: [],
+      rejectedCount: 0,
+      error: error.message,
+      performance: aggregateObservedBlogSearchMetricsV3([]),
+    };
+  }
+  const merged = mergePersistedBlogDemandSignalsV3(
+    {
+      ...base,
+      activeProductRelation: base.activeProductRelation
+        || (!activeProductResult.error && Boolean(activeProductResult.data?.length)),
+    },
+    (data ?? []) as PersistedBlogDemandSignalV3[],
+  );
+  const liveNaver = hasVerifiedBlogDemandSignal(merged.signal)
+    ? { signal: merged.signal, acceptedProviders: [] as string[], errors: [] as string[] }
+    : await enrichBlogDemandWithNaverV3(merged.signal, item.primary_keyword || item.topic);
+  return {
+    repositoryReady: !performanceResult.error,
+    signal: liveNaver.signal,
+    acceptedProviders: [...new Set([...merged.acceptedProviders, ...liveNaver.acceptedProviders])].sort(),
+    rejectedCount: merged.rejectedCount,
+    error: [performanceResult.error?.message, ...liveNaver.errors].filter(Boolean).join('|') || null,
+    performance: aggregateObservedBlogSearchMetricsV3(performanceResult.data ?? []),
+  };
+}
+
+async function loadBlogPortfolioSaturationV3(archetype: string, isWeatherContent: boolean): Promise<{
+  weatherShare30d: number;
+  sameArchetypeInLast10: number;
+}> {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from(PUBLIC_BLOG_READ_SOURCE)
+    .select('category, seo_title, generation_meta, published_at')
+    .gte('published_at', since)
+    .order('published_at', { ascending: false })
+    .limit(100);
+  if (error || !data) return { weatherShare30d: 1, sameArchetypeInLast10: 10 };
+  const rows = data as Array<{ category?: string | null; seo_title?: string | null; generation_meta?: Record<string, any> | null }>;
+  const weather = rows.filter((row) => /weather|날씨|옷차림/i.test(`${row.category || ''} ${row.seo_title || ''}`)).length;
+  const sameArchetypeInLast10 = rows.slice(0, 10).filter((row) =>
+    row.generation_meta?.content_brief_v3?.archetype === archetype,
+  ).length;
+  return {
+    weatherShare30d: (rows.length + 1) > 0
+      ? (weather + (isWeatherContent ? 1 : 0)) / (rows.length + 1)
+      : 0,
+    sameArchetypeInLast10,
+  };
+}
+
+async function loadBlogCorpusDiversityV3(input: {
+  queueItemId: string;
+  excludeCreativeId?: string | null;
+  replacementTargetCreativeId?: string | null;
+  title: string;
+  body: string;
+  destination?: string | null;
+}): Promise<{ report: BlogCorpusDiversityEvaluationV3 | null; error: string | null }> {
+  const [creativesResult, queueResult, representativesResult] = await Promise.all([
+    supabaseAdmin
+      .from('content_creatives')
+      .select('id, seo_title, title, blog_html, destination, status, generation_meta')
+      .eq('channel', 'naver_blog')
+      .in('status', ['published', 'draft']),
+    supabaseAdmin
+      .from('blog_topic_queue')
+      .select('id, topic, destination, status, meta')
+      .in('status', ['queued', 'generating', 'pending_review']),
+    supabaseAdmin
+      .from('blog_information_representatives')
+      .select('canonical_creative_id, canonical_slug, destination_id, status')
+      .eq('status', 'active'),
+  ]);
+  const failures = [creativesResult.error, queueResult.error, representativesResult.error]
+    .filter(Boolean)
+    .map((error) => error?.message || 'unknown_error');
+  if (failures.length) return { report: null, error: `corpus_lookup_failed:${failures.join('|')}` };
+
+  const corpus: BlogCorpusCandidateV3[] = [];
+  for (const row of creativesResult.data || []) {
+    if (input.excludeCreativeId && row.id === input.excludeCreativeId) continue;
+    if (belongsToBlogReplacementLineage({
+      id: row.id,
+      meta: row.generation_meta,
+      replacementTargetCreativeId: input.replacementTargetCreativeId,
+    })) continue;
+    corpus.push({
+      title: String(row.seo_title || row.title || ''),
+      body: typeof row.blog_html === 'string' ? row.blog_html : null,
+      destination: typeof row.destination === 'string' ? row.destination : null,
+      source: row.status === 'draft' ? 'draft' : 'published',
+    });
+  }
+  for (const row of queueResult.data || []) {
+    if (row.id === input.queueItemId) continue;
+    if (belongsToBlogReplacementLineage({
+      meta: row.meta,
+      replacementTargetCreativeId: input.replacementTargetCreativeId,
+    })) continue;
+    corpus.push({
+      title: String(row.topic || ''),
+      destination: typeof row.destination === 'string' ? row.destination : null,
+      source: 'queued',
+    });
+  }
+  for (const row of representativesResult.data || []) {
+    if (!row.canonical_slug) continue;
+    if (row.canonical_creative_id === input.replacementTargetCreativeId) continue;
+    corpus.push({
+      title: String(row.canonical_slug).replace(/-/g, ' '),
+      destination: typeof row.destination_id === 'string' ? row.destination_id : null,
+      source: 'representative',
+    });
+  }
+  return {
+    report: evaluateBlogCorpusCandidateV3({
+      title: input.title,
+      body: input.body,
+      destination: input.destination,
+    }, corpus.filter((row) => row.title.trim().length > 0)),
+    error: null,
+  };
+}
 
 function getQueueMicroAngle(item: any): string | null {
   const value = item?.meta?.micro_angle;
@@ -244,28 +494,71 @@ function buildQueueContentBrief(item: any) {
   });
 }
 
+function buildResearchBackedContentBriefV3(input: {
+  item: any;
+  legacyBrief: ReturnType<typeof buildQueueContentBrief>;
+  researchBundle: BlogInformationResearchBundle;
+  serpResearch: SerpResearchPacketV3 | null;
+}): BlogContentBriefV3 {
+  const evidenceByKey = new Map(input.researchBundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]));
+  const sourceByKey = new Map(input.researchBundle.sources.map((source) => [source.sourceKey, source]));
+  const destinationDecisionDetails = input.researchBundle.claims
+    .filter((claim) => claim.requiresEvidence && claim.evidenceKeys.length > 0 && claim.claimText.trim().length > 0)
+    .map((claim) => {
+      const evidence = evidenceByKey.get(claim.evidenceKeys[0]);
+      const source = evidence ? sourceByKey.get(evidence.sourceKey) : null;
+      return {
+        text: claim.claimText,
+        evidenceId: claim.claimFingerprint,
+        sourceType: source?.sourceType,
+      };
+    })
+    .filter((detail, index, rows) => rows.findIndex((row) => row.evidenceId === detail.evidenceId) === index)
+    .slice(0, 12);
+  const bundleEvidenceTypes = new Set(input.researchBundle.claims.map((claim) => claim.claimType));
+  const availableEvidenceTypes = [
+    ...bundleEvidenceTypes,
+    ...(input.researchBundle.claims.filter((claim) => claim.claimType === 'climate').length >= 12
+      ? ['climate_series']
+      : []),
+    ...(input.researchBundle.sources.some((source) => source.authorityLevel === 'field_observation' || source.sourceType === 'field_research')
+      ? ['first_party']
+      : []),
+  ];
+  const registeredFirstPartyIds = Array.isArray(input.item.meta?.first_party_source_ids)
+    ? input.item.meta.first_party_source_ids.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const verifiedFirstPartyIds = resolveVerifiedFirstPartySourceIdsV3({
+    registeredIds: registeredFirstPartyIds,
+    sources: input.researchBundle.sources,
+  });
+  return buildBlogContentBriefV3({
+    topic: input.item.topic,
+    destination: input.item.destination,
+    primaryKeyword: input.item.primary_keyword || input.legacyBrief.primaryKeyword,
+    secondaryQueries: [
+      ...(Array.isArray(input.item.meta?.keywords) ? input.item.meta.keywords : []),
+      ...input.legacyBrief.secondaryKeywords,
+    ].filter((value): value is string => typeof value === 'string'),
+    audience: typeof input.item.meta?.audience === 'string' ? input.item.meta.audience : null,
+    availableEvidenceTypes,
+    // A queue meta ID is not evidence by itself. Experience language is enabled
+    // only when the ID resolves to a persisted field-observation source in the
+    // current validated research packet.
+    firstPartySourceIds: [...new Set(verifiedFirstPartyIds)],
+    customerQuestionIds: Array.isArray(input.item.meta?.customer_question_ids)
+      ? input.item.meta.customer_question_ids.filter((value: unknown): value is string => typeof value === 'string')
+      : [],
+    destinationDecisionDetails,
+    serpResearch: input.serpResearch,
+  });
+}
+
 function queueMetaWithoutResearchBundle(meta: unknown): Record<string, unknown> {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
   const safeMeta = { ...(meta as Record<string, unknown>) };
   delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY];
   return safeMeta;
-}
-
-function repairPrimaryKeywordPresence(markdown: string, primaryKeyword?: string | null): {
-  markdown: string;
-  changed: boolean;
-} {
-  const keyword = String(primaryKeyword ?? '').replace(/\s+/g, ' ').trim();
-  if (!keyword || markdown.includes(keyword)) return { markdown, changed: false };
-
-  const sentence = `이 글은 ${keyword} 기준으로 월별 기온, 강수량, 옷차림 준비물을 확인하는 체크리스트입니다.`;
-  const lines = markdown.split(/\r?\n/);
-  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line));
-  if (h1Index >= 0) {
-    lines.splice(h1Index + 1, 0, '', sentence);
-    return { markdown: lines.join('\n'), changed: true };
-  }
-  return { markdown: `${sentence}\n\n${markdown}`, changed: true };
 }
 
 async function findOrGenerateBlogCover(input: {
@@ -313,6 +606,7 @@ function classifyPublisherFailure(reason?: string): string {
 function buildPublisherFailureBreakdown(results: Array<{ status: string; reason?: string }>): Record<string, number> {
   return results
     .filter(result => result.status !== 'published'
+      && result.status !== 'approved_for_slot'
       && result.status !== 'done'
       && result.status !== 'deferred_buffer'
       && result.status !== 'deferred_time_budget')
@@ -333,25 +627,86 @@ function withPublisherTimeout<T>(promise: Promise<T>, timeoutMs: number, label: 
   });
 }
 
-function generatePublisherBlogText(
+async function generatePublisherBlogText(
   prompt: string,
-  options: Parameters<typeof generateBlogText>[1] = {},
-): Promise<string> {
-  return withPublisherTimeout(
-    generateBlogText(prompt, {
+  options: Partial<Parameters<typeof generateBlogTextWithReceipt>[1]> = {},
+  context: { queueId: string; attemptNumber: number; stage: BlogDeepSeekStage },
+): Promise<BlogAiTextResult> {
+  const execution = resolveBlogGenerationModelV4(context.stage);
+  if (!execution || !hasBlogApiKey(execution.model)) {
+    throw new Error(`blog_ai_model_unavailable:${context.stage}`);
+  }
+  const isRewrite = context.stage !== 'draft_flash';
+  const maxTokens = options.maxTokens ?? (isRewrite
+    ? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS
+    : BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS);
+  const requestedUsd = estimateBlogAiCallReservationUsdV4({
+    stage: context.stage,
+    maxOutputTokens: maxTokens,
+  });
+  if (requestedUsd == null || requestedUsd <= 0) {
+    throw new Error(`blog_ai_pricing_unavailable:${execution.provider}:${execution.model}`);
+  }
+  const reservation = await reserveBlogAiBudgetBeforeCallV4({
+    queueId: context.queueId,
+    attemptNumber: context.attemptNumber,
+    stage: context.stage,
+    provider: execution.provider,
+    model: execution.model,
+    requestedUsd,
+  });
+  if (!reservation.allowed || !reservation.reservationId) {
+    throw new Error(`blog_ai_budget_blocked:${reservation.reason}`);
+  }
+
+  try {
+    const result = await withPublisherTimeout(
+      generateBlogTextWithReceipt(prompt, {
       ...options,
-      maxTokens: options.maxTokens ?? BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS,
-      thinkingBudget: options.thinkingBudget ?? 0,
-      cascade: {
-        firstTry: 'gemini',
-        fallback: 'deepseek',
-        firstTryTimeoutMs: BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS,
-        fallbackTimeoutMs: BLOG_PUBLISHER_AI_FALLBACK_PROVIDER_TIMEOUT_MS,
-      },
-    }),
-    BLOG_PUBLISHER_AI_TIMEOUT_MS,
-    'blog_ai_generation',
-  );
+      model: execution.model,
+      maxTokens,
+      deepseekThinking: execution.provider === 'deepseek'
+        ? options.deepseekThinking ?? execution.deepseekThinking ?? 'disabled'
+        : undefined,
+      reasoningEffort: execution.reasoningEffort,
+      requestTimeoutMs: options.requestTimeoutMs ?? (isRewrite
+        ? BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS
+        : BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS),
+      }),
+      isRewrite ? BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS : BLOG_PUBLISHER_AI_TIMEOUT_MS,
+      'blog_ai_generation',
+    );
+    const settlementError = await settleBlogAiBudgetReservationV4({
+      reservationId: reservation.reservationId,
+      receipt: result.receipt,
+      status: 'completed',
+    });
+    if (settlementError) {
+      logWarning('[cron/blog-publisher] AI budget settlement retained conservative reservation', {
+        queueId: context.queueId,
+        attemptNumber: context.attemptNumber,
+        error: settlementError,
+      });
+    }
+    return result;
+  } catch (error) {
+    // Network/timeout failures may have no provider receipt. They still settle
+    // the row to `failed` while retaining the conservative reservation, so the
+    // daily cap and operational ledger cannot silently diverge.
+    const settlementError = await settleBlogAiBudgetReservationV4({
+      reservationId: reservation.reservationId,
+      receipt: error instanceof BlogAiResponseError ? error.receipt : null,
+      status: 'failed',
+    });
+    if (settlementError) {
+      logWarning('[cron/blog-publisher] failed AI attempt budget settlement unavailable', {
+        queueId: context.queueId,
+        attemptNumber: context.attemptNumber,
+        error: settlementError,
+      });
+    }
+    throw error;
+  }
 }
 
 function publisherRemainingMs(startedAtMs: number): number {
@@ -418,63 +773,23 @@ async function getTodayBlogPublishCount(): Promise<{ count: number; dayKey: stri
   return { count: count ?? 0, dayKey: range.dayKey };
 }
 
+async function getTodayBlogGenerationCount(): Promise<number> {
+  const range = getKstDayRangeUtc();
+  const { count, error } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', range.startIso)
+    .lt('created_at', range.endIso);
+  if (error) {
+    logWarning('[cron/blog-publisher] V4 generation count unavailable', error);
+    return 0;
+  }
+  return Number(count ?? 0);
+}
+
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
 let blogStyleGuideCache: SelectedBlogPrompt | null = null;
 let blogInformationWriterGuideCache: SelectedBlogPrompt | null = null;
-
-const NEUTRAL_CLICHE_REPLACEMENTS: Record<string, string> = {
-  '아름다운': '경관이 좋은',
-  '환상적인': '만족도가 높은',
-  '완벽한': '필요한',
-  '특별한': '주요',
-  '매력적인': '선택할 만한',
-  '잊지 못할': '기억할 만한',
-  '놓치지 마세요': '확인하세요',
-  '꼭 가봐야 할': '방문 후보로 볼',
-  '최고의': '상위권의',
-  '인생샷': '사진 포인트',
-  '설레는': '기대되는',
-  '힘찬': '활동적인',
-  '낭만적인': '분위기 있는',
-  '제대로': '꼼꼼히',
-  '알찬': '실용적인',
-  '만끽': '즐길 수 있는',
-  '힐링': '휴식',
-  '한 번쯤은 경험해 볼 만한': '일정에 넣어볼 만한',
-  '추억에 남는': '기억에 남는',
-  '독특한': '차별점이 있는',
-  '다양한': '여러',
-  '편안한': '부담이 적은',
-  '인기 있는': '수요가 있는',
-  '유명한': '알려진',
-  '숨겨진': '상대적으로 덜 붐비는',
-  '잘 알려지지 않은': '덜 알려진',
-  '이국적인': '현지 분위기가 있는',
-  '만족스러운': '평가가 좋은',
-  '무난한': '선택하기 쉬운',
-  '훌륭한': '좋은',
-  '뛰어난': '강점이 있는',
-  '여행의 묘미': '여행에서 확인할 포인트',
-  '색다른 경험': '다른 동선',
-  '잊을 수 없는 추억': '기억할 만한 일정',
-  '완전히 새로운': '새롭게 볼 수 있는',
-  '놀라운': '눈에 띄는',
-  '생각지도 못한': '예상 밖의',
-};
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function neutralizeBannedCliches(markdown: string): string {
-  let normalized = markdown;
-  for (const cliche of BANNED_CLICHES) {
-    const replacement = NEUTRAL_CLICHE_REPLACEMENTS[cliche];
-    if (!replacement) continue;
-    normalized = normalized.replace(new RegExp(escapeRegExp(cliche), 'g'), replacement);
-  }
-  return normalized;
-}
 
 function isUsableBlogSlug(value: unknown): value is string {
   if (typeof value !== 'string') return false;
@@ -573,88 +888,6 @@ function normalizeAngleType(value: unknown): AngleType {
   return normalizeBlogAngleType(value);
 }
 
-function strengthenIntroHook(markdown: string, item: any, primaryKeyword?: string | null): string {
-  return strengthenPublisherIntroHook(markdown, item, primaryKeyword);
-
-  const lines = markdown.split('\n');
-  let h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
-  if (h1Index < 0) {
-    const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || item.topic || '여행 정보';
-    lines.unshift(`# ${keyword}`, '');
-    h1Index = 0;
-  }
-
-  const intro = lines
-    .slice(h1Index + 1)
-    .join('\n')
-    .replace(/[#*_`[\]()]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200);
-  const hasNumber = /\d/.test(intro);
-  const hasTrigger = /[?？]|만원|원|절약|저렴|차이|할인|특가|\d+분|\d+시간|즉시|당일|바로|비교|보다/.test(intro);
-  if (hasNumber && hasTrigger) return markdown;
-
-  const now = new Date();
-  const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || '이번 여행';
-  const hook = `${now.getFullYear()}년 ${now.getMonth() + 1}월 기준, ${keyword}에서 가장 먼저 확인할 것은 무엇일까요? 준비물·비용·이동 시간을 먼저 비교하면 현지에서 낭비되는 1~2시간을 줄일 수 있습니다. 아래 내용은 예약 전 바로 확인할 항목만 추려 정리했습니다.`;
-  lines.splice(h1Index + 1, 0, '', hook);
-  return lines.join('\n');
-}
-
-function softenKeywordDensity(markdown: string, primaryKeyword?: string | null, blogType: 'product' | 'info' = 'info'): string {
-  const keyword = primaryKeyword?.trim();
-  if (!keyword || keyword.length < 2) return markdown;
-
-  const plainLength = markdown
-    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
-    .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[#*_`>|=-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .length;
-  if (plainLength === 0) return markdown;
-
-  const currentCount = (markdown.match(new RegExp(escapeRegExp(keyword), 'g')) || []).length;
-  const targetDensity = blogType === 'info' ? 1.55 : 2.2;
-  const allowedCount = Math.max(4, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
-  if (currentCount <= allowedCount) return markdown;
-
-  const replacement = keyword.includes(' ')
-    ? keyword.split(/\s+/).slice(-1)[0] || '관련 정보'
-    : itemSafePronoun(keyword);
-  let seen = 0;
-  return markdown.replace(new RegExp(escapeRegExp(keyword), 'g'), () => {
-    seen += 1;
-    return seen <= allowedCount ? keyword : replacement;
-  });
-}
-
-function itemSafePronoun(keyword: string): string {
-  if (/^[가-힣]{2,8}$/.test(keyword)) return '현지';
-  return '관련 지역';
-}
-
-function repairAiReadableStructure(markdown: string, item: any, primaryKeyword?: string | null): string {
-  const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || '여행 정보';
-  const contentBrief = buildQueueContentBrief(item);
-  const researchReadiness = evaluateBlogGenerationResearchReadiness({
-    meta: item.meta,
-    expectedContentKey: buildQueueSlug(item),
-    destination: item.destination,
-    intent: contentBrief.intentType,
-    locale: contentBrief.plan.locale,
-    sourcePolicy: contentBrief.sourcePolicy,
-  });
-  return repairBlogAiReadableStructure({
-    markdown,
-    keyword,
-    intent: contentBrief.intentType,
-    approvedClaims: researchReadiness.passed ? researchReadiness.bundle?.claims : undefined,
-  }).markdown;
-}
-
 function buildEditorialVariationPromptBlock(item: any): string | null {
   const variation = item?.meta?.editorial_variation;
   if (!variation || typeof variation !== 'object') return null;
@@ -723,53 +956,13 @@ async function runGeneratedPublishQuality(
 
 function applyFinalCustomerSurfaceRepair(
   generated: GeneratedBlog,
-  item: any,
-  primaryKeyword?: string | null,
+  _item: any,
+  _primaryKeyword?: string | null,
 ): string[] {
-  const surfaceRepair = repairBlogFinalCustomerSurface({
-    markdown: generated.blog_html,
-    destination: item.destination ?? null,
-    primaryKeyword,
-    slug: generated.slug,
-    title: generated.seo_title || item.topic,
-  });
+  const surfaceRepair = repairBlogPublishFormattingV3(generated.blog_html);
   if (!surfaceRepair.changed) return [];
   generated.blog_html = surfaceRepair.markdown;
   return surfaceRepair.changes;
-}
-
-function applyEngineCategoryRepair(
-  generated: GeneratedBlog,
-  item: any,
-  blogType: 'product' | 'info',
-  primaryKeyword?: string | null,
-): string[] {
-  const categoryRepair = repairBlogEngineCategoryGaps({
-    markdown: generated.blog_html,
-    blogType,
-    title: generated.seo_title || item.topic || primaryKeyword || generated.slug,
-    slug: generated.slug,
-    destination: item.destination ?? null,
-    primaryKeyword,
-    angleType: normalizeAngleType(item.angle_type),
-    category: item.category ?? null,
-    contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-    productId: item.product_id ?? null,
-    generationMeta: generated.generation_meta ?? null,
-  });
-  if (!categoryRepair.changed) return [];
-  generated.blog_html = categoryRepair.markdown;
-  generated.generation_meta = {
-    ...(generated.generation_meta || {}),
-    engine_category_repair: {
-      before_score: categoryRepair.beforeScore,
-      after_score: categoryRepair.afterScore,
-      repaired_categories: categoryRepair.repairedCategories,
-      repair_rounds: categoryRepair.repairRounds,
-      changes: categoryRepair.changes,
-    },
-  };
-  return categoryRepair.changes;
 }
 
 function buildDeterministicInfoFallbackMarkdown(item: any, primaryKeyword?: string | null): string {
@@ -966,12 +1159,11 @@ async function applyDeterministicInfoFallback(
       destination: item.destination,
       primaryKeyword,
       ogImageUrl: generated.og_image_url,
-      minImages: 3,
+      minImages: 0,
       maxImages: 4,
     });
     if (imageResult.inserted > 0) generated.blog_html = imageResult.markdown;
   } catch { /* private fallback diagnostics do not depend on image fetch success */ }
-  generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
   generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
     destination: item.destination,
     slug: generated.slug,
@@ -979,228 +1171,18 @@ async function applyDeterministicInfoFallback(
   });
   const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
   changes.push(...surfaceChanges);
-  const densityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, 'info');
-  if (densityRepair.changed) {
-    generated.blog_html = densityRepair.blogHtml;
-    changes.push('deterministic_keyword_density_repair');
-  }
   return changes;
 }
 
-function failedGateSet(qa: QualityGateReport): Set<string> {
-  return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
-}
-
 async function repairFailedQualityGates(
-  generated: GeneratedBlog,
-  item: any,
+  _generated: GeneratedBlog,
+  _item: any,
   qa: QualityGateReport,
-  blogType: 'product' | 'info',
-  primaryKeyword?: string | null,
+  _blogType: 'product' | 'info',
+  _primaryKeyword?: string | null,
 ): Promise<QualityGateReport> {
-  for (let round = 1; round <= MAX_QUALITY_REPAIR_ROUNDS && !qa.passed; round += 1) {
-    const failed = failedGateSet(qa);
-    const changes: string[] = [];
-    let changed = false;
-
-    if (failed.has('article_quality_v2')) {
-      const articleRepair = repairArticleQualityV2Specifics(generated.blog_html, blogType);
-      if (articleRepair.changes.length > 0) {
-        generated.blog_html = articleRepair.markdown;
-        changes.push(...articleRepair.changes);
-        changed = true;
-      }
-    }
-
-    if (failed.has('intent_quality') || failed.has('engine_v2') || failed.has('article_quality_v2') || failed.has('editorial_quality')) {
-      const editorialRepair = repairBlogEditorialQuality({
-        title: generated.seo_title,
-        slug: generated.slug,
-        primaryKeyword,
-        destination: item.destination ?? null,
-        angleType: normalizeAngleType(item.angle_type),
-        category: item.category,
-        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        productId: item.product_id ?? null,
-        blogHtml: generated.blog_html,
-      });
-      if (editorialRepair.changed) {
-        generated.blog_html = editorialRepair.blogHtml;
-        changes.push(...editorialRepair.changes);
-        changed = true;
-      }
-    }
-
-    if (
-      failed.has('structure_integrity')
-      || failed.has('table_integrity')
-      || failed.has('intent_quality')
-      || failed.has('engine_v2')
-      || failed.has('render_integrity')
-      || failed.has('article_quality_v2')
-      || failed.has('editorial_quality')
-    ) {
-      const structureRepair = repairBlogStructureQuality({
-        title: generated.seo_title,
-        slug: generated.slug,
-        primaryKeyword,
-        destination: item.destination ?? null,
-        angleType: normalizeAngleType(item.angle_type),
-        category: item.category,
-        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        productId: item.product_id ?? null,
-        blogHtml: generated.blog_html,
-      });
-      if (structureRepair.changed) {
-        generated.blog_html = structureRepair.blogHtml;
-        changes.push(...structureRepair.changes);
-        changed = true;
-      }
-    }
-
-    if (failed.has('keyword_density')) {
-      const densityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, blogType);
-      if (densityRepair.changed) {
-        generated.blog_html = densityRepair.blogHtml;
-        changes.push(`keyword_density_${densityRepair.beforeCount}_to_${densityRepair.afterCount}`);
-        changed = true;
-      }
-    }
-
-    if (failed.has('links')) {
-      const before = generated.blog_html;
-      generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
-      if (generated.blog_html !== before) {
-        changes.push('forced_official_reference_links');
-        changed = true;
-      }
-
-      const internalLinks = ensurePublisherInternalLinks({
-        markdown: generated.blog_html,
-        blogType,
-        slug: generated.slug,
-        destination: item.destination,
-        topic: item.topic,
-        primaryKeyword,
-      });
-      if (internalLinks.changed) {
-        generated.blog_html = internalLinks.markdown;
-        changes.push(...internalLinks.changes);
-        changed = true;
-      }
-    }
-
-    if (failed.has('image_quality')) {
-      const imageRepair = repairBlogImageQuality(generated.blog_html, {
-        destination: item.destination ?? null,
-        primaryKeyword,
-        blogType,
-      });
-      if (imageRepair.changed) {
-        generated.blog_html = imageRepair.markdown;
-        changes.push(...imageRepair.changes);
-        changed = true;
-      }
-    }
-
-    if (failed.has('length')) {
-      const support = appendPublishReadinessSupport({
-        markdown: generated.blog_html,
-        blogType,
-        slug: generated.slug,
-        destination: item.destination,
-        topic: item.topic,
-        primaryKeyword,
-      });
-      if (support.changed) {
-        generated.blog_html = support.markdown;
-        changes.push(...support.changes);
-        changed = true;
-      }
-    }
-
-    if (failed.has('engine_v2')) {
-      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
-      if (categoryChanges.length > 0) {
-        changes.push(...categoryChanges);
-        changed = true;
-      }
-      const before = generated.blog_html;
-      generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
-      if (generated.blog_html !== before) {
-        changes.push('engine_v2_evidence_references');
-        changed = true;
-      }
-    }
-
-    if (failed.has('hook')) {
-      const before = generated.blog_html;
-      generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-      if (generated.blog_html !== before) {
-        changes.push('strengthened_intro_hook');
-        changed = true;
-      }
-    }
-
-    if (failed.has('ai_readability') || failed.has('readability')) {
-      const before = generated.blog_html;
-      generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
-      if (generated.blog_html !== before) {
-        changes.push('repaired_ai_readability');
-        changed = true;
-      }
-    }
-
-    if (failed.has('accent_density')) {
-      const accentRepair = normalizeBlogVisualAccents(generated.blog_html);
-      if (accentRepair.changed) {
-        generated.blog_html = accentRepair.text;
-        changes.push('normalized_visual_accents');
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      const structureRepair = repairBlogStructureQuality({
-        title: generated.seo_title,
-        slug: generated.slug,
-        primaryKeyword,
-        destination: item.destination ?? null,
-        angleType: normalizeAngleType(item.angle_type),
-        category: item.category,
-        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        productId: item.product_id ?? null,
-        blogHtml: generated.blog_html,
-      });
-      if (structureRepair.changed) {
-        generated.blog_html = structureRepair.blogHtml;
-        changes.push(...structureRepair.changes);
-      }
-    }
-
-    if (!changed) break;
-
-    generated.generation_meta = {
-      ...(generated.generation_meta || {}),
-      repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0) + 1,
-    };
-
-    generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-    generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
-      destination: item.destination,
-      slug: generated.slug,
-      utmSource: 'naver_blog',
-    });
-    {
-      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
-      if (surfaceChanges.length > 0) {
-        changes.push(...surfaceChanges);
-      }
-    }
-    qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
-    console.log(`[blog-publisher] quality repair round ${round}: ${changes.join(', ')} -> passed=${qa.passed}`);
-  }
-
+  // V3 records failed dimensions and routes the generated draft to review.
+  // It never invents facts, sections, links, images, or keyword occurrences.
   return qa;
 }
 
@@ -1468,13 +1450,38 @@ async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
   return { deferred: ids.length };
 }
 
-async function runBlogPublisher(request: NextRequest) {
+export async function runBlogPublisher(request: NextRequest) {
   if (!isCronOrVercelAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
+  }
+  // V4 has one public commit boundary: blog-publication-controller.  Keep this
+  // legacy route generation-only even when an operator calls it directly or a
+  // stale scheduler omits `phase=generate_only`; otherwise a valid cron secret
+  // could bypass the immutable selected-attempt controller contract.
+  const deferPublication = true;
+
+  const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
+    supabaseAdmin,
+    new Date(),
+    BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
+      resource.scope === 'publish' || resource.scope === 'delivery'
+    )),
+  );
+  if (!schemaReadiness.publishReady || !schemaReadiness.deliveryReady) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'blog_quality_v3_runtime_schema_not_ready',
+      autopublishMode: BLOG_AUTOPUBLISH_POLICY_V3.mode,
+      requestedAutopublishMode: BLOG_AUTOPUBLISH_POLICY_V3.requestedMode,
+      deploymentProvenance: BLOG_AUTOPUBLISH_POLICY_V3.deploymentProvenance,
+      schemaReadiness,
+      errors: [] as string[],
+    };
   }
 
   const results: Array<{
@@ -1638,10 +1645,12 @@ async function runBlogPublisher(request: NextRequest) {
       const result = await processQueueItem(item, new Map(), {
         startedAtMs: startTime,
         validatedPrivateRegenerationRequest: privateRegenerationRequest ?? undefined,
+        deferPublication,
       });
       const targetedAttempts = 1;
       results.push(result);
       const completedPrivately = result.status === 'pending_review'
+        || result.status === 'approved_for_slot'
         || result.status === 'done'
         || result.status === 'upgraded';
       return {
@@ -1693,7 +1702,7 @@ async function runBlogPublisher(request: NextRequest) {
         };
       }
 
-      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });
       results.push(result);
       const published = result.status === 'published' ? 1 : 0;
       return {
@@ -1733,18 +1742,26 @@ async function runBlogPublisher(request: NextRequest) {
     });
     const pillarDeferral = await deferDuePillarQueueItems();
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
-    const targetPostsToday = normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
+    const targetPostsToday = deferPublication
+      ? BLOG_DAILY_CANDIDATE_CAP
+      : Math.min(
+          BLOG_AUTOPUBLISH_POLICY_V3.dailyPublishCap,
+          normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET),
+        );
     const todayQuota = await getTodayBlogPublishCount();
     const slotQuota = calculateBlogPublishSlotQuota({
       dailyTarget: targetPostsToday,
       alreadyPublished: todayQuota.count,
       slotTimes: publishPolicy?.slot_times,
     });
-    const remainingDueNow = slotQuota.remainingDueNow;
+    const generatedToday = deferPublication ? await getTodayBlogGenerationCount() : 0;
+    const remainingDueNow = deferPublication
+      ? Math.max(0, BLOG_DAILY_CANDIDATE_CAP - generatedToday)
+      : slotQuota.remainingDueNow;
     if (remainingDueNow <= 0) {
       const dailyQuotaReached = slotQuota.remainingDaily <= 0;
       let atomicUpgradeResult: Awaited<ReturnType<typeof processQueueItem>> | null = null;
-      if (dailyQuotaReached && canStartPublisherQueueItem({
+      if (!deferPublication && dailyQuotaReached && canStartPublisherQueueItem({
         source: 'quality_upgrade',
         meta: {
           private_regeneration: {
@@ -1876,23 +1893,25 @@ async function runBlogPublisher(request: NextRequest) {
       cardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(cardNewsIds) : new Map<string, number>();
 
     let publishedThisRun = 0;
+    let slotCompletionsThisRun = 0;
     let extraClaimRounds = 0;
     let pullForwarded = 0;
     let emergencyRefillRounds = 0;
     let stoppedForTimeBudget = false;
     const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
-    const orderedInitialQueue = sortPublisherQueueForTimeBudget(queue, {
+    const orderedInitialQueue = prioritizeBlogSerpInitialCandidatesV3(sortPublisherQueueForTimeBudget(queue, {
       remainingMs: publisherRemainingMs(startTime),
       minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
       fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
       isFallbackEligible: isFastFallbackEligibleInfoItem,
-    });
+    }));
     for (const item of orderedInitialQueue) {
+      if (attemptedQueueIds.size >= MAX_CANDIDATE_ATTEMPTS_PER_RUN) break;
       if (attemptedQueueIds.has(item.id)) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
         continue;
       }
-      if (publishedThisRun >= remainingDueNow) {
+      if (slotCompletionsThisRun >= remainingDueNow) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
@@ -1904,12 +1923,13 @@ async function runBlogPublisher(request: NextRequest) {
       }
       attemptedQueueIds.add(item.id);
       try {
-        const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime });
+        const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime, deferPublication });
         results.push(r);
         if (r.status === 'published') {
           publishedThisRun += 1;
         }
-        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
+        if (r.status === 'published' || r.status === 'approved_for_slot') slotCompletionsThisRun += 1;
+        if (r.status !== 'published' && r.status !== 'approved_for_slot' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
           candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
@@ -1917,13 +1937,17 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    while (publishedThisRun < remainingDueNow && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
+    while (
+      slotCompletionsThisRun < remainingDueNow
+      && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS
+      && attemptedQueueIds.size < MAX_CANDIDATE_ATTEMPTS_PER_RUN
+    ) {
       const remaining = publisherRemainingMs(startTime);
       const extraClaimPlan = getPublisherExtraClaimRecoveryPlan({
         remainingMs: remaining,
         minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
         fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
-        remainingQuota: remainingDueNow - publishedThisRun,
+        remainingQuota: remainingDueNow - slotCompletionsThisRun,
         maxBatch: MAX_BATCH,
         claimPoolMultiplier: CLAIM_POOL_MULTIPLIER,
         maxCandidatePool: MAX_CANDIDATE_POOL,
@@ -1994,19 +2018,20 @@ async function runBlogPublisher(request: NextRequest) {
       const nextEligibleByCardNewsId =
         nextCardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(nextCardNewsIds) : new Map<string, number>();
 
-      const orderedNextQueue = sortPublisherQueueForTimeBudget(nextQueue, {
+      const orderedNextQueue = prioritizeBlogSerpInitialCandidatesV3(sortPublisherQueueForTimeBudget(nextQueue, {
         remainingMs: publisherRemainingMs(startTime),
         minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
         fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
         isFallbackEligible: isFastFallbackEligibleInfoItem,
-      });
+      }));
 
       for (const item of orderedNextQueue) {
+        if (attemptedQueueIds.size >= MAX_CANDIDATE_ATTEMPTS_PER_RUN) break;
         if (attemptedQueueIds.has(item.id)) {
           results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
           continue;
         }
-        if (publishedThisRun >= remainingDueNow) break;
+        if (slotCompletionsThisRun >= remainingDueNow) break;
 
         const itemRemaining = publisherRemainingMs(startTime);
         if (!canStartPublisherQueueItem(item, itemRemaining)) {
@@ -2017,12 +2042,13 @@ async function runBlogPublisher(request: NextRequest) {
         attemptedQueueIds.add(item.id);
 
         try {
-          const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime });
+          const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime, deferPublication });
           results.push(r);
           if (r.status === 'published') {
             publishedThisRun += 1;
           }
-          if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
+          if (r.status === 'published' || r.status === 'approved_for_slot') slotCompletionsThisRun += 1;
+          if (r.status !== 'published' && r.status !== 'approved_for_slot' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
             candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
           }
         } catch (err) {
@@ -2040,9 +2066,28 @@ async function runBlogPublisher(request: NextRequest) {
     const publishedSlugs = results
       .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
       .map(r => r.reason);
+    const publicPublicationRequested = BLOG_AUTOPUBLISH_POLICY_V3.mode !== 'draft_only'
+      && publishedSlugs.length > 0;
+    let publicSnapshotRefresh: {
+      status: 'not_needed' | 'succeeded' | 'failed';
+      result?: unknown;
+      error?: string;
+    } = { status: 'not_needed' };
+    if (publicPublicationRequested) {
+      const { data: snapshotData, error: snapshotError } = await supabaseAdmin
+        .rpc('refresh_blog_public_snapshots_v3');
+      if (snapshotError) {
+        publicSnapshotRefresh = { status: 'failed', error: snapshotError.message };
+        errors.push(`public_snapshot_refresh_failed:${snapshotError.message}`);
+      } else {
+        publicSnapshotRefresh = { status: 'succeeded', result: snapshotData };
+      }
+    }
+    const publicSideEffectsEnabled = publicPublicationRequested
+      && publicSnapshotRefresh.status === 'succeeded';
 
     const creativeIdBySlug = new Map<string, string>();
-    if (publishedSlugs.length > 0) {
+    if (publicSideEffectsEnabled) {
       const { data: slugRows } = await supabaseAdmin
         .from('content_creatives')
         .select('id, slug')
@@ -2055,7 +2100,7 @@ async function runBlogPublisher(request: NextRequest) {
 
     // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
     const indexingPromises: Promise<{ slug: string; ok: boolean; error?: string }>[] = [];
-    for (const r of results) {
+    for (const r of publicSideEffectsEnabled ? results : []) {
       if (r.status === 'published' && r.reason && !r.atomicIndexing) {
         const slug = r.reason;
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
@@ -2093,7 +2138,7 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     if (
-      publishedSlugs.length > 0
+      publicSideEffectsEnabled
       && canRunOptionalPublisherWork(publisherRemainingMs(startTime), BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS)
     ) {
       try {
@@ -2125,9 +2170,9 @@ async function runBlogPublisher(request: NextRequest) {
         logWarning('[cron/blog-publisher] RAG batch fetch failed', e);
       }
     }
-    revalidatePublicBlogCache();
+    if (publicSideEffectsEnabled) revalidatePublicBlogCache();
 
-    const canDrainInlineIndexing = canRunOptionalPublisherWork(
+    const canDrainInlineIndexing = publicSideEffectsEnabled && canRunOptionalPublisherWork(
       publisherRemainingMs(startTime),
       BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
     );
@@ -2150,12 +2195,14 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     const publishedCount = results.filter(r => r.status === 'published').length;
+    const approvedForSlotCount = results.filter(r => r.status === 'approved_for_slot').length;
+    const quotaCompletedCount = deferPublication ? approvedForSlotCount : publishedCount;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
     const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
-    const underfilledQuota = publishedCount < remainingDueNow;
+    const underfilledQuota = !deferPublication && quotaCompletedCount < remainingDueNow;
     if (underfilledQuota) {
       errors.push(
-        publishedCount === 0
+        quotaCompletedCount === 0
           ? 'publisher_zero_published_with_remaining_quota'
           : 'publisher_under_published_with_remaining_quota',
       );
@@ -2165,15 +2212,18 @@ async function runBlogPublisher(request: NextRequest) {
     return {
       processed: results.length,
       published: publishedCount,
+      approvedForSlot: approvedForSlotCount,
+      phase: deferPublication ? 'generate_only' : 'generate_and_publish',
       candidate_failures: candidateFailures,
       indexingWorker,
+      publicSnapshotRefresh,
       dailyQuota: {
         day: todayQuota.dayKey,
         target: targetPostsToday,
         scheduledTargetNow: slotQuota.scheduledTargetNow,
         alreadyPublishedBeforeRun: todayQuota.count,
         remainingBeforeRun: remainingDueNow,
-        remainingAfterRun: Math.max(0, remainingDueNow - publishedCount),
+        remainingAfterRun: Math.max(0, remainingDueNow - quotaCompletedCount),
         remainingDailyAfterRun: Math.max(0, slotQuota.remainingDaily - publishedCount),
         nextSlot: slotQuota.nextSlot,
         slotTimes: slotQuota.slotTimes,
@@ -2181,6 +2231,7 @@ async function runBlogPublisher(request: NextRequest) {
       quota_fulfillment: {
         required: remainingDueNow,
         published: publishedCount,
+        approvedForSlot: approvedForSlotCount,
         met: !underfilledQuota,
         candidate_failures: candidateFailures.length,
         attempted_candidates: attemptedQueueIds.size,
@@ -2272,6 +2323,7 @@ async function processQueueItem(
   options: {
     startedAtMs?: number;
     validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
+    deferPublication?: boolean;
   } = {},
 ): Promise<{
   id: string;
@@ -2311,6 +2363,26 @@ async function processQueueItem(
       await handleFailure(item, reason, null, true, { content_boundary: contentBoundary });
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
+    const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
+    const demandPreflight = await loadQueueDemandEvidenceV3(item);
+    if (
+      !privateRegenerationIntent
+      && BLOG_AUTOPUBLISH_POLICY_V3.requireDemandSignal
+      && (!demandPreflight.repositoryReady || !hasVerifiedBlogDemandSignal(demandPreflight.signal))
+    ) {
+      const reason = demandPreflight.repositoryReady
+        ? 'verified_demand_signal_missing_before_generation'
+        : 'demand_signal_repository_unavailable_before_generation';
+      await handleFailure(item, reason, null, true, {
+        demand_preflight_v3: {
+          repository_ready: demandPreflight.repositoryReady,
+          accepted_providers: demandPreflight.acceptedProviders,
+          rejected_count: demandPreflight.rejectedCount,
+          error: demandPreflight.error,
+        },
+      });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -2339,8 +2411,8 @@ async function processQueueItem(
     // 생성 경로 분기
     //   1) pillar → /destinations/[city] 허브 본문 생성 (장문 AI)
     //   2) card_news 연결 → from-card-news API 위임 (PNG 삽입 블로그)
-    //   3) product_id 있음 → product_consultant_writer (템플릿)
-    //   4) 나머지 → Gemini 정보성 글
+    //   3) product_id 있음 → grounded product draft + DeepSeek V4
+    //   4) 나머지 → research-backed DeepSeek V4 정보성 글
     const topicFit = evaluateBlogTopicFit({
       topic: item.topic,
       destination: item.destination,
@@ -2360,7 +2432,6 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
 
-    const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
     const privateRegenerationRequest = options.validatedPrivateRegenerationRequest
       ?? readPrivateBlogRegenerationRequest(item);
     const publishedAtomicUpgrade = isPublishedBlogAtomicUpgradeRequest(privateRegenerationRequest);
@@ -2408,11 +2479,12 @@ async function processQueueItem(
       };
     }
     let queueReusableDraftId: string | null = null;
+    let queueReusableDraftReviewStatus: string | null = null;
     let queueReusableAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
     if (!privateRegenerationRequest && typeof item.content_creative_id === 'string') {
       const { data: queueCreative, error: queueCreativeError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,channel,status,og_image_url,blog_html')
+        .select('id,channel,status,review_status,og_image_url,blog_html')
         .eq('id', item.content_creative_id)
         .maybeSingle();
       if (queueCreativeError) {
@@ -2423,6 +2495,9 @@ async function processQueueItem(
         && queueCreative.status === 'draft'
       ) {
         queueReusableDraftId = queueCreative.id;
+        queueReusableDraftReviewStatus = typeof queueCreative.review_status === 'string'
+          ? queueCreative.review_status
+          : null;
         queueReusableAssets = {
           ogImageUrl: typeof queueCreative.og_image_url === 'string' ? queueCreative.og_image_url : null,
           inlineImageUrls: extractBlogInlineImageUrls(
@@ -2477,14 +2552,10 @@ async function processQueueItem(
     promoteDraftId = privateReplacementDraftId ?? queueReusableDraftId;
 
     if (item.source === 'pillar' && item.destination) {
-      const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
-      const pillarContext = await buildPillarContext(item.destination);
-      if (!pillarContext) {
-        const reason = `${item.destination} context missing: attractions+packages 0`;
-        await handleFailure(item, reason, null, true);
-        return { id: item.id, topic: item.topic, status: 'error', reason };
-      }
-      generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
+      // A pillar is now a representative-refresh strategy, not a fixed writer
+      // template. The normal V3 path enforces official evidence, a flexible
+      // archetype and the broad-query no-new-URL rule before generation.
+      generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item));
     } else if (contentBoundary.lane === 'card_news_bridge') {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
@@ -2613,7 +2684,7 @@ async function processQueueItem(
     if (replacementAssets?.ogImageUrl && !generated.og_image_url) {
       generated.og_image_url = replacementAssets.ogImageUrl;
     }
-    const minimumInlineImages = item.card_news_id ? 2 : 3;
+    const minimumInlineImages = 0;
     const maximumInlineImages = item.card_news_id ? 3 : 4;
     const reusableImageCount = replacementAssets
       ? new Set([
@@ -2638,52 +2709,8 @@ async function processQueueItem(
         .eq('id', promoteDraftId);
     }
 
-    if (contentBoundary.lane === 'informational') {
-      generated.blog_html = stripBlogInformationalBodyCtas(generated.blog_html);
-    }
-
-    // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
-    try {
-      generated.blog_html = await appendInterlinkSection(
-        generated.blog_html,
-        generated.slug,
-        item.destination,
-        {
-          generationMeta: generated.generation_meta,
-          contentType: item.source === 'pillar' ? 'pillar' : 'blog',
-          pillarFor: item.source === 'pillar' ? item.destination : null,
-        },
-      );
-    } catch { /* interlink 실패는 발행을 막지 않음 */ }
-
-    // Cold-start safety: AI가 internal link / CTA를 빠뜨렸을 때 표준 CTA 블록을 주입
-    // links-gate(내부링크 ≥1) + cta-gate(링크 ≥2) 동시 통과
-    const generatedLinks = [...generated.blog_html.matchAll(/(?<!!)\[[^\]]+]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)]
-      .map((match) => match[1])
-      .filter(Boolean);
-    const internalLinkCount = generatedLinks.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href)).length;
-    const ctaLinkCount = generatedLinks.filter((href) => {
-      const decoded = decodeURIComponent(href);
-      return /\/packages|utm_|kakao|consult|문의|예약/i.test(decoded);
-    }).length;
-    if (contentBoundary.lane !== 'informational' && (internalLinkCount < 3 || ctaLinkCount < 2)) {
-      generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
-        destination: item.destination,
-        slug: generated.slug,
-        utmSource: 'naver_blog',
-      })}`;
-    }
-
-    // 생성기가 스타일 가이드 금지 표현을 섞어도 자동발행 큐가 멈추지 않도록
-    // 의미가 과장되지 않는 중립 표현으로 발행 직전에 정규화한다.
-    generated.blog_html = neutralizeBannedCliches(generated.blog_html);
-    generated.blog_html = generated.blog_html.replace(/에어컨|에어콘/g, '냉방');
-
-    // 외부 공식 링크가 빠지면 links-gate 에서 자동발행이 막힌다.
-    // 기준은 유지하되, 발행 직전 최소 공식 출처를 보강한다.
-    generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
-
-    // 4-Gate (length · cliche · duplicate · keyword_density)
+    // V3 evaluates authored links, CTAs, language, and evidence as-is. It does
+    // not append or rewrite editorial content to satisfy a score.
     const blogType: 'product' | 'info' = item.product_id ? 'product' : 'info';
     // Pillar posts: skip keyword density (destination name dominates by design)
     // Compound destinations (X/Y/Z) stay broad enough to avoid single-city keyword stuffing.
@@ -2709,13 +2736,9 @@ async function processQueueItem(
       topic: item.topic ?? null,
     });
 
-    generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-    generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
     {
-      const accentRepair = normalizeBlogVisualAccents(generated.blog_html);
-      if (accentRepair.changed) {
-        generated.blog_html = accentRepair.text;
-      }
+      const safeRepair = repairBlogPublishFormattingV3(generated.blog_html);
+      if (safeRepair.changed) generated.blog_html = safeRepair.markdown;
     }
 
     // 일반 정보성/상품 글도 카드뉴스 경로처럼 본문 안에 사진을 보유하게 만든다.
@@ -2758,145 +2781,16 @@ async function processQueueItem(
     }
 
     // 이미지/CTA 후처리 이후에도 공식 외부 링크 기준을 최종 보장한다.
-    generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
 
-    const editorialRepair = repairBlogEditorialQuality({
-      title: generated.seo_title,
-      slug: generated.slug,
-      primaryKeyword,
-      destination: item.destination ?? null,
-      angleType: normalizeAngleType(item.angle_type),
-      category: item.category,
-      contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-      productId: item.product_id ?? null,
-      blogHtml: generated.blog_html,
-    });
-    if (editorialRepair.changed) {
-      generated.blog_html = editorialRepair.blogHtml;
-      console.log(`[blog-publisher] 에디토리얼 자동 보강: ${editorialRepair.changes.join(', ')}`);
-    }
-
-    // Normalize generated structure before any publish gate so backfill-only repairs do not recur.
-    const structureRepair = repairBlogStructureQuality({
-      title: generated.seo_title,
-      slug: generated.slug,
-      primaryKeyword,
-      destination: item.destination ?? null,
-      angleType: normalizeAngleType(item.angle_type),
-      category: item.category,
-      contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-      productId: item.product_id ?? null,
-      blogHtml: generated.blog_html,
-    });
-    if (structureRepair.changed) {
-      generated.blog_html = structureRepair.blogHtml;
-      console.log(`[blog-publisher] structure repair: ${structureRepair.changes.join(', ')}`);
-    }
-
-    {
-      const accentRepair = normalizeBlogVisualAccents(generated.blog_html);
-      if (accentRepair.changed) {
-        generated.blog_html = accentRepair.text;
-      }
-    }
     generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
       destination: item.destination,
       slug: generated.slug,
       utmSource: 'naver_blog',
     });
-
-    const readinessRepair = repairPublishReadiness({
-      markdown: generated.blog_html,
-      blogType,
-      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
-      slug: generated.slug,
-      destination: item.destination,
-      topic: item.topic,
-      primaryKeyword,
-    });
-    if (readinessRepair.changed) {
-      generated.blog_html = readinessRepair.markdown;
-      console.log(`[blog-publisher] publish readiness repair: ${readinessRepair.changes.join(', ')}`);
-    }
-
-    {
-      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
-      if (categoryChanges.length > 0) {
-        console.log(`[blog-publisher] engine category repair: ${categoryChanges.join(', ')}`);
-      }
-    }
-
-    {
-      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
-      if (surfaceChanges.length > 0) {
-        console.log(`[blog-publisher] final customer surface repair: ${surfaceChanges.join(', ')}`);
-      }
-    }
+    applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
 
     const applyFinalResearchStructureRepair = (): void => {
-      const finalContentBrief = buildQueueContentBrief(item);
-      if (!finalContentBrief.passed) return;
-      const finalResearchReadiness = evaluateBlogGenerationResearchReadiness({
-        meta: item.meta,
-        expectedContentKey: evidenceContentKey,
-        destination: item.destination,
-        intent: finalContentBrief.intentType,
-        locale: finalContentBrief.plan.locale,
-        sourcePolicy: finalContentBrief.sourcePolicy,
-      });
-      const finalResearchRepair = repairBlogGenerationResearchStructure({
-        markdown: generated.blog_html,
-        intent: finalContentBrief.intentType,
-        readiness: finalResearchReadiness,
-        plannedTitle: finalContentBrief.title,
-        primaryKeyword: finalContentBrief.primaryKeyword,
-        editorialVariation: item.meta?.editorial_variation ?? null,
-        forceDeterministicEvidenceArticle:
-          finalContentBrief.intentType === 'entry_requirements'
-          && finalResearchReadiness.passed
-          && Boolean(finalResearchReadiness.bundle),
-      });
-      if (!finalResearchRepair.changed) return;
-
-      generated.blog_html = finalResearchRepair.markdown;
-      const currentMeta = generated.generation_meta || {};
-      const writerLedger = currentMeta.writer_claim_ledger
-        && typeof currentMeta.writer_claim_ledger === 'object'
-        && !Array.isArray(currentMeta.writer_claim_ledger)
-        ? currentMeta.writer_claim_ledger as Record<string, unknown>
-        : {};
-      const currentClaims = Array.isArray(writerLedger.claims)
-        ? writerLedger.claims as BlogInformationClaimLedgerEntry[]
-        : [];
-      const approvedClaims = finalResearchRepair.approvedClaims.map((claim) => ({
-        claimFingerprint: claim.claimFingerprint,
-        claimText: claim.claimText,
-        claimType: claim.claimType,
-        riskLevel: claim.riskLevel,
-      }));
-      const replacedWithDeterministicEvidenceArticle = finalResearchRepair.changes.some((change) =>
-        [
-          'monthly_weather_deterministic_evidence_article',
-          'local_transport_deterministic_evidence_article',
-          'entry_requirements_deterministic_evidence_article',
-        ].includes(change));
-      generated.generation_meta = {
-        ...currentMeta,
-        writer_claim_ledger: {
-          ...writerLedger,
-          claims: replacedWithDeterministicEvidenceArticle
-            ? approvedClaims
-            : [...new Map([...currentClaims, ...approvedClaims]
-                .map((claim) => [claim.claimFingerprint, claim])).values()],
-          ...(replacedWithDeterministicEvidenceArticle ? { issues: [] } : {}),
-        },
-        information_research_structure_repair: {
-          applied: true,
-          stage: 'final_quality_boundary',
-          changes: finalResearchRepair.changes,
-        },
-      };
-      console.log(`[blog-publisher] final research structure repair: ${finalResearchRepair.changes.join(', ')}`);
+      // Claim validation blocks publication; it does not synthesize prose.
     };
     const restoreFinalReusableImages = async (): Promise<void> => {
       const imageResult = await ensureBlogInlineImages({
@@ -2935,12 +2829,7 @@ async function processQueueItem(
       );
     };
     const applyFinalInlineSurfaceRepair = (): void => {
-      const inlineSurfaceRepair = repairBlogFinalInlineSurface(generated.blog_html);
-      if (!inlineSurfaceRepair.changed) return;
-      generated.blog_html = inlineSurfaceRepair.markdown;
-      console.log(
-        `[blog-publisher] final inline surface repair: ${inlineSurfaceRepair.changes.join(', ')}`,
-      );
+      // V3 does not rewrite prose at the inline surface stage.
     };
     const applyFinalGateCustomerSurfaceRepair = (): void => {
       const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
@@ -2949,18 +2838,7 @@ async function processQueueItem(
       }
     };
     const applyFinalReadinessFloorRepair = (): void => {
-      const readinessRepair = repairPublishReadiness({
-        markdown: generated.blog_html,
-        blogType,
-        hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
-        slug: generated.slug,
-        destination: item.destination,
-        topic: item.topic,
-        primaryKeyword,
-      });
-      if (!readinessRepair.changed) return;
-      generated.blog_html = readinessRepair.markdown;
-      console.log(`[blog-publisher] final readiness floor repair: ${readinessRepair.changes.join(', ')}`);
+      // Missing readiness content is a gate failure in V3.
     };
     const applyFinalInternalLinkFloor = (): void => {
       if (blogType !== 'info') return;
@@ -2971,12 +2849,10 @@ async function processQueueItem(
         return href.startsWith('/') || /yeosonam\.com/i.test(href);
       });
       if (hasInternalLink) return;
-      generated.blog_html = `${generated.blog_html.trimEnd()}\n\n### 관련 여행 가이드\n\n- [여행 정보 아카이브](/blog)`;
-      console.log('[blog-publisher] final internal link floor: appended /blog archive link');
+      // Do not append generic internal links merely to satisfy a score.
     };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalGateCustomerSurfaceRepair();
-      generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       applyFinalResearchStructureRepair();
       applyFinalInternalLinkFloor();
       await restoreFinalReusableImages();
@@ -2986,9 +2862,7 @@ async function processQueueItem(
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
     const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> => {
-      generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       applyFinalGateCustomerSurfaceRepair();
-      generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
       // Research-backed structure is the last structural body mutation so generic
       // cleanup cannot prune high-risk entry evidence from the customer article.
       applyFinalResearchStructureRepair();
@@ -3021,9 +2895,14 @@ async function processQueueItem(
       const validation = await evaluateBlogInformationClaimPublishGate({
         creativeId: promoteDraftId,
         contentKey: evidenceContentKey,
-        markdown: generated.blog_html,
+        // Title and description are public factual surfaces too. Validate them
+        // with the same claim ledger instead of checking only the article body.
+        markdown: [generated.seo_title, generated.seo_description, generated.blog_html]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .join('\n\n'),
         productId: item.product_id ?? null,
         tenantId: item.tenant_id ?? null,
+        reviewStatus: queueReusableDraftReviewStatus,
         claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
         claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
         intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'
@@ -3050,16 +2929,6 @@ async function processQueueItem(
 
     let qa = await runQualityWithResearchStructure();
 
-    if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
-      generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
-      qa = await runQualityWithResearchStructure();
-    }
-
-    if (!qa.passed && qa.gates.some(gate => gate.gate === 'hook' && !gate.passed)) {
-      generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-      qa = await runQualityWithResearchStructure();
-    }
-
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
       qa = await runQualityAfterAiReadableRepair();
     }
@@ -3074,13 +2943,7 @@ async function processQueueItem(
     }
 
     if (!qa.passed) {
-      const failureStatus = await handleFailure(item, qa.summary, qa);
-      return {
-        id: item.id,
-        topic: item.topic,
-        status: failureStatus === 'skipped' ? 'skipped' : 'gate_failed',
-        reason: qa.summary,
-      };
+      console.log(`[blog-publisher] quality gate failed; preserving generated content as a private review draft (${qa.summary})`);
     }
 
     const preSeoContentBrief = generated.generation_meta?.content_brief;
@@ -3115,23 +2978,10 @@ async function processQueueItem(
         try {
           const enriched = await enrichWithGscData(primaryKeyword, kwResearch);
           if (enriched.source === 'gsc') {
-            console.log(`[blog-publisher] GSC 키워드 보강: ${primaryKeyword} → ${enriched.monthly_search_volume} impressions, competition=${enriched.competition_level}`);
+            console.log(`[blog-publisher] GSC 관측 신호: ${primaryKeyword} → ${enriched.observed_search_performance?.impressions ?? 0} impressions, competition=${enriched.competition_level}`);
           }
         } catch { /* GSC 보강 실패 — 계속 진행 */ }
       } catch { /* 키워드 리서치 실패 — 계속 진행 */ }
-    }
-
-    // 🆕 이미지 SEO 최적화 — alt 텍스트 자동 생성/보강
-    if (generated.blog_html.includes('![](') || generated.blog_html.includes('![')) {
-      const optimizedHtml = optimizeImageSeoInHtml(
-        generated.blog_html,
-        item.destination,
-        primaryKeyword,
-      );
-      if (optimizedHtml !== generated.blog_html) {
-        generated.blog_html = optimizedHtml;
-        console.log('[blog-publisher] 이미지 SEO 최적화 완료');
-      }
     }
 
     // 🆕 SEO 점수 측정 — 기준 미만이면 발행 보류 (qualify_gate 후 추가 게이트)
@@ -3178,198 +3028,15 @@ async function processQueueItem(
 
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
-    if (
-      contentBoundary.lane !== 'informational'
-      && seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')
-    ) {
-      generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
-        destination: item.destination,
-        slug: generated.slug,
-        utmSource: 'naver_blog',
-      })}`;
-      generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
-        destination: item.destination,
-        slug: generated.slug,
-        utmSource: 'naver_blog',
-      });
-      seoScore = computeSeoScore(buildSeoScoreInput());
-      console.log(`[blog-publisher] SEO CTA repair -> ${seoScore.score}/${seoScore.maxScore}`);
-    }
-
-    const seoMetadataDetailsNeedRepair = seoScore.details.some(d =>
-      ['title', 'meta_description'].includes(d.name) && d.score < d.maxScore);
-    if (seoMetadataDetailsNeedRepair) {
-      const seoRepair = repairBlogSeoMetadata({
-        seoTitle: generated.seo_title,
-        seoDescription: generated.seo_description,
-        topic: item.topic,
-        primaryKeyword,
-        destination: item.destination,
-        category: item.category,
-      });
-      if (seoRepair.changed) {
-        generated.seo_title = seoRepair.seoTitle;
-        generated.seo_description = seoRepair.seoDescription;
-        seoScore = computeSeoScore(buildSeoScoreInput());
-        console.log(`[blog-publisher] SEO metadata repair: ${seoRepair.changes.join(', ')} -> ${seoScore.score}/${seoScore.maxScore}`);
-      }
-    }
-
-    if (seoScore.details.some(d => d.name === 'primary_keyword' && d.status === 'fail')) {
-      const keywordRepair = repairPrimaryKeywordPresence(generated.blog_html, primaryKeyword);
-      if (keywordRepair.changed) {
-        generated.blog_html = keywordRepair.markdown;
-        seoScore = computeSeoScore(buildSeoScoreInput());
-        console.log(`[blog-publisher] SEO primary keyword repair -> ${seoScore.score}/${seoScore.maxScore}`);
-      }
-    }
-
     if (!seoScore.passed) {
       const failedDetails = seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ');
-      console.log(`[blog-publisher] SEO score ${seoScore.score}/${seoScore.maxScore} - publish blocked (${seoScore.summary})`);
-      await handleFailure(
-        item,
-        `SEO score ${seoScore.score}/${seoScore.maxScore} - ${failedDetails || seoScore.summary}`,
-        null,
-        false,
-        {
-          last_seo_score: {
-            score: seoScore.score,
-            max_score: seoScore.maxScore,
-            summary: seoScore.summary,
-            details: seoScore.details,
-          },
-          last_information_claim_validation:
-            generated.generation_meta?.information_claim_validation ?? null,
-        },
-      );
-      return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
+      console.log(`[blog-publisher] SEO score ${seoScore.score}/${seoScore.maxScore} - public publish blocked; private draft retained (${failedDetails || seoScore.summary})`);
     }
 
-    let publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
-    if (!publishQuality.passed) {
-      const finalRepairChanges: string[] = [];
-      let finalRepairChanged = false;
-
-      const finalArticleRepair = repairArticleQualityV2Specifics(generated.blog_html, blogType);
-      if (finalArticleRepair.changes.length > 0) {
-        generated.blog_html = finalArticleRepair.markdown;
-        finalRepairChanges.push(...finalArticleRepair.changes);
-        finalRepairChanged = true;
-      }
-
-      const finalEditorialRepair = repairBlogEditorialQuality({
-        title: generated.seo_title,
-        slug: generated.slug,
-        primaryKeyword,
-        destination: item.destination ?? null,
-        angleType: normalizeAngleType(item.angle_type),
-        category: item.category,
-        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        productId: item.product_id ?? null,
-        blogHtml: generated.blog_html,
-      });
-      if (finalEditorialRepair.changed) {
-        generated.blog_html = finalEditorialRepair.blogHtml;
-        finalRepairChanges.push(...finalEditorialRepair.changes);
-        finalRepairChanged = true;
-      }
-
-      const finalStructureRepair = repairBlogStructureQuality({
-        title: generated.seo_title,
-        slug: generated.slug,
-        primaryKeyword,
-        destination: item.destination ?? null,
-        angleType: normalizeAngleType(item.angle_type),
-        category: item.category,
-        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        productId: item.product_id ?? null,
-        blogHtml: generated.blog_html,
-      });
-      if (finalStructureRepair.changed) {
-        generated.blog_html = finalStructureRepair.blogHtml;
-        finalRepairChanges.push(...finalStructureRepair.changes);
-        finalRepairChanged = true;
-      }
-
-      const finalDensityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, blogType);
-      if (finalDensityRepair.changed) {
-        generated.blog_html = finalDensityRepair.blogHtml;
-        finalRepairChanges.push('final_keyword_density_repair');
-        finalRepairChanged = true;
-      }
-
-      const finalReadinessRepair = repairPublishReadiness({
-        markdown: generated.blog_html,
-        blogType,
-        hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
-        slug: generated.slug,
-        destination: item.destination,
-        topic: item.topic,
-        primaryKeyword,
-      });
-      if (finalReadinessRepair.changed) {
-        generated.blog_html = finalReadinessRepair.markdown;
-        finalRepairChanges.push(...finalReadinessRepair.changes);
-        finalRepairChanged = true;
-      }
-
-      const finalSurfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
-      if (finalSurfaceChanges.length > 0) {
-        finalRepairChanges.push(...finalSurfaceChanges);
-        finalRepairChanged = true;
-      }
-
-      if (finalRepairChanged) {
-        generated.generation_meta = {
-          ...(generated.generation_meta || {}),
-          repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0) + 1,
-        };
-        generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
-          destination: item.destination,
-          slug: generated.slug,
-          utmSource: 'naver_blog',
-        });
-      }
-      qa = blogType === 'info'
-        ? await runQualityAfterAiReadableRepair()
-        : await runQualityWithResearchStructure();
-      seoScore = computeSeoScore(buildSeoScoreInput());
-      publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
-      console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ') || 'ai_readable_boundary'} -> passed=${publishQuality.passed}`);
-    }
+    const publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
 
     if (!publishQuality.passed) {
-      console.log(`[blog-publisher] publish quality blocked (${publishQuality.summary})`);
-      const failureStatus = await handleFailure(item, publishQuality.summary, publishQuality.qualityGate, false, {
-        last_seo_score: {
-          score: seoScore.score,
-          max_score: seoScore.maxScore,
-          summary: seoScore.summary,
-          details: seoScore.details,
-        },
-        last_publish_quality: {
-          score: publishQuality.blogQualityScore.score,
-          issues: publishQuality.blogQualityScore.issues.slice(0, 8),
-          rendered_issues: (publishQuality.renderedSeoQuality?.issues ?? []).slice(0, 8).map((issue) => ({
-            code: issue.code,
-            message: issue.message,
-            evidence: issue.evidence ?? null,
-          })),
-          components: publishQuality.blogQualityScore.components.map((component) => ({
-            id: component.id,
-            passed: component.passed,
-            score: component.score,
-            issue_codes: component.issues.map((issue) => issue.code).slice(0, 5),
-          })),
-        },
-      });
-      return {
-        id: item.id,
-        topic: item.topic,
-        status: failureStatus === 'skipped' ? 'skipped' : 'publish_quality_failed',
-        reason: publishQuality.summary,
-      };
+      console.log(`[blog-publisher] publish quality failed; preserving generated content as a private review draft (${publishQuality.summary})`);
     }
 
     qa = publishQuality.qualityGate;
@@ -3403,6 +3070,30 @@ async function processQueueItem(
     const engineBrief = engineEvaluation?.brief && typeof engineEvaluation.brief === 'object'
       ? engineEvaluation.brief as Record<string, unknown>
       : {};
+    const destinationDecisionDetails = Array.isArray(item.meta?.destination_decision_details)
+      ? item.meta.destination_decision_details
+        .filter((detail: unknown) => detail && typeof detail === 'object')
+        .map((detail: any) => ({ text: String(detail.text || ''), evidenceId: String(detail.evidence_id || detail.evidenceId || '') }))
+      : [];
+    const generatedContentBriefV3 = generated.generation_meta?.content_brief_v3;
+    const contentBriefV3 = generatedContentBriefV3
+      && typeof generatedContentBriefV3 === 'object'
+      && !Array.isArray(generatedContentBriefV3)
+      && (generatedContentBriefV3 as Record<string, unknown>).version === 'blog-quality-v3.1'
+      ? generatedContentBriefV3 as BlogContentBriefV3
+      : buildBlogContentBriefV3({
+          topic: item.topic,
+          destination: item.destination,
+          primaryKeyword,
+          audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
+          availableEvidenceTypes: Array.isArray(item.meta?.available_evidence_types) ? item.meta.available_evidence_types : [],
+          // Legacy/fallback candidates have no validated research-packet
+          // resolution at this boundary, so a queue meta ID cannot authorize
+          // first-person experience language.
+          firstPartySourceIds: [],
+          customerQuestionIds: Array.isArray(item.meta?.customer_question_ids) ? item.meta.customer_question_ids : [],
+          destinationDecisionDetails,
+        });
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
       information_evidence_content_key: evidenceContentKey,
@@ -3415,7 +3106,8 @@ async function processQueueItem(
         summary: seoScore.summary,
         details: seoScore.details,
       },
-      engine_version: 'blog-engine-v2',
+      engine_version: 'blog-quality-v3',
+      content_brief_v3: contentBriefV3,
       writer: typeof generated.generation_meta?.writer === 'string'
         ? generated.generation_meta.writer
         : (item.product_id ? 'product_consultant_writer' : 'info_writer'),
@@ -3456,16 +3148,349 @@ async function processQueueItem(
     const requiresClaimReview = blogType === 'info'
       && !claimValidation.passed
       && !claimValidationPendingHumanApprovalOnly;
-    const requiresHumanReview = blogType === 'info'
+    const contentReviewStatus = typeof item.meta?.content_review_status === 'string'
+      ? item.meta.content_review_status
+      : null;
+    const todayPublished = await getTodayBlogPublishCount();
+    const isWeatherContent = /weather|날씨|옷차림/i.test(
+      `${item.category || ''} ${item.topic || ''} ${generated.seo_title || ''}`,
+    );
+    const portfolio = await loadBlogPortfolioSaturationV3(
+      contentBriefV3.archetype,
+      isWeatherContent,
+    );
+    const latestMetricMs = demandPreflight.performance.latestMetricDate
+      ? Date.parse(`${demandPreflight.performance.latestMetricDate}T00:00:00Z`)
+      : Number.NaN;
+    const sourceFreshness = Number.isFinite(latestMetricMs)
+      ? Math.max(0, 1 - (Date.now() - latestMetricMs) / (90 * 24 * 60 * 60 * 1000))
+      : (demandPreflight.acceptedProviders.length > 0 ? 1 : 0);
+    const corpusDiversity = await loadBlogCorpusDiversityV3({
+      queueItemId: item.id,
+      excludeCreativeId: promoteDraftId,
+      replacementTargetCreativeId: privateRegenerationRequest?.contentCreativeId ?? null,
+      title: generated.seo_title,
+      body: generated.blog_html,
+      destination: item.destination,
+    });
+    const issueCodes = claimValidation.issues.map((issue) => issue.code);
+    const unsupportedNumberCount = countUnsupportedNumericBlogInformationClaims(claimValidation);
+    const staleClaimCount = issueCodes.filter((code) => code === 'stale_evidence').length;
+    const engineScore01 = typeof engineEvaluation?.score === 'number'
+      ? Math.max(0, Math.min(1, engineEvaluation.score / 100))
+      : 0;
+    const taskCompletion01 = typeof engineMetrics.task_completion === 'number'
+      ? Math.max(0, Math.min(1, Number(engineMetrics.task_completion) / 100))
+      : 0;
+    const persistedResearchBundle = item.meta?.[BLOG_INFORMATION_RESEARCH_META_KEY]
+      && typeof item.meta[BLOG_INFORMATION_RESEARCH_META_KEY] === 'object'
+      && !Array.isArray(item.meta[BLOG_INFORMATION_RESEARCH_META_KEY])
+      ? item.meta[BLOG_INFORMATION_RESEARCH_META_KEY] as BlogInformationResearchBundle
+      : null;
+    const researchSources: BlogInformationResearchBundle['sources'] = Array.isArray(
+      persistedResearchBundle?.sources,
+    ) ? persistedResearchBundle.sources : [];
+    const sourceQuality01 = researchSources.length > 0
+      ? researchSources.reduce((sum, source) => {
+          if (isPrimaryInformationAuthority(source.authorityLevel)) return sum + 1;
+          if (source.authorityLevel === 'official_secondary') return sum + 0.85;
+          if (source.authorityLevel === 'field_observation') return sum + 0.75;
+          if (source.authorityLevel === 'editorial_secondary') return sum + 0.7;
+          return sum + 0.6;
+        }, 0) / researchSources.length
+      : (blogType === 'info' ? 0 : 1);
+    const imageQualityGatePassed = publishQuality.qualityGate.gates
+      .find((gate) => gate.gate === 'image_quality')?.passed ?? true;
+    const linksGate = publishQuality.qualityGate.gates.find((gate) => gate.gate === 'links');
+    const linksGateEvidence = linksGate?.evidence ?? {};
+    const ctaDestinationGatePassed = publishQuality.qualityGate.gates
+      .find((gate) => gate.gate === 'cta_destination_integrity')?.passed ?? true;
+    const internalLinkRelevant = Number(linksGateEvidence.internal ?? 0) > 0
+      && ctaDestinationGatePassed;
+    const diversityReport = corpusDiversity.report;
+    const demandScoreV3 = scoreBlogDemandCandidateV3({
+      demand: demandPreflight.signal,
+      impressions: demandPreflight.performance.impressions,
+      clicks: demandPreflight.performance.clicks,
+      ctr: demandPreflight.performance.ctr,
+      averagePosition: demandPreflight.performance.averagePosition,
+      customerQuestionFrequency: demandPreflight.signal.customerQuestionCount,
+      activeProductRelevance: demandPreflight.signal.activeProductRelation ? 1 : 0,
+      seasonality: Number(item.meta?.seasonality_score || 0),
+      sourceFreshness,
+      cannibalizationPenalty: ['refresh', 'merge'].includes(diversityReport?.disposition || '') ? 1 : 0,
+      templateSaturationPenalty: (diversityReport?.normalizedTitleClusterSize ?? 0) >= 3 ? 1 : 0,
+      staleInformationRisk: contentBriefV3.riskLevel === 'HIGH' ? 1 : contentBriefV3.riskLevel === 'MEDIUM' ? 0.5 : 0,
+    });
+    const qualityEvaluationV3 = evaluateBlogQualityV3({
+      title: generated.seo_title,
+      body: generated.blog_html,
+      destination: item.destination,
+      primaryDecision: contentBriefV3.primaryDecision,
+      primaryQuery: contentBriefV3.primaryQuery,
+      archetype: contentBriefV3.archetype,
+      intentCompletionScore: taskCompletion01,
+      supportedClaimCount: Math.floor(claimValidation.claims.length * claimValidation.coverage),
+      factualClaimCount: claimValidation.claims.length,
+      staleClaimCount,
+      conflictingClaimCount: 0,
+      unsupportedNumberCount,
+      destinationSpecificDetailCount: contentBriefV3.destinationDecisionDetails.length,
+      informationGainScore: engineScore01,
+      titleUniqueness: diversityReport && diversityReport.normalizedTitleClusterSize < 3 ? 1 : 0,
+      openingUniqueness: diversityReport ? 1 - diversityReport.maxOpeningSimilarity : 0,
+      structureUniqueness: diversityReport ? 1 - diversityReport.maxHeadingSimilarity : 0,
+      imageRelevance: imageQualityGatePassed ? 1 : 0,
+      imageUniqueness: imageQualityGatePassed ? 1 : 0,
+      sourceQuality: sourceQuality01,
+      authorReviewTruthful: true,
+      internalLinkRelevance: internalLinkRelevant ? 1 : 0,
+      userActionability: taskCompletion01,
+      serpIntentAlignment: taskCompletion01,
+      decisionCompletion: taskCompletion01,
+      queryClusterCoverage: generated.seo_title.includes(contentBriefV3.primaryQuery) ? 1 : taskCompletion01,
+      comparativeInformationGain: engineScore01,
+      competitorCopyRisk: Number(
+        (generated.generation_meta?.competitor_copy_risk_v3 as Record<string, unknown> | undefined)?.match_count || 0,
+      ) > 0 ? 1 : 0,
+      titleSnippetCongruence: generated.seo_title === contentBriefV3.metadata.title ? 1 : 0,
+      sectionPurposeCoverage: taskCompletion01,
+      imageEntityMatch: imageQualityGatePassed ? 1 : 0,
+      pillarSupportRelationship: representativeIdentity ? 1 : 0,
+      itineraryEvidenceTexts: contentBriefV3.destinationDecisionDetails.map((detail) => detail.text),
+      normalizedTitleClusterSize: diversityReport?.normalizedTitleClusterSize ?? 3,
+      templateSaturation: !diversityReport || ['queue_reject', 'refresh', 'merge'].includes(diversityReport.disposition),
+      firstPartySourceIds: contentBriefV3.verifiedFirstPartySourceIds ?? [],
+    });
+    const publishQualityFailureReasons = [
+      ...publishQuality.publishContractIssues.map((issue) => `publish_contract:${issue.code}`),
+      ...publishQuality.qualityGate.gates
+        .filter((gate) => !gate.passed)
+        .map((gate) => `publish_gate:${gate.gate}`),
+      ...publishQuality.seoScore.details
+        .filter((detail) => detail.status === 'fail'
+          && isBlogSeoDetailBlockingForPublish(
+            detail.name,
+            Boolean(generated.generation_meta?.content_brief_v3),
+          ))
+        .map((detail) => `seo:${detail.name}`),
+      ...publishQuality.publicCustomerQuality.issues
+        .map((issue) => `public_customer:${issue.code}`),
+      ...(publishQuality.renderedSeoQuality?.issues ?? [])
+        .map((issue) => `rendered_seo:${issue.code}`),
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
+    const orchestrationQualityScore = Math.min(
+      qualityEvaluationV3.score,
+      publishQuality.publicCustomerQuality.score,
+    );
+    const orchestrationFailureReasons = [
+      ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+      ...publishQualityFailureReasons,
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
+    const previousOrchestration = item.meta?.ai_orchestration_v4 as Record<string, unknown> | undefined;
+    const aiOrchestrationMeta = generationMeta.ai_orchestration_v4 as Record<string, unknown> | undefined;
+    const orchestrationAttempt = Math.max(1, Math.min(3, Number(
+      aiOrchestrationMeta?.attempt || Number(item.attempts || 0) + 1,
+    )));
+    const generationReceipt = aiOrchestrationMeta?.receipt as BlogAiTextResult['receipt'] | undefined;
+    const qualityRouteV4: ReturnType<typeof decideBlogQualityRouteV4> = generationReceipt
+      ? decideBlogQualityRouteV4({
+          score: orchestrationQualityScore,
+          hardBlockers: qualityEvaluationV3.hardBlockers,
+          failureReasons: orchestrationFailureReasons,
+          completedAttempts: orchestrationAttempt,
+          previousScore: typeof previousOrchestration?.previous_score === 'number'
+            ? previousOrchestration.previous_score
+            : null,
+          researchAttempts: Number(previousOrchestration?.research_attempts || 0),
+          riskLevel: contentBriefV3.riskLevel,
+          humanApproved: contentReviewStatus === 'approved',
+          researchValid: (generated.generation_meta?.information_research_preflight as Record<string, unknown> | undefined)?.passed === true,
+          claimLedgerValid: claimValidation.passed && writerClaimLedgerIssues.length === 0,
+          lastStage: typeof aiOrchestrationMeta?.stage === 'string'
+            ? aiOrchestrationMeta.stage as BlogDeepSeekStage
+            : null,
+        })
+      : {
+          route: qualityEvaluationV3.passed && publishQuality.passed ? 'approved_for_slot' : 'human_review',
+          nextStage: null,
+          publishable: qualityEvaluationV3.passed && publishQuality.passed,
+          reasons: qualityEvaluationV3.passed && publishQuality.passed
+            ? ['non_model_candidate_quality_passed']
+            : ['non_model_candidate_review_required', ...orchestrationFailureReasons],
+          maxAttempts: 3,
+        };
+    generationMeta.ai_orchestration_v4 = {
+      ...(aiOrchestrationMeta || {}),
+      version: 'blog-deepseek-orchestrator-v4',
+      attempt: orchestrationAttempt,
+      score: orchestrationQualityScore,
+      component_scores: {
+        quality_v3: qualityEvaluationV3.score,
+        publish_quality: publishQuality.blogQualityScore.score,
+        public_customer: publishQuality.publicCustomerQuality.score,
+      },
+      publish_quality_passed: publishQuality.passed,
+      route: qualityRouteV4.route,
+      next_stage: qualityRouteV4.nextStage,
+      failure_evidence: qualityRouteV4.reasons,
+      evaluated_at: now,
+    };
+    if (generationReceipt && typeof generationReceipt.model === 'string') {
+      const attemptPersistence = await recordBlogGenerationAttemptV4({
+        queueId: item.id,
+        tenantId: item.tenant_id ?? null,
+        attemptNumber: orchestrationAttempt,
+        stage: String(aiOrchestrationMeta?.stage || 'draft_flash') as BlogDeepSeekStage,
+        route: qualityRouteV4.route,
+        output: {
+          title: generated.seo_title,
+          description: generated.seo_description,
+          slug: generated.slug,
+          markdown: generated.blog_html,
+          audit: {
+            claim_validation: claimValidationSummary,
+            writer_claim_ledger: writerClaimLedger,
+            writer_claim_ledger_issues: writerClaimLedgerIssues,
+            quality_evaluation_v3: qualityEvaluationV3,
+            publish_quality: {
+              passed: publishQuality.passed,
+              score: publishQuality.blogQualityScore.score,
+              public_customer_score: publishQuality.publicCustomerQuality.score,
+              summary: publishQuality.summary,
+              failed_gates: publishQuality.qualityGate.gates
+                .filter((gate) => !gate.passed)
+                .map((gate) => gate.gate),
+            },
+            links_gate: linksGate ?? null,
+            rewrite_claim_packet_v4: generationMeta.rewrite_claim_packet_v4 ?? null,
+          },
+        },
+        qualityScore: orchestrationQualityScore,
+        hardBlockers: qualityEvaluationV3.hardBlockers,
+        failureReasons: orchestrationFailureReasons,
+        researchFingerprint: typeof item.meta?.information_research_fingerprint === 'string'
+          ? item.meta.information_research_fingerprint
+          : null,
+        claimFingerprint: typeof item.meta?.claim_fingerprint === 'string'
+          ? item.meta.claim_fingerprint
+          : null,
+        receipt: generationReceipt,
+      });
+      if (attemptPersistence.error) {
+        logWarning('[cron/blog-publisher] V4 generation attempt persistence failed', {
+          queueId: item.id,
+          error: attemptPersistence.error,
+        });
+        const reason = `generation_attempt_persistence_failed:${attemptPersistence.error}`;
+        await handleFailure(item, reason, qa, true, {
+          ai_orchestration_v4: {
+            ...generationMeta.ai_orchestration_v4 as Record<string, unknown>,
+            route: 'quarantine',
+            persistence_error: attemptPersistence.error,
+          },
+        });
+        return { id: item.id, topic: item.topic, status: 'quarantined', reason };
+      }
+    }
+    generationMeta.corpus_diversity_v3 = corpusDiversity.error
+      ? { passed: false, error: corpusDiversity.error }
+      : diversityReport;
+    generationMeta.quality_evaluation_v3 = qualityEvaluationV3;
+    if (['rewrite_pro_high', 'rewrite_pro_max', 'reresearch', 'quarantine'].includes(qualityRouteV4.route)) {
+      const researchAttempts = Number(previousOrchestration?.research_attempts || 0)
+        + (qualityRouteV4.route === 'reresearch' ? 1 : 0);
+      const reason = `blog_quality_v4_${qualityRouteV4.route}:${qualityRouteV4.reasons.join(',')}`;
+      const failureStatus = await handleFailure(item, reason, qa, qualityRouteV4.route === 'quarantine', {
+        ai_orchestration_v4: {
+          version: 'blog-deepseek-orchestrator-v4',
+          previous_score: orchestrationQualityScore,
+          next_stage: qualityRouteV4.nextStage,
+          route: qualityRouteV4.route,
+          research_attempts: researchAttempts,
+          failure_evidence: qualityRouteV4.reasons,
+          last_attempted_at: now,
+        },
+        ...(qualityRouteV4.route === 'reresearch'
+          ? {
+              [BLOG_INFORMATION_RESEARCH_META_KEY]: null,
+              auto_research: null,
+              information_research_fingerprint: null,
+              claim_fingerprint: null,
+            }
+          : {}),
+      }, {
+        forceQueue: qualityRouteV4.route !== 'quarantine',
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: qualityRouteV4.route === 'quarantine'
+          ? 'quarantined'
+          : failureStatus === 'queued' ? 'rewrite_queued' : failureStatus,
+        reason,
+      };
+    }
+    const autopublishDecision = evaluateBlogAutopublishDecisionV3(BLOG_AUTOPUBLISH_POLICY_V3, {
+      reviewStatus: contentReviewStatus,
+      allGatesPassed: publishQuality.passed
+        && qa.passed
+        && claimValidation.passed
+        && contentBriefV3.passed
+        && corpusDiversity.error === null
+        && qualityEvaluationV3.passed
+        && qualityRouteV4.publishable
+        && demandScoreV3.eligible,
+      deterministicFallback: generated.generation_meta?.private_diagnostic_fallback === true
+        || generated.generation_meta?.deterministic_info_fallback === true,
+      riskLevel: contentBriefV3.riskLevel,
+      demand: demandPreflight.signal,
+      publishedToday: todayPublished.count,
+      weatherShare30d: portfolio.weatherShare30d,
+      isWeatherContent,
+      sameArchetypeInLast10: portfolio.sameArchetypeInLast10,
+    });
+    generationMeta.autopublish_policy_v3 = {
+      ...autopublishDecision,
+      mode: BLOG_AUTOPUBLISH_POLICY_V3.mode,
+      evaluated_at: now,
+      performance: demandPreflight.performance,
+      score: demandScoreV3,
+    };
+    generationMeta.demand_evidence_v3 = {
+      repository_ready: demandPreflight.repositoryReady,
+      accepted_providers: demandPreflight.acceptedProviders,
+      rejected_count: demandPreflight.rejectedCount,
+      evaluated_at: now,
+    };
+    const contentRequiresHumanReview = blogType === 'info'
       && ((!publishedAtomicUpgrade && privateRegenerationRequest !== null) || requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
         category: item.category ?? null,
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
       }));
+    const approvedForDeferredPublication = Boolean(
+      options.deferPublication
+      && generationReceipt
+      && qualityRouteV4.publishable
+      && autopublishDecision.publish
+      && !contentRequiresHumanReview,
+    );
+    const requiresHumanReview = contentRequiresHumanReview
+      || !autopublishDecision.publish
+      || Boolean(options.deferPublication && !approvedForDeferredPublication);
+    const publishAllowed = autopublishDecision.publish
+      && !contentRequiresHumanReview
+      && !options.deferPublication;
     const reviewedPublishedReplacement = publishedAtomicUpgrade
       && requiresHumanReview
       && !requiresClaimReview
+      && privateRegenerationRequest !== null
+      && Boolean(originalPublishedSlug);
+    const automatedPublishedReplacement = publishedAtomicUpgrade
+      && approvedForDeferredPublication
+      && !contentRequiresHumanReview
       && privateRegenerationRequest !== null
       && Boolean(originalPublishedSlug);
     if (publishedAtomicUpgrade && requiresClaimReview) {
@@ -3487,6 +3512,7 @@ async function processQueueItem(
       };
     }
     let reviewedReplacementDraftSlug: string | null = null;
+    let automatedReplacementDraftSlug: string | null = null;
     if (reviewedPublishedReplacement && privateRegenerationRequest && originalPublishedSlug) {
       reviewedReplacementDraftSlug = buildReviewedPublishedBlogReplacementDraftSlug({
         canonicalSlug: originalPublishedSlug,
@@ -3514,6 +3540,39 @@ async function processQueueItem(
         generationMeta.information_representative = {
           representative_key: buildBlogInformationRepresentativeKey(representativeIdentity),
           status: 'pending_replacement',
+          canonical_slug: originalPublishedSlug,
+          target_creative_id: privateRegenerationRequest.contentCreativeId,
+        };
+      }
+    }
+    if (automatedPublishedReplacement && privateRegenerationRequest && originalPublishedSlug) {
+      automatedReplacementDraftSlug = buildAutomatedPublishedBlogReplacementDraftSlug({
+        canonicalSlug: originalPublishedSlug,
+        queueId: item.id,
+      });
+      if (!automatedReplacementDraftSlug) {
+        const reason = 'published_atomic_upgrade_auto_draft_slug_failed';
+        await handleFailure(item, reason, qa, true, {
+          published_atomic_upgrade_blocked: true,
+          preserved_published_creative_id: privateRegenerationRequest.contentCreativeId,
+        });
+        return { id: item.id, topic: item.topic, status: 'upgrade_blocked', reason };
+      }
+      generationMeta.automated_published_replacement = {
+        mode: AUTOMATED_PUBLISHED_BLOG_REPLACEMENT_MODE,
+        status: 'approved_for_slot',
+        target_creative_id: privateRegenerationRequest.contentCreativeId,
+        canonical_slug: originalPublishedSlug,
+        draft_slug: automatedReplacementDraftSlug,
+        original_published_at: originalPublishedAt,
+        queue_id: item.id,
+        generated_at: now,
+      };
+      generationMeta.information_evidence_content_key = automatedReplacementDraftSlug;
+      if (representativeIdentity) {
+        generationMeta.information_representative = {
+          representative_key: buildBlogInformationRepresentativeKey(representativeIdentity),
+          status: 'pending_automated_replacement',
           canonical_slug: originalPublishedSlug,
           target_creative_id: privateRegenerationRequest.contentCreativeId,
         };
@@ -3556,7 +3615,12 @@ async function processQueueItem(
         };
       }
     }
-    if (representativeIdentity && requiresHumanReview && !reviewedPublishedReplacement) {
+    if (
+      representativeIdentity
+      && (requiresHumanReview || approvedForDeferredPublication)
+      && !reviewedPublishedReplacement
+      && !publishedAtomicUpgrade
+    ) {
       representativeDecision = await reserveBlogInformationRepresentative({
         reservationOwner: representativeOwner,
         candidate: {
@@ -3596,7 +3660,7 @@ async function processQueueItem(
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
-      slug: reviewedReplacementDraftSlug ?? generated.slug,
+      slug: reviewedReplacementDraftSlug ?? automatedReplacementDraftSlug ?? generated.slug,
       title: generated.seo_title,
       description: generated.seo_description,
       seo_title: generated.seo_title,
@@ -3606,17 +3670,9 @@ async function processQueueItem(
       category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: normalizeAngleType(item.angle_type),
-      status: reviewedPublishedReplacement
-        ? 'draft'
-        : publishedAtomicUpgrade
-        ? 'published'
-        : (contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'),
-      published_at: reviewedPublishedReplacement
-        ? null
-        : publishedAtomicUpgrade
-        ? publicationTimestamp
-        : (contentBoundary.lane === 'informational' || requiresHumanReview ? null : now),
-      review_status: requiresHumanReview ? 'pending_review' : null,
+      status: publishAllowed ? 'published' : 'draft',
+      published_at: publishAllowed ? publicationTimestamp : null,
+      review_status: (publishAllowed || approvedForDeferredPublication) ? contentReviewStatus : 'pending_review',
       quality_gate: publishQuality.readingTimeMinutes == null
         ? qa
         : withPersistedBlogReadingTime(qa, publishQuality.readingTimeMinutes),
@@ -3639,8 +3695,10 @@ async function processQueueItem(
 
     let creativeId: string;
 
-    if (reviewedPublishedReplacement) {
-      // The public target remains untouched until a human approves this shadow draft.
+    if (publishedAtomicUpgrade) {
+      // A published target is never rewritten or demoted during generation.
+      // Both reviewed and automated replacements are isolated shadow drafts;
+      // the publication controller performs the only atomic public commit.
       promoteDraftId = null;
     }
     if (promoteDraftId) {
@@ -3669,9 +3727,73 @@ async function processQueueItem(
       creativeId = inserted?.[0]?.id as string;
     }
 
+    const decisionReasons = [
+      ...autopublishDecision.reasons,
+      ...contentBriefV3.issues,
+      ...(corpusDiversity.error ? [corpusDiversity.error] : []),
+      ...(diversityReport?.reasons || []),
+      ...qualityEvaluationV3.hardBlockers,
+      ...qualityEvaluationV3.failureReasons.map((failure) => failure.code),
+      ...publishQualityFailureReasons,
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
+    const [qualityAuditResult, publicationAuditResult] = await Promise.all([
+      supabaseAdmin.from('blog_quality_evaluations').insert({
+        creative_id: creativeId,
+        queue_id: item.id,
+        evaluator_version: qualityEvaluationV3.version,
+        passed: qualityEvaluationV3.passed,
+        score: qualityEvaluationV3.score,
+        dimensions: qualityEvaluationV3.dimensions,
+        failure_reasons: qualityEvaluationV3.failureReasons,
+        hard_blockers: qualityEvaluationV3.hardBlockers,
+      }),
+      supabaseAdmin.from('blog_publication_decisions').insert({
+        creative_id: creativeId,
+        queue_id: item.id,
+        policy_version: 'blog-quality-v3',
+        autopublish_mode: BLOG_AUTOPUBLISH_POLICY_V3.mode,
+        decision: publishAllowed ? 'published' : (requiresHumanReview ? 'pending_review' : 'draft'),
+        gate_evidence: {
+          autopublish: autopublishDecision,
+          quality: qualityEvaluationV3,
+          diversity: corpusDiversity.error ? { error: corpusDiversity.error } : diversityReport,
+          claims: claimValidationSummary,
+          content_brief: contentBriefV3,
+        },
+        reasons: decisionReasons,
+      }),
+    ]);
+    const auditPersistenceError = qualityAuditResult.error?.message || publicationAuditResult.error?.message || null;
+    if (auditPersistenceError) {
+      logWarning('[cron/blog-publisher] V3 decision evidence persistence failed', {
+        queueId: item.id,
+        creativeId,
+        error: auditPersistenceError,
+      });
+      if (publishAllowed) {
+        await supabaseAdmin.from('content_creatives').update({
+          status: 'draft',
+          published_at: null,
+          review_status: 'pending_review',
+        }).eq('id', creativeId);
+        await supabaseAdmin.from('blog_topic_queue').update({
+          status: 'pending_review',
+          content_creative_id: creativeId,
+          last_error: `v3_decision_evidence_persistence_failed:${auditPersistenceError}`,
+        }).eq('id', item.id);
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: 'pending_review',
+          reason: 'v3_decision_evidence_persistence_failed',
+        };
+      }
+    }
+
     let reviewClaimValidation = claimValidation;
-    const reviewEvidenceContentKey = reviewedReplacementDraftSlug ?? evidenceContentKey;
-    if (reviewedPublishedReplacement && reviewedReplacementDraftSlug) {
+    const replacementDraftSlug = reviewedReplacementDraftSlug ?? automatedReplacementDraftSlug;
+    const reviewEvidenceContentKey = replacementDraftSlug ?? evidenceContentKey;
+    if ((reviewedPublishedReplacement || automatedPublishedReplacement) && replacementDraftSlug) {
       const replacementBrief = buildQueueContentBrief(item);
       const replacementResearch = evaluateBlogGenerationResearchReadiness({
         meta: item.meta,
@@ -3704,7 +3826,9 @@ async function processQueueItem(
       reviewClaimValidation = await evaluateBlogInformationClaimPublishGate({
         creativeId,
         contentKey: reviewEvidenceContentKey,
-        markdown: generated.blog_html,
+        markdown: [generated.seo_title, generated.seo_description, generated.blog_html]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .join('\n\n'),
         productId: null,
         tenantId: item.tenant_id ?? null,
         claimLedger: writerClaimLedger,
@@ -3719,10 +3843,10 @@ async function processQueueItem(
             : undefined,
         },
       });
-      if (
-        !reviewClaimValidation.passed
-        && !isBlogInformationClaimValidationPendingHumanApprovalOnly(reviewClaimValidation)
-      ) {
+      if (!reviewClaimValidation.passed && (
+        automatedPublishedReplacement
+        || !isBlogInformationClaimValidationPendingHumanApprovalOnly(reviewClaimValidation)
+      )) {
         const reason = 'published_replacement_claim_gate_failed';
         await handleFailure(item, reason, qa, true, {
           replacement_draft_id: creativeId,
@@ -3742,6 +3866,49 @@ async function processQueueItem(
         tenantId: item.tenant_id ?? null,
         report: reviewClaimValidation,
       });
+    }
+
+    if (approvedForDeferredPublication) {
+      if (representativeDecision && !automatedPublishedReplacement) {
+        await attachBlogInformationRepresentativeDraft({
+          representativeKey: representativeDecision.representativeKey,
+          reservationOwner: representativeOwner,
+          creativeId,
+          canonicalSlug: generated.slug,
+        });
+      }
+      const scheduledPublishAt = nextBlogPublicationSlotKstV4(new Date(now));
+      const approvalPersistenceError = await approveBlogGenerationRunForSlotV4({
+        queueId: item.id,
+        creativeId,
+        scheduledPublishAt,
+      });
+      if (approvalPersistenceError) {
+        await handleFailure(item, `generation_run_approval_persistence_failed:${approvalPersistenceError}`, qa, true, {
+          content_creative_id: creativeId,
+        });
+        return { id: item.id, topic: item.topic, status: 'quarantined', reason: approvalPersistenceError };
+      }
+      await supabaseAdmin.from('blog_topic_queue').update({
+        status: 'pending_review',
+        content_creative_id: creativeId,
+        last_error: null,
+        attempts: 0,
+        meta: {
+          ...successfulQueueMeta,
+          ai_orchestration_v4: generationMeta.ai_orchestration_v4,
+          publication_deferred_v4: {
+            status: 'approved_for_slot',
+            scheduled_publish_at: scheduledPublishAt,
+          },
+        },
+      }).eq('id', item.id);
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'approved_for_slot',
+        reason: scheduledPublishAt,
+      };
     }
 
     if (representativeIdentity && !requiresHumanReview) {
@@ -3787,6 +3954,23 @@ async function processQueueItem(
     }
 
     if (requiresHumanReview) {
+      const humanReviewReason = requiresClaimReview
+        ? 'informational_claim_review_required'
+        : reviewedPublishedReplacement
+          ? 'published_atomic_upgrade_human_review_required'
+          : autopublishDecision.reasons.join(',') || 'high_risk_human_review_required';
+      const humanReviewRunError = await markBlogGenerationRunForHumanReviewV4({
+        queueId: item.id,
+        creativeId,
+        reason: humanReviewReason,
+      });
+      if (humanReviewRunError) {
+        logWarning('[cron/blog-publisher] human-review run transition failed', {
+          queueId: item.id,
+          creativeId,
+          error: humanReviewRunError,
+        });
+      }
       try {
         const reviewBrief = buildQueueContentBrief(item);
         const reviewResearch = evaluateBlogGenerationResearchReadiness({
@@ -3830,14 +4014,12 @@ async function processQueueItem(
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        await supabaseAdmin.from('blog_topic_queue')
-          .update({
-            status: 'failed',
-            content_creative_id: creativeId,
-            last_error: `review_queue_failed:${reason}`,
-          })
-          .eq('id', item.id);
-        return { id: item.id, topic: item.topic, status: 'review_queue_failed', reason };
+        generationMeta.review_workflow_warning = `review_queue_deferred:${reason}`;
+        logWarning('[cron/blog-publisher] review workflow deferred; draft remains private', {
+          queueId: item.id,
+          creativeId,
+          reason,
+        });
       }
 
       const { error: reviewStateError } = await supabaseAdmin.from('blog_topic_queue')
@@ -3848,6 +4030,11 @@ async function processQueueItem(
           attempts: 0,
           meta: {
             ...successfulQueueMeta,
+            ai_orchestration_v4: generationMeta.ai_orchestration_v4,
+            autopublish_policy_v3: generationMeta.autopublish_policy_v3,
+            ...(generationMeta.review_workflow_warning
+              ? { review_workflow_warning: generationMeta.review_workflow_warning }
+              : {}),
             ...(reviewedPublishedReplacement && privateRegenerationRequest && originalPublishedSlug
               ? {
                   reviewed_published_replacement: {
@@ -3869,11 +4056,7 @@ async function processQueueItem(
         id: item.id,
         topic: item.topic,
         status: 'pending_review',
-        reason: requiresClaimReview
-          ? 'informational_claim_review_required'
-          : reviewedPublishedReplacement
-            ? 'published_atomic_upgrade_human_review_required'
-            : 'high_risk_human_review_required',
+        reason: humanReviewReason,
       };
     }
 
@@ -3914,8 +4097,6 @@ async function processQueueItem(
       logWarning('[cron/blog-publisher] marketing_logs record failed (non-blocking)', e);
     }
 
-    revalidatePublicBlogCache(generated.slug);
-
     return {
       id: item.id,
       topic: item.topic,
@@ -3926,10 +4107,93 @@ async function processQueueItem(
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
 
+    const timeoutMatch = msg.match(/blog_ai_generation_timeout:(\d+)ms/);
+    const providerFailureCode = classifyBlogAiProviderFailure(err);
+    if (providerFailureCode) {
+      const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+      const attemptNumber = Math.max(1, Math.min(3,
+        await readLatestBlogModelCallAttemptNumberV4(
+          item.id,
+          priorAttempt?.attemptNumber ?? 0,
+        ),
+      ));
+      const requestedStage = String(
+        item.meta?.ai_orchestration_v4?.next_stage || 'draft_flash',
+      ) as BlogDeepSeekStage;
+      const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+        ? requestedStage
+        : 'draft_flash';
+      const terminal = attemptNumber >= 3;
+      const retrySameStage = [
+        'blog_ai_generation_timeout',
+        'blog_ai_transport_error',
+        'blog_ai_rate_limited',
+        'blog_ai_provider_unavailable',
+      ].includes(providerFailureCode);
+      const route = terminal ? 'quarantine' : retrySameStage ? 'failed' : 'rewrite_pro_max';
+      const timeoutDurationMs = Math.max(0, Number(timeoutMatch?.[1] || 0));
+      const failureReceipt: BlogAiTextResult['receipt'] = err instanceof BlogAiResponseError
+        ? err.receipt
+        : {
+            provider: resolveBlogGenerationModelV4(stage)?.provider ?? 'deepseek',
+            model: resolveBlogGenerationModelV4(stage)?.model
+              ?? (stage === 'draft_flash' ? BLOG_DEEPSEEK_MODELS.draft : BLOG_DEEPSEEK_MODELS.rewrite),
+            startedAt: new Date(Date.now() - timeoutDurationMs).toISOString(),
+            completedAt: new Date().toISOString(),
+            latencyMs: timeoutDurationMs,
+            finishReason: providerFailureCode === 'blog_ai_generation_timeout'
+              ? 'timeout'
+              : providerFailureCode,
+            thinkingMode: 'disabled',
+            deepseekCost: null,
+          };
+      const attemptPersistence = await recordBlogGenerationAttemptV4({
+        queueId: item.id,
+        tenantId: item.tenant_id ?? null,
+        attemptNumber,
+        stage,
+        route,
+        output: { title: '', description: '', slug: '', markdown: '' },
+        qualityScore: 0,
+        hardBlockers: ['model_output_incomplete'],
+        failureReasons: [providerFailureCode],
+        researchFingerprint: priorAttempt?.researchFingerprint ?? null,
+        claimFingerprint: priorAttempt?.claimFingerprint ?? null,
+        receipt: failureReceipt,
+        attemptStatus: 'failed',
+        errorCode: providerFailureCode,
+      });
+      const failureStatus = await handleFailure(item, msg, null, terminal, {
+        ai_orchestration_v4: {
+          version: 'blog-deepseek-orchestrator-v4',
+          route,
+          next_stage: terminal ? null : retrySameStage ? stage : 'rewrite_pro_max',
+          failure_evidence: [providerFailureCode],
+          provider_finish_reason: failureReceipt.finishReason,
+          output_characters: err instanceof BlogAiResponseError ? err.outputCharacters : 0,
+          attempt_persistence_error: attemptPersistence.error,
+          last_attempted_at: new Date().toISOString(),
+        },
+      }, { forceQueue: !terminal });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: terminal ? 'quarantined' : failureStatus === 'queued' ? 'rewrite_queued' : failureStatus,
+        reason: msg,
+      };
+    }
+
     // 정보성 컨텍스트 부족은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
-    await handleFailure(item, msg, null, isUnrecoverable);
-    return { id: item.id, topic: item.topic, status: 'error', reason: msg };
+    const failureStatus = await handleFailure(item, msg, null, isUnrecoverable);
+    const researchRetryQueued = msg.includes('auto_research_extraction_empty:')
+      && failureStatus === 'queued';
+    return {
+      id: item.id,
+      topic: item.topic,
+      status: researchRetryQueued ? 'research_retry_queued' : 'error',
+      reason: msg,
+    };
   }
 }
 
@@ -3939,6 +4203,7 @@ async function handleFailure(
   qa: any,
   forceFailure = false,
   extraMeta?: Record<string, unknown>,
+  retryPolicy?: { forceQueue?: boolean },
 ): Promise<'queued' | 'failed' | 'skipped'> {
   const attempts = (item.attempts || 0) + 1;
   const duplicateFailure = /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복/i.test(reason);
@@ -3954,12 +4219,27 @@ async function handleFailure(
     && !isDuplicateFailure
     && item.source !== 'manual'
     && currentSelfHealRetries < 4;
-  const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
-    ? 'skipped'
-    : shouldForceFailure || (attempts >= MAX_ATTEMPTS && !keepSelfHealCandidateLive) ? 'failed' : 'queued';
-  const storedAttempts = keepSelfHealCandidateLive && finalStatus === 'queued'
+  const forceOrchestratorQueue = retryPolicy?.forceQueue === true
+    && !shouldForceFailure
+    && !isDuplicateFailure
+    && !decision.skipped;
+  const finalStatus = forceOrchestratorQueue
+    ? 'queued'
+    : (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
+      ? 'skipped'
+      : shouldForceFailure || (attempts >= MAX_ATTEMPTS && !keepSelfHealCandidateLive) ? 'failed' : 'queued';
+  const storedAttempts = forceOrchestratorQueue
+    ? Math.min(attempts, Math.max(0, MAX_ATTEMPTS - 1))
+    : keepSelfHealCandidateLive && finalStatus === 'queued'
     ? Math.min(attempts, Math.max(0, MAX_ATTEMPTS - 1))
     : attempts;
+  const baseMeta = item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta)
+    ? { ...(item.meta as Record<string, unknown>) }
+    : {};
+  if (forceOrchestratorQueue) {
+    delete baseMeta.quarantine_reason;
+    delete baseMeta.skipped_duplicate;
+  }
 
   const { error: queueUpdateError } = await supabaseAdmin.from('blog_topic_queue')
     .update({
@@ -3970,7 +4250,7 @@ async function handleFailure(
         ? new Date(Date.now() + retryDelayMs).toISOString()
         : item.target_publish_at,
       meta: {
-        ...(item.meta || {}),
+        ...baseMeta,
         last_qa: qa,
         failure_code: decision.code,
         failure_retryable: decision.retryable,
@@ -3993,6 +4273,32 @@ async function handleFailure(
       id: item.id,
       targetStatus: finalStatus,
       error: queueUpdateError.message,
+    });
+  }
+
+  // `recordBlogGenerationAttemptV4` deliberately leaves a model-approved run
+  // in `generating` until all publication gates have committed. If a later
+  // gate fails (for example representative ownership), close that run here so
+  // the publication controller can never publish a candidate whose queue was
+  // failed or skipped.
+  const blockedRunStatus = finalStatus === 'failed' ? 'quarantine' : 'human_review';
+  const { error: runTransitionError } = await supabaseAdmin
+    .from('blog_generation_runs')
+    .update({
+      status: blockedRunStatus,
+      disposition: `publication_gate_${finalStatus}`,
+      scheduled_publish_at: null,
+      last_error: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('queue_id', item.id)
+    .eq('generation_key', `queue:${item.id}`)
+    .eq('status', 'generating');
+  if (runTransitionError) {
+    logWarning('[cron/blog-publisher] blocked generation run transition failed', {
+      id: item.id,
+      targetStatus: blockedRunStatus,
+      error: runTransitionError.message,
     });
   }
 
@@ -4022,11 +4328,6 @@ interface GeneratedBlog {
   generation_meta?: Record<string, unknown>;
   /** 카드뉴스 슬라이드 PNG URL 배열 (섹션별 이미지 배치용) */
   slide_image_urls?: string[];
-}
-
-interface BlogPillarContext {
-  attractions: string[];
-  seasonHint: string;
 }
 
 /**
@@ -4097,114 +4398,21 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
 }
 
 /**
- * Pillar 글 생성 — /destinations/[city] 허브 본문
- * 결과는 content_type='pillar', pillar_for=destination 으로 저장됨 (publisher가 처리)
+ * Pillar compatibility entrypoint.
+ *
+ * Pillar generation uses the same research-backed V3 writer as every other
+ * informational article. Broad queries therefore refresh their existing
+ * representative and cannot create a fixed-template duplicate URL.
  */
-async function generatePillar(item: any, prebuiltContext?: BlogPillarContext | null): Promise<GeneratedBlog> {
-  if (!hasBlogApiKey()) throw new Error('AI API 키 없음 — pillar 생성 불가');
-
-  let ctx = prebuiltContext ?? null;
-  if (!ctx) {
-    const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
-    ctx = await buildPillarContext(item.destination);
-  }
-  if (!ctx) throw new Error(`${item.destination} 정보성 컨텍스트 부족 (관광지 0)`);
-
-  const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-
-  // Pillar는 head tier — SERP 경쟁 분석 주입 (7일 캐시 활용)
-  let serpBlock = '';
-  const serpKw = item.primary_keyword || item.destination;
-  if (serpKw) {
-    try {
-      await new Promise(r => setTimeout(r, 500));
-      const serp = await analyzeSerp(serpKw, 'naver_blog');
-      serpBlock = buildSerpPromptBlock(serp);
-    } catch { /* SERP 실패 시 미주입 — 발행 계속 */ }
-  }
-
-  const prompt = `${styleGuide}
-${serpBlock ? `\n${serpBlock}\n` : ''}
----
-
-## Pillar Page 작성 지시 (이건 정보성 최상위 허브)
-
-**목적지**: ${item.destination}
-**섹션 구조** (반드시 아래 H2 순서 지켜라):
-
-# ${item.destination} 여행 준비 가이드
-
-## 1. ${item.destination}는 어디인가요?
-(위치·계절·이동 난이도 중심으로 2~3문단. 광고 문구보다 독자가 출발 전 판단할 정보를 우선)
-
-## 2. 먼저 볼 여행 포인트
-(형광펜 문법 금지. 주요 관광지 3~5개를 나열하되, 왜 가는지보다 이동 시간·체류 시간·피로도 기준으로 설명: ${ctx.attractions.slice(0, 6).join(', ')})
-
-## 3. 언제 가면 좋을까요?
-(월별/계절별 날씨·옷차림·추천시기 표 형태 권장. 현재 ${ctx.seasonHint})
-
-## 4. 추천 여행 일정
-(3박4일, 4박5일 두 가지 추천. Day 1~5 타임라인으로)
-
-## 5. 예상 비용과 가성비 분석
-(숙소 · 식비 · 현지 이동처럼 독자가 별도로 확인할 예산 항목과 비교 기준. 상품 수·내부 가격·예약 신호는 사용하지 말고, 확인 가능한 외부 근거가 없으면 정확한 금액을 쓰지 말 것)
-
-## 6. 여행 준비 체크리스트
-(:::tip 블록으로 준비물·비자·환전 등 꿀팁)
-
-## 7. 자주 묻는 질문
-(Q&A 4~6개. **Q. 질문** 형식)
-
-## 8. 내 일정 기준으로 확인할 것
-(CTA와 판매·상담 URL은 본문에 넣지 않는다. 공개 렌더러가 검증된 중앙 설정으로 하단 CTA를 선택한다.)
-
-## 작성 규칙
-- 총 2,200~3,000자. 필요한 내용만 남기고 공통 블록을 억지로 늘리지 말 것
-- 마크다운만, H1 1개, H2는 6~8개 범위. 고정 개수 채우기 금지
-- 운영팀 직접 답사처럼 보이는 허위 경험 톤 금지. 상품/공식 자료 기준으로 확인 가능한 표현만 사용
-- 체크 가능한 구체 수치 (기온·시간·거리·가격)
-- 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
-- 마크다운 코드블록으로 감싸지 말 것`;
-
-  const raw = await generatePublisherBlogText(prompt, { temperature: 0.65 });
-  const blog_html = raw
-    .replace(/^```markdown\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-
-  const dest = item.destination || extractDestination(item.topic) || 'destination';
-  const destEn = romanize(dest) || slugifyTopic(dest);
-  const slug = `${destEn}-complete-guide`;
-  const destDisplay = item.destination || dest;
-  const seoTitle = `${destDisplay} 여행 준비 가이드 | 관광지·일정·비용`.substring(0, 60);
-  const seoDescription = `${destDisplay} 여행 전 확인할 관광지, 일정, 예상 비용, 계절별 준비 기준을 정리했습니다.`.substring(0, 160);
-
-  // OG 이미지: 목적지와 글 의도에 맞는 Pexels 상위 후보만 사용
-  let og_image_url: string | null = null;
-  try {
-    const destForOg = item.destination || extractDestination(item.topic);
-    if (destForOg) {
-      og_image_url = await findOrGenerateBlogCover({
-        destination: destForOg,
-        primaryKeyword: seoTitle,
-        sectionTitle: '관광지 일정 비용 여행 준비',
-      });
-    }
-  } catch { /* OG 이미지 실패는 발행을 막지 않음 */ }
-
-  return {
-    blog_html,
-    slug,
-    seo_title: seoTitle,
-    seo_description: seoDescription,
-    og_image_url,
-  };
+async function generatePillar(item: any): Promise<GeneratedBlog> {
+  return generateFromTopic(item);
 }
-
 // romanize()와 slugifyTopic()은 src/lib/slug-utils.ts로 이관 (SSOT 통합)
 
 async function generateFromProduct(item: any): Promise<GeneratedBlog> {
+  if (!hasBlogApiKey(BLOG_DEEPSEEK_MODELS.draft)) {
+    throw new Error('AI API 키 미설정 — 상품 블로그 생성 불가');
+  }
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
     .select('*')
@@ -4234,13 +4442,13 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
 
   const productBrief = buildProductBlogBrief(product, angle);
   const productConsultBrief = buildProductConsultBrief(productBrief);
-  let blog_html = generateProductConsultantBlogPost(product, productBrief);
+  let groundedDraft = generateProductConsultantBlogPost(product, productBrief);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: product.id,
     destination: product.destination,
     limit: 3,
   });
-  blog_html += formatReviewQuotesAppendMarkdown(reviewSnips);
+  groundedDraft += formatReviewQuotesAppendMarkdown(reviewSnips);
   const seo = generateBlogSeo(product, angle);
   // Append product facts to prevent same-destination products from burning duplicate slug candidates.
   const slug = `${seo.slug}-${buildProductSlugSuffix(product)}`;
@@ -4265,6 +4473,62 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       : null) ||
     firstAttrPhoto ||
     `${baseUrl}/og-image.png`;
+
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const latestModelCallAttemptNumber = await readLatestBlogModelCallAttemptNumberV4(
+    item.id,
+    priorAttempt?.attemptNumber ?? 0,
+  );
+  const requestedStage = String(
+    item.meta?.ai_orchestration_v4?.next_stage
+    || (item.meta?.ai_orchestration_v4?.route === 'reresearch'
+      ? latestModelCallAttemptNumber >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'
+      : 'draft_flash'),
+  ) as BlogDeepSeekStage;
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+    ? requestedStage
+    : 'draft_flash';
+  const generationAttemptNumber = nextBlogModelCallAttemptNumberV4(
+    latestModelCallAttemptNumber,
+  );
+  const failureEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
+    ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  const productPrompt = [
+    '당신은 여소남의 여행상품 설명 에디터입니다.',
+    '아래 저장된 상품 사실과 승인된 후기만 사용해 독자가 이 상품이 자신에게 맞는지 판단할 수 있는 한국어 글을 작성하세요.',
+    '가격·날짜·항공·호텔·포함/불포함·좌석·혜택을 새로 만들거나 추정하지 마세요.',
+    '과장, 허위 희소성, 운영팀 검증 표현, 입력에 없는 고객 경험을 쓰지 마세요.',
+    '본문에 판매 URL을 만들지 마세요. 공개 렌더러가 의도 기반 CTA를 별도로 붙입니다.',
+    `고정 제목: ${seo.seoTitle}`,
+    `상품 계약: ${JSON.stringify(productConsultBrief)}`,
+    '근거가 되는 초안:',
+    groundedDraft,
+  ].join('\n\n');
+  const finalPrompt = generationStage === 'draft_flash'
+    ? productPrompt
+    : `${productPrompt}\n\n${buildDeepSeekRewritePromptV4({
+        originalDraft: priorAttempt?.output.markdown || groundedDraft,
+        failureEvidence,
+        researchFingerprint: priorAttempt?.researchFingerprint || `product:${product.id}`,
+        claimFingerprint: priorAttempt?.claimFingerprint || productBrief.dedup_key,
+      })}`;
+  const generation = await generatePublisherBlogText(finalPrompt, generationStage === 'draft_flash'
+    ? { model: BLOG_DEEPSEEK_MODELS.draft, deepseekThinking: 'disabled', temperature: 0.35 }
+    : {
+        model: BLOG_DEEPSEEK_MODELS.rewrite,
+        temperature: 0.2,
+      }, {
+        queueId: item.id,
+        attemptNumber: generationAttemptNumber,
+        stage: generationStage,
+      });
+  const blog_html = generation.text
+    .replace(/^```markdown\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+  if (!blog_html) throw new Error('deepseek_product_generation_empty');
 
   return {
     blog_html: blog_html + `\n\n<!-- prompt_version: ${productBrief.prompt_version} -->`,
@@ -4303,6 +4567,13 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
         product: productBrief,
       },
       product_dedup_key: productBrief.dedup_key,
+      ai_orchestration_v4: {
+        stage: generationStage,
+        attempt: generationAttemptNumber,
+        model: generation.receipt.model,
+        thinking: generation.receipt.thinkingMode ?? 'disabled',
+        receipt: generation.receipt,
+      },
       seo: {
         primary_keyword: seo.primaryKeyword,
         seo_keyword: productBrief.seo_keyword,
@@ -4318,7 +4589,7 @@ async function generateFromTopic(
     validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
   } = {},
 ): Promise<GeneratedBlog> {
-  if (!hasBlogApiKey()) {
+  if (!hasBlogApiKey(BLOG_DEEPSEEK_MODELS.draft)) {
     throw new Error('AI API 키 미설정 — 정보성 블로그 생성 불가');
   }
 
@@ -4367,6 +4638,39 @@ async function generateFromTopic(
       brief: contentBrief,
     });
     if (!autoResearch.passed || !autoResearch.bundle) {
+      const previousResearchFailure = item.meta?.auto_research_failure
+        && typeof item.meta.auto_research_failure === 'object'
+        && !Array.isArray(item.meta.auto_research_failure)
+        ? item.meta.auto_research_failure as Record<string, unknown>
+        : {};
+      const researchFailureAttempt = Number(previousResearchFailure.attempt_count || 0) + 1;
+      const extractionPayloadEmpty = autoResearch.directSourceCount > 0
+        && autoResearch.responseTextLength > 0
+        && autoResearch.observedSources.length === 0
+        && ['missing_sources', 'missing_evidence', 'missing_claims']
+          .every((issue) => autoResearch.issues.includes(issue));
+      const retryableExtractionFailure = extractionPayloadEmpty && researchFailureAttempt < 2;
+      item.meta = {
+        ...(item.meta || {}),
+        auto_research_failure: {
+          version: 'reviewed-source-direct-fetch-v3',
+          attempt_count: researchFailureAttempt,
+          failed_at: new Date().toISOString(),
+          model: autoResearch.model,
+          issues: autoResearch.issues.slice(0, 8),
+          grounding_source_count: autoResearch.groundingSourceCount,
+          direct_source_count: autoResearch.directSourceCount,
+          direct_source_failure_count: autoResearch.directSourceFailures.length,
+          finish_reason: autoResearch.finishReason,
+          response_text_length: autoResearch.responseTextLength,
+          retryable_extraction_empty: retryableExtractionFailure,
+        },
+      };
+      if (retryableExtractionFailure) {
+        throw new Error(
+          `auto_research_extraction_empty:${autoResearch.issues.slice(0, 8).join(',')}`,
+        );
+      }
       throw new Error(
         `evidence_insufficient:auto_research_failed:${autoResearch.issues.slice(0, 8).join(',')}`,
       );
@@ -4413,11 +4717,40 @@ async function generateFromTopic(
       (claim) => claim.claimFingerprint,
     ),
   });
+  let serpResearchV3: SerpResearchPacketV3 | null = null;
+  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
+    item.primary_keyword || contentBrief.primaryKeyword,
+  );
+  if (shouldAnalyzeSerp) {
+    try {
+      serpResearchV3 = await researchSerpNaverFirstV3({
+        primaryQuery: item.primary_keyword || contentBrief.primaryKeyword,
+        secondaryQueries: [
+          ...(Array.isArray(item.meta?.keywords) ? item.meta.keywords : []),
+          ...contentBrief.secondaryKeywords,
+        ].filter((value): value is string => typeof value === 'string'),
+      });
+    } catch (error) {
+      console.warn('[blog-publisher] Naver-first research unavailable; continuing with verified demand and official evidence only:',
+        error instanceof Error ? error.message : String(error));
+    }
+  }
+  const contentBriefV3 = buildResearchBackedContentBriefV3({
+    item,
+    legacyBrief: contentBrief,
+    researchBundle: researchReadiness.bundle,
+    serpResearch: serpResearchV3,
+  });
+  if (!contentBriefV3.passed) {
+    throw new Error(`blog_content_brief_v3_failed:${contentBriefV3.issues.join(',')}`);
+  }
+  if (contentBriefV3.publicationStrategy === 'refresh_representative' && !privateRegeneration) {
+    throw new Error('information_representative_refresh_required:broad_query_new_url_blocked');
+  }
   const researchPromptBlock = buildBlogGenerationResearchPromptBlock(researchReadiness);
-  const infoGuideBrief = buildInfoGuideBrief(contentBrief);
-  const effectiveTopic = contentBrief.title;
-  const primaryKw = contentBrief.primaryKeyword;
-  const volume = item.monthly_search_volume;
+  const infoGuideBrief = buildInfoGuideBrief(contentBriefV3);
+  const effectiveTopic = contentBriefV3.title;
+  const primaryKw = contentBriefV3.primaryQuery;
   const trendScore = item.trend_score;
   const intentPromptBlock = buildBlogIntentPromptContract(classifyBlogIntent({
     title: effectiveTopic,
@@ -4432,50 +4765,9 @@ async function generateFromTopic(
   const trendBlock = trendScore && trendScore > 30
     ? `\n## Demand signal (planning context only)\n- Internal trend score: ${trendScore}/100.\n- Never expose this score or claim that searches are surging. Use it only to prioritize timely reader checks.\n` : '';
 
-  // SERP analysis: always for head/mid, selectively for proven longtail opportunities.
-  let serpBlock = '';
-  let serpGapBlock = '';
-  let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
-    primaryKw &&
-    (
-      tier === 'head' ||
-      tier === 'mid' ||
-      item.source === 'gsc_longtail' ||
-      (tier === 'longtail' && typeof volume === 'number' && volume >= 300)
-    ),
-  );
-  if (shouldAnalyzeSerp && primaryKw) {
-    try {
-      await new Promise(r => setTimeout(r, 500));
-      serpData = await analyzeSerp(primaryKw, 'naver_blog');
-      serpBlock = buildSerpPromptBlock(serpData);
-
-      // SERP 갭 분석: 경쟁사 상위 글 대비 누락 주제 발견
-      if (serpData && serpData.recommended_entities_to_include?.length > 0) {
-        try {
-          const { analyzeSerpGap } = await import('@/lib/serp-gap-analyzer');
-          const gapResult = analyzeSerpGap(
-            primaryKw,
-            effectiveTopic,
-            [primaryKw, ...serpData.recommended_entities_to_include.slice(0, 5)],
-          );
-          if (gapResult.missingTopics.length > 0) {
-            serpGapBlock = `
-## 경쟁 글에서 자주 다루는 보강 주제
-
-아래는 경쟁사 상위 글이 공통으로 다루지만 이 글에는 없는 주제입니다.
-각각을 무조건 H2로 늘리지 말고, 기존 섹션에 자연스럽게 통합하세요. 꼭 별도 판단이 필요한 주제만 H2로 승격합니다.
-
-${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggestions[i] || '관련 내용으로 H2 섹션 추가'}`).join('\n')}
-
-커버리지 점수: ${gapResult.coverageScore}/100 (낮을수록 보강 필요)
-`;
-          }
-        } catch { /* SERP 갭 분석 실패 시 미주입 — 발행은 계속 */ }
-      }
-    } catch { /* SERP 실패 시 미주입 — 발행은 계속 */ }
-  }
+  // Search results guide decision coverage only. Facts still come exclusively
+  // from the official research/claim packet above.
+  const serpBlock = serpResearchV3 ? buildSerpResearchPromptBlockV3(serpResearchV3) : '';
 
   const assignmentBlock = [
     '## Assignment',
@@ -4484,7 +4776,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     `- Category: ${item.category || 'travel_tips'}`,
     `- Primary keyword: ${primaryKw}`,
     `- Final content brief topic: ${effectiveTopic}`,
-    `- Secondary keywords: ${contentBrief.secondaryKeywords.join(', ')}`,
+    `- Secondary keywords: ${contentBriefV3.secondaryQueries.join(', ') || 'none'}`,
     `- Optional related terms: ${(item.meta?.keywords || []).join(', ') || 'none'}`,
   ].join('\n');
   const editorialVariationBlock = buildEditorialVariationPromptBlock(item);
@@ -4495,13 +4787,12 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       reviewPromptBlock,
       freshnessPromptBlock,
       intentPromptBlock,
-      buildBlogContentBriefPromptBlock(contentBrief),
+      buildBlogContentBriefV3PromptBlock(contentBriefV3),
       editorialVariationBlock,
       buildInfoWriterPromptBlock(infoGuideBrief),
       researchPromptBlock,
       trendBlock,
       serpBlock,
-      serpGapBlock,
     ],
     depthBlock: buildInformationalDepthBlock(tier),
     qualityBlock: buildInformationalQualityBlock({
@@ -4510,73 +4801,136 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     }),
   });
 
-  const raw = await generatePublisherBlogText(prompt, {
-    temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7,
+  const priorAttempt = await readLatestBlogGenerationAttemptV4(item.id);
+  const latestModelCallAttemptNumber = await readLatestBlogModelCallAttemptNumberV4(
+    item.id,
+    priorAttempt?.attemptNumber ?? 0,
+  );
+  const requestedStage = String(
+    item.meta?.ai_orchestration_v4?.next_stage
+    || (item.meta?.ai_orchestration_v4?.route === 'reresearch'
+      ? latestModelCallAttemptNumber >= 2 ? 'rewrite_pro_max' : 'rewrite_pro_high'
+      : 'draft_flash'),
+  ) as BlogDeepSeekStage;
+  const generationStage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
+    ? requestedStage
+    : 'draft_flash';
+  const generationAttemptNumber = nextBlogModelCallAttemptNumberV4(
+    latestModelCallAttemptNumber,
+  );
+  const rewriteEvidence = Array.isArray(item.meta?.ai_orchestration_v4?.failure_evidence)
+    ? item.meta.ai_orchestration_v4.failure_evidence.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  const researchEvidenceByKey = new Map(
+    researchReadiness.bundle.evidence.map((evidence) => [evidence.evidenceKey, evidence]),
+  );
+  const researchSourceByKey = new Map(
+    researchReadiness.bundle.sources.map((source) => [source.sourceKey, source]),
+  );
+  const rewriteClaimPacketAudit = researchReadiness.bundle.claims.map((claim) => {
+    const linkedEvidence = claim.evidenceKeys
+      .map((key) => researchEvidenceByKey.get(key))
+      .filter((evidence): evidence is BlogInformationResearchBundle['evidence'][number] => Boolean(evidence));
+    const literalSupport = inspectBlogInformationClaimLiteralSupport({
+      claimText: claim.claimText,
+      evidence: linkedEvidence,
+    });
+    const sourceUrls = [...new Set(linkedEvidence.flatMap((evidence) => {
+      const sourceUrl = researchSourceByKey.get(evidence.sourceKey)?.sourceUrl;
+      return sourceUrl ? [sourceUrl] : [];
+    }))];
+    const typeCompatibility = inspectBlogInformationClaimTypeCompatibility(
+      claim.claimText,
+      claim.claimType,
+    );
+    return { claim, literalSupport, sourceUrls, typeCompatibility };
   });
-  const writerOutput = parseBlogInformationWriterOutput(raw);
+  const rewriteApprovedClaims = selectDecisionRelevantRewriteClaimsV4({
+    primaryQuery: contentBriefV3.primaryQuery,
+    primaryDecision: contentBriefV3.primaryDecision,
+    approvedClaims: rewriteClaimPacketAudit
+    .filter((entry) =>
+      entry.literalSupport.passed
+      && entry.typeCompatibility.passed
+      && entry.sourceUrls.length > 0)
+    .map((entry) => ({
+      claimText: entry.claim.claimText,
+      claimType: entry.claim.claimType,
+      riskLevel: entry.claim.riskLevel,
+      sourceUrls: entry.sourceUrls,
+    })),
+  });
+  if (generationStage !== 'draft_flash' && rewriteApprovedClaims.length === 0) {
+    throw new Error('blog_rewrite_approved_claims_missing');
+  }
+  const generationPrompt = generationStage === 'draft_flash'
+    ? prompt
+    : buildDeepSeekRewritePromptV4({
+        originalDraft: priorAttempt?.output.markdown || '(이전 초안 원문을 불러오지 못했습니다. 동일 연구·claim 범위에서만 새로 작성하세요.)',
+        failureEvidence: rewriteEvidence,
+        researchFingerprint: priorAttempt?.researchFingerprint || 'persisted-research-packet',
+        claimFingerprint: priorAttempt?.claimFingerprint || 'persisted-claim-ledger',
+        evidencePacket: {
+          fixedTitle: contentBriefV3.metadata.title,
+          primaryQuery: contentBriefV3.primaryQuery,
+          primaryDecision: contentBriefV3.primaryDecision,
+          archetype: contentBriefV3.archetype,
+          // These remain purposes, not factual instructions. The rewrite
+          // contract explicitly permits omission when the approved packet
+          // cannot support a purpose.
+          sectionPurposes: contentBriefV3.sectionPurposes.map((purpose) => purpose.purpose),
+          approvedClaims: rewriteApprovedClaims,
+          officialSourceUrls: [...new Set(researchReadiness.bundle.sources
+            .map((source) => source.sourceUrl)
+            .filter((url): url is string => Boolean(url)))].slice(0, 6),
+          internalLink: `${resolveBlogCanonicalOrigin()}/blog/destination/${encodeURIComponent(item.destination || '')}`,
+          includeFaq: contentBriefV3.includeFaq,
+          includeChecklist: contentBriefV3.includeChecklist,
+        },
+      });
+  const generation = await generatePublisherBlogText(generationPrompt, generationStage === 'draft_flash'
+    ? {
+        model: BLOG_DEEPSEEK_MODELS.draft,
+        deepseekThinking: 'disabled',
+        temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7,
+      }
+    : {
+        model: BLOG_DEEPSEEK_MODELS.rewrite,
+        temperature: 0.2,
+      }, {
+        queueId: item.id,
+        attemptNumber: generationAttemptNumber,
+        stage: generationStage,
+      });
+  const writerOutput = parseBlogInformationWriterOutput(generation.text);
   let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
+  blog_html = normalizeBlogWriterHeadingV4(blog_html, contentBriefV3.metadata.title);
   const writerOutputBoundary = boundBlogWriterOutput(blog_html);
   blog_html = writerOutputBoundary.markdown;
+  const competitorPhraseMatches = serpResearchV3
+    ? findCompetitorPhraseMatchesV3(blog_html, serpResearchV3.results)
+    : [];
+  if (competitorPhraseMatches.length > 0) {
+    throw new Error(`competitor_copy_risk:${competitorPhraseMatches.map((match) => match.url).slice(0, 3).join(',')}`);
+  }
   console.log(
     `[blog-publisher] writer output boundary: ${writerOutputBoundary.originalCharacters}`
     + ` -> ${writerOutputBoundary.finalCharacters}, truncated=${writerOutputBoundary.truncated}`,
   );
-  if (!privateRegeneration) {
-    blog_html = await maybeApplyChainOfDensity(blog_html);
-  }
-  const researchStructureRepair = repairBlogGenerationResearchStructure({
-    markdown: blog_html,
-    intent: contentBrief.intentType,
-    readiness: researchReadiness,
-    plannedTitle: contentBrief.title,
-    primaryKeyword: contentBrief.primaryKeyword,
-    editorialVariation: item.meta?.editorial_variation ?? null,
-    forceDeterministicEvidenceArticle:
-      // Entry/visa content is high-risk: a syntactically valid writer ledger
-      // is not enough when final prose can omit one of its claims. Rebuild it
-      // from the reviewed evidence bundle so every claim remains traceable.
-      contentBrief.intentType === 'entry_requirements'
-        && researchReadiness.passed
-        && Boolean(researchReadiness.bundle),
-  });
-  if (researchStructureRepair.changed) {
-    blog_html = researchStructureRepair.markdown;
-    const approvedClaims = researchStructureRepair.approvedClaims.map((claim) => ({
-      claimFingerprint: claim.claimFingerprint,
-      claimText: claim.claimText,
-      claimType: claim.claimType,
-      riskLevel: claim.riskLevel,
-    }));
-    const replacedWithDeterministicEvidenceArticle = researchStructureRepair.changes.some((change) =>
-      [
-        'monthly_weather_deterministic_evidence_article',
-        'local_transport_deterministic_evidence_article',
-        'entry_requirements_deterministic_evidence_article',
-      ].includes(change));
-    writerOutput.claimLedger = replacedWithDeterministicEvidenceArticle
-      ? approvedClaims
-      : [...new Map([
-          ...writerOutput.claimLedger,
-          ...approvedClaims,
-        ].map((claim) => [claim.claimFingerprint, claim])).values()];
-    if (replacedWithDeterministicEvidenceArticle) writerOutput.ledgerIssues = [];
-  }
+  // V3 does not rewrite model output into a deterministic evidence template.
+  // Missing or conflicting claims are handled by the claim gate below.
 
   // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시
   const slug = queueSlug;
 
-  // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
-  const seo_title = serpData
-    ? buildOptimalTitle(effectiveTopic, serpData, tier)
-    : effectiveTopic.substring(0, 55);
-  const seo_description = buildBlogInformationalSeoDescription({
-    title: effectiveTopic,
-    intent: contentBrief.intentType,
-  });
+  // Title/H1/OG are fixed by the V3 brief. SERP frequency never adds a power
+  // word, year, or visitor-specific variant at this boundary.
+  const seo_title = contentBriefV3.metadata.title.trim().slice(0, 80);
+  const seo_description = contentBriefV3.metadata.description;
 
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
@@ -4585,8 +4939,8 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     try {
       og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,
-        primaryKeyword: contentBrief.primaryKeyword,
-        sectionTitle: contentBrief.title,
+        primaryKeyword: contentBriefV3.primaryQuery,
+        sectionTitle: contentBriefV3.primaryDecision,
       });
     } catch { /* silent — og_image_url은 null로 유지 */ }
   }
@@ -4596,6 +4950,13 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     prompt_source: promptSource,
     prompt_manifest: promptManifest,
     writer: 'info_writer',
+    ai_orchestration_v4: {
+      stage: generationStage,
+      attempt: generationAttemptNumber,
+      model: generation.receipt.model,
+      thinking: generation.receipt.thinkingMode ?? 'disabled',
+      receipt: generation.receipt,
+    },
     editorial_voice: BLOG_EDITORIAL_VOICE,
     info_guide_brief: infoGuideBrief,
     content_brief: {
@@ -4622,6 +4983,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       claim_ledger_policy: contentBrief.claimLedgerPolicy,
       editorial_variation: item.meta?.editorial_variation ?? null,
     },
+    content_brief_v3: contentBriefV3,
     writer_claim_ledger: {
       version: 'v1',
       claims: writerOutput.claimLedger,
@@ -4633,6 +4995,33 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       final_characters: writerOutputBoundary.finalCharacters,
       truncated: writerOutputBoundary.truncated,
     },
+    competitor_copy_risk_v3: {
+      minimum_consecutive_tokens: 12,
+      match_count: competitorPhraseMatches.length,
+      passed: competitorPhraseMatches.length === 0,
+    },
+    rewrite_claim_packet_v4: {
+      approved_count: rewriteApprovedClaims.length,
+      excluded: rewriteClaimPacketAudit.flatMap<Record<string, unknown>>((entry) => {
+        if (!entry.literalSupport.passed) {
+          return [{
+            claim_fingerprint: entry.claim.claimFingerprint,
+            reason: 'literal_support_missing',
+            missing_numeric_tokens: entry.literalSupport.missingNumericTokens,
+          }];
+        }
+        if (!entry.typeCompatibility.passed) {
+          return [{
+            claim_fingerprint: entry.claim.claimFingerprint,
+            reason: 'claim_type_mismatch',
+            declared_type: entry.typeCompatibility.declaredType,
+            deterministic_type: entry.typeCompatibility.deterministicType,
+            candidate_kind: entry.typeCompatibility.candidateKind,
+          }];
+        }
+        return [];
+      }),
+    },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
     ...(item.meta?.auto_research
       && typeof item.meta.auto_research === 'object'
@@ -4640,24 +5029,36 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
       ? { auto_research: item.meta.auto_research }
       : {}),
     information_research_structure_repair: {
-      applied: researchStructureRepair.changed,
-      changes: researchStructureRepair.changes,
+      applied: false,
+      changes: [],
+      policy: 'v3_claim_gate_only_no_deterministic_prose_rewrite',
     },
     cover_image: {
       provider: isGeneratedBlogImageUrl(og_image_url) ? 'ai_generated' : (og_image_url ? 'pexels' : 'none'),
       disclosure: isGeneratedBlogImageUrl(og_image_url) ? 'AI 생성 참고 이미지' : null,
     },
-    serp_analyzed: Boolean(serpData),
+    serp_analyzed: Boolean(serpResearchV3?.serpFeatures.editorialResultCount),
     freshness_risk: freshnessRisk,
-    ...(serpData ? {
+    ...(serpResearchV3 ? {
       serp_analysis: {
-        keyword: serpData.keyword,
-        source: serpData.source,
-        signal_source: serpData.signal_source ?? 'naver_serp',
-        fetched_at: serpData.fetched_at,
-        cached: serpData.cached,
-        recommended_title_patterns: serpData.recommended_title_patterns,
-        recommended_entities_to_include: serpData.recommended_entities_to_include,
+        keyword: serpResearchV3.queryCluster.primaryQuery,
+        source: 'naver_first',
+        signal_source: serpResearchV3.mode,
+        fetched_at: serpResearchV3.researchedAt,
+        cached: serpResearchV3.mode === 'cached',
+        intent: serpResearchV3.intent,
+        structure_consensus: serpResearchV3.consensus,
+        content_gaps: serpResearchV3.contentGaps,
+      },
+      serp_research_packet_v3: {
+        ...serpResearchV3,
+        results: serpResearchV3.results.map((result) => ({
+          sampleRank: result.sampleRank,
+          providerRank: result.providerRank,
+          source: result.source,
+          url: result.url,
+          domain: result.domain,
+        })),
       },
     } : {}),
   };

@@ -144,9 +144,26 @@ function shouldCheckDestinationAngleDuplicate(input: CheckInput): boolean {
   return true;
 }
 
-export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
+export function checkLength(
+  blog_html: string,
+  blog_type: 'product' | 'info' = 'product',
+  flexibleInformationalBrief = false,
+): GateResult {
   const text = stripMarkup(blog_html);
   const length = text.length;
+  if (blog_type === 'info' && flexibleInformationalBrief) {
+    return {
+      gate: 'length',
+      passed: length > 0,
+      reason: length > 0 ? undefined : '본문 없음',
+      evidence: {
+        length,
+        min: null,
+        type: blog_type,
+        policy: 'v3_intent_and_evidence_no_fixed_length',
+      },
+    };
+  }
   const minLen = THRESHOLDS[blog_type].minLen;
   return {
     gate: 'length',
@@ -216,11 +233,11 @@ export function checkCliche(blog_html: string, blog_type: 'product' | 'info' = '
 }
 
 /**
- * Hook 게이트 — 첫 H1 다음 200자 안에 구체적 트리거 1개 이상.
- * 트리거: 숫자 1개 이상 + (질문 마크 OR 가격 표현 OR 시간 표현 OR 비교 표현)
- * Why: AI가 쓴 평탄한 도입부 ("...꿈꾸시나요?") 차단. 검색자 3초 이탈 방어.
+ * Hook 게이트 — 첫 H1 다음 200자 안에 독자가 바로 쓸 수 있는 답 또는 구체적 트리거가 있는지 확인한다.
+ * V3 정보성 글은 숫자·질문을 억지로 넣지 않아도, 선택·묶음·분리 기준을 답변 우선으로 제시하면 통과한다.
+ * Legacy 글은 기존 숫자/질문/가격/시간/비교 트리거 정책을 유지한다.
  */
-export function checkHook(blog_html: string): GateResult {
+export function checkHook(blog_html: string, flexibleInformationalBrief = false): GateResult {
   // 마크다운 원문에서 H1 위치를 명시적으로 찾는다 (stripMarkup 후엔 # 마커가 사라져 H1 식별 불가).
   const rawLines = blog_html.split('\n');
   const h1Idx = rawLines.findIndex(l => /^#\s/.test(l.trim()));
@@ -251,6 +268,21 @@ export function checkHook(blog_html: string): GateResult {
   const hasPriceHook = /(만원|원|만\s|절약|저렴|차이|할인|특가)/.test(intro);
   const hasTimeHook = /(\d+분|\d+시간|즉시|당일|바로)/.test(intro);
   const hasCompare = /(시중가|단품|직접|비교|보다|나눠|분리|따로|포함\/불포함)/.test(intro);
+  const hasDecisionAnswer = /(?:고르|선택|결정).*(?:확인|비교|우선순위|일정|조건|체력|시간)|(?:확인|비교).*(?:고르|선택|결정)/.test(intro);
+  const hasDecisionGrouping = /(?:묶|함께|같은\s*(?:날|일정)).*(?:따로|별도|나누|분리|비교)|(?:따로|별도|나누|분리).*(?:묶|함께|비교)/.test(intro);
+
+  if (flexibleInformationalBrief && (hasDecisionAnswer || hasDecisionGrouping)) {
+    return {
+      gate: 'hook',
+      passed: true,
+      evidence: {
+        intro_preview: intro.slice(0, 80),
+        hasDecisionAnswer,
+        hasDecisionGrouping,
+        policy: 'v3_answer_first_without_forced_numeric_hook',
+      },
+    };
+  }
 
   const triggers = [hasQuestion, hasPriceHook, hasTimeHook, hasCompare].filter(Boolean).length;
   // 숫자 + 트리거 1개 이상 OR 트리거 2개 이상
@@ -264,7 +296,8 @@ export function checkHook(blog_html: string): GateResult {
       : '도입부 200자에 구체 갈고리(숫자·질문·가격·시간·비교 트리거) 부족 — AI 평서문 패턴 의심',
     evidence: {
       intro_preview: intro.slice(0, 80),
-      hasNumber, hasQuestion, hasPriceHook, hasTimeHook, hasCompare, triggers,
+      hasNumber, hasQuestion, hasPriceHook, hasTimeHook, hasCompare,
+      hasDecisionAnswer, hasDecisionGrouping, triggers,
     },
   };
 }
@@ -523,7 +556,7 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
 }
 
 /**
- * AI-readable Structure 게이트 — Cue / AI Overviews / SGE 인용 최적화.
+ * Extractable content structure gate.
  *
  * 검증 5축 (criteria, 3개 이상 충족 시 PASS):
  *   1. H2 밀도: info=5~9개, product=3~6개 (인용 가능한 의미 단위)
@@ -532,18 +565,22 @@ export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
  *   4. 질문형 H2: "?" 로 끝나는 H2 ≥1 (검색쿼리 ↔ 헤딩 매칭)
  *   5. 추출 가능 자료: 숫자 리스트 ≥1 OR 테이블 ≥1 OR bullet list ≥2
  *
- * Why: 네이버 Cue / Google AI Overviews 는 짧은 정의 + Q&A + 리스트를 우선 발췌.
+ * This checks reader-scannable structure only. It does not claim or predict
+ * search ranking, rich-result eligibility, or AI-answer inclusion.
  */
 export function checkAiReadability(
   blog_html: string,
   blog_type: 'product' | 'info' = 'product',
+  flexibleInformationalBrief = false,
 ): GateResult {
   const lines = blog_html.split('\n');
 
   // 1) H2 밀도
   const h2Lines = lines.filter(l => /^##\s+\S/.test(l.trim()));
   const h2Count = h2Lines.length;
-  const h2Range = blog_type === 'info' ? { min: 5, max: 9 } : { min: 3, max: 6 };
+  const h2Range = blog_type === 'info'
+    ? (flexibleInformationalBrief ? { min: 2, max: 9 } : { min: 5, max: 9 })
+    : { min: 3, max: 6 };
   const h2Ok = h2Count >= h2Range.min && h2Count <= h2Range.max;
 
   // 2) 정의 문단 — H1 다음 200자
@@ -572,15 +609,28 @@ export function checkAiReadability(
   const tableRow = (blog_html.match(/(^|\n)\s*\|.+\|/g) || []).length;
   // table 은 2행 이상이어야 의미. bullet 은 2개 이상.
   const extractableOk = numberedList >= 1 || tableRow >= 2 || bulletList >= 2;
+  const proseParagraphs = blog_html
+    .split(/\n{2,}/)
+    .map((paragraph) => stripMarkup(paragraph).replace(/\s+/g, ' ').trim())
+    .filter((paragraph) => paragraph && !/^#{1,6}\s/.test(paragraph));
+  const sectionScanabilityOk = h2Count >= 2
+    && proseParagraphs.length >= 2
+    && proseParagraphs.every((paragraph) => paragraph.length < 520);
 
-  const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)/.test(intro);
-  const criteria = [
-    { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
-    { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
-    { key: 'faq_block', ok: faqOk, qPatterns, qHeadings, hasFaqHeading },
-    { key: 'question_h2', ok: questionH2Ok, count: questionH2 },
-    { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
-  ];
+  const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)|(?:일정|동선|순서|후보).*(?:먼저|우선).*(?:정|나누|묶|분리|비교|확인)하세요/.test(intro);
+  const criteria = flexibleInformationalBrief
+    ? [
+        { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
+        { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
+        { key: 'section_scanability', ok: sectionScanabilityOk, h2Count, paragraphCount: proseParagraphs.length },
+      ]
+    : [
+        { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
+        { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
+        { key: 'faq_block', ok: faqOk, qPatterns, qHeadings, hasFaqHeading },
+        { key: 'question_h2', ok: questionH2Ok, count: questionH2 },
+        { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
+      ];
   const okCount = criteria.filter(c => c.ok).length;
   const passed = okCount >= 3;
 
@@ -589,7 +639,7 @@ export function checkAiReadability(
     passed,
     reason: passed
       ? undefined
-      : `AI 인용 최적화 ${okCount}/5 — 통과 기준 3 미달 (실패: ${criteria.filter(c => !c.ok).map(c => c.key).join(', ')})`,
+      : `AI 가독성 ${okCount}/${criteria.length} — 통과 기준 3 미달 (실패: ${criteria.filter(c => !c.ok).map(c => c.key).join(', ')})`,
     evidence: { score: okCount, criteria },
   };
 }
@@ -760,7 +810,8 @@ export function checkIntentQuality(input: CheckInput): GateResult {
   const legacyPassed = issues.length === 0 || report.passed || (criticalCount === 0 && score >= 90);
   const shouldInspectInformationContract = !input.product_id
     && input.blog_type !== 'product'
-    && input.content_type !== 'pillar';
+    && input.content_type !== 'pillar'
+    && !input.generation_meta?.content_brief_v3;
   const informationContract = shouldInspectInformationContract
     ? buildBlogInformationContract({
         intentType: getPlannedInformationIntent(input.generation_meta),
@@ -1123,11 +1174,29 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
     // fallback: 기본 THRESHOLDS 상수 사용
   }
 
-  gates.push(checkLength(input.blog_html, blogType));
+  gates.push(checkLength(
+    input.blog_html,
+    blogType,
+    Boolean(input.generation_meta?.content_brief_v3),
+  ));
   gates.push(checkCliche(input.blog_html, blogType));
   gates.push(await checkDuplicate(input));
-  gates.push(checkKeywordDensity(input.blog_html, input.primary_keyword, blogType));
-  gates.push(checkHook(input.blog_html));
+  const keywordDensity = checkKeywordDensity(input.blog_html, input.primary_keyword, blogType);
+  gates.push(
+    input.generation_meta?.content_brief_v3 && !keywordDensity.passed
+      ? {
+          ...keywordDensity,
+          passed: true,
+          reason: undefined,
+          evidence: {
+            ...(keywordDensity.evidence ?? {}),
+            advisory: true,
+            policy: 'v3_natural_query_use_without_density_target',
+          },
+        }
+      : keywordDensity,
+  );
+  gates.push(checkHook(input.blog_html, Boolean(input.generation_meta?.content_brief_v3)));
   gates.push(checkCta(input.blog_html));
   gates.push(checkCtaDestinationIntegrity(input));
   gates.push(checkLinks(input.blog_html, baseUrl));
@@ -1136,8 +1205,12 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
     ? (adaptive?.infoMinReadability ?? 70)
     : (adaptive?.productMinReadability ?? 60);
   gates.push(checkReadability(input.blog_html, readThreshold));
-  // AI 인용 최적화 (Cue/AIO/SGE) — 9번째 게이트
-  gates.push(checkAiReadability(input.blog_html, blogType));
+  // 읽기 쉽고 추출 가능한 구조 — 9번째 게이트
+  gates.push(checkAiReadability(
+    input.blog_html,
+    blogType,
+    Boolean(input.generation_meta?.content_brief_v3),
+  ));
   // 실제 상세 페이지 렌더 기준 검증 — 이미지/링크/헤딩 마크다운 잔여물 차단
   gates.push(await checkRenderIntegrity(input.blog_html));
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단

@@ -135,8 +135,74 @@ export interface BlogInformationResearchBundleValidation {
   issues: string[];
 }
 
+export interface BlogInformationClaimLiteralSupportReport {
+  passed: boolean;
+  numericTokens: string[];
+  missingNumericTokens: string[];
+}
+
 function clean(value?: string | null): string {
   return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+const ENGLISH_NUMBER_WORDS: Array<[RegExp, string]> = [
+  [/\bzero\b/gi, '0'],
+  [/\bone\b/gi, '1'],
+  [/\btwo\b/gi, '2'],
+  [/\bthree\b/gi, '3'],
+  [/\bfour\b/gi, '4'],
+  [/\bfive\b/gi, '5'],
+  [/\bsix\b/gi, '6'],
+  [/\bseven\b/gi, '7'],
+  [/\beight\b/gi, '8'],
+  [/\bnine\b/gi, '9'],
+  [/\bten\b/gi, '10'],
+  [/\beleven\b/gi, '11'],
+  [/\btwelve\b/gi, '12'],
+];
+
+function normalizeLiteralEvidence(value: string): string {
+  const withoutAuditScope = value
+    .split(/\[(?:검증\s*범위|verification\s*scope)\s*:/i, 1)[0]
+    .normalize('NFKC')
+    .toLowerCase();
+  return ENGLISH_NUMBER_WORDS.reduce(
+    (normalized, [pattern, replacement]) => normalized.replace(pattern, replacement),
+    withoutAuditScope,
+  );
+}
+
+function extractLiteralNumericTokens(value: string): string[] {
+  const withoutDocumentIdentifiers = normalizeLiteralEvidence(value)
+    .replace(/\b(form|route|flight|model|version|iso)\s*[-:#]?\s*\d+[a-z]?\b/gi, '$1');
+  return [...new Set(
+    (withoutDocumentIdentifiers.match(/\d+(?:[.,]\d+)*/g) ?? [])
+      .map((token) => token.replace(/,/g, '').replace(/^0+(?=\d)/, '')),
+  )];
+}
+
+/**
+ * A structured value can validate only one part of a compound model claim.
+ * Require every literal number in the claim to occur in its linked source
+ * excerpt so an otherwise valid value cannot smuggle in a second schedule,
+ * price, distance, date, or quantity.
+ */
+export function inspectBlogInformationClaimLiteralSupport(input: {
+  claimText: string;
+  evidence: Array<Pick<BlogInformationEvidenceInput, 'excerpt'>>;
+}): BlogInformationClaimLiteralSupportReport {
+  const numericTokens = extractLiteralNumericTokens(input.claimText);
+  if (numericTokens.length === 0) {
+    return { passed: true, numericTokens, missingNumericTokens: [] };
+  }
+  const evidenceTokens = new Set(input.evidence.flatMap((item) =>
+    extractLiteralNumericTokens(item.excerpt ?? '')));
+  const missingNumericTokens = numericTokens.filter((token) => !evidenceTokens.has(token));
+  return {
+    passed: missingNumericTokens.length === 0,
+    numericTokens,
+    missingNumericTokens,
+  };
 }
 
 export function extractMonthlyClimateCompositeValue(
@@ -562,6 +628,13 @@ export function validateBlogInformationResearchBundle(
     const linkedEvidence = claim.evidenceKeys
       .map((evidenceKey) => evidenceByKey.get(clean(evidenceKey)))
       .filter((evidence): evidence is BlogInformationEvidenceInput => Boolean(evidence));
+    const literalSupport = inspectBlogInformationClaimLiteralSupport({
+      claimText: claim.claimText,
+      evidence: linkedEvidence,
+    });
+    for (const token of literalSupport.missingNumericTokens) {
+      issues.push(`claim:unsupported_numeric_token:${token}:${fingerprint || 'unknown'}`);
+    }
     const setSupport = blogInformationEvidenceSetSupportsClaim({
       evidence: linkedEvidence,
       claimType: claim.claimType,

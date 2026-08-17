@@ -46,6 +46,13 @@ function queryResult(table: string) {
         published_at: '2026-06-01T00:00:00.000Z',
         updated_at: '2026-06-02T00:00:00.000Z',
       },
+      {
+        slug: 'travel-emergency-medicine-summer-checklist',
+        destination: null,
+        angle_type: 'value',
+        published_at: '2026-06-13T00:00:00.000Z',
+        updated_at: '2026-08-13T00:00:00.000Z',
+      },
     ],
     public_package_snapshots: [
       {
@@ -136,6 +143,7 @@ describe('sitemap', () => {
     expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
     expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/blog/travel-emergency-medicine-summer-checklist`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).not.toContain('travel_packages');
     expect(queriedTables).toContain('product_registration_v5_publication_pointers');

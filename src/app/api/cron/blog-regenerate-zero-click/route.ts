@@ -27,14 +27,18 @@ import {
   PUBLIC_BLOG_CUSTOMER_PUBLISH_MIN_SCORE,
 } from '@/lib/blog-publish-quality';
 import { isBlogSlugRedirectSource } from '@/lib/blog-slug-redirects';
+import {
+  evaluateBlogSearchRefreshOpportunityV4,
+  type BlogSearchRefreshObservationV4,
+} from '@/lib/blog-search-refresh-opportunity-v4';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-const WINDOW_DAYS = 14;
-const COOLDOWN_DAYS = 7;
-const PERFORMANCE_MATURITY_DAYS = 14;
+const WINDOW_DAYS = 28;
+const COOLDOWN_DAYS = 28;
+const PERFORMANCE_MATURITY_DAYS = 28;
 const MAX_BATCH = 2;
 const CANDIDATE_POOL_LIMIT = 500;
 const PUBLIC_QUALITY_AUDIT_CONCURRENCY = 6;
@@ -43,6 +47,7 @@ interface RankRow {
   slug: string;
   impressions: number | null;
   clicks: number | null;
+  position: number | null;
 }
 
 interface PublishedPost {
@@ -60,7 +65,7 @@ interface PublishedPost {
 
 interface RegenResult {
   slug: string;
-  status: 'queued_upgrade' | 'cooldown' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review' | 'research_coverage_missing' | 'same_run_representative_conflict';
+  status: 'queued_upgrade' | 'cooldown' | 'race_skipped' | 'log_failed' | 'queue_failed' | 'high_risk_review' | 'research_coverage_missing' | 'same_run_representative_conflict' | 'demand_signal_missing';
   reason?: string;
   queueId?: string;
 }
@@ -134,24 +139,23 @@ async function runRegenerator(request: NextRequest) {
   try {
     const { data: rankRows, error: rankError } = await supabaseAdmin
       .from('rank_history')
-      .select('slug, impressions, clicks')
+      .select('slug, clicks, impressions, position')
       .gte('date', since)
       .in('source', ['gsc', 'gsc-page']);
     if (rankError) errors.push(`rank_history lookup failed: ${rankError.message}`);
 
     const performance = new Map<string, { impressions: number; clicks: number }>();
+    const observationsBySlug = new Map<string, BlogSearchRefreshObservationV4[]>();
     for (const row of (rankRows ?? []) as RankRow[]) {
       if (!row.slug) continue;
       const current = performance.get(row.slug) ?? { impressions: 0, clicks: 0 };
       current.impressions += row.impressions ?? 0;
       current.clicks += row.clicks ?? 0;
       performance.set(row.slug, current);
+      const observations = observationsBySlug.get(row.slug) ?? [];
+      observations.push(row);
+      observationsBySlug.set(row.slug, observations);
     }
-    const zeroClickSlugs = [...performance.entries()]
-      .filter(([, value]) => value.impressions === 0 && value.clicks === 0)
-      .map(([slug]) => slug);
-    const zeroClickSet = new Set(zeroClickSlugs);
-
     const { data: cooldownRows, error: cooldownError } = await supabaseAdmin
       .from('blog_regenerate_log')
       .select('slug')
@@ -177,6 +181,19 @@ async function runRegenerator(request: NextRequest) {
     const publishedPosts = allPublishedPosts.filter(post =>
       !isBlogSlugRedirectSource(post.slug),
     );
+    // GSC normally omits true-zero pages. Treat a mature page that is absent
+    // from an otherwise successful 28-day collection as zero-observation, but
+    // never infer zero when the collector query failed or returned no rows.
+    const searchObservationAvailable = !rankError && (rankRows?.length ?? 0) > 0;
+    const zeroClickSlugs = searchObservationAvailable
+      ? publishedPosts
+          .filter((post) => {
+            const metric = performance.get(post.slug);
+            return !metric || (metric.impressions === 0 && metric.clicks === 0);
+          })
+          .map((post) => post.slug)
+      : [];
+    const zeroClickSet = new Set(zeroClickSlugs);
     const publicQualityEntries = await mapWithConcurrency(
       publishedPosts,
       PUBLIC_QUALITY_AUDIT_CONCURRENCY,
@@ -303,6 +320,18 @@ async function runRegenerator(request: NextRequest) {
     for (const post of prioritizedPosts) {
       if (queued >= MAX_BATCH) break;
       const slug = post.slug;
+      const searchOpportunity = evaluateBlogSearchRefreshOpportunityV4(
+        observationsBySlug.get(slug) ?? [],
+      );
+      if (!searchOpportunity.eligible) {
+        rejectionCounts.demand_signal_missing = (rejectionCounts.demand_signal_missing ?? 0) + 1;
+        results.push({
+          slug,
+          status: 'demand_signal_missing',
+          reason: searchOpportunity.reason,
+        });
+        continue;
+      }
 
       if (isHighRiskInformationalTopic({
         title: post.seo_title,
@@ -380,9 +409,7 @@ async function runRegenerator(request: NextRequest) {
       const publicQuality = publicQualityByPostId.get(post.id) ?? null;
       const selectionSource = publicQualityGapSet.has(post.id)
         ? 'public_customer_quality'
-        : matureZeroClickSet.has(slug)
-          ? 'zero_click'
-          : 'quality_gap';
+        : 'search_refresh';
       const createdDayUtc = Math.floor(Date.now() / 86_400_000);
       const { data: lockRows, error: lockError } = await supabaseAdmin
         .from('blog_regenerate_log')
@@ -390,7 +417,7 @@ async function runRegenerator(request: NextRequest) {
           post_id: post.id,
           slug,
           old_html_hash: sha256(post.blog_html ?? ''),
-          reason: selectionSource === 'zero_click' ? 'zero_click' : 'quality_gap',
+          reason: selectionSource === 'search_refresh' ? 'search_refresh' : 'quality_gap',
           gate_passed: false,
           gate_summary: publicQuality
             ? `queued_research_upgrade:public_quality=${publicQuality.score}:${
@@ -420,9 +447,7 @@ async function runRegenerator(request: NextRequest) {
           source: 'user_seed',
           priority: selectionSource === 'public_customer_quality'
             ? 90
-            : selectionSource === 'zero_click'
-              ? 85
-              : 70,
+            : 85,
           primary_keyword: queueTopic,
           destination: decision.researchDestination,
           angle_type: post.angle_type || 'value',
@@ -432,6 +457,11 @@ async function runRegenerator(request: NextRequest) {
           meta: {
             writer_type: 'info_writer',
             expected_slug: post.slug,
+            gsc_signal: true,
+            gsc_impressions: searchOpportunity.impressions,
+            gsc_clicks: searchOpportunity.clicks,
+            gsc_average_position: searchOpportunity.averagePosition,
+            demand_source_reference: `rank_history:gsc:28d:${post.slug}`,
             ...(decision.microAngle ? { micro_angle: decision.microAngle } : {}),
             quality_upgrade: {
               version: 'published-research-upgrade-v2',
@@ -439,9 +469,7 @@ async function runRegenerator(request: NextRequest) {
               representative_key: decision.representativeKey,
               reason: selectionSource === 'public_customer_quality'
                 ? 'public_customer_quality_upgrade'
-                : selectionSource === 'zero_click'
-                  ? 'zero_click_performance_upgrade'
-                  : 'missing_verified_information_research',
+                : 'gsc_position_4_20_material_refresh',
               intent: decision.brief.intentType,
               selection_source: selectionSource,
               public_customer_quality: publicQuality,

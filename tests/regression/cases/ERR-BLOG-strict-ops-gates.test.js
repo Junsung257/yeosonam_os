@@ -1,6 +1,7 @@
 /**
- * @case ERR-BLOG-strict-ops-gates (2026-07-01)
- * @summary Blog ops gates must not hide SEO warnings or daily publish misses.
+ * @case ERR-BLOG-strict-ops-gates (2026-08-13)
+ * @summary Operational checks use V3 caps, preserve concrete warning evidence,
+ * and distinguish a database outage from missing public content.
  */
 
 const test = require('node:test');
@@ -11,117 +12,82 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
-test('ERR-BLOG-strict-ops-gates: strict SEO audit fails on warning-only duplicate metadata', () => {
+test('ERR-BLOG-strict-ops-gates: strict SEO audit fails warning-only duplicate metadata', () => {
   const source = read('scripts', 'audit-blog-seo-quality.mjs');
 
   assert.match(source, /const strictMode = hasFlag\('--strict'\)/);
   assert.match(source, /const strictWarnings = strictMode \|\| hasFlag\('--strict-warnings'\)/);
   assert.match(source, /duplicate_meta_description/);
-  assert.match(source, /row\.failed \|\| \(strictWarnings && row\.warnings\?\.length\)/);
+  assert.match(source, /strictWarnings && row\.warnings\?\.length/);
 });
 
-test('ERR-BLOG-strict-ops-gates: product consult posts do not inherit info guide length warnings', () => {
-  const source = read('scripts', 'audit-blog-seo-quality.mjs');
+test('ERR-BLOG-strict-ops-gates: public SEO checks fail non-public links', () => {
+  const audit = read('scripts', 'audit-blog-seo-quality.mjs');
+  const scorer = read('src', 'lib', 'blog-seo-scorer.ts');
 
-  assert.match(source, /function isProductConsultBlog\(row\)/);
-  assert.match(source, /row\.hasProductJsonLd/);
-  assert.match(source, /PRODUCT_BLOG_TITLE_SIGNALS/);
-  assert.match(source, /below_product_blog_ideal_length/);
-  assert.match(source, /weak_product_decision_help/);
-  assert.match(source, /else if \(row\.articleTextLength < 2500\)/);
+  assert.match(audit, /NON_PUBLIC_LINK_HOSTS/);
+  assert.match(audit, /non_public_link/);
+  assert.match(scorer, /public_link_integrity/);
+  assert.match(scorer, /NON_PUBLIC_LINK_HOSTS/);
 });
 
-test('ERR-BLOG-strict-ops-gates: public SEO checks fail localhost links', () => {
-  const auditSource = read('scripts', 'audit-blog-seo-quality.mjs');
-  const scorerSource = read('src', 'lib', 'blog-seo-scorer.ts');
-
-  assert.match(auditSource, /NON_PUBLIC_LINK_HOSTS/);
-  assert.match(auditSource, /non_public_link/);
-  assert.match(scorerSource, /public_link_integrity/);
-  assert.match(scorerSource, /NON_PUBLIC_LINK_HOSTS/);
-});
-
-test('ERR-BLOG-strict-ops-gates: daily strict search audit forwards SEO warning strictness', () => {
+test('ERR-BLOG-strict-ops-gates: daily audit keeps bounded but realistic runtime', () => {
   const source = read('scripts', 'blog-search-quality-daily.mjs');
 
-  assert.match(source, /script: 'audit:blog-seo'/);
   assert.match(source, /strict \? \['--strict-warnings'\] : \[\]/);
-});
-
-test('ERR-BLOG-strict-ops-gates: daily search audit allows measured image audit runtime', () => {
-  const source = read('scripts', 'blog-search-quality-daily.mjs');
-
   assert.match(source, /DEFAULT_HARD_TIMEOUT_MS\s*=\s*180_000/);
-  assert.match(source, /BLOG_AUDIT_HARD_TIMEOUT_MS\s*\|\|\s*String\(DEFAULT_HARD_TIMEOUT_MS\)/);
+  assert.match(source, /BLOG_AUDIT_HARD_TIMEOUT_MS/);
 });
 
-test('ERR-BLOG-strict-ops-gates: revenue audit enforces the current five-slot contract', () => {
+test('ERR-BLOG-strict-ops-gates: revenue audit enforces the V3 publish cap', () => {
   const source = read('scripts', 'audit-blog-revenue-funnel.mjs');
 
-  assert.match(source, /daily_publish_target_is_exactly_5/);
+  assert.match(source, /daily_publish_target_is_v3_capped/);
+  assert.ok(source.includes('/DEFAULT_POSTS_PER_DAY\\s*=\\s*1/'));
+  assert.match(source, /readBlogAutopublishPolicyV3/);
+  assert.ok(source.includes('/BLOG_AUTOPUBLISH_POLICY_V3\\.dailyPublishCap/'));
   assert.match(source, /publisher_respects_cumulative_slot_quota/);
   assert.match(source, /daily_summary_alerts_when_under_configured_target/);
-  assert.doesNotMatch(source, /daily_publish_target_clamped_to_3_4/);
-  assert.doesNotMatch(source, /daily_summary_alerts_when_under_3_posts/);
 });
 
-test('ERR-BLOG-strict-ops-gates: daily summary uses the configured target without a legacy floor', () => {
+test('ERR-BLOG-strict-ops-gates: daily summary uses the capped configured target', () => {
   const source = read('src', 'app', 'api', 'cron', 'blog-daily-summary', 'route.ts');
 
+  assert.match(source, /normalizeDailyPostTarget/);
   assert.match(source, /if \(summary\.under_daily_target\)/);
   assert.doesNotMatch(source, /MIN_DAILY_SUMMARY_ALERT_POSTS/);
 });
 
-test('ERR-BLOG-strict-ops-gates: autopublish diagnosis exposes SLA miss as a bucket', () => {
+test('ERR-BLOG-strict-ops-gates: diagnosis exposes SLA and demand repository failures', () => {
   const source = read('scripts', 'diagnose-blog-autopublish.ts');
 
   assert.match(source, /\| 'daily_publish_sla_miss'/);
-  assert.match(source, /const selectedDayUnderTarget = selectedDayPublished < dailyTarget/);
   assert.match(source, /code: 'daily_publish_sla_miss'/);
-  assert.match(source, /under_target: selectedDayUnderTarget/);
+  assert.match(source, /demand_repository_missing/);
+  assert.match(source, /readBlogAutopublishPolicyV3\(\)\.dailyPublishCap/);
+  assert.match(source, /classifyBlogAutopublishDiagnosisBuckets/);
 });
 
-test('ERR-BLOG-strict-ops-gates: recovered publisher timeouts do not stay as active high buckets', () => {
-  const source = read('scripts', 'diagnose-blog-autopublish.ts');
-
-  assert.match(source, /function isRecoveredPublisherRun/);
-  assert.match(source, /const timeoutRecovered = timeoutRuns\.length > 0/);
-  assert.match(source, /publishPreflight\.status === 'pass'/);
-  assert.match(source, /currentDayPublisherHealth\.status === 'healthy'/);
-  assert.match(source, /startedAtMs\(row\) > latestTimeoutStartedAt && isRecoveredPublisherRun\(row\)/);
-  assert.match(source, /if \(timeoutRuns\.length > 0 && !timeoutRecovered\)/);
-});
-
-test('ERR-BLOG-strict-ops-gates: blog detail cache handles DB unavailable before Next logs revalidation errors', () => {
+test('ERR-BLOG-strict-ops-gates: detail cache stores a typed outage envelope', () => {
   const source = read('src', 'app', 'blog', '[slug]', 'page.tsx');
 
   assert.match(source, /const getCachedPostFast = unstable_cache/);
-  assert.match(source, /try \{\s*return await getPostFastUncached\(slug\);/);
+  assert.match(source, /async function loadBlogPostCacheEnvelope/);
   assert.match(source, /if \(isBlogDatabaseUnavailableError\(error\)\)/);
-  assert.match(source, /return getFallbackBlogPost\(safeDecodeSlug\(slug\)\) as unknown as BlogPost \| null/);
+  assert.match(source, /return \{ state: 'unavailable', post: null \}/);
+  assert.match(source, /blog-detail-v6-outage-envelope/);
 });
 
-test('ERR-BLOG-strict-ops-gates: backfill makes duplicate SEO descriptions unique per article intent', () => {
+test('ERR-BLOG-strict-ops-gates: legacy content backfill is dry-run-only and rejects generic destinations', () => {
   const source = read('scripts', 'backfill-blog-quality.ts');
 
-  assert.match(source, /function ensureBatchUniqueSeoDescription/);
-  assert.match(source, /const seenSeoDescriptions = new Map<string, number>\(\)/);
-  assert.match(source, /descriptionIntentLabel/);
-  assert.match(source, /식비와 맛집 예산/);
-  assert.match(source, /쇼핑과 기념품 예산/);
-  assert.match(source, /ensureBatchUniqueSeoDescription\(ensureStrictSeoDescription/);
-});
-
-test('ERR-BLOG-strict-ops-gates: backfill cannot re-save generic info labels as destinations', () => {
-  const source = read('scripts', 'backfill-blog-quality.ts');
-
+  assert.match(source, /Legacy blog quality backfill is permanently dry-run-only/);
+  assert.match(source, /const dryRun = true/);
   assert.match(source, /INVALID_BACKFILL_DESTINATION_KEYWORDS/);
   assert.match(source, /'대학생'/);
   assert.match(source, /'여름'/);
   assert.match(source, /'해외여행'/);
   assert.match(source, /hasInvalidBackfillDestinationKeyword/);
   assert.match(source, /genericInfoWithoutDestination/);
-  assert.match(source, /destination: normalizedDestinationForWrite \?\? null/);
-  assert.match(source, /function splitStableTailSections/);
-  assert.match(source, /함께\\s\*확인할\\s\*세부\\s\*키워드/);
+  assert.match(source, /destinationChanged \? \{ destination: normalizedDestinationForWrite \?\? null \} : \{\}/);
 });

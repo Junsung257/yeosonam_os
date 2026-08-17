@@ -4,6 +4,7 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
+import { isBlogSlugRedirectTombstone } from '@/lib/blog-slug-redirects';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -137,10 +138,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const post of canonicalPosts) {
-    if (isSafeSitemapBlogSlug(post.slug)) {
+    if (isSafeSitemapBlogSlug(post.slug) && !isBlogSlugRedirectTombstone(post.slug)) {
       routes.push({
         url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,
-        lastModified: safeLastModified(post.updated_at || post.published_at),
+        lastModified: safeLastModified(post.content_modified_at || post.published_at),
         changeFrequency: 'weekly',
         priority: 0.7,
       });

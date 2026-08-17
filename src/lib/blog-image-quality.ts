@@ -136,7 +136,7 @@ export function inspectBlogImageQuality(
   options: BlogImageQualityOptions = {},
 ): BlogImageQualityReport {
   const images = extractMarkdownImages(markdown);
-  const minImages = Math.max(1, options.minImages ?? (options.blogType === 'product' ? 2 : 3));
+  const minImages = Math.max(0, options.minImages ?? 0);
   const issues: string[] = [];
 
   const missingAlt = images.filter((image) => image.alt.length < 3).length;
@@ -166,7 +166,12 @@ export function inspectBlogImageQuality(
   if (genericAlt > 0) issues.push('generic_alt');
   if (malformedUrls.length > 0) issues.push('malformed_image_url');
   if (duplicateUrls.length > 0) issues.push('duplicate_image_url');
-  if (contextTokens.length > 0 && contextMatchedImages === 0) issues.push('no_contextual_alt_or_caption');
+  // Images are optional in V3. Context relevance is meaningful only when the
+  // article actually contains an image; an image-free article must not be
+  // classified as having an irrelevant image.
+  if (images.length > 0 && contextTokens.length > 0 && contextMatchedImages === 0) {
+    issues.push('no_contextual_alt_or_caption');
+  }
 
   return {
     passed: issues.length === 0,

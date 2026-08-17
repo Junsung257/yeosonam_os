@@ -1,5 +1,19 @@
 # Blog Autopublish Contract
 
+> 2026-08-11 V3 override: 자동발행의 fail-closed 정책은 `docs/runbooks/blog-publishing-v3.md`가 우선합니다. 누락/잘못된 `BLOG_AUTOPUBLISH_MODE`는 `draft_only`이고, coverage gap만으로 발행하지 않으며, deterministic fallback과 content-creating repair는 공개 불가입니다.
+>
+> 2026-08-13 safety addendum: `scripts/backfill-blog-quality.ts` is permanently dry-run-only. Historical `--write` examples below are incident records, not executable instructions. Use the V3 disposition preview and reviewed migration runbook for corpus changes.
+>
+> 2026-08-15 live-ops addendum: 관리자 화면과 일일 SLA는 DB `posts_per_day`만 공개 목표로 사용하지 않는다. 실효 공개 목표는 autopublish mode, policy enabled, `BLOG_DAILY_PUBLISH_CAP`을 함께 적용한다. `draft_only`는 오류가 아니라 공개 목표 0의 안전정지다. Keyword-family 두 테이블은 live readiness 필수 리소스이며, queue scope나 최신 실패가 관리자 첫 화면에서 숨겨져서는 안 된다.
+>
+> 2026-08-16 DeepSeek-only V4 release addendum: 검토된 공식 URL을 직접 fetch한 연구 자료만 DeepSeek Pro가 구조화한다. KST 01:05~06:05 계산 cron은 DeepSeek Flash 초안 → 규칙/claim/중복 평가 → DeepSeek Pro high/max 제한 재작성으로 동작한다. Gemini, GPT, Claude, generic provider cascade와 검색 snippet grounding은 이 발행 경로에서 금지한다. 후보별 writer 모델 호출은 최대 3회이고 공급자 호출 전 원자적 일일 비용 예약이 필수다. KST 09/12/15/18/21 공개 controller는 모델을 호출하지 않으며, 저장된 선택 시도·90점·hard blocker/failure 0건을 다시 확인한다. 공개 상한은 내구성 상태 원장의 `pilot_3 → ramp_10 → max_30`을 따르며 결측 관측값은 승격을 금지하고 심각 사고는 즉시 동결한다. 세부 운영은 `docs/runbooks/blog-deepseek-orchestrator-v4.md`가 우선한다.
+
+> 2026-08-17 decision-completion addendum: 모델·평균 점수는 archetype의 핵심 결정 요소를 대신할 수 없다. 일정 글은 시작/중간/마무리 순서, 검증된 이동 근거, 예약·공식 채널 재확인, 휴식 지점, 우천·휴무·지연 대안을 모두 포함해야 하며, 경로 글은 승차/중간 구간/하차, 검증된 이동 근거, 장애 대안을 포함해야 한다. 하나라도 빠지면 글자 수나 상위 점수와 무관하게 `decision_completion`과 `section_purpose_coverage`를 실패시킨다. 이 검사는 고정 글자 수·고정 H2 수를 요구하지 않으며, 재작성은 동일한 명령형 어미를 반복하지 않는 자연스러운 한국어와 evidence-bounded 판단 설명을 사용한다.
+
+> 2026-08-17 controlled-retry addendum: 동일 canonical 교체 작업의 이전 비공개 shadow draft와 review queue는 감사 이력으로 보존하되 새 재시도의 corpus 경쟁자로 계산하지 않는다. 첫 재연구 뒤에도 모델 출력만 승인 claim과 어긋난 경우에는 검증된 research packet을 유지한 채 세 번째 DeepSeek Pro 정밀 재작성을 한 번 허용한다. `missing_evidence`, `stale_claim`, claim conflict, source-quality 실패, 허위 경험, unrelated corpus saturation은 이 예외를 사용할 수 없으며 즉시 격리한다. 일정·경로 재작성은 의사결정에 무관한 높이·길이 같은 치수 claim보다 검증된 이동·시간 claim을 우선하고, 승인된 숫자 사실은 본문에서 정확히 한 번만 사용한다.
+
+> 2026-08-17 itinerary-research addendum: 출처 다양성은 정규화한 기관 호스트 기준으로 계산한다. `www.example.com`과 `example.com`은 한 기관이며 두 출처로 계산하지 않는다. 일정 연구 패킷은 명소와 실제 구간 이동시간 외에 운영시간·예약·입장·출입통제·계단/엘리베이터 같은 일정 결정 제약을 최소 1개 포함해야 한다. 높이·길이·면적 같은 물리 치수는 이 제약을 대신할 수 없으며, 조건을 충족하지 못한 후보는 모델 작성 전에 보류한다.
+
 Last updated: 2026-07-29
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
@@ -72,11 +86,18 @@ This document defines the required contract for automatic blog generation, publi
 - Informational SEO descriptions must come from the classified eleven-intent contract, not a category fallback that inserts unrelated cost, itinerary, preparation, or reservation language. Each description retains the planned title/primary keyword, stays inside the 70-160 character scoring boundary, and summarizes the reader decisions and official checks that the article actually contains.
 - Search-performance collection must not inherit the generic 45-second cron wrapper when the route declares a longer serverless budget. `gsc-index-rank` and `rank-tracking` receive a 285-second handler guard, while `serp-rank-snapshot` receives 55 seconds. Each has an independently scheduled GitHub retry so an absent Vercel Cron invocation cannot silently stop `rank_history` growth.
 - Query-level GSC metrics must be grouped by the database conflict key `(slug, query, date, source)` before upsert. Duplicate www/apex or repeated page rows are summed, CTR is recalculated from total clicks and impressions, position uses an impression-weighted average, and the stored page URL is the canonical www URL. A repeated input key must never abort the entire daily search-data batch.
+- Rank-decay observations belong in `rank_alerts`; collectors must never patch `content_creatives.generation_meta`. Measurement-only writes must not change an article row's `updated_at`, invalidate its current public snapshot, or imply a material content update.
 - Published-article recovery remains active when recent `rank_history` is empty. The daily recovery route prioritizes true zero-click posts only from Google sources (`gsc`, `gsc-page`) and only after the article has matured for at least 14 days, then falls back to the oldest published informational rows without verified research. Naver/Serp rank snapshots store zero impressions by design and must never be treated as Google zero-impression evidence. The route may enqueue at most two in-place upgrades per day and must reuse the same explicit-intent, content-brief, high-risk, active-upgrade, and representative-ownership gates as the operator recovery script. Missing or ambiguous evidence never authorizes a public rewrite.
-- `blog-regenerate-zero-click` is a critical blog cron for resource-saver
-  allowlisting. It remains fail-closed unless
-  `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`, keeps its 60-second route budget,
-  audits at most 500 rows, and queues at most two private upgrades.
+- Blog Quality V3's complete operating chain is critical under resource-saver
+  mode: `rank-tracking`, `blog-data-readiness`, `blog-publisher`,
+  `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, and
+  `analytics-delivery`, together with the existing scheduler, daily summary,
+  and zero-click recovery jobs. Every one remains
+  fail-closed unless `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`. Allowing only
+  the publisher is invalid because it would publish without fresh demand or
+  silently stop indexing and measurement delivery.
+- `blog-regenerate-zero-click` keeps its 60-second route budget, audits at most
+  500 rows, and queues at most two private upgrades.
 - `blog_regenerate_log.reason` must accept both automatic selection signals, `zero_click` and `quality_gap`. A partial unique index over `(slug, created_day_utc)` covers both values so concurrent or repeated runs cannot enqueue the same published article twice through different recovery signals. The producer contract and database constraint must be changed together.
 - A monthly climate row is one composite evidence claim, not a highest-temperature scalar. WMO and other weather adapters must persist `highest temperature|lowest temperature|rainfall|rain days` with unit `월별 기후 지표`. Research readiness upgrades legacy scalar bundles in memory before validation and persistence so old queued recovery work cannot repeatedly fail the final claim gate.
 - A reviewed climate URL is not coverage by itself. Registration requires a live deterministic parse of the exact destination, a declared climatological-normal period, all twelve months, and every required temperature, rainfall, and rain-day field. A forecast-only city page or an empty/incomplete climate table remains blocked. When an official authority splits temperature and precipitation into separate tables, the composite monthly claim must reference both immutable source versions; either table alone is insufficient. JMA rain days use the explicitly labeled `>=1.0 mm` column.
@@ -503,6 +524,29 @@ Rules:
 - Destination and angle pages must use the same image display helper as the main blog list, so Supabase/remote images are normalized consistently.
 - Sitemap must include blog destination and blog angle collection URLs when corresponding published posts exist.
 - `/blog` list cache revalidation must not turn a transient DB timeout into a production error log or a silent empty list. If the primary list query times out, the page should serve last-good or Korean fallback content and record the event as degraded telemetry, not as a published-post count of zero.
+
+## Decision-grade itinerary contract (2026-08-17)
+
+- A published-article upgrade must preserve an explicit `N박M일` duration found in the existing title, slug, or body. The duration becomes part of the new queue topic and primary decision instead of being collapsed into a generic travel schedule.
+- An explicit-duration itinerary must contain every numbered travel-day block (`1일차` through `M일차`). A durationless itinerary must contain at least two distinct named-place time blocks or route options.
+- Each explicit travel day must have exactly one independent H2. Combined headings such as `1일차와 2일차` and duplicate alternatives such as a second `2일차 대안` fail the itinerary artifact gate even when every ordinal appears somewhere in the body.
+- Every itinerary block must name an entity that exists in the validated research claim packet. `시작/중간/마무리`, booking reminders, rest reminders, or fallback reminders without named-place blocks are planning boilerplate and fail `concrete_itinerary_blocks_missing`.
+- Itinerary research requires an actual schedule, booking/admission condition, stair/elevator access condition, seasonal restriction, closure, or service interruption. A bare ticket price, fare, physical dimension, or route distance cannot satisfy this semantic requirement.
+- The writer may propose an editorial order for evidence-backed entities, but must not turn separate duration claims into an unsupported proximity, same-origin, compatibility, or official-route claim.
+- These are expression/structure failures eligible for a bounded DeepSeek rewrite only when the persisted research packet and claim ledger remain valid. They never weaken factual, duplicate, language, or publication gates.
+
+### Editorial-plan versus factual-claim boundary
+
+- A query duration (`N박M일`), a numbered day heading, an article-scope sentence, an explicitly labelled proposed order, and a contingency heading are editorial structure, not external facts by themselves.
+- A duration, fare, price, operating time, distance, availability statement, regulated condition, or other measurable assertion inside those same sections remains a factual claim and must match the structured claim ledger exactly.
+- Risk classification is fail-closed at the deterministic boundary. Entry/visa, insurance, policy, and customs claims have a `HIGH` floor; price, currency, duration, schedule/time, climate, percentage, quantity, availability, requirement, and measurable-superlative claims have at least a `MEDIUM` floor. A research or writer model may raise this risk but may never downgrade it. A downgraded writer ledger is invalid rather than silently normalized.
+- Korean place names in itinerary blocks may be recognized from validated claim subjects and the `에서/까지/으로` boundaries. The destination name alone never counts as a decision-grade entity.
+- A normal rewrite may select at most six approved claims. An itinerary or route rewrite may select at most eight when the validated packet contains decision-relevant evidence; the extra allowance must be used for named daily stops, movement, operating constraints, booking checks, or fallback decisions rather than decorative dimensions.
+- Standalone landmark dimensions such as bridge length, statue height, altitude, and road length are excluded from an itinerary rewrite when at least three movement/operation/access claims are available. Day blocks may contain at most one evidence-checking meta instruction; repeated `확인한 뒤/비교한 뒤 결정하세요`, `가장 안전`, `최적`, and generic completion conclusions are rewrite failures rather than information gain.
+- Every explicit day block must pair a research-backed named entity with a distinct reader action. Repeating a generic imperative or merely mentioning `체력` does not satisfy the rest requirement. The article must state a concrete rest, omission, shortening, or schedule-spacing decision.
+- Flexible V3 articles may use descriptive sections instead of a table, FAQ, or checklist. Scanability is satisfied by short, meaningful sections; no evaluator may force a content asset solely to raise a legacy readability score.
+- Comparison content still needs situation-to-choice criteria, but the criteria may be expressed as prose sections, cards, lists, or tables according to intent and evidence.
+- A private candidate remains `pending_review` even after a high aggregate score when manual evidence inspection finds that it passed through shallow proxies such as a bare stamina word, under-classified dynamic facts, or incomplete use of an otherwise sufficient evidence packet. Aggregate score never authorizes a public replacement by itself.
 
 ## Daily Verification
 

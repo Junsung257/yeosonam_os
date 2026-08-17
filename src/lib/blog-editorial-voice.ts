@@ -1,4 +1,5 @@
 import type { BlogContentBrief } from './blog-content-brief';
+import type { BlogContentBriefV3 } from './blog-content-brief-v3';
 import type { ProductBlogBrief } from './blog-product-brief';
 import { buildBlogInformationClaimLedgerPromptContract } from './blog-information-claim-ledger';
 
@@ -67,7 +68,19 @@ function topicParticle(value: string, withBatchim: string, withoutBatchim: strin
   return hasFinalConsonant(value) ? withBatchim : withoutBatchim;
 }
 
-export function buildInfoGuideBrief(brief: BlogContentBrief): InfoGuideBrief {
+export function buildInfoGuideBrief(brief: BlogContentBrief | BlogContentBriefV3): InfoGuideBrief {
+  if ('sectionPurposes' in brief) {
+    const firstPurpose = brief.sectionPurposes[0]?.purpose || '검색 질문에 직접 답한다';
+    return {
+      reader_question: brief.primaryDecision,
+      answer_first: `${brief.primaryQuery}${topicParticle(brief.primaryQuery, '은', '는')} ${firstPurpose}.`,
+      search_intent: brief.archetype,
+      official_sources_required: brief.riskLevel !== 'LOW',
+      destination_required: !/^(?:해외여행|여행|가족\s*여름|로밍|보험)/.test(brief.primaryQuery),
+      cta_policy: 'runtime_contextual',
+      claim_ledger_required: true,
+    };
+  }
   const requiredSections = brief.requiredSections.slice(0, 2).filter(Boolean).join(', ');
   const answerFirst = requiredSections
     ? `${brief.primaryKeyword}${topicParticle(brief.primaryKeyword, '은', '는')} 먼저 ${requiredSections} 기준으로 보면 됩니다.`
@@ -85,6 +98,9 @@ export function buildInfoGuideBrief(brief: BlogContentBrief): InfoGuideBrief {
 }
 
 export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: EditorialVoice = BLOG_EDITORIAL_VOICE): string {
+  const structureContract = brief.search_intent === 'itinerary_timeline'
+    ? '- Structure must be: direct route decision -> concrete named-place day/time/route blocks -> exact movement/access evidence beside the relevant block -> one non-repetitive contingency. Generic 시작/중간/마무리 planning reminders are not an itinerary.'
+    : '- Structure must be: answer first -> situation-based judgement -> checklist/table only when useful -> mistakes/risks -> official checks.';
   return [
     '## Writer: info_writer',
     `- Role: ${voice.role}. Tone: ${voice.tone}.`,
@@ -94,7 +110,7 @@ export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: Editori
     `- Search intent: ${brief.search_intent}`,
     `- Official/primary source links required: ${brief.official_sources_required ? 'yes' : 'no'}`,
     `- Destination required unless intentionally generic: ${brief.destination_required ? 'yes' : 'no'}`,
-    '- Structure must be: answer first -> situation-based judgement -> checklist/table only when useful -> mistakes/risks -> official checks.',
+    structureContract,
     '- First paragraph must sound like a Korean travel editor answering a real question. Do not repeat the exact same opening pattern across posts.',
     '- For risky or changeable facts such as visa, fees, weather, airport, insurance, refund, ticketing, customs, or baggage rules, avoid hard certainty and explain that official/current conditions should be checked.',
     '- Keep mobile paragraphs short: usually 1-3 Korean sentences per paragraph, with lists/tables only where they help the reader save or compare.',

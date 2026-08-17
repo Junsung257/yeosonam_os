@@ -163,7 +163,13 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
   '/api/cron/blog-publisher',
+  '/api/cron/blog-generate',
+  '/api/cron/blog-publication-controller',
+  '/api/cron/blog-ai-model-canary',
+  '/api/cron/blog-analytics-canary',
   '/api/cron/blog-indexing-worker',
+  '/api/cron/blog-data-readiness',
+  '/api/cron/analytics-delivery',
   '/api/cron/blog-learn',
   '/api/cron/publish-scheduled',
   '/api/cron/auto-publish-loop',
@@ -422,9 +428,9 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     getSecret('SUPABASE_URL');
   const key =
-    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    getSecret('SUPABASE_ANON_KEY');
+    getSecret('SUPABASE_ANON_KEY') ||
+    getSecret('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) {
     return null;
@@ -463,6 +469,40 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
     return Array.isArray(data) && data.length > 0;
   } catch {
     return null;
+  }
+}
+
+async function publicBlogSlugExists(slug: string): Promise<boolean | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1200);
+  try {
+    const endpoint = new URL(`${url.replace(/\/+$/, '')}/rest/v1/public_blog_slug_registry`);
+    endpoint.searchParams.set('select', 'id');
+    endpoint.searchParams.set('slug', `eq.${slug}`);
+    endpoint.searchParams.set('limit', '1');
+    const response = await fetch(endpoint, {
+      headers: {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const rows = await response.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    // An unavailable registry cannot prove absence. The App Router will use
+    // the durable/remote/bundled detail snapshot instead of emitting a false
+    // 404 during an infrastructure incident.
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -647,14 +687,10 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
     if (!isUuid(id)) return plainNotFound();
   }
 
-  if (segments[0] === 'blog' && segments.length === 2) {
+  if (segments[0] === 'blog' && segments.length === 2 && segments[1] !== 'image-sitemap.xml') {
     const slug = safeDecodePathSegment(segments[1]).trim();
     if (!slug) return plainNotFound();
-    const exists = await supabaseRowExists('content_creatives', {
-      slug,
-      status: 'published',
-      channel: 'naver_blog',
-    });
+    const exists = await publicBlogSlugExists(slug);
     if (exists === false) return plainNotFound();
   }
 
@@ -859,6 +895,12 @@ export async function middleware(request: NextRequest) {
     return res;
   }
 
+  // Resolve public dynamic 404s before the public-prefix fast path. Keeping
+  // this below isPublicPath makes /blog/*, /packages/* and /destinations/*
+  // bypass the hard status response and produces a streamed 200 soft-404.
+  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
+  if (dynamicNotFound) return dynamicNotFound;
+
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(request)) {
     const availabilityResponse = await getPublicPackageAvailabilityResponse(pathname);
@@ -869,9 +911,6 @@ export async function middleware(request: NextRequest) {
   if (!hasKnownTopLevelRoute(pathname)) {
     return response || NextResponse.next();
   }
-
-  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
-  if (dynamicNotFound) return dynamicNotFound;
 
   // ── 3-0. /api/ops/* server-to-server calls may use CRON_SECRET bearer auth. ──
   if (pathname.startsWith('/api/ops/') && request.headers.get('authorization')) {

@@ -1,0 +1,68 @@
+{
+  "version": "blog-orchestrator-v4-deepseek-only-verification",
+  "asOf": "2026-08-16",
+  "timeZone": "Asia/Seoul",
+  "verdict": {
+    "candidateDeepSeekOnly": "passed",
+    "productionActivation": "blocked"
+  },
+  "writePolicy": {
+    "productionDeployPerformed": false,
+    "productionDatabaseWritesPerformed": false,
+    "productionMigrationApplied": false,
+    "indexingRequested": false
+  },
+  "routing": {
+    "allowedProvider": "deepseek",
+    "stages": [
+      { "stage": "draft_flash", "model": "deepseek-v4-flash", "thinking": "disabled" },
+      { "stage": "rewrite_pro_high", "model": "deepseek-v4-pro", "thinking": "high" },
+      { "stage": "rewrite_pro_max", "model": "deepseek-v4-pro", "thinking": "max" }
+    ],
+    "externalProviderFallback": false,
+    "terminalFailure": "quarantined_after_third_attempt"
+  },
+  "providerCanary": {
+    "readOnly": true,
+    "modelCalls": 3,
+    "passed": 3,
+    "failed": 0,
+    "results": [
+      { "stage": "draft_flash", "provider": "deepseek", "model": "deepseek-v4-flash", "reasoning": "disabled", "latencyMs": 632, "finishReason": "stop", "inputTokens": 38, "outputTokens": 1, "estimatedCostUsd": 0.0000056 },
+      { "stage": "rewrite_pro_high", "provider": "deepseek", "model": "deepseek-v4-pro", "reasoning": "high", "latencyMs": 1124, "finishReason": "stop", "inputTokens": 117, "outputTokens": 17, "estimatedCostUsd": 0.00006569 },
+      { "stage": "rewrite_pro_max", "provider": "deepseek", "model": "deepseek-v4-pro", "reasoning": "max", "latencyMs": 1131, "finishReason": "stop", "inputTokens": 130, "outputTokens": 17, "estimatedCostUsd": 0.00007134 }
+    ]
+  },
+  "localVerification": {
+    "fullVitest": { "filesPassed": 731, "testsPassed": 5470, "failed": 0 },
+    "typecheck": "passed",
+    "lint": "passed_with_zero_warnings",
+    "productionBuild": { "nextVersion": "15.5.21", "status": "passed", "staticPages": 390, "buildOutputVerified": true },
+    "releaseBundle": { "status": "passed", "migrationCount": 9 },
+    "supabaseDryRun": { "status": "passed", "remoteAppliedPlaceholderCount": 509, "pendingMigrationCount": 9, "unexpectedMigrationCount": 0, "remoteHistoryMutated": false },
+    "localHttp": {
+      "blog": 200,
+      "sitemap": 200,
+      "rss": 200,
+      "imageSitemap": 200,
+      "blogGenerateUnauthorized": 401,
+      "publicationControllerUnauthorized": 401,
+      "aiModelCanaryUnauthorized": 401,
+      "missingSlugBeforeRegistryMigration": 200
+    }
+  },
+  "productionBlockers": {
+    "releaseMigrationsApplied": 0,
+    "releaseMigrationsTotal": 9,
+    "publicEligible": 191,
+    "durableSnapshots": 186,
+    "missingSnapshots": 5,
+    "reviewBlockedPublished": 8,
+    "reviewBlockedWithDisposition": 0,
+    "dueQueuedWithoutVerifiedDemand": 13,
+    "gscLatestMetricDate": "2026-08-13",
+    "analyticsCanaryPresent": false,
+    "candidateDeployed": false,
+    "productionImmutableShaProven": false
+  }
+}

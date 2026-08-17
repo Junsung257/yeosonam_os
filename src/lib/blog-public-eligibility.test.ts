@@ -138,6 +138,20 @@ describe('evaluateBlogPublicEligibility', () => {
     expect(evaluateBlogPublicEligibility({ ...highRisk, reviewStatus: 'approved' })).toMatchObject({ eligible: true });
   });
 
+  it('blocks medication information until a human approves it', () => {
+    const medication = v2({
+      title: '해외여행 약과 처방약 반입',
+      topic: 'travel medication',
+    });
+    expect(evaluateBlogPublicEligibility(medication)).toMatchObject({
+      eligible: false,
+      reason: 'review_blocked',
+    });
+    expect(evaluateBlogPublicEligibility({ ...medication, reviewStatus: 'approved' })).toMatchObject({
+      eligible: true,
+    });
+  });
+
   it('honors the planner human-review flag even when title heuristics are quiet', () => {
     const generationMeta = v2().generationMeta as Record<string, unknown>;
     expect(evaluateBlogPublicEligibility(v2({

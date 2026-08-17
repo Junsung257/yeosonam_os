@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import type { AttributionSnapshot } from './types';
+import { hashAnalyticsSearchQuery } from './query-hash';
 
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const PHONE_RE = /(?:\+?82[-.\s]?)?0?1[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/;
@@ -72,10 +73,23 @@ export interface RecordServerAnalyticsEventInput {
   bookingId?: string | null;
   productId?: string | null;
   transactionId?: string | null;
+  assistingContentCreativeId?: string | null;
+  searchQueryHash?: string | null;
   valueKrw?: number | null;
   attribution?: unknown;
   payload: Record<string, unknown>;
   occurredAt?: string;
+  /** Internal pipeline probe. Stored for DB-boundary verification but never delivered externally. */
+  synthetic?: boolean;
+}
+
+export function isSyntheticAnalyticsServerEvent(value: unknown): boolean {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && (value as Record<string, unknown>).__synthetic === true,
+  );
 }
 
 function hasAdsClickId(attribution: AttributionSnapshot | null): boolean {
@@ -84,6 +98,20 @@ function hasAdsClickId(attribution: AttributionSnapshot | null): boolean {
     || attribution?.clickIds?.gbraid
     || attribution?.clickIds?.wbraid,
   );
+}
+
+function withoutRawSearchTerms(attribution: AttributionSnapshot | null): AttributionSnapshot | null {
+  if (!attribution) return null;
+  const stripTerm = (touch: AttributionSnapshot['firstTouch']) => {
+    if (!touch) return undefined;
+    const { term: _term, ...safeTouch } = touch;
+    return safeTouch;
+  };
+  return {
+    ...attribution,
+    firstTouch: stripTerm(attribution.firstTouch),
+    lastTouch: stripTerm(attribution.lastTouch),
+  };
 }
 
 export async function recordServerAnalyticsEvent(
@@ -96,7 +124,18 @@ export async function recordServerAnalyticsEvent(
     throw new Error('analytics event valueKrw must be a non-negative integer');
   }
   assertNoPii(input.payload);
-  const attribution = normalizeServerAttribution(input.attribution);
+  if ('__synthetic' in input.payload && input.synthetic !== true) {
+    throw new Error('analytics synthetic marker is reserved for internal probes');
+  }
+  const normalizedAttribution = normalizeServerAttribution(input.attribution);
+  const attribution = withoutRawSearchTerms(normalizedAttribution);
+  const derivedSearchQueryHash = hashAnalyticsSearchQuery(
+    normalizedAttribution?.lastTouch?.term ?? normalizedAttribution?.firstTouch?.term,
+  );
+  const searchQueryHash = typeof input.searchQueryHash === 'string'
+    && /^[a-f0-9]{64}$/i.test(input.searchQueryHash)
+    ? input.searchQueryHash.toLowerCase()
+    : derivedSearchQueryHash;
   const row = {
     event_name: input.eventName,
     idempotency_key: input.idempotencyKey,
@@ -106,10 +145,14 @@ export async function recordServerAnalyticsEvent(
     booking_id: input.bookingId ?? null,
     product_id: input.productId ?? null,
     transaction_id: input.transactionId ?? null,
+    assisting_content_creative_id: input.assistingContentCreativeId ?? null,
+    search_query_hash: searchQueryHash,
     currency: input.valueKrw == null ? null : 'KRW',
     value_krw: input.valueKrw ?? null,
     attribution_snapshot: attribution,
-    event_payload: input.payload,
+    event_payload: input.synthetic === true
+      ? { ...input.payload, __synthetic: true }
+      : input.payload,
     occurred_at: input.occurredAt ?? new Date().toISOString(),
   };
   const { data, error } = await supabaseAdmin
@@ -135,6 +178,9 @@ export async function recordServerAnalyticsEvent(
   }
 
   const jobs: Array<Record<string, unknown>> = [];
+  if (input.synthetic === true) {
+    return { id: eventId, idempotent };
+  }
   if (input.eventName !== 'generate_lead') {
     const ga4Ready = Boolean(
       process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID?.match(/^G-[A-Z0-9]+$/)

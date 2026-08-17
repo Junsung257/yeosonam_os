@@ -1,8 +1,14 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
+import Image, { type ImageLoader } from 'next/image';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import {
+  buildBlogImageSrcSet,
+  isProxyableBlogImageUrl,
+  toBlogImageDisplaySrc,
+  toBlogImageProxySrc,
+} from '@/lib/blog-image-proxy';
 
 type CoverProps = {
   src: string | null | undefined;
@@ -10,12 +16,22 @@ type CoverProps = {
   className?: string;
   loading?: 'eager' | 'lazy';
   fetchPriority?: 'high' | 'low' | 'auto';
+  sizes?: string;
   fallback: ReactNode;
 };
 
 /** 풀블리드 배경용 — 로드 실패·비안전 URL 시 fallback 만 표시 */
-export function SafeCoverImg({ src, alt, className, loading = 'lazy', fetchPriority, fallback }: CoverProps) {
+export function SafeCoverImg({
+  src,
+  alt,
+  className,
+  loading = 'lazy',
+  fetchPriority,
+  sizes = '100vw',
+  fallback,
+}: CoverProps) {
   const displaySrc = toBlogImageDisplaySrc(src);
+  const srcSet = buildBlogImageSrcSet(src);
   const ok = typeof displaySrc === 'string' && isSafeImageSrc(displaySrc);
   const [broken, setBroken] = useState(false);
   useEffect(() => {
@@ -25,7 +41,11 @@ export function SafeCoverImg({ src, alt, className, loading = 'lazy', fetchPrior
   return (
     <img
       src={displaySrc.trim()}
+      srcSet={srcSet}
+      sizes={srcSet ? sizes : undefined}
       alt={alt}
+      width={1600}
+      height={900}
       className={className}
       loading={loading}
       fetchPriority={fetchPriority}
@@ -49,19 +69,26 @@ type CoverNextProps = {
  * 부모 요소에 position: relative/absolute/fixed 가 있어야 함.
  */
 export function SafeCoverNextImg({ src, alt, sizes, priority = false, className, fallback }: CoverNextProps) {
-  const displaySrc = toBlogImageDisplaySrc(src);
+  const rawSrc = typeof src === 'string' ? src.trim() : '';
+  const proxyable = isProxyableBlogImageUrl(rawSrc);
+  const displaySrc = proxyable ? rawSrc : toBlogImageDisplaySrc(rawSrc);
   const ok = typeof displaySrc === 'string' && isSafeImageSrc(displaySrc);
   const [broken, setBroken] = useState(false);
   useEffect(() => { setBroken(false); }, [src]);
   if (!ok || broken) return <>{fallback}</>;
+  const proxyLoader: ImageLoader | undefined = proxyable
+    ? ({ src: loaderSrc, width, quality }) => toBlogImageProxySrc(loaderSrc, '', { width, quality })
+    : undefined;
   return (
-    <img
+    <Image
       src={displaySrc.trim()}
       alt={alt}
       className={`absolute inset-0 h-full w-full object-cover${className ? ` ${className}` : ''}`}
       sizes={sizes ?? '100vw'}
-      loading={priority ? 'eager' : 'lazy'}
-      fetchPriority={priority ? 'high' : 'auto'}
+      priority={priority}
+      quality={74}
+      fill
+      loader={proxyLoader}
       onError={() => setBroken(true)}
     />
   );
@@ -108,6 +135,7 @@ export function DestinationImageFallback({ title, destination, className = '', c
 export function SafeMagazineThumb({ url, title, placeholderClassName }: MagazineProps) {
   const [hide, setHide] = useState(false);
   const displaySrc = toBlogImageDisplaySrc(url);
+  const srcSet = buildBlogImageSrcSet(url);
   const ok = typeof displaySrc === 'string' && isSafeImageSrc(displaySrc) && !hide;
   useEffect(() => {
     setHide(false);
@@ -128,7 +156,11 @@ export function SafeMagazineThumb({ url, title, placeholderClassName }: Magazine
     <div className="aspect-[16/9] bg-slate-100 overflow-hidden">
       <img
         src={displaySrc.trim()}
+        srcSet={srcSet}
+        sizes={srcSet ? '(max-width: 640px) 100vw, 33vw' : undefined}
         alt={title}
+        width={1600}
+        height={900}
         className="w-full h-full object-cover"
         loading="lazy"
         onError={() => setHide(true)}

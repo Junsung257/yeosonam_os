@@ -190,6 +190,10 @@ const nextConfig = {
   ],
   experimental: {
     webpackBuildWorker: enableWebpackBuildWorker,
+    // Next 15 otherwise derives this from host CPU count. On high-core Windows
+    // builders that fan-out exhausted memory during static generation and left
+    // an incomplete build without prerender-manifest.json.
+    cpus: 4,
     prerenderEarlyExit: false,
     // Dev-only Segment Explorer can fail to resolve its client manifest on
     // Windows paths with non-ASCII characters; keep page rendering stable.
@@ -203,7 +207,11 @@ const nextConfig = {
     if (isServer && config.output) {
       config.output.chunkFilename = 'chunks/[name].js';
     }
-    if (isServer) {
+    // These files repair rare incomplete Windows production build artifacts.
+    // Writing them from next dev's afterEmit hook retriggers the watcher and can
+    // keep the server in "Starting" indefinitely, so never install this plugin
+    // for development compilers.
+    if (isServer && isProd) {
       config.plugins = config.plugins || [];
       config.plugins.push({
         apply(compiler) {
@@ -225,9 +233,8 @@ const nextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'],
-    // 기본 7개 deviceSizes → 3개로 축소: Vercel Image Transformation 횟수를 1/2 이상 절감.
-    // 모바일(640) + 태블릿(1080) + 데스크톱(1920) 세 구간이면 충분.
-    deviceSizes: [640, 1080, 1920],
+      // Blog proxy and next/image share the V3 responsive width contract.
+      deviceSizes: [480, 768, 960, 1280, 1600],
     // 기본 8개 imageSizes → 3개로 축소 (아이콘·썸네일·카드 세 구간).
     imageSizes: [64, 128, 256],
     // 최소 캐시 TTL 7일 — 같은 이미지 재변환 횟수를 대폭 줄임 (기본값 60초는 매우 짧음).

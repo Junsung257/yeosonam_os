@@ -473,4 +473,33 @@ describe('computeSeoScore', () => {
     expect(headings?.status).toBe('pass');
     expect(headings?.message).toContain('H1 1개 (페이지 제목)');
   });
+
+  it('treats keyword density and zero optional images as diagnostics for V3 briefs', () => {
+    const result = computeSeoScore({
+      blogHtml: [
+        '# 다낭 가볼만한곳 선택 기준',
+        '',
+        '다낭 가볼만한곳 선택 기준은 내 일정과 동행자의 우선순위를 먼저 비교해 정합니다.',
+        '',
+        '## 오행산 공식 정보',
+        '검증된 사실을 확인합니다.',
+        '## 선택 질문',
+        '- 이 공식 정보가 내 일정과 맞는가?',
+      ].join('\n'),
+      slug: 'danang-attractions-route-selector',
+      seoTitle: '다낭 가볼만한곳 선택 기준: 시간·체력에 맞춰 고르는 법',
+      seoDescription: '다낭 가볼만한곳 선택 기준을 시간과 체력, 동행자 우선순위에 맞춰 비교하고 공식 근거와 함께 확인합니다.',
+      primaryKeyword: '다낭 가볼만한곳 선택 기준',
+      destination: '다낭',
+      blogType: 'info',
+      imageCount: 0,
+      imagesWithAlt: 0,
+      generationMeta: {
+        content_brief_v3: { imageMinimum: 0 },
+      },
+    });
+
+    expect(result.details.find((detail) => detail.name === 'primary_keyword')?.status).toBe('pass');
+    expect(result.details.find((detail) => detail.name === 'image_seo')?.status).toBe('pass');
+  });
 });

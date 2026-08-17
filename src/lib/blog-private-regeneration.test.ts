@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 import {
+  buildAutomatedPublishedBlogReplacementDraftSlug,
   buildReviewedPublishedBlogReplacementDraftSlug,
   buildPublishedBlogUpgradeQueueTopic,
   hasPrivateBlogRegenerationIntent,
@@ -8,11 +9,17 @@ import {
   isPublishedBlogAtomicUpgradeRequest,
   preservePublishedBlogAtomicUpgradeSlug,
   readPrivateBlogRegenerationRequest,
+  readAutomatedPublishedBlogReplacement,
   readReviewedPublishedBlogReplacement,
 } from './blog-private-regeneration';
 
 describe('private blog regeneration contract', () => {
   it('builds a reader-facing queue topic from the canonical slug', () => {
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: 'mongolia-weather-packing',
+      destination: '몽골',
+      seo_title: '몽골 날씨와 옷차림 여행 가이드 2026 | 날씨와 옷차림 체크',
+    })).toBe('몽골 날씨와 옷차림');
     expect(buildPublishedBlogUpgradeQueueTopic({
       slug: 'bohol-monthly-weather_and-clothes|2026',
       destination: '보홀',
@@ -40,6 +47,15 @@ describe('private blog regeneration contract', () => {
       slug: '%E0%A4%A',
       destination: '보홀',
     })).toBe('보홀 현지 여행 정보');
+  });
+
+  it('preserves an explicit trip duration from the existing article for itinerary upgrades', () => {
+    expect(buildPublishedBlogUpgradeQueueTopic({
+      slug: 'danang-itinerary-route-guide-2026',
+      destination: '다낭',
+      seo_title: '다낭 여행 가이드 2026 | 일정과 이동 동선 체크',
+      blog_html: '<h2>다낭 3박4일 일정</h2><p>날짜별 이동을 정리합니다.</p>',
+    })).toBe('다낭 3박4일 여행 코스와 이동 동선');
   });
 
   it('produces topics that pass the candidate pre-publish contract', () => {
@@ -96,6 +112,40 @@ describe('private blog regeneration contract', () => {
         mode: 'reviewed_published_replacement_v1',
         target_creative_id: '',
         canonical_slug: 'vietnam-visa-entry-documents-2026',
+        queue_id: 'queue-1',
+      },
+    })).toBeNull();
+  });
+
+  it('builds and validates an isolated shadow slug for an automated low-risk replacement', () => {
+    const draftSlug = buildAutomatedPublishedBlogReplacementDraftSlug({
+      canonicalSlug: 'danang-itinerary-route-guide-2026',
+      queueId: 'a1664132-f06a-4390-bf9e-e254a2cb5f1d',
+    });
+    expect(draftSlug).toBe('danang-itinerary-route-guide-2026--auto-a1664132f06a');
+    expect(readAutomatedPublishedBlogReplacement({
+      automated_published_replacement: {
+        mode: 'automated_published_replacement_v1',
+        target_creative_id: 'creative-public',
+        canonical_slug: 'danang-itinerary-route-guide-2026',
+        draft_slug: draftSlug,
+        original_published_at: '2026-05-31T18:06:45.234Z',
+        queue_id: 'queue-1',
+      },
+    })).toEqual({
+      mode: 'automated_published_replacement_v1',
+      targetCreativeId: 'creative-public',
+      canonicalSlug: 'danang-itinerary-route-guide-2026',
+      draftSlug,
+      originalPublishedAt: '2026-05-31T18:06:45.234Z',
+      queueId: 'queue-1',
+    });
+    expect(readAutomatedPublishedBlogReplacement({
+      automated_published_replacement: {
+        mode: 'automated_published_replacement_v1',
+        target_creative_id: 'creative-public',
+        canonical_slug: 'danang-itinerary-route-guide-2026',
+        draft_slug: '',
         queue_id: 'queue-1',
       },
     })).toBeNull();

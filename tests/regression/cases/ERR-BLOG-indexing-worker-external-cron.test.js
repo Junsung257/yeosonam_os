@@ -15,9 +15,9 @@ const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 test('ERR-BLOG-indexing-worker-external-cron: GitHub fallback schedules independent indexing worker runs', () => {
   const workflow = read('.github', 'workflows', 'blog-external-cron.yml');
 
-  assert.match(workflow, /cron: '27 3,6,9,12 \* \* \*'/);
+  assert.match(workflow, /cron: '27 0,3,6,9,12,13 \* \* \*'/);
   assert.match(workflow, /- blog-indexing-worker/);
-  assert.match(workflow, /"27 3,6,9,12 \* \* \*"\)\s+endpoint="blog-indexing-worker"/);
+  assert.match(workflow, /"27 0,3,6,9,12,13 \* \* \*"[\s\S]{0,100}endpoint="blog-indexing-worker"/);
 });
 
 test('ERR-BLOG-indexing-worker-external-cron: workflow fails on indexing worker reported failures', () => {

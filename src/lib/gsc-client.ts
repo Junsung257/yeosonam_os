@@ -63,36 +63,44 @@ async function queryBlogSearchMetrics(
   date: string,
   pageFilter: boolean,
 ): Promise<GSCMetrics[]> {
-  const res = await client.searchanalytics.query({
-    siteUrl,
-    requestBody: {
-      startDate: date,
-      endDate: date,
-      dimensions: ['page', 'query'],
-      rowLimit: 1000,
-      ...(pageFilter && {
-        dimensionFilterGroups: [{
-          filters: [{
-            dimension: 'page',
-            operator: 'contains',
-            expression: '/blog/',
+  const rowLimit = 25_000;
+  const maximumRows = 50_000;
+  const output: GSCMetrics[] = [];
+  for (let startRow = 0; startRow < maximumRows; startRow += rowLimit) {
+    const res = await client.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate: date,
+        endDate: date,
+        dimensions: ['date', 'page', 'query'],
+        rowLimit,
+        startRow,
+        ...(pageFilter && {
+          dimensionFilterGroups: [{
+            filters: [{
+              dimension: 'page',
+              operator: 'contains',
+              expression: '/blog/',
+            }],
           }],
-        }],
-      }),
-    },
-  });
+        }),
+      },
+    });
 
-  const rows = res.data.rows || [];
-  return rows.map((row) => ({
-    page: row.keys?.[0] || '',
-    query: row.keys?.[1] || null,
-    impressions: row.impressions || 0,
-    clicks: row.clicks || 0,
-    ctr: row.ctr || 0,
-    position: row.position || 0,
-    date,
-    gscSiteUrl: siteUrl,
-  }));
+    const rows = res.data.rows || [];
+    output.push(...rows.map((row) => ({
+      date: row.keys?.[0] || date,
+      page: row.keys?.[1] || '',
+      query: row.keys?.[2] || null,
+      impressions: row.impressions || 0,
+      clicks: row.clicks || 0,
+      ctr: row.ctr || 0,
+      position: row.position || 0,
+      gscSiteUrl: siteUrl,
+    })));
+    if (rows.length < rowLimit) break;
+  }
+  return output;
 }
 
 export async function fetchBlogSearchMetrics(

@@ -1,3 +1,8 @@
+import {
+  getBlogPublicationRampDefinition,
+  type BlogPublicationRampStage,
+} from './blog-publication-rollout';
+
 const KST_OFFSET_MINUTES = 9 * 60;
 
 export const DEFAULT_BLOG_PUBLISH_SLOT_TIMES = [
@@ -34,7 +39,8 @@ function normalizedSlotTimes(slotTimes: string[], dailyTarget: number): Array<{
   minutes: number;
 }> {
   const fallback = [...DEFAULT_BLOG_PUBLISH_SLOT_TIMES];
-  const source = slotTimes.length >= dailyTarget ? slotTimes : fallback;
+  void dailyTarget;
+  const source = slotTimes.length > 0 ? slotTimes : fallback;
   const unique = new Map<number, string>();
   for (const value of source) {
     const minutes = parseSlotMinutes(value);
@@ -43,12 +49,10 @@ function normalizedSlotTimes(slotTimes: string[], dailyTarget: number): Array<{
   }
   const normalized = [...unique.entries()]
     .map(([minutes, label]) => ({ label, minutes }))
-    .sort((a, b) => a.minutes - b.minutes)
-    .slice(0, dailyTarget);
-  if (normalized.length === dailyTarget) return normalized;
+    .sort((a, b) => a.minutes - b.minutes);
+  if (normalized.length > 0) return normalized;
   return fallback
-    .map((label) => ({ label, minutes: parseSlotMinutes(label)! }))
-    .slice(0, dailyTarget);
+    .map((label) => ({ label, minutes: parseSlotMinutes(label)! }));
 }
 
 export function calculateBlogPublishSlotQuota(input: {
@@ -56,17 +60,39 @@ export function calculateBlogPublishSlotQuota(input: {
   dailyTarget: number;
   alreadyPublished: number;
   slotTimes?: string[] | null;
+  rolloutStage?: BlogPublicationRampStage | null;
+  cumulativeTargets?: readonly number[] | null;
 }): BlogPublishSlotQuota {
   const now = input.now ?? new Date();
-  const dailyTarget = Math.max(1, Math.trunc(input.dailyTarget));
+  const dailyTarget = Math.max(0, Math.trunc(input.dailyTarget));
   const alreadyPublished = Math.max(0, Math.trunc(input.alreadyPublished));
   const slots = normalizedSlotTimes(input.slotTimes ?? [], dailyTarget);
   const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
   const kstMinutes = (utcMinutes + KST_OFFSET_MINUTES) % (24 * 60);
-  const scheduledTargetNow = Math.min(
-    dailyTarget,
-    slots.filter((slot) => slot.minutes <= kstMinutes).length,
-  );
+  const elapsedSlotCount = slots.filter((slot) => slot.minutes <= kstMinutes).length;
+  const requestedCumulativeTargets = input.cumulativeTargets
+    ?? (input.rolloutStage
+      ? getBlogPublicationRampDefinition(input.rolloutStage).cumulativeSlotCaps
+      : null);
+  const validCumulativeTargets = requestedCumulativeTargets
+    && requestedCumulativeTargets.length === slots.length
+    && requestedCumulativeTargets.every((value, index, values) => (
+      Number.isFinite(value)
+      && value >= 0
+      && (index === 0 || value >= values[index - 1]!)
+    ))
+    ? requestedCumulativeTargets.map((value) => Math.min(dailyTarget, Math.trunc(value)))
+    : null;
+  const scheduledTargetNow = elapsedSlotCount === 0
+    ? 0
+    : validCumulativeTargets
+      ? validCumulativeTargets[elapsedSlotCount - 1]!
+      : Math.min(
+        dailyTarget,
+        dailyTarget <= slots.length
+          ? Math.floor(((elapsedSlotCount - 1) * dailyTarget) / slots.length) + 1
+          : Math.ceil((elapsedSlotCount * dailyTarget) / slots.length),
+      );
 
   return {
     dailyTarget,
