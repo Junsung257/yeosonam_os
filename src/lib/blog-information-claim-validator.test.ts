@@ -193,6 +193,8 @@ describe('V3 editorial decision guidance classification', () => {
     '공식 이동 시간을 다시 읽고, 내 출발 위치와 예약 시각, 휴식 필요량을 함께 따져보세요.',
     '일정을 짤 때는 먼저 공식 이동 시간을 나란히 놓고 내 출발 지점과 체력에 맞는 순서를 고르는 것이 안전합니다.',
     '무리가 없는 일정은 한 번에 모든 곳을 담기보다, 중간에 쉴 지점과 우천·휴무 대체안을 함께 두는 쪽에서 나옵니다.',
+    '동선은 거리만으로 판단하지 말고, 확인된 이동 시간과 휴식 여유를 함께 저울질해야 무리가 없습니다.',
+    '어느 구간이 일정에 부담이 될지는 독자의 숙소 위치와 이동 속도에 따라 달라지므로, 숫자를 그대로 확인한 뒤 직접 판단하는 것이 안전합니다.',
   ])('keeps source-neutral itinerary planning advice out of the factual ledger: %s', (sentence) => {
     expect(classifyBlogInformationStatement(sentence)).toMatchObject({
       category: 'navigation_boilerplate',

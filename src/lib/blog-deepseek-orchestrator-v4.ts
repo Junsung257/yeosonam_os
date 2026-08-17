@@ -545,10 +545,13 @@ function buildRewriteArchetypeContractV4(
       '[ARCHETYPE CONTRACT — itinerary_timeline]',
       '- The first paragraph must recommend a concrete proposed schedule shape in 2-4 natural sentences, use "일정" and "동선" naturally, and name only entities already present in the approved claims.',
       '- State the decision rule plainly without forcing a stock phrase, a numeric hook, or repeated command endings.',
+      '- Within the first 200 visible characters, include one concrete reader trigger: a comparison question, a choice condition, or an exact approved movement/time fact. Answer it in the same paragraph; never invent a number just to create a hook.',
       dayBlockRule,
       '- You may make an editorial proposal that places approved-claim entities into different day/time/route-option blocks. Label it as a proposed schedule, not an official route.',
       '- Two unrelated duration claims never prove proximity, compatibility, a shared origin, or that two places belong together. State only the proposed order; explain a local relationship only when an exact approved claim supports it.',
       '- Put a booking/access/operation recheck beside the one block it changes, a realistic rest decision beside one block, and one rain/closure/delay fallback that names the block it replaces or removes. A bare mention of 체력 is not a rest decision: explicitly leave rest time, drop an optional block, or shorten the proposed sequence.',
+      '- In exactly one day-block body sentence, write an explicit source-neutral rest action such as "휴식 시간을 남기세요" or "체력이 부족하면 이 블록을 빼세요". The sentence itself must contain the rest/action words; a heading or a bare 체력 mention does not count.',
+      '- In the fallback-section body, explicitly name 우천, 휴무, or 지연 and state which named day/place block to 빼기, 미루기, 앞당기기, or 대체하기. The fallback heading alone does not count.',
       '- Give movement evidence, operating/access evidence, rest planning, and fallback planning one distinct job each. Do not restate the same advice in the opening, blocks, and conclusion with synonyms.',
       '- Use at most one meta instruction about checking, comparing, or deciding evidence in each day block. Never repeat the skeleton "확인한 뒤/비교한 뒤 ... 결정하세요" across day blocks.',
       '- Every paragraph after the opening must add a new decision detail, a supported fact, or a distinct action. Delete summary padding that merely repeats an earlier concept.',
@@ -557,6 +560,7 @@ function buildRewriteArchetypeContractV4(
       '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
       '- After the day blocks, allow only one compact unnumbered fallback section and the required internal link. Do not add a "다음 확인 순서" or summary conclusion.',
       '- Never write unsupported superlative or completion language such as "가장 안전", "최적", or "전체 동선이 완성됩니다".',
+      '- Before returning, verify that the visible body (not headings) contains one explicit rest action and one explicit weather/closure/delay fallback action. If either is absent, revise before returning.',
       '- Do not merely list claims or finish with generic questions. The visible article must leave a concrete named-place sequence that can be followed.',
     ];
   }
