@@ -282,9 +282,14 @@ describe('blog DeepSeek orchestrator V4', () => {
       },
     });
 
-    expect(prompt).toContain('Include distinct 1일차 through 4일차 blocks');
+    expect(prompt).toContain('Output exactly one separate H2 for every day');
+    expect(prompt).toContain('"## 1일차: ..." through "## 4일차: ..."');
+    expect(prompt).toContain('Never combine days in one heading');
     expect(prompt).toContain('Every day block must name an approved-claim entity');
     expect(prompt).toContain('one distinct reader choice or action beyond its heading');
+    expect(prompt).toContain('at most one meta instruction about checking, comparing, or deciding evidence in each day block');
+    expect(prompt).toContain('Do not add a "다음 확인 순서" or summary conclusion');
+    expect(prompt).toContain('"가장 안전", "최적", or "전체 동선이 완성됩니다"');
   });
 
   it('gives route rewrites boarding, connection, arrival, and disruption decisions', () => {
@@ -485,6 +490,31 @@ describe('blog DeepSeek orchestrator V4', () => {
 
     expect(selected).toHaveLength(3);
     expect(selected.every((claim) => claim.claimType === 'duration')).toBe(true);
+  });
+
+  it('drops suffix-form dimensions but keeps movement, access, schedule, and cost evidence', () => {
+    const claims = [
+      { claimText: 'Golden Bridge는 150m 길이입니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/bridge'] },
+      { claimText: 'Linh Ung Pagoda의 동상은 67m입니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/statue'] },
+      { claimText: 'Hai Van Pass의 최고 지점은 해발 496m입니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/pass'] },
+      { claimText: 'Hai Van Pass 도로는 21km입니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/road'] },
+      { claimText: '다낭 시내에서 Linh Ung Pagoda까지 차량으로 15분 소요됩니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/linh-ung'] },
+      { claimText: 'Marble Mountains 관람에는 3~4시간이 소요됩니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/marble'] },
+      { claimText: 'Non Nuoc에서 Hoi An까지 차량으로 30분 소요됩니다.', claimType: 'duration', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/hoi-an'] },
+      { claimText: 'Marble Mountains 입장료는 성인 40,000 VND입니다.', claimType: 'price', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/admission'] },
+      { claimText: 'Ba Na Hills 운영시간은 오전 8시부터 오후 10시입니다.', claimType: 'factual', riskLevel: 'MEDIUM', sourceUrls: ['https://example.com/hours'] },
+    ];
+
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryDecision: '날짜별 장소와 이동 순서를 정한다',
+      approvedClaims: claims,
+    });
+
+    expect(selected).toEqual(expect.arrayContaining(claims.slice(4)));
+    for (const decorativeClaim of claims.slice(0, 4)) {
+      expect(selected).not.toContainEqual(decorativeClaim);
+    }
   });
 
   it('keeps all twelve approved climate rows only for an explicit monthly assignment', () => {

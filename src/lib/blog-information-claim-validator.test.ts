@@ -472,10 +472,25 @@ describe('blog information claim validator', () => {
       '3일차에는 마블 마운틴을 먼저 두고 논느억 방향으로 이어가는 순서를 제안합니다.',
       '4일차에는 논느억에서 호이안으로 이동하는 흐름을 마지막 일정으로 제안합니다.',
       '우천·휴무·피로 대체 동선',
+      '우천·휴무·피로 시 대체 동선',
       '다낭 3박4일 여행 코스와 이동 동선 글 모아보기',
     ].join('\n');
 
     expect(extractBlogInformationClaims(editorialOnly)).toEqual([]);
+  });
+
+  it('keeps a day-numbered contingency edit editorial without hiding a real closure fact', () => {
+    const editorial = '우천이나 휴무로 3일차 일정이 어려우면 해당 블록을 빼고 4일차 일정을 앞당기거나 제외하는 안을 먼저 검토하세요.';
+    expect(classifyBlogInformationStatement(editorial)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+    expect(extractBlogInformationClaims(editorial)).toEqual([]);
+
+    expect(classifyBlogInformationStatement('오늘 3일차 Marble Mountains는 휴무입니다.')).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: { candidateKind: 'time_schedule' },
+    });
   });
 
   it('still validates facts placed inside an itinerary proposal', () => {

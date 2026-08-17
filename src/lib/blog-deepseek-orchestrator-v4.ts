@@ -60,6 +60,20 @@ export interface BlogRewriteApprovedClaimV4 {
 const DEFAULT_DECISION_REWRITE_CLAIMS = 6;
 const MAX_DECISION_REWRITE_CLAIMS = 8;
 
+function isDecorativePhysicalDimensionClaimV4(
+  claim: BlogRewriteApprovedClaimV4,
+): boolean {
+  const text = claim.claimText.normalize('NFKC').toLowerCase();
+  const explicitlyPhysical = /(?:높이|길이|동상|해발|고도|면적|규모|폭|최고\s*지점|최고봉|height|length|statue|altitude|area|wide|tall|long)/i.test(text);
+  if (explicitlyPhysical) return true;
+
+  const metric = /\d+(?:\.\d+)?\s*(?:km|㎞|킬로미터|m|미터)\b/i.test(text);
+  if (!metric || claim.claimType !== 'factual') return false;
+  const routeRelation = /(?:에서|부터).{0,100}(?:까지|거리|차량|차로|이동|소요|떨어져)|(?:from|between).{0,100}(?:to|drive|travel|away)/i.test(text);
+  const operationalUse = /예약|입장|계단|엘리베이터|출입|통제|운휴|폐쇄|휴무|운영|reservation|admission|steps?|elevator|restricted|closed|hours?/i.test(text);
+  return !routeRelation && !operationalUse;
+}
+
 function rewriteDecisionTokens(value: string): string[] {
   return [...new Set(value
     .normalize('NFKC')
@@ -129,9 +143,8 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
   const decisionText = `${input.primaryQuery} ${input.primaryDecision}`;
   const itineraryOrRoute = /일정|코스|동선|이동|교통|route|itinerary/i.test(input.primaryQuery);
   const asksForPhysicalDimension = /높이|길이|크기|규모|면적|고도|height|length|size|altitude/i.test(decisionText);
-  const nonDimensionClaims = input.approvedClaims.filter((claim) =>
-    !/높이|동상|(?:^|\s|의)길이(?:는|가|의|\s|$)|길이의\s*도로|해발|고도|면적|규모|height|statue|bridge\s+is\s+\d|road.*\d+\s*km|altitude/i
-      .test(claim.claimText),
+  const nonDimensionClaims = input.approvedClaims.filter(
+    (claim) => !isDecorativePhysicalDimensionClaimV4(claim),
   );
   const claims = itineraryOrRoute && !asksForPhysicalDimension && nonDimensionClaims.length >= 3
     ? nonDimensionClaims
@@ -526,7 +539,7 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'itinerary_timeline') {
     const requestedDuration = primaryQuery.match(/(?:^|\s)(\d{1,2})\s*박\s*(\d{1,2})\s*일/u);
     const dayBlockRule = requestedDuration
-      ? `- The query asks for ${requestedDuration[1]}박${requestedDuration[2]}일. Include distinct 1일차 through ${requestedDuration[2]}일차 blocks. Every day block must name an approved-claim entity and add one distinct reader choice or action beyond its heading.`
+      ? `- The query asks for ${requestedDuration[1]}박${requestedDuration[2]}일. Output exactly one separate H2 for every day using "## 1일차: ..." through "## ${requestedDuration[2]}일차: ...". Never combine days in one heading and never create another heading containing an N일차 ordinal. Every day block must name an approved-claim entity and add one distinct reader choice or action beyond its heading.`
       : '- Include at least two distinct time-block or route-option sections. Every block must name an entity already present in an approved claim.';
     return [
       '[ARCHETYPE CONTRACT — itinerary_timeline]',
@@ -537,11 +550,13 @@ function buildRewriteArchetypeContractV4(
       '- Two unrelated duration claims never prove proximity, compatibility, a shared origin, or that two places belong together. State only the proposed order; explain a local relationship only when an exact approved claim supports it.',
       '- Put a booking/access/operation recheck beside the one block it changes, a realistic rest decision beside one block, and one rain/closure/delay fallback that names the block it replaces or removes. A bare mention of 체력 is not a rest decision: explicitly leave rest time, drop an optional block, or shorten the proposed sequence.',
       '- Give movement evidence, operating/access evidence, rest planning, and fallback planning one distinct job each. Do not restate the same advice in the opening, blocks, and conclusion with synonyms.',
+      '- Use at most one meta instruction about checking, comparing, or deciding evidence in each day block. Never repeat the skeleton "확인한 뒤/비교한 뒤 ... 결정하세요" across day blocks.',
       '- Every paragraph after the opening must add a new decision detail, a supported fact, or a distinct action. Delete summary padding that merely repeats an earlier concept.',
       '- Never use 시작/중간/마무리 as substitute itinerary stages. Never output a generic planning checklist.',
       '- Use distinct day/time/route-option sections. Mix concise prose and evidence-backed actions; do not repeat the same imperative ending in every sentence or force an unrelated fixed heading count.',
       '- Attach exact schedule or movement claims beside the step they support. Never invent a visit duration, opening time, route compatibility, or transport mode.',
-      '- The ending must state which proposed block the reader should confirm first, without repeating every earlier action, and include the required internal link.',
+      '- After the day blocks, allow only one compact unnumbered fallback section and the required internal link. Do not add a "다음 확인 순서" or summary conclusion.',
+      '- Never write unsupported superlative or completion language such as "가장 안전", "최적", or "전체 동선이 완성됩니다".',
       '- Do not merely list claims or finish with generic questions. The visible article must leave a concrete named-place sequence that can be followed.',
     ];
   }
