@@ -52,7 +52,7 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 
 1. 리뷰된 `main`의 40자리 commit SHA를 확정한다. 운영 source는 branch 이름만이 아니라 이 SHA와 같아야 한다.
 2. release bundle, targeted V4 tests, typecheck를 통과한다.
-3. 격리 workdir를 생성한 뒤 `db push --workdir .tmp/blog-v4-supabase-release --include-all --skip-vault --dry-run` 결과를 exact-set verifier로 확인한다. 운영 migration history를 수정하는 `migration repair`는 금지한다.
+3. 격리 workdir를 생성한 뒤 `db push --workdir .tmp/blog-v4-supabase-release --include-all --skip-vault --dry-run` 결과를 exact-set verifier로 확인한다. 이 번들의 마지막 migration은 `20260818080000_blog_deepseek_auto_repair_budget_v1.sql`이며, 5회(초안 1회 + DeepSeek 보완 4회) 시도 전에 반드시 적용되어야 한다. 운영 migration history를 수정하는 `migration repair`는 금지한다.
 4. 승인된 change window에서만 forward migration을 적용한다. seed와 Vault 갱신은 포함하지 않는다.
 5. `audit:blog-corpus-reconciliation-v4` 기본 dry-run을 확인한다. 운영 disposition 기록이 승인된 경우에만 `BLOG_CORPUS_RECONCILIATION_CONFIRM=APPLY_REVIEWED_DISPOSITIONS_V4`와 `--apply`를 함께 쓴다. 이 작업은 글 status, queue, redirect, index를 바꾸지 않는다.
 6. `refresh_blog_public_snapshots_v3`를 실행하고 public eligible slug와 current snapshot slug의 정확한 parity를 확인한다.

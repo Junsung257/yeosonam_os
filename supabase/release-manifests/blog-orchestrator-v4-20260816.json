@@ -67,6 +67,11 @@
       "version": "20260817121500",
       "file": "supabase/migrations/20260817121500_add_danang_itinerary_decision_sources.sql",
       "sha256": "1803b708fad6b3f5636d8ed6cd75afe3c185892a96132d0e28740b6ecaa57f3a"
+    },
+    {
+      "version": "20260818080000",
+      "file": "supabase/migrations/20260818080000_blog_deepseek_auto_repair_budget_v1.sql",
+      "sha256": "a406340ae0d53894f230321d03c166f560ac956302556ee208530b815aad1ef3"
     }
   ],
   "rollback": {

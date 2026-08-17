@@ -279,6 +279,12 @@ function isOutputGroundingRewriteFailure(reason: string): boolean {
   return OUTPUT_GROUNDING_REWRITE_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function isNonRewritableQualityFailureV4(reason: string): boolean {
+  const normalized = reason.trim().toLowerCase();
+  return NON_REWRITABLE_BLOCKERS.has(normalized)
+    || /(?:competitor_phrase_overlap|korean_language_integrity|numeric_part_title_suffix|stale_etias_2025|template_saturation|title_skeleton_saturated)/.test(normalized);
+}
+
 export function resolveBlogGenerationModelV4(
   stage: BlogDeepSeekStage,
 ): {
@@ -416,6 +422,19 @@ export function decideBlogQualityRouteV4(
   }
 
   const explicitlyGrounded = input.researchValid === true && input.claimLedgerValid === true;
+  const qualityWeaknessIsRepairable = explicitlyGrounded
+    && hardBlockers.length === 0
+    && !allReasons.some(isResearchBlocker)
+    && !allReasons.some(isNonRewritableQualityFailureV4)
+    && completedAttempts < BLOG_QUALITY_MAX_ATTEMPTS_V4;
+  if (qualityWeaknessIsRepairable) {
+    return {
+      route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max', publishable: false,
+      reasons: unique(['quality_score_below_75_repairable_output_weakness', ...allReasons]),
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
+    };
+  }
+
   const expressionOnly = allReasons.length > 0 && allReasons.every(isExpressionOrStructureFailure);
   if (explicitlyGrounded && expressionOnly) {
     return {
