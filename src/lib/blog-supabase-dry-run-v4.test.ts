@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const versions = [
   '20260606115000', '20260814033000', '20260815093943', '20260815120135', '20260815211325',
   '20260816015102', '20260816093000', '20260816094500', '20260816120000',
-  '20260816123000',
+  '20260816123000', '20260816124500', '20260817043000', '20260817121500',
 ];
 const tsxCli = join(dirname(require.resolve('tsx')), 'cli.mjs');
 
@@ -35,7 +35,7 @@ function runAllowEmpty(name: string) {
 }
 
 describe('Blog V4 Supabase dry-run exact-set verifier', () => {
-  it('passes only the ten pinned release migrations', () => {
+  it('passes the complete pinned release migration set', () => {
     const result = run(versions.map((version) => ` • ${version}_migration.sql`).join('\n'), 'pass.txt');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('"passed": true');

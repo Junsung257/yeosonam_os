@@ -62,6 +62,11 @@
       "version": "20260817043000",
       "file": "supabase/migrations/20260817043000_blog_automated_atomic_replacement_v1.sql",
       "sha256": "efe7b7b89ef04d53e01aa24542e2bebd6dadbea2cc3670e9a974182a3b192316"
+    },
+    {
+      "version": "20260817121500",
+      "file": "supabase/migrations/20260817121500_add_danang_itinerary_decision_sources.sql",
+      "sha256": "1803b708fad6b3f5636d8ed6cd75afe3c185892a96132d0e28740b6ecaa57f3a"
     }
   ],
   "rollback": {

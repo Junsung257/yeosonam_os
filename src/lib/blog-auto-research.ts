@@ -1327,7 +1327,9 @@ export function buildBlogStructuredResearchPrompt(input: {
           : input.brief.intentType === 'itinerary'
             ? [
                 'ITINERARY PRIORITY:',
-                'Select named attractions that answer the queued traveler decision, current operating constraints, and route travel durations before climate, language, visa, or general destination facts.',
+                'Select named attractions that answer the queued traveler decision, current operating or access constraints, and route travel durations before climate, language, visa, or general destination facts.',
+                'The packet must include at least one verified scheduling, booking, admission, access, closure, stair, or elevator constraint that changes how the itinerary is planned. Physical dimensions, monument heights, and route distances do not satisfy this requirement.',
+                'Use materially different authorities for cross-domain coverage. The apex host and its www subdomain are one authority, not two independent domains.',
                 'Only select child/family suitability when the topic, audience, or reviewed source explicitly asks for it; never force a family angle into a general itinerary.',
                 'Keep the attraction entity type in claimText (for example beach, peninsula, mountain, market, museum, bridge, park, temple, or historic site) so the decision detail remains understandable without its source page.',
                 'A visa stay limit is not an itinerary duration. A bus frequency is not a route travel duration.',
