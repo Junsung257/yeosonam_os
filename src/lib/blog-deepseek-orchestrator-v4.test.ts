@@ -219,6 +219,8 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('three distinct stages (start, middle, finish)');
     expect(prompt).toContain('at least three source-neutral reader actions labelled 시작, 중간, and 마무리');
     expect(prompt).toContain('booking/official recheck');
+    expect(prompt).toContain('one distinct job each');
+    expect(prompt).toContain('Every paragraph after the opening must add a new decision detail');
     expect(prompt).toContain('realistic rest checkpoint');
     expect(prompt).toContain('rain/closure/delay fallback');
     expect(prompt).toContain('decision aid, not a generic checklist');
@@ -227,6 +229,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('Exact duration or distance claims do not authorize qualitative labels');
     expect(prompt).toContain('Never write headings such as "짧은 이동 구간" or "이동 시간이 긴 일정".');
     expect(prompt).toContain('do not force every sentence to end in 하세요');
+    expect(prompt).toContain('Semantic repetition also fails');
     expect(prompt).toContain('Never shorten or repeat a schedule/measurement outside its exact approved sentence');
     expect(prompt).toContain('Each approved fact may appear only once in the visible article');
     expect(prompt).toContain('Never combine two approved numeric claims into one sentence');
