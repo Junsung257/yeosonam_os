@@ -57,7 +57,8 @@ export interface BlogRewriteApprovedClaimV4 {
   sourceUrls?: string[];
 }
 
-const MAX_DECISION_REWRITE_CLAIMS = 6;
+const DEFAULT_DECISION_REWRITE_CLAIMS = 6;
+const MAX_DECISION_REWRITE_CLAIMS = 8;
 
 function rewriteDecisionTokens(value: string): string[] {
   return [...new Set(value
@@ -117,7 +118,7 @@ function rewriteClaimDecisionKey(claim: BlogRewriteApprovedClaimV4, index: numbe
  * Keep rewrites grounded without turning every research row into a separate
  * section. A genuinely month-by-month climate assignment may use all twelve
  * approved rows; other intents receive a deterministic, decision-relevant
- * subset capped at six.
+ * subset capped at eight for route/itinerary decisions and six otherwise.
  */
 export function selectDecisionRelevantRewriteClaimsV4(input: {
   primaryQuery: string;
@@ -126,7 +127,7 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
   maxClaims?: number;
 }): BlogRewriteApprovedClaimV4[] {
   const decisionText = `${input.primaryQuery} ${input.primaryDecision}`;
-  const itineraryOrRoute = /일정|코스|동선|이동|교통|route|itinerary/i.test(decisionText);
+  const itineraryOrRoute = /일정|코스|동선|이동|교통|route|itinerary/i.test(input.primaryQuery);
   const asksForPhysicalDimension = /높이|길이|크기|규모|면적|고도|height|length|size|altitude/i.test(decisionText);
   const nonDimensionClaims = input.approvedClaims.filter((claim) =>
     !/높이|동상|(?:^|\s|의)길이(?:는|가|의|\s|$)|길이의\s*도로|해발|고도|면적|규모|height|statue|bridge\s+is\s+\d|road.*\d+\s*km|altitude/i
@@ -140,7 +141,10 @@ export function selectDecisionRelevantRewriteClaimsV4(input: {
     && claims.every((claim) => claim.claimType === 'climate');
   if (isCompleteMonthlyClimateAssignment) return claims;
 
-  const limit = Math.max(1, Math.min(input.maxClaims ?? MAX_DECISION_REWRITE_CLAIMS, MAX_DECISION_REWRITE_CLAIMS));
+  const defaultLimit = itineraryOrRoute
+    ? MAX_DECISION_REWRITE_CLAIMS
+    : DEFAULT_DECISION_REWRITE_CLAIMS;
+  const limit = Math.max(1, Math.min(input.maxClaims ?? defaultLimit, MAX_DECISION_REWRITE_CLAIMS));
   const decisionTokens = rewriteDecisionTokens(decisionText);
   const scored = claims.map((claim, index) => ({
     claim,
@@ -522,7 +526,7 @@ function buildRewriteArchetypeContractV4(
   if (archetype === 'itinerary_timeline') {
     const requestedDuration = primaryQuery.match(/(?:^|\s)(\d{1,2})\s*박\s*(\d{1,2})\s*일/u);
     const dayBlockRule = requestedDuration
-      ? `- The query asks for ${requestedDuration[1]}박${requestedDuration[2]}일. Include distinct 1일차 through ${requestedDuration[2]}일차 blocks, and name at least one approved-claim entity in every day block.`
+      ? `- The query asks for ${requestedDuration[1]}박${requestedDuration[2]}일. Include distinct 1일차 through ${requestedDuration[2]}일차 blocks. Every day block must name an approved-claim entity and add one distinct reader choice or action beyond its heading.`
       : '- Include at least two distinct time-block or route-option sections. Every block must name an entity already present in an approved claim.';
     return [
       '[ARCHETYPE CONTRACT — itinerary_timeline]',
@@ -531,7 +535,7 @@ function buildRewriteArchetypeContractV4(
       dayBlockRule,
       '- You may make an editorial proposal that places approved-claim entities into different day/time/route-option blocks. Label it as a proposed schedule, not an official route.',
       '- Two unrelated duration claims never prove proximity, compatibility, a shared origin, or that two places belong together. State only the proposed order; explain a local relationship only when an exact approved claim supports it.',
-      '- Put a booking/access/operation recheck beside the one block it changes, a realistic rest decision beside one block, and one rain/closure/delay fallback that names the block it replaces or removes.',
+      '- Put a booking/access/operation recheck beside the one block it changes, a realistic rest decision beside one block, and one rain/closure/delay fallback that names the block it replaces or removes. A bare mention of 체력 is not a rest decision: explicitly leave rest time, drop an optional block, or shorten the proposed sequence.',
       '- Give movement evidence, operating/access evidence, rest planning, and fallback planning one distinct job each. Do not restate the same advice in the opening, blocks, and conclusion with synonyms.',
       '- Every paragraph after the opening must add a new decision detail, a supported fact, or a distinct action. Delete summary padding that merely repeats an earlier concept.',
       '- Never use 시작/중간/마무리 as substitute itinerary stages. Never output a generic planning checklist.',

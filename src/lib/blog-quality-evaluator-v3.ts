@@ -104,10 +104,14 @@ function extractItineraryEntityCandidatesV3(
     for (const match of text.matchAll(/([가-힣]{2,16})(?:에서|까지|으로|로)(?=\s|$)/gu)) {
       entities.add(match[1].trim());
     }
+    for (const match of text.matchAll(/([가-힣]{2,16})\s+지역(?:에서|까지|으로|로)(?=\s|$)/gu)) {
+      entities.add(match[1].trim());
+    }
   }
   return [...entities].filter((entity) => {
     const normalized = entity.toLocaleLowerCase('ko-KR');
     return normalized !== destinationName
+      && !/^(?:시내|지역|장소|후보|차량|도시)$/u.test(entity)
       && !/^(?:official|tourism|travel|medium|low|high)$/i.test(entity);
   });
 }
@@ -179,7 +183,9 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
         /도착|내리는\s*곳|하차|마지막/iu,
       ].filter((pattern) => pattern.test(prose)).length;
   const reservationCheck = /예약|입장\s*(?:가능|여부|조건)|운영\s*(?:여부|시간)|공식\s*(?:채널|사이트|앱).*확인/iu.test(prose);
-  const restPlan = /휴식|쉬(?:고|는|어|세요)|여유|체력|식사\s*(?:시간|간격)|낮잠/iu.test(prose);
+  const restPlan = /휴식|쉬(?:고|는|어|세요)|여유|식사\s*(?:시간|간격)|낮잠/iu.test(prose)
+    || /체력[\s\S]{0,32}(?:휴식|쉬|비우|남겨|줄이|빼|제외|중단|대체)/iu.test(prose)
+    || /(?:휴식|쉬|비우|남겨|줄이|빼|제외|중단|대체)[\s\S]{0,32}체력/iu.test(prose);
   const fallbackPlan = /우천|비가\s*오|휴무|취소|지연|매진|막차|대체\s*(?:일정|후보|동선|안)|플랜\s*B|일정[\s\S]{0,30}(?:줄이|바꾸|조정)/iu.test(prose);
   const routeBoardingDetail = /타는\s*곳|내리는\s*곳|승차|하차|환승|출발(?:지|점)|도착(?:지|점)/iu.test(prose);
   const artifactComplete = itineraryIntent
@@ -256,6 +262,8 @@ function inspectInformationGainArtifactV3(input: BlogQualityEvaluationInputV3): 
     .filter((line) => line && !/^#{1,6}\s|^\[[^\]]+\]\(https?:/i.test(line))
     .flatMap((line) => line
       .replace(/^[-*+]\s+/, '')
+      .replace(/\d{1,2}\s*박\s*\d{1,2}\s*일/gu, '')
+      .replace(/\d{1,2}\s*일차(?:에는|는|에|:)?/gu, '')
       .split(/(?<=[.!?。！？])\s+/)
       .map((unit) => unit.trim()))
     .filter((unit) => unit.length >= 8 && !/\d/.test(unit));

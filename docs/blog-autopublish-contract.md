@@ -538,9 +538,13 @@ Rules:
 
 - A query duration (`N박M일`), a numbered day heading, an article-scope sentence, an explicitly labelled proposed order, and a contingency heading are editorial structure, not external facts by themselves.
 - A duration, fare, price, operating time, distance, availability statement, regulated condition, or other measurable assertion inside those same sections remains a factual claim and must match the structured claim ledger exactly.
+- Risk classification is fail-closed at the deterministic boundary. Entry/visa, insurance, policy, and customs claims have a `HIGH` floor; price, currency, duration, schedule/time, climate, percentage, quantity, availability, requirement, and measurable-superlative claims have at least a `MEDIUM` floor. A research or writer model may raise this risk but may never downgrade it. A downgraded writer ledger is invalid rather than silently normalized.
 - Korean place names in itinerary blocks may be recognized from validated claim subjects and the `에서/까지/으로` boundaries. The destination name alone never counts as a decision-grade entity.
+- A normal rewrite may select at most six approved claims. An itinerary or route rewrite may select at most eight when the validated packet contains decision-relevant evidence; the extra allowance must be used for named daily stops, movement, operating constraints, booking checks, or fallback decisions rather than decorative dimensions.
+- Every explicit day block must pair a research-backed named entity with a distinct reader action. Repeating a generic imperative or merely mentioning `체력` does not satisfy the rest requirement. The article must state a concrete rest, omission, shortening, or schedule-spacing decision.
 - Flexible V3 articles may use descriptive sections instead of a table, FAQ, or checklist. Scanability is satisfied by short, meaningful sections; no evaluator may force a content asset solely to raise a legacy readability score.
 - Comparison content still needs situation-to-choice criteria, but the criteria may be expressed as prose sections, cards, lists, or tables according to intent and evidence.
+- A private candidate remains `pending_review` even after a high aggregate score when manual evidence inspection finds that it passed through shallow proxies such as a bare stamina word, under-classified dynamic facts, or incomplete use of an otherwise sufficient evidence packet. Aggregate score never authorizes a public replacement by itself.
 
 ## Daily Verification
 

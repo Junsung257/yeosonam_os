@@ -236,6 +236,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     expect(prompt).toContain('one distinct job each');
     expect(prompt).toContain('Every paragraph after the opening must add a new decision detail');
     expect(prompt).toContain('realistic rest decision');
+    expect(prompt).toContain('A bare mention of 체력 is not a rest decision');
     expect(prompt).toContain('rain/closure/delay fallback');
     expect(prompt).toContain('Never output a generic planning checklist');
     expect(prompt).toContain('Do not merely list claims or finish with generic questions');
@@ -282,7 +283,8 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
 
     expect(prompt).toContain('Include distinct 1일차 through 4일차 blocks');
-    expect(prompt).toContain('name at least one approved-claim entity in every day block');
+    expect(prompt).toContain('Every day block must name an approved-claim entity');
+    expect(prompt).toContain('one distinct reader choice or action beyond its heading');
   });
 
   it('gives route rewrites boarding, connection, arrival, and disruption decisions', () => {
@@ -406,6 +408,24 @@ describe('blog DeepSeek orchestrator V4', () => {
       primaryDecision: '일정과 체력으로 장소를 선택한다',
       approvedClaims: claims,
     })).toEqual(selected);
+  });
+
+  it('allows an itinerary rewrite to use eight distinct decision facts', () => {
+    const claims = Array.from({ length: 10 }, (_, index) => ({
+      claimText: `장소 ${index + 1}까지 차량으로 ${10 + index}분이 소요됩니다.`,
+      claimType: 'duration',
+      riskLevel: 'MEDIUM',
+      sourceUrls: [`https://example.com/route-${index + 1}`],
+    }));
+
+    const selected = selectDecisionRelevantRewriteClaimsV4({
+      primaryQuery: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryDecision: '각 날짜에 어느 장소를 배치해야 하는가?',
+      approvedClaims: claims,
+    });
+
+    expect(selected).toHaveLength(8);
+    expect(new Set(selected.map((claim) => claim.sourceUrls?.[0])).size).toBe(8);
   });
 
   it('prioritizes schedule and movement claims over landmark dimensions for itinerary rewrites', () => {
