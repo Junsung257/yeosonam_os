@@ -67,6 +67,7 @@ temp_qingdao.txt
 
 # Supabase CLI 자동생성
 supabase/.temp/
+supabase/.branches/
 
 # 스크래치/실험 폴더 (LLM 출력 덤프, 실험 HTML, 임시 로그)
 scratch/
@@ -119,6 +120,8 @@ lint_output.txt
 
 # Local temporary audit/export artifacts
 .codex-temp/
+.artifacts/
+analysis-result.json
 tmp-*.json
 tmp-*.txt
 tmp-*.html
