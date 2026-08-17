@@ -2,10 +2,6 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
-      "path": "/api/cron/product-registration-v4",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/cron/product-registration-v5-outbox",
       "schedule": "*/2 * * * *"
     },
