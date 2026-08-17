@@ -17,6 +17,7 @@ export interface PublishedBlogQualityUpgradeInput {
   seo_title?: string | null;
   destination?: string | null;
   category?: string | null;
+  blog_html?: string | null;
 }
 
 export type PublishedBlogQualityUpgradeDecision =
@@ -53,6 +54,8 @@ function buildIntentAnchoredUpgradeTopic(input: {
   publicTopic: string;
 }): string {
   if (!input.destination || !input.intent) return input.publicTopic;
+  const duration = input.publicTopic.match(/(?:^|\s)(\d{1,2}\s*박\s*\d{1,2}\s*일)/u)?.[1]
+    ?.replace(/\s+/g, '');
   const topics: Record<BlogInformationIntent, string> = {
     general: input.publicTopic,
     monthly_weather: `${input.destination} 월별 날씨와 옷차림`,
@@ -62,8 +65,8 @@ function buildIntentAnchoredUpgradeTopic(input: {
     food_budget: `${input.destination} 식비 예산과 대표 메뉴 가격`,
     family_budget: `${input.destination} 가족여행 예산과 비용`,
     itinerary: input.microAngle === 'kid_friendly'
-      ? `${input.destination} 아이와 가족 여행 일정과 이동 동선`
-      : `${input.destination} 여행 일정과 이동 동선`,
+      ? `${input.destination} 아이와 가족 ${duration ? `${duration} ` : ''}여행 일정과 이동 동선`
+      : `${input.destination} ${duration ? `${duration} ` : ''}여행 일정과 이동 동선`,
     shopping_souvenirs: `${input.destination} 쇼핑 기념품 가격과 구매 장소`,
     currency_payment: `${input.destination} 화폐 환전과 카드 결제`,
     entry_requirements: `${input.destination} 입국 요건과 비자`,

@@ -188,7 +188,20 @@ function riskLevel(text: string): BlogInformationRiskLevel {
   return 'LOW';
 }
 
-function sectionPurposes(intent: SearchDecisionIntent, details: EvidenceLinkedDetail[]): SectionPurpose[] {
+function extractTripDuration(value: string): { nights: number; days: number; label: string } | null {
+  const match = clean(value).match(/(?:^|\s)(\d{1,2})\s*박\s*(\d{1,2})\s*일/u);
+  if (!match) return null;
+  const nights = Number(match[1]);
+  const days = Number(match[2]);
+  if (!Number.isInteger(nights) || !Number.isInteger(days) || nights < 0 || days < 1 || days > 14) return null;
+  return { nights, days, label: `${nights}박${days}일` };
+}
+
+function sectionPurposes(
+  intent: SearchDecisionIntent,
+  details: EvidenceLinkedDetail[],
+  primaryQuery: string,
+): SectionPurpose[] {
   const ids = details.map((detail) => detail.evidenceId);
   const build = (id: string, purpose: string, decisionQuestion: string, optional = false): SectionPurpose => ({
     id,
@@ -236,11 +249,22 @@ function sectionPurposes(intent: SearchDecisionIntent, details: EvidenceLinkedDe
         build('drivers', '비용을 바꾸는 조건을 설명한다', '어디에서 예산 차이가 커지는가?'),
       ];
     case 'itinerary_execution':
+      {
+        const duration = extractTripDuration(primaryQuery);
       return [
-        build('timeline', '날짜보다 이동·예약·휴식 순서로 일정을 만든다', '언제 무엇을 해야 무리가 없는가?'),
-        build('movement', '구간별 이동 시간을 반영한다', '이동 때문에 놓치는 것은 없는가?'),
-        build('fallback', '우천·휴무·피로 대체안을 둔다', '일정이 틀어지면 어떻게 조정하는가?', true),
+        build(
+          'timeline',
+          duration
+            ? `${duration.label}의 각 날짜에 근거가 있는 장소를 배치한 실행 일정을 만든다`
+            : '근거가 있는 장소를 시간대 또는 선택 가능한 동선안으로 배치한다',
+          duration
+            ? `${duration.label} 동안 어느 날에 어느 장소를 배치해야 하는가?`
+            : '어떤 장소를 같은 날 또는 별도 동선으로 배치할 것인가?',
+        ),
+        build('movement', '장소명이 들어간 일정 블록에 구간별 이동·접근 근거를 연결한다', '각 일정 블록을 실행하려면 무엇을 확인해야 하는가?'),
+        build('fallback', '구체 장소가 포함된 우천·휴무·피로 대체안을 둔다', '일정이 틀어지면 어느 블록을 바꾸거나 줄이는가?', true),
       ];
+      }
     case 'current_change':
       return [
         build('change', '이전 상태와 현재 상태를 시행일과 함께 구분한다', '정확히 무엇이 바뀌었는가?'),
@@ -275,7 +299,7 @@ function buildTitleCandidates(primaryQuery: string, destination: string, intent:
       : intent === 'budget_decision'
             ? [[`${query}: 여행 방식별 예산 시나리오`, '근거 있는 비용 조건을 설명']]
             : intent === 'itinerary_execution'
-              ? [[`${query}: 이동 부담을 줄이는 순서`, '명소 나열보다 실행 순서와 동선 결정을 명시']]
+              ? [[`${query}: 장소별 실행 순서와 대체 동선`, '근거가 연결된 장소와 실제 실행 단위를 제목에 명시']]
             : [[query, '검색어와 본문의 주된 답을 그대로 일치']];
   return unique(candidates.map(([title]) => title)).map((title, index) => ({
     title: title.slice(0, 80),
@@ -296,7 +320,7 @@ function buildDescription(primaryQuery: string, intent: SearchDecisionIntent): s
           : intent === 'budget_decision'
             ? `${primaryQuery}에 필요한 비용을 여행 방식별로 나누어 비교합니다. 확인된 가격 근거와 변동 조건을 바탕으로 내 예산에 맞는 선택과 출발 전 확인 항목을 정리했습니다.`
             : intent === 'itinerary_execution'
-              ? `${primaryQuery}을 계획할 때 필요한 확인 순서를 정리했습니다. 본문에 연결된 공식 근거를 먼저 확인하고, 출발 지점·예약·휴식 조건에 맞춰 실행 순서를 정하는 방법을 살펴보세요.`
+              ? `${primaryQuery}의 장소별 실행 순서와 이동 근거를 정리했습니다. 일정 블록마다 예약·접근 조건을 확인하고, 휴무나 피로에 대비해 바꿀 수 있는 대체 동선까지 비교해 보세요.`
             : `${primaryQuery}에 바로 답할 수 있도록 확인된 정보와 선택 기준을 구분해 정리했습니다. 내 일정과 우선순위에 맞는 결정을 내리고 출발 전에 다시 확인할 항목도 살펴보세요.`;
   const complete = base.length >= 80
     ? base
@@ -356,7 +380,7 @@ export function buildBlogContentBriefV3(input: BlogContentBriefV3Input): BlogCon
     .filter((detail) => clean(detail.text) && clean(detail.evidenceId))
     .slice(0, 12);
   const risk = riskLevel(`${input.topic} ${input.primaryKeyword || ''}`);
-  const purposes = sectionPurposes(intent, details);
+  const purposes = sectionPurposes(intent, details, primaryQuery);
   const destination = clean(input.destination);
   const titleCandidates = buildTitleCandidates(primaryQuery, destination, intent);
   const metadataDescription = buildDescription(primaryQuery, intent);
@@ -423,6 +447,12 @@ export function buildBlogContentBriefV3PromptBlock(brief: BlogContentBriefV3): s
     `- Checklist: ${brief.includeChecklist ? 'use only when it prevents a documented mistake' : 'do not append'}`,
     `- Table: ${brief.includeTable ? 'allowed only when every cell is evidence-backed' : 'do not force'}`,
     '- No fixed H2 count, word count, image count, year suffix, power word, or generic closing section.',
+    ...(brief.archetype === 'itinerary_timeline' ? [
+      '- Itinerary output must contain concrete day/time/route-option blocks, each naming an entity from the approved claims.',
+      '- A sequence labelled only 시작/중간/마무리, or generic reminders about booking/rest/fallback, is not an itinerary.',
+      '- When the primary query contains N박M일, cover every travel day with a distinct numbered day block. Otherwise provide at least two distinct named-place route options or time blocks.',
+      '- A proposed sequence is editorial guidance, not an official itinerary. Do not invent proximity, duration, opening status, or route compatibility; attach exact approved claims where they support a block.',
+    ] : []),
     '- Section purpose is a decision contract, not an exact heading to copy:',
     ...brief.sectionPurposes.map((section) => `  - ${section.purpose} — ${section.decisionQuestion}`),
     '- Evidence-linked destination details that must be used accurately:',

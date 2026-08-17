@@ -118,4 +118,21 @@ describe('published blog quality upgrade candidate', () => {
     });
     expect(decision.representativeKey).toContain('entry_requirements');
   });
+
+  it('keeps the existing trip duration in the intent-anchored itinerary topic', () => {
+    const decision = evaluatePublishedBlogQualityUpgradeCandidate({
+      id: 'post-itinerary',
+      slug: 'danang-itinerary-route-guide-2026',
+      seo_title: '다낭 여행 가이드 2026 | 일정과 이동 동선 체크',
+      destination: '다낭',
+      category: 'travel_tips',
+      blog_html: '<h2>다낭 3박4일 일정</h2>',
+    });
+
+    expect(decision).toMatchObject({
+      accepted: true,
+      queueTopic: '다낭 3박4일 여행 일정과 이동 동선',
+      brief: { intentType: 'itinerary' },
+    });
+  });
 });

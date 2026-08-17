@@ -24,6 +24,7 @@ interface PublishedBlogUpgradeTopicInput {
   slug?: unknown;
   destination?: unknown;
   seo_title?: unknown;
+  blog_html?: unknown;
 }
 
 interface PublishedBlogUpgradeSlugInput {
@@ -120,7 +121,20 @@ export function readAutomatedPublishedBlogReplacement(
 export function buildPublishedBlogUpgradeQueueTopic(
   input: PublishedBlogUpgradeTopicInput,
 ): string {
-  const titleTopic = readTrimmedString(input.seo_title)
+  const seoTitle = readTrimmedString(input.seo_title);
+  const slugValue = readTrimmedString(input.slug);
+  const existingBody = readTrimmedString(input.blog_html);
+  const itineraryContext = `${seoTitle} ${slugValue} ${existingBody.slice(0, 4_000)}`;
+  const duration = itineraryContext.match(/(?:^|\s)(\d{1,2})\s*박\s*(\d{1,2})\s*일/u);
+  const destination = readTrimmedString(input.destination)
+    .replace(/[|\u00b7\u2022]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (duration && /일정|코스|동선|여정|itinerary|route/i.test(itineraryContext)) {
+    return `${destination || '여행지'} ${duration[1]}박${duration[2]}일 여행 코스와 이동 동선`;
+  }
+
+  const titleTopic = seoTitle
     .split('|')[0]!
     .replace(/(?:여행\s*)?가이드|체크리스트|총정리|완벽|필수|BEST/gi, ' ')
     .replace(/\b20\d{2}\b/g, ' ')
@@ -128,7 +142,7 @@ export function buildPublishedBlogUpgradeQueueTopic(
     .trim();
   if (/[가-힣]{2,}/.test(titleTopic)) return titleTopic;
 
-  const slug = readTrimmedString(input.slug);
+  const slug = slugValue;
   let decodedSlug = slug;
   if (slug) {
     try {
@@ -142,10 +156,6 @@ export function buildPublishedBlogUpgradeQueueTopic(
     .replace(/[-_]+/g, ' ')
     .replace(/[|\u00b7\u2022]+/g, ' ')
     .replace(/(?:총정리|완벽\s*(?:가이드|정리|체크리스트)|완벽한)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const destination = readTrimmedString(input.destination)
-    .replace(/[|\u00b7\u2022]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (slugTopic) {

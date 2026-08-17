@@ -1328,7 +1328,8 @@ export function buildBlogStructuredResearchPrompt(input: {
             ? [
                 'ITINERARY PRIORITY:',
                 'Select named attractions that answer the queued traveler decision, current operating or access constraints, and route travel durations before climate, language, visa, or general destination facts.',
-                'The packet must include at least one verified scheduling, booking, admission, access, closure, stair, or elevator constraint that changes how the itinerary is planned. Physical dimensions, monument heights, and route distances do not satisfy this requirement.',
+                'The packet must include at least one verified opening/closing schedule, required booking, admission deadline/condition, stair/elevator access condition, seasonal access restriction, closure, or service interruption that changes how the itinerary is planned. A bare ticket price, fare, physical dimension, monument height, or route distance does not satisfy this requirement.',
+                'Prioritize a schedule/access constraint for an attraction already named in a selected route-duration claim. Do not fill this requirement with an unrelated show or ticket product unless the primary query explicitly names it.',
                 'Use materially different authorities for cross-domain coverage. The apex host and its www subdomain are one authority, not two independent domains.',
                 'Only select child/family suitability when the topic, audience, or reviewed source explicitly asks for it; never force a family angle into a general itinerary.',
                 'Keep the attraction entity type in claimText (for example beach, peninsula, mountain, market, museum, bridge, park, temple, or historic site) so the decision detail remains understandable without its source page.',

@@ -218,6 +218,7 @@ const ITINERARY_CONTENT_KEY = 'danang-itinerary-research';
 function itineraryBundle(input: {
   sameAuthorityWithWww?: boolean;
   includeOperatingConstraint?: boolean;
+  includeBareTicketPrice?: boolean;
 } = {}): BlogInformationResearchBundle {
   const records = [
     {
@@ -263,7 +264,15 @@ function itineraryBundle(input: {
           unit: '계단',
           text: '오행산 정상은 150개가 넘는 계단을 오르거나 엘리베이터를 선택해 입장할 수 있습니다.',
         }
-      : {
+      : input.includeBareTicketPrice
+        ? {
+            sourceIndex: 1,
+            type: 'price' as const,
+            value: '350000',
+            unit: 'VND',
+            text: '돌고래 쇼 티켓 요금은 350,000 VND입니다.',
+          }
+        : {
           sourceIndex: 1,
           type: 'factual' as const,
           value: '21',
@@ -644,7 +653,16 @@ describe('blog generation research preflight', () => {
 
     expect(result.passed).toBe(false);
     expect(result.issues).toContain(
-      'claim_semantic_coverage_missing:itinerary:operating_or_access_constraint',
+      'claim_semantic_coverage_missing:itinerary:schedule_or_access_constraint',
+    );
+  });
+
+  it('does not let an unrelated bare ticket price satisfy itinerary scheduling evidence', () => {
+    const result = itineraryReadiness(itineraryBundle({ includeBareTicketPrice: true }));
+
+    expect(result.passed).toBe(false);
+    expect(result.issues).toContain(
+      'claim_semantic_coverage_missing:itinerary:schedule_or_access_constraint',
     );
   });
 
@@ -653,7 +671,7 @@ describe('blog generation research preflight', () => {
 
     expect(result.issues).not.toContain('source_domain_diversity_below_minimum:1/2');
     expect(result.issues).not.toContain(
-      'claim_semantic_coverage_missing:itinerary:operating_or_access_constraint',
+      'claim_semantic_coverage_missing:itinerary:schedule_or_access_constraint',
     );
     expect(result.issues).toEqual([]);
     expect(result.passed).toBe(true);

@@ -54,6 +54,7 @@ export interface BlogQualityEvaluationInputV3 {
   sectionPurposeCoverage?: number;
   imageEntityMatch?: number;
   pillarSupportRelationship?: number;
+  itineraryEvidenceTexts?: string[];
 }
 
 export interface BlogQualityEvaluationV3 {
@@ -81,9 +82,33 @@ const result = (value: number, passed: boolean, evidence: string[], failures: st
   value: Math.round(value * 100) / 100, passed, evidence, failures,
 });
 
+function extractItineraryEntityCandidatesV3(
+  evidenceTexts: string[],
+  destination?: string | null,
+): string[] {
+  const entities = new Set<string>();
+  const destinationName = String(destination || '').normalize('NFKC').trim().toLocaleLowerCase('ko-KR');
+  for (const raw of evidenceTexts) {
+    const text = String(raw || '').normalize('NFKC');
+    for (const match of text.matchAll(/\b[A-ZÀ-ÖØ-ÞĀ-ŽĐ][A-Za-zÀ-ÖØ-öø-ÿĀ-žĐđ'’.-]*(?:\s+[A-ZÀ-ÖØ-ÞĀ-ŽĐ][A-Za-zÀ-ÖØ-öø-ÿĀ-žĐđ'’.-]*){0,4}\b/gu)) {
+      const value = match[0].trim();
+      if (value.length >= 3) entities.add(value);
+    }
+    for (const match of text.matchAll(/([가-힣]{2,18}(?:\s+[가-힣]{2,12}){0,2}(?:산|힐|사원|해변|시장|공원|박물관|수족관|반도|다리|브리지|마운틴|패스|대성당|동굴|유적|관광지))/gu)) {
+      entities.add(match[1].trim());
+    }
+  }
+  return [...entities].filter((entity) => {
+    const normalized = entity.toLocaleLowerCase('ko-KR');
+    return normalized !== destinationName
+      && !/^(?:official|tourism|travel|medium|low|high)$/i.test(entity);
+  });
+}
+
 function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
   score: number;
   evidence: string[];
+  failures: string[];
 } | null {
   const topic = `${input.primaryQuery || ''} ${input.title} ${input.primaryDecision || ''}`;
   const itineraryIntent = input.archetype === 'itinerary_timeline'
@@ -92,13 +117,41 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
     || /공항.*(?:에서|부터)|가는\s*법|교통편|이동수단/i.test(topic);
   if (!itineraryIntent && !routeIntent) return null;
 
-  const visibleLines = input.body
+  const artifactLines = input.body
     .replace(/<!--[\s\S]*?-->/g, '')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && !/^#|^\[[^\]]+\]\(https?:/i.test(line));
+    .filter((line) => line && !/^\[[^\]]+\]\(https?:/i.test(line));
+  const visibleLines = artifactLines.filter((line) => !/^#/u.test(line));
   const prose = visibleLines.join('\n');
   const firstParagraph = visibleLines.find((line) => !/^[-*]\s/.test(line)) || '';
+  const itineraryEntities = itineraryIntent
+    ? extractItineraryEntityCandidatesV3(input.itineraryEvidenceTexts ?? [], input.destination)
+    : [];
+  const requestedDays = itineraryIntent
+    ? Number(topic.match(/(?:^|\s)\d{1,2}\s*박\s*(\d{1,2})\s*일/u)?.[1] ?? 0)
+    : 0;
+  const concreteStagePattern = /^(?:#{2,6}\s+|[-*+]\s+)?(?:(?:제?\s*)?\d{1,2}\s*일차|첫째\s*날|둘째\s*날|셋째\s*날|넷째\s*날|다섯째\s*날|아침|오전|점심|오후|저녁|밤|(?:동선|루트|코스)\s*(?:안|옵션)?\s*[A-Z0-9가-힣]?)/iu;
+  const concreteStageLines = itineraryIntent
+    ? artifactLines.filter((line) => concreteStagePattern.test(line)
+      && itineraryEntities.some((entity) => line.toLocaleLowerCase('ko-KR').includes(entity.toLocaleLowerCase('ko-KR'))))
+    : [];
+  const distinctConcreteEntities = new Set(concreteStageLines.flatMap((line) =>
+    itineraryEntities.filter((entity) => line.toLocaleLowerCase('ko-KR').includes(entity.toLocaleLowerCase('ko-KR'))),
+  ));
+  const concreteDayOrdinals = new Set(concreteStageLines.flatMap((line) => {
+    const match = line.match(/(?:제?\s*)?(\d{1,2})\s*일차/u);
+    return match ? [Number(match[1])] : [];
+  }));
+  const expectedConcreteBlocks = requestedDays > 0 ? Math.min(requestedDays, 7) : 2;
+  const requiredDayOrdinalsPresent = requestedDays <= 0
+    || Array.from({ length: expectedConcreteBlocks }, (_, index) => index + 1)
+      .every((day) => concreteDayOrdinals.has(day));
+  const concreteBlocksPassed = !itineraryIntent || (
+    concreteStageLines.length >= expectedConcreteBlocks
+    && distinctConcreteEntities.size >= Math.min(2, expectedConcreteBlocks)
+    && requiredDayOrdinalsPresent
+  );
   const sequenceMatches = prose.match(
     itineraryIntent
       ? /먼저|이어서|다음|별도|마지막|순서|묶(?:어|고|음)|분리(?:해|하고|한)|동선/gi
@@ -112,11 +165,7 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
     ? /동선|이동\s*시간|묶|분리|순서/i.test(firstParagraph)
     : /동선|이동\s*시간|이동수단|출발|도착/i.test(firstParagraph);
   const sequenceStages = itineraryIntent
-    ? [
-        /먼저|처음|첫날|출발\s*전|시작/iu,
-        /이어서|다음|둘째|오전|점심|오후|중간/iu,
-        /마지막|저녁|밤|도착\s*후|마무리/iu,
-      ].filter((pattern) => pattern.test(prose)).length
+    ? Math.min(3, concreteStageLines.length)
     : [
         /출발|타는\s*곳|승차|먼저/iu,
         /이어서|다음|환승|구간|중간/iu,
@@ -128,7 +177,7 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
   const routeBoardingDetail = /타는\s*곳|내리는\s*곳|승차|하차|환승|출발(?:지|점)|도착(?:지|점)/iu.test(prose);
   const artifactComplete = itineraryIntent
     ? directAnswer
-      && sequenceStages === 3
+      && concreteBlocksPassed
       && movementEvidence
       && reservationCheck
       && restPlan
@@ -140,7 +189,7 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
       && fallbackPlan;
   const weightedScore = itineraryIntent
     ? (directAnswer ? 0.2 : 0)
-      + (sequenceStages / 3) * 0.2
+      + Math.min(1, concreteStageLines.length / expectedConcreteBlocks) * 0.2
       + (movementEvidence ? 0.15 : 0)
       + (reservationCheck ? 0.15 : 0)
       + (restPlan ? 0.15 : 0)
@@ -165,6 +214,9 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
       `movement_evidence=${movementEvidence}`,
       ...(itineraryIntent
         ? [
+            `concrete_itinerary_blocks=${concreteStageLines.length}/${expectedConcreteBlocks}`,
+            `itinerary_day_ordinals=${[...concreteDayOrdinals].sort((left, right) => left - right).join(',') || 'none'}`,
+            `named_itinerary_entities=${[...distinctConcreteEntities].join(',') || 'none'}`,
             `reservation_check=${reservationCheck}`,
             `rest_plan=${restPlan}`,
             `fallback_plan=${fallbackPlan}`,
@@ -174,6 +226,9 @@ function inspectIntentArtifactV3(input: BlogQualityEvaluationInputV3): {
             `fallback_plan=${fallbackPlan}`,
           ]),
     ],
+    failures: itineraryIntent && !concreteBlocksPassed
+      ? ['concrete_itinerary_blocks_missing']
+      : [],
   };
 }
 
@@ -260,6 +315,7 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     ? Math.min(measuredIntentCompletion, intentArtifact.score)
     : measuredIntentCompletion;
   const intentEvidence = intentArtifact?.evidence ?? [String(input.primaryDecision || '')];
+  const intentArtifactFailures = intentArtifact?.failures ?? [];
   const effectiveSerpAlignment = intentArtifact
     ? Math.min(clamp(input.serpIntentAlignment, intentCompletion), intentArtifact.score)
     : clamp(input.serpIntentAlignment, intentCompletion);
@@ -284,7 +340,7 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
   const truthful = input.authorReviewTruthful !== false && !hardBlockers.includes('unsupported_first_party_claim');
 
   const dimensions: Record<BlogQualityDimensionV3, BlogQualityDimensionResultV3> = {
-    intent_completion: result(intentCompletion, intentCompletion >= 0.75, intentEvidence, intentCompletion >= 0.75 ? [] : ['primary_decision_not_answered']),
+    intent_completion: result(intentCompletion, intentCompletion >= 0.75, intentEvidence, intentCompletion >= 0.75 ? [] : (intentArtifactFailures.length ? intentArtifactFailures : ['primary_decision_not_answered'])),
     factual_support_coverage: result(supportCoverage, supportCoverage >= 0.9, [`${input.supportedClaimCount || 0}/${factualCount}`], supportCoverage >= 0.9 ? [] : ['claim_support_coverage_below_90_percent']),
     stale_claim_count: result(input.staleClaimCount || 0, (input.staleClaimCount || 0) === 0, [`count=${input.staleClaimCount || 0}`], (input.staleClaimCount || 0) ? ['stale_claim_present'] : []),
     conflicting_claim_count: result(input.conflictingClaimCount || 0, (input.conflictingClaimCount || 0) === 0, [`count=${input.conflictingClaimCount || 0}`], (input.conflictingClaimCount || 0) ? ['claim_conflict_present'] : []),
@@ -311,7 +367,7 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     internal_link_relevance: result(clamp(input.internalLinkRelevance, 1), clamp(input.internalLinkRelevance, 1) >= 0.6, [`score=${input.internalLinkRelevance ?? 1}`], clamp(input.internalLinkRelevance, 1) >= 0.6 ? [] : ['internal_link_irrelevant']),
     user_actionability: result(clamp(input.userActionability, 1), clamp(input.userActionability, 1) >= 0.7, [`score=${input.userActionability ?? 1}`], clamp(input.userActionability, 1) >= 0.7 ? [] : ['next_action_unclear']),
     serp_intent_alignment: result(effectiveSerpAlignment, effectiveSerpAlignment >= 0.75, intentEvidence, effectiveSerpAlignment >= 0.75 ? [] : ['serp_intent_misaligned']),
-    decision_completion: result(effectiveDecisionCompletion, effectiveDecisionCompletion >= 0.75, intentEvidence, effectiveDecisionCompletion >= 0.75 ? [] : ['reader_decision_incomplete']),
+    decision_completion: result(effectiveDecisionCompletion, effectiveDecisionCompletion >= 0.75, intentEvidence, effectiveDecisionCompletion >= 0.75 ? [] : (intentArtifactFailures.length ? intentArtifactFailures : ['reader_decision_incomplete'])),
     query_cluster_coverage: result(clamp(input.queryClusterCoverage, 1), clamp(input.queryClusterCoverage, 1) >= 0.6, [`score=${input.queryClusterCoverage ?? 1}`], clamp(input.queryClusterCoverage, 1) >= 0.6 ? [] : ['query_cluster_undercovered']),
     comparative_information_gain: result(
       effectiveComparativeInformationGain,
@@ -326,7 +382,7 @@ export function evaluateBlogQualityV3(input: BlogQualityEvaluationInputV3): Blog
     ),
     competitor_copy_risk: result(1 - clamp(input.competitorCopyRisk), clamp(input.competitorCopyRisk) <= 0.3, [`risk=${input.competitorCopyRisk ?? 0}`], clamp(input.competitorCopyRisk) <= 0.3 ? [] : ['competitor_phrase_overlap']),
     title_snippet_congruence: result(clamp(input.titleSnippetCongruence, 1), clamp(input.titleSnippetCongruence, 1) >= 0.8, [`score=${input.titleSnippetCongruence ?? 1}`], clamp(input.titleSnippetCongruence, 1) >= 0.8 ? [] : ['title_description_body_mismatch']),
-    section_purpose_coverage: result(effectiveSectionCoverage, effectiveSectionCoverage >= 0.75, intentEvidence, effectiveSectionCoverage >= 0.75 ? [] : ['section_purpose_missing']),
+    section_purpose_coverage: result(effectiveSectionCoverage, effectiveSectionCoverage >= 0.75, intentEvidence, effectiveSectionCoverage >= 0.75 ? [] : (intentArtifactFailures.length ? intentArtifactFailures : ['section_purpose_missing'])),
     image_entity_match: result(clamp(input.imageEntityMatch, input.imageRelevance), clamp(input.imageEntityMatch, input.imageRelevance) >= 0.7, [`score=${input.imageEntityMatch ?? input.imageRelevance ?? 1}`], clamp(input.imageEntityMatch, input.imageRelevance) >= 0.7 ? [] : ['image_entity_mismatch']),
     pillar_support_relationship: result(clamp(input.pillarSupportRelationship, 1), clamp(input.pillarSupportRelationship, 1) >= 0.7, [`score=${input.pillarSupportRelationship ?? 1}`], clamp(input.pillarSupportRelationship, 1) >= 0.7 ? [] : ['pillar_relationship_missing']),
   };

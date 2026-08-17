@@ -30,11 +30,26 @@ describe('flexible blog content brief v3', () => {
 
     expect(brief).toMatchObject({
       archetype: 'itinerary_timeline',
-      primaryDecision: '언제 무엇을 해야 무리가 없는가?',
+      primaryDecision: '어떤 장소를 같은 날 또는 별도 동선으로 배치할 것인가?',
     });
-    expect(brief.title).toContain('이동 부담을 줄이는 순서');
-    expect(brief.metadata.description).toContain('본문에 연결된 공식 근거');
-    expect(brief.metadata.description).not.toMatch(/함께 묶을 동선|따로 둘 일정/);
+    expect(brief.title).toContain('장소별 실행 순서와 대체 동선');
+    expect(brief.metadata.description).toContain('장소별 실행 순서와 이동 근거');
+    expect(brief.metadata.description).not.toContain('필요한 확인 순서');
+  });
+
+  it('turns an explicit trip duration into a day-by-day decision contract', () => {
+    const brief = buildBlogContentBriefV3({
+      topic: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryKeyword: '다낭 3박4일 여행 코스와 이동 동선',
+      destination: '다낭',
+      destinationDecisionDetails: details,
+    });
+
+    expect(brief).toMatchObject({
+      archetype: 'itinerary_timeline',
+      primaryDecision: '3박4일 동안 어느 날에 어느 장소를 배치해야 하는가?',
+    });
+    expect(brief.sectionPurposes[0]?.purpose).toContain('각 날짜');
   });
 
   it('defaults FAQ, checklist, year and image minimum off', () => {
