@@ -42,6 +42,35 @@ describe('blog quality gate V3 flexible brief', () => {
     expect(checkAiReadability(markdown, 'info', false).passed).toBe(false);
   });
 
+  it('accepts short descriptive itinerary sections without forcing a list or table', () => {
+    const markdown = [
+      '# 다낭 3박4일 여행 코스와 이동 동선',
+      '',
+      '3박4일 일정은 공식 이동 시간을 먼저 확인하고 장소별 순서를 비교해 결정하세요.',
+      '',
+      '## 1일차: 린 응 파고다',
+      '공식 이동 근거를 확인하고 첫날 휴식 시간을 남겨 둡니다.',
+      '',
+      '## 2일차: 바나힐',
+      '운영 여부를 다시 확인한 뒤 하루 일정을 정합니다.',
+      '',
+      '## 3일차: 마블 마운틴',
+      '입장 조건을 확인하고 남쪽 동선을 선택합니다.',
+      '',
+      '## 4일차: 호이안',
+      '우천이면 이 블록을 대체 일정으로 조정합니다.',
+    ].join('\n');
+
+    expect(checkAiReadability(markdown, 'info', true)).toMatchObject({
+      passed: true,
+      evidence: {
+        criteria: expect.arrayContaining([
+          expect.objectContaining({ key: 'section_scanability', ok: true }),
+        ]),
+      },
+    });
+  });
+
   it('accepts a direct decision answer without forcing a numeric hook', () => {
     const markdown = [
       '# 다낭 가볼만한곳 선택 기준',

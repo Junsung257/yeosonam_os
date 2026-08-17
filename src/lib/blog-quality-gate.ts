@@ -609,13 +609,20 @@ export function checkAiReadability(
   const tableRow = (blog_html.match(/(^|\n)\s*\|.+\|/g) || []).length;
   // table 은 2행 이상이어야 의미. bullet 은 2개 이상.
   const extractableOk = numberedList >= 1 || tableRow >= 2 || bulletList >= 2;
+  const proseParagraphs = blog_html
+    .split(/\n{2,}/)
+    .map((paragraph) => stripMarkup(paragraph).replace(/\s+/g, ' ').trim())
+    .filter((paragraph) => paragraph && !/^#{1,6}\s/.test(paragraph));
+  const sectionScanabilityOk = h2Count >= 2
+    && proseParagraphs.length >= 2
+    && proseParagraphs.every((paragraph) => paragraph.length < 520);
 
   const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)|(?:일정|동선|순서|후보).*(?:먼저|우선).*(?:정|나누|묶|분리|비교|확인)하세요/.test(intro);
   const criteria = flexibleInformationalBrief
     ? [
         { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
         { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
-        { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
+        { key: 'section_scanability', ok: sectionScanabilityOk, h2Count, paragraphCount: proseParagraphs.length },
       ]
     : [
         { key: 'h2_density', ok: h2Ok, h2Count, h2Range },

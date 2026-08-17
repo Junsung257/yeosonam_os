@@ -94,7 +94,14 @@ function extractItineraryEntityCandidatesV3(
       const value = match[0].trim();
       if (value.length >= 3) entities.add(value);
     }
-    for (const match of text.matchAll(/([가-힣]{2,18}(?:\s+[가-힣]{2,12}){0,2}(?:산|힐|사원|해변|시장|공원|박물관|수족관|반도|다리|브리지|마운틴|패스|대성당|동굴|유적|관광지))/gu)) {
+    for (const match of text.matchAll(/([가-힣]{1,18}(?:\s+[가-힣]{1,12}){0,3}(?:산|힐|사원|파고다|해변|시장|공원|박물관|수족관|반도|다리|브리지|마운틴|패스|대성당|동굴|유적|관광지))/gu)) {
+      entities.add(match[1].trim());
+    }
+    // Some Korean place names do not carry a semantic suffix (for example
+    // 논느억 or 호이안). In an approved claim, particles immediately after
+    // a name provide a conservative boundary without treating every noun in
+    // the article as an evidence-backed entity.
+    for (const match of text.matchAll(/([가-힣]{2,16})(?:에서|까지|으로|로)(?=\s|$)/gu)) {
       entities.add(match[1].trim());
     }
   }

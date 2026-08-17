@@ -178,6 +178,45 @@ describe('explainable blog quality evaluator v3', () => {
     expect(complete.dimensions.intent_completion.evidence).toContain('itinerary_day_ordinals=1,2,3,4');
   });
 
+  it('recognizes Korean evidence-backed place names without semantic suffixes in day headings', () => {
+    const body = [
+      '# 다낭 3박4일 여행 코스와 이동 동선',
+      '3박4일 일정은 린 응 파고다부터 바나힐, 마블 마운틴, 논느억과 호이안 순으로 나눈 제안 동선입니다.',
+      '공식 사이트에서 예약과 운영 여부를 확인하고 식사와 휴식을 남겨 두세요.',
+      '린 응 파고다까지 차량으로 15분 소요',
+      '비가 오거나 일정이 지연되면 호이안 블록을 대체 일정으로 바꾸세요.',
+      '## 1일차: 린 응 파고다와 바나힐',
+      '## 2일차: 바나힐 운영 조건 확인',
+      '## 3일차: 마블 마운틴과 논느억',
+      '## 4일차: 논느억에서 호이안으로 이동',
+    ].join('\n\n');
+    const report = evaluateBlogQualityV3({
+      ...base,
+      title: '다낭 3박4일 여행 코스와 이동 동선',
+      body,
+      destination: '다낭',
+      primaryQuery: '다낭 3박4일 여행 코스와 이동 동선',
+      primaryDecision: '3박4일 동안 어느 날에 어느 장소를 배치해야 하는가?',
+      archetype: 'itinerary_timeline',
+      itineraryEvidenceTexts: [
+        '린 응 파고다까지 차량으로 15분 소요',
+        '바나힐은 다낭에서 서쪽으로 차량 40분 거리',
+        '마블 마운틴은 다낭 시내에서 15분 거리',
+        '논느억에서 호이안까지 차량으로 30분 소요',
+      ],
+      intentCompletionScore: 1,
+      serpIntentAlignment: 1,
+      decisionCompletion: 1,
+      sectionPurposeCoverage: 1,
+    });
+
+    expect(report.dimensions.intent_completion).toMatchObject({ value: 1, passed: true });
+    expect(report.dimensions.intent_completion.evidence).toEqual(expect.arrayContaining([
+      'itinerary_day_ordinals=1,2,3,4',
+      expect.stringContaining('호이안'),
+    ]));
+  });
+
   it('rejects a short claim list that looks ordered but omits booking, rest, and contingency decisions', () => {
     const body = [
       '# 다낭 여행 일정과 이동 동선: 이동 부담을 줄이는 순서',
