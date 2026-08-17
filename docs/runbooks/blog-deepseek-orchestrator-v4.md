@@ -13,7 +13,7 @@
 5. 90점 이상이고 hard blocker와 failure가 모두 0이면 `approved_for_slot`이다.
 6. 75~89점은 DeepSeek V4 Pro `reasoning_effort=high`, 두 번째 시도까지 미수렴하면 Pro `max`를 최종 3차 시도로 사용한다.
 7. 사실·수요·claim 충돌은 문장 재작성으로 덮지 않는다. 한 번 재연구 후 계속 실패하면 격리한다.
-8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에만 DeepSeek V4 Pro max로 재작성한다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 재작성 대상이 아니다. 한 후보의 writer 호출은 초안을 포함해 최대 3회이며 마지막 실패는 격리한다.
+8. 75점 미만도 `researchValid=true`, `claimLedgerValid=true`, 남은 실패가 표현·구조뿐일 때에는 DeepSeek V4 Pro max 보완으로 계속 보낸다. 사실·수요·출처·충돌·언어 무결성·중복 문제는 재작성으로 우회하지 않는다. 한 후보의 writer 호출은 초안을 포함해 최대 5회(초안 1회 + 보완 4회)이며, 다섯 번째 결과도 사실·고위험·중복·claim gate를 통과하지 못하면 격리한다. 이 예산은 `20260818080000_blog_deepseek_auto_repair_budget_v1.sql` 적용 후에만 운영에서 활성화된다.
 9. `blog-publication-controller`가 KST 09/12/15/18/21에 저장된 승인 초안만 공개한다. 이 route의 모델 호출 수는 0이다.
 10. 공개 후 기존 atomic representative, indexing outbox, public snapshot, cache tag 경로를 사용한다.
 

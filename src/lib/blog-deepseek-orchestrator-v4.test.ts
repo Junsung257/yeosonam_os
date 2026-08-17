@@ -5,6 +5,7 @@ import { checkAiReadability } from './blog-quality-gate';
 import { renderBlogContentToHtml } from './blog-renderer';
 import {
   BLOG_DEEPSEEK_MODELS,
+  BLOG_QUALITY_MAX_ATTEMPTS_V4,
   buildDeepSeekRewritePromptV4,
   calculateDeepSeekCostV4,
   decideBlogQualityRouteV4,
@@ -69,7 +70,7 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
   });
 
-  it('uses the third model call for a final max rewrite even when attempt two did not converge', () => {
+  it('uses bounded Pro repair calls when an earlier rewrite did not converge', () => {
     expect(decideBlogQualityRouteV4({
       score: 79,
       previousScore: 76,
@@ -150,8 +151,29 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
   });
 
-  it('quarantines only after the third completed model call', () => {
-    expect(decideBlogQualityRouteV4({ score: 89, completedAttempts: 3 }).route).toBe('quarantine');
+  it('keeps grounded weak drafts in repair until the fifth completed model call', () => {
+    expect(BLOG_QUALITY_MAX_ATTEMPTS_V4).toBe(5);
+    expect(decideBlogQualityRouteV4({
+      score: 89,
+      completedAttempts: 3,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['primary_decision_not_answered'],
+    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
+    expect(decideBlogQualityRouteV4({
+      score: 89,
+      completedAttempts: 4,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['primary_decision_not_answered'],
+    })).toMatchObject({ route: 'rewrite_pro_max', nextStage: 'rewrite_pro_max' });
+    expect(decideBlogQualityRouteV4({
+      score: 89,
+      completedAttempts: 5,
+      researchValid: true,
+      claimLedgerValid: true,
+      failureReasons: ['primary_decision_not_answered'],
+    }).route).toBe('quarantine');
   });
 
   it('builds a bounded rewrite contract that preserves the claim-ledger envelope', () => {
