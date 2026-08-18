@@ -45,7 +45,7 @@ const database = {
   majorCohortMinSafeOpenRate: 0.9,
   eligibleCohortCount: 1,
   benchmarkReleaseManifestHash: 'a'.repeat(64),
-  benchmarkNormalizationVersion: 'v6-canonical-2026-08-17.57',
+  benchmarkNormalizationVersion: 'v6-canonical-2026-08-18.58',
   benchmarkTermsPolicyHash: 'b'.repeat(64),
   benchmarkSupplierProfileVersion: 'registry:test',
   currentSupplierProfileVersion: 'registry:test',
