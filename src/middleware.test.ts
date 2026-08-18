@@ -89,6 +89,18 @@ describe('middleware cron resource saver', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
+  it('passes a bearer-authenticated product registration cron through middleware', async () => {
+    vi.stubEnv('CRON_SECRET', 'test-cron-secret');
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/cron/product-registration-v5-convergence',
+      { headers: { authorization: 'Bearer test-cron-secret' } },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('does not resource-save a trusted Clobe bank sync invocation', async () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 

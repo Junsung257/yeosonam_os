@@ -819,6 +819,17 @@ export async function middleware(request: NextRequest) {
   const cronResourceSaverResponse = maybeSkipCronAtMiddleware(request, pathname);
   if (cronResourceSaverResponse) return cronResourceSaverResponse as NextResponse;
 
+  // Cron handlers perform their own route-local bearer validation.  Once the
+  // request has been authenticated as a Vercel cron invocation, let it reach
+  // that guard instead of falling through to the browser-session redirect
+  // below.  Without this pass-through, every scheduled registration
+  // convergence/outbox run is rewritten to /login and the durable worker can
+  // never repair a transient cache miss.
+  if (getCronNameFromPathname(pathname)
+    && (request.headers.get('x-vercel-cron') === '1' || cronSecretAllowsRequest(request))) {
+    return NextResponse.next();
+  }
+
   let response: NextResponse | null = null;
   const existingSession = request.cookies.get('ys_session_id')?.value;
 
