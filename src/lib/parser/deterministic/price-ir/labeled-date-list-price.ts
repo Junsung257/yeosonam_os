@@ -76,6 +76,10 @@ function lineDateGroup(line: string, year: number): string[] {
 
 function lineSinglePrice(line: string): number | null {
   if (isExcludedPriceLine(line)) return null;
+  // Per-person rows belong to the PDF/date-table readers. Treating them as a
+  // scalar product price here can steal only the nearest roster and suppress
+  // the stronger row-wise parser.
+  if (/(?:\b1\s*인|\/\s*인|성인|대인|아동|소아)/u.test(line)) return null;
   const values = [...line.matchAll(/(?:₩\s*)?(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?/giu)]
     .map(match => parseMoney(match[1]))
     .filter((value): value is number => value != null);
@@ -93,9 +97,10 @@ function lineSinglePrice(line: string): number | null {
  *
  * The old global fallback saw the later price label and applied 579,000 to
  * every date. This reader binds each scalar price to the nearest date roster
- * on the same side of the flattening boundary. It is intentionally enabled
- * only when the first price precedes the first date and a product-price label
- * exists, so established vertical-table readers keep their authority.
+ * on either side of the flattening boundary. Both HWP reading orders occur in
+ * the wild: price→date and date→price. It is enabled only when every matched
+ * pair is local and a product-price label exists, so established vertical
+ * table readers keep their authority.
  */
 function extractFlattenedPriceBeforeDateRows(
   lines: string[],
@@ -111,12 +116,12 @@ function extractFlattenedPriceBeforeDateRows(
   const priceLines: IndexedPriceLine[] = lines
     .map((line, index) => ({ index, amount: lineSinglePrice(line) }))
     .filter((value): value is IndexedPriceLine => value.amount != null);
-  const firstDateIndex = dateGroups[0]!.index;
   const hasProductPriceLabel = lines.some(lineHasPriceLabel);
-  const firstPriceBeforeFirstDate = priceLines.some(price => (
-    price.index < firstDateIndex && firstDateIndex - price.index <= 3
-  ));
-  if (!hasProductPriceLabel || !firstPriceBeforeFirstDate) return [];
+  if (!hasProductPriceLabel) return [];
+  // A single scalar may legitimately apply to every explicit roster in a
+  // supplier block; preserve the established single-price fallback for that
+  // case. This reader is only for one-price-per-roster flattening.
+  if (priceLines.length < 2 || dateGroups.length < 2) return [];
 
   const usedDates = new Set<number>();
   const rows: MatrixPriceRow[] = [];
@@ -124,17 +129,17 @@ function extractFlattenedPriceBeforeDateRows(
     priceLines.some(price => price.index > left && price.index < right)
   );
   const dateGroupsForPrice = (price: IndexedPriceLine): IndexedDateGroup[] => {
-    const after = dateGroups
-      .filter(group => group.index > price.index && group.index - price.index <= 3)
+    const nearby = dateGroups
+      .filter(group => Math.abs(group.index - price.index) <= 3)
       .filter(group => !usedDates.has(group.index))
-      .filter(group => !hasPriceBetween(price.index, group.index));
-    if (after.length > 0) return after.slice(0, 1);
-
-    const before = dateGroups
-      .filter(group => group.index < price.index && price.index - group.index <= 3)
-      .filter(group => !usedDates.has(group.index))
-      .filter(group => !hasPriceBetween(group.index, price.index));
-    return before.slice(-2);
+      .filter(group => !hasPriceBetween(Math.min(group.index, price.index), Math.max(group.index, price.index)))
+      .map(group => ({ group, distance: Math.abs(group.index - price.index) }))
+      .sort((left, right) => left.distance - right.distance || left.group.index - right.group.index);
+    if (nearby.length === 0) return [];
+    // A tie means the flattened stream lost the physical row boundary. Do
+    // not guess between two equally close rosters.
+    if (nearby[1]?.distance === nearby[0]!.distance) return [];
+    return [nearby[0]!.group];
   };
 
   for (const price of priceLines) {

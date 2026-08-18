@@ -1386,6 +1386,33 @@ describe('extractPriceIR labeled departure date list price', () => {
     expect(pricesByDate.has('2026-09-18')).toBe(false);
   });
 
+  it('keeps native-rhwp date-before-price cell order attached to each roster', () => {
+    const rawText = [
+      '[KE] 다낭/호이안 3박4일 노팁노옵션',
+      '기    간',
+      '/',
+      '상 품 가',
+      '9/13, 14, 15, 16, 17',
+      '499,000원',
+      '*8월 발권 조건',
+      '9/21, 22',
+      '579,000원',
+      '룸 타 입',
+      '전일정 5성 (2인1실 기준)',
+      '날 짜',
+      '제1일 부산 → 다낭',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(pricesByDate.get('2026-09-13')).toBe(499000);
+    expect(pricesByDate.get('2026-09-17')).toBe(499000);
+    expect(pricesByDate.get('2026-09-21')).toBe(579000);
+    expect(pricesByDate.get('2026-09-22')).toBe(579000);
+  });
+
   it('recovers source-backed prices from 출발일 list plus 요금표 adult child line', () => {
     const rawText = `
 투어코코넛 나트랑/달랏 5성 3박5일 상품 안내
