@@ -154,6 +154,30 @@ ${MONTH_KO}7
     ]));
   });
 
+  it('recovers a vertical HWP price followed by multiple month/day groups', () => {
+    const rawText = [
+      '상품명 오사카 3박4일',
+      '판매가',
+      '★900,000★',
+      '4월 20,22,27,29',
+      '4월 21,26,28',
+      '5월 6,11,13,18,20',
+      '950,000',
+      '6월 10,17,24',
+      '7월 1,8',
+      '포함사항 왕복항공료 호텔 식사',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(pricesByDate.get('2026-04-20')).toBe(900_000);
+    expect(pricesByDate.get('2026-05-20')).toBe(900_000);
+    expect(pricesByDate.get('2026-06-17')).toBe(950_000);
+    expect(pricesByDate.get('2026-07-08')).toBe(950_000);
+  });
+
   it('does not turn per-person labels into phantom day-one departures', () => {
     const rawText = [
       '[LJ] Da Nang Hoi An 3N5D',
@@ -554,6 +578,19 @@ BX341 21:55 01:25
       ['2026-10-07', 1399000],
     ]);
     expect(result.rows.some(row => row.date === '2026-09-30')).toBe(false);
+  });
+
+  it('binds a scalar price to a departure roster when the price label follows it', () => {
+    const result = extractPriceIR(`출 발 일 자
+2026년 9월 23일, 24일 예정
+▶ \\1,499,000
+예상판매가격
+날 짜
+제1일`, { year: 2026 });
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-09-23', adult_price: 1_499_000 }),
+      expect.objectContaining({ date: '2026-09-24', adult_price: 1_499_000 }),
+    ]);
   });
 });
 

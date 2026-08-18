@@ -121,6 +121,16 @@ function isConditionalCommercialNotice(notice: JsonObject): boolean {
   return /(?:진행\s*시|선택\s*시|변경\s*시|희망\s*시|추가\s*(?:금|요금)|별도\s*(?:금|요금)|미진행\s*시|불참\s*시)/u.test(noticeSource(notice));
 }
 
+function isConditionalShoppingItem(item: JsonObject): boolean {
+  const source = [
+    text(item.raw_name),
+    text(item.value),
+    text(item.name),
+    text(item.description),
+  ].filter(Boolean).join(' ');
+  return /(?:자유\s*쇼핑|자율\s*쇼핑|선택\s*쇼핑|쇼핑\s*(?:희망|미진행|선택)|희망\s*시|선택\s*시|미진행\s*시|별도\s*(?:방문|쇼핑)|캐시미어\s*(?:아울렛|매장).*자유)/iu.test(source);
+}
+
 function customerFactContradictionFindings(canonicalPayload: Record<string, unknown>): {
   blockers: string[];
   degradedReasons: string[];
@@ -164,7 +174,15 @@ function customerFactContradictionFindings(canonicalPayload: Record<string, unkn
       }
       const shoppingNoneNotice = notices.find(notice => text(notice.template_key) === 'shopping.none');
       if (keys.has('shopping.none') && asArray(variant?.shopping).length > 0) {
-        if (shoppingNoneNotice && isConditionalCommercialNotice(shoppingNoneNotice)) {
+        const shoppingItems = asArray(variant?.shopping)
+          .map(asObject)
+          .filter((value): value is JsonObject => Boolean(value));
+        const allShoppingItemsAreConditional = shoppingItems.length > 0
+          && shoppingItems.every(isConditionalShoppingItem);
+        if (
+          (shoppingNoneNotice && isConditionalCommercialNotice(shoppingNoneNotice))
+          || allShoppingItemsAreConditional
+        ) {
           degradedReasons.push(`${prefix}:SHOPPING_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION:CONDITIONAL`);
         } else {
           // Keep a true unscoped contradiction fail-closed. A shopping list
@@ -276,10 +294,11 @@ function priceAndDepartureBlockers(
         const evidence = asObject(price?.evidence);
         const quote = text(evidence?.quote).normalize('NFKC');
         const evidenceAmounts = priceAmountsFromEvidenceQuote(quote);
-        if (
-          evidence?.extraction_method === 'document_ir_table_cell'
-          && Number(evidence?.source_amount_scale) === 1000
-        ) {
+        // Flattened HWP table exports may preserve a price cell as a V3
+        // text-line evidence record rather than a document_ir_table_cell.
+        // `source_amount_scale` is the explicit unit contract, so it must be
+        // honored independently of the extraction method.
+        if (Number(evidence?.source_amount_scale) === 1000) {
           for (const match of quote.matchAll(/(?:^|[^\d])(\d{3}|\d{1,2},\d{3})(?:[^\d]|$)/gu)) {
             const scaled = Number(match[1].replace(/,/gu, '')) * 1_000;
             if (Number.isFinite(scaled)) evidenceAmounts.push(scaled);

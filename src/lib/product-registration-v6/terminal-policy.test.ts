@@ -455,6 +455,24 @@ describe('product registration V6 terminal policy', () => {
     expect(result.degradedReasons.some(reason => reason.includes('SHOPPING_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION'))).toBe(true);
   });
 
+  it('keeps optional free-shopping visits with a no-shopping title as degraded', () => {
+    const payload = canonical() as Record<string, any>;
+    payload.sections[0].v3.ledger.variants[0].standard_notices.push({
+      template_key: 'shopping.none',
+      source_text: '노쇼핑 상품',
+      review_status: 'auto_clean',
+    });
+    payload.sections[0].v3.ledger.variants[0].shopping = [{
+      raw_name: '캐시미어 매장 방문 - 자유쇼핑',
+    }];
+
+    const result = evaluateProductRegistrationV6Policy({ canonicalPayload: payload });
+
+    expect(result.terminalOutcome).toBe('published_degraded');
+    expect(result.blockers.some(reason => reason.includes('NO_SHOPPING_WITH_SHOPPING_ITEMS'))).toBe(false);
+    expect(result.degradedReasons.some(reason => reason.includes('SHOPPING_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION'))).toBe(true);
+  });
+
   it('still blocks an unscoped no-shopping contradiction', () => {
     const payload = canonical() as Record<string, any>;
     payload.sections[0].v3.ledger.variants[0].standard_notices.push({

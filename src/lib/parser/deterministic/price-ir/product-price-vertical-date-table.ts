@@ -656,6 +656,72 @@ function extractKoreanGroupedDatesBeforePriceRows(rawText: string, options: Pric
   return [...byKey.values()].sort((left, right) => left.date.localeCompare(right.date) || left.adult_price - right.adult_price);
 }
 
+/**
+ * Resolves the common HWP vertical export where one amount is followed by
+ * several month/day rows until the next amount:
+ *
+ *   900,000
+ *   4월 20,22,27,29
+ *   4월 21,26,28
+ *   950,000
+ *   6월 10,17,24
+ *
+ * The visual table has already established the amount→date direction. We
+ * only activate when a sale header appears before both the first amount and
+ * first date, and we retain every date as an explicit source row. No value is
+ * inferred from a neighbouring product or from a cheapest/majority choice.
+ */
+function extractKoreanAmountBeforeGroupedDateRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  if (!options.year) return [];
+  const lines = rawText.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+  const headerIndex = lines.findIndex(line => /^(?:판매\s*가|상품\s*가|요금\s*표)$/u.test(line));
+  if (headerIndex < 0) return [];
+
+  const stopIndex = lines.findIndex((line, index) => index > headerIndex && (
+    /^(?:포\s*함\s*(?:내역|사항)?|불\s*포함|선택\s*관광|쇼핑|비\s*고|취소|예약\s*조건)$/u.test(line)
+    || /^(?:제\s*1\s*일|DAY\s*1|일\s*정\s*표)$/iu.test(line)
+  ));
+  const end = stopIndex > headerIndex ? stopIndex : lines.length;
+  const body = lines.slice(headerIndex + 1, end);
+  const dateRows = body.flatMap((line, index) => {
+    const dates = parseKoreanDateLine(line, { month: null, year: options.year });
+    return dates.length > 0 && /\d{1,2}\s*월/u.test(line)
+      ? [{ index, dates }]
+      : [];
+  });
+  const amountIndexes = body.flatMap((line, index) => {
+    if (/(?:커미션|commission|수수료|싱글|아동|소아|유류|가이드|기사|현지비|옵션|선택|예약금|계약금|발권|마감)/iu.test(line)) return [];
+    const amount = parseKrwPrice(line);
+    return amount > 0 && parseKoreanDateLine(line, { month: null, year: options.year }).length === 0
+      ? [{ index, amount }]
+      : [];
+  });
+  const firstDate = dateRows[0]?.index ?? -1;
+  const firstAmount = amountIndexes[0]?.index ?? -1;
+  if (firstDate < 0 || firstAmount < 0 || firstAmount >= firstDate) return [];
+
+  const rows: MatrixPriceRow[] = [];
+  for (const amountRow of amountIndexes) {
+    const nextAmountIndex = amountIndexes.find(row => row.index > amountRow.index)?.index ?? Number.MAX_SAFE_INTEGER;
+    const dates = dateRows
+      .filter(row => row.index > amountRow.index && row.index < nextAmountIndex && row.index <= amountRow.index + 12)
+      .flatMap(row => row.dates);
+    if (dates.length === 0) continue;
+    for (const date of [...new Set(dates)]) {
+      rows.push({
+        date,
+        adult_price: amountRow.amount,
+        child_price: null,
+        note: 'source_korean_amount_before_grouped_dates',
+        status: 'available',
+      });
+    }
+  }
+  const byKey = new Map<string, MatrixPriceRow>();
+  for (const row of rows) byKey.set(`${row.date}|${row.adult_price}`, row);
+  return [...byKey.values()].sort((left, right) => left.date.localeCompare(right.date) || left.adult_price - right.adult_price);
+}
+
 function distributePrices(dates: string[], prices: number[]): MatrixPriceRow[] {
   if (dates.length === 0 || prices.length === 0) return [];
   if (prices.length === 1) {
@@ -791,6 +857,7 @@ export function extractProductPriceVerticalDateRows(
   const sourceKoreanRows = [
     ...extractKoreanDepartureLinePriceRows(rawText, options),
     ...extractKoreanAmountBeforeDateRows(rawText, options),
+    ...extractKoreanAmountBeforeGroupedDateRows(rawText, options),
     ...extractKoreanDateBeforeAmountRows(rawText, options),
     ...extractKoreanGroupedDatesBeforePriceRows(rawText, options),
     ...extractKoreanDurationSectionPriceRows(rawText, options),

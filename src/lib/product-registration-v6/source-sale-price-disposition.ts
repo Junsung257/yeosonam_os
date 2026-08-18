@@ -66,7 +66,16 @@ function canonicalPriceCandidateCount(canonicalSection: Record<string, unknown>)
       const amount = Number(price?.amount);
       if (!Number.isFinite(amount) || amount <= 0) return false;
       const evidence = asObject(price?.evidence);
-      const priceContext = [evidence?.quote, price?.label]
+      const quote = typeof evidence?.quote === 'string' ? evidence.quote : '';
+      const amountDigits = String(Math.trunc(amount));
+      // Table-cell evidence may include the next fee/terms row after the
+      // actual sale amount. Use the line that contains this exact amount for
+      // commercial classification, rather than letting a neighbouring
+      // `유류할증료` or `싱글차지` line poison an otherwise valid sale price.
+      const amountLine = quote
+        .split(/\r?\n/gu)
+        .find(line => line.replace(/[^\d]/gu, '').includes(amountDigits));
+      const priceContext = [amountLine ?? quote, price?.label]
         .filter(value => typeof value === 'string')
         .join(' ')
         .normalize('NFKC');

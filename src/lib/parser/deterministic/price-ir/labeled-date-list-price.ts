@@ -24,8 +24,17 @@ function parseFullDateList(line: string, fallbackYear?: number): string[] {
   for (const match of line.matchAll(/\b(20\d{2})[./-](\d{1,2})[./-](\d{1,2})\b/g)) {
     push(toIsoDate(Number(match[1]), Number(match[2]), Number(match[3])));
   }
-  for (const match of line.matchAll(/\b(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\b/g)) {
+  for (const match of line.matchAll(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)) {
     push(toIsoDate(Number(match[1]), Number(match[2]), Number(match[3])));
+  }
+
+  // Korean schedules often abbreviate the month/year once:
+  // `2026년 9월 23일, 24일 예정`. Expand the continuation days while
+  // retaining the exact source line as evidence.
+  for (const match of line.matchAll(/(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일((?:\s*[,，]\s*\d{1,2}\s*일?)+)/gu)) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    for (const day of match[4]!.match(/\d{1,2}/gu) ?? []) push(toIsoDate(year, month, Number(day)));
   }
 
   if (dates.length > 0) return dates;
@@ -224,7 +233,15 @@ function extractAdultChildPrices(lines: string[], fromIndex: number): {
     // Excluded fees remain non-sale even when the line says the same fee
     // applies to adults and children.
     if (isExcludedPriceLine(line)) continue;
-    if (!lineHasPriceLabel(line) && !/성인/.test(line)) continue;
+    // HWP exports frequently flatten the scalar before its label:
+    // `▶ 1,499,000` followed by `예상판매가격`.  The departure-date label
+    // bounds this search to the commercial header, so allow a bare scalar
+    // when a price label is immediately adjacent instead of requiring the
+    // label to be on the same visual line.
+    const followingPriceLabel = lines
+      .slice(i + 1, Math.min(lines.length, i + 4))
+      .some(lineHasPriceLabel);
+    if (!lineHasPriceLabel(line) && !/성인/.test(line) && !followingPriceLabel) continue;
 
     const adult = parseMoney(
       line.match(/(?:성인|대인)\s*(?:요금|가격)?\s*[:：]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{5,8})\s*원?/)?.[1]

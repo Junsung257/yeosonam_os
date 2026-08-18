@@ -10,6 +10,8 @@ import {
   diagnoseDocumentIrTableProductSplit,
   extractSourceLodgingAlternative,
   isSourceDepartureDateConfirmed,
+  linkSharedDateScopesAcrossVariants,
+  linkSharedPriceCalendarsAcrossSections,
   reconcileCatalogPreSplitLocalVariant,
   reconcileTableCommercialIncludedBenefits,
   reconcileTableCommercialGuideTip,
@@ -897,7 +899,7 @@ describe('product registration V4 canonical worker', () => {
       sourceDocumentId: 'source-1',
       extractionId: 'extraction-1',
     });
-    expect(normalized.version).toBe('v6-canonical-2026-08-17.57');
+    expect(normalized.version).toBe('v6-canonical-2026-08-18.58');
     expect(normalized.sourceDocumentId).toBe('source-1');
     expect(normalized.canonicalPayload.sections).toHaveLength(1);
     expect(normalized.qualityDiagnostics.sectionCount).toBe(1);
@@ -1474,7 +1476,7 @@ describe('product registration V4 canonical worker', () => {
       evidence: [],
     }));
     const normalization = {
-      version: 'v6-canonical-2026-08-17.57' as const,
+      version: 'v6-canonical-2026-08-18.58' as const,
       sourceDocumentId: 'source', extractionId: 'extraction', rawTextHash: 'full', sections,
       canonicalPayload: { sections: [{ index: 0 }, { index: 1 }] },
       lineage: { attractionMasterHash: null },
@@ -1522,7 +1524,7 @@ describe('product registration V4 canonical worker', () => {
       { variant_key: '프리미어코스트|4박6일' },
     ];
     const normalization = {
-      version: 'v6-canonical-2026-08-17.57' as const,
+      version: 'v6-canonical-2026-08-18.58' as const,
       sourceDocumentId: 'source', extractionId: 'extraction', rawTextHash: 'full', sections: [section],
       canonicalPayload: {
         sections: [{ v3: { ledger: { document: { expected_products: 4 }, variants } } }],
@@ -1554,5 +1556,93 @@ describe('product registration V4 canonical worker', () => {
       };
       return [payloadSection.v3.ledger.document.expected_products, payloadSection.v3.ledger.variants.length];
     })).toEqual([[1, 1], [1, 1], [1, 1], [1, 1]]);
+  });
+
+  it('links one unambiguous price-only section to the matching itinerary section', () => {
+    const sections = [
+      {
+        index: 0,
+        sectionKey: 'price',
+        destinationHint: '오사카/고베',
+        v3: { ledger: { variants: [{ duration_days: 4, days: [], price_calendar: [
+          { date: '2026-09-01', amount: 969000, evidence: { quote: '969,000' } },
+        ] }] } },
+      },
+      {
+        index: 1,
+        sectionKey: 'itinerary',
+        destinationHint: '오사카/고베',
+        v3: { ledger: { variants: [{ duration_days: 4, days: [{ day: 1 }], flight_segments: [{ code: 'BX126' }], price_calendar: [] }] } },
+      },
+    ] as any[];
+
+    expect(linkSharedPriceCalendarsAcrossSections(sections)).toEqual([1]);
+    expect(sections[1]!.v3.ledger.variants[0].price_calendar).toEqual([
+      expect.objectContaining({ date: '2026-09-01', amount: 969000 }),
+    ]);
+    expect(sections[1]!.v3.ledger.variants[0].evidence_coverage.price).toBe(true);
+  });
+
+  it('does not link when two same-destination price sections are ambiguous', () => {
+    const sections = [
+      { destinationHint: '오사카', v3: { ledger: { variants: [{ duration_days: 4, days: [], price_calendar: [{ amount: 900000 }] }] } } },
+      { destinationHint: '오사카', v3: { ledger: { variants: [{ duration_days: 4, days: [], price_calendar: [{ amount: 950000 }] }] } } },
+      { destinationHint: '오사카', v3: { ledger: { variants: [{ duration_days: 4, days: [{ day: 1 }], price_calendar: [] }] } } },
+    ] as any[];
+    expect(linkSharedPriceCalendarsAcrossSections(sections)).toEqual([]);
+    expect(sections[2]!.v3.ledger.variants[0].price_calendar).toEqual([]);
+  });
+
+  it('links one shared date scope to a sibling hotel scalar price without copying the amount', () => {
+    const evidence = (quote: string) => ({ line_start: 1, line_end: 1, char_start: 0, char_end: quote.length, quote });
+    const variants = [
+      {
+        variant_key: ' 실속',
+        duration_days: 5,
+        price_calendar: [{ date: '2026-09-17', date_range: null, weekday: null, label: '9/17', amount: 679000, currency: 'KRW', evidence: evidence('679,000원') }],
+        evidence_coverage: { price: true },
+      },
+      {
+        variant_key: ' 고품격',
+        duration_days: 5,
+        price_calendar: [{ date: null, date_range: null, weekday: null, label: '969,000원', amount: 969000, currency: 'KRW', evidence: evidence('969,000원') }],
+        evidence_coverage: { price: true },
+      },
+    ] as any;
+
+    expect(linkSharedDateScopesAcrossVariants({
+      variants,
+      sectionRawText: '2026년 9월 17일 ~ 21일 [3박5일]',
+    })).toBe(1);
+    expect(variants[1].price_calendar).toEqual([
+      expect.objectContaining({ date: '2026-09-17', amount: 969000 }),
+    ]);
+  });
+
+  it('does not link sibling scalar prices when multiple date calendars exist', () => {
+    const evidence = (quote: string) => ({ line_start: 1, line_end: 1, char_start: 0, char_end: quote.length, quote });
+    const variants = [
+      {
+        duration_days: 5,
+        price_calendar: [
+          { date: '2026-09-17', date_range: null, weekday: null, label: '9/17', amount: 679000, currency: 'KRW', evidence: evidence('679,000원') },
+          { date: '2026-09-24', date_range: null, weekday: null, label: '9/24', amount: 689000, currency: 'KRW', evidence: evidence('689,000원') },
+        ],
+      },
+      {
+        duration_days: 5,
+        price_calendar: [{ date: '2026-10-01', date_range: null, weekday: null, label: '10/1', amount: 699000, currency: 'KRW', evidence: evidence('699,000원') }],
+      },
+      {
+        duration_days: 5,
+        price_calendar: [{ date: null, date_range: null, weekday: null, label: '969,000원', amount: 969000, currency: 'KRW', evidence: evidence('969,000원') }],
+      },
+    ] as any;
+
+    expect(linkSharedDateScopesAcrossVariants({
+      variants,
+      sectionRawText: '2026년 9월 17일 ~ 10월 1일 [3박5일]',
+    })).toBe(0);
+    expect(variants[2].price_calendar[0].date).toBeNull();
   });
 });

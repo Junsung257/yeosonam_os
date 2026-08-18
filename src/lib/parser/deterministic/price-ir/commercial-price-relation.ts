@@ -48,6 +48,23 @@ export function parseFinalSalePriceFromLine(line: string): SalePriceRelation | n
   if (EXCLUDED_PRICE_RE.test(normalized)) return null;
   const scope = partyScope(normalized);
   const arrow = normalized.match(ARROW_RE);
+  // HWP table exports frequently preserve a normal-price -> sale-price cell
+  // as a vertical stack instead of an ASCII arrow, for example
+  // `1,599,000↴\\n1,399,000`.  This is still an explicit commercial relation:
+  // only accept exactly two amounts, with a lower second amount, so a
+  // multi-component fee cell cannot be silently treated as a discount.
+  if (!arrow) {
+    const stackedMarker = /(?:↴|↡|↓)/u.test(normalized);
+    const values = moneyValues(normalized, true);
+    if (stackedMarker && values.length === 2 && values[0]! > values[1]!) {
+      return {
+        finalSalePrice: values[1]!,
+        listPrice: values[0]!,
+        ...scope,
+        relation: 'final_sale',
+      };
+    }
+  }
   if (!arrow && !SALE_CUE_RE.test(normalized)) return null;
   if (arrow?.index != null) {
     const left = moneyValues(normalized.slice(0, arrow.index), true);

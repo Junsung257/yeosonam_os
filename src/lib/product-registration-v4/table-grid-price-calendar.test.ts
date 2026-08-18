@@ -89,6 +89,101 @@ describe('buildDocumentIrTablePriceCalendars', () => {
     ]));
   });
 
+  it('reads row-spanned duration/month cells with a single price column', () => {
+    const values = [
+      { row: 0, column: 0, rowSpan: 1, text: '출발일' },
+      { row: 0, column: 1, rowSpan: 1, text: '판매가' },
+      { row: 1, column: 0, rowSpan: 3, text: '3박4일' },
+      { row: 1, column: 1, rowSpan: 2, text: '8월' },
+      { row: 1, column: 2, rowSpan: 1, text: '30일' },
+      { row: 1, column: 3, rowSpan: 1, text: '829,000' },
+      { row: 2, column: 2, rowSpan: 1, text: '31일' },
+      { row: 2, column: 3, rowSpan: 1, text: '799,000' },
+      { row: 3, column: 1, rowSpan: 1, text: '9월' },
+      { row: 3, column: 2, rowSpan: 1, text: '19, 20, 21' },
+      { row: 3, column: 3, rowSpan: 1, text: '899,000' },
+      { row: 4, column: 0, rowSpan: 1, text: '4박5일' },
+      { row: 4, column: 1, rowSpan: 1, text: '9월' },
+      { row: 4, column: 2, rowSpan: 1, text: '1일' },
+      { row: 4, column: 3, rowSpan: 1, text: '799,000' },
+    ];
+    const table: DocumentIrTable = {
+      id: 'rowspan-duration-price', page: 0, rows: 5, columns: 4,
+      cells: values.map((cell, index) => ({
+        id: `cell-${index}`,
+        nodeId: `node-${index}`,
+        row: cell.row,
+        column: cell.column,
+        rowSpan: cell.rowSpan,
+        colSpan: 1,
+        text: cell.text,
+        evidence: { page: 0, quoteHash: `quote-${index}` },
+      })),
+    };
+    const text = `2026년 장가계 3박4일 4박5일\n${values.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'rowspan-duration.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [], tables: [table], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.find(calendar => calendar.durationDays === 4)?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-08-30', amount: 829_000 }),
+      expect.objectContaining({ date: '2026-08-31', amount: 799_000 }),
+      expect.objectContaining({ date: '2026-09-20', amount: 899_000 }),
+    ]));
+    expect(result.find(calendar => calendar.durationDays === 5)?.prices).toEqual([
+      expect.objectContaining({ date: '2026-09-01', amount: 799_000 }),
+    ]);
+  });
+
+  it('carries a stacked sale price across row-spanned month dates', () => {
+    const values = [
+      { row: 0, column: 0, text: '세부직항 레체팩 3박5일', rowSpan: 1 },
+      { row: 1, column: 0, text: '출발일', rowSpan: 1 },
+      { row: 1, column: 1, text: '요 금', rowSpan: 1 },
+      { row: 2, column: 0, text: '3월', rowSpan: 1 },
+      { row: 2, column: 1, text: '1,2,4,7,21,28', rowSpan: 2 },
+      { row: 2, column: 2, text: '699,000↴\n599,000', rowSpan: 4 },
+      { row: 3, column: 0, text: '4월', rowSpan: 1 },
+      { row: 4, column: 0, text: '5월', rowSpan: 1 },
+      { row: 4, column: 1, text: '9,17,19,26', rowSpan: 2 },
+    ];
+    const cells: DocumentIrTable['cells'] = values.map((cell, index) => ({
+      id: `stacked-month-${index}`,
+      nodeId: `stacked-month-${index}`,
+      row: cell.row,
+      column: cell.column,
+      rowSpan: cell.rowSpan,
+      colSpan: 1,
+      text: cell.text,
+      evidence: { page: 0, quoteHash: `stacked-month-${index}` },
+    }));
+    const text = `2026년 세부직항 레체팩 3박5일\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'stacked-month.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'stacked-month', page: 0, rows: 6, columns: 3, cells }], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({
+      documentIr: ir,
+      sectionRawText: text,
+      fallbackYear: 2026,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-03-01', amount: 599_000, list_price: 699_000 }),
+    ]));
+  });
+
   it('parses supplier slash-wrapped date ranges and keeps the Korean crown grade axis', () => {
     const values = [
       { row: 0, column: 0, rowSpan: 1, text: '출발일' },
@@ -1892,6 +1987,47 @@ describe('buildDocumentIrTablePriceCalendars', () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({ date: '2026-09-03', amount: 1_599_000 })]));
     expect(result.find(calendar => calendar.durationDays === 6 && calendar.gradeLabel === 'Crown')?.prices)
       .toEqual(expect.arrayContaining([expect.objectContaining({ date: '2026-09-13', amount: 1_899_000 })]));
+  });
+
+  it('keeps adjacent duration amount columns as separate products', () => {
+    const cells: DocumentIrTable['cells'] = [
+      { id: 'h-date', nodeId: 'h-date', row: 0, column: 0, rowSpan: 1, colSpan: 2, text: '출 발 일 [컴 12%]', evidence: { page: 0, quoteHash: 'h-date' } },
+      { id: 'h-3', nodeId: 'h-3', row: 0, column: 2, rowSpan: 1, colSpan: 1, text: '2박3일 36H', evidence: { page: 0, quoteHash: 'h-3' } },
+      { id: 'h-4', nodeId: 'h-4', row: 0, column: 3, rowSpan: 1, colSpan: 1, text: '3박4일 54H', evidence: { page: 0, quoteHash: 'h-4' } },
+      { id: 'range', nodeId: 'range', row: 1, column: 0, rowSpan: 5, colSpan: 1, text: '9/1–9/30', evidence: { page: 0, quoteHash: 'range' } },
+      { id: 'wd-1', nodeId: 'wd-1', row: 1, column: 1, rowSpan: 1, colSpan: 1, text: '월/화/수', evidence: { page: 0, quoteHash: 'wd-1' } },
+      { id: 'p3-1', nodeId: 'p3-1', row: 1, column: 2, rowSpan: 1, colSpan: 1, text: '589,000', evidence: { page: 0, quoteHash: 'p3-1' } },
+      { id: 'p4-1', nodeId: 'p4-1', row: 1, column: 3, rowSpan: 1, colSpan: 1, text: '679,000', evidence: { page: 0, quoteHash: 'p4-1' } },
+      { id: 'wd-2', nodeId: 'wd-2', row: 2, column: 1, rowSpan: 1, colSpan: 1, text: '목', evidence: { page: 0, quoteHash: 'wd-2' } },
+      { id: 'p3-2', nodeId: 'p3-2', row: 2, column: 2, rowSpan: 1, colSpan: 1, text: '609,000', evidence: { page: 0, quoteHash: 'p3-2' } },
+      { id: 'p4-2', nodeId: 'p4-2', row: 2, column: 3, rowSpan: 1, colSpan: 1, text: '789,000', evidence: { page: 0, quoteHash: 'p4-2' } },
+      { id: 'wd-3', nodeId: 'wd-3', row: 3, column: 1, rowSpan: 1, colSpan: 1, text: '금', evidence: { page: 0, quoteHash: 'wd-3' } },
+      { id: 'p3-3', nodeId: 'p3-3', row: 3, column: 2, rowSpan: 1, colSpan: 1, text: '729,000', evidence: { page: 0, quoteHash: 'p3-3' } },
+      { id: 'p4-3', nodeId: 'p4-3', row: 3, column: 3, rowSpan: 1, colSpan: 1, text: '849,000', evidence: { page: 0, quoteHash: 'p4-3' } },
+      { id: 'exact', nodeId: 'exact', row: 4, column: 1, rowSpan: 1, colSpan: 1, text: '9/23 수', evidence: { page: 0, quoteHash: 'exact' } },
+      { id: 'p3-exact', nodeId: 'p3-exact', row: 4, column: 2, rowSpan: 1, colSpan: 1, text: '799,000', evidence: { page: 0, quoteHash: 'p3-exact' } },
+      { id: 'p4-exact', nodeId: 'p4-exact', row: 4, column: 3, rowSpan: 1, colSpan: 1, text: '별도문의', evidence: { page: 0, quoteHash: 'p4-exact' } },
+      { id: 'wd-5', nodeId: 'wd-5', row: 5, column: 1, rowSpan: 1, colSpan: 1, text: '일', evidence: { page: 0, quoteHash: 'wd-5' } },
+      { id: 'p3-5', nodeId: 'p3-5', row: 5, column: 2, rowSpan: 1, colSpan: 1, text: '649,000', evidence: { page: 0, quoteHash: 'p3-5' } },
+      { id: 'p4-5', nodeId: 'p4-5', row: 5, column: 3, rowSpan: 1, colSpan: 1, text: '739,000', evidence: { page: 0, quoteHash: 'p4-5' } },
+    ];
+    const text = `청도 시내골프 2026년 2박3일 3박4일\n${cells.map(cell => cell.text).join('\n')}`;
+    const ir: DocumentIR = {
+      version: 'v4', sourceType: 'hwp', filename: 'qingdao-duration-columns.hwp', text, pages: 1,
+      parser: { engine: 'test', version: '1' }, nodes: [],
+      tables: [{ id: 'duration-columns', page: 0, rows: 6, columns: 4, cells }], assets: [],
+    };
+
+    const result = buildDocumentIrTablePriceCalendars({ documentIr: ir, sectionRawText: text });
+
+    expect(result).toHaveLength(2);
+    expect(result.find(calendar => calendar.durationDays === 3)?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-09-23', amount: 799_000 }),
+    ]));
+    expect(result.find(calendar => calendar.durationDays === 4)?.prices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: '2026-09-23', amount: 679_000 }),
+    ]));
+    expect(result.find(calendar => calendar.durationDays === 4)?.prices.some(price => price.date === '2026-09-23' && price.amount === 799_000)).toBe(false);
   });
 
   it('keeps repeated airline and grade matrices as independent product axes', () => {

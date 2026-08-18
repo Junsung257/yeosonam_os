@@ -75,8 +75,9 @@ import {
   type DocumentIrTablePriceCalendar,
 } from './table-grid-price-calendar';
 import { attachSharedDocumentContext, inferSharedDocumentContext } from './document-context';
+import { inferUndatedPriceScopesFromSchedule } from './price-scope-inference';
 
-export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-17.57';
+export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-18.58';
 
 export type CanonicalSegmentationSource =
   | 'catalog-pre-split'
@@ -362,6 +363,160 @@ export function reconcileCatalogPreSplitLocalVariant(input: {
     }
   }
   return [selected];
+}
+
+/**
+ * Some HWP catalog exports repeat a shared departure-date block only once,
+ * while moving the next hotel/grade's scalar price below the previous
+ * itinerary. The price is still local to that variant; only the date scope is
+ * shared. Copy dates only when exactly one sibling variant has a scoped
+ * calendar, every other candidate is an undated scalar sale price, and the
+ * section contains one explicit date context. Never copy an amount or choose
+ * between multiple date calendars.
+ */
+export function linkSharedDateScopesAcrossVariants(input: {
+  variants: V3Variant[];
+  sectionRawText: string;
+}): number {
+  const hasScope = (price: V3Variant['price_calendar'][number]): boolean => Boolean(
+    price.date
+    || (price.date_range?.start && price.date_range?.end)
+    || price.weekday != null,
+  );
+  const scoped = input.variants.filter(variant => variant.price_calendar.some(hasScope));
+  const scalar = input.variants.filter(variant => (
+    variant.price_calendar.length > 0
+    && variant.price_calendar.every(price => !hasScope(price))
+    && variant.price_calendar.every(price => !/(?:예약금|계약금|deposit|싱글|아동|소아|유류|가이드|기사|현지비|옵션|선택)/iu.test(
+      `${price.label ?? ''} ${price.evidence.quote}`,
+    ))
+  ));
+  if (scoped.length !== 1 || scalar.length === 0) return 0;
+  const source = scoped[0]!;
+  const sourceDates = source.price_calendar.filter(hasScope);
+  if (sourceDates.length === 0 || !/(?:20\d{2}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일/u.test(input.sectionRawText)) return 0;
+  const dateKeys = new Set(sourceDates.map(price => `${price.date ?? ''}|${price.date_range?.start ?? ''}|${price.date_range?.end ?? ''}|${price.weekday ?? ''}`));
+  if (dateKeys.size !== sourceDates.length) return 0;
+  let linked = 0;
+  for (const target of scalar) {
+    if (target.duration_days !== source.duration_days) continue;
+    const original = target.price_calendar;
+    target.price_calendar = sourceDates.flatMap(dateSource => original.map(price => ({
+      ...price,
+      date: dateSource.date,
+      date_range: dateSource.date_range,
+      weekday: dateSource.weekday,
+      label: `${price.label || '판매가'} [공통 출발일 ${dateSource.label}]`,
+    })));
+    target.evidence_coverage.price = true;
+    linked += 1;
+  }
+  return linked;
+}
+
+type CanonicalSectionRecord = Record<string, unknown>;
+
+function canonicalSectionV3(section: CanonicalSectionRecord): CanonicalSectionRecord | null {
+  const v3 = section.v3;
+  return v3 && typeof v3 === 'object' && !Array.isArray(v3) ? v3 as CanonicalSectionRecord : null;
+}
+
+function canonicalSectionVariants(section: CanonicalSectionRecord): CanonicalSectionRecord[] {
+  const v3 = canonicalSectionV3(section);
+  const ledger = v3?.ledger;
+  if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) return [];
+  const variants = (ledger as CanonicalSectionRecord).variants;
+  return Array.isArray(variants)
+    ? variants.filter((value): value is CanonicalSectionRecord => (
+        Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+      ))
+    : [];
+}
+
+function canonicalVariantPrices(variant: CanonicalSectionRecord): CanonicalSectionRecord[] {
+  const prices = variant.price_calendar;
+  return Array.isArray(prices)
+    ? prices.filter((value): value is CanonicalSectionRecord => (
+        Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+      ))
+    : [];
+}
+
+function canonicalVariantHasItinerary(variant: CanonicalSectionRecord): boolean {
+  const days = Array.isArray(variant.days) ? variant.days.length : 0;
+  const flights = Array.isArray(variant.flight_segments) ? variant.flight_segments.length : 0;
+  return days > 0 || flights > 0;
+}
+
+function canonicalSectionDestination(section: CanonicalSectionRecord): string {
+  return String(section.destinationHint ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/gu, '')
+    .toLocaleLowerCase('ko-KR');
+}
+
+function canonicalVariantDuration(variant: CanonicalSectionRecord): number | null {
+  const duration = Number(variant.duration_days);
+  return Number.isInteger(duration) && duration >= 2 && duration <= 31 ? duration : null;
+}
+
+/**
+ * Links an orphan price-only catalog section to its matching itinerary section.
+ *
+ * HWP tables are frequently flattened into two catalog sections: a price grid
+ * carries the dates/amounts while the following section carries the actual
+ * itinerary, flights and hotels. This is safe only when exactly one source
+ * section proves the same destination and duration; ambiguity is deliberately
+ * left unresolved instead of copying another hotel's price.
+ */
+export function linkSharedPriceCalendarsAcrossSections(
+  payloadSections: CanonicalSectionRecord[],
+): number[] {
+  const changed: number[] = [];
+  for (let recipientIndex = 0; recipientIndex < payloadSections.length; recipientIndex++) {
+    const recipient = payloadSections[recipientIndex]!;
+    const recipientVariants = canonicalSectionVariants(recipient);
+    if (recipientVariants.length !== 1) continue;
+    const recipientVariant = recipientVariants[0]!;
+    if (canonicalVariantPrices(recipientVariant).length > 0 || !canonicalVariantHasItinerary(recipientVariant)) continue;
+    const recipientDuration = canonicalVariantDuration(recipientVariant);
+    const recipientDestination = canonicalSectionDestination(recipient);
+    if (recipientDuration == null || !recipientDestination) continue;
+
+    const candidates = payloadSections.flatMap((source, sourceIndex) => {
+      if (sourceIndex === recipientIndex) return [];
+      const sourceDestination = canonicalSectionDestination(source);
+      if (!sourceDestination || sourceDestination !== recipientDestination) return [];
+      const sourceVariants = canonicalSectionVariants(source);
+      if (sourceVariants.length !== 1) return [];
+      const sourceVariant = sourceVariants[0]!;
+      if (canonicalVariantHasItinerary(sourceVariant)) return [];
+      if (canonicalVariantDuration(sourceVariant) !== recipientDuration) return [];
+      const prices = canonicalVariantPrices(sourceVariant);
+      return prices.length > 0 ? [{ sourceIndex, sourceVariant, prices }] : [];
+    });
+    // A single mutual-best source is required. Multiple hotel/grade price
+    // sections with the same destination must remain blocked for review.
+    if (candidates.length !== 1) continue;
+    const source = candidates[0]!;
+    recipientVariant.price_calendar = source.prices.map(price => ({
+      ...price,
+      evidence: price.evidence && typeof price.evidence === 'object' && !Array.isArray(price.evidence)
+        ? {
+            ...(price.evidence as CanonicalSectionRecord),
+            shared_source_section_index: source.sourceIndex,
+            shared_source_section_key: payloadSections[source.sourceIndex]?.sectionKey ?? null,
+          }
+        : price.evidence,
+    }));
+    const coverage = recipientVariant.evidence_coverage;
+    recipientVariant.evidence_coverage = coverage && typeof coverage === 'object' && !Array.isArray(coverage)
+      ? { ...(coverage as CanonicalSectionRecord), price: true }
+      : { price: true };
+    recipientVariant.shared_price_source_section_index = source.sourceIndex;
+    changed.push(recipientIndex);
+  }
+  return changed;
 }
 
 function selectTablePriceCalendar(input: {
@@ -2095,6 +2250,10 @@ export async function buildCanonicalNormalization(input: {
         referenceDate: input.departureDateReference?.referenceDate,
       };
       const v3 = await runProductRegistrationV3(section.rawText, v3Options);
+      linkSharedDateScopesAcrossVariants({
+        variants: v3.ledger.variants,
+        sectionRawText: section.rawText,
+      });
       // Keep the legacy parser's shared-prefix price extraction until every
       // supplier matrix has a typed reader, but compute customer-visible
       // notices/entities independently from the local product body. This is a
@@ -2155,7 +2314,7 @@ export async function buildCanonicalNormalization(input: {
             documentIr: input.documentIr,
             sectionRawText: section.rawText,
           });
-      const detectedTablePriceCalendars = buildDocumentIrTablePriceCalendars({
+      const localDetectedTablePriceCalendars = buildDocumentIrTablePriceCalendars({
         documentIr: input.documentIr,
         sectionRawText: section.rawText,
         fallbackYear: priceYearEvidence.validated ? priceYearEvidence.year : null,
@@ -2164,6 +2323,18 @@ export async function buildCanonicalNormalization(input: {
         // itinerary proves a single duration; never guess across variants.
         fallbackDurationDays: sourceDurationFallback,
       });
+      // A catalog splitter may intentionally keep a shared price table out of
+      // every local itinerary section. When the local section proves exactly
+      // one duration, replay only the matching calendars from the full IR;
+      // selectTablePriceCalendar still rejects competing hotel/airline axes.
+      const detectedTablePriceCalendars = localDetectedTablePriceCalendars.length > 0 || localSegmentDuration == null
+        ? localDetectedTablePriceCalendars
+        : buildDocumentIrTablePriceCalendars({
+            documentIr: input.documentIr,
+            sectionRawText: input.documentIr.text,
+            fallbackYear: priceYearEvidence.validated ? priceYearEvidence.year : null,
+            fallbackDurationDays: sourceDurationFallback,
+          });
       const localDurationCalendars = localSegmentDuration == null
         ? []
         : detectedTablePriceCalendars.filter(calendar => calendar.durationDays === localSegmentDuration);
@@ -2471,6 +2642,11 @@ export async function buildCanonicalNormalization(input: {
             sourceLabel: '원문 여행기간 출발일',
           })
         : { applied: false, dates: [], amount: null, amounts: [] };
+      inferUndatedPriceScopesFromSchedule({
+        rawText: section.rawText,
+        variants: v3.ledger.variants,
+        year: priceYearEvidence.validated ? priceYearEvidence.year : null,
+      });
       const criticalPriceOverride = applyVerifiedCriticalPriceOverride({
         section,
         variants: v3.ledger.variants,
@@ -2695,6 +2871,86 @@ export async function buildCanonicalNormalization(input: {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  // A supplier can flatten a price grid and its itinerary into adjacent
+  // catalog sections. Resolve that document-local relation only after all
+  // sections are available, then rerun the same gate/completeness logic so
+  // the copied price cannot bypass validation.
+  const sharedPriceRecipients = linkSharedPriceCalendarsAcrossSections(payloadSections);
+  for (const sectionIndex of sharedPriceRecipients) {
+    const payloadSection = payloadSections[sectionIndex];
+    if (!payloadSection) continue;
+    const v3 = canonicalSectionV3(payloadSection);
+    const ledger = v3?.ledger;
+    const variants = ledger && typeof ledger === 'object' && !Array.isArray(ledger)
+      ? (ledger as CanonicalSectionRecord).variants
+      : null;
+    if (!v3 || !ledger || !Array.isArray(variants)) continue;
+    const gate = evaluateProductRegistrationV3Gate(
+      (v3.structure_plan ?? {}) as Parameters<typeof evaluateProductRegistrationV3Gate>[0],
+      ledger as Parameters<typeof evaluateProductRegistrationV3Gate>[1],
+      (v3.match_summary ?? {}) as Parameters<typeof evaluateProductRegistrationV3Gate>[2],
+    );
+    v3.gate_result = gate;
+    v3.render_contract_preview = ledgerToRenderPackageInputs(ledger as Parameters<typeof ledgerToRenderPackageInputs>[0]);
+    const completeness = evaluateCanonicalCompleteness({
+      rawText: segmented.sections[sectionIndex]?.rawText ?? '',
+      canonicalSection: payloadSection,
+      sectionIndex,
+    });
+    payloadSection.completeness = completeness;
+    completenessResults[sectionIndex] = completeness;
+    gateStatuses[sectionIndex] = String(gate.status ?? 'unknown');
+    const failedV3Checks = gate.checks.filter(check => check.status === 'fail');
+    const onlySafeDegradedV3Failures = failedV3Checks.length > 0 && failedV3Checks.every(check =>
+      check.id.endsWith('.flight')
+      || check.id.endsWith('.flight_times_complete')
+      || check.id.endsWith('.hotel_or_notice'),
+    );
+    v6GateAccepted[sectionIndex] = (
+      gate.status === 'ready_to_publish'
+      || (completeness.publicationOutcome === 'degraded' && onlySafeDegradedV3Failures)
+    );
+    const variantsWithDates = canonicalSectionVariants(payloadSection)
+      .flatMap(variant => canonicalVariantPrices(variant));
+    const datedCount = variantsWithDates.filter(entry => Boolean(entry.date || entry.date_range)).length;
+    const existingDatePolicy = payloadSection.departureDatePolicy && typeof payloadSection.departureDatePolicy === 'object'
+      && !Array.isArray(payloadSection.departureDatePolicy)
+      ? payloadSection.departureDatePolicy as CanonicalSectionRecord
+      : {};
+    const linkedDatePolicy = {
+      ...existingDatePolicy,
+      originalDatedEntryCount: datedCount,
+      futureDatedEntryCount: datedCount,
+      inferredDateCount: 0,
+      explicitDateCount: datedCount,
+      excludedPastDateCount: 0,
+      clippedRangeCount: 0,
+      invalidDateCount: 0,
+      undatedEntryCount: variantsWithDates.length - datedCount,
+      blockers: [],
+      disposition: datedCount > 0 ? 'eligible_future' : 'undated_or_invalid',
+    };
+    payloadSection.departureDatePolicy = linkedDatePolicy;
+    datePolicyResults[sectionIndex] = {
+      ...(datePolicyResults[sectionIndex] ?? {
+        sectionIndex,
+        entries: [],
+        originalDatedEntryCount: 0,
+        futureDatedEntryCount: 0,
+        inferredDateCount: 0,
+        explicitDateCount: 0,
+        excludedPastDateCount: 0,
+        clippedRangeCount: 0,
+        invalidDateCount: 0,
+        undatedEntryCount: 0,
+        blockers: [],
+        disposition: 'undated_or_invalid' as const,
+      }),
+      ...linkedDatePolicy,
+      entries: variantsWithDates as unknown as ProductDepartureCalendarPolicyResult['entries'],
+    } as unknown as ProductDepartureCalendarPolicyResult & { sectionIndex: number };
   }
 
   const allSectionsReady = gateStatuses.length === segmented.sections.length

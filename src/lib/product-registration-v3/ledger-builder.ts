@@ -327,8 +327,19 @@ function isOptionPriceCandidate(text: string): boolean {
     && isCustomerOptionalTourCandidate(text);
 }
 
-function sourceLineContainsPriceAmount(line: string, expectedAmount: number): boolean {
-  return sourceWonEvidenceContainsAmount(line, expectedAmount);
+function sourceLineContainsPriceAmount(
+  line: string,
+  expectedAmount: number,
+  sourceAmountScale: 1 | 1000 = 1,
+): boolean {
+  if (sourceWonEvidenceContainsAmount(line, expectedAmount)) return true;
+  if (sourceAmountScale !== 1000 || !Number.isInteger(expectedAmount) || expectedAmount % 1000 !== 0) return false;
+  const thousands = expectedAmount / 1000;
+  // Supplier tables headed `단위 : 천원` emit bare cells such as `1,189`
+  // or `1189`; they are still exact evidence for 1,189,000원 when the unit
+  // header is present. Do not enable this interpretation without that header.
+  const tokenPattern = thousands.toLocaleString('en-US').replace(/,/gu, '[,]?');
+  return new RegExp(`(?<![\\d])${tokenPattern}(?![\\d])`, 'u').test(line);
 }
 
 function buildPriceCalendarFromIR(
@@ -338,6 +349,9 @@ function buildPriceCalendarFromIR(
 ): V3LedgerVariant['price_calendar'] {
   const rawText = sectionLines.map(line => line.quote).join('\n');
   const result = extractPriceIR(rawText, { title, year });
+  const sourceAmountScale: 1 | 1000 = /(?:단위|금액s*단위)\s*[:：]?\s*(?:천원|천\s*원)/u.test(rawText)
+    ? 1000
+    : 1;
   return result.tiers
     // An unscoped IR tier is not enough to override the guarded line fallback:
     // itinerary prose can contain elevations, penalties, or optional fees that
@@ -346,7 +360,7 @@ function buildPriceCalendarFromIR(
     .filter(tier => (tier.departure_dates?.length ?? 0) > 0 || Boolean(tier.date_range?.start && tier.date_range?.end))
     .filter(tier => typeof tier.adult_price === 'number' && tier.adult_price > 0)
     .flatMap(tier => {
-      const evidenceLine = sectionLines.find(line => sourceLineContainsPriceAmount(line.quote, tier.adult_price))
+      const evidenceLine = sectionLines.find(line => sourceLineContainsPriceAmount(line.quote, tier.adult_price, sourceAmountScale))
         ?? sectionLines.find(line => (
         tier.period_label && line.quote.includes(tier.period_label.slice(0, 8))
       )) ?? sectionLines[0];
@@ -373,7 +387,10 @@ function buildPriceCalendarFromIR(
         // global number back into the sliced array points at an unrelated
         // heading (often just "상품가"). Build evidence from the matched line
         // object itself so the amount can always be replayed from the source.
-        evidence: evidenceFromSourceLine(evidenceLine),
+        evidence: {
+          ...evidenceFromSourceLine(evidenceLine),
+          ...(sourceAmountScale === 1000 ? { source_amount_scale: 1000 as const } : {}),
+        },
       }));
     })
     .sort((left, right) => (left.date ?? '').localeCompare(right.date ?? '') || left.amount - right.amount);
@@ -720,6 +737,15 @@ function buildVariant(
       if (NO_SHOPPING_POLICY_RE.test(previousDetail?.quote.trim() ?? '')) continue;
       const detailText = nextDetail?.quote.trim() ?? '';
       if (!detailText || NO_SHOPPING_POLICY_RE.test(detailText)) continue;
+      // A heading followed by a non-shopping remark (for example a single
+      // room surcharge) is a flattened-table artefact, not a shopping stop.
+      // Only attach a detail line when it actually describes shopping or a
+      // clearly optional/free-shopping visit.
+      const looksLikeShoppingDetail =
+        SHOPPING_RE.test(detailText)
+        || /(?:자유|자율|선택)\s*쇼핑|캐시미어|면세/iu.test(detailText)
+        || /^\s*\d+\s*회\s*[+＋]?\s*/u.test(detailText);
+      if (!looksLikeShoppingDetail) continue;
       shopping.push({
         value: `${value} ${detailText}`.trim(),
         evidence: evidenceFromLines(lines, line.lineNumber),

@@ -37,6 +37,13 @@ describe('supplier source KRW normalization', () => {
       ]);
   });
 
+  it('accepts HWP exports that render the won sign as a backslash', () => {
+    expect(extractSourceWonAmounts('예상판매가격 \\1,499,000')).toEqual([
+      expect.objectContaining({ amount: 1_499_000 }),
+    ]);
+    expect(sourceWonEvidenceContainsAmount('\\1,499,000', 1_499_000)).toBe(true);
+  });
+
   it('does not treat a comma-separated departure day as a bare special price', () => {
     expect(extractSourceWonAmounts('\u2665\uD2B9\uAC00\u2665 8/24, 31', { allowBareSaleShorthand: true })).toEqual([]);
   });

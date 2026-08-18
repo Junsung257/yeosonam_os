@@ -25,6 +25,21 @@ describe('source sale-price disposition', () => {
     expect(result.shouldDiscard).toBe(false);
   });
 
+  it('does not reject a sale amount when the evidence cell also contains a following fuel note', () => {
+    const result = resolveSourceSalePriceDisposition({
+      sourceText: '2026년 9월 23일, 24일 예정\n▶ \\1,499,000\n상기요금은 유류할증료 기준',
+      canonicalSection: canonical([{
+        amount: 1_499_000,
+        currency: 'KRW',
+        evidence: {
+          quote: '2026년 9월 23일, 24일 예정\n▶ \\1,499,000\n상기요금은 유류할증료 기준',
+        },
+      }]),
+    });
+    expect(result.state).toBe('canonical_price_present');
+    expect(result.canonicalPriceCandidateCount).toBe(1);
+  });
+
   it('never promotes a canonical value whose evidence is NET-only to customer sale price', () => {
     const result = resolveSourceSalePriceDisposition({
       sourceText: '랜드 NET 799,000원\n커미션 9%',

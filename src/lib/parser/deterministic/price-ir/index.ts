@@ -102,6 +102,10 @@ function normalizeCandidate(definition: CandidateDefinition): PriceIRCandidate {
     if (rowRichness(row) > rowRichness(existing)) byExactValue.set(exactKey, row);
   }
   const rows = sortRows([...byExactValue.values()]);
+  // Keep internally conflicted candidates in the evidence graph. Resolution
+  // decides whether a coherent peer should outrank them; if no peer exists we
+  // still need to return the source rows so the publication gate can explain
+  // the ambiguity instead of reporting an extraction failure.
   const valid = rows.length > 0;
   return {
     source: definition.source,
@@ -180,7 +184,7 @@ function candidateDefinitions(rawText: string, options: PriceIROptions): Candida
     || String(row.note ?? '').startsWith('source_korean_grade_date_price')
   ));
   const productVerticalUsesTrustedStructure = productVerticalUsesNamedGrade
-    || productVerticalRows.some(row => /^(?:source_korean_amount_before_date|source_korean_date_before_amount|source_korean_grouped_dates_before_price|source_korean_duration_section_price|source_korean_hotel_month_day|source_korean_month_duration_price)/u.test(String(row.note ?? '')));
+    || productVerticalRows.some(row => /^(?:source_korean_amount_before_date|source_korean_amount_before_grouped_dates|source_korean_date_before_amount|source_korean_grouped_dates_before_price|source_korean_duration_section_price|source_korean_hotel_month_day|source_korean_month_duration_price)/u.test(String(row.note ?? '')));
   const productVerticalHasCompleteGenericCoverage = productVerticalRows.length > 0
     && productVerticalRows.length >= pdfDateRows.length;
   return [
@@ -226,7 +230,7 @@ export function extractPriceIRCandidates(rawText: string, options: PriceIROption
 }
 
 export function resolvePriceIRCandidates(candidates: PriceIRCandidate[]): PriceIRResult {
-  const valid = candidates
+  const rankedValid = candidates
     .filter(candidate => candidate.valid && candidate.rows.length > 0)
     .sort((left, right) => (
       right.priority - left.priority
@@ -235,6 +239,18 @@ export function resolvePriceIRCandidates(candidates: PriceIRCandidate[]): PriceI
       || right.tiers.length - left.tiers.length
       || left.source.localeCompare(right.source)
     ));
+  // A flattened document can make one parser emit a Cartesian product with
+  // several different prices for the same departure date. If another parser
+  // produced a conflict-free calendar, prefer that coherent candidate even
+  // when its nominal parser priority is lower. When it is the only candidate,
+  // retain it so the caller still receives the conflict evidence and can gate
+  // publication explicitly rather than losing all source facts.
+  const hasConflictFreeCandidate = rankedValid.some(candidate => (
+    !candidate.issues.some(issue => issue.startsWith('INTERNAL_SCOPE_CONFLICT:'))
+  ));
+  const valid = hasConflictFreeCandidate
+    ? rankedValid.filter(candidate => !candidate.issues.some(issue => issue.startsWith('INTERNAL_SCOPE_CONFLICT:')))
+    : rankedValid;
   if (valid.length === 0) {
     return {
       source: 'none',

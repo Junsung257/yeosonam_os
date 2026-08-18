@@ -536,6 +536,108 @@ function parseVerticalScalarPrice(
 }
 
 /**
+ * Reads a one-price-column HWP table whose duration and month cells span
+ * multiple physical rows. This shape is common in land-supplier sheets:
+ * `3박4일 | 8월(rowSpan) | 30일 | 829,000`, followed by another day row.
+ * Text export order is not reliable here, so the resolver uses only the
+ * original EvidenceIR row/rowSpan topology.
+ */
+function parseDurationMonthDayPriceRows(
+  table: DocumentIrTable,
+  fallbackYear: number | null,
+  fallbackDurationDays: number | null = null,
+): DocumentIrTablePriceCalendar[] {
+  const tableText = table.cells.map(cell => cell.text).join('\n');
+  const year = sourceYearFromText(tableText) ?? fallbackYear;
+  if (!year || !table.cells.some(cell => /출\s*발\s*일/u.test(cell.text))
+    || !table.cells.some(cell => /판매\s*가|상품\s*가|여행\s*경비|요\s*금/u.test(cell.text))) return [];
+
+  const headerRow = Math.min(...table.cells
+    .filter(cell => /출\s*발\s*일/u.test(cell.text))
+    .map(cell => cell.row));
+  if (!Number.isInteger(headerRow)) return [];
+
+  const byDuration = new Map<number, Map<string, V3PriceCalendarEntry>>();
+  for (let row = headerRow + 1; row < table.rows; row += 1) {
+    const durationCell = table.cells.find(cell => (
+      cell.row <= row
+      && row < cell.row + Math.max(1, cell.rowSpan)
+      && durationFromText(cell.text) != null
+    ));
+    const durationDays = durationCell ? durationFromText(durationCell.text) : fallbackDurationDays;
+    if (!durationDays) continue;
+
+    const monthCell = table.cells.find(cell => (
+      cell.row <= row
+      && row < cell.row + Math.max(1, cell.rowSpan)
+      && /^\s*\d{1,2}\s*월\s*$/u.test(cell.text.normalize('NFKC'))
+    ));
+    const month = Number(monthCell?.text.match(/\d{1,2}/u)?.[0]);
+    if (!monthCell || month < 1 || month > 12) continue;
+
+    const rowCells = table.cells.filter(cell => cell.row === row).sort((left, right) => left.column - right.column);
+    const coveredCells = table.cells.filter(cell => (
+      cell.row <= row && row < cell.row + Math.max(1, cell.rowSpan)
+    ));
+    const dayCell = rowCells.find(cell => (
+      cell.id !== durationCell?.id
+      && cell.id !== monthCell.id
+      && bareDaysFromMonthlyRoster(cell.text).length > 0
+    ));
+    const days = dayCell ? bareDaysFromMonthlyRoster(dayCell.text) : [];
+    if (!dayCell || days.length === 0) continue;
+
+    const amountCells = coveredCells.filter(cell => (
+      cell.id !== durationCell?.id
+      && cell.id !== monthCell.id
+      && cell.id !== dayCell.id
+      && sourcePriceAvailabilityStatus(cell.text) === 'available'
+      && sourceCellPrice(cell.text) != null
+    ));
+    if (amountCells.length !== 1) continue;
+    const amountCell = amountCells[0]!;
+    const price = sourceCellPrice(amountCell.text);
+    if (!price) continue;
+
+    const prices = byDuration.get(durationDays) ?? new Map<string, V3PriceCalendarEntry>();
+    for (const day of days) {
+      const date = iso(year, month, day);
+      if (!date) continue;
+      const entry: V3PriceCalendarEntry = {
+        date,
+        date_range: null,
+        weekday: null,
+        label: `${month}/${day}`,
+        amount: price.amount,
+        currency: 'KRW',
+        list_price: price.listPrice,
+        price_relation: price.priceRelation,
+        evidence: evidence(table, dayCell, amountCell, price.sourceAmountScale),
+      };
+      const previous = prices.get(date);
+      if (previous && (previous.amount !== entry.amount || previous.currency !== entry.currency)) {
+        // A same-duration same-date conflict is not safe to resolve by
+        // choosing a lower or newer-looking value.
+        return [];
+      }
+      prices.set(date, previous ?? entry);
+    }
+    byDuration.set(durationDays, prices);
+  }
+
+  return [...byDuration.entries()]
+    .filter(([, prices]) => prices.size > 0)
+    .map(([durationDays, prices]) => ({
+      tableId: table.id,
+      durationDays,
+      gradeLabel: null,
+      productLabelKind: 'duration' as const,
+      prices: [...prices.values()].sort((left, right) => String(left.date).localeCompare(String(right.date))),
+      sourceNodeIds: [...new Set(Array.from(prices.values()).flatMap(price => [price.evidence.node_id].filter((value): value is string => Boolean(value))))],
+    }));
+}
+
+/**
  * Reads a supplier's compact commercial block where a roster of departure
  * dates and the adult sale price live in different columns of the same row.
  *
@@ -1832,14 +1934,12 @@ function parseExplicitDatePriceRows(
       ? [durationDays]
       : [];
   });
-  // This reader intentionally owns only one-product tables. When the same
-  // physical table carries multiple duration products, parseTable keeps the
-  // active merged product cell and binds each row to its own duration. Mapping
-  // every row to sectionDurationDays here would leak 4박6일 prices into a
-  // neighboring 3박5일 product.
-  if (new Set(explicitProductDurations).size >= 2) return [];
-  const pricesByDate = new Map<string, V3PriceCalendarEntry>();
-  const sourceNodeIds = new Set<string>();
+  const hasMultipleExplicitDurations = new Set(explicitProductDurations).size >= 2;
+  const targets = new Map<number, {
+    pricesByDate: Map<string, V3PriceCalendarEntry>;
+    sourceNodeIds: Set<string>;
+    recognizedRows: number;
+  }>();
   let recognizedRows = 0;
   for (let row = 0; row < table.rows; row += 1) {
     const cells = table.cells.filter(cell => cell.row === row).sort((left, right) => left.column - right.column);
@@ -1848,6 +1948,10 @@ function parseExplicitDatePriceRows(
     ));
     const rowText = cells.map(cell => cell.text).join(' ');
     if (/(?:싱글|아동|소아|유아|커미션|계약금|데파짓|옵션|현지비)/u.test(rowText)) continue;
+    const durationDays = rowDurationFromCells(cells)
+      ?? rowDurationFromCells(coveredCells)
+      ?? sectionDurationDays;
+    if (!durationDays) continue;
     const dated = cells.filter(cell => sourceCellPrice(cell.text) == null)
       .map(cell => ({ cell, dates: dateEntries(cell.text, year) }))
       .filter(item => item.dates.length > 0);
@@ -1870,6 +1974,12 @@ function parseExplicitDatePriceRows(
     const price = sourceCellPrice(rowBinding.amountCell.text);
     if (!price) continue;
     recognizedRows += 1;
+    const target = targets.get(durationDays) ?? {
+      pricesByDate: new Map<string, V3PriceCalendarEntry>(),
+      sourceNodeIds: new Set<string>(),
+      recognizedRows: 0,
+    };
+    target.recognizedRows += 1;
     for (const item of rowBinding.dates) {
       const entry: V3PriceCalendarEntry = {
         date: item.date,
@@ -1882,21 +1992,26 @@ function parseExplicitDatePriceRows(
         price_relation: price.priceRelation,
         evidence: evidence(table, rowBinding.dateCell, rowBinding.amountCell, price.sourceAmountScale),
       };
-      const previous = pricesByDate.get(item.date!);
+      const previous = target.pricesByDate.get(item.date!);
       if (previous && previous.amount !== entry.amount) return [];
-      pricesByDate.set(item.date!, previous ?? entry);
+      target.pricesByDate.set(item.date!, previous ?? entry);
     }
-    sourceNodeIds.add(rowBinding.dateCell.nodeId);
-    sourceNodeIds.add(rowBinding.amountCell.nodeId);
+    target.sourceNodeIds.add(rowBinding.dateCell.nodeId);
+    target.sourceNodeIds.add(rowBinding.amountCell.nodeId);
+    targets.set(durationDays, target);
   }
-  if (recognizedRows < 2 || pricesByDate.size < 2) return [];
-  return [{
-    tableId: table.id,
-    durationDays: sectionDurationDays,
-    gradeLabel: null,
-    prices: [...pricesByDate.values()].sort((left, right) => String(left.date).localeCompare(String(right.date))),
-    sourceNodeIds: [...sourceNodeIds],
-  }];
+  if (recognizedRows < 2) return [];
+  const calendars = [...targets.entries()]
+    .filter(([, target]) => target.recognizedRows > 0 && target.pricesByDate.size > 0)
+    .map(([durationDays, target]) => ({
+      tableId: table.id,
+      durationDays,
+      gradeLabel: null,
+      productLabelKind: hasMultipleExplicitDurations ? 'duration' as const : null,
+      prices: [...target.pricesByDate.values()].sort((left, right) => String(left.date).localeCompare(String(right.date))),
+      sourceNodeIds: [...target.sourceNodeIds],
+    }));
+  return calendars.length > 0 && calendars.every(calendar => calendar.prices.length > 0) ? calendars : [];
 }
 
 /**
@@ -2140,6 +2255,140 @@ function parseGroupedRangeLocalRosterPriceTable(
       .sort((left, right) => String(left.date).localeCompare(String(right.date))),
     sourceNodeIds: [...sourceNodeIds],
   }];
+}
+
+/**
+ * Parses a price table whose product axes are duration columns rather than
+ * grade columns. Suppliers commonly publish this shape as:
+ *
+ *   출발일 | 2박3일 36H | 3박4일 54H
+ *   9/1~9/30 + 월/화/수 | 589,000 | 679,000
+ *
+ * The date scope and weekday row are shared, but each amount column is a
+ * different product. This reader deliberately requires at least two
+ * distinct duration headers and never copies a value between columns.
+ */
+function parseDurationColumnPriceMatrix(
+  table: DocumentIrTable,
+  fallbackYear: number | null,
+): DocumentIrTablePriceCalendar[] {
+  const tableText = table.cells.map(cell => cell.text).join('\n');
+  const year = sourceYearFromText(tableText) ?? fallbackYear;
+  if (!year) return [];
+
+  const headerCells = table.cells
+    .filter(cell => cell.row <= 3 && durationFromText(cell.text) != null)
+    .filter(cell => {
+      const text = cell.text.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+      return text.length <= 40
+        && !/(?:일정표|상품명|출발날짜|출발일자|호텔|항공|포함|불포함)/u.test(text);
+    })
+    .sort((left, right) => left.row - right.row || left.column - right.column);
+  const uniqueByDuration = new Map<number, DocumentIrTableCell>();
+  for (const cell of headerCells) {
+    const durationDays = durationFromText(cell.text);
+    if (!durationDays || uniqueByDuration.has(durationDays)) continue;
+    uniqueByDuration.set(durationDays, cell);
+  }
+  if (uniqueByDuration.size < 2) return [];
+
+  const durationHeaders = [...uniqueByDuration.entries()]
+    .sort((left, right) => left[1].column - right[1].column);
+  const headerRow = Math.min(...durationHeaders.map(([, cell]) => cell.row));
+  const firstAmountColumn = Math.min(...durationHeaders.map(([, cell]) => cell.column));
+  type Target = {
+    durationDays: number;
+    byDate: Map<string, { entry: V3PriceCalendarEntry; specificity: number }>;
+    sourceNodeIds: Set<string>;
+    conflicted: boolean;
+  };
+  const targets = new Map<number, Target>();
+
+  for (let row = headerRow + 1; row < table.rows; row += 1) {
+    const dateCell = table.cells
+      .filter(cell => (
+        cell.column < firstAmountColumn
+        && cell.row <= row
+        && row < cell.row + Math.max(1, cell.rowSpan)
+        && dateEntries(cell.text, year).length > 0
+      ))
+      .sort((left, right) => (
+        Number(left.row !== row) - Number(right.row !== row)
+        || left.column - right.column
+        || right.rowSpan - left.rowSpan
+      ))[0];
+    if (!dateCell) continue;
+    const scopes = dateEntries(dateCell.text, year);
+    if (scopes.length === 0) continue;
+
+    const rowCells = table.cells.filter(cell => cell.row === row && cell.column < firstAmountColumn);
+    const weekdays = [...new Set(rowCells
+      .filter(cell => cell !== dateCell)
+      .flatMap(cell => weekdaysFromStandaloneLabel(cell.text)))].sort((left, right) => left - right);
+    const expandedDates = scopes.flatMap(scope => {
+      if (scope.date) return [{ date: scope.date, label: scope.label, specificity: 0 }];
+      if (!scope.dateRange) return [];
+      const dates = datesInInclusiveRange(scope.dateRange.start, scope.dateRange.end);
+      return dates
+        .filter(date => weekdays.length === 0 || weekdays.includes(new Date(`${date}T00:00:00.000Z`).getUTCDay()))
+        .map(date => ({ date, label: scope.label, specificity: dates.length }));
+    });
+    if (expandedDates.length === 0) continue;
+
+    for (const [durationDays, headerCell] of durationHeaders) {
+      const amountCell = coveringCell(table, row, headerCell.column);
+      if (!amountCell || amountCell === headerCell) continue;
+      if (sourcePriceAvailabilityStatus(amountCell.text) !== 'available') continue;
+      const price = sourceCellPrice(amountCell.text);
+      if (!price) continue;
+      const target = targets.get(durationDays) ?? {
+        durationDays,
+        byDate: new Map<string, { entry: V3PriceCalendarEntry; specificity: number }>(),
+        sourceNodeIds: new Set<string>([headerCell.nodeId]),
+        conflicted: false,
+      };
+      if (target.conflicted) continue;
+      for (const scope of expandedDates) {
+        const entry: V3PriceCalendarEntry = {
+          date: scope.date,
+          date_range: null,
+          weekday: null,
+          label: scope.label,
+          amount: price.amount,
+          currency: 'KRW',
+          list_price: price.listPrice,
+          price_relation: price.priceRelation,
+          evidence: evidence(table, dateCell, amountCell, price.sourceAmountScale),
+        };
+        const previous = target.byDate.get(scope.date);
+        if (!previous || scope.specificity < previous.specificity) {
+          target.byDate.set(scope.date, { entry, specificity: scope.specificity });
+        } else if (scope.specificity === previous.specificity && previous.entry.amount !== entry.amount) {
+          target.conflicted = true;
+          target.byDate.clear();
+          break;
+        }
+      }
+      target.sourceNodeIds.add(dateCell.nodeId);
+      target.sourceNodeIds.add(amountCell.nodeId);
+      targets.set(durationDays, target);
+    }
+  }
+
+  const calendars = durationHeaders
+    .map(([durationDays]) => targets.get(durationDays))
+    .filter((target): target is Target => target != null && !target.conflicted && target.byDate.size > 0)
+    .map(target => ({
+      tableId: table.id,
+      durationDays: target.durationDays,
+      gradeLabel: null,
+      productLabelKind: 'duration' as const,
+      prices: [...target.byDate.values()]
+        .map(value => value.entry)
+        .sort((left, right) => String(left.date).localeCompare(String(right.date))),
+      sourceNodeIds: [...target.sourceNodeIds],
+    }));
+  return calendars.length >= 2 ? calendars : [];
 }
 
 /**
@@ -2641,10 +2890,60 @@ export function tableBelongsToSection(table: DocumentIrTable, sectionRawText: st
       }).length === 1
     )).length >= 2;
   });
+  // Some HWP exports interleave cells from a shared price table with the
+  // surrounding section (date, duration, then the two stacked price lines).
+  // Requiring a whole cell string to be contiguous in the flattened section
+  // rejects a table that is nevertheless unambiguously present.  Recognize
+  // this shape by matching the row's date, duration and sale amount tokens
+  // independently.  The caller still filters the resulting calendars by the
+  // local duration, so a shared table cannot leak another product's price.
+  const explicitDatePriceRows = Array.from({ length: table.rows }, (_, row) => {
+    const cells = table.cells.filter(cell => cell.row === row);
+    return {
+      row,
+      hasDate: cells.some(cell => /(?:\d{1,2}\s*[./]\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2})/u.test(cell.text)),
+      hasDuration: Boolean(rowDurationFromCells(cells)),
+      hasPrice: cells.some(cell => sourceCellPrice(cell.text) != null),
+      tokens: cells.flatMap(cell => cell.text
+        .normalize('NFKC')
+        .split(/\r?\n/u)
+        .map(value => value.replace(/\s+/gu, ' ').trim())
+        .filter(value => value && (
+          /(?:\d{1,2}\s*[./]\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}|\d{1,2}\s*박\s*\d{1,2}\s*일)/u.test(value)
+          || sourceCellPrice(value) != null
+        ))),
+    };
+  }).filter(value => value.hasDate && value.hasDuration && value.hasPrice);
+  const explicitDatePriceTokenCoverage = explicitDatePriceRows
+    .flatMap(value => value.tokens)
+    .filter(token => normalizedSection.includes(token))
+    .length;
+  const belongsByInterleavedExplicitDatePrice = /출\s*발\s*일/u.test(
+    table.cells.map(cell => cell.text).join(' '),
+  )
+    && explicitDatePriceRows.length > 0
+    && explicitDatePriceTokenCoverage >= 3;
+  const belongsByStackedSaleCell = table.cells.some(cell => (
+    /(?:↴|↡|↓)/u.test(cell.text)
+    && sourceCellPrice(cell.text) != null
+  ))
+    && table.cells.some(cell => /출\s*발\s*일/u.test(cell.text))
+    && table.cells.some(cell => /(?:판매\s*가|상품\s*가|여행\s*경비|요\s*금)/u.test(cell.text))
+    && table.cells
+      .filter(cell => sourceCellPrice(cell.text) != null)
+      .some(cell => {
+        const sectionWithoutWhitespace = normalizedSection.replace(/\s+/gu, '');
+        const amountTokens = extractSourceWonAmounts(cell.text, {
+          allowBareSaleShorthand: true,
+          minAmount: 100_000,
+          maxAmount: 50_000_000,
+        }).map(candidate => candidate.raw.normalize('NFKC').replace(/\s+/gu, ''));
+        return amountTokens.length === 2 && amountTokens.every(token => sectionWithoutWhitespace.includes(token));
+      });
   const anchors = table.cells
     .map(cell => cell.text.normalize('NFKC').replace(/\s+/g, ' ').trim())
     .filter(text => (
-      (/출\s*발\s*(?:일\s*자?|날\s*짜)/u.test(text) && text.length >= 3)
+      (/(?:출\s*발\s*(?:일\s*자?|날\s*짜)|요\s*금)/u.test(text) && text.length >= 2)
       || (hasTravelPeriodLabel && /\d{1,2}\s*\uC6D4\s*\d{1,2}\s*\uC77C/u.test(text))
       || (hasWeekdayDepartureScope && /\d{1,2}\s*\uC6D4\s*\d{1,2}\s*\uC77C/u.test(text))
       || sourceCellPrice(text) != null
@@ -2654,8 +2953,11 @@ export function tableBelongsToSection(table: DocumentIrTable, sectionRawText: st
         maxAmount: 50_000_000,
       }).length >= 2
     ));
-  if (belongsByUniqueSharedRoster || belongsByRowSpannedProduct) return true;
-  if (anchors.length < 2 || commercialAnchors.length === 0) return false;
+  if (belongsByUniqueSharedRoster || belongsByRowSpannedProduct || belongsByInterleavedExplicitDatePrice || belongsByStackedSaleCell) return true;
+  // A stacked normal/sale cell is commercially meaningful only as the whole
+  // cell; splitting it into lines leaves neither line independently
+  // classifiable.  In that case the full-cell anchor is the stronger proof.
+  if (anchors.length < 2 || (commercialAnchors.length === 0 && fullCommercialAnchors.length === 0)) return false;
   if (fullCommercialAnchors.some(anchor => normalizedSection.includes(anchor))) return true;
   return hasInlineLabeledProductPriceCell
     && commercialAnchors.some(anchor => normalizedSection.includes(anchor))
@@ -2684,11 +2986,22 @@ export function buildDocumentIrTablePriceCalendarCandidates(input: {
     tableDurationDays,
   );
   if (transportGradeDateMatrix.length > 0) return transportGradeDateMatrix;
+  const durationColumnMatrix = parseDurationColumnPriceMatrix(
+    input.table,
+    input.fallbackYear,
+  );
+  if (durationColumnMatrix.length > 0) return durationColumnMatrix;
   const durationGradeRangeMatrix = parseDurationGradeRangePriceMatrix(
     input.table,
     input.fallbackYear,
   );
   if (durationGradeRangeMatrix.length > 0) return durationGradeRangeMatrix;
+  const durationMonthDayCalendar = parseDurationMonthDayPriceRows(
+    input.table,
+    input.fallbackYear,
+    tableDurationDays,
+  );
+  if (durationMonthDayCalendar.length > 0) return durationMonthDayCalendar;
   const durationPatternCalendar = parseDurationPatternRangePriceTable(
     input.table,
     input.fallbackYear,
