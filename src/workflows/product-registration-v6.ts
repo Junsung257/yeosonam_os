@@ -1066,7 +1066,12 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
   'use step';
   await recordStage({ jobId: input.jobId, fencingToken: input.fencingToken, stage: 'converge_surfaces', status: 'running' });
   const supabase = db();
-  const requiredSurfaces = ['packages', 'lp', 'og', 'affiliate'];
+  // The package and LP pages are the customer journey and must converge before
+  // the workflow is considered publishable. OG/affiliate are secondary image
+  // projections: they remain durable pending rows and are repaired by the
+  // essential convergence cron without blocking a valid customer snapshot.
+  const requiredSurfaces = ['packages', 'lp'];
+  const secondarySurfaces = ['og', 'affiliate'];
   const workerId = `v6:${input.jobId}`;
   // Cache invalidation is an external side effect. A just-published OG image
   // can briefly serve the previous snapshot while the pointer and HTML pages
@@ -1094,6 +1099,11 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
     !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
       && row.surface === surface
       && row.status === 'converged')));
+  const pendingSecondarySurfaces = snapshots.flatMap(snapshot => secondarySurfaces
+    .filter(surface => !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
+      && row.surface === surface
+      && row.status === 'converged'))
+    .map(surface => `${snapshot.snapshotHash}:${surface}`));
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
@@ -1103,6 +1113,7 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
       outboxDelivered: outbox.filter(row => row.ok).length,
       converged: convergence.length,
       pending: incomplete.length,
+      pendingSecondarySurfaces,
     },
   });
   return { complete: incomplete.length === 0, pending: incomplete.length };
