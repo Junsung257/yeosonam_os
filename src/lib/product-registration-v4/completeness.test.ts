@@ -179,16 +179,18 @@ describe('canonical completeness states', () => {
     expect(result.publicationOutcome).toBe('verified');
   });
 
-  it('blocks absent inclusion or exclusion facts', () => {
+  it('degrades absent inclusion or exclusion facts with a customer disclosure', () => {
     const result = evaluateCanonicalCompleteness({
       rawText: '다낭 3박 5일 BX321 19:00 출발, 성인 399,000원',
       sectionIndex: 0,
       canonicalSection: section({ inclusions: [], exclusions: [] }),
     });
 
-    expect(result.publicationOutcome).toBe('blocked');
-    expect(result.blockers.some(reason => reason.includes('.inclusions'))).toBe(true);
-    expect(result.blockers.some(reason => reason.includes('.exclusions'))).toBe(true);
+    expect(result.publicationOutcome).toBe('degraded');
+    expect(result.blockers.some(reason => reason.includes('.inclusions'))).toBe(false);
+    expect(result.blockers.some(reason => reason.includes('.exclusions'))).toBe(false);
+    expect(result.degradedReasons.some(reason => reason.includes('.inclusions'))).toBe(true);
+    expect(result.degradedReasons.some(reason => reason.includes('.exclusions'))).toBe(true);
   });
 
   it('does not accept table headings as commercial facts', () => {
@@ -201,8 +203,8 @@ describe('canonical completeness states', () => {
       }),
     });
 
-    expect(result.publicationOutcome).toBe('blocked');
-    expect(result.blockers.some(reason => reason.includes('.inclusions'))).toBe(true);
-    expect(result.blockers.some(reason => reason.includes('.exclusions'))).toBe(true);
+    expect(result.publicationOutcome).toBe('degraded');
+    expect(result.blockers.some(reason => reason.includes('.inclusions'))).toBe(false);
+    expect(result.blockers.some(reason => reason.includes('.exclusions'))).toBe(false);
   });
 });

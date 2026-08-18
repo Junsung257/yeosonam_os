@@ -84,22 +84,34 @@ export function createLedgeredCriticalFactProviderCaller(input: {
     };
     const requestHash = hash(requestContract);
     const operationKey = `critical-price:v2:${request.provider}:${request.leg}:${requestHash}`;
-    const { data, error } = await input.supabase.rpc('reserve_product_registration_v6_provider_call', {
-      p_payload: {
-        tenant_id: input.tenantId,
-        job_id: input.jobId,
-        product_revision_id: null,
-        provider: request.provider,
-        operation: 'critical_price_consensus',
-        operation_key: operationKey,
-        request_hash: requestHash,
-        source_hash: input.sourceHash,
-        revision_hash: null,
-        created_version: CRITICAL_FACT_CONSENSUS_POLICY_VERSION,
-      },
-    });
-    if (error) throw error;
-    const reservation = (data ?? {}) as ProviderReservation;
+    const reservationPayload = {
+      tenant_id: input.tenantId,
+      job_id: input.jobId,
+      product_revision_id: null,
+      provider: request.provider,
+      operation: 'critical_price_consensus',
+      operation_key: operationKey,
+      request_hash: requestHash,
+      source_hash: input.sourceHash,
+      revision_hash: null,
+      created_version: CRITICAL_FACT_CONSENSUS_POLICY_VERSION,
+    };
+    let reservation: ProviderReservation | null = null;
+    // Multiple sections from the same source can reach the provider step at
+    // once during bounded backfill fan-out.  The database reservation is the
+    // single-flight authority; wait briefly for that call to complete and
+    // then reuse its durable result instead of turning a harmless race into a
+    // customer-visible workflow failure.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const { data, error } = await input.supabase.rpc('reserve_product_registration_v6_provider_call', {
+        p_payload: reservationPayload,
+      });
+      if (error) throw error;
+      reservation = (data ?? {}) as ProviderReservation;
+      if (reservation.action !== 'wait') break;
+      await new Promise(resolve => setTimeout(resolve, 2_000));
+    }
+    if (!reservation) throw new Error('CRITICAL_FACT_PROVIDER_RESERVATION_RESPONSE_INVALID');
     if (reservation.action === 'wait') throw new Error('CRITICAL_FACT_PROVIDER_CALL_IN_FLIGHT');
     if (reservation.action === 'reuse' && reservation.call_id) {
       const stored = asGatewayResult(reservation.result?.gateway_result);

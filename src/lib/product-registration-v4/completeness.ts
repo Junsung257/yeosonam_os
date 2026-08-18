@@ -145,12 +145,13 @@ function outcomeFor(fields: RegistrationFieldCompletion[]): Pick<
 /**
  * Converts parser gaps into one of the V6 terminal policy classes.
  *
- * Only facts that do not change the purchase decision may degrade. Price,
- * departure applicability, itinerary structure, inclusions/exclusions, and a
- * source-backed cancellation policy remain fail-closed in later validation.
- * Missing flight times and explicitly unconfirmed/equivalent lodging are
- * rendered with a customer-facing final-confirmation notice instead of being
- * guessed or copied from another product.
+ * Price, departure applicability, itinerary structure, and commercial
+ * conflicts remain fail-closed. A genuinely absent inclusion/exclusion list
+ * is different from a contradictory list: it can be published in degraded
+ * mode with an explicit customer-facing consultation notice. We never
+ * manufacture a term or copy one from another product. Missing flight times
+ * and explicitly unconfirmed/equivalent lodging follow the same
+ * evidence-bound disclosure rule.
  */
 export function evaluateCanonicalCompleteness(input: {
   rawText: string;
@@ -274,12 +275,24 @@ export function evaluateCanonicalCompleteness(input: {
     fields.push(
       hasSubstantiveCommercialTerm(inclusions)
         ? field(`${prefix}.inclusions`, 'confirmed', 'high', '포함사항 근거가 있습니다.')
-        : field(`${prefix}.inclusions`, 'unavailable', 'high', '포함사항을 확인할 수 없습니다.'),
+        : field(
+            `${prefix}.inclusions`,
+            'unavailable',
+            'high',
+            '원문에 포함사항이 별도로 기재되지 않아 상담 시 최종 확인이 필요합니다.',
+            true,
+          ),
     );
     fields.push(
       hasSubstantiveCommercialTerm(exclusions)
         ? field(`${prefix}.exclusions`, 'confirmed', 'high', '불포함사항 근거가 있습니다.')
-        : field(`${prefix}.exclusions`, 'unavailable', 'high', '불포함사항을 확인할 수 없습니다.'),
+        : field(
+            `${prefix}.exclusions`,
+            'unavailable',
+            'high',
+            '원문에 불포함사항이 별도로 기재되지 않아 상담 시 최종 확인이 필요합니다.',
+            true,
+          ),
     );
   });
 

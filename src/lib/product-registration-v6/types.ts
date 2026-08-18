@@ -2,7 +2,7 @@ import type { ProductSourceType } from '@/lib/product-registration-v4/types';
 import type { RegistrationTermsPolicySnapshot } from '@/lib/standard-terms-client';
 
 export const PRODUCT_REGISTRATION_V6_POLICY_VERSION = 'product-registration-v6-policy-10-deepseek';
-export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'product-registration-v6-workflow-23';
+export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'product-registration-v6-workflow-26';
 
 export const PRODUCT_REGISTRATION_V6_STAGES = [
   'intake',

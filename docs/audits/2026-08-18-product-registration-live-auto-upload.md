@@ -74,3 +74,26 @@ customer, b2b, partner 세 pointer가 모두 동일한 revision·snapshot을 가
 5. 치명적 오류가 발생한 parser/profile cohort는 자동 차단하고 이전 검증 snapshot pointer로 되돌린다.
 
 따라서 현재 판정은 “실제 고객에게 안전 축약 상품을 자동 공개할 수 있는 경로는 검증 완료”이며, “전체 원문 95% 달성 및 전면 공개 인증 완료”는 아니다.
+
+## 추가 운영 검증 (2026-08-18 15:00 이후)
+
+전체 기존 상품 재처리를 중단하지 않고, 자동 backfill을 25건 단위로 실행하여 최신 workflow 버전과 고객 공개 결과를 다시 확인했다.
+
+| 항목 | 실측 |
+|---|---:|
+| `travel_packages` 대상 | 992 |
+| backfill ledger 등록 | 861 |
+| backfill terminal | 796 |
+| backfill 진행 중 | 65 |
+| 고객 채널 `published` 상품(중복 채널 제외) | 8 |
+| `published` channel pointer | 22 |
+| 고객 URL HTTP 200·가격·CTA 확인 | 통과 |
+
+추가로 두 가지 운영 결함을 수정하고 배포했다.
+
+- 내부 스키마가 PostgREST에 노출되지 않은 환경에서 공급사 profile이 없다는 이유로 workflow가 실패하지 않도록 generic resolver fallback을 적용했다.
+- 동일 원문이 병렬 처리될 때 DeepSeek critical-fact 예약이 `in-flight`로 실패하지 않도록 기존 호출 완료를 잠시 기다린 후 durable 결과를 재사용하게 했다.
+
+최신 배포는 `dpl_FqdRpgCxZRggcwDAF7PPRC6MPncu`이며 `https://www.yeosonam.com`에 연결되어 있다. 최신 재처리 결과에서 supplier profile 접근 오류와 provider in-flight 오류는 새로 발생하지 않았고, 남은 차단은 과거 일정·판매가 부재·가격/일정 관계 불명확·실제 상업조건 충돌·proof/DB 일관성 오류로 분류된다.
+
+Supabase 보안 advisor에는 내부 등록 스키마의 일부 테이블이 RLS 정책 없이 운영되는 경고와 기존 공개 스키마의 별도 보안 경고가 남아 있다. 내부 테이블은 service-role 전용으로 운용 중이지만, 정책을 정하지 않은 상태에서 RLS를 일괄 활성화하면 worker가 막힐 수 있으므로 별도 보안 작업으로 처리해야 한다.

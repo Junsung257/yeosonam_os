@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { withCronGuard } from '@/lib/cron-auth';
+import { isValidProductRegistrationUploadToken } from '@/lib/api-auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { startProductRegistrationTextWorkflow } from '@/lib/product-registration-authority/start-workflow';
 import { getProductRegistrationV6RuntimeConfig } from '@/lib/product-registration-v6/runtime-config';
@@ -78,7 +79,7 @@ async function handler(request: NextRequest) {
 
   const publicBaseUrl = baseUrl(request);
   const results: Array<Record<string, unknown>> = [];
-  for (const claim of claims) {
+  const processClaim = async (claim: BackfillClaim) => {
     const pkg = packageById.get(claim.package_id);
     const rawText = typeof pkg?.raw_text === 'string' ? pkg.raw_text.trim() : '';
     let started: { jobId: string; workflowRunId: string; sourceDocumentId: string } | null = null;
@@ -96,7 +97,12 @@ async function handler(request: NextRequest) {
         requestBaseUrl: publicBaseUrl,
         publicBaseUrl,
         sourceChannel: 'legacy_backfill',
-        archiveMode: true,
+        // Existing packages are re-evaluated with the same yearless-date
+        // policy as a fresh upload: a month/day resolves to this year or the
+        // next year relative to the run date, and already-past departures are
+        // excluded. Archive mode would intentionally disable that inference
+        // and turn otherwise usable legacy schedules into false blockers.
+        archiveMode: false,
         bulkMode: true,
         forceReprocess: true,
         metadata: {
@@ -149,7 +155,7 @@ async function handler(request: NextRequest) {
           status: 'bind_pending',
           error: detail,
         });
-        continue;
+        return;
       }
       try {
         await db.rpc('fail_product_registration_legacy_backfill', {
@@ -170,6 +176,13 @@ async function handler(request: NextRequest) {
         error: detail,
       });
     }
+  };
+
+  // Starting a durable workflow is idempotent per claim operation key. Keep a
+  // small bounded fan-out so a 25-row cron tick finishes quickly without
+  // overwhelming Supabase or the workflow service.
+  for (let offset = 0; offset < claims.length; offset += 5) {
+    await Promise.all(claims.slice(offset, offset + 5).map(processClaim));
   }
 
   return NextResponse.json({
@@ -182,4 +195,17 @@ async function handler(request: NextRequest) {
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
-export const GET = withCronGuard(handler);
+const cronGuardedHandler = withCronGuard(handler);
+
+/**
+ * The scheduled invocation still requires CRON_SECRET.  A product-registration
+ * automation token is also accepted for an internal replay trigger so that a
+ * deployment/operator can start the same durable backfill without a browser
+ * admin session.  The token is scoped to this route and the handler still
+ * enforces the kernel authority, enabled flag, idempotency, and DB lineage
+ * gates for every claimed package.
+ */
+export const GET = async (request: NextRequest) => {
+  if (await isValidProductRegistrationUploadToken(request)) return handler(request);
+  return cronGuardedHandler(request);
+};

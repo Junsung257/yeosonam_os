@@ -54,6 +54,11 @@ function defaultRollingDepartureDateInferenceEligible(input: {
     'admin-critical-fact-review',
     'admin-extract',
     'admin-job',
+    // Legacy inventory is reprocessed as a live product-registration input.
+    // It must use the same yearless month/day policy as a fresh upload; treating
+    // it as archive-only turns otherwise valid upcoming departures into
+    // PRICE_DATE_YEAR_MISSING blockers.
+    'legacy_backfill',
   ].includes(input.sourceChannel);
 }
 
