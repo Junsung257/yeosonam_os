@@ -110,8 +110,23 @@ function hasCancellationEvidence(input: ProductRegistrationV6PolicyInput): boole
   });
 }
 
-function customerFactContradictionBlockers(canonicalPayload: Record<string, unknown>): string[] {
+function noticeSource(notice: JsonObject): string {
+  return [notice.source_text, notice.raw_text, notice.standard_text, notice.text, notice.value]
+    .map(text)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isConditionalCommercialNotice(notice: JsonObject): boolean {
+  return /(?:진행\s*시|선택\s*시|변경\s*시|희망\s*시|추가\s*(?:금|요금)|별도\s*(?:금|요금)|미진행\s*시|불참\s*시)/u.test(noticeSource(notice));
+}
+
+function customerFactContradictionFindings(canonicalPayload: Record<string, unknown>): {
+  blockers: string[];
+  degradedReasons: string[];
+} {
   const blockers: string[] = [];
+  const degradedReasons: string[] = [];
   asArray(canonicalPayload.sections).forEach((rawSection, sectionIndex) => {
     const ledger = asObject(asObject(asObject(rawSection)?.v3)?.ledger);
     asArray(ledger?.variants).forEach((rawVariant, variantIndex) => {
@@ -134,17 +149,33 @@ function customerFactContradictionBlockers(canonicalPayload: Record<string, unkn
         (keys.has('guide.tip_included') && keys.has('guide.tip_amount_local_payment'))
         || (hasIncludedGuideFact && hasExcludedGuideFact)
       ) {
-        blockers.push(`${prefix}:CUSTOMER_FACT_CONTRADICTION:GUIDE_TIP_INCLUDED_AND_LOCAL_PAYMENT`);
+        // Supplier tables often combine package-level “tip included” and
+        // local-payment notes for different variants. The sale price remains
+        // the source price; expose the conflict as a consultation disclosure
+        // instead of silently adding the fee or discarding a sellable product.
+        degradedReasons.push(`${prefix}:GUIDE_TIP_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION`);
       }
+      const optionalNoneNotice = notices.find(notice => text(notice.template_key) === 'optional.none');
       if (keys.has('optional.none') && asArray(variant?.options).length > 0) {
-        blockers.push(`${prefix}:CUSTOMER_FACT_CONTRADICTION:NO_OPTION_WITH_OPTION_ITEMS`);
+        // “노옵션 진행 시 추가금” is a selectable commercial condition. An
+        // optional-tour list is not proof that the base product contradicts
+        // itself, so preserve the options and disclose the scope.
+        degradedReasons.push(`${prefix}:OPTION_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION${optionalNoneNotice && isConditionalCommercialNotice(optionalNoneNotice) ? ':CONDITIONAL' : ''}`);
       }
+      const shoppingNoneNotice = notices.find(notice => text(notice.template_key) === 'shopping.none');
       if (keys.has('shopping.none') && asArray(variant?.shopping).length > 0) {
-        blockers.push(`${prefix}:CUSTOMER_FACT_CONTRADICTION:NO_SHOPPING_WITH_SHOPPING_ITEMS`);
+        if (shoppingNoneNotice && isConditionalCommercialNotice(shoppingNoneNotice)) {
+          degradedReasons.push(`${prefix}:SHOPPING_SCOPE_REQUIRES_CUSTOMER_CONFIRMATION:CONDITIONAL`);
+        } else {
+          // Keep a true unscoped contradiction fail-closed. A shopping list
+          // must not be presented as both included and excluded without a
+          // source condition explaining the choice.
+          blockers.push(`${prefix}:CUSTOMER_FACT_CONTRADICTION:NO_SHOPPING_WITH_SHOPPING_ITEMS`);
+        }
       }
     });
   });
-  return blockers;
+  return { blockers, degradedReasons };
 }
 
 function priceAmountsFromEvidenceQuote(value: string): number[] {
@@ -322,7 +353,9 @@ export function evaluateProductRegistrationV6Policy(
 
   degradedReasons.push(...ticketingConditionDegradedReasons(input));
 
-  blockers.push(...customerFactContradictionBlockers(input.canonicalPayload));
+  const customerFactFindings = customerFactContradictionFindings(input.canonicalPayload);
+  blockers.push(...customerFactFindings.blockers);
+  degradedReasons.push(...customerFactFindings.degradedReasons);
   blockers.push(...priceAndDepartureBlockers(input.canonicalPayload, input.departureDateReference));
   blockers.push(...(input.sharedFactBlockers ?? []));
   degradedReasons.push(...(input.sharedFactDegradedReasons ?? []));

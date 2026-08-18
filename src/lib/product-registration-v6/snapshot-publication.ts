@@ -154,14 +154,14 @@ export function degradedPackageCopy(pkg: JsonObject, decision: ProductRegistrati
   const scheduleOrLodgingReconfirmation = decision.degradedReasons.some(reason =>
     /FLIGHT_|HOTEL|LODGING|숙소|항공/i.test(reason));
   const commercialTermsReconfirmation = decision.degradedReasons.some(reason =>
-    /\.inclusions\b|\.exclusions\b|포함사항|불포함사항/i.test(reason));
+    /\.inclusions\b|\.exclusions\b|포함사항|불포함사항|GUIDE_TIP_SCOPE|OPTION_SCOPE|SHOPPING_SCOPE|가이드|기사|노옵션|노쇼핑|선택관광/i.test(reason));
   const notices = [
     ...(ticketingReconfirmation
       ? ['발권기한 경과 또는 출발일별 조건 차이로 현재 좌석과 요금은 상담 시 최종 확인해 드립니다.']
       : []),
     ...(scheduleOrLodgingReconfirmation ? [DEGRADED_SCHEDULE_LODGING_NOTICE] : []),
     ...(commercialTermsReconfirmation
-      ? ['포함·불포함 항목은 원문에 별도 기재되지 않아 상담 시 최종 확인해 드립니다.']
+      ? ['가이드비·노옵션·노쇼핑·선택관광 조건은 상품별 적용 범위가 달라 상담 시 최종 확인해 드립니다.']
       : []),
   ];
   if (notices.length === 0) notices.push('일부 정보는 상담 시 최종 확인해 드립니다.');
