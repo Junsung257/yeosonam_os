@@ -20,9 +20,12 @@ import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'edge';
-
-// 캐시: 동일 code+pkg 조합은 1시간 동안 같은 이미지 (CDN edge 캐시).
-export const revalidate = 3600;
+// OG 이미지는 publication pointer가 바뀌면 즉시 새 snapshot을 반영해야 한다.
+// 장기 immutable 캐시는 이전 상품 가격·문구를 공유 미리보기에 남길 수 있으므로
+// 데이터와 응답 모두 no-store로 두고, 필요할 때 Vercel CDN 태그/경로를 별도로
+// 무효화한다. 고객 상세·LP와 달리 OG는 매 요청 비용보다 최신성 우선이다.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type RestPublicationPointerRow = {
   catalog_product_id?: string | null;
@@ -89,7 +92,7 @@ async function isV4PublicationReadyViaRest(
 ): Promise<boolean> {
   const draftRes = await fetch(
     `${supabaseUrl}/rest/v1/product_registration_drafts?package_id=eq.${encodeURIComponent(packageId)}&upload_job_id=not.is.null&select=upload_job_id&order=created_at.desc&limit=1`,
-    { headers, next: { revalidate: 60 } },
+    { headers, cache: 'no-store' },
   );
   if (!draftRes.ok) return false;
   const drafts = (await draftRes.json()) as Array<{ upload_job_id?: string | null }>;
@@ -98,7 +101,7 @@ async function isV4PublicationReadyViaRest(
   if (drafts?.[0]?.upload_job_id) {
     const jobRes = await fetch(
       `${supabaseUrl}/rest/v1/upload_jobs?id=eq.${encodeURIComponent(String(drafts[0].upload_job_id))}&select=id,source_document_id,extraction_id,v4_stage,v4_stage_state,v4_canonical_normalization_id&limit=1`,
-      { headers, next: { revalidate: 60 } },
+      { headers, cache: 'no-store' },
     );
     if (!jobRes.ok) return false;
     const jobs = (await jobRes.json()) as RestV4JobRow[];
@@ -108,7 +111,7 @@ async function isV4PublicationReadyViaRest(
     // a package id stored in the lifecycle state before treating it as legacy.
     const jobsRes = await fetch(
       `${supabaseUrl}/rest/v1/upload_jobs?source_document_id=not.is.null&v4_stage=in.(normalized,verified,proofed,published,needs_review,failed)&select=id,source_document_id,extraction_id,v4_stage,v4_stage_state,v4_canonical_normalization_id&order=updated_at.desc&limit=200`,
-      { headers, next: { revalidate: 60 } },
+      { headers, cache: 'no-store' },
     );
     if (!jobsRes.ok) return false;
     const jobs = (await jobsRes.json()) as RestV4JobRow[];
@@ -130,7 +133,7 @@ async function isV4PublicationReadyViaRest(
 
   const normalizationRes = await fetch(
     `${supabaseUrl}/rest/v1/product_registration_v4_normalizations?id=eq.${encodeURIComponent(normalizationId)}&job_id=eq.${encodeURIComponent(job.id)}&source_document_id=eq.${encodeURIComponent(job.source_document_id)}&extraction_id=eq.${encodeURIComponent(job.extraction_id)}&status=eq.complete&select=id,job_id,source_document_id,extraction_id,canonical_payload&limit=1`,
-    { headers, next: { revalidate: 60 } },
+    { headers, cache: 'no-store' },
   );
   if (!normalizationRes.ok) return false;
   const normalizations = (await normalizationRes.json()) as RestV4NormalizationRow[];
@@ -188,7 +191,7 @@ export async function GET(request: NextRequest) {
       // 어필리에이터
       const affRes = await fetch(
         `${supabaseUrl}/rest/v1/affiliates?referral_code=eq.${encodeURIComponent(code)}&select=name&limit=1`,
-        { headers, next: { revalidate: 600 } },
+        { headers, cache: 'no-store' },
       );
       const affs = (await affRes.json()) as Array<{ name: string }>;
       if (affs?.[0]?.name) affiliateName = affs[0].name;
@@ -197,7 +200,7 @@ export async function GET(request: NextRequest) {
       if (pkgId) {
         const pointerRes = await fetch(
           `${supabaseUrl}/rest/v1/product_registration_v5_publication_pointers?package_id=eq.${encodeURIComponent(pkgId)}&channel=eq.customer&locale=eq.ko-KR&state=eq.published&select=catalog_product_id,current_revision_id,current_snapshot_id,state&limit=1`,
-          { headers, next: { revalidate: 600 } },
+          { headers, cache: 'no-store' },
         );
         const pointerRows = (await pointerRes.json()) as RestPublicationPointerRow[];
         const pointer = pointerRows?.[0];
@@ -206,7 +209,7 @@ export async function GET(request: NextRequest) {
         if (v4Ready && isPublishedPointer(pointer)) {
           const snapshotRes = await fetch(
             `${supabaseUrl}/rest/v1/public_package_snapshots?id=eq.${encodeURIComponent(pointer.current_snapshot_id)}&package_id=eq.${encodeURIComponent(pkgId)}&catalog_product_id=eq.${encodeURIComponent(pointer.catalog_product_id)}&canonical_revision_id=eq.${encodeURIComponent(pointer.current_revision_id)}&status=eq.published&select=snapshot_hash,snapshot_json,card_projection&limit=1`,
-            { headers, next: { revalidate: 600 } },
+            { headers, cache: 'no-store' },
           );
           const snapshotRows = (await snapshotRes.json()) as PublicSnapshotRestRow[];
           const snapshotRow = snapshotRows?.[0];
@@ -332,5 +335,6 @@ export async function GET(request: NextRequest) {
   if (observedSnapshotHash) {
     response.headers.set('x-product-registration-v5-snapshot-hash', observedSnapshotHash);
   }
+  response.headers.set('Cache-Control', 'no-store, max-age=0, must-revalidate');
   return response;
 }
