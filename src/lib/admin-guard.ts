@@ -18,7 +18,7 @@ type AdminAuthorization = {
 };
 
 async function resolveAdminAuthorization(req: NextRequest): Promise<AdminAuthorization> {
-  if (isValidAdminApiToken(req) || (req.nextUrl.pathname === '/api/upload' && isValidProductRegistrationUploadToken(req))) {
+  if (isValidAdminApiToken(req) || (req.nextUrl.pathname === '/api/upload' && await isValidProductRegistrationUploadToken(req))) {
     return { authorized: true, authenticated: true, expired: false };
   }
 

@@ -32,7 +32,7 @@ describe('requireAdminRequest', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('ADMIN_EMAILS', 'admin@yeosonam.com');
     mockedAdminToken.mockReturnValue(false);
-    mockedUploadToken.mockReturnValue(false);
+    mockedUploadToken.mockResolvedValue(false);
     mockedExpValid.mockReturnValue(true);
   });
 
@@ -78,7 +78,7 @@ describe('requireAdminRequest', () => {
   });
 
   it('allows the upload-only token only on the source upload route', async () => {
-    mockedUploadToken.mockReturnValue(true);
+    mockedUploadToken.mockResolvedValue(true);
 
     await expect(requireAdminRequest(request(undefined, '/api/upload'))).resolves.toBeNull();
     await expect(requireAdminRequest(request(undefined, '/api/admin/product-registration/v6/readiness'))).resolves.not.toBeNull();

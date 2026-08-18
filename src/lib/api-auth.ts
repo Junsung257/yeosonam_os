@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { getSecret } from '@/lib/secret-registry';
@@ -15,16 +14,21 @@ export function isValidAdminApiToken(request: NextRequest): boolean {
  * limited to the upload route by middleware; it does not grant general admin
  * access or permission to mutate existing products.
  */
-export function isValidProductRegistrationUploadToken(request: NextRequest): boolean {
+export async function isValidProductRegistrationUploadToken(request: NextRequest): Promise<boolean> {
   // Keep this environment read static: the function is also imported by the
   // Edge middleware, where dynamic `process.env[key]` access is not reliable
   // after bundling. The route-local Node guard still receives the same value.
   const configuredToken = process.env.PRODUCT_REGISTRATION_UPLOAD_TOKEN?.trim()
     || getSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
   const deepSeekKey = process.env.DEEPSEEK_API_KEY?.trim() || getSecret('DEEPSEEK_API_KEY');
-  const token = configuredToken || (deepSeekKey
-    ? createHash('sha256').update('product-registration-upload:' + deepSeekKey).digest('hex')
-    : null);
+  let token = configuredToken;
+  if (!token && deepSeekKey) {
+    const digest = await globalThis.crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode('product-registration-upload:' + deepSeekKey),
+    );
+    token = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
   if (!token) return false;
   const customHeader = request.headers.get('x-product-registration-upload-token');
   const authorization = request.headers.get('authorization');
