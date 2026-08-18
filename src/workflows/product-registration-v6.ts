@@ -1068,57 +1068,44 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
   const supabase = db();
   const requiredSurfaces = ['packages', 'lp', 'og', 'affiliate'];
   const workerId = `v6:${input.jobId}`;
-  let deliveredCount = 0;
-  let observedCount = 0;
-  let incomplete: ProductRegistrationV6CandidateSnapshot[] = snapshots;
-
-  // Cache invalidation is an external side effect.  A just-published OG image
+  // Cache invalidation is an external side effect. A just-published OG image
   // can briefly serve the previous snapshot while the pointer and HTML pages
-  // are already current.  Treat that as a retryable convergence condition,
-  // not as a registration-system failure.  The scheduled convergence worker
-  // remains the long-lived repair path after this bounded in-workflow retry.
-  const retryDelays = ['0s', '5s', '15s'] as const;
-  for (const [attempt, delay] of retryDelays.entries()) {
-    if (delay !== '0s') await sleep(delay);
-    const outbox = await processProductRegistrationV5OutboxBatch({
-      supabase,
-      limit: Math.max(10, snapshots.length * 10),
-      workerId,
-      aggregateIds: snapshots.map(snapshot => snapshot.packageId),
-    });
-    deliveredCount += outbox.filter(row => row.ok).length;
-    const convergence = await observeProductRegistrationV5ConvergenceBatch({
-      supabase,
-      baseUrl: input.publicBaseUrl || input.requestBaseUrl,
-      limit: Math.max(10, snapshots.length * 10),
-      snapshotHashes: snapshots.map(snapshot => snapshot.snapshotHash),
-    });
-    observedCount += convergence.length;
-    const { data: convergenceRows, error: convergenceError } = await supabase
-      .from('product_registration_v5_cache_convergence_runs')
-      .select('snapshot_hash,surface,status')
-      .in('snapshot_hash', snapshots.map(snapshot => snapshot.snapshotHash));
-    if (convergenceError) throw convergenceError;
-    incomplete = snapshots.filter(snapshot => requiredSurfaces.some(surface =>
-      !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
-        && row.surface === surface
-        && row.status === 'converged')));
-    if (incomplete.length === 0) break;
-    if (attempt === retryDelays.length - 1) {
-      throw new Error(`V6_SURFACE_CONVERGENCE_PENDING:${incomplete.length}`);
-    }
-  }
+  // are already current. Return that as a retryable result; the workflow body
+  // owns the durable sleep between attempts (Workflow DevKit forbids sleep in
+  // a step function).
+  const outbox = await processProductRegistrationV5OutboxBatch({
+    supabase,
+    limit: Math.max(10, snapshots.length * 10),
+    workerId,
+    aggregateIds: snapshots.map(snapshot => snapshot.packageId),
+  });
+  const convergence = await observeProductRegistrationV5ConvergenceBatch({
+    supabase,
+    baseUrl: input.publicBaseUrl || input.requestBaseUrl,
+    limit: Math.max(10, snapshots.length * 10),
+    snapshotHashes: snapshots.map(snapshot => snapshot.snapshotHash),
+  });
+  const { data: convergenceRows, error: convergenceError } = await supabase
+    .from('product_registration_v5_cache_convergence_runs')
+    .select('snapshot_hash,surface,status')
+    .in('snapshot_hash', snapshots.map(snapshot => snapshot.snapshotHash));
+  if (convergenceError) throw convergenceError;
+  const incomplete = snapshots.filter(snapshot => requiredSurfaces.some(surface =>
+    !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
+      && row.surface === surface
+      && row.status === 'converged')));
   await recordStage({
     jobId: input.jobId,
     fencingToken: input.fencingToken,
     stage: 'converge_surfaces',
     status: 'succeeded',
     output: {
-      outboxDelivered: deliveredCount,
-      converged: observedCount,
-      retryCount: retryDelays.length,
+      outboxDelivered: outbox.filter(row => row.ok).length,
+      converged: convergence.length,
+      pending: incomplete.length,
     },
   });
+  return { complete: incomplete.length === 0, pending: incomplete.length };
 }
 
 async function terminalStep(
@@ -1427,7 +1414,19 @@ export async function productRegistrationV6Workflow(
       );
     }
     await publishSnapshotsStep(input, copyDecision, proofs);
-    await convergeStep(input, snapshots);
+    let convergence = await convergeStep(input, snapshots);
+    // These waits are deliberately in the workflow function, not the step,
+    // so the run remains durable and a transient CDN/image cache miss does not
+    // become a system quarantine. The cron observer remains the long-lived
+    // repair path after this bounded retry window.
+    for (const delay of ['5s', '15s'] as const) {
+      if (convergence.complete) break;
+      await sleep(delay);
+      convergence = await convergeStep(input, snapshots);
+    }
+    if (!convergence.complete) {
+      throw new Error(`V6_SURFACE_CONVERGENCE_PENDING:${convergence.pending}`);
+    }
     return await terminalStep(input, workflowRunId, copyDecision, 'converged');
   } catch (error) {
     return await blockFailedWorkflowStep(input, workflowRunId, error instanceof Error ? error.message : String(error));
