@@ -15,6 +15,10 @@ async function handler(request: NextRequest): Promise<NextResponse> {
 
   const requested = Number(request.nextUrl.searchParams.get('limit') ?? 10);
   const limit = Number.isFinite(requested) ? Math.max(1, Math.min(Math.floor(requested), 50)) : 10;
+  const snapshotHashes = [
+    ...request.nextUrl.searchParams.getAll('snapshot_hash'),
+    ...request.nextUrl.searchParams.getAll('snapshotHash'),
+  ];
   const baseUrl = (
     process.env.NEXT_PUBLIC_BASE_URL
     || process.env.NEXT_PUBLIC_SITE_URL
@@ -26,6 +30,7 @@ async function handler(request: NextRequest): Promise<NextResponse> {
       supabase: supabaseAdmin,
       baseUrl,
       limit,
+      snapshotHashes,
     });
     return NextResponse.json(
       {
