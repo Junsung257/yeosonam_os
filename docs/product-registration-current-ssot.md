@@ -1,6 +1,14 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
+
+## V158 source-evidence auto-publication and real customer canary (2026-08-18, latest verification)
+
+- The publication gate is no longer blocked solely because a permanent cohort-quality row has not yet been registered. A source may publish only when the database can replay the exact tenant/catalog/revision/source lineage, all critical/high claims have verified evidence without conflicts, the immutable snapshot hash matches, and the same revision has a passed signed mobile proof for both `/packages` and `/lp` (CTA opened, zero hydration errors, renderer build matched). This is source-scoped eligibility, not a global threshold relaxation.
+- The first implementation attempted to delete the short-lived cohort row after the CAS transaction. The append-only trigger correctly rejected that delete and rolled the publication back. Forward migration `20260818100000_source_proof_cohort_scope.sql` fixes this by storing an exact `sourceRevisionId` scope with a 15-minute expiry and promoting a proven candidate revision to `verified` before the legacy pointer-status trigger runs. No canonical payload is mutated.
+- Production Supabase project `ixaxnvbmhzjvupissmly` now has the corrected functions. Source-proof eligibility returns `true` for the real canary and `false` for a wrong proof ID. The canary published through `publish_product_registration_snapshot_atomic` as `published_degraded` with `eligibility_mode=source_evidence_and_mobile_proof`; customer, B2B, and partner pointers all reference the same immutable snapshot hash.
+- Real customer verification passed for package `5958c8cb-7d0f-4267-8ee2-7bd0f6996c20`: `/packages/{id}`, `/lp/{id}`, and the hydrated `/packages` list returned the source-backed title, 579,000원 price dates, Korean customer copy, reference-image labeling, safe `시간 미정` flight disclosure, itinerary, terms, and consultation CTA. At a 390×844 Chrome viewport, the detail reservation sheet opened with the product context and the LP 상담 신청 flow opened its date/people form. No PII was submitted.
+- This is a real customer-open proof for one source, not a 95% corpus claim. The earlier pre-fix upload job remains a historical blocked terminal record; the current publication pointer and immutable snapshot are authoritative. A fresh production upload/reprocess must be run through the deployed Workflow to produce a new terminal job record under the corrected database gate before broad rollout.
 
 ## V157.1 DeepSeek live sample replay hardening (2026-08-17, latest verification)
 
