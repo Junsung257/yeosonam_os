@@ -957,9 +957,12 @@ export async function middleware(request: NextRequest) {
     || pathname.startsWith('/api/content-hub/')
   ) {
     const adminTokenHeader = request.headers.get('x-admin-token');
-    if (adminTokenHeader) {
-      const { isValidAdminApiToken } = await import('@/lib/api-auth');
-      if (isValidAdminApiToken(request)) {
+    const registrationUploadTokenHeader = pathname === '/api/upload'
+      ? request.headers.get('x-product-registration-upload-token')
+      : null;
+    if (adminTokenHeader || registrationUploadTokenHeader) {
+      const { isValidAdminApiToken, isValidProductRegistrationUploadToken } = await import('@/lib/api-auth');
+      if (isValidAdminApiToken(request) || (pathname === '/api/upload' && isValidProductRegistrationUploadToken(request))) {
         return response || NextResponse.next();
       }
       return NextResponse.json(

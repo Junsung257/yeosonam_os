@@ -303,6 +303,29 @@ describe('middleware backend P0 server-token pass-through', () => {
 
     expect(response.status).toBe(403);
   });
+
+  it('allows the upload-only registration token on /api/upload', async () => {
+    vi.stubEnv('PRODUCT_REGISTRATION_UPLOAD_TOKEN', 'registration-upload-token');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/upload', {
+      method: 'POST',
+      headers: { 'x-product-registration-upload-token': 'registration-upload-token' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not let the upload-only token reach other admin endpoints', async () => {
+    vi.stubEnv('PRODUCT_REGISTRATION_UPLOAD_TOKEN', 'registration-upload-token');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/admin/product-registration/v6/readiness', {
+      method: 'GET',
+      headers: { 'x-product-registration-upload-token': 'registration-upload-token' },
+    }));
+
+    expect(response.status).toBe(307);
+  });
 });
 
 describe('middleware guide-token public entry points', () => {

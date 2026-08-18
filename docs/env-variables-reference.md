@@ -110,6 +110,7 @@ V6는 기본적으로 그림자 처리로 시작합니다. 일반 cohort 공개�
 | `GOOGLE_AI_API_KEY` | Gemini 2.5 Flash (블로그·카드뉴스·Pillar 생성) | `AIza...` |
 | `SUPABASE_JWT_SECRET` | Supabase **JWT 서명용 시크릿** (대시보드 → Project Settings → API → JWT Secret) | Base64 시크릿 |
 | `ADMIN_EMAILS` | **브라우저 쿠키 JWT**로 `/api` 어드민 호출 시 허용 이메일 (쉼표 구분, 대소문자 무시) | `admin@yeosonam.com` |
+| `PRODUCT_REGISTRATION_UPLOAD_TOKEN` | 자동 상품 원문 업로드 전용 토큰 (`x-product-registration-upload-token`). `/api/upload`에서만 허용되며 다른 관리자 API 권한은 부여하지 않음 | 미설정 |
 
 `ADMIN_EMAILS`가 비어 있으면 일반 로그인으로는 어드민 API가 거부됩니다. 서버 간 호출은 `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` 로 여전히 가능합니다.
 

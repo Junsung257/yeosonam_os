@@ -8,7 +8,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
-import { isValidAdminApiToken } from '@/lib/api-auth';
+import { isValidAdminApiToken, isValidProductRegistrationUploadToken } from '@/lib/api-auth';
 import { verifySupabaseAccessToken, legacyJwtExpValid } from '@/lib/supabase-jwt-verify';
 
 type AdminAuthorization = {
@@ -18,7 +18,7 @@ type AdminAuthorization = {
 };
 
 async function resolveAdminAuthorization(req: NextRequest): Promise<AdminAuthorization> {
-  if (isValidAdminApiToken(req)) {
+  if (isValidAdminApiToken(req) || (req.nextUrl.pathname === '/api/upload' && isValidProductRegistrationUploadToken(req))) {
     return { authorized: true, authenticated: true, expired: false };
   }
 

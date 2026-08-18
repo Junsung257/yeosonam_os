@@ -9,6 +9,17 @@ export function isValidAdminApiToken(request: NextRequest): boolean {
   return safeEqualString(request.headers.get('x-admin-token'), token);
 }
 
+/**
+ * Internal source-ingestion authentication. This token is intentionally
+ * limited to the upload route by middleware; it does not grant general admin
+ * access or permission to mutate existing products.
+ */
+export function isValidProductRegistrationUploadToken(request: NextRequest): boolean {
+  const token = getSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
+  if (!token) return false;
+  return safeEqualString(request.headers.get('x-product-registration-upload-token'), token);
+}
+
 export function requireAdminApiToken(request: NextRequest): NextResponse | null {
   if (isValidAdminApiToken(request)) return null;
 
