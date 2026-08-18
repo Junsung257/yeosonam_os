@@ -54,7 +54,7 @@ describe('product registration authority hardening contracts', () => {
     const route = source('src/app/api/cron/product-registration-v6-backfill/route.ts');
     const migration = source('supabase/migrations/20260811121526_product_registration_legacy_backfill_ledger.sql');
     expect(route).toContain('startProductRegistrationTextWorkflow');
-    expect(route).toContain('archiveMode: true');
+    expect(route).toContain('archiveMode: false');
     expect(route).toContain("bindingKind: 'legacy_backfill'");
     expect(route).toContain('targetTitle:');
     expect(route).toContain('targetInternalCode:');

@@ -8,7 +8,10 @@ describe('legacy supabase package persistence contract', () => {
 
     expect(source).not.toMatch(/departure_airport:\s*data\.departure_airport\s*\|\|/);
     expect(source).not.toMatch(/min_participants:\s*data\.min_participants\s*\|\|\s*4/);
-    expect(source).toContain('departure_airport: data.departure_airport ?? null');
-    expect(source).toContain('min_participants: data.min_participants ?? null');
+    // The mutable package writer is retired. Product facts now enter through
+    // the registration kernel, so the contract is that this compatibility
+    // module cannot persist a source-less package at all.
+    expect(source).toContain('LEGACY_PACKAGE_WRITER_RETIRED_USE_REGISTRATION_KERNEL');
+    expect(source).toContain('LEGACY_PACKAGE_WRITER_RETIRED_USE_CORRECTION_REVISION');
   });
 });

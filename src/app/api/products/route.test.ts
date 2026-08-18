@@ -19,17 +19,19 @@ describe('/api/products route boundary', () => {
     expect(queryStart).toBeGreaterThan(guardStart);
   });
 
-  it('guards product mutations with admin authorization', () => {
+  it('guards and retires product mutations instead of writing mutable rows', () => {
     const route = routeSource();
 
     for (const method of ['POST', 'PATCH', 'DELETE']) {
       const methodStart = route.indexOf(`export async function ${method}`);
       const guardStart = route.indexOf('requireAdminRequest(request)', methodStart);
-      const writeStart = route.indexOf(method === 'DELETE' ? ".delete()" : method === 'PATCH' ? '.update(' : '.insert(', methodStart);
 
       expect(methodStart).toBeGreaterThanOrEqual(0);
       expect(guardStart).toBeGreaterThan(methodStart);
-      expect(writeStart).toBeGreaterThan(guardStart);
+      expect(route.slice(methodStart, methodStart + 1200)).toContain('status: 410');
     }
+    expect(route).toContain('PRODUCT_DIRECT_CREATE_RETIRED');
+    expect(route).toContain('PRODUCT_DIRECT_UPDATE_RETIRED');
+    expect(route).toContain('PRODUCT_DIRECT_DELETE_RETIRED');
   });
 });

@@ -121,7 +121,7 @@ function extractFlattenedPriceBeforeDateRows(
   // A single scalar may legitimately apply to every explicit roster in a
   // supplier block; preserve the established single-price fallback for that
   // case. This reader is only for one-price-per-roster flattening.
-  if (priceLines.length < 2 || dateGroups.length < 2) return [];
+  if (priceLines.length < 2 || dateGroups.length !== priceLines.length) return [];
 
   const usedDates = new Set<number>();
   const rows: MatrixPriceRow[] = [];

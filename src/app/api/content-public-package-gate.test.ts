@@ -35,6 +35,10 @@ const contentProductRoutes = [
   'src/app/api/admin/ad-os/creative-factory/asset-group/route.ts',
 ];
 
+const retiredContentRoutes = new Set([
+  'src/app/api/packages/[id]/regenerate-copies/route.ts',
+]);
+
 describe('content generation public package gate', () => {
   it('loads product context only through current approved public snapshots', () => {
     const helper = source('src/lib/content-public-package.ts');
@@ -53,6 +57,12 @@ describe('content generation public package gate', () => {
   it('blocks raw travel_packages title/price/itinerary reads in content product routes', () => {
     for (const path of contentProductRoutes) {
       const text = source(path);
+
+      if (retiredContentRoutes.has(path)) {
+        expect(text, path).toContain('MUTABLE_COPY_REGENERATION_RETIRED');
+        expect(text, path).not.toMatch(/from\('travel_packages'\)[\s\S]{0,260}\.select\('[^']*(title|price|inclusions|itinerary|product_summary|product_highlights)/);
+        continue;
+      }
 
       expect(
         text.includes('loadPublicContentPackageForGeneration') ||

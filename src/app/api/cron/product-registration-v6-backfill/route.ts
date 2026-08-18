@@ -178,8 +178,8 @@ async function handler(request: NextRequest) {
     }
   };
 
-  // Starting a durable workflow is idempotent per claim operation key. Keep a
-  // Keep the fan-out deliberately small. Each workflow performs extraction,
+   // Starting a durable workflow is idempotent per claim operation key. Keep
+   // the fan-out deliberately small. Each workflow performs extraction,
   // revision writes, browser proof, and several Supabase RPCs; a larger burst
   // causes connection saturation and turns healthy proof pages into 503s.
   for (let offset = 0; offset < claims.length; offset += 2) {
