@@ -18,10 +18,17 @@
   },
   "publication": {
     "status": "blocked",
-    "reason": "autopublish_not_live",
+    "reason": "deployment_provenance_failed",
     "evidence": {
       "mode": "draft_only",
-      "requestedMode": "draft_only"
+      "requestedMode": "draft_only",
+      "reasons": [
+        "production_git_ref_missing",
+        "production_commit_sha_missing"
+      ],
+      "expectedGitRef": "main",
+      "actualGitRef": null,
+      "commitShaPresent": false
     }
   },
   "command": "npm run verify:blog-autopublish-activation-v4 -- --base=https://www.yeosonam.com --json --strict",

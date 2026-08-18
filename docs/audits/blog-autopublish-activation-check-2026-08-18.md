@@ -12,9 +12,9 @@ npm run verify:blog-autopublish-activation-v4 -- --base=https://www.yeosonam.com
 
 - 운영 source: `main` / `94f7a472fc56063bd63148ec651c8f5f57fc4574`
 - 생성: `BLOCKED / generation_cron_disabled` (`BLOG_GENERATION_CRON_ENABLED=false`)
-- 발행: `BLOCKED / autopublish_not_live` (`BLOG_AUTOPUBLISH_MODE=draft_only`)
+- 발행: `BLOCKED / deployment_provenance_failed` (`production_git_ref_missing`, `production_commit_sha_missing`)
 - 종합: `ready=false`
 
-따라서 현재 “자동발행이 안 되는” 원인은 DeepSeek 품질 라우팅이 아니라 운영 안전 설정이다. `draft_only`에서는 생성 결과가 공개 상태·색인 outbox·캐시 재검증으로 넘어가지 않는 것이 정상이다.
+따라서 현재 “자동발행이 안 되는” 원인은 DeepSeek 품질 라우팅 하나가 아니라 (1) 생성 cron 비활성, (2) production build provenance 미노출로 인한 정책의 `draft_only` 강등이다. `draft_only`에서는 생성 결과가 공개 상태·색인 outbox·캐시 재검증으로 넘어가지 않는 것이 정상이다.
 
 활성화는 V4 readiness 여섯 scope, forward migration, snapshot parity, analytics canary, rollout state를 먼저 통과한 뒤 승인된 change window에서 생성 cron을 켜고 `live`를 별도 전환해야 한다. 이 증거만으로 운영 값을 바꾸거나 migration을 적용하지 않는다.
