@@ -51,6 +51,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-08-18 | `2026-08-18-product-registration-live-auto-upload.md` | Real HWP upload without admin login, V6 workflow terminal `published_degraded`, immutable snapshot/proof/pointer parity, and mobile customer/CTA verification. |
 | 2026-08-17 | `2026-08-17-product-registration-real-hwp-mobile-proof.md` | Real Phu Quoc HWP production workflow, source-backed revision/snapshot, exact-hash 390×844 package and LP proof, customer-fact corrections, proof-analytics isolation, DB advisor hardening, and remaining corpus launch gate. |
 | 2026-08-16 | `2026-08-16-product-registration-v138-guide-commercial-scope.md` | V138 actual-source replay, guide-fee commercial/heading/clause scoping, genuine contradiction preservation, zero comparable regression, 5,626-test verification, and remaining launch gates. |
 | 2026-08-16 | `2026-08-16-product-registration-v95-grade-duration-customer-facts.md` | V95 actual-source replay, Xian grade/duration product identity, customer-fact isolation, year/deadline corrections, contradiction gates, 5,590-test verification, and remaining launch gates. |
