@@ -312,6 +312,8 @@ describe('middleware backend P0 server-token pass-through', () => {
       headers: { 'x-product-registration-upload-token': 'registration-upload-token' },
     }));
 
+    // Middleware deliberately leaves the upload-only token to the route-local
+    // Node guard; it cannot authorize a request by itself at the Edge.
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });

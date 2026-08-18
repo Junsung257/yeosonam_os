@@ -960,9 +960,9 @@ export async function middleware(request: NextRequest) {
     const registrationUploadTokenHeader = pathname === '/api/upload'
       ? request.headers.get('x-product-registration-upload-token')
       : null;
-    if (adminTokenHeader || registrationUploadTokenHeader) {
-      const { isValidAdminApiToken, isValidProductRegistrationUploadToken } = await import('@/lib/api-auth');
-      if (isValidAdminApiToken(request) || (pathname === '/api/upload' && isValidProductRegistrationUploadToken(request))) {
+    if (adminTokenHeader) {
+      const { isValidAdminApiToken } = await import('@/lib/api-auth');
+      if (isValidAdminApiToken(request)) {
         return response || NextResponse.next();
       }
       return NextResponse.json(
@@ -970,6 +970,11 @@ export async function middleware(request: NextRequest) {
         { status: 403 },
       );
     }
+    // The upload-only credential is authorized again by withAdminGuard in the
+    // Node route. Letting the request reach that guard avoids relying on
+    // secret reads inside the Edge bundle while keeping the token scoped to
+    // this single endpoint.
+    if (registrationUploadTokenHeader) return response || NextResponse.next();
   }
 
   // ── 3-2. 개발 전용: 어드민 페이지 + API 우회 쿠키 허용 (프로덕션 완전 차단) ──
