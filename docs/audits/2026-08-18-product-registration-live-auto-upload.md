@@ -97,3 +97,12 @@ customer, b2b, partner 세 pointer가 모두 동일한 revision·snapshot을 가
 최신 배포는 `dpl_FqdRpgCxZRggcwDAF7PPRC6MPncu`이며 `https://www.yeosonam.com`에 연결되어 있다. 최신 재처리 결과에서 supplier profile 접근 오류와 provider in-flight 오류는 새로 발생하지 않았고, 남은 차단은 과거 일정·판매가 부재·가격/일정 관계 불명확·실제 상업조건 충돌·proof/DB 일관성 오류로 분류된다.
 
 Supabase 보안 advisor에는 내부 등록 스키마의 일부 테이블이 RLS 정책 없이 운영되는 경고와 기존 공개 스키마의 별도 보안 경고가 남아 있다. 내부 테이블은 service-role 전용으로 운용 중이지만, 정책을 정하지 않은 상태에서 RLS를 일괄 활성화하면 worker가 막힐 수 있으므로 별도 보안 작업으로 처리해야 한다.
+
+## 최신 코드 버전 재처리 확인
+
+공급사 profile fallback 및 DeepSeek single-flight 대기 수정 후 workflow 버전을 `product-registration-v6-workflow-27`로 올려 이전 실패 결과와 최신 실행을 분리했다. 첫 25건 재처리 결과는 다음과 같다.
+
+- 19건은 차단 사유가 남았고 6건은 진행 중이다.
+- 이전의 `PGRST106` 내부 스키마 노출 오류와 `CRITICAL_FACT_PROVIDER_CALL_IN_FLIGHT` 오류는 최신 27번 실행에서 재발하지 않았다.
+- 현재 27번 실행의 차단은 과거 출발, 노옵션·선택관광 충돌, 상품 식별 모호, 판매가 관계 미확정, 교통 출발일 누락처럼 원문 또는 업무 판단이 필요한 항목으로만 남아 있다.
+- 기존 26번 결과는 자동 backfill cron이 27번으로 순차 재처리하도록 두었고, 기존 고객 공개 상품은 pointer를 유지한다.
