@@ -26,6 +26,29 @@ describe('product registration authority hardening contracts', () => {
     expect(migration).toContain('has_function_privilege');
   });
 
+  it('opens only exact source-proof publications during shadow/freeze mode', () => {
+    const migration = source('supabase/migrations/20260818154354_product_registration_source_proof_open_path.sql');
+    expect(migration).toContain("p_payload->>'source_proof_auto_publish' = 'true'");
+    expect(migration).toContain("app.product_registration_source_proof");
+    expect(migration).toContain('v_mode = \'shadow\' and v_source_proof_mode');
+    expect(migration).toContain('v_freeze and not v_source_proof_mode');
+    expect(migration).toContain('REGISTRATION_SOURCE_PROOF_FREEZE_TRIGGER_CONTRACT_UNKNOWN');
+  });
+
+  it('persists customer proof against the current immutable pointer without legacy row mutation', () => {
+    const proofPersistence = source('src/lib/product-registration-v6/customer-proof-persistence.ts');
+    const browserScript = source('scripts/prove-hwp-mobile-render.ts');
+    expect(proofPersistence).toContain("from('product_registration_v5_publication_pointers')");
+    expect(proofPersistence).toContain("from('public_package_snapshots')");
+    expect(proofPersistence).toContain("source: 'hwp-mobile-browser-proof'");
+    expect(proofPersistence).toContain('legacyPackageMutation: false');
+    expect(browserScript).toContain('loadCurrentCustomerSnapshotBinding');
+    expect(browserScript).toContain('persistCustomerMobileSnapshotProof');
+    expect(browserScript).not.toContain('persistPassProof');
+    expect(browserScript).not.toContain('persistFailProof');
+    expect(browserScript).not.toContain("from('travel_packages').update");
+  });
+
   it('prevents a published pointer from committing without the exact published snapshot and proof', () => {
     const migration = source('supabase/migrations/20260813034932_product_registration_publication_pointer_invariant.sql');
     expect(migration).toContain('create constraint trigger trg_product_registration_published_pointer_integrity');

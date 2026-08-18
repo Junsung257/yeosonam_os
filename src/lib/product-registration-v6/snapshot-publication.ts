@@ -13,6 +13,7 @@ import { PRODUCT_SOURCE_BUCKET } from '@/lib/product-registration-v4/source-docu
 import { runProductRegistrationV6ChromeProof } from './browser-proof';
 import { createProductRegistrationV6ProofToken } from './proof-token';
 import { currentProductRegistrationRendererBuildId } from './renderer-build';
+import { productRegistrationV6SourceProofAutoPublishEnabled } from './runtime-config';
 import type { ProductRegistrationV6Decision } from './types';
 import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
 
@@ -543,6 +544,7 @@ export async function publishProductRegistrationV6Snapshot(input: {
   outcome: 'published_verified' | 'published_degraded';
   policyVersion: string;
   idempotencyKey: string;
+  sourceProofAutoPublish?: boolean;
   channel?: 'customer' | 'b2b' | 'partner';
   locale?: string;
 }): Promise<Record<string, unknown>> {
@@ -571,6 +573,8 @@ export async function publishProductRegistrationV6Snapshot(input: {
       operation_key: input.idempotencyKey,
       policy_version: input.policyVersion,
       outcome: input.outcome,
+      source_proof_auto_publish: input.sourceProofAutoPublish
+        ?? productRegistrationV6SourceProofAutoPublishEnabled(),
       channel,
       locale,
     },

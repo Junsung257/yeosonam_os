@@ -29,6 +29,7 @@ import {
 } from '@/lib/product-registration-v6/snapshot-publication';
 import { evaluateRegistrationPublicationPolicy } from '@/lib/product-registration-kernel/publication-policy';
 import { loadProductRegistrationV6PublicationBlockers } from '@/lib/product-registration-v6/publication-control';
+import { productRegistrationV6SourceProofAutoPublishEnabled } from '@/lib/product-registration-v6/runtime-config';
 import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from '@/lib/product-registration-v6/copy-revision';
 import {
   buildPackageProjectionFromRevision,
@@ -1010,6 +1011,7 @@ async function publishSnapshotsStep(
         proofRunId: proof.proofRunId,
         outcome: decision.terminalOutcome as 'published_verified' | 'published_degraded',
         policyVersion: input.policyVersion,
+        sourceProofAutoPublish: productRegistrationV6SourceProofAutoPublishEnabled(),
         idempotencyKey: `${input.jobId}:${proof.snapshot.snapshotHash}:${channel}:publish-v6`,
         channel,
         locale: 'ko-KR',

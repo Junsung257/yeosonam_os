@@ -241,7 +241,8 @@ export async function generateMetadata({
     rawData = publicSnapshot?.package as MetadataPackageRow | null;
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
-    rendererBuildId = currentProductRegistrationRendererBuildId();
+    rendererBuildId = (publicSnapshot?.row as { renderer_build_id?: string | null } | undefined)?.renderer_build_id
+      ?? currentProductRegistrationRendererBuildId();
     canonicalRevisionId = publicSnapshot?.row.canonical_revision_id ?? undefined;
     data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
   } catch {

@@ -53,7 +53,12 @@ export async function fetchLpPackageUncached(
       _packageScores: scores ?? [],
       _public_snapshot: {
         ...snapshotMetadata,
-        renderer_build_id: currentProductRegistrationRendererBuildId(),
+        // The immutable snapshot's renderer lineage is the proof contract.
+        // Do not replace it with the current deployment build while reading a
+        // published customer snapshot; a UI deployment must not silently
+        // make every existing snapshot appear freshly proven.
+        renderer_build_id: (publicSnapshot?.row as { renderer_build_id?: string | null } | undefined)?.renderer_build_id
+          ?? currentProductRegistrationRendererBuildId(),
       },
     },
     null,
@@ -69,6 +74,6 @@ export const loadLpPackageForPage = unstable_cache(
   // Bump when the LP projection adds/removes customer-visible source facts;
   // otherwise a prior deployment's unstable_cache entry can keep stale legal
   // and preparation notices on the landing route after a successful publish.
-  ['lp-package-v3-v5-public-snapshot-source-notices'],
+  ['lp-package-v4-v5-public-snapshot-source-notices-cache-bust'],
   { revalidate: 300, tags: ['lp-packages'] },
 );
