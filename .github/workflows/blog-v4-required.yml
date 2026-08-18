@@ -1,0 +1,78 @@
+name: Blog V4 Required
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/app/api/cron/blog-**/**'
+      - 'src/lib/blog-*.ts'
+      - 'src/generated/blog-build-provenance.server.ts'
+      - 'scripts/generate-blog-build-provenance.mjs'
+      - 'scripts/verify-blog-*.ts'
+      - 'supabase/migrations/**blog**'
+      - 'supabase/release-manifests/blog-**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.js'
+      - 'vitest.config.ts'
+      - '.github/workflows/blog-v4-required.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/app/api/cron/blog-**/**'
+      - 'src/lib/blog-*.ts'
+      - 'src/generated/blog-build-provenance.server.ts'
+      - 'scripts/generate-blog-build-provenance.mjs'
+      - 'scripts/verify-blog-*.ts'
+      - 'supabase/migrations/**blog**'
+      - 'supabase/release-manifests/blog-**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.js'
+      - 'vitest.config.ts'
+      - '.github/workflows/blog-v4-required.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-v4-required-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  blog-v4:
+    name: Blog V4 targeted contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verify release bundle
+        run: npm run verify:blog-release-bundle-v4
+      - name: Type check
+        run: npm run type-check
+      - name: Blog V4 unit and contract tests
+        run: |
+          npx vitest run \
+            src/lib/blog-ai-caller.test.ts \
+            src/lib/blog-ai-budget-v4.test.ts \
+            src/lib/blog-autopublish-policy-v3.test.ts \
+            src/lib/blog-autopublish-activation-v4.test.ts \
+            src/lib/blog-deepseek-orchestrator-v4.test.ts \
+            src/lib/blog-deepseek-orchestrator-v4-migration.test.ts \
+            src/lib/blog-generation-run-v4.test.ts \
+            src/lib/blog-production-readiness-v4.test.ts \
+            src/lib/blog-publisher-v4-orchestration-contract.test.ts \
+            src/lib/blog-publication-rollout.test.ts \
+            src/lib/blog-publication-rollout-repository.test.ts
+      - name: Verify generated provenance fallback is deterministic
+        run: |
+          node scripts/generate-blog-build-provenance.mjs
+          git diff --exit-code -- src/generated/blog-build-provenance.server.ts
+      - name: Diff check
+        run: git diff --check

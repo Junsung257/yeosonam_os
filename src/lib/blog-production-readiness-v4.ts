@@ -40,6 +40,7 @@ export interface BlogProductionReadinessInputV4 {
     reviewBlockedWithDisposition: number | null;
     queuedWithoutVerifiedDemand: number | null;
     dueQueuedWithoutVerifiedDemand: number | null;
+    approvedForSlotCount: number | null;
   };
   measurement: {
     schemaReady: boolean;
@@ -191,6 +192,15 @@ export function evaluateBlogProductionReadinessV4(
         && input.corpus.dueQueuedWithoutVerifiedDemand === 0
         ? 'no queued topic bypasses verified demand'
         : 'queued topics without verified demand remain',
+    ),
+    check(
+      'approved_for_slot_inventory',
+      'corpus',
+      (input.corpus.approvedForSlotCount ?? 0) > 0 ? 'pass' : 'block',
+      { approvedForSlotCount: input.corpus.approvedForSlotCount },
+      (input.corpus.approvedForSlotCount ?? 0) > 0
+        ? 'at least one immutable approved slot candidate exists for canary publication'
+        : 'no approved_for_slot candidate exists for the live canary',
     ),
     check(
       'search_performance_freshness',

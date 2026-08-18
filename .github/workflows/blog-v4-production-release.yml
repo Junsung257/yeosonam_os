@@ -103,6 +103,7 @@ jobs:
             src/lib/blog-deepseek-orchestrator-v4.test.ts \
             src/lib/blog-generation-run-v4.test.ts \
             src/lib/blog-autopublish-policy-v3.test.ts \
+            src/lib/blog-autopublish-activation-v4.test.ts \
             src/lib/blog-publication-rollout.test.ts \
             src/lib/blog-publication-rollout-repository.test.ts \
             src/lib/blog-production-readiness-v4.test.ts \
@@ -167,6 +168,8 @@ jobs:
           detail_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').detail.sha256")"
           update_env BLOG_AUTOPUBLISH_MODE draft_only
           update_env BLOG_GENERATION_CRON_ENABLED false
+          update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main
+          update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"
           update_env BLOG_DAILY_PUBLISH_CAP 30
           update_env BLOG_PUBLICATION_RAMP_STAGE max_30
           update_env BLOG_AUTO_RAMP_ENABLED true
@@ -246,6 +249,8 @@ jobs:
           set -euo pipefail
           npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes --token "$VERCEL_TOKEN"
           npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value true --yes --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_PRODUCTION_ALLOWED_GIT_REF production --value main --yes --token "$VERCEL_TOKEN"
+          npx vercel env update BLOG_PRODUCTION_ALLOWED_COMMIT_SHA production --value "${{ inputs.release_commit }}" --yes --token "$VERCEL_TOKEN"
           live_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
           echo "url=${live_url}" >> "$GITHUB_OUTPUT"
           curl --fail --silent --show-error --location \

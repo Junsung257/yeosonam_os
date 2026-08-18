@@ -27,6 +27,7 @@ V3는 발행량보다 검증된 수요, claim 근거, corpus 다양성, human re
 |---|---:|---|
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`만 허용 |
 | `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | production 배포 ref가 다르거나 commit SHA가 없으면 effective mode를 `draft_only`로 강등 |
+| `BLOG_PRODUCTION_ALLOWED_COMMIT_SHA` | 없음 | 승인된 production `main`의 정확한 40자리 SHA. runtime/build provenance와 다르면 `draft_only` |
 | `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 최대 비중 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 중 같은 archetype 상한 |

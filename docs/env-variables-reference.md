@@ -6,6 +6,7 @@
 |---|---:|---|
 | `BLOG_AUTOPUBLISH_MODE` | `draft_only` | `draft_only`, `reviewed_only`, `live`; 누락/오타는 fail-closed |
 | `BLOG_PRODUCTION_ALLOWED_GIT_REF` | `main` | Vercel production 자동발행을 허용할 유일한 Git ref. production에서 ref/SHA 증거가 없거나 다르면 자동으로 `draft_only` |
+| `BLOG_PRODUCTION_ALLOWED_COMMIT_SHA` | 없음 | 승인된 production `main`의 정확한 40자리 SHA. 누락·형식 오류·실제 build provenance 불일치 시 `draft_only` |
 | `BLOG_DAILY_PUBLISH_CAP` | `1` | Asia/Seoul 일일 공개 상한 |
 | `BLOG_PUBLICATION_RAMP_STAGE` | `pilot_3` | 환경 상한: `pilot_3`, `ramp_10`, `max_30`. 실효 단계는 환경 상한과 DB rollout 상태 중 더 낮은 단계 |
 | `BLOG_AUTO_RAMP_ENABLED` | `false` | `true`일 때만 완전한 일일 관측 7회와 단계별 누적 발행량을 만족하면 `pilot_3→ramp_10→max_30` 자동 승격 |

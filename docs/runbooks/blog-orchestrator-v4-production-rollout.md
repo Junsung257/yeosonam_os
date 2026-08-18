@@ -35,6 +35,8 @@ GitHub `blog-production` environment에 배포 승인 규칙과 다음 secret을
 ```text
 BLOG_AUTOPUBLISH_MODE=draft_only
 BLOG_GENERATION_CRON_ENABLED=false
+BLOG_PRODUCTION_ALLOWED_GIT_REF=main
+BLOG_PRODUCTION_ALLOWED_COMMIT_SHA=<승인된 main 40자리 SHA>
 BLOG_DAILY_PUBLISH_CAP=30
 BLOG_PUBLICATION_RAMP_STAGE=max_30
 BLOG_AUTO_RAMP_ENABLED=true
@@ -46,6 +48,12 @@ BLOG_MAX_WEATHER_SHARE_30D=0.20
 BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10=2
 DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1
 ```
+
+`BLOG_PRODUCTION_ALLOWED_COMMIT_SHA`는 workflow 입력 `release_commit`과 동일한
+40자리 SHA로만 설정한다. runtime Vercel 값과 build snapshot이 모두 존재할 때
+ref 또는 SHA가 서로 다르면 provenance를 `mixed`로 기록하고 자동발행을 차단한다.
+허용 SHA가 누락·형식 오류·불일치인 경우에도 production 정책은 `draft_only`로
+강등된다. 따라서 환경값만 먼저 `live`로 바꾸는 운영 절차는 허용하지 않는다.
 
 DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
 
@@ -70,7 +78,7 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 5. `audit:blog-corpus-reconciliation-v4` 기본 dry-run을 확인한다. 운영 disposition 기록이 승인된 경우에만 `BLOG_CORPUS_RECONCILIATION_CONFIRM=APPLY_REVIEWED_DISPOSITIONS_V4`와 `--apply`를 함께 쓴다. 이 작업은 글 status, queue, redirect, index를 바꾸지 않는다.
 6. `refresh_blog_public_snapshots_v3`를 실행하고 public eligible slug와 current snapshot slug의 정확한 parity를 확인한다.
 7. catalog/detail snapshot을 동일 시각에 생성한다. URL 파일명에 본문 SHA-256을 포함하고, 상세 parity가 하나라도 비면 artifact를 만들지 않는다.
-8. production 환경을 `draft_only`, generation disabled로 바꾼 후 `--prod --skip-domain` candidate를 만든다. 아직 운영 도메인에 연결하지 않는다.
+8. 정확한 `release_commit`을 checkout한 동일 빌드에서 production 환경을 `draft_only`, generation disabled로 바꾼 후 `--prod --skip-domain` candidate를 만든다. candidate가 runtime/build provenance를 증명하지 못하면 promote하지 않으며, 아직 운영 도메인에 연결하지 않는다.
 9. candidate에서 `/blog`, 실제 상세, 존재하지 않는 상세의 hard 404, sitemap, RSS, image sitemap을 확인한다. `BLOG_DATABASE_UNAVAILABLE` 고객 문구, soft-404, review-blocked URL 노출이 없어야 한다. 후보 URL 호출은 Vercel protection bypass secret을 사용한다.
 10. `blog-ai-model-canary`로 DeepSeek Flash, Pro high, Pro max를 각각 최소 토큰으로 실호출한다. 세 호출 모두 정확한 `OK`, 정상 stop, 모델·provider·thinking 설정과 usage 영수증이 일치해야 한다. 이 canary는 글과 DB를 쓰지 않는다.
 11. `blog-analytics-canary`를 실행한다. synthetic row가 재조회되고 external delivery job이 0이어야 한다.
