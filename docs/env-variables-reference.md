@@ -57,16 +57,17 @@
 
 ## 상품등록 통합 자동화 엔진 V6 (2026-08-11)
 
-V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운영 판매 정보는 앱과 DB authority가 모두 `kernel`이고, `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`, `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`이며 cohort gate가 통과할 때만 CAS 공개를 시도합니다.
+V6는 기본적으로 그림자 처리로 시작합니다. 일반 cohort 공개는 앱과 DB authority가 모두 `kernel`이고, `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`, `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`일 때만 시도합니다. `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=1`을 켜면 Workflow가 동결·cohort 미달 상태에서도 exact source evidence와 모바일 proof를 통과한 원문만 CAS writer까지 전달합니다. 이 변수는 공개 우회가 아니며, DB가 source/revision/snapshot/proof lineage를 다시 검증합니다.
 
 | 변수 | 용도 | 안전한 기본값 |
 |---|---|---|
-| `PRODUCT_REGISTRATION_AUTHORITY_MODE` | `legacy`, `shadow`, `kernel` 중 등록 writer 권위 선택. `shadow`와 `kernel`은 V6 durable workflow를 사용하며 고객 공개는 `kernel`에서만 가능 | `legacy` |
+| `PRODUCT_REGISTRATION_AUTHORITY_MODE` | `legacy`, `shadow`, `kernel` 중 등록 writer 권위 선택. `shadow`와 `kernel`은 V6 durable workflow를 사용하며 legacy writer는 종료됨 | `shadow` |
 | `PRODUCT_REGISTRATION_PLATFORM_TENANT_ID` | 플랫폼 자체 업로드·공개 surface의 명시적 tenant UUID. 신규 kernel 업로드에서는 필수 | 미설정 |
 | `PRODUCT_REGISTRATION_V6_WORKFLOW_ENABLED` | 과거 호환 변수. 현재 workflow 권위는 `PRODUCT_REGISTRATION_AUTHORITY_MODE=shadow|kernel`에서만 결정하며 이 값만으로 켜지지 않음 | `0` |
 | `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
 | `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |
 | `PRODUCT_REGISTRATION_PUBLICATION_FREEZE` | `1`이면 모든 신규 V6 공개 차단 | `1` |
+| `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH` | exact source evidence + immutable snapshot + passed mobile proof를 통과한 원문만 동결/cohort 미달에서도 Workflow가 CAS writer를 시도하도록 허용 | `0` |
 | `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED` | 기존 `travel_packages`를 같은 Kernel로 비공개 재처리. migration·schema finalizer 이후 shadow에서만 켬 | `0` |
 | `PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED` | 고객 면에서 pointer로 지정된 immutable snapshot만 읽기 | canary 전 `0`, 전환 후 `1` |
 | `PRODUCT_REGISTRATION_PROOF_SECRET` | snapshot·hash·package에 귀속된 proof URL HMAC secret | 무작위 32바이트 이상 |

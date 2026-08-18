@@ -1039,6 +1039,11 @@ async function publicationControlStep(
     supplierKeys: [metadataString(input.uploadSourceMetadata, 'landOperator')].filter(
       (value): value is string => Boolean(value),
     ),
+    // The Workflow may attempt the source-proof path even while the broad
+    // cohort is frozen. The publication RPC remains the final authority and
+    // rejects every source that cannot prove exact lineage/evidence/mobile
+    // proof, so this never turns the freeze into an unconditional bypass.
+    allowSourceProofAutoPublish: true,
   });
   if (blockers.length === 0) {
     return { allowed: true, publicationState: 'proof_passed', blockers: [] };

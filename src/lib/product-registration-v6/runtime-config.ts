@@ -4,6 +4,13 @@ export type ProductRegistrationV6RuntimeConfig = {
   shadowEnabled: boolean;
   publishEnabled: boolean;
   publicationFrozen: boolean;
+  /**
+   * Allows the durable workflow to attempt publication when the normal
+   * cohort/freeze switch is still off.  The database CAS writer remains the
+   * final authority: it only succeeds for an exact source/revision/snapshot/
+   * proof lineage, otherwise the job terminates as a business block.
+   */
+  sourceProofAutoPublishEnabled: boolean;
 };
 
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
@@ -29,7 +36,19 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
     shadowEnabled: enabled('PRODUCT_REGISTRATION_V6_SHADOW_ENABLED', true),
     publishEnabled: enabled('PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED'),
     publicationFrozen: enabled('PRODUCT_REGISTRATION_PUBLICATION_FREEZE', true),
+    sourceProofAutoPublishEnabled: enabled('PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH'),
   };
+}
+
+/**
+ * Source-proof mode is deliberately a *publish attempt* switch, not a
+ * publication bypass.  It lets a Workflow reach the database CAS writer;
+ * the writer still enforces authority mode, kill switches, immutable
+ * lineage, verified claims and passed mobile proof for the exact source.
+ */
+export function productRegistrationV6SourceProofAutoPublishEnabled(): boolean {
+  const config = getProductRegistrationV6RuntimeConfig();
+  return config.sourceProofAutoPublishEnabled && config.authorityMode !== 'legacy';
 }
 
 export function productRegistrationV6PublicationBlocker(): string | null {

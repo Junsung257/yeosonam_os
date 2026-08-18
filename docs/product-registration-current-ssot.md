@@ -2,6 +2,12 @@
 
 Last updated: 2026-08-18
 
+## V159 source-proof Workflow bridge (2026-08-18, implementation in progress)
+
+- The durable Workflow no longer stops before the publication RPC solely because the broad cohort/freeze switch is off when `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=1` is explicitly enabled. It reaches the existing source-scoped CAS writer; the database still rejects any source without exact tenant/catalog/revision/snapshot/proof lineage, verified critical evidence, passed mobile proof, or an allowed authority mode.
+- Kill switches and legacy authority remain hard blockers. Normal publication behavior is unchanged when the new variable is absent or `0`.
+- Added regression coverage for frozen shadow mode, source-proof handoff, legacy-mode rejection, and kill-switch preservation. Production activation and a fresh authenticated HWP Workflow run remain the next verification step.
+
 ## V158 source-evidence auto-publication and real customer canary (2026-08-18, latest verification)
 
 - The publication gate is no longer blocked solely because a permanent cohort-quality row has not yet been registered. A source may publish only when the database can replay the exact tenant/catalog/revision/source lineage, all critical/high claims have verified evidence without conflicts, the immutable snapshot hash matches, and the same revision has a passed signed mobile proof for both `/packages` and `/lp` (CTA opened, zero hydration errors, renderer build matched). This is source-scoped eligibility, not a global threshold relaxation.
