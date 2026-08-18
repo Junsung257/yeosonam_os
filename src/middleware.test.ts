@@ -101,6 +101,16 @@ describe('middleware cron resource saver', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
+  it.each([
+    '/api/cron/product-registration-v5-convergence',
+    '/api/cron/product-registration-v5-outbox',
+  ])('keeps product registration maintenance route %s public to its route-local guard', async (path) => {
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('does not resource-save a trusted Clobe bank sync invocation', async () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 
