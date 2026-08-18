@@ -31,6 +31,20 @@ function evidence(value: unknown, fieldPath: string): unknown[] {
   return value && typeof value === 'object' ? [value] : [{ field_path: fieldPath }];
 }
 
+function mergeEvidence(existing: unknown, incoming: unknown): unknown[] {
+  const rows = [
+    ...(Array.isArray(existing) ? existing : existing ? [existing] : []),
+    ...(Array.isArray(incoming) ? incoming : incoming ? [incoming] : []),
+  ];
+  const seen = new Set<string>();
+  return rows.filter(row => {
+    const key = JSON.stringify(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function flightIdentity(value: unknown): { carrierCode: string | null; serviceNumber: string | null } {
   const serviceNumber = text(value)?.replace(/\s+/g, '').toUpperCase() ?? null;
   return {
@@ -67,14 +81,29 @@ export function buildProductRegistrationV6DomainProjection(input: {
         const departureDate = text(price?.date);
         if (!departureDate || !/^\d{4}-\d{2}-\d{2}$/.test(departureDate)) return;
         const fieldPath = `sections[${sectionIndex}].v3.ledger.variants[${variantIndex}].price_calendar[${priceIndex}]`;
-        projection.departures.push({
+        const departure = {
           package_id: input.packageId ?? null,
           section_index: sectionIndex,
           variant_key: variantKey,
           departure_date: departureDate,
           sale_state: 'available',
           evidence: evidence(price?.evidence, fieldPath),
-        });
+        };
+        // A source table can repeat a date while presenting the same fare in
+        // multiple rows (for example, a hotel/meal note beside the fare).
+        // The relational projection is unique by revision/section/variant/date;
+        // collapse only that projection duplicate and retain every evidence
+        // anchor. Price ambiguity is still resolved and gated before this step.
+        const existing = projection.departures.find(row =>
+          row.section_index === sectionIndex
+          && row.variant_key === variantKey
+          && row.departure_date === departureDate,
+        );
+        if (existing) {
+          existing.evidence = mergeEvidence(existing.evidence, departure.evidence);
+        } else {
+          projection.departures.push(departure);
+        }
       });
       array(variant.flight_segments).forEach((rawSegment, sequenceNo) => {
         const segment = object(rawSegment) ?? {};

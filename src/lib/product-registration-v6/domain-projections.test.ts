@@ -42,6 +42,26 @@ describe('V6 domain projections', () => {
     expect(result.golfRounds).toHaveLength(0);
   });
 
+  it('deduplicates repeated departure dates while retaining all evidence anchors', () => {
+    const result = buildProductRegistrationV6DomainProjection({
+      packageId: 'package-1',
+      canonicalPayload: {
+        sections: [{
+          v3: { ledger: { variants: [{
+            variant_key: 'v1',
+            price_calendar: [
+              { date: '2026-10-01', amount: 599000, evidence: { node: 'p1' } },
+              { date: '2026-10-01', amount: 599000, evidence: { node: 'p2' } },
+            ],
+          }] } },
+        }],
+      },
+    });
+
+    expect(result.departures).toHaveLength(1);
+    expect(result.departures[0]?.evidence).toEqual([{ node: 'p1' }, { node: 'p2' }]);
+  });
+
   it('treats supplier placeholders as unconfirmed lodging', () => {
     expect(classifyLodgingState('해당숙소')).toBe('to_be_confirmed');
     expect(classifyLodgingState('호텔 미정')).toBe('to_be_confirmed');
