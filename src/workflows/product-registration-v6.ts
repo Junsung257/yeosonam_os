@@ -1195,14 +1195,22 @@ async function blockFailedWorkflowStep(
 ): Promise<ProductRegistrationV6WorkflowResult> {
   'use step';
   const expectedIdentityBlock = error.includes('REGISTRATION_CORRECTION_IDENTITY_AMBIGUOUS');
+  // A cohort-quality miss is a deliberate publication policy decision, not a
+  // worker/system failure. Keep the source and revision available for a later
+  // benchmark-approved retry, but terminate the upload as an actionable
+  // business block instead of sending it to the dead-letter system queue.
+  const cohortQualityBlock = error.includes('REGISTRATION_PUBLICATION_COHORT_NOT_ELIGIBLE');
+  const expectedPublicationBlock = expectedIdentityBlock || cohortQualityBlock;
   const decision: ProductRegistrationV6Decision = {
     outcome: 'blocked',
-    terminalOutcome: expectedIdentityBlock
+    terminalOutcome: expectedPublicationBlock
       ? 'blocked_action_required'
       : 'quarantined_system_failure',
     degradedReasons: [],
     blockers: expectedIdentityBlock
       ? ['IDENTITY_BINDING_AMBIGUOUS']
+      : cohortQualityBlock
+        ? ['V6_COHORT_QUALITY_INCOMPLETE']
       : [`WORKFLOW_FAILED:${error}`],
     packageIds: [],
     revisionIds: [],
@@ -1229,7 +1237,7 @@ async function blockFailedWorkflowStep(
       error,
     }).catch(() => undefined);
   }
-  if (!expectedIdentityBlock) {
+  if (!expectedPublicationBlock) {
     await supabase.rpc('record_product_registration_v6_dead_letter', {
       p_payload: {
         tenant_id: input.tenantId,
@@ -1257,7 +1265,7 @@ async function blockFailedWorkflowStep(
       policy_version: input.policyVersion,
       degraded_reasons: decision.degradedReasons,
       blockers: decision.blockers,
-      publication_blockers: [],
+      publication_blockers: cohortQualityBlock ? ['V6_COHORT_QUALITY_INCOMPLETE'] : [],
     },
   });
   if (terminalError) throw new FatalError(terminalError.message);
