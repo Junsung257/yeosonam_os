@@ -22,7 +22,7 @@ export function isValidProductRegistrationUploadToken(request: NextRequest): boo
   if (!token) return false;
   const customHeader = request.headers.get('x-product-registration-upload-token');
   const authorization = request.headers.get('authorization');
-  const bearer = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1] ?? null;
+  const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
   return safeEqualString(customHeader, token) || safeEqualString(bearer, token);
 }
 
