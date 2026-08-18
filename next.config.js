@@ -27,12 +27,6 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
-// Vercel exposes these system values reliably during build, but not in every
-// serverless runtime. Preserve the immutable source in the server bundle so
-// the blog live gate does not fail solely because runtime env projection is
-// absent. These are provenance identifiers, never secrets.
-const blogBuildGitRef = String(process.env.VERCEL_GIT_COMMIT_REF || '').trim();
-const blogBuildCommitSha = String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
 const enableWebpackBuildWorker =
   process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER !== '0';
 const SPECIAL_PAGE_SHIMS = {
@@ -158,10 +152,6 @@ function ensureMissingAppTraceManifests() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  env: {
-    BLOG_BUILD_GIT_REF: blogBuildGitRef,
-    BLOG_BUILD_COMMIT_SHA: blogBuildCommitSha,
-  },
   reactStrictMode: true,
   // rhwp is downloaded and checksum-verified during prebuild. Because it is
   // executed through a runtime-computed path, Node file tracing cannot infer

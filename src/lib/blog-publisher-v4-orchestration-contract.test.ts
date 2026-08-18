@@ -54,6 +54,12 @@ describe('blog publisher V4 orchestration wiring', () => {
     expect(controller).not.toContain('latest_attempt_not_publishable');
   });
 
+  it('keeps reviewed_only in the controller while requiring approved review status', () => {
+    expect(controller).toContain("['live', 'reviewed_only'].includes(policy.mode)");
+    expect(controller).toContain("policy.mode === 'reviewed_only' && creative.review_status !== 'approved'");
+    expect(controller).toContain('reviewed_only_requires_approved_review_status');
+  });
+
   it('never sends an indexing notification for a draft that failed to become public', () => {
     const nonRepresentative = controller.slice(
       controller.indexOf('} else {', controller.indexOf('if (identity)')),

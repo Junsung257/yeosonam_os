@@ -59,6 +59,11 @@ describe('blog autopublish activation v4', () => {
             deploymentProvenance: {
               passed: false,
               reasons: ['production_git_ref_missing', 'production_commit_sha_missing'],
+              source: 'missing',
+              expectedGitRef: 'main',
+              expectedCommitSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+              actualGitRef: null,
+              commitSha: null,
             },
           },
         },
@@ -71,6 +76,13 @@ describe('blog autopublish activation v4', () => {
       'production_git_ref_missing',
       'production_commit_sha_missing',
     ]);
+    expect(report.publication.evidence).toMatchObject({
+      source: 'missing',
+      expectedGitRef: 'main',
+      expectedCommitSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      actualGitRef: null,
+      commitSha: null,
+    });
   });
 
   it('never treats an unavailable endpoint as ready', () => {

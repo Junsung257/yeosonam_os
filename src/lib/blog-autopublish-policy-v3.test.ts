@@ -33,7 +33,8 @@ describe('blog autopublish policy v3', () => {
       BLOG_AUTOPUBLISH_MODE: 'live',
       VERCEL_ENV: 'production',
       VERCEL_GIT_COMMIT_REF: 'codex/unsafe-feature',
-      VERCEL_GIT_COMMIT_SHA: 'abc123',
+      VERCEL_GIT_COMMIT_SHA: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      BLOG_PRODUCTION_ALLOWED_COMMIT_SHA: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     });
 
     expect(policy.requestedMode).toBe('live');
@@ -54,23 +55,78 @@ describe('blog autopublish policy v3', () => {
     expect(provenance.reasons).toEqual([
       'production_git_ref_missing',
       'production_commit_sha_missing',
+      'production_allowed_commit_sha_missing',
     ]);
+  });
+
+  it('rejects a malformed or non-allowlisted production SHA', () => {
+    const malformed = evaluateBlogDeploymentProvenanceV3({
+      VERCEL_ENV: 'production',
+      VERCEL_GIT_COMMIT_REF: 'main',
+      VERCEL_GIT_COMMIT_SHA: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      BLOG_PRODUCTION_ALLOWED_COMMIT_SHA: 'not-a-sha',
+    });
+    expect(malformed.passed).toBe(false);
+    expect(malformed.reasons).toEqual(expect.arrayContaining([
+      'production_allowed_commit_sha_invalid',
+      'production_commit_sha_not_allowed',
+    ]));
+
+    const notAllowlisted = evaluateBlogDeploymentProvenanceV3({
+      VERCEL_ENV: 'production',
+      VERCEL_GIT_COMMIT_REF: 'main',
+      VERCEL_GIT_COMMIT_SHA: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      BLOG_PRODUCTION_ALLOWED_COMMIT_SHA: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    });
+    expect(notAllowlisted.passed).toBe(false);
+    expect(notAllowlisted.reasons).toContain('production_commit_sha_not_allowed');
   });
 
   it('uses build-baked Vercel provenance when runtime system variables are absent', () => {
     const provenance = evaluateBlogDeploymentProvenanceV3({
       VERCEL_ENV: 'production',
       BLOG_BUILD_GIT_REF: 'main',
-      BLOG_BUILD_COMMIT_SHA: 'abc1234',
+      BLOG_BUILD_COMMIT_SHA: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      BLOG_PRODUCTION_ALLOWED_COMMIT_SHA: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     });
 
     expect(provenance).toMatchObject({
       required: true,
       passed: true,
       actualGitRef: 'main',
-      commitSha: 'abc1234',
+      commitSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       reasons: [],
+      source: 'build_snapshot',
     });
+  });
+
+  it('fails closed when runtime and build provenance disagree', () => {
+    const provenance = evaluateBlogDeploymentProvenanceV3({
+      VERCEL_ENV: 'production',
+      VERCEL_GIT_COMMIT_REF: 'main',
+      VERCEL_GIT_COMMIT_SHA: 'cccccccccccccccccccccccccccccccccccccccc',
+      BLOG_BUILD_GIT_REF: 'main',
+      BLOG_BUILD_COMMIT_SHA: 'dddddddddddddddddddddddddddddddddddddddd',
+      BLOG_PRODUCTION_ALLOWED_COMMIT_SHA: 'cccccccccccccccccccccccccccccccccccccccc',
+    });
+
+    expect(provenance.passed).toBe(false);
+    expect(provenance.source).toBe('mixed');
+    expect(provenance.reasons).toContain('production_runtime_build_provenance_mismatch');
+  });
+
+  it('fails closed when either runtime provenance field disagrees with the build snapshot', () => {
+    const provenance = evaluateBlogDeploymentProvenanceV3({
+      VERCEL_ENV: 'production',
+      VERCEL_GIT_COMMIT_REF: 'main',
+      BLOG_BUILD_GIT_REF: 'release-candidate',
+      BLOG_BUILD_COMMIT_SHA: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      BLOG_PRODUCTION_ALLOWED_COMMIT_SHA: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    });
+
+    expect(provenance.passed).toBe(false);
+    expect(provenance.source).toBe('mixed');
+    expect(provenance.reasons).toContain('production_runtime_build_provenance_mismatch');
   });
 
   it('never publishes in draft_only and never runs public side effects', () => {

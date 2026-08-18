@@ -3,6 +3,7 @@ import {
   parseBlogPublicationRampStage,
   type BlogPublicationRampStage,
 } from './blog-publication-rollout';
+import { BLOG_BUILD_PROVENANCE } from '../generated/blog-build-provenance.server';
 
 export const BLOG_AUTOPUBLISH_MODES = ['draft_only', 'reviewed_only', 'live'] as const;
 
@@ -31,6 +32,8 @@ export interface BlogDeploymentProvenanceV3 {
   actualGitRef: string | null;
   commitSha: string | null;
   reasons: string[];
+  source: 'vercel_runtime' | 'build_snapshot' | 'missing' | 'mixed';
+  expectedCommitSha: string | null;
 }
 
 export interface BlogDemandSignalInput {
@@ -76,7 +79,7 @@ function envBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-function firstNonEmpty(...values: Array<string | undefined>): string | null {
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
   for (const value of values) {
     const normalized = String(value || '').trim();
     if (normalized) return normalized;
@@ -90,11 +93,24 @@ export function evaluateBlogDeploymentProvenanceV3(
   const environment = String(env.VERCEL_ENV || '').trim() || null;
   const required = environment === 'production';
   const expectedGitRef = String(env.BLOG_PRODUCTION_ALLOWED_GIT_REF || 'main').trim() || 'main';
-  // Vercel system variables are available during the build but may be absent
-  // from the serverless runtime. next.config.js bakes the same values into
-  // BLOG_BUILD_* so the production gate can still prove the immutable source.
-  const actualGitRef = firstNonEmpty(env.VERCEL_GIT_COMMIT_REF, env.BLOG_BUILD_GIT_REF);
-  const commitSha = firstNonEmpty(env.VERCEL_GIT_COMMIT_SHA, env.BLOG_BUILD_COMMIT_SHA);
+  const expectedCommitSha = firstNonEmpty(env.BLOG_PRODUCTION_ALLOWED_COMMIT_SHA);
+  const runtimeGitRef = firstNonEmpty(env.VERCEL_GIT_COMMIT_REF);
+  const runtimeCommitSha = firstNonEmpty(env.VERCEL_GIT_COMMIT_SHA);
+  const buildGitRef = firstNonEmpty(BLOG_BUILD_PROVENANCE.gitRef, env.BLOG_BUILD_GIT_REF);
+  const buildCommitSha = firstNonEmpty(BLOG_BUILD_PROVENANCE.commitSha, env.BLOG_BUILD_COMMIT_SHA);
+  const actualGitRef = runtimeGitRef ?? buildGitRef;
+  const commitSha = runtimeCommitSha ?? buildCommitSha;
+  const hasRuntimeProvenance = Boolean(runtimeGitRef || runtimeCommitSha);
+  const hasBuildProvenance = Boolean(buildGitRef || buildCommitSha);
+  const provenanceMismatch = hasRuntimeProvenance && hasBuildProvenance
+    && (runtimeGitRef !== buildGitRef || runtimeCommitSha !== buildCommitSha);
+  const source = provenanceMismatch
+    ? 'mixed'
+    : hasRuntimeProvenance
+      ? 'vercel_runtime'
+      : hasBuildProvenance
+        ? 'build_snapshot'
+        : 'missing';
   const reasons: string[] = [];
 
   if (required && !actualGitRef) reasons.push('production_git_ref_missing');
@@ -102,6 +118,17 @@ export function evaluateBlogDeploymentProvenanceV3(
     reasons.push('production_git_ref_not_allowed');
   }
   if (required && !commitSha) reasons.push('production_commit_sha_missing');
+  if (required && source === 'mixed') reasons.push('production_runtime_build_provenance_mismatch');
+  if (required && !expectedCommitSha) reasons.push('production_allowed_commit_sha_missing');
+  if (required && expectedCommitSha && !/^[0-9a-f]{40}$/i.test(expectedCommitSha)) {
+    reasons.push('production_allowed_commit_sha_invalid');
+  }
+  if (required && commitSha && !/^[0-9a-f]{40}$/i.test(commitSha)) {
+    reasons.push('production_commit_sha_invalid');
+  }
+  if (required && expectedCommitSha && commitSha && expectedCommitSha !== commitSha) {
+    reasons.push('production_commit_sha_not_allowed');
+  }
 
   return {
     required,
@@ -111,6 +138,8 @@ export function evaluateBlogDeploymentProvenanceV3(
     actualGitRef,
     commitSha,
     reasons,
+    source,
+    expectedCommitSha,
   };
 }
 

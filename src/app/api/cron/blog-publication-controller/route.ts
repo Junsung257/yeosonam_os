@@ -36,7 +36,7 @@ async function runBlogPublicationController(request: NextRequest) {
   if (!isSupabaseConfigured) return { skipped: true, reason: 'supabase_not_configured' };
 
   const policy = readBlogAutopublishPolicyV3();
-  if (policy.mode !== 'live') {
+  if (!['live', 'reviewed_only'].includes(policy.mode)) {
     return { skipped: true, reason: `autopublish_mode_${policy.mode}`, policy };
   }
 
@@ -173,6 +173,9 @@ async function runBlogPublicationController(request: NextRequest) {
         generationMeta,
       });
       if (publicSurfaceBlock) throw new Error(`creative_public_policy_blocked:${publicSurfaceBlock}`);
+      if (policy.mode === 'reviewed_only' && creative.review_status !== 'approved') {
+        throw new Error('reviewed_only_requires_approved_review_status');
+      }
       if ((creative.quality_gate as Record<string, unknown> | null)?.passed !== true) {
         throw new Error('creative_quality_gate_not_passed');
       }

@@ -81,13 +81,15 @@ function endpointCheck(
           mode: policy.mode ?? null,
           requestedMode: policy.requestedMode ?? null,
           reasons: Array.isArray(provenance.reasons) ? provenance.reasons : [],
+          source: provenance.source ?? 'missing',
           expectedGitRef: provenance.expectedGitRef ?? null,
+          expectedCommitSha: provenance.expectedCommitSha ?? null,
           actualGitRef: provenance.actualGitRef ?? null,
-          commitShaPresent: Boolean(provenance.commitSha),
+          commitSha: provenance.commitSha ?? null,
         },
       };
     }
-    if (reason === 'autopublish_mode_draft_only' || reason === 'autopublish_mode_reviewed_only') {
+    if (reason === 'autopublish_mode_draft_only') {
       return {
         status: 'blocked',
         reason: 'autopublish_not_live',
