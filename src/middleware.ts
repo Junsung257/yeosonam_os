@@ -427,10 +427,17 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
   const url =
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     getSecret('SUPABASE_URL');
+  // Publication pointers and availability overlays are internal V5 control
+  // tables. The anonymous key is intentionally denied access to them, so the
+  // server-only middleware must prefer the service key for this preflight.
+  // The key is never returned to the browser; this request runs in the
+  // middleware runtime before the customer page is rendered.
   const key =
+    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
+    getSecret('SUPABASE_SERVICE_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     getSecret('SUPABASE_ANON_KEY') ||
-    getSecret('SUPABASE_SERVICE_ROLE_KEY');
+    getSecret('SUPABASE_SECRET_KEY');
 
   if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) {
     return null;
