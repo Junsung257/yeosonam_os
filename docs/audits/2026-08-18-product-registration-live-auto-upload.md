@@ -117,3 +117,5 @@ Supabase 보안 advisor에는 내부 등록 스키마의 일부 테이블이 RLS
 이 변경은 각각 `product-registration-v6-workflow-30`, `31`, `32`로 분리 배포했고, 로컬 type-check·핵심 테스트·Vercel production build를 통과했다. v31 재처리 10건에서는 시스템 오류 없이 과거 일정 6건, 상품 식별 모호 2건, cohort 증거 미완료 2건으로 모두 안전 종결됐다. v32에서 source-proof eligibility 함수는 실제 `needs_review` revision 2건에 대해 `published_degraded` 조건과 핵심 증거 검사를 통과하는 것을 확인했다.
 
 현재 공개 중인 5개 상품의 `/packages`·`/lp` 고객 URL 10개는 모두 HTTP 200으로 응답했고, DB proof에는 가격·항공·약관·CTA·이미지·hydration 오류 없음이 기록돼 있다. 전체 고객 공개 상품은 기존 pointer를 유지하고, 아직 v32로 전량 재처리 중이므로 전체 95% 인증은 완료하지 않았다.
+
+추가로 `travel_packages`에 과거 레거시 상태가 `active/published`로 남아 있으나 customer publication pointer가 없는 2건을 발견했다. 실제 `/packages/{id}`와 `/lp/{id}`는 둘 다 `상품을 찾을 수 없습니다`를 반환해 고객 노출은 차단되어 있었다. 이는 레거시 상태 정리 대상이며, pointer 없는 상품을 고객에게 노출하지 않는 현재 reader fail-closed 계약은 정상 작동했다.
