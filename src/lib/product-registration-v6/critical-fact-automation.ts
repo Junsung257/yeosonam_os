@@ -102,7 +102,14 @@ export function createLedgeredCriticalFactProviderCaller(input: {
     // single-flight authority; wait briefly for that call to complete and
     // then reuse its durable result instead of turning a harmless race into a
     // customer-visible workflow failure.
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    // Provider calls can legitimately take longer than one workflow step when
+    // a backfill cohort is cold-starting. Wait long enough to reuse the
+    // durable result, but never turn a still-running single-flight call into a
+    // dead-lettered workflow. If it is still in flight after the bounded wait,
+    // record the provider as unavailable; the deterministic resolver remains
+    // authoritative and validation will either publish a safe result or block
+    // the unresolved critical field.
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const { data, error } = await input.supabase.rpc('reserve_product_registration_v6_provider_call', {
         p_payload: reservationPayload,
       });
@@ -112,7 +119,15 @@ export function createLedgeredCriticalFactProviderCaller(input: {
       await new Promise(resolve => setTimeout(resolve, 2_000));
     }
     if (!reservation) throw new Error('CRITICAL_FACT_PROVIDER_RESERVATION_RESPONSE_INVALID');
-    if (reservation.action === 'wait') throw new Error('CRITICAL_FACT_PROVIDER_CALL_IN_FLIGHT');
+    if (reservation.action === 'wait') {
+      return {
+        success: false,
+        provider: request.provider,
+        model: request.model,
+        errors: ['CRITICAL_FACT_PROVIDER_CALL_IN_FLIGHT_TIMEOUT'],
+        providerCallId: null,
+      };
+    }
     if (reservation.action === 'reuse' && reservation.call_id) {
       const stored = asGatewayResult(reservation.result?.gateway_result);
       if (!stored || stored.provider !== request.provider) {

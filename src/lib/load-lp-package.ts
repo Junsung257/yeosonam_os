@@ -13,7 +13,7 @@ export async function fetchLpPackageUncached(
   if (!isSupabaseConfigured || !supabaseAdmin) return null;
 
   const exactProofSnapshot = options.proofSnapshotId && options.proofToken
-    ? await fetchPublicPackageSnapshotById(supabaseAdmin, options.proofSnapshotId).catch(() => null)
+    ? await fetchPublicPackageSnapshotById(supabaseAdmin, options.proofSnapshotId, { allowProofCopyIssues: true }).catch(() => null)
     : null;
   const proofClaims = exactProofSnapshot
     ? verifyProductRegistrationV6ProofToken(options.proofToken, {
@@ -23,6 +23,7 @@ export async function fetchLpPackageUncached(
     })
     : null;
   const exactProofAllowed = Boolean(proofClaims && exactProofSnapshot);
+  const rawProofPackage = exactProofAllowed ? exactProofSnapshot?.package ?? null : null;
   const publicSnapshot = exactProofAllowed
     ? exactProofSnapshot
     : await getCurrentPublicPackage(supabaseAdmin, {
@@ -31,7 +32,8 @@ export async function fetchLpPackageUncached(
       channel: 'customer',
       locale: 'ko-KR',
     }).catch(() => null);
-  const pkg = publicSnapshot?.package;
+   let pkg = publicSnapshot?.package;
+   if (rawProofPackage) pkg = rawProofPackage;
   if (!pkg) return null;
 
   const { data: scores } = await supabaseAdmin

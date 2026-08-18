@@ -61,7 +61,10 @@ function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
     .some(issue => !issue.safeFixable);
 }
 
-export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
+export function snapshotPackage(
+  row: SnapshotRow,
+  options: { allowProofCopyIssues?: boolean } = {},
+): AnyRecord | null {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
   const cardProjection = asRecord(row.card_projection);
@@ -97,7 +100,14 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
       created_at: row.created_at,
     },
   };
-  return hasBlockingSnapshotCopy(customerPackage, row) ? null : customerPackage;
+  // A signed proof is a private diagnostic render of an immutable candidate.
+  // It must be able to show the exact text that caused a proof or copy gate to
+  // fail; otherwise the proof route returns a misleading 404 and the workflow
+  // records a system failure without any inspectable customer output. Public
+  // readers keep the strict audit below, while proof callers opt in explicitly.
+  return !options.allowProofCopyIssues && hasBlockingSnapshotCopy(customerPackage, row)
+    ? null
+    : customerPackage;
 }
 
 /** Loads one exact immutable snapshot for a signed V6 proof request. It does
@@ -105,6 +115,7 @@ export function snapshotPackage(row: SnapshotRow): AnyRecord | null {
 export async function fetchPublicPackageSnapshotById(
   supabase: SupabaseClient,
   snapshotId: string,
+  options: { allowProofCopyIssues?: boolean } = {},
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
   const { data, error } = await supabase
     .from('public_package_snapshots')
@@ -113,7 +124,7 @@ export async function fetchPublicPackageSnapshotById(
     .in('status', ['candidate', 'approved', 'published'])
     .maybeSingle();
   if (error || !data) return null;
-  const pkg = snapshotPackage(data as SnapshotRow);
+  const pkg = snapshotPackage(data as SnapshotRow, options);
   return pkg ? { row: data as SnapshotRow, package: pkg } : null;
 }
 

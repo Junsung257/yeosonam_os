@@ -58,7 +58,7 @@ async function loadV6ProofSnapshot(
   if (!snapshotId) return null;
   const token = (await headers()).get('x-product-registration-v6-proof-token');
   if (!token) return null;
-  const snapshot = await fetchPublicPackageSnapshotById(sb, snapshotId).catch(() => null);
+  const snapshot = await fetchPublicPackageSnapshotById(sb, snapshotId, { allowProofCopyIssues: true }).catch(() => null);
   if (!snapshot || snapshot.row.package_id !== packageId) return null;
   return verifyProductRegistrationV6ProofToken(token, {
     snapshotId,

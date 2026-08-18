@@ -43,8 +43,8 @@ async function handler(request: NextRequest) {
   // applied and types are regenerated; runtime access is still service-role
   // only and every RPC performs its own tenant checks.
   const db = supabase as unknown as SupabaseClient;
-  const requestedLimit = Number(request.nextUrl.searchParams.get('limit') ?? 10);
-  const limit = Math.max(1, Math.min(25, Number.isFinite(requestedLimit) ? requestedLimit : 10));
+  const requestedLimit = Number(request.nextUrl.searchParams.get('limit') ?? 5);
+  const limit = Math.max(1, Math.min(10, Number.isFinite(requestedLimit) ? requestedLimit : 5));
   const { data: claimed, error: claimError } = await db.rpc(
     'claim_product_registration_legacy_backfill',
     { p_limit: limit, p_engine_version: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION },
@@ -179,10 +179,11 @@ async function handler(request: NextRequest) {
   };
 
   // Starting a durable workflow is idempotent per claim operation key. Keep a
-  // small bounded fan-out so a 25-row cron tick finishes quickly without
-  // overwhelming Supabase or the workflow service.
-  for (let offset = 0; offset < claims.length; offset += 5) {
-    await Promise.all(claims.slice(offset, offset + 5).map(processClaim));
+  // Keep the fan-out deliberately small. Each workflow performs extraction,
+  // revision writes, browser proof, and several Supabase RPCs; a larger burst
+  // causes connection saturation and turns healthy proof pages into 503s.
+  for (let offset = 0; offset < claims.length; offset += 2) {
+    await Promise.all(claims.slice(offset, offset + 2).map(processClaim));
   }
 
   return NextResponse.json({
