@@ -15,7 +15,10 @@ export function isValidAdminApiToken(request: NextRequest): boolean {
  * access or permission to mutate existing products.
  */
 export function isValidProductRegistrationUploadToken(request: NextRequest): boolean {
-  const token = getSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
+  // Keep this environment read static: the function is also imported by the
+  // Edge middleware, where dynamic `process.env[key]` access is not reliable
+  // after bundling. The route-local Node guard still receives the same value.
+  const token = process.env.PRODUCT_REGISTRATION_UPLOAD_TOKEN?.trim() || getSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
   if (!token) return false;
   return safeEqualString(request.headers.get('x-product-registration-upload-token'), token);
 }
