@@ -224,6 +224,36 @@ function extractSplitLabelPriceRows(lines: string[], rawText: string, options: P
   }));
 }
 
+function extractArrowDatePriceRows(
+  lines: string[],
+  options: PriceIROptions,
+): MatrixPriceRow[] {
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (isExcludedPriceLine(line)) continue;
+    const match = line.match(/^(.*?)\s*(?:→|⇒|➜|⟶|▶|->|=>|:)\s*(?:₩\s*)?(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?\s*$/iu);
+    if (!match) continue;
+    const amount = parseMoney(match[2]);
+    if (amount == null) continue;
+    const dates = parseFullDateList(match[1]!, options.year);
+    if (dates.length === 0 || dates.length > 60) continue;
+    for (const date of dates) {
+      const key = `${date}|${amount}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        date,
+        adult_price: amount,
+        child_price: null,
+        note: 'labeled_date_list_price',
+        status: 'available',
+      });
+    }
+  }
+  return rows;
+}
+
 function extractAdultChildPrices(lines: string[], fromIndex: number): {
   adult: number;
   child: number | null;
@@ -266,7 +296,7 @@ export function extractLabeledDateListPriceRows(
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean);
-  const rows: MatrixPriceRow[] = [];
+  const rows: MatrixPriceRow[] = extractArrowDatePriceRows(lines, options);
   const seen = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {

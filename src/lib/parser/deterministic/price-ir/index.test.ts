@@ -1483,4 +1483,26 @@ describe('extractPriceIR labeled departure date list price', () => {
     ]);
     expect(result.rows.some(row => row.adult_price === 7)).toBe(false);
   });
+
+  it('binds arrow-formatted date and sale-price rows in one flattened cell', () => {
+    const rawText = [
+      '방콕 파타야 LIGHT 3박5일',
+      '행사일자',
+      '7/19, 23, 30 단 3날짜 선착순',
+      '상품가',
+      '7/19 → 499,900원',
+      '7/23 → 629,900원',
+      '7/30 → 699,900원',
+      '일자',
+      '제1일 부산 방콕',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-07-19', 499900],
+      ['2026-07-23', 629900],
+      ['2026-07-30', 699900],
+    ]);
+  });
 });
