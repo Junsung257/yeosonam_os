@@ -20,6 +20,7 @@ const passing = {
     snapshotParity: { parity: true },
     remoteSnapshots: { catalog: true, detail: true },
     analyticsCanary24h: 1,
+    approvedForSlotCount: 1,
     autopublish: { effectiveMode: 'draft_only' },
   },
 };
@@ -49,6 +50,13 @@ describe('Blog V4 release candidate response contracts', () => {
       rankTracking: { ok: false, requested_dates: [], errors: ['gsc_unavailable'] },
       dataReadiness: { ...passing.dataReadiness, ok: false },
     })).toThrow(/rank_tracking_contract_failed.*data_readiness_contract_failed/);
+  });
+
+  it('rejects a candidate without an approved slot inventory', () => {
+    expect(() => verifyBlogReleaseCandidateResponsesV4({
+      ...passing,
+      dataReadiness: { ...passing.dataReadiness, approvedForSlotCount: 0 },
+    })).toThrow('data_readiness_contract_failed');
   });
 
   it('CLI input cannot silently parse an HTML body as a valid response', () => {

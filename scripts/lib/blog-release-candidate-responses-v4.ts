@@ -39,6 +39,7 @@ export function verifyBlogReleaseCandidateResponsesV4(input: {
     || remote?.catalog !== true
     || remote?.detail !== true
     || Number(input.dataReadiness.analyticsCanary24h) < 1
+    || Number(input.dataReadiness.approvedForSlotCount) < 1
     || autopublish?.effectiveMode !== 'draft_only') {
     failures.push('data_readiness_contract_failed');
   }
