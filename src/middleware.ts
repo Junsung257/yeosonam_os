@@ -958,7 +958,7 @@ export async function middleware(request: NextRequest) {
   ) {
     const adminTokenHeader = request.headers.get('x-admin-token');
     const registrationUploadTokenHeader = pathname === '/api/upload'
-      ? request.headers.get('x-product-registration-upload-token')
+      ? request.headers.get('x-product-registration-upload-token') || request.headers.get('authorization')
       : null;
     if (adminTokenHeader) {
       const { isValidAdminApiToken } = await import('@/lib/api-auth');

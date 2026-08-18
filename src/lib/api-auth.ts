@@ -20,7 +20,10 @@ export function isValidProductRegistrationUploadToken(request: NextRequest): boo
   // after bundling. The route-local Node guard still receives the same value.
   const token = process.env.PRODUCT_REGISTRATION_UPLOAD_TOKEN?.trim() || getSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
   if (!token) return false;
-  return safeEqualString(request.headers.get('x-product-registration-upload-token'), token);
+  const customHeader = request.headers.get('x-product-registration-upload-token');
+  const authorization = request.headers.get('authorization');
+  const bearer = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1] ?? null;
+  return safeEqualString(customHeader, token) || safeEqualString(bearer, token);
 }
 
 export function requireAdminApiToken(request: NextRequest): NextResponse | null {
