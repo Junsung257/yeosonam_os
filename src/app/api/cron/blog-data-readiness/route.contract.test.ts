@@ -12,6 +12,9 @@ describe('blog data readiness route contract', () => {
     expect(source).toContain('probeBlogRuntimeSchemaWithSupabaseV3');
     expect(source).toContain('!schemaReadiness.fullyReady');
     expect(source).toContain('!policy.deploymentProvenance.passed');
+    expect(source).toContain(".eq('status', 'approved_for_slot')");
+    expect(source).toContain('approvedForSlotCount');
+    expect(source).toContain('Number(approvedForSlot.count || 0) === 0');
     expect(source).toContain('status: critical ? 503 : 200');
   });
 });

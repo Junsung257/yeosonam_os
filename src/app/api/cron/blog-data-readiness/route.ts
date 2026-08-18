@@ -23,7 +23,7 @@ const handler = async (_request: NextRequest) => {
   const policy = readBlogAutopublishPolicyV3();
   const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(supabaseAdmin, now);
   const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60_000).toISOString();
-  const [search, engagement, serverEvents, syntheticServerEvents, recentSyntheticCanary, rum, snapshots, dead, ready, liveSlugs, snapshotSlugs] = await Promise.all([
+  const [search, engagement, serverEvents, syntheticServerEvents, recentSyntheticCanary, rum, snapshots, dead, ready, liveSlugs, snapshotSlugs, approvedForSlot] = await Promise.all([
     supabaseAdmin.from('blog_search_performance').select('id', { count: 'exact', head: true }).gte('metric_date', daysAgo(30).slice(0, 10)),
     supabaseAdmin.from('blog_engagement_logs').select('id', { count: 'exact', head: true }).gte('created_at', daysAgo(7)),
     supabaseAdmin.from('analytics_server_events').select('id', { count: 'exact', head: true }).gte('occurred_at', daysAgo(30)),
@@ -37,6 +37,7 @@ const handler = async (_request: NextRequest) => {
     supabaseAdmin.from('analytics_server_event_outbox').select('id', { count: 'exact', head: true }).in('status', ['pending', 'failed', 'processing']),
     supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE).select('id,slug').order('slug').limit(1000),
     supabaseAdmin.from('blog_public_snapshots').select('creative_id,slug').eq('is_current', true).order('slug').limit(1000),
+    supabaseAdmin.from('blog_generation_runs').select('id', { count: 'exact', head: true }).eq('status', 'approved_for_slot'),
   ]);
   const snapshotParity = liveSlugs.error || snapshotSlugs.error
     ? null
@@ -72,7 +73,9 @@ const handler = async (_request: NextRequest) => {
     || !remoteSnapshots.catalog
     || !remoteSnapshots.detail
     || recentSyntheticCanary.error
-    || Number(recentSyntheticCanary.count || 0) === 0;
+    || Number(recentSyntheticCanary.count || 0) === 0
+    || approvedForSlot.error
+    || Number(approvedForSlot.count || 0) === 0;
   if (critical) {
     logError('[blog-data-readiness] critical measurement or delivery gap', undefined, {
       checks: report.checks,
@@ -90,6 +93,7 @@ const handler = async (_request: NextRequest) => {
     snapshotParity,
     remoteSnapshots,
     analyticsCanary24h: countOrNull(recentSyntheticCanary),
+    approvedForSlotCount: countOrNull(approvedForSlot),
     autopublish: {
       requestedMode: policy.requestedMode,
       effectiveMode: policy.mode,
