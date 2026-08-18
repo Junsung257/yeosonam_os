@@ -161,6 +161,7 @@
     "verify:blog-bridge": "node scripts/verify-blog-publisher-bridge.mjs",
     "verify:blog-bridge:dry": "node scripts/verify-blog-publisher-bridge.mjs --dry-run",
     "diagnose:blog-autopublish": "npx tsx scripts/diagnose-blog-autopublish.ts",
+    "verify:blog-autopublish-activation-v4": "npx tsx scripts/verify-blog-autopublish-activation-v4.ts",
     "sync:blog-metadata": "npx tsx scripts/sync-blog-canonical-metadata.ts",
     "run:blog-indexing-worker": "npx tsx scripts/run-blog-indexing-worker.ts",
     "backfill:blog-indexing-outbox": "npx tsx scripts/backfill-blog-indexing-outbox.ts",

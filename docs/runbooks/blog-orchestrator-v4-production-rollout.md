@@ -14,6 +14,7 @@
 - Protected workflow: `.github/workflows/blog-v4-production-release.yml`
 - Production evidence collector: `npm run collect:blog-production-evidence-v4 -- ...`
 - Fail-closed decision: `npm run verify:blog-production-readiness-v4 -- --evidence=<json>`
+- Read-only activation probe: `npm run verify:blog-autopublish-activation-v4 -- --base=https://www.yeosonam.com --strict`
 
 Manifest에는 운영 기준선에서 누락된 migration 11개의 경로와 SHA-256이 고정된다. 여기에는 운영에서 이력과 실제 함수 본문이 드리프트한 medication HIGH-risk 정책 복구 및 Next.js 15 스트리밍 전 hard-404 slug registry 권한 복구가 포함된다. dry-run 결과는 아직 적용되지 않은 manifest 부분집합이어야 하며, 재실행 시 이미 모두 적용되어 0개여야 한다. manifest 밖 migration이 섞이면 중단한다.
 
@@ -47,6 +48,17 @@ DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1
 ```
 
 DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
+
+## 활성화 상태 확인 (읽기 전용)
+
+`verify:blog-autopublish-activation-v4`는 `/api/cron/blog-generate`와 `/api/cron/blog-publication-controller`를 조회만 한다. `CRON_SECRET` 또는 `BLOG_CRON_SECRET`이 현재 셸에 있을 때만 보호된 응답을 읽으며, secret·본문·DB를 변경하거나 출력하지 않는다.
+
+- `generation_cron_disabled`: `BLOG_GENERATION_CRON_ENABLED`가 꺼져 있어 DeepSeek 생성이 시작되지 않음
+- `autopublish_not_live`: `BLOG_AUTOPUBLISH_MODE`가 `draft_only` 또는 `reviewed_only`라서 공개·색인 경로가 의도적으로 멈춤
+- `configured_but_not_due`: 환경은 켜져 있으나 현재 KST 슬롯이 아직 도래하지 않음
+- `READY`: 두 엔드포인트가 모두 인증·런타임·정책상 실행 가능한 상태
+
+이 점검이 `BLOCKED`인 상태에서 운영 환경값을 임의로 바꾸지 않는다. 먼저 V4 readiness 여섯 scope와 forward migration을 통과시키고, 승인된 change window에서 generation을 켠 뒤 `live`를 별도로 전환한다.
 
 ## 정확한 실행 순서
 
