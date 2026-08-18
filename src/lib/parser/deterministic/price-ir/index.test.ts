@@ -1354,6 +1354,38 @@ PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 3박5일
 });
 
 describe('extractPriceIR labeled departure date list price', () => {
+  it('keeps flattened HWP price blocks attached to their own date roster', () => {
+    const rawText = [
+      '[KE] 다낭/호이안 3박4일 노팁노옵션',
+      '499,000원',
+      '9/13, 14, 15, 16, 17',
+      '기    간',
+      '*8월 발권 조건',
+      '/',
+      '상 품 가',
+      '579,000원',
+      '9/21, 22',
+      '전일정 5성 (2인1실 기준)',
+      '날 짜',
+      '제1일 부산 → 다낭',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(pricesByDate).toEqual(new Map([
+      ['2026-09-13', 499000],
+      ['2026-09-14', 499000],
+      ['2026-09-15', 499000],
+      ['2026-09-16', 499000],
+      ['2026-09-17', 499000],
+      ['2026-09-21', 579000],
+      ['2026-09-22', 579000],
+    ]));
+    expect(pricesByDate.has('2026-09-18')).toBe(false);
+  });
+
   it('recovers source-backed prices from 출발일 list plus 요금표 adult child line', () => {
     const rawText = `
 투어코코넛 나트랑/달랏 5성 3박5일 상품 안내
