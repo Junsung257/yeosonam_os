@@ -1,0 +1,29 @@
+{
+  "version": "blog-autopublish-activation-v4",
+  "checkedAt": "2026-08-18T16:50:00+09:00",
+  "readOnly": true,
+  "baseUrl": "https://www.yeosonam.com",
+  "productionSource": {
+    "branch": "main",
+    "commitSha": "94f7a472fc56063bd63148ec651c8f5f57fc4574"
+  },
+  "ready": false,
+  "generation": {
+    "status": "blocked",
+    "reason": "generation_cron_disabled",
+    "evidence": {
+      "generationCronEnabled": false,
+      "autopublishMode": "draft_only"
+    }
+  },
+  "publication": {
+    "status": "blocked",
+    "reason": "autopublish_not_live",
+    "evidence": {
+      "mode": "draft_only",
+      "requestedMode": "draft_only"
+    }
+  },
+  "command": "npm run verify:blog-autopublish-activation-v4 -- --base=https://www.yeosonam.com --json --strict",
+  "nextAction": "After V4 readiness and forward migration approval, enable BLOG_GENERATION_CRON_ENABLED and then BLOG_AUTOPUBLISH_MODE=live in a controlled change window."
+}
