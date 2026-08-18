@@ -54,6 +54,7 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 `verify:blog-autopublish-activation-v4`는 `/api/cron/blog-generate`와 `/api/cron/blog-publication-controller`를 조회만 한다. `CRON_SECRET` 또는 `BLOG_CRON_SECRET`이 현재 셸에 있을 때만 보호된 응답을 읽으며, secret·본문·DB를 변경하거나 출력하지 않는다.
 
 - `generation_cron_disabled`: `BLOG_GENERATION_CRON_ENABLED`가 꺼져 있어 DeepSeek 생성이 시작되지 않음
+- `deployment_provenance_failed`: production 런타임이 허용된 `main` ref와 build commit을 증명하지 못해 정책이 자동으로 `draft_only`로 강등됨
 - `autopublish_not_live`: `BLOG_AUTOPUBLISH_MODE`가 `draft_only` 또는 `reviewed_only`라서 공개·색인 경로가 의도적으로 멈춤
 - `configured_but_not_due`: 환경은 켜져 있으나 현재 KST 슬롯이 아직 도래하지 않음
 - `READY`: 두 엔드포인트가 모두 인증·런타임·정책상 실행 가능한 상태

@@ -76,14 +76,25 @@ function envBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function firstNonEmpty(...values: Array<string | undefined>): string | null {
+  for (const value of values) {
+    const normalized = String(value || '').trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 export function evaluateBlogDeploymentProvenanceV3(
   env: Record<string, string | undefined> = process.env,
 ): BlogDeploymentProvenanceV3 {
   const environment = String(env.VERCEL_ENV || '').trim() || null;
   const required = environment === 'production';
   const expectedGitRef = String(env.BLOG_PRODUCTION_ALLOWED_GIT_REF || 'main').trim() || 'main';
-  const actualGitRef = String(env.VERCEL_GIT_COMMIT_REF || '').trim() || null;
-  const commitSha = String(env.VERCEL_GIT_COMMIT_SHA || '').trim() || null;
+  // Vercel system variables are available during the build but may be absent
+  // from the serverless runtime. next.config.js bakes the same values into
+  // BLOG_BUILD_* so the production gate can still prove the immutable source.
+  const actualGitRef = firstNonEmpty(env.VERCEL_GIT_COMMIT_REF, env.BLOG_BUILD_GIT_REF);
+  const commitSha = firstNonEmpty(env.VERCEL_GIT_COMMIT_SHA, env.BLOG_BUILD_COMMIT_SHA);
   const reasons: string[] = [];
 
   if (required && !actualGitRef) reasons.push('production_git_ref_missing');

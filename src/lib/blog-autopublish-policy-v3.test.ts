@@ -57,6 +57,22 @@ describe('blog autopublish policy v3', () => {
     ]);
   });
 
+  it('uses build-baked Vercel provenance when runtime system variables are absent', () => {
+    const provenance = evaluateBlogDeploymentProvenanceV3({
+      VERCEL_ENV: 'production',
+      BLOG_BUILD_GIT_REF: 'main',
+      BLOG_BUILD_COMMIT_SHA: 'abc1234',
+    });
+
+    expect(provenance).toMatchObject({
+      required: true,
+      passed: true,
+      actualGitRef: 'main',
+      commitSha: 'abc1234',
+      reasons: [],
+    });
+  });
+
   it('never publishes in draft_only and never runs public side effects', () => {
     const decision = evaluateBlogAutopublishDecisionV3(readBlogAutopublishPolicyV3({}), {
       allGatesPassed: true,

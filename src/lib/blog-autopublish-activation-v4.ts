@@ -72,6 +72,21 @@ function endpointCheck(
   }
 
   if (kind === 'publication') {
+    const provenance = record(policy.deploymentProvenance);
+    if (provenance.passed === false) {
+      return {
+        status: 'blocked',
+        reason: 'deployment_provenance_failed',
+        evidence: {
+          mode: policy.mode ?? null,
+          requestedMode: policy.requestedMode ?? null,
+          reasons: Array.isArray(provenance.reasons) ? provenance.reasons : [],
+          expectedGitRef: provenance.expectedGitRef ?? null,
+          actualGitRef: provenance.actualGitRef ?? null,
+          commitShaPresent: Boolean(provenance.commitSha),
+        },
+      };
+    }
     if (reason === 'autopublish_mode_draft_only' || reason === 'autopublish_mode_reviewed_only') {
       return {
         status: 'blocked',

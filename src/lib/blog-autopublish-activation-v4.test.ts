@@ -45,6 +45,34 @@ describe('blog autopublish activation v4', () => {
     expect(report.publication.reason).toBe('configured_but_not_due');
   });
 
+  it('surfaces provenance failure instead of hiding it behind draft_only', () => {
+    const report = evaluateBlogAutopublishActivationV4({
+      generation: { status: 200, body: { skipped: true, reason: 'outside_kst_offpeak_generation_window' } },
+      publication: {
+        status: 200,
+        body: {
+          skipped: true,
+          reason: 'autopublish_mode_draft_only',
+          policy: {
+            mode: 'draft_only',
+            requestedMode: 'live',
+            deploymentProvenance: {
+              passed: false,
+              reasons: ['production_git_ref_missing', 'production_commit_sha_missing'],
+            },
+          },
+        },
+      },
+    });
+
+    expect(report.ready).toBe(false);
+    expect(report.publication.reason).toBe('deployment_provenance_failed');
+    expect(report.publication.evidence.reasons).toEqual([
+      'production_git_ref_missing',
+      'production_commit_sha_missing',
+    ]);
+  });
+
   it('never treats an unavailable endpoint as ready', () => {
     const report = evaluateBlogAutopublishActivationV4({
       generation: { status: null, body: null, error: 'timeout' },
