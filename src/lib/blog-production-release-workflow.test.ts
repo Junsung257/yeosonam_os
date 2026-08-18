@@ -33,6 +33,9 @@ describe('blog V4 protected production release workflow', () => {
     expect(source.match(/x-vercel-protection-bypass/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
     expect(source).toContain('update_env BLOG_AUTOPUBLISH_MODE draft_only');
     expect(source).toContain('update_env BLOG_GENERATION_CRON_ENABLED false');
+    expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main');
+    expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"');
+    expect(source).toContain('BLOG_PRODUCTION_ALLOWED_COMMIT_SHA production --value "${{ inputs.release_commit }}"');
     expect(source).toContain('if: failure() && inputs.promote_live');
     expect(source).toContain('production --value draft_only');
     expect(source).toContain('production --value false');
