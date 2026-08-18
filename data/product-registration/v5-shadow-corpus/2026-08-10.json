@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-12T12:14:24.370Z",
+  "generatedAt": "2026-08-18T09:39:52.746Z",
   "mode": "offline-shadow-quarantine",
   "publicExposure": "none",
   "sourceDirectory": "C:\\Users\\admin\\Downloads\\코덱스테스트",
@@ -7,30 +7,30 @@
     "files": 40,
     "extractionSuccess": 40,
     "normalizationSuccess": 40,
-    "sections": 66,
+    "sections": 69,
     "verified": 1,
-    "degraded": 52,
-    "autoPublishable": 53,
-    "blocked": 13,
-    "renderContractPass": 66,
+    "degraded": 35,
+    "autoPublishable": 36,
+    "blocked": 33,
+    "renderContractPass": 69,
     "renderContractFail": 0,
-    "priceRules": 865,
-    "itineraryItems": 3058,
-    "claims": 522,
-    "criticalClaims": 248,
+    "priceRules": 4925,
+    "itineraryItems": 3192,
+    "claims": 528,
+    "criticalClaims": 237,
     "missingCriticalClaims": 0,
-    "highClaims": 208,
-    "missingHighClaims": 41,
-    "verifiedClaims": 481
+    "highClaims": 222,
+    "missingHighClaims": 0,
+    "verifiedClaims": 528
   },
   "rates": {
     "extractionSuccess": 1,
     "normalizationSuccess": 1,
-    "sectionVerified": 0.0152,
-    "sectionDegraded": 0.7879,
-    "sectionAutoPublishable": 0.803,
-    "sectionBlocked": 0.197,
-    "evidenceCoverage": 0.9215,
+    "sectionVerified": 0.0145,
+    "sectionDegraded": 0.5072,
+    "sectionAutoPublishable": 0.5217,
+    "sectionBlocked": 0.4783,
+    "evidenceCoverage": 1,
     "renderContractPass": 1
   },
   "customerVerdict": {
@@ -38,10 +38,10 @@
     "summary": "검증 또는 안전 축약이 가능한 상품은 자동 공개 후보로 끝나고, 구매 판단에 중요한 정보가 부족한 상품만 자동 차단됩니다.",
     "rationale": [
       "원문 추출 40/40건 성공",
-      "안전 자동 공개 후보 53/66개 섹션",
-      "검증 공개 1개, 안전 축약 공개 52개, 차단 13개",
-      "근거 연결률 92%",
-      "고객 화면 계약 통과 66/66개"
+      "안전 자동 공개 후보 36/69개 섹션",
+      "검증 공개 1개, 안전 축약 공개 35개, 차단 33개",
+      "근거 연결률 100%",
+      "고객 화면 계약 통과 69/69개"
     ]
   },
   "documents": [
@@ -63,7 +63,7 @@
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 1
         },
         "error": null
       },
@@ -72,21 +72,21 @@
           "index": 0,
           "titleHint": "BX 세부 에스타 디럭스 패키지 3박5일",
           "rawTextHash": "065587bcb7c44bf85c6f75e9a713ad9650bcf2417272b96ac56cb7c9083de239",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "blocked",
+          "classification": "blocked",
+          "criticalFailures": [
+            "v1.optional_tour_not_contradictory:no-option notice cannot coexist with customer-visible optional tours",
+            "v1.shopping_not_contradictory:no-shopping notice cannot coexist with shopping visits"
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:1",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:1"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 7,
-          "itineraryItemCount": 26,
+          "priceRuleCount": 10,
+          "itineraryItemCount": 27,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -101,10 +101,10 @@
           },
           "customerPreview": {
             "title": "BX 세부 에스타 디럭스 패키지 3박5일",
-            "priceCount": 1,
+            "priceCount": 2,
             "firstPrice": 329000,
             "currency": "KRW",
-            "dateCount": 1,
+            "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 8,
@@ -134,40 +134,39 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
-        "sectionCount": 2,
+        "status": "complete",
+        "sectionCount": 3,
         "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 2
+          "ready_to_publish": 3
         },
         "error": null
       },
       "sections": [
         {
           "index": 0,
-          "titleHint": "최소 출발인원",
+          "titleHint": "하노이/옌뜨/하롱베이 3박5일",
           "rawTextHash": "745b621ace567bf56aa7505a0f932769a356788223ec3c79b6ef487e87610a49",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:13",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:13"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
+          "priceRuleCount": 0,
           "itineraryItemCount": 73,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 13,
             "optionReview": 0,
@@ -176,11 +175,11 @@
             "entityUnresolved": 8
           },
           "customerPreview": {
-            "title": "최소 출발인원",
-            "priceCount": 2,
-            "firstPrice": 799000,
-            "currency": "KRW",
-            "dateCount": 2,
+            "title": "하노이/옌뜨/하롱베이 3박5일",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 16,
@@ -191,61 +190,107 @@
               "VN429",
               "김해 국제공항 집결 후 출국 수속"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 1,
           "titleHint": "하노이/메가월드/하롱베이/디너크루즈 3박5일",
-          "rawTextHash": "f06c8b0ecf4264b98f657960faca4904481998fedf4a947e6b7a3b5df5f00219",
-          "gateStatus": "needs_review",
+          "rawTextHash": "013b38434cdbdb54d7ec04d2c45706de59201469bf3516337927dbd656bbf07f",
+          "gateStatus": "ready_to_publish",
           "classification": "blocked",
           "criticalFailures": [
-            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+            "sections[1].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
           ],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:11 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:11 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:16",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 3,
-          "itineraryItemCount": 92,
+          "priceRuleCount": 0,
+          "itineraryItemCount": 74,
           "claimCount": 7,
-          "criticalClaimCount": 4,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 2,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
-            "attractionUnmatched": 16,
+            "attractionUnmatched": 12,
             "optionReview": 0,
             "unknownCustomerVisible": 0,
-            "entityReview": 20,
+            "entityReview": 16,
             "entityUnresolved": 11
           },
           "customerPreview": {
             "title": "하노이/메가월드/하롱베이/디너크루즈 3박5일",
-            "priceCount": 3,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 3,
-            "flightCount": 4,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
+            "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 0,
+            "inclusionCount": 17,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하 노 이",
               "VN429",
               "김해 국제공항 집결 후 출국 수속"
             ],
-            "customerReady": true
+            "customerReady": false
+          }
+        },
+        {
+          "index": 2,
+          "titleHint": "베트남<사파2박+하노이1박> 노팁노옵션 PKG",
+          "rawTextHash": "5221133097791da058d81beb3d4b90dfd6402765759f1108386f6b261509a957",
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[2].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
+          "highWarnings": [
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:10"
+          ],
+          "renderContractPass": true,
+          "renderContractError": null,
+          "expectedProducts": 1,
+          "variantCount": 1,
+          "priceRuleCount": 0,
+          "itineraryItemCount": 72,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
+          "missingCriticalClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
+          "match": {
+            "attractionUnmatched": 10,
+            "optionReview": 0,
+            "unknownCustomerVisible": 0,
+            "entityReview": 14,
+            "entityUnresolved": 13
+          },
+          "customerPreview": {
+            "title": "베트남<사파2박+하노이1박> 노팁노옵션 PKG",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
+            "flightCount": 2,
+            "dayCount": 5,
+            "inclusionCount": 16,
+            "exclusionCount": 4,
+            "optionalTourCount": 0,
+            "sampleDayTitles": [
+              "하 노 이",
+              "VN429",
+              "김해 국제공항 집결 후 출국 수속"
+            ],
+            "customerReady": false
           }
         }
       ]
@@ -264,11 +309,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -277,27 +322,26 @@
           "index": 0,
           "titleHint": "[관광팩] 다낭&호이안 3박5일 노팁노옵션 PKG",
           "rawTextHash": "a5f729c38dcafb4d4458532b823701805d482977ffadbb9fd4fb2bc1b9ee12dc",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:4",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:4"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 4,
+          "priceRuleCount": 0,
           "itineraryItemCount": 59,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 4,
             "optionReview": 0,
@@ -307,10 +351,10 @@
           },
           "customerPreview": {
             "title": "[관광팩] 다낭&호이안 3박5일 노팁노옵션 PKG",
-            "priceCount": 4,
-            "firstPrice": 659000,
-            "currency": "KRW",
-            "dateCount": 4,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 18,
@@ -321,7 +365,7 @@
               "김해 국제공항 집결 후 출국 수속",
               "김해 국제공항 출발"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -358,9 +402,6 @@
           "criticalFailures": [],
           "highWarnings": [
             "v1.options_reflected:source option section is reflected in ledger",
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -368,13 +409,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 1,
+          "priceRuleCount": 4,
           "itineraryItemCount": 62,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -384,10 +425,10 @@
           },
           "customerPreview": {
             "title": "[BX 오후출발] 나트랑/달랏 5성 3박5일",
-            "priceCount": 1,
+            "priceCount": 2,
             "firstPrice": 599000,
             "currency": "KRW",
-            "dateCount": 1,
+            "dateCount": 2,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 19,
@@ -421,23 +462,23 @@
         "sectionCount": 4,
         "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 4
+          "needs_review": 2,
+          "ready_to_publish": 2
         },
         "error": null
       },
       "sections": [
         {
           "index": 0,
-          "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+          "titleHint": "[7C 저녁출발] 싱가포르 1일자유 패키지 3박5일",
           "rawTextHash": "9a33405ac99fafaae280287147dc25b876955e3365be0b44e23f415aa2e35a79",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다."
+          ],
           "highWarnings": [
             "v1.options_reflected:source option section is reflected in ledger",
-            "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -445,13 +486,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 63,
+          "priceRuleCount": 126,
           "itineraryItemCount": 57,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -460,15 +501,15 @@
             "entityUnresolved": 12
           },
           "customerPreview": {
-            "title": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+            "title": "[7C 저녁출발] 싱가포르 1일자유 패키지 3박5일",
             "priceCount": 63,
             "firstPrice": 1119000,
             "currency": "KRW",
             "dateCount": 63,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 3,
-            "exclusionCount": 2,
+            "inclusionCount": 16,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "싱가포르",
@@ -480,16 +521,15 @@
         },
         {
           "index": 1,
-          "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+          "titleHint": "[7C 저녁출발] 싱가포르 전일관광 패키지 3박5일",
           "rawTextHash": "eda004d55760886c65a3b4a9898a42570aeb5b4d6cb297af742cae0b55df4d36",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[1].variants[0].price: 판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다."
+          ],
           "highWarnings": [
             "v1.options_reflected:source option section is reflected in ledger",
-            "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:7",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -497,13 +537,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 63,
+          "priceRuleCount": 126,
           "itineraryItemCount": 58,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 7,
             "optionReview": 0,
@@ -512,7 +552,7 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+            "title": "[7C 저녁출발] 싱가포르 전일관광 패키지 3박5일",
             "priceCount": 63,
             "firstPrice": 1119000,
             "currency": "KRW",
@@ -532,29 +572,27 @@
         },
         {
           "index": 2,
-          "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+          "titleHint": "[7C 저녁출발] 싱가폴+말레이시아 패키지 3박5일",
           "rawTextHash": "8b9f1cb69c980d790d2cb2bd918d780b3307db6438fe2e4b6a47c7ceea686d2d",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[2].variants[0].price: 판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:16 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:16 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:18",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:18"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 67,
+          "priceRuleCount": 128,
           "itineraryItemCount": 65,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 18,
             "optionReview": 0,
@@ -563,7 +601,7 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+            "title": "[7C 저녁출발] 싱가폴+말레이시아 패키지 3박5일",
             "priceCount": 63,
             "firstPrice": 1119000,
             "currency": "KRW",
@@ -583,32 +621,27 @@
         },
         {
           "index": 3,
-          "titleHint": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+          "titleHint": "[7C 저녁출발] 싱가포르+바탐 패키지 3박5일",
           "rawTextHash": "3075c82308123c3e14eac4b8dc63e1349a76daef507b1ade7f233ff190f32b3a",
-          "gateStatus": "needs_review",
+          "gateStatus": "ready_to_publish",
           "classification": "blocked",
           "criticalFailures": [
-            "sections[3].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+            "sections[3].variants[0].price: 판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다."
           ],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:13",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:13"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 67,
+          "priceRuleCount": 128,
           "itineraryItemCount": 66,
-          "claimCount": 8,
+          "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 4,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 13,
             "optionReview": 0,
@@ -617,15 +650,15 @@
             "entityUnresolved": 13
           },
           "customerPreview": {
-            "title": "★부산-싱가포르 3박5일 인기 패키지 상품 모음집 [7C]★",
+            "title": "[7C 저녁출발] 싱가포르+바탐 패키지 3박5일",
             "priceCount": 63,
             "firstPrice": 1119000,
             "currency": "KRW",
             "dateCount": 63,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 4,
-            "exclusionCount": 0,
+            "inclusionCount": 16,
+            "exclusionCount": 3,
             "optionalTourCount": 4,
             "sampleDayTitles": [
               "싱가포르",
@@ -652,10 +685,11 @@
       "normalization": {
         "success": true,
         "status": "needs_review",
-        "sectionCount": 2,
+        "sectionCount": 3,
         "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 2
+          "needs_review": 1,
+          "ready_to_publish": 2
         },
         "error": null
       },
@@ -668,9 +702,7 @@
           "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
+            "v1.options_reflected:source option section is reflected in ledger",
             "ATTRACTION_UNMATCHED:2",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -678,13 +710,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 8,
+          "priceRuleCount": 176,
           "itineraryItemCount": 46,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 2,
             "optionReview": 0,
@@ -694,10 +726,10 @@
           },
           "customerPreview": {
             "title": "2026년 8월~11월 출발 3박5일",
-            "priceCount": 8,
+            "priceCount": 88,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 8,
+            "dateCount": 88,
             "flightCount": 4,
             "dayCount": 5,
             "inclusionCount": 9,
@@ -713,68 +745,96 @@
         },
         {
           "index": 1,
-          "titleHint": "부산-세부 샹그릴라 노팁노옵션 패키지 3박5일",
-          "rawTextHash": "bc4ea467e44cf42c0ba62537ae923e87d7facde1c9b6a68cd22de57593597aa8",
-          "gateStatus": "needs_review",
-          "classification": "blocked",
-          "criticalFailures": [
-            "sections[1].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다.",
-            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다.",
-            "sections[1].variants[1].price: 출발일에 적용되는 성인 기준 판매가가 없습니다.",
-            "sections[1].variants[1].inclusions: 포함사항을 확인할 수 없습니다.",
-            "sections[1].variants[1].exclusions: 불포함사항을 확인할 수 없습니다."
-          ],
+          "titleHint": "품격 부산-세부 샹그릴라 노팁노옵션 패키지 3박5일",
+          "rawTextHash": "1282874892033010a670afddda4782a99f645d91d7ea66331bc49157fb23d3a9",
+          "gateStatus": "ready_to_publish",
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
-            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
-            "v1.exclusions:substantive exclusion evidence exists",
-            "v2.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
-            "v2.inclusions:substantive inclusion evidence exists",
-            "v2.exclusions:substantive exclusion evidence exists",
-            "v2.options_reflected:source option section is reflected in ledger",
-            "v2.shopping_reflected:source shopping section is reflected in ledger",
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[1].days",
-            "ATTRACTION_UNMATCHED:12",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED",
-            "MULTIPLE_RENDER_VARIANTS:2"
+            "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
-          "expectedProducts": 2,
-          "variantCount": 2,
-          "priceRuleCount": 0,
-          "itineraryItemCount": 101,
-          "claimCount": 10,
-          "criticalClaimCount": 6,
+          "expectedProducts": 1,
+          "variantCount": 1,
+          "priceRuleCount": 176,
+          "itineraryItemCount": 53,
+          "claimCount": 8,
+          "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 2,
+          "missingHighClaimCount": 0,
           "match": {
-            "attractionUnmatched": 12,
+            "attractionUnmatched": 6,
             "optionReview": 0,
             "unknownCustomerVisible": 0,
-            "entityReview": 22,
-            "entityUnresolved": 12
+            "entityReview": 13,
+            "entityUnresolved": 6
           },
           "customerPreview": {
-            "title": "부산-세부 샹그릴라 노팁노옵션 패키지 3박5일",
-            "priceCount": 0,
-            "firstPrice": null,
-            "currency": null,
-            "dateCount": 0,
-            "flightCount": 2,
+            "title": "품격 부산-세부 샹그릴라 노팁노옵션 패키지 3박5일",
+            "priceCount": 88,
+            "firstPrice": 699000,
+            "currency": "KRW",
+            "dateCount": 88,
+            "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 0,
+            "inclusionCount": 15,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ061",
               "01:15+1",
               "부산 김해공항 미팅"
             ],
-            "customerReady": false
+            "customerReady": true
+          }
+        },
+        {
+          "index": 2,
+          "titleHint": "부산-세부 샹그릴라 에어텔 자유여행 3박5일",
+          "rawTextHash": "f2afceccdeaef7f57bec12ccd303c07676331ff09b57975ec7d21b797405c26f",
+          "gateStatus": "ready_to_publish",
+          "classification": "degraded",
+          "criticalFailures": [],
+          "highWarnings": [
+            "ATTRACTION_UNMATCHED:5"
+          ],
+          "renderContractPass": true,
+          "renderContractError": null,
+          "expectedProducts": 1,
+          "variantCount": 1,
+          "priceRuleCount": 176,
+          "itineraryItemCount": 46,
+          "claimCount": 8,
+          "criticalClaimCount": 4,
+          "missingCriticalClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
+          "match": {
+            "attractionUnmatched": 5,
+            "optionReview": 0,
+            "unknownCustomerVisible": 0,
+            "entityReview": 9,
+            "entityUnresolved": 6
+          },
+          "customerPreview": {
+            "title": "부산-세부 샹그릴라 에어텔 자유여행 3박5일",
+            "priceCount": 88,
+            "firstPrice": 699000,
+            "currency": "KRW",
+            "dateCount": 88,
+            "flightCount": 4,
+            "dayCount": 5,
+            "inclusionCount": 4,
+            "exclusionCount": 2,
+            "optionalTourCount": 0,
+            "sampleDayTitles": [
+              "LJ061",
+              "01:15+1",
+              "부산 김해공항 미팅"
+            ],
+            "customerReady": true
           }
         }
       ]
@@ -797,42 +857,39 @@
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 1
         },
         "error": null
       },
       "sections": [
         {
           "index": 0,
-          "titleHint": "★단독★발리카삭 호핑투어 선포함 시 돌핀왓칭($30)까지 서비스 제공!!",
+          "titleHint": "★부산-보홀 헤난리조트 삼총사 세미패키지 특가 [7C]★",
           "rawTextHash": "23cbc465cafa6990419661b9f00cd417d851365f106e1d8e3221135b99b459d7",
-          "gateStatus": "needs_review",
+          "gateStatus": "blocked",
           "classification": "blocked",
           "criticalFailures": [
-            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+            "v1.optional_tour_not_contradictory:no-option notice cannot coexist with customer-visible optional tours",
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
           ],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
             "option_review_queue_clear:2 option events require review",
-            "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9",
-            "OPTION_REVIEW:2",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "OPTION_REVIEW:2"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 68,
+          "priceRuleCount": 21,
           "itineraryItemCount": 52,
           "claimCount": 8,
-          "criticalClaimCount": 4,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 4,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 2,
@@ -841,22 +898,22 @@
             "entityUnresolved": 3
           },
           "customerPreview": {
-            "title": "★단독★발리카삭 호핑투어 선포함 시 돌핀왓칭($30)까지 서비스 제공!!",
-            "priceCount": 39,
-            "firstPrice": 659000,
-            "currency": "KRW",
-            "dateCount": 39,
+            "title": "★부산-보홀 헤난리조트 삼총사 세미패키지 특가 [7C]★",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 8,
             "dayCount": 5,
-            "inclusionCount": 28,
-            "exclusionCount": 0,
+            "inclusionCount": 9,
+            "exclusionCount": 2,
             "optionalTourCount": 29,
             "sampleDayTitles": [
               "보홀",
               "7C2157",
               "00:30+1"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -876,10 +933,10 @@
       "normalization": {
         "success": true,
         "status": "needs_review",
-        "sectionCount": 1,
-        "segmentationSource": "single-document",
+        "sectionCount": 2,
+        "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 1
+          "blocked": 2
         },
         "error": null
       },
@@ -887,48 +944,92 @@
         {
           "index": 0,
           "titleHint": "몽골(울란바토르/테를지) 노팁/노옵션/노쇼핑 3박5일",
-          "rawTextHash": "1744e74fe4d639aa5758cc4806b99801e3f40471a70af4a8e7dedb988b9be709",
-          "gateStatus": "needs_review",
+          "rawTextHash": "5305469713acd8451a4924431fd11d6fef49ae09c4d8e8376f62b3920a39d32e",
+          "gateStatus": "blocked",
           "classification": "blocked",
           "criticalFailures": [
-            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+            "v1.shopping_not_contradictory:no-shopping notice cannot coexist with shopping visits"
           ],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:22 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:22 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:22",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:18"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 7,
-          "itineraryItemCount": 81,
-          "claimCount": 7,
+          "priceRuleCount": 8,
+          "itineraryItemCount": 66,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 2,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
-            "attractionUnmatched": 22,
+            "attractionUnmatched": 18,
             "optionReview": 0,
             "unknownCustomerVisible": 0,
-            "entityReview": 26,
-            "entityUnresolved": 7
+            "entityReview": 21,
+            "entityUnresolved": 8
           },
           "customerPreview": {
             "title": "몽골(울란바토르/테를지) 노팁/노옵션/노쇼핑 3박5일",
-            "priceCount": 7,
+            "priceCount": 4,
             "firstPrice": 1199000,
             "currency": "KRW",
-            "dateCount": 7,
-            "flightCount": 6,
+            "dateCount": 4,
+            "flightCount": 4,
             "dayCount": 5,
-            "inclusionCount": 2,
-            "exclusionCount": 0,
+            "inclusionCount": 8,
+            "exclusionCount": 1,
+            "optionalTourCount": 0,
+            "sampleDayTitles": [
+              "울란바토르",
+              "7C5257",
+              "김해 국제공항 집결 후 출국 수속"
+            ],
+            "customerReady": true
+          }
+        },
+        {
+          "index": 1,
+          "titleHint": "몽골(울란바토르/테를지/엘승) 노팁/노옵션/노쇼핑 4박6일",
+          "rawTextHash": "6cacb5a262c1e6e0b0b2d7c98a17cd495615ef34dc3b69f57fe420e1057ad681",
+          "gateStatus": "blocked",
+          "classification": "blocked",
+          "criticalFailures": [
+            "v1.shopping_not_contradictory:no-shopping notice cannot coexist with shopping visits"
+          ],
+          "highWarnings": [
+            "ATTRACTION_UNMATCHED:24"
+          ],
+          "renderContractPass": true,
+          "renderContractError": null,
+          "expectedProducts": 1,
+          "variantCount": 1,
+          "priceRuleCount": 8,
+          "itineraryItemCount": 81,
+          "claimCount": 8,
+          "criticalClaimCount": 4,
+          "missingCriticalClaimCount": 0,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
+          "match": {
+            "attractionUnmatched": 24,
+            "optionReview": 0,
+            "unknownCustomerVisible": 0,
+            "entityReview": 27,
+            "entityUnresolved": 9
+          },
+          "customerPreview": {
+            "title": "몽골(울란바토르/테를지/엘승) 노팁/노옵션/노쇼핑 4박6일",
+            "priceCount": 4,
+            "firstPrice": 25000000,
+            "currency": "KRW",
+            "dateCount": 4,
+            "flightCount": 4,
+            "dayCount": 6,
+            "inclusionCount": 8,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "울란바토르",
@@ -954,40 +1055,39 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 3,
         "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 3
+          "ready_to_publish": 3
         },
         "error": null
       },
       "sections": [
         {
           "index": 0,
-          "titleHint": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
+          "titleHint": "[관광팩] 다낭&호이안 3박4일 노팁노옵션 PKG",
           "rawTextHash": "1f8ae9b5b2869e8c729f47e132c6c58d70e753386ace4f9aea75da6dd8ed7f55",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:5 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:5 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:6",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 1,
+          "priceRuleCount": 0,
           "itineraryItemCount": 58,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
             "optionReview": 0,
@@ -996,11 +1096,11 @@
             "entityUnresolved": 15
           },
           "customerPreview": {
-            "title": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
-            "priceCount": 1,
-            "firstPrice": 499000,
-            "currency": "KRW",
-            "dateCount": 1,
+            "title": "[관광팩] 다낭&호이안 3박4일 노팁노옵션 PKG",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 20,
@@ -1011,34 +1111,33 @@
               "김해 국제공항 집결 후 출국 수속",
               "김해 국제공항 출발"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 1,
-          "titleHint": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
+          "titleHint": "[온천팩]다낭&핫스프링파크 3박4일 노팁노옵션 PKG",
           "rawTextHash": "bc6796f65b10955786d4d400c6f50f7eec0d48d08f5dea4a694d43c1d3ace9de",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[1].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:7",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:7"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 1,
+          "priceRuleCount": 0,
           "itineraryItemCount": 61,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 7,
             "optionReview": 0,
@@ -1047,11 +1146,11 @@
             "entityUnresolved": 16
           },
           "customerPreview": {
-            "title": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
-            "priceCount": 1,
-            "firstPrice": 499000,
-            "currency": "KRW",
-            "dateCount": 1,
+            "title": "[온천팩]다낭&핫스프링파크 3박4일 노팁노옵션 PKG",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 20,
@@ -1062,34 +1161,33 @@
               "김해 국제공항 집결 후 출국 수속",
               "김해 국제공항 출발"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 2,
-          "titleHint": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
+          "titleHint": "[럭셔리팩] 다낭&호이안 3박4일 노팁노옵션 PKG",
           "rawTextHash": "573735fb7d52397a18af3c8407ecdd30a4ee615e07a0077aa473b8fc00b8e73e",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[2].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:5 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:5 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:6",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 1,
+          "priceRuleCount": 0,
           "itineraryItemCount": 58,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
             "optionReview": 0,
@@ -1098,11 +1196,11 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "★부산-다낭&호이안 아침출발 3박4일<KE>★",
-            "priceCount": 1,
-            "firstPrice": 499000,
-            "currency": "KRW",
-            "dateCount": 1,
+            "title": "[럭셔리팩] 다낭&호이안 3박4일 노팁노옵션 PKG",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 19,
@@ -1113,7 +1211,7 @@
               "김해 국제공항 집결 후 출국 수속",
               "김해 국제공항 출발"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -1132,11 +1230,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -1145,23 +1243,23 @@
           "index": 0,
           "titleHint": "[LJ] 다낭/호이안 3박5일 ☑노팁노옵션",
           "rawTextHash": "6d8924cb61b3a093a0dca1ddebd859952280b9a17bb7d8039db53b230abe999d",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:6",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 3,
-          "itineraryItemCount": 32,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "priceRuleCount": 0,
+          "itineraryItemCount": 33,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
           "missingHighClaimCount": 0,
@@ -1174,10 +1272,10 @@
           },
           "customerPreview": {
             "title": "[LJ] 다낭/호이안 3박5일 ☑노팁노옵션",
-            "priceCount": 3,
-            "firstPrice": 539000,
-            "currency": "KRW",
-            "dateCount": 3,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 18,
@@ -1188,7 +1286,7 @@
               "부산 국제공항 출발",
               "다낭 도착 후 가이드 미팅"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -1207,11 +1305,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -1220,27 +1318,26 @@
           "index": 0,
           "titleHint": "[KE] 다낭/호이안 3박4일 ☑노팁노옵션",
           "rawTextHash": "7cea26bf7f22d925f750b2a98efa3432aef8e32bb7f3aa9495a14f408f6316ad",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:6 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:6 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:6",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 63,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "priceRuleCount": 0,
+          "itineraryItemCount": 33,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 6,
             "optionReview": 0,
@@ -1250,21 +1347,21 @@
           },
           "customerPreview": {
             "title": "[KE] 다낭/호이안 3박4일 ☑노팁노옵션",
-            "priceCount": 2,
-            "firstPrice": 499000,
-            "currency": "KRW",
-            "dateCount": 2,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 16,
             "exclusionCount": 0,
             "optionalTourCount": 0,
             "sampleDayTitles": [
-              "KE2093",
-              "전용차량",
-              "김해 국제공항 집결 후 출국 수속"
+              "김해 국제공항 집결 후 출국 수속",
+              "김해 출발 → 다낭 도착",
+              "새롭게 꾸며진 APEC 조각공원"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -1300,26 +1397,23 @@
           "classification": "blocked",
           "criticalFailures": [
             "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state",
-            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
           ],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
             "ATTRACTION_UNMATCHED:14"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
+          "priceRuleCount": 0,
           "itineraryItemCount": 75,
           "claimCount": 7,
-          "criticalClaimCount": 4,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 2,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 14,
             "optionReview": 0,
@@ -1329,21 +1423,21 @@
           },
           "customerPreview": {
             "title": "[VJ] 베트남 하노이/하롱/옌뜨 3박5일 ☑노팁노옵션",
-            "priceCount": 2,
-            "firstPrice": 759000,
-            "currency": "KRW",
-            "dateCount": 2,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 3,
-            "exclusionCount": 0,
+            "inclusionCount": 13,
+            "exclusionCount": 1,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하노이",
               "VJ981",
               "전용차량"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
@@ -1354,26 +1448,23 @@
           "classification": "blocked",
           "criticalFailures": [
             "v1.high_risk_structured_fact_values:high-risk structured facts must have values or an explicit safe state",
-            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
+            "sections[1].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
           ],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
             "ATTRACTION_UNMATCHED:14"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
+          "priceRuleCount": 0,
           "itineraryItemCount": 75,
           "claimCount": 7,
-          "criticalClaimCount": 4,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 2,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 14,
             "optionReview": 0,
@@ -1383,21 +1474,21 @@
           },
           "customerPreview": {
             "title": "[VN] 베트남 하노이/하롱/옌뜨 3박5일 ☑노팁노옵션",
-            "priceCount": 2,
-            "firstPrice": 799000,
-            "currency": "KRW",
-            "dateCount": 2,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 3,
-            "exclusionCount": 0,
+            "inclusionCount": 13,
+            "exclusionCount": 1,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "하노이",
               "VN429",
               "전용차량"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -1427,7 +1518,7 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
           "rawTextHash": "feeefe87e0addeb33de09f86298cacbe17299bae59ab56b1ab37d6b8157d27ef",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1435,22 +1526,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 20,
+          "priceRuleCount": 213,
           "itineraryItemCount": 62,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 0,
@@ -1459,11 +1547,11 @@
             "entityUnresolved": 11
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 5,
             "inclusionCount": 16,
@@ -1479,7 +1567,7 @@
         },
         {
           "index": 1,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/판랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
           "rawTextHash": "5a39c39ff9c5d25dcf7a7395ac484a64d14f757a42935796943cf89baba061c6",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1487,22 +1575,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[1].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 22,
+          "priceRuleCount": 214,
           "itineraryItemCount": 55,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -1511,16 +1596,16 @@
             "entityUnresolved": 8
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/판랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 4,
             "inclusionCount": 19,
             "exclusionCount": 1,
-            "optionalTourCount": 8,
+            "optionalTourCount": 7,
             "sampleDayTitles": [
               "TW 041",
               "부산 출발 → 나트랑 도착",
@@ -1531,7 +1616,7 @@
         },
         {
           "index": 2,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/달랏 전일정 5성 라이트 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "26c3b326961450215d910ea3146c5d946ee51e9c1abe1c6916114d994bfdc04e",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1539,22 +1624,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[2].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 14,
+          "priceRuleCount": 208,
           "itineraryItemCount": 63,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -1563,11 +1645,11 @@
             "entityUnresolved": 12
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/달랏 전일정 5성 라이트 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 5,
             "inclusionCount": 10,
@@ -1583,7 +1665,7 @@
         },
         {
           "index": 3,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "15029ea3c6a3dd52e57b429784f7e2f8cd1deb7df0ee8bf7f602d7bc075bb15c",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1591,22 +1673,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[3].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:15"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 14,
+          "priceRuleCount": 208,
           "itineraryItemCount": 71,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 15,
             "optionReview": 0,
@@ -1615,11 +1694,11 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 5,
             "inclusionCount": 11,
@@ -1635,7 +1714,7 @@
         },
         {
           "index": 4,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/판랑/달랏 전일정 5성 노노 3박5일 ☑일정표",
           "rawTextHash": "0667946bc256140d0fb056cb70a23b5b4a49559c374e28a2ec20ad1a77199cdc",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1643,22 +1722,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[4].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[4].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 15,
+          "priceRuleCount": 208,
           "itineraryItemCount": 51,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -1667,16 +1743,16 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/판랑/달랏 전일정 5성 노노 3박5일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 4,
             "inclusionCount": 20,
             "exclusionCount": 2,
-            "optionalTourCount": 1,
+            "optionalTourCount": 0,
             "sampleDayTitles": [
               "TW 041",
               "부산 출발 → 나트랑 도착",
@@ -1687,7 +1763,7 @@
         },
         {
           "index": 5,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일 ☑일정표",
           "rawTextHash": "adad6cca3e92a7edef7b7cd73bf0f2f55620f6253a14694eeafc9134090aa29d",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1695,11 +1771,8 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[5].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
             "option_review_queue_clear:2 option events require review",
-            "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
-            "MISSING_HIGH_EVIDENCE:sections[5].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "OPTION_REVIEW:2"
           ],
@@ -1707,13 +1780,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 18,
+          "priceRuleCount": 210,
           "itineraryItemCount": 50,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 2,
@@ -1722,11 +1795,11 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 5,
             "inclusionCount": 13,
@@ -1742,7 +1815,7 @@
         },
         {
           "index": 6,
-          "titleHint": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
+          "titleHint": "[TW] 나트랑/달랏 전일정 5성 라이트 노팁/노옵션 4박6일 ☑일정표",
           "rawTextHash": "6068111dc26b9bdbe46a15aa4bd343f91112da89a5787b8babe57b2e74171d49",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1750,22 +1823,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[6].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[6].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 14,
+          "priceRuleCount": 208,
           "itineraryItemCount": 81,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -1774,11 +1844,11 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "주 4회 운항 * 수/목 출발 : 3박5일  * 토/일 출발 : 4박6일",
-            "priceCount": 14,
+            "title": "[TW] 나트랑/달랏 전일정 5성 라이트 노팁/노옵션 4박6일 ☑일정표",
+            "priceCount": 104,
             "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 14,
+            "dateCount": 104,
             "flightCount": 6,
             "dayCount": 6,
             "inclusionCount": 10,
@@ -1822,11 +1892,14 @@
           "titleHint": "[LJ] 푸꾸옥 3박5일 ◈ 5성 노옵션 스페셜팩 ◈ ※일정표",
           "rawTextHash": "d482a715dfa844be548047752eee68c1ca22afe083a617baad2fe75362257b70",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다.",
+            "sections[0].variants[0].itinerary: 상품 기간은 5일인데 원문 DAY 일정은 4일로 재생되었습니다."
+          ],
           "highWarnings": [
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
             "v1.minimum_departure:minimum departure evidence exists",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -1834,13 +1907,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
+          "priceRuleCount": 0,
           "itineraryItemCount": 41,
-          "claimCount": 7,
-          "criticalClaimCount": 3,
+          "claimCount": 6,
+          "criticalClaimCount": 2,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 0,
@@ -1850,10 +1923,10 @@
           },
           "customerPreview": {
             "title": "[LJ] 푸꾸옥 3박5일 ◈ 5성 노옵션 스페셜팩 ◈ ※일정표",
-            "priceCount": 2,
-            "firstPrice": 799000,
-            "currency": "KRW",
-            "dateCount": 2,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 13,
@@ -1864,7 +1937,7 @@
               "전용차량",
               "부산 김해 국제공항 출발 (목,일 20:05 출발 / 월,금 19:55 출발)"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -1894,7 +1967,7 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
           "rawTextHash": "578781f42467765d4a76aa5c9c6d7ce9700296442e15e739ca772270e3a6c661",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1902,22 +1975,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 9,
+          "priceRuleCount": 13,
           "itineraryItemCount": 62,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 0,
@@ -1926,11 +1996,11 @@
             "entityUnresolved": 11
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 5,
             "inclusionCount": 16,
@@ -1946,7 +2016,7 @@
         },
         {
           "index": 1,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/판랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
           "rawTextHash": "63bd0ef211d194b9362cc307b10b487125c30656f768c8de6c2a7ceafcfdfb1d",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -1954,22 +2024,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[1].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 11,
+          "priceRuleCount": 14,
           "itineraryItemCount": 55,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -1978,16 +2045,16 @@
             "entityUnresolved": 8
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/판랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 4,
             "inclusionCount": 19,
             "exclusionCount": 1,
-            "optionalTourCount": 8,
+            "optionalTourCount": 7,
             "sampleDayTitles": [
               "LJ 115",
               "부산 출발 → 나트랑 도착",
@@ -1998,7 +2065,7 @@
         },
         {
           "index": 2,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/달랏 전일정 5성 Light 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "cec556c318d4b0e03b9269d2259dde5f288f2b0d17c50d7432581a8a944e3c72",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -2006,22 +2073,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[2].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 3,
+          "priceRuleCount": 8,
           "itineraryItemCount": 63,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2030,11 +2094,11 @@
             "entityUnresolved": 12
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/달랏 전일정 5성 Light 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 5,
             "inclusionCount": 10,
@@ -2050,7 +2114,7 @@
         },
         {
           "index": 3,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "e4e35018fa7891912414e908fcb9d48a71c0082fcf8795422af035b2d08a6bbf",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -2058,22 +2122,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[3].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:15"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 3,
+          "priceRuleCount": 8,
           "itineraryItemCount": 71,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 15,
             "optionReview": 0,
@@ -2082,11 +2143,11 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 5,
             "inclusionCount": 11,
@@ -2102,7 +2163,7 @@
         },
         {
           "index": 4,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/판랑/달랏 전일정 5성 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "293b5fcbec06de7db50d30f8f95018ddfbccf94861fd2e4732047439dbf666e5",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -2110,22 +2171,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[4].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[4].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 4,
+          "priceRuleCount": 8,
           "itineraryItemCount": 51,
-          "claimCount": 9,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2134,16 +2192,16 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/판랑/달랏 전일정 5성 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 4,
             "inclusionCount": 20,
             "exclusionCount": 2,
-            "optionalTourCount": 1,
+            "optionalTourCount": 0,
             "sampleDayTitles": [
               "LJ 115",
               "부산 출발 → 나트랑 도착",
@@ -2154,7 +2212,7 @@
         },
         {
           "index": 5,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일 ☑일정표",
           "rawTextHash": "8cc9e1c96e5e67577a1035d6a972309fd9ef0ed917446022d0ff7df4b2f0f6ee",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -2162,11 +2220,8 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[5].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
             "option_review_queue_clear:2 option events require review",
-            "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
-            "MISSING_HIGH_EVIDENCE:sections[5].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "OPTION_REVIEW:2"
           ],
@@ -2174,13 +2229,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 7,
+          "priceRuleCount": 10,
           "itineraryItemCount": 50,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 2,
@@ -2189,11 +2244,11 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 5,
             "inclusionCount": 13,
@@ -2209,7 +2264,7 @@
         },
         {
           "index": 6,
-          "titleHint": "수/금 출발 : 3박5일",
+          "titleHint": "[LJ] 나트랑/달랏 전일정 5성 Light 노팁/노옵션 4박6일 ☑일정표",
           "rawTextHash": "f5c3469dcb5a1bc34540a79799291ecf51502336e4e4699bf47fec7d5cb4b71e",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -2217,22 +2272,19 @@
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[6].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
-            "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[6].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 3,
+          "priceRuleCount": 8,
           "itineraryItemCount": 81,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -2241,11 +2293,11 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "수/금 출발 : 3박5일",
-            "priceCount": 3,
-            "firstPrice": 469000,
+            "title": "[LJ] 나트랑/달랏 전일정 5성 Light 노팁/노옵션 4박6일 ☑일정표",
+            "priceCount": 4,
+            "firstPrice": 899000,
             "currency": "KRW",
-            "dateCount": 3,
+            "dateCount": 4,
             "flightCount": 4,
             "dayCount": 6,
             "inclusionCount": 10,
@@ -2289,13 +2341,13 @@
           "titleHint": "장가계 노팁 노옵션 초특가",
           "rawTextHash": "aad688f92c9aaea930755a17600dce7a12b6a360b34b2c1eff57259be5aa4379",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다."
+          ],
           "highWarnings": [
             "sections[0].variants[0].lodging: 원문에서 호텔이 미정 또는 동급으로 표시되었습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:20 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:20 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:26",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -2303,7 +2355,7 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 1,
+          "priceRuleCount": 2,
           "itineraryItemCount": 39,
           "claimCount": 7,
           "criticalClaimCount": 3,
@@ -2366,13 +2418,13 @@
           "titleHint": "장가계 노팁노옵션",
           "rawTextHash": "503db1d829ce9e3073e92215a809f05605c234fc237cedcc30d9821832fd0f3b",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 판매가와 출발일 또는 적용 범위의 관계를 확인할 수 없습니다."
+          ],
           "highWarnings": [
             "sections[0].variants[0].lodging: 원문에서 호텔이 미정 또는 동급으로 표시되었습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:16 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:16 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:21",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -2380,7 +2432,7 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 1,
+          "priceRuleCount": 2,
           "itineraryItemCount": 33,
           "claimCount": 7,
           "criticalClaimCount": 3,
@@ -2433,36 +2485,36 @@
         "sectionCount": 6,
         "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 6
+          "ready_to_publish": 5,
+          "needs_review": 1
         },
         "error": null
       },
       "sections": [
         {
           "index": 0,
-          "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
+          "titleHint": "[BX] 나트랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
           "rawTextHash": "08819eff5f86c6595bcb3fc3233cbf3aec3799db4d18346833fe33bb140b9043",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:9 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:9 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:9",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 23,
+          "priceRuleCount": 5,
           "itineraryItemCount": 62,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "claimCount": 8,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
             "optionReview": 0,
@@ -2471,11 +2523,11 @@
             "entityUnresolved": 11
           },
           "customerPreview": {
-            "title": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
-            "priceCount": 17,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 17,
+            "title": "[BX] 나트랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 16,
@@ -2486,34 +2538,33 @@
               "부산 출발 → 나트랑 도착",
               "호텔 CHECK-IN 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 1,
-          "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
+          "titleHint": "[BX] 나트랑/판랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
           "rawTextHash": "bd45804a76665124536ab790406c5214d08b1c8983359e4c72150d9500617d37",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[1].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:12 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:12 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[1].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:12",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:12"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 25,
+          "priceRuleCount": 6,
           "itineraryItemCount": 55,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "claimCount": 8,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 12,
             "optionReview": 0,
@@ -2522,49 +2573,48 @@
             "entityUnresolved": 8
           },
           "customerPreview": {
-            "title": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
-            "priceCount": 17,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 17,
+            "title": "[BX] 나트랑/판랑/달랏 전일정 5성 실속 3박5일 ☑일정표",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 19,
             "exclusionCount": 1,
-            "optionalTourCount": 8,
+            "optionalTourCount": 7,
             "sampleDayTitles": [
               "BX 781",
               "부산 출발 → 나트랑 도착",
               "호텔 CHECK-IN 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 2,
-          "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
+          "titleHint": "[BX] 나트랑/달랏 전일정 5성 라이트 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "87613b745e894241b39f493975712c788a6daeffb6239f3e46e1a7ad0db4a72a",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[2].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[2].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:10",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 17,
+          "priceRuleCount": 0,
           "itineraryItemCount": 63,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2573,11 +2623,11 @@
             "entityUnresolved": 12
           },
           "customerPreview": {
-            "title": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
-            "priceCount": 17,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 17,
+            "title": "[BX] 나트랑/달랏 전일정 5성 라이트 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 10,
@@ -2588,34 +2638,33 @@
               "부산 출발 → 나트랑 도착",
               "호텔 CHECK-IN 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 3,
-          "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
+          "titleHint": "[BX] 나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "14fa336d4908e9a110e4f2ca26a21b271aea9677ba7af9590051e52607ba9fb8",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[3].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[3].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:15",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:15"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 17,
+          "priceRuleCount": 0,
           "itineraryItemCount": 71,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 15,
             "optionReview": 0,
@@ -2624,11 +2673,11 @@
             "entityUnresolved": 14
           },
           "customerPreview": {
-            "title": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
-            "priceCount": 17,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 17,
+            "title": "[BX] 나트랑/달랏 전일정 5성 품격 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 11,
@@ -2639,34 +2688,33 @@
               "부산 출발 → 나트랑 도착",
               "호텔 CHECK-IN 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 4,
-          "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
+          "titleHint": "[BX] 나트랑/판랑/달랏 전일정 5성 노팁/노옵션 3박5일 ☑일정표",
           "rawTextHash": "e48280476d9dccfa97476a90defac00545c7c94bf0ab3319177c99edbdf395b1",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[4].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:10 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:10 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[4].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:10",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:10"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 18,
+          "priceRuleCount": 0,
           "itineraryItemCount": 51,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "highClaimCount": 3,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 10,
             "optionReview": 0,
@@ -2675,37 +2723,37 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
-            "priceCount": 17,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 17,
+            "title": "[BX] 나트랑/판랑/달랏 전일정 5성 노팁/노옵션 3박5일 ☑일정표",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 20,
             "exclusionCount": 2,
-            "optionalTourCount": 1,
+            "optionalTourCount": 0,
             "sampleDayTitles": [
               "BX 781",
               "부산 출발 → 나트랑 도착",
               "호텔 CHECK-IN 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         },
         {
           "index": 5,
-          "titleHint": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
+          "titleHint": "[BX] 나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일 ☑일정표",
           "rawTextHash": "2dadb8b5abd602b0e003e51dac4f7ae3b4b337510e207a39b549a47348278447",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[5].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:3 unmatched attraction events require review",
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
             "option_review_queue_clear:2 option events require review",
-            "entity_attraction_unresolved_clear:3 unresolved attraction entities require review",
             "entity_option_review_clear:2 optional-tour entities require customer-disclosure review",
-            "MISSING_HIGH_EVIDENCE:sections[5].v3.ledger.variants[0].days",
             "ATTRACTION_UNMATCHED:3",
             "OPTION_REVIEW:2",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
@@ -2714,13 +2762,13 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 21,
+          "priceRuleCount": 2,
           "itineraryItemCount": 50,
-          "claimCount": 9,
-          "criticalClaimCount": 4,
+          "claimCount": 8,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 3,
             "optionReview": 2,
@@ -2729,11 +2777,11 @@
             "entityUnresolved": 10
           },
           "customerPreview": {
-            "title": "☑ 스팟특가 : 8/14 이전 선발 조건 / 8월 27일 선발 조건",
-            "priceCount": 17,
-            "firstPrice": 899000,
-            "currency": "KRW",
-            "dateCount": 17,
+            "title": "[BX] 나트랑/1일자유/호핑 나트랑3박 노팁/노쇼핑 3박5일 ☑일정표",
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 13,
@@ -2744,7 +2792,7 @@
               "부산 출발 → 나트랑 도착",
               "호텔 CHECK-IN 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -2763,7 +2811,7 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
@@ -2774,7 +2822,7 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "♥ SPECIAL PRICE ♥ (최소출발 2명부터)",
+          "titleHint": "[BX] 알테라 세미PKG 3박5일",
           "rawTextHash": "62ac8de05fa5ceae247a51407207a1e4b733839147f7583b7ca58a3dd6b334a9",
           "gateStatus": "ready_to_publish",
           "classification": "blocked",
@@ -2789,7 +2837,7 @@
           "expectedProducts": 1,
           "variantCount": 1,
           "priceRuleCount": 3,
-          "itineraryItemCount": 16,
+          "itineraryItemCount": 17,
           "claimCount": 8,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -2800,10 +2848,10 @@
             "optionReview": 0,
             "unknownCustomerVisible": 0,
             "entityReview": 9,
-            "entityUnresolved": 10
+            "entityUnresolved": 11
           },
           "customerPreview": {
-            "title": "♥ SPECIAL PRICE ♥ (최소출발 2명부터)",
+            "title": "[BX] 알테라 세미PKG 3박5일",
             "priceCount": 0,
             "firstPrice": null,
             "currency": null,
@@ -2851,12 +2899,13 @@
           "titleHint": "[노팁&노옵션] 다낭 / 호이안 3박 5일 + 바나힐 특식",
           "rawTextHash": "895476b8146062d87c03b1c2b01ea19d9f92de333fda829988cff08f5a3e66d1",
           "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:4 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:4 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:6",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -2864,10 +2913,10 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 3,
-          "itineraryItemCount": 33,
-          "claimCount": 7,
-          "criticalClaimCount": 3,
+          "priceRuleCount": 0,
+          "itineraryItemCount": 35,
+          "claimCount": 6,
+          "criticalClaimCount": 2,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
           "missingHighClaimCount": 0,
@@ -2880,10 +2929,10 @@
           },
           "customerPreview": {
             "title": "[노팁&노옵션] 다낭 / 호이안 3박 5일 + 바나힐 특식",
-            "priceCount": 3,
-            "firstPrice": 429000,
-            "currency": "KRW",
-            "dateCount": 3,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 13,
@@ -2894,7 +2943,7 @@
               "오전 자유 휴식 및 자유일정",
               "▶베트남 전통의상 아오자이 체험관 + 커피 OR 음료 1인 1잔 제공"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -2913,11 +2962,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 2,
         "segmentationSource": "catalog-pre-split",
         "gateStatusCounts": {
-          "needs_review": 2
+          "ready_to_publish": 2
         },
         "error": null
       },
@@ -2926,28 +2975,22 @@
           "index": 0,
           "titleHint": "노팁,노옵션 BX 다낭/호이안 알란씨 호텔 3박5일",
           "rawTextHash": "34d682daf6cb519b136fb9ebc092acff03ada3155d30852df888a0af1a7e50d5",
-          "gateStatus": "needs_review",
-          "classification": "blocked",
-          "criticalFailures": [
-            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
-          ],
+          "gateStatus": "ready_to_publish",
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:9",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 15,
-          "itineraryItemCount": 28,
-          "claimCount": 7,
+          "priceRuleCount": 112,
+          "itineraryItemCount": 29,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 2,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
@@ -2958,14 +3001,14 @@
           },
           "customerPreview": {
             "title": "노팁,노옵션 BX 다낭/호이안 알란씨 호텔 3박5일",
-            "priceCount": 15,
+            "priceCount": 56,
             "firstPrice": 799000,
             "currency": "KRW",
-            "dateCount": 15,
+            "dateCount": 56,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 0,
+            "inclusionCount": 8,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "출발2시간전 김해공항 국제선 1층에서 미팅 후 수속",
@@ -2979,28 +3022,22 @@
           "index": 1,
           "titleHint": "노팁,노옵션 BX 다낭/호이안 페닌슐라 호텔 3박5일",
           "rawTextHash": "e718b4b77a9a529bc44c3b34831d739d2aaa5df99c1fd2b722741b2052116c43",
-          "gateStatus": "needs_review",
-          "classification": "blocked",
-          "criticalFailures": [
-            "sections[1].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
-          ],
+          "gateStatus": "ready_to_publish",
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
-            "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:8 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:8 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:9",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:9"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 15,
-          "itineraryItemCount": 28,
-          "claimCount": 7,
+          "priceRuleCount": 112,
+          "itineraryItemCount": 29,
+          "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
-          "highClaimCount": 2,
+          "highClaimCount": 3,
           "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 9,
@@ -3011,14 +3048,14 @@
           },
           "customerPreview": {
             "title": "노팁,노옵션 BX 다낭/호이안 페닌슐라 호텔 3박5일",
-            "priceCount": 15,
+            "priceCount": 56,
             "firstPrice": 799000,
             "currency": "KRW",
-            "dateCount": 15,
+            "dateCount": 56,
             "flightCount": 2,
             "dayCount": 5,
-            "inclusionCount": 1,
-            "exclusionCount": 0,
+            "inclusionCount": 8,
+            "exclusionCount": 2,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "출발2시간전 김해공항 국제선 1층에서 미팅 후 수속",
@@ -3044,11 +3081,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -3057,21 +3094,18 @@
           "index": 0,
           "titleHint": "노팁/노옵션 BX 나트랑/달랏 품격 패키지 3박5일",
           "rawTextHash": "40d8b8cb8b1774eb28ff29173e192dca79e0d8a025263cc6a749d9f3d3c0b669",
-          "gateStatus": "needs_review",
+          "gateStatus": "ready_to_publish",
           "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:14 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:14 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:14",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:14"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 20,
-          "itineraryItemCount": 30,
+          "priceRuleCount": 288,
+          "itineraryItemCount": 31,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -3086,10 +3120,10 @@
           },
           "customerPreview": {
             "title": "노팁/노옵션 BX 나트랑/달랏 품격 패키지 3박5일",
-            "priceCount": 20,
-            "firstPrice": 779000,
+            "priceCount": 144,
+            "firstPrice": 639000,
             "currency": "KRW",
-            "dateCount": 20,
+            "dateCount": 144,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 8,
@@ -3119,11 +3153,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -3132,27 +3166,23 @@
           "index": 0,
           "titleHint": "[부산출발] BX 방콕 썬밸리 무제한골프 4박6일",
           "rawTextHash": "3ae5e21880452c4723a0e6be98bfacdc90e7588ea99bbc614f677294de21183f",
-          "gateStatus": "needs_review",
+          "gateStatus": "ready_to_publish",
           "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
-            "MISSING_HIGH_EVIDENCE:sections[0].v3.ledger.variants[0].days",
-            "ATTRACTION_UNMATCHED:7",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "ATTRACTION_UNMATCHED:7"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 5,
+          "priceRuleCount": 12,
           "itineraryItemCount": 48,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 4,
-          "missingHighClaimCount": 1,
+          "missingHighClaimCount": 0,
           "match": {
             "attractionUnmatched": 7,
             "optionReview": 0,
@@ -3162,10 +3192,10 @@
           },
           "customerPreview": {
             "title": "[부산출발] BX 방콕 썬밸리 무제한골프 4박6일",
-            "priceCount": 1,
-            "firstPrice": 639000,
+            "priceCount": 4,
+            "firstPrice": 599000,
             "currency": "KRW",
-            "dateCount": 1,
+            "dateCount": 4,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 8,
@@ -3206,7 +3236,7 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "증편특가",
+          "titleHint": "연길/백두산(북+서파) 3박4일",
           "rawTextHash": "400ef1544a667b86b1c62dd67c62b295303e62fe3637bc6fe7e911145b09b68f",
           "gateStatus": "needs_review",
           "classification": "degraded",
@@ -3215,8 +3245,6 @@
             "sections[0].variants[0].lodging: 원문에서 호텔이 미정 또는 동급으로 표시되었습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "v1.hotel_or_notice:hotel evidence exists or explicit hotel notice is present",
-            "attraction_unmatched_queue_clear:5 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:5 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:5",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -3224,7 +3252,7 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 5,
+          "priceRuleCount": 6,
           "itineraryItemCount": 34,
           "claimCount": 8,
           "criticalClaimCount": 3,
@@ -3239,7 +3267,7 @@
             "entityUnresolved": 9
           },
           "customerPreview": {
-            "title": "증편특가",
+            "title": "연길/백두산(북+서파) 3박4일",
             "priceCount": 1,
             "firstPrice": 899000,
             "currency": "KRW",
@@ -3297,8 +3325,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 16,
-          "itineraryItemCount": 14,
+          "priceRuleCount": 174,
+          "itineraryItemCount": 15,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -3313,10 +3341,10 @@
           },
           "customerPreview": {
             "title": "[스탠다드] 시내 다색 골프&숙박 3일 초석패턴",
-            "priceCount": 16,
-            "firstPrice": 1659000,
+            "priceCount": 87,
+            "firstPrice": 1349000,
             "currency": "KRW",
-            "dateCount": 16,
+            "dateCount": 87,
             "flightCount": 2,
             "dayCount": 3,
             "inclusionCount": 7,
@@ -3346,11 +3374,11 @@
       },
       "normalization": {
         "success": true,
-        "status": "needs_review",
+        "status": "complete",
         "sectionCount": 1,
         "segmentationSource": "single-document",
         "gateStatusCounts": {
-          "needs_review": 1
+          "ready_to_publish": 1
         },
         "error": null
       },
@@ -3359,23 +3387,23 @@
           "index": 0,
           "titleHint": "아티타야 보르네오 골프&리조트",
           "rawTextHash": "70c7efd4d7eebbefb19062612631714d4234a8f96fe3f1f15e03065b337a248d",
-          "gateStatus": "needs_review",
-          "classification": "degraded",
-          "criticalFailures": [],
+          "gateStatus": "ready_to_publish",
+          "classification": "blocked",
+          "criticalFailures": [
+            "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
+          ],
           "highWarnings": [
-            "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
-            "ATTRACTION_UNMATCHED:4",
-            "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
+            "v1.price:variant has price evidence; final price is owned by ProductRegistrationResult pricing",
+            "ATTRACTION_UNMATCHED:4"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 8,
-          "itineraryItemCount": 16,
-          "claimCount": 8,
-          "criticalClaimCount": 4,
+          "priceRuleCount": 0,
+          "itineraryItemCount": 20,
+          "claimCount": 7,
+          "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
           "highClaimCount": 3,
           "missingHighClaimCount": 0,
@@ -3388,10 +3416,10 @@
           },
           "customerPreview": {
             "title": "아티타야 보르네오 골프&리조트",
-            "priceCount": 8,
-            "firstPrice": 1079000,
-            "currency": "KRW",
-            "dateCount": 8,
+            "priceCount": 0,
+            "firstPrice": null,
+            "currency": null,
+            "dateCount": 0,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 6,
@@ -3402,7 +3430,7 @@
               "손님 성함 으로 가이드 미팅 후 호텔 이동",
               "호텔 체크인 및 휴식"
             ],
-            "customerReady": true
+            "customerReady": false
           }
         }
       ]
@@ -3432,15 +3460,13 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "- 2인출발시 4일(20만원/인), 5일(25만원/인) 추가됩니다.",
+          "titleHint": "[스탠다드] 천문산 골프&관광 사은행사 특가",
           "rawTextHash": "f78f59b74fdf2a1a0cfa21af48690bb485bddc29dfd1f87325aaa80c112b6d44",
           "gateStatus": "needs_review",
           "classification": "degraded",
           "criticalFailures": [],
           "highWarnings": [
             "v1.shopping_reflected:source shopping section is reflected in ledger",
-            "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:1",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -3448,8 +3474,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 21,
-          "itineraryItemCount": 17,
+          "priceRuleCount": 10,
+          "itineraryItemCount": 22,
           "claimCount": 9,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -3463,11 +3489,11 @@
             "entityUnresolved": 11
           },
           "customerPreview": {
-            "title": "- 2인출발시 4일(20만원/인), 5일(25만원/인) 추가됩니다.",
-            "priceCount": 17,
-            "firstPrice": 799000,
+            "title": "[스탠다드] 천문산 골프&관광 사은행사 특가",
+            "priceCount": 3,
+            "firstPrice": 699000,
             "currency": "KRW",
-            "dateCount": 17,
+            "dateCount": 3,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 7,
@@ -3515,8 +3541,6 @@
           "criticalFailures": [],
           "highWarnings": [
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:4 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:4 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:4",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -3524,8 +3548,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 27,
-          "itineraryItemCount": 11,
+          "priceRuleCount": 82,
+          "itineraryItemCount": 12,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -3540,10 +3564,10 @@
           },
           "customerPreview": {
             "title": "명품골프",
-            "priceCount": 27,
+            "priceCount": 41,
             "firstPrice": 1749000,
             "currency": "KRW",
-            "dateCount": 27,
+            "dateCount": 41,
             "flightCount": 2,
             "dayCount": 3,
             "inclusionCount": 8,
@@ -3597,8 +3621,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 16,
-          "itineraryItemCount": 14,
+          "priceRuleCount": 164,
+          "itineraryItemCount": 15,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -3613,10 +3637,10 @@
           },
           "customerPreview": {
             "title": "[스탠다드] 시내 다색 골프&숙박 3일 조석패턴",
-            "priceCount": 16,
-            "firstPrice": 1539000,
+            "priceCount": 82,
+            "firstPrice": 1639000,
             "currency": "KRW",
-            "dateCount": 16,
+            "dateCount": 82,
             "flightCount": 2,
             "dayCount": 3,
             "inclusionCount": 6,
@@ -3670,8 +3694,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 16,
-          "itineraryItemCount": 16,
+          "priceRuleCount": 224,
+          "itineraryItemCount": 17,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -3686,10 +3710,10 @@
           },
           "customerPreview": {
             "title": "#세부5일 #다색 골프 #54홀 #시내호텔",
-            "priceCount": 16,
+            "priceCount": 112,
             "firstPrice": 749000,
             "currency": "KRW",
-            "dateCount": 16,
+            "dateCount": 112,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 6,
@@ -3739,16 +3763,14 @@
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:2"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 16,
+          "priceRuleCount": 8,
+          "itineraryItemCount": 20,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -3763,10 +3785,10 @@
           },
           "customerPreview": {
             "title": "▼▼▼ 3박5일 특가 ▼▼▼",
-            "priceCount": 2,
+            "priceCount": 4,
             "firstPrice": 1029000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 4,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 8,
@@ -3818,16 +3840,14 @@
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:2"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 16,
+          "priceRuleCount": 98,
+          "itineraryItemCount": 20,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -3842,14 +3862,14 @@
           },
           "customerPreview": {
             "title": "파타야5일 #원파티오호텔 #다색골프 특가",
-            "priceCount": 2,
-            "firstPrice": 899000,
+            "priceCount": 49,
+            "firstPrice": 15000000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 49,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 8,
-            "exclusionCount": 8,
+            "exclusionCount": 5,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "김해 출발 → 방콕 도착",
@@ -3889,27 +3909,24 @@
           "titleHint": "아유타야 5일 #센타라호텔 #무제한다색골프 특가",
           "rawTextHash": "03f347b8cba8c8738b449ccb0157dde2c94a79cff7b33d06c147708d04505675",
           "gateStatus": "blocked",
-          "classification": "blocked",
-          "criticalFailures": [
-            "sections[0].variants[0].inclusions: 포함사항을 확인할 수 없습니다.",
-            "sections[0].variants[0].exclusions: 불포함사항을 확인할 수 없습니다."
-          ],
+          "classification": "degraded",
+          "criticalFailures": [],
           "highWarnings": [
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
+            "sections[0].variants[0].inclusions: 원문에 포함사항이 별도로 기재되지 않아 상담 시 최종 확인이 필요합니다.",
+            "sections[0].variants[0].exclusions: 원문에 불포함사항이 별도로 기재되지 않아 상담 시 최종 확인이 필요합니다.",
             "v1.minimum_departure:minimum departure evidence exists",
             "v1.inclusions:substantive inclusion evidence exists",
             "v1.exclusions:substantive exclusion evidence exists",
-            "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:2"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 16,
+          "priceRuleCount": 102,
+          "itineraryItemCount": 20,
           "claimCount": 5,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -3924,10 +3941,10 @@
           },
           "customerPreview": {
             "title": "아유타야 5일 #센타라호텔 #무제한다색골프 특가",
-            "priceCount": 2,
-            "firstPrice": 919000,
+            "priceCount": 51,
+            "firstPrice": 40000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 51,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 0,
@@ -3977,16 +3994,14 @@
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:1"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 16,
+          "priceRuleCount": 16,
+          "itineraryItemCount": 17,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -4001,14 +4016,14 @@
           },
           "customerPreview": {
             "title": "시라차 5일 #J-town호텔 #다색골프 특가",
-            "priceCount": 2,
-            "firstPrice": 799000,
+            "priceCount": 8,
+            "firstPrice": 90000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 8,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 12,
-            "exclusionCount": 6,
+            "exclusionCount": 5,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "김해 출발 → 방콕 도착",
@@ -4045,7 +4060,7 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "파타야 품격 자유골프 #3박5일  특가!",
+          "titleHint": "파타야 품격 자유골프 #3박5일 특가!",
           "rawTextHash": "2481b75f0d56e934c721a3e040895b0b91220deceb404da1708c6f7991e9ba60",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -4059,8 +4074,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 17,
+          "priceRuleCount": 114,
+          "itineraryItemCount": 18,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -4074,11 +4089,11 @@
             "entityUnresolved": 11
           },
           "customerPreview": {
-            "title": "파타야 품격 자유골프 #3박5일  특가!",
-            "priceCount": 2,
-            "firstPrice": 1129000,
+            "title": "파타야 품격 자유골프 #3박5일 특가!",
+            "priceCount": 57,
+            "firstPrice": 1399000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 57,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 7,
@@ -4119,7 +4134,7 @@
       "sections": [
         {
           "index": 0,
-          "titleHint": "타나시티&그린밸리 골프 #3박5일  특가!",
+          "titleHint": "타나시티&그린밸리 골프 #3박5일 특가!",
           "rawTextHash": "de048e46d85c59e65b601f44ef87c54aa1566f7bd5a1ae8a3be041815e8174b2",
           "gateStatus": "blocked",
           "classification": "degraded",
@@ -4133,8 +4148,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 19,
+          "priceRuleCount": 114,
+          "itineraryItemCount": 20,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -4148,15 +4163,15 @@
             "entityUnresolved": 12
           },
           "customerPreview": {
-            "title": "타나시티&그린밸리 골프 #3박5일  특가!",
-            "priceCount": 2,
-            "firstPrice": 1069000,
+            "title": "타나시티&그린밸리 골프 #3박5일 특가!",
+            "priceCount": 57,
+            "firstPrice": 1339000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 57,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 10,
-            "exclusionCount": 5,
+            "exclusionCount": 4,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "김해 출발 → 방콕 도착",
@@ -4204,16 +4219,14 @@
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 17,
+          "priceRuleCount": 114,
+          "itineraryItemCount": 21,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -4228,10 +4241,10 @@
           },
           "customerPreview": {
             "title": "방콕 아티타야 리조트 #무제한골프 #3박5일 특가",
-            "priceCount": 2,
-            "firstPrice": 739000,
+            "priceCount": 57,
+            "firstPrice": 1139000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 57,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 9,
@@ -4281,16 +4294,14 @@
             "v1.flight_times_complete:source-timed outbound/inbound flight segments must include both departure and arrival times",
             "sections[0].variants[0].flight_times: 항공편은 확인했지만 출도착 시각이 모두 원문 근거로 연결되지 않았습니다.",
             "v1.minimum_departure:minimum departure evidence exists",
-            "attraction_unmatched_queue_clear:2 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:2 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:6"
           ],
           "renderContractPass": true,
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 2,
-          "itineraryItemCount": 16,
+          "priceRuleCount": 114,
+          "itineraryItemCount": 20,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -4305,10 +4316,10 @@
           },
           "customerPreview": {
             "title": "썬밸리 2색 무제한 골프 3박5일 특가",
-            "priceCount": 2,
-            "firstPrice": 669000,
+            "priceCount": 57,
+            "firstPrice": 1139000,
             "currency": "KRW",
-            "dateCount": 2,
+            "dateCount": 57,
             "flightCount": 2,
             "dayCount": 5,
             "inclusionCount": 8,
@@ -4359,8 +4370,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 12,
-          "itineraryItemCount": 12,
+          "priceRuleCount": 66,
+          "itineraryItemCount": 13,
           "claimCount": 8,
           "criticalClaimCount": 4,
           "missingCriticalClaimCount": 0,
@@ -4375,10 +4386,10 @@
           },
           "customerPreview": {
             "title": "[스탠다드] 마쓰야마 시내 다색 골프 3일",
-            "priceCount": 12,
+            "priceCount": 33,
             "firstPrice": 1099000,
             "currency": "KRW",
-            "dateCount": 12,
+            "dateCount": 33,
             "flightCount": 2,
             "dayCount": 3,
             "inclusionCount": 5,
@@ -4427,8 +4438,6 @@
           "highWarnings": [
             "v1.minimum_departure:minimum departure evidence exists",
             "v1.shopping_reflected:source shopping section is reflected in ledger",
-            "attraction_unmatched_queue_clear:1 unmatched attraction events require review",
-            "entity_attraction_unresolved_clear:1 unresolved attraction entities require review",
             "ATTRACTION_UNMATCHED:1",
             "LEGACY_GATE_REVIEW_CONVERTED_TO_V6_DEGRADED"
           ],
@@ -4436,8 +4445,8 @@
           "renderContractError": null,
           "expectedProducts": 1,
           "variantCount": 1,
-          "priceRuleCount": 13,
-          "itineraryItemCount": 17,
+          "priceRuleCount": 350,
+          "itineraryItemCount": 18,
           "claimCount": 7,
           "criticalClaimCount": 3,
           "missingCriticalClaimCount": 0,
@@ -4452,14 +4461,14 @@
           },
           "customerPreview": {
             "title": "[스탠다드] 나리타 초시CC 골프텔 4일",
-            "priceCount": 13,
-            "firstPrice": 1449000,
+            "priceCount": 175,
+            "firstPrice": 1239000,
             "currency": "KRW",
-            "dateCount": 13,
+            "dateCount": 175,
             "flightCount": 2,
             "dayCount": 4,
             "inclusionCount": 8,
-            "exclusionCount": 4,
+            "exclusionCount": 3,
             "optionalTourCount": 0,
             "sampleDayTitles": [
               "부산 김해공항 국제선 출발 → 나리타 도착",
