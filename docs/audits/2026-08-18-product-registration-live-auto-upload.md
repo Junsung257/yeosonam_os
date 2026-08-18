@@ -106,3 +106,14 @@ Supabase 보안 advisor에는 내부 등록 스키마의 일부 테이블이 RLS
 - 이전의 `PGRST106` 내부 스키마 노출 오류와 `CRITICAL_FACT_PROVIDER_CALL_IN_FLIGHT` 오류는 최신 27번 실행에서 재발하지 않았다.
 - 현재 27번 실행의 차단은 과거 출발, 노옵션·선택관광 충돌, 상품 식별 모호, 판매가 관계 미확정, 교통 출발일 누락처럼 원문 또는 업무 판단이 필요한 항목으로만 남아 있다.
 - 기존 26번 결과는 자동 backfill cron이 27번으로 순차 재처리하도록 두었고, 기존 고객 공개 상품은 pointer를 유지한다.
+
+## 추가 검증·v32 배포 (2026-08-18 17:00 이후)
+
+추가 재검증에서 다음 두 가지 실제 오류를 확인하고 순방향 수정했다.
+
+- `479,000`과 9% 커미션의 역산 과정에서 generated `selling_price`가 1원 어긋나는 경우가 있어, 호환 projection이 정해진 작은 범위에서 parity를 확인하도록 보완했다. 일치하지 않으면 여전히 차단한다.
+- V4 revision이 `needs_review`인 상품도 V6의 핵심 evidence·claim·모바일 proof를 통과한 `published_degraded` 경로에서는 안전하게 `verified`로 승격하도록 publication gate를 맞췄다. `published_verified`나 핵심 정보 미확정에는 적용하지 않는다.
+
+이 변경은 각각 `product-registration-v6-workflow-30`, `31`, `32`로 분리 배포했고, 로컬 type-check·핵심 테스트·Vercel production build를 통과했다. v31 재처리 10건에서는 시스템 오류 없이 과거 일정 6건, 상품 식별 모호 2건, cohort 증거 미완료 2건으로 모두 안전 종결됐다. v32에서 source-proof eligibility 함수는 실제 `needs_review` revision 2건에 대해 `published_degraded` 조건과 핵심 증거 검사를 통과하는 것을 확인했다.
+
+현재 공개 중인 5개 상품의 `/packages`·`/lp` 고객 URL 10개는 모두 HTTP 200으로 응답했고, DB proof에는 가격·항공·약관·CTA·이미지·hydration 오류 없음이 기록돼 있다. 전체 고객 공개 상품은 기존 pointer를 유지하고, 아직 v32로 전량 재처리 중이므로 전체 95% 인증은 완료하지 않았다.
