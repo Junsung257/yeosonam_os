@@ -130,6 +130,10 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
           SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
           NEXT_PUBLIC_BASE_URL: 'https://example.com'
+          # Do not spend the default 15 minutes waiting for a failed Next
+          # process to produce a verified artifact; surface the real Linux
+          # build error within the required-lane timeout.
+          NEXT_BUILD_RECOVERY_WAIT_MS: '30000'
       - name: Verify generated provenance fallback is deterministic
         if: steps.scope.outputs.blog_changed == 'true'
         run: |
