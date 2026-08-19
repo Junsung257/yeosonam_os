@@ -63,6 +63,8 @@ create index if not exists idx_ai_call_reservations_candidate_prompt
   on public.ai_call_reservations (candidate_id, prompt_hash, status, created_at);
 create index if not exists idx_ai_call_reservations_workload_day
   on public.ai_call_reservations (workload, created_at, status);
+create index if not exists idx_ai_call_receipts_reservation_id
+  on public.ai_call_receipts (reservation_id);
 
 alter table public.ai_budget_buckets enable row level security;
 alter table public.ai_call_reservations enable row level security;
@@ -73,6 +75,13 @@ revoke all on table public.ai_call_receipts from anon, authenticated;
 revoke all on table public.ai_budget_buckets from public;
 revoke all on table public.ai_call_reservations from public;
 revoke all on table public.ai_call_receipts from public;
+
+create policy ai_budget_buckets_service_role_all
+  on public.ai_budget_buckets for all to service_role using (true) with check (true);
+create policy ai_call_reservations_service_role_all
+  on public.ai_call_reservations for all to service_role using (true) with check (true);
+create policy ai_call_receipts_service_role_all
+  on public.ai_call_receipts for all to service_role using (true) with check (true);
 
 create or replace function public.reserve_ai_budget_v1(
   p_root_job_id text,

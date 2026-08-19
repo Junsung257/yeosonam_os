@@ -22,6 +22,10 @@ describe('AI control plane migration contract', () => {
     expect(migration).toContain("r.status in ('reserved', 'completed', 'failed')");
     expect(migration).toContain("'pro_daily_call_cap'");
     expect(migration).toContain('revoke all on table public.ai_call_receipts from anon, authenticated');
+    expect(migration).toContain('create policy ai_budget_buckets_service_role_all');
+    expect(migration).toContain('create policy ai_call_reservations_service_role_all');
+    expect(migration).toContain('create policy ai_call_receipts_service_role_all');
+    expect(migration).toContain('idx_ai_call_receipts_reservation_id');
   });
 
   it('rollback removes functions before tables', () => {
