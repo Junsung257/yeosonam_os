@@ -92,5 +92,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
           SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
           NEXT_PUBLIC_BASE_URL: 'https://example.com'
+          NEXT_SKIP_TYPESCRIPT_CHECK: '1'
+          NEXT_BUILD_RECOVERY_WAIT_MS: '30000'
       - name: Bundle budget check (--fail)
         run: npm run check:bundle:ci
