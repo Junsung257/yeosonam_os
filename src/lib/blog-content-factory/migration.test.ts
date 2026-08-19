@@ -40,6 +40,7 @@ describe('Blog V4 content factory migration contract', () => {
     expect(migration).toContain('blog_content_operation_generation_run_claim_race');
     expect(migration).toContain('on conflict (provider, source_row_hash) do nothing');
     expect(migration).toContain('blog_demand_signal_cluster_conflict');
+    expect(migration).toContain('v_expires_at, v_verified_at');
     expect(migration).toContain("lease_expires_at = now() + interval '15 minutes'");
   });
 

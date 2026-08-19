@@ -378,7 +378,7 @@ begin
         else v_signal_provider
       end,
       p_signal ->> 'signal_key', nullif(p_signal ->> 'metric_value', '')::numeric,
-      p_signal ->> 'source_reference', v_observed_at, v_expires_at, null,
+      p_signal ->> 'source_reference', v_observed_at, v_expires_at, v_verified_at,
       jsonb_build_object('demand_cluster_id', v_cluster.id, 'source_row_hash', v_signal_hash)
     ) on conflict (provider, signal_key, source_reference) do update set
       signal_value = excluded.signal_value,

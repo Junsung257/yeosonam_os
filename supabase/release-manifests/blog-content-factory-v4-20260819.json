@@ -6,7 +6,7 @@
     {
       "version": "20260819073009",
       "file": "supabase/migrations/20260819073009_blog_v4_content_factory.sql",
-      "sha256": "c04e7fe9ab681f89b302bd4df55d5bb80f72aa57dfa8647308c0e4cea1eaa1cf"
+      "sha256": "7f8eb75eb2b1f38e2a0e94826f9c5e2dba9a567be78a07b82fd2b2c77e2c8a90"
     }
   ],
   "rollback": {
