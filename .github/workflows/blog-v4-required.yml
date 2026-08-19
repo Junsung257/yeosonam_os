@@ -3,34 +3,9 @@ name: Blog V4 Required
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'src/app/api/cron/blog-**/**'
-      - 'src/lib/blog-*.ts'
-      - 'src/generated/blog-build-provenance.server.ts'
-      - 'scripts/generate-blog-build-provenance.mjs'
-      - 'scripts/verify-blog-*.ts'
-      - 'supabase/migrations/**blog**'
-      - 'supabase/release-manifests/blog-**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'next.config.js'
-      - 'vitest.config.ts'
-      - '.github/workflows/blog-v4-required.yml'
+  merge_group:
   push:
     branches: [main]
-    paths:
-      - 'src/app/api/cron/blog-**/**'
-      - 'src/lib/blog-*.ts'
-      - 'src/generated/blog-build-provenance.server.ts'
-      - 'scripts/generate-blog-build-provenance.mjs'
-      - 'scripts/verify-blog-*.ts'
-      - 'supabase/migrations/**blog**'
-      - 'supabase/release-manifests/blog-**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'next.config.js'
-      - 'vitest.config.ts'
-      - '.github/workflows/blog-v4-required.yml'
   workflow_dispatch:
 
 permissions:
@@ -47,16 +22,47 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect Blog V4 scope
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            base="${{ github.event.merge_group.base_sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          changed="$(git diff --name-only "$base" "$GITHUB_SHA" 2>/dev/null || true)"
+          if printf '%s\n' "$changed" | grep -Eiq '^(src/(app|components|lib)/.*blog|src/generated/blog-build-provenance|scripts/.*blog|scripts/(generate-blog-build-provenance|verify-blog-)|supabase/migrations/.*blog|supabase/release-manifests/blog-|package(-lock)?\.json$|next\.config\.js$|vitest\.config\.ts$|\.github/workflows/blog-v4-)'; then
+            echo "blog_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "blog_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: No Blog V4 changes
+        if: steps.scope.outputs.blog_changed != 'true'
+        run: echo "No Blog V4 changes in this revision; required lane passes explicitly."
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.blog_changed == 'true'
         with:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
+        if: steps.scope.outputs.blog_changed == 'true'
       - name: Verify release bundle
+        if: steps.scope.outputs.blog_changed == 'true'
         run: npm run verify:blog-release-bundle-v4
       - name: Type check
+        if: steps.scope.outputs.blog_changed == 'true'
         run: npm run type-check
       - name: Blog V4 unit and contract tests
+        if: steps.scope.outputs.blog_changed == 'true'
         run: |
           npx vitest run \
             src/lib/blog-ai-caller.test.ts \
@@ -67,12 +73,19 @@ jobs:
             src/lib/blog-deepseek-orchestrator-v4-migration.test.ts \
             src/lib/blog-generation-run-v4.test.ts \
             src/lib/blog-production-readiness-v4.test.ts \
+            src/lib/blog-release-candidate-responses-v4.test.ts \
+            src/lib/blog-production-release-workflow.test.ts \
+            src/lib/blog-v4-required-workflow.test.ts \
             src/lib/blog-publisher-v4-orchestration-contract.test.ts \
             src/lib/blog-publication-rollout.test.ts \
-            src/lib/blog-publication-rollout-repository.test.ts
+            src/lib/blog-publication-rollout-repository.test.ts \
+            src/lib/blog-publish-slot-quota.test.ts \
+            src/app/api/cron/blog-data-readiness/route.contract.test.ts
       - name: Verify generated provenance fallback is deterministic
+        if: steps.scope.outputs.blog_changed == 'true'
         run: |
           node scripts/generate-blog-build-provenance.mjs
           git diff --exit-code -- src/generated/blog-build-provenance.server.ts
       - name: Diff check
+        if: steps.scope.outputs.blog_changed == 'true'
         run: git diff --check

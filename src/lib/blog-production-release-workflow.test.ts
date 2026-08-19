@@ -23,6 +23,15 @@ describe('blog V4 protected production release workflow', () => {
     expect(dryRun).toBeGreaterThan(0);
     expect(dryRun).toBeLessThan(apply);
     expect(source).toContain('prepare:blog-supabase-release-workdir-v4');
+    expect(source).toContain('verify:blog-snapshot-artifact-v4');
+    expect(source).toContain('--require-source-commit');
+    expect(source).toContain('VERCEL_GIT_COMMIT_REF: main');
+    expect(source).toContain('VERCEL_GIT_COMMIT_SHA: ${{ inputs.release_commit }}');
+    expect(source).toContain('--expected-ref=main');
+    const snapshotVerify = source.indexOf('verify:blog-snapshot-artifact-v4');
+    const snapshotApply = source.indexOf('refresh:blog-public-snapshots-v3 -- --apply-db');
+    expect(snapshotVerify).toBeGreaterThan(0);
+    expect(snapshotVerify).toBeLessThan(snapshotApply);
     expect(source.match(/--workdir \.tmp\/blog-v4-supabase-release/g)?.length).toBe(2);
     expect(source).toContain('verify:blog-supabase-dry-run-v4');
   });
@@ -42,7 +51,16 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('/blog/__blog_v4_missing_probe__');
     expect(source).toContain('test "$missing_status" = "404"');
     expect(source).toContain('verify:blog-release-candidate-responses-v4');
+    expect(source).toContain('--require-publication-ready');
     expect(source).toContain('call_cron blog-ai-model-canary');
     expect(source).not.toContain('blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json || true');
+  });
+
+  it('sets the allowed SHA before the deployment that can consume it', () => {
+    const allowedSha = source.indexOf('update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"');
+    const candidateDeploy = source.indexOf('name: Build and deploy unaliased production candidate');
+    expect(allowedSha).toBeGreaterThan(0);
+    expect(candidateDeploy).toBeGreaterThan(0);
+    expect(allowedSha).toBeLessThan(candidateDeploy);
   });
 });

@@ -145,12 +145,22 @@ jobs:
         shell: bash
         env:
           BLOG_SNAPSHOT_APPLY_CONFIRM: PUBLIC_ELIGIBILITY_REVIEWED
+          # The artifact must describe the exact immutable checkout being
+          # released, not the commit that happened to dispatch this workflow.
+          VERCEL_GIT_COMMIT_REF: main
+          VERCEL_GIT_COMMIT_SHA: ${{ inputs.release_commit }}
         run: |
           set -euo pipefail
           npm run refresh:blog-public-snapshots-v3 -- \
-            --apply-db --write-bundled --write-detail-bundled --all-details \
+            --write-bundled --write-detail-bundled --all-details \
             --artifact-dir=public/blog-snapshots/v3
           test -s public/blog-snapshots/v3/manifest.json
+          npm run verify:blog-snapshot-artifact-v4 -- \
+            --manifest=public/blog-snapshots/v3/manifest.json \
+            --expected-commit="${{ inputs.release_commit }}" \
+            --expected-ref=main \
+            --require-source-commit
+          npm run refresh:blog-public-snapshots-v3 -- --apply-db
 
       - name: Configure fail-closed candidate environment
         if: inputs.deploy_candidate
@@ -210,11 +220,16 @@ jobs:
           call_cron blog-analytics-canary | tee .tmp/blog-v4-release/analytics-canary.json
           call_cron rank-tracking | tee .tmp/blog-v4-release/rank-tracking.json
           call_cron blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json
+          candidate_gate_args=()
+          if [ "${{ inputs.promote_live }}" = "true" ]; then
+            candidate_gate_args+=(--require-publication-ready)
+          fi
           npm run verify:blog-release-candidate-responses-v4 -- \
             --ai-model-canary=.tmp/blog-v4-release/ai-model-canary.json \
             --analytics-canary=.tmp/blog-v4-release/analytics-canary.json \
             --rank-tracking=.tmp/blog-v4-release/rank-tracking.json \
-            --data-readiness=.tmp/blog-v4-release/data-readiness.json
+            --data-readiness=.tmp/blog-v4-release/data-readiness.json \
+            "${candidate_gate_args[@]}"
           curl --fail --silent --show-error --location \
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
             "${CANDIDATE_URL}/blog" >/dev/null

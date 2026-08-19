@@ -14,7 +14,13 @@
 - Protected workflow: `.github/workflows/blog-v4-production-release.yml`
 - Production evidence collector: `npm run collect:blog-production-evidence-v4 -- ...`
 - Fail-closed decision: `npm run verify:blog-production-readiness-v4 -- --evidence=<json>`
+- Snapshot artifact verifier: `npm run verify:blog-snapshot-artifact-v4 -- --manifest=<manifest> --expected-ref=main --expected-commit=<main SHA> --require-source-commit`
 - Read-only activation probe: `npm run verify:blog-autopublish-activation-v4 -- --base=https://www.yeosonam.com --strict`
+
+`.github/workflows/blog-v4-required.yml`은 path filter 없이 pull request, merge queue,
+main push마다 생성된다. Blog V4 변경이 있으면 `Blog V4 targeted contract` job을
+실행하고, 변경이 없으면 명시적인 no-change success를 남긴다. GitHub Ruleset에서
+이 job 이름을 main required status check로 등록해야 실제 merge gate가 된다.
 
 Manifest에는 운영 기준선에서 누락된 migration 11개의 경로와 SHA-256이 고정된다. 여기에는 운영에서 이력과 실제 함수 본문이 드리프트한 medication HIGH-risk 정책 복구 및 Next.js 15 스트리밍 전 hard-404 slug registry 권한 복구가 포함된다. dry-run 결과는 아직 적용되지 않은 manifest 부분집합이어야 하며, 재실행 시 이미 모두 적용되어 0개여야 한다. manifest 밖 migration이 섞이면 중단한다.
 
@@ -57,6 +63,12 @@ ref 또는 SHA가 서로 다르면 provenance를 `mixed`로 기록하고 자동�
 
 DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환경 ceiling을 30으로 열어도 첫 실효 공개량은 슬롯별 `[1,1,2,2,3]`, 일 최대 3건이다.
 
+`generationReady`와 `publicationReady`는 별도 판정이다. `approved_for_slot=0`은
+발행을 막는 `publicationBlockers`이지만 draft-only 생성의 전제조건이 아니다.
+따라서 후보가 아직 없을 때에도 `readyForDraftOnlyGeneration=true`이면 검증된
+demand 후보를 생성할 수 있고, `readyForLivePublication=false`인 동안에는
+공개·색인 side effect가 실행되지 않는다.
+
 ## 활성화 상태 확인 (읽기 전용)
 
 `verify:blog-autopublish-activation-v4`는 `/api/cron/blog-generate`와 `/api/cron/blog-publication-controller`를 조회만 한다. `CRON_SECRET` 또는 `BLOG_CRON_SECRET`이 현재 셸에 있을 때만 보호된 응답을 읽으며, secret·본문·DB를 변경하거나 출력하지 않는다.
@@ -71,15 +83,15 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 
 ## 정확한 실행 순서
 
-1. 리뷰된 `main`의 40자리 commit SHA를 확정한다. 운영 source는 branch 이름만이 아니라 이 SHA와 같아야 한다.
+1. 리뷰된 `main`의 40자리 commit SHA를 확정하고 `BLOG_PRODUCTION_ALLOWED_COMMIT_SHA`를 먼저 설정한다. 환경변수는 기존 deployment에 소급되지 않으므로, 이 값을 포함한 동일 SHA의 새 production deployment가 뒤따라야 한다. 운영 source는 branch 이름만이 아니라 이 SHA와 같아야 한다.
 2. release bundle, targeted V4 tests, typecheck를 통과한다.
 3. 격리 workdir를 생성한 뒤 `db push --workdir .tmp/blog-v4-supabase-release --include-all --skip-vault --dry-run` 결과를 exact-set verifier로 확인한다. 운영 migration history를 수정하는 `migration repair`는 금지한다.
 4. 승인된 change window에서만 forward migration을 적용한다. seed와 Vault 갱신은 포함하지 않는다.
 5. `audit:blog-corpus-reconciliation-v4` 기본 dry-run을 확인한다. 운영 disposition 기록이 승인된 경우에만 `BLOG_CORPUS_RECONCILIATION_CONFIRM=APPLY_REVIEWED_DISPOSITIONS_V4`와 `--apply`를 함께 쓴다. 이 작업은 글 status, queue, redirect, index를 바꾸지 않는다.
 6. `refresh_blog_public_snapshots_v3`를 실행하고 public eligible slug와 current snapshot slug의 정확한 parity를 확인한다.
-7. catalog/detail snapshot을 동일 시각에 생성한다. URL 파일명에 본문 SHA-256을 포함하고, 상세 parity가 하나라도 비면 artifact를 만들지 않는다.
+7. catalog/detail snapshot을 먼저 read-only artifact로 생성한다. URL 파일명에 본문 SHA-256을 포함하고, 상세 parity가 하나라도 비면 artifact를 만들지 않는다. `verify:blog-snapshot-artifact-v4`가 schema v4, non-empty row count, catalog/detail parity, 파일 SHA-256, source commit과 release SHA 일치를 모두 확인한 뒤에만 별도 `--apply-db` refresh를 실행한다.
 8. 정확한 `release_commit`을 checkout한 동일 빌드에서 production 환경을 `draft_only`, generation disabled로 바꾼 후 `--prod --skip-domain` candidate를 만든다. candidate가 runtime/build provenance를 증명하지 못하면 promote하지 않으며, 아직 운영 도메인에 연결하지 않는다.
-9. candidate에서 `/blog`, 실제 상세, 존재하지 않는 상세의 hard 404, sitemap, RSS, image sitemap을 확인한다. `BLOG_DATABASE_UNAVAILABLE` 고객 문구, soft-404, review-blocked URL 노출이 없어야 한다. 후보 URL 호출은 Vercel protection bypass secret을 사용한다.
+9. candidate에서 `/blog`, 실제 상세, 존재하지 않는 상세의 hard 404, sitemap, RSS, image sitemap을 확인한다. `BLOG_DATABASE_UNAVAILABLE` 고객 문구, soft-404, review-blocked URL 노출이 없어야 한다. 후보 URL 호출은 Vercel protection bypass secret을 사용한다. 생성 readiness와 발행 readiness를 따로 기록하며, approved slot이 0이면 생성 canary는 허용하되 live promote는 금지한다. `verify:blog-release-candidate-responses-v4`는 기본적으로 generation readiness만 확인하고, `promote_live=true`일 때만 `--require-publication-ready`를 추가한다.
 10. `blog-ai-model-canary`로 DeepSeek Flash, Pro high, Pro max를 각각 최소 토큰으로 실호출한다. 세 호출 모두 정확한 `OK`, 정상 stop, 모델·provider·thinking 설정과 usage 영수증이 일치해야 한다. 이 canary는 글과 DB를 쓰지 않는다.
 11. `blog-analytics-canary`를 실행한다. synthetic row가 재조회되고 external delivery job이 0이어야 한다.
 12. `rank-tracking`을 실행한다. 최근 7일 재수집과 90일 chunk cursor가 저장되며 실패 날짜가 있으면 cursor가 전진하지 않아야 한다.
@@ -102,6 +114,7 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. 따라서 환�
 ```text
 npm run refresh:blog-public-snapshots-v3
 npm run refresh:blog-public-snapshots-v3 -- --write-bundled --write-detail-bundled --all-details --artifact-dir=<release-dir>
+npm run verify:blog-snapshot-artifact-v4 -- --manifest=<release-dir>/manifest.json --expected-ref=main --expected-commit=<release SHA> --require-source-commit
 ```
 
 DB 갱신은 `BLOG_SNAPSHOT_APPLY_CONFIRM=PUBLIC_ELIGIBILITY_REVIEWED`와 `--apply-db`가 동시에 있어야 한다. artifact는 catalog/detail 각각 8 MiB를 넘거나 slug parity가 깨지면 생성하지 않는다.

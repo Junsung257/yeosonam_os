@@ -115,6 +115,7 @@
     "verify:blog-production-readiness-v4": "npx tsx scripts/verify-blog-production-readiness-v4.ts --strict",
     "collect:blog-production-evidence-v4": "npx tsx scripts/collect-blog-production-evidence-v4.ts",
     "verify:blog-release-bundle-v4": "npx tsx scripts/verify-blog-orchestrator-v4-release-bundle.ts",
+    "verify:blog-snapshot-artifact-v4": "npx tsx scripts/verify-blog-snapshot-artifact-v4.ts",
     "verify:blog-supabase-dry-run-v4": "npx tsx scripts/verify-blog-supabase-dry-run-v4.ts",
     "prepare:blog-supabase-release-workdir-v4": "npx tsx scripts/prepare-blog-supabase-release-workdir-v4.ts",
     "verify:blog-release-candidate-responses-v4": "npx tsx scripts/verify-blog-release-candidate-responses-v4.ts",
