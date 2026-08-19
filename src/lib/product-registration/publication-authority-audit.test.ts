@@ -109,7 +109,7 @@ describe('auditPublicationAuthority', () => {
   });
 
   it('fails a legacy-public package without an authoritative pointer', () => {
-    const input = validInput();
+    const input = validInput() as any;
     input.pointer = null as never;
     input.snapshot = null as never;
 
@@ -120,7 +120,7 @@ describe('auditPublicationAuthority', () => {
   });
 
   it('cannot hide a blocked evidence pack behind a passing top-level audit', () => {
-    const input = validInput();
+    const input = validInput() as any;
     input.packageRow.audit_report.registration_evidence_pack_v1.status = 'blocked';
     input.packageRow.audit_report.registration_evidence_pack_v1.scorecard.customer_open_candidate = false;
 
@@ -132,13 +132,78 @@ describe('auditPublicationAuthority', () => {
   });
 
   it('fails stale snapshot prices and proof hashes', () => {
-    const input = validInput();
+    const input = validInput() as any;
     input.snapshot.snapshot_json.package.price_dates = [];
     input.packageRow.audit_report.mobile_browser_proof.public_snapshot_hash = 'f'.repeat(64);
 
     const result = auditPublicationAuthority(input);
 
     expect(result.failures).toContain('snapshot_price_date_count_mismatch');
+    expect(result.failures).toContain('mobile_browser_proof_invalid_or_stale');
+  });
+
+  it('accepts a V6 catalog-bound revision with a separately persisted browser proof', () => {
+    const input = validInput() as any;
+    input.packageRow.audit_report = null;
+    input.revision = {
+      ...input.revision,
+      package_id: null,
+      schema_version: 'product-registration-v5-canonical-1',
+      normalization_version: 'v6-canonical-2026-08-17.57',
+      status: 'verified',
+    };
+    input.proof = {
+      status: 'passed',
+      result: {
+        status: 'pass',
+        source: 'hwp-mobile-browser-proof',
+        snapshotHash: 'a'.repeat(64),
+        surfaces: ['packages', 'lp'],
+        surface_results: ['packages', 'lp'].map(surface => ({
+          surface,
+          status: 'pass',
+          public_snapshot_hash: 'a'.repeat(64),
+          checks: [{ name: `${surface}_cta`, ok: true }],
+        })),
+      },
+    };
+
+    const result = auditPublicationAuthority(input);
+
+    expect(result.authoritativePublic).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
+  it('still rejects a V6 proof when one surface is missing or hash-bound differently', () => {
+    const input = validInput() as any;
+    input.packageRow.audit_report = null;
+    input.revision = {
+      ...input.revision,
+      package_id: null,
+      schema_version: 'product-registration-v5-canonical-1',
+      normalization_version: 'v6-canonical-2026-08-17.57',
+      status: 'verified',
+    };
+    input.proof = {
+      status: 'passed',
+      result: {
+        status: 'pass',
+        source: 'hwp-mobile-browser-proof',
+        snapshotHash: 'a'.repeat(64),
+        surfaces: ['packages'],
+        surface_results: [{
+          surface: 'packages',
+          status: 'pass',
+          public_snapshot_hash: 'f'.repeat(64),
+          checks: [{ name: 'packages_cta', ok: true }],
+        }],
+      },
+    };
+
+    const result = auditPublicationAuthority(input);
+
+    expect(result.authoritativePublic).toBe(false);
+    expect(result.failures).toContain('registration_evidence_pack_missing');
     expect(result.failures).toContain('mobile_browser_proof_invalid_or_stale');
   });
 });

@@ -7,6 +7,8 @@ import { buildCanonicalNormalization } from '@/lib/product-registration-v4/canon
 import { buildProductRegistrationV5Revision, type ProductRegistrationV5RevisionBuild } from '@/lib/product-registration-v4/revision';
 import { buildV5ItineraryItems, buildV5PriceRules } from '@/lib/product-registration-v4/typed-projections';
 import { renderPackage, type RenderPackageInput } from '@/lib/render-contract';
+import { classifyProductSourceDocument } from '@/lib/product-registration-v6/document-classifier';
+import { partitionProductSectionsBySalePrice } from '@/lib/product-registration-v6/source-sale-price-disposition';
 
 type JsonObject = Record<string, unknown>;
 
@@ -14,6 +16,9 @@ type DocumentResult = {
   filename: string;
   sourceHash: string;
   bytes: number;
+  duplicateOf: string | null;
+  documentClass: 'travel_product' | 'non_travel' | 'unsupported' | 'corrupt';
+  terminalOutcome: string | null;
   parser: string | null;
   extraction: {
     success: boolean;
@@ -70,6 +75,9 @@ type DocumentResult = {
       sampleDayTitles: string[];
       customerReady: boolean;
     };
+    eligibleForPublication: boolean;
+    terminalOutcome: string;
+    excludedReason: string | null;
   }>;
 };
 
@@ -78,11 +86,20 @@ type CorpusReport = {
   mode: 'offline-shadow-quarantine';
   publicExposure: 'none';
   sourceDirectory: string;
+  operationalReferenceDate: string;
   totals: {
     files: number;
+    uniqueSources: number;
+    duplicateSources: number;
+    travelDocuments: number;
+    nonTravelDocuments: number;
+    corruptDocuments: number;
     extractionSuccess: number;
     normalizationSuccess: number;
     sections: number;
+    publicationEligibleSections: number;
+    archivedPastSections: number;
+    discardedSourceIncompleteSections: number;
     verified: number;
     degraded: number;
     autoPublishable: number;
@@ -105,6 +122,7 @@ type CorpusReport = {
     sectionDegraded: number;
     sectionAutoPublishable: number;
     sectionBlocked: number;
+    publicationEligibleSection: number;
     evidenceCoverage: number;
     renderContractPass: number;
   };
@@ -250,7 +268,18 @@ function sectionResult(input: {
     customerReady: false,
   };
   const match = matchSummary(input.section);
-  const safeDegradedGateFailure = (reason: string) => /\.(?:flight|flight_times_complete|hotel_or_notice):/.test(reason);
+  const sourceSheetFallback = variants.length > 0 && variants.every(value => {
+    const row = asObject(value);
+    const fallback = asObject(row?.source_sheet_fallback);
+    return fallback?.reason === 'schedule_and_lodging_not_in_source';
+  });
+  const missingExclusions = variants.length > 0 && variants.every(value => {
+    const row = asObject(value);
+    return Array.isArray(row?.exclusions) && row.exclusions.length === 0;
+  });
+  const safeDegradedGateFailure = (reason: string) => /\.(?:flight|flight_times_complete|hotel_or_notice):/.test(reason)
+    || (missingExclusions && /\.exclusions:/.test(reason))
+    || (sourceSheetFallback && /\.(?:days|minimum_departure|inclusions|exclusions|meals_or_notice):/.test(reason));
   const unsafeCriticalFailures = criticalFailures.filter(reason => !safeDegradedGateFailure(reason));
   const safeCriticalFailures = criticalFailures.filter(safeDegradedGateFailure);
   const completeness = asObject(input.section.completeness);
@@ -297,22 +326,44 @@ function sectionResult(input: {
     missingHighClaimCount: missingHigh.length,
     match,
     customerPreview,
+    eligibleForPublication: true,
+    terminalOutcome: classification === 'verified'
+      ? 'published_verified'
+      : classification === 'degraded'
+        ? 'published_degraded'
+        : 'blocked_action_required',
+    excludedReason: null,
   };
 }
 
-async function processFile(filePath: string): Promise<DocumentResult> {
-  const buffer = await readFile(filePath);
+async function processFile(
+  filePath: string,
+  operationalReferenceDate: string,
+  duplicateOf: string | null = null,
+): Promise<DocumentResult> {
   const filename = basename(filePath);
-  const sourceHash = sha256(buffer);
+  let buffer: Uint8Array | null = null;
+  let sourceHash = '';
+  let readError: string | null = null;
+  try {
+    buffer = await readFile(filePath);
+    sourceHash = sha256(buffer);
+  } catch (error) {
+    readError = error instanceof Error ? error.message : String(error);
+  }
   const result: DocumentResult = {
     filename,
     sourceHash,
-    bytes: buffer.byteLength,
+    bytes: buffer?.byteLength ?? 0,
+    duplicateOf,
+    documentClass: 'corrupt',
+    terminalOutcome: duplicateOf ? 'discarded_duplicate_or_consolidated' : readError ? 'quarantined_system_failure' : null,
     parser: null,
-    extraction: { success: false, pages: 0, tables: 0, chars: 0, error: null },
+    extraction: { success: false, pages: 0, tables: 0, chars: 0, error: readError },
     normalization: { success: false, status: null, sectionCount: 0, segmentationSource: null, gateStatusCounts: {}, error: null },
     sections: [],
   };
+  if (duplicateOf || !buffer) return result;
   try {
     const parsed = await parseHwpFileWithRhwp({ path: filePath, filename, sourceType: 'hwp' });
     result.parser = parsed.parserBinary;
@@ -323,9 +374,25 @@ async function processFile(filePath: string): Promise<DocumentResult> {
       chars: parsed.text.length,
       error: null,
     };
+    const classification = classifyProductSourceDocument({ sourceType: 'hwp', documentIr: parsed.ir });
+    result.documentClass = classification.documentClass;
+    if (classification.documentClass !== 'travel_product') {
+      result.terminalOutcome = classification.documentClass === 'non_travel'
+        ? 'discarded_non_travel'
+        : 'quarantined_unsupported_or_corrupt';
+      return result;
+    }
     const sourceDocumentId = `offline-source:${sourceHash}`;
     const extractionId = `offline-extraction:${sha256(`${sourceHash}:${parsed.parserBinary}`)}`;
-    const normalization = await buildCanonicalNormalization({ documentIr: parsed.ir, sourceDocumentId, extractionId });
+    const normalization = await buildCanonicalNormalization({
+      documentIr: parsed.ir,
+      sourceDocumentId,
+      extractionId,
+      departureDateReference: {
+        referenceDate: operationalReferenceDate,
+        rollingInferenceEligible: true,
+      },
+    });
     result.normalization = {
       success: true,
       status: normalization.status,
@@ -346,61 +413,169 @@ async function processFile(filePath: string): Promise<DocumentResult> {
       revisionNo: 1,
       normalization,
     });
-    const sections = asArray(normalization.canonicalPayload.sections).map(value => asObject(value)).filter((value): value is JsonObject => Boolean(value));
-    result.sections = sections.map((section, index) => sectionResult({
-      section,
-      index,
-      normalizationSections: normalization.sections,
-      revision,
-      revisionId: `offline-revision:${revision.payloadHash}`,
-    }));
+    const sections = asArray(normalization.canonicalPayload.sections)
+      .map(value => asObject(value))
+      .filter((value): value is JsonObject => Boolean(value));
+    const salePricePartition = partitionProductSectionsBySalePrice({
+      sections: normalization.sections,
+      canonicalSections: sections,
+      documentText: parsed.ir.text,
+      sourceSectionCount: normalization.sections.length,
+    });
+    const pastOnly = new Set(normalization.qualityDiagnostics.departureDatePolicy.pastOnlySectionIndexes);
+    const discardedForMissingPrice = new Set(salePricePartition.discardedSectionIndexes);
+    const eligibleSectionIndexes = new Set(salePricePartition.eligibleSections.map(section => section.index));
+    const emptyPreview = (title: string | null) => ({
+      title,
+      priceCount: 0,
+      firstPrice: null,
+      currency: null,
+      dateCount: 0,
+      flightCount: 0,
+      dayCount: 0,
+      inclusionCount: 0,
+      exclusionCount: 0,
+      optionalTourCount: 0,
+      sampleDayTitles: [],
+      customerReady: false,
+    });
+    result.sections = sections.map((section, index) => {
+      const titleHint = normalization.sections[index]?.titleHint ?? null;
+      if (pastOnly.has(index)) {
+        return {
+          index,
+          titleHint,
+          rawTextHash: normalization.sections[index]?.rawTextHash ?? '',
+          gateStatus: 'archived',
+          classification: 'blocked' as const,
+          criticalFailures: ['ALL_DEPARTURES_PAST'],
+          highWarnings: [],
+          renderContractPass: false,
+          renderContractError: 'ARCHIVED_ALL_DEPARTURES_PAST',
+          expectedProducts: null,
+          variantCount: 0,
+          priceRuleCount: 0,
+          itineraryItemCount: 0,
+          claimCount: 0,
+          criticalClaimCount: 0,
+          missingCriticalClaimCount: 0,
+          highClaimCount: 0,
+          missingHighClaimCount: 0,
+          match: { attractionUnmatched: 0, optionReview: 0, unknownCustomerVisible: 0, entityReview: 0, entityUnresolved: 0 },
+          customerPreview: emptyPreview(titleHint),
+          eligibleForPublication: false,
+          terminalOutcome: 'archived_all_departures_past',
+          excludedReason: 'ALL_DEPARTURES_PAST',
+        };
+      }
+      if (discardedForMissingPrice.has(index) || !eligibleSectionIndexes.has(index)) {
+        return {
+          index,
+          titleHint,
+          rawTextHash: normalization.sections[index]?.rawTextHash ?? '',
+          gateStatus: 'discarded',
+          classification: 'blocked' as const,
+          criticalFailures: ['SOURCE_SALE_PRICE_ABSENT'],
+          highWarnings: [],
+          renderContractPass: false,
+          renderContractError: 'DISCARDED_SOURCE_INCOMPLETE',
+          expectedProducts: null,
+          variantCount: 0,
+          priceRuleCount: 0,
+          itineraryItemCount: 0,
+          claimCount: 0,
+          criticalClaimCount: 0,
+          missingCriticalClaimCount: 0,
+          highClaimCount: 0,
+          missingHighClaimCount: 0,
+          match: { attractionUnmatched: 0, optionReview: 0, unknownCustomerVisible: 0, entityReview: 0, entityUnresolved: 0 },
+          customerPreview: emptyPreview(titleHint),
+          eligibleForPublication: false,
+          terminalOutcome: 'discarded_source_incomplete',
+          excludedReason: 'SOURCE_SALE_PRICE_ABSENT',
+        };
+      }
+      return sectionResult({
+        section,
+        index,
+        normalizationSections: normalization.sections,
+        revision,
+        revisionId: `offline-revision:${revision.payloadHash}`,
+      });
+    });
+    if (result.sections.every(section => section.terminalOutcome === 'archived_all_departures_past')) {
+      result.terminalOutcome = 'archived_all_departures_past';
+    } else if (result.sections.every(section => section.terminalOutcome === 'discarded_source_incomplete')) {
+      result.terminalOutcome = 'discarded_source_incomplete';
+    } else if (result.sections.some(section => section.terminalOutcome === 'blocked_action_required')) {
+      result.terminalOutcome = 'blocked_action_required';
+    } else if (result.sections.some(section => section.terminalOutcome === 'published_degraded')) {
+      result.terminalOutcome = 'published_degraded';
+    } else if (result.sections.some(section => section.terminalOutcome === 'published_verified')) {
+      result.terminalOutcome = 'published_verified';
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!result.extraction.success) result.extraction.error = message;
     else result.normalization.error = message;
+    result.terminalOutcome = 'quarantined_system_failure';
   }
   return result;
 }
 
-function aggregate(input: { sourceDirectory: string; documents: DocumentResult[] }): CorpusReport {
-  const sections = input.documents.flatMap(document => document.sections);
-  const extractionSuccess = input.documents.filter(document => document.extraction.success).length;
-  const normalizationSuccess = input.documents.filter(document => document.normalization.success).length;
-  const verified = sections.filter(section => section.classification === 'verified').length;
-  const degraded = sections.filter(section => section.classification === 'degraded').length;
+function aggregate(input: { sourceDirectory: string; operationalReferenceDate: string; documents: DocumentResult[] }): CorpusReport {
+  const uniqueDocuments = input.documents.filter(document => !document.duplicateOf);
+  const sections = uniqueDocuments.flatMap(document => document.sections);
+  const eligibleSections = sections.filter(section => section.eligibleForPublication);
+  const travelDocuments = uniqueDocuments.filter(document => document.documentClass === 'travel_product');
+  const extractionSuccess = uniqueDocuments.filter(document => document.extraction.success).length;
+  const normalizationSuccess = travelDocuments.filter(document => document.normalization.success).length;
+  const verified = eligibleSections.filter(section => section.classification === 'verified').length;
+  const degraded = eligibleSections.filter(section => section.classification === 'degraded').length;
   const autoPublishable = verified + degraded;
-  const blocked = sections.filter(section => section.classification === 'blocked').length;
-  const renderContractPass = sections.filter(section => section.renderContractPass).length;
+  const blocked = eligibleSections.filter(section => section.classification === 'blocked').length;
+  const renderContractPass = eligibleSections.filter(section => section.renderContractPass).length;
+  const archivedPastSections = sections.filter(section => section.terminalOutcome === 'archived_all_departures_past').length;
+  const discardedSourceIncompleteSections = sections.filter(section => section.terminalOutcome === 'discarded_source_incomplete').length;
   const totals = {
     files: input.documents.length,
+    uniqueSources: uniqueDocuments.length,
+    duplicateSources: input.documents.length - uniqueDocuments.length,
+    travelDocuments: uniqueDocuments.filter(document => document.documentClass === 'travel_product').length,
+    nonTravelDocuments: uniqueDocuments.filter(document => document.documentClass === 'non_travel').length,
+    corruptDocuments: uniqueDocuments.filter(document => document.documentClass === 'corrupt' || document.documentClass === 'unsupported').length,
     extractionSuccess,
     normalizationSuccess,
     sections: sections.length,
+    publicationEligibleSections: eligibleSections.length,
+    archivedPastSections,
+    discardedSourceIncompleteSections,
     verified,
     degraded,
     autoPublishable,
     blocked,
     renderContractPass,
-    renderContractFail: sections.length - renderContractPass,
-    priceRules: sections.reduce((sum, section) => sum + section.priceRuleCount, 0),
-    itineraryItems: sections.reduce((sum, section) => sum + section.itineraryItemCount, 0),
-    claims: sections.reduce((sum, section) => sum + section.claimCount, 0),
-    criticalClaims: sections.reduce((sum, section) => sum + section.criticalClaimCount, 0),
-    missingCriticalClaims: sections.reduce((sum, section) => sum + section.missingCriticalClaimCount, 0),
-    highClaims: sections.reduce((sum, section) => sum + section.highClaimCount, 0),
-    missingHighClaims: sections.reduce((sum, section) => sum + section.missingHighClaimCount, 0),
-    verifiedClaims: sections.reduce((sum, section) => sum + section.claimCount - section.missingCriticalClaimCount - section.missingHighClaimCount, 0),
+    renderContractFail: eligibleSections.length - renderContractPass,
+    priceRules: eligibleSections.reduce((sum, section) => sum + section.priceRuleCount, 0),
+    itineraryItems: eligibleSections.reduce((sum, section) => sum + section.itineraryItemCount, 0),
+    claims: eligibleSections.reduce((sum, section) => sum + section.claimCount, 0),
+    criticalClaims: eligibleSections.reduce((sum, section) => sum + section.criticalClaimCount, 0),
+    missingCriticalClaims: eligibleSections.reduce((sum, section) => sum + section.missingCriticalClaimCount, 0),
+    highClaims: eligibleSections.reduce((sum, section) => sum + section.highClaimCount, 0),
+    missingHighClaims: eligibleSections.reduce((sum, section) => sum + section.missingHighClaimCount, 0),
+    verifiedClaims: eligibleSections.reduce((sum, section) => sum + section.claimCount - section.missingCriticalClaimCount - section.missingHighClaimCount, 0),
   };
   const rate = (n: number, d: number) => d > 0 ? Number((n / d).toFixed(4)) : 0;
   const rates = {
-    extractionSuccess: rate(extractionSuccess, input.documents.length),
-    normalizationSuccess: rate(normalizationSuccess, input.documents.length),
-    sectionVerified: rate(verified, sections.length),
-    sectionDegraded: rate(degraded, sections.length),
-    sectionAutoPublishable: rate(autoPublishable, sections.length),
-    sectionBlocked: rate(blocked, sections.length),
+    extractionSuccess: rate(extractionSuccess, uniqueDocuments.length),
+    normalizationSuccess: rate(normalizationSuccess, travelDocuments.length),
+    sectionVerified: rate(verified, eligibleSections.length),
+    sectionDegraded: rate(degraded, eligibleSections.length),
+    sectionAutoPublishable: rate(autoPublishable, eligibleSections.length),
+    sectionBlocked: rate(blocked, eligibleSections.length),
+    publicationEligibleSection: rate(eligibleSections.length, sections.length),
     evidenceCoverage: rate(totals.verifiedClaims, totals.claims),
-    renderContractPass: rate(renderContractPass, sections.length),
+    renderContractPass: rate(renderContractPass, eligibleSections.length),
   };
   const status: CorpusReport['customerVerdict']['status'] = autoPublishable > 0 && blocked === 0
     ? 'customer_ready_candidate'
@@ -408,17 +583,20 @@ function aggregate(input: { sourceDirectory: string; documents: DocumentResult[]
       ? 'limited_automated_pilot'
       : 'not_ready_for_open';
   const rationale = [
-    `원문 추출 ${extractionSuccess}/${input.documents.length}건 성공`,
-    `안전 자동 공개 후보 ${autoPublishable}/${sections.length}개 섹션`,
+    `고유 원문 추출 ${extractionSuccess}/${uniqueDocuments.length}건 성공`,
+    `실제 판매 대상 ${eligibleSections.length}/${sections.length}개 섹션 (과거 일정·판매가 부재는 정상 종결로 제외)`,
+    `안전 자동 공개 후보 ${autoPublishable}/${eligibleSections.length}개 섹션`,
     `검증 공개 ${verified}개, 안전 축약 공개 ${degraded}개, 차단 ${blocked}개`,
+    `과거 일정 보관 ${archivedPastSections}개, 판매가 부재 폐기 ${discardedSourceIncompleteSections}개`,
     `근거 연결률 ${Math.round(rates.evidenceCoverage * 100)}%`,
-    `고객 화면 계약 통과 ${renderContractPass}/${sections.length}개`,
+    `고객 화면 계약 통과 ${renderContractPass}/${eligibleSections.length}개`,
   ];
   return {
     generatedAt: new Date().toISOString(),
     mode: 'offline-shadow-quarantine',
     publicExposure: 'none',
     sourceDirectory: input.sourceDirectory,
+    operationalReferenceDate: input.operationalReferenceDate,
     totals,
     rates,
     customerVerdict: {
@@ -442,6 +620,7 @@ function markdown(report: CorpusReport): string {
   lines.push(`- 실행 시각: ${report.generatedAt}`);
   lines.push(`- 처리 모드: 원문 기반 오프라인 격리 검증 (고객 노출 없음)`);
   lines.push(`- 원본 폴더: \`${report.sourceDirectory}\``);
+  lines.push(`- 업로드 기준일: \`${report.operationalReferenceDate}\` (연도 없는 출발일은 이 기준일 정책으로 올해/내년 판정)`);
   lines.push('');
   lines.push('## 고객 관점 최종 판정');
   lines.push('');
@@ -454,28 +633,36 @@ function markdown(report: CorpusReport): string {
   lines.push('| 항목 | 결과 |');
   lines.push('|---|---:|');
   lines.push(`| 원문 파일 | ${totals.files}건 |`);
-  lines.push(`| 추출 성공 | ${totals.extractionSuccess}/${totals.files} (${Math.round(rates.extractionSuccess * 100)}%) |`);
-  lines.push(`| 정규화 성공 | ${totals.normalizationSuccess}/${totals.files} (${Math.round(rates.normalizationSuccess * 100)}%) |`);
+  lines.push(`| 고유 원문 | ${totals.uniqueSources}건 (중복 ${totals.duplicateSources}건) |`);
+  lines.push(`| 여행상품 문서 | ${totals.travelDocuments}건 |`);
+  lines.push(`| 비여행 문서 | ${totals.nonTravelDocuments}건 (정상 비등록) |`);
+  lines.push(`| 손상·지원불가 문서 | ${totals.corruptDocuments}건 |`);
+  lines.push(`| 추출 성공 | ${totals.extractionSuccess}/${totals.uniqueSources} 고유 원문 (${Math.round(rates.extractionSuccess * 100)}%) |`);
+  lines.push(`| 정규화 성공 | ${totals.normalizationSuccess}/${totals.travelDocuments} 여행상품 원문 (${Math.round(rates.normalizationSuccess * 100)}%) |`);
   lines.push(`| 상품 섹션 | ${totals.sections}개 |`);
-  lines.push(`| 안전 자동 공개 후보 | ${totals.autoPublishable}개 (${Math.round(rates.sectionAutoPublishable * 100)}%) |`);
+  lines.push(`| 실제 판매 대상 | ${totals.publicationEligibleSections}개 (${Math.round(rates.publicationEligibleSection * 100)}%) |`);
+  lines.push(`| 과거 일정 정상 보관 | ${totals.archivedPastSections}개 |`);
+  lines.push(`| 판매가 부재 정상 폐기 | ${totals.discardedSourceIncompleteSections}개 |`);
+  lines.push(`| 안전 자동 공개 후보 | ${totals.autoPublishable}/${totals.publicationEligibleSections}개 (${Math.round(rates.sectionAutoPublishable * 100)}%) |`);
   lines.push(`| 검증 공개 | ${totals.verified}개 (${Math.round(rates.sectionVerified * 100)}%) |`);
   lines.push(`| 안전 축약 공개 | ${totals.degraded}개 (${Math.round(rates.sectionDegraded * 100)}%) |`);
   lines.push(`| 공개 차단 | ${totals.blocked}개 (${Math.round(rates.sectionBlocked * 100)}%) |`);
   lines.push(`| 가격 규칙 | ${totals.priceRules}개 |`);
   lines.push(`| 일정 항목 | ${totals.itineraryItems}개 |`);
   lines.push(`| claim 근거 연결률 | ${Math.round(rates.evidenceCoverage * 100)}% (${totals.verifiedClaims}/${totals.claims}) |`);
-  lines.push(`| 고객 화면 계약 통과 | ${totals.renderContractPass}/${totals.sections} (${Math.round(rates.renderContractPass * 100)}%) |`);
+  lines.push(`| 고객 화면 계약 통과 | ${totals.renderContractPass}/${totals.publicationEligibleSections} (${Math.round(rates.renderContractPass * 100)}%) |`);
   lines.push('');
   lines.push('## 파일별 결과');
   lines.push('');
-  lines.push('| 파일 | 추출 | 섹션 | 후보/검수/차단 | 가격 | 일정 | 고객 화면 | 주요 사유 |');
-  lines.push('|---|---:|---:|---:|---:|---:|---:|---|');
+  lines.push('| 파일 | 분류 | 추출 | 섹션 | 후보/검수/차단 | 가격 | 일정 | 고객 화면 | 주요 사유 |');
+  lines.push('|---|---|---:|---:|---:|---:|---:|---:|---|');
   for (const document of report.documents) {
-    const candidate = document.sections.filter(section => section.classification === 'verified').length;
-    const review = document.sections.filter(section => section.classification === 'degraded').length;
-    const blocked = document.sections.filter(section => section.classification === 'blocked').length;
+    const eligibleSections = document.sections.filter(section => section.eligibleForPublication);
+    const candidate = eligibleSections.filter(section => section.classification === 'verified').length;
+    const review = eligibleSections.filter(section => section.classification === 'degraded').length;
+    const blocked = eligibleSections.filter(section => section.classification === 'blocked').length;
     const reasons = document.sections.flatMap(section => [...section.criticalFailures, ...section.highWarnings]).slice(0, 2).join('<br>') || '-';
-    lines.push(`| ${document.filename.replaceAll('|', '\\|')} | ${document.extraction.success ? '성공' : '실패'} | ${document.sections.length} | ${candidate}/${review}/${blocked} | ${document.sections.reduce((n, section) => n + section.priceRuleCount, 0)} | ${document.sections.reduce((n, section) => n + section.itineraryItemCount, 0)} | ${document.sections.filter(section => section.renderContractPass).length}/${document.sections.length} | ${reasons} |`);
+    lines.push(`| ${document.filename.replaceAll('|', '\\|')} | ${document.documentClass} | ${document.extraction.success ? '성공' : '실패'} | ${document.sections.length} | ${candidate}/${review}/${blocked} | ${eligibleSections.reduce((n, section) => n + section.priceRuleCount, 0)} | ${eligibleSections.reduce((n, section) => n + section.itineraryItemCount, 0)} | ${eligibleSections.filter(section => section.renderContractPass).length}/${eligibleSections.length} | ${reasons} |`);
   }
   lines.push('');
   lines.push('## 고객이라면 이렇게 판단합니다');
@@ -497,22 +684,56 @@ function arg(name: string, fallback: string): string {
   return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
 }
 
+async function collectHwpFiles(root: string): Promise<string[]> {
+  const output: string[] = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      // A single inaccessible folder must not discard the rest of the corpus.
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = join(current, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(fullPath);
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.hwp') {
+        output.push(fullPath);
+      }
+    }
+  }
+  return output.sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
 async function main(): Promise<void> {
   const sourceDirectory = resolve(arg('--dir', 'C:/Users/admin/Downloads/코덱스테스트'));
+  const operationalReferenceDate = arg('--operational-reference-date', new Date().toISOString().slice(0, 10));
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(operationalReferenceDate)) {
+    throw new Error(`INVALID_OPERATIONAL_REFERENCE_DATE:${operationalReferenceDate}`);
+  }
   const jsonOut = resolve(arg('--json-out', 'data/product-registration/v5-shadow-corpus/2026-08-10.json'));
   const reportOut = resolve(arg('--report-out', 'docs/audits/2026-08-10-product-registration-v5-shadow-corpus.md'));
-  const files = (await readdir(sourceDirectory, { withFileTypes: true }))
-    .filter(entry => entry.isFile() && extname(entry.name).toLowerCase() === '.hwp')
-    .map(entry => join(sourceDirectory, entry.name))
-    .sort((a, b) => basename(a).localeCompare(b, 'ko'));
+  const files = await collectHwpFiles(sourceDirectory);
   if (files.length === 0) throw new Error(`NO_HWP_FILES:${sourceDirectory}`);
   const documents: DocumentResult[] = [];
+  const firstBySourceHash = new Map<string, string>();
   for (const file of files) {
     process.stdout.write(`\r처리 중 ${documents.length + 1}/${files.length}: ${basename(file).slice(0, 52).padEnd(52)} `);
-    documents.push(await processFile(file));
+    let duplicateOf: string | null = null;
+    try {
+      const hash = sha256(await readFile(file));
+      duplicateOf = firstBySourceHash.get(hash) ?? null;
+      if (!duplicateOf) firstBySourceHash.set(hash, file);
+    } catch {
+      // processFile records the terminal system failure and preserves the path.
+    }
+    documents.push(await processFile(file, operationalReferenceDate, duplicateOf));
   }
   process.stdout.write('\n');
-  const report = aggregate({ sourceDirectory, documents });
+  const report = aggregate({ sourceDirectory, operationalReferenceDate, documents });
   await mkdir(join(resolve(jsonOut), '..'), { recursive: true });
   await mkdir(join(resolve(reportOut), '..'), { recursive: true });
   await writeFile(jsonOut, `${JSON.stringify(report, null, 2)}\n`, 'utf8');

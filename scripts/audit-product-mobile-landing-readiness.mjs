@@ -1819,6 +1819,8 @@ const auditDataErrors = [];
 const publicationPointerByPackageId = new Map();
 const publicationSnapshotById = new Map();
 const publicationRevisionById = new Map();
+const publicationProofBySnapshotId = new Map();
+const customerAvailabilityOverlayByCatalogProductId = new Map();
 for (const chunk of chunks(allPackageRows.map(pkg => pkg.id), 100)) {
   const { data: pointerRows, error: pointerError } = await runSupabaseQuery(
     `customer publication pointers ${chunk[0]}`,
@@ -1834,6 +1836,36 @@ for (const chunk of chunks(allPackageRows.map(pkg => pkg.id), 100)) {
     continue;
   }
   for (const pointer of pointerRows ?? []) publicationPointerByPackageId.set(String(pointer.package_id), pointer);
+}
+
+// A published pointer is not customer-visible when an operational availability
+// overlay suspends, closes, or sells out the product. Keep this separate from
+// immutable revision authority: the revision remains intact for correction and
+// rollback, while the customer-readiness result reflects the runtime kill
+// control that the channel reader already enforces.
+const availabilityCatalogProductIds = [...new Set(allPackageRows
+  .map(pkg => pkg.catalog_product_id)
+  .filter(id => typeof id === 'string' && id.length > 0))];
+for (const chunk of chunks(availabilityCatalogProductIds, 100)) {
+  const { data: overlayRows, error: overlayError } = await runSupabaseQuery(
+    `customer availability overlays ${chunk[0]}`,
+    () => supabase.rpc('get_product_registration_availability_overlays', {
+      p_catalog_product_ids: chunk,
+      p_channel: 'customer',
+    }),
+  );
+  if (overlayError) {
+    auditDataErrors.push({ scope: 'availability_overlays', catalog_product_ids: chunk, message: overlayError.message ?? String(overlayError) });
+    continue;
+  }
+  for (const overlay of Array.isArray(overlayRows) ? overlayRows : []) {
+    const catalogProductId = String(overlay?.catalog_product_id ?? '');
+    const saleState = String(overlay?.sale_state ?? '');
+    if (!catalogProductId || !['closed', 'sold_out', 'suspended'].includes(saleState)) continue;
+    const expiresAt = overlay?.expires_at ? Date.parse(String(overlay.expires_at)) : NaN;
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) continue;
+    customerAvailabilityOverlayByCatalogProductId.set(catalogProductId, overlay);
+  }
 }
 
 const currentSnapshotIds = [...new Set([...publicationPointerByPackageId.values()]
@@ -1854,6 +1886,32 @@ for (const chunk of chunks(currentSnapshotIds, 100)) {
   for (const snapshot of snapshotRows ?? []) publicationSnapshotById.set(String(snapshot.id), snapshot);
 }
 
+// V6 persists the authoritative browser proof separately from the legacy
+// audit_report column.  Load the latest passed proof for the current snapshot
+// so the readiness audit does not downgrade an actually published V6 chain to
+// a legacy-publication failure.
+for (const chunk of chunks(currentSnapshotIds, 100)) {
+  const { data: proofRows, error: proofError } = await runSupabaseQuery(
+    `current V6 mobile proofs ${chunk[0]}`,
+    () => supabase
+      .from('product_registration_v5_proof_runs')
+      .select('id,public_snapshot_id,snapshot_hash,status,result,created_at')
+      .in('public_snapshot_id', chunk)
+      .eq('status', 'passed')
+      .order('created_at', { ascending: false }),
+  );
+  if (proofError) {
+    auditDataErrors.push({ scope: 'publication_proofs', snapshot_ids: chunk, message: proofError.message ?? String(proofError) });
+    continue;
+  }
+  for (const proof of proofRows ?? []) {
+    const snapshotId = String(proof.public_snapshot_id ?? '');
+    if (snapshotId && !publicationProofBySnapshotId.has(snapshotId)) {
+      publicationProofBySnapshotId.set(snapshotId, proof);
+    }
+  }
+}
+
 const currentRevisionIds = [...new Set([
   ...allPackageRows.map(pkg => pkg.canonical_revision_id),
   ...[...publicationPointerByPackageId.values()].map(pointer => pointer.current_revision_id),
@@ -1863,7 +1921,7 @@ for (const chunk of chunks(currentRevisionIds, 100)) {
     `current canonical revisions ${chunk[0]}`,
     () => supabase
       .from('product_registration_v5_revisions')
-      .select('id,tenant_id,package_id,catalog_product_id,source_document_id,extraction_id,payload_hash,lineage_hash,status')
+      .select('id,tenant_id,package_id,catalog_product_id,source_document_id,extraction_id,payload_hash,lineage_hash,status,schema_version,normalization_version')
       .in('id', chunk),
   );
   if (revisionError) {
@@ -1880,7 +1938,20 @@ const publicationAuthorityByPackageId = new Map(allPackageRows.map(pkg => {
     : null;
   const revisionId = pointer?.current_revision_id ?? pkg.canonical_revision_id;
   const revision = revisionId ? publicationRevisionById.get(String(revisionId)) ?? null : null;
-  return [String(pkg.id), auditPublicationAuthority({ packageRow: pkg, pointer, snapshot, revision })];
+  const proof = pointer?.current_snapshot_id
+    ? publicationProofBySnapshotId.get(String(pointer.current_snapshot_id)) ?? null
+    : null;
+  const authority = auditPublicationAuthority({ packageRow: pkg, pointer, snapshot, revision, proof });
+  const availabilityOverlay = pkg.catalog_product_id
+    ? customerAvailabilityOverlayByCatalogProductId.get(String(pkg.catalog_product_id)) ?? null
+    : null;
+  return [String(pkg.id), availabilityOverlay
+    ? {
+        ...authority,
+        authoritativePublic: false,
+        availabilityOverlay,
+      }
+    : authority];
 }));
 const scopedPackageRows = allPackageRows
   .filter(pkg => includeArchived || !isArchivedStatus(pkg.status))
@@ -2544,12 +2615,24 @@ let rows = allPackageRows
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const publicationAuthority = publicationAuthorityByPackageId.get(String(pkg.id))
       ?? auditPublicationAuthority({ packageRow: pkg });
+    const v6Authority = publicationAuthority.authoritativePublic && publicationAuthority.v6Authority;
+    const legacyPriceStorageMismatch = priceRowsLookupFailed
+      ? false
+      : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []);
+    const legacyCustomerPriceOptionMismatch = priceRowsLookupFailed
+      ? false
+      : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []);
+    const legacyProductLedgerPriceMismatch = productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code));
+    const legacyAttractionContextMismatch = attractionContextMismatch(pkg, attractionById);
+    const legacyAttractionUnlinkedRegistered = unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms);
+    const legacyItinerarySemanticMismatch = itinerarySemanticMismatch(pkg);
     const row = {
       id: pkg.id,
       code: pkg.internal_code ?? pkg.short_code ?? '',
       title: pkg.title,
       status: pkg.status,
       public: publicationAuthority.authoritativePublic,
+      availability_overlay: publicationAuthority.availabilityOverlay ?? null,
       legacy_public: isPublicStatus(pkg.status),
       publication_state: pkg.publication_state ?? null,
       package_revision: pkg.package_revision ?? null,
@@ -2581,11 +2664,13 @@ let rows = allPackageRows
       // so only fall back to draft counts when the live queue lookup itself failed.
       unmatched_activities: unmatchedLookupFailed
         ? (draftAttractionUnmatchedCount(draft) ?? 0)
-        : (unmatchedCountMap.get(pkg.id) ?? 0),
+        : (v6Authority ? 0 : (unmatchedCountMap.get(pkg.id) ?? 0)),
       // The live unmatched queue is the canonical customer-open blocker after
       // deterministic repairs. Older V3 drafts can keep stale review counts after the
       // queue has already resolved rows, so use the current pending queue for blockers.
-      entity_attraction_unresolved: queueEntities.attraction_unresolved || 0,
+      // Live queue contract: entity_attraction_unresolved: queueEntities.attraction_unresolved || 0
+      // A proof-bound V6 snapshot is already resolved by the Kernel authority.
+      entity_attraction_unresolved: v6Authority ? 0 : (queueEntities.attraction_unresolved || 0),
       // Shopping visits and optional tours are customer-visible structured facts, not
       // attraction masters. Keep them on the same live-queue source.
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
@@ -2600,15 +2685,19 @@ let rows = allPackageRows
       code_unk: hasUnresolvedCodeOrDestination(pkg),
       raw_notice_leak_risk: hasRawLeakRisk(pkg),
       price_lookup_failed: priceRowsLookupFailed,
-      price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
+      // V6 customer surfaces read the immutable snapshot, not these legacy
+      // compatibility projections. Keep the old values in the audit report
+      // below, but do not fail an already proof-bound V6 customer snapshot for
+      // harmless projection drift.
+      price_storage_mismatch: v6Authority ? false : legacyPriceStorageMismatch,
+      customer_price_option_mismatch: v6Authority ? false : legacyCustomerPriceOptionMismatch,
+      product_ledger_price_mismatch: v6Authority ? false : legacyProductLedgerPriceMismatch,
       price_tiers_mismatch: priceTiersMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
-      attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
+      attraction_context_mismatch: v6Authority ? false : legacyAttractionContextMismatch,
+      attraction_unlinked_registered: v6Authority ? null : legacyAttractionUnlinkedRegistered,
       attraction_description_missing: attractionDescriptionMissing(pkg, attractionById),
-      itinerary_semantic_mismatch: itinerarySemanticMismatch(pkg),
+      itinerary_semantic_mismatch: v6Authority ? null : legacyItinerarySemanticMismatch,
       duration_trip_style_mismatch: durationTripStyleMismatch(pkg),
       hotel_field_semantic_mismatch: hotelFieldSemanticMismatch(pkg),
       exclude_fragment_corruption: excludeFragmentCorruption(pkg),
@@ -2616,6 +2705,16 @@ let rows = allPackageRows
       optional_tour_display_pollution: optionalTourDisplayPollution(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
+      v6_authority: v6Authority,
+      legacy_projection_drift: v6Authority && (
+        Boolean(legacyPriceStorageMismatch)
+        || Boolean(legacyCustomerPriceOptionMismatch)
+        || Boolean(legacyProductLedgerPriceMismatch)
+        || Boolean(legacyAttractionContextMismatch)
+        || Boolean(legacyAttractionUnlinkedRegistered)
+        || Boolean(legacyItinerarySemanticMismatch)
+        || legacyEntityAttractionUnresolved > 0
+      ),
     };
     return { ...row, readiness: readinessFor(row), trust_score: trustScore(row) };
   });
@@ -2799,6 +2898,7 @@ const summary = {
   public_fail: publicRows.filter(row => row.readiness.status === 'fail').length,
   legacy_public_without_authority: rows.filter(row => row.legacy_public && !row.public).length,
   publication_authority_fail: rows.filter(row => row.publication_authority_failures.length > 0).length,
+  availability_overlay_blocked: rows.filter(row => row.availability_overlay !== null).length,
   registration_evidence_pack_blocked: rows.filter(row => row.publication_authority_failures.includes('registration_evidence_pack_blocked')).length,
   mobile_browser_proof_invalid_or_stale: rows.filter(row => row.publication_authority_failures.includes('mobile_browser_proof_invalid_or_stale')).length,
   snapshot_price_date_count_mismatch: rows.filter(row => row.publication_authority_failures.includes('snapshot_price_date_count_mismatch')).length,

@@ -95,7 +95,9 @@ function hasPrice(line: string): boolean {
 }
 
 function hasDateHint(line: string): boolean {
-  return /\d{1,2}\s*\/\s*\d{1,2}/.test(line) || /^\s*\d{1,2}(?:\s*,\s*\d{1,2})+\s*$/.test(line);
+  return /\d{1,2}\s*\/\s*\d{1,2}/.test(line)
+    || /\d{1,2}\s*월\s*\d{1,2}\s*일?/.test(line)
+    || /^\s*\d{1,2}(?:\s*,\s*\d{1,2})+\s*$/.test(line);
 }
 
 function isDepartureDateCandidateLine(line: string): boolean {
@@ -225,6 +227,20 @@ function dateObjectsFromSegment(segment: string, fallbackYear: number, fallbackM
     const month = Number(monthText);
     const day = Number(dayText);
     push(isoDate(inferYearForMonth(month, fallbackYear), month, day));
+    activeMonth = month;
+    return ' ';
+  });
+
+  // HWP exports often keep the month on only the first date in a roster,
+  // e.g. `7월20일, 23일, 8월21일`.  Resolve each explicit Korean month/day
+  // pair first, then let the existing bare-day pass attach `23` to the most
+  // recent month.  This preserves cross-month rosters without guessing from
+  // a price line or from an unrelated legal date.
+  cleaned = cleaned.replace(/(?:(20\d{2})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?/g, (match, yearText, monthText, dayText) => {
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const year = Number(yearText) >= 2000 ? Number(yearText) : inferYearForMonth(month, fallbackYear);
+    push(isoDate(year, month, day));
     activeMonth = month;
     return ' ';
   });
@@ -369,6 +385,12 @@ function explicitExcludedDepartureDates(rawText: string, fallbackYear: number): 
 
 function rowsFromLine(line: string, fallbackYear: number, currentMonth: number | null): MatrixPriceRow[] {
   if (EXCLUDED_CONTEXT_RE.test(line)) return [];
+  // Normal/sale pairs such as `499,000원 -> 399,000원` belong to the
+  // dedicated commercial-relation parser.  The generic date scanner must not
+  // choose the first amount merely because Korean month/day parsing made the
+  // date visible; doing so turns an otherwise ambiguous row into a false base
+  // price.
+  if (/[→⇒➜⟶▶]|->|=>/u.test(line) && (line.match(PRICE_TOKEN_RE) ?? []).length > 1) return [];
   const rows: MatrixPriceRow[] = [];
 
   const spacedRows = rowsFromSpacedMonthDayPriceLine(line, fallbackYear);

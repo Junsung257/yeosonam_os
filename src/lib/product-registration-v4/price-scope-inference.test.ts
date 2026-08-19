@@ -89,5 +89,74 @@ describe('inferUndatedPriceScopesFromSchedule', () => {
     expect(result).toEqual({ applied: 0, ambiguous: 0 });
     expect(target.price_calendar[0]?.date_range).toBeNull();
   });
-});
 
+  it('expands one undated price across an exact departure roster', () => {
+    const target = variant('1인 판매가 679,000원', 4, 679_000);
+    const result = inferUndatedPriceScopesFromSchedule({
+      year: 2026,
+      rawText: [
+        '상품가',
+        '출발 날짜',
+        '5/27, 29',
+        '1인 판매가 679,000원',
+      ].join('\n'),
+      variants: [target],
+    });
+
+    expect(result.applied).toBe(2);
+    expect(target.price_calendar.map(price => price.date)).toEqual(['2026-05-27', '2026-05-29']);
+  });
+
+  it('selects the local airline row before expanding a shared departure roster', () => {
+    const target = {
+      title_parts: ['[BX] 다낭 힐튼 3박5일'],
+      price_calendar: [
+        { ...variant('1,119,000', 6, 1_119_000).price_calendar[0]!, evidence: { ...variant('1,119,000', 6, 1_119_000).price_calendar[0]!.evidence, line_start: 6 } },
+        { ...variant('1,139,000', 8, 1_139_000).price_calendar[0]!, evidence: { ...variant('1,139,000', 8, 1_139_000).price_calendar[0]!.evidence, line_start: 8 } },
+      ],
+    };
+    const result = inferUndatedPriceScopesFromSchedule({
+      year: 2026,
+      rawText: [
+        '출발 날짜',
+        '5/28 (출확)',
+        '6/4, 11, 18, 25',
+        '7/9',
+        'LJ',
+        '1,119,000',
+        'BX',
+        '1,139,000',
+      ].join('\n'),
+      variants: [target],
+    });
+
+    expect(result.applied).toBe(6);
+    expect(target.price_calendar).toHaveLength(6);
+    expect(new Set(target.price_calendar.map(price => price.amount))).toEqual(new Set([1_139_000]));
+  });
+
+  it('connects a compact month/range/weekday/duration price matrix row', () => {
+    const target = {
+      ...variant('699,000', 5, 699_000),
+      duration_days: 3,
+    };
+    const result = inferUndatedPriceScopesFromSchedule({
+      year: 2026,
+      rawText: [
+        '9월',
+        '14~30',
+        '토',
+        '2박3일',
+        '699,000',
+      ].join('\n'),
+      variants: [target],
+    });
+
+    expect(result).toEqual({ applied: 1, ambiguous: 0 });
+    expect(target.price_calendar[0]).toMatchObject({
+      date_range: { start: '2026-09-14', end: '2026-09-30' },
+      weekday: 6,
+    });
+    expect(target.price_calendar[0]?.evidence.quote).toContain('9월');
+  });
+});

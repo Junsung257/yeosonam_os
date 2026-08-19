@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateProductRegistrationV3Gate } from './gate';
 import { createSourceLineIndex, planProductRegistrationV3 } from '.';
-import type { V3DraftLedger, V3Evidence, V3StructurePlan } from './types';
+import type { V3DraftLedger, V3Evidence, V3EntityCategory, V3StructurePlan } from './types';
 
 const evidence: V3Evidence = {
   line_start: 1,
@@ -118,6 +118,40 @@ describe('evaluateProductRegistrationV3Gate transport profile', () => {
     expect(gate.status).toBe('blocked');
   });
 
+  it('allows explicitly priced extra options alongside a no-option package', () => {
+    const ledger = baseLedger([]);
+    const variant = ledger.variants[0];
+    const notice = (templateKey: string, category: string) => ({
+      source_text: templateKey,
+      category,
+      template_key: templateKey,
+      values: {},
+      evidence: [evidence],
+      visibility: 'customer_visible',
+      risk_level: 'high',
+      review_status: 'auto_clean',
+      standard_text: templateKey,
+    });
+    variant.standard_notices = [notice('optional.none', 'optional_tour')] as typeof variant.standard_notices;
+    variant.options = [{
+      raw_name: '추천 해양스포츠 $20',
+      normalized_name: '해양스포츠',
+      category: 'activity',
+      price_amount: 20,
+      currency: 'USD',
+      region: null,
+      city: null,
+      duration_minutes: null,
+      day_number: null,
+      evidence,
+      match_status: 'unmatched',
+    }];
+
+    const gate = evaluateProductRegistrationV3Gate(basePlan(false), ledger);
+
+    expect(gate.checks.find(check => check.id.endsWith('optional_tour_not_contradictory'))?.status).toBe('pass');
+  });
+
   it('accepts source-backed meal and hotel inclusions as V3 gate evidence', () => {
     const ledger = baseLedger([]);
     const variant = ledger.variants[0];
@@ -137,6 +171,43 @@ describe('evaluateProductRegistrationV3Gate transport profile', () => {
 
     expect(gate.checks.find(check => check.id === 'v1.meals_or_notice')).toMatchObject({ status: 'pass' });
     expect(gate.checks.find(check => check.id === 'v1.hotel_or_notice')).toMatchObject({ status: 'pass' });
+  });
+
+  it('keeps an unmatched attraction as an enrichment warning, not a publication blocker', () => {
+    const ledger = baseLedger([]);
+    ledger.variants[0].inclusions = [{ value: '왕복항공권', evidence }];
+    ledger.variants[0].exclusions = [{ value: '개인경비', evidence }];
+    const gate = evaluateProductRegistrationV3Gate(basePlan(false), ledger, {
+      attraction_matched_count: 0,
+      attraction_unmatched_count: 2,
+      option_review_count: 0,
+      shopping_count: 0,
+      unmatched: [],
+      entity_summary: {
+        counts: {} as Record<V3EntityCategory, number>,
+        review_required_count: 0,
+        attraction_unresolved_count: 2,
+        shopping_review_needed_count: 0,
+        option_review_needed_count: 0,
+        unknown_customer_visible_count: 0,
+        auto_ignored_noise_count: 0,
+        meal_structured_count: 0,
+        transfer_structured_count: 0,
+        hotel_structured_count: 0,
+        free_time_structured_count: 0,
+        review_items: [],
+      },
+    });
+
+    expect(gate.checks.find(check => check.id === 'attraction_unmatched_queue_clear')).toMatchObject({
+      status: 'warn',
+      severity: 'info',
+    });
+    expect(gate.checks.find(check => check.id === 'entity_attraction_unresolved_clear')).toMatchObject({
+      status: 'warn',
+      severity: 'info',
+    });
+    expect(gate.status).toBe('ready_to_publish');
   });
 
   it('does not treat numeric price table values as flight codes', () => {

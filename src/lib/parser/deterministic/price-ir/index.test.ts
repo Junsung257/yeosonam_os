@@ -154,6 +154,30 @@ ${MONTH_KO}7
     ]));
   });
 
+  it('binds a Korean month/day roster on the line above its sale price', () => {
+    const rawText = [
+      'PIC 호텔 괌 노쇼핑 패키지 4박5일',
+      '7월20일, 23일, 8월21일',
+      '859,000원',
+      '8월24일, 31일',
+      '799,000원',
+      '상품가 및 출발일',
+      '포함사항 왕복항공료 호텔 조식',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(['pdf_date_price_table', 'product_price_vertical_date_table']).toContain(result.source);
+    expect(pricesByDate).toEqual(new Map([
+      ['2026-07-20', 859000],
+      ['2026-07-23', 859000],
+      ['2026-08-21', 859000],
+      ['2026-08-24', 799000],
+      ['2026-08-31', 799000],
+    ]));
+  });
+
   it('recovers a vertical HWP price followed by multiple month/day groups', () => {
     const rawText = [
       '상품명 오사카 3박4일',

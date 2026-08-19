@@ -71,6 +71,34 @@ function isDurationPricePreamble(lines: V3SourceLine[], startLine: number, endLi
     && !hasFlightCode(lines, startLine, endLine);
 }
 
+function normalizedBoundaryTitle(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[\s\[\]【】()（）·•◆◇★☆#:_\-]/gu, '')
+    .toLocaleLowerCase('ko-KR');
+}
+
+/**
+ * Some supplier HWP files repeat the exact product title immediately before
+ * the full itinerary.  The first occurrence is only a long price calendar;
+ * it has no DAY header or flight evidence.  Treating it as a second product
+ * creates a false expected_products mismatch, while merging two real hotel or
+ * duration variants would be unsafe.  The identical-title + no-itinerary
+ * evidence constraint keeps this merge limited to the harmless header stub.
+ */
+function isRepeatedPriceHeaderStub(
+  lines: V3SourceLine[],
+  current: V3StructurePlan['product_boundaries'][number],
+  next: V3StructurePlan['product_boundaries'][number] | undefined,
+): boolean {
+  if (!next || normalizedBoundaryTitle(current.title_hint) !== normalizedBoundaryTitle(next.title_hint)) return false;
+  if (hasItineraryDayHeader(lines, current.line_start, current.line_end) || hasFlightCode(lines, current.line_start, current.line_end)) return false;
+  if (!hasItineraryDayHeader(lines, next.line_start, next.line_end) && !hasFlightCode(lines, next.line_start, next.line_end)) return false;
+  const text = lines.slice(current.line_start - 1, current.line_end).map(line => line.quote).join('\n');
+  return /(?:출\s*발|요\s*금|판매\s*가|상품\s*가|특\s*가|마\s*감|가격)/u.test(text)
+    && /\d+\s*박\s*\d+\s*일/u.test(current.title_hint);
+}
+
 function collectCatalogBoundaryStarts(raw: string): number[] {
   const variantStarts = collectVariantCatalogBlockStarts(raw);
   const transportStarts = collectTransportVariantDetailBlockStarts(raw);
@@ -133,6 +161,16 @@ function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boun
     for (let index = 0; index < boundaries.length; index += 1) {
       const current = boundaries[index];
       const next = boundaries[index + 1];
+      if (isRepeatedPriceHeaderStub(lines, current, next)) {
+        merged.push({
+          index: merged.length,
+          line_start: current.line_start,
+          line_end: next!.line_end,
+          title_hint: next!.title_hint,
+        });
+        index += 1;
+        continue;
+      }
       if (isDurationPricePreamble(lines, current.line_start, current.line_end)) {
         let targetIndex = index + 1;
         while (

@@ -95,8 +95,14 @@ const BAKEKDU_DESCRIPTION_FRAGMENT_RE =
 
 const TIME_WITH_ARRIVAL_OFFSET_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+?\d+\))?$/;
 const SOURCE_EVIDENCE_HEADER_RE = /^\[\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\]$/;
+// Customs warnings can contain "\uba74\uc138\ud488" but are not contracted
+// shopping stops. Treat them as notices so a no-shopping package is not
+// falsely blocked by a customs precaution line.
+const CUSTOMS_OR_DUTY_NOTICE_RE =
+  /(?:\uc138\uad00\s*\uc2e0\uace0\uc11c|\uc138\uad00\uc5d0\uc11c\s*\uacfc\uc138|\uacfc\uc138\uac00\s*\uc2ec|\uba74\uc138\ud488\uc744?\s*(?:\uc870\uc2ec|\uc8fc\uc758))/i;
 
 function isShoppingAmenityDescription(text: string): boolean {
+  if (CUSTOMS_OR_DUTY_NOTICE_RE.test(text)) return true;
   return SHOPPING_RE.test(text)
     && SHOPPING_AMENITY_RE.test(text)
     && !SHOPPING_VISIT_RE.test(text);
@@ -108,6 +114,16 @@ const CAPACITY_AND_DIMENSION_PRICE_DECOY_RE =
   /(?:\uCD1D\s*\uD1A4\s*\uC218|\uC804\s*\uC7A5|\uC804\s*\uD3ED|\uC804\s*\uACE0|\uCD1D\s*\uD0D1\s*\uC2B9\s*\uAC1D|\uC2B9\s*\uBB34\s*\uC6D0\s*\uC218|\uC218\s*\uC6A9\s*\uC778\s*\uC6D0|\uAC1D\s*\uC2E4\s*\uC218)/u;
 const QUANTITY_AND_MEASURE_PRICE_DECOY_RE =
   /\b[1-9]\d{0,2}(?:[,.]\d{3})+\s*(?:\uC5EC\s*)?(?:\uAC1C(?:\uC18C)?|\uBA85|\uACF3|\uC11D|\uC2E4|\uD68C|\uB300|\uD640|\uB9C8\uB9AC|\uD1A4|\uD3C9|m\b|km\b|㎡)/iu;
+// Numeric values that look like KRW prices but are not sale prices.  HWP
+// tables often place foreign taxes, onboard payments, or the notional value
+// of an included benefit next to the real package price.  These must never be
+// date-bound later as a scalar sale price.  An explicit 상품가/판매가 label is
+// allowed through so an explicitly labelled foreign-currency sale can still
+// be reviewed by the normal currency rules.
+const FOREIGN_CURRENCY_PRICE_DECOY_RE =
+  /(?:\b(?:JPY|CNY|RMB|THB|PHP|VND|SGD|HKD|TWD|MYR|IDR|EUR)\b|\uC5D4\uD654|\uC704\uC548|\uBC14\uD2B8|\uD398\uC18C|\uB3D9\uD654|\uC2F1\uAC00\uD3EC\s*\uB2EC\uB7EC)/iu;
+const NON_SALE_VALUE_PRICE_DECOY_RE =
+  /(?:\uC0C1\uB2F9|\uC120\uB0B4\s*\uC9C0\uBD88|\uBCC4\uB3C4\s*\uC9C0\uBD88|\uAD00\uAD11\s*\uC5EC\uAC1D\uC138|\uC74C\uB8CC\s*\uD328\uD0A4\uC9C0|\uAE30\uD56D\uC9C0\s*\uAD00\uAD11)/iu;
 const KOREAN_REGION_CELL_ONLY_RE =
   /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
 const BRACKETED_DESCRIPTION_ONLY_RE = /^\[[^\]]{8,80}\]$/;
@@ -153,6 +169,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   const text = line.trim();
   if (!text) return null;
   const compact = text.replace(/\s+/g, '');
+  if (CUSTOMS_OR_DUTY_NOTICE_RE.test(text)) return 'notice';
   if (XIAN_MEAL_TERM_RE.test(text) || XIAN_MEAL_TERM_RE.test(compact)) return 'meal';
   if (XIAN_FREE_TREKKING_ROUTE_RE.test(text) || XIAN_FREE_TREKKING_ROUTE_RE.test(compact)) return 'free_time';
   if (XIAN_HUAQINGJI_DESCRIPTION_FRAGMENT_RE.test(text)) return 'notice';
@@ -308,13 +325,27 @@ function normalizeOptionName(text: string): string {
 }
 
 function isOptionHeadingOrNonCustomerOption(text: string): boolean {
-  const normalized = text.replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-○▪◦*\u2663]+/, '').trim();
+  const normalized = text
+    .replace(/^[\s※\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-○▪◦*\u2663]+/, '')
+    .replace(/[※]+$/u, '')
+    .trim();
   const compact = normalized.replace(/\s+/g, '');
+  // Flattened HWP cells often combine policy headings into one token such as
+  // `선택관광,쇼핑`. This is a commercial exclusion heading, not a customer
+  // visible optional tour. Do not let it manufacture an option and then
+  // contradict an explicit 노옵션 notice.
+  const policyParts = compact.split(/[,，/|·&]/u).map(part => part.trim()).filter(Boolean);
+  if (policyParts.length >= 2 && policyParts.every(part => /^(?:선택관광(?:비용)?|쇼핑|옵션(?:투어)?)$/u.test(part))) return true;
   if (/^(?:현지지불옵션|강력추천옵션|추천옵션|\(?현지지불옵션\)?)$/i.test(compact)) return true;
   if (/^(?:선택관광비용|유류변동분|매너팁및개인경비|개인경비)$/.test(compact)) return true;
   if (/^(?:기사\/?가이드경비|가이드\/?기사경비)\$?\d+/i.test(compact)) return true;
   if (/^(?:\uc120\ud0dd\uad00\uad11|\ucd94\ucc9c\uc120\ud0dd\uad00\uad11|\uc635\uc158|\uc635\uc158\ud22c\uc5b4)$/.test(compact)) return true;
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return true;
+  // `상품특전 ... (현지옵션 $20) 서비스 제공` is an included benefit,
+  // not a customer-selectable paid option. Keep it out of the no-option
+  // contradiction check unless an explicit extra/optional payment is stated.
+  if (/(?:서비스\s*제공|상품\s*특전|무료\s*제공)/u.test(normalized)
+    && !/(?:추가|별도\s*(?:요금|지불)|선택\s*관광|현지\s*지불)/u.test(normalized)) return true;
   if (INCLUDED_ACTIVITY_RE.test(normalized) && !USD_RE.test(normalized) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(normalized)) return true;
   if (/^(?:\ub178\uc635\uc158|no\s*option|\uc120\ud0dd\uad00\uad11\s*(?:\uc5c6\uc74c|\ubb34|0\ud68c))$/i.test(compact)) return true;
   if (isNonCustomerOptionText(normalized)) return true;
@@ -563,6 +594,8 @@ function buildVariant(
       const explicitBaseSaleCue = /(?:상품가|판매가|행사가|성인\s*(?:기준)?\s*(?:가격|요금|상품가))/u.test(text);
       const excludedComponentCue = /(?:기사\s*[\/&·]?\s*가이드\s*(?:경비|팁)|가이드\s*[\/&·]?\s*기사\s*(?:경비|팁)|싱글\s*(?:차지|룸|추가)|유류\s*할증|현지\s*(?:지불|경비|비용)|선택\s*관광|옵션|커미션|commission|\bcomm?\b|예약금|계약금|취소\s*수수료|아동\s*(?:가|요금)|소아\s*(?:가|요금))/iu.test(text);
       if (excludedComponentCue && !explicitBaseSaleCue) return false;
+      if ((FOREIGN_CURRENCY_PRICE_DECOY_RE.test(text) || NON_SALE_VALUE_PRICE_DECOY_RE.test(text))
+        && !explicitBaseSaleCue) return false;
       if (/\$|\b(?:USD|달러)\b|(?:해발|고도|높이|\b\d+\s*M\b)/i.test(text) && !explicitPriceCue) return false;
       if (DAY_HEADER_RE.test(text) && !explicitPriceCue) return false;
       // A bare table cell may be a valid base price, but tiny values are much
@@ -660,6 +693,11 @@ function buildVariant(
     if (inRemarkSection) continue;
     const type = eventTypeForLine(eventText);
     if (!type) continue;
+    // Flattened itinerary tables emit headings such as `※추천 옵션※` as
+    // events. They are section labels, not customer-selectable activities;
+    // retaining them creates a false entity-review blocker even when every
+    // actual option below has source evidence and a price.
+    if (type === 'option' && isOptionHeadingOrNonCustomerOption(eventText)) continue;
     if (!currentDay) continue;
     const event = buildEvent(line, type, eventText.trim());
     currentDay.events.push(event);

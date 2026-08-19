@@ -135,6 +135,45 @@ describe('canonical completeness states', () => {
     expect(result.fields.find(field => field.fieldPath.endsWith('.itinerary'))?.state).toBe('confirmed');
   });
 
+  it('accepts supplier flight notation with a +1 arrival marker as overnight evidence', () => {
+    const result = evaluateCanonicalCompleteness({
+      rawText: '나트랑 3박5일 BX781 19:20 – 22:20 / BX782 23:20 – 06:20+1',
+      sectionIndex: 0,
+      canonicalSection: section({
+        duration_days: 5,
+        days: Array.from({ length: 4 }, (_, index) => ({
+          day: index + 1,
+          events: [],
+          hotel: { raw_text: '나트랑 호텔 또는 동급' },
+          meals: {},
+        })),
+      }),
+    });
+
+    expect(result.fields.find(field => field.fieldPath.endsWith('.itinerary'))?.state).toBe('confirmed');
+    expect(result.blockers.some(reason => reason.includes('DAY 일정'))).toBe(false);
+  });
+
+  it('degrades an explicitly marked extra-night variant without inventing a missing day', () => {
+    const result = evaluateCanonicalCompleteness({
+      rawText: '장가계 4박5일 상품\n제3일 일정\n*4박5일',
+      sectionIndex: 0,
+      canonicalSection: section({
+        duration_days: 5,
+        days: Array.from({ length: 4 }, (_, index) => ({
+          day: index + 1,
+          events: [],
+          hotel: { raw_text: '장가계 호텔 또는 동급' },
+          meals: {},
+        })),
+      }),
+    });
+
+    expect(result.publicationOutcome).toBe('degraded');
+    expect(result.publicReady).toBe(true);
+    expect(result.degradedReasons.some(reason => reason.includes('추가 숙박 표시'))).toBe(true);
+  });
+
   it('does not excuse duplicate or missing DAY labels without explicit overnight evidence', () => {
     const result = evaluateCanonicalCompleteness({
       rawText: '내몽고 4박5일 상품, 제4일 표제가 두 번 기재됨',
@@ -152,6 +191,27 @@ describe('canonical completeness states', () => {
 
     expect(result.publicationOutcome).toBe('blocked');
     expect(result.blockers.some(reason => reason.includes('5일') && reason.includes('4일'))).toBe(true);
+  });
+
+  it('degrades the common one-day departure/arrival omission when transport context is present', () => {
+    const result = evaluateCanonicalCompleteness({
+      rawText: '보홀 4박6일 BX321 출발·도착 일정표',
+      sectionIndex: 0,
+      canonicalSection: section({
+        duration_days: 6,
+        flight_segments: [{ leg: 'outbound', code: 'BX321', dep_time: '19:00', arr_time: '22:00' }],
+        days: Array.from({ length: 5 }, (_, index) => ({
+          day: index + 1,
+          events: [],
+          hotel: { raw_text: '보홀 리조트' },
+          meals: {},
+        })),
+      }),
+    });
+
+    expect(result.publicationOutcome).toBe('degraded');
+    expect(result.publicReady).toBe(true);
+    expect(result.degradedReasons.some(reason => reason.includes('출발·도착일 일정'))).toBe(true);
   });
 
   it('marks ferry products as not applicable for air-flight evidence', () => {
@@ -177,6 +237,20 @@ describe('canonical completeness states', () => {
 
     expect(result.fields.find(field => field.fieldPath.endsWith('.lodging'))?.state).toBe('not_applicable');
     expect(result.publicationOutcome).toBe('verified');
+  });
+
+  it('recognizes hotel evidence recorded in inclusions when the itinerary has no hotel row', () => {
+    const result = evaluateCanonicalCompleteness({
+      rawText: '다낭 3박5일, 호텔 숙박 포함, 성인 399,000원',
+      sectionIndex: 0,
+      canonicalSection: section({
+        days: [{ day: 1, events: [], hotel: {}, meals: {} }],
+        inclusions: [{ value: '다낭 시내 4성급 호텔 숙박' }],
+      }),
+    });
+
+    expect(result.fields.find(field => field.fieldPath.endsWith('.lodging'))?.state).toBe('confirmed');
+    expect(result.blockers.some(reason => reason.includes('.lodging'))).toBe(false);
   });
 
   it('degrades absent inclusion or exclusion facts with a customer disclosure', () => {
