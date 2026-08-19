@@ -96,6 +96,10 @@ jobs:
           test "$(git rev-parse origin/main)" = "${{ inputs.release_commit }}"
           npm ci
           npm run verify:blog-release-bundle-v4
+          npm run verify:blog-content-factory-release-bundle-v4
+          npm run verify:ai-control-plane-migration
+          npm run verify:blog-auto-repair-migration
+          npm run verify:ai-direct-call-guard
           npm run type-check
           npx vitest run \
             src/lib/blog-ai-caller.test.ts \
@@ -107,7 +111,14 @@ jobs:
             src/lib/blog-publication-rollout.test.ts \
             src/lib/blog-publication-rollout-repository.test.ts \
             src/lib/blog-production-readiness-v4.test.ts \
-            src/lib/blog-publisher-v4-orchestration-contract.test.ts
+            src/lib/blog-publisher-v4-orchestration-contract.test.ts \
+            src/lib/blog-content-factory \
+            src/lib/blog-content-factory-release-bundle.test.ts \
+            src/lib/ai-control-plane \
+            src/lib/llm-gateway-timeout.test.ts \
+            src/workflows/blog-content-operation-v4.contract.test.ts \
+            src/app/api/cron/blog-publication-controller/route.test.ts \
+            src/lib/blog-indexing-worker.test.ts
 
       - name: Link protected production projects
         shell: bash
@@ -126,12 +137,21 @@ jobs:
           npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee .tmp/blog-v4-release/supabase-dry-run.txt
           npm run verify:blog-supabase-dry-run-v4 -- --input=.tmp/blog-v4-release/supabase-dry-run.txt --allow-empty
 
+      - name: Prove exact Durable Content Factory migration dry-run set
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run prepare:blog-content-factory-supabase-workdir-v4 -- --output=.tmp/blog-v4-content-factory-supabase-release
+          npx supabase db push --workdir .tmp/blog-v4-content-factory-supabase-release --linked --include-all --skip-vault --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee .tmp/blog-v4-release/content-factory-supabase-dry-run.txt
+          npm run verify:blog-content-factory-supabase-dry-run-v4 -- --input=.tmp/blog-v4-release/content-factory-supabase-dry-run.txt --allow-empty
+
       - name: Apply pinned forward migrations
         if: inputs.apply_migrations
         shell: bash
         run: |
           set -euo pipefail
           npx supabase db push --workdir .tmp/blog-v4-supabase-release --linked --include-all --skip-vault --yes --password "$SUPABASE_DB_PASSWORD"
+          npx supabase db push --workdir .tmp/blog-v4-content-factory-supabase-release --linked --include-all --skip-vault --yes --password "$SUPABASE_DB_PASSWORD"
 
       - name: Record reviewed blocked-URL dispositions
         if: inputs.apply_dispositions
@@ -178,6 +198,8 @@ jobs:
           detail_sha="$(node -p "require('./public/blog-snapshots/v3/manifest.json').detail.sha256")"
           update_env BLOG_AUTOPUBLISH_MODE draft_only
           update_env BLOG_GENERATION_CRON_ENABLED false
+          update_env BLOG_CONTENT_FACTORY_ENABLED false
+          update_env BLOG_AI_CONTROL_PLANE_ENABLED 0
           update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main
           update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"
           update_env BLOG_DAILY_PUBLISH_CAP 30

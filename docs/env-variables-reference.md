@@ -13,11 +13,15 @@
 | `BLOG_AUTO_ROLLBACK_ENABLED` | `true` | 심각 사고는 즉시 동결·pilot 복귀, 일반 불건전 관측 2회 연속은 한 단계 강등 |
 | `BLOG_DAILY_CANDIDATE_CAP` | `30` | KST 야간에 생성·검증할 후보 상한. 공개 상한이 아니며 최대 30 |
 | `BLOG_DAILY_AI_COST_CAP_USD` | `2` | KST 일일 AI 비용 상한. 공급자 호출 전에 DB 원자 예약이 실패하거나 상한을 넘으면 호출 금지 |
+| `BLOG_AI_CONTROL_PLANE_ENABLED` | `0` | `1`일 때 durable Blog V4 DeepSeek 호출이 전역/workload/candidate 예산 방화벽과 영수증 RPC를 통과해야 함. migration·dry-run 검증 전에는 켜지 않음 |
+| `AI_LEGACY_INTERNAL_RETRIES_ENABLED` | `0` | 레거시 공용 LLM gateway의 내부 재시도 opt-in. 기본 0이며 durable blog에는 적용되지 않음 |
 | `BLOG_MAX_WEATHER_SHARE_30D` | `0.20` | 최근 30일 날씨 archetype 비중 상한 |
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 same-archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
 | `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
+| `BLOG_CONTENT_FACTORY_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 demand materializer와 Durable Content Factory workflow를 사용. 누락 시 기존 V4 경로 유지 |
+| `BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT` | `6` | 한 번의 10분 cron에서 시작할 workflow 상한. 1~12 범위로 제한되며 공개 상한과는 별개 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |
@@ -31,6 +35,10 @@
 | `NAVER_ADS_API_KEY` / `NAVER_ADS_SECRET_KEY` / `NAVER_ADS_CUSTOMER_ID` | 없음 | Naver Search Ads Keyword Tool 월간검색량; 하나라도 없으면 volume은 `null` |
 | `SERPAPI_KEY` | 없음 | 기존 선택형 rank tracking 전용; Blog SERP V3 생성에는 필요하지 않음 |
 | `DEEPSEEK_API_KEY` | 없음 | Blog V4 Flash 초안과 Pro 재작성용 server-only key |
+| `DEEPSEEK_BLOG_PROD_API_KEY` | 없음 | Control Plane 전환 후 blog-production 전용 DeepSeek key. 기존 key와 동시 설정 시 workload policy가 지정한 키만 사용 |
+| `DEEPSEEK_PRODUCT_PROD_API_KEY` | 없음 | 상품등록 workload 전용 key; Control Plane migration 이후 상품 lane에서만 사용 |
+| `DEEPSEEK_JARVIS_PROD_API_KEY` | 없음 | Jarvis workload 전용 key; Blog route에서 읽지 않음 |
+| `DEEPSEEK_STAGING_API_KEY` | 없음 | staging·rehearsal 전용 key; production route에서 읽지 않음 |
 | `GOOGLE_AI_API_KEY` | 없음 | 다른 플랫폼 AI 기능 전용. Blog V4 발행 경로는 이 키를 읽지 않음 |
 | `BLOG_GSC_CATCHUP_DAYS` | `7` | 매일 재수집하는 최근 GSC 날짜 수(최대 7) |
 | `BLOG_GSC_BACKFILL_DAYS` | `90` | 보강할 GSC 전체 관측 기간(최대 90일) |
