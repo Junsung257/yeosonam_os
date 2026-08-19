@@ -71,25 +71,52 @@ function v6SourceProofPassed(input: {
   const proof = input.proof;
   if (!proof || !input.snapshotHash) return false;
   const result = asRecord(proof.result) ?? proof;
-  const proofStatus = String(proof.status ?? result.status ?? '').toLowerCase();
-  const source = asNonEmptyString(result.source);
+  const chromeProof = asRecord(result.chromeProof) ?? result;
+  const proofStatus = String(proof.status ?? chromeProof.status ?? result.status ?? '').toLowerCase();
   if (proofStatus !== 'passed' && proofStatus !== 'pass') return false;
-  if (source !== 'hwp-mobile-browser-proof') return false;
-  const resultSnapshotHash = asNonEmptyString(result.snapshotHash)
-    ?? asNonEmptyString(result.public_snapshot_hash);
-  if (resultSnapshotHash !== input.snapshotHash) return false;
-  const surfaces = Array.isArray(result.surfaces)
-    ? result.surfaces.map(String)
-    : [];
-  if (surfaces.length !== 2 || !surfaces.includes('packages') || !surfaces.includes('lp')) return false;
-  const surfaceResults = Array.isArray(result.surface_results) ? result.surface_results : [];
-  if (surfaceResults.length !== 2) return false;
-  return surfaceResults.every((surface) => {
+  const nestedSurfaces = Array.isArray(chromeProof.surfaces)
+    && chromeProof.surfaces.some((surface) => asRecord(surface) !== null);
+  if (!nestedSurfaces) {
+    // Keep the earlier flattened proof contract readable for historical
+    // audit rows while new V6 runs use the nested chromeProof contract below.
+    if (asNonEmptyString(result.source) !== 'hwp-mobile-browser-proof') return false;
+    const resultSnapshotHash = asNonEmptyString(result.snapshotHash)
+      ?? asNonEmptyString(result.public_snapshot_hash);
+    if (resultSnapshotHash !== input.snapshotHash) return false;
+    const surfaceNames = Array.isArray(result.surfaces) ? result.surfaces.map(String) : [];
+    if (surfaceNames.length !== 2 || !surfaceNames.includes('packages') || !surfaceNames.includes('lp')) return false;
+    const surfaceResults = Array.isArray(result.surface_results) ? result.surface_results : [];
+    if (surfaceResults.length !== 2) return false;
+    return surfaceResults.every((surface) => {
+      const row = asRecord(surface);
+      if (!row || row.status !== 'pass' || !['packages', 'lp'].includes(String(row.surface))) return false;
+      if (asNonEmptyString(row.public_snapshot_hash) !== input.snapshotHash) return false;
+      const checks = Array.isArray(row.checks) ? row.checks : [];
+      return checks.length > 0 && checks.every((check) => asRecord(check)?.ok === true);
+    });
+  }
+  // V6 browser proof is persisted as { chromeProof: { surfaces: [...] } }.
+  // Older audits expected a flattened surface_results shape, which made a
+  // genuinely passed immutable proof look stale and reclassified the new
+  // source-proof package as legacy-only.
+  const route = asNonEmptyString(proof.route) ?? '';
+  if (!route.includes('/product-registration-proof/packages') || !route.includes('/product-registration-proof/lp')) return false;
+  const viewport = asRecord(proof.viewport);
+  if (Number(viewport?.width) !== 390 || Number(viewport?.height) !== 844) return false;
+  if (String(proof.device_profile ?? '') !== 'mobile-customer') return false;
+  const surfaces = chromeProof.surfaces;
+  if (surfaces.length !== 2) return false;
+  const rendererBuildId = asNonEmptyString(proof.renderer_build_id);
+  return surfaces.every((surface) => {
     const row = asRecord(surface);
-    if (!row || row.status !== 'pass' || !['packages', 'lp'].includes(String(row.surface))) return false;
-    if (asNonEmptyString(row.public_snapshot_hash) !== input.snapshotHash) return false;
-    const checks = Array.isArray(row.checks) ? row.checks : [];
-    return checks.length > 0 && checks.every((check) => asRecord(check)?.ok === true);
+    if (!row || row.status !== 'passed' || !['packages', 'lp'].includes(String(row.surface))) return false;
+    if (asNonEmptyString(row.snapshotHash) !== input.snapshotHash) return false;
+    if (rendererBuildId && asNonEmptyString(row.rendererBuildId) !== rendererBuildId) return false;
+    if (row.ctaOpened !== true || (Array.isArray(row.hydrationErrors) && row.hydrationErrors.length > 0)) return false;
+    if (Number(row.brokenImageCount ?? 0) > 0) return false;
+    if (Array.isArray(row.missingRequiredText) && row.missingRequiredText.length > 0) return false;
+    if (Array.isArray(row.forbiddenTextFound) && row.forbiddenTextFound.length > 0) return false;
+    return true;
   });
 }
 

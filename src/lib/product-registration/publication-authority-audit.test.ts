@@ -174,6 +174,47 @@ describe('auditPublicationAuthority', () => {
     expect(result.failures).toEqual([]);
   });
 
+  it('accepts the persisted nested chromeProof contract used by the live workflow', () => {
+    const input = validInput() as any;
+    input.packageRow.audit_report = null;
+    input.revision = {
+      ...input.revision,
+      package_id: null,
+      schema_version: 'product-registration-v5-canonical-1',
+      normalization_version: 'v6-canonical-2026-08-19.76',
+      status: 'verified',
+    };
+    input.proof = {
+      status: 'passed',
+      renderer_build_id: '082c1b0f',
+      route: 'https://example.test/product-registration-proof/packages/snapshot|https://example.test/product-registration-proof/lp/snapshot',
+      viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+      device_profile: 'mobile-customer',
+      result: {
+        chromeProof: {
+          status: 'passed',
+          surfaces: ['packages', 'lp'].map(surface => ({
+            surface,
+            status: 'passed',
+            snapshotHash: 'a'.repeat(64),
+            rendererBuildId: '082c1b0f',
+            ctaOpened: true,
+            hydrationErrors: [],
+            brokenImageCount: 0,
+            missingRequiredText: [],
+            forbiddenTextFound: [],
+          })),
+        },
+      },
+    };
+
+    const result = auditPublicationAuthority(input);
+
+    expect(result.v6Authority).toBe(true);
+    expect(result.authoritativePublic).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
   it('still rejects a V6 proof when one surface is missing or hash-bound differently', () => {
     const input = validInput() as any;
     input.packageRow.audit_report = null;

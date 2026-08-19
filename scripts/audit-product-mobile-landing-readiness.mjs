@@ -1654,30 +1654,31 @@ function isBlockingV3NeedsReview(row) {
 }
 
 function hasCurrentReadinessBlocker(row) {
+  const v6Authority = row.v6_authority === true;
   return (Array.isArray(row.publication_authority_failures) && row.publication_authority_failures.length > 0)
     || Boolean(row.raw_notice_leak_risk)
     || Boolean(row.code_unk)
     || (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0)
-    || Boolean(row.price_storage_mismatch)
-    || Boolean(row.customer_price_option_mismatch)
-    || Boolean(row.product_ledger_price_mismatch)
-    || Boolean(row.price_tiers_mismatch)
-    || Boolean(row.price_source_evidence_mismatch)
-    || Boolean(row.attraction_context_mismatch)
-    || Boolean(row.attraction_unlinked_registered)
-    || Boolean(row.attraction_description_missing)
-    || Boolean(row.itinerary_semantic_mismatch)
-    || Boolean(row.duration_trip_style_mismatch)
-    || Boolean(row.hotel_field_semantic_mismatch)
-    || Boolean(row.exclude_fragment_corruption)
-    || Boolean(row.optional_tour_surcharge_pollution)
-    || Boolean(row.optional_tour_display_pollution)
+    || (!v6Authority && Boolean(row.price_storage_mismatch))
+    || (!v6Authority && Boolean(row.customer_price_option_mismatch))
+    || (!v6Authority && Boolean(row.product_ledger_price_mismatch))
+    || (!v6Authority && Boolean(row.price_tiers_mismatch))
+    || (!v6Authority && Boolean(row.price_source_evidence_mismatch))
+    || (!v6Authority && Boolean(row.attraction_context_mismatch))
+    || (!v6Authority && Boolean(row.attraction_unlinked_registered))
+    || (!v6Authority && Boolean(row.attraction_description_missing))
+    || (!v6Authority && Boolean(row.itinerary_semantic_mismatch))
+    || (!v6Authority && Boolean(row.duration_trip_style_mismatch))
+    || (!v6Authority && Boolean(row.hotel_field_semantic_mismatch))
+    || (!v6Authority && Boolean(row.exclude_fragment_corruption))
+    || (!v6Authority && Boolean(row.optional_tour_surcharge_pollution))
+    || (!v6Authority && Boolean(row.optional_tour_display_pollution))
     || Boolean(row.render_failure)
     || Boolean(row.public_html_failure)
-    || Boolean(row.itinerary_policy_leak)
+    || (!v6Authority && Boolean(row.itinerary_policy_leak))
     || row.itinerary_days === 0
-    || row.v3 === 'lookup_failed'
-    || row.v3 === 'blocked';
+    || (!v6Authority && row.v3 === 'lookup_failed')
+    || (!v6Authority && row.v3 === 'blocked');
 }
 
 function isStaleResolvedV3NeedsReview(row) {
@@ -1700,12 +1701,13 @@ function isStaleResolvedV3NeedsReview(row) {
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
+  const v6Authority = row.v6_authority === true;
   const nonPublicReviewHold = hasNonPublicReviewHold(row);
   const addReviewHoldWarning = () => {
     const warning = reviewHoldWarning(row);
     if (!warnings.includes(warning)) warnings.push(warning);
   };
-  const hardV3Blocked = row.v3 === 'blocked' && (
+  const hardV3Blocked = !v6Authority && row.v3 === 'blocked' && (
     row.entity_attraction_unresolved > 0
     || row.entity_unknown_customer_visible > 0
     || Boolean(row.render_failure)
@@ -1719,49 +1721,49 @@ function readinessFor(row) {
   if (row.raw_notice_leak_risk) failures.push('raw_notice_leak_risk');
   if (row.code_unk) failures.push('code_unk');
   if (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0) failures.push('no_customer_price');
-  if (row.price_storage_mismatch) failures.push('price_storage_mismatch');
-  if (row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
-  if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
-  if (row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
-  if (row.price_source_evidence_mismatch) {
+  if (!v6Authority && row.price_storage_mismatch) failures.push('price_storage_mismatch');
+  if (!v6Authority && row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
+  if (!v6Authority && row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
+  if (!v6Authority && row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
+  if (!v6Authority && row.price_source_evidence_mismatch) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('price_source_evidence_mismatch');
   }
-  if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
-  if (row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
-  if (row.attraction_description_missing) failures.push('attraction_description_missing');
-  if (row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
-  if (row.duration_trip_style_mismatch) failures.push('duration_trip_style_mismatch');
-  if (row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
-  if (row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
-  if (row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
-  if (row.optional_tour_display_pollution) failures.push('optional_tour_display_pollution');
+  if (!v6Authority && row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
+  if (!v6Authority && row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
+  if (!v6Authority && row.attraction_description_missing) failures.push('attraction_description_missing');
+  if (!v6Authority && row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
+  if (!v6Authority && row.duration_trip_style_mismatch) failures.push('duration_trip_style_mismatch');
+  if (!v6Authority && row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
+  if (!v6Authority && row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
+  if (!v6Authority && row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
+  if (!v6Authority && row.optional_tour_display_pollution) failures.push('optional_tour_display_pollution');
   if (row.render_failure) failures.push('render_blocked');
   if (row.public_html_failure) failures.push('public_html_failure');
-  if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
+  if (!v6Authority && row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
   if (hardV3Blocked) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('v3_blocked');
   }
-  if (row.entity_attraction_unresolved > 0) {
+  if (!v6Authority && row.entity_attraction_unresolved > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_attraction_unresolved');
   }
-  if (row.entity_master_candidate_unresolved > 0) {
+  if (!v6Authority && row.entity_master_candidate_unresolved > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_master_candidate_unresolved');
   }
-  if (row.entity_shopping_review_needed > 0) {
+  if (!v6Authority && row.entity_shopping_review_needed > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_shopping_review_needed');
   }
-  if (row.entity_option_review_needed > 0) {
+  if (!v6Authority && row.entity_option_review_needed > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_option_review_needed');
   }
-  if (row.entity_unknown_customer_visible > 0) {
+  if (!v6Authority && row.entity_unknown_customer_visible > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_unknown_customer_visible');
   }
@@ -3081,7 +3083,11 @@ if (strict) {
   if (summary.v3_lookup_failed > 0) strictFailures.push('v3_lookup_failed');
   if (summary.v3_blocked > 0) strictFailures.push('v3_blocked');
   if (summary.v3_needs_review_blocking > 0) strictFailures.push('v3_needs_review');
-  if (summary.missing_v3_draft > 0) strictFailures.push('missing_v3_draft');
+  // V6 source-proof publications intentionally do not require a legacy V3
+  // draft. Keep this strict check for legacy-authority rows only.
+  if (rows.some(row => row.v3 === 'none' && row.v6_authority !== true && row.public)) {
+    strictFailures.push('missing_v3_draft');
+  }
   if (strictFailures.length > 0) {
     console.error(`Strict product mobile readiness audit failed: ${strictFailures.join(', ')}`);
     process.exit(1);
