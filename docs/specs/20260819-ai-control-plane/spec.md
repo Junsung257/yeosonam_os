@@ -33,7 +33,8 @@ failure.
 2. A duplicate idempotency key returns the existing reservation/receipt and
    never calls a provider twice.
 3. Budget RPC failure blocks a paid call (fail closed).
-4. Provider errors and incomplete responses still settle a receipt.
+4. Provider errors and incomplete responses still settle a receipt, including
+   the deterministic caller `trace_id` for reconciliation.
 5. Publication and already-approved inventory do not depend on AI budget state.
 6. No model/provider fallback is permitted for `blog-production`.
 
