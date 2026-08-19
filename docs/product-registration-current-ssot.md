@@ -8,7 +8,18 @@ Last updated: 2026-08-19
 - This behavior is recorded as workflow `product-registration-v6-workflow-33` and policy `product-registration-v6-policy-11-deepseek-source-proof`; older stage results are not reused as if they were produced by the new publication contract.
 - This is not a global publication unlock and does not publish blocked sections. `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=0` remains an explicit emergency off switch. Broad cohort readiness is still measured separately for monitoring and ramp decisions.
 - The previous default (`false`) stranded first-time supplier uploads at `V6_COHORT_QUALITY_INCOMPLETE` before their own proof could be evaluated. The new default makes the requested product-by-product automatic opening path executable while retaining source-bound fail-closed CAS checks.
-- Runtime and publication-control tests pass after this change. A fresh deployed upload is still required to confirm the environment uses the new default and to create the resulting public pointer; local corpus replay alone cannot create a customer pointer.
+- Runtime and publication-control tests pass after this change. The deployed production path was verified below with a fresh real HWP upload and an immutable customer pointer.
+
+## Production source-proof upload → customer surface verification (2026-08-19, latest)
+
+- Production deployment `dpl_BexXQ2pFVrGjcPh6fdBU3V4U5a7X` is `READY` and aliased to `https://www.yeosonam.com`. A real HWP upload completed without an administrator approval click: job `02a84060-d267-4a01-92a0-052d81bd2687`, workflow `wrun_01M0CJ1B335VYK83RVXNNNWQY5`, terminal outcome `published_degraded`, publication state `converged`.
+- The run created revision `6ab6bb12-ffd4-4f4b-a1f8-1d665b993ef4`, snapshot `43e69df4-e6aa-4b0a-ba22-eca91dd11501`, and proof `8357b748-70f4-4a17-ae33-adccce313ee5`. Snapshot hash `6ca63371aa621357c0b370de7a16ec98297d551a827e4c658cde7eb724f9ed2e` and renderer `082c1b0f` match across customer, B2B, and partner pointers.
+- Both public customer surfaces returned HTTP 200: `/packages/fbca42ad-50cd-4622-bde0-5dc13009e833` and `/lp/fbca42ad-50cd-4622-bde0-5dc13009e833`. Their HTML metadata contains the same snapshot hash and revision; the visible source-backed price is `499,000원`, with `LJ111`/`LJ112`, Korean customer copy, terms, and consultation CTA.
+- The private 390×844 mobile proof passed both `/packages` and `/lp`: CTA opened, hydration errors 0, broken images 0, Korean font ready, required text present, and snapshot/renderer hashes matched. The OG endpoint also returned HTTP 200.
+- The degraded notices are intentional: the source ticketing deadline had expired, no licensed destination-specific media was available, and flight identity/time was unresolved, so no flight time was guessed; the customer sees final-confirmation wording instead. No administrator action was required.
+- A previously unsafe legacy package (`b68b08fe-594f-41bf-8417-637f4a66678a`) was suspended by the availability overlay after a live audit found duration/trip-style and hotel semantic mismatches; both its `/packages` and `/lp` routes now return HTTP 410. It remains immutable history, not customer-visible data.
+- The production public-only readiness audit now reports 2 customer-visible rows, 0 failures, 0 publication-authority failures, 0 stale-proof failures, and only two non-blocking `public_without_v3_facts` warnings. The audit query was corrected to load the outer proof route/viewport/device/renderer fields required by the persisted V6 proof contract.
+- This proves the real upload → revision → snapshot → mobile proof → CAS pointer → customer page path for this HWP. It does not by itself certify the full corpus at 95%; blind double-reviewed frozen benchmark evidence and cohort rollout remain separate gates.
 
 ## Direct source-proof upload → customer surface verification (2026-08-19, implementation verification)
 
