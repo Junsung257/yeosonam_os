@@ -1654,30 +1654,31 @@ function isBlockingV3NeedsReview(row) {
 }
 
 function hasCurrentReadinessBlocker(row) {
+  const v6Authority = row.v6_authority === true;
   return (Array.isArray(row.publication_authority_failures) && row.publication_authority_failures.length > 0)
     || Boolean(row.raw_notice_leak_risk)
     || Boolean(row.code_unk)
     || (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0)
-    || Boolean(row.price_storage_mismatch)
-    || Boolean(row.customer_price_option_mismatch)
-    || Boolean(row.product_ledger_price_mismatch)
-    || Boolean(row.price_tiers_mismatch)
-    || Boolean(row.price_source_evidence_mismatch)
-    || Boolean(row.attraction_context_mismatch)
-    || Boolean(row.attraction_unlinked_registered)
-    || Boolean(row.attraction_description_missing)
-    || Boolean(row.itinerary_semantic_mismatch)
-    || Boolean(row.duration_trip_style_mismatch)
-    || Boolean(row.hotel_field_semantic_mismatch)
-    || Boolean(row.exclude_fragment_corruption)
-    || Boolean(row.optional_tour_surcharge_pollution)
-    || Boolean(row.optional_tour_display_pollution)
+    || (!v6Authority && Boolean(row.price_storage_mismatch))
+    || (!v6Authority && Boolean(row.customer_price_option_mismatch))
+    || (!v6Authority && Boolean(row.product_ledger_price_mismatch))
+    || (!v6Authority && Boolean(row.price_tiers_mismatch))
+    || (!v6Authority && Boolean(row.price_source_evidence_mismatch))
+    || (!v6Authority && Boolean(row.attraction_context_mismatch))
+    || (!v6Authority && Boolean(row.attraction_unlinked_registered))
+    || (!v6Authority && Boolean(row.attraction_description_missing))
+    || (!v6Authority && Boolean(row.itinerary_semantic_mismatch))
+    || (!v6Authority && Boolean(row.duration_trip_style_mismatch))
+    || (!v6Authority && Boolean(row.hotel_field_semantic_mismatch))
+    || (!v6Authority && Boolean(row.exclude_fragment_corruption))
+    || (!v6Authority && Boolean(row.optional_tour_surcharge_pollution))
+    || (!v6Authority && Boolean(row.optional_tour_display_pollution))
     || Boolean(row.render_failure)
     || Boolean(row.public_html_failure)
-    || Boolean(row.itinerary_policy_leak)
+    || (!v6Authority && Boolean(row.itinerary_policy_leak))
     || row.itinerary_days === 0
-    || row.v3 === 'lookup_failed'
-    || row.v3 === 'blocked';
+    || (!v6Authority && row.v3 === 'lookup_failed')
+    || (!v6Authority && row.v3 === 'blocked');
 }
 
 function isStaleResolvedV3NeedsReview(row) {
@@ -1700,12 +1701,13 @@ function isStaleResolvedV3NeedsReview(row) {
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
+  const v6Authority = row.v6_authority === true;
   const nonPublicReviewHold = hasNonPublicReviewHold(row);
   const addReviewHoldWarning = () => {
     const warning = reviewHoldWarning(row);
     if (!warnings.includes(warning)) warnings.push(warning);
   };
-  const hardV3Blocked = row.v3 === 'blocked' && (
+  const hardV3Blocked = !v6Authority && row.v3 === 'blocked' && (
     row.entity_attraction_unresolved > 0
     || row.entity_unknown_customer_visible > 0
     || Boolean(row.render_failure)
@@ -1719,49 +1721,49 @@ function readinessFor(row) {
   if (row.raw_notice_leak_risk) failures.push('raw_notice_leak_risk');
   if (row.code_unk) failures.push('code_unk');
   if (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0) failures.push('no_customer_price');
-  if (row.price_storage_mismatch) failures.push('price_storage_mismatch');
-  if (row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
-  if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
-  if (row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
-  if (row.price_source_evidence_mismatch) {
+  if (!v6Authority && row.price_storage_mismatch) failures.push('price_storage_mismatch');
+  if (!v6Authority && row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
+  if (!v6Authority && row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
+  if (!v6Authority && row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
+  if (!v6Authority && row.price_source_evidence_mismatch) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('price_source_evidence_mismatch');
   }
-  if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
-  if (row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
-  if (row.attraction_description_missing) failures.push('attraction_description_missing');
-  if (row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
-  if (row.duration_trip_style_mismatch) failures.push('duration_trip_style_mismatch');
-  if (row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
-  if (row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
-  if (row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
-  if (row.optional_tour_display_pollution) failures.push('optional_tour_display_pollution');
+  if (!v6Authority && row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
+  if (!v6Authority && row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
+  if (!v6Authority && row.attraction_description_missing) failures.push('attraction_description_missing');
+  if (!v6Authority && row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
+  if (!v6Authority && row.duration_trip_style_mismatch) failures.push('duration_trip_style_mismatch');
+  if (!v6Authority && row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
+  if (!v6Authority && row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
+  if (!v6Authority && row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
+  if (!v6Authority && row.optional_tour_display_pollution) failures.push('optional_tour_display_pollution');
   if (row.render_failure) failures.push('render_blocked');
   if (row.public_html_failure) failures.push('public_html_failure');
-  if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
+  if (!v6Authority && row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
   if (hardV3Blocked) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('v3_blocked');
   }
-  if (row.entity_attraction_unresolved > 0) {
+  if (!v6Authority && row.entity_attraction_unresolved > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_attraction_unresolved');
   }
-  if (row.entity_master_candidate_unresolved > 0) {
+  if (!v6Authority && row.entity_master_candidate_unresolved > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_master_candidate_unresolved');
   }
-  if (row.entity_shopping_review_needed > 0) {
+  if (!v6Authority && row.entity_shopping_review_needed > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_shopping_review_needed');
   }
-  if (row.entity_option_review_needed > 0) {
+  if (!v6Authority && row.entity_option_review_needed > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_option_review_needed');
   }
-  if (row.entity_unknown_customer_visible > 0) {
+  if (!v6Authority && row.entity_unknown_customer_visible > 0) {
     if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_unknown_customer_visible');
   }
@@ -1819,6 +1821,8 @@ const auditDataErrors = [];
 const publicationPointerByPackageId = new Map();
 const publicationSnapshotById = new Map();
 const publicationRevisionById = new Map();
+const publicationProofBySnapshotId = new Map();
+const customerAvailabilityOverlayByCatalogProductId = new Map();
 for (const chunk of chunks(allPackageRows.map(pkg => pkg.id), 100)) {
   const { data: pointerRows, error: pointerError } = await runSupabaseQuery(
     `customer publication pointers ${chunk[0]}`,
@@ -1834,6 +1838,36 @@ for (const chunk of chunks(allPackageRows.map(pkg => pkg.id), 100)) {
     continue;
   }
   for (const pointer of pointerRows ?? []) publicationPointerByPackageId.set(String(pointer.package_id), pointer);
+}
+
+// A published pointer is not customer-visible when an operational availability
+// overlay suspends, closes, or sells out the product. Keep this separate from
+// immutable revision authority: the revision remains intact for correction and
+// rollback, while the customer-readiness result reflects the runtime kill
+// control that the channel reader already enforces.
+const availabilityCatalogProductIds = [...new Set(allPackageRows
+  .map(pkg => pkg.catalog_product_id)
+  .filter(id => typeof id === 'string' && id.length > 0))];
+for (const chunk of chunks(availabilityCatalogProductIds, 100)) {
+  const { data: overlayRows, error: overlayError } = await runSupabaseQuery(
+    `customer availability overlays ${chunk[0]}`,
+    () => supabase.rpc('get_product_registration_availability_overlays', {
+      p_catalog_product_ids: chunk,
+      p_channel: 'customer',
+    }),
+  );
+  if (overlayError) {
+    auditDataErrors.push({ scope: 'availability_overlays', catalog_product_ids: chunk, message: overlayError.message ?? String(overlayError) });
+    continue;
+  }
+  for (const overlay of Array.isArray(overlayRows) ? overlayRows : []) {
+    const catalogProductId = String(overlay?.catalog_product_id ?? '');
+    const saleState = String(overlay?.sale_state ?? '');
+    if (!catalogProductId || !['closed', 'sold_out', 'suspended'].includes(saleState)) continue;
+    const expiresAt = overlay?.expires_at ? Date.parse(String(overlay.expires_at)) : NaN;
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) continue;
+    customerAvailabilityOverlayByCatalogProductId.set(catalogProductId, overlay);
+  }
 }
 
 const currentSnapshotIds = [...new Set([...publicationPointerByPackageId.values()]
@@ -1854,6 +1888,36 @@ for (const chunk of chunks(currentSnapshotIds, 100)) {
   for (const snapshot of snapshotRows ?? []) publicationSnapshotById.set(String(snapshot.id), snapshot);
 }
 
+// V6 persists the authoritative browser proof separately from the legacy
+// audit_report column.  Load the latest passed proof for the current snapshot
+// so the readiness audit does not downgrade an actually published V6 chain to
+// a legacy-publication failure.
+for (const chunk of chunks(currentSnapshotIds, 100)) {
+  const { data: proofRows, error: proofError } = await runSupabaseQuery(
+    `current V6 mobile proofs ${chunk[0]}`,
+    () => supabase
+      .from('product_registration_v5_proof_runs')
+      // The persisted V6 proof binds the nested chromeProof to the outer
+      // route, viewport, device profile, and renderer build.  Omitting these
+      // columns makes a genuinely passed proof look stale to the authority
+      // audit and incorrectly downgrades the source-proof publication.
+      .select('id,public_snapshot_id,snapshot_hash,status,result,route,viewport,device_profile,renderer_build_id,created_at')
+      .in('public_snapshot_id', chunk)
+      .eq('status', 'passed')
+      .order('created_at', { ascending: false }),
+  );
+  if (proofError) {
+    auditDataErrors.push({ scope: 'publication_proofs', snapshot_ids: chunk, message: proofError.message ?? String(proofError) });
+    continue;
+  }
+  for (const proof of proofRows ?? []) {
+    const snapshotId = String(proof.public_snapshot_id ?? '');
+    if (snapshotId && !publicationProofBySnapshotId.has(snapshotId)) {
+      publicationProofBySnapshotId.set(snapshotId, proof);
+    }
+  }
+}
+
 const currentRevisionIds = [...new Set([
   ...allPackageRows.map(pkg => pkg.canonical_revision_id),
   ...[...publicationPointerByPackageId.values()].map(pointer => pointer.current_revision_id),
@@ -1863,7 +1927,7 @@ for (const chunk of chunks(currentRevisionIds, 100)) {
     `current canonical revisions ${chunk[0]}`,
     () => supabase
       .from('product_registration_v5_revisions')
-      .select('id,tenant_id,package_id,catalog_product_id,source_document_id,extraction_id,payload_hash,lineage_hash,status')
+      .select('id,tenant_id,package_id,catalog_product_id,source_document_id,extraction_id,payload_hash,lineage_hash,status,schema_version,normalization_version')
       .in('id', chunk),
   );
   if (revisionError) {
@@ -1880,7 +1944,20 @@ const publicationAuthorityByPackageId = new Map(allPackageRows.map(pkg => {
     : null;
   const revisionId = pointer?.current_revision_id ?? pkg.canonical_revision_id;
   const revision = revisionId ? publicationRevisionById.get(String(revisionId)) ?? null : null;
-  return [String(pkg.id), auditPublicationAuthority({ packageRow: pkg, pointer, snapshot, revision })];
+  const proof = pointer?.current_snapshot_id
+    ? publicationProofBySnapshotId.get(String(pointer.current_snapshot_id)) ?? null
+    : null;
+  const authority = auditPublicationAuthority({ packageRow: pkg, pointer, snapshot, revision, proof });
+  const availabilityOverlay = pkg.catalog_product_id
+    ? customerAvailabilityOverlayByCatalogProductId.get(String(pkg.catalog_product_id)) ?? null
+    : null;
+  return [String(pkg.id), availabilityOverlay
+    ? {
+        ...authority,
+        authoritativePublic: false,
+        availabilityOverlay,
+      }
+    : authority];
 }));
 const scopedPackageRows = allPackageRows
   .filter(pkg => includeArchived || !isArchivedStatus(pkg.status))
@@ -2544,12 +2621,24 @@ let rows = allPackageRows
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const publicationAuthority = publicationAuthorityByPackageId.get(String(pkg.id))
       ?? auditPublicationAuthority({ packageRow: pkg });
+    const v6Authority = publicationAuthority.authoritativePublic && publicationAuthority.v6Authority;
+    const legacyPriceStorageMismatch = priceRowsLookupFailed
+      ? false
+      : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []);
+    const legacyCustomerPriceOptionMismatch = priceRowsLookupFailed
+      ? false
+      : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []);
+    const legacyProductLedgerPriceMismatch = productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code));
+    const legacyAttractionContextMismatch = attractionContextMismatch(pkg, attractionById);
+    const legacyAttractionUnlinkedRegistered = unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms);
+    const legacyItinerarySemanticMismatch = itinerarySemanticMismatch(pkg);
     const row = {
       id: pkg.id,
       code: pkg.internal_code ?? pkg.short_code ?? '',
       title: pkg.title,
       status: pkg.status,
       public: publicationAuthority.authoritativePublic,
+      availability_overlay: publicationAuthority.availabilityOverlay ?? null,
       legacy_public: isPublicStatus(pkg.status),
       publication_state: pkg.publication_state ?? null,
       package_revision: pkg.package_revision ?? null,
@@ -2581,11 +2670,13 @@ let rows = allPackageRows
       // so only fall back to draft counts when the live queue lookup itself failed.
       unmatched_activities: unmatchedLookupFailed
         ? (draftAttractionUnmatchedCount(draft) ?? 0)
-        : (unmatchedCountMap.get(pkg.id) ?? 0),
+        : (v6Authority ? 0 : (unmatchedCountMap.get(pkg.id) ?? 0)),
       // The live unmatched queue is the canonical customer-open blocker after
       // deterministic repairs. Older V3 drafts can keep stale review counts after the
       // queue has already resolved rows, so use the current pending queue for blockers.
-      entity_attraction_unresolved: queueEntities.attraction_unresolved || 0,
+      // Live queue contract: entity_attraction_unresolved: queueEntities.attraction_unresolved || 0
+      // A proof-bound V6 snapshot is already resolved by the Kernel authority.
+      entity_attraction_unresolved: v6Authority ? 0 : (queueEntities.attraction_unresolved || 0),
       // Shopping visits and optional tours are customer-visible structured facts, not
       // attraction masters. Keep them on the same live-queue source.
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
@@ -2600,15 +2691,19 @@ let rows = allPackageRows
       code_unk: hasUnresolvedCodeOrDestination(pkg),
       raw_notice_leak_risk: hasRawLeakRisk(pkg),
       price_lookup_failed: priceRowsLookupFailed,
-      price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
+      // V6 customer surfaces read the immutable snapshot, not these legacy
+      // compatibility projections. Keep the old values in the audit report
+      // below, but do not fail an already proof-bound V6 customer snapshot for
+      // harmless projection drift.
+      price_storage_mismatch: v6Authority ? false : legacyPriceStorageMismatch,
+      customer_price_option_mismatch: v6Authority ? false : legacyCustomerPriceOptionMismatch,
+      product_ledger_price_mismatch: v6Authority ? false : legacyProductLedgerPriceMismatch,
       price_tiers_mismatch: priceTiersMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
-      attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
+      attraction_context_mismatch: v6Authority ? false : legacyAttractionContextMismatch,
+      attraction_unlinked_registered: v6Authority ? null : legacyAttractionUnlinkedRegistered,
       attraction_description_missing: attractionDescriptionMissing(pkg, attractionById),
-      itinerary_semantic_mismatch: itinerarySemanticMismatch(pkg),
+      itinerary_semantic_mismatch: v6Authority ? null : legacyItinerarySemanticMismatch,
       duration_trip_style_mismatch: durationTripStyleMismatch(pkg),
       hotel_field_semantic_mismatch: hotelFieldSemanticMismatch(pkg),
       exclude_fragment_corruption: excludeFragmentCorruption(pkg),
@@ -2616,6 +2711,16 @@ let rows = allPackageRows
       optional_tour_display_pollution: optionalTourDisplayPollution(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
+      v6_authority: v6Authority,
+      legacy_projection_drift: v6Authority && (
+        Boolean(legacyPriceStorageMismatch)
+        || Boolean(legacyCustomerPriceOptionMismatch)
+        || Boolean(legacyProductLedgerPriceMismatch)
+        || Boolean(legacyAttractionContextMismatch)
+        || Boolean(legacyAttractionUnlinkedRegistered)
+        || Boolean(legacyItinerarySemanticMismatch)
+        || legacyEntityAttractionUnresolved > 0
+      ),
     };
     return { ...row, readiness: readinessFor(row), trust_score: trustScore(row) };
   });
@@ -2799,6 +2904,7 @@ const summary = {
   public_fail: publicRows.filter(row => row.readiness.status === 'fail').length,
   legacy_public_without_authority: rows.filter(row => row.legacy_public && !row.public).length,
   publication_authority_fail: rows.filter(row => row.publication_authority_failures.length > 0).length,
+  availability_overlay_blocked: rows.filter(row => row.availability_overlay !== null).length,
   registration_evidence_pack_blocked: rows.filter(row => row.publication_authority_failures.includes('registration_evidence_pack_blocked')).length,
   mobile_browser_proof_invalid_or_stale: rows.filter(row => row.publication_authority_failures.includes('mobile_browser_proof_invalid_or_stale')).length,
   snapshot_price_date_count_mismatch: rows.filter(row => row.publication_authority_failures.includes('snapshot_price_date_count_mismatch')).length,
@@ -2981,7 +3087,11 @@ if (strict) {
   if (summary.v3_lookup_failed > 0) strictFailures.push('v3_lookup_failed');
   if (summary.v3_blocked > 0) strictFailures.push('v3_blocked');
   if (summary.v3_needs_review_blocking > 0) strictFailures.push('v3_needs_review');
-  if (summary.missing_v3_draft > 0) strictFailures.push('missing_v3_draft');
+  // V6 source-proof publications intentionally do not require a legacy V3
+  // draft. Keep this strict check for legacy-authority rows only.
+  if (rows.some(row => row.v3 === 'none' && row.v6_authority !== true && row.public)) {
+    strictFailures.push('missing_v3_draft');
+  }
   if (strictFailures.length > 0) {
     console.error(`Strict product mobile readiness audit failed: ${strictFailures.join(', ')}`);
     process.exit(1);
