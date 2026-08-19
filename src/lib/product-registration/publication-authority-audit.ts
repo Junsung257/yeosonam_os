@@ -104,10 +104,10 @@ function v6SourceProofPassed(input: {
   const viewport = asRecord(proof.viewport);
   if (Number(viewport?.width) !== 390 || Number(viewport?.height) !== 844) return false;
   if (String(proof.device_profile ?? '') !== 'mobile-customer') return false;
-  const surfaces = chromeProof.surfaces;
+  const surfaces = Array.isArray(chromeProof.surfaces) ? chromeProof.surfaces : [];
   if (surfaces.length !== 2) return false;
   const rendererBuildId = asNonEmptyString(proof.renderer_build_id);
-  return surfaces.every((surface) => {
+  return surfaces.every((surface: unknown) => {
     const row = asRecord(surface);
     if (!row || row.status !== 'passed' || !['packages', 'lp'].includes(String(row.surface))) return false;
     if (asNonEmptyString(row.snapshotHash) !== input.snapshotHash) return false;
