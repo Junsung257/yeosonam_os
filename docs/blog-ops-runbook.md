@@ -23,9 +23,10 @@ Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existin
 
 - `20260819113000_ai_control_plane_v1.sql`을 generation OFF 상태에서
   migration dry-run 후 적용하고, service-role RPC와 RLS를 확인한다.
-- 동일 candidate의 Flash 1회와 Pro 1회만 예약되며, fallback·advisor·자동
-  Pro 승격은 없다. durable attempt 3~5는 deterministic repair·재검증·human
-  review만 수행한다.
+- 동일 candidate의 Flash 1회와 Pro 1회만 예약되며, 동일 prompt hash와
+  idempotency key의 재호출도 차단한다. fallback·advisor·자동 Pro 승격은
+  없다. durable attempt 3~5는 deterministic repair·재검증·human review만
+  수행한다.
 - 예산 RPC 오류, idempotency 충돌, provider receipt settlement 오류는
   유료 호출을 fail-closed한다. 이미 `approved_for_slot`인 공개 작업은 AI
   예산과 분리해 publication controller가 처리한다.

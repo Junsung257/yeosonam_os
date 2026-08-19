@@ -2,7 +2,7 @@
 
 ## Local verification
 
-- AI control-plane, gateway contract, and migration tests: 13/13 passed.
+- AI control-plane, gateway contract, and migration tests: 14/14 passed.
 - Blog V4 required lane: 39 files, 242 tests passed.
 - Blog publisher/gateway/caller regression subset: 42/42 passed.
 - Type-check: passed.
