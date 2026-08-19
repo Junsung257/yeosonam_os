@@ -34,6 +34,9 @@ describe('blog V4 protected production release workflow', () => {
     expect(snapshotVerify).toBeLessThan(snapshotApply);
     expect(source.match(/--workdir \.tmp\/blog-v4-supabase-release/g)?.length).toBe(2);
     expect(source).toContain('verify:blog-supabase-dry-run-v4');
+    expect(source).toContain('prepare:blog-content-factory-supabase-workdir-v4');
+    expect(source).toContain('verify:blog-content-factory-supabase-dry-run-v4');
+    expect(source).toContain('verify:blog-content-factory-release-bundle-v4');
   });
 
   it('verifies protected candidate URLs and fails closed around live promotion', () => {
@@ -42,6 +45,7 @@ describe('blog V4 protected production release workflow', () => {
     expect(source.match(/x-vercel-protection-bypass/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
     expect(source).toContain('update_env BLOG_AUTOPUBLISH_MODE draft_only');
     expect(source).toContain('update_env BLOG_GENERATION_CRON_ENABLED false');
+    expect(source).toContain('update_env BLOG_CONTENT_FACTORY_ENABLED false');
     expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main');
     expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"');
     expect(source).toContain('BLOG_PRODUCTION_ALLOWED_COMMIT_SHA production --value "${{ inputs.release_commit }}"');
