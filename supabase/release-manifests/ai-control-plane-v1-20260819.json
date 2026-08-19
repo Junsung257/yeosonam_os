@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "release": "ai-control-plane-v1-20260819",
+  "migrations": [
+    {
+      "version": "20260819113000",
+      "file": "supabase/migrations/20260819113000_ai_control_plane_v1.sql",
+      "sha256": "df40c5260bc235a8d732ea13a73db57a41cead8fa1a8a6688c5595365dc115d4"
+    }
+  ],
+  "rollbacks": [
+    {
+      "file": "supabase/rollbacks/ai-control-plane-v1-20260819.sql",
+      "sha256": "b132768c4b64c7bbd7e5d59fbcbb2455711ed71f87ef889f1b2fb4e7ea9b60bf"
+    }
+  ],
+  "apply": "not executed in this change",
+  "rollback": "manual review only"
+}

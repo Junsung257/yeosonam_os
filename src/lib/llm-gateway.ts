@@ -3,7 +3,7 @@
  *
  * V3 변경사항 (2026-05-01):
  *   1. DeepSeek V4를 전체 primary provider로 전환
- *   2. Gemini Flash를 최종 fallback으로 유지
+ *   2. Gemini fallback은 legacy 업무에만 유지 (durable blog는 금지)
  *   3. Claude/GPT 라우팅 제거 (비용 최적화)
  *   4. DeepSeek Context Caching 활용 (캐시 히트 시 Input 90% 할인)
  *   5. DeepSeek OpenAI 호환 API 사용 (openai SDK baseURL 변경)
@@ -231,7 +231,7 @@ export interface GatewayCallParams {
   temperature?: number;
   jsonSchema?: object;
   enableCaching?: boolean;
-  autoEscalate?: boolean;  // true면 복잡도 감지 후 자동 task 업그레이드 (기본 true)
+  autoEscalate?: boolean;  // 명시적으로 true일 때만 복잡도 업그레이드 (기본 false)
   /**
    * 2026-05-18 박제 (ERR-llm-retry-stack): 내부 executor 재시도 횟수 호출자 override.
    * ROUTING.maxRetries 보다 우선. 외부 layer (callWithZodValidation) 와 중첩 재시도하면
@@ -643,7 +643,9 @@ async function consultAdvisor(
  *   const r = await llmCall({ task: 'extract-meta', systemPrompt, userPrompt });
  */
 export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<GatewayResult<T>> {
-  const autoEscalate = params.autoEscalate !== false;
+  // Automatic escalation silently moved cheap work to Pro in production and
+  // multiplied nested retries. It is now opt-in; durable blog tasks never use it.
+  const autoEscalate = params.autoEscalate === true;
   const effectiveTask = autoEscalate
     ? autoEscalateTask(params.task, params.userPrompt)
     : params.task;
@@ -666,22 +668,31 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
     : { provider: policy!.provider, model: policy!.model };
   const fallback: ModelRef | null = params.pinnedProvider
     ? null
+    : (effectiveTask === 'blog-generate' || effectiveTask === 'content-brief')
+      ? null
     : policy!.fallbackProvider
       ? { provider: policy!.fallbackProvider, model: policy!.fallbackModel || route.fallback?.model || route.executor.model }
       : route.fallback;
-  const advisor = params.pinnedProvider ? null : route.advisor ?? null;
+  const advisor = params.pinnedProvider
+    || effectiveTask === 'blog-generate'
+    || effectiveTask === 'content-brief'
+    ? null
+    : route.advisor ?? null;
   const envTimeout = Number(process.env.AI_EXECUTOR_TIMEOUT_MS || 0);
   const timeoutMs = policy?.timeoutMs ?? (envTimeout > 0 ? envTimeout : null);
   const errors: string[] = [];
-  // 호출자 override (params.maxRetries) > ROUTING 기본 (route.maxRetries) > fallback 2
-  const maxRetries = params.maxRetries ?? route.maxRetries ?? 2;
+  // One layer owns retries. Legacy callers can opt back in during migration;
+  // durable blog tasks are explicit one-call stages regardless of this flag.
+  const maxRetries = params.maxRetries
+    ?? (process.env.AI_LEGACY_INTERNAL_RETRIES_ENABLED === '1' ? route.maxRetries ?? 0 : 0);
+  let advisorCalls = 0;
 
   // ─── 비용 기록 헬퍼 (fail-open) ────────────────────────────────────────────
-  function recordCost(result: GatewayResult, model: string, provider: 'deepseek' | 'gemini' | 'claude') {
+  async function recordCost(result: GatewayResult, model: string, provider: 'deepseek' | 'gemini' | 'claude') {
     if (!result._usage) return;
     const { input, output, cache_hit } = result._usage;
     if (provider === 'deepseek') {
-      void trackDeepSeekCost({
+      await trackDeepSeekCost({
         task: effectiveTask,
         model,
         usage: { prompt_tokens: input, completion_tokens: output, prompt_cache_hit_tokens: cache_hit },
@@ -689,7 +700,7 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
         tenantId: params.tenantId,
       });
     } else {
-      void trackCost({
+      await trackCost({
         ctx: { tenantId: params.tenantId ?? undefined, userRole: 'platform_admin' },
         agentType: effectiveTask,
         model,
@@ -712,7 +723,7 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const primary = await callModelWithTimeout(executor, params, timeoutMs);
       if (primary.success) {
-        recordCost(primary, executor.model, executor.provider);
+        await recordCost(primary, executor.model, executor.provider);
 
         // Confidence-gated escalation (Trust-or-Escalate, ICLR 2025).
         // 호출자가 응답 데이터를 보고 "확신 부족" 으로 판단하면 advisor 모델로 재실행.
@@ -725,9 +736,13 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
           }
           if (lowConf) {
             console.log(`[llm-gateway] confidence-gated escalation: ${executor.provider}/${executor.model} → ${advisor.provider}/${advisor.model} (task=${effectiveTask})`);
+            if (advisorCalls >= (route.maxAdvisorCalls ?? 1)) {
+              return { ...primary, complexityScore, retryCount: attempt } as GatewayResult<T>;
+            }
+            advisorCalls += 1;
             const escalated = await callModelWithTimeout(advisor, params, timeoutMs);
             if (escalated.success) {
-              recordCost(escalated, advisor.model, advisor.provider);
+              await recordCost(escalated, advisor.model, advisor.provider);
               return {
                 ...escalated,
                 advisorUsed: true,
@@ -744,7 +759,8 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
       errors.push(`[executor attempt ${attempt + 1}/${maxRetries + 1} ${executor.provider}/${executor.model}] ${primary.errors?.join(',') ?? 'unknown'}`);
 
       // 2회 이상 실패하고 advisor 있으면 조언 구해서 재시도
-      if (attempt >= 1 && advisor) {
+      if (attempt >= 1 && advisor && advisorCalls < (route.maxAdvisorCalls ?? 1)) {
+        advisorCalls += 1;
         const advice = await consultAdvisor(advisor, params, errors[errors.length - 1]);
         if (advice) {
           const enhancedParams: GatewayCallParams = {
@@ -753,7 +769,7 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
           };
           const retried = await callModelWithTimeout(executor, enhancedParams, timeoutMs);
           if (retried.success) {
-            recordCost(retried, executor.model, executor.provider);
+            await recordCost(retried, executor.model, executor.provider);
             return { ...retried, advisorUsed: true, complexityScore, retryCount: attempt + 1 } as GatewayResult<T>;
           }
           errors.push(`[executor+advisor retry] ${retried.errors?.join(',') ?? 'unknown'}`);
@@ -767,7 +783,7 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
     console.warn(`[llm-gateway fallback] ${executor.provider}→${fallback.provider} (task=${effectiveTask})`);
     const fb = await callModel(fallback, params);
     if (fb.success) {
-      recordCost(fb, fallback.model, fallback.provider);
+      await recordCost(fb, fallback.model, fallback.provider);
       return { ...fb, fallbackUsed: true, complexityScore } as GatewayResult<T>;
     }
     errors.push(`[fallback ${fallback.provider}/${fallback.model}] ${fb.errors?.join(',') ?? 'unknown'}`);
@@ -932,7 +948,10 @@ export async function tryDeepSeekStream(
   params: GatewayCallParams,
   onDelta: StreamDeltaHandler,
 ): Promise<GatewayResult<string>> {
-  const autoEscalate = params.autoEscalate !== false;
+  // Streaming is still a single provider attempt. Escalation belongs to the
+  // caller's explicit retry policy; silently upgrading a stream to a complex
+  // Pro route would reintroduce the amplification this gateway is removing.
+  const autoEscalate = params.autoEscalate === true;
   const effectiveTask = autoEscalate
     ? autoEscalateTask(params.task, params.userPrompt)
     : params.task;

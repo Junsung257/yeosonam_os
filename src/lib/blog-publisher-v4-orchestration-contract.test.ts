@@ -11,13 +11,16 @@ describe('blog publisher V4 orchestration wiring', () => {
       source.indexOf('async function generatePublisherBlogText'),
       source.indexOf('function publisherRemainingMs'),
     );
-    expect(helper.indexOf('reserveBlogAiBudgetBeforeCallV4({')).toBeLessThan(
+    // Control Plane mode reserves inside invokeAi before the provider callback;
+    // legacy mode retains the V4 reservation helper below that branch.
+    expect(helper.indexOf('invokeAi({')).toBeLessThan(
       helper.indexOf('generateBlogTextWithReceipt(prompt,'),
     );
+    expect(helper).toContain('reserveBlogAiBudgetBeforeCallV4({');
     expect(helper).toContain('settleBlogAiBudgetReservationV4');
     expect(helper).toContain('receipt: error instanceof BlogAiResponseError ? error.receipt : null');
     expect(helper).toContain('blog_ai_budget_blocked');
-    expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(1);
+    expect(source.match(/generateBlogTextWithReceipt\(/g)).toHaveLength(2);
   });
 
   it('keeps every publication model stage DeepSeek-only', () => {
