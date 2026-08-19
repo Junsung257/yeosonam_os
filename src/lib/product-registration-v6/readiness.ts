@@ -70,6 +70,13 @@ export type ProductRegistrationV6ReadinessReport = {
   generatedAt: string;
   readyForCanary: boolean;
   readyForPublication: boolean;
+  /**
+   * Indicates that individually source-proven uploads can publish even when
+   * the broad statistical cohort remains frozen. This is intentionally
+   * separate from readyForPublication, which still describes full-cohort
+   * publication readiness.
+   */
+  readyForSourceProof: boolean;
   readyForFullCohort: boolean;
   checks: ProductRegistrationV6ReadinessCheck[];
   recommendations: string[];
@@ -169,6 +176,18 @@ export function buildProductRegistrationV6ReadinessReport(
     publicationUnlocked ? 'V6_PUBLICATION_UNLOCKED' : 'V6_PUBLICATION_LOCKED',
     publicationUnlocked ? 'pass' : 'blocked',
     publicationUnlocked ? 'CAS 고객 공개가 허용된 상태입니다.' : '고객 공개는 안전하게 동결돼 있습니다.',
+  );
+
+  const sourceProofPathEnabled = input.config.sourceProofAutoPublishEnabled
+    && input.config.authorityMode !== 'legacy';
+  add(
+    sourceProofPathEnabled ? 'V6_SOURCE_PROOF_AUTO_PUBLISH_ENABLED' : 'V6_SOURCE_PROOF_AUTO_PUBLISH_DISABLED',
+    sourceProofPathEnabled ? 'pass' : input.config.authorityMode === 'legacy' ? 'blocked' : 'warning',
+    sourceProofPathEnabled
+      ? '원문 증거·불변 revision·모바일 proof를 통과한 개별 상품은 cohort 대기 없이 CAS 공개를 시도합니다.'
+      : input.config.authorityMode === 'legacy'
+        ? 'legacy 권위 모드에서는 source-proof 자동 공개를 허용하지 않습니다.'
+        : 'source-proof 자동 공개가 꺼져 있어 신규 상품은 cohort 검증을 기다립니다.',
   );
 
   add(
@@ -348,12 +367,27 @@ export function buildProductRegistrationV6ReadinessReport(
   ]);
   const readyForCanary = !checks.some(check => check.status === 'blocked' && canaryBlockerCodes.has(check.code));
   const readyForPublication = !checks.some(check => check.status === 'blocked' && publicationBlockerCodes.has(check.code));
+  const sourceProofBlockerCodes = new Set([
+    'V6_SCHEMA_UNAVAILABLE',
+    'V6_AUTHORITY_MODE_MISMATCH',
+    'V6_SCHEMA_MANIFEST_UNVERIFIED',
+    'V6_LEGACY_PUBLICATION_RPC_EXECUTABLE',
+    'V6_WORKFLOW_DISABLED',
+    'V6_PROOF_SECRET_MISSING',
+    'V6_BROWSER_PROOF_RUNTIME_MISSING',
+    'V6_OCR_PROVIDERS_INCOMPLETE',
+    'V6_STALE_JOBS_PRESENT',
+    'V6_SOURCE_PROOF_AUTO_PUBLISH_DISABLED',
+  ]);
+  const readyForSourceProof = sourceProofPathEnabled
+    && !checks.some(check => check.status === 'blocked' && sourceProofBlockerCodes.has(check.code));
   const readyForFullCohort = readyForPublication && transportReady && backfillComplete && cohortReady;
 
   return {
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     readyForCanary,
     readyForPublication,
+    readyForSourceProof,
     readyForFullCohort,
     checks,
     recommendations: [...new Set(recommendations)],

@@ -19,6 +19,20 @@ import type { ResolvedTransportForSnapshot } from './shared-fact-orchestrator';
 
 type JsonObject = Record<string, unknown>;
 
+function formatSupabaseError(prefix: string, error: unknown): Error {
+  if (error && typeof error === 'object') {
+    const value = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+    const parts = [
+      typeof value.code === 'string' ? value.code : null,
+      typeof value.message === 'string' ? value.message : null,
+      typeof value.details === 'string' && value.details ? value.details : null,
+      typeof value.hint === 'string' && value.hint ? value.hint : null,
+    ].filter((part): part is string => Boolean(part));
+    if (parts.length > 0) return new Error(`${prefix}:${parts.join(' | ')}`);
+  }
+  return new Error(`${prefix}:${String(error)}`);
+}
+
 export function productRegistrationProofScreenshotPath(input: {
   tenantId: string;
   snapshotId: string;
@@ -559,7 +573,7 @@ export async function publishProductRegistrationV6Snapshot(input: {
     .eq('channel', channel)
     .eq('locale', locale)
     .maybeSingle();
-  if (pointerError) throw pointerError;
+  if (pointerError) throw formatSupabaseError('REGISTRATION_PUBLICATION_POINTER_LOOKUP_FAILED', pointerError);
   const { data, error } = await input.supabase.rpc('publish_product_registration_snapshot_atomic', {
     p_payload: {
       tenant_id: input.snapshot.tenantId,
@@ -579,6 +593,6 @@ export async function publishProductRegistrationV6Snapshot(input: {
       locale,
     },
   });
-  if (error) throw error;
+  if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_RPC_FAILED', error);
   return data as Record<string, unknown>;
 }

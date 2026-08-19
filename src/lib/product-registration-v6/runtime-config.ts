@@ -13,6 +13,14 @@ export type ProductRegistrationV6RuntimeConfig = {
   sourceProofAutoPublishEnabled: boolean;
 };
 
+// A source that has independently passed immutable lineage, critical-claim
+// evidence, and both customer mobile proofs is safe to publish without a
+// pre-existing statistical cohort.  Cohort metrics remain useful for rollout
+// monitoring, but they must not strand every first-time supplier upload in a
+// manual queue.  Operators can still disable this path explicitly with
+// PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=0.
+const SOURCE_PROOF_AUTO_PUBLISH_DEFAULT = true;
+
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
   const configured = process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE?.trim().toLowerCase();
   if (configured === 'legacy' || configured === 'shadow' || configured === 'kernel') return configured;
@@ -36,7 +44,10 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
     shadowEnabled: enabled('PRODUCT_REGISTRATION_V6_SHADOW_ENABLED', true),
     publishEnabled: enabled('PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED'),
     publicationFrozen: enabled('PRODUCT_REGISTRATION_PUBLICATION_FREEZE', true),
-    sourceProofAutoPublishEnabled: enabled('PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH'),
+    sourceProofAutoPublishEnabled: enabled(
+      'PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH',
+      SOURCE_PROOF_AUTO_PUBLISH_DEFAULT,
+    ),
   };
 }
 

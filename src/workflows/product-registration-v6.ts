@@ -1097,6 +1097,26 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
     .select('snapshot_hash,surface,status')
     .in('snapshot_hash', snapshots.map(snapshot => snapshot.snapshotHash));
   if (convergenceError) throw convergenceError;
+  const { data: currentPointers, error: pointerError } = await supabase
+    .from('product_registration_v5_publication_pointers')
+    .select('package_id,current_snapshot_id,state')
+    .in('package_id', snapshots.map(snapshot => snapshot.packageId))
+    .eq('channel', 'customer')
+    .eq('locale', 'ko-KR');
+  if (pointerError) throw pointerError;
+  // A forced reprocess or correction may legitimately publish a newer
+  // immutable snapshot while this run is still proving cache convergence.
+  // That older run must finish as a consolidated duplicate, not as a system
+  // quarantine, otherwise an expected CAS replacement looks like a broken
+  // registration and pollutes the dead-letter queue.
+  const supersededSnapshotIds = snapshots
+    .filter(snapshot => (currentPointers ?? []).some(pointer =>
+      pointer.package_id === snapshot.packageId
+      && pointer.state === 'published'
+      && pointer.current_snapshot_id
+      && pointer.current_snapshot_id !== snapshot.snapshotId))
+    .map(snapshot => snapshot.snapshotId);
+  const superseded = supersededSnapshotIds.length > 0;
   const incomplete = snapshots.filter(snapshot => requiredSurfaces.some(surface =>
     !(convergenceRows ?? []).some(row => row.snapshot_hash === snapshot.snapshotHash
       && row.surface === surface
@@ -1115,10 +1135,12 @@ async function convergeStep(input: ProductRegistrationV6WorkflowInput, snapshots
       outboxDelivered: outbox.filter(row => row.ok).length,
       converged: convergence.length,
       pending: incomplete.length,
+      superseded,
+      supersededSnapshotIds,
       pendingSecondarySurfaces,
     },
   });
-  return { complete: incomplete.length === 0, pending: incomplete.length };
+  return { complete: incomplete.length === 0, pending: incomplete.length, superseded };
 }
 
 async function terminalStep(
@@ -1436,6 +1458,14 @@ export async function productRegistrationV6Workflow(
       if (convergence.complete) break;
       await sleep(delay);
       convergence = await convergeStep(input, snapshots);
+    }
+    if (convergence.superseded) {
+      return await terminalStep(
+        input,
+        workflowRunId,
+        terminalDocumentDecision('NEWER_REVISION_ALREADY_PUBLISHED', 'discarded_duplicate_or_consolidated'),
+        'not_requested',
+      );
     }
     if (!convergence.complete) {
       throw new Error(`V6_SURFACE_CONVERGENCE_PENDING:${convergence.pending}`);

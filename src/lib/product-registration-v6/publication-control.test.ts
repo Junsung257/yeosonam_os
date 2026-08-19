@@ -32,7 +32,7 @@ describe('source-proof publication control', () => {
   it('does not weaken the normal publication freeze', async () => {
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
     process.env.PRODUCT_REGISTRATION_PUBLICATION_FREEZE = '1';
-    delete process.env.PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH;
+    process.env.PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH = '0';
 
     await expect(loadProductRegistrationV6PublicationBlockers({
       supabase: fakeSupabase(),

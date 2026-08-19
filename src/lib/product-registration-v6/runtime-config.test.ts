@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('product registration V6 runtime config', () => {
-  it('fails closed when no publication flags are configured', () => {
+  it('enables source-proof publication by default while keeping broad publication frozen', () => {
     for (const name of ENV_NAMES) delete process.env[name];
 
     expect(getProductRegistrationV6RuntimeConfig()).toEqual({
@@ -38,7 +38,7 @@ describe('product registration V6 runtime config', () => {
       shadowEnabled: true,
       publishEnabled: false,
       publicationFrozen: true,
-      sourceProofAutoPublishEnabled: false,
+      sourceProofAutoPublishEnabled: true,
     });
     expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
   });
