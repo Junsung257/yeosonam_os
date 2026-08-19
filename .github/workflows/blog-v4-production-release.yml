@@ -22,11 +22,6 @@ on:
         required: true
         default: false
         type: boolean
-      promote_live:
-        description: Enable live pilot_3 and promote only after every readiness gate passes.
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -61,10 +56,6 @@ jobs:
           set -euo pipefail
           if [[ ! "${{ inputs.release_commit }}" =~ ^[0-9a-f]{40}$ ]]; then
             echo "release_commit must be a full immutable SHA" >&2
-            exit 1
-          fi
-          if [ "${{ inputs.promote_live }}" = "true" ] && { [ "${{ inputs.apply_migrations }}" != "true" ] || [ "${{ inputs.deploy_candidate }}" != "true" ]; }; then
-            echo "promote_live requires migration apply and candidate deployment" >&2
             exit 1
           fi
           for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD SUPABASE_ACCESS_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
@@ -202,9 +193,12 @@ jobs:
           update_env BLOG_AI_CONTROL_PLANE_ENABLED 0
           update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main
           update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"
-          update_env BLOG_DAILY_PUBLISH_CAP 30
-          update_env BLOG_PUBLICATION_RAMP_STAGE max_30
-          update_env BLOG_AUTO_RAMP_ENABLED true
+          # Candidate releases are always inert. Live activation is owned by
+          # blog-v4-production-activation.yml and must select one explicit
+          # stage after the candidate evidence is reviewed.
+          update_env BLOG_DAILY_PUBLISH_CAP 1
+          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3
+          update_env BLOG_AUTO_RAMP_ENABLED false
           update_env BLOG_AUTO_ROLLBACK_ENABLED true
           update_env BLOG_DAILY_AI_COST_CAP_USD 2
           update_env DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS 1
@@ -242,16 +236,11 @@ jobs:
           call_cron blog-analytics-canary | tee .tmp/blog-v4-release/analytics-canary.json
           call_cron rank-tracking | tee .tmp/blog-v4-release/rank-tracking.json
           call_cron blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json
-          candidate_gate_args=()
-          if [ "${{ inputs.promote_live }}" = "true" ]; then
-            candidate_gate_args+=(--require-publication-ready)
-          fi
           npm run verify:blog-release-candidate-responses-v4 -- \
             --ai-model-canary=.tmp/blog-v4-release/ai-model-canary.json \
             --analytics-canary=.tmp/blog-v4-release/analytics-canary.json \
             --rank-tracking=.tmp/blog-v4-release/rank-tracking.json \
-            --data-readiness=.tmp/blog-v4-release/data-readiness.json \
-            "${candidate_gate_args[@]}"
+            --data-readiness=.tmp/blog-v4-release/data-readiness.json
           curl --fail --silent --show-error --location \
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
             "${CANDIDATE_URL}/blog" >/dev/null
@@ -262,8 +251,19 @@ jobs:
             --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
             "${CANDIDATE_URL}/blog/__blog_v4_missing_probe__)"
           test "$missing_status" = "404"
-          npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json --token "$VERCEL_TOKEN" > .tmp/blog-v4-release/candidate-logs.jsonl || true
+          set +e
+          npx vercel logs "$CANDIDATE_URL" --no-follow --since 30m --json --token "$VERCEL_TOKEN" > .tmp/blog-v4-release/candidate-logs.jsonl
+          logs_exit=$?
+          set -e
+          if [ "$logs_exit" -ne 0 ]; then
+            echo "Vercel runtime log evidence unavailable for candidate" >&2
+            printf '{"available":false,"error":"vercel_logs_exit_%s","errorCount":null}\n' "$logs_exit" \
+              > .tmp/blog-v4-release/candidate-log-evidence.json
+            exit 1
+          fi
           db_errors="$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/candidate-logs.jsonl || true)"
+          printf '{"available":true,"errorCount":%s}\n' "$db_errors" \
+            > .tmp/blog-v4-release/candidate-log-evidence.json
           npm run collect:blog-production-evidence-v4 -- \
             --base="$CANDIDATE_URL" \
             --expected-branch=main \
@@ -277,61 +277,6 @@ jobs:
             --evidence=.tmp/blog-v4-release/production-evidence.json \
             --expected-commit="${{ inputs.release_commit }}" \
             --output=.tmp/blog-v4-release/readiness-report.json
-
-      - name: Enable pilot and deploy live candidate
-        if: inputs.promote_live
-        id: live_candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value live --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value true --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_PRODUCTION_ALLOWED_GIT_REF production --value main --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_PRODUCTION_ALLOWED_COMMIT_SHA production --value "${{ inputs.release_commit }}" --yes --token "$VERCEL_TOKEN"
-          live_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
-          echo "url=${live_url}" >> "$GITHUB_OUTPUT"
-          curl --fail --silent --show-error --location \
-            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-            "${live_url}/blog" >/dev/null
-          curl --fail --silent --show-error --location \
-            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${live_url}/api/cron/blog-data-readiness" >/dev/null
-
-      - name: Promote verified live candidate
-        if: inputs.promote_live
-        shell: bash
-        run: npx vercel promote "${{ steps.live_candidate.outputs.url }}" --yes --token "$VERCEL_TOKEN"
-
-      - name: Verify promoted production surfaces
-        if: inputs.promote_live
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --location https://www.yeosonam.com/blog >/dev/null
-          curl --fail --silent --show-error --location https://www.yeosonam.com/sitemap.xml >/dev/null
-          test "$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' \
-            https://www.yeosonam.com/blog/__blog_v4_missing_probe__)" = "404"
-          curl --fail --silent --show-error --location \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            https://www.yeosonam.com/api/cron/blog-analytics-canary >/dev/null
-          curl --fail --silent --show-error --location \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            https://www.yeosonam.com/api/cron/blog-data-readiness >/dev/null
-          npx vercel logs --environment production --no-branch --no-follow --since 10m \
-            --query BLOG_DATABASE_UNAVAILABLE --json --token "$VERCEL_TOKEN" \
-            > .tmp/blog-v4-release/post-promote-errors.jsonl || true
-          test "$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/post-promote-errors.jsonl || true)" = "0"
-
-      - name: Redeploy fail-closed mode after a promoted release failure
-        if: failure() && inputs.promote_live
-        continue-on-error: true
-        shell: bash
-        run: |
-          npx vercel env update BLOG_AUTOPUBLISH_MODE production --value draft_only --yes --token "$VERCEL_TOKEN"
-          npx vercel env update BLOG_GENERATION_CRON_ENABLED production --value false --yes --token "$VERCEL_TOKEN"
-          safe_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
-          npx vercel promote "$safe_url" --yes --token "$VERCEL_TOKEN"
 
       - name: Upload release evidence
         if: always()

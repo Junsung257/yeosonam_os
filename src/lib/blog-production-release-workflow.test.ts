@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
-const path = '.github/workflows/blog-v4-production-release.yml';
-const source = readFileSync(path, 'utf8');
+const releasePath = '.github/workflows/blog-v4-production-release.yml';
+const activationPath = '.github/workflows/blog-v4-production-activation.yml';
+const source = readFileSync(releasePath, 'utf8');
+const activationSource = readFileSync(activationPath, 'utf8');
 
 describe('blog V4 protected production release workflow', () => {
   it('is valid YAML and is manual, serialized, and environment-protected', () => {
@@ -39,25 +41,28 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('verify:blog-content-factory-release-bundle-v4');
   });
 
-  it('verifies protected candidate URLs and fails closed around live promotion', () => {
+  it('keeps candidate deployment inert and fails closed around runtime evidence', () => {
     expect(source).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(source).toContain('SUPABASE_ACCESS_TOKEN');
     expect(source.match(/x-vercel-protection-bypass/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
     expect(source).toContain('update_env BLOG_AUTOPUBLISH_MODE draft_only');
     expect(source).toContain('update_env BLOG_GENERATION_CRON_ENABLED false');
     expect(source).toContain('update_env BLOG_CONTENT_FACTORY_ENABLED false');
+    expect(source).toContain('update_env BLOG_AI_CONTROL_PLANE_ENABLED 0');
     expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main');
     expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"');
-    expect(source).toContain('BLOG_PRODUCTION_ALLOWED_COMMIT_SHA production --value "${{ inputs.release_commit }}"');
-    expect(source).toContain('if: failure() && inputs.promote_live');
-    expect(source).toContain('production --value draft_only');
-    expect(source).toContain('production --value false');
+    expect(source).not.toContain('promote_live');
+    expect(source).toContain('update_env BLOG_DAILY_PUBLISH_CAP 1');
+    expect(source).toContain('update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3');
+    expect(source).toContain('update_env BLOG_AUTO_RAMP_ENABLED false');
     expect(source).toContain('/blog/__blog_v4_missing_probe__');
     expect(source).toContain('test "$missing_status" = "404"');
     expect(source).toContain('verify:blog-release-candidate-responses-v4');
-    expect(source).toContain('--require-publication-ready');
     expect(source).toContain('call_cron blog-ai-model-canary');
-    expect(source).not.toContain('blog-data-readiness | tee .tmp/blog-v4-release/data-readiness.json || true');
+    expect(source).toContain('candidate-log-evidence.json');
+    expect(source).toContain('"available":false');
+    expect(source).toContain('"errorCount":null');
+    expect(source).not.toMatch(/vercel logs[^\n]*\|\| true/);
   });
 
   it('sets the allowed SHA before the deployment that can consume it', () => {
@@ -66,5 +71,52 @@ describe('blog V4 protected production release workflow', () => {
     expect(allowedSha).toBeGreaterThan(0);
     expect(candidateDeploy).toBeGreaterThan(0);
     expect(allowedSha).toBeLessThan(candidateDeploy);
+  });
+});
+
+describe('blog V4 explicit production activation workflow', () => {
+  it('is manual, environment-protected, and has no one-step promote_live input', () => {
+    const workflow = parse(activationSource) as Record<string, unknown>;
+    expect(workflow).toBeTruthy();
+    expect(activationSource).toContain('workflow_dispatch:');
+    expect(activationSource).toContain('environment: blog-production');
+    expect(activationSource).toContain('activation_stage:');
+    for (const stage of ['draft_generation_canary', 'reviewed_canary', 'pilot_1', 'pilot_3', 'ramp_10', 'max_30']) {
+      expect(activationSource).toContain(stage);
+    }
+    expect(activationSource).not.toContain('promote_live:');
+    expect(activationSource).toContain('confirm_activation:');
+  });
+
+  it('always enables factory and control plane with generation', () => {
+    expect(activationSource).toContain('test "$factory" = "true"');
+    expect(activationSource).toContain('test "$control_plane" = "1"');
+    expect(activationSource).toContain('update_env BLOG_CONTENT_FACTORY_ENABLED "${{ steps.contract.outputs.factory }}"');
+    expect(activationSource).toContain('update_env BLOG_AI_CONTROL_PLANE_ENABLED "${{ steps.contract.outputs.control_plane }}"');
+    expect(activationSource).toContain('BLOG_AI_CONTROL_PLANE_ENABLED 0');
+    expect(activationSource).not.toMatch(/generation=true;[^\n]*factory=false/);
+    expect(activationSource).not.toMatch(/generation=true;[^\n]*control_plane=0/);
+  });
+
+  it('starts live with bounded stages and keeps automatic ramp disabled', () => {
+    expect(activationSource).toContain('mode=live; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3;');
+    expect(activationSource).toContain('mode=live; generation=true; factory=true; control_plane=1; cap=3; ramp=pilot_3;');
+    expect(activationSource).toContain('mode=live; generation=true; factory=true; control_plane=1; cap=10; ramp=ramp_10;');
+    expect(activationSource).toContain('mode=live; generation=true; factory=true; control_plane=1; cap=30; ramp=max_30;');
+    expect(activationSource).toContain('update_env BLOG_AUTO_RAMP_ENABLED false');
+    expect(activationSource).toContain('max_30 requires approvedForSlotCount >= 60');
+  });
+
+  it('restores every inert safety flag after activation failure', () => {
+    expect(activationSource).toContain('update_env BLOG_AUTOPUBLISH_MODE draft_only');
+    expect(activationSource).toContain('update_env BLOG_GENERATION_CRON_ENABLED false');
+    expect(activationSource).toContain('update_env BLOG_CONTENT_FACTORY_ENABLED false');
+    expect(activationSource).toContain('update_env BLOG_AI_CONTROL_PLANE_ENABLED 0');
+    expect(activationSource).toContain('update_env BLOG_DAILY_PUBLISH_CAP 1');
+    expect(activationSource).toContain('update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3');
+    expect(activationSource).toContain('update_env BLOG_AUTO_RAMP_ENABLED false');
+    expect(activationSource).not.toMatch(/vercel logs[^\n]*\|\| true/);
+    expect(activationSource).toContain('"available":false');
+    expect(activationSource).toContain('"errorCount":null');
   });
 });
