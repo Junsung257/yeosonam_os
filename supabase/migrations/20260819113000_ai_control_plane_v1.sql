@@ -59,6 +59,8 @@ create index if not exists idx_ai_budget_buckets_day_scope
   on public.ai_budget_buckets (budget_day_kst, scope_type, scope_key);
 create index if not exists idx_ai_call_reservations_candidate
   on public.ai_call_reservations (candidate_id, model_class, status, created_at);
+create index if not exists idx_ai_call_reservations_candidate_prompt
+  on public.ai_call_reservations (candidate_id, prompt_hash, status, created_at);
 create index if not exists idx_ai_call_reservations_workload_day
   on public.ai_call_reservations (workload, created_at, status);
 
@@ -114,7 +116,10 @@ begin
     return query select null::uuid, false, 'provider_not_allowed', requested, 0::numeric, 0::numeric;
     return;
   end if;
-  if p_model_class not in ('flash', 'pro') or requested <= 0 then
+  if p_model_class not in ('flash', 'pro')
+    or (p_model = 'deepseek-v4-flash' and p_model_class <> 'flash')
+    or (p_model = 'deepseek-v4-pro' and p_model_class <> 'pro')
+    or requested <= 0 then
     return query select null::uuid, false, 'invalid_budget_request', requested, 0::numeric, 0::numeric;
     return;
   end if;
@@ -124,6 +129,19 @@ begin
   if found then
     return query select existing.id, false,
       case when existing.status = 'reserved' then 'duplicate_inflight' else 'duplicate_completed' end,
+      existing.reserved_usd, existing.reserved_usd, 0::numeric;
+    return;
+  end if;
+
+  select * into existing from public.ai_call_reservations r
+    where r.candidate_id = p_candidate_id
+      and r.prompt_hash = p_prompt_hash
+      and r.status in ('reserved', 'completed', 'failed')
+    order by r.created_at desc
+    limit 1
+    for update;
+  if found then
+    return query select existing.id, false, 'duplicate_prompt',
       existing.reserved_usd, existing.reserved_usd, 0::numeric;
     return;
   end if;
@@ -230,6 +248,7 @@ declare
 begin
   select * into reservation from public.ai_call_reservations where id = p_reservation_id for update;
   if not found then raise exception 'ai_reservation_not_found'; end if;
+  if reservation.idempotency_key <> p_idempotency_key then raise exception 'ai_reservation_idempotency_mismatch'; end if;
   if reservation.status <> 'reserved' then return; end if;
 
   actual := case when p_actual_cost_usd is null then null else greatest(0, round(p_actual_cost_usd::numeric, 8)) end;

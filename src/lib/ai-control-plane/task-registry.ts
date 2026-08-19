@@ -1,4 +1,4 @@
-import type { AiModelClass, AiProvider } from './types';
+import { AiControlPlaneError, type AiModelClass, type AiProvider } from './types';
 
 export interface AiTaskPolicy {
   workload: string;
@@ -33,7 +33,7 @@ export function getAiTaskPolicy(workload: string, task: string): AiTaskPolicy | 
 
 export function assertRegisteredAiTask(workload: string, task: string): AiTaskPolicy {
   const policy = getAiTaskPolicy(workload, task);
-  if (!policy) throw new Error(`ai_task_not_registered:${workload}:${task}`);
+  if (!policy) throw new AiControlPlaneError(`ai_task_not_registered:${workload}:${task}`, 'task_not_registered');
   return policy;
 }
 

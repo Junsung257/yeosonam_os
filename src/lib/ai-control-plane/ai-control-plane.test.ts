@@ -83,6 +83,23 @@ describe('AI control plane', () => {
     await invokeAi(base);
     await expect(invokeAi(base)).rejects.toMatchObject({ code: 'duplicate_call' });
     await expect(invokeAi({ ...base, idempotencyKey: 'job-3:2', model: 'gemini-2.5-flash' })).rejects.toMatchObject({ code: 'provider_not_allowed' });
+    await expect(invokeAi({ ...base, idempotencyKey: 'job-3:3', model: 'deepseek-v3' })).rejects.toMatchObject({ code: 'provider_not_allowed' });
+  });
+
+  it('blocks a repeated prompt hash and a second same-class call for one candidate', async () => {
+    const repository = createInMemoryAiBudgetRepository({ dailyCapUsd: 10 });
+    const input = {
+      workload: 'blog-production' as const, task: 'informational-draft' as const,
+      rootJobId: 'job-prompt', candidateId: 'candidate-prompt', stage: 'draft_flash',
+      model: 'deepseek-v4-flash', promptHash: 'same-prompt', estimatedMaxInputTokens: 500,
+      maxOutputTokens: 500, budgetRepository: repository,
+      execute: async () => ({ value: 'ok', provider: 'deepseek' as const, model: 'deepseek-v4-flash', finishReason: 'stop' }),
+    };
+    await invokeAi({ ...input, idempotencyKey: 'job-prompt:1' });
+    await expect(invokeAi({ ...input, idempotencyKey: 'job-prompt:2', stage: 'draft_retry' }))
+      .rejects.toMatchObject({ code: 'duplicate_call' });
+    await expect(invokeAi({ ...input, idempotencyKey: 'job-prompt:3', promptHash: 'new-prompt', stage: 'draft_retry' }))
+      .rejects.toMatchObject({ code: 'budget_blocked' });
   });
 
   it('rejects a callback that returns a provider/model different from the registered task', async () => {

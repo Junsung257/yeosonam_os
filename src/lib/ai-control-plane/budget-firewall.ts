@@ -9,7 +9,9 @@ function rowToReservation(row: Record<string, unknown>): AiBudgetReservation {
     requestedUsd: Number(row.requested_usd ?? 0),
     reservedUsd: Number(row.reserved_usd ?? 0),
     remainingUsd: Number(row.remaining_usd ?? 0),
-    duplicate: row.reason === 'duplicate_inflight' || row.reason === 'duplicate_completed',
+    duplicate: row.reason === 'duplicate_inflight'
+      || row.reason === 'duplicate_completed'
+      || row.reason === 'duplicate_prompt',
   };
 }
 
@@ -80,11 +82,25 @@ export function createInMemoryAiBudgetRepository(options?: {
     async reserve(input) {
       const duplicate = reservations.get(input.idempotencyKey);
       if (duplicate) throw new AiControlPlaneError('ai_duplicate_call', 'duplicate_call');
+      const duplicatePrompt = [...reservations.values()].find((item) => (
+        item.request.candidateId === input.candidateId
+        && item.request.promptHash === input.promptHash
+        && ['reserved', 'completed', 'failed'].includes(item.status)
+      ));
+      if (duplicatePrompt) throw new AiControlPlaneError('ai_duplicate_prompt', 'duplicate_call');
       const proCalls = [...reservations.values()].filter((item) => (
         item.request.modelClass === 'pro' && ['reserved', 'completed', 'failed'].includes(item.status)
       )).length;
       if (input.modelClass === 'pro' && proCalls >= proDailyCallCap) {
         throw new AiControlPlaneError('ai_budget_blocked:pro_daily_call_cap', 'budget_blocked');
+      }
+      const candidateModelCalls = [...reservations.values()].filter((item) => (
+        item.request.candidateId === input.candidateId
+        && item.request.modelClass === input.modelClass
+        && ['reserved', 'completed', 'failed'].includes(item.status)
+      )).length;
+      if (candidateModelCalls >= 1) {
+        throw new AiControlPlaneError('ai_budget_blocked:candidate_model_call_cap', 'budget_blocked');
       }
       if (input.requestedUsd > candidateCap) throw new AiControlPlaneError('ai_budget_blocked:candidate_cap', 'budget_blocked');
       if (reserved + input.requestedUsd > dailyCap) throw new AiControlPlaneError('ai_budget_blocked:daily_cap', 'budget_blocked');

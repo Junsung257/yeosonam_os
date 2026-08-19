@@ -23,8 +23,13 @@ export interface InvokeAiInput<T> {
 
 export async function invokeAi<T>(input: InvokeAiInput<T>): Promise<{ value: T; receipt: AiCallReceipt }> {
   const policy = assertRegisteredAiTask(input.workload, input.task);
-  if (policy.provider !== 'deepseek' || !input.model.startsWith('deepseek-')) {
+  const expectedModel = policy.modelClass === 'flash' ? 'deepseek-v4-flash' : 'deepseek-v4-pro';
+  if (policy.provider !== 'deepseek' || input.model !== expectedModel) {
     throw new AiControlPlaneError(`provider_not_allowed:${input.model}`, 'provider_not_allowed');
+  }
+  if (!Number.isInteger(input.estimatedMaxInputTokens) || input.estimatedMaxInputTokens <= 0
+    || !Number.isInteger(input.maxOutputTokens) || input.maxOutputTokens <= 0) {
+    throw new AiControlPlaneError('invalid_ai_token_budget', 'provider_contract_violation');
   }
   const idempotencyKey = assertDeterministicIdempotencyKey(input.idempotencyKey);
   const repository = input.budgetRepository ?? supabaseAiBudgetRepository;
