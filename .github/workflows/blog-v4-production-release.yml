@@ -261,6 +261,12 @@ jobs:
               > .tmp/blog-v4-release/candidate-log-evidence.json
             exit 1
           fi
+          if [ ! -s .tmp/blog-v4-release/candidate-logs.jsonl ]; then
+            echo "Vercel runtime log evidence is empty for candidate" >&2
+            printf '{"available":false,"error":"vercel_logs_empty","errorCount":null}\n' \
+              > .tmp/blog-v4-release/candidate-log-evidence.json
+            exit 1
+          fi
           db_errors="$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .tmp/blog-v4-release/candidate-logs.jsonl || true)"
           printf '{"available":true,"errorCount":%s}\n' "$db_errors" \
             > .tmp/blog-v4-release/candidate-log-evidence.json

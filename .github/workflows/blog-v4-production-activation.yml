@@ -212,6 +212,12 @@ jobs:
               > .activation-log-evidence.json
             exit 1
           fi
+          if [ ! -s .activation-production-logs.jsonl ]; then
+            echo "Vercel runtime log evidence is empty after activation" >&2
+            printf '{"available":false,"error":"vercel_logs_empty","errorCount":null}\n' \
+              > .activation-log-evidence.json
+            exit 1
+          fi
           db_errors="$(grep -c 'BLOG_DATABASE_UNAVAILABLE' .activation-production-logs.jsonl || true)"
           printf '{"available":true,"errorCount":%s}\n' "$db_errors" > .activation-log-evidence.json
           test "$db_errors" = "0"

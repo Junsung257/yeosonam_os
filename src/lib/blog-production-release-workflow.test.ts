@@ -62,6 +62,7 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('candidate-log-evidence.json');
     expect(source).toContain('"available":false');
     expect(source).toContain('"errorCount":null');
+    expect(source).toContain('candidate-logs.jsonl ]; then');
     expect(source).not.toMatch(/vercel logs[^\n]*\|\| true/);
   });
 
@@ -118,5 +119,6 @@ describe('blog V4 explicit production activation workflow', () => {
     expect(activationSource).not.toMatch(/vercel logs[^\n]*\|\| true/);
     expect(activationSource).toContain('"available":false');
     expect(activationSource).toContain('"errorCount":null');
+    expect(activationSource).toContain('activation-production-logs.jsonl ]; then');
   });
 });
