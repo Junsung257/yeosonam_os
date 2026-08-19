@@ -15,6 +15,7 @@ export interface InvokeAiInput<T> {
   model: string;
   idempotencyKey: string;
   promptHash: string;
+  traceId?: string;
   estimatedMaxInputTokens: number;
   maxOutputTokens: number;
   execute: AiProviderExecutor<T>;
@@ -32,6 +33,7 @@ export async function invokeAi<T>(input: InvokeAiInput<T>): Promise<{ value: T; 
     throw new AiControlPlaneError('invalid_ai_token_budget', 'provider_contract_violation');
   }
   const idempotencyKey = assertDeterministicIdempotencyKey(input.idempotencyKey);
+  const traceId = assertDeterministicIdempotencyKey(input.traceId ?? input.rootJobId);
   const repository = input.budgetRepository ?? supabaseAiBudgetRepository;
   const requestedUsd = estimateAiCostUsd({
     modelClass: policy.modelClass,
@@ -83,6 +85,7 @@ export async function invokeAi<T>(input: InvokeAiInput<T>): Promise<{ value: T; 
       latencyMs: Math.max(0, Date.now() - startedAt),
       providerRequestId: result.providerRequestId ?? null,
       responseHash: result.responseHash ?? hashResponse(result.value),
+      traceId,
       errorCode: null,
       idempotencyKey,
       promptHash: input.promptHash,
@@ -94,9 +97,10 @@ export async function invokeAi<T>(input: InvokeAiInput<T>): Promise<{ value: T; 
       usage: receipt.usage,
       actualCostUsd: receipt.actualCostUsd,
       latencyMs: receipt.latencyMs,
-      providerRequestId: receipt.providerRequestId,
-      responseHash: receipt.responseHash,
-      errorCode: null,
+        providerRequestId: receipt.providerRequestId,
+        responseHash: receipt.responseHash,
+        traceId,
+        errorCode: null,
       idempotencyKey,
     });
     return { value: result.value, receipt };
@@ -115,6 +119,7 @@ export async function invokeAi<T>(input: InvokeAiInput<T>): Promise<{ value: T; 
         latencyMs: Math.max(0, Date.now() - startedAt),
         providerRequestId: null,
         responseHash: null,
+        traceId,
         errorCode: controlError.code,
         idempotencyKey,
       });

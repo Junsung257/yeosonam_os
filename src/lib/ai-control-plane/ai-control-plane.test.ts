@@ -40,9 +40,10 @@ describe('AI control plane', () => {
     });
     expect(result.value).toEqual({ text: 'ok' });
     expect(result.receipt.success).toBe(true);
+    expect(result.receipt.traceId).toBe('job-1');
     expect(calls).toBe(1);
     expect(repository.receipts).toHaveLength(1);
-    expect(repository.receipts[0]).toMatchObject({ success: true, finishReason: 'stop' });
+    expect(repository.receipts[0]).toMatchObject({ success: true, finishReason: 'stop', traceId: 'job-1' });
   });
 
   it('settles provider failures and never retries inside the control plane', async () => {

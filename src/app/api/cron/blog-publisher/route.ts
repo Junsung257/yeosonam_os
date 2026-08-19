@@ -661,6 +661,7 @@ async function generatePublisherBlogText(
       rootJobId: `blog:${context.queueId}`,
       candidateId: context.queueId,
       stage: context.stage,
+      traceId: `blog-production:${context.queueId}`,
       model: execution.model,
       idempotencyKey: `blog-production:${context.queueId}:${context.stage}:${context.attemptNumber}`,
       promptHash: hashPrompt(options.systemPrompt ?? '', prompt),

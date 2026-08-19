@@ -234,6 +234,7 @@ create or replace function public.settle_ai_budget_v1(
   p_latency_ms integer,
   p_provider_request_id text,
   p_response_hash text,
+  p_trace_id text,
   p_error_code text,
   p_idempotency_key text
 )
@@ -262,10 +263,10 @@ begin
 
   insert into public.ai_call_receipts(
     reservation_id, success, finish_reason, input_tokens, cached_input_tokens, output_tokens,
-    actual_cost_usd, latency_ms, response_hash, error_code
+    actual_cost_usd, latency_ms, trace_id, response_hash, error_code
   ) values (
     p_reservation_id, coalesce(p_success, false), p_finish_reason, p_input_tokens,
-    p_cached_input_tokens, p_output_tokens, actual, p_latency_ms, p_response_hash, p_error_code
+    p_cached_input_tokens, p_output_tokens, actual, p_latency_ms, p_trace_id, p_response_hash, p_error_code
   ) on conflict (reservation_id) do update set
     success = excluded.success,
     finish_reason = excluded.finish_reason,
@@ -274,6 +275,7 @@ begin
     output_tokens = excluded.output_tokens,
     actual_cost_usd = excluded.actual_cost_usd,
     latency_ms = excluded.latency_ms,
+    trace_id = excluded.trace_id,
     response_hash = excluded.response_hash,
     error_code = excluded.error_code;
 
@@ -325,10 +327,10 @@ end;
 $$;
 
 revoke all on function public.reserve_ai_budget_v1(text,text,text,text,text,text,text,text,text,text,integer,integer,numeric) from public, anon, authenticated;
-revoke all on function public.settle_ai_budget_v1(uuid,boolean,text,integer,integer,integer,numeric,integer,text,text,text,text) from public, anon, authenticated;
+revoke all on function public.settle_ai_budget_v1(uuid,boolean,text,integer,integer,integer,numeric,integer,text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.expire_stale_ai_reservations_v1(integer) from public, anon, authenticated;
 revoke all on function public.freeze_ai_workload_v1(text,date) from public, anon, authenticated;
 grant execute on function public.reserve_ai_budget_v1(text,text,text,text,text,text,text,text,text,text,integer,integer,numeric) to service_role;
-grant execute on function public.settle_ai_budget_v1(uuid,boolean,text,integer,integer,integer,numeric,integer,text,text,text,text) to service_role;
+grant execute on function public.settle_ai_budget_v1(uuid,boolean,text,integer,integer,integer,numeric,integer,text,text,text,text,text) to service_role;
 grant execute on function public.expire_stale_ai_reservations_v1(integer) to service_role;
 grant execute on function public.freeze_ai_workload_v1(text,date) to service_role;

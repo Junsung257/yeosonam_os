@@ -59,6 +59,7 @@ export const supabaseAiBudgetRepository: AiBudgetRepository = {
       p_latency_ms: input.latencyMs,
       p_provider_request_id: input.providerRequestId,
       p_response_hash: input.responseHash,
+      p_trace_id: input.traceId,
       p_error_code: input.errorCode,
       p_idempotency_key: input.idempotencyKey,
     });
@@ -113,7 +114,7 @@ export function createInMemoryAiBudgetRepository(options?: {
       const row = [...reservations.values()].find((item) => item.id === input.reservationId);
       if (!row) throw new AiControlPlaneError('unknown_ai_reservation', 'receipt_settlement_failed');
       row.status = input.success ? 'completed' : 'failed';
-      receipts.push({ ...input });
+      receipts.push({ ...input, traceId: input.traceId });
     },
   };
 }

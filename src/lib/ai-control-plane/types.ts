@@ -34,6 +34,7 @@ export interface AiCallReceipt {
   latencyMs: number;
   providerRequestId: string | null;
   responseHash: string | null;
+  traceId: string;
   errorCode: string | null;
   idempotencyKey: string;
   promptHash: string;
@@ -74,6 +75,7 @@ export interface AiBudgetRepository {
     latencyMs: number;
     providerRequestId: string | null;
     responseHash: string | null;
+    traceId: string;
     errorCode: string | null;
     idempotencyKey: string;
   }): Promise<void>;
