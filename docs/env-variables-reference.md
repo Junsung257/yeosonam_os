@@ -36,6 +36,9 @@
 | `BLOG_GSC_BACKFILL_DAYS` | `90` | 보강할 GSC 전체 관측 기간(최대 90일) |
 | `BLOG_GSC_BACKFILL_CHUNK_DAYS` | `7` | 한 번의 rank-tracking에서 추가로 보강할 과거 날짜 수(최대 7). 실패 시 cursor 전진 금지 |
 
+Readiness 응답의 `generationReady`와 `publicationReady`는 분리된다. `approved_for_slot=0`은
+`publicationReady=false` 사유지만 draft-only 생성 자체를 막지 않는다.
+
 운영 최초 반영은 반드시 `BLOG_AUTOPUBLISH_MODE=draft_only`로 시작합니다. DB 절전 모드가 운영 기본값인 동안에는 검증된 배포에서만 `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS=1`을 함께 설정하고, draft canary 전후의 발행·공개·색인 건수를 비교한 뒤 `live`를 승인합니다. apply confirmation 값은 상시 환경 변수로 두지 않고 승인된 일회성 change window에서만 사용합니다.
 
 ### V3 staging runtime verifier 전용

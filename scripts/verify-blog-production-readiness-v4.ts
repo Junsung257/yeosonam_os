@@ -42,12 +42,19 @@ function main(): void {
     process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
   } else {
     process.stdout.write([
+      `Blog Generation Readiness V4: ${report.generationReady ? 'PASS' : 'BLOCKED'}`,
+      `Blog Publication Readiness V4: ${report.publicationReady ? 'PASS' : 'BLOCKED'}`,
       `Blog Production Readiness V4: ${report.safeToEnableLive ? 'PASS' : 'BLOCKED'}`,
       ...Object.entries(report.scopes).map(([scope, ready]) => `${scope}=${ready ? 'ready' : 'blocked'}`),
       ...report.checks.map((item) => `${item.status.toUpperCase()} ${item.key}: ${item.reason}`),
     ].join('\n') + '\n');
   }
-  if (process.argv.includes('--strict') && !report.safeToEnableLive) process.exitCode = 1;
+  if (process.argv.includes('--strict')) {
+    const passed = process.argv.includes('--generation-only')
+      ? report.readyForDraftOnlyGeneration
+      : report.readyForLivePublication;
+    if (!passed) process.exitCode = 1;
+  }
 }
 
 try {

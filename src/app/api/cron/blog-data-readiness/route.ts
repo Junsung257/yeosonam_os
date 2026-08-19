@@ -73,9 +73,22 @@ const handler = async (_request: NextRequest) => {
     || !remoteSnapshots.catalog
     || !remoteSnapshots.detail
     || recentSyntheticCanary.error
-    || Number(recentSyntheticCanary.count || 0) === 0
-    || approvedForSlot.error
-    || Number(approvedForSlot.count || 0) === 0;
+    || Number(recentSyntheticCanary.count || 0) === 0;
+  const approvedForSlotCount = countOrNull(approvedForSlot);
+  // Generation bootstraps the first approved candidate, so it must not depend
+  // on publication telemetry or approved_for_slot inventory. Schema and
+  // immutable deployment provenance are the generation prerequisites here.
+  const generationReady = schemaReadiness.fullyReady
+    && policy.deploymentProvenance.passed
+    && !approvedForSlot.error;
+  const publicationReady = generationReady && (approvedForSlotCount ?? 0) > 0;
+  const publicationBlockers = publicationReady
+    ? []
+    : [
+      ...(critical ? ['generation_or_runtime_readiness'] : []),
+      ...(approvedForSlot.error || approvedForSlotCount == null ? ['approved_slot_inventory_unavailable'] : []),
+      ...(approvedForSlotCount === 0 ? ['approved_slot_candidate_missing'] : []),
+    ];
   if (critical) {
     logError('[blog-data-readiness] critical measurement or delivery gap', undefined, {
       checks: report.checks,
@@ -84,6 +97,7 @@ const handler = async (_request: NextRequest) => {
       snapshotParity,
       remoteSnapshots,
       analyticsCanary24h: countOrNull(recentSyntheticCanary),
+      approvedForSlotCount,
     });
   }
   return apiResponse({
@@ -93,7 +107,12 @@ const handler = async (_request: NextRequest) => {
     snapshotParity,
     remoteSnapshots,
     analyticsCanary24h: countOrNull(recentSyntheticCanary),
-    approvedForSlotCount: countOrNull(approvedForSlot),
+    approvedForSlotCount,
+    generationReady,
+    publicationReady,
+    readyForDraftOnlyGeneration: generationReady,
+    readyForLivePublication: publicationReady,
+    publicationBlockers,
     autopublish: {
       requestedMode: policy.requestedMode,
       effectiveMode: policy.mode,

@@ -33,6 +33,9 @@ V3는 발행량보다 검증된 수요, claim 근거, corpus 다양성, human re
 | `BLOG_MAX_SAME_ARCHETYPE_IN_LAST_10` | `2` | 최근 10개 중 같은 archetype 상한 |
 | `BLOG_REQUIRE_DEMAND_SIGNAL` | `true` | 관측·검증 demand signal 필수 |
 
+생성 readiness와 발행 readiness는 분리한다. `approved_for_slot` 후보가 없을 때는
+draft-only 생성은 계속 허용하고, publication controller·sitemap·indexing만 차단한다.
+
 `reviewed_only`는 `review_status=approved`이고 demand/evidence/claim/quality/diversity gate를 모두 통과한 글만 발행합니다. `live`도 human approval이 필요한 HIGH risk를 우회하지 않습니다. `coverage_gap`은 demand signal이 아닙니다.
 
 ### Naver-first 운영값과 슬롯

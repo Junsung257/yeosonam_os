@@ -64,6 +64,13 @@ export interface BlogProductionReadinessInputV4 {
 export interface BlogProductionReadinessReportV4 {
   version: 'blog-production-readiness-v4';
   generatedAt: string;
+  /** Generation can start without a publication candidate. */
+  generationReady: boolean;
+  /** Publication/live remains blocked until every delivery, corpus, and measurement gate passes. */
+  publicationReady: boolean;
+  readyForDraftOnlyGeneration: boolean;
+  readyForLivePublication: boolean;
+  publicationBlockers: string[];
   safeToEnableLive: boolean;
   checks: BlogProductionReadinessCheckV4[];
   scopes: Record<BlogProductionReadinessScopeV4, boolean>;
@@ -253,10 +260,34 @@ export function evaluateBlogProductionReadinessV4(
     checks.filter((candidate) => candidate.scope === scope).every((candidate) => candidate.status !== 'block'),
   ])) as Record<BlogProductionReadinessScopeV4, boolean>;
 
+  // A missing approved slot is a publication blocker, not a generation
+  // blocker. Keeping these decisions separate prevents the bootstrap loop:
+  // no approved run -> generation disabled -> no run can ever be approved.
+  const generationCheckKeys = new Set([
+    'immutable_production_source',
+    'forward_release_migrations',
+    'semantic_runtime_capabilities',
+    'verified_demand_queue',
+    'automatic_rollout_control',
+  ]);
+  const generationBlockers = checks
+    .filter((item) => generationCheckKeys.has(item.key) && item.status === 'block')
+    .map((item) => item.key);
+  const publicationBlockers = checks
+    .filter((item) => item.status === 'block')
+    .map((item) => item.key);
+  const generationReady = generationBlockers.length === 0;
+  const publicationReady = Object.values(scopes).every(Boolean);
+
   return {
     version: 'blog-production-readiness-v4',
     generatedAt: now.toISOString(),
-    safeToEnableLive: Object.values(scopes).every(Boolean),
+    generationReady,
+    publicationReady,
+    readyForDraftOnlyGeneration: generationReady,
+    readyForLivePublication: publicationReady,
+    publicationBlockers,
+    safeToEnableLive: publicationReady,
     checks,
     scopes,
   };
