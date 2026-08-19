@@ -1897,7 +1897,10 @@ for (const chunk of chunks(currentSnapshotIds, 100)) {
     `current V6 mobile proofs ${chunk[0]}`,
     () => supabase
       .from('product_registration_v5_proof_runs')
-      .select('id,public_snapshot_id,snapshot_hash,status,result,created_at')
+      // The persisted V6 proof binds the nested chromeProof to the outer
+      // route, viewport, device profile, and renderer build. Omitting these
+      // columns makes a passed proof look stale to the authority audit.
+      .select('id,public_snapshot_id,snapshot_hash,status,result,route,viewport,device_profile,renderer_build_id,created_at')
       .in('public_snapshot_id', chunk)
       .eq('status', 'passed')
       .order('created_at', { ascending: false }),
