@@ -21,7 +21,7 @@
 | `DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS` | 없음 | `1`일 때만 DB 절전 모드에서도 블로그 핵심 체인(`rank-tracking`, `blog-data-readiness`, `blog-generate`, `blog-publication-controller`, `blog-indexing-worker`, `blog-ai-model-canary`, `blog-analytics-canary`, `analytics-delivery`) 실행. 누락 시 전체 체인은 fail-closed |
 | `BLOG_GENERATION_CRON_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 야간 `blog-generate` cron이 모델 호출을 수행. 누락·오타는 pause이며, 승인된 수동 `force=true` 검증만 예외 |
 | `BLOG_CONTENT_FACTORY_ENABLED` | 없음 (`false`) | `true`/`1`일 때만 demand materializer와 Durable Content Factory workflow를 사용. 누락 시 기존 V4 경로 유지 |
-| `BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT` | `6` | 한 번의 10분 cron에서 시작할 workflow 상한. 1~12 범위로 제한되며 공개 상한과는 별개 |
+| `BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT` | `6` | 한 번의 10분 cron에서 시작할 workflow 상한. activation은 draft/reviewed/pilot1=`1`, pilot3=`3`, ramp10=`6`, max30=`12`로 고정하며 실패 복구는 `1`; 공개 상한과는 별개 |
 | `BLOG_CORPUS_APPLY_CONFIRM` | 없음 | corpus quarantine apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SEARCH_IMPORT_APPLY_CONFIRM` | 없음 | 관측 검색성과 import apply 이중 확인; 평소 설정 금지 |
 | `BLOG_SNAPSHOT_APPLY_CONFIRM` | 없음 | public snapshot DB refresh 이중 확인; 평소 설정 금지 |

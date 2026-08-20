@@ -99,7 +99,14 @@ async function main(): Promise<void> {
   if (transitionError || !Array.isArray(transitioned) || transitioned.length !== 1) {
     throw new Error(`rollout_transition_failed:${transitionError?.message || 'unexpected_result'}`);
   }
-  const result = { ...evidence, applied: true, resultingState: transitioned[0] };
+  const resultingState = transitioned[0] as Record<string, unknown>;
+  if (String(resultingState.stage) !== nextStage) {
+    throw new Error(`rollout_transition_result_stage_mismatch:${nextStage}:${String(resultingState.stage)}`);
+  }
+  if (Number(resultingState.state_version) !== Number(state.state_version) + 1) {
+    throw new Error('rollout_transition_result_version_mismatch');
+  }
+  const result = { ...evidence, applied: true, resultingState };
   if (output) writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

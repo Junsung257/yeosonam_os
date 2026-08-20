@@ -76,6 +76,13 @@ DB rollout state는 migration에서 `pilot_3`으로 시작한다. activation sta
 별도 실행한다. `max_30`은 `approval_reference`와 인증된 `approvedForSlotCount >= 60` 증거가
 없으면 실패하며, 자동 ramp는 항상 꺼져 있다.
 
+생성 workflow 시작 상한은 activation 단계와 함께 고정한다. 순서대로
+`1, 1, 1, 3, 6, 12`이며 `BLOG_DAILY_PUBLISH_CAP`과 별도다. 실패 복구 시에는
+`BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1`로 되돌린 inert deployment를 다시 배포한다.
+`ramp_10`과 `max_30` 전환은 환경값만 올리지 않고 DB CAS RPC를 실행한다. 이 RPC는
+호출자가 전달한 재고 숫자를 신뢰하지 않고 잠금 구간에서 `approved_for_slot` 실제 수를
+다시 계산하며, 전환 후 readiness가 DB stage·effective stage·daily cap을 모두 확인한다.
+
 `generationReady`와 `publicationReady`는 별도 판정이다. `approved_for_slot=0`은
 발행을 막는 `publicationBlockers`이지만 draft-only 생성의 전제조건이 아니다.
 따라서 후보가 아직 없을 때에도 `readyForDraftOnlyGeneration=true`이면 검증된
@@ -112,7 +119,7 @@ demand 후보를 생성할 수 있고, `readyForLivePublication=false`인 동안
 14. V4 readiness가 source, schema, delivery, corpus, measurement, rollout 여섯 scope 모두 통과할 때만 다음 단계로 간다. 자연 전환 0건은 warning이지만 합성 analytics canary 부재는 blocker다.
 15. 별도 activation workflow에서 `activation_stage=draft_generation_canary`를 선택해 factory와 control-plane을 함께 켠다. 이 단계는 공개·색인 side effect 없이 승인 재고를 생성하는 용도다.
 16. 승인 후보와 비용/receipt 증거를 확보한 뒤 `reviewed_canary` 또는 `pilot_1`을 실행한다. `reviewed_canary`는 사람 승인 후보만 발행하며, `pilot_1`은 일일 cap 1건이다.
-17. pilot 1건의 snapshot·cache·sitemap/RSS·indexing outbox·runtime log evidence가 통과한 뒤에만 `pilot_3`, 이후 별도 관측·승인으로 `ramp_10`, `max_30`을 실행한다. `ramp_10`/`max_30`은 production promote 후 `transition:blog-publication-rollout-v4 --apply`가 CAS 전환을 성공해야 실효 단계가 올라간다. `max_30`은 승인 재고 60건 미만이면 실패한다.
+17. pilot 1건의 snapshot·cache·sitemap/RSS·indexing outbox·runtime log evidence가 통과한 뒤에만 `pilot_3`, 이후 별도 관측·승인으로 `ramp_10`, `max_30`을 실행한다. `ramp_10`/`max_30`은 production promote 후 `transition:blog-publication-rollout-v4 --apply`가 CAS 전환을 성공해야 실효 단계가 올라간다. `max_30`은 RPC가 transaction 안에서 다시 센 승인 재고가 60건 미만이면 실패한다. CAS 응답의 stage/state_version 또는 post-transition effective stage/cap이 요청과 다르면 activation 실패로 처리하고 inert runtime을 재배포한다.
 
 대표 글 자동 갱신 canary는 신규 URL canary와 분리한다. 먼저 `draft_only`에서 기존 canonical ID/slug/`published_at`과 공개 수, indexing outbox가 변하지 않는 shadow draft를 증명한다. 이후 `live`의 `pilot_3`에서 새로 생성한 LOW/MEDIUM run 한 건만 UUID-targeted controller로 실행한다. 기존 `draft_only` shadow draft를 나중에 자동 승인으로 재사용하거나 `review_status`를 임의 변경하지 않는다. 성공 증거는 canonical 행의 material fingerprint 변경, ID/slug/원래 `published_at` 불변, shadow archive, `blog_information_automated_replacements` 1건, 선택 attempt 동일성, `URL_UPDATED` outbox, 공개 surface 200과 sitemap/RSS canonical-only다.
 

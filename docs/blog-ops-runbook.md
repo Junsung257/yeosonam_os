@@ -48,10 +48,10 @@ V4 factory와 중복되는 `blog-scheduler`, `trend-topic-miner`,
 ### 안전한 적용 순서
 
 1. 최신 `main`의 정확한 Git SHA를 확정하고 Blog required CI와 release exact-set을 통과시킨다.
-2. generation을 OFF로 유지한 채 `20260819073009_blog_v4_content_factory.sql`을 적용하고 네 private ledger, RPC, RLS, service-role 권한을 확인한다.
+2. generation을 OFF로 유지한 채 content factory release manifest의 세 migration(`20260819073009`, `20260820100000`, `20260820113000`)을 순서대로 적용하고 private ledger, manual rollout RPC, RLS, service-role 권한을 확인한다. 마지막 migration은 `max_30` 승인 재고를 DB transaction 안에서 다시 계산한다.
 3. snapshot v4를 생성한 뒤 Git 기반 `main` 배포에서 provenance ref/SHA가 일치하는지 확인한다.
 4. demand 10건을 dry-run/materialize하고 무수요 후보가 operation으로 생성되지 않는지 확인한다.
-5. `BLOG_CONTENT_FACTORY_ENABLED=1`, `BLOG_GENERATION_CRON_ENABLED=1`, `BLOG_AUTOPUBLISH_MODE=draft_only`로 workflow를 시작한다. 공개·indexing side effect는 0이어야 한다.
+5. `BLOG_CONTENT_FACTORY_ENABLED=1`, `BLOG_GENERATION_CRON_ENABLED=1`, `BLOG_AUTOPUBLISH_MODE=draft_only`, `BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1`로 단일 canary workflow만 시작한다. 공개·indexing side effect는 0이어야 한다.
 6. `approved_for_slot` 3건과 selected attempt, score 90+, failure/hard blocker 0을 확인한다.
 7. `reviewed_only`에서 사람이 승인한 1건만 canary 공개하고 creative·snapshot·indexing outbox·operation parity를 확인한다.
 8. 이상이 없을 때만 `live`와 `pilot_3`로 전환하고 `ramp_10`, `max_30` 순서로 승격한다.

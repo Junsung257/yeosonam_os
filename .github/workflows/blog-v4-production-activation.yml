@@ -106,17 +106,17 @@ jobs:
           set -euo pipefail
           case "${{ inputs.activation_stage }}" in
             draft_generation_canary)
-              mode=draft_only; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3;;
+              mode=draft_only; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3; workflow_start_limit=1;;
             reviewed_canary)
-              mode=reviewed_only; generation=false; factory=true; control_plane=1; cap=1; ramp=pilot_3;;
+              mode=reviewed_only; generation=false; factory=true; control_plane=1; cap=1; ramp=pilot_3; workflow_start_limit=1;;
             pilot_1)
-              mode=live; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3;;
+              mode=live; generation=true; factory=true; control_plane=1; cap=1; ramp=pilot_3; workflow_start_limit=1;;
             pilot_3)
-              mode=live; generation=true; factory=true; control_plane=1; cap=3; ramp=pilot_3;;
+              mode=live; generation=true; factory=true; control_plane=1; cap=3; ramp=pilot_3; workflow_start_limit=3;;
             ramp_10)
-              mode=live; generation=true; factory=true; control_plane=1; cap=10; ramp=ramp_10;;
+              mode=live; generation=true; factory=true; control_plane=1; cap=10; ramp=ramp_10; workflow_start_limit=6;;
             max_30)
-              mode=live; generation=true; factory=true; control_plane=1; cap=30; ramp=max_30;;
+              mode=live; generation=true; factory=true; control_plane=1; cap=30; ramp=max_30; workflow_start_limit=12;;
             *) echo "unsupported activation_stage" >&2; exit 1;;
           esac
           if [ "$generation" = "true" ]; then
@@ -130,6 +130,7 @@ jobs:
             echo "control_plane=$control_plane"
             echo "cap=$cap"
             echo "ramp=$ramp"
+            echo "workflow_start_limit=$workflow_start_limit"
           } >> "$GITHUB_OUTPUT"
 
       - name: Set only the selected activation stage
@@ -148,6 +149,7 @@ jobs:
           update_env BLOG_GENERATION_CRON_ENABLED "${{ steps.contract.outputs.generation }}"
           update_env BLOG_CONTENT_FACTORY_ENABLED "${{ steps.contract.outputs.factory }}"
           update_env BLOG_AI_CONTROL_PLANE_ENABLED "${{ steps.contract.outputs.control_plane }}"
+          update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT "${{ steps.contract.outputs.workflow_start_limit }}"
           update_env BLOG_DAILY_PUBLISH_CAP "${{ steps.contract.outputs.cap }}"
           update_env BLOG_PUBLICATION_RAMP_STAGE "${{ steps.contract.outputs.ramp }}"
           update_env BLOG_AUTO_RAMP_ENABLED false
@@ -236,13 +238,36 @@ jobs:
           npm run transition:blog-publication-rollout-v4 -- \
             --apply \
             --expected-from="$expected_from" \
-            --next-stage="${{ inputs.contract.outputs.ramp }}" \
+            --next-stage="${{ steps.contract.outputs.ramp }}" \
             --approval-reference="${{ inputs.approval_reference }}" \
             --github-run-id="${{ github.run_id }}" \
             --release-commit="${{ inputs.release_commit }}" \
             --evidence-sha256="$evidence_sha256" \
             --operator="${{ github.actor }}" \
             --output=.tmp/blog-v4-activation/rollout-transition.json
+
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://www.yeosonam.com/api/cron/blog-data-readiness" \
+            > .tmp/blog-v4-activation/post-transition-readiness.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const x = JSON.parse(fs.readFileSync('.tmp/blog-v4-activation/post-transition-readiness.json', 'utf8'));
+          const expectedStage = process.env.EXPECTED_STAGE;
+          const expectedCap = Number(process.env.EXPECTED_CAP);
+          if (x.publicationReady !== true
+            || x.autopublish?.deploymentProvenance?.passed !== true
+            || x.rollout?.dbStage !== expectedStage
+            || x.rollout?.effectiveStage !== expectedStage
+            || Number(x.rollout?.effectiveDailyCap) !== expectedCap) {
+            console.error('post-transition effective rollout contract failed', { expectedStage, expectedCap, readiness: x });
+            process.exit(1);
+          }
+          NODE
+        env:
+          EXPECTED_STAGE: ${{ steps.contract.outputs.ramp }}
+          EXPECTED_CAP: ${{ steps.contract.outputs.cap }}
 
       - name: Redeploy and promote verified inert runtime after activation failure
         if: failure() && steps.activation_mutation.outputs.started == 'true'
@@ -262,6 +287,7 @@ jobs:
           update_env BLOG_GENERATION_CRON_ENABLED false || exit 1
           update_env BLOG_CONTENT_FACTORY_ENABLED false || exit 1
           update_env BLOG_AI_CONTROL_PLANE_ENABLED 0 || exit 1
+          update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT 1 || exit 1
           update_env BLOG_DAILY_PUBLISH_CAP 1 || exit 1
           update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3 || exit 1
           update_env BLOG_AUTO_RAMP_ENABLED false || exit 1

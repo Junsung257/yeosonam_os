@@ -17,6 +17,10 @@ describe('blog data readiness route contract', () => {
     expect(source).toContain('publicationReady');
     expect(source).toContain('readyForDraftOnlyGeneration');
     expect(source).toContain('readyForLivePublication');
+    expect(source).toContain('loadBlogPublicationRolloutState');
+    expect(source).toContain('resolveEffectiveBlogPublicationRollout');
+    expect(source).toContain('effectiveStage: effectiveRollout.stage');
+    expect(source).toContain('effectiveDailyCap: effectiveRollout.dailyCap');
     expect(source).not.toContain('|| Number(approvedForSlot.count || 0) === 0;');
     expect(source).toContain('status: critical ? 503 : 200');
   });

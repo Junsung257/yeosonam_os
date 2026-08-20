@@ -12,6 +12,11 @@
       "version": "20260820100000",
       "file": "supabase/migrations/20260820100000_blog_publication_rollout_manual_transition_v1.sql",
       "sha256": "fe5991a327f9d8f44702efd6c4b08a46b3b5b820920c6af2062295bdf8f00e5e"
+    },
+    {
+      "version": "20260820113000",
+      "file": "supabase/migrations/20260820113000_blog_publication_rollout_inventory_gate_v1.sql",
+      "sha256": "0b543c4dbf89b59ca210af9c33ec75407c430257e89bfbbcb3744a16be841c82"
     }
   ],
   "rollback": {

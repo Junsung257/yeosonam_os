@@ -50,6 +50,7 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('update_env BLOG_GENERATION_CRON_ENABLED false');
     expect(source).toContain('update_env BLOG_CONTENT_FACTORY_ENABLED false');
     expect(source).toContain('update_env BLOG_AI_CONTROL_PLANE_ENABLED 0');
+    expect(source).toContain('update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT 1');
     expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_GIT_REF main');
     expect(source).toContain('update_env BLOG_PRODUCTION_ALLOWED_COMMIT_SHA "${{ inputs.release_commit }}"');
     expect(source).not.toContain('promote_live');
@@ -111,6 +112,24 @@ describe('blog V4 explicit production activation workflow', () => {
     expect(activationSource).toContain('mode=live; generation=true; factory=true; control_plane=1; cap=30; ramp=max_30;');
     expect(activationSource).toContain('update_env BLOG_AUTO_RAMP_ENABLED false');
     expect(activationSource).toContain('max_30 requires approvedForSlotCount >= 60');
+    expect(activationSource).toContain('draft_generation_canary)');
+    expect(activationSource).toContain('workflow_start_limit=1');
+    expect(activationSource).toContain('pilot_3)');
+    expect(activationSource).toContain('workflow_start_limit=3');
+    expect(activationSource).toContain('ramp_10)');
+    expect(activationSource).toContain('workflow_start_limit=6');
+    expect(activationSource).toContain('max_30)');
+    expect(activationSource).toContain('workflow_start_limit=12');
+    expect(activationSource).toContain('update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT "${{ steps.contract.outputs.workflow_start_limit }}"');
+  });
+
+  it('passes the resolved rollout stage output to the manual DB transition', () => {
+    expect(activationSource).toContain('--next-stage="${{ steps.contract.outputs.ramp }}"');
+    expect(activationSource).not.toContain('inputs.contract.outputs');
+    expect(activationSource).toContain('post-transition-readiness.json');
+    expect(activationSource).toContain("x.rollout?.dbStage !== expectedStage");
+    expect(activationSource).toContain("x.rollout?.effectiveStage !== expectedStage");
+    expect(activationSource).toContain('effectiveDailyCap');
   });
 
   it('restores every inert safety flag after activation failure', () => {
@@ -118,6 +137,7 @@ describe('blog V4 explicit production activation workflow', () => {
     expect(activationSource).toContain('update_env BLOG_GENERATION_CRON_ENABLED false');
     expect(activationSource).toContain('update_env BLOG_CONTENT_FACTORY_ENABLED false');
     expect(activationSource).toContain('update_env BLOG_AI_CONTROL_PLANE_ENABLED 0');
+    expect(activationSource).toContain('update_env BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT 1');
     expect(activationSource).toContain('update_env BLOG_DAILY_PUBLISH_CAP 1');
     expect(activationSource).toContain('update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3');
     expect(activationSource).toContain('update_env BLOG_AUTO_RAMP_ENABLED false');

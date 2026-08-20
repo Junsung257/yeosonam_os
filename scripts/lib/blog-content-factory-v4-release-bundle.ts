@@ -43,7 +43,7 @@ export function verifyBlogContentFactoryV4ReleaseBundle(root = process.cwd()) {
   if (manifest.apply_mode !== 'supabase-db-push-exact-dry-run-required') {
     throw new Error('blog_content_factory_release_apply_mode_invalid');
   }
-  const expectedVersions = ['20260819073009', '20260820100000'];
+  const expectedVersions = ['20260819073009', '20260820100000', '20260820113000'];
   if (manifest.migrations.length !== expectedVersions.length
     || manifest.migrations.map((entry) => entry.version).join(',') !== expectedVersions.join(',')) {
     throw new Error('blog_content_factory_release_migration_set_invalid');

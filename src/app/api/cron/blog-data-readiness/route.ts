@@ -9,6 +9,8 @@ import { logError } from '@/lib/sentry-logger';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildBlogPublicSnapshotParityDiagnosticsV3 } from '@/lib/blog-public-snapshot-parity-v3';
 import { readImmutableRemoteSnapshotConfigV3 } from '@/lib/blog-public-remote-snapshot-v3';
+import { resolveEffectiveBlogPublicationRollout } from '@/lib/blog-publication-rollout';
+import { loadBlogPublicationRolloutState } from '@/lib/blog-publication-rollout-repository';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,6 +24,7 @@ const handler = async (_request: NextRequest) => {
   const now = new Date();
   const policy = readBlogAutopublishPolicyV3();
   const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(supabaseAdmin, now);
+  const rolloutStateResult = await loadBlogPublicationRolloutState(supabaseAdmin);
   const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60_000).toISOString();
   const [search, engagement, serverEvents, syntheticServerEvents, recentSyntheticCanary, rum, snapshots, dead, ready, liveSlugs, snapshotSlugs, approvedForSlot] = await Promise.all([
     supabaseAdmin.from('blog_search_performance').select('id', { count: 'exact', head: true }).gte('metric_date', daysAgo(30).slice(0, 10)),
@@ -55,6 +58,13 @@ const handler = async (_request: NextRequest) => {
       sha256: process.env.BLOG_PUBLIC_DETAIL_LKG_SHA256,
     })),
   };
+  const effectiveRollout = rolloutStateResult.state
+    ? resolveEffectiveBlogPublicationRollout({
+      state: rolloutStateResult.state,
+      environmentStageCeiling: policy.publicationRampStage,
+      environmentDailyCap: policy.requestedDailyPublishCap,
+    })
+    : null;
   const report = evaluateBlogDataReadinessV3({
     searchPerformance30d: countOrNull(search),
     engagement7d: countOrNull(engagement),
@@ -68,6 +78,7 @@ const handler = async (_request: NextRequest) => {
   }, now);
   const critical = report.status === 'critical'
     || !schemaReadiness.fullyReady
+    || !rolloutStateResult.state
     || !policy.deploymentProvenance.passed
     || snapshotParity?.parity !== true
     || !remoteSnapshots.catalog
@@ -81,7 +92,9 @@ const handler = async (_request: NextRequest) => {
   const generationReady = schemaReadiness.fullyReady
     && policy.deploymentProvenance.passed
     && !approvedForSlot.error;
-  const publicationReady = generationReady && (approvedForSlotCount ?? 0) > 0;
+  const publicationReady = generationReady
+    && effectiveRollout !== null
+    && (approvedForSlotCount ?? 0) > 0;
   const publicationBlockers = publicationReady
     ? []
     : [
@@ -96,6 +109,8 @@ const handler = async (_request: NextRequest) => {
       deploymentProvenance: policy.deploymentProvenance,
       snapshotParity,
       remoteSnapshots,
+      rolloutState: rolloutStateResult,
+      effectiveRollout,
       analyticsCanary24h: countOrNull(recentSyntheticCanary),
       approvedForSlotCount,
     });
@@ -106,6 +121,20 @@ const handler = async (_request: NextRequest) => {
     schemaReadiness,
     snapshotParity,
     remoteSnapshots,
+    rollout: rolloutStateResult.state && effectiveRollout
+      ? {
+        dbStage: rolloutStateResult.state.stage,
+        status: rolloutStateResult.state.status,
+        stateVersion: rolloutStateResult.state.stateVersion,
+        environmentStageCeiling: policy.publicationRampStage,
+        environmentDailyCap: policy.requestedDailyPublishCap,
+        effectiveStage: effectiveRollout.stage,
+        effectiveDailyCap: effectiveRollout.dailyCap,
+        frozen: effectiveRollout.frozen,
+        reasons: effectiveRollout.reasons,
+      }
+      : null,
+    rolloutStateError: rolloutStateResult.error,
     analyticsCanary24h: countOrNull(recentSyntheticCanary),
     approvedForSlotCount,
     generationReady,
