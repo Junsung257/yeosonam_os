@@ -13,6 +13,7 @@
 - Emergency rollback: `supabase/rollbacks/blog-orchestrator-v4-release-rollback.sql`
 - Candidate workflow: `.github/workflows/blog-v4-production-release.yml`
 - Explicit activation workflow: `.github/workflows/blog-v4-production-activation.yml`
+- Both workflows share the `blog-v4-production-control` concurrency group; they must never mutate the production project concurrently.
 - Production evidence collector: `npm run collect:blog-production-evidence-v4 -- ...`
 - Fail-closed decision: `npm run verify:blog-production-readiness-v4 -- --evidence=<json>`
 - Snapshot artifact verifier: `npm run verify:blog-snapshot-artifact-v4 -- --manifest=<manifest> --expected-ref=main --expected-commit=<main SHA> --require-source-commit`
@@ -111,14 +112,17 @@ demand 후보를 생성할 수 있고, `readyForLivePublication=false`인 동안
 14. V4 readiness가 source, schema, delivery, corpus, measurement, rollout 여섯 scope 모두 통과할 때만 다음 단계로 간다. 자연 전환 0건은 warning이지만 합성 analytics canary 부재는 blocker다.
 15. 별도 activation workflow에서 `activation_stage=draft_generation_canary`를 선택해 factory와 control-plane을 함께 켠다. 이 단계는 공개·색인 side effect 없이 승인 재고를 생성하는 용도다.
 16. 승인 후보와 비용/receipt 증거를 확보한 뒤 `reviewed_canary` 또는 `pilot_1`을 실행한다. `reviewed_canary`는 사람 승인 후보만 발행하며, `pilot_1`은 일일 cap 1건이다.
-17. pilot 1건의 snapshot·cache·sitemap/RSS·indexing outbox·runtime log evidence가 통과한 뒤에만 `pilot_3`, 이후 별도 관측·승인으로 `ramp_10`, `max_30`을 실행한다. `max_30`은 승인 재고 60건 미만이면 실패한다.
+17. pilot 1건의 snapshot·cache·sitemap/RSS·indexing outbox·runtime log evidence가 통과한 뒤에만 `pilot_3`, 이후 별도 관측·승인으로 `ramp_10`, `max_30`을 실행한다. `ramp_10`/`max_30`은 production promote 후 `transition:blog-publication-rollout-v4 --apply`가 CAS 전환을 성공해야 실효 단계가 올라간다. `max_30`은 승인 재고 60건 미만이면 실패한다.
 
 대표 글 자동 갱신 canary는 신규 URL canary와 분리한다. 먼저 `draft_only`에서 기존 canonical ID/slug/`published_at`과 공개 수, indexing outbox가 변하지 않는 shadow draft를 증명한다. 이후 `live`의 `pilot_3`에서 새로 생성한 LOW/MEDIUM run 한 건만 UUID-targeted controller로 실행한다. 기존 `draft_only` shadow draft를 나중에 자동 승인으로 재사용하거나 `review_status`를 임의 변경하지 않는다. 성공 증거는 canonical 행의 material fingerprint 변경, ID/slug/원래 `published_at` 불변, shadow archive, `blog_information_automated_replacements` 1건, 선택 attempt 동일성, `URL_UPDATED` outbox, 공개 surface 200과 sitemap/RSS canonical-only다.
 
 Candidate workflow와 activation workflow는 위 순서를 분리해 구현한다. `release_commit`, migration apply,
 disposition apply, candidate deploy, activation stage를 각각 명시해야 하며, SHA가 현재
 `origin/main`과 다르면 시작하지 않는다. 모든 activation 단계는 실패 시 draft-only, generation/factory/control-plane
-off, cap 1, pilot_3, auto-ramp false로 fail-closed 복구한다.
+off, cap 1, pilot_3, auto-ramp false로 환경을 복구한 뒤, 새 inert candidate를 배포·검증하고 production
+alias까지 promote한다. 복구 결과는 `ACTIVATION_FAILED_ROLLBACK_SUCCEEDED` 또는
+`ACTIVATION_FAILED_ROLLBACK_FAILED` artifact로 남긴다. 복구 자체가 실패하면 일반 activation 실패와
+구별되는 긴급 대응 대상이다.
 
 ## 스냅샷 장애 대응
 

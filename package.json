@@ -125,6 +125,7 @@
     "prepare:blog-supabase-release-workdir-v4": "npx tsx scripts/prepare-blog-supabase-release-workdir-v4.ts",
     "prepare:blog-content-factory-supabase-workdir-v4": "npx tsx scripts/prepare-blog-supabase-release-workdir-v4.ts --release=content_factory",
     "verify:blog-release-candidate-responses-v4": "npx tsx scripts/verify-blog-release-candidate-responses-v4.ts",
+    "transition:blog-publication-rollout-v4": "npx tsx scripts/transition-blog-publication-rollout-v4.ts",
     "audit:blog-corpus-reconciliation-v4": "npx tsx scripts/reconcile-blog-corpus-v4.ts",
     "verify:blog-migration-bundle-v3": "npx tsx scripts/verify-blog-migration-release-bundle-v3.ts",
     "verify:blog-public-eligibility-parity-v3": "npx tsx scripts/verify-blog-public-eligibility-parity-v3.ts",

@@ -14,6 +14,7 @@ describe('blog V4 protected production release workflow', () => {
     expect(source).toContain('workflow_dispatch:');
     expect(source).toContain('environment: blog-production');
     expect(source).toContain('cancel-in-progress: false');
+    expect((workflow.concurrency as { group?: string }).group).toBe('blog-v4-production-control');
   });
 
   it('pins the exact main SHA and proves the migration set before mutation', () => {
@@ -87,6 +88,10 @@ describe('blog V4 explicit production activation workflow', () => {
     }
     expect(activationSource).not.toContain('promote_live:');
     expect(activationSource).toContain('confirm_activation:');
+    expect((workflow.concurrency as { group?: string }).group).toBe('blog-v4-production-control');
+    const releaseWorkflow = parse(source) as Record<string, unknown>;
+    expect((workflow.concurrency as { group?: string }).group)
+      .toBe((releaseWorkflow.concurrency as { group?: string }).group);
   });
 
   it('always enables factory and control plane with generation', () => {
@@ -120,5 +125,19 @@ describe('blog V4 explicit production activation workflow', () => {
     expect(activationSource).toContain('"available":false');
     expect(activationSource).toContain('"errorCount":null');
     expect(activationSource).toContain('activation-production-logs.jsonl ]; then');
+    expect(activationSource).toContain('steps.activation_mutation.outputs.started == \'true\'');
+    expect(activationSource).toContain('Redeploy and promote verified inert runtime after activation failure');
+    expect(activationSource).toContain('ACTIVATION_FAILED_ROLLBACK_SUCCEEDED');
+    expect(activationSource).toContain('ACTIVATION_FAILED_ROLLBACK_FAILED');
+    const reset = activationSource.indexOf('update_env BLOG_AUTOPUBLISH_MODE draft_only || exit 1');
+    const safeDeploy = activationSource.indexOf('safe_url="$(npx vercel deploy --prod --skip-domain');
+    const safeVerify = activationSource.indexOf('inert candidate contract failed');
+    const safePromote = activationSource.indexOf('npx vercel promote "$safe_url"');
+    const publicVerify = activationSource.indexOf('inert production contract failed');
+    expect(reset).toBeGreaterThan(0);
+    expect(reset).toBeLessThan(safeDeploy);
+    expect(safeDeploy).toBeLessThan(safeVerify);
+    expect(safeVerify).toBeLessThan(safePromote);
+    expect(safePromote).toBeLessThan(publicVerify);
   });
 });

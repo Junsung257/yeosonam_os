@@ -27,6 +27,8 @@ describe('Blog V4 required CI lane', () => {
   it('runs the factory exact-set, public surface, lint and Linux build contracts', () => {
     expect(source).toContain('verify:blog-content-factory-release-bundle-v4');
     expect(source).toContain('verify:blog-content-factory-supabase-dry-run-v4');
+    expect(source).toContain('20260820100000_blog_publication_rollout_manual_transition_v1.sql');
+    expect(source).toContain('transition-blog-publication-rollout-v4.ts');
     expect(source).toContain('src/lib/blog-content-factory');
     expect(source).toContain('src/lib/blog-public-eligibility-contract-v3.test.ts');
     expect(source).toContain('src/app/sitemap.test.ts');

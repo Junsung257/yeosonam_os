@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: blog-v4-production-release
+  group: blog-v4-production-control
   cancel-in-progress: false
 
 jobs:

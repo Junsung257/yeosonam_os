@@ -39,5 +39,7 @@ drop table if exists public.blog_content_stage_events;
 drop table if exists public.blog_content_operations;
 drop table if exists public.blog_demand_cluster_signals;
 drop table if exists public.blog_demand_clusters;
+drop function if exists public.transition_blog_publication_rollout_stage_v1(text,text,text,bigint,text,integer,text,text,text,text);
+drop table if exists public.blog_publication_rollout_manual_transitions;
 
 commit;

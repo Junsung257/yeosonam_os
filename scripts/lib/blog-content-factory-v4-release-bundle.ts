@@ -43,17 +43,22 @@ export function verifyBlogContentFactoryV4ReleaseBundle(root = process.cwd()) {
   if (manifest.apply_mode !== 'supabase-db-push-exact-dry-run-required') {
     throw new Error('blog_content_factory_release_apply_mode_invalid');
   }
-  if (manifest.migrations.length !== 1) throw new Error('blog_content_factory_release_migration_count_invalid');
-  const migration = manifest.migrations[0]!;
-  if (!/^\d{14}$/.test(migration.version)
-    || !migration.file.split('/').at(-1)?.startsWith(`${migration.version}_`)) {
-    throw new Error(`blog_content_factory_release_version_filename_mismatch:${migration.file}`);
+  const expectedVersions = ['20260819073009', '20260820100000'];
+  if (manifest.migrations.length !== expectedVersions.length
+    || manifest.migrations.map((entry) => entry.version).join(',') !== expectedVersions.join(',')) {
+    throw new Error('blog_content_factory_release_migration_set_invalid');
+  }
+  for (const migration of manifest.migrations) {
+    if (!/^\d{14}$/.test(migration.version)
+      || !migration.file.split('/').at(-1)?.startsWith(`${migration.version}_`)) {
+      throw new Error(`blog_content_factory_release_version_filename_mismatch:${migration.file}`);
+    }
   }
   return {
     manifest: MANIFEST,
     release: manifest.release,
     applyMode: manifest.apply_mode,
-    migrations: [{ ...verifyEntry(root, migration), version: migration.version }],
+    migrations: manifest.migrations.map((migration) => ({ ...verifyEntry(root, migration), version: migration.version })),
     rollback: verifyEntry(root, manifest.rollback),
   };
 }

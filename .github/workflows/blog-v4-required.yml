@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p .tmp/blog-v4-required
-          printf 'Applying migration 20260819073009_blog_v4_content_factory.sql\n' > .tmp/blog-v4-required/supabase-dry-run.txt
+          printf 'Applying migration 20260819073009_blog_v4_content_factory.sql\nApplying migration 20260820100000_blog_publication_rollout_manual_transition_v1.sql\n' > .tmp/blog-v4-required/supabase-dry-run.txt
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- --input=.tmp/blog-v4-required/supabase-dry-run.txt
           npm run verify:ai-control-plane-migration
           npm run verify:blog-auto-repair-migration
@@ -87,6 +87,7 @@ jobs:
             src/lib/blog-production-readiness-v4.test.ts \
             src/lib/blog-release-candidate-responses-v4.test.ts \
             src/lib/blog-production-release-workflow.test.ts \
+            src/lib/blog-publication-rollout-manual-transition-migration.test.ts \
             src/lib/blog-v4-required-workflow.test.ts \
             src/lib/blog-publisher-v4-orchestration-contract.test.ts \
             src/lib/blog-publication-rollout.test.ts \
@@ -120,6 +121,7 @@ jobs:
             src/app/api/cron/blog-publication-controller/route.ts \
             src/lib/blog-indexing-worker.ts \
             src/lib/blog-publication-rollout.ts \
+            scripts/transition-blog-publication-rollout-v4.ts \
             src/lib/blog-ops-summary.ts \
             src/app/admin/blog/system/page.tsx
       - name: Linux production build

@@ -7,10 +7,15 @@
       "version": "20260819073009",
       "file": "supabase/migrations/20260819073009_blog_v4_content_factory.sql",
       "sha256": "7f8eb75eb2b1f38e2a0e94826f9c5e2dba9a567be78a07b82fd2b2c77e2c8a90"
+    },
+    {
+      "version": "20260820100000",
+      "file": "supabase/migrations/20260820100000_blog_publication_rollout_manual_transition_v1.sql",
+      "sha256": "fe5991a327f9d8f44702efd6c4b08a46b3b5b820920c6af2062295bdf8f00e5e"
     }
   ],
   "rollback": {
     "file": "supabase/rollbacks/blog-v4-content-factory-20260819.sql",
-    "sha256": "aefaa4bd5b4a66a4978c5205088a82fe2734186a214b355477e82e192ab20f09"
+    "sha256": "44bf2ad3b67080e49af99c6ffef9b18c7af9fe2ec742900fbfe138038124f2a2"
   }
 }

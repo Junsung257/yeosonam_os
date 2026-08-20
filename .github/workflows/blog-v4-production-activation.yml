@@ -34,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: blog-v4-production-activation
+  group: blog-v4-production-control
   cancel-in-progress: false
 
 jobs:
@@ -65,8 +65,8 @@ jobs:
             echo "confirm_activation must be true" >&2
             exit 1
           fi
-          if [ "${{ inputs.activation_stage }}" = "max_30" ] && [ -z "${{ inputs.approval_reference }}" ]; then
-            echo "max_30 requires an approval_reference" >&2
+          if [[ "${{ inputs.activation_stage }}" = "ramp_10" || "${{ inputs.activation_stage }}" = "max_30" ]] && [ -z "${{ inputs.approval_reference }}" ]; then
+            echo "ramp_10/max_30 require an approval_reference" >&2
             exit 1
           fi
           for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET CRON_SECRET NEXT_PUBLIC_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
@@ -133,9 +133,12 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set only the selected activation stage
+        id: activation_mutation
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p .tmp/blog-v4-activation
+          echo "started=true" >> "$GITHUB_OUTPUT"
           update_env() {
             local name="$1" value="$2"
             npx vercel env update "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
@@ -222,24 +225,62 @@ jobs:
           printf '{"available":true,"errorCount":%s}\n' "$db_errors" > .activation-log-evidence.json
           test "$db_errors" = "0"
 
-      - name: Restore inert draft-only state after activation failure
-        if: failure()
-        continue-on-error: true
+      - name: Transition durable DB rollout stage after verified promotion
+        if: success() && (inputs.activation_stage == 'ramp_10' || inputs.activation_stage == 'max_30')
         shell: bash
         run: |
           set -euo pipefail
+          expected_from=pilot_3
+          if [ "${{ inputs.activation_stage }}" = "max_30" ]; then expected_from=ramp_10; fi
+          evidence_sha256="$(sha256sum .activation-readiness.json | awk '{print $1}')"
+          npm run transition:blog-publication-rollout-v4 -- \
+            --apply \
+            --expected-from="$expected_from" \
+            --next-stage="${{ inputs.contract.outputs.ramp }}" \
+            --approval-reference="${{ inputs.approval_reference }}" \
+            --github-run-id="${{ github.run_id }}" \
+            --release-commit="${{ inputs.release_commit }}" \
+            --evidence-sha256="$evidence_sha256" \
+            --operator="${{ github.actor }}" \
+            --output=.tmp/blog-v4-activation/rollout-transition.json
+
+      - name: Redeploy and promote verified inert runtime after activation failure
+        if: failure() && steps.activation_mutation.outputs.started == 'true'
+        id: inert_rollback
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p .tmp/blog-v4-activation
+          rollback_status=ACTIVATION_FAILED_ROLLBACK_FAILED
+          trap 'printf "{\"status\":\"%s\",\"releaseCommit\":\"%s\"}\n" "$rollback_status" "${{ inputs.release_commit }}" > .tmp/blog-v4-activation/rollback-status.json' EXIT
           update_env() {
             local name="$1" value="$2"
             npx vercel env update "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 \
               || npx vercel env add "$name" production --value "$value" --yes --token "$VERCEL_TOKEN" >/dev/null
           }
-          update_env BLOG_AUTOPUBLISH_MODE draft_only
-          update_env BLOG_GENERATION_CRON_ENABLED false
-          update_env BLOG_CONTENT_FACTORY_ENABLED false
-          update_env BLOG_AI_CONTROL_PLANE_ENABLED 0
-          update_env BLOG_DAILY_PUBLISH_CAP 1
-          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3
-          update_env BLOG_AUTO_RAMP_ENABLED false
+          update_env BLOG_AUTOPUBLISH_MODE draft_only || exit 1
+          update_env BLOG_GENERATION_CRON_ENABLED false || exit 1
+          update_env BLOG_CONTENT_FACTORY_ENABLED false || exit 1
+          update_env BLOG_AI_CONTROL_PLANE_ENABLED 0 || exit 1
+          update_env BLOG_DAILY_PUBLISH_CAP 1 || exit 1
+          update_env BLOG_PUBLICATION_RAMP_STAGE pilot_3 || exit 1
+          update_env BLOG_AUTO_RAMP_ENABLED false || exit 1
+          update_env BLOG_AUTO_ROLLBACK_ENABLED true || exit 1
+          safe_url="$(npx vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")" || exit 1
+          echo "safe_url=$safe_url" > .tmp/blog-v4-activation/inert-candidate-url.txt
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${safe_url}/api/cron/blog-generate" > .tmp/blog-v4-activation/inert-candidate.json || exit 1
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-activation/inert-candidate.json","utf8")); if(x.skipped!==true || x.reason!=="blog_generation_cron_paused" || x.generationCronEnabled!==false || x.autopublishMode!=="draft_only") { console.error("inert candidate contract failed", x); process.exit(1); }' || exit 1
+          npx vercel promote "$safe_url" --yes --token "$VERCEL_TOKEN" || exit 1
+          curl --fail --silent --show-error --location \
+            --header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://www.yeosonam.com/api/cron/blog-generate" > .tmp/blog-v4-activation/inert-production.json || exit 1
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-activation/inert-production.json","utf8")); if(x.skipped!==true || x.reason!=="blog_generation_cron_paused" || x.generationCronEnabled!==false || x.autopublishMode!=="draft_only") { console.error("inert production contract failed", x); process.exit(1); }' || exit 1
+          rollback_status=ACTIVATION_FAILED_ROLLBACK_SUCCEEDED
+          exit 0
 
       - name: Upload activation evidence
         if: always()
@@ -249,5 +290,6 @@ jobs:
           path: |
             .activation-*.json
             .activation-*.jsonl
+            .tmp/blog-v4-activation/
           if-no-files-found: ignore
           retention-days: 90
