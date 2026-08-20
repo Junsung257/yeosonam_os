@@ -14,6 +14,7 @@
 
 export type SecretKey =
   | 'CRON_SECRET'
+  | 'BLOG_OPS_READ_TOKEN'
   | 'CLOBE_MCP_BEARER_TOKEN'
   | 'CLOBE_API_TOKEN'
   | 'CLOBE_MCP_URL'

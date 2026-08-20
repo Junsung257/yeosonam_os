@@ -729,6 +729,10 @@ function checkRuntimeEnvReadiness() {
 
 function opsRequestHeaders() {
   const headers = { Accept: 'application/json' };
+  if (process.env.BLOG_OPS_READ_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.BLOG_OPS_READ_TOKEN}`;
+    return { headers, authMode: 'blog-ops-read-token' };
+  }
   if (process.env.CRON_SECRET) {
     headers.Authorization = `Bearer ${process.env.CRON_SECRET}`;
     return { headers, authMode: 'cron-secret' };
@@ -797,14 +801,14 @@ async function checkBlogPublicSurfaceMonitor() {
       warn,
       url,
       authMode,
-      missing: missingOpsAuth ? ['CRON_SECRET'] : undefined,
+      missing: missingOpsAuth ? ['BLOG_OPS_READ_TOKEN or CRON_SECRET'] : undefined,
       failedIssues,
       notes: ok
         ? `${checked} public blog surface(s) healthy`
         : surfaceUnavailable
           ? 'blog surface monitor found transient DB/data unavailability; publication can continue but ops follow-up is required'
           : missingOpsAuth
-            ? 'protected ops probe requires CRON_SECRET or OPEN_CHECK_AUTH_COOKIE'
+            ? 'protected ops probe requires BLOG_OPS_READ_TOKEN, CRON_SECRET, or OPEN_CHECK_AUTH_COOKIE'
             : `failed=${failed}; ${failedIssues.slice(0, 4).join(', ') || 'inspect /api/ops/blog-system'}`,
       error: ok || surfaceUnavailable || missingOpsAuth
         ? ''

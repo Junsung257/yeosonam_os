@@ -472,6 +472,7 @@ function staticChecks() {
     'public:blog-surface-monitor',
     '/api/ops/blog-system',
     'opsRequestHeaders',
+    'BLOG_OPS_READ_TOKEN',
     'OPEN_CHECK_AUTH_COOKIE',
     'ys-dev-admin=1',
     'failedIssues',
