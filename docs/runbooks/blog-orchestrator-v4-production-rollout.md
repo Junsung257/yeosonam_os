@@ -37,6 +37,7 @@ GitHub `blog-production` environment에 배포 승인 규칙과 다음 secret을
 - `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`, `SUPABASE_ACCESS_TOKEN` (CI의 link 및 read-only migration inventory용)
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `BLOG_OPS_READ_TOKEN` (권장; `/api/ops/blog-system` 읽기 점검 전용. 미설정 시 `CRON_SECRET` fallback)
 
 애플리케이션 production 환경은 아래 계약을 사용한다.
 
@@ -91,7 +92,7 @@ demand 후보를 생성할 수 있고, `readyForLivePublication=false`인 동안
 
 ## 활성화 상태 확인 (읽기 전용)
 
-`verify:blog-autopublish-activation-v4`는 `/api/cron/blog-generate`와 `/api/cron/blog-publication-controller`를 조회만 한다. `CRON_SECRET` 또는 `BLOG_CRON_SECRET`이 현재 셸에 있을 때만 보호된 응답을 읽으며, secret·본문·DB를 변경하거나 출력하지 않는다.
+`verify:blog-autopublish-activation-v4`는 `/api/cron/blog-generate`와 `/api/cron/blog-publication-controller`를 조회만 한다. `/api/ops/blog-system` readiness probe는 `BLOG_OPS_READ_TOKEN`을 우선 사용하고, 없을 때만 `CRON_SECRET`을 fallback으로 사용한다. 보호된 응답을 읽을 때 secret·본문·DB를 변경하거나 출력하지 않는다.
 
 - `generation_cron_disabled`: `BLOG_GENERATION_CRON_ENABLED`가 꺼져 있어 DeepSeek 생성이 시작되지 않음
 - `deployment_provenance_failed`: production 런타임이 허용된 `main` ref와 build commit을 증명하지 못해 정책이 자동으로 `draft_only`로 강등됨
