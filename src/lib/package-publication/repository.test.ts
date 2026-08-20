@@ -114,6 +114,19 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
   };
   return {
     rpc(name: string) {
+      if (name === 'get_product_registration_customer_route_state') {
+        return Promise.resolve({
+          data: effectiveRow ? {
+            state: 'PUBLIC',
+            catalog_product_id: effectiveRow.catalog_product_id,
+            package_id: effectiveRow.package_id,
+            revision_id: effectiveRow.canonical_revision_id,
+            snapshot_id: effectiveRow.id,
+            pointer_version: 1,
+          } : { state: 'NOT_FOUND' },
+          error: null,
+        });
+      }
       if (name === 'get_product_registration_availability_overlays') {
         return Promise.resolve({ data: [], error: null });
       }

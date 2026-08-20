@@ -8,6 +8,7 @@ import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -100,6 +101,7 @@ const PUBLIC_EXACT = new Set([
   '/privacy',
   '/private-tour',
   '/packages',
+  '/product-review',
   '/terms',
   '/auth/callback',
   '/auth/reset-password',
@@ -621,9 +623,12 @@ async function publicDestinationExists(destinationOrSlug: string): Promise<boole
   return packageDestinationExists(destinationOrSlug);
 }
 
-async function getPublicPackageAvailabilityResponse(pathname: string): Promise<NextResponse | null> {
+async function getPublicPackageAvailabilityResponse(request: NextRequest): Promise<NextResponse | null> {
+  const { pathname } = request.nextUrl;
   const match = pathname.match(/^\/(?:packages|lp)\/([^/]+)\/?$/);
   if (!match) return null;
+  if (request.nextUrl.searchParams.has('__proof_snapshot')
+    && request.headers.has('x-product-registration-v6-proof-token')) return null;
   const config = getSupabaseRestConfig();
   if (!config) return NextResponse.json(
     { code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' },
@@ -639,48 +644,34 @@ async function getPublicPackageAvailabilityResponse(pathname: string): Promise<N
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
-    let packageId = packageRef;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageId)) {
-      const identityUrl = new URL(`${config.url}/rest/v1/travel_packages`);
-      identityUrl.searchParams.set('short_code', `eq.${packageRef}`);
-      identityUrl.searchParams.set('select', 'id');
-      identityUrl.searchParams.set('limit', '1');
-      const identityResponse = await fetch(identityUrl, { headers, cache: 'no-store', signal: controller.signal });
-      if (!identityResponse.ok) throw new Error('PACKAGE_IDENTITY_LOOKUP_FAILED');
-      const identities = await identityResponse.json();
-      packageId = Array.isArray(identities) && typeof identities[0]?.id === 'string' ? identities[0].id : '';
-      if (!packageId) return null;
-    }
-    const pointerUrl = new URL(`${config.url}/rest/v1/product_registration_v5_publication_pointers`);
-    pointerUrl.searchParams.set('package_id', `eq.${packageId}`);
-    pointerUrl.searchParams.set('channel', 'eq.customer');
-    pointerUrl.searchParams.set('locale', 'eq.ko-KR');
-    pointerUrl.searchParams.set('state', 'eq.published');
-    pointerUrl.searchParams.set('select', 'catalog_product_id');
-    pointerUrl.searchParams.set('limit', '1');
-    const pointerResponse = await fetch(pointerUrl, { headers, cache: 'no-store', signal: controller.signal });
-    if (!pointerResponse.ok) throw new Error('PACKAGE_POINTER_LOOKUP_FAILED');
-    const pointers = await pointerResponse.json();
-    const catalogProductId = Array.isArray(pointers) && typeof pointers[0]?.catalog_product_id === 'string'
-      ? pointers[0].catalog_product_id
-      : null;
-    if (!catalogProductId) return null;
-    const overlayResponse = await fetch(`${config.url}/rest/v1/rpc/get_product_registration_availability_overlays`, {
+    const overlayResponse = await fetch(`${config.url}/rest/v1/rpc/get_product_registration_customer_route_state`, {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ p_catalog_product_ids: [catalogProductId], p_channel: 'customer' }),
+      body: JSON.stringify({
+        p_tenant_id: process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID
+          ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        p_route_ref: packageRef,
+        p_channel: 'customer',
+        p_locale: 'ko-KR',
+      }),
       cache: 'no-store',
       signal: controller.signal,
     });
     clearTimeout(timer);
     if (!overlayResponse.ok) throw new Error('PACKAGE_AVAILABILITY_LOOKUP_FAILED');
-    const overlays = await overlayResponse.json();
-    if (Array.isArray(overlays) && overlays.some(row =>
-      ['closed', 'sold_out', 'suspended'].includes(String(row?.sale_state ?? '')))) {
-      return NextResponse.json(
-        { code: 'PACKAGE_SALE_UNAVAILABLE' },
-        { status: 410, headers: { 'Cache-Control': 'no-store, max-age=0' } },
-      );
+    const routeState = await overlayResponse.json() as { state?: unknown };
+    if (routeState?.state === 'UNDER_REVIEW') {
+      const reviewUrl = request.nextUrl.clone();
+      reviewUrl.pathname = '/product-review';
+      reviewUrl.search = '';
+      const reviewResponse = NextResponse.rewrite(reviewUrl);
+      reviewResponse.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      reviewResponse.headers.set('Cache-Control', 'no-store, max-age=0');
+      reviewResponse.headers.set('Vary', 'RSC, Next-Router-State-Tree, Next-Router-Prefetch');
+      return reviewResponse;
+    }
+    if (routeState?.state !== 'PUBLIC' && routeState?.state !== 'NOT_FOUND') {
+      throw new Error('PACKAGE_VISIBILITY_STATE_INVALID');
     }
     return null;
   } catch {
@@ -926,7 +917,7 @@ export async function middleware(request: NextRequest) {
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(request)) {
-    const availabilityResponse = await getPublicPackageAvailabilityResponse(pathname);
+    const availabilityResponse = await getPublicPackageAvailabilityResponse(request);
     if (availabilityResponse) return availabilityResponse;
     return response || NextResponse.next();
   }

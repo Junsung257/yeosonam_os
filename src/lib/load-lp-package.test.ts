@@ -17,6 +17,19 @@ vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
   supabaseAdmin: {
     rpc(name: string) {
+      if (name === 'get_product_registration_customer_route_state') {
+        return Promise.resolve({
+          data: {
+            state: 'PUBLIC',
+            catalog_product_id: 'catalog-product-test',
+            package_id: 'pkg-1',
+            revision_id: 'rev-1',
+            snapshot_id: 'snap-1',
+            pointer_version: 1,
+          },
+          error: null,
+        });
+      }
       if (name === 'resolve_product_registration_public_route') {
         return Promise.resolve({
           data: {

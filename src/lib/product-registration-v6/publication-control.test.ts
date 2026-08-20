@@ -28,7 +28,7 @@ afterEach(() => {
   }
 });
 
-describe('source-proof publication control', () => {
+describe('publication control', () => {
   it('does not weaken the normal publication freeze', async () => {
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
     process.env.PRODUCT_REGISTRATION_PUBLICATION_FREEZE = '1';
@@ -40,7 +40,7 @@ describe('source-proof publication control', () => {
     })).resolves.toContain('PUBLICATION_FREEZE_ACTIVE');
   });
 
-  it('lets an opted-in workflow reach the source-proof CAS writer', async () => {
+  it('does not accept the retired source-proof bypass', async () => {
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
     process.env.PRODUCT_REGISTRATION_PUBLICATION_FREEZE = '1';
     process.env.PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH = '1';
@@ -49,7 +49,7 @@ describe('source-proof publication control', () => {
       supabase: fakeSupabase(),
       catalogProductIds: ['catalog-1'],
       allowSourceProofAutoPublish: true,
-    })).resolves.toEqual([]);
+    })).resolves.toContain('PUBLICATION_FREEZE_ACTIVE');
   });
 
   it('keeps a kill switch hard even in source-proof mode', async () => {

@@ -1,8 +1,33 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
-## Source-proof automatic customer opening (2026-08-19, implementation)
+## V6.1 authority surgery — current operating contract (2026-08-20)
+
+V6.1 is the formal authority layer for the existing V6 compiler. It does not create a V7 product model. New and legacy recompile jobs use the same immutable-source → typed IR → revision → candidate snapshot → browser proof → CAS publication path.
+
+- Existing customer pointers and immutable snapshots are retained. Unsafe currently-visible products are isolated with a `customer_visibility_state=under_review` overlay; they are not deleted and are excluded from list, recommendation, sitemap, metadata, RSC, and JSON-LD reads before snapshot selection.
+- Publication freeze is controlled by a runtime `publication_freeze_manifest`, never by a hardcoded product count. Applying a manifest is a pointer-version CAS operation; a changed or unlisted pointer aborts the operation.
+- While frozen, publication requires one unexpired `publication_release_authorizations` row bound to the exact tenant, revision/hash, snapshot/hash, passed browser proof/hash, policy version, and expected pointer version. The row is consumed in the same transaction as pointer CAS and overlay release. Environment variables cannot bypass this authorization.
+- Workflow stage, execution state, and terminal outcome are separate fields. Retryable failure belongs to a new fenced stage attempt; a stale worker cannot finalize a newer attempt.
+- Customer snapshot hash and per-surface render hashes are separate. Detail and LP browser proof must link to exact `package_detail` and `landing_page` artifacts; listing-card and A4 projections are parity-tested separately.
+- `products`, `travel_packages`, and `product_prices` are compatibility projections only. They carry revision/snapshot/projection lineage and are writable only through the compatibility projection RPC; customer readers do not use them as authority.
+- Fuzzy attraction matches are review candidates only. Exact normalized identifiers and approved aliases may link; no parser/AI path inserts or auto-links an attraction master.
+- `SOURCE_DECLARED_PENDING` means the supplier explicitly declared a future confirmation (for example, hotel assignment before departure). It is not equivalent to missing or inferred information; unsupported or conflicting facts remain blockers.
+- Automatic publication remains OFF. Release 0 evidence, Release 1 under-review reads, Release 2 manifest isolation, V6.1 shadow recompilation, canary authorization, and the 400-section expected-outcome gold gate are separate release gates. No production mutation is implied by this document.
+
+### V6.1 knowledge ledger extension (2026-08-20)
+
+- `internal_product_registration.departure_instances` is the typed departure fact ledger. It stores adult/child selling price, currency, `pricing_state`, `booking_state`, `inventory_state`, rule/override lineage, source references, and revision metadata. `price_date_overrides` represents exact-date exceptions; a malformed source amount such as `85,9000` remains `CONFLICTING` and is never corrected by code.
+- A V6.1 knowledge commit calls `commit_product_registration_revision_v61_atomic`. It delegates to the existing immutable revision transaction and, in the same transaction, writes typed departures, exact-date overrides, and compiler-provided entity relation candidates. A failed typed write rolls the revision transaction back.
+- `catalog_entities`/`catalog_entity_revisions` hold approved lodging, golf-course, airline, airport, and property-complex facts. `product_entity_relations` preserves the raw mention and match evidence. Attraction matching continues to use the existing attractions SSOT: exact/approved alias only can be approved, while fuzzy candidates remain `REVIEW_REQUIRED`; no automatic master insert is permitted.
+- Supplier-wide operational facts belong in `supplier_overlays`; product-specific conditions belong in `product_revision_overlays`. Neither overlay may mutate a master entity or an immutable revision.
+- `product_registration_jarvis_fact_view`, `product_registration_blog_content_fact_view`, and `product_registration_comparison_fact_view` are service-role-only read models bound to the current customer pointer, exact snapshot, passed browser proof, typed departure facts, and approved entity relations. Customer-facing Jarvis and automated product blogs must use these views, not `travel_packages`, `price_tiers`, `excluded_dates`, `net_price`, or supplier raw.
+- The Atitaya regression fixture is intentionally `REVIEW_REQUIRED`: exact-date special pricing is preserved, `85,9000` is a price-format blocker, `*4박6일` remains a separate unresolved variant, and lodging/golf mentions remain source-backed relations until canonical approval.
+
+The former source-proof automatic-opening notes below are historical evidence only. They must not be used as a current operating instruction.
+
+## Historical: source-proof automatic customer opening (2026-08-19)
 
 - The durable workflow now enables `sourceProofAutoPublish` by default. A missing statistical cohort no longer prevents a product from reaching the CAS writer; the product must still pass exact tenant/catalog/revision/snapshot lineage, verified critical/high claim evidence, signed 390×844 proofs for both `/packages` and `/lp`, CTA/hydration checks, and every database kill/availability guard.
 - This behavior is recorded as workflow `product-registration-v6-workflow-33` and policy `product-registration-v6-policy-11-deepseek-source-proof`; older stage results are not reused as if they were produced by the new publication contract.

@@ -5,6 +5,7 @@ import {
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
 import { evaluateCustomerSurfaceParity } from './customer-surface-parity';
+import { resolveCustomerRouteState } from './customer-route-state';
 import type { PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
 
@@ -128,9 +129,17 @@ export async function fetchPublicPackageSnapshotById(
   return pkg ? { row: data as SnapshotRow, package: pkg } : null;
 }
 
-/** Single pointer-first customer read. Route aliases, catalog identity,
- * publication pointer and immutable snapshot are the complete read path. */
-export async function getCurrentPublicPackage(
+export type CurrentPublicPackageResolution =
+  | { state: 'PUBLIC'; row: SnapshotRow; package: AnyRecord }
+  | { state: 'UNDER_REVIEW' }
+  | { state: 'NOT_FOUND' }
+  | { state: 'UNAVAILABLE' };
+
+/**
+ * Visibility-first customer read. The lightweight authority RPC must decide
+ * under-review/not-found before this function is allowed to select snapshot_json.
+ */
+export async function resolveCurrentPublicPackage(
   supabase: SupabaseClient,
   input: {
     tenantId: string;
@@ -138,56 +147,28 @@ export async function getCurrentPublicPackage(
     channel?: string;
     locale?: string;
   },
-): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
+): Promise<CurrentPublicPackageResolution> {
   const channel = input.channel ?? 'customer';
   const locale = input.locale ?? 'ko-KR';
-  const uuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.packageRef);
-  let catalogProductId: string | null = uuidRef ? input.packageRef : null;
-  let legacyPackageId: string | null = uuidRef ? input.packageRef : null;
-  if (!uuidRef) {
-    const { data: resolved, error: resolveError } = await supabase.rpc(
-      'resolve_product_registration_public_route',
-      {
-        p_tenant_id: input.tenantId,
-        p_route_ref: input.packageRef,
-        p_channel: channel,
-        p_locale: locale,
-      },
-    );
-    const route = asRecord(resolved);
-    if (resolveError || !route) return null;
-    catalogProductId = asNonEmptyString(route.catalog_product_id);
-    legacyPackageId = asNonEmptyString(route.package_id);
-  }
+  const routeState = await resolveCustomerRouteState(supabase, input);
+  if (routeState.state !== 'PUBLIC') return routeState;
 
-  const pointerSelect = 'tenant_id,package_id,catalog_product_id,current_revision_id,current_snapshot_id,state';
-  let pointerResult = catalogProductId
-    ? await supabase
-      .from('product_registration_v5_publication_pointers')
-      .select(pointerSelect)
-      .eq('catalog_product_id', catalogProductId)
-      .eq('tenant_id', input.tenantId)
-      .eq('channel', channel)
-      .eq('locale', locale)
-      .maybeSingle()
-    : { data: null, error: null };
-  // A UUID route can be either the stable catalog id or the historical
-  // package id. Try catalog first, then the compatibility id without guessing
-  // which namespace the incoming UUID belongs to.
-  if (!pointerResult.data && legacyPackageId) {
-    pointerResult = await supabase
-      .from('product_registration_v5_publication_pointers')
-      .select(pointerSelect)
-      .eq('package_id', legacyPackageId)
-      .eq('tenant_id', input.tenantId)
-      .eq('channel', channel)
-      .eq('locale', locale)
-      .maybeSingle();
-  }
-  const { data: pointer, error: pointerError } = pointerResult;
+  const pointerSelect = 'tenant_id,package_id,catalog_product_id,current_revision_id,current_snapshot_id,state,pointer_version';
+  const { data: pointer, error: pointerError } = await supabase
+    .from('product_registration_v5_publication_pointers')
+    .select(pointerSelect)
+    .eq('catalog_product_id', routeState.catalogProductId)
+    .eq('package_id', routeState.packageId)
+    .eq('tenant_id', input.tenantId)
+    .eq('channel', channel)
+    .eq('locale', locale)
+    .eq('pointer_version', routeState.pointerVersion)
+    .eq('current_revision_id', routeState.revisionId)
+    .eq('current_snapshot_id', routeState.snapshotId)
+    .maybeSingle();
   if (pointerError || !pointer || pointer.state !== 'published'
     || !pointer.package_id || !pointer.catalog_product_id
-    || !pointer.current_snapshot_id || !pointer.current_revision_id) return null;
+    || !pointer.current_snapshot_id || !pointer.current_revision_id) return { state: 'UNAVAILABLE' };
   const packageId = String(pointer.package_id);
 
   const { data, error } = await supabase
@@ -200,10 +181,10 @@ export async function getCurrentPublicPackage(
     .eq('canonical_revision_id', pointer.current_revision_id)
     .eq('status', 'published')
     .maybeSingle();
-  if (error || !data) return null;
+  if (error || !data) return { state: 'UNAVAILABLE' };
   const row = data as SnapshotRow;
   const pkg = snapshotPackage(row);
-  if (!pkg) return null;
+  if (!pkg) return { state: 'NOT_FOUND' };
 
   const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
   const { data: switches, error: switchError } = await supabase
@@ -212,10 +193,10 @@ export async function getCurrentPublicPackage(
     .eq('tenant_id', input.tenantId)
     .eq('active', true)
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-  if (switchError) return null;
+  if (switchError) return { state: 'UNAVAILABLE' };
   if ((switches ?? []).some(item => item.scope === 'global'
     || (item.scope === 'product' && [packageId, pointer.catalog_product_id, '*'].includes(String(item.scope_key)))
-    || (item.scope === 'supplier' && [supplier, '*'].includes(String(item.scope_key))))) return null;
+    || (item.scope === 'supplier' && [supplier, '*'].includes(String(item.scope_key))))) return { state: 'NOT_FOUND' };
   const { data: overlays, error: overlayError } = await supabase.rpc(
     'get_product_registration_availability_overlays',
     {
@@ -223,20 +204,40 @@ export async function getCurrentPublicPackage(
       p_channel: input.channel ?? 'customer',
     },
   );
-  if (overlayError || !Array.isArray(overlays)) return null;
+  if (overlayError || !Array.isArray(overlays)) return { state: 'UNAVAILABLE' };
   if (overlays.some(item => {
     const overlay = asRecord(item);
     if (!overlay) return false;
     return overlay.catalog_product_id === pointer.catalog_product_id
-      && ['closed', 'sold_out', 'suspended'].includes(String(overlay.sale_state ?? ''));
-  })) return null;
+      && (
+        String(overlay.customer_visibility_state ?? 'public') !== 'public'
+        || ['closed', 'sold_out', 'suspended'].includes(String(overlay.sale_state ?? ''))
+      );
+  })) return { state: 'NOT_FOUND' };
 
   // Canonical lineage and attraction publishability are revision/snapshot
   // validation concerns. Re-querying mutable registration or attraction rows
   // here would make an already-proved immutable snapshot change meaning between
   // customer requests. Runtime reads are therefore pointer + immutable
   // snapshot + operational kill/availability controls only.
-  return { row, package: pkg };
+  return { state: 'PUBLIC', row, package: pkg };
+}
+
+/** Backwards-compatible public-only reader. New customer routes should use the
+ * discriminated resolver so UNDER_REVIEW never degrades into a 404. */
+export async function getCurrentPublicPackage(
+  supabase: SupabaseClient,
+  input: {
+    tenantId: string;
+    packageRef: string;
+    channel?: string;
+    locale?: string;
+  },
+): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
+  const resolved = await resolveCurrentPublicPackage(supabase, input);
+  return resolved.state === 'PUBLIC'
+    ? { row: resolved.row, package: resolved.package }
+    : null;
 }
 
 export async function fetchLatestPublicPackageSnapshot(

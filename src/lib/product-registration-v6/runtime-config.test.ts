@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('product registration V6 runtime config', () => {
-  it('enables source-proof publication by default while keeping broad publication frozen', () => {
+  it('keeps all automatic publication paths disabled by default', () => {
     for (const name of ENV_NAMES) delete process.env[name];
 
     expect(getProductRegistrationV6RuntimeConfig()).toEqual({
@@ -38,7 +38,7 @@ describe('product registration V6 runtime config', () => {
       shadowEnabled: true,
       publishEnabled: false,
       publicationFrozen: true,
-      sourceProofAutoPublishEnabled: true,
+      sourceProofAutoPublishEnabled: false,
     });
     expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
   });
@@ -51,13 +51,11 @@ describe('product registration V6 runtime config', () => {
     expect(productRegistrationV6PublicationBlocker()).toBeNull();
   });
 
-  it('allows only the source-proof publish attempt in a frozen shadow deployment', () => {
+  it('ignores the retired source-proof environment bypass', () => {
     process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE = 'shadow';
     process.env.PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH = '1';
 
-    expect(productRegistrationV6SourceProofAutoPublishEnabled()).toBe(true);
-    // The normal blocker remains intact for callers that do not opt into the
-    // source-proof attempt path.
+    expect(productRegistrationV6SourceProofAutoPublishEnabled()).toBe(false);
     expect(productRegistrationV6PublicationBlocker()).toBe('PUBLICATION_FREEZE_ACTIVE');
   });
 

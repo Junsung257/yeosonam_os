@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { revalidateLandingPagesForPackage } from '@/lib/revalidate-lp-package';
@@ -8,6 +8,7 @@ const MAX_ATTEMPTS = 5;
 
 export type ProductRegistrationV5OutboxPayload = {
   package_id: string;
+  catalog_product_id?: string;
   snapshot_id: string;
   snapshot_hash: string;
   revision_id: string;
@@ -46,8 +47,15 @@ export function parseProductRegistrationV5OutboxPayload(value: unknown): Product
   const snapshotId = asNonEmptyString(row.snapshot_id);
   const snapshotHash = asNonEmptyString(row.snapshot_hash)?.toLowerCase();
   const revisionId = asNonEmptyString(row.revision_id);
+  const catalogProductId = asNonEmptyString(row.catalog_product_id);
   if (!packageId || !snapshotId || !snapshotHash || !revisionId || !isSha256(snapshotHash)) return null;
-  return { package_id: packageId, snapshot_id: snapshotId, snapshot_hash: snapshotHash, revision_id: revisionId };
+  return {
+    package_id: packageId,
+    ...(catalogProductId ? { catalog_product_id: catalogProductId } : {}),
+    snapshot_id: snapshotId,
+    snapshot_hash: snapshotHash,
+    revision_id: revisionId,
+  };
 }
 
 export function buildProductRegistrationV5ConvergenceRows(input: {
@@ -69,32 +77,15 @@ export function buildProductRegistrationV5ConvergenceRows(input: {
 }
 
 async function claimNextOutboxEvent(input: { supabase: SupabaseClient; workerId: string; aggregateIds?: string[] }): Promise<OutboxRow | null> {
-  let candidateQuery = input.supabase
-    .from('product_registration_v5_publication_outbox')
-    .select('id,event_type,dedupe_key,payload,attempts')
-    .in('status', ['pending', 'failed'])
-    .lte('available_at', new Date().toISOString())
-    .order('created_at', { ascending: true })
-    .limit(1);
-  if (input.aggregateIds && input.aggregateIds.length > 0) candidateQuery = candidateQuery.in('aggregate_id', input.aggregateIds);
-  const { data: candidate, error: candidateError } = await candidateQuery.maybeSingle();
-  if (candidateError || !candidate) return null;
-
-  const { data: claimed, error: claimError } = await input.supabase
-    .from('product_registration_v5_publication_outbox')
-    .update({
-      status: 'processing',
-      locked_at: new Date().toISOString(),
-      locked_by: input.workerId,
-      attempts: Number(candidate.attempts ?? 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', candidate.id)
-    .in('status', ['pending', 'failed'])
-    .select('id,event_type,dedupe_key,payload,attempts,locked_by')
-    .maybeSingle();
-  if (claimError || !claimed) return null;
-  return claimed as OutboxRow;
+  const { data, error } = await input.supabase.rpc('claim_product_registration_v61_outbox', {
+    p_worker_id: input.workerId,
+    p_aggregate_ids: input.aggregateIds && input.aggregateIds.length > 0
+      ? input.aggregateIds
+      : null,
+  });
+  if (error) throw error;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  return data as OutboxRow;
 }
 
 async function markOutboxFailed(input: { supabase: SupabaseClient; event: OutboxRow; workerId: string; error: string }): Promise<void> {
@@ -117,7 +108,12 @@ async function markOutboxFailed(input: { supabase: SupabaseClient; event: Outbox
 }
 
 async function processOutboxEvent(input: { supabase: SupabaseClient; event: OutboxRow; workerId: string }): Promise<{ ok: boolean; reason?: string; packageId?: string }> {
-  if (input.event.event_type !== 'package.publication.pointer_committed') {
+  const supportedEvent = [
+    'package.publication.pointer_committed',
+    'package.visibility.under_review',
+    'package.visibility.public',
+  ].includes(input.event.event_type);
+  if (!supportedEvent) {
     await markOutboxFailed({ supabase: input.supabase, event: input.event, workerId: input.workerId, error: `UNSUPPORTED_EVENT:${input.event.event_type}` });
     return { ok: false, reason: 'UNSUPPORTED_EVENT' };
   }
@@ -136,8 +132,28 @@ async function processOutboxEvent(input: { supabase: SupabaseClient; event: Outb
 
   let revalidationError: string | null = null;
   try {
+    const cacheIdentities = [payload.package_id, payload.catalog_product_id].filter(
+      (value): value is string => Boolean(value),
+    );
+    for (const identity of cacheIdentities) {
+      revalidateTag(`product:${identity}`);
+      revalidateTag(`product:${identity}:detail`);
+      revalidateTag(`product:${identity}:lp`);
+      revalidateTag(`product:${identity}:metadata`);
+      revalidateTag(`product:${identity}:og`);
+    }
+    revalidateTag('product:lp');
+    revalidateTag('product:list');
+    revalidateTag('product:recommendations');
+    revalidateTag('product:sitemap');
+    revalidateTag('product:metadata');
     revalidatePath('/packages');
     revalidatePath(`/packages/${payload.package_id}`);
+    revalidatePath(`/lp/${payload.package_id}`);
+    revalidatePath('/sitemap.xml');
+    revalidatePath('/');
+    revalidatePath('/api/packages');
+    revalidatePath('/api/packages/search');
     revalidateLandingPagesForPackage(payload.package_id, shortCode, { throwOnError: true });
   } catch (error) {
     // Cache invalidation is an external side effect. Keep the publication
@@ -148,15 +164,17 @@ async function processOutboxEvent(input: { supabase: SupabaseClient; event: Outb
     revalidationError = `REVALIDATION_DEFERRED:${detail}`.slice(0, 1000);
   }
 
-  const convergenceRows = buildProductRegistrationV5ConvergenceRows({ payload, shortCode });
-  const { error: convergenceError } = await input.supabase
-    .from('product_registration_v5_cache_convergence_runs')
-    // A duplicate outbox delivery must never reset a converged row back to
-    // pending. Failed/stale rows remain observable by the convergence worker.
-    .upsert(convergenceRows, { onConflict: 'package_id,snapshot_hash,surface,route', ignoreDuplicates: true });
-  if (convergenceError) {
-    await markOutboxFailed({ supabase: input.supabase, event: input.event, workerId: input.workerId, error: convergenceError.message });
-    return { ok: false, reason: 'CONVERGENCE_WRITE_FAILED', packageId: payload.package_id };
+  if (input.event.event_type === 'package.publication.pointer_committed') {
+    const convergenceRows = buildProductRegistrationV5ConvergenceRows({ payload, shortCode });
+    const { error: convergenceError } = await input.supabase
+      .from('product_registration_v5_cache_convergence_runs')
+      // A duplicate outbox delivery must never reset a converged row back to
+      // pending. Failed/stale rows remain observable by the convergence worker.
+      .upsert(convergenceRows, { onConflict: 'package_id,snapshot_hash,surface,route', ignoreDuplicates: true });
+    if (convergenceError) {
+      await markOutboxFailed({ supabase: input.supabase, event: input.event, workerId: input.workerId, error: convergenceError.message });
+      return { ok: false, reason: 'CONVERGENCE_WRITE_FAILED', packageId: payload.package_id };
+    }
   }
 
   const { error: deliveredError } = await input.supabase

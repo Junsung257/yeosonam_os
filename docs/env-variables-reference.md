@@ -55,9 +55,9 @@
 
 > Vercel 프로젝트 환경변수 설정 가이드 — Production 배포 전 필수 확인
 
-## 상품등록 통합 자동화 엔진 V6 (2026-08-11)
+## 상품등록 통합 자동화 엔진 V6.1 (2026-08-20)
 
-V6는 기본적으로 그림자 처리로 시작하지만, 개별 원문이 exact source evidence와 모바일 proof를 통과하면 cohort 표본을 기다리지 않고 source-proof CAS 공개를 시도합니다. 일반 cohort 공개는 앱과 DB authority가 모두 `kernel`이고, `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED=1`, `PRODUCT_REGISTRATION_PUBLICATION_FREEZE=0`일 때만 시도합니다. `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=0`으로 명시적으로 끌 수 있습니다. 이 변수는 공개 우회가 아니며, DB가 source/revision/snapshot/proof lineage를 다시 검증합니다.
+V6.1은 기본 그림자·공개 동결 상태에서 운영합니다. 동결 중 개별 공개는 환경변수가 아니라 exact revision/snapshot/browser-proof에 묶인 일회성 `publication_release_authorizations` 승인권으로만 가능합니다. 일반 cohort 자동공개도 명시적 allowlist와 별도 릴리스 승인 전에는 켜지지 않습니다.
 
 | 변수 | 용도 | 안전한 기본값 |
 |---|---|---|
@@ -67,7 +67,7 @@ V6는 기본적으로 그림자 처리로 시작하지만, 개별 원문이 exac
 | `PRODUCT_REGISTRATION_V6_SHADOW_ENABLED` | revision·검증·snapshot을 비공개로 생성 | `1` |
 | `PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED` | verified/degraded 결과의 자동 CAS 공개 | `0` |
 | `PRODUCT_REGISTRATION_PUBLICATION_FREEZE` | `1`이면 모든 신규 V6 공개 차단 | `1` |
-| `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH` | exact source evidence + immutable snapshot + passed mobile proof를 통과한 원문만 동결/cohort 미달에서도 Workflow가 CAS writer를 시도하도록 허용. `0`으로만 비활성화 | `1` |
+| `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH` | **퇴역 호환 변수. 무시됨.** 동결 공개를 우회하지 않으며, 공개에는 exact one-time release authorization이 필요 | `0` 또는 미설정 |
 | `PRODUCT_REGISTRATION_V6_BACKFILL_ENABLED` | 기존 `travel_packages`를 같은 Kernel로 비공개 재처리. migration·schema finalizer 이후 shadow에서만 켬 | `0` |
 | `PRODUCT_REGISTRATION_V6_PUBLIC_READER_REQUIRED` | 고객 면에서 pointer로 지정된 immutable snapshot만 읽기 | canary 전 `0`, 전환 후 `1` |
 | `PRODUCT_REGISTRATION_PROOF_SECRET` | snapshot·hash·package에 귀속된 proof URL HMAC secret | 무작위 32바이트 이상 |

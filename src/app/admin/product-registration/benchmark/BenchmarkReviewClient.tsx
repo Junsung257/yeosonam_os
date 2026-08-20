@@ -42,6 +42,7 @@ type QueueItem = {
 };
 
 type SectionDraft = {
+  expectedOutcome: BenchmarkGroundTruthSection['expectedOutcome'];
   title: string;
   startNodeId: string;
   endNodeId: string;
@@ -71,6 +72,7 @@ function todaySeoul(): string {
 function blankSection(nodes: SourceNode[]): SectionDraft {
   const textNodes = nodes.filter(node => node.text?.trim());
   return {
+    expectedOutcome: 'EXPECTED_PUBLISHABLE',
     title: '',
     startNodeId: textNodes[0]?.id ?? '',
     endNodeId: textNodes.at(-1)?.id ?? '',
@@ -201,6 +203,7 @@ async function buildSection(item: QueueItem, draft: SectionDraft): Promise<Bench
     ...await Promise.all(exclusionRows.map(async row => ({ kind: 'exclusion' as const, value: row.value, scope: 'product_variant' as const, evidence: [await evidenceLineAnchor(item, row.lineNumber, startAnchor)] }))),
   ];
   return {
+    expectedOutcome: draft.expectedOutcome,
     title: draft.title || null,
     boundary: { startAnchor, endAnchor },
     productIdentity: {
@@ -360,6 +363,7 @@ export function BenchmarkReviewClient() {
                     setSections([{
                       ...blankSection(sourceNodes),
                       sourceSalePricePresent: false,
+                      expectedOutcome: 'EXPECTED_NON_PRODUCT',
                       cancellationCoverage: 'missing',
                     }]);
                   }
@@ -390,6 +394,7 @@ export function BenchmarkReviewClient() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label><span className={LABEL}>상품명</span><input value={section.title} onChange={event => updateSection(sectionIndex, { title: event.target.value })} className={INPUT} /></label>
                     <label><span className={LABEL}>목적지</span><input value={section.destination} onChange={event => updateSection(sectionIndex, { destination: event.target.value })} className={INPUT} /></label>
+                    <label><span className={LABEL}>예상 결과</span><select value={section.expectedOutcome} onChange={event => updateSection(sectionIndex, { expectedOutcome: event.target.value as SectionDraft['expectedOutcome'] })} className={INPUT}><option value="EXPECTED_PUBLISHABLE">공개 가능</option><option value="EXPECTED_REVIEW_REQUIRED">검토 필요</option><option value="EXPECTED_SOURCE_INCOMPLETE">원본 부족</option><option value="EXPECTED_NON_PRODUCT">비상품 문서</option></select></label>
                     <label><span className={LABEL}>여행일수</span><input inputMode="numeric" value={section.durationDays} onChange={event => updateSection(sectionIndex, { durationDays: event.target.value })} placeholder="5" className={INPUT} /></label>
                     <label><span className={LABEL}>숙박일수</span><input inputMode="numeric" value={section.nights} onChange={event => updateSection(sectionIndex, { nights: event.target.value })} placeholder="3" className={INPUT} /></label>
                     <label><span className={LABEL}>숙박 상태</span><select value={section.hotelMode} onChange={event => updateSection(sectionIndex, { hotelMode: event.target.value as SectionDraft['hotelMode'] })} className={INPUT}><option value="fixed">호텔 확정</option><option value="alternatives">여러 예비호텔 중 한 곳</option><option value="unconfirmed">미정·동급 예정</option><option value="none">숙박 없음</option></select></label>

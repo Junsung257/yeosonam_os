@@ -82,7 +82,7 @@ async function handler(request: NextRequest) {
   const processClaim = async (claim: BackfillClaim) => {
     const pkg = packageById.get(claim.package_id);
     const rawText = typeof pkg?.raw_text === 'string' ? pkg.raw_text.trim() : '';
-    let started: { jobId: string; workflowRunId: string; sourceDocumentId: string } | null = null;
+    let started: { jobId: string; workflowRunId: string | null; sourceDocumentId: string } | null = null;
     try {
       if (!pkg || pkg.tenant_id !== claim.tenant_id || pkg.catalog_product_id !== claim.catalog_product_id) {
         throw new Error('LEGACY_BACKFILL_PACKAGE_LINEAGE_MISMATCH');

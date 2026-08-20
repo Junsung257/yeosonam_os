@@ -25,7 +25,11 @@ import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
-import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import {
+  fetchPublicPackageSnapshotById,
+  resolveCurrentPublicPackage,
+} from '@/lib/package-publication/repository';
+import { ProductReviewNotice } from '@/components/product-review-notice';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
 import {
@@ -48,6 +52,28 @@ function getPackageUrl(id: string): string {
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+function buildUnderReviewMetadata(canonical: string): Metadata {
+  return {
+    title: '상품 재검수 안내 | 여소남',
+    description: '상품 정보를 재검수하고 있습니다. 정확한 내용은 상담을 통해 안내해 드립니다.',
+    alternates: { canonical },
+    robots: { index: false, follow: false, nocache: true },
+    openGraph: {
+      title: '상품 재검수 안내 | 여소남',
+      description: '상품 정보를 재검수하고 있습니다.',
+      url: canonical,
+      type: 'website',
+      images: [],
+    },
+    twitter: {
+      card: 'summary',
+      title: '상품 재검수 안내 | 여소남',
+      description: '상품 정보를 재검수하고 있습니다.',
+      images: [],
+    },
+  };
 }
 
 async function loadV6ProofSnapshot(
@@ -232,12 +258,19 @@ export async function generateMetadata({
     const proofSnapshotId = getRouteParam(resolvedSearchParams.__proof_snapshot);
     const v6ProofSnapshot = await loadV6ProofSnapshot(sb, id, proofSnapshotId || null);
     proofSnapshotFound = Boolean(v6ProofSnapshot);
-    const publicSnapshot = v6ProofSnapshot ?? await getCurrentPublicPackage(sb, {
-        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-        packageRef: id,
-        channel: 'customer',
-        locale: 'ko-KR',
-      }).catch(() => null);
+    const routeResolution = v6ProofSnapshot
+      ? null
+      : await resolveCurrentPublicPackage(sb, {
+          tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+          packageRef: id,
+          channel: 'customer',
+          locale: 'ko-KR',
+        }).catch(() => ({ state: 'UNAVAILABLE' as const }));
+    if (routeResolution?.state === 'UNDER_REVIEW') return buildUnderReviewMetadata(canonical);
+    const publicSnapshot = v6ProofSnapshot
+      ?? (routeResolution?.state === 'PUBLIC'
+        ? { row: routeResolution.row, package: routeResolution.package }
+        : null);
     rawData = publicSnapshot?.package as MetadataPackageRow | null;
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
@@ -348,13 +381,18 @@ export default async function PackageDetailPage({
 
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
-  const pointerSnapshot = !allowInternalProof
-    ? await getCurrentPublicPackage(sb, {
-      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-      packageRef: id,
-      channel: 'customer',
-      locale: 'ko-KR',
-    }).catch(() => null)
+  const routeResolution = !allowInternalProof
+    ? await resolveCurrentPublicPackage(sb, {
+        tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        packageRef: id,
+        channel: 'customer',
+        locale: 'ko-KR',
+      }).catch(() => ({ state: 'UNAVAILABLE' as const }))
+    : null;
+  if (routeResolution?.state === 'UNDER_REVIEW') return <ProductReviewNotice />;
+  if (routeResolution?.state === 'UNAVAILABLE') throw new Error('PACKAGE_VISIBILITY_LOOKUP_UNAVAILABLE');
+  const pointerSnapshot = routeResolution?.state === 'PUBLIC'
+    ? { row: routeResolution.row, package: routeResolution.package }
     : null;
   const rawPkgResult: { data: Record<string, unknown> | null; error: unknown } = v6ProofSnapshot
     ? { data: v6ProofSnapshot.package, error: null }

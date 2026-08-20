@@ -1,8 +1,10 @@
 import type { ProductSourceType } from '@/lib/product-registration-v4/types';
 import type { RegistrationTermsPolicySnapshot } from '@/lib/standard-terms-client';
 
-export const PRODUCT_REGISTRATION_V6_POLICY_VERSION = 'product-registration-v6-policy-11-deepseek-source-proof';
-export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'product-registration-v6-workflow-33';
+export const PRODUCT_REGISTRATION_V6_POLICY_VERSION = 'product-registration-v6-policy-12-v61-release-authorization';
+export const PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION = 'v6.1-recompile';
+export const PRODUCT_REGISTRATION_V6_WORDING_RULES_VERSION = 'product-registration-v6-wording-4-typed-ir';
+export const PRODUCT_REGISTRATION_V6_SCHEMA_VERSION = 'product-registration-v61-schema-1';
 
 export const PRODUCT_REGISTRATION_V6_STAGES = [
   'intake',

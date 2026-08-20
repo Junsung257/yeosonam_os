@@ -109,7 +109,7 @@ describe('product registration V6 readiness', () => {
     }));
   });
 
-  it('reports source-proof readiness separately while broad publication is frozen', () => {
+  it('requires an exact release authorization while broad publication is frozen', () => {
     const report = buildProductRegistrationV6ReadinessReport({
       config: {
         authorityMode: 'shadow',
@@ -137,11 +137,11 @@ describe('product registration V6 readiness', () => {
       currentBuildId: 'test-build',
     });
 
-    expect(report.readyForSourceProof).toBe(true);
+    expect(report.readyForSourceProof).toBe(false);
     expect(report.readyForPublication).toBe(false);
     expect(report.checks).toContainEqual(expect.objectContaining({
-      code: 'V6_SOURCE_PROOF_AUTO_PUBLISH_ENABLED',
-      status: 'pass',
+      code: 'V6_RELEASE_AUTHORIZATION_REQUIRED',
+      status: 'warning',
     }));
   });
 

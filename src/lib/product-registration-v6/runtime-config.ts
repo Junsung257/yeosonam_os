@@ -5,21 +5,12 @@ export type ProductRegistrationV6RuntimeConfig = {
   publishEnabled: boolean;
   publicationFrozen: boolean;
   /**
-   * Allows the durable workflow to attempt publication when the normal
-   * cohort/freeze switch is still off.  The database CAS writer remains the
-   * final authority: it only succeeds for an exact source/revision/snapshot/
-   * proof lineage, otherwise the job terminates as a business block.
+   * Legacy observability field. V6.1 never lets an environment variable
+   * authorize publication; a frozen release requires an exact, one-time DB
+   * authorization for the revision/snapshot/proof/pointer tuple.
    */
   sourceProofAutoPublishEnabled: boolean;
 };
-
-// A source that has independently passed immutable lineage, critical-claim
-// evidence, and both customer mobile proofs is safe to publish without a
-// pre-existing statistical cohort.  Cohort metrics remain useful for rollout
-// monitoring, but they must not strand every first-time supplier upload in a
-// manual queue.  Operators can still disable this path explicitly with
-// PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=0.
-const SOURCE_PROOF_AUTO_PUBLISH_DEFAULT = true;
 
 function authorityMode(): ProductRegistrationV6RuntimeConfig['authorityMode'] {
   const configured = process.env.PRODUCT_REGISTRATION_AUTHORITY_MODE?.trim().toLowerCase();
@@ -44,10 +35,9 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
     shadowEnabled: enabled('PRODUCT_REGISTRATION_V6_SHADOW_ENABLED', true),
     publishEnabled: enabled('PRODUCT_REGISTRATION_V6_PUBLISH_ENABLED'),
     publicationFrozen: enabled('PRODUCT_REGISTRATION_PUBLICATION_FREEZE', true),
-    sourceProofAutoPublishEnabled: enabled(
-      'PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH',
-      SOURCE_PROOF_AUTO_PUBLISH_DEFAULT,
-    ),
+    // Deliberately ignore PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH.
+    // Publication authority is a database record, never process configuration.
+    sourceProofAutoPublishEnabled: false,
   };
 }
 
@@ -57,10 +47,7 @@ export function getProductRegistrationV6RuntimeConfig(): ProductRegistrationV6Ru
  * the writer still enforces authority mode, kill switches, immutable
  * lineage, verified claims and passed mobile proof for the exact source.
  */
-export function productRegistrationV6SourceProofAutoPublishEnabled(): boolean {
-  const config = getProductRegistrationV6RuntimeConfig();
-  return config.sourceProofAutoPublishEnabled && config.authorityMode !== 'legacy';
-}
+export function productRegistrationV6SourceProofAutoPublishEnabled(): boolean { return false; }
 
 export function productRegistrationV6PublicationBlocker(): string | null {
   const config = getProductRegistrationV6RuntimeConfig();

@@ -653,7 +653,7 @@ ZE982
 
   it('matches only existing attractions and queues the rest for review', async () => {
     const result = await runProductRegistrationV3(fixtures[1].raw, {
-      attractions: [{ id: 'museum-1', name: 'Museum', region: 'City' }],
+      attractions: [{ id: 'museum-1', name: 'Museum', aliases: ['Museum visit'], region: 'City' }],
       destination: 'City',
     });
     expect(result.match_summary.attraction_matched_count).toBeGreaterThanOrEqual(1);

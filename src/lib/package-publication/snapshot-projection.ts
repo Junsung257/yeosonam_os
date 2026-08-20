@@ -237,8 +237,10 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
   if (overlayError || !Array.isArray(overlays)) throw overlayError ?? new Error('PACKAGE_AVAILABILITY_OVERLAY_UNAVAILABLE');
   const blockedCatalogProducts = new Set(overlays
     .map(asRecord)
-    .filter((row): row is AnyRecord => Boolean(row
-      && ['closed', 'sold_out', 'suspended'].includes(String(row.sale_state ?? ''))))
+    .filter((row): row is AnyRecord => Boolean(row && (
+      String(row.customer_visibility_state ?? 'public') !== 'public'
+      || ['closed', 'sold_out', 'suspended'].includes(String(row.sale_state ?? ''))
+    )))
     .map(row => String(row.catalog_product_id ?? ''))
     .filter(Boolean));
   const { data: activeSwitches, error: switchError } = await supabase

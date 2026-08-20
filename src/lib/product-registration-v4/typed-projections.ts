@@ -32,7 +32,7 @@ export type V5ItineraryItem = {
   variantKey: string;
   dayIndex: number;
   sequenceNo: number;
-  itemType: 'flight' | 'ferry' | 'ground_transport' | 'attraction' | 'meal' | 'lodging' | 'shopping' | 'optional_tour' | 'free_time' | 'meeting' | 'note' | 'unknown';
+  itemType: 'flight' | 'ferry' | 'ground_transport' | 'attraction' | 'meal' | 'lodging' | 'hotel_checkin' | 'rest' | 'shopping' | 'optional_tour' | 'free_time' | 'meeting' | 'notice' | 'terms' | 'note' | 'unknown';
   startTime: string | null;
   timezone: string | null;
   title: string;
@@ -40,6 +40,8 @@ export type V5ItineraryItem = {
   canonicalId: string | null;
   sourceFieldPath: string;
   evidenceRef: Record<string, unknown>;
+  factState: 'CONFIRMED' | 'SOURCE_DECLARED_PENDING' | 'MISSING' | 'CONFLICTING' | 'INFERRED_UNSUPPORTED';
+  customerTextOrigin: 'STANDARD_RENDERER' | 'APPROVED_TEMPLATE';
   itemHash: string;
 };
 
@@ -71,12 +73,30 @@ function normalizeItemType(value: unknown): V5ItineraryItem['itemType'] {
   if (type === 'attraction' || type === 'activity') return 'attraction';
   if (type === 'meal') return 'meal';
   if (type === 'hotel' || type === 'lodging' || type === 'hotel_stay') return 'lodging';
+  if (type === 'hotel_checkin' || type === 'checkin') return 'hotel_checkin';
+  if (type === 'rest') return 'rest';
   if (type === 'shopping') return 'shopping';
   if (type === 'option' || type === 'optional_tour') return 'optional_tour';
   if (type === 'free_time') return 'free_time';
   if (type === 'meeting') return 'meeting';
-  if (type === 'notice' || type === 'note') return 'note';
+  if (type === 'notice') return 'notice';
+  if (type === 'terms') return 'terms';
+  if (type === 'note') return 'note';
   return 'unknown';
+}
+
+function itineraryFactState(input: {
+  itemType: V5ItineraryItem['itemType'];
+  title: string;
+  canonicalId: string | null;
+}): V5ItineraryItem['factState'] {
+  if (input.itemType === 'attraction' && !input.canonicalId) return 'MISSING';
+  if (input.itemType === 'unknown') return 'MISSING';
+  if (['lodging', 'hotel_checkin'].includes(input.itemType)
+    && /(?:미정|추후\s*확정|출발\s*전\s*확정|예정|또는\s*동급|동급)/u.test(input.title)) {
+    return 'SOURCE_DECLARED_PENDING';
+  }
+  return 'CONFIRMED';
 }
 
 function evidenceRef(value: unknown, fallback: Record<string, unknown>): Record<string, unknown> {
@@ -327,6 +347,9 @@ export function buildV5ItineraryItems(input: {
           const title = asString(event.raw_text) ?? asString(event.title) ?? asString(event.activity);
           if (!title) return;
           const itemType = normalizeItemType(event.type ?? event.entity_kind);
+          const canonicalId = asString(event.canonical_id);
+          const factState = itineraryFactState({ itemType, title, canonicalId });
+          const sourceEvidence = evidenceRef(event.evidence, { fieldPath: sourceFieldPath });
           const item = {
             revisionId: input.revisionId,
             sectionIndex,
@@ -338,9 +361,14 @@ export function buildV5ItineraryItems(input: {
             timezone: asString(event.timezone),
             title,
             description: asString(event.description),
-            canonicalId: asString(event.canonical_id),
+            canonicalId,
             sourceFieldPath,
-            evidenceRef: evidenceRef(event.evidence, { fieldPath: sourceFieldPath }),
+            evidenceRef: {
+              ...sourceEvidence,
+              v61: { fact_state: factState, customer_text_origin: 'STANDARD_RENDERER' },
+            },
+            factState,
+            customerTextOrigin: 'STANDARD_RENDERER' as const,
             itemHash: '',
           } satisfies Omit<V5ItineraryItem, 'itemHash'> & { itemHash: string };
           item.itemHash = sha256Hex(stableJson({ ...item, itemHash: undefined }));

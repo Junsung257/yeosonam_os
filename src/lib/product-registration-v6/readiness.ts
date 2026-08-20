@@ -178,16 +178,14 @@ export function buildProductRegistrationV6ReadinessReport(
     publicationUnlocked ? 'CAS 고객 공개가 허용된 상태입니다.' : '고객 공개는 안전하게 동결돼 있습니다.',
   );
 
-  const sourceProofPathEnabled = input.config.sourceProofAutoPublishEnabled
-    && input.config.authorityMode !== 'legacy';
+  // The retired source-proof environment bypass is intentionally ignored.
+  // Frozen publication can only be opened by an exact, one-time release
+  // authorization bound to revision + snapshot + browser proof.
+  const sourceProofPathEnabled = false;
   add(
-    sourceProofPathEnabled ? 'V6_SOURCE_PROOF_AUTO_PUBLISH_ENABLED' : 'V6_SOURCE_PROOF_AUTO_PUBLISH_DISABLED',
-    sourceProofPathEnabled ? 'pass' : input.config.authorityMode === 'legacy' ? 'blocked' : 'warning',
-    sourceProofPathEnabled
-      ? '원문 증거·불변 revision·모바일 proof를 통과한 개별 상품은 cohort 대기 없이 CAS 공개를 시도합니다.'
-      : input.config.authorityMode === 'legacy'
-        ? 'legacy 권위 모드에서는 source-proof 자동 공개를 허용하지 않습니다.'
-        : 'source-proof 자동 공개가 꺼져 있어 신규 상품은 cohort 검증을 기다립니다.',
+    'V6_RELEASE_AUTHORIZATION_REQUIRED',
+    'warning',
+    '동결 상태의 공개는 revision·snapshot·browser proof에 묶인 일회성 승인권으로만 허용됩니다. 환경변수 우회는 사용하지 않습니다.',
   );
 
   add(
@@ -367,20 +365,7 @@ export function buildProductRegistrationV6ReadinessReport(
   ]);
   const readyForCanary = !checks.some(check => check.status === 'blocked' && canaryBlockerCodes.has(check.code));
   const readyForPublication = !checks.some(check => check.status === 'blocked' && publicationBlockerCodes.has(check.code));
-  const sourceProofBlockerCodes = new Set([
-    'V6_SCHEMA_UNAVAILABLE',
-    'V6_AUTHORITY_MODE_MISMATCH',
-    'V6_SCHEMA_MANIFEST_UNVERIFIED',
-    'V6_LEGACY_PUBLICATION_RPC_EXECUTABLE',
-    'V6_WORKFLOW_DISABLED',
-    'V6_PROOF_SECRET_MISSING',
-    'V6_BROWSER_PROOF_RUNTIME_MISSING',
-    'V6_OCR_PROVIDERS_INCOMPLETE',
-    'V6_STALE_JOBS_PRESENT',
-    'V6_SOURCE_PROOF_AUTO_PUBLISH_DISABLED',
-  ]);
-  const readyForSourceProof = sourceProofPathEnabled
-    && !checks.some(check => check.status === 'blocked' && sourceProofBlockerCodes.has(check.code));
+  const readyForSourceProof = false;
   const readyForFullCohort = readyForPublication && transportReady && backfillComplete && cohortReady;
 
   return {

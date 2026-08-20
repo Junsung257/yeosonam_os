@@ -65,15 +65,24 @@ export async function fetchLpPackageUncached(
   );
 }
 
-/** LP RSC용 — 300초 ISR, 패키지별 인자는 캐시 키에 포함됨 */
-export const loadLpPackageForPage = unstable_cache(
-  async (id: string) => fetchLpPackageUncached(id),
-  // Bump the cache contract whenever the source changes from mutable
-  // travel_packages to proof-bound V5 public snapshots. A cached null from a
-  // pre-publication read must never hide a newly published package.
-  // Bump when the LP projection adds/removes customer-visible source facts;
-  // otherwise a prior deployment's unstable_cache entry can keep stale legal
-  // and preparation notices on the landing route after a successful publish.
-  ['lp-package-v4-v5-public-snapshot-source-notices-cache-bust'],
-  { revalidate: 300, tags: ['lp-packages'] },
-);
+/**
+ * Snapshot content may be cached, but visibility is checked outside this
+ * function on every route request. Per-package tags let a freeze/release event
+ * evict the exact LP instead of relying on a broad five-minute stale window.
+ */
+export async function loadLpPackageForPage(id: string): Promise<LandingProductData | null> {
+  const normalizedId = id.trim();
+  if (!normalizedId) return null;
+  return unstable_cache(
+    async () => fetchLpPackageUncached(normalizedId),
+    ['lp-package-v61', normalizedId],
+    {
+      revalidate: 300,
+      tags: [
+        'product:lp',
+        `product:${normalizedId}`,
+        `product:${normalizedId}:lp`,
+      ],
+    },
+  )();
+}

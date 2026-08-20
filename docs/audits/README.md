@@ -13,7 +13,7 @@ Last updated: 2026-08-17
 - 2026-08-15 — Blog live operations browser verification: publisher health, queue visibility, effective policy, runtime schema, and fail-closed release decision: `blog-live-ops-verification-2026-08-15.md`
 - 2026-08-15 — Blog DeepSeek Orchestrator V4 local verification: DeepSeek-only quality routing, off-peak generation/daytime publication split, durable attempt evidence, Naver fallback, 1,494 blog tests, and production build: `blog-deepseek-orchestrator-v4-verification-2026-08-15.md`
 
-Last updated: 2026-08-15
+Last updated: 2026-08-20
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -36,6 +36,8 @@ Search this folder only when you need historical evidence, investigation details
 ## Current Evidence Anchors
 
 These audits contain recent evidence for the current product-registration engine. They are still evidence, not the source of truth:
+
+- 2026-08-20 — V6.1 Release 0 evidence: clean integration worktree, preserved dirty-worktree patch, untracked inventory, worktree manifest, and no production writes: `2026-08-20-product-registration-v61-release0.md`
 
 | Area | File |
 |---|---|

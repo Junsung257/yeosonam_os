@@ -52,13 +52,12 @@ describe('registration kernel authority convergence', () => {
   it('resolves customer routes through catalog aliases and never through travel_packages', () => {
     const repository = source('src/lib/package-publication/repository.ts');
     const reader = repository.slice(
-      repository.indexOf('export async function getCurrentPublicPackage'),
+      repository.indexOf('export async function resolveCurrentPublicPackage'),
       repository.indexOf('export async function fetchLatestPublicPackageSnapshot'),
     );
 
-    expect(reader).toContain('resolve_product_registration_public_route');
-    expect(reader).toContain(".eq('catalog_product_id', catalogProductId)");
-    expect(reader).toContain('if (!pointerResult.data && legacyPackageId)');
+    expect(reader).toContain('resolveCustomerRouteState');
+    expect(reader).toContain('resolveCustomerRouteState');
     expect(reader).not.toContain(".from('travel_packages')");
   });
 

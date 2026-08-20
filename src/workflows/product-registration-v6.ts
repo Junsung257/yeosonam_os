@@ -29,7 +29,6 @@ import {
 } from '@/lib/product-registration-v6/snapshot-publication';
 import { evaluateRegistrationPublicationPolicy } from '@/lib/product-registration-kernel/publication-policy';
 import { loadProductRegistrationV6PublicationBlockers } from '@/lib/product-registration-v6/publication-control';
-import { productRegistrationV6SourceProofAutoPublishEnabled } from '@/lib/product-registration-v6/runtime-config';
 import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from '@/lib/product-registration-v6/copy-revision';
 import {
   buildPackageProjectionFromRevision,
@@ -70,14 +69,13 @@ async function recordStage(input: {
   jobId: string;
   fencingToken: number;
   stage: ProductRegistrationV6Stage;
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'running' | 'succeeded' | 'failed_retryable' | 'failed_terminal' | 'abandoned';
   output?: JsonObject;
   error?: string | null;
 }) {
   const supabase = db();
   const inputHash = sha256Hex(JSON.stringify({
     jobId: input.jobId,
-    fencingToken: input.fencingToken,
     stage: input.stage,
     workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
   }));
@@ -90,8 +88,7 @@ async function recordStage(input: {
     .maybeSingle();
   if (jobError) throw jobError;
   if (!job) throw new FatalError('V6_WORKFLOW_FENCING_CONFLICT');
-  const { error: stageError } = await supabase.rpc('record_product_registration_v6_stage_run', {
-    p_payload: {
+  const stagePayload = {
       tenant_id: job.tenant_id,
       job_id: input.jobId,
       workflow_run_id: job.v6_workflow_run_id,
@@ -103,7 +100,18 @@ async function recordStage(input: {
       output: input.output ?? {},
       error_code: input.error?.split(':')[0] ?? null,
       error_detail: input.error ?? null,
-    },
+  };
+  // V6.1 persists one mutable RUNNING attempt and fences its one-way terminal
+  // transition. Some historical steps only emitted the terminal event, so the
+  // adapter opens the attempt first without changing step call sites.
+  if (input.status !== 'running') {
+    const { error: startError } = await supabase.rpc('record_product_registration_v6_stage_run', {
+      p_payload: { ...stagePayload, status: 'running', output: {} },
+    });
+    if (startError) throw startError;
+  }
+  const { error: stageError } = await supabase.rpc('record_product_registration_v6_stage_run', {
+    p_payload: stagePayload,
   });
   if (stageError) throw stageError;
   const currentState = job.v4_stage_state && typeof job.v4_stage_state === 'object'
@@ -481,6 +489,7 @@ async function projectCompatibilityStep(
   const bindings: Array<{
     catalogProductId: string;
     packageId: string;
+    projectionHash: string;
     operationalIdentity: JsonObject;
   }> = [];
 
@@ -534,6 +543,7 @@ async function projectCompatibilityStep(
     bindings.push({
       catalogProductId,
       packageId: projected.packageId,
+      projectionHash: projected.projectionHash,
       operationalIdentity: {
         internal_code: projected.internalCode,
         land_operator: landOperator,
@@ -955,6 +965,7 @@ async function buildSnapshotsStep(
   compatibilityBindings: Array<{
     catalogProductId: string;
     packageId: string;
+    projectionHash: string;
     operationalIdentity?: JsonObject;
   }>,
 ) {
@@ -1011,7 +1022,6 @@ async function publishSnapshotsStep(
         proofRunId: proof.proofRunId,
         outcome: decision.terminalOutcome as 'published_verified' | 'published_degraded',
         policyVersion: input.policyVersion,
-        sourceProofAutoPublish: productRegistrationV6SourceProofAutoPublishEnabled(),
         idempotencyKey: `${input.jobId}:${proof.snapshot.snapshotHash}:${channel}:publish-v6`,
         channel,
         locale: 'ko-KR',
@@ -1041,11 +1051,9 @@ async function publicationControlStep(
     supplierKeys: [metadataString(input.uploadSourceMetadata, 'landOperator')].filter(
       (value): value is string => Boolean(value),
     ),
-    // The Workflow may attempt the source-proof path even while the broad
-    // cohort is frozen. The publication RPC remains the final authority and
-    // rejects every source that cannot prove exact lineage/evidence/mobile
-    // proof, so this never turns the freeze into an unconditional bypass.
-    allowSourceProofAutoPublish: true,
+    // The durable workflow never bypasses the global freeze. A manually
+    // reviewed canary is released by the exact one-time authorization route.
+    allowSourceProofAutoPublish: false,
   });
   if (blockers.length === 0) {
     return { allowed: true, publicationState: 'proof_passed', blockers: [] };
@@ -1283,7 +1291,7 @@ async function blockFailedWorkflowStep(
       jobId: input.jobId,
       fencingToken: input.fencingToken,
       stage: failedStage as ProductRegistrationV6Stage,
-      status: 'failed',
+      status: expectedPublicationBlock ? 'abandoned' : 'failed_terminal',
       error,
     }).catch(() => undefined);
   }
