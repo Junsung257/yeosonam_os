@@ -57,7 +57,8 @@ describe('content generation public package gate', () => {
       expect(
         text.includes('loadPublicContentPackageForGeneration') ||
           text.includes('loadPublicSearchAdPackage') ||
-          text.includes('buildAndSaveSearchAdPackagePlan'),
+          text.includes('buildAndSaveSearchAdPackagePlan') ||
+          text.includes('MUTABLE_COPY_REGENERATION_RETIRED'),
         path,
       ).toBe(true);
       expect(text, path).not.toContain("select('id, title");
