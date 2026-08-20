@@ -170,7 +170,11 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    ignoreBuildErrors: process.env.VERCEL === '1',
+    // The dedicated CI type-check job validates the full project before the
+    // production bundle. Keeping the build-time checker opt-in avoids a
+    // second TypeScript process exhausting the Linux runner heap while never
+    // weakening the standalone type-check gate or production Vercel build.
+    ignoreBuildErrors: process.env.VERCEL === '1' || process.env.NEXT_SKIP_TYPESCRIPT_CHECK === '1',
   },
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.

@@ -9,6 +9,8 @@ import { logError } from '@/lib/sentry-logger';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import { buildBlogPublicSnapshotParityDiagnosticsV3 } from '@/lib/blog-public-snapshot-parity-v3';
 import { readImmutableRemoteSnapshotConfigV3 } from '@/lib/blog-public-remote-snapshot-v3';
+import { resolveEffectiveBlogPublicationRollout } from '@/lib/blog-publication-rollout';
+import { loadBlogPublicationRolloutState } from '@/lib/blog-publication-rollout-repository';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,8 +24,9 @@ const handler = async (_request: NextRequest) => {
   const now = new Date();
   const policy = readBlogAutopublishPolicyV3();
   const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(supabaseAdmin, now);
+  const rolloutStateResult = await loadBlogPublicationRolloutState(supabaseAdmin);
   const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60_000).toISOString();
-  const [search, engagement, serverEvents, syntheticServerEvents, recentSyntheticCanary, rum, snapshots, dead, ready, liveSlugs, snapshotSlugs] = await Promise.all([
+  const [search, engagement, serverEvents, syntheticServerEvents, recentSyntheticCanary, rum, snapshots, dead, ready, liveSlugs, snapshotSlugs, approvedForSlot] = await Promise.all([
     supabaseAdmin.from('blog_search_performance').select('id', { count: 'exact', head: true }).gte('metric_date', daysAgo(30).slice(0, 10)),
     supabaseAdmin.from('blog_engagement_logs').select('id', { count: 'exact', head: true }).gte('created_at', daysAgo(7)),
     supabaseAdmin.from('analytics_server_events').select('id', { count: 'exact', head: true }).gte('occurred_at', daysAgo(30)),
@@ -37,6 +40,7 @@ const handler = async (_request: NextRequest) => {
     supabaseAdmin.from('analytics_server_event_outbox').select('id', { count: 'exact', head: true }).in('status', ['pending', 'failed', 'processing']),
     supabaseAdmin.from(PUBLIC_BLOG_READ_SOURCE).select('id,slug').order('slug').limit(1000),
     supabaseAdmin.from('blog_public_snapshots').select('creative_id,slug').eq('is_current', true).order('slug').limit(1000),
+    supabaseAdmin.from('blog_generation_runs').select('id', { count: 'exact', head: true }).eq('status', 'approved_for_slot'),
   ]);
   const snapshotParity = liveSlugs.error || snapshotSlugs.error
     ? null
@@ -54,6 +58,13 @@ const handler = async (_request: NextRequest) => {
       sha256: process.env.BLOG_PUBLIC_DETAIL_LKG_SHA256,
     })),
   };
+  const effectiveRollout = rolloutStateResult.state
+    ? resolveEffectiveBlogPublicationRollout({
+      state: rolloutStateResult.state,
+      environmentStageCeiling: policy.publicationRampStage,
+      environmentDailyCap: policy.requestedDailyPublishCap,
+    })
+    : null;
   const report = evaluateBlogDataReadinessV3({
     searchPerformance30d: countOrNull(search),
     engagement7d: countOrNull(engagement),
@@ -67,12 +78,30 @@ const handler = async (_request: NextRequest) => {
   }, now);
   const critical = report.status === 'critical'
     || !schemaReadiness.fullyReady
+    || !rolloutStateResult.state
     || !policy.deploymentProvenance.passed
     || snapshotParity?.parity !== true
     || !remoteSnapshots.catalog
     || !remoteSnapshots.detail
     || recentSyntheticCanary.error
     || Number(recentSyntheticCanary.count || 0) === 0;
+  const approvedForSlotCount = countOrNull(approvedForSlot);
+  // Generation bootstraps the first approved candidate, so it must not depend
+  // on publication telemetry or approved_for_slot inventory. Schema and
+  // immutable deployment provenance are the generation prerequisites here.
+  const generationReady = schemaReadiness.fullyReady
+    && policy.deploymentProvenance.passed
+    && !approvedForSlot.error;
+  const publicationReady = generationReady
+    && effectiveRollout !== null
+    && (approvedForSlotCount ?? 0) > 0;
+  const publicationBlockers = publicationReady
+    ? []
+    : [
+      ...(critical ? ['generation_or_runtime_readiness'] : []),
+      ...(approvedForSlot.error || approvedForSlotCount == null ? ['approved_slot_inventory_unavailable'] : []),
+      ...(approvedForSlotCount === 0 ? ['approved_slot_candidate_missing'] : []),
+    ];
   if (critical) {
     logError('[blog-data-readiness] critical measurement or delivery gap', undefined, {
       checks: report.checks,
@@ -80,7 +109,10 @@ const handler = async (_request: NextRequest) => {
       deploymentProvenance: policy.deploymentProvenance,
       snapshotParity,
       remoteSnapshots,
+      rolloutState: rolloutStateResult,
+      effectiveRollout,
       analyticsCanary24h: countOrNull(recentSyntheticCanary),
+      approvedForSlotCount,
     });
   }
   return apiResponse({
@@ -89,7 +121,27 @@ const handler = async (_request: NextRequest) => {
     schemaReadiness,
     snapshotParity,
     remoteSnapshots,
+    rollout: rolloutStateResult.state && effectiveRollout
+      ? {
+        dbStage: rolloutStateResult.state.stage,
+        status: rolloutStateResult.state.status,
+        stateVersion: rolloutStateResult.state.stateVersion,
+        environmentStageCeiling: policy.publicationRampStage,
+        environmentDailyCap: policy.requestedDailyPublishCap,
+        effectiveStage: effectiveRollout.stage,
+        effectiveDailyCap: effectiveRollout.dailyCap,
+        frozen: effectiveRollout.frozen,
+        reasons: effectiveRollout.reasons,
+      }
+      : null,
+    rolloutStateError: rolloutStateResult.error,
     analyticsCanary24h: countOrNull(recentSyntheticCanary),
+    approvedForSlotCount,
+    generationReady,
+    publicationReady,
+    readyForDraftOnlyGeneration: generationReady,
+    readyForLivePublication: publicationReady,
+    publicationBlockers,
     autopublish: {
       requestedMode: policy.requestedMode,
       effectiveMode: policy.mode,

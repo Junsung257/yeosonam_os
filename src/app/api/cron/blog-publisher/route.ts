@@ -210,6 +210,10 @@ import {
 } from '@/lib/blog-generation-run-v4';
 import { estimateBlogAiCallReservationUsdV4 } from '@/lib/blog-ai-budget-v4';
 import {
+  isBlogAiControlPlaneEnabled,
+} from '@/lib/blog-ai-control-plane-v4';
+import { invokeAi, hashPrompt, hashResponse } from '@/lib/ai-control-plane';
+import {
   BLOG_RUNTIME_RESOURCES_V3,
   probeBlogRuntimeSchemaWithSupabaseV3,
 } from '@/lib/blog-runtime-readiness-v3';
@@ -642,6 +646,61 @@ async function generatePublisherBlogText(
   const maxTokens = options.maxTokens ?? (isRewrite
     ? BLOG_PUBLISHER_AI_REWRITE_MAX_OUTPUT_TOKENS
     : BLOG_PUBLISHER_AI_MAX_OUTPUT_TOKENS);
+  const controlPlaneEnabled = isBlogAiControlPlaneEnabled();
+  const requestTimeoutMs = options.requestTimeoutMs ?? (isRewrite
+    ? BLOG_PUBLISHER_AI_REWRITE_PROVIDER_TIMEOUT_MS
+    : BLOG_PUBLISHER_AI_FIRST_PROVIDER_TIMEOUT_MS);
+
+  if (controlPlaneEnabled) {
+    const task = context.stage === 'draft_flash'
+      ? 'informational-draft'
+      : context.stage === 'rewrite_pro_max' ? 'targeted-repair-max' : 'targeted-repair';
+    const controlled = await invokeAi({
+      workload: 'blog-production',
+      task,
+      rootJobId: `blog:${context.queueId}`,
+      candidateId: context.queueId,
+      stage: context.stage,
+      traceId: `blog-production:${context.queueId}`,
+      model: execution.model,
+      idempotencyKey: `blog-production:${context.queueId}:${context.stage}:${context.attemptNumber}`,
+      promptHash: hashPrompt(options.systemPrompt ?? '', prompt),
+      estimatedMaxInputTokens: 16_384,
+      maxOutputTokens: maxTokens,
+      execute: async () => {
+        const generated = await withPublisherTimeout(
+          generateBlogTextWithReceipt(prompt, {
+            ...options,
+            model: execution.model,
+            maxTokens,
+            deepseekThinking: options.deepseekThinking ?? execution.deepseekThinking ?? 'disabled',
+            reasoningEffort: options.reasoningEffort,
+            requestTimeoutMs,
+          }),
+          isRewrite ? BLOG_PUBLISHER_AI_REWRITE_TIMEOUT_MS : BLOG_PUBLISHER_AI_TIMEOUT_MS,
+          'blog_ai_generation',
+        );
+        const usage = generated.receipt.usage
+          ?? (generated.receipt.deepseekCost
+            ? {
+              inputTokens: generated.receipt.deepseekCost.inputTokens,
+              cachedInputTokens: generated.receipt.deepseekCost.cacheHitInputTokens,
+              outputTokens: generated.receipt.deepseekCost.outputTokens,
+            }
+            : null);
+        return {
+          value: generated,
+          provider: 'deepseek' as const,
+          model: generated.receipt.model,
+          finishReason: generated.receipt.finishReason,
+          usage,
+          responseHash: hashResponse(generated.text),
+        };
+      },
+    });
+    return controlled.value;
+  }
+
   const requestedUsd = estimateBlogAiCallReservationUsdV4({
     stage: context.stage,
     maxOutputTokens: maxTokens,
@@ -650,12 +709,12 @@ async function generatePublisherBlogText(
     throw new Error(`blog_ai_pricing_unavailable:${execution.provider}:${execution.model}`);
   }
   const reservation = await reserveBlogAiBudgetBeforeCallV4({
-    queueId: context.queueId,
-    attemptNumber: context.attemptNumber,
-    stage: context.stage,
-    provider: execution.provider,
-    model: execution.model,
-    requestedUsd,
+      queueId: context.queueId,
+      attemptNumber: context.attemptNumber,
+      stage: context.stage,
+      provider: execution.provider,
+      model: execution.model,
+      requestedUsd,
   });
   if (!reservation.allowed || !reservation.reservationId) {
     throw new Error(`blog_ai_budget_blocked:${reservation.reason}`);
@@ -1664,6 +1723,85 @@ async function runBlogPublisher(request: NextRequest) {
         queueId: privateQueueId,
         results,
         errors: completedPrivately ? errors : [...errors, result.reason || result.status],
+        ranAt: new Date().toISOString(),
+      };
+    }
+
+    const operationId = request.nextUrl.searchParams.get('operationId')?.trim();
+    if (operationId) {
+      const fencingToken = Number(request.nextUrl.searchParams.get('fencingToken'));
+      const leaseOwner = request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '';
+      if (!Number.isSafeInteger(fencingToken) || fencingToken <= 0 || !leaseOwner) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedContentOperation: true,
+          reason: 'content_operation_fencing_input_invalid',
+          results,
+          errors,
+        };
+      }
+      const { data: operation, error: operationError } = await supabaseAdmin
+        .from('blog_content_operations')
+        .select('id,queue_id,status,fencing_token,lease_owner,lease_expires_at')
+        .eq('id', operationId)
+        .eq('fencing_token', fencingToken)
+        .eq('lease_owner', leaseOwner)
+        .eq('status', 'running')
+        .maybeSingle();
+      if (operationError || !operation?.queue_id) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedContentOperation: true,
+          reason: operationError?.message || 'content_operation_not_claimed',
+          results,
+          errors,
+        };
+      }
+      if (!operation.lease_expires_at || Date.parse(operation.lease_expires_at) <= Date.now()) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedContentOperation: true,
+          reason: 'content_operation_lease_expired',
+          results,
+          errors,
+        };
+      }
+      const { data: item, error: itemError } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .select('*')
+        .eq('id', operation.queue_id)
+        .eq('status', 'queued')
+        .maybeSingle();
+      if (itemError || !item) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedContentOperation: true,
+          reason: itemError?.message || 'content_operation_queue_item_not_ready',
+          results,
+          errors,
+        };
+      }
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });
+      results.push(result);
+      return {
+        ok: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status),
+        processed: 1,
+        published: 0,
+        targetedContentOperation: true,
+        operationId,
+        queueId: operation.queue_id,
+        results,
+        errors: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status)
+          ? errors
+          : [...errors, result.reason || result.status],
         ranAt: new Date().toISOString(),
       };
     }
@@ -4125,7 +4263,7 @@ async function processQueueItem(
       const stage: BlogDeepSeekStage = ['rewrite_pro_high', 'rewrite_pro_max'].includes(requestedStage)
         ? requestedStage
         : 'draft_flash';
-      const terminal = attemptNumber >= 3;
+      const terminal = attemptNumber >= BLOG_QUALITY_MAX_ATTEMPTS_V4;
       const retrySameStage = [
         'blog_ai_generation_timeout',
         'blog_ai_transport_error',

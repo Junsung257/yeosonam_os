@@ -32,6 +32,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { BLOG_AI_MODEL } from '@/lib/prompt-version';
 import { getProviderApiKey, resolveAiPolicy } from '@/lib/ai-provider-policy';
+import { getSecret } from '@/lib/secret-registry';
 import {
   calculateDeepSeekCostV4,
   type DeepSeekCostReceiptV4,
@@ -265,9 +266,18 @@ function providerName(modelOrProvider: string): 'deepseek' | 'claude' | 'gemini'
 
 let cachedDeepseekKey: string | null = null;
 let cachedDeepseek: OpenAI | null = null;
+/**
+ * Blog production has a dedicated key so its spend can be attributed and
+ * revoked without affecting product/Jarvis workloads.  The generic key is a
+ * compatibility fallback for local and pre-control-plane environments.
+ */
+function getBlogDeepSeekApiKey(): string | null {
+  return getSecret('DEEPSEEK_BLOG_PROD_API_KEY') ?? getProviderApiKey('deepseek');
+}
+
 function getDeepseekClient(): OpenAI {
-  const apiKey = getProviderApiKey('deepseek');
-  if (!apiKey) throw new Error('DEEPSEEK_API_KEY 미설정');
+  const apiKey = getBlogDeepSeekApiKey();
+  if (!apiKey) throw new Error('DEEPSEEK_BLOG_PROD_API_KEY 또는 DEEPSEEK_API_KEY 미설정');
   if (cachedDeepseek && cachedDeepseekKey === apiKey) return cachedDeepseek;
   cachedDeepseek = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' });
   cachedDeepseekKey = apiKey;
@@ -602,9 +612,12 @@ async function callModelDirectWithReceipt(
 
 /** API 키가 설정돼 있는지 확인 (fallback 분기용) */
 export function hasBlogApiKey(model?: string): boolean {
+  if (model && providerName(model) === 'deepseek') return !!getBlogDeepSeekApiKey();
   if (model) return !!getProviderApiKey(providerName(model));
   const policy = resolveAiPolicy('blog-generate', 'fast', BLOG_AI_MODEL);
-  return !!getProviderApiKey(policy.provider);
+  return policy.provider === 'deepseek'
+    ? !!getBlogDeepSeekApiKey()
+    : !!getProviderApiKey(policy.provider);
 }
 
 /**

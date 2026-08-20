@@ -77,6 +77,24 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
     scope: 'publish',
   },
   {
+    key: 'ai_control_plane_buckets_v1',
+    table: 'ai_budget_buckets',
+    columns: 'scope_type,scope_key,budget_day_kst,hard_cap_usd,reserved_usd,settled_usd,status',
+    scope: 'publish',
+  },
+  {
+    key: 'ai_control_plane_reservations_v1',
+    table: 'ai_call_reservations',
+    columns: 'id,root_job_id,candidate_id,workload,task,stage,model,idempotency_key,reserved_usd,status',
+    scope: 'publish',
+  },
+  {
+    key: 'ai_control_plane_receipts_v1',
+    table: 'ai_call_receipts',
+    columns: 'reservation_id,success,finish_reason,input_tokens,output_tokens,actual_cost_usd,error_code',
+    scope: 'publish',
+  },
+  {
     key: 'publication_rollout_state_v1',
     table: 'blog_publication_rollout_state',
     columns: 'scope,stage,status,healthy_window_streak,unhealthy_window_streak,state_version',
@@ -86,6 +104,30 @@ export const BLOG_RUNTIME_RESOURCES_V3: readonly BlogRuntimeResourceV3[] = [
     key: 'publication_rollout_evaluations_v1',
     table: 'blog_publication_rollout_evaluations',
     columns: 'id,scope,window_key,decision,observation_complete,severe_incident',
+    scope: 'publish',
+  },
+  {
+    key: 'demand_clusters_v4',
+    table: 'blog_demand_clusters',
+    columns: 'id,cluster_key,normalized_query,intent,decision,demand_score,risk_level,representative_key',
+    scope: 'publish',
+  },
+  {
+    key: 'demand_cluster_signals_v4',
+    table: 'blog_demand_cluster_signals',
+    columns: 'id,cluster_id,provider,source_row_hash,observed_at,expires_at,verified_at',
+    scope: 'publish',
+  },
+  {
+    key: 'content_operations_v4',
+    table: 'blog_content_operations',
+    columns: 'id,demand_cluster_id,operation_type,status,current_stage,fencing_token,idempotency_key,workflow_run_id',
+    scope: 'publish',
+  },
+  {
+    key: 'content_stage_events_v4',
+    table: 'blog_content_stage_events',
+    columns: 'id,operation_id,event_key,fencing_token,stage,status,failure_code',
     scope: 'publish',
   },
   {

@@ -119,6 +119,58 @@ interface BlogOpsSummary {
     measurementReady: boolean;
     missing: string[];
   };
+  content_factory?: {
+    enabled: boolean;
+    generation_enabled: boolean;
+    migration_ready: boolean;
+    migration_warnings: string[];
+    workflow_version: string;
+    publication_mode: 'draft_only' | 'reviewed_only' | 'live';
+    requested_publication_mode: 'draft_only' | 'reviewed_only' | 'live';
+    provenance: {
+      passed: boolean;
+      source: string;
+      actualGitRef: string | null;
+      commitSha: string | null;
+      reasons: string[];
+    };
+    rollout: { stage: string; status: string; freeze_reason: string | null } | null;
+    funnel: Record<string, number>;
+    approved_inventory_days: number;
+    approved_inventory_target_days: number;
+    verified_brief_target: number;
+    skip_reasons: Record<string, number>;
+  };
+  ai_control_plane?: {
+    enabled: boolean;
+    ready: boolean;
+    global_bucket: { hard_cap_usd: number; reserved_usd: number; settled_usd: number; status: string } | null;
+    flash_calls_7d: number;
+    pro_calls_7d: number;
+    total_calls_7d: number;
+    receipt_gap: number;
+    candidate_model_call_cap: string;
+    fallback_allowed: boolean;
+    advisor_allowed: boolean;
+  };
+}
+
+const FACTORY_FUNNEL_LABELS: Record<string, string> = {
+  demand: '수요',
+  verified_brief: '검증 브리프',
+  research_ready: '연구 준비',
+  draft: '초안',
+  repairing: '보완 중',
+  human_review: '사람 검토',
+  approved: '발행 승인',
+  published: '공개',
+  indexed: '색인 연결',
+};
+
+function factoryFunnelHref(key: string) {
+  if (key === 'indexed') return '/admin/blog/rankings';
+  if (key === 'published') return '/admin/blog';
+  return '/admin/blog/queue';
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -454,6 +506,134 @@ export default function BlogSystemPage() {
           </div>
         </section>
       )}
+
+      {ops?.content_factory ? (
+        <section className="admin-card p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-admin-h3 text-admin-text">Durable Content Factory</h2>
+              <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+                HTTP 응답이 아니라 수요 원장부터 색인 연결까지 실제 DB 단계로 집계합니다.
+              </p>
+            </div>
+            <span className={`w-fit rounded-admin-xs px-2 py-1 text-admin-2xs font-semibold ${sectionBadgeClass(
+              ops.content_factory.enabled
+                && ops.content_factory.generation_enabled
+                && ops.content_factory.migration_ready
+                && ops.content_factory.provenance.passed
+                ? 'healthy'
+                : 'blocked',
+            )}`}>
+              {ops.content_factory.enabled && ops.content_factory.generation_enabled ? '생성 가동' : '생성 정지'}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">공개 모드</p>
+              <p className="mt-1 text-admin-sm font-bold text-admin-text">{ops.content_factory.publication_mode}</p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">요청값 {ops.content_factory.requested_publication_mode}</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">배포 출처</p>
+              <p className={`mt-1 text-admin-sm font-bold ${ops.content_factory.provenance.passed ? 'text-success' : 'text-danger'}`}>
+                {ops.content_factory.provenance.passed ? '일치' : '차단'}
+              </p>
+              <p className="mt-1 truncate text-admin-2xs text-admin-muted" title={ops.content_factory.provenance.commitSha || ''}>
+                {ops.content_factory.provenance.actualGitRef || 'ref 없음'} · {ops.content_factory.provenance.commitSha?.slice(0, 8) || 'SHA 없음'}
+              </p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">DB 원장</p>
+              <p className={`mt-1 text-admin-sm font-bold ${ops.content_factory.migration_ready ? 'text-success' : 'text-danger'}`}>
+                {ops.content_factory.migration_ready ? '준비됨' : 'migration 필요'}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">{ops.content_factory.workflow_version}</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">승인 재고</p>
+              <p className={`mt-1 text-admin-sm font-bold admin-num ${ops.content_factory.approved_inventory_days >= 2 ? 'text-success' : 'text-warning'}`}>
+                {ops.content_factory.approved_inventory_days}일분
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">
+                목표 {ops.content_factory.approved_inventory_target_days}일 · rollout {ops.content_factory.rollout?.stage || '미확인'}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto" aria-label="콘텐츠 생성 퍼널, 좌우로 스크롤할 수 있습니다">
+            <div className="grid min-w-[900px] grid-cols-9 gap-2">
+              {Object.entries(FACTORY_FUNNEL_LABELS).map(([key, label]) => (
+                <Link
+                  key={key}
+                  href={factoryFunnelHref(key)}
+                  className="min-h-11 rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3 transition-colors hover:border-admin-border-strong"
+                >
+                  <p className="text-admin-2xs font-semibold text-admin-muted">{label}</p>
+                  <p className="mt-1 text-admin-h2 font-bold text-admin-text admin-num">{ops.content_factory?.funnel[key] || 0}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-admin-border pt-3">
+            <p className="text-admin-xs font-semibold text-admin-text">실제 보류·차단 원인</p>
+            {topBuckets(ops.content_factory.skip_reasons, 6).length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {topBuckets(ops.content_factory.skip_reasons, 6).map(([reason, count]) => (
+                  <Link key={reason} href="/admin/blog/queue?scope=attention" className="rounded-admin-xs bg-admin-surface-2 px-2 py-1 text-admin-2xs text-admin-muted hover:text-admin-text">
+                    {reason} · {count}
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-admin-xs text-success">기록된 보류·차단 원인이 없습니다.</p>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {ops?.ai_control_plane ? (
+        <section className="admin-card p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-admin-h3 text-admin-text">AI Control Plane</h2>
+              <p className="mt-1 text-admin-xs text-admin-muted">호출 전 예산 예약 · 단일 재시도 · provider 영수증</p>
+            </div>
+            <span className={`w-fit rounded-admin-xs px-2 py-1 text-admin-2xs font-semibold ${sectionBadgeClass(
+              ops.ai_control_plane.enabled && ops.ai_control_plane.ready ? 'healthy' : 'blocked',
+            )}`}>
+              {ops.ai_control_plane.enabled ? (ops.ai_control_plane.ready ? '방화벽 정상' : '생성 차단') : '대기'}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold text-admin-muted">오늘 예산</p>
+              <p className="mt-1 text-admin-sm font-bold text-admin-text admin-num">
+                ${ops.ai_control_plane.global_bucket?.settled_usd.toFixed(4) || '0.0000'} / ${ops.ai_control_plane.global_bucket?.hard_cap_usd.toFixed(2) || '1.50'}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">예약 ${ops.ai_control_plane.global_bucket?.reserved_usd.toFixed(4) || '0.0000'}</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold text-admin-muted">최근 7일 호출</p>
+              <p className="mt-1 text-admin-sm font-bold text-admin-text admin-num">{ops.ai_control_plane.total_calls_7d}</p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">Flash {ops.ai_control_plane.flash_calls_7d} · Pro {ops.ai_control_plane.pro_calls_7d}</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold text-admin-muted">호출 계약</p>
+              <p className="mt-1 text-admin-sm font-bold text-admin-text">Flash 1 + Pro 1</p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">fallback·advisor 금지</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold text-admin-muted">영수증 누락</p>
+              <p className={`mt-1 text-admin-sm font-bold admin-num ${ops.ai_control_plane.receipt_gap > 0 ? 'text-danger' : 'text-success'}`}>
+                {ops.ai_control_plane.receipt_gap}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">누락 시 유료 생성 fail-closed</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {ops?.health_sections ? (
         <section className="admin-card p-4">

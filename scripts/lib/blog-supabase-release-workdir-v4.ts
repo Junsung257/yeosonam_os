@@ -11,6 +11,7 @@ import {
 import { basename, relative, resolve, sep } from 'node:path';
 
 import { verifyBlogOrchestratorV4ReleaseBundle } from './blog-orchestrator-v4-release-bundle';
+import { verifyBlogContentFactoryV4ReleaseBundle } from './blog-content-factory-v4-release-bundle';
 
 const VERSION_PATTERN = /^\d{14}$/;
 
@@ -78,6 +79,7 @@ export function prepareBlogSupabaseReleaseWorkdirV4(input: {
   root?: string;
   output: string;
   remoteVersions: string[];
+  release?: 'orchestrator' | 'content_factory';
 }): BlogSupabaseReleaseWorkdirSummaryV4 {
   const root = resolve(input.root ?? process.cwd());
   const outputDirectory = assertTemporaryOutput(root, input.output);
@@ -86,7 +88,9 @@ export function prepareBlogSupabaseReleaseWorkdirV4(input: {
   if (!existsSync(config)) throw new Error('blog_v4_supabase_config_missing');
   if (!existsSync(linkedMetadata)) throw new Error('blog_v4_supabase_link_metadata_missing');
 
-  const bundle = verifyBlogOrchestratorV4ReleaseBundle(root);
+  const bundle = input.release === 'content_factory'
+    ? verifyBlogContentFactoryV4ReleaseBundle(root)
+    : verifyBlogOrchestratorV4ReleaseBundle(root);
   const releaseMigrations = bundle.migrations as ReleaseMigration[];
   const releaseByVersion = new Map(releaseMigrations.map((entry) => [entry.version, entry]));
   for (const version of input.remoteVersions) assertVersion(version);
