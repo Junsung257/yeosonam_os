@@ -104,7 +104,7 @@ jobs:
             source .tmp/operational-readiness-discovered.env
             set +a
           fi
-          npm run open:readiness -- --json --include-marketing-runtime --report=.tmp/open-readiness-report.json | tee .tmp/open-readiness-summary.json
+          npm run open:readiness -- --json --strict --include-marketing-runtime --report=.tmp/open-readiness-report.json | tee .tmp/open-readiness-summary.json
 
       - name: Summarize open readiness
         if: always()

@@ -12,6 +12,7 @@ describe('blog ops strict readiness authentication contract', () => {
 
     expect(workflow).toContain('BLOG_OPS_READ_TOKEN: ${{ secrets.BLOG_OPS_READ_TOKEN }}');
     expect(workflow).toContain('CRON_SECRET: ${{ secrets.CRON_SECRET }}');
+    expect(workflow).toContain('npm run open:readiness -- --json --strict');
     expect(workflow).not.toContain('vars.BLOG_OPS_READ_TOKEN');
     expect(workflow).not.toContain('secrets.CRON_SECRET || vars.CRON_SECRET');
   });
