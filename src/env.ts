@@ -46,6 +46,7 @@ export const env = createEnv({
     // ── Cron / Internal ──
     CRON_SECRET: z.string().min(1).optional(),
     BLOG_OPS_READ_TOKEN: z.string().min(1).optional(),
+    BLOG_OPS_ALLOW_CRON_FALLBACK: z.enum(['0', '1']).optional(),
     ADMIN_API_TOKEN: z.string().min(1).optional(),
     REVALIDATE_SECRET: z.string().min(1).optional(),
 
@@ -95,6 +96,7 @@ export const env = createEnv({
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
     BLOG_OPS_READ_TOKEN: process.env.BLOG_OPS_READ_TOKEN,
+    BLOG_OPS_ALLOW_CRON_FALLBACK: process.env.BLOG_OPS_ALLOW_CRON_FALLBACK,
     ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN,
     REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,

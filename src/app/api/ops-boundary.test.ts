@@ -25,6 +25,7 @@ describe('launch ops and ingest route boundaries', () => {
     const route = readRoute('src/app/api/ops/blog-system/route.ts');
 
     expect(route).toContain("getSecret('BLOG_OPS_READ_TOKEN')");
+    expect(route).toContain('BLOG_OPS_ALLOW_CRON_FALLBACK');
     expect(route).toContain('isOpsRead');
     expect(route).toContain('!isCron && !isOpsRead');
   });

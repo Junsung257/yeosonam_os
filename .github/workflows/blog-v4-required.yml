@@ -90,6 +90,7 @@ jobs:
             src/lib/blog-publication-rollout-manual-transition-migration.test.ts \
             src/lib/blog-publication-rollout-inventory-gate-migration.test.ts \
             src/lib/blog-publication-rollout-transition-script.test.ts \
+            src/lib/blog-ops-readiness-auth.test.ts \
             src/lib/blog-v4-required-workflow.test.ts \
             src/lib/blog-publisher-v4-orchestration-contract.test.ts \
             src/lib/blog-publication-rollout.test.ts \

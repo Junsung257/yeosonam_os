@@ -48,6 +48,7 @@ function buildHints() {
   return {
     cron_secret_configured: Boolean(getSecret('CRON_SECRET')),
     ops_read_token_configured: Boolean(getSecret('BLOG_OPS_READ_TOKEN')),
+    cron_fallback_allowed: process.env.BLOG_OPS_ALLOW_CRON_FALLBACK !== '0',
     base_url_for_cron_fetch: process.env.NEXT_PUBLIC_BASE_URL || null,
   };
 }
@@ -116,8 +117,11 @@ function publicSurfaceBaseUrl(request: NextRequest): string {
 export async function GET(request: NextRequest) {
   const cronSecret = getSecret('CRON_SECRET');
   const opsReadToken = getSecret('BLOG_OPS_READ_TOKEN');
+  const allowCronFallback = process.env.BLOG_OPS_ALLOW_CRON_FALLBACK !== '0';
   const isCron = Boolean(
-    cronSecret && safeEqualString(request.headers.get('authorization'), `Bearer ${cronSecret}`),
+    allowCronFallback &&
+      cronSecret &&
+      safeEqualString(request.headers.get('authorization'), `Bearer ${cronSecret}`),
   );
   const isOpsRead = Boolean(
     opsReadToken && safeEqualString(request.headers.get('authorization'), `Bearer ${opsReadToken}`),

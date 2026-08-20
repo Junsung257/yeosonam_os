@@ -778,16 +778,49 @@ async function checkBlogPublicSurfaceMonitor() {
     }
 
     const publicSurfaces = report?.public_surfaces;
+    const dbHealthy = report?.status === 'healthy' && report?.db_error == null;
+    const opsReadTokenConfigured = report?.hints?.ops_read_token_configured === true;
+    const cronFallbackAllowed = report?.hints?.cron_fallback_allowed === false ? false : true;
     const failed = Number(publicSurfaces?.failed ?? 0);
     const checked = Number(publicSurfaces?.checked ?? 0);
     const warn = Number(publicSurfaces?.warn ?? 0);
-    const ok = res.status === 200 && checked > 0 && publicSurfaces?.ok === true;
+    const ok = res.status === 200 && dbHealthy && checked > 0 && publicSurfaces?.ok === true;
     const failedIssues = Array.isArray(publicSurfaces?.results)
       ? publicSurfaces.results
         .filter((row) => row && row.ok === false)
         .flatMap((row) => Array.isArray(row.issues) ? row.issues.map((issue) => `${row.id}:${issue}`) : [`${row.id}:unknown`])
       : [];
     const missingOpsAuth = authMode === 'none' && !publicSurfaces;
+    const strictProductionOps = strict && !LOCAL_MODE;
+    if (strictProductionOps && !process.env.BLOG_OPS_READ_TOKEN) {
+      addBlockedCheck('ops:dedicated-read-token', {
+        authMode,
+        reason: 'blog_ops_read_token_missing',
+        notes: 'BLOG_OPS_READ_TOKEN is required for production strict readiness',
+        tokenValueExposed: false,
+      });
+    } else if (strictProductionOps && authMode !== 'blog-ops-read-token') {
+      addBlockedCheck('ops:dedicated-read-token', {
+        authMode,
+        reason: 'dedicated_ops_auth_not_verified',
+        notes: 'strict readiness must use BLOG_OPS_READ_TOKEN',
+        tokenValueExposed: false,
+      });
+    } else if (strictProductionOps && !opsReadTokenConfigured) {
+      addBlockedCheck('ops:dedicated-read-token', {
+        authMode,
+        reason: 'production_ops_token_not_configured',
+        notes: 'runtime hints do not confirm BLOG_OPS_READ_TOKEN',
+        tokenValueExposed: false,
+      });
+    }
+    if (strictProductionOps && cronFallbackAllowed) {
+      addBlockedCheck('ops:cron-fallback-enabled', {
+        reason: 'cron_fallback_enabled',
+        notes: 'set BLOG_OPS_ALLOW_CRON_FALLBACK=0 in production',
+        tokenValueExposed: false,
+      });
+    }
     const surfaceUnavailable = !ok && TRANSIENT_BLOG_DATA_PATTERN.test(
       JSON.stringify({ publicSurfaces, body }),
     );
@@ -801,6 +834,9 @@ async function checkBlogPublicSurfaceMonitor() {
       warn,
       url,
       authMode,
+      opsReadTokenConfigured,
+      cronFallbackAllowed,
+      tokenValueExposed: false,
       missing: missingOpsAuth ? ['BLOG_OPS_READ_TOKEN or CRON_SECRET'] : undefined,
       failedIssues,
       notes: ok
