@@ -25,11 +25,15 @@ describe('/api/products route boundary', () => {
     for (const method of ['POST', 'PATCH', 'DELETE']) {
       const methodStart = route.indexOf(`export async function ${method}`);
       const guardStart = route.indexOf('requireAdminRequest(request)', methodStart);
-      const writeStart = route.indexOf(method === 'DELETE' ? ".delete()" : method === 'PATCH' ? '.update(' : '.insert(', methodStart);
 
       expect(methodStart).toBeGreaterThanOrEqual(0);
       expect(guardStart).toBeGreaterThan(methodStart);
-      expect(writeStart).toBeGreaterThan(guardStart);
+      expect(route.slice(methodStart)).toContain('status: 410');
+      expect(route.slice(methodStart)).toContain('RETIRED');
     }
+
+    expect(route).not.toContain('.insert(');
+    expect(route).not.toContain('.update(');
+    expect(route).not.toContain('.delete()');
   });
 });

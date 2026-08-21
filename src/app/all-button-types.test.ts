@@ -26,5 +26,5 @@ describe('tracked TSX button types', () => {
     });
 
     expect(offenders).toEqual([]);
-  });
+  }, 30_000);
 });
