@@ -17,6 +17,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(workflow).toContain('RetryableError');
     expect(workflow).toContain('FatalError');
     expect(workflow).toContain('isDeepSeekOffPeakAt(new Date())');
+    expect(workflow).toContain('BLOG_V4_STAGING_CANARY_ALLOW_OFFPEAK_BYPASS');
+    expect(workflow).toContain("BLOG_AUTOPUBLISH_MODE?.trim().toLowerCase() === 'draft_only'");
     expect(workflow).toContain('BLOG_CONTENT_FACTORY_WAITING_FOR_DEEPSEEK_OFFPEAK');
     expect(workflow).toContain('for (let pass = 1; pass <= 5; pass += 1)');
     expect(workflow).toContain('pass <= 2');

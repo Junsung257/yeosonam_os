@@ -58,6 +58,12 @@ function isTransient(message: string): boolean {
   return /timeout|temporar|connection|network|fetch failed|econn|5\d\d|rate.?limit|unavailable/i.test(message);
 }
 
+function canBypassDeepSeekOffPeakForStagingCanary(): boolean {
+  return process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+    && process.env.BLOG_AUTOPUBLISH_MODE?.trim().toLowerCase() === 'draft_only'
+    && process.env.BLOG_V4_STAGING_CANARY_ALLOW_OFFPEAK_BYPASS === '1';
+}
+
 async function operationAndQueue(input: BlogContentOperationWorkflowInput): Promise<{
   operation: OperationRow;
   queue: QueueRow;
@@ -287,7 +293,7 @@ async function generationStep(
     leaseOwner: input.leaseOwner, eventKey: `generation:pass:${pass}:started:v1:${workflowRunId}`,
     stage: pass === 1 ? 'drafting' : 'repairing', eventStatus: 'started',
   });
-  if (!isDeepSeekOffPeakAt(new Date())) {
+  if (!isDeepSeekOffPeakAt(new Date()) && !canBypassDeepSeekOffPeakForStagingCanary()) {
     throw new RetryableError('BLOG_CONTENT_FACTORY_WAITING_FOR_DEEPSEEK_OFFPEAK', {
       retryAfter: '30m',
     });

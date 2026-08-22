@@ -50,6 +50,7 @@ const values = [
   ['BLOG_GENERATION_CRON_ENABLED', 'false', 'encrypted'],
   ['BLOG_CONTENT_FACTORY_ENABLED', 'true', 'encrypted'],
   ['BLOG_AI_CONTROL_PLANE_ENABLED', '1', 'encrypted'],
+  ['BLOG_V4_STAGING_CANARY_ALLOW_OFFPEAK_BYPASS', '1', 'encrypted'],
   // SERP is advisory metadata. Keep the staging canary independent from any
   // inherited Naver credentials or a slow external search provider.
   ['BLOG_PUBLISHER_SERP_RESEARCH_ENABLED', '0', 'encrypted'],
