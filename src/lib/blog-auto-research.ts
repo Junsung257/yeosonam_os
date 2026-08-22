@@ -1885,14 +1885,28 @@ function reviewedPageIndex(
   hostname: string,
   pathname: string,
 ): number {
+  const normalizedHostname = hostname.toLowerCase().replace(/^www\./, '');
+  const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
   return pages.findIndex((page) => {
     try {
       const url = new URL(page.url);
-      return url.hostname.toLowerCase() === hostname && url.pathname === pathname;
+      const pageHostname = url.hostname.toLowerCase().replace(/^www\./, '');
+      const pagePathname = url.pathname.replace(/\/+$/, '') || '/';
+      return pageHostname === normalizedHostname && pagePathname === normalizedPathname;
     } catch {
       return false;
     }
   });
+}
+
+function normalizeGuamHotelArea(value: string): string {
+  const normalized = clean(value).toLowerCase();
+  if (normalized === 'tumon') return '투몬';
+  if (normalized === 'tamuning') return '타무닝';
+  if (normalized === 'mangilao') return '망길라오';
+  if (normalized === 'sinajana') return 'Sinajana';
+  if (normalized === 'dededo') return 'Dededo';
+  return clean(value);
 }
 
 export function buildGuamHotelAreasPayload(
@@ -1914,22 +1928,26 @@ export function buildGuamHotelAreasPayload(
 
   const bookingText = pages[bookingIndex]!.text;
   const agodaText = pages[agodaIndex]!.text;
-  const pricePattern = /([A-Za-z][A-Za-z0-9'&.,()\- ]{2,80})(투몬|타무닝|Agat|망길라오|Sinajana|Dededo) 가족 호텔[\s\S]{0,900}?1박 최저 ₩([\d,]+)/g;
+  const pricePattern = /([^0-9₩$]{3,100}?)(투몬|타무닝|Agat|망길라오|Sinajana|Dededo|Tumon|Tamuning|Mangilao|family-friendly)\s*(?:가족 호텔|family hotels?)[\s\S]{0,900}?(?:1박 최저|최저가|lowest price per night|lowest nightly price|per night from)[^0-9]{0,30}?([\d,]+)/giu;
   const priceRows = [...bookingText.matchAll(pricePattern)]
     .map((match) => ({
-      name: clean(match[1]).replace(/^\W+|\)+$/g, ''),
-      area: clean(match[2]),
+      name: clean(match[1]).replace(/^[\s|·•,:-]+|[)\s|·•,:-]+$/g, ''),
+      area: normalizeGuamHotelArea(match[2]),
       price: clean(match[3]).replace(/,/g, ''),
       displayedPrice: clean(match[3]),
+      currency: /(?:US\$|USD|\$)/i.test(match[0]) ? 'USD' : 'KRW',
     }))
     .filter((row) => row.name && row.area && Number(row.price) > 0)
     .slice(0, 3);
   const tumonFamilyHotelCount = bookingText.match(/투몬\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
   const tamuningFamilyHotelCount = bookingText.match(/타무닝\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
+  const hasHiltonFamilyLocation = /힐튼 괌 리조트 앤 스파|Hilton Guam Resort\s*&\s*Spa/i.test(agodaText);
+  const hasTumonSouthernLocation = /투몬 베이 남쪽 끝자락|(?:southern|south) end of Tumon Bay/i.test(agodaText);
+  const hasKidsPool = /어린이 전용 키즈풀|(?:children['’]?s|kids['’]?)\s*pool/i.test(agodaText);
   if (priceRows.length < 3
-    || !/힐튼 괌 리조트 앤 스파/.test(agodaText)
-    || !/투몬 베이 남쪽 끝자락/.test(agodaText)
-    || !/어린이 전용 키즈풀/.test(agodaText)) {
+    || !hasHiltonFamilyLocation
+    || !hasTumonSouthernLocation
+    || !hasKidsPool) {
     return null;
   }
 
@@ -1938,7 +1956,7 @@ export function buildGuamHotelAreasPayload(
   const priceEvidence: GroundedEvidenceDraft[] = priceRows.map((row, index) => ({
     evidenceKey: `booking-guam-nightly-${index + 1}`,
     sourceKey: bookingSourceKey,
-    excerpt: `${row.name} (${row.area})의 Booking.com 확인일 표시 가격은 1박 최저 KRW ${row.displayedPrice}이다.`,
+    excerpt: `${row.name} (${row.area})의 Booking.com 확인일 표시 가격은 1박 최저 ${row.currency} ${row.displayedPrice}이다.`,
     sourceLocator: `${row.name} > 1박 최저`,
     claimType: 'price',
     riskLevel: 'MEDIUM',
@@ -1947,7 +1965,7 @@ export function buildGuamHotelAreasPayload(
     applicableTo: `${destination} 가족 숙소 비교 여행자`,
     normalizedValue: row.price,
     unit: '1박',
-    currency: 'KRW',
+    currency: row.currency,
     conditions: ['확인일 표시 가격', '날짜·인원·세금·객실 재고에 따라 변동', '예약 전 최종 총액 재확인'],
   }));
   const factualEvidence: GroundedEvidenceDraft[] = [
@@ -2023,7 +2041,7 @@ export function buildGuamHotelAreasPayload(
       conditions: ['확인일 호텔 가이드 설명', '실제 이동시간은 예약 전 지도와 교통상황 재확인'],
     });
   }
-  if (factualEvidence.length < 5 && /가족 호텔/.test(bookingText)) {
+  if (factualEvidence.length < 5 && /가족 호텔|family hotels?/i.test(bookingText)) {
     factualEvidence.push({
       evidenceKey: 'booking-guam-family-hotel-area-listing',
       sourceKey: bookingSourceKey,

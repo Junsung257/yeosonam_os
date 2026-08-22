@@ -241,6 +241,21 @@ async function researchStep(input: BlogContentOperationWorkflowInput) {
             'research_auto_failed',
           ])],
         };
+        await recordBlogContentOperationStageV4({
+          supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+          leaseOwner: input.leaseOwner, eventKey: `research:diagnostic:${researchAttemptKey}:v1`,
+          stage: 'research_backlog', eventStatus: 'succeeded', evidence: {
+            passed: autoResearch.passed,
+            model: autoResearch.model,
+            directSourceCount: autoResearch.directSourceCount,
+            groundingSourceCount: autoResearch.groundingSourceCount,
+            directSourceFailures: autoResearch.directSourceFailures.slice(0, 5),
+            finishReason: autoResearch.finishReason,
+            responseTextLength: autoResearch.responseTextLength,
+            observedSourceTypes: autoResearch.observedSourceTypes,
+            observedGroundingChunkIndexes: autoResearch.observedGroundingChunkIndexes,
+          },
+        });
       }
     }
   }

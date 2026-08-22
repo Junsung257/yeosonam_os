@@ -824,6 +824,30 @@ describe('buildGuamHotelAreasPayload', () => {
     expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
     expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
   });
+
+  it('accepts canonical host redirects and English source labels without weakening grounding', () => {
+    const payload = buildGuamHotelAreasPayload([
+      {
+        url: 'https://booking.com/family/country/gu.ko.html/',
+        title: 'Guam family hotels',
+        text: [
+          'The Tsubaki Tower Tumon family hotels details lowest price per night $543,251',
+          'Slice of Paradise with Private Beach Agat family hotels details lowest nightly price $425,791',
+          'Ocean View Agat Marina Private Accommodation Agat family hotels details per night from $536,497',
+        ].join(' '),
+      },
+      {
+        url: 'https://agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/',
+        title: 'Where to stay in Guam',
+        text: 'Hilton Guam Resort & Spa is at the southern end of Tumon Bay and has a children\'s pool.',
+      },
+    ], '괌');
+
+    expect(payload?.sources).toHaveLength(2);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
+    expect(payload?.claims?.find((claim) => claim.claimType === 'price')?.currency).toBe('USD');
+  });
 });
 
 describe('buildGuamCurrencyPaymentPayload', () => {
