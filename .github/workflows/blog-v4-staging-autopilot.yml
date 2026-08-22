@@ -166,8 +166,6 @@ jobs:
           supabase db query --help >/dev/null
           supabase db push --help >/dev/null
           npx --yes vercel@"$VERCEL_CLI_VERSION" --version
-          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --help >/dev/null
-          npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --help >/dev/null
 
       - name: Resolve or create the isolated persistent staging branch
         id: branch
@@ -435,6 +433,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p .tmp/blog-v4-staging-result
           node - <<'NODE'
           const fs = require('fs');
           const path = '.tmp/blog-v4-staging-result/evidence.json';
