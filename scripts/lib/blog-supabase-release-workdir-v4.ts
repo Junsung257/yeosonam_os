@@ -12,8 +12,13 @@ import { basename, relative, resolve, sep } from 'node:path';
 
 import { verifyBlogOrchestratorV4ReleaseBundle } from './blog-orchestrator-v4-release-bundle';
 import { verifyBlogContentFactoryV4ReleaseBundle } from './blog-content-factory-v4-release-bundle';
+import {
+  parseLinkedMigrationVersionsV4,
+  type BlogRemoteMigrationEvidenceV4,
+  validateBlogRemoteMigrationEvidenceV4,
+} from './blog-remote-migration-evidence-v4';
 
-const VERSION_PATTERN = /^\d{14}$/;
+export { parseLinkedMigrationVersionsV4 } from './blog-remote-migration-evidence-v4';
 
 type ReleaseMigration = {
   version: string;
@@ -24,6 +29,10 @@ type ReleaseMigration = {
 export type BlogSupabaseReleaseWorkdirSummaryV4 = {
   schemaVersion: 1;
   release: string;
+  environment: BlogRemoteMigrationEvidenceV4['environment'];
+  expectedProjectRef: string;
+  linkedProjectRef: string;
+  remoteEvidenceSha256: string;
   outputDirectory: string;
   remoteAppliedCount: number;
   placeholderCount: number;
@@ -32,12 +41,6 @@ export type BlogSupabaseReleaseWorkdirSummaryV4 = {
   pendingReleaseVersions: string[];
   migrationDirectoryDigest: string;
 };
-
-function assertVersion(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || !VERSION_PATTERN.test(value)) {
-    throw new Error(`blog_v4_remote_migration_version_invalid:${String(value)}`);
-  }
-}
 
 function assertTemporaryOutput(root: string, output: string): string {
   const repositoryRoot = resolve(root);
@@ -63,22 +66,11 @@ function migrationDigest(directory: string): string {
   return hash.digest('hex');
 }
 
-export function parseLinkedMigrationVersionsV4(output: string): string[] {
-  const parsed = JSON.parse(output) as {
-    rows?: Array<{ evidence?: { versions?: unknown[] } }>;
-  };
-  const values = parsed.rows?.[0]?.evidence?.versions;
-  if (!Array.isArray(values)) throw new Error('blog_v4_remote_migration_versions_missing');
-  for (const value of values) assertVersion(value);
-  const versions = [...new Set(values as string[])].sort();
-  if (versions.length !== values.length) throw new Error('blog_v4_remote_migration_versions_duplicate');
-  return versions;
-}
-
 export function prepareBlogSupabaseReleaseWorkdirV4(input: {
   root?: string;
   output: string;
-  remoteVersions: string[];
+  remoteEvidence: BlogRemoteMigrationEvidenceV4;
+  allowProductionEvidence?: boolean;
   release?: 'orchestrator' | 'content_factory';
 }): BlogSupabaseReleaseWorkdirSummaryV4 {
   const root = resolve(input.root ?? process.cwd());
@@ -87,17 +79,18 @@ export function prepareBlogSupabaseReleaseWorkdirV4(input: {
   const config = resolve(root, 'supabase/config.toml');
   if (!existsSync(config)) throw new Error('blog_v4_supabase_config_missing');
   if (!existsSync(linkedMetadata)) throw new Error('blog_v4_supabase_link_metadata_missing');
+  const linkedProjectRef = readFileSync(resolve(linkedMetadata, 'project-ref'), 'utf8').trim().toLowerCase();
+  const remoteEvidence = validateBlogRemoteMigrationEvidenceV4(input.remoteEvidence, {
+    linkedProjectRef,
+    allowProductionRead: input.allowProductionEvidence,
+  });
+  const remoteVersions = remoteEvidence.remoteVersions;
 
   const bundle = input.release === 'content_factory'
     ? verifyBlogContentFactoryV4ReleaseBundle(root)
     : verifyBlogOrchestratorV4ReleaseBundle(root);
   const releaseMigrations = bundle.migrations as ReleaseMigration[];
   const releaseByVersion = new Map(releaseMigrations.map((entry) => [entry.version, entry]));
-  for (const version of input.remoteVersions) assertVersion(version);
-  const remoteVersions = [...new Set(input.remoteVersions)].sort();
-  if (remoteVersions.length !== input.remoteVersions.length) {
-    throw new Error('blog_v4_remote_migration_versions_duplicate');
-  }
 
   if (existsSync(outputDirectory)) rmSync(outputDirectory, { recursive: true, force: true });
   const supabaseDirectory = resolve(outputDirectory, 'supabase');
@@ -135,6 +128,10 @@ export function prepareBlogSupabaseReleaseWorkdirV4(input: {
   const summary: BlogSupabaseReleaseWorkdirSummaryV4 = {
     schemaVersion: 1,
     release: bundle.release,
+    environment: remoteEvidence.environment,
+    expectedProjectRef: remoteEvidence.expectedProjectRef,
+    linkedProjectRef,
+    remoteEvidenceSha256: remoteEvidence.evidenceSha256,
     outputDirectory: relative(root, outputDirectory).replaceAll('\\', '/'),
     remoteAppliedCount: remoteVersions.length,
     placeholderCount,

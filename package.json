@@ -117,6 +117,7 @@
     "verify:blog-production-readiness-v3": "npx tsx scripts/verify-blog-production-readiness-v3.ts --strict",
     "verify:blog-production-readiness-v4": "npx tsx scripts/verify-blog-production-readiness-v4.ts --strict",
     "collect:blog-production-evidence-v4": "npx tsx scripts/collect-blog-production-evidence-v4.ts",
+    "collect:blog-remote-migration-versions-v4": "npx tsx scripts/collect-blog-remote-migration-versions-v4.ts",
     "verify:blog-release-bundle-v4": "npx tsx scripts/verify-blog-orchestrator-v4-release-bundle.ts",
     "verify:blog-content-factory-release-bundle-v4": "npx tsx scripts/verify-blog-content-factory-v4-release-bundle.ts",
     "verify:blog-snapshot-artifact-v4": "npx tsx scripts/verify-blog-snapshot-artifact-v4.ts",
