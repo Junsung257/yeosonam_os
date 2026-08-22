@@ -325,8 +325,8 @@ begin
   )
   on conflict (provider, source_row_hash) do nothing;
 
-  select cluster_id into v_signal_cluster_id
-  from public.blog_demand_cluster_signals
+  select signals.cluster_id into v_signal_cluster_id
+  from public.blog_demand_cluster_signals as signals
   where provider = v_signal_provider and source_row_hash = v_signal_hash;
   if v_signal_cluster_id is distinct from v_cluster.id then
     raise exception 'blog_demand_signal_cluster_conflict';
