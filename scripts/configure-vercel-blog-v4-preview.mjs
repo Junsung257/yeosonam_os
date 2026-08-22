@@ -50,6 +50,9 @@ const values = [
   ['BLOG_GENERATION_CRON_ENABLED', 'false', 'encrypted'],
   ['BLOG_CONTENT_FACTORY_ENABLED', 'true', 'encrypted'],
   ['BLOG_AI_CONTROL_PLANE_ENABLED', '1', 'encrypted'],
+  // SERP is advisory metadata. Keep the staging canary independent from any
+  // inherited Naver credentials or a slow external search provider.
+  ['BLOG_PUBLISHER_SERP_RESEARCH_ENABLED', '0', 'encrypted'],
   ['BLOG_AUTOPUBLISH_MODE', 'draft_only', 'encrypted'],
   ['BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT', '1', 'encrypted'],
   // The staging branch contains two audited research-backlog operations.

@@ -307,6 +307,7 @@ const BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS = readBoundedIntEnv(
   2_000,
   45_000,
 );
+const BLOG_PUBLISHER_SERP_RESEARCH_ENABLED = process.env.BLOG_PUBLISHER_SERP_RESEARCH_ENABLED !== '0';
 // A candidate gets one draft plus up to four DeepSeek repair passes. The
 // research bundle/claim fingerprints remain persisted between attempts, so
 // retries may change expression and structure but never invent facts. Hard
@@ -4867,7 +4868,8 @@ async function generateFromTopic(
     ),
   });
   let serpResearchV3: SerpResearchPacketV3 | null = null;
-  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
+  const shouldAnalyzeSerp = BLOG_PUBLISHER_SERP_RESEARCH_ENABLED
+    && !privateRegeneration && Boolean(
     item.primary_keyword || contentBrief.primaryKeyword,
   );
   if (shouldAnalyzeSerp) {

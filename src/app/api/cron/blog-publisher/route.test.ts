@@ -81,9 +81,20 @@ describe('blog publisher quota recovery contract', () => {
 
     expect(source).toContain('BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS');
     expect(source).toContain('2_000,\n  45_000');
+    expect(source).toContain("process.env.BLOG_PUBLISHER_SERP_RESEARCH_ENABLED !== '0'");
     expect(serpBlock).toContain('withPublisherTimeout(');
     expect(serpBlock).toContain("'blog_serp_research'");
     expect(serpBlock).toContain('continuing with verified demand and official evidence only');
+  });
+
+  it('allows staging to disable advisory SERP calls without disabling factual research or writing', () => {
+    const source = routeSource();
+    const serpStart = source.indexOf('const shouldAnalyzeSerp =');
+    const serpBlock = source.slice(serpStart, source.indexOf('const contentBriefV3 =', serpStart));
+
+    expect(serpBlock).toContain('BLOG_PUBLISHER_SERP_RESEARCH_ENABLED');
+    expect(serpBlock).toContain('researchSerpNaverFirstV3({');
+    expect(source).toContain('generatePublisherBlogText(generationPrompt');
   });
 
   it('deduplicates micro-angle candidates by destination, broad angle, and micro angle', () => {
@@ -317,7 +328,8 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('const privateRegeneration = privateRegenerationRequest !== null');
-    expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
+    expect(source).toContain('const shouldAnalyzeSerp = BLOG_PUBLISHER_SERP_RESEARCH_ENABLED');
+    expect(source).toContain('!privateRegeneration && Boolean(');
     expect(source).not.toContain('maybeApplyChainOfDensity');
     expect(source).toContain('if (destForImage && !privateRegeneration) {');
     expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
