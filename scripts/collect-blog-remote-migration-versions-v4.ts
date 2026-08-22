@@ -32,7 +32,7 @@ function runReadOnlyMigrationQuery(query: string, workdir: string): string {
     'query',
     '--linked',
     '--agent',
-    'no',
+    'yes',
     '--output',
     'json',
     query,
