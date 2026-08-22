@@ -19,7 +19,7 @@ function main(): void {
   )) as { migrations: Array<{ version: string; file: string }> };
   const output = readFileSync(path, 'utf8');
   const observed = [...new Set(
-    [...output.matchAll(/\b(20\d{12})(?:_[a-zA-Z0-9_-]+)?(?:\.sql)?\b/g)].map((match) => match[1]!),
+    [...output.matchAll(/(?<!\d)(20\d{12})(?:_[a-zA-Z0-9_-]+)?(?:\.sql)?(?!\d)/g)].map((match) => match[1]!),
   )].sort();
   const expected = manifest.migrations.map((entry) => entry.version).sort();
   if (observed.length === 0 && process.argv.includes('--allow-empty')) {
