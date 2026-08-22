@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "release": "blog-v4-longrun-20260822",
+  "apply_mode": "baseline-first-exact-pending-set",
+  "migrations": [
+    {
+      "version": "20260818080000",
+      "file": "supabase/migrations/20260818080000_blog_deepseek_auto_repair_budget_v1.sql",
+      "sha256": "a406340ae0d53894f230321d03c166f560ac956302556ee208530b815aad1ef3"
+    },
+    {
+      "version": "20260819073009",
+      "file": "supabase/migrations/20260819073009_blog_v4_content_factory.sql",
+      "sha256": "7f8eb75eb2b1f38e2a0e94826f9c5e2dba9a567be78a07b82fd2b2c77e2c8a90"
+    },
+    {
+      "version": "20260819113000",
+      "file": "supabase/migrations/20260819113000_ai_control_plane_v1.sql",
+      "sha256": "291e16ce35bc3ad19328f6caf45f867996ea41f09c92d94974c87f409577e3ab"
+    },
+    {
+      "version": "20260820100000",
+      "file": "supabase/migrations/20260820100000_blog_publication_rollout_manual_transition_v1.sql",
+      "sha256": "fe5991a327f9d8f44702efd6c4b08a46b3b5b820920c6af2062295bdf8f00e5e"
+    },
+    {
+      "version": "20260820113000",
+      "file": "supabase/migrations/20260820113000_blog_publication_rollout_inventory_gate_v1.sql",
+      "sha256": "0b543c4dbf89b59ca210af9c33ec75407c430257e89bfbbcb3744a16be841c82"
+    }
+  ],
+  "production_data_clone": false,
+  "publication": "disabled",
+  "indexing": "disabled"
+}

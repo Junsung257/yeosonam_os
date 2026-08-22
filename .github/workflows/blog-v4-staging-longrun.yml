@@ -1,0 +1,1284 @@
+name: Blog V4 Staging Long-Run Schema Recovery
+
+on:
+  push:
+    branches:
+      - codex/blog-v4-integration-preview
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Recovery mode
+        required: true
+        default: recover_schema_and_canary
+        type: choice
+        options:
+          - recover_schema_and_canary
+          - resume
+          - verify_only
+      baseline_strategy:
+        description: Repository replay first; schema-only fallback requires protected approval
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - migration_replay
+          - approved_schema_only
+      execution_id:
+        description: Optional stable execution id for checkpoint grouping
+        required: false
+        type: string
+      source_run_id:
+        description: Existing run id for resume evidence lookup
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-v4-staging-longrun
+  cancel-in-progress: false
+
+env:
+  SUPABASE_CLI_VERSION: 2.111.0
+  SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+  BLOG_V4_PREVIEW_BRANCH: codex/blog-v4-integration-preview
+  SUPABASE_STAGING_BRANCH_NAME: blog-v4-staging
+
+jobs:
+  preflight:
+    name: Preflight Long-Run recovery train
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      execution_id: ${{ steps.identity.outputs.execution_id }}
+      status: ${{ steps.result.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_id='${{ inputs.execution_id }}'
+          if [ -z "$execution_id" ]; then execution_id="blog-v4-${GITHUB_RUN_ID}"; fi
+          if ! [[ "$execution_id" =~ ^[A-Za-z0-9._-]{8,80}$ ]]; then
+            echo "invalid execution_id" >&2
+            exit 1
+          fi
+          mkdir -p ".tmp/blog-v4-longrun/$execution_id/preflight"
+          echo "execution_id=$execution_id" >> "$GITHUB_OUTPUT"
+          echo "BLOG_V4_LONGRUN_EXECUTION_ID=$execution_id" >> "$GITHUB_ENV"
+      - name: Validate trusted sentinel trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$GITHUB_REF" = refs/heads/codex/blog-v4-integration-preview
+            git log -1 --pretty=%B | grep -F '[run-blog-v4-longrun]' >/dev/null
+          fi
+      - name: Run offline gates and manifest checks
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check:blog-v4-workflow:ci
+          npm run check:blog-v4-longrun-workflow:ci
+          npm run prepare:blog-v4-longrun-release -- \
+            --output=".tmp/blog-v4-longrun/$BLOG_V4_LONGRUN_EXECUTION_ID/preflight/release"
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = `.tmp/blog-v4-longrun/${process.env.BLOG_V4_LONGRUN_EXECUTION_ID}/preflight/preflight.json`;
+          const workflow = fs.readFileSync('.github/workflows/blog-v4-staging-longrun.yml', 'utf8').toLowerCase();
+          const forbidden = [
+            ['vercel', 'promote'].join(' '),
+            ['blog_autopublish_mode=', 'live'].join(''),
+            ['blog_generation_cron_enabled=', 'true'].join(''),
+            ['index', 'now'].join(''),
+            ['gsc', 'submission'].join(' '),
+            ['--', 'with', 'data'].join(''),
+          ];
+          const hits = forbidden.filter((token) => workflow.includes(token));
+          if (hits.length) throw new Error(`forbidden_production_action:${hits.join(',')}`);
+          fs.writeFileSync(path, JSON.stringify({
+            schemaVersion: 1,
+            executionId: process.env.BLOG_V4_LONGRUN_EXECUTION_ID,
+            mode: process.env.INPUT_MODE || null,
+            sourceRunId: process.env.INPUT_SOURCE_RUN_ID || null,
+            requiredObjects: 35,
+            providerMigrationMissing: 4,
+            productionWrites: 0,
+            credentialMode: 'deferred_to_protected_capture_job',
+            forbiddenActions: hits,
+          }, null, 2) + '\n');
+          NODE
+      - id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          export BLOG_V4_LONGRUN_EXECUTION_ID='${{ needs.preflight.outputs.execution_id }}'
+          echo "status=passed" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir=".tmp/blog-v4-longrun/${{ steps.identity.outputs.execution_id }}" \
+            --execution-id="${{ steps.identity.outputs.execution_id }}" \
+            --current-state=PREFLIGHT_COMPLETE --next-state=SCHEMA_DISCOVERY \
+            --completed=PREFLIGHT --production-writes=0 --production-reads=0 --ai-calls=0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blog-v4-longrun-preflight-${{ steps.identity.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ steps.identity.outputs.execution_id }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  schema-discovery:
+    name: Discover Blog V4 schema dependencies
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      execution_id: ${{ needs.preflight.outputs.execution_id }}
+      status: ${{ steps.result.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Run static dependency discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          export BLOG_V4_LONGRUN_EXECUTION_ID='${{ needs.preflight.outputs.execution_id }}'
+          echo "BLOG_V4_LONGRUN_EXECUTION_ID=$BLOG_V4_LONGRUN_EXECUTION_ID" >> "$GITHUB_ENV"
+          npm run discover:blog-v4-schema-dependencies -- \
+            --output-dir=".tmp/blog-v4-longrun/$BLOG_V4_LONGRUN_EXECUTION_ID/schema-discovery"
+      - id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(node -e 'const x=require(process.argv[1]); process.stdout.write(x.status)' \
+            ".tmp/blog-v4-longrun/$BLOG_V4_LONGRUN_EXECUTION_ID/schema-discovery/schema-dependencies.json")"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir=".tmp/blog-v4-longrun/$BLOG_V4_LONGRUN_EXECUTION_ID" \
+            --execution-id="$BLOG_V4_LONGRUN_EXECUTION_ID" \
+            --current-state=SCHEMA_DISCOVERY_COMPLETE \
+            --next-state=MIGRATION_REPLAY \
+            --completed=SCHEMA_DISCOVERY \
+            --production-writes=0 --production-reads=0 --ai-calls=0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blog-v4-longrun-discovery-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  migration-replay:
+    name: Replay repository migrations in ephemeral Supabase
+    needs: schema-discovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    outputs:
+      replay_status: ${{ steps.result.outputs.replay_status }}
+      execution_id: ${{ needs.schema-discovery.outputs.execution_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-discovery-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+      - name: Start ephemeral local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@"$SUPABASE_CLI_VERSION" start \
+            --exclude=studio,imgproxy,edge-runtime,logflare,vector
+      - name: Replay all repository migrations with no seed
+        shell: bash
+        run: |
+          set +e
+          mkdir -p ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          npx --yes supabase@"$SUPABASE_CLI_VERSION" db reset --local --no-seed \
+            > ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/migration-replay.log" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            set +e
+            npm run verify:blog-v4-required-objects -- \
+              --local \
+              --required-objects=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/schema-discovery/schema-dependencies.json" \
+              --discovery-report=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/schema-discovery/schema-dependencies.json" \
+              --stage=replay \
+              --output=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/object-contract-replay.json" \
+              >> ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/migration-replay.log" 2>&1
+            contract_status=$?
+            set -e
+            status=$contract_status
+          fi
+          echo "$status" > ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/migration-replay.exit"
+          if [ "$status" -ne 0 ]; then
+            sed -n '1,220p' ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/migration-replay.log" >&2
+          fi
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_code="$(cat ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/migration-replay.exit" 2>/dev/null || printf 1)"
+          replay_status=failed
+          current_state=MIGRATION_REPLAY_FAILED
+          next_state=BASELINE_BUILDER
+          if [ "$exit_code" = 0 ]; then
+            replay_status=passed
+            current_state=MIGRATION_REPLAY_COMPLETE
+            next_state=BASELINE_REHEARSAL
+          fi
+          echo "replay_status=$replay_status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}" \
+            --execution-id="${{ needs.schema-discovery.outputs.execution_id }}" \
+            --current-state="$current_state" --next-state="$next_state" \
+            --completed=SCHEMA_DISCOVERY,MIGRATION_REPLAY \
+            --production-writes=0 --production-reads=0 --ai-calls=0 || true
+      - name: Stop ephemeral local Supabase
+        if: always()
+        shell: bash
+        run: npx --yes supabase@"$SUPABASE_CLI_VERSION" stop --no-backup || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-replay-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  capture-schema:
+    name: Capture approved data-free Production schema
+    needs: [schema-discovery, migration-replay]
+    if: >-
+      always() && needs.migration-replay.outputs.replay_status == 'failed' &&
+      (inputs.baseline_strategy == 'auto' || inputs.baseline_strategy == 'approved_schema_only')
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: blog-staging-schema-read
+    env:
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      SUPABASE_PRODUCTION_SCHEMA_ONLY_DATABASE_URL: ${{ secrets.SUPABASE_PRODUCTION_SCHEMA_ONLY_DATABASE_URL }}
+      SUPABASE_PRODUCTION_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+      BLOG_SCHEMA_READ_APPROVED: ${{ secrets.BLOG_SCHEMA_READ_APPROVED }}
+    outputs:
+      baseline_status: ${{ steps.result.outputs.baseline_status }}
+      credential_mode: ${{ steps.result.outputs.credential_mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-discovery-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+      - name: Resolve schema-read credential mode
+        id: credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          npm run resolve:blog-v4-schema-read-credentials -- \
+            --output="$execution_dir/capture/credential-resolution.json"
+          mode="$(node -e 'const x=require(process.argv[1]); process.stdout.write(x.mode)' "$execution_dir/capture/credential-resolution.json")"
+          echo "credential_mode=$mode" >> "$GITHUB_OUTPUT"
+      - name: Read migration metadata and capture schema only
+        if: steps.credential.outputs.credential_mode != 'missing'
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          if [ "${BLOG_SCHEMA_READ_APPROVED:-}" != true ]; then
+            echo "Protected schema-only environment is not approved" >&2
+            exit 1
+          fi
+          mode="${{ steps.credential.outputs.credential_mode }}"
+          history=''
+          if [ "$mode" = url ]; then
+            history="$(npx --yes supabase@"$SUPABASE_CLI_VERSION" migration list \
+              --db-url "$SUPABASE_PRODUCTION_SCHEMA_ONLY_DATABASE_URL" 2>/dev/null \
+              | grep -Eo '[0-9]{14}' | sort -u | paste -sd, - || true)"
+          elif [ "$mode" = linked-password ]; then
+            linked_workdir="$RUNNER_TEMP/blog-v4-production-schema-read"
+            mkdir -p "$linked_workdir/supabase"
+            printf '[project]\n\n' > "$linked_workdir/supabase/config.toml"
+            npx --yes supabase@"$SUPABASE_CLI_VERSION" link \
+              --workdir "$linked_workdir" \
+              --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
+              --password "$SUPABASE_PRODUCTION_DB_PASSWORD" \
+              --yes >/dev/null
+            history="$(npx --yes supabase@"$SUPABASE_CLI_VERSION" migration list \
+              --workdir "$linked_workdir" --linked \
+              --password "$SUPABASE_PRODUCTION_DB_PASSWORD" 2>/dev/null \
+              | grep -Eo '[0-9]{14}' | sort -u | paste -sd, - || true)"
+          else
+            echo "Unsupported schema-read credential mode: $mode" >&2
+            exit 1
+          fi
+          schemas="$(node -e 'const x=require(process.argv[1]); const names=(x.requiredObjects||[]).map((e)=>String(e.name||"")); const out=[...new Set(names.map((name)=>name.split(".")[0]).filter((name)=>name && !["auth","storage","realtime","vault"].includes(name)))].sort(); process.stdout.write(out.join(",") || "public")' "$execution_dir/schema-discovery/schema-dependencies.json")"
+          npm run collect:yeosonam-schema-baseline-v4 -- \
+            --database-url-env=SUPABASE_PRODUCTION_SCHEMA_ONLY_DATABASE_URL \
+            --approve-production-schema-read \
+            --source-ref="$SUPABASE_PRODUCTION_PROJECT_REF" \
+            --schemas="$schemas" \
+            --required-objects="$execution_dir/schema-discovery/schema-dependencies.json" \
+            --embodied-migrations="$history" \
+            --pending-after-baseline=20260818080000,20260819073009,20260819113000,20260820100000,20260820113000 \
+            --output-dir="$execution_dir/baseline"
+          npm run verify:yeosonam-schema-baseline-v4 -- \
+            --input="$execution_dir/baseline/baseline.sql" \
+            --required-objects="$execution_dir/baseline/required-objects.json"
+          echo 0 > "$execution_dir/capture/capture.exit"
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=failed
+          if [ -f ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/baseline/manifest.json" ] \
+            && [ -f ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/capture/capture.exit" ]; then status=passed; fi
+          echo "baseline_status=$status" >> "$GITHUB_OUTPUT"
+          credential_mode="$(node -e 'try { const x=require(process.argv[1]); process.stdout.write(x.mode || "missing") } catch { process.stdout.write("missing") }' ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/capture/credential-resolution.json")"
+          echo "credential_mode=$credential_mode" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}" \
+            --execution-id="${{ needs.schema-discovery.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf BASELINE_SCHEMA_COMPLETE || printf BASELINE_SCHEMA_BLOCKED)" \
+            --next-state="$([ "$status" = passed ] && printf BASELINE_REHEARSAL || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=SCHEMA_DISCOVERY,MIGRATION_REPLAY,SCHEMA_BASELINE \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-baseline-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  sanitize-baseline:
+    name: Verify and publish sanitized baseline artifact
+    needs: [schema-discovery, capture-schema]
+    if: >-
+      always() && needs.capture-schema.outputs.baseline_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      sanitize_status: ${{ steps.result.outputs.sanitize_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-baseline-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+      - name: Re-verify data-free baseline and required objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          npm run verify:yeosonam-schema-baseline-v4 -- \
+            --input="$execution_dir/baseline/baseline.sql" \
+            --required-objects="$execution_dir/baseline/required-objects.json"
+          test "$(node -e 'const x=require(process.argv[1]); process.stdout.write(String(x.containsData))' "$execution_dir/baseline/manifest.json")" = false
+          test -f "$execution_dir/baseline/credential-mode.json"
+          echo 0 > "$execution_dir/baseline/sanitize.exit"
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          status=failed
+          if [ -f "$execution_dir/baseline/manifest.json" ] && [ -f "$execution_dir/baseline/credential-mode.json" ] && [ -f "$execution_dir/baseline/sanitize.exit" ]; then status=passed; fi
+          echo "sanitize_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" \
+            --execution-id="${{ needs.schema-discovery.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf BASELINE_SANITIZE_COMPLETE || printf BASELINE_SANITIZE_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf BASELINE_REHEARSAL || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,MIGRATION_REPLAY,SCHEMA_CAPTURE,BASELINE_SANITIZE \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-sanitized-baseline-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  baseline-rehearsal:
+    name: Rehearse data-free baseline and Blog V4 migrations
+    needs: [schema-discovery, sanitize-baseline]
+    if: >-
+      always() && needs.sanitize-baseline.outputs.sanitize_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    outputs:
+      rehearsal_status: ${{ steps.result.outputs.rehearsal_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-sanitized-baseline-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+      - name: Start empty ephemeral Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@"$SUPABASE_CLI_VERSION" start \
+            --exclude=studio,imgproxy,edge-runtime,logflare,vector
+      - name: Apply baseline and pending Blog V4 migrations locally
+        shell: bash
+        run: |
+          set +e
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          log="$execution_dir/baseline-rehearsal.log"
+          status=1
+          {
+            command -v psql
+            db_url="$(npx --yes supabase@"$SUPABASE_CLI_VERSION" status -o env | sed -n 's/^DB_URL=//p' | head -n 1)"
+            test -n "$db_url"
+            psql "$db_url" -v ON_ERROR_STOP=1 -f "$execution_dir/baseline/baseline.sql"
+            npm run prepare:blog-v4-longrun-release -- \
+              --migration-history="$execution_dir/baseline/migration-history.json" \
+              --output="$execution_dir/rehearsal-release"
+            find "$execution_dir/rehearsal-release/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -print0 \
+              | sort -z \
+              | xargs -0 -r -n 1 psql "$db_url" -v ON_ERROR_STOP=1 -f
+            npm run verify:blog-v4-required-objects -- \
+              --local \
+              --required-objects="$execution_dir/schema-discovery/schema-dependencies.json" \
+              --discovery-report="$execution_dir/schema-discovery/schema-dependencies.json" \
+              --stage=rehearsal \
+              --output="$execution_dir/object-contract-rehearsal.json"
+            status=0
+          } > "$log" 2>&1
+          echo "$status" > "$execution_dir/baseline-rehearsal.exit"
+          if [ "$status" -ne 0 ]; then sed -n '1,260p' "$log" >&2; fi
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
+          exit_code="$(cat "$execution_dir/baseline-rehearsal.exit" 2>/dev/null || printf 1)"
+          rehearsal_status=failed
+          current_state=BASELINE_REHEARSAL_FAILED
+          next_state=HUMAN_APPROVAL_REQUIRED
+          if [ "$exit_code" = 0 ]; then
+            rehearsal_status=passed
+            current_state=BASELINE_REHEARSAL_COMPLETE
+            next_state=STAGING_RECREATE
+          fi
+          echo "rehearsal_status=$rehearsal_status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" \
+            --execution-id="${{ needs.schema-discovery.outputs.execution_id }}" \
+            --current-state="$current_state" --next-state="$next_state" \
+            --completed=SCHEMA_DISCOVERY,MIGRATION_REPLAY,SCHEMA_BASELINE,BASELINE_REHEARSAL \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - name: Stop empty ephemeral Supabase
+        if: always()
+        shell: bash
+        run: npx --yes supabase@"$SUPABASE_CLI_VERSION" stop --no-backup || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-rehearsal-${{ needs.schema-discovery.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  rebuild-staging:
+    name: Rebuild isolated persistent staging branch
+    needs: [preflight, baseline-rehearsal]
+    if: >-
+      always() && needs.baseline-rehearsal.outputs.rehearsal_status == 'passed' &&
+      inputs.mode != 'verify_only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+    outputs:
+      rebuild_status: ${{ steps.result.outputs.rebuild_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Recreate staging branch without production data
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/staging-rebuild
+          evidence_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/staging-rebuild"
+          before="$RUNNER_TEMP/blog-v4-staging-before.txt"
+          supabase --experimental branches get "$STAGING_BRANCH_NAME" \
+            --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
+            --output pretty > "$before" 2>&1
+          before_status=$?
+          sha256sum "$before" | cut -d' ' -f1 > "$evidence_dir/existing-branch-evidence.sha256"
+          if [ "$before_status" -eq 0 ]; then
+            supabase --experimental branches delete "$STAGING_BRANCH_NAME" \
+              --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" --yes \
+              > "$evidence_dir/rebuild.log" 2>&1
+            delete_status=$?
+            if [ "$delete_status" -ne 0 ]; then
+              echo "$delete_status" > "$evidence_dir/rebuild.exit"
+              exit 0
+            fi
+            for attempt in $(seq 1 30); do
+              if ! supabase --experimental branches get "$STAGING_BRANCH_NAME" \
+                --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" >/dev/null 2>&1; then break; fi
+              sleep 5
+            done
+          fi
+          supabase --experimental branches create "$STAGING_BRANCH_NAME" \
+            --persistent --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
+            --git-branch "$BLOG_V4_PREVIEW_BRANCH" --yes \
+            >> "$evidence_dir/rebuild.log" 2>&1
+          create_status=$?
+          if [ "$create_status" -eq 0 ]; then
+            for attempt in $(seq 1 30); do
+              if supabase --experimental branches get "$STAGING_BRANCH_NAME" \
+                --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
+                --output pretty > "$evidence_dir/branch-status.txt" 2>&1; then
+                if grep -Eiq 'ACTIVE|HEALTHY|RUNNING|READY' "$evidence_dir/branch-status.txt"; then
+                  echo 0 > "$evidence_dir/rebuild.exit"
+                  exit 0
+                fi
+              fi
+              sleep 10
+            done
+          fi
+          echo "$create_status" > "$evidence_dir/rebuild.exit"
+          sed -n '1,160p' "$evidence_dir/rebuild.log" >&2 || true
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/staging-rebuild"
+          code="$(cat "$evidence_dir/rebuild.exit" 2>/dev/null || printf 1)"
+          status=failed
+          if [ "$code" = 0 ]; then status=passed; fi
+          echo "rebuild_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}" \
+            --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf STAGING_REBUILT || printf STAGING_REBUILD_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf STAGING_APPLY || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-staging-rebuild-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  apply-staging:
+    name: Apply baseline and Blog V4 migrations to staging
+    needs: [preflight, schema-discovery, sanitize-baseline, rebuild-staging]
+    if: >-
+      always() && needs.rebuild-staging.outputs.rebuild_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+    outputs:
+      apply_status: ${{ steps.result.outputs.apply_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-sanitized-baseline-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+      - name: Resolve branch credentials and isolate workdir
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch_env="$RUNNER_TEMP/blog-v4-staging.env"
+          supabase --experimental branches get "$STAGING_BRANCH_NAME" \
+            --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" --output env > "$branch_env"
+          read_env_value() { sed -n -E "s/^$1=(.*)$/\\1/p" "$branch_env" | head -n 1 | sed -E "s/^[\"']|[\"']$//g"; }
+          staging_url="$(read_env_value API_URL)"; [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
+          staging_ref="$(node -e 'try { const u=new URL(process.argv[1]); const h=u.hostname.split("."); process.stdout.write(h[0] || ""); } catch {}' "$staging_url")"
+          service_role="$(read_env_value SERVICE_ROLE_KEY)"; [ -n "$service_role" ] || service_role="$(read_env_value SUPABASE_SERVICE_ROLE_KEY)"
+          db_password="$(read_env_value DB_PASSWORD)"; [ -n "$db_password" ] || db_password="$(read_env_value PASSWORD)"
+          db_url="$(read_env_value POSTGRES_URL_NON_POOLING)"; [ -n "$db_url" ] || db_url="$(read_env_value POSTGRES_URL)"
+          [ -n "$staging_url" ] && [ -n "$staging_ref" ] && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ]
+          [ -n "$service_role" ] && [ -n "$db_password" ] && [ -n "$db_url" ]
+          echo "::add-mask::$service_role"; echo "::add-mask::$db_password"; echo "::add-mask::$db_url"
+          {
+            echo "SUPABASE_STAGING_PROJECT_REF=$staging_ref"
+            echo "SUPABASE_STAGING_URL=$staging_url"
+            echo "SUPABASE_STAGING_SERVICE_ROLE_KEY=$service_role"
+            echo "SUPABASE_STAGING_DB_PASSWORD=$db_password"
+            echo "SUPABASE_STAGING_DATABASE_URL=$db_url"
+          } >> "$GITHUB_ENV"
+          isolated='.tmp/supabase-blog-v4-staging'
+          mkdir -p "$isolated/supabase"
+          printf '[project]\n\n' > "$isolated/supabase/config.toml"
+          supabase link --workdir "$isolated" --project-ref "$staging_ref" --password "$db_password" --yes >/dev/null
+          linked_ref="$(tr -d '\r\n' < "$isolated/supabase/.temp/project-ref")"
+          test "$linked_ref" = "$staging_ref" && test "$linked_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF"
+      - name: Apply data-free baseline, align staging history, and apply V4
+        shell: bash
+        run: |
+          set +e
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          log="$execution_dir/staging-apply.log"
+          status=1
+          {
+            psql "$SUPABASE_STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$execution_dir/baseline/baseline.sql"
+            npm run verify:blog-v4-required-objects -- \
+              --database-url-env=SUPABASE_STAGING_DATABASE_URL \
+              --expected-project-ref="$SUPABASE_STAGING_PROJECT_REF" \
+              --required-objects="$execution_dir/schema-discovery/schema-dependencies.json" \
+              --discovery-report="$execution_dir/schema-discovery/schema-dependencies.json" \
+              --stage=staging \
+              --output="$execution_dir/object-contract-staging-baseline.json"
+            versions="$(node -e 'const x=require(process.argv[1]); process.stdout.write((x.embodiedMigrations||[]).join(" "))' "$execution_dir/baseline/migration-history.json")"
+            if [ -n "$versions" ]; then
+              supabase migration repair --workdir .tmp/supabase-blog-v4-staging --linked \
+                --password "$SUPABASE_STAGING_DB_PASSWORD" --status applied --yes $versions
+            fi
+            npm run prepare:blog-v4-longrun-release -- \
+              --migration-history="$execution_dir/baseline/migration-history.json" \
+              --output="$execution_dir/staging-release"
+            supabase link --workdir "$execution_dir/staging-release" \
+              --project-ref "$SUPABASE_STAGING_PROJECT_REF" \
+              --password "$SUPABASE_STAGING_DB_PASSWORD" --yes >/dev/null
+            supabase db push --workdir "$execution_dir/staging-release" --linked \
+              --include-all --yes --password "$SUPABASE_STAGING_DB_PASSWORD"
+            npm run verify:blog-v4-required-objects -- \
+              --database-url-env=SUPABASE_STAGING_DATABASE_URL \
+              --expected-project-ref="$SUPABASE_STAGING_PROJECT_REF" \
+              --required-objects="$execution_dir/schema-discovery/schema-dependencies.json" \
+              --discovery-report="$execution_dir/schema-discovery/schema-dependencies.json" \
+              --stage=staging \
+              --output="$execution_dir/object-contract-staging.json"
+            status=0
+          } > "$log" 2>&1
+          echo "$status" > "$execution_dir/staging-apply.exit"
+          if [ "$status" -ne 0 ]; then sed -n '1,260p' "$log" >&2; fi
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          code="$(cat "$execution_dir/staging-apply.exit" 2>/dev/null || printf 1)"
+          status=failed
+          if [ "$code" = 0 ] && [ -f "$execution_dir/object-contract-staging.json" ]; then status=passed; fi
+          echo "apply_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf STAGING_APPLIED || printf STAGING_APPLY_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf SECURITY_VERIFY || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD,STAGING_APPLY \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-staging-apply-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  security-verify:
+    name: Verify staging RLS and security-definer contracts
+    needs: [preflight, schema-discovery, apply-staging]
+    if: >-
+      always() && needs.apply-staging.outputs.apply_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+    outputs:
+      security_status: ${{ steps.result.outputs.security_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-staging-apply-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+      - name: Resolve staging database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch_env="$RUNNER_TEMP/blog-v4-staging.env"
+          supabase --experimental branches get "$STAGING_BRANCH_NAME" --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" --output env > "$branch_env"
+          read_env_value() { sed -n -E "s/^$1=(.*)$/\\1/p" "$branch_env" | head -n 1 | sed -E "s/^[\"']|[\"']$//g"; }
+          staging_url="$(read_env_value API_URL)"; [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
+          staging_ref="$(node -e 'try { const u=new URL(process.argv[1]); process.stdout.write(u.hostname.split(".")[0] || ""); } catch {}' "$staging_url")"
+          db_url="$(read_env_value POSTGRES_URL_NON_POOLING)"; [ -n "$db_url" ] || db_url="$(read_env_value POSTGRES_URL)"
+          [ -n "$staging_ref" ] && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ] && [ -n "$db_url" ]
+          echo "::add-mask::$db_url"
+          { echo "SUPABASE_STAGING_PROJECT_REF=$staging_ref"; echo "SUPABASE_STAGING_DATABASE_URL=$db_url"; } >> "$GITHUB_ENV"
+      - name: Run read-only security verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          npm run verify:blog-v4-staging-security -- \
+            --database-url-env=SUPABASE_STAGING_DATABASE_URL \
+            --expected-project-ref="$SUPABASE_STAGING_PROJECT_REF" \
+            --discovery-report="$execution_dir/schema-discovery/schema-dependencies.json" \
+            --output="$execution_dir/staging-security.json"
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          status=failed
+          if [ "$(node -e 'try { process.stdout.write(String(require(process.argv[1]).passed)) } catch { process.stdout.write("false") }' "$execution_dir/staging-security.json")" = true ]; then status=passed; fi
+          echo "security_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf SECURITY_VERIFY_COMPLETE || printf SECURITY_VERIFY_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf STAGING_SEED || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD,STAGING_APPLY,SECURITY_VERIFY \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-security-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  seed-staging:
+    name: Seed one idempotent staging fixture
+    needs: [preflight, security-verify]
+    if: >-
+      always() && needs.security-verify.outputs.security_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+      BLOG_V4_STAGING_SEED_KEY: blog-v4-staging-${{ needs.preflight.outputs.execution_id }}
+    outputs:
+      seed_status: ${{ steps.result.outputs.seed_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Resolve staging runtime credentials and seed
+        shell: bash
+        run: |
+          set +e
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          branch_env="$RUNNER_TEMP/blog-v4-staging.env"
+          supabase --experimental branches get "$STAGING_BRANCH_NAME" --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" --output env > "$branch_env"
+          read_env_value() { sed -n -E "s/^$1=(.*)$/\\1/p" "$branch_env" | head -n 1 | sed -E "s/^[\"']|[\"']$//g"; }
+          staging_url="$(read_env_value API_URL)"; [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
+          staging_ref="$(node -e 'try { const u=new URL(process.argv[1]); process.stdout.write(u.hostname.split(".")[0] || ""); } catch {}' "$staging_url")"
+          service_role="$(read_env_value SERVICE_ROLE_KEY)"; [ -n "$service_role" ] || service_role="$(read_env_value SUPABASE_SERVICE_ROLE_KEY)"
+          [ -n "$staging_url" ] && [ -n "$service_role" ] && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ]
+          echo "::add-mask::$service_role"
+          SUPABASE_URL="$staging_url" SUPABASE_SERVICE_ROLE_KEY="$service_role" \
+            npm run seed:blog-v4-staging -- --mode=seed --seed-key="$BLOG_V4_STAGING_SEED_KEY" \
+            > "$execution_dir/seed.json" 2> "$execution_dir/seed.log"
+          status=$?
+          echo "$status" > "$execution_dir/seed.exit"
+          if [ "$status" -ne 0 ]; then sed -n '1,160p' "$execution_dir/seed.log" >&2; fi
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          code="$(cat "$execution_dir/seed.exit" 2>/dev/null || printf 1)"
+          status=failed
+          if [ "$code" = 0 ] && [ -s "$execution_dir/seed.json" ]; then status=passed; fi
+          echo "seed_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf STAGING_SEED_COMPLETE || printf STAGING_SEED_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf PREVIEW_DEPLOY || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD,STAGING_APPLY,SECURITY_VERIFY,STAGING_SEED \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-seed-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  preview-deploy:
+    name: Deploy Vercel Preview in draft-only mode
+    needs: [preflight, seed-staging]
+    if: >-
+      always() && needs.seed-staging.outputs.seed_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+      DEEPSEEK_STAGING_API_KEY: ${{ secrets.DEEPSEEK_STAGING_API_KEY || secrets.DEEPSEEK_API_KEY }}
+      BLOG_V4_SHARED_KEY_USED: ${{ secrets.DEEPSEEK_STAGING_API_KEY == '' && secrets.DEEPSEEK_API_KEY != '' }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID || secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID || secrets.VERCEL_PROJECT_ID }}
+      BLOG_V4_STAGING_CRON_SECRET: ${{ secrets.BLOG_V4_STAGING_CRON_SECRET || secrets.CRON_SECRET }}
+      VERCEL_CLI_VERSION: 53.3.2
+    outputs:
+      preview_status: ${{ steps.result.outputs.preview_status }}
+      preview_url: ${{ steps.deploy.outputs.preview_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Resolve staging runtime and deploy Preview only
+        id: deploy
+        shell: bash
+        run: |
+          set +e
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          mkdir -p "$execution_dir/preview"
+          branch_env="$RUNNER_TEMP/blog-v4-staging.env"
+          supabase --experimental branches get "$STAGING_BRANCH_NAME" --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" --output env > "$branch_env"
+          read_env_value() { sed -n -E "s/^$1=(.*)$/\\1/p" "$branch_env" | head -n 1 | sed -E "s/^[\"']|[\"']$//g"; }
+          staging_url="$(read_env_value API_URL)"; [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
+          staging_ref="$(node -e 'try { const u=new URL(process.argv[1]); process.stdout.write(u.hostname.split(".")[0] || ""); } catch {}' "$staging_url")"
+          service_role="$(read_env_value SERVICE_ROLE_KEY)"; [ -n "$service_role" ] || service_role="$(read_env_value SUPABASE_SERVICE_ROLE_KEY)"
+          [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ] && [ -n "$staging_url" ] && [ -n "$service_role" ] && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ]
+          [ -n "$BLOG_V4_STAGING_CRON_SECRET" ] && [ -n "$DEEPSEEK_STAGING_API_KEY" ]
+          for secret in "$VERCEL_TOKEN" "$service_role" "$DEEPSEEK_STAGING_API_KEY" "$BLOG_V4_STAGING_CRON_SECRET"; do echo "::add-mask::$secret"; done
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=preview \
+            --git-branch="$BLOG_V4_PREVIEW_BRANCH" --token="$VERCEL_TOKEN" \
+            > "$execution_dir/preview/pull.log" 2>&1
+          build_env=(
+            "SUPABASE_URL=$staging_url"
+            "NEXT_PUBLIC_SUPABASE_URL=$staging_url"
+            "SUPABASE_PROJECT_REF=$staging_ref"
+            "SUPABASE_SERVICE_ROLE_KEY=$service_role"
+            "DEEPSEEK_API_KEY=$DEEPSEEK_STAGING_API_KEY"
+            "BLOG_V4_SHARED_KEY_USED=$BLOG_V4_SHARED_KEY_USED"
+            "CRON_SECRET=$BLOG_V4_STAGING_CRON_SECRET"
+            "BLOG_V4_ENVIRONMENT=staging"
+            "BLOG_GENERATION_CRON_ENABLED=false"
+            "BLOG_CONTENT_FACTORY_ENABLED=true"
+            "BLOG_AI_CONTROL_PLANE_ENABLED=1"
+            "BLOG_AUTOPUBLISH_MODE=draft_only"
+            "BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1"
+            "BLOG_DAILY_PUBLISH_CAP=1"
+            "BLOG_PUBLICATION_RAMP_STAGE=pilot_3"
+            "BLOG_AUTO_RAMP_ENABLED=false"
+            "BLOG_AUTO_ROLLBACK_ENABLED=true"
+            "BLOG_DAILY_AI_COST_CAP_USD=0.25"
+            "BLOG_OPS_ALLOW_CRON_FALLBACK=0"
+          )
+          build_args=(); for value in "${build_env[@]}"; do build_args+=(--build-env "$value"); done
+          npx --yes vercel@"$VERCEL_CLI_VERSION" build --token="$VERCEL_TOKEN" "${build_args[@]}" \
+            > "$execution_dir/preview/build.log" 2>&1
+          deploy_args=(); for value in "${build_env[@]}"; do deploy_args+=(--env "$value"); done
+          deployment_json="$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --target=preview --yes --format=json \
+            --token="$VERCEL_TOKEN" "${deploy_args[@]}" 2> "$execution_dir/preview/deploy.log")"
+          deployment_url="$(node -e 'try { const x=JSON.parse(process.argv[1]); process.stdout.write(x.url || x.inspectorUrl || ""); } catch {}' "$deployment_json")"
+          if [ -z "$deployment_url" ]; then echo 1 > "$execution_dir/preview/deploy.exit"; exit 0; fi
+          echo "$deployment_url" > "$execution_dir/preview/url.txt"
+          echo "preview_url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo 0 > "$execution_dir/preview/deploy.exit"
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          code="$(cat "$execution_dir/preview/deploy.exit" 2>/dev/null || printf 1)"
+          status=failed
+          if [ "$code" = 0 ] && [ -s "$execution_dir/preview/url.txt" ]; then status=passed; fi
+          echo "preview_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf PREVIEW_DEPLOY_COMPLETE || printf PREVIEW_DEPLOY_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf DRAFT_CANARY || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD,STAGING_APPLY,SECURITY_VERIFY,STAGING_SEED,PREVIEW_DEPLOY \
+            --production-writes=0 --production-reads=1 --ai-calls=0 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-preview-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  draft-canary:
+    name: Generate exactly one staging draft
+    needs: [preflight, preview-deploy]
+    if: >-
+      always() && needs.preview-deploy.outputs.preview_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+      BLOG_V4_STAGING_CRON_SECRET: ${{ secrets.BLOG_V4_STAGING_CRON_SECRET || secrets.CRON_SECRET }}
+      PREVIEW_URL: ${{ needs.preview-deploy.outputs.preview_url }}
+    outputs:
+      canary_status: ${{ steps.result.outputs.canary_status }}
+      operation_id: ${{ steps.generate.outputs.operation_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Trigger one forced draft generation
+        id: generate
+        shell: bash
+        run: |
+          set +e
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          mkdir -p "$execution_dir/canary"
+          [ -n "$PREVIEW_URL" ] && [ -n "$BLOG_V4_STAGING_CRON_SECRET" ]
+          echo "::add-mask::$BLOG_V4_STAGING_CRON_SECRET"
+          curl --fail --silent --show-error --location --retry 2 --max-time 300 \
+            --header "Authorization: Bearer $BLOG_V4_STAGING_CRON_SECRET" \
+            "$PREVIEW_URL/api/cron/blog-generate?force=true" \
+            > "$execution_dir/canary/force-generation.json"
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            operation_id="$(node -e 'try { const x=require(process.argv[1]); process.stdout.write(x.workflows?.[0]?.operationId || x.materialization?.operationIds?.[0] || ""); } catch {}' "$execution_dir/canary/force-generation.json")"
+            if [[ "$operation_id" =~ ^[0-9a-f-]{36}$ ]]; then
+              echo "operation_id=$operation_id" >> "$GITHUB_OUTPUT"
+              echo "$operation_id" > "$execution_dir/canary/operation-id.txt"
+              echo 0 > "$execution_dir/canary/generate.exit"
+            else
+              echo 1 > "$execution_dir/canary/generate.exit"
+            fi
+          else
+            echo 1 > "$execution_dir/canary/generate.exit"
+          fi
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          code="$(cat "$execution_dir/canary/generate.exit" 2>/dev/null || printf 1)"
+          status=failed
+          if [ "$code" = 0 ] && [ -s "$execution_dir/canary/operation-id.txt" ]; then status=passed; fi
+          echo "canary_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf DRAFT_CANARY_STARTED || printf DRAFT_CANARY_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf ARTIFACT_EXPORT || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD,STAGING_APPLY,SECURITY_VERIFY,STAGING_SEED,PREVIEW_DEPLOY,DRAFT_CANARY \
+            --production-writes=0 --production-reads=1 --ai-calls=1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-canary-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  artifact-export:
+    name: Export and verify one draft artifact
+    needs: [preflight, schema-discovery, draft-canary]
+    if: >-
+      always() && needs.draft-canary.outputs.canary_status == 'passed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: blog-staging-bootstrap
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+      STAGING_BRANCH_NAME: blog-v4-staging
+      BLOG_V4_OPERATION_ID: ${{ needs.draft-canary.outputs.operation_id }}
+    outputs:
+      artifact_status: ${{ steps.result.outputs.artifact_status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: blog-v4-longrun-canary-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/
+      - name: Resolve staging runtime credentials and export artifact
+        shell: bash
+        run: |
+          set +e
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          branch_env="$RUNNER_TEMP/blog-v4-staging.env"
+          supabase --experimental branches get "$STAGING_BRANCH_NAME" --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" --output env > "$branch_env"
+          read_env_value() { sed -n -E "s/^$1=(.*)$/\\1/p" "$branch_env" | head -n 1 | sed -E "s/^[\"']|[\"']$//g"; }
+          staging_url="$(read_env_value API_URL)"; [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
+          staging_ref="$(node -e 'try { const u=new URL(process.argv[1]); process.stdout.write(u.hostname.split(".")[0] || ""); } catch {}' "$staging_url")"
+          service_role="$(read_env_value SERVICE_ROLE_KEY)"; [ -n "$service_role" ] || service_role="$(read_env_value SUPABASE_SERVICE_ROLE_KEY)"
+          [ -n "$staging_url" ] && [ -n "$service_role" ] && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ]
+          echo "::add-mask::$service_role"
+          SUPABASE_URL="$staging_url" SUPABASE_SERVICE_ROLE_KEY="$service_role" \
+            npm run export:blog-v4-canary-artifact -- \
+              --operation-id="$BLOG_V4_OPERATION_ID" \
+              --output-dir="$execution_dir/artifact" \
+              > "$execution_dir/artifact-export.json" 2> "$execution_dir/artifact-export.log"
+          status=$?
+          if [ "$status" -eq 0 ] && [ -f "$execution_dir/artifact/evidence.json" ]; then
+            node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(x.passed!==true || x.candidateCount!==1 || x.publicationCount!==0 || x.indexingSideEffects!==0 || x.flashCalls>1 || x.proCalls>1 || x.aiCostUsd>0.25) process.exit(1)' "$execution_dir/artifact/evidence.json"
+            status=$?
+          fi
+          echo "$status" > "$execution_dir/artifact-export.exit"
+          if [ "$status" -ne 0 ]; then sed -n '1,220p' "$execution_dir/artifact-export.log" >&2 || true; fi
+      - id: result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
+          code="$(cat "$execution_dir/artifact-export.exit" 2>/dev/null || printf 1)"
+          status=failed
+          if [ "$code" = 0 ]; then status=passed; fi
+          echo "artifact_status=$status" >> "$GITHUB_OUTPUT"
+          npm run checkpoint:blog-v4-longrun -- \
+            --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
+            --current-state="$([ "$status" = passed ] && printf STAGING_CANARY_COMPLETE || printf ARTIFACT_EXPORT_FAILED)" \
+            --next-state="$([ "$status" = passed ] && printf COMPLETE || printf HUMAN_APPROVAL_REQUIRED)" \
+            --completed=PREFLIGHT,SCHEMA_DISCOVERY,SCHEMA_CAPTURE,BASELINE_REHEARSAL,STAGING_REBUILD,STAGING_APPLY,SECURITY_VERIFY,STAGING_SEED,PREVIEW_DEPLOY,DRAFT_CANARY,ARTIFACT_EXPORT \
+            --production-writes=0 --production-reads=1 --ai-calls=1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-v4-longrun-final-artifact-${{ needs.preflight.outputs.execution_id }}
+          path: .tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}/artifact/
+          if-no-files-found: warn
+          retention-days: 30
+
+  final-state:
+    name: Write long-run state and blocker
+    needs: [preflight, schema-discovery, migration-replay, capture-schema, sanitize-baseline, baseline-rehearsal, rebuild-staging, apply-staging, security-verify, seed-staging, preview-deploy, draft-canary, artifact-export]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize without secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode='${{ inputs.mode }}'
+          replay='${{ needs.migration-replay.outputs.replay_status }}'
+          baseline='${{ needs.capture-schema.outputs.baseline_status }}'
+          credential='${{ needs.capture-schema.outputs.credential_mode }}'
+          sanitize='${{ needs.sanitize-baseline.outputs.sanitize_status }}'
+          rehearsal='${{ needs.baseline-rehearsal.outputs.rehearsal_status }}'
+          rebuild='${{ needs.rebuild-staging.outputs.rebuild_status }}'
+          apply='${{ needs.apply-staging.outputs.apply_status }}'
+          security='${{ needs.security-verify.outputs.security_status }}'
+          seed='${{ needs.seed-staging.outputs.seed_status }}'
+          preview='${{ needs.preview-deploy.outputs.preview_status }}'
+          draft='${{ needs.draft-canary.outputs.canary_status }}'
+          artifact='${{ needs.artifact-export.outputs.artifact_status }}'
+          state=BLOCKED
+          blocker=REPOSITORY_MIGRATION_REPLAY_FAILED_AND_SCHEMA_ONLY_APPROVAL_NOT_COMPLETE
+          next=HUMAN_APPROVAL_REQUIRED
+          if [ "$artifact" = passed ]; then
+            state=STAGING_CANARY_COMPLETE
+            blocker=''
+            next=COMPLETE
+          elif [ "$draft" = passed ]; then
+            state=DRAFT_CANARY_INCOMPLETE
+            blocker=ARTIFACT_EXPORT_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$preview" = passed ]; then
+            state=PREVIEW_DEPLOY_COMPLETE
+            blocker=DRAFT_CANARY_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$seed" = passed ]; then
+            state=STAGING_SEED_COMPLETE
+            blocker=PREVIEW_DEPLOY_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$security" = passed ]; then
+            state=STAGING_APPLIED_SECURITY_COMPLETE
+            blocker=STAGING_SEED_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$apply" = passed ]; then
+            state=STAGING_APPLIED
+            blocker=STAGING_SECURITY_VERIFY_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$rebuild" = passed ]; then
+            state=STAGING_REBUILT
+            blocker=STAGING_APPLY_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$replay" = passed ]; then
+            state=EPHEMERAL_REPLAY_COMPLETE
+            blocker=''
+            next=STAGING_RECREATE
+          elif [ "$baseline" = passed ] && [ "$rehearsal" = passed ]; then
+            state=VERIFY_ONLY_COMPLETE
+            blocker=''
+            next=STAGING_RECREATE
+          elif [ "$baseline" = passed ]; then
+            state=BASELINE_SCHEMA_COMPLETE
+            blocker=EPHEMERAL_BASELINE_REHEARSAL_FAILED
+            next=HUMAN_APPROVAL_REQUIRED
+          elif [ "$credential" = missing ]; then
+            state=SCHEMA_DISCOVERY_COMPLETE
+            blocker=SCHEMA_READ_CREDENTIAL_MISSING
+            next=HUMAN_APPROVAL_REQUIRED
+          fi
+          cat > longrun-summary.json <<JSON
+          {
+            "schemaVersion": 1,
+            "state": "$state",
+            "executionId": "${{ needs.schema-discovery.outputs.execution_id }}",
+            "replayStatus": "$replay",
+            "baselineStatus": "$baseline",
+            "credentialMode": "$credential",
+            "sanitizeStatus": "$sanitize",
+            "rehearsalStatus": "$rehearsal",
+            "rebuildStatus": "$rebuild",
+            "applyStatus": "$apply",
+            "securityStatus": "$security",
+            "seedStatus": "$seed",
+            "previewStatus": "$preview",
+            "draftStatus": "$draft",
+            "artifactStatus": "$artifact",
+            "hardBlocker": "$blocker",
+            "nextState": "$next",
+            "productionWrites": 0,
+            "productionReads": $([ "$baseline" = passed ] && printf 1 || printf 0),
+            "aiCalls": $([ "$artifact" = passed ] || [ "$draft" = passed ] && printf 1 || printf 0),
+            "publications": 0,
+            "indexingSideEffects": 0,
+            "productionDataCopied": false
+          }
+          JSON
+          cat longrun-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blog-v4-longrun-final-state-${{ needs.schema-discovery.outputs.execution_id }}
+          path: longrun-summary.json
+          retention-days: 30
