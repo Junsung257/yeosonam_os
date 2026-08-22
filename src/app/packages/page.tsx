@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { Suspense } from 'react';
 import PackagesClient from './PackagesClient';
 import Loading from './loading';
-
-const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
-  .replace(/\/+$/, '');
+import {
+  configuredSiteUrl,
+  isApprovedProductionEnvironment,
+  previewRobots,
+  safeHttpOrigin,
+} from '@/lib/preview-metadata';
 
 // 옵션 4a — Page 가 searchParams 안 받음 → 정적 prerender (`○`).
 //   클라이언트(PackagesClient) 가 useSearchParams + SWR 로 `/api/packages/search` fetch.
@@ -17,11 +21,31 @@ const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SI
 //             검색어별 title 동적 못함 = SEO 측 손해. 검색 결과 URL 은 indexable 의도 없음.
 //   장기 (Next.js 16 PPR stable): server searchParams + 정적 shell 양립 가능.
 
-export const metadata: Metadata = {
-  title: '패키지 상품',
-  description: '여소남 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지 — 확정일·요금 비교.',
-  alternates: { canonical: `${BASE_URL}/packages` },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const requestHeaders = await headers();
+  const requestHost = requestHeaders.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || requestHeaders.get('host');
+  const siteUrl = configuredSiteUrl();
+  const isApprovedProduction = isApprovedProductionEnvironment({
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl,
+    requestHost,
+  });
+  const shared: Metadata = {
+    title: '패키지 상품',
+    description: '여소남 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지 — 확정일·요금 비교.',
+  };
+
+  if (!isApprovedProduction) {
+    return { ...shared, robots: previewRobots() };
+  }
+
+  const baseUrl = safeHttpOrigin(siteUrl) ?? 'https://www.yeosonam.com';
+  return {
+    ...shared,
+    alternates: { canonical: `${baseUrl}/packages` },
+  };
+}
 
 export default function PackagesPage() {
   // useSearchParams 사용 client component 는 Suspense boundary 필수
