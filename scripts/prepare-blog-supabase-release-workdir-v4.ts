@@ -15,9 +15,11 @@ try {
     { allowProductionRead: approveProductionEvidence },
   );
   const output = argument('output') ?? '.tmp/blog-v4-supabase-release';
+  const linkedWorkdir = argument('linked-workdir') ?? undefined;
   const summary = prepareBlogSupabaseReleaseWorkdirV4({
     output,
     remoteEvidence,
+    linkedWorkdir,
     allowProductionEvidence: approveProductionEvidence,
     release: argument('release') === 'content_factory' ? 'content_factory' : 'orchestrator',
   });

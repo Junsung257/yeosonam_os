@@ -1,0 +1,140 @@
+name: Blog V4 PR Release Train
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: blog-v4-pr-release-train
+  cancel-in-progress: false
+
+jobs:
+  rebase-and-gate:
+    if: >-
+      github.repository == 'Junsung257/yeosonam_os' &&
+      github.event.pull_request.number == 1141 &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TARGET_PR: '1140'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify target PR before updating it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          target="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json state,isDraft,baseRefName --jq '[.state,.isDraft,.baseRefName] | @tsv')"
+          IFS=$'\t' read -r state is_draft base_ref <<< "$target"
+          test "$state" = OPEN
+          test "$base_ref" = main
+          test "$is_draft" = true
+
+      - name: Rebase PR #1140 onto the merged main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="AUTHORIZATION: bearer $GH_TOKEN"
+          git -c http.extraheader="$auth_header" fetch origin main --prune
+          baseline_main_sha="$(git rev-parse origin/main)"
+          gh pr update-branch "$TARGET_PR" --rebase --repo "$GITHUB_REPOSITORY"
+          head_sha="$(gh pr view "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)"
+          test "$head_sha" != ""
+          {
+            echo "BASELINE_MAIN_SHA=$baseline_main_sha"
+            echo "BLOG_V4_PR_1140_HEAD_SHA=$head_sha"
+          } >> "$GITHUB_ENV"
+          git -c http.extraheader="$auth_header" fetch origin "refs/pull/${TARGET_PR}/head:refs/remotes/origin/pr-${TARGET_PR}"
+          git checkout --detach "$head_sha"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run the full Blog V4 release gate
+        shell: bash
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+          SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-ci
+          NEXT_PUBLIC_BASE_URL: https://example.com
+          NEXT_SKIP_TYPESCRIPT_CHECK: '1'
+          NEXT_BUILD_RECOVERY_WAIT_MS: '30000'
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/blog-v4-release-train
+           npm run verify:blog-release-bundle-v4
+           npm run verify:blog-content-factory-release-bundle-v4
+           npm run check:blog-v4-workflow:ci
+           npm run check:agent-workflow:ci
+          npm run type-check
+          npm test 2>&1 | tee .tmp/blog-v4-release-train/full-vitest.log
+          npm run lint 2>&1 | tee .tmp/blog-v4-release-train/lint.log
+          npm run build 2>&1 | tee .tmp/blog-v4-release-train/build.log
+          git diff --check
+          git status --short
+
+      - name: Record release-train evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          fs.writeFileSync('.tmp/blog-v4-release-train/evidence.json', JSON.stringify({
+            schemaVersion: 1,
+            mergedPrerequisitePr: 1141,
+            targetPr: 1140,
+            baselineMainSha: process.env.BASELINE_MAIN_SHA,
+            pr1140HeadSha: process.env.BLOG_V4_PR_1140_HEAD_SHA,
+            fullVitest: 'pass',
+            typeCheck: 'pass',
+            lint: 'pass',
+            build: 'pass',
+            agentWorkflow: 'pass',
+            deadcode: 'documented-separate-review-gate',
+            productionWrites: 0,
+            autoMerge: false,
+          }, null, 2) + '\n');
+          NODE
+
+      - name: Remove Draft status from PR #1140
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr ready "$TARGET_PR" --repo "$GITHUB_REPOSITORY"
+
+      - name: Publish non-secret release-train evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body-file .tmp/blog-v4-release-train/evidence.json
+
+      - name: Upload release-train evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-v4-pr-release-train-evidence
+          path: .tmp/blog-v4-release-train/
+          if-no-files-found: warn
+          retention-days: 30

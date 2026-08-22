@@ -1,0 +1,461 @@
+name: Blog V4 Staging Autopilot
+
+on:
+  push:
+    branches:
+      - codex/blog-v4-integration-preview
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Staging operation to run
+        required: true
+        default: bootstrap_and_canary
+        type: choice
+        options:
+          - bootstrap_and_canary
+          - canary_only
+          - reset_seed_and_canary
+      seed_key:
+        description: Existing seed key for canary_only/reset; leave empty for a new bootstrap run
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-v4-staging-autopilot
+  cancel-in-progress: false
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
+  DEEPSEEK_STAGING_API_KEY: ${{ secrets.DEEPSEEK_STAGING_API_KEY }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  SUPABASE_CLI_BIN: supabase
+  VERCEL_CLI_VERSION: 53.3.2
+  SUPABASE_CLI_VERSION: 2.111.0
+  BLOG_V4_PREVIEW_BRANCH: codex/blog-v4-integration-preview
+
+jobs:
+  staging-canary:
+    name: Bootstrap staging and generate one draft
+    if: >-
+      (github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/blog-v4-integration-preview' &&
+      contains(github.event.head_commit.message, '[run-blog-v4-canary]')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: blog-staging-bootstrap
+    env:
+      BLOG_V4_ACTION: ${{ inputs.action || 'bootstrap_and_canary' }}
+      BLOG_V4_SEED_KEY_INPUT: ${{ inputs.seed_key || '' }}
+      BLOG_V4_TRUSTED_REF: ${{ github.event_name == 'push' && 'refs/heads/codex/blog-v4-integration-preview' || 'refs/heads/main' }}
+
+    steps:
+      - name: Validate protected inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/blog-v4-staging-result
+          missing=()
+          reasons=()
+          for key in SUPABASE_ACCESS_TOKEN SUPABASE_PRODUCTION_PROJECT_REF DEEPSEEK_STAGING_API_KEY VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("$key")
+            fi
+          done
+          if [ -n "${SUPABASE_PRODUCTION_PROJECT_REF:-}" ] && ! [[ "$SUPABASE_PRODUCTION_PROJECT_REF" =~ ^[a-z0-9]{20}$ ]]; then
+            reasons+=("invalid_supabase_production_project_ref")
+          fi
+          case "$BLOG_V4_ACTION" in
+            bootstrap_and_canary|canary_only|reset_seed_and_canary) ;;
+            *) reasons+=("unsupported_action") ;;
+          esac
+          if [ "$GITHUB_REF" != "$BLOG_V4_TRUSTED_REF" ]; then
+            reasons+=("untrusted_dispatch_ref")
+          fi
+          if [[ "$BLOG_V4_ACTION" != "bootstrap_and_canary" && -z "${BLOG_V4_SEED_KEY_INPUT:-}" ]]; then
+            reasons+=("seed_key_required_for_action")
+          fi
+          if [ "${#missing[@]}" -gt 0 ] || [ "${#reasons[@]}" -gt 0 ]; then
+            MISSING_SECRET_KEYS="$(IFS=,; printf '%s' "${missing[*]}")" \
+            BLOCKER_REASONS="$(IFS=,; printf '%s' "${reasons[*]}")" \
+            node - <<'NODE'
+          const fs = require('fs');
+          const split = (value) => String(value || '').split(',').filter(Boolean);
+          fs.writeFileSync('.tmp/blog-v4-staging-result/bootstrap-blocker.json', JSON.stringify({
+            schemaVersion: 1,
+            state: 'BOOTSTRAP_BLOCKED',
+            missing: split(process.env.MISSING_SECRET_KEYS),
+            reasons: split(process.env.BLOCKER_REASONS),
+            productionWrites: 0,
+            dbQueries: 0,
+            aiCalls: 0,
+          }, null, 2) + '\n');
+          NODE
+            echo "Staging bootstrap blocked; see bootstrap-blocker.json artifact" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove workflow contains no production action
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const forbidden = [
+            ['--', 'prod'].join(''),
+            ['vercel', 'promote'].join(' '),
+            ['production', 'env'].join(' '),
+            ['production', 'migration'].join(' '),
+            ['index', 'now'].join(''),
+            ['gsc', 'submission'].join(' '),
+            ['--', 'with', 'data'].join(''),
+          ];
+          const files = [
+            '.github/workflows/blog-v4-staging-autopilot.yml',
+            '.github/workflows/blog-v4-pr-release-train.yml',
+          ];
+          const hits = files.flatMap((file) => {
+            const content = fs.readFileSync(file, 'utf8').toLowerCase();
+            return forbidden.filter((token) => content.includes(token)).map((token) => `${file}:${token}`);
+          });
+          if (hits.length) {
+            console.error(JSON.stringify({ forbiddenWorkflowActions: hits }, null, 2));
+            process.exit(1);
+          }
+          NODE
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Verify CLI contracts before any remote operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          supabase --help >/dev/null
+          supabase --experimental branches --help >/dev/null
+          supabase --experimental branches create --help >/dev/null
+          supabase --experimental branches get --help >/dev/null
+          supabase db query --help >/dev/null
+          supabase db push --help >/dev/null
+          npx --yes vercel@"$VERCEL_CLI_VERSION" --version
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --help >/dev/null
+          npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --help >/dev/null
+
+      - name: Resolve or create the isolated persistent staging branch
+        id: branch
+        shell: bash
+        env:
+          STAGING_BRANCH_NAME: blog-v4-staging
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/supabase-blog-v4-staging
+          branch_env="$RUNNER_TEMP/blog-v4-staging-branch.env"
+          branch_pretty="$RUNNER_TEMP/blog-v4-staging-branch.pretty"
+          : > "$branch_env"
+          : > "$branch_pretty"
+
+          add_mask() {
+            if [ -n "${1:-}" ]; then echo "::add-mask::$1"; fi
+          }
+          read_env_value() {
+            local name="$1"
+            local value
+            value="$(sed -n -E "s/^${name}=(.*)$/\\1/p" "$branch_env" | head -n 1 || true)"
+            value="${value#\'}"; value="${value%\'}"
+            value="${value#\"}"; value="${value%\"}"
+            printf '%s' "$value"
+          }
+          fetch_branch() {
+            supabase --experimental branches get "$STAGING_BRANCH_NAME" \
+              --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
+              --output env > "$branch_env" 2>/dev/null
+          }
+
+          branch_exists=false
+          if fetch_branch; then branch_exists=true; fi
+          if [ "$branch_exists" = false ]; then
+            if [ "$BLOG_V4_ACTION" = "canary_only" ] || [ "$BLOG_V4_ACTION" = "reset_seed_and_canary" ]; then
+              echo "blog-v4-staging does not exist; refusing non-bootstrap action" >&2
+              exit 1
+            fi
+            # No data-cloning flag: the branch remains data-less until the
+            # idempotent minimum fixture is written by the dedicated seed step.
+            supabase --experimental branches create "$STAGING_BRANCH_NAME" \
+              --persistent \
+              --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" >/dev/null
+          fi
+
+          staging_url=''; staging_ref=''; service_role_key=''; db_password=''; branch_status=''
+          for attempt in $(seq 1 20); do
+            if fetch_branch; then
+              staging_url="$(read_env_value API_URL)"
+              [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
+              [ -n "$staging_url" ] || staging_url="$(read_env_value REST_URL)"
+              staging_ref="$(printf '%s' "$staging_url" | sed -nE 's#^https://([a-z0-9]{20})\\.supabase\\.co.*#\\1#p')"
+              service_role_key="$(read_env_value SERVICE_ROLE_KEY)"
+              db_password="$(read_env_value DB_PASSWORD)"
+              [ -n "$db_password" ] || db_password="$(read_env_value PASSWORD)"
+              supabase --experimental branches get "$STAGING_BRANCH_NAME" \
+                --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
+                --output pretty > "$branch_pretty" 2>/dev/null || true
+              branch_status="$(grep -Eo 'ACTIVE|HEALTHY|RUNNING' "$branch_pretty" | head -n 1 || true)"
+              if [[ "$staging_ref" =~ ^[a-z0-9]{20}$ ]] \
+                && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ] \
+                && [ -n "$staging_url" ] \
+                && [ -n "$service_role_key" ] \
+                && [ -n "$db_password" ] \
+                && [ -n "$branch_status" ]; then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "Staging branch did not become healthy with complete credentials" >&2
+              exit 1
+            fi
+            sleep 6
+          done
+
+          add_mask "$SUPABASE_ACCESS_TOKEN"
+          add_mask "$DEEPSEEK_STAGING_API_KEY"
+          add_mask "$service_role_key"
+          add_mask "$db_password"
+          add_mask "$staging_url"
+          cron_secret="$(openssl rand -hex 32)"
+          ops_read_token="$(openssl rand -hex 32)"
+          add_mask "$cron_secret"
+          add_mask "$ops_read_token"
+
+          {
+            echo "SUPABASE_STAGING_PROJECT_REF=$staging_ref"
+            echo "SUPABASE_PROJECT_REF=$staging_ref"
+            echo "SUPABASE_STAGING_URL=$staging_url"
+            echo "SUPABASE_URL=$staging_url"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$staging_url"
+            echo "SUPABASE_STAGING_SERVICE_ROLE_KEY=$service_role_key"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$service_role_key"
+            echo "SUPABASE_STAGING_DB_PASSWORD=$db_password"
+            echo "SUPABASE_DB_PASSWORD=$db_password"
+            echo "CRON_SECRET=$cron_secret"
+            echo "BLOG_OPS_READ_TOKEN=$ops_read_token"
+            echo "BLOG_V4_ENVIRONMENT=staging"
+            echo "BLOG_ENVIRONMENT=staging"
+            echo "BLOG_V4_STAGING_SEED_KEY=${BLOG_V4_SEED_KEY_INPUT:-blog-v4-staging-${GITHUB_RUN_ID}}"
+          } >> "$GITHUB_ENV"
+          echo "staging_ref=$staging_ref" >> "$GITHUB_OUTPUT"
+          echo "branch_status=$branch_status" >> "$GITHUB_OUTPUT"
+
+      - name: Link only the isolated staging workdir
+        shell: bash
+        run: |
+          set -euo pipefail
+          isolated='.tmp/supabase-blog-v4-staging'
+          mkdir -p "$isolated/supabase"
+          cp supabase/config.toml "$isolated/supabase/config.toml"
+          supabase link \
+            --workdir "$isolated" \
+            --project-ref "$SUPABASE_STAGING_PROJECT_REF" \
+            --password "$SUPABASE_STAGING_DB_PASSWORD" >/dev/null
+          linked_ref="$(tr -d '\r\n' < "$isolated/supabase/.temp/project-ref")"
+          test "$linked_ref" = "$SUPABASE_STAGING_PROJECT_REF"
+          test "$linked_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF"
+          echo "isolated_workdir=$isolated" >> "$GITHUB_OUTPUT"
+
+      - name: Collect staging-only migration evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run collect:blog-remote-migration-versions-v4 -- \
+            --expected-project-ref="$SUPABASE_STAGING_PROJECT_REF" \
+            --forbidden-project-ref="$SUPABASE_PRODUCTION_PROJECT_REF" \
+            --environment=preview \
+            --workdir=.tmp/supabase-blog-v4-staging
+
+      - name: Prepare network-free staging release workdir
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run prepare:blog-content-factory-supabase-workdir-v4 -- \
+            --remote-evidence=.tmp/supabase-blog-v4-staging/remote-migration-evidence-v4.json \
+            --linked-workdir=.tmp/supabase-blog-v4-staging \
+            --output=.tmp/blog-v4-staging-release
+
+      - name: Prove exact staging migration dry-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/blog-v4-staging-result
+          supabase db push \
+            --workdir .tmp/blog-v4-staging-release \
+            --linked --include-all --skip-vault --dry-run \
+            --password "$SUPABASE_STAGING_DB_PASSWORD" \
+            2>&1 | tee .tmp/blog-v4-staging-result/migration-dry-run.txt
+          npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
+            --input=.tmp/blog-v4-staging-result/migration-dry-run.txt
+
+      - name: Apply migrations to staging only
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db push \
+            --workdir .tmp/blog-v4-staging-release \
+            --linked --include-all --skip-vault --yes \
+            --password "$SUPABASE_STAGING_DB_PASSWORD"
+
+      - name: Seed one idempotent low-risk staging topic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode=seed
+          if [ "$BLOG_V4_ACTION" = "reset_seed_and_canary" ]; then mode=reset; fi
+          npm run seed:blog-v4-staging -- \
+            --mode="$mode" \
+            --seed-key="$BLOG_V4_STAGING_SEED_KEY" \
+            > .tmp/blog-v4-staging-result/seed.json
+          cat .tmp/blog-v4-staging-result/seed.json | sed -E 's/("queueId"|"demandSignalId"): "[^"]+"/\1: "[redacted]"/g'
+
+      - name: Configure and deploy a Vercel Preview candidate
+        id: preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull \
+            --yes --environment=preview \
+            --git-branch="$BLOG_V4_PREVIEW_BRANCH" \
+            --token="$VERCEL_TOKEN" >/dev/null
+          build_env=(
+            "SUPABASE_URL=$SUPABASE_URL"
+            "NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL"
+            "SUPABASE_PROJECT_REF=$SUPABASE_PROJECT_REF"
+            "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY"
+            "DEEPSEEK_API_KEY=$DEEPSEEK_STAGING_API_KEY"
+            "CRON_SECRET=$CRON_SECRET"
+            "BLOG_OPS_READ_TOKEN=$BLOG_OPS_READ_TOKEN"
+            "BLOG_V4_ENVIRONMENT=staging"
+            "BLOG_GENERATION_CRON_ENABLED=false"
+            "BLOG_CONTENT_FACTORY_ENABLED=true"
+            "BLOG_AI_CONTROL_PLANE_ENABLED=1"
+            "BLOG_AUTOPUBLISH_MODE=draft_only"
+            "BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1"
+            "BLOG_DAILY_PUBLISH_CAP=1"
+            "BLOG_PUBLICATION_RAMP_STAGE=pilot_3"
+            "BLOG_AUTO_RAMP_ENABLED=false"
+            "BLOG_AUTO_ROLLBACK_ENABLED=true"
+            "BLOG_DAILY_AI_COST_CAP_USD=0.25"
+            "BLOG_OPS_ALLOW_CRON_FALLBACK=0"
+          )
+          build_args=()
+          for value in "${build_env[@]}"; do build_args+=(--build-env "$value"); done
+          npx --yes vercel@"$VERCEL_CLI_VERSION" build \
+            --token="$VERCEL_TOKEN" "${build_args[@]}" >/dev/null
+          deploy_args=()
+          for value in "${build_env[@]}"; do deploy_args+=(--env "$value"); done
+          deployment_json="$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy \
+            --prebuilt --target=preview --yes --format=json \
+            --token="$VERCEL_TOKEN" "${deploy_args[@]}")"
+          deployment_url="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.url || x.inspectorUrl || "")' "$deployment_json")"
+          if [ -z "$deployment_url" ]; then
+            echo "Preview deployment URL missing" >&2
+            exit 1
+          fi
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "preview_url=$deployment_url" >> "$GITHUB_ENV"
+
+      - name: Trigger exactly one forced generation request
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 2 --max-time 300 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$preview_url/api/cron/blog-generate?force=true" \
+            > .tmp/blog-v4-staging-result/force-generation.json
+          operation_id="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const id=x.workflows?.[0]?.operationId || x.materialization?.operationIds?.[0] || ""; process.stdout.write(id)' .tmp/blog-v4-staging-result/force-generation.json)"
+          if ! [[ "$operation_id" =~ ^[0-9a-f-]{36}$ ]]; then
+            echo "Exactly one operation id was not returned by the generation request" >&2
+            cat .tmp/blog-v4-staging-result/force-generation.json >&2
+            exit 1
+          fi
+          echo "BLOG_V4_OPERATION_ID=$operation_id" >> "$GITHUB_ENV"
+          echo "operation_id=$operation_id" > .tmp/blog-v4-staging-result/operation-id.txt
+
+      - name: Poll and export the draft artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir=".tmp/blog-v4-canary/$BLOG_V4_OPERATION_ID"
+          set +e
+          npm run export:blog-v4-canary-artifact -- \
+            --operation-id="$BLOG_V4_OPERATION_ID" \
+            --output-dir="$output_dir" \
+            | tee .tmp/blog-v4-staging-result/artifact-export.json
+          export_status=${PIPESTATUS[0]}
+          set -e
+          cp "$output_dir/index.html" .tmp/blog-v4-staging-result/index.html
+          cp "$output_dir/evidence.json" .tmp/blog-v4-staging-result/evidence.json
+          test "$export_status" -eq 0
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-result/evidence.json","utf8")); if(x.passed!==true || x.candidateCount!==1 || x.publicationCount!==0 || x.indexingSideEffects!==0 || x.flashCalls>1 || x.proCalls>1 || x.aiCostUsd>0.25) { console.error("staging canary contract failed", {passed:x.passed,candidateCount:x.candidateCount,publicationCount:x.publicationCount,indexingSideEffects:x.indexingSideEffects,flashCalls:x.flashCalls,proCalls:x.proCalls,aiCostUsd:x.aiCostUsd}); process.exit(1); }'
+
+      - name: Write non-secret safety summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = '.tmp/blog-v4-staging-result/evidence.json';
+          const evidence = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : {};
+          const blockerPath = '.tmp/blog-v4-staging-result/bootstrap-blocker.json';
+          const blocker = fs.existsSync(blockerPath) ? JSON.parse(fs.readFileSync(blockerPath, 'utf8')) : {};
+          fs.writeFileSync('.tmp/blog-v4-staging-result/workflow-summary.json', JSON.stringify({
+            schemaVersion: 1,
+            state: blocker.state || (evidence.passed === true ? 'STAGING_CANARY_COMPLETE' : 'STAGING_CANARY_INCOMPLETE'),
+            missing: blocker.missing || [],
+            reasons: blocker.reasons || [],
+            action: process.env.BLOG_V4_ACTION,
+            previewBranch: process.env.BLOG_V4_PREVIEW_BRANCH,
+            previewUrl: process.env.preview_url || null,
+            artifactUrl: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            productionProjectRef: process.env.SUPABASE_PRODUCTION_PROJECT_REF || null,
+            stagingProjectRef: process.env.SUPABASE_STAGING_PROJECT_REF || null,
+            productionProjectRefUsed: false,
+            productionEnvironmentLoaded: false,
+            candidateCount: evidence.candidateCount ?? null,
+            flashCalls: evidence.flashCalls ?? null,
+            proCalls: evidence.proCalls ?? null,
+            aiCostUsd: evidence.aiCostUsd ?? null,
+            publicationCount: evidence.publicationCount ?? null,
+            indexingSideEffects: evidence.indexingSideEffects ?? null,
+            passed: evidence.passed ?? false,
+          }, null, 2) + '\n');
+          NODE
+
+      - name: Upload staging canary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-v4-staging-canary-result
+          path: .tmp/blog-v4-staging-result/
+          if-no-files-found: warn
+          retention-days: 30

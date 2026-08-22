@@ -26,22 +26,17 @@ function runReadOnlyMigrationQuery(query: string, workdir: string): string {
   if (query !== BLOG_REMOTE_MIGRATION_HISTORY_QUERY_V4) {
     throw new Error('blog_v4_remote_migration_query_not_allowlisted');
   }
-  return process.platform === 'win32'
-    ? execFileSync('powershell.exe', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `$query = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(query, 'utf8').toString('base64')}')); $nodeExe = (Get-Command node).Source; $npxCli = Join-Path (Split-Path $nodeExe) 'node_modules\\npm\\bin\\npx-cli.js'; & $nodeExe $npxCli supabase db query --linked --output json $query`,
-      ], options)
-    : execFileSync('npx', [
-        'supabase',
-        'db',
-        'query',
-        '--linked',
-        '--output',
-        'json',
-        query,
-      ], options);
+  const cli = process.env.SUPABASE_CLI_BIN?.trim() || 'supabase';
+  return execFileSync(cli, [
+    'db',
+    'query',
+    '--linked',
+    '--agent',
+    'no',
+    '--output',
+    'json',
+    query,
+  ], options);
 }
 
 try {

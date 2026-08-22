@@ -68,6 +68,7 @@ function migrationDigest(directory: string): string {
 
 export function prepareBlogSupabaseReleaseWorkdirV4(input: {
   root?: string;
+  linkedWorkdir?: string;
   output: string;
   remoteEvidence: BlogRemoteMigrationEvidenceV4;
   allowProductionEvidence?: boolean;
@@ -75,7 +76,7 @@ export function prepareBlogSupabaseReleaseWorkdirV4(input: {
 }): BlogSupabaseReleaseWorkdirSummaryV4 {
   const root = resolve(input.root ?? process.cwd());
   const outputDirectory = assertTemporaryOutput(root, input.output);
-  const linkedMetadata = resolve(root, 'supabase/.temp');
+  const linkedMetadata = resolve(input.linkedWorkdir ?? root, 'supabase/.temp');
   const config = resolve(root, 'supabase/config.toml');
   if (!existsSync(config)) throw new Error('blog_v4_supabase_config_missing');
   if (!existsSync(linkedMetadata)) throw new Error('blog_v4_supabase_link_metadata_missing');
