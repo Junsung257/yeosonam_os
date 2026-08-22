@@ -282,7 +282,8 @@ jobs:
     needs: [schema-discovery, migration-replay]
     if: >-
       always() && needs.migration-replay.outputs.replay_status == 'failed' &&
-      (inputs.baseline_strategy == 'auto' || inputs.baseline_strategy == 'approved_schema_only')
+      (inputs.baseline_strategy == 'auto' || inputs.baseline_strategy == 'approved_schema_only' ||
+      (github.event_name == 'push' && inputs.baseline_strategy == ''))
     runs-on: ubuntu-latest
     timeout-minutes: 180
     environment: blog-staging-schema-read
