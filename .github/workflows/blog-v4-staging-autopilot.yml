@@ -384,6 +384,8 @@ jobs:
             --seed-key="$BLOG_V4_STAGING_SEED_KEY" \
             > .tmp/blog-v4-staging-result/seed.json
           cat .tmp/blog-v4-staging-result/seed.json | sed -E 's/("queueId"|"demandSignalId"): "[^"]+"/\1: "[redacted]"/g'
+          grep -E '^\{"seedKey"' .tmp/blog-v4-staging-result/seed.json | tail -n 1 > .tmp/blog-v4-staging-result/seed-payload.json
+          node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-result/seed-payload.json","utf8")); if(!x.queueId) process.exit(1);'
 
       - name: Configure and deploy a Vercel Preview candidate
         id: preview
@@ -399,7 +401,7 @@ jobs:
           curl --fail --silent --show-error --location --retry 2 --max-time 300 \
             --header "Authorization: Bearer $CRON_SECRET" \
             --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
-            "$preview_url/api/cron/blog-generate?force=true" \
+            "$preview_url/api/cron/blog-generate?force=true&targetQueueId=$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-result/seed-payload.json","utf8")); process.stdout.write(x.queueId || "")')&stagingCanary=1" \
             > .tmp/blog-v4-staging-result/force-generation.json
           operation_id="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const id=x.workflows?.[0]?.operationId || x.materialization?.operationIds?.[0] || ""; process.stdout.write(id)' .tmp/blog-v4-staging-result/force-generation.json)"
           if ! [[ "$operation_id" =~ ^[0-9a-f-]{36}$ ]]; then

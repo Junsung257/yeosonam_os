@@ -41,6 +41,13 @@ async function runBlogGenerate(request: NextRequest) {
   if (factoryEnabled) {
     if (!isSupabaseConfigured) return { skipped: true, reason: 'supabase_not_configured' };
     const policy = readBlogAutopublishPolicyV3();
+    const targetQueueId = url.searchParams.get('targetQueueId')?.trim() || null;
+    if (targetQueueId && !/^[0-9a-f-]{36}$/i.test(targetQueueId)) {
+      return { ok: false, reason: 'content_factory_target_queue_id_invalid', factoryEnabled: true };
+    }
+    const stagingCanary = url.searchParams.get('stagingCanary') === '1'
+      && process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+      && policy.mode === 'draft_only';
     const rolloutStateResult = await loadBlogPublicationRolloutState(supabaseAdmin);
     if (!rolloutStateResult.state) {
       return {
@@ -62,6 +69,8 @@ async function runBlogGenerate(request: NextRequest) {
       stage: rollout.stage,
       environmentDailyCap: rollout.dailyCap,
       candidateLimit: 90,
+      targetQueueId,
+      allowQuotaBypassForTarget: stagingCanary,
     });
     const workflowStartLimit = Math.max(1, Math.min(12, Math.trunc(Number(
       process.env.BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT || 6,
@@ -69,11 +78,13 @@ async function runBlogGenerate(request: NextRequest) {
     const materializedOperationIds = [...new Set(materialization.operationIds)];
     let queuedOperationsQuery = supabaseAdmin
       .from('blog_content_operations')
-      .select('id,status,lease_expires_at')
+      .select('id,status,lease_expires_at,queue_id')
       .in('status', ['queued', 'running'])
       .or(`status.eq.queued,lease_expires_at.is.null,lease_expires_at.lt.${new Date().toISOString()}`);
     if (materializedOperationIds.length > 0) {
       queuedOperationsQuery = queuedOperationsQuery.in('id', materializedOperationIds);
+    } else if (targetQueueId) {
+      queuedOperationsQuery = queuedOperationsQuery.eq('queue_id', targetQueueId);
     }
     const { data: queuedOperations, error: queuedError } = await queuedOperationsQuery
       .order('created_at', { ascending: true })

@@ -194,6 +194,8 @@ export async function materializeBlogContentOperationsV4(input: {
   stage: BlogPublicationRampStage;
   environmentDailyCap: number;
   candidateLimit?: number;
+  targetQueueId?: string | null;
+  allowQuotaBypassForTarget?: boolean;
 }): Promise<{
   scanned: number;
   materialized: number;
@@ -204,10 +206,12 @@ export async function materializeBlogContentOperationsV4(input: {
   const now = input.now ?? new Date();
   const operationDayKst = kstDay(now);
   const candidateLimit = Math.max(1, Math.min(250, input.candidateLimit ?? 90));
-  const { data: candidatesData, error: candidatesError } = await input.supabase
+  let candidatesQuery = input.supabase
     .from('blog_topic_queue')
     .select('id,topic,destination,primary_keyword,category,source,angle_type,product_id,content_creative_id,meta,priority,created_at')
-    .eq('status', 'queued')
+    .eq('status', 'queued');
+  if (input.targetQueueId) candidatesQuery = candidatesQuery.eq('id', input.targetQueueId);
+  const { data: candidatesData, error: candidatesError } = await candidatesQuery
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(candidateLimit);
@@ -391,7 +395,11 @@ export async function materializeBlogContentOperationsV4(input: {
       candidateType: decision.operationType,
       candidateCreatesNewUrl: decision.createsNewUrl,
     });
-    if (!quota.allowed) { quota.reasons.forEach(skip); continue; }
+    const isExplicitTarget = Boolean(input.targetQueueId && candidate.id === input.targetQueueId);
+    if (!quota.allowed && !(isExplicitTarget && input.allowQuotaBypassForTarget)) {
+      quota.reasons.forEach(skip);
+      continue;
+    }
     const persisted = await persistBlogDemandMaterializationV4({ supabase: input.supabase, decision });
     operationIds.push(persisted.operationId);
     if (persisted.operationCreated) {

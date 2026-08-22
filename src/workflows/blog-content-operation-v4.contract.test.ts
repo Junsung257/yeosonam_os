@@ -37,6 +37,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(generateRoute).toContain('materializeBlogContentOperationsV4');
     expect(generateRoute).toContain('startBlogContentOperationWorkflowV4');
     expect(generateRoute).toContain('modelCallsInCronRequest: 0');
+    expect(generateRoute).toContain('targetQueueId');
+    expect(generateRoute).toContain('stagingCanary');
     expect(generateRoute).toContain(".in('status', ['queued', 'running'])");
     expect(generateRoute).toContain('lease_expires_at.lt.');
   });
