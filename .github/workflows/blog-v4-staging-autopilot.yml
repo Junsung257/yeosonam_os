@@ -33,6 +33,7 @@ env:
   DEEPSEEK_STAGING_API_KEY: ${{ secrets.DEEPSEEK_STAGING_API_KEY || secrets.DEEPSEEK_API_KEY }}
   BLOG_V4_SHARED_KEY_USED: ${{ secrets.DEEPSEEK_STAGING_API_KEY == '' && secrets.DEEPSEEK_API_KEY != '' }}
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
   VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID || secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID || secrets.VERCEL_PROJECT_ID }}
   SUPABASE_CLI_BIN: supabase
@@ -66,7 +67,7 @@ jobs:
           mkdir -p .tmp/blog-v4-staging-result
           missing=()
           reasons=()
-          for key in SUPABASE_ACCESS_TOKEN SUPABASE_PRODUCTION_PROJECT_REF DEEPSEEK_STAGING_API_KEY VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+          for key in SUPABASE_ACCESS_TOKEN SUPABASE_PRODUCTION_PROJECT_REF DEEPSEEK_STAGING_API_KEY VERCEL_TOKEN VERCEL_AUTOMATION_BYPASS_SECRET VERCEL_ORG_ID VERCEL_PROJECT_ID; do
             if [ -z "${!key:-}" ]; then
               missing+=("$key")
             fi
@@ -386,6 +387,7 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --location --retry 2 --max-time 300 \
             --header "Authorization: Bearer $CRON_SECRET" \
+            --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
             "$preview_url/api/cron/blog-generate?force=true" \
             > .tmp/blog-v4-staging-result/force-generation.json
           operation_id="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const id=x.workflows?.[0]?.operationId || x.materialization?.operationIds?.[0] || ""; process.stdout.write(id)' .tmp/blog-v4-staging-result/force-generation.json)"
