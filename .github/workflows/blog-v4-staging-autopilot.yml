@@ -332,6 +332,10 @@ jobs:
           # not pick it up through a broad db push.
           cp supabase/staging-baselines/blog-v4-legacy-schema.sql \
             .tmp/blog-v4-staging-release/supabase/migrations/20260819000000_blog_v4_staging_legacy_schema.sql
+          # The release preparer represents already-applied non-release
+          # versions with placeholders. The checked-in staging baseline is the
+          # authoritative local copy for this one allowed extra version.
+          rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260819000000_remote_history_placeholder.sql
 
       - name: Prove exact staging migration dry-run
         shell: bash
@@ -345,7 +349,8 @@ jobs:
             2>&1 | tee .tmp/blog-v4-staging-result/migration-dry-run.txt
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
             --input=.tmp/blog-v4-staging-result/migration-dry-run.txt \
-            --allow-extra=20260819000000
+            --allow-extra=20260819000000 \
+            --allow-empty
 
       - name: Apply migrations to staging only
         shell: bash

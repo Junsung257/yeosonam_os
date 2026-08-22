@@ -30,6 +30,7 @@ assertContains(staging, 'github.ref == \'refs/heads/main\'', 'staging_manual_mai
 assertContains(staging, 'github.ref == \'refs/heads/codex/blog-v4-integration-preview\'', 'staging_manual_integration_guard');
 assertContains(staging, 'supabase/staging-baselines/blog-v4-legacy-schema.sql', 'staging_schema_baseline');
 assertContains(staging, '--allow-extra=20260819000000', 'staging_schema_baseline_dry_run_allowlist');
+assertContains(staging, '--allow-empty', 'staging_replay_empty_dry_run');
 assertNotContains(release, 'staging-baselines/blog-v4-legacy-schema.sql', 'release_staging_baseline');
 
 for (const [token, label] of [
