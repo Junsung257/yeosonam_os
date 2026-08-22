@@ -18,6 +18,12 @@ const fs = require('fs');
 const path = require('path');
 const { withSentryConfig } = require('@sentry/nextjs');
 const { withWorkflow } = require('workflow/next');
+const { getSupabaseNetworkPolicy } = require('./scripts/lib/supabase-network-allowlist.cjs');
+
+const supabaseNetworkPolicy = getSupabaseNetworkPolicy({
+  vercelEnv: process.env.VERCEL_ENV,
+  urls: [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_URL],
+});
 
 // 번들 분석: ANALYZE=true 환경변수 설정 시 .next/analyze/ 에 트리맵 HTML 생성
 // 사용: ANALYZE=true npm run build  (Windows: $env:ANALYZE='true'; npm run build)
@@ -267,14 +273,7 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.pexels.com',
       },
-      {
-        protocol: 'https',
-        hostname: 'ixaxnvbmhzjvupissmly.supabase.co',
-      },
-      {
-        protocol: 'https',
-        hostname: '*.supabase.co',
-      },
+      ...supabaseNetworkPolicy.remotePatterns,
       {
         protocol: 'https',
         hostname: 'dry7pvlp22cox.cloudfront.net', // MRT CDN (attractions.mrt_image_url)
@@ -308,9 +307,9 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://*.clarity.ms https://js.sentry-cdn.com *.sentry.io https://va.vercel-scripts.com https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://t1.kakaocdn.net",
-              "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://*.wikimedia.org https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://www.google.com https://www.google.co.kr https://www.googleadservices.com https://googleads.g.doubleclick.net https://stats.g.doubleclick.net https://ad.doubleclick.net https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com",
+              `img-src 'self' blob: data: https://images.pexels.com ${supabaseNetworkPolicy.origins.join(' ')} https://dry7pvlp22cox.cloudfront.net https://*.wikimedia.org https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://www.google.com https://www.google.co.kr https://www.googleadservices.com https://googleads.g.doubleclick.net https://stats.g.doubleclick.net https://ad.doubleclick.net https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com`,
               "font-src 'self' https://cdn.jsdelivr.net",
-              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co wss://*.supabase.co wss://ixaxnvbmhzjvupissmly.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://www.google-analytics.com https://region1.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://www.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://stats.g.doubleclick.net https://ad.doubleclick.net https://wcs.naver.net https://wcs.call.naver.com https://*.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
+              `connect-src 'self' ${supabaseNetworkPolicy.origins.join(' ')} ${supabaseNetworkPolicy.websocketOrigins.join(' ')} https://*.sentry.io https://*.ingest.sentry.io https://www.google-analytics.com https://region1.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://www.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://stats.g.doubleclick.net https://ad.doubleclick.net https://wcs.naver.net https://wcs.call.naver.com https://*.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com`,
               "frame-src 'self' https://www.googletagmanager.com https://www.facebook.com https://www.instagram.com https://www.youtube.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
