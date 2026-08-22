@@ -286,4 +286,7 @@ async function main() {
   if (!artifact.passed) process.exitCode = 1;
 }
 
-await main();
+main().catch((error) => {
+  process.stderr.write(`blog V4 canary artifact export failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});
