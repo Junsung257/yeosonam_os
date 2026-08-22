@@ -130,6 +130,27 @@ async function ensureStagingControlPlane(db: SupabaseClient) {
   if (registry.error) {
     throw new Error(`blog_v4_staging_seed_source_registry_failed:${registry.error.message}`);
   }
+
+  const reputableRegistry = await db
+    .from('blog_information_reputable_source_registry')
+    .upsert({
+      hostname: 'kayak.com',
+      source_types: ['reputable_price_source'],
+      intents: ['hotel_areas'],
+      allow_subdomains: true,
+      status: 'active',
+      reviewed_by: 'blog-v4-staging-autopilot',
+      reviewed_at: new Date().toISOString(),
+      review_note: 'Staging canary price source fallback. Direct page must expose named hotel prices.',
+      research_urls: ['https://www.kayak.com/Guam-Hotels.98.dc.html'],
+      research_destinations: ['괌'],
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'hostname' })
+    .select('id')
+    .maybeSingle();
+  if (reputableRegistry.error) {
+    throw new Error(`blog_v4_staging_reputable_source_registry_failed:${reputableRegistry.error.message}`);
+  }
 }
 
 async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {

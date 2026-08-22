@@ -54,6 +54,7 @@ const GRTA_FIXED_ROUTE_SCHEDULE_PATH = '/sites/default/files/master_-_fixed_rout
 const GRTA_FARE_RATE_PATH = '/sites/default/files/grta_bus_pass_sales_information_sheet.pdf';
 const CHIN_FE_GUAM_MENU_HOST = 'chinfe.menuguam.com';
 const BOOKING_GUAM_FAMILY_PATH = '/family/country/gu.ko.html';
+const KAYAK_GUAM_HOTEL_PATH = '/Guam-Hotels.98.dc.html';
 const AGODA_GUAM_HOTEL_GUIDE_PATH = '/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/';
 const USA_GOV_CURRENCY_PATH = '/currency';
 const VISIT_GUAM_PAYMENT_PATH = '/smscormoranguam/sms-diving-in-guam/';
@@ -1922,17 +1923,24 @@ export function buildGuamHotelAreasPayload(
     'www.booking.com',
     BOOKING_GUAM_FAMILY_PATH,
   );
+  const kayakIndex = reviewedPageIndex(
+    pages,
+    'www.kayak.com',
+    KAYAK_GUAM_HOTEL_PATH,
+  );
   const agodaIndex = reviewedPageIndex(
     pages,
     'www.agoda.com',
     AGODA_GUAM_HOTEL_GUIDE_PATH,
   );
-  if (bookingIndex < 0 || agodaIndex < 0) return null;
+  if (bookingIndex < 0 && kayakIndex < 0) return null;
+  if (agodaIndex < 0) return null;
 
-  const bookingText = pages[bookingIndex]!.text;
+  const bookingText = bookingIndex >= 0 ? pages[bookingIndex]!.text : '';
+  const kayakText = kayakIndex >= 0 ? pages[kayakIndex]!.text : '';
   const agodaText = pages[agodaIndex]!.text;
   const pricePattern = /([^0-9₩$]{3,100}?)(투몬|타무닝|Agat|망길라오|Sinajana|Dededo|Tumon|Tamuning|Mangilao|family-friendly)\s*(?:가족 호텔|family hotels?)[\s\S]{0,900}?(?:1박 최저|최저가|lowest price per night|lowest nightly price|per night from)[^0-9]{0,30}?([\d,]+)/giu;
-  const priceRows = [...bookingText.matchAll(pricePattern)]
+  const bookingPriceRows = [...bookingText.matchAll(pricePattern)]
     .map((match) => ({
       name: clean(match[1]).replace(/^[\s|·•,:-]+|[)\s|·•,:-]+$/g, ''),
       area: normalizeGuamHotelArea(match[2]),
@@ -1942,8 +1950,29 @@ export function buildGuamHotelAreasPayload(
     }))
     .filter((row) => row.name && row.area && Number(row.price) > 0)
     .slice(0, 3);
-  const tumonFamilyHotelCount = bookingText.match(/투몬\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
-  const tamuningFamilyHotelCount = bookingText.match(/타무닝\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
+  const kayakPriceRows = [...kayakText.matchAll(/([^0-9$]{3,100}?)(Tumon|Tamuning|Dededo|Yona|Agat)(?:,\s*Guam)?[\s\S]{0,250}?\$([\d,]+)\+/gi)]
+    .map((match) => ({
+      name: clean(match[1]).replace(/^.*Check availability/i, '').replace(/^[\s|·•,:-]+|[)\s|·•,:-]+$/g, ''),
+      area: normalizeGuamHotelArea(match[2]),
+      price: clean(match[3]).replace(/,/g, ''),
+      displayedPrice: clean(match[3]),
+      currency: 'USD',
+    }))
+    .filter((row) => row.name && row.area && Number(row.price) > 0)
+    .slice(0, 3);
+  const priceRows = bookingPriceRows.length >= 3 ? bookingPriceRows : kayakPriceRows;
+  const pricePageIndex = bookingPriceRows.length >= 3 ? bookingIndex : kayakIndex;
+  const priceSourceKey = bookingIndex >= 0 && bookingPriceRows.length >= 3
+    ? 'booking-guam-family-hotels'
+    : 'kayak-guam-hotels';
+  const pricePublisher = priceSourceKey === 'booking-guam-family-hotels' ? 'Booking.com' : 'KAYAK';
+  const priceText = priceSourceKey === 'booking-guam-family-hotels' ? bookingText : kayakText;
+  const tumonFamilyHotelCount = priceSourceKey === 'booking-guam-family-hotels'
+    ? priceText.match(/투몬\s*가족 호텔\s*(\d+)개/)?.[1] ?? ''
+    : '';
+  const tamuningFamilyHotelCount = priceSourceKey === 'booking-guam-family-hotels'
+    ? priceText.match(/타무닝\s*가족 호텔\s*(\d+)개/)?.[1] ?? ''
+    : '';
   const hasHiltonFamilyLocation = /힐튼 괌 리조트 앤 스파|Hilton Guam Resort\s*&\s*Spa/i.test(agodaText);
   const hasTumonSouthernLocation = /투몬 베이 남쪽 끝자락|(?:southern|south) end of Tumon Bay/i.test(agodaText);
   const hasKidsPool = /어린이 전용 키즈풀|(?:children['’]?s|kids['’]?)\s*pool/i.test(agodaText);
@@ -1954,12 +1983,11 @@ export function buildGuamHotelAreasPayload(
     return null;
   }
 
-  const bookingSourceKey = 'booking-guam-family-hotels';
   const agodaSourceKey = 'agoda-guam-hotel-guide';
   const priceEvidence: GroundedEvidenceDraft[] = priceRows.map((row, index) => ({
-    evidenceKey: `booking-guam-nightly-${index + 1}`,
-    sourceKey: bookingSourceKey,
-    excerpt: `${row.name} (${row.area})의 Booking.com 확인일 표시 가격은 1박 최저 ${row.currency} ${row.displayedPrice}이다.`,
+    evidenceKey: `guam-hotel-nightly-${index + 1}`,
+    sourceKey: priceSourceKey,
+    excerpt: `${row.name} (${row.area})의 ${pricePublisher} 확인일 표시 가격은 1박 최저 ${row.currency} ${row.displayedPrice}이다.`,
     sourceLocator: `${row.name} > 1박 최저`,
     claimType: 'price',
     riskLevel: 'MEDIUM',
@@ -1973,9 +2001,9 @@ export function buildGuamHotelAreasPayload(
   }));
   const factualEvidence: GroundedEvidenceDraft[] = [
     {
-      evidenceKey: 'booking-guam-tumon-family-count',
-      sourceKey: bookingSourceKey,
-      excerpt: `Booking.com 괌 가족 호텔 페이지에는 투몬 가족 호텔 ${tumonFamilyHotelCount}개가 표시된다.`,
+      evidenceKey: 'guam-tumon-family-count',
+      sourceKey: priceSourceKey,
+      excerpt: `${pricePublisher} 괌 가족 호텔 페이지에는 투몬 가족 호텔 ${tumonFamilyHotelCount}개가 표시된다.`,
       sourceLocator: '가족 호텔 관련 가장 많이 방문하는 도시 > 투몬',
       claimType: 'factual',
       riskLevel: 'LOW',
@@ -1987,9 +2015,9 @@ export function buildGuamHotelAreasPayload(
       conditions: ['확인일 페이지 표시 수', '검색 재고와 분류에 따라 변동 가능'],
     },
     {
-      evidenceKey: 'booking-guam-tamuning-family-count',
-      sourceKey: bookingSourceKey,
-      excerpt: `Booking.com 괌 가족 호텔 페이지에는 타무닝 가족 호텔 ${tamuningFamilyHotelCount}개가 표시된다.`,
+      evidenceKey: 'guam-tamuning-family-count',
+      sourceKey: priceSourceKey,
+      excerpt: `${pricePublisher} 괌 가족 호텔 페이지에는 타무닝 가족 호텔 ${tamuningFamilyHotelCount}개가 표시된다.`,
       sourceLocator: '가족 호텔 관련 가장 많이 방문하는 도시 > 타무닝',
       claimType: 'factual',
       riskLevel: 'LOW',
@@ -2044,12 +2072,12 @@ export function buildGuamHotelAreasPayload(
       conditions: ['확인일 호텔 가이드 설명', '실제 이동시간은 예약 전 지도와 교통상황 재확인'],
     });
   }
-  if (factualEvidence.length < 5 && /가족 호텔|family hotels?/i.test(bookingText)) {
+  if (factualEvidence.length < 5 && /가족 호텔|family hotels?|hotels? in Guam|Guam hotels?/i.test(priceText)) {
     factualEvidence.push({
-      evidenceKey: 'booking-guam-family-hotel-area-listing',
-      sourceKey: bookingSourceKey,
-      excerpt: 'Booking.com 원문에는 지역명과 함께 가족 호텔 분류가 표시된다.',
-      sourceLocator: '괌 가족 호텔 목록 > 지역별 숙소 분류',
+      evidenceKey: 'guam-family-hotel-area-listing',
+      sourceKey: priceSourceKey,
+      excerpt: `${pricePublisher} 원문에는 괌 호텔 목록과 지역별 숙소 분류가 표시된다.`,
+      sourceLocator: '괌 호텔 목록 > 지역별 숙소 분류',
       claimType: 'factual',
       riskLevel: 'LOW',
       country: '괌',
@@ -2061,8 +2089,8 @@ export function buildGuamHotelAreasPayload(
     });
   }
   for (const evidenceKey of [
-    tumonFamilyHotelCount ? null : 'booking-guam-tumon-family-count',
-    tamuningFamilyHotelCount ? null : 'booking-guam-tamuning-family-count',
+    tumonFamilyHotelCount ? null : 'guam-tumon-family-count',
+    tamuningFamilyHotelCount ? null : 'guam-tamuning-family-count',
   ].filter((key): key is string => Boolean(key))) {
     const index = factualEvidence.findIndex((item) => item.evidenceKey === evidenceKey);
     if (index >= 0) factualEvidence.splice(index, 1);
@@ -2070,10 +2098,10 @@ export function buildGuamHotelAreasPayload(
   for (const [index, row] of priceRows.entries()) {
     if (factualEvidence.length >= 5) break;
     factualEvidence.push({
-      evidenceKey: `booking-guam-area-${index + 1}`,
-      sourceKey: bookingSourceKey,
-      excerpt: `Booking.com은 ${row.name}을(를) ${row.area} 가족 호텔로 표시한다.`,
-      sourceLocator: `${row.name} > ${row.area} 가족 호텔`,
+      evidenceKey: `guam-hotel-area-${index + 1}`,
+      sourceKey: priceSourceKey,
+      excerpt: `${pricePublisher}는 ${row.name}을(를) ${row.area} 괌 호텔로 표시한다.`,
+      sourceLocator: `${row.name} > ${row.area} 숙소 지역`,
       claimType: 'factual',
       riskLevel: 'LOW',
       country: '괌',
@@ -2088,9 +2116,9 @@ export function buildGuamHotelAreasPayload(
   return {
     sources: [
       {
-        sourceKey: bookingSourceKey,
-        groundingChunkIndex: bookingIndex,
-        publisher: 'Booking.com',
+        sourceKey: priceSourceKey,
+        groundingChunkIndex: pricePageIndex,
+        publisher: pricePublisher,
         sourceType: 'reputable_price_source',
         claimTypes: ['price', 'factual'],
         country: '괌',

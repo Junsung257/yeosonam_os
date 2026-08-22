@@ -848,6 +848,29 @@ describe('buildGuamHotelAreasPayload', () => {
     expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
     expect(payload?.claims?.find((claim) => claim.claimType === 'price')?.currency).toBe('USD');
   });
+
+  it('falls back to an accessible reputable price source when Booking is unavailable', () => {
+    const payload = buildGuamHotelAreasPayload([
+      {
+        url: 'https://www.kayak.com/Guam-Hotels.98.dc.html',
+        title: 'Guam Hotels: Compare Hotels from $70/night on KAYAK',
+        text: [
+          'Guam hotels Latest Guam Hotel Deals The Tsubaki TowerTumon9.2Wonderful Parking Pool Spa$242+Check availability',
+          'Grand Plaza HotelTumon7.0Good Parking Pool Spa$77+Check availability',
+          'Guam Plaza ResortTumon8.4Very good Parking Pool$96+Check availability',
+        ].join(''),
+      },
+      {
+        url: 'https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/',
+        title: '괌 숙소 추천',
+        text: '힐튼 괌 리조트 앤 스파는 투몬 베이 남쪽 끝자락에 있으며 어린이 전용 키즈풀이 있다.',
+      },
+    ], '괌');
+
+    expect(payload?.sources?.[0]).toMatchObject({ publisher: 'KAYAK', sourceType: 'reputable_price_source' });
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
+  });
 });
 
 describe('buildGuamCurrencyPaymentPayload', () => {
