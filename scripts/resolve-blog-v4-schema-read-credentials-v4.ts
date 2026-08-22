@@ -30,7 +30,6 @@ function main(): void {
     sourceRefHash: sourceRef ? hash(sourceRef) : null,
     directUrlPresent: urlPresent,
     databasePasswordPresent: passwordPresent,
-    approvalPresent: process.env.BLOG_SCHEMA_READ_APPROVED === 'true',
     productionWrites: 0,
     productionReads: 0,
     secretsIncluded: false,

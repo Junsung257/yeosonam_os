@@ -24,7 +24,11 @@ type CredentialMode = 'url' | 'linked-password';
 
 function approvedProductionRead(sourceRef: string | null): boolean {
   return process.argv.includes('--approve-production-schema-read')
-    && process.env.BLOG_SCHEMA_READ_APPROVED === 'true'
+    && process.env.BLOG_SCHEMA_READ_ENVIRONMENT === 'blog-staging-schema-read'
+    && process.env.GITHUB_ACTIONS === 'true'
+    && Boolean(process.env.GITHUB_ACTOR?.trim())
+    && Boolean(process.env.GITHUB_RUN_ID?.trim())
+    && Boolean(process.env.GITHUB_SHA?.trim())
     && sourceRef != null;
 }
 

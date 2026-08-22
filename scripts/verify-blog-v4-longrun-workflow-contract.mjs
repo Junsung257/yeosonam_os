@@ -24,7 +24,7 @@ const required = [
   'verify:blog-v4-staging-security',
   'resolve:blog-v4-schema-read-credentials',
   'environment: blog-staging-schema-read',
-  'BLOG_SCHEMA_READ_APPROVED',
+  'BLOG_SCHEMA_READ_ENVIRONMENT',
   'productionDataCopied": false',
   'productionWrites": 0',
   'publications": 0',
@@ -37,6 +37,7 @@ const forbidden = [
   'vercel promote',
   'BLOG_AUTOPUBLISH_MODE=live',
   'BLOG_GENERATION_CRON_ENABLED=true',
+  'BLOG_SCHEMA_READ_APPROVED',
   'indexnow',
   'gsc submission',
 ];
