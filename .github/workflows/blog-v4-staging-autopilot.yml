@@ -342,6 +342,10 @@ jobs:
           # versions with placeholders. The checked-in staging baseline is the
           # authoritative local copy for this one allowed extra version.
           rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260819000000_remote_history_placeholder.sql
+          # The research registry supplement is also a staging-only extra.
+          # Remove its remote-history placeholder when a previous canary has
+          # already applied the exact same checked-in SQL.
+          rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823010000_remote_history_placeholder.sql
 
       - name: Prove exact staging migration dry-run
         shell: bash
