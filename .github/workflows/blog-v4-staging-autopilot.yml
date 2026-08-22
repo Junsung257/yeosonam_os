@@ -188,6 +188,7 @@ jobs:
             local name="$1"
             local value
             value="$(sed -n -E "s/^${name}=(.*)$/\\1/p" "$branch_env" | head -n 1 || true)"
+            value="${value%$'\r'}"
             value="${value#\'}"; value="${value%\'}"
             value="${value#\"}"; value="${value%\"}"
             printf '%s' "$value"
@@ -246,6 +247,12 @@ jobs:
                 {
                   printf 'envKeys='
                   sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p' "$branch_env" | paste -sd, -
+                  printf 'fieldPresence=stagingUrl:%s,stagingRef:%s,serviceRole:%s,dbPassword:%s,' \
+                    "$([ -n "$staging_url" ] && printf yes || printf no)" \
+                    "$([[ "$staging_ref" =~ ^[a-z0-9]{20}$ ]] && printf yes || printf no)" \
+                    "$([ -n "$service_role_key" ] && printf yes || printf no)" \
+                    "$([ -n "$db_password" ] && printf yes || printf no)"
+                  printf 'branchStatus:%s\n' "$([ -n "$branch_status" ] && printf yes || printf no)"
                   printf 'statusTokens='
                   grep -Eio 'ACTIVE|HEALTHY|RUNNING|READY' "$branch_pretty" | sort -u | paste -sd, - || true
                 } > .tmp/blog-v4-staging-result/branch-bootstrap-diagnostic.txt
