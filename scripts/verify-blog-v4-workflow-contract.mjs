@@ -27,6 +27,7 @@ assertContains(staging, 'environment: blog-staging-bootstrap', 'staging_environm
 assertContains(staging, 'bootstrap-blocker.json', 'staging_blocker_artifact');
 assertContains(staging, 'productionWrites: 0', 'staging_production_write_guard');
 assertContains(staging, 'github.ref == \'refs/heads/main\'', 'staging_manual_main_guard');
+assertContains(staging, 'github.ref == \'refs/heads/codex/blog-v4-integration-preview\'', 'staging_manual_integration_guard');
 
 for (const [token, label] of [
   ['--prod', 'vercel_production_flag'],
@@ -51,7 +52,7 @@ process.stdout.write(JSON.stringify({
   stagingWorkflow: stagingPath,
   releaseWorkflow: releasePath,
   pushSentinel: true,
-  mainOnlyManualDispatch: true,
+  manualDispatchTrustedRefs: ['main', 'codex/blog-v4-integration-preview'],
   productionActionTokens: 'absent',
   blockerArtifact: true,
   releaseTrain: true,

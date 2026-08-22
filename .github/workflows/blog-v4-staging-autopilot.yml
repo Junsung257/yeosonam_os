@@ -47,7 +47,9 @@ jobs:
       (github.event_name == 'push' &&
       github.ref == 'refs/heads/codex/blog-v4-integration-preview' &&
       contains(github.event.head_commit.message, '[run-blog-v4-canary]')) ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      (github.event_name == 'workflow_dispatch' &&
+      (github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/codex/blog-v4-integration-preview'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: blog-staging-bootstrap
