@@ -366,7 +366,10 @@ async function fetchReviewedDirectPage(input: {
       signal: AbortSignal.timeout(remainingMs),
       headers: {
         accept: 'text/html,text/plain;q=0.9',
-        'user-agent': 'yeosonam-reviewed-source-research/1.0',
+        'accept-language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'cache-control': 'no-cache',
+        'upgrade-insecure-requests': '1',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -404,7 +407,7 @@ async function fetchReviewedDirectPage(input: {
       const pdfParse = (await import('pdf-parse')).default;
       const parsed = await pdfParse(pdfBuffer);
       const text = extractReviewedPageTextForResearch(parsed.text);
-      if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
+      if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}:length=${text.length}`);
       return { url: currentUrl, title: input.entry.hostname, text };
     }
 
@@ -414,14 +417,14 @@ async function fetchReviewedDirectPage(input: {
     }
     if (contentType.includes('text/plain') || isStructuredText) {
       const text = extractReviewedPageTextForResearch(body);
-      if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
+      if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}:length=${text.length}`);
       return { url: currentUrl, title: input.entry.hostname, text };
     }
 
     const $ = cheerio.load(body);
     const title = clean($('title').first().text()) || input.entry.hostname;
     const text = extractReviewedHtmlTextForResearch({ body, url: currentUrl });
-    if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}`);
+    if (text.length < 80) throw new Error(`content_too_short:${input.entry.hostname}:length=${text.length}`);
     return { url: currentUrl, title, text };
   }
   throw new Error(`too_many_redirects:${input.entry.hostname}`);
