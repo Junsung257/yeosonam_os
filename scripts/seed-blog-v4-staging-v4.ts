@@ -1,11 +1,19 @@
 import { createHash } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const TOPIC = '괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준';
+const BASE_TOPIC = '괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준';
+const DEFAULT_SEED_KEY = 'blog-v4-staging-canary-v1';
 const OFFICIAL_SOURCE_URL = 'https://www.visitguam.com/';
 const SYSTEM_VERIFIER_ID = '00000000-0000-0000-0000-000000000001';
 
 type SeedMode = 'seed' | 'reset';
+
+function topicForSeedKey(seedKey: string): string {
+  const normalized = seedKey.trim();
+  if (normalized === DEFAULT_SEED_KEY) return BASE_TOPIC;
+  const suffix = createHash('sha256').update(normalized).digest('hex').slice(0, 8);
+  return `${BASE_TOPIC} (staging canary ${suffix})`;
+}
 
 function argument(name: string): string | null {
   const prefix = `--${name}=`;
@@ -37,11 +45,11 @@ function client(): SupabaseClient {
   );
 }
 
-async function readSeedRows(db: SupabaseClient, seedKey: string) {
+async function readSeedRows(db: SupabaseClient, seedKey: string, topic: string) {
   const result = await db
     .from('blog_topic_queue')
     .select('id,status,attempts,meta,content_creative_id')
-    .eq('topic', TOPIC)
+    .eq('topic', topic)
     .eq('source', 'user_seed')
     .contains('meta', { blog_v4_staging_seed: seedKey })
     .order('created_at', { ascending: true });
@@ -155,9 +163,10 @@ async function ensureStagingControlPlane(db: SupabaseClient) {
 
 async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
   await ensureStagingControlPlane(db);
+  const topic = topicForSeedKey(seedKey);
   const now = new Date().toISOString();
   const expiresAt = nowPlusDays(7);
-  const existing = await readSeedRows(db, seedKey);
+  const existing = await readSeedRows(db, seedKey, topic);
   const queue = existing[0] as Record<string, unknown> | undefined;
   const queueId = typeof queue?.id === 'string' ? queue.id : null;
   const operations = await readOperations(db, queueId ? [queueId] : []);
@@ -194,6 +203,7 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
         status: 'queued',
         attempts: 0,
         last_error: null,
+        priority: 10_000,
         target_publish_at: now,
         meta: metadata,
         updated_at: now,
@@ -209,15 +219,15 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
     const insert = await db
       .from('blog_topic_queue')
       .insert({
-        topic: TOPIC,
-        primary_keyword: TOPIC,
+        topic,
+        primary_keyword: topic,
         destination: '괌',
         angle_type: '숙소 지역 비교',
         category: '여행정보',
         source: 'user_seed',
-        // Keep the explicit canary ahead of historical staging backlog rows;
+        // Keep the explicit canary ahead of historical and previous retry rows;
         // the materializer remains bounded to one workflow start per request.
-        priority: 1000,
+        priority: 10_000,
         status: 'queued',
         target_publish_at: now,
         keyword_tier: 'longtail',
@@ -245,7 +255,7 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
       verified_at: now,
       metadata: {
         verifier: 'blog-v4-staging-autopilot',
-        topic: TOPIC,
+        topic,
         official_source_url: OFFICIAL_SOURCE_URL,
       },
     }, { onConflict: 'provider,signal_key,source_reference' })
@@ -258,7 +268,7 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
   process.stdout.write(JSON.stringify({
     seedKey,
     mode,
-    topic: TOPIC,
+    topic,
     queueId: targetQueueId,
     demandSignalId: signal.data.id,
     reusedQueue: Boolean(queueId),
