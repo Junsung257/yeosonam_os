@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          status="$(node -e 'const x=require(process.argv[1]); process.stdout.write(x.status)' \
+          status="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(x.status)' \
             ".tmp/blog-v4-longrun/$BLOG_V4_LONGRUN_EXECUTION_ID/schema-discovery/schema-dependencies.json")"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           npm run checkpoint:blog-v4-longrun -- \
@@ -317,7 +317,7 @@ jobs:
           execution_dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}"
           npm run resolve:blog-v4-schema-read-credentials -- \
             --output="$execution_dir/capture/credential-resolution.json"
-          mode="$(node -e 'const x=require(process.argv[1]); process.stdout.write(x.mode)' "$execution_dir/capture/credential-resolution.json")"
+          mode="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(x.mode)' "$execution_dir/capture/credential-resolution.json")"
           echo "credential_mode=$mode" >> "$GITHUB_OUTPUT"
       - name: Read migration metadata and capture schema only
         if: steps.credential.outputs.credential_mode != 'missing'
@@ -352,7 +352,7 @@ jobs:
             echo "Unsupported schema-read credential mode: $mode" >&2
             exit 1
           fi
-          schemas="$(node -e 'const x=require(process.argv[1]); const names=(x.requiredObjects||[]).map((e)=>String(e.name||"")); const out=[...new Set(names.map((name)=>name.split(".")[0]).filter((name)=>name && !["auth","storage","realtime","vault"].includes(name)))].sort(); process.stdout.write(out.join(",") || "public")' "$execution_dir/schema-discovery/schema-dependencies.json")"
+          schemas="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const names=(x.requiredObjects||[]).map((e)=>String(e.name||"")); const out=[...new Set(names.map((name)=>name.split(".")[0]).filter((name)=>name && !["auth","storage","realtime","vault"].includes(name)))].sort(); process.stdout.write(out.join(",") || "public")' "$execution_dir/schema-discovery/schema-dependencies.json")"
           npm run collect:yeosonam-schema-baseline-v4 -- \
             --database-url-env=SUPABASE_PRODUCTION_SCHEMA_ONLY_DATABASE_URL \
             --approve-production-schema-read \
@@ -375,7 +375,7 @@ jobs:
           if [ -f ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/baseline/manifest.json" ] \
             && [ -f ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/capture/capture.exit" ]; then status=passed; fi
           echo "baseline_status=$status" >> "$GITHUB_OUTPUT"
-          credential_mode="$(node -e 'try { const x=require(process.argv[1]); process.stdout.write(x.mode || "missing") } catch { process.stdout.write("missing") }' ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/capture/credential-resolution.json")"
+          credential_mode="$(node -e 'try { const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(x.mode || "missing") } catch { process.stdout.write("missing") }' ".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}/capture/credential-resolution.json")"
           echo "credential_mode=$credential_mode" >> "$GITHUB_OUTPUT"
           npm run checkpoint:blog-v4-longrun -- \
             --output-dir=".tmp/blog-v4-longrun/${{ needs.schema-discovery.outputs.execution_id }}" \
@@ -424,7 +424,7 @@ jobs:
           npm run verify:yeosonam-schema-baseline-v4 -- \
             --input="$execution_dir/baseline/baseline.sql" \
             --required-objects="$execution_dir/baseline/required-objects.json"
-          test "$(node -e 'const x=require(process.argv[1]); process.stdout.write(String(x.containsData))' "$execution_dir/baseline/manifest.json")" = false
+          test "$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String(x.containsData))' "$execution_dir/baseline/manifest.json")" = false
           test -f "$execution_dir/baseline/credential-mode.json"
           echo 0 > "$execution_dir/baseline/sanitize.exit"
       - id: result
@@ -716,7 +716,7 @@ jobs:
               --discovery-report="$execution_dir/schema-discovery/schema-dependencies.json" \
               --stage=staging \
               --output="$execution_dir/object-contract-staging-baseline.json"
-            versions="$(node -e 'const x=require(process.argv[1]); process.stdout.write((x.embodiedMigrations||[]).join(" "))' "$execution_dir/baseline/migration-history.json")"
+            versions="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write((x.embodiedMigrations||[]).join(" "))' "$execution_dir/baseline/migration-history.json")"
             if [ -n "$versions" ]; then
               supabase migration repair --workdir .tmp/supabase-blog-v4-staging --linked \
                 --password "$SUPABASE_STAGING_DB_PASSWORD" --status applied --yes $versions
@@ -826,7 +826,7 @@ jobs:
           set -euo pipefail
           execution_dir=".tmp/blog-v4-longrun/${{ needs.preflight.outputs.execution_id }}"
           status=failed
-          if [ "$(node -e 'try { process.stdout.write(String(require(process.argv[1]).passed)) } catch { process.stdout.write("false") }' "$execution_dir/staging-security.json")" = true ]; then status=passed; fi
+          if [ "$(node -e 'try { const fs=require("fs"); process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).passed)) } catch { process.stdout.write("false") }' "$execution_dir/staging-security.json")" = true ]; then status=passed; fi
           echo "security_status=$status" >> "$GITHUB_OUTPUT"
           npm run checkpoint:blog-v4-longrun -- \
             --output-dir="$execution_dir" --execution-id="${{ needs.preflight.outputs.execution_id }}" \
@@ -1061,7 +1061,7 @@ jobs:
             > "$execution_dir/canary/force-generation.json"
           status=$?
           if [ "$status" -eq 0 ]; then
-            operation_id="$(node -e 'try { const x=require(process.argv[1]); process.stdout.write(x.workflows?.[0]?.operationId || x.materialization?.operationIds?.[0] || ""); } catch {}' "$execution_dir/canary/force-generation.json")"
+            operation_id="$(node -e 'try { const fs=require("fs"); const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(x.workflows?.[0]?.operationId || x.materialization?.operationIds?.[0] || ""); } catch {}' "$execution_dir/canary/force-generation.json")"
             if [[ "$operation_id" =~ ^[0-9a-f-]{36}$ ]]; then
               echo "operation_id=$operation_id" >> "$GITHUB_OUTPUT"
               echo "$operation_id" > "$execution_dir/canary/operation-id.txt"
