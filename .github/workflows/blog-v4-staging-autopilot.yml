@@ -219,7 +219,7 @@ jobs:
               staging_url="$(read_env_value API_URL)"
               [ -n "$staging_url" ] || staging_url="$(read_env_value SUPABASE_URL)"
               [ -n "$staging_url" ] || staging_url="$(read_env_value REST_URL)"
-              staging_ref="$(printf '%s' "$staging_url" | sed -nE 's#^https://([a-z0-9]{20})\\.supabase\\.co.*#\\1#p')"
+              staging_ref="$(node -e 'try { const u = new URL(process.argv[1]); const match = u.hostname.match(/^([a-z0-9-]+)\\.supabase\\.co$/i); process.stdout.write(match?.[1]?.toLowerCase() || ""); } catch {}' "$staging_url")"
               service_role_key="$(read_env_value SERVICE_ROLE_KEY)"
               [ -n "$service_role_key" ] || service_role_key="$(read_env_value SUPABASE_SERVICE_ROLE_KEY)"
               db_password="$(read_env_value DB_PASSWORD)"
@@ -234,7 +234,7 @@ jobs:
                 --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
                 --output pretty > "$branch_pretty" 2>/dev/null || true
               branch_status="$(grep -Eio 'ACTIVE|HEALTHY|RUNNING|READY' "$branch_pretty" | head -n 1 || true)"
-              if [[ "$staging_ref" =~ ^[a-z0-9]{20}$ ]] \
+              if [[ "$staging_ref" =~ ^[a-z0-9-]{20,64}$ ]] \
                 && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ] \
                 && [ -n "$staging_url" ] \
                 && [ -n "$service_role_key" ] \
@@ -249,7 +249,7 @@ jobs:
                   sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p' "$branch_env" | paste -sd, -
                   printf 'fieldPresence=stagingUrl:%s,stagingRef:%s,serviceRole:%s,dbPassword:%s,' \
                     "$([ -n "$staging_url" ] && printf yes || printf no)" \
-                    "$([[ "$staging_ref" =~ ^[a-z0-9]{20}$ ]] && printf yes || printf no)" \
+                    "$([[ "$staging_ref" =~ ^[a-z0-9-]{20,64}$ ]] && printf yes || printf no)" \
                     "$([ -n "$service_role_key" ] && printf yes || printf no)" \
                     "$([ -n "$db_password" ] && printf yes || printf no)"
                   printf 'branchStatus:%s\n' "$([ -n "$branch_status" ] && printf yes || printf no)"
