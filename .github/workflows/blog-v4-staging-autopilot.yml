@@ -333,7 +333,7 @@ jobs:
           mkdir -p .tmp/blog-v4-staging-result
           supabase db push \
             --workdir .tmp/blog-v4-staging-release \
-            --linked --include-all --skip-vault --dry-run \
+            --linked --include-all --dry-run \
             --password "$SUPABASE_STAGING_DB_PASSWORD" \
             2>&1 | tee .tmp/blog-v4-staging-result/migration-dry-run.txt
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
@@ -345,7 +345,7 @@ jobs:
           set -euo pipefail
           supabase db push \
             --workdir .tmp/blog-v4-staging-release \
-            --linked --include-all --skip-vault --yes \
+            --linked --include-all --yes \
             --password "$SUPABASE_STAGING_DB_PASSWORD"
 
       - name: Seed one idempotent low-risk staging topic
