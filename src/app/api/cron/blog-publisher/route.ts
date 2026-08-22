@@ -298,6 +298,15 @@ const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_I
 const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
+// Naver SERP/demand research is advisory metadata only; verified factual
+// claims already come from the persisted information research bundle. Keep a
+// slow or partially configured external provider from blocking the writer.
+const BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS = readBoundedIntEnv(
+  'BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS',
+  15_000,
+  2_000,
+  45_000,
+);
 // A candidate gets one draft plus up to four DeepSeek repair passes. The
 // research bundle/claim fingerprints remain persisted between attempts, so
 // retries may change expression and structure but never invent facts. Hard
@@ -4863,13 +4872,17 @@ async function generateFromTopic(
   );
   if (shouldAnalyzeSerp) {
     try {
-      serpResearchV3 = await researchSerpNaverFirstV3({
-        primaryQuery: item.primary_keyword || contentBrief.primaryKeyword,
-        secondaryQueries: [
-          ...(Array.isArray(item.meta?.keywords) ? item.meta.keywords : []),
-          ...contentBrief.secondaryKeywords,
-        ].filter((value): value is string => typeof value === 'string'),
-      });
+      serpResearchV3 = await withPublisherTimeout(
+        researchSerpNaverFirstV3({
+          primaryQuery: item.primary_keyword || contentBrief.primaryKeyword,
+          secondaryQueries: [
+            ...(Array.isArray(item.meta?.keywords) ? item.meta.keywords : []),
+            ...contentBrief.secondaryKeywords,
+          ].filter((value): value is string => typeof value === 'string'),
+        }),
+        BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS,
+        'blog_serp_research',
+      );
     } catch (error) {
       console.warn('[blog-publisher] Naver-first research unavailable; continuing with verified demand and official evidence only:',
         error instanceof Error ? error.message : String(error));

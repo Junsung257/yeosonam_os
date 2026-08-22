@@ -74,6 +74,18 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('candidateFailures.push');
   });
 
+  it('bounds optional Naver research so it cannot block the verified writer path', () => {
+    const source = routeSource();
+    const serpStart = source.indexOf('const shouldAnalyzeSerp =');
+    const serpBlock = source.slice(serpStart, source.indexOf('const contentBriefV3 =', serpStart));
+
+    expect(source).toContain('BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS');
+    expect(source).toContain('2_000,\n  45_000');
+    expect(serpBlock).toContain('withPublisherTimeout(');
+    expect(serpBlock).toContain("'blog_serp_research'");
+    expect(serpBlock).toContain('continuing with verified demand and official evidence only');
+  });
+
   it('deduplicates micro-angle candidates by destination, broad angle, and micro angle', () => {
     const source = routeSource();
 
