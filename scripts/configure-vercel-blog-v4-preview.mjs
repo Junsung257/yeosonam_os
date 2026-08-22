@@ -78,7 +78,10 @@ for (const env of values) {
   };
   if (match?.id) {
     await api(`/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(match.id)}${query}`, {
-      method: 'PATCH',
+      method: 'DELETE',
+    });
+    await api(`/v10/projects/${encodeURIComponent(projectId)}/env${query}`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
   } else {
