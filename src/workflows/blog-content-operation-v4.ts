@@ -190,6 +190,7 @@ async function briefStep(input: BlogContentOperationWorkflowInput) {
 async function researchStep(input: BlogContentOperationWorkflowInput) {
   'use step';
   const { queue } = await operationAndQueue(input);
+  const researchAttemptKey = String(Date.now());
   let result = evaluateQueuedInformationResearch(queue);
   if (!result.passed && !queue.product_id) {
     const rawContentKey = queue.meta?.expected_slug ?? queue.meta?.spun_slug;
@@ -246,7 +247,7 @@ async function researchStep(input: BlogContentOperationWorkflowInput) {
   if (!result.passed) {
     await recordBlogContentOperationStageV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: 'research:backlog:v1', stage: 'research_backlog',
+      leaseOwner: input.leaseOwner, eventKey: `research:backlog:${researchAttemptKey}:v2`, stage: 'research_backlog',
       eventStatus: 'skipped', operationStatus: 'research_backlog', failureCode: 'research_not_ready',
       evidence: { issues: result.issues.slice(0, 20) },
     });
@@ -254,7 +255,7 @@ async function researchStep(input: BlogContentOperationWorkflowInput) {
   }
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: 'research:ready:v1', stage: 'research_ready',
+    leaseOwner: input.leaseOwner, eventKey: `research:ready:${researchAttemptKey}:v2`, stage: 'research_ready',
     eventStatus: 'succeeded', evidence: { verified: true },
   });
   return { ready: true as const, issues: [] as string[] };

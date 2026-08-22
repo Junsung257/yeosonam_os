@@ -66,13 +66,18 @@ async function runBlogGenerate(request: NextRequest) {
     const workflowStartLimit = Math.max(1, Math.min(12, Math.trunc(Number(
       process.env.BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT || 6,
     )) || 6));
-    const { data: queuedOperations, error: queuedError } = await supabaseAdmin
+    const materializedOperationIds = [...new Set(materialization.operationIds)];
+    let queuedOperationsQuery = supabaseAdmin
       .from('blog_content_operations')
       .select('id,status,lease_expires_at')
       .in('status', ['queued', 'running'])
-      .or(`status.eq.queued,lease_expires_at.is.null,lease_expires_at.lt.${new Date().toISOString()}`)
+      .or(`status.eq.queued,lease_expires_at.is.null,lease_expires_at.lt.${new Date().toISOString()}`);
+    if (materializedOperationIds.length > 0) {
+      queuedOperationsQuery = queuedOperationsQuery.in('id', materializedOperationIds);
+    }
+    const { data: queuedOperations, error: queuedError } = await queuedOperationsQuery
       .order('created_at', { ascending: true })
-      .limit(workflowStartLimit);
+      .limit(Math.max(workflowStartLimit, materializedOperationIds.length));
     if (queuedError) {
       return {
         ok: false,
@@ -82,7 +87,12 @@ async function runBlogGenerate(request: NextRequest) {
         rollout,
       };
     }
-    const started = await Promise.all((queuedOperations ?? []).map(async (operation) => {
+    const operationOrder = new Map(materializedOperationIds.map((id, index) => [id, index]));
+    const operationsToStart = [...(queuedOperations ?? [])]
+      .sort((left, right) => (operationOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER)
+        - (operationOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER))
+      .slice(0, workflowStartLimit);
+    const started = await Promise.all(operationsToStart.map(async (operation) => {
       try {
         return await startBlogContentOperationWorkflowV4({
           supabase: supabaseAdmin,
