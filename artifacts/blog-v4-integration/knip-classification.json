@@ -1,0 +1,2806 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-22T01:01:43.991Z",
+  "command": "npm run check:deadcode:raw -- --reporter json --no-exit-code",
+  "baselinePath": "scripts/knip-baseline.json",
+  "baselineIssueCount": 1029,
+  "currentIssueCount": 1381,
+  "newIssueCount": 396,
+  "classifiedCount": 396,
+  "issueSetSha256": "b716b6f43aea715ce9bc0a7c1f1f98077f3270f745dc4312d20e2bf322897ab4",
+  "comparison": {
+    "worktree": "C:/dev/yeosonam-os-blog-v4-content-factory",
+    "observedResult": "current=1381 baseline=1029 new=396 resolved=44",
+    "interpretation": "The same issue set is present on the clean #1140 worktree; this artifact does not authorize mass baseline addition or deletion."
+  },
+  "counts": {
+    "realDeadCode": 0,
+    "workflowEntrypoints": 4,
+    "generatedEntrypoints": 1,
+    "baselineDrift": 233,
+    "domainReviewRequired": 158,
+    "unresolved": 0
+  },
+  "realDeadCode": [],
+  "workflowEntrypoints": [
+    {
+      "key": "binaries:.github/workflows/blog-v4-production-activation.yml:vercel",
+      "type": "binaries",
+      "file": ".github/workflows/blog-v4-production-activation.yml",
+      "name": "vercel",
+      "reason": "CLI binary is invoked by a checked-in workflow or package script; it is not a source export to delete."
+    },
+    {
+      "key": "binaries:.github/workflows/blog-v4-production-release.yml:supabase",
+      "type": "binaries",
+      "file": ".github/workflows/blog-v4-production-release.yml",
+      "name": "supabase",
+      "reason": "CLI binary is invoked by a checked-in workflow or package script; it is not a source export to delete."
+    },
+    {
+      "key": "binaries:.github/workflows/blog-v4-production-release.yml:vercel",
+      "type": "binaries",
+      "file": ".github/workflows/blog-v4-production-release.yml",
+      "name": "vercel",
+      "reason": "CLI binary is invoked by a checked-in workflow or package script; it is not a source export to delete."
+    },
+    {
+      "key": "binaries:package.json:vercel",
+      "type": "binaries",
+      "file": "package.json",
+      "name": "vercel",
+      "reason": "CLI binary is invoked by a checked-in workflow or package script; it is not a source export to delete."
+    }
+  ],
+  "generatedEntrypoints": [
+    {
+      "key": "duplicates:vendor/image-size-disabled/index.d.ts:imageSize,default",
+      "type": "duplicates",
+      "file": "vendor/image-size-disabled/index.d.ts",
+      "name": "imageSize,default",
+      "reason": "Vendored compatibility declaration is generated/maintained outside the application source graph."
+    }
+  ],
+  "baselineDrift": [
+    {
+      "key": "exports:src/app/admin/ad-os/_components/AdOsWorkspaceTabs.tsx:AD_OS_WORKSPACE_TABS",
+      "type": "exports",
+      "file": "src/app/admin/ad-os/_components/AdOsWorkspaceTabs.tsx",
+      "name": "AD_OS_WORKSPACE_TABS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ab-test-engine.ts:assignVariant",
+      "type": "exports",
+      "file": "src/lib/ab-test-engine.ts",
+      "name": "assignVariant",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ad-os-ai-director.ts:buildAdDirectorDecisions",
+      "type": "exports",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "buildAdDirectorDecisions",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ad-os-ai-director.ts:buildBudgetAllocations",
+      "type": "exports",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "buildBudgetAllocations",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ad-os-ai-director.ts:buildWritePackets",
+      "type": "exports",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "buildWritePackets",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ad-os-campaign-memory.ts:buildAdOsCampaignMemoryRecord",
+      "type": "exports",
+      "file": "src/lib/ad-os-campaign-memory.ts",
+      "name": "buildAdOsCampaignMemoryRecord",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-machine.ts:getAgentTypeBadgeClass",
+      "type": "exports",
+      "file": "src/lib/agent-action-machine.ts",
+      "name": "getAgentTypeBadgeClass",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-machine.ts:getAgentTypeLabel",
+      "type": "exports",
+      "file": "src/lib/agent-action-machine.ts",
+      "name": "getAgentTypeLabel",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-machine.ts:getPriorityBadgeClass",
+      "type": "exports",
+      "file": "src/lib/agent-action-machine.ts",
+      "name": "getPriorityBadgeClass",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-machine.ts:getPriorityLabel",
+      "type": "exports",
+      "file": "src/lib/agent-action-machine.ts",
+      "name": "getPriorityLabel",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-machine.ts:getStatusBadgeClass",
+      "type": "exports",
+      "file": "src/lib/agent-action-machine.ts",
+      "name": "getStatusBadgeClass",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-machine.ts:getStatusLabel",
+      "type": "exports",
+      "file": "src/lib/agent-action-machine.ts",
+      "name": "getStatusLabel",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-action-registry.ts:normalizeActionType",
+      "type": "exports",
+      "file": "src/lib/agent-action-registry.ts",
+      "name": "normalizeActionType",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-office.ts:DEFAULT_APPROVAL_MAX_AGE_MS",
+      "type": "exports",
+      "file": "src/lib/agent-office.ts",
+      "name": "DEFAULT_APPROVAL_MAX_AGE_MS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent-office.ts:isAgentApprovalOverdue",
+      "type": "exports",
+      "file": "src/lib/agent-office.ts",
+      "name": "isAgentApprovalOverdue",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent/lifecycle-policy.ts:AGENT_TRACE_MAX_OPEN_MS",
+      "type": "exports",
+      "file": "src/lib/agent/lifecycle-policy.ts",
+      "name": "AGENT_TRACE_MAX_OPEN_MS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/agent/lifecycle-policy.ts:REQUEST_SCOPED_AGENT_TASK_TTL_MS",
+      "type": "exports",
+      "file": "src/lib/agent/lifecycle-policy.ts",
+      "name": "REQUEST_SCOPED_AGENT_TASK_TTL_MS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ai-control-plane/pricing.ts:AI_PRICING_VERSION",
+      "type": "exports",
+      "file": "src/lib/ai-control-plane/pricing.ts",
+      "name": "AI_PRICING_VERSION",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ai-control-plane/retry-policy.ts:isRetryableProviderError",
+      "type": "exports",
+      "file": "src/lib/ai-control-plane/retry-policy.ts",
+      "name": "isRetryableProviderError",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ai-control-plane/task-registry.ts:listRegisteredAiTasks",
+      "type": "exports",
+      "file": "src/lib/ai-control-plane/task-registry.ts",
+      "name": "listRegisteredAiTasks",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ai.ts:generateMarketingCopies",
+      "type": "exports",
+      "file": "src/lib/ai.ts",
+      "name": "generateMarketingCopies",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/analytics/attribution.ts:attributionAllowlist",
+      "type": "exports",
+      "file": "src/lib/analytics/attribution.ts",
+      "name": "attributionAllowlist",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/analytics/attribution.ts:clearDisallowedAttribution",
+      "type": "exports",
+      "file": "src/lib/analytics/attribution.ts",
+      "name": "clearDisallowedAttribution",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/analytics/consent.ts:CONSENT_COOKIE_KEY",
+      "type": "exports",
+      "file": "src/lib/analytics/consent.ts",
+      "name": "CONSENT_COOKIE_KEY",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/analytics/data-layer.ts:getAnalyticsDebugSnapshot",
+      "type": "exports",
+      "file": "src/lib/analytics/data-layer.ts",
+      "name": "getAnalyticsDebugSnapshot",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/bank-transaction-fingerprint.ts:normalizeBankTransactionMemo",
+      "type": "exports",
+      "file": "src/lib/bank-transaction-fingerprint.ts",
+      "name": "normalizeBankTransactionMemo",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/campaign-public-packages.ts:isCampaignPublicSnapshotCandidate",
+      "type": "exports",
+      "file": "src/lib/campaign-public-packages.ts",
+      "name": "isCampaignPublicSnapshotCandidate",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/campaign-public-packages.ts:loadPublicPackagesForCampaignCreatives",
+      "type": "exports",
+      "file": "src/lib/campaign-public-packages.ts",
+      "name": "loadPublicPackagesForCampaignCreatives",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/chat-filter.ts:resolveMessage",
+      "type": "exports",
+      "file": "src/lib/chat-filter.ts",
+      "name": "resolveMessage",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/content-hub-status-transition.ts:CONTENT_HUB_ACTIONS",
+      "type": "exports",
+      "file": "src/lib/content-hub-status-transition.ts",
+      "name": "CONTENT_HUB_ACTIONS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/cron-resource-saver.ts:isCriticalCron",
+      "type": "exports",
+      "file": "src/lib/cron-resource-saver.ts",
+      "name": "isCriticalCron",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/cron-resource-saver.ts:isCronForceRun",
+      "type": "exports",
+      "file": "src/lib/cron-resource-saver.ts",
+      "name": "isCronForceRun",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/customer-copy-quality.ts:decodeCustomerHtmlEntities",
+      "type": "exports",
+      "file": "src/lib/customer-copy-quality.ts",
+      "name": "decodeCustomerHtmlEntities",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/departure-hub.ts:departureHubSupabaseOr",
+      "type": "exports",
+      "file": "src/lib/departure-hub.ts",
+      "name": "departureHubSupabaseOr",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/error-codes.ts:ErrorCodes",
+      "type": "exports",
+      "file": "src/lib/error-codes.ts",
+      "name": "ErrorCodes",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/finance-classification.ts:classificationFromClobe",
+      "type": "exports",
+      "file": "src/lib/finance-classification.ts",
+      "name": "classificationFromClobe",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/finance-classification.ts:toProfitErpCategory",
+      "type": "exports",
+      "file": "src/lib/finance-classification.ts",
+      "name": "toProfitErpCategory",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/gsc-url-inspection-quota.ts:DEFAULT_GSC_URL_INSPECTION_MAX_PER_10M",
+      "type": "exports",
+      "file": "src/lib/gsc-url-inspection-quota.ts",
+      "name": "DEFAULT_GSC_URL_INSPECTION_MAX_PER_10M",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/gsc-url-inspection-quota.ts:DEFAULT_GSC_URL_INSPECTION_MAX_PER_DAY",
+      "type": "exports",
+      "file": "src/lib/gsc-url-inspection-quota.ts",
+      "name": "DEFAULT_GSC_URL_INSPECTION_MAX_PER_DAY",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/gsc-url-inspection-quota.ts:DEFAULT_GSC_URL_INSPECTION_MAX_PER_RUN",
+      "type": "exports",
+      "file": "src/lib/gsc-url-inspection-quota.ts",
+      "name": "DEFAULT_GSC_URL_INSPECTION_MAX_PER_RUN",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/gsc-url-inspection-quota.ts:DEFAULT_GSC_URL_INSPECTION_RETRY_AFTER_MINUTES",
+      "type": "exports",
+      "file": "src/lib/gsc-url-inspection-quota.ts",
+      "name": "DEFAULT_GSC_URL_INSPECTION_RETRY_AFTER_MINUTES",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/guidebook-token.ts:signGuidebookToken",
+      "type": "exports",
+      "file": "src/lib/guidebook-token.ts",
+      "name": "signGuidebookToken",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ir-canary.ts:pickCanaryEngine",
+      "type": "exports",
+      "file": "src/lib/ir-canary.ts",
+      "name": "pickCanaryEngine",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/ir-to-package.ts:queueUnmatchedSegments",
+      "type": "exports",
+      "file": "src/lib/ir-to-package.ts",
+      "name": "queueUnmatchedSegments",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/jarvis/guest-guardrail.ts:isGuestAllowedToolName",
+      "type": "exports",
+      "file": "src/lib/jarvis/guest-guardrail.ts",
+      "name": "isGuestAllowedToolName",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/kakao.ts:sendGuidebookReadyAlimtalk",
+      "type": "exports",
+      "file": "src/lib/kakao.ts",
+      "name": "sendGuidebookReadyAlimtalk",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/mileage-service.ts:earnMileage",
+      "type": "exports",
+      "file": "src/lib/mileage-service.ts",
+      "name": "earnMileage",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/mock-apis.ts:getMockProductServerPricing",
+      "type": "exports",
+      "file": "src/lib/mock-apis.ts",
+      "name": "getMockProductServerPricing",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/mock-apis.ts:searchActivities",
+      "type": "exports",
+      "file": "src/lib/mock-apis.ts",
+      "name": "searchActivities",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/mock-apis.ts:searchCruises",
+      "type": "exports",
+      "file": "src/lib/mock-apis.ts",
+      "name": "searchCruises",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/mock-apis.ts:searchHotels",
+      "type": "exports",
+      "file": "src/lib/mock-apis.ts",
+      "name": "searchHotels",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/monthly-settlement-close.ts:monthlyCloseTransactionFingerprint",
+      "type": "exports",
+      "file": "src/lib/monthly-settlement-close.ts",
+      "name": "monthlyCloseTransactionFingerprint",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-public-eligibility.ts:getStoredCustomerOpenContract",
+      "type": "exports",
+      "file": "src/lib/package-public-eligibility.ts",
+      "name": "getStoredCustomerOpenContract",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-public-eligibility.ts:isProofOnlyCustomerOpenContractBlock",
+      "type": "exports",
+      "file": "src/lib/package-public-eligibility.ts",
+      "name": "isProofOnlyCustomerOpenContractBlock",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-publication/public-snapshot.ts:hashPublicPackageSnapshot",
+      "type": "exports",
+      "file": "src/lib/package-publication/public-snapshot.ts",
+      "name": "hashPublicPackageSnapshot",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-publication/public-title-policy.ts:inferPublicTitleDestination",
+      "type": "exports",
+      "file": "src/lib/package-publication/public-title-policy.ts",
+      "name": "inferPublicTitleDestination",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-publication/public-title-policy.ts:inferPublicTitleDuration",
+      "type": "exports",
+      "file": "src/lib/package-publication/public-title-policy.ts",
+      "name": "inferPublicTitleDuration",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-publication/repository.ts:snapshotPackage",
+      "type": "exports",
+      "file": "src/lib/package-publication/repository.ts",
+      "name": "snapshotPackage",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-publication/types.ts:PUBLIC_CUSTOMER_STATES",
+      "type": "exports",
+      "file": "src/lib/package-publication/types.ts",
+      "name": "PUBLIC_CUSTOMER_STATES",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-publication/types.ts:PUBLICATION_STATES",
+      "type": "exports",
+      "file": "src/lib/package-publication/types.ts",
+      "name": "PUBLICATION_STATES",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-schema.ts:formatZodErrors",
+      "type": "exports",
+      "file": "src/lib/package-schema.ts",
+      "name": "formatZodErrors",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/package-schema.ts:validatePackageLoose",
+      "type": "exports",
+      "file": "src/lib/package-schema.ts",
+      "name": "validatePackageLoose",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-authority/repository.ts:bindCompatibilityProjectionAtomic",
+      "type": "exports",
+      "file": "src/lib/product-registration-authority/repository.ts",
+      "name": "bindCompatibilityProjectionAtomic",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-authority/start-workflow.ts:loadProductRegistrationSource",
+      "type": "exports",
+      "file": "src/lib/product-registration-authority/start-workflow.ts",
+      "name": "loadProductRegistrationSource",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/revision.ts:nextProductRegistrationV5RevisionNo",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "name": "nextProductRegistrationV5RevisionNo",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/revision.ts:persistProductRegistrationV5Revision",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "name": "persistProductRegistrationV5Revision",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/revision.ts:PRODUCT_REGISTRATION_V5_SCHEMA_VERSION",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "name": "PRODUCT_REGISTRATION_V5_SCHEMA_VERSION",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/rhwp.ts:resolveRhwpBinary",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/rhwp.ts",
+      "name": "resolveRhwpBinary",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/source-documents.ts:createSourceDocumentRecord",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/source-documents.ts",
+      "name": "createSourceDocumentRecord",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/source-documents.ts:findSourceDocumentByHash",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/source-documents.ts",
+      "name": "findSourceDocumentByHash",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/source-documents.ts:validateSourceDocumentInput",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/source-documents.ts",
+      "name": "validateSourceDocumentInput",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/table-grid-price-calendar.ts:parseDailyCalendarGrid",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/table-grid-price-calendar.ts",
+      "name": "parseDailyCalendarGrid",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/table-grid-price-calendar.ts:tableBelongsToSection",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/table-grid-price-calendar.ts",
+      "name": "tableBelongsToSection",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v4/typed-projections.ts:persistV5TypedProjections",
+      "type": "exports",
+      "file": "src/lib/product-registration-v4/typed-projections.ts",
+      "name": "persistV5TypedProjections",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/benchmark-ground-truth.ts:stableBenchmarkJson",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/benchmark-ground-truth.ts",
+      "name": "stableBenchmarkJson",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/critical-fact-automation.ts:createLedgeredCriticalFactProviderCaller",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/critical-fact-automation.ts",
+      "name": "createLedgeredCriticalFactProviderCaller",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/domain-projections.ts:persistProductRegistrationV6DomainProjection",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/domain-projections.ts",
+      "name": "persistProductRegistrationV6DomainProjection",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/learning-loop.ts:learningMethodForFamily",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "learningMethodForFamily",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/ocr-providers.ts:runClovaOcr",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/ocr-providers.ts",
+      "name": "runClovaOcr",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/ocr-providers.ts:runGoogleDocumentAi",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/ocr-providers.ts",
+      "name": "runGoogleDocumentAi",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/schedule-providers.ts:estimatedIndependentScheduleCostKrw",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/schedule-providers.ts",
+      "name": "estimatedIndependentScheduleCostKrw",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/schedule-providers.ts:fetchIndependentSchedules",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/schedule-providers.ts",
+      "name": "fetchIndependentSchedules",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/source-bundle-resolver.ts:SOURCE_BUNDLE_RESOLVER_VERSION",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/source-bundle-resolver.ts",
+      "name": "SOURCE_BUNDLE_RESOLVER_VERSION",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/source-sale-price-disposition.ts:SOURCE_SALE_PRICE_DISPOSITION_POLICY_VERSION",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/source-sale-price-disposition.ts",
+      "name": "SOURCE_SALE_PRICE_DISPOSITION_POLICY_VERSION",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/supplier-profile-registry.ts:SUPPLIER_PROFILE_MIN_EXACT_MATCH_RATE",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/supplier-profile-registry.ts",
+      "name": "SUPPLIER_PROFILE_MIN_EXACT_MATCH_RATE",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/supplier-profile-registry.ts:SUPPLIER_PROFILE_MIN_LINEAGES",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/supplier-profile-registry.ts",
+      "name": "SUPPLIER_PROFILE_MIN_LINEAGES",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration-v6/supplier-profile-registry.ts:SUPPLIER_PROFILE_MIN_SECTIONS",
+      "type": "exports",
+      "file": "src/lib/product-registration-v6/supplier-profile-registry.ts",
+      "name": "SUPPLIER_PROFILE_MIN_SECTIONS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration/future-departure-date-policy.ts:PRODUCT_YEARLESS_ROLLOVER_MAX_DAYS",
+      "type": "exports",
+      "file": "src/lib/product-registration/future-departure-date-policy.ts",
+      "name": "PRODUCT_YEARLESS_ROLLOVER_MAX_DAYS",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration/source-departure-date-context.ts:PRODUCT_SOURCE_DEPARTURE_DATE_CONTEXT_VERSION",
+      "type": "exports",
+      "file": "src/lib/product-registration/source-departure-date-context.ts",
+      "name": "PRODUCT_SOURCE_DEPARTURE_DATE_CONTEXT_VERSION",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration/source-lineage-fingerprint.ts:normalizeProductSourceLineageText",
+      "type": "exports",
+      "file": "src/lib/product-registration/source-lineage-fingerprint.ts",
+      "name": "normalizeProductSourceLineageText",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration/standard-registration-schema.ts:StandardProductRegistrationObjectSchema",
+      "type": "exports",
+      "file": "src/lib/product-registration/standard-registration-schema.ts",
+      "name": "StandardProductRegistrationObjectSchema",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/product-registration/upload-review-queue.ts:DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT",
+      "type": "exports",
+      "file": "src/lib/product-registration/upload-review-queue.ts",
+      "name": "DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/settlement-import/index.ts:normalizeClobeBankTransaction",
+      "type": "exports",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "normalizeClobeBankTransaction",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/settlement-import/index.ts:normalizeSettlementMemoKey",
+      "type": "exports",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "normalizeSettlementMemoKey",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/settlement-import/index.ts:parseBankStatementRows",
+      "type": "exports",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "parseBankStatementRows",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/standard-terms.ts:calculateRegistrationTermsPolicyHash",
+      "type": "exports",
+      "file": "src/lib/standard-terms.ts",
+      "name": "calculateRegistrationTermsPolicyHash",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "exports:src/lib/topical-authority.ts:appendInterlinkSection",
+      "type": "exports",
+      "file": "src/lib/topical-authority.ts",
+      "name": "appendInterlinkSection",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/components/admin/MonthlySettlementCloseCard.tsx:src/components/admin/MonthlySettlementCloseCard.tsx",
+      "type": "files",
+      "file": "src/components/admin/MonthlySettlementCloseCard.tsx",
+      "name": "src/components/admin/MonthlySettlementCloseCard.tsx",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/components/blog/AbTestTracker.tsx:src/components/blog/AbTestTracker.tsx",
+      "type": "files",
+      "file": "src/components/blog/AbTestTracker.tsx",
+      "name": "src/components/blog/AbTestTracker.tsx",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/components/blog/archetypes.tsx:src/components/blog/archetypes.tsx",
+      "type": "files",
+      "file": "src/components/blog/archetypes.tsx",
+      "name": "src/components/blog/archetypes.tsx",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/components/customer/TravelPassport.tsx:src/components/customer/TravelPassport.tsx",
+      "type": "files",
+      "file": "src/components/customer/TravelPassport.tsx",
+      "name": "src/components/customer/TravelPassport.tsx",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/auto-content-trigger.ts:src/lib/auto-content-trigger.ts",
+      "type": "files",
+      "file": "src/lib/auto-content-trigger.ts",
+      "name": "src/lib/auto-content-trigger.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/dki-resolver.ts:src/lib/dki-resolver.ts",
+      "type": "files",
+      "file": "src/lib/dki-resolver.ts",
+      "name": "src/lib/dki-resolver.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/llm-structured-output.ts:src/lib/llm-structured-output.ts",
+      "type": "files",
+      "file": "src/lib/llm-structured-output.ts",
+      "name": "src/lib/llm-structured-output.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/mrt-to-product.ts:src/lib/mrt-to-product.ts",
+      "type": "files",
+      "file": "src/lib/mrt-to-product.ts",
+      "name": "src/lib/mrt-to-product.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/multi-angle-drip.ts:src/lib/multi-angle-drip.ts",
+      "type": "files",
+      "file": "src/lib/multi-angle-drip.ts",
+      "name": "src/lib/multi-angle-drip.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/parser/multilingual-photo.ts:src/lib/parser/multilingual-photo.ts",
+      "type": "files",
+      "file": "src/lib/parser/multilingual-photo.ts",
+      "name": "src/lib/parser/multilingual-photo.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/product-registration-authority/index.ts:src/lib/product-registration-authority/index.ts",
+      "type": "files",
+      "file": "src/lib/product-registration-authority/index.ts",
+      "name": "src/lib/product-registration-authority/index.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/product-registration/upload-timeout-replay-queue.ts:src/lib/product-registration/upload-timeout-replay-queue.ts",
+      "type": "files",
+      "file": "src/lib/product-registration/upload-timeout-replay-queue.ts",
+      "name": "src/lib/product-registration/upload-timeout-replay-queue.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/session-guard.ts:src/lib/session-guard.ts",
+      "type": "files",
+      "file": "src/lib/session-guard.ts",
+      "name": "src/lib/session-guard.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "files:src/lib/va-email.ts:src/lib/va-email.ts",
+      "type": "files",
+      "file": "src/lib/va-email.ts",
+      "name": "src/lib/va-email.ts",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/app/admin/ad-os/_lib/agent-operating-model.ts:AiAdTeamRole",
+      "type": "types",
+      "file": "src/app/admin/ad-os/_lib/agent-operating-model.ts",
+      "name": "AiAdTeamRole",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/app/admin/ad-os/_lib/agent-operating-model.ts:AiAdTeamRoleId",
+      "type": "types",
+      "file": "src/app/admin/ad-os/_lib/agent-operating-model.ts",
+      "name": "AiAdTeamRoleId",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/app/admin/ad-os/_lib/agent-operating-model.ts:CampaignMemory",
+      "type": "types",
+      "file": "src/app/admin/ad-os/_lib/agent-operating-model.ts",
+      "name": "CampaignMemory",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:AdDirectorBudgetAllocation",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "AdDirectorBudgetAllocation",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:AdDirectorObjectiveMetric",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "AdDirectorObjectiveMetric",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:AdDirectorWritePacket",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "AdDirectorWritePacket",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:AdOsChannel",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "AdOsChannel",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:BudgetGuardrailMode",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "BudgetGuardrailMode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:MarketingSectionCheck",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "MarketingSectionCheck",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ad-os-ai-director.ts:MarketingSectionStatus",
+      "type": "types",
+      "file": "src/lib/ad-os-ai-director.ts",
+      "name": "MarketingSectionStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-action-registry.ts:ActionExposure",
+      "type": "types",
+      "file": "src/lib/agent-action-registry.ts",
+      "name": "ActionExposure",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-action-registry.ts:DecisionCheck",
+      "type": "types",
+      "file": "src/lib/agent-action-registry.ts",
+      "name": "DecisionCheck",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-action-registry.ts:DecisionCheckStatus",
+      "type": "types",
+      "file": "src/lib/agent-action-registry.ts",
+      "name": "DecisionCheckStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-action-registry.ts:DecisionEvidence",
+      "type": "types",
+      "file": "src/lib/agent-action-registry.ts",
+      "name": "DecisionEvidence",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-action-registry.ts:RegisteredActionType",
+      "type": "types",
+      "file": "src/lib/agent-action-registry.ts",
+      "name": "RegisteredActionType",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-office.ts:AgentOfficeTaskSummary",
+      "type": "types",
+      "file": "src/lib/agent-office.ts",
+      "name": "AgentOfficeTaskSummary",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/agent-office.ts:AgentOfficeTimelineEvent",
+      "type": "types",
+      "file": "src/lib/agent-office.ts",
+      "name": "AgentOfficeTimelineEvent",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ai-control-plane/types.ts:AiReservationStatus",
+      "type": "types",
+      "file": "src/lib/ai-control-plane/types.ts",
+      "name": "AiReservationStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/analytics-events.ts:AnalyticsEventName",
+      "type": "types",
+      "file": "src/lib/analytics-events.ts",
+      "name": "AnalyticsEventName",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/analytics/types.ts:AnalyticsItem",
+      "type": "types",
+      "file": "src/lib/analytics/types.ts",
+      "name": "AnalyticsItem",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/analytics/types.ts:AnalyticsScalar",
+      "type": "types",
+      "file": "src/lib/analytics/types.ts",
+      "name": "AnalyticsScalar",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/automation-command-center.ts:AutomationCommandCenterBlocker",
+      "type": "types",
+      "file": "src/lib/automation-command-center.ts",
+      "name": "AutomationCommandCenterBlocker",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/automation-command-center.ts:AutomationCommandCenterRepairFocus",
+      "type": "types",
+      "file": "src/lib/automation-command-center.ts",
+      "name": "AutomationCommandCenterRepairFocus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/bank-account-reality.ts:BankSettlementScope",
+      "type": "types",
+      "file": "src/lib/bank-account-reality.ts",
+      "name": "BankSettlementScope",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/bank-account-reality.ts:BookingCashBucket",
+      "type": "types",
+      "file": "src/lib/bank-account-reality.ts",
+      "name": "BookingCashBucket",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/bank-account-reality.ts:MonthlyProfitPoint",
+      "type": "types",
+      "file": "src/lib/bank-account-reality.ts",
+      "name": "MonthlyProfitPoint",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/content-hub-status-transition.ts:ContentHubTargetStatus",
+      "type": "types",
+      "file": "src/lib/content-hub-status-transition.ts",
+      "name": "ContentHubTargetStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/content-review-workflow.ts:ContentReviewRiskLevel",
+      "type": "types",
+      "file": "src/lib/content-review-workflow.ts",
+      "name": "ContentReviewRiskLevel",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/customer-package-display-copy.ts:PackageCopySource",
+      "type": "types",
+      "file": "src/lib/customer-package-display-copy.ts",
+      "name": "PackageCopySource",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/entity-master-candidates.ts:MasterCandidatePublicGateContract",
+      "type": "types",
+      "file": "src/lib/entity-master-candidates.ts",
+      "name": "MasterCandidatePublicGateContract",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/finance-center-service.ts:FinanceBookingSettlementRow",
+      "type": "types",
+      "file": "src/lib/finance-center-service.ts",
+      "name": "FinanceBookingSettlementRow",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/finance-classification.ts:FinanceClassificationSource",
+      "type": "types",
+      "file": "src/lib/finance-classification.ts",
+      "name": "FinanceClassificationSource",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/finance-settlement-exceptions.ts:SettlementExceptionStatus",
+      "type": "types",
+      "file": "src/lib/finance-settlement-exceptions.ts",
+      "name": "SettlementExceptionStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/finance-workday.ts:FinanceWorkdayTask",
+      "type": "types",
+      "file": "src/lib/finance-workday.ts",
+      "name": "FinanceWorkdayTask",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/free-travel/eval/scenario-cases.ts:FreeTravelScenarioMockMode",
+      "type": "types",
+      "file": "src/lib/free-travel/eval/scenario-cases.ts",
+      "name": "FreeTravelScenarioMockMode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/free-travel/eval/scenario-evaluator.ts:FreeTravelScenarioCheck",
+      "type": "types",
+      "file": "src/lib/free-travel/eval/scenario-evaluator.ts",
+      "name": "FreeTravelScenarioCheck",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/free-travel/eval/scenario-evaluator.ts:FreeTravelScenarioResult",
+      "type": "types",
+      "file": "src/lib/free-travel/eval/scenario-evaluator.ts",
+      "name": "FreeTravelScenarioResult",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/free-travel/eval/scenario-evaluator.ts:FreeTravelScenarioSectionScore",
+      "type": "types",
+      "file": "src/lib/free-travel/eval/scenario-evaluator.ts",
+      "name": "FreeTravelScenarioSectionScore",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/google-places-entity-verifier.ts:GooglePlacesEvidenceItem",
+      "type": "types",
+      "file": "src/lib/google-places-entity-verifier.ts",
+      "name": "GooglePlacesEvidenceItem",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/gsc-url-inspection-quota.ts:UrlInspectionQuotaReason",
+      "type": "types",
+      "file": "src/lib/gsc-url-inspection-quota.ts",
+      "name": "UrlInspectionQuotaReason",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/ir-canary.ts:IrCanaryEngine",
+      "type": "types",
+      "file": "src/lib/ir-canary.ts",
+      "name": "IrCanaryEngine",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/jarvis/customer-answer-guard.ts:CustomerAnswerGuardSeverity",
+      "type": "types",
+      "file": "src/lib/jarvis/customer-answer-guard.ts",
+      "name": "CustomerAnswerGuardSeverity",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/jarvis/eval/all-scenarios-readiness.ts:AllScenarioSectionScore",
+      "type": "types",
+      "file": "src/lib/jarvis/eval/all-scenarios-readiness.ts",
+      "name": "AllScenarioSectionScore",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/jarvis/eval/customer-answer-quality.ts:CustomerAnswerQualityCheck",
+      "type": "types",
+      "file": "src/lib/jarvis/eval/customer-answer-quality.ts",
+      "name": "CustomerAnswerQualityCheck",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/jarvis/eval/feature-coverage.ts:JarvisFeatureCoverageResult",
+      "type": "types",
+      "file": "src/lib/jarvis/eval/feature-coverage.ts",
+      "name": "JarvisFeatureCoverageResult",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/jarvis/eval/feature-coverage.ts:JarvisFeatureCoverageStatus",
+      "type": "types",
+      "file": "src/lib/jarvis/eval/feature-coverage.ts",
+      "name": "JarvisFeatureCoverageStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/marketing-deep-scorecard.ts:MarketingDeepAutomationPhase",
+      "type": "types",
+      "file": "src/lib/marketing-deep-scorecard.ts",
+      "name": "MarketingDeepAutomationPhase",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/marketing-deep-scorecard.ts:MarketingDeepChannel",
+      "type": "types",
+      "file": "src/lib/marketing-deep-scorecard.ts",
+      "name": "MarketingDeepChannel",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/marketing-deep-scorecard.ts:MarketingDeepPriority",
+      "type": "types",
+      "file": "src/lib/marketing-deep-scorecard.ts",
+      "name": "MarketingDeepPriority",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/marketing-deep-scorecard.ts:MarketingDeepSourceType",
+      "type": "types",
+      "file": "src/lib/marketing-deep-scorecard.ts",
+      "name": "MarketingDeepSourceType",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/marketing-deep-scorecard.ts:MarketingDeepStatus",
+      "type": "types",
+      "file": "src/lib/marketing-deep-scorecard.ts",
+      "name": "MarketingDeepStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/mock-apis.ts:MockSearchResult",
+      "type": "types",
+      "file": "src/lib/mock-apis.ts",
+      "name": "MockSearchResult",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/monthly-settlement-close.ts:MonthlyCloseItem",
+      "type": "types",
+      "file": "src/lib/monthly-settlement-close.ts",
+      "name": "MonthlyCloseItem",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/osm-nominatim-entity-verifier.ts:OsmNominatimEvidenceItem",
+      "type": "types",
+      "file": "src/lib/osm-nominatim-entity-verifier.ts",
+      "name": "OsmNominatimEvidenceItem",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-public-eligibility.ts:AttractionIdPublicEligibilityRemoval",
+      "type": "types",
+      "file": "src/lib/package-public-eligibility.ts",
+      "name": "AttractionIdPublicEligibilityRemoval",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-public-eligibility.ts:OptionalTourPublicEligibilityClassification",
+      "type": "types",
+      "file": "src/lib/package-public-eligibility.ts",
+      "name": "OptionalTourPublicEligibilityClassification",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-public-eligibility.ts:PackagePublicEligibilityRow",
+      "type": "types",
+      "file": "src/lib/package-public-eligibility.ts",
+      "name": "PackagePublicEligibilityRow",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-public-eligibility.ts:PublicEligibilityBlockerCode",
+      "type": "types",
+      "file": "src/lib/package-public-eligibility.ts",
+      "name": "PublicEligibilityBlockerCode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-publication/customer-budget.ts:CustomerBudgetFuelStatus",
+      "type": "types",
+      "file": "src/lib/package-publication/customer-budget.ts",
+      "name": "CustomerBudgetFuelStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-publication/customer-surface-parity.ts:CustomerSurfaceParityCode",
+      "type": "types",
+      "file": "src/lib/package-publication/customer-surface-parity.ts",
+      "name": "CustomerSurfaceParityCode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-publication/customer-surface-parity.ts:CustomerSurfaceParityFinding",
+      "type": "types",
+      "file": "src/lib/package-publication/customer-surface-parity.ts",
+      "name": "CustomerSurfaceParityFinding",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-publication/public-snapshot-diagnostics.ts:PublicSnapshotGenerationDiagnostic",
+      "type": "types",
+      "file": "src/lib/package-publication/public-snapshot-diagnostics.ts",
+      "name": "PublicSnapshotGenerationDiagnostic",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/package-publication/types.ts:PublishBlockerCode",
+      "type": "types",
+      "file": "src/lib/package-publication/types.ts",
+      "name": "PublishBlockerCode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/parser/deterministic/price-ir/index.ts:PriceIRConflict",
+      "type": "types",
+      "file": "src/lib/parser/deterministic/price-ir/index.ts",
+      "name": "PriceIRConflict",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/parser/deterministic/price-ir/index.ts:PriceIRResolution",
+      "type": "types",
+      "file": "src/lib/parser/deterministic/price-ir/index.ts",
+      "name": "PriceIRResolution",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/parser/deterministic/price-ir/source-money.ts:SourceWonNotation",
+      "type": "types",
+      "file": "src/lib/parser/deterministic/price-ir/source-money.ts",
+      "name": "SourceWonNotation",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-authority/types.ts:ProductRegistrationAuthorityMode",
+      "type": "types",
+      "file": "src/lib/product-registration-authority/types.ts",
+      "name": "ProductRegistrationAuthorityMode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-kernel/contracts.ts:CandidateFactGraph",
+      "type": "types",
+      "file": "src/lib/product-registration-kernel/contracts.ts",
+      "name": "CandidateFactGraph",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-kernel/contracts.ts:KernelFindingResolutionState",
+      "type": "types",
+      "file": "src/lib/product-registration-kernel/contracts.ts",
+      "name": "KernelFindingResolutionState",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-kernel/contracts.ts:RevisionAggregate",
+      "type": "types",
+      "file": "src/lib/product-registration-kernel/contracts.ts",
+      "name": "RevisionAggregate",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/completeness.ts:ProductRegistrationPublicationOutcome",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/completeness.ts",
+      "name": "ProductRegistrationPublicationOutcome",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/completeness.ts:RegistrationFieldCompletion",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/completeness.ts",
+      "name": "RegistrationFieldCompletion",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/completeness.ts:RegistrationFieldState",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/completeness.ts",
+      "name": "RegistrationFieldState",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/document-context.ts:SharedDocumentContextKind",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/document-context.ts",
+      "name": "SharedDocumentContextKind",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/proof.ts:ProductRegistrationV5ProofStatus",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/proof.ts",
+      "name": "ProductRegistrationV5ProofStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/revision.ts:ProductRegistrationV5Claim",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "name": "ProductRegistrationV5Claim",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/revision.ts:ProductRegistrationV5RevisionStatus",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/revision.ts",
+      "name": "ProductRegistrationV5RevisionStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/shadow-diff.ts:V5ShadowDiff",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/shadow-diff.ts",
+      "name": "V5ShadowDiff",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/shadow-diff.ts:V5ShadowDiffKind",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/shadow-diff.ts",
+      "name": "V5ShadowDiffKind",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/shadow-diff.ts:V5ShadowDiffSeverity",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/shadow-diff.ts",
+      "name": "V5ShadowDiffSeverity",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/types.ts:DocumentIrNodeKind",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/types.ts",
+      "name": "DocumentIrNodeKind",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/types.ts:EvidenceRef",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/types.ts",
+      "name": "EvidenceRef",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/types.ts:ProductRegistrationV4DbClient",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/types.ts",
+      "name": "ProductRegistrationV4DbClient",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/types.ts:ProductRegistrationV4JobStatus",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/types.ts",
+      "name": "ProductRegistrationV4JobStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v4/types.ts:ProductSourceStatus",
+      "type": "types",
+      "file": "src/lib/product-registration-v4/types.ts",
+      "name": "ProductSourceStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/benchmark-ground-truth.ts:BenchmarkPriceScope",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/benchmark-ground-truth.ts",
+      "name": "BenchmarkPriceScope",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/benchmark-ground-truth.ts:BenchmarkProductIdentityAxes",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/benchmark-ground-truth.ts",
+      "name": "BenchmarkProductIdentityAxes",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/benchmark-ground-truth.ts:BenchmarkSectionBoundary",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/benchmark-ground-truth.ts",
+      "name": "BenchmarkSectionBoundary",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/browser-proof.ts:ProductRegistrationV6BrowserProofSurfaceResult",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/browser-proof.ts",
+      "name": "ProductRegistrationV6BrowserProofSurfaceResult",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/browser-runtime.ts:BrowserProofRuntimeMode",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/browser-runtime.ts",
+      "name": "BrowserProofRuntimeMode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/critical-fact-consensus.ts:CriticalFactProviderResult",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/critical-fact-consensus.ts",
+      "name": "CriticalFactProviderResult",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/learning-loop.ts:LearningCluster",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "LearningCluster",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/learning-loop.ts:LearningManifestEntry",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "LearningManifestEntry",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/learning-loop.ts:LearningMethod",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "LearningMethod",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/learning-loop.ts:LearningRegressionSummary",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "LearningRegressionSummary",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/learning-loop.ts:LearningSplit",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "LearningSplit",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/learning-loop.ts:LearningSplitSummary",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/learning-loop.ts",
+      "name": "LearningSplitSummary",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/ocr-providers.ts:OcrLayoutNode",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/ocr-providers.ts",
+      "name": "OcrLayoutNode",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/ocr-providers.ts:OcrPage",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/ocr-providers.ts",
+      "name": "OcrPage",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/ocr-providers.ts:OcrProviderOutput",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/ocr-providers.ts",
+      "name": "OcrProviderOutput",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/ocr-providers.ts:OcrTableCell",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/ocr-providers.ts",
+      "name": "OcrTableCell",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/readiness.ts:ProductRegistrationV6ReadinessCheck",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/readiness.ts",
+      "name": "ProductRegistrationV6ReadinessCheck",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/readiness.ts:ProductRegistrationV6ReadinessStatus",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/readiness.ts",
+      "name": "ProductRegistrationV6ReadinessStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/source-sale-price-disposition.ts:SourceSalePriceDispositionState",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/source-sale-price-disposition.ts",
+      "name": "SourceSalePriceDispositionState",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration-v6/transport-facts.ts:TransportSourceKind",
+      "type": "types",
+      "file": "src/lib/product-registration-v6/transport-facts.ts",
+      "name": "TransportSourceKind",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/customer-visible-copy-repair.ts:CustomerVisibleCopyRepairChange",
+      "type": "types",
+      "file": "src/lib/product-registration/customer-visible-copy-repair.ts",
+      "name": "CustomerVisibleCopyRepairChange",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/future-departure-date-policy.ts:ProductSourceDepartureDateResolution",
+      "type": "types",
+      "file": "src/lib/product-registration/future-departure-date-policy.ts",
+      "name": "ProductSourceDepartureDateResolution",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/future-departure-date-policy.ts:ResolvedV3PriceCalendarEntry",
+      "type": "types",
+      "file": "src/lib/product-registration/future-departure-date-policy.ts",
+      "name": "ResolvedV3PriceCalendarEntry",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/registration-quality-scorecard.ts:RegistrationQualityDomainId",
+      "type": "types",
+      "file": "src/lib/product-registration/registration-quality-scorecard.ts",
+      "name": "RegistrationQualityDomainId",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/registration-quality-scorecard.ts:RegistrationQualityDomainScore",
+      "type": "types",
+      "file": "src/lib/product-registration/registration-quality-scorecard.ts",
+      "name": "RegistrationQualityDomainScore",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/ticketing-deadline.ts:SourceTicketingConditionStatus",
+      "type": "types",
+      "file": "src/lib/product-registration/ticketing-deadline.ts",
+      "name": "SourceTicketingConditionStatus",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/product-registration/types.ts:SourceEvidenceDocumentRole",
+      "type": "types",
+      "file": "src/lib/product-registration/types.ts",
+      "name": "SourceEvidenceDocumentRole",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/bank-transaction-importer.ts:BankTransactionImportAction",
+      "type": "types",
+      "file": "src/lib/settlement-import/bank-transaction-importer.ts",
+      "name": "BankTransactionImportAction",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/bank-transaction-importer.ts:BankTransactionImportPreviewRow",
+      "type": "types",
+      "file": "src/lib/settlement-import/bank-transaction-importer.ts",
+      "name": "BankTransactionImportPreviewRow",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/bank-transaction-importer.ts:BankTransactionImportSource",
+      "type": "types",
+      "file": "src/lib/settlement-import/bank-transaction-importer.ts",
+      "name": "BankTransactionImportSource",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/clobe-bank-sync.ts:ClobeMcpFetchAttempt",
+      "type": "types",
+      "file": "src/lib/settlement-import/clobe-bank-sync.ts",
+      "name": "ClobeMcpFetchAttempt",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/clobe-bank-sync.ts:ClobeMcpToolSummary",
+      "type": "types",
+      "file": "src/lib/settlement-import/clobe-bank-sync.ts",
+      "name": "ClobeMcpToolSummary",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/index.ts:BankTransactionImportResult",
+      "type": "types",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "BankTransactionImportResult",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/index.ts:BankTransactionImportRow",
+      "type": "types",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "BankTransactionImportRow",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/index.ts:ParsedBankStatementRow",
+      "type": "types",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "ParsedBankStatementRow",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "types:src/lib/settlement-import/index.ts:SettlementMemoResolution",
+      "type": "types",
+      "file": "src/lib/settlement-import/index.ts",
+      "name": "SettlementMemoResolution",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    },
+    {
+      "key": "unlisted:scripts/verify-project-automation-wiring.mjs:js-yaml",
+      "type": "unlisted",
+      "file": "scripts/verify-project-automation-wiring.mjs",
+      "name": "js-yaml",
+      "reason": "Issue is outside the Blog V4 release scope and reproduces in the clean #1140 worktree; no bulk deletion is authorized here."
+    }
+  ],
+  "domainReviewRequired": [
+    {
+      "key": "exports:src/lib/blog-ai-budget-v4.ts:BLOG_AI_MAX_INPUT_TOKENS_PER_CALL_DEFAULT",
+      "type": "exports",
+      "file": "src/lib/blog-ai-budget-v4.ts",
+      "name": "BLOG_AI_MAX_INPUT_TOKENS_PER_CALL_DEFAULT",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-ai-model-canary-v4.ts:BLOG_AI_MODEL_CANARY_STAGES_V4",
+      "type": "exports",
+      "file": "src/lib/blog-ai-model-canary-v4.ts",
+      "name": "BLOG_AI_MODEL_CANARY_STAGES_V4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-autopublish-policy-v3.ts:BLOG_AUTOPUBLISH_MODES",
+      "type": "exports",
+      "file": "src/lib/blog-autopublish-policy-v3.ts",
+      "name": "BLOG_AUTOPUBLISH_MODES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-cache.ts:BLOG_DATABASE_UNAVAILABLE",
+      "type": "exports",
+      "file": "src/lib/blog-cache.ts",
+      "name": "BLOG_DATABASE_UNAVAILABLE",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-content-brief-v3.ts:BLOG_CONTENT_ARCHETYPES_V3",
+      "type": "exports",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "BLOG_CONTENT_ARCHETYPES_V3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-content-brief-v3.ts:selectBlogContentArchetypeV3",
+      "type": "exports",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "selectBlogContentArchetypeV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-content-factory/demand.ts:inferBlogDemandIntentV4",
+      "type": "exports",
+      "file": "src/lib/blog-content-factory/demand.ts",
+      "name": "inferBlogDemandIntentV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-content-factory/demand.ts:scoreBlogDemandSignalV4",
+      "type": "exports",
+      "file": "src/lib/blog-content-factory/demand.ts",
+      "name": "scoreBlogDemandSignalV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-content-factory/funnel.ts:BLOG_CONTENT_FACTORY_FUNNEL_KEYS_V4",
+      "type": "exports",
+      "file": "src/lib/blog-content-factory/funnel.ts",
+      "name": "BLOG_CONTENT_FACTORY_FUNNEL_KEYS_V4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-content-factory/types.ts:BLOG_CONTENT_OPERATION_TYPES",
+      "type": "exports",
+      "file": "src/lib/blog-content-factory/types.ts",
+      "name": "BLOG_CONTENT_OPERATION_TYPES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-corpus-diversity-v3.ts:jaccardSimilarityV3",
+      "type": "exports",
+      "file": "src/lib/blog-corpus-diversity-v3.ts",
+      "name": "jaccardSimilarityV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-corpus-diversity-v3.ts:normalizeBlogCorpusTextV3",
+      "type": "exports",
+      "file": "src/lib/blog-corpus-diversity-v3.ts",
+      "name": "normalizeBlogCorpusTextV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-corpus-diversity-v3.ts:sentenceFiveGramsV3",
+      "type": "exports",
+      "file": "src/lib/blog-corpus-diversity-v3.ts",
+      "name": "sentenceFiveGramsV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-daily-summary-window.ts:DAILY_SUMMARY_CLOSE_MINUTE_KST",
+      "type": "exports",
+      "file": "src/lib/blog-daily-summary-window.ts",
+      "name": "DAILY_SUMMARY_CLOSE_MINUTE_KST",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-daily-summary-window.ts:getKstDayRange",
+      "type": "exports",
+      "file": "src/lib/blog-daily-summary-window.ts",
+      "name": "getKstDayRange",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-deepseek-orchestrator-v4.ts:BLOG_DEEPSEEK_ORCHESTRATOR_VERSION",
+      "type": "exports",
+      "file": "src/lib/blog-deepseek-orchestrator-v4.ts",
+      "name": "BLOG_DEEPSEEK_ORCHESTRATOR_VERSION",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-destinationless-info.ts:hasIntentionallyGenericInfoFlag",
+      "type": "exports",
+      "file": "src/lib/blog-destinationless-info.ts",
+      "name": "hasIntentionallyGenericInfoFlag",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-destinationless-info.ts:hasInvalidInfoDestination",
+      "type": "exports",
+      "file": "src/lib/blog-destinationless-info.ts",
+      "name": "hasInvalidInfoDestination",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-destinationless-info.ts:isDestinationlessInfoCandidate",
+      "type": "exports",
+      "file": "src/lib/blog-destinationless-info.ts",
+      "name": "isDestinationlessInfoCandidate",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-destinationless-info.ts:isInfoDestinationContractCandidate",
+      "type": "exports",
+      "file": "src/lib/blog-destinationless-info.ts",
+      "name": "isInfoDestinationContractCandidate",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-editorial-backlog-recheck.ts:BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION",
+      "type": "exports",
+      "file": "src/lib/blog-editorial-backlog-recheck.ts",
+      "name": "BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-image-quality-v3.ts:blogImageDisclosureV3",
+      "type": "exports",
+      "file": "src/lib/blog-image-quality-v3.ts",
+      "name": "blogImageDisclosureV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-indexing-outbox.ts:blogIndexingUrlForSlug",
+      "type": "exports",
+      "file": "src/lib/blog-indexing-outbox.ts",
+      "name": "blogIndexingUrlForSlug",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-indexing-outbox.ts:resolveBlogCanonicalOrigin",
+      "type": "exports",
+      "file": "src/lib/blog-indexing-outbox.ts",
+      "name": "resolveBlogCanonicalOrigin",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-claim-ledger.ts:BLOG_INFORMATION_CLAIM_LEDGER_END",
+      "type": "exports",
+      "file": "src/lib/blog-information-claim-ledger.ts",
+      "name": "BLOG_INFORMATION_CLAIM_LEDGER_END",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-claim-ledger.ts:BLOG_INFORMATION_CLAIM_LEDGER_START",
+      "type": "exports",
+      "file": "src/lib/blog-information-claim-ledger.ts",
+      "name": "BLOG_INFORMATION_CLAIM_LEDGER_START",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-claim-publish-gate.ts:BLOG_INFORMATION_CLAIM_AUTO_REGENERATION_LIMIT",
+      "type": "exports",
+      "file": "src/lib/blog-information-claim-publish-gate.ts",
+      "name": "BLOG_INFORMATION_CLAIM_AUTO_REGENERATION_LIMIT",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-evidence.ts:BLOG_INFORMATION_AUTHORITY_LEVELS",
+      "type": "exports",
+      "file": "src/lib/blog-information-evidence.ts",
+      "name": "BLOG_INFORMATION_AUTHORITY_LEVELS",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-evidence.ts:blogInformationEvidenceScopeSupportsClaim",
+      "type": "exports",
+      "file": "src/lib/blog-information-evidence.ts",
+      "name": "blogInformationEvidenceScopeSupportsClaim",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-evidence.ts:validateBlogInformationEvidenceScope",
+      "type": "exports",
+      "file": "src/lib/blog-information-evidence.ts",
+      "name": "validateBlogInformationEvidenceScope",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-official-source.ts:canonicalizeBlogInformationSourceHostname",
+      "type": "exports",
+      "file": "src/lib/blog-information-official-source.ts",
+      "name": "canonicalizeBlogInformationSourceHostname",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-representative-repository.ts:activateBlogInformationRepresentative",
+      "type": "exports",
+      "file": "src/lib/blog-information-representative-repository.ts",
+      "name": "activateBlogInformationRepresentative",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-representative.ts:createBlogInformationContentHash",
+      "type": "exports",
+      "file": "src/lib/blog-information-representative.ts",
+      "name": "createBlogInformationContentHash",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-review-workflow.ts:buildBlogInformationPersistedClaimRecords",
+      "type": "exports",
+      "file": "src/lib/blog-information-review-workflow.ts",
+      "name": "buildBlogInformationPersistedClaimRecords",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-review-workflow.ts:validateBlogInformationResearchDraft",
+      "type": "exports",
+      "file": "src/lib/blog-information-review-workflow.ts",
+      "name": "validateBlogInformationResearchDraft",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-information-structure.ts:parseBlogInformationTables",
+      "type": "exports",
+      "file": "src/lib/blog-information-structure.ts",
+      "name": "parseBlogInformationTables",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-informational-cta.ts:BLOG_INFORMATIONAL_CTA_KEYS",
+      "type": "exports",
+      "file": "src/lib/blog-informational-cta.ts",
+      "name": "BLOG_INFORMATIONAL_CTA_KEYS",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-inline-images.ts:findRelevantBlogPexelsAsset",
+      "type": "exports",
+      "file": "src/lib/blog-inline-images.ts",
+      "name": "findRelevantBlogPexelsAsset",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-pillar-generator.ts:buildPillarContext",
+      "type": "exports",
+      "file": "src/lib/blog-pillar-generator.ts",
+      "name": "buildPillarContext",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-private-regeneration.ts:PRIVATE_BLOG_REGENERATION_MODE",
+      "type": "exports",
+      "file": "src/lib/blog-private-regeneration.ts",
+      "name": "PRIVATE_BLOG_REGENERATION_MODE",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-product-status.ts:normalizeBlogProductStatus",
+      "type": "exports",
+      "file": "src/lib/blog-product-status.ts",
+      "name": "normalizeBlogProductStatus",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-prompt-residue.ts:hasBlogPromptInstructionResidue",
+      "type": "exports",
+      "file": "src/lib/blog-prompt-residue.ts",
+      "name": "hasBlogPromptInstructionResidue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-public-catalog.ts:PUBLIC_BLOG_CATALOG_LEGACY_SELECT",
+      "type": "exports",
+      "file": "src/lib/blog-public-catalog.ts",
+      "name": "PUBLIC_BLOG_CATALOG_LEGACY_SELECT",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-public-catalog.ts:PUBLIC_BLOG_CATALOG_SELECT",
+      "type": "exports",
+      "file": "src/lib/blog-public-catalog.ts",
+      "name": "PUBLIC_BLOG_CATALOG_SELECT",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-public-eligibility.ts:BLOG_INFORMATION_LEGACY_CUTOFF_AT",
+      "type": "exports",
+      "file": "src/lib/blog-public-eligibility.ts",
+      "name": "BLOG_INFORMATION_LEGACY_CUTOFF_AT",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-public-fallback.ts:getFallbackBlogPosts",
+      "type": "exports",
+      "file": "src/lib/blog-public-fallback.ts",
+      "name": "getFallbackBlogPosts",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-public-surfaces.ts:BLOG_PUBLIC_ANGLE_SLUGS",
+      "type": "exports",
+      "file": "src/lib/blog-public-surfaces.ts",
+      "name": "BLOG_PUBLIC_ANGLE_SLUGS",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-public-surfaces.ts:getPublicSiteOrigin",
+      "type": "exports",
+      "file": "src/lib/blog-public-surfaces.ts",
+      "name": "getPublicSiteOrigin",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-publication-review-policy.ts:BLOG_PUBLIC_BLOCKED_REVIEW_STATUSES",
+      "type": "exports",
+      "file": "src/lib/blog-publication-review-policy.ts",
+      "name": "BLOG_PUBLIC_BLOCKED_REVIEW_STATUSES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-publication-rollout.ts:BLOG_PUBLICATION_RAMP_STAGES",
+      "type": "exports",
+      "file": "src/lib/blog-publication-rollout.ts",
+      "name": "BLOG_PUBLICATION_RAMP_STAGES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-publication-rollout.ts:lowerBlogPublicationRampStage",
+      "type": "exports",
+      "file": "src/lib/blog-publication-rollout.ts",
+      "name": "lowerBlogPublicationRampStage",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-publish-readiness-repair.ts:appendPublishReadinessSupport",
+      "type": "exports",
+      "file": "src/lib/blog-publish-readiness-repair.ts",
+      "name": "appendPublishReadinessSupport",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-publish-readiness-repair.ts:ensurePublisherInternalLinks",
+      "type": "exports",
+      "file": "src/lib/blog-publish-readiness-repair.ts",
+      "name": "ensurePublisherInternalLinks",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-publish-slot-quota.ts:DEFAULT_BLOG_PUBLISH_SLOT_TIMES",
+      "type": "exports",
+      "file": "src/lib/blog-publish-slot-quota.ts",
+      "name": "DEFAULT_BLOG_PUBLISH_SLOT_TIMES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-quality-evaluator-v3.ts:BLOG_QUALITY_DIMENSIONS_V3",
+      "type": "exports",
+      "file": "src/lib/blog-quality-evaluator-v3.ts",
+      "name": "BLOG_QUALITY_DIMENSIONS_V3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-quality-gate.ts:BANNED_CLICHES",
+      "type": "exports",
+      "file": "src/lib/blog-quality-gate.ts",
+      "name": "BANNED_CLICHES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-quality-score.ts:BLOG_QUALITY_COMPONENT_MIN_SCORE",
+      "type": "exports",
+      "file": "src/lib/blog-quality-score.ts",
+      "name": "BLOG_QUALITY_COMPONENT_MIN_SCORE",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-queue-admin-view.ts:BLOG_QUEUE_ADMIN_VIEW_KEYS",
+      "type": "exports",
+      "file": "src/lib/blog-queue-admin-view.ts",
+      "name": "BLOG_QUEUE_ADMIN_VIEW_KEYS",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-queue-research.ts:BLOG_INFORMATION_RESEARCH_CONCURRENCY",
+      "type": "exports",
+      "file": "src/lib/blog-queue-research.ts",
+      "name": "BLOG_INFORMATION_RESEARCH_CONCURRENCY",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-queue-research.ts:MIN_READY_INFORMATION_INTENT_DIVERSITY",
+      "type": "exports",
+      "file": "src/lib/blog-queue-research.ts",
+      "name": "MIN_READY_INFORMATION_INTENT_DIVERSITY",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-reading-time.ts:BLOG_READING_TIME_MINIMUM_MINUTES",
+      "type": "exports",
+      "file": "src/lib/blog-reading-time.ts",
+      "name": "BLOG_READING_TIME_MINIMUM_MINUTES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-required-structure.ts:ensureRequiredBlogDecisionBlocksHtml",
+      "type": "exports",
+      "file": "src/lib/blog-required-structure.ts",
+      "name": "ensureRequiredBlogDecisionBlocksHtml",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-research-fallback-catalog.ts:REVIEWED_CLIMATE_FALLBACK_DESTINATIONS",
+      "type": "exports",
+      "file": "src/lib/blog-research-fallback-catalog.ts",
+      "name": "REVIEWED_CLIMATE_FALLBACK_DESTINATIONS",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-research-fallback-catalog.ts:REVIEWED_WMO_FALLBACK_DESTINATION_SET",
+      "type": "exports",
+      "file": "src/lib/blog-research-fallback-catalog.ts",
+      "name": "REVIEWED_WMO_FALLBACK_DESTINATION_SET",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-serp-research-v3.ts:BLOG_SERP_INITIAL_OPERATING_CANDIDATES_V3",
+      "type": "exports",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "BLOG_SERP_INITIAL_OPERATING_CANDIDATES_V3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-serp-research-v3.ts:fetchGscDemandV3",
+      "type": "exports",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "fetchGscDemandV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-serp-research-v3.ts:fetchNaverEditorialResultsV3",
+      "type": "exports",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "fetchNaverEditorialResultsV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-serp-research-v3.ts:inferSearchDecisionIntentV3",
+      "type": "exports",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "inferSearchDecisionIntentV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-serp-research-v3.ts:normalizeSerpQueryV3",
+      "type": "exports",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "normalizeSerpQueryV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "exports:src/lib/blog-slug-redirects.ts:BLOG_SLUG_REDIRECT_TOMBSTONES",
+      "type": "exports",
+      "file": "src/lib/blog-slug-redirects.ts",
+      "name": "BLOG_SLUG_REDIRECT_TOMBSTONES",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "files:src/lib/blog-chain-of-density.ts:src/lib/blog-chain-of-density.ts",
+      "type": "files",
+      "file": "src/lib/blog-chain-of-density.ts",
+      "name": "src/lib/blog-chain-of-density.ts",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "files:src/lib/blog-content-factory/index.ts:src/lib/blog-content-factory/index.ts",
+      "type": "files",
+      "file": "src/lib/blog-content-factory/index.ts",
+      "name": "src/lib/blog-content-factory/index.ts",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "files:src/lib/blog-originality-signals.ts:src/lib/blog-originality-signals.ts",
+      "type": "files",
+      "file": "src/lib/blog-originality-signals.ts",
+      "name": "src/lib/blog-originality-signals.ts",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-autopublish-activation-v4.ts:BlogAutopublishActivationCheckV4",
+      "type": "types",
+      "file": "src/lib/blog-autopublish-activation-v4.ts",
+      "name": "BlogAutopublishActivationCheckV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-autopublish-policy-v3.ts:BlogAutopublishMode",
+      "type": "types",
+      "file": "src/lib/blog-autopublish-policy-v3.ts",
+      "name": "BlogAutopublishMode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-canary-preflight.ts:BlogCanaryCandidate",
+      "type": "types",
+      "file": "src/lib/blog-canary-preflight.ts",
+      "name": "BlogCanaryCandidate",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-candidate-prepublish-contract.ts:BlogCandidatePrepublishIssue",
+      "type": "types",
+      "file": "src/lib/blog-candidate-prepublish-contract.ts",
+      "name": "BlogCandidatePrepublishIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-candidate-prepublish-contract.ts:BlogCandidatePrepublishIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-candidate-prepublish-contract.ts",
+      "name": "BlogCandidatePrepublishIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-boundary.ts:BlogContentBoundaryIssue",
+      "type": "types",
+      "file": "src/lib/blog-content-boundary.ts",
+      "name": "BlogContentBoundaryIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-boundary.ts:BlogContentLane",
+      "type": "types",
+      "file": "src/lib/blog-content-boundary.ts",
+      "name": "BlogContentLane",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-boundary.ts:InformationalQueueSource",
+      "type": "types",
+      "file": "src/lib/blog-content-boundary.ts",
+      "name": "InformationalQueueSource",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-brief-v3.ts:ArticleMetadataPlan",
+      "type": "types",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "ArticleMetadataPlan",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-brief-v3.ts:EvidenceLinkedDetail",
+      "type": "types",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "EvidenceLinkedDetail",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-brief-v3.ts:EvidenceRequirement",
+      "type": "types",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "EvidenceRequirement",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-brief-v3.ts:ImagePurpose",
+      "type": "types",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "ImagePurpose",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-brief-v3.ts:SectionPurpose",
+      "type": "types",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "SectionPurpose",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-brief-v3.ts:TitleCandidate",
+      "type": "types",
+      "file": "src/lib/blog-content-brief-v3.ts",
+      "name": "TitleCandidate",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-factory/funnel.ts:BlogContentFactoryFunnelKeyV4",
+      "type": "types",
+      "file": "src/lib/blog-content-factory/funnel.ts",
+      "name": "BlogContentFactoryFunnelKeyV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-content-factory/types.ts:BlogDemandClusterDecision",
+      "type": "types",
+      "file": "src/lib/blog-content-factory/types.ts",
+      "name": "BlogDemandClusterDecision",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-corpus-reconciliation-v4.ts:BlogFailedQueueActionV4",
+      "type": "types",
+      "file": "src/lib/blog-corpus-reconciliation-v4.ts",
+      "name": "BlogFailedQueueActionV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-current-day-publisher-health.ts:BlogCurrentDayPublisherIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-current-day-publisher-health.ts",
+      "name": "BlogCurrentDayPublisherIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-customer-quality.ts:BlogCustomerQualityIssue",
+      "type": "types",
+      "file": "src/lib/blog-customer-quality.ts",
+      "name": "BlogCustomerQualityIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-customer-quality.ts:BlogCustomerQualityIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-customer-quality.ts",
+      "name": "BlogCustomerQualityIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-customer-quality.ts:BlogCustomerQualityIssueSeverity",
+      "type": "types",
+      "file": "src/lib/blog-customer-quality.ts",
+      "name": "BlogCustomerQualityIssueSeverity",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-data-readiness-v3.ts:BlogDataReadinessCheckV3",
+      "type": "types",
+      "file": "src/lib/blog-data-readiness-v3.ts",
+      "name": "BlogDataReadinessCheckV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-deepseek-orchestrator-v4.ts:DeepSeekPriceTier",
+      "type": "types",
+      "file": "src/lib/blog-deepseek-orchestrator-v4.ts",
+      "name": "DeepSeekPriceTier",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-destinationless-info.ts:BlogDestinationlessInfoWorkItem",
+      "type": "types",
+      "file": "src/lib/blog-destinationless-info.ts",
+      "name": "BlogDestinationlessInfoWorkItem",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-editorial-backlog-recheck.ts:BlogEditorialBacklogRecheckAction",
+      "type": "types",
+      "file": "src/lib/blog-editorial-backlog-recheck.ts",
+      "name": "BlogEditorialBacklogRecheckAction",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-editorial-backlog-work.ts:BlogEditorialBacklogWorkItem",
+      "type": "types",
+      "file": "src/lib/blog-editorial-backlog-work.ts",
+      "name": "BlogEditorialBacklogWorkItem",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-fleet-phrase-drift.ts:BlogFleetPhraseDriftIssue",
+      "type": "types",
+      "file": "src/lib/blog-fleet-phrase-drift.ts",
+      "name": "BlogFleetPhraseDriftIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-fleet-phrase-drift.ts:BlogFleetPhraseDriftSeverity",
+      "type": "types",
+      "file": "src/lib/blog-fleet-phrase-drift.ts",
+      "name": "BlogFleetPhraseDriftSeverity",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-claim-validator.ts:BlogInformationClaimValidationIssue",
+      "type": "types",
+      "file": "src/lib/blog-information-claim-validator.ts",
+      "name": "BlogInformationClaimValidationIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-contract.ts:BlogDestinationEntityIssue",
+      "type": "types",
+      "file": "src/lib/blog-information-contract.ts",
+      "name": "BlogDestinationEntityIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-contract.ts:BlogDestinationEntityIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-information-contract.ts",
+      "name": "BlogDestinationEntityIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-contract.ts:BlogInformationHumanReviewPolicy",
+      "type": "types",
+      "file": "src/lib/blog-information-contract.ts",
+      "name": "BlogInformationHumanReviewPolicy",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-contract.ts:BlogInformationMarkdownIssue",
+      "type": "types",
+      "file": "src/lib/blog-information-contract.ts",
+      "name": "BlogInformationMarkdownIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-contract.ts:BlogInformationMarkdownIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-information-contract.ts",
+      "name": "BlogInformationMarkdownIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-contract.ts:BlogInformationRequiredSlot",
+      "type": "types",
+      "file": "src/lib/blog-information-contract.ts",
+      "name": "BlogInformationRequiredSlot",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-planner.ts:BlogInformationPlannedTable",
+      "type": "types",
+      "file": "src/lib/blog-information-planner.ts",
+      "name": "BlogInformationPlannedTable",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-planner.ts:BlogInformationRequiredFact",
+      "type": "types",
+      "file": "src/lib/blog-information-planner.ts",
+      "name": "BlogInformationRequiredFact",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-representative-reconciliation.ts:BlogInformationReconciliationDecision",
+      "type": "types",
+      "file": "src/lib/blog-information-representative-reconciliation.ts",
+      "name": "BlogInformationReconciliationDecision",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-representative-reconciliation.ts:BlogInformationReconciliationItem",
+      "type": "types",
+      "file": "src/lib/blog-information-representative-reconciliation.ts",
+      "name": "BlogInformationReconciliationItem",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-information-structure.ts:BlogInformationTable",
+      "type": "types",
+      "file": "src/lib/blog-information-structure.ts",
+      "name": "BlogInformationTable",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-cta.ts:BlogInformationalCtaRole",
+      "type": "types",
+      "file": "src/lib/blog-informational-cta.ts",
+      "name": "BlogInformationalCtaRole",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-engine-v2-eval.ts:BlogInformationEngineV2EvalCaseResult",
+      "type": "types",
+      "file": "src/lib/blog-informational-engine-v2-eval.ts",
+      "name": "BlogInformationEngineV2EvalCaseResult",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-engine-v2-eval.ts:BlogInformationEvalCheck",
+      "type": "types",
+      "file": "src/lib/blog-informational-engine-v2-eval.ts",
+      "name": "BlogInformationEvalCheck",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-engine-v2-eval.ts:BlogInformationEvalCheckStatus",
+      "type": "types",
+      "file": "src/lib/blog-informational-engine-v2-eval.ts",
+      "name": "BlogInformationEvalCheckStatus",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-existing-audit.ts:BlogInformationAuditAction",
+      "type": "types",
+      "file": "src/lib/blog-informational-existing-audit.ts",
+      "name": "BlogInformationAuditAction",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-existing-audit.ts:BlogInformationAuditCtaStatus",
+      "type": "types",
+      "file": "src/lib/blog-informational-existing-audit.ts",
+      "name": "BlogInformationAuditCtaStatus",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-informational-existing-audit.ts:BlogInformationExistingAuditItem",
+      "type": "types",
+      "file": "src/lib/blog-informational-existing-audit.ts",
+      "name": "BlogInformationExistingAuditItem",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-inline-images.ts:RelevantBlogPexelsImage",
+      "type": "types",
+      "file": "src/lib/blog-inline-images.ts",
+      "name": "RelevantBlogPexelsImage",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-product-evidence-work.ts:BlogProductEvidenceWorkItem",
+      "type": "types",
+      "file": "src/lib/blog-product-evidence-work.ts",
+      "name": "BlogProductEvidenceWorkItem",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-production-readiness-v3.ts:BlogProductionReadinessCheckV3",
+      "type": "types",
+      "file": "src/lib/blog-production-readiness-v3.ts",
+      "name": "BlogProductionReadinessCheckV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-production-readiness-v3.ts:BlogProductionReadinessStatusV3",
+      "type": "types",
+      "file": "src/lib/blog-production-readiness-v3.ts",
+      "name": "BlogProductionReadinessStatusV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-production-readiness-v4.ts:BlogProductionReadinessCheckV4",
+      "type": "types",
+      "file": "src/lib/blog-production-readiness-v4.ts",
+      "name": "BlogProductionReadinessCheckV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-production-readiness-v4.ts:BlogProductionReadinessScopeV4",
+      "type": "types",
+      "file": "src/lib/blog-production-readiness-v4.ts",
+      "name": "BlogProductionReadinessScopeV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-production-readiness-v4.ts:BlogProductionReadinessStatusV4",
+      "type": "types",
+      "file": "src/lib/blog-production-readiness-v4.ts",
+      "name": "BlogProductionReadinessStatusV4",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-prompt-selection.ts:BlogPromptSource",
+      "type": "types",
+      "file": "src/lib/blog-prompt-selection.ts",
+      "name": "BlogPromptSource",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-customer-quality.ts:PublicBlogCustomerQualityIssue",
+      "type": "types",
+      "file": "src/lib/blog-public-customer-quality.ts",
+      "name": "PublicBlogCustomerQualityIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-customer-quality.ts:PublicBlogCustomerQualityIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-public-customer-quality.ts",
+      "name": "PublicBlogCustomerQualityIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-customer-quality.ts:PublicBlogCustomerQualitySeverity",
+      "type": "types",
+      "file": "src/lib/blog-public-customer-quality.ts",
+      "name": "PublicBlogCustomerQualitySeverity",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-eligibility.ts:BlogPublicEligibilityReason",
+      "type": "types",
+      "file": "src/lib/blog-public-eligibility.ts",
+      "name": "BlogPublicEligibilityReason",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-eligibility.ts:BlogPublicRepresentativeTruth",
+      "type": "types",
+      "file": "src/lib/blog-public-eligibility.ts",
+      "name": "BlogPublicRepresentativeTruth",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-surface-check.ts:BlogPublicSurfaceCheckResult",
+      "type": "types",
+      "file": "src/lib/blog-public-surface-check.ts",
+      "name": "BlogPublicSurfaceCheckResult",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-public-taxonomy.ts:BlogPublicAngle",
+      "type": "types",
+      "file": "src/lib/blog-public-taxonomy.ts",
+      "name": "BlogPublicAngle",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-publication-review-policy.ts:InformationalReviewStatus",
+      "type": "types",
+      "file": "src/lib/blog-publication-review-policy.ts",
+      "name": "InformationalReviewStatus",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-publication-rollout.ts:BlogPublicationRolloutDecision",
+      "type": "types",
+      "file": "src/lib/blog-publication-rollout.ts",
+      "name": "BlogPublicationRolloutDecision",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-publication-rollout.ts:BlogPublicationRolloutStatus",
+      "type": "types",
+      "file": "src/lib/blog-publication-rollout.ts",
+      "name": "BlogPublicationRolloutStatus",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-publish-preflight.ts:BlogPublishPreflightCheck",
+      "type": "types",
+      "file": "src/lib/blog-publish-preflight.ts",
+      "name": "BlogPublishPreflightCheck",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-publish-preflight.ts:BlogPublishPreflightStatus",
+      "type": "types",
+      "file": "src/lib/blog-publish-preflight.ts",
+      "name": "BlogPublishPreflightStatus",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-publish-readiness-repair.ts:BlogPublishReadinessType",
+      "type": "types",
+      "file": "src/lib/blog-publish-readiness-repair.ts",
+      "name": "BlogPublishReadinessType",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-quality-evaluator-v3.ts:BlogQualityDimensionResultV3",
+      "type": "types",
+      "file": "src/lib/blog-quality-evaluator-v3.ts",
+      "name": "BlogQualityDimensionResultV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-quality-evaluator-v3.ts:BlogQualityDimensionV3",
+      "type": "types",
+      "file": "src/lib/blog-quality-evaluator-v3.ts",
+      "name": "BlogQualityDimensionV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-queue-operational-health.ts:BlogQueueOperationalAction",
+      "type": "types",
+      "file": "src/lib/blog-queue-operational-health.ts",
+      "name": "BlogQueueOperationalAction",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-rendered-seo-quality.ts:BlogRenderedSeoIssue",
+      "type": "types",
+      "file": "src/lib/blog-rendered-seo-quality.ts",
+      "name": "BlogRenderedSeoIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-rendered-seo-quality.ts:BlogRenderedSeoIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-rendered-seo-quality.ts",
+      "name": "BlogRenderedSeoIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-required-structure.ts:BlogDecisionBlockKind",
+      "type": "types",
+      "file": "src/lib/blog-required-structure.ts",
+      "name": "BlogDecisionBlockKind",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-runtime-readiness-v3.ts:BlogRuntimeReadinessScopeV3",
+      "type": "types",
+      "file": "src/lib/blog-runtime-readiness-v3.ts",
+      "name": "BlogRuntimeReadinessScopeV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-runtime-readiness-v3.ts:BlogRuntimeResourceCheckV3",
+      "type": "types",
+      "file": "src/lib/blog-runtime-readiness-v3.ts",
+      "name": "BlogRuntimeResourceCheckV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-serp-research-v3.ts:DecisionCoverage",
+      "type": "types",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "DecisionCoverage",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-serp-research-v3.ts:DecisionGap",
+      "type": "types",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "DecisionGap",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-serp-research-v3.ts:KeywordClusterV3",
+      "type": "types",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "KeywordClusterV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-serp-research-v3.ts:SerpFeatureSummary",
+      "type": "types",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "SerpFeatureSummary",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-serp-research-v3.ts:SerpProvenance",
+      "type": "types",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "SerpProvenance",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-serp-research-v3.ts:SerpResearchModeV3",
+      "type": "types",
+      "file": "src/lib/blog-serp-research-v3.ts",
+      "name": "SerpResearchModeV3",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-slug-quality.ts:BlogSlugQualityIssue",
+      "type": "types",
+      "file": "src/lib/blog-slug-quality.ts",
+      "name": "BlogSlugQualityIssue",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "types:src/lib/blog-slug-quality.ts:BlogSlugQualityIssueCode",
+      "type": "types",
+      "file": "src/lib/blog-slug-quality.ts",
+      "name": "BlogSlugQualityIssueCode",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    },
+    {
+      "key": "unlisted:scripts/audit-blog-serp-benchmark-v3.ts:@next/env",
+      "type": "unlisted",
+      "file": "scripts/audit-blog-serp-benchmark-v3.ts",
+      "name": "@next/env",
+      "reason": "Blog or Blog-adjacent entry/API surface; requires domain-aware review before deletion or allowlisting."
+    }
+  ],
+  "unresolved": []
+}

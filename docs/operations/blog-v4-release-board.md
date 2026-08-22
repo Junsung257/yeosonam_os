@@ -8,7 +8,7 @@
 |---|---|
 | `current_gate` | `BASELINE_PR_1141_CODE_GATE=PASS; PR_1141=APPROVAL_PENDING` |
 | `code_status` | `PR #1141 OPEN; required checks PASS; required approval 1건 대기; PR #1140 DRAFT` |
-| `integration_status` | `LOCAL_INTEGRATION_CORE=PASS; isolated preview worktree clean; remote-evidence/prepare safety split implemented locally` |
+| `integration_status` | `LOCAL_INTEGRATION_CORE=PASS; FULL_VITEST_DEFAULT=PASS; FULL_VITEST_REPEAT_2=PASS; Knip classification recorded without bulk baselineing` |
 | `staging_status` | `STAGING_CANARY_INFRA_READY=NO; verified Preview ref/credentials/workdir evidence 없음` |
 | `canary_status` | `REAL_ARTICLE_GENERATED=NO; draft canary not started` |
 | `production_status` | `PRODUCTION_READY=NO; AUTO_PUBLISHING=OFF` |
@@ -23,8 +23,9 @@
 - Safety guard commit A: `2984e4287` (`refactor(blog): make Supabase release preparation evidence-only`).
 - Documentation commit B contains this board and the workflow plans; its final SHA is recorded in the handoff after commit creation.
 - Required PR #1141 checks were green; the non-required `readiness` check is not a merge blocker.
-- Full default Vitest had three timeout failures; the three files passed when rerun with larger per-file timeouts. The default full-suite command remains not green.
-- `check:deadcode` reports `new=396`; the same result reproduces in the clean #1140 worktree, so it is not attributed to the local #1141 merge.
+- Full default Vitest now passes twice consecutively: `850` files, `6361` passed, `7` skipped per run. One corpus test received a specific `30_000ms` timeout; no global timeout or skip was added.
+- Knip classification artifact: `artifacts/blog-v4-integration/knip-classification.json`; all `396` new issues are classified, with `realDeadCode=0`, `workflowEntrypoints=4`, `generatedEntrypoints=1`, `baselineDrift=233`, `domainReviewRequired=158`, `unresolved=0`.
+- `check:deadcode` still reports `new=396`; the same result reproduces in the clean #1140 worktree, so it is not attributed to the local #1141 merge. No mass baseline addition or deletion was performed.
 - `check:agent-workflow:ci` previously reported three missing `plan.md` files; those documents are being restored in this integration worktree.
 - The old prepare script performed one read-only linked migration-history query while the linked metadata pointed to the Production ref. No mutation followed.
 
