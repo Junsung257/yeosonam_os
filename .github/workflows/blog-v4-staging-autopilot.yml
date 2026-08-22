@@ -327,6 +327,11 @@ jobs:
             --remote-evidence=.tmp/supabase-blog-v4-staging/remote-migration-evidence-v4.json \
             --linked-workdir=.tmp/supabase-blog-v4-staging \
             --output=.tmp/blog-v4-staging-release
+          # Staging-only schema baseline for an empty Supabase Branch. It is
+          # outside supabase/migrations, so production release workflows do
+          # not pick it up through a broad db push.
+          cp supabase/staging-baselines/blog-v4-legacy-schema.sql \
+            .tmp/blog-v4-staging-release/supabase/migrations/20260819000000_blog_v4_staging_legacy_schema.sql
 
       - name: Prove exact staging migration dry-run
         shell: bash
@@ -339,7 +344,8 @@ jobs:
             --password "$SUPABASE_STAGING_DB_PASSWORD" \
             2>&1 | tee .tmp/blog-v4-staging-result/migration-dry-run.txt
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
-            --input=.tmp/blog-v4-staging-result/migration-dry-run.txt
+            --input=.tmp/blog-v4-staging-result/migration-dry-run.txt \
+            --allow-extra=20260819000000
 
       - name: Apply migrations to staging only
         shell: bash

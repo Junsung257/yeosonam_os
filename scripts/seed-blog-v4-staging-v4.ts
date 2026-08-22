@@ -58,7 +58,43 @@ async function readOperations(db: SupabaseClient, queueIds: string[]) {
   return result.data ?? [];
 }
 
+async function ensureStagingControlPlane(db: SupabaseClient) {
+  const rollout = await db
+    .from('blog_publication_rollout_state')
+    .insert({
+      scope: 'global',
+      stage: 'pilot_3',
+      status: 'active',
+      state_version: 1,
+    })
+    .select('scope')
+    .maybeSingle();
+  if (rollout.error && rollout.error.code !== '23505') {
+    throw new Error(`blog_v4_staging_seed_rollout_state_failed:${rollout.error.message}`);
+  }
+
+  const registry = await db
+    .from('blog_information_official_source_registry')
+    .upsert({
+      hostname: 'japan.travel',
+      source_type: 'official_tourism',
+      authority_level: 'official_primary',
+      allow_subdomains: true,
+      status: 'active',
+      reviewed_by: 'blog-v4-staging-autopilot',
+      reviewed_at: new Date().toISOString(),
+      review_note: 'Staging-only canary source registry entry.',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'hostname,source_type' })
+    .select('id')
+    .maybeSingle();
+  if (registry.error) {
+    throw new Error(`blog_v4_staging_seed_source_registry_failed:${registry.error.message}`);
+  }
+}
+
 async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
+  await ensureStagingControlPlane(db);
   const now = new Date().toISOString();
   const expiresAt = nowPlusDays(7);
   const existing = await readSeedRows(db, seedKey);
