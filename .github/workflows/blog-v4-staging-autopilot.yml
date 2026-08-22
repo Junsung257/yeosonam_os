@@ -378,48 +378,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes vercel@"$VERCEL_CLI_VERSION" pull \
-            --yes --environment=preview \
-            --git-branch="$BLOG_V4_PREVIEW_BRANCH" \
-            --token="$VERCEL_TOKEN" >/dev/null
-          build_env=(
-            "SUPABASE_URL=$SUPABASE_URL"
-            "NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL"
-            "SUPABASE_PROJECT_REF=$SUPABASE_PROJECT_REF"
-            "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY"
-            "DEEPSEEK_API_KEY=$DEEPSEEK_STAGING_API_KEY"
-            "BLOG_V4_SHARED_KEY_USED=$BLOG_V4_SHARED_KEY_USED"
-            "CRON_SECRET=$CRON_SECRET"
-            "BLOG_OPS_READ_TOKEN=$BLOG_OPS_READ_TOKEN"
-            "BLOG_V4_ENVIRONMENT=staging"
-            "BLOG_GENERATION_CRON_ENABLED=false"
-            "BLOG_CONTENT_FACTORY_ENABLED=true"
-            "BLOG_AI_CONTROL_PLANE_ENABLED=1"
-            "BLOG_AUTOPUBLISH_MODE=draft_only"
-            "BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT=1"
-            "BLOG_DAILY_PUBLISH_CAP=1"
-            "BLOG_PUBLICATION_RAMP_STAGE=pilot_3"
-            "BLOG_AUTO_RAMP_ENABLED=false"
-            "BLOG_AUTO_ROLLBACK_ENABLED=true"
-            "BLOG_DAILY_AI_COST_CAP_USD=0.25"
-            "BLOG_OPS_ALLOW_CRON_FALLBACK=0"
-          )
-          build_args=()
-          for value in "${build_env[@]}"; do build_args+=(--build-env "$value"); done
-          npx --yes vercel@"$VERCEL_CLI_VERSION" build \
-            --token="$VERCEL_TOKEN" "${build_args[@]}" >/dev/null
-          deploy_args=()
-          for value in "${build_env[@]}"; do deploy_args+=(--env "$value"); done
-          deployment_json="$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy \
-            --prebuilt --target=preview --yes --format=json \
-            --token="$VERCEL_TOKEN" "${deploy_args[@]}")"
-          deployment_url="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.url || x.inspectorUrl || "")' "$deployment_json")"
-          if [ -z "$deployment_url" ]; then
-            echo "Preview deployment URL missing" >&2
-            exit 1
-          fi
-          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
-          echo "preview_url=$deployment_url" >> "$GITHUB_ENV"
+          node scripts/configure-vercel-blog-v4-preview.mjs
 
       - name: Trigger exactly one forced generation request
         shell: bash

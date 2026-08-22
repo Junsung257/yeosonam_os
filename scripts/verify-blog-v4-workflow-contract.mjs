@@ -31,6 +31,8 @@ assertContains(staging, 'github.ref == \'refs/heads/codex/blog-v4-integration-pr
 assertContains(staging, 'supabase/staging-baselines/blog-v4-legacy-schema.sql', 'staging_schema_baseline');
 assertContains(staging, '--allow-extra=20260819000000', 'staging_schema_baseline_dry_run_allowlist');
 assertContains(staging, '--allow-empty', 'staging_replay_empty_dry_run');
+assertContains(staging, 'configure-vercel-blog-v4-preview.mjs', 'staging_vercel_api_preview_deployment');
+assertNotContains(staging, 'vercel@"$VERCEL_CLI_VERSION" deploy', 'staging_vercel_cli_deploy');
 assertNotContains(release, 'staging-baselines/blog-v4-legacy-schema.sql', 'release_staging_baseline');
 
 for (const [token, label] of [
