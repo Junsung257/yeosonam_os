@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const TOPIC = '괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준';
@@ -71,6 +72,44 @@ async function ensureStagingControlPlane(db: SupabaseClient) {
     .maybeSingle();
   if (rollout.error && rollout.error.code !== '23505') {
     throw new Error(`blog_v4_staging_seed_rollout_state_failed:${rollout.error.message}`);
+  }
+
+  const currentRollout = await db
+    .from('blog_publication_rollout_state')
+    .select('scope,stage,status,state_version')
+    .eq('scope', 'global')
+    .maybeSingle();
+  if (currentRollout.error || !currentRollout.data) {
+    throw new Error(`blog_v4_staging_seed_rollout_state_read_failed:${currentRollout.error?.message || 'missing'}`);
+  }
+  // The Preview branch accumulates canary audit rows across retries. Promote
+  // only the staging rollout state through the audited RPC so the inventory
+  // ceiling can admit one fresh canary without touching Production state.
+  if (currentRollout.data.stage === 'pilot_3') {
+    const releaseCommit = process.env.GITHUB_SHA?.trim().toLowerCase() || '';
+    if (!/^[0-9a-f]{40}$/.test(releaseCommit)) {
+      throw new Error('blog_v4_staging_seed_rollout_release_commit_missing');
+    }
+    const seedKey = process.env.BLOG_V4_STAGING_SEED_KEY?.trim() || `run-${process.env.GITHUB_RUN_ID || 'unknown'}`;
+    const approvalReference = `staging-canary-inventory-${seedKey}`;
+    const evidenceSha256 = createHash('sha256')
+      .update(JSON.stringify({ scope: 'global', nextStage: 'ramp_10', seedKey, releaseCommit }))
+      .digest('hex');
+    const transition = await db.rpc('transition_blog_publication_rollout_stage_v1', {
+      p_scope: 'global',
+      p_expected_stage: 'pilot_3',
+      p_next_stage: 'ramp_10',
+      p_expected_state_version: Number(currentRollout.data.state_version),
+      p_approval_reference: approvalReference,
+      p_approved_inventory_count: 0,
+      p_github_run_id: process.env.GITHUB_RUN_ID || seedKey,
+      p_release_commit: releaseCommit,
+      p_evidence_sha256: evidenceSha256,
+      p_operator: process.env.GITHUB_ACTOR || 'blog-v4-staging-autopilot',
+    });
+    if (transition.error || !Array.isArray(transition.data) || transition.data.length !== 1) {
+      throw new Error(`blog_v4_staging_seed_rollout_transition_failed:${transition.error?.message || 'unexpected_result'}`);
+    }
   }
 
   const registry = await db
