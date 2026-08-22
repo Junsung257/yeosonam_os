@@ -789,7 +789,7 @@ describe('buildGuamHotelAreasPayload', () => {
 
     expect(payload?.sources).toHaveLength(2);
     expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
-    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(3);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
     expect(payload?.claims?.map((claim) => claim.claimText).join('\n')).toContain('1박');
     expect(payload?.claims?.map((claim) => claim.claimText).join('\n')).toContain('투몬');
     expect(payload?.evidence?.every((evidence) => evidence.conditions?.length)).toBe(true);
@@ -801,6 +801,28 @@ describe('buildGuamHotelAreasPayload', () => {
       title: '괌 가족 호텔',
       text: '투몬가족 호텔 12개 타무닝가족 호텔 5개',
     }], '괌')).toBeNull();
+  });
+
+  it('keeps usable area facts when a refreshed source omits the volatile count labels', () => {
+    const payload = buildGuamHotelAreasPayload([
+      {
+        url: 'https://www.booking.com/family/country/gu.ko.html',
+        title: '괌 가족 호텔',
+        text: [
+          'The Tsubaki Tower투몬 가족 호텔 설명 더 보기1박 최저 ₩543,251',
+          'Slice of Paradise with Private BeachAgat 가족 호텔 설명 더 보기1박 최저 ₩425,791',
+          'Ocean View Agat Marina Private AccommodationAgat 가족 호텔 설명 더 보기1박 최저 ₩536,497',
+        ].join(' '),
+      },
+      {
+        url: 'https://www.agoda.com/ko-kr/travel-guides/guam/where-to-stay-in-guam-best-hotels/',
+        title: '괌 숙소 추천',
+        text: '힐튼 괌 리조트 앤 스파는 투몬 베이 남쪽 끝자락에 있으며 어린이 전용 키즈풀이 있다.',
+      },
+    ], '괌');
+
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'price')).toHaveLength(3);
+    expect(payload?.claims?.filter((claim) => claim.claimType === 'factual')).toHaveLength(5);
   });
 });
 

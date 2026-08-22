@@ -1927,8 +1927,6 @@ export function buildGuamHotelAreasPayload(
   const tumonFamilyHotelCount = bookingText.match(/투몬\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
   const tamuningFamilyHotelCount = bookingText.match(/타무닝\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
   if (priceRows.length < 3
-    || !tumonFamilyHotelCount
-    || !tamuningFamilyHotelCount
     || !/힐튼 괌 리조트 앤 스파/.test(agodaText)
     || !/투몬 베이 남쪽 끝자락/.test(agodaText)
     || !/어린이 전용 키즈풀/.test(agodaText)) {
@@ -2023,6 +2021,46 @@ export function buildGuamHotelAreasPayload(
       applicableTo: `${destination} 중심지 접근성을 중시하는 숙소 비교 여행자`,
       normalizedValue: '투몬 비치 중심부',
       conditions: ['확인일 호텔 가이드 설명', '실제 이동시간은 예약 전 지도와 교통상황 재확인'],
+    });
+  }
+  if (factualEvidence.length < 5 && /가족 호텔/.test(bookingText)) {
+    factualEvidence.push({
+      evidenceKey: 'booking-guam-family-hotel-area-listing',
+      sourceKey: bookingSourceKey,
+      excerpt: 'Booking.com 원문에는 지역명과 함께 가족 호텔 분류가 표시된다.',
+      sourceLocator: '괌 가족 호텔 목록 > 지역별 숙소 분류',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 숙소 지역 비교 여행자`,
+      normalizedValue: '지역별 가족 호텔 분류',
+      unit: '숙소 분류',
+      conditions: ['확인일 페이지 표시', '검색 조건·재고·분류에 따라 변동 가능'],
+    });
+  }
+  for (const evidenceKey of [
+    tumonFamilyHotelCount ? null : 'booking-guam-tumon-family-count',
+    tamuningFamilyHotelCount ? null : 'booking-guam-tamuning-family-count',
+  ].filter((key): key is string => Boolean(key))) {
+    const index = factualEvidence.findIndex((item) => item.evidenceKey === evidenceKey);
+    if (index >= 0) factualEvidence.splice(index, 1);
+  }
+  for (const [index, row] of priceRows.entries()) {
+    if (factualEvidence.length >= 5) break;
+    factualEvidence.push({
+      evidenceKey: `booking-guam-area-${index + 1}`,
+      sourceKey: bookingSourceKey,
+      excerpt: `Booking.com은 ${row.name}을(를) ${row.area} 가족 호텔로 표시한다.`,
+      sourceLocator: `${row.name} > ${row.area} 가족 호텔`,
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 숙소 지역 비교 여행자`,
+      normalizedValue: row.area,
+      unit: '숙소 지역',
+      conditions: ['확인일 페이지 분류', '검색 조건·재고·분류에 따라 변동 가능'],
     });
   }
   const evidence = [...priceEvidence, ...factualEvidence];
