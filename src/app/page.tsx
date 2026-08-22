@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import Link from 'next/link';
 import Image from 'next/image';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -20,6 +21,11 @@ import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  configuredSiteUrl,
+  isApprovedProductionEnvironment,
+  safeHttpOrigin,
+} from '@/lib/preview-metadata';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -167,6 +173,16 @@ function buildRankingItemsUnique(
 }
 
 export default async function HomePage() {
+  const requestHeaders = await headers();
+  const requestHost = requestHeaders.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || requestHeaders.get('host');
+  const configuredUrl = configuredSiteUrl();
+  const isApprovedProduction = isApprovedProductionEnvironment({
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl: configuredUrl,
+    requestHost,
+  });
+  const BASE_URL = safeHttpOrigin(configuredUrl) ?? 'https://www.yeosonam.com';
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
   const emptyResult = { data: [] };
@@ -505,51 +521,54 @@ export default async function HomePage() {
   const weightedSum = ((ratingAgg as Array<{ avg_rating: number; review_count: number }>) || [])
     .reduce((s, r) => s + (r.avg_rating * r.review_count), 0);
   const aggregateRating = totalReviews > 0 ? (weightedSum / totalReviews) : null;
-  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
   const consultTelHref = getConsultTelHref();
   const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
 
   return (
     <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
-      {/* Schema.org */}
-      <script
-        suppressHydrationWarning
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: serializeJsonLdForScript({
-            '@context': 'https://schema.org',
-            '@graph': [
-              {
-                '@type': 'TravelAgency',
-                name: '여소남',
-                alternateName: 'Yeosonam',
-                url: BASE_URL,
-                logo: `${BASE_URL}/logo.png`,
-                description: '가치 있는 여행을 소개하는 단위 — 부산 출발 해외여행 패키지 전문',
-                areaServed: 'KR',
-                ...(aggregateRating ? {
-                  aggregateRating: {
-                    '@type': 'AggregateRating',
-                    ratingValue: aggregateRating.toFixed(2),
-                    reviewCount: totalReviews,
-                    bestRating: 5,
+      {isApprovedProduction ? (
+        <>
+          {/* Schema.org */}
+          <script
+            suppressHydrationWarning
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: serializeJsonLdForScript({
+                '@context': 'https://schema.org',
+                '@graph': [
+                  {
+                    '@type': 'TravelAgency',
+                    name: '여소남',
+                    alternateName: 'Yeosonam',
+                    url: BASE_URL,
+                    logo: `${BASE_URL}/logo.png`,
+                    description: '가치 있는 여행을 소개하는 단위 — 부산 출발 해외여행 패키지 전문',
+                    areaServed: 'KR',
+                    ...(aggregateRating ? {
+                      aggregateRating: {
+                        '@type': 'AggregateRating',
+                        ratingValue: aggregateRating.toFixed(2),
+                        reviewCount: totalReviews,
+                        bestRating: 5,
+                      },
+                    } : {}),
                   },
-                } : {}),
-              },
-              {
-                '@type': 'WebSite',
-                url: BASE_URL,
-                name: '여소남',
-                potentialAction: {
-                  '@type': 'SearchAction',
-                  target: { '@type': 'EntryPoint', urlTemplate: `${BASE_URL}/packages?q={search_term_string}` },
-                  'query-input': 'required name=search_term_string',
-                },
-              },
-            ],
-          }),
-        }}
-      />
+                  {
+                    '@type': 'WebSite',
+                    url: BASE_URL,
+                    name: '여소남',
+                    potentialAction: {
+                      '@type': 'SearchAction',
+                      target: { '@type': 'EntryPoint', urlTemplate: `${BASE_URL}/packages?q={search_term_string}` },
+                      'query-input': 'required name=search_term_string',
+                    },
+                  },
+                ],
+              }),
+            }}
+          />
+        </>
+      ) : null}
 
       <GlobalNav />
       <h1 className="sr-only">여소남 프리미엄 패키지 여행</h1>
