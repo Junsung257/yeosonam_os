@@ -194,7 +194,7 @@ jobs:
           fetch_branch() {
             supabase --experimental branches get "$STAGING_BRANCH_NAME" \
               --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
-              --output env > "$branch_env" 2>/dev/null
+              -o env > "$branch_env" 2>/dev/null
           }
 
           branch_exists=false
@@ -219,12 +219,19 @@ jobs:
               [ -n "$staging_url" ] || staging_url="$(read_env_value REST_URL)"
               staging_ref="$(printf '%s' "$staging_url" | sed -nE 's#^https://([a-z0-9]{20})\\.supabase\\.co.*#\\1#p')"
               service_role_key="$(read_env_value SERVICE_ROLE_KEY)"
+              [ -n "$service_role_key" ] || service_role_key="$(read_env_value SUPABASE_SERVICE_ROLE_KEY)"
               db_password="$(read_env_value DB_PASSWORD)"
               [ -n "$db_password" ] || db_password="$(read_env_value PASSWORD)"
+              [ -n "$db_password" ] || db_password="$(read_env_value SUPABASE_DB_PASSWORD)"
+              if [ -z "$db_password" ]; then
+                postgres_url="$(read_env_value POSTGRES_URL_NON_POOLING)"
+                [ -n "$postgres_url" ] || postgres_url="$(read_env_value POSTGRES_URL)"
+                db_password="$(node -e 'try { const u = new URL(process.argv[1]); process.stdout.write(decodeURIComponent(u.password || "")); } catch {}' "$postgres_url")"
+              fi
               supabase --experimental branches get "$STAGING_BRANCH_NAME" \
                 --project-ref "$SUPABASE_PRODUCTION_PROJECT_REF" \
                 --output pretty > "$branch_pretty" 2>/dev/null || true
-              branch_status="$(grep -Eo 'ACTIVE|HEALTHY|RUNNING' "$branch_pretty" | head -n 1 || true)"
+              branch_status="$(grep -Eio 'ACTIVE|HEALTHY|RUNNING|READY' "$branch_pretty" | head -n 1 || true)"
               if [[ "$staging_ref" =~ ^[a-z0-9]{20}$ ]] \
                 && [ "$staging_ref" != "$SUPABASE_PRODUCTION_PROJECT_REF" ] \
                 && [ -n "$staging_url" ] \
@@ -233,11 +240,17 @@ jobs:
                 && [ -n "$branch_status" ]; then
                 break
               fi
-            fi
-            if [ "$attempt" -eq 20 ]; then
-              echo "Staging branch did not become healthy with complete credentials" >&2
-              exit 1
-            fi
+              fi
+              if [ "$attempt" -eq 20 ]; then
+                {
+                  printf 'envKeys='
+                  sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p' "$branch_env" | paste -sd, -
+                  printf 'statusTokens='
+                  grep -Eio 'ACTIVE|HEALTHY|RUNNING|READY' "$branch_pretty" | sort -u | paste -sd, - || true
+                } > .tmp/blog-v4-staging-result/branch-bootstrap-diagnostic.txt
+                echo "Staging branch did not become healthy with complete credentials" >&2
+                exit 1
+              fi
             sleep 6
           done
 
@@ -445,7 +458,7 @@ jobs:
             state: blocker.state || (evidence.passed === true ? 'STAGING_CANARY_COMPLETE' : 'STAGING_CANARY_INCOMPLETE'),
             missing: blocker.missing || [],
             reasons: blocker.reasons || [],
-            sharedKeyUsed: evidence.sharedKeyUsed ?? blocker.sharedKeyUsed ?? false,
+            sharedKeyUsed: evidence.sharedKeyUsed ?? blocker.sharedKeyUsed ?? process.env.BLOG_V4_SHARED_KEY_USED === 'true',
             action: process.env.BLOG_V4_ACTION,
             previewBranch: process.env.BLOG_V4_PREVIEW_BRANCH,
             previewUrl: process.env.preview_url || null,
