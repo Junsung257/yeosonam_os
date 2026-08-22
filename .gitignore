@@ -229,6 +229,8 @@ logs/
 .commit-msg.txt
 PR_BODY.md
 PLAN.md
+# Workflow specs require a durable lower-case plan.md in every dated spec.
+!docs/specs/**/plan.md
 fix-catch-patterns.py
 
 # Codex local workspace metadata

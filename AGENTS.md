@@ -94,6 +94,7 @@
 | 검색광고 자동화 리서치 | `docs/search-ads-automation-research.md` |
 | Ad OS 완전자동화 마스터플랜 | `docs/ad-os-autopilot-master-plan.md` |
 | 일회성 감사 로그 인덱스 | `docs/audits/README.md` |
+| Blog V4 릴리스 보드 | `docs/operations/blog-v4-release-board.md` |
 
 *새 현재 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로 넣고 `docs/audits/README.md`에만 한 줄 추가한다. 현재 규칙 검색 시에는 먼저 `docs/audits/**`를 제외한다.*
 
