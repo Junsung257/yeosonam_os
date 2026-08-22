@@ -25,6 +25,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(workflow).toContain('BLOG_CONTENT_FACTORY_GENERATION_DEFERRED');
     expect(workflow).toContain('BLOG_CONTENT_FACTORY_ATTEMPT_RECEIPT_READ');
     expect(workflow).toContain('generation:attempt:${attemptNumber}:v1');
+    expect(workflow).toContain('generation:pass:${pass}:started:v1:${workflowRunId}');
+    expect(workflow).toContain('finalize:approved:v1:${workflowRunId}');
     expect(workflow).toContain('cachedInputTokens: Number(attempt.cache_hit_input_tokens ?? 0)');
   });
 

@@ -276,11 +276,15 @@ async function researchStep(input: BlogContentOperationWorkflowInput) {
   return { ready: true as const, issues: [] as string[] };
 }
 
-async function generationStep(input: BlogContentOperationWorkflowInput, pass: number) {
+async function generationStep(
+  input: BlogContentOperationWorkflowInput,
+  pass: number,
+  workflowRunId: string,
+) {
   'use step';
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: `generation:pass:${pass}:started:v1`,
+    leaseOwner: input.leaseOwner, eventKey: `generation:pass:${pass}:started:v1:${workflowRunId}`,
     stage: pass === 1 ? 'drafting' : 'repairing', eventStatus: 'started',
   });
   if (!isDeepSeekOffPeakAt(new Date())) {
@@ -339,7 +343,11 @@ async function generationStep(input: BlogContentOperationWorkflowInput, pass: nu
  * Durable passes 3–5 therefore only re-read the selected run and record a
  * bounded validation/review event; they must never call the provider again.
  */
-async function deterministicValidationStep(input: BlogContentOperationWorkflowInput, pass: number) {
+async function deterministicValidationStep(
+  input: BlogContentOperationWorkflowInput,
+  pass: number,
+  workflowRunId: string,
+) {
   'use step';
   await operationAndQueue(input);
   const { data: run, error } = await db()
@@ -354,7 +362,7 @@ async function deterministicValidationStep(input: BlogContentOperationWorkflowIn
   if (run.status === 'approved_for_slot' && run.selected_attempt_id) {
     await recordBlogContentOperationStageV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:approved:v1`, stage: 'evaluating',
+      leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:approved:v1:${workflowRunId}`, stage: 'evaluating',
       eventStatus: 'succeeded', operationStatus: 'approved_for_slot', generationRunId: String(run.id),
       evidence: { paidModelCalls: 2, qualityScore: run.latest_quality_score ?? null },
     });
@@ -365,7 +373,7 @@ async function deterministicValidationStep(input: BlogContentOperationWorkflowIn
   const status = reviewRequired ? 'human_review' : 'quarantined';
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:bounded:v1`, stage: reviewRequired ? 'human_review' : 'quarantined',
+    leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:bounded:v1:${workflowRunId}`, stage: reviewRequired ? 'human_review' : 'quarantined',
     eventStatus: reviewRequired ? 'succeeded' : 'failed', operationStatus: status,
     generationRunId: String(run.id), failureCode: reviewRequired ? 'paid_model_call_cap_reached_human_review' : 'model_output_not_publishable',
     evidence: {
@@ -385,6 +393,7 @@ async function deterministicValidationStep(input: BlogContentOperationWorkflowIn
 async function finalizeStep(
   input: BlogContentOperationWorkflowInput,
   generation: { status: string; reason: string | null },
+  workflowRunId: string,
 ) {
   'use step';
   const supabase = db();
@@ -414,7 +423,7 @@ async function finalizeStep(
         operationId: input.operationId,
         fencingToken: input.fencingToken,
         leaseOwner: input.leaseOwner,
-        eventKey: `generation:attempt:${attemptNumber}:v1`,
+        eventKey: `generation:attempt:${attemptNumber}:v1:${workflowRunId}`,
         stage: attempt.stage === 'draft_flash' ? 'drafting' : 'repairing',
         eventStatus: attempt.status === 'completed' ? 'succeeded' : 'failed',
         failureCode: attempt.error_code ? String(attempt.error_code) : null,
@@ -445,7 +454,7 @@ async function finalizeStep(
     && Number(run.latest_quality_score ?? 0) >= 90) {
     await recordBlogContentOperationStageV4({
       supabase, operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: 'finalize:approved:v1', stage: 'approved_for_slot',
+      leaseOwner: input.leaseOwner, eventKey: `finalize:approved:v1:${workflowRunId}`, stage: 'approved_for_slot',
       eventStatus: 'succeeded', operationStatus: 'approved_for_slot',
       generationRunId: String(run.id), creativeId: run.content_creative_id ? String(run.content_creative_id) : null,
       evidence: { selectedAttemptId: run.selected_attempt_id, qualityScore: run.latest_quality_score },
@@ -458,7 +467,7 @@ async function finalizeStep(
   await recordBlogContentOperationStageV4({
     supabase, operationId: input.operationId, fencingToken: input.fencingToken,
     leaseOwner: input.leaseOwner,
-    eventKey: humanReview ? 'finalize:human-review:v1' : 'finalize:quarantined:v1',
+    eventKey: `${humanReview ? 'finalize:human-review:v1' : 'finalize:quarantined:v1'}:${workflowRunId}`,
     stage: humanReview ? 'human_review' : 'quarantined',
     eventStatus: humanReview ? 'succeeded' : 'failed',
     operationStatus: humanReview ? 'human_review' : 'quarantined',
@@ -485,11 +494,11 @@ export async function blogContentOperationWorkflow(
   let generation: Awaited<ReturnType<typeof generationStep>> | null = null;
   for (let pass = 1; pass <= 5; pass += 1) {
     generation = pass <= 2
-      ? await generationStep(input, pass)
-      : await deterministicValidationStep(input, pass);
+      ? await generationStep(input, pass, workflowRunId)
+      : await deterministicValidationStep(input, pass, workflowRunId);
     if (generation.passDecision !== 'continue') break;
   }
   if (!generation) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_NOT_STARTED');
-  const final = await finalizeStep(input, generation);
+  const final = await finalizeStep(input, generation, workflowRunId);
   return { ...final, operationId: input.operationId };
 }
