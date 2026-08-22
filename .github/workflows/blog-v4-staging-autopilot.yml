@@ -30,10 +30,11 @@ concurrency:
 env:
   SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
   SUPABASE_PRODUCTION_PROJECT_REF: ${{ vars.SUPABASE_PRODUCTION_PROJECT_REF || secrets.SUPABASE_PRODUCTION_PROJECT_REF }}
-  DEEPSEEK_STAGING_API_KEY: ${{ secrets.DEEPSEEK_STAGING_API_KEY }}
+  DEEPSEEK_STAGING_API_KEY: ${{ secrets.DEEPSEEK_STAGING_API_KEY || secrets.DEEPSEEK_API_KEY }}
+  BLOG_V4_SHARED_KEY_USED: ${{ secrets.DEEPSEEK_STAGING_API_KEY == '' && secrets.DEEPSEEK_API_KEY != '' }}
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID || secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID || secrets.VERCEL_PROJECT_ID }}
   SUPABASE_CLI_BIN: supabase
   VERCEL_CLI_VERSION: 53.3.2
   SUPABASE_CLI_VERSION: 2.111.0
@@ -81,6 +82,9 @@ jobs:
           if [[ "$BLOG_V4_ACTION" != "bootstrap_and_canary" && -z "${BLOG_V4_SEED_KEY_INPUT:-}" ]]; then
             reasons+=("seed_key_required_for_action")
           fi
+          if [ "${BLOG_V4_SHARED_KEY_USED:-false}" = "true" ] && [ "$BLOG_V4_ACTION" != "bootstrap_and_canary" ]; then
+            reasons+=("shared_key_fallback_allows_bootstrap_and_canary_only")
+          fi
           if [ "${#missing[@]}" -gt 0 ] || [ "${#reasons[@]}" -gt 0 ]; then
             MISSING_SECRET_KEYS="$(IFS=,; printf '%s' "${missing[*]}")" \
             BLOCKER_REASONS="$(IFS=,; printf '%s' "${reasons[*]}")" \
@@ -92,6 +96,7 @@ jobs:
             state: 'BOOTSTRAP_BLOCKED',
             missing: split(process.env.MISSING_SECRET_KEYS),
             reasons: split(process.env.BLOCKER_REASONS),
+            sharedKeyUsed: process.env.BLOG_V4_SHARED_KEY_USED === 'true',
             productionWrites: 0,
             dbQueries: 0,
             aiCalls: 0,
@@ -351,6 +356,7 @@ jobs:
             "SUPABASE_PROJECT_REF=$SUPABASE_PROJECT_REF"
             "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY"
             "DEEPSEEK_API_KEY=$DEEPSEEK_STAGING_API_KEY"
+            "BLOG_V4_SHARED_KEY_USED=$BLOG_V4_SHARED_KEY_USED"
             "CRON_SECRET=$CRON_SECRET"
             "BLOG_OPS_READ_TOKEN=$BLOG_OPS_READ_TOKEN"
             "BLOG_V4_ENVIRONMENT=staging"
@@ -414,6 +420,13 @@ jobs:
           set -e
           cp "$output_dir/index.html" .tmp/blog-v4-staging-result/index.html
           cp "$output_dir/evidence.json" .tmp/blog-v4-staging-result/evidence.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = '.tmp/blog-v4-staging-result/evidence.json';
+          const evidence = JSON.parse(fs.readFileSync(path, 'utf8'));
+          evidence.sharedKeyUsed = process.env.BLOG_V4_SHARED_KEY_USED === 'true';
+          fs.writeFileSync(path, JSON.stringify(evidence, null, 2) + '\n');
+          NODE
           test "$export_status" -eq 0
           node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-result/evidence.json","utf8")); if(x.passed!==true || x.candidateCount!==1 || x.publicationCount!==0 || x.indexingSideEffects!==0 || x.flashCalls>1 || x.proCalls>1 || x.aiCostUsd>0.25) { console.error("staging canary contract failed", {passed:x.passed,candidateCount:x.candidateCount,publicationCount:x.publicationCount,indexingSideEffects:x.indexingSideEffects,flashCalls:x.flashCalls,proCalls:x.proCalls,aiCostUsd:x.aiCostUsd}); process.exit(1); }'
 
@@ -433,6 +446,7 @@ jobs:
             state: blocker.state || (evidence.passed === true ? 'STAGING_CANARY_COMPLETE' : 'STAGING_CANARY_INCOMPLETE'),
             missing: blocker.missing || [],
             reasons: blocker.reasons || [],
+            sharedKeyUsed: evidence.sharedKeyUsed ?? blocker.sharedKeyUsed ?? false,
             action: process.env.BLOG_V4_ACTION,
             previewBranch: process.env.BLOG_V4_PREVIEW_BRANCH,
             previewUrl: process.env.preview_url || null,
