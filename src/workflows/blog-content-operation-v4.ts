@@ -13,6 +13,8 @@ import type {
 } from '@/lib/blog-content-factory/types';
 import { isDeepSeekOffPeakAt } from '@/lib/blog-deepseek-orchestrator-v4';
 import { buildQueuedInformationBrief, evaluateQueuedInformationResearch } from '@/lib/blog-queue-research';
+import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
+import { BLOG_INFORMATION_RESEARCH_META_KEY } from '@/lib/blog-generation-research';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 
@@ -188,7 +190,59 @@ async function briefStep(input: BlogContentOperationWorkflowInput) {
 async function researchStep(input: BlogContentOperationWorkflowInput) {
   'use step';
   const { queue } = await operationAndQueue(input);
-  const result = evaluateQueuedInformationResearch(queue);
+  let result = evaluateQueuedInformationResearch(queue);
+  if (!result.passed && !queue.product_id) {
+    const rawContentKey = queue.meta?.expected_slug ?? queue.meta?.spun_slug;
+    const contentKey = typeof rawContentKey === 'string' ? rawContentKey.trim().toLowerCase() : '';
+    const destination = typeof queue.destination === 'string' ? queue.destination.trim() : '';
+    if (contentKey && destination) {
+      const brief = buildQueuedInformationBrief(queue);
+      const autoResearch = await researchBlogInformationAutomatically({
+        contentKey,
+        destination,
+        locale: brief.plan.locale,
+        brief,
+      });
+      if (autoResearch.passed && autoResearch.bundle) {
+        const nextMeta = {
+          ...(queue.meta ?? {}),
+          [BLOG_INFORMATION_RESEARCH_META_KEY]: autoResearch.bundle,
+          auto_research: {
+            version: 'reviewed-source-direct-fetch-v3',
+            model: autoResearch.model,
+            completed_at: new Date().toISOString(),
+            grounding_source_count: autoResearch.groundingSourceCount,
+            direct_source_count: autoResearch.directSourceCount,
+          },
+        };
+        const { error } = await db()
+          .from('blog_topic_queue')
+          .update({ meta: nextMeta, updated_at: new Date().toISOString() })
+          .eq('id', queue.id);
+        if (error) {
+          throw new RetryableError(`BLOG_CONTENT_FACTORY_RESEARCH_PERSIST:${error.message}`, {
+            retryAfter: '30s',
+          });
+        }
+        result = evaluateQueuedInformationResearch({ ...queue, meta: nextMeta });
+        if (!result.passed) {
+          result = {
+            passed: false,
+            issues: [...new Set([...result.issues, ...autoResearch.issues])],
+          };
+        }
+      } else {
+        result = {
+          passed: false,
+          issues: [...new Set([
+            ...result.issues,
+            ...autoResearch.issues.slice(0, 12),
+            'research_auto_failed',
+          ])],
+        };
+      }
+    }
+  }
   if (!result.passed) {
     await recordBlogContentOperationStageV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,

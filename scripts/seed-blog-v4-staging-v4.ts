@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const TOPIC = '오사카 가족여행에서 난바와 우메다 중 숙소 지역을 고르는 판단 기준';
-const OFFICIAL_SOURCE_URL = 'https://www.japan.travel/en/';
+const TOPIC = '괌 가족여행에서 투몬과 타무닝 중 숙소 지역을 고르는 판단 기준';
+const OFFICIAL_SOURCE_URL = 'https://www.visitguam.com/';
 const SYSTEM_VERIFIER_ID = '00000000-0000-0000-0000-000000000001';
 
 type SeedMode = 'seed' | 'reset';
@@ -76,7 +76,7 @@ async function ensureStagingControlPlane(db: SupabaseClient) {
   const registry = await db
     .from('blog_information_official_source_registry')
     .upsert({
-      hostname: 'japan.travel',
+      hostname: 'visitguam.com',
       source_type: 'official_tourism',
       authority_level: 'official_primary',
       allow_subdomains: true,
@@ -117,6 +117,12 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
     risk_level: 'LOW',
     publication_disposition: 'draft_only',
     official_source_urls: [OFFICIAL_SOURCE_URL],
+    expected_slug: 'guam-tumon-tamuning-family-hotel-areas',
+    micro_angle: 'family_lodging_area_choice',
+    audience: '아이 동반 가족 여행자',
+    locale: 'ko-KR',
+    traveler_nationality: '대한민국',
+    keywords: ['괌 숙소 지역', '투몬 타무닝 숙소 비교', '괌 가족 호텔'],
     seeded_at: now,
   };
 
@@ -145,7 +151,7 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
       .insert({
         topic: TOPIC,
         primary_keyword: TOPIC,
-        destination: '오사카',
+        destination: '괌',
         angle_type: '숙소 지역 비교',
         category: '여행정보',
         source: 'user_seed',
