@@ -175,6 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp/supabase-blog-v4-staging
+          mkdir -p .tmp/blog-v4-staging-result
           branch_env="$RUNNER_TEMP/blog-v4-staging-branch.env"
           branch_pretty="$RUNNER_TEMP/blog-v4-staging-branch.pretty"
           : > "$branch_env"
