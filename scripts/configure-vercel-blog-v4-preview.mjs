@@ -56,7 +56,10 @@ const values = [
   // Allow one additional operation slot for this canary while
   // BLOG_AUTOPUBLISH_MODE remains draft_only and publication stays at zero.
   ['BLOG_DAILY_PUBLISH_CAP', '3', 'encrypted'],
-  ['BLOG_PUBLICATION_RAMP_STAGE', 'pilot_3', 'encrypted'],
+  // Historical staging audit rows have consumed the pilot_3 new-URL/type
+  // slots. This only raises the Preview inventory ceiling; draft_only still
+  // makes the effective publication count zero.
+  ['BLOG_PUBLICATION_RAMP_STAGE', 'ramp_10', 'encrypted'],
   ['BLOG_AUTO_RAMP_ENABLED', 'false', 'encrypted'],
   ['BLOG_AUTO_ROLLBACK_ENABLED', 'true', 'encrypted'],
   ['BLOG_DAILY_AI_COST_CAP_USD', '0.25', 'encrypted'],
