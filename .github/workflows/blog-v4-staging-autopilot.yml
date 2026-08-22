@@ -348,9 +348,11 @@ jobs:
             --linked --include-all --dry-run \
             --password "$SUPABASE_STAGING_DB_PASSWORD" \
             2>&1 | tee .tmp/blog-v4-staging-result/migration-dry-run.txt
+          already_applied_versions="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-release/release-workdir-summary.json","utf8")); process.stdout.write((x.alreadyAppliedReleaseVersions || []).join(","))')"
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
             --input=.tmp/blog-v4-staging-result/migration-dry-run.txt \
             --allow-extra=20260819000000 \
+            --allow-applied="$already_applied_versions" \
             --allow-empty
 
       - name: Apply migrations to staging only

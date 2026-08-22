@@ -10,7 +10,7 @@ function argumentsList(name: string): string[] {
   const prefix = `--${name}=`;
   return process.argv
     .filter((value) => value.startsWith(prefix))
-    .map((value) => value.slice(prefix.length).trim())
+    .flatMap((value) => value.slice(prefix.length).split(',').map((entry) => entry.trim()))
     .filter(Boolean);
 }
 
@@ -31,23 +31,28 @@ function main(): void {
   )].sort();
   const expected = manifest.migrations.map((entry) => entry.version).sort();
   const allowedExtras = argumentsList('allow-extra');
+  const allowedApplied = argumentsList('allow-applied');
   for (const version of allowedExtras) {
     if (!/^\d{14}$/.test(version)) throw new Error(`supabase_dry_run_allowed_extra_invalid:${version}`);
   }
+  for (const version of allowedApplied) {
+    if (!/^\d{14}$/.test(version)) throw new Error(`supabase_dry_run_allowed_applied_invalid:${version}`);
+    if (!expected.includes(version)) throw new Error(`supabase_dry_run_allowed_applied_unexpected:${version}`);
+  }
   if (observed.length === 0 && process.argv.includes('--allow-empty')) {
-    process.stdout.write(`${JSON.stringify({ passed: true, mode: 'already_applied', expected, observed, allowedExtras }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ passed: true, mode: 'already_applied', expected, observed, allowedExtras, allowedApplied }, null, 2)}\n`);
     return;
   }
   const unexpected = observed.filter((version) => !expected.includes(version) && !allowedExtras.includes(version));
   if (unexpected.length > 0) {
     throw new Error(`supabase_dry_run_set_mismatch:unexpected=${unexpected.join(',')}`);
   }
-  const missing = expected.filter((version) => !observed.includes(version));
+  const missing = expected.filter((version) => !observed.includes(version) && !allowedApplied.includes(version));
   if (process.argv.includes('--require-exact') && missing.length > 0) {
     throw new Error(`supabase_dry_run_set_mismatch:missing=${missing.join(',')}`);
   }
   const mode = observed.length === expected.length ? 'exact_pending_set' : 'pending_manifest_subset';
-  process.stdout.write(`${JSON.stringify({ passed: true, mode, expected, observed, allowedExtras }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ passed: true, mode, expected, observed, allowedExtras, allowedApplied }, null, 2)}\n`);
 }
 
 try {
