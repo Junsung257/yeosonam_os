@@ -76,6 +76,16 @@ export async function persistBlogDemandMaterializationV4(input: {
   return { clusterId: row.cluster_id, operationId: row.operation_id, operationCreated: row.operation_created };
 }
 
+export async function requeueBlogContentOperationV4(input: {
+  supabase: SupabaseClient;
+  operationId: string;
+}): Promise<void> {
+  const { error } = await input.supabase.rpc('requeue_blog_content_operation_v4', {
+    p_operation_id: input.operationId,
+  });
+  if (error) throw new Error(`blog_content_operation_requeue_failed:${error.message}`);
+}
+
 export async function claimBlogContentOperationV4(input: {
   supabase: SupabaseClient;
   operationId: string;

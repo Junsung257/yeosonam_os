@@ -6,7 +6,7 @@ import type { BlogPublicationRampStage } from '@/lib/blog-publication-rollout';
 import { buildQueuedInformationBrief } from '@/lib/blog-queue-research';
 import { decideBlogDemandMaterializationV4, normalizeBlogDemandQueryV4 } from './demand';
 import { evaluateBlogContentFactoryQuotaV4, type BlogContentFactoryInventoryCountsV4 } from './quota';
-import { persistBlogDemandMaterializationV4 } from './repository';
+import { persistBlogDemandMaterializationV4, requeueBlogContentOperationV4 } from './repository';
 import type {
   BlogContentOperationRisk,
   BlogContentOperationType,
@@ -398,6 +398,20 @@ export async function materializeBlogContentOperationsV4(input: {
       materialized += 1;
       incrementCounts(counts, decision.operationType, decision.createsNewUrl);
     } else {
+      const { data: existingOperation, error: existingOperationError } = await input.supabase
+        .from('blog_content_operations')
+        .select('status')
+        .eq('id', persisted.operationId)
+        .maybeSingle();
+      if (existingOperationError) {
+        throw new Error(`blog_factory_existing_operation_load_failed:${existingOperationError.message}`);
+      }
+      if (existingOperation?.status === 'research_backlog') {
+        await requeueBlogContentOperationV4({
+          supabase: input.supabase,
+          operationId: persisted.operationId,
+        });
+      }
       reused += 1;
     }
   }

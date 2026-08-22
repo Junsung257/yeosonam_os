@@ -22,6 +22,11 @@
       "version": "20260823000000",
       "file": "supabase/migrations/20260823000000_blog_v4_materialize_qualify_output.sql",
       "sha256": "6a87be71911b0fc6b6ba388dcf480507dab11cf307882d45bec7b008c4a6d60d"
+    },
+    {
+      "version": "20260823020000",
+      "file": "supabase/migrations/20260823020000_blog_v4_requeue_research_backlog.sql",
+      "sha256": "57c94c0142a876cd94c732f91178f9de281ce6856c226fba342bd73e1c01f157"
     }
   ],
   "rollback": {
