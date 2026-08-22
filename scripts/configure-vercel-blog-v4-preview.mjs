@@ -98,7 +98,6 @@ const deployment = await api(`/v13/deployments${query}&forceNew=1`, {
   body: JSON.stringify({
     name: project.name,
     project: projectId,
-    target: 'preview',
     gitSource: {
       type: 'github',
       repoId,
