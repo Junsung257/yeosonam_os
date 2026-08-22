@@ -198,9 +198,15 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
   }) + '\n');
 }
 
-const seedKey = argument('seed-key') || process.env.BLOG_V4_STAGING_SEED_KEY?.trim();
-if (!seedKey) throw new Error('blog_v4_staging_seed_missing_seed_key');
-const mode = (argument('mode') || 'seed') as SeedMode;
-if (!['seed', 'reset'].includes(mode)) throw new Error(`blog_v4_staging_seed_invalid_mode:${mode}`);
+async function main() {
+  const seedKey = argument('seed-key') || process.env.BLOG_V4_STAGING_SEED_KEY?.trim();
+  if (!seedKey) throw new Error('blog_v4_staging_seed_missing_seed_key');
+  const mode = (argument('mode') || 'seed') as SeedMode;
+  if (!['seed', 'reset'].includes(mode)) throw new Error(`blog_v4_staging_seed_invalid_mode:${mode}`);
+  await seed(client(), seedKey, mode);
+}
 
-await seed(client(), seedKey, mode);
+main().catch((error) => {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});
