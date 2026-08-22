@@ -57,7 +57,10 @@ jobs:
     env:
       BLOG_V4_ACTION: ${{ inputs.action || 'bootstrap_and_canary' }}
       BLOG_V4_SEED_KEY_INPUT: ${{ inputs.seed_key || '' }}
-      BLOG_V4_TRUSTED_REF: ${{ github.event_name == 'push' && 'refs/heads/codex/blog-v4-integration-preview' || 'refs/heads/main' }}
+      # Pushes are limited to the integration branch; manual dispatches may
+      # run from either explicitly trusted ref and must validate that exact
+      # ref instead of silently comparing Preview dispatches to main.
+      BLOG_V4_TRUSTED_REF: ${{ github.event_name == 'push' && 'refs/heads/codex/blog-v4-integration-preview' || github.ref }}
 
     steps:
       - name: Validate protected inputs
