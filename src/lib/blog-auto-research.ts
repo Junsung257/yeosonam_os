@@ -1434,8 +1434,8 @@ export function buildBlogStructuredResearchPrompt(input: {
     'Required decision facts:',
     requiredFacts,
     ...intentInstructions,
-    ...(input.retry ? [
-      'RETRY REQUIREMENT:',
+      ...(input.retry ? [
+        'RETRY REQUIREMENT:',
       ...(coverageRetry
         ? [
             'The prior JSON was structurally usable but did not meet the required claim coverage.',
@@ -1453,9 +1453,10 @@ export function buildBlogStructuredResearchPrompt(input: {
         ? [
             'DURATION RETRY CONTRACT:',
             'Replace every rejected duration row with a genuinely elapsed fact from GROUNDED_DIGEST. Put the same numeric value and explicit elapsed unit directly in both excerpt and claimText, and include the elapsed context. For a route, name both endpoints.',
-            'If GROUNDED_DIGEST has no compliant elapsed fact, omit that row; never relabel distance, count, date, clock time, frequency, or an itinerary ordinal as duration.',
-          ]
-        : []),
+          'If GROUNDED_DIGEST has no compliant elapsed fact, omit that row; never relabel distance, count, date, clock time, frequency, or an itinerary ordinal as duration.',
+        ]
+      : []),
+      'RETRY OUTPUT BUDGET: return at most 2 sources, 10 evidence rows, and 8 claims; omit optional conditions and fields unless they are needed for validation.',
     ] : []),
     'SOURCE_CATALOG:',
     JSON.stringify(input.sourceCatalog),
@@ -3407,11 +3408,21 @@ export async function researchBlogInformationAutomatically(input: {
         // This is source-bounded JSON extraction, not article reasoning. Keep
         // thinking disabled so hidden reasoning tokens cannot consume the
         // output ceiling and leave a truncated evidence ledger.
-        maxTokens: 8_192,
+        maxTokens: retry ? 4_096 : 8_192,
         requestTimeoutMs: remainingTimeout(),
         deepseekThinking: 'disabled',
       });
-      let rawText = await generateStructuredResponse();
+      let rawText: string;
+      try {
+        rawText = await generateStructuredResponse();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/blog_ai_truncated_response|finish_reason=(?:length|max_tokens|max_output_tokens)/i.test(message)
+          || reviewedPages.length === 0 || remainingTimeout() <= 15_000) {
+          throw error;
+        }
+        rawText = await generateStructuredResponse(true, ['invalid_or_truncated_json:provider_output_length']);
+      }
       finishReason = 'DEEPSEEK_JSON_MODE_COMPLETE';
       responseTextLength = rawText.length;
       try {
