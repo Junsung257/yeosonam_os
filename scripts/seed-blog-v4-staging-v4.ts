@@ -155,7 +155,9 @@ async function seed(db: SupabaseClient, seedKey: string, mode: SeedMode) {
         angle_type: '숙소 지역 비교',
         category: '여행정보',
         source: 'user_seed',
-        priority: 100,
+        // Keep the explicit canary ahead of historical staging backlog rows;
+        // the materializer remains bounded to one workflow start per request.
+        priority: 1000,
         status: 'queued',
         target_publish_at: now,
         keyword_tier: 'longtail',

@@ -52,10 +52,10 @@ const values = [
   ['BLOG_AI_CONTROL_PLANE_ENABLED', '1', 'encrypted'],
   ['BLOG_AUTOPUBLISH_MODE', 'draft_only', 'encrypted'],
   ['BLOG_CONTENT_FACTORY_WORKFLOW_START_LIMIT', '1', 'encrypted'],
-  // The staging branch already contains one audited research-backlog
-  // operation. Allow one additional operation slot for this canary while
+  // The staging branch contains two audited research-backlog operations.
+  // Allow one additional operation slot for this canary while
   // BLOG_AUTOPUBLISH_MODE remains draft_only and publication stays at zero.
-  ['BLOG_DAILY_PUBLISH_CAP', '2', 'encrypted'],
+  ['BLOG_DAILY_PUBLISH_CAP', '3', 'encrypted'],
   ['BLOG_PUBLICATION_RAMP_STAGE', 'pilot_3', 'encrypted'],
   ['BLOG_AUTO_RAMP_ENABLED', 'false', 'encrypted'],
   ['BLOG_AUTO_ROLLBACK_ENABLED', 'true', 'encrypted'],
