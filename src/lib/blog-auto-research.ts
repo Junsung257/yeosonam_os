@@ -1924,9 +1924,11 @@ export function buildGuamHotelAreasPayload(
     }))
     .filter((row) => row.name && row.area && Number(row.price) > 0)
     .slice(0, 3);
+  const tumonFamilyHotelCount = bookingText.match(/투몬\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
+  const tamuningFamilyHotelCount = bookingText.match(/타무닝\s*가족 호텔\s*(\d+)개/)?.[1] ?? '';
   if (priceRows.length < 3
-    || !/투몬가족 호텔 12개/.test(bookingText)
-    || !/타무닝가족 호텔 5개/.test(bookingText)
+    || !tumonFamilyHotelCount
+    || !tamuningFamilyHotelCount
     || !/힐튼 괌 리조트 앤 스파/.test(agodaText)
     || !/투몬 베이 남쪽 끝자락/.test(agodaText)
     || !/어린이 전용 키즈풀/.test(agodaText)) {
@@ -1954,28 +1956,28 @@ export function buildGuamHotelAreasPayload(
     {
       evidenceKey: 'booking-guam-tumon-family-count',
       sourceKey: bookingSourceKey,
-      excerpt: 'Booking.com 괌 가족 호텔 페이지에는 투몬 가족 호텔 12개가 표시된다.',
+      excerpt: `Booking.com 괌 가족 호텔 페이지에는 투몬 가족 호텔 ${tumonFamilyHotelCount}개가 표시된다.`,
       sourceLocator: '가족 호텔 관련 가장 많이 방문하는 도시 > 투몬',
       claimType: 'factual',
       riskLevel: 'LOW',
       country: '괌',
       destination,
       applicableTo: `${destination} 가족 숙소 지역 비교 여행자`,
-      normalizedValue: '12',
+      normalizedValue: tumonFamilyHotelCount,
       unit: '가족 호텔',
       conditions: ['확인일 페이지 표시 수', '검색 재고와 분류에 따라 변동 가능'],
     },
     {
       evidenceKey: 'booking-guam-tamuning-family-count',
       sourceKey: bookingSourceKey,
-      excerpt: 'Booking.com 괌 가족 호텔 페이지에는 타무닝 가족 호텔 5개가 표시된다.',
+      excerpt: `Booking.com 괌 가족 호텔 페이지에는 타무닝 가족 호텔 ${tamuningFamilyHotelCount}개가 표시된다.`,
       sourceLocator: '가족 호텔 관련 가장 많이 방문하는 도시 > 타무닝',
       claimType: 'factual',
       riskLevel: 'LOW',
       country: '괌',
       destination,
       applicableTo: `${destination} 가족 숙소 지역 비교 여행자`,
-      normalizedValue: '5',
+      normalizedValue: tamuningFamilyHotelCount,
       unit: '가족 호텔',
       conditions: ['확인일 페이지 표시 수', '검색 재고와 분류에 따라 변동 가능'],
     },
