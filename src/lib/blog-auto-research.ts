@@ -1995,6 +1995,36 @@ export function buildGuamHotelAreasPayload(
       conditions: ['확인일 호텔 가이드 설명', '시설 운영 여부는 예약 전 호텔에 재확인'],
     },
   ];
+  if (/두짓 비치 리조트 괌/.test(agodaText) && /해적 베이 키즈 클럽/.test(agodaText)) {
+    factualEvidence.push({
+      evidenceKey: 'agoda-guam-dusit-family-club',
+      sourceKey: agodaSourceKey,
+      excerpt: 'Agoda 가이드는 두짓 비치 리조트 괌의 해적 베이 키즈 클럽에서 아동 활동이 예약제로 운영된다고 설명한다.',
+      sourceLocator: '2. 두짓 비치 리조트 괌 > 해적 베이 키즈 클럽',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 아이 동반 가족 숙소 비교 여행자`,
+      normalizedValue: '해적 베이 키즈 클럽·예약제 아동 활동',
+      conditions: ['확인일 호텔 가이드 설명', '활동 일정·운영 여부는 예약 전 재확인'],
+    });
+  }
+  if (/괌 플라자 리조트 앤 스파/.test(agodaText) && /투몬 비치 중심부/.test(agodaText)) {
+    factualEvidence.push({
+      evidenceKey: 'agoda-guam-plaza-central-tumon',
+      sourceKey: agodaSourceKey,
+      excerpt: 'Agoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다.',
+      sourceLocator: '3. 괌 플라자 리조트 앤 스파 > 위치',
+      claimType: 'factual',
+      riskLevel: 'LOW',
+      country: '괌',
+      destination,
+      applicableTo: `${destination} 중심지 접근성을 중시하는 숙소 비교 여행자`,
+      normalizedValue: '투몬 비치 중심부',
+      conditions: ['확인일 호텔 가이드 설명', '실제 이동시간은 예약 전 지도와 교통상황 재확인'],
+    });
+  }
   const evidence = [...priceEvidence, ...factualEvidence];
   return {
     sources: [
