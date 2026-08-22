@@ -71,6 +71,62 @@ async function readOperation(dbClient: SupabaseClient, operationId: string) {
   return result.data as Record<string, unknown> | null;
 }
 
+async function readOperationDiagnostics(dbClient: SupabaseClient, operationId: string) {
+  const operationResult = await dbClient
+    .from('blog_content_operations')
+    .select('id,queue_id,status,current_stage,fencing_token,lease_owner,lease_expires_at,workflow_run_id,generation_run_id,creative_id,failure_code,skip_reason,started_at,completed_at,updated_at')
+    .eq('id', operationId)
+    .maybeSingle();
+  if (operationResult.error) throw new Error(`blog_v4_canary_operation_diagnostic_read_failed:${operationResult.error.message}`);
+  const operation = operationResult.data as Record<string, unknown> | null;
+  const queueId = text(operation?.queue_id);
+  const generationRunId = text(operation?.generation_run_id);
+
+  const eventsResult = await dbClient
+    .from('blog_content_stage_events')
+    .select('event_key,stage,status,failure_code,provider,model,attempt_number,estimated_cost_usd,evidence,occurred_at')
+    .eq('operation_id', operationId)
+    .order('occurred_at', { ascending: true });
+  if (eventsResult.error) throw new Error(`blog_v4_canary_event_diagnostic_read_failed:${eventsResult.error.message}`);
+
+  const runResult = generationRunId
+    ? await dbClient
+      .from('blog_generation_runs')
+      .select('id,queue_id,status,selected_attempt_id,latest_quality_score,disposition,updated_at')
+      .eq('id', generationRunId)
+      .maybeSingle()
+    : { data: null, error: null };
+  if (runResult.error) throw new Error(`blog_v4_canary_run_diagnostic_read_failed:${runResult.error.message}`);
+
+  const attemptsResult = generationRunId
+    ? await dbClient
+      .from('blog_generation_attempts')
+      .select('id,attempt_number,stage,status,provider,model,estimated_cost_usd,error_code,created_at,completed_at')
+      .eq('run_id', generationRunId)
+      .order('attempt_number', { ascending: true })
+    : { data: [], error: null };
+  if (attemptsResult.error) throw new Error(`blog_v4_canary_attempt_diagnostic_read_failed:${attemptsResult.error.message}`);
+
+  const budgetsResult = queueId
+    ? await dbClient
+      .from('blog_ai_budget_reservations')
+      .select('id,budget_day_kst,queue_id,attempt_number,stage,provider,model,cap_usd,requested_usd,reserved_usd,actual_usd,status,receipt,settled_at,created_at,updated_at')
+      .eq('queue_id', queueId)
+      .order('created_at', { ascending: true })
+    : { data: [], error: null };
+  if (budgetsResult.error) throw new Error(`blog_v4_canary_budget_diagnostic_read_failed:${budgetsResult.error.message}`);
+
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    operation,
+    generationRun: runResult.data ?? null,
+    stageEvents: eventsResult.data ?? [],
+    generationAttempts: attemptsResult.data ?? [],
+    aiBudgetReservations: budgetsResult.data ?? [],
+  };
+}
+
 async function waitForOperation(dbClient: SupabaseClient, operationId: string) {
   const deadline = Date.now() + MAX_WAIT_MS;
   let operation: Record<string, unknown> | null = null;
@@ -267,7 +323,15 @@ function htmlDocument(artifact: Awaited<ReturnType<typeof readArtifacts>>): stri
 async function main() {
   const operationId = requiredArgument('operation-id');
   const outputDir = requiredArgument('output-dir');
-  const operation = await waitForOperation(db(), operationId);
+  const dbClient = db();
+  if (process.argv.includes('--diagnostic-only')) {
+    await mkdir(outputDir, { recursive: true });
+    const diagnostic = await readOperationDiagnostics(dbClient, operationId);
+    await writeFile(join(outputDir, 'operation-diagnostic.json'), JSON.stringify(diagnostic, null, 2) + '\n', 'utf8');
+    process.stdout.write(JSON.stringify({ operationId, diagnostic: true, outputDir }) + '\n');
+    return;
+  }
+  const operation = await waitForOperation(dbClient, operationId);
   const artifact = await readArtifacts(db(), operation);
   await mkdir(outputDir, { recursive: true });
   await writeFile(join(outputDir, 'index.html'), htmlDocument(artifact), 'utf8');

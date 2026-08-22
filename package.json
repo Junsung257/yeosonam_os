@@ -130,6 +130,7 @@
     "prepare:blog-v4-longrun-release": "npx tsx scripts/prepare-blog-v4-longrun-release-workdir-v4.ts",
     "seed:blog-v4-staging": "npx tsx scripts/seed-blog-v4-staging-v4.ts",
     "export:blog-v4-canary-artifact": "npx tsx scripts/export-blog-v4-canary-artifact-v4.ts",
+    "export:blog-v4-canary-diagnostic": "npx tsx scripts/export-blog-v4-canary-artifact-v4.ts --diagnostic-only",
     "check:blog-v4-workflow:ci": "node scripts/verify-blog-v4-workflow-contract.mjs",
     "check:blog-v4-longrun-workflow:ci": "node scripts/verify-blog-v4-longrun-workflow-contract.mjs",
     "verify:blog-release-bundle-v4": "npx tsx scripts/verify-blog-orchestrator-v4-release-bundle.ts",

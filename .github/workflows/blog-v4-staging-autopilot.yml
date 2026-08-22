@@ -434,6 +434,18 @@ jobs:
           test "$export_status" -eq 0
           node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-result/evidence.json","utf8")); if(x.passed!==true || x.candidateCount!==1 || x.publicationCount!==0 || x.indexingSideEffects!==0 || x.flashCalls>1 || x.proCalls>1 || x.aiCostUsd>0.25) { console.error("staging canary contract failed", {passed:x.passed,candidateCount:x.candidateCount,publicationCount:x.publicationCount,indexingSideEffects:x.indexingSideEffects,flashCalls:x.flashCalls,proCalls:x.proCalls,aiCostUsd:x.aiCostUsd}); process.exit(1); }'
 
+      - name: Export non-secret staging operation diagnostics
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${BLOG_V4_OPERATION_ID:-}" ]; then
+            npm run export:blog-v4-canary-diagnostic -- \
+              --operation-id="$BLOG_V4_OPERATION_ID" \
+              --output-dir=".tmp/blog-v4-staging-result/diagnostic"
+          fi
+
       - name: Write non-secret safety summary
         if: always()
         shell: bash
