@@ -27,6 +27,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+const isProductionDeployment = process.env.VERCEL_ENV === 'production';
 const enableWebpackBuildWorker =
   process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER !== '0';
 const SPECIAL_PAGE_SHIMS = {
@@ -34,6 +35,28 @@ const SPECIAL_PAGE_SHIMS = {
   _error: 'next/dist/pages/_error',
   _document: 'next/dist/pages/_document',
 };
+
+const indexingHeaders = [
+  {
+    source: '/:path*',
+    headers: [{
+      key: 'X-Robots-Tag',
+      value: 'noindex, nofollow, noarchive, nosnippet',
+    }],
+  },
+  ...(isProductionDeployment ? [
+    {
+      source: '/:path*',
+      has: [{ type: 'host', value: 'yeosonam.com' }],
+      headers: [{ key: 'X-Robots-Tag', value: 'index, follow' }],
+    },
+    {
+      source: '/:path*',
+      has: [{ type: 'host', value: 'www.yeosonam.com' }],
+      headers: [{ key: 'X-Robots-Tag', value: 'index, follow' }],
+    },
+  ] : []),
+];
 
 function ensureSpecialPagesManifest() {
   const distDir = process.env.NEXT_DIST_DIR || '.next';
@@ -272,6 +295,7 @@ const nextConfig = {
   // (Vercel 기본 도메인 alias 는 307 임시 리다이렉트라 PageRank 가 통합되지 않음)
   async headers() {
     return [
+      ...indexingHeaders,
       // ─── 보안 헤더 (모든 경로) ───────────────────────────────
       {
         source: '/:path*',

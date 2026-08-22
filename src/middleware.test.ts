@@ -146,7 +146,7 @@ describe('middleware cron resource saver', () => {
     ));
 
     expect(response.status).toBe(410);
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive, nosnippet');
   });
 
   it.each([
@@ -158,7 +158,7 @@ describe('middleware cron resource saver', () => {
     ));
 
     expect(response.status).toBe(410);
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive, nosnippet');
   });
 });
 
@@ -179,7 +179,7 @@ describe('middleware blog public status contract', () => {
     const response = await middleware(new NextRequest('https://www.yeosonam.com/blog/review-blocked-fixture'));
 
     expect(response.status).toBe(404);
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow, noarchive, nosnippet');
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.objectContaining({ pathname: '/rest/v1/public_blog_slug_registry' }),
       expect.not.objectContaining({ headers: expect.objectContaining({ apikey: 'service-key' }) }),

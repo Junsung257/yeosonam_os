@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import PartytownInit from '@/components/PartytownInit';
@@ -8,16 +8,16 @@ import LayoutClientWidgets from '@/components/LayoutClientWidgets';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { getPublicAnalyticsConfig, isProductionAnalyticsRuntime } from '@/lib/analytics/config';
 import GoogleTagManagerNoScript from '@/components/analytics/GoogleTagManagerNoScript';
+import {
+  buildRootMetadata,
+  configuredSiteUrl,
+  isApprovedProductionEnvironment,
+  normalizeHostname,
+  safeHttpOrigin,
+} from '@/lib/preview-metadata';
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL
-  || process.env.NEXT_PUBLIC_BASE_URL
-  || 'https://www.yeosonam.com';
 const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
 const SITE_NAME = '여소남';
-const SITE_TITLE = '여소남 | 믿고 떠나는 프리미엄 패키지 여행';
-const SITE_DESCRIPTION =
-  '여소남은 믿고 떠나는 프리미엄 패키지 여행 전문 플랫폼입니다. 랜드사 직거래 없이 안심하고 비교·예약하세요. 숨은 비용 없는 투명한 여행.';
 const SOCIAL_PROFILES = [
   'https://blog.naver.com/yeosonam_official',
   'https://blog.naver.com/yeosonam_',
@@ -26,86 +26,23 @@ const SOCIAL_PROFILES = [
   'https://www.youtube.com/@yeosonam',
 ];
 
-export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
-  title: {
-    default: SITE_TITLE,
-    template: `%s | ${SITE_NAME}`,
-  },
-  description: SITE_DESCRIPTION,
-  keywords: [
-    '단체여행',
-    '패키지여행',
-    '랜드사',
-    '여행사',
-    '해외여행',
-    '단체해외여행',
-    '허니문',
-    '효도여행',
-    '여행견적',
-    '여행비교',
-    '발리여행',
-    '태국여행',
-    '유럽여행',
-    '크루즈',
-  ],
-  authors: [{ name: SITE_NAME, url: BASE_URL }],
-  creator: SITE_NAME,
-  publisher: SITE_NAME,
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
-  },
-  openGraph: {
-    type: 'website',
-    locale: 'ko_KR',
-    url: BASE_URL,
-    siteName: SITE_NAME,
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
-    images: [
-      {
-        url: `${BASE_URL}/og-image.png`,
-        width: 1200,
-        height: 630,
-        alt: SITE_TITLE,
-      },
-    ],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
-    images: [`${BASE_URL}/og-image.png`],
-  },
-  alternates: {
-    canonical: BASE_URL,
-    languages: { 'ko-KR': BASE_URL },
-  },
-  verification: {
-    google:
+export async function generateMetadata(): Promise<Metadata> {
+  const requestHeaders = await headers();
+  const requestHost = requestHeaders.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || requestHeaders.get('host');
+  const siteUrl = configuredSiteUrl();
+  return buildRootMetadata({
+    isApprovedProduction: isApprovedProductionEnvironment({
+      vercelEnv: process.env.VERCEL_ENV,
+      siteUrl,
+      requestHost,
+    }),
+    siteUrl,
+    googleVerification:
       process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
-      || process.env.GOOGLE_SITE_VERIFICATION
-      || '',
-    other: {
-      'naver-site-verification': 'af1da2c30b83023aa5c6f290ba2fc2460ef25edf',
-    },
-  },
-  manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: SITE_NAME,
-  },
-  other: {
-    'mobile-web-app-capable': 'yes',
-  },
-  icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
-  },
-};
+      || process.env.GOOGLE_SITE_VERIFICATION,
+  });
+}
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -120,6 +57,19 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
+  const requestHeaders = await headers();
+  const requestHost = requestHeaders.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || requestHeaders.get('host');
+  const siteUrl = configuredSiteUrl();
+  const isApprovedProduction = isApprovedProductionEnvironment({
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl,
+    requestHost,
+  });
+  const canonicalUrl = safeHttpOrigin(siteUrl);
+  const supabaseOrigin = safeHttpOrigin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
+  );
   const analyticsConfig = getPublicAnalyticsConfig();
   let expectedHostname = 'www.yeosonam.com';
   try {
@@ -133,6 +83,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     runtimeEnabled: isProductionAnalyticsRuntime(analyticsConfig, {
       nodeEnv: process.env.NODE_ENV,
       vercelEnv: process.env.VERCEL_ENV,
+      hostname: normalizeHostname(requestHost) || '__unknown__',
     }),
     expectedHostname,
   };
@@ -142,48 +93,60 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="ko">
       <head>
-        <meta name="facebook-domain-verification" content="6b5xtc0m174vrt9fz1gtlmj2uaab0t" />
-        <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
+        {isApprovedProduction ? (
+          <>
+            <meta name="facebook-domain-verification" content="6b5xtc0m174vrt9fz1gtlmj2uaab0t" />
+            <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
+          </>
+        ) : null}
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
-        <link rel="preconnect" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
-        <link rel="dns-prefetch" href="https://ixaxnvbmhzjvupissmly.supabase.co" />
-        <script
-          suppressHydrationWarning
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: serializeJsonLdForScript({
-              '@context': 'https://schema.org',
-              '@type': 'Organization',
-              name: SITE_NAME,
-              url: BASE_URL,
-              logo: `${BASE_URL}/logo.png`,
-              description: '단체·패키지 여행 전문 플랫폼',
-              address: { '@type': 'PostalAddress', addressCountry: 'KR' },
-              sameAs: SOCIAL_PROFILES,
-            }),
-          }}
-        />
-        <script
-          suppressHydrationWarning
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: serializeJsonLdForScript({
-              '@context': 'https://schema.org',
-              '@type': 'WebSite',
-              name: SITE_NAME,
-              url: BASE_URL,
-              potentialAction: {
-                '@type': 'SearchAction',
-                target: {
-                  '@type': 'EntryPoint',
-                  urlTemplate: `${BASE_URL}/packages?q={search_term_string}`,
-                },
-                'query-input': 'required name=search_term_string',
-              },
-            }),
-          }}
-        />
+        {supabaseOrigin ? (
+          <>
+            <link rel="preconnect" href={supabaseOrigin} />
+            <link rel="dns-prefetch" href={supabaseOrigin} />
+          </>
+        ) : null}
+        {isApprovedProduction && canonicalUrl ? (
+          <>
+            <script
+              suppressHydrationWarning
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{
+                __html: serializeJsonLdForScript({
+                  '@context': 'https://schema.org',
+                  '@type': 'Organization',
+                  name: SITE_NAME,
+                  url: canonicalUrl,
+                  logo: `${canonicalUrl}/logo.png`,
+                  description: '단체·패키지 여행 전문 플랫폼',
+                  address: { '@type': 'PostalAddress', addressCountry: 'KR' },
+                  sameAs: SOCIAL_PROFILES,
+                }),
+              }}
+            />
+            <script
+              suppressHydrationWarning
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{
+                __html: serializeJsonLdForScript({
+                  '@context': 'https://schema.org',
+                  '@type': 'WebSite',
+                  name: SITE_NAME,
+                  url: canonicalUrl,
+                  potentialAction: {
+                    '@type': 'SearchAction',
+                    target: {
+                      '@type': 'EntryPoint',
+                      urlTemplate: `${canonicalUrl}/packages?q={search_term_string}`,
+                    },
+                    'query-input': 'required name=search_term_string',
+                  },
+                }),
+              }}
+            />
+          </>
+        ) : null}
       </head>
       <body className="bg-gray-50 antialiased">
         <GoogleTagManagerNoScript

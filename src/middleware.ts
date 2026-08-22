@@ -9,6 +9,7 @@ import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { configuredSiteUrl, isApprovedProductionEnvironment } from '@/lib/preview-metadata';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -787,7 +788,7 @@ function maybeSkipCronAtMiddleware(request: NextRequest, pathname: string): Resp
   return maybeSkipCronForResourceSaver(request, cronName);
 }
 
-export async function middleware(request: NextRequest) {
+async function handleMiddleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
   const isDev = process.env.NODE_ENV !== 'production';
@@ -1071,6 +1072,23 @@ export async function middleware(request: NextRequest) {
   const loginUrl = new URL(loginPath, request.url);
   loginUrl.searchParams.set('redirect', pathname);
   return NextResponse.redirect(loginUrl);
+}
+
+export async function middleware(request: NextRequest) {
+  const response = await handleMiddleware(request);
+  const requestHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || request.headers.get('host');
+  const isApprovedProduction = isApprovedProductionEnvironment({
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl: configuredSiteUrl(),
+    requestHost,
+  });
+
+  if (!isApprovedProduction) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  }
+
+  return response;
 }
 
 export const config = {
