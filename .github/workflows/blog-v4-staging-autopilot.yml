@@ -343,7 +343,7 @@ jobs:
           # The Preview canary enables the AI control plane so the real
           # provider call is budgeted and receipted. Apply the existing
           # additive control-plane SQL under a staging-only version; the
-          # production migration remains governed by its normal release gate.
+          # The original migration remains governed by the normal release gate.
           cp supabase/migrations/20260819113000_ai_control_plane_v1.sql \
             .tmp/blog-v4-staging-release/supabase/migrations/20260823040000_blog_v4_staging_ai_control_plane.sql
           # The release preparer represents already-applied non-release
