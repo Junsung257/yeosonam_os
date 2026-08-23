@@ -310,6 +310,14 @@ async function generationStep(
   if (stagingCanary) url.searchParams.set('stagingCanary', '1');
   const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
   if (protectionBypassSecret) headers['x-vercel-protection-bypass'] = protectionBypassSecret;
+  await recordBlogContentOperationStageV4({
+    supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+    leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-started:v1:${workflowRunId}`,
+    stage: 'drafting', eventStatus: 'started', evidence: {
+      stagingCanary,
+      protectionBypassHeaderPresent: Boolean(protectionBypassSecret),
+    },
+  });
   let response: Response;
   try {
     response = await fetch(url, {
@@ -317,6 +325,12 @@ async function generationStep(
       signal: AbortSignal.timeout(280_000),
     });
   } catch (error) {
+    await recordBlogContentOperationStageV4({
+      supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+      leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-error:v1:${workflowRunId}`,
+      stage: 'drafting', eventStatus: 'retryable_failure', failureCode: 'publisher_fetch_error',
+      evidence: { error: error instanceof Error ? error.message : String(error) },
+    }).catch(() => undefined);
     throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_FETCH:${error instanceof Error ? error.message : String(error)}`, { retryAfter: '45s' });
   }
   const payload = await response.json().catch(() => null) as {
@@ -324,6 +338,13 @@ async function generationStep(
     reason?: string;
     results?: Array<{ status?: string; reason?: string }>;
   } | null;
+  await recordBlogContentOperationStageV4({
+    supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+    leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-returned:v1:${workflowRunId}`,
+    stage: 'drafting', eventStatus: response.ok ? 'succeeded' : 'retryable_failure',
+    failureCode: response.ok ? null : `publisher_http_${response.status}`,
+    evidence: { httpStatus: response.status, payloadOk: Boolean(payload), resultStatus: payload?.results?.[0]?.status ?? null },
+  }).catch(() => undefined);
   if (!response.ok || !payload) {
     const reason = payload?.reason || `http_${response.status}`;
     if (response.status >= 500 || isTransient(reason)) {

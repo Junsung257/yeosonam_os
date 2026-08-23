@@ -1557,7 +1557,7 @@ async function runBlogPublisher(request: NextRequest) {
   // targeted operation is even entered. Keep the skip narrowly scoped to an
   // explicit staging + draft-only canary request; normal cron and production
   // requests retain the runtime schema gate.
-  if (stagingCanaryRequest && requestedOperationId) {
+  if (requestedOperationId) {
     await recordBlogContentOperationStageV4({
       supabase: supabaseAdmin,
       operationId: requestedOperationId,
@@ -1566,7 +1566,7 @@ async function runBlogPublisher(request: NextRequest) {
       eventKey: 'publisher:route-entered:v1',
       stage: 'drafting',
       eventStatus: 'succeeded',
-      evidence: { stagingCanary: true, schemaProbe: 'workflow_preflight' },
+      evidence: { stagingCanary: stagingCanaryRequest, schemaProbe: stagingCanaryRequest ? 'workflow_preflight' : 'route' },
     }).catch((error) => {
       console.warn('[cron/blog-publisher] staging canary entry progress failed', error);
     });
