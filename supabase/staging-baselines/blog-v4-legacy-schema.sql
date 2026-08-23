@@ -307,7 +307,6 @@ create table if not exists public.blog_information_evidence (
   metadata jsonb default '{}'::jsonb not null,
   created_at timestamptz default now() not null,
   updated_at timestamptz default now() not null,
-  unique (content_key, evidence_key),
   unique (content_key, logical_evidence_key, source_version_id)
 );
 

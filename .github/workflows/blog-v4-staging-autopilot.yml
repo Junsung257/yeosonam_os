@@ -346,6 +346,8 @@ jobs:
           # The original migration remains governed by the normal release gate.
           cp supabase/migrations/20260819113000_ai_control_plane_v1.sql \
             .tmp/blog-v4-staging-release/supabase/migrations/20260823040000_blog_v4_staging_ai_control_plane.sql
+          cp supabase/staging-baselines/blog-v4-evidence-idempotency.sql \
+            .tmp/blog-v4-staging-release/supabase/migrations/20260823050000_blog_v4_staging_evidence_idempotency.sql
           # The release preparer represents already-applied non-release
           # versions with placeholders. The checked-in staging baseline is the
           # authoritative local copy for this one allowed extra version.
@@ -369,7 +371,7 @@ jobs:
           already_applied_versions="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-release/release-workdir-summary.json","utf8")); process.stdout.write((x.alreadyAppliedReleaseVersions || []).join(","))')"
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
             --input=.tmp/blog-v4-staging-result/migration-dry-run.txt \
-            --allow-extra=20260819000000,20260823010000,20260823030000,20260823040000 \
+            --allow-extra=20260819000000,20260823010000,20260823030000,20260823040000,20260823050000 \
             --allow-applied="$already_applied_versions" \
             --allow-empty
 
