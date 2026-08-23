@@ -221,7 +221,7 @@ begin
     p_idempotency_key, p_prompt_hash, p_estimated_input_tokens, p_max_output_tokens, requested
   ) returning id into reservation_id;
 
-  update public.ai_budget_buckets set reserved_usd = reserved_usd + requested, updated_at = now()
+  update public.ai_budget_buckets b set reserved_usd = b.reserved_usd + requested, updated_at = now()
     where id in (global_bucket.id, workload_bucket.id, candidate_bucket.id);
   remaining := least(
     global_bucket.hard_cap_usd - global_bucket.reserved_usd - global_bucket.settled_usd - requested,

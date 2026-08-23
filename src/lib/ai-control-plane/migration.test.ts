@@ -14,6 +14,7 @@ describe('AI control plane migration contract', () => {
     expect(migration).toContain('create or replace function public.settle_ai_budget_v1');
     expect(migration).toContain("p_provider <> 'deepseek'");
     expect(migration).toContain('candidate_model_call_cap');
+    expect(migration).toContain('set reserved_usd = b.reserved_usd + requested');
     expect(migration).toContain('duplicate_prompt');
     expect(migration).toContain('idx_ai_call_reservations_candidate_prompt');
     expect(migration).toContain('ai_reservation_idempotency_mismatch');
