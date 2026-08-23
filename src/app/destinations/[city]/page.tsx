@@ -694,7 +694,10 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       .find((url): url is string => isSafeImageSrc(url)) ?? null;
   const heroImage = fromMeta || fromAttr || fromPackage || fromPost;
 
-  const pillarHtml = data.pillarPost?.blog_html ? await renderPillarBody(data.pillarPost.blog_html) : null;
+  const pillarBody = data.pillarPost?.blog_html;
+  const pillarHtml = typeof pillarBody === 'string' && pillarBody.trim()
+    ? await renderPillarBody(pillarBody)
+    : null;
   const region = getRegionForCity(decoded);
 
   // 히어로 타이틀/설명 (destination_metadata 우선)
