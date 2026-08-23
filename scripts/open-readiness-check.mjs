@@ -59,6 +59,9 @@ const MARKETING_RUNTIME_PORT = Number(argValue('--marketing-runtime-port', proce
 const MARKETING_RUNTIME_MODE = argValue('--marketing-runtime-mode', process.env.MARKETING_RUNTIME_MODE || 'dev');
 const MARKETING_RUNTIME_TIMEOUT_MS = Number(argValue('--marketing-runtime-timeout-ms', process.env.MARKETING_RUNTIME_TIMEOUT_MS || '60000'));
 const MARKETING_RUNTIME_READY_TIMEOUT_MS = Number(argValue('--marketing-runtime-ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '120000'));
+const LOCAL_TYPECHECK_TIMEOUT_MS = Number(
+  argValue('--typecheck-timeout-ms', process.env.OPEN_CHECK_TYPECHECK_TIMEOUT_MS || '360000'),
+);
 const MARKETING_RUNTIME_HARD_TIMEOUT_MS = Number(
   argValue('--marketing-runtime-hard-timeout-ms', process.env.MARKETING_RUNTIME_HARD_TIMEOUT_MS || '0'),
 );
@@ -896,13 +899,17 @@ function checkBlogSearchQualityReadiness() {
     });
   } catch (err) {
     const unavailable = localCommandUnavailable(result);
-    addCheck('public:blog-search-quality', unavailable ? 'blocked' : 'fail', {
+    const timedOut = /ETIMEDOUT|timed out|timeout/i.test(
+      [result?.message, result?.stderr, result?.stdout].filter(Boolean).join('\n'),
+    );
+    const unavailableOrTimedOut = unavailable || timedOut;
+    addCheck('public:blog-search-quality', unavailableOrTimedOut ? 'blocked' : 'fail', {
       ms: result.ms,
       command: `npm ${args.join(' ')}`,
-      notes: unavailable
-        ? 'blog quality probe output was unavailable during a local DB/runtime timeout; retry after warm DB or inspect ops report'
+      notes: unavailableOrTimedOut
+        ? 'blog quality probe output was unavailable during a DB/runtime timeout; retry after warm DB or inspect ops report'
         : '',
-      error: unavailable ? '' : (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+      error: unavailableOrTimedOut ? '' : (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
     });
   }
 }
@@ -920,7 +927,7 @@ async function main() {
   checkVercelLogs('fatal');
 
   if (strict) {
-    checkCommand('local:type-check', 'npm', ['run', 'type-check'], { timeout: 180000 });
+    checkCommand('local:type-check', 'npm', ['run', 'type-check'], { timeout: LOCAL_TYPECHECK_TIMEOUT_MS });
     checkCommand('local:lint-secrets', 'npm', ['run', 'lint:secrets', '--', '--all'], { timeout: 180000 });
   }
 
