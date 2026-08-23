@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "v61-auto-publish-readiness-controller-1",
+  "status": "NOT_CERTIFIED",
+  "autoPublish": "OFF_NOT_AUTHORIZED",
+  "goldStatus": "WAITING_EXTERNAL_SOURCE",
+  "benchmarkStatus": "NOT_RUN"
+}

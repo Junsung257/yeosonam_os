@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v61-reviewer-assignment-controller-1",
+  "reviewer": "A",
+  "status": "WAITING_HUMAN_REVIEW",
+  "assigned": 0,
+  "completed": 0,
+  "invalid": 0,
+  "humanEvidenceRequired": true
+}

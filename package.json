@@ -33,6 +33,7 @@
     "check:product-registration-authority": "node scripts/check-product-registration-authority.mjs --strict",
     "check:product-registration-authority:kernel-only": "node scripts/check-product-registration-authority.mjs --strict --no-legacy-writers",
     "verify:product-registration-v61-release-evidence": "node scripts/verify-product-registration-v61-release-evidence.mjs --json",
+    "v61:finalize": "node scripts/v61-finalization-controller.mjs",
     "preflight:product-registration-authority": "npx tsx scripts/preflight-product-registration-authority.ts --json",
     "preflight:product-registration-authority:strict": "npx tsx scripts/preflight-product-registration-authority.ts --strict --json",
     "check:deps": "depcruise --config .dependency-cruiser.cjs src",

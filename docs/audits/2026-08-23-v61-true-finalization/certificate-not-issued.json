@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "v61-gold-certificate-decision-1",
+  "decision": "NO-GO",
+  "certificateIssued": false,
+  "conditions": {
+    "finalSectionCount": { "required": 400, "observedGoldQualified": 0, "pass": false },
+    "sourceHashVerified": { "required": 400, "observedGoldQualified": 0, "pass": false },
+    "reviewerAComplete": { "required": 400, "observed": 0, "pass": false },
+    "reviewerBComplete": { "required": 400, "observed": 0, "pass": false },
+    "adjudicationRequiredRemaining": { "required": 0, "observed": null, "pass": false },
+    "criticalUnresolved": { "required": 0, "observed": null, "pass": false },
+    "priceGroundTruthComplete": { "required": 400, "observed": 0, "pass": false },
+    "departureGroundTruthComplete": { "required": 400, "observed": 0, "pass": false }
+  },
+  "reason": "The currently verifiable 40 source rows and 10 frozen sections are candidates only, not a completed 400-section Gold set. Human A/B review and adjudication evidence are absent."
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v61-reviewer-ledger-1",
+  "generatedAt": "2026-08-23T05:36:16.354Z",
+  "runId": "abc1c59a-6d09-4d46-814b-c8b0570c38c9",
+  "reviewerRole": "A",
+  "status": "WAITING_HUMAN_INPUT",
+  "assigned": 0,
+  "completed": 0,
+  "invalid": 0,
+  "independentBlindReviewRequired": true,
+  "engineOutputsVisible": false,
+  "sourceManifestHash": "8e6a49422230884b4547be7f9cde4862a5684b5afa43ca7756f64d37bf7364d3",
+  "packetCount": 66,
+  "sectionCount": 120,
+  "reviewResults": [],
+  "humanEvidenceRequired": true
+}

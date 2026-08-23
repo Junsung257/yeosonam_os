@@ -38,6 +38,8 @@ Search this folder only when you need historical evidence, investigation details
 These audits contain recent evidence for the current product-registration engine. They are still evidence, not the source of truth:
 
 - 2026-08-20 — V6.1 Release 0 evidence: clean integration worktree, preserved dirty-worktree patch, untracked inventory, worktree manifest, and no production writes: `2026-08-20-product-registration-v61-release0.md`
+- 2026-08-23 — V6.1 finalization Phase 0/1 readout: source inventory gap, unavailable frozen queue, UNKNOWN_BLOCKER triage carry-forward, and Gold NO-GO: `2026-08-23-v61-finalization/`
+- 2026-08-23 — V6.1 true finalization: separated Track A/B/C state, production prerequisite readout, pseudonymous existing-product inventory, and Gold certificate not issued: `2026-08-23-v61-true-finalization/`
 
 | Area | File |
 |---|---|

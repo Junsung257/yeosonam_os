@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v61-gold-population-final-1",
+  "generatedAt": "2026-08-23T05:36:16.151Z",
+  "runId": "abc1c59a-6d09-4d46-814b-c8b0570c38c9",
+  "populationDefinition": "Verified original source rows from the 1,171-row private corpus; no metadata-only row is Gold evidence.",
+  "status": "EXTERNALLY_BLOCKED_SOURCE_CAPACITY",
+  "targetSections": 400,
+  "verifiedSourceRows": 66,
+  "verifiedSourceSections": 120,
+  "frozenVerifiedSections": 17,
+  "additionalVerifiedSectionsNeeded": 280,
+  "minimumAdditionalRowsByMetadataProjection": 45,
+  "projectionWarning": "The metadata projection is not a Gold count until original bytes are hash-verified and human-reviewed.",
+  "sourceManifest": "source-reconciliation-final.json",
+  "goldEligible": false,
+  "humanReviewStatus": "NOT_SUPPLIED"
+}
