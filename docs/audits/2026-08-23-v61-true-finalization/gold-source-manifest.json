@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-gold-source-manifest-1",
-  "generatedAt": "2026-08-23T07:59:46.843Z",
-  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
+  "generatedAt": "2026-08-23T09:34:25.180Z",
+  "runId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
   "status": "CANDIDATE_SOURCE_MANIFEST_NOT_GOLD",
   "targetSections": 400,
   "sourceRows": 96,

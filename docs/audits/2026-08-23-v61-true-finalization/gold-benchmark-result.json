@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-gold-benchmark-result-1",
-  "generatedAt": "2026-08-23T07:59:47.105Z",
-  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
+  "generatedAt": "2026-08-23T09:34:25.364Z",
+  "runId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
   "status": "NOT_RUN",
   "reason": "Immutable 400-section Gold freeze, dual blind review, and adjudication are not complete.",
   "goldSections": 0,
@@ -23,6 +23,6 @@
   "runner": {
     "source": "scripts/run-product-registration-95-benchmark.ts",
     "reviewedBenchmarkSealer": "scripts/seal-product-registration-reviewed-benchmark.ts",
-    "reviewManifestHash": "114218093c490a13b3ec64ff39388238be4c55ca1b892be291b6e171fc11e267"
+    "reviewManifestHash": "7cb2e664dd39684678dbc03bb692c0e5b66d81e60be05998cfbddada76305306"
   }
 }

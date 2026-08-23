@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v61-resume-state-controller-2",
-  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
+  "runId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
   "next_action": {
     "state": "EXTERNALLY_BLOCKED_FINAL",
     "description": "All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain."
@@ -136,7 +136,7 @@
     "sourceDuplicate": 1,
     "sourceCorrupt": 16,
     "sourceMissing": 1058,
-    "searchedFiles": 8649,
+    "searchedFiles": 8674,
     "filenameCandidates": 73,
     "filenameHashMismatches": 16
   },
@@ -178,8 +178,8 @@
   },
   "resumeVerifier": {
     "schemaVersion": "v61-resume-verifier-1",
-    "generatedAt": "2026-08-23T07:59:47.165Z",
-    "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
+    "generatedAt": "2026-08-23T09:34:25.409Z",
+    "runId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
     "pass": true,
     "checks": {
       "requiredFiles": {

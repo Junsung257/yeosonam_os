@@ -1,8 +1,8 @@
 {
   "schemaVersion": "v61-adjudication-ledger-1",
-  "generatedAt": "2026-08-23T07:59:46.946Z",
-  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
-  "sourceManifestHash": "114218093c490a13b3ec64ff39388238be4c55ca1b892be291b6e171fc11e267",
+  "generatedAt": "2026-08-23T09:34:25.251Z",
+  "runId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
+  "sourceManifestHash": "7cb2e664dd39684678dbc03bb692c0e5b66d81e60be05998cfbddada76305306",
   "status": "READY_FOR_REVIEW_RESULT_IMPORT",
   "disagreementRequiredRemaining": null,
   "criticalUnresolved": null,

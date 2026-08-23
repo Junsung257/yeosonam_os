@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v61-controller-final-state-2",
-  "controllerRunId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
+  "controllerRunId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
   "finalState": "EXTERNALLY_BLOCKED_FINAL",
   "overall": {
     "state": "EXTERNALLY_BLOCKED_FINAL",
@@ -170,6 +170,6 @@
   "noProductionMutation": true,
   "priorFinalState": {
     "schemaVersion": "v61-controller-final-state-2",
-    "legacyStatus": "WAITING_EXTERNAL_INPUTS"
+    "legacyStatus": "EXTERNALLY_BLOCKED_FINAL"
   }
 }
