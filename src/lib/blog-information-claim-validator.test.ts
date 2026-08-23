@@ -10,6 +10,7 @@ import {
 } from './blog-information-claim-validator';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
 import type { BlogInformationEvidenceScope } from './blog-information-evidence';
+import { evaluateBlogInformationClaimPublishGate } from './blog-information-claim-publish-gate';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
 
@@ -1183,7 +1184,6 @@ describe('blog information claim validator', () => {
   });
 
   it('does not apply the information validator to product content at the runtime boundary', async () => {
-    const { evaluateBlogInformationClaimPublishGate } = await import('./blog-information-claim-publish-gate');
     const report = await evaluateBlogInformationClaimPublishGate({
       contentKey: 'product-post',
       markdown: '가격은 1,000,000원입니다.',

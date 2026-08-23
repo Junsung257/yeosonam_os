@@ -48,6 +48,11 @@ const values = [
   ['BLOG_OPS_READ_TOKEN', process.env.BLOG_OPS_READ_TOKEN, 'sensitive'],
   ['BLOG_V4_ENVIRONMENT', 'staging', 'encrypted'],
   ['BLOG_ENVIRONMENT', 'staging', 'encrypted'],
+  // Vercel Preview runs with NODE_ENV=production. Keep staging canaries from
+  // inheriting the production default resource-saver guard, while the
+  // production project remains unchanged and auto-publish stays draft-only.
+  ['DB_RESOURCE_SAVER_MODE', '0', 'encrypted'],
+  ['DB_RESOURCE_SAVER_PUBLIC_READS', '1', 'encrypted'],
   ['BLOG_GENERATION_CRON_ENABLED', 'false', 'encrypted'],
   ['BLOG_CONTENT_FACTORY_ENABLED', 'true', 'encrypted'],
   ['BLOG_AI_CONTROL_PLANE_ENABLED', '1', 'encrypted'],
