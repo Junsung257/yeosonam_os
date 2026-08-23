@@ -76,10 +76,13 @@ revoke all on table public.ai_budget_buckets from public;
 revoke all on table public.ai_call_reservations from public;
 revoke all on table public.ai_call_receipts from public;
 
+drop policy if exists ai_budget_buckets_service_role_all on public.ai_budget_buckets;
 create policy ai_budget_buckets_service_role_all
   on public.ai_budget_buckets for all to service_role using (true) with check (true);
+drop policy if exists ai_call_reservations_service_role_all on public.ai_call_reservations;
 create policy ai_call_reservations_service_role_all
   on public.ai_call_reservations for all to service_role using (true) with check (true);
+drop policy if exists ai_call_receipts_service_role_all on public.ai_call_receipts;
 create policy ai_call_receipts_service_role_all
   on public.ai_call_receipts for all to service_role using (true) with check (true);
 

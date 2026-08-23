@@ -5,7 +5,7 @@
     {
       "version": "20260819113000",
       "file": "supabase/migrations/20260819113000_ai_control_plane_v1.sql",
-      "sha256": "8bcf59a9a01d62f96cc645ae6f40b50af15febeddc6696a54e0594a370746ec3"
+      "sha256": "642f62209eec6b312b9e0abd780eb9d28e265d2c6059de991e99b747bf897a50"
     }
   ],
   "rollbacks": [
