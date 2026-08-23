@@ -784,10 +784,12 @@ async function checkBlogPublicSurfaceMonitor() {
         .flatMap((row) => Array.isArray(row.issues) ? row.issues.map((issue) => `${row.id}:${issue}`) : [`${row.id}:unknown`])
       : [];
     const missingOpsAuth = authMode === 'none' && !publicSurfaces;
+    const authRejected = [401, 403].includes(res.status)
+      || /(?:invalid|missing|expired)\s+(?:ops\s+)?token|forbidden|unauthorized/i.test(body);
     const surfaceUnavailable = !ok && TRANSIENT_BLOG_DATA_PATTERN.test(
       JSON.stringify({ publicSurfaces, body }),
     );
-    const status = ok ? 'pass' : surfaceUnavailable || missingOpsAuth ? 'blocked' : 'fail';
+    const status = ok ? 'pass' : authRejected || surfaceUnavailable || missingOpsAuth ? 'blocked' : 'fail';
 
     addCheck('public:blog-surface-monitor', status, {
       statusCode: res.status,
@@ -801,12 +803,14 @@ async function checkBlogPublicSurfaceMonitor() {
       failedIssues,
       notes: ok
         ? `${checked} public blog surface(s) healthy`
+        : authRejected
+          ? 'protected ops monitor rejected the supplied credential; refresh BLOG_OPS_READ_TOKEN before retrying'
         : surfaceUnavailable
           ? 'blog surface monitor found transient DB/data unavailability; publication can continue but ops follow-up is required'
           : missingOpsAuth
             ? 'protected ops probe requires CRON_SECRET or OPEN_CHECK_AUTH_COOKIE'
             : `failed=${failed}; ${failedIssues.slice(0, 4).join(', ') || 'inspect /api/ops/blog-system'}`,
-      error: ok || surfaceUnavailable || missingOpsAuth
+      error: ok || authRejected || surfaceUnavailable || missingOpsAuth
         ? ''
         : (failedIssues.join(', ') || body || `HTTP ${res.status}`).slice(0, 1200),
     });

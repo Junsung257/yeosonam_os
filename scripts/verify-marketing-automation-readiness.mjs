@@ -472,6 +472,8 @@ function staticChecks() {
     'public:blog-surface-monitor',
     '/api/ops/blog-system',
     'opsRequestHeaders',
+    'authRejected',
+    'protected ops monitor rejected the supplied credential',
     'OPEN_CHECK_AUTH_COOKIE',
     'ys-dev-admin=1',
     'failedIssues',
