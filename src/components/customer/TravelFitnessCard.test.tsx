@@ -1,4 +1,5 @@
 import { renderToString } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
 import TravelFitnessCard from './TravelFitnessCard';
 
 const monthlyNormals = [
