@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-product-recovery-inventory-1",
-  "generatedAt": "2026-08-23T05:36:16.462Z",
-  "runId": "abc1c59a-6d09-4d46-814b-c8b0570c38c9",
+  "generatedAt": "2026-08-23T07:32:58.223Z",
+  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
   "source": "read-only production aggregate inventory",
   "total": 993,
   "classCounts": {

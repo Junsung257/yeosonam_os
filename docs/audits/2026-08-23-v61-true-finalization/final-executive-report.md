@@ -39,7 +39,7 @@ Recover and hash-verify the original source sections; triage the 155 UNKNOWN_BLO
 
 ## Latest controller run
 
-- run_id: abc1c59a-6d09-4d46-814b-c8b0570c38c9
+- run_id: 58ab7961-928d-4aea-ab69-4ed091d6c368
 - controller_state: WAITING_EXTERNAL_INPUTS
 - source hash-verified rows: 66
 - source missing rows: 1092
