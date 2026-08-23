@@ -44,6 +44,7 @@ const values = [
   ['DEEPSEEK_API_KEY', process.env.DEEPSEEK_STAGING_API_KEY, 'sensitive'],
   ['BLOG_V4_SHARED_KEY_USED', process.env.BLOG_V4_SHARED_KEY_USED, 'encrypted'],
   ['CRON_SECRET', process.env.CRON_SECRET, 'sensitive'],
+  ['VERCEL_AUTOMATION_BYPASS_SECRET', process.env.VERCEL_AUTOMATION_BYPASS_SECRET, 'sensitive'],
   ['BLOG_OPS_READ_TOKEN', process.env.BLOG_OPS_READ_TOKEN, 'sensitive'],
   ['BLOG_V4_ENVIRONMENT', 'staging', 'encrypted'],
   ['BLOG_ENVIRONMENT', 'staging', 'encrypted'],

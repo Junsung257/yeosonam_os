@@ -300,14 +300,17 @@ async function generationStep(
   }
   const secret = getSecret('CRON_SECRET');
   if (!secret) throw new FatalError('BLOG_CONTENT_FACTORY_CRON_SECRET_MISSING');
+  const protectionBypassSecret = getSecret('VERCEL_AUTOMATION_BYPASS_SECRET');
   const url = new URL('/api/cron/blog-publisher', input.requestBaseUrl);
   url.searchParams.set('operationId', input.operationId);
   url.searchParams.set('fencingToken', String(input.fencingToken));
   url.searchParams.set('leaseOwner', input.leaseOwner);
+  const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
+  if (protectionBypassSecret) headers['x-vercel-protection-bypass'] = protectionBypassSecret;
   let response: Response;
   try {
     response = await fetch(url, {
-      method: 'GET', cache: 'no-store', headers: { authorization: `Bearer ${secret}` },
+      method: 'GET', cache: 'no-store', headers,
       signal: AbortSignal.timeout(280_000),
     });
   } catch (error) {

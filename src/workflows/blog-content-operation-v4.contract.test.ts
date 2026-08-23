@@ -26,6 +26,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(workflow).toContain("generation.passDecision !== 'continue'");
     expect(workflow).toContain('BLOG_CONTENT_FACTORY_GENERATION_DEFERRED');
     expect(workflow).toContain('BLOG_CONTENT_FACTORY_ATTEMPT_RECEIPT_READ');
+    expect(workflow).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
+    expect(workflow).toContain('x-vercel-protection-bypass');
     expect(workflow).toContain('generation:attempt:${attemptNumber}:v1');
     expect(workflow).toContain('generation:pass:${pass}:started:v1:${workflowRunId}');
     expect(workflow).toContain('finalize:approved:v1:${workflowRunId}');
