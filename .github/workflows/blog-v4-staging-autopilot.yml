@@ -360,6 +360,7 @@ jobs:
           rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823010000_remote_history_placeholder.sql
           rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823030000_remote_history_placeholder.sql
           rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823040000_remote_history_placeholder.sql
+          rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823050000_remote_history_placeholder.sql
           rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823060000_remote_history_placeholder.sql
 
       - name: Prove exact staging migration dry-run
