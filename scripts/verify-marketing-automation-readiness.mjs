@@ -475,6 +475,8 @@ function staticChecks() {
     'BLOG_OPS_READ_TOKEN',
     'ops:dedicated-read-token',
     'ops:cron-fallback-enabled',
+    'authRejected',
+    'protected ops monitor rejected the supplied credential',
     'tokenValueExposed',
     'OPEN_CHECK_AUTH_COOKIE',
     'ys-dev-admin=1',
