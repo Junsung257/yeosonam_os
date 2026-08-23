@@ -41,5 +41,6 @@ describe('destination public package data boundary', () => {
     expect(text).toContain('normalizeSeasonalSignals');
     expect(text).toContain('const climateCardData = normalizeClimateCardData');
     expect(text).not.toContain('monthlyNormals={climateCardData.monthly_normals as MonthlyNormal[]}');
+    expect(text).toContain("typeof pillarBody === 'string'");
   });
 });
