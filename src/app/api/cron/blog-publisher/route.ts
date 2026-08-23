@@ -1537,6 +1537,11 @@ async function runBlogPublisher(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
 
+  const requestedOperationId = request.nextUrl.searchParams.get('operationId')?.trim();
+  const stagingCanaryRequest = request.nextUrl.searchParams.get('stagingCanary') === '1'
+    && process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+    && BLOG_AUTOPUBLISH_POLICY_V3.mode === 'draft_only';
+
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
@@ -1546,13 +1551,36 @@ async function runBlogPublisher(request: NextRequest) {
   // could bypass the immutable selected-attempt controller contract.
   const deferPublication = true;
 
-  const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
-    supabaseAdmin,
-    new Date(),
-    BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
-      resource.scope === 'publish' || resource.scope === 'delivery'
-    )),
-  );
+  // The staging canary already performs the same schema gate in the isolated
+  // workflow before invoking this route. Re-running every publish/delivery
+  // probe here can consume the whole serverless request budget before the
+  // targeted operation is even entered. Keep the skip narrowly scoped to an
+  // explicit staging + draft-only canary request; normal cron and production
+  // requests retain the runtime schema gate.
+  if (stagingCanaryRequest && requestedOperationId) {
+    await recordBlogContentOperationStageV4({
+      supabase: supabaseAdmin,
+      operationId: requestedOperationId,
+      fencingToken: Number(request.nextUrl.searchParams.get('fencingToken')),
+      leaseOwner: request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '',
+      eventKey: 'publisher:route-entered:v1',
+      stage: 'drafting',
+      eventStatus: 'succeeded',
+      evidence: { stagingCanary: true, schemaProbe: 'workflow_preflight' },
+    }).catch((error) => {
+      console.warn('[cron/blog-publisher] staging canary entry progress failed', error);
+    });
+  }
+
+  const schemaReadiness = stagingCanaryRequest
+    ? { publishReady: true, deliveryReady: true, skipped: true }
+    : await probeBlogRuntimeSchemaWithSupabaseV3(
+      supabaseAdmin,
+      new Date(),
+      BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
+        resource.scope === 'publish' || resource.scope === 'delivery'
+      )),
+    );
   if (!schemaReadiness.publishReady || !schemaReadiness.deliveryReady) {
     return {
       ok: false,
@@ -1748,13 +1776,11 @@ async function runBlogPublisher(request: NextRequest) {
       };
     }
 
-    const operationId = request.nextUrl.searchParams.get('operationId')?.trim();
+    const operationId = requestedOperationId;
     if (operationId) {
       const fencingToken = Number(request.nextUrl.searchParams.get('fencingToken'));
       const leaseOwner = request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '';
-      const stagingCanary = request.nextUrl.searchParams.get('stagingCanary') === '1'
-        && process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
-        && BLOG_AUTOPUBLISH_POLICY_V3.mode === 'draft_only';
+      const stagingCanary = stagingCanaryRequest;
       if (!Number.isSafeInteger(fencingToken) || fencingToken <= 0 || !leaseOwner) {
         return {
           ok: false,
@@ -2518,7 +2544,9 @@ async function processQueueItem(
       stage: 'drafting',
       eventStatus: 'succeeded',
       evidence: { publisherProgress: step, ...evidence },
-    }).catch(() => undefined);
+    }).catch((error) => {
+      console.warn(`[cron/blog-publisher] operation progress failed (${step})`, error);
+    });
   };
 
   // 동시성 방지 — generating 락
