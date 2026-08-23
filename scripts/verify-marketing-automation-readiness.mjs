@@ -474,6 +474,7 @@ function staticChecks() {
     'opsRequestHeaders',
     'authRejected',
     'protected ops monitor rejected the supplied credential',
+    'user\\s+not\\s+found',
     'OPEN_CHECK_AUTH_COOKIE',
     'ys-dev-admin=1',
     'failedIssues',

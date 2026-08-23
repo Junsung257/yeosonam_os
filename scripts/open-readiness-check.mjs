@@ -582,7 +582,7 @@ function checkVercelLogs(level) {
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
   if (
     !result.ok &&
-    /login|auth|token|unauthorized|forbidden|No existing credentials|do not have access|specified account|scope-not-accessible/i.test(
+    /login|auth|token|unauthorized|forbidden|No existing credentials|do not have access|specified account|scope-not-accessible|user\s+not\s+found|account\s+not\s+found/i.test(
       output || result.message,
     )
   ) {
