@@ -17,6 +17,10 @@ import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { BLOG_INFORMATION_RESEARCH_META_KEY } from '@/lib/blog-generation-research';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import {
+  classifyBlogProviderFailure,
+  isRetryableBlogProviderFailure,
+} from '@/lib/blog-content-factory/provider-failure';
 
 type OperationRow = {
   id: string;
@@ -348,11 +352,20 @@ async function generationStep(
   const resultStatus = result?.status ?? payload?.resultStatus ?? null;
   const payloadOk = payload?.ok === true;
   const requestSucceeded = response.ok && payloadOk;
+  const providerFailureCode = resultStatus === 'error'
+    ? classifyBlogProviderFailure(result?.reason ?? payload?.reason ?? payload?.errors?.[0])
+    : null;
+  const operationSucceeded = requestSucceeded && !providerFailureCode;
+  const operationRetryable = providerFailureCode
+    ? isRetryableBlogProviderFailure(providerFailureCode)
+    : response.status >= 500 || isTransient(result?.reason || payload?.reason || '');
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
     leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-returned:v1:${workflowRunId}`,
-    stage: 'drafting', eventStatus: requestSucceeded ? 'succeeded' : 'retryable_failure',
-    failureCode: requestSucceeded ? null : `publisher_${response.ok ? 'contract' : `http_${response.status}`}`,
+    stage: 'drafting', eventStatus: operationSucceeded ? 'succeeded' : operationRetryable ? 'retryable_failure' : 'failed',
+    failureCode: operationSucceeded
+      ? null
+      : providerFailureCode ?? `publisher_${response.ok ? 'contract' : `http_${response.status}`}`,
     evidence: {
       httpStatus: response.status,
       payloadOk,
