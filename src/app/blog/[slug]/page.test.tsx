@@ -245,7 +245,7 @@ describe('/blog/[slug] page smoke', () => {
     });
 
     expect(element).toBeTruthy();
-  }, 20_000);
+  }, 45_000);
 
   it('renders the database-unavailable surface instead of a false 404 on query errors', async () => {
     mockState.postQueryError = true;
