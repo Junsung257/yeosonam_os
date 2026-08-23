@@ -340,6 +340,12 @@ jobs:
             .tmp/blog-v4-staging-release/supabase/migrations/20260823010000_blog_v4_staging_research_registry.sql
           cp supabase/staging-baselines/blog-v4-source-snapshot.sql \
             .tmp/blog-v4-staging-release/supabase/migrations/20260823030000_blog_v4_staging_source_snapshot.sql
+          # The Preview canary enables the AI control plane so the real
+          # provider call is budgeted and receipted. Apply the existing
+          # additive control-plane SQL under a staging-only version; the
+          # production migration remains governed by its normal release gate.
+          cp supabase/migrations/20260819113000_ai_control_plane_v1.sql \
+            .tmp/blog-v4-staging-release/supabase/migrations/20260823040000_blog_v4_staging_ai_control_plane.sql
           # The release preparer represents already-applied non-release
           # versions with placeholders. The checked-in staging baseline is the
           # authoritative local copy for this one allowed extra version.
@@ -362,7 +368,7 @@ jobs:
           already_applied_versions="$(node -e 'const fs=require("fs"); const x=JSON.parse(fs.readFileSync(".tmp/blog-v4-staging-release/release-workdir-summary.json","utf8")); process.stdout.write((x.alreadyAppliedReleaseVersions || []).join(","))')"
           npm run verify:blog-content-factory-supabase-dry-run-v4 -- \
             --input=.tmp/blog-v4-staging-result/migration-dry-run.txt \
-            --allow-extra=20260819000000,20260823010000,20260823030000 \
+            --allow-extra=20260819000000,20260823010000,20260823030000,20260823040000 \
             --allow-applied="$already_applied_versions" \
             --allow-empty
 
