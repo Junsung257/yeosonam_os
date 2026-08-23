@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-lane-status-1",
-  "generatedAt": "2026-08-23T07:51:01.010Z",
-  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
+  "generatedAt": "2026-08-23T07:59:47.145Z",
+  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
   "lanes": {
     "productionManualRollout": {
       "id": "LANE_A_PRODUCTION_MANUAL_ROLLOUT",
@@ -111,11 +111,12 @@
     }
   },
   "overall": {
-    "state": "WAITING_EXTERNAL_INPUTS",
-    "description": "All safe machine preparation is complete; independent lanes are waiting on their own external inputs.",
-    "completionTarget": "NOT_COMPLETE",
+    "state": "EXTERNALLY_BLOCKED_FINAL",
+    "description": "All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain.",
+    "completionTarget": "EXTERNALLY_BLOCKED_FINAL",
     "machineActionsRemaining": false,
     "externalInputsOnly": true,
+    "finalDisposition": "EXTERNALLY_BLOCKED_FINAL",
     "waitingLanes": [
       "LANE_A_PRODUCTION_MANUAL_ROLLOUT",
       "LANE_B_EXISTING_PRODUCT_RECOVERY",

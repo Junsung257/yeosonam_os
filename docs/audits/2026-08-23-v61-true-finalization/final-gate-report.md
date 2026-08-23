@@ -1,11 +1,11 @@
 # V6.1 GOAL MODE FINAL GATE REPORT
 
-Generated: 2026-08-23T07:51:01.086Z
+Generated: 2026-08-23T07:59:47.240Z
 
 ## Final state
 
-- Overall: `WAITING_EXTERNAL_INPUTS`
-- Completion target: `NOT_COMPLETE`
+- Overall: `EXTERNALLY_BLOCKED_FINAL`
+- Completion target: `EXTERNALLY_BLOCKED_FINAL`
 - Internal preparation: complete
 - Gold certificate: not issued
 - Production rollout: not executed

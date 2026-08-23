@@ -1,15 +1,15 @@
 {
   "schemaVersion": "v61-finalization-controller-run-state-2",
-  "run_id": "c4054195-a880-4f86-8160-146a878ec30c",
-  "head_sha": "aaf89d4058866f78df90cb4c10c1866c7f742e87",
+  "run_id": "4497be6a-849f-4cdf-a53c-65a26e07249b",
+  "head_sha": "dc8144518b644fa5e69cb241e1eb8656dd32fed7",
   "branch": "codex/product-registration-v61-authority-20260820",
   "clean": false,
-  "phase": "WAITING_EXTERNAL_INPUTS",
-  "current_gate": "WAITING_EXTERNAL_INPUTS",
+  "phase": "EXTERNALLY_BLOCKED_FINAL",
+  "current_gate": "EXTERNALLY_BLOCKED_FINAL",
   "last_completed_gate": "INTERNAL_FINALIZATION_PREPARATION",
   "next_action": {
-    "state": "WAITING_EXTERNAL_INPUTS",
-    "description": "All safe machine preparation is complete; independent lanes are waiting on their own external inputs."
+    "state": "EXTERNALLY_BLOCKED_FINAL",
+    "description": "All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain."
   },
   "source_verified_count": 96,
   "gold_certified_count": 0,
@@ -40,11 +40,12 @@
     "noProductionMutation": true
   },
   "overall": {
-    "state": "WAITING_EXTERNAL_INPUTS",
-    "description": "All safe machine preparation is complete; independent lanes are waiting on their own external inputs.",
-    "completionTarget": "NOT_COMPLETE",
+    "state": "EXTERNALLY_BLOCKED_FINAL",
+    "description": "All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain.",
+    "completionTarget": "EXTERNALLY_BLOCKED_FINAL",
     "machineActionsRemaining": false,
     "externalInputsOnly": true,
+    "finalDisposition": "EXTERNALLY_BLOCKED_FINAL",
     "waitingLanes": [
       "LANE_A_PRODUCTION_MANUAL_ROLLOUT",
       "LANE_B_EXISTING_PRODUCT_RECOVERY",
@@ -160,5 +161,5 @@
       }
     }
   },
-  "updated_at": "2026-08-23T07:51:01.893Z"
+  "updated_at": "2026-08-23T07:59:48.219Z"
 }

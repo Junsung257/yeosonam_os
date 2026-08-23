@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-production-canary-candidates-1",
-  "generatedAt": "2026-08-23T07:51:00.843Z",
-  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
+  "generatedAt": "2026-08-23T07:59:46.981Z",
+  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
   "status": "SELECTED_FOR_REHEARSAL_NOT_EXECUTED",
   "cohorts": {
     "one": [

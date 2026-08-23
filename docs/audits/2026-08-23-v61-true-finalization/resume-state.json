@@ -1,16 +1,17 @@
 {
   "schemaVersion": "v61-resume-state-controller-2",
-  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
+  "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
   "next_action": {
-    "state": "WAITING_EXTERNAL_INPUTS",
-    "description": "All safe machine preparation is complete; independent lanes are waiting on their own external inputs."
+    "state": "EXTERNALLY_BLOCKED_FINAL",
+    "description": "All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain."
   },
   "overall": {
-    "state": "WAITING_EXTERNAL_INPUTS",
-    "description": "All safe machine preparation is complete; independent lanes are waiting on their own external inputs.",
-    "completionTarget": "NOT_COMPLETE",
+    "state": "EXTERNALLY_BLOCKED_FINAL",
+    "description": "All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain.",
+    "completionTarget": "EXTERNALLY_BLOCKED_FINAL",
     "machineActionsRemaining": false,
     "externalInputsOnly": true,
+    "finalDisposition": "EXTERNALLY_BLOCKED_FINAL",
     "waitingLanes": [
       "LANE_A_PRODUCTION_MANUAL_ROLLOUT",
       "LANE_B_EXISTING_PRODUCT_RECOVERY",
@@ -177,8 +178,8 @@
   },
   "resumeVerifier": {
     "schemaVersion": "v61-resume-verifier-1",
-    "generatedAt": "2026-08-23T07:51:01.024Z",
-    "runId": "c4054195-a880-4f86-8160-146a878ec30c",
+    "generatedAt": "2026-08-23T07:59:47.165Z",
+    "runId": "4497be6a-849f-4cdf-a53c-65a26e07249b",
     "pass": true,
     "checks": {
       "requiredFiles": {

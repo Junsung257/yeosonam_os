@@ -1572,11 +1572,19 @@ function buildLaneSummary(source, gold, production, catalog, verifier, reviewerA
       && production.manualCanaryComplete === true,
   );
   const autoPublishReady = Boolean(gold.certificateIssued === true && gold.goldQualifiedSections >= 400);
+  const externallyBlockedFinal = Boolean(
+    !safetyFailure
+      && !machineActionsRemaining
+      && !autoPublishReady
+      && !manualOnlyReady,
+  );
   const completionTarget = autoPublishReady
     ? 'FINAL_COMPLETE_AUTOPUBLISH_READY'
     : manualOnlyReady
       ? 'FINAL_COMPLETE_MANUAL_ONLY'
-      : 'NOT_COMPLETE';
+      : externallyBlockedFinal
+        ? 'EXTERNALLY_BLOCKED_FINAL'
+        : 'NOT_COMPLETE';
   let state = 'WAITING_EXTERNAL_INPUTS';
   let description = 'All safe machine preparation is complete; independent lanes are waiting on their own external inputs.';
   if (safetyFailure) {
@@ -1588,6 +1596,9 @@ function buildLaneSummary(source, gold, production, catalog, verifier, reviewerA
   } else if (manualOnlyReady) {
     state = 'FINAL_COMPLETE_MANUAL_ONLY';
     description = 'Manual production rollout completion gates are complete; automatic publication remains separately disabled.';
+  } else if (externallyBlockedFinal) {
+    state = 'EXTERNALLY_BLOCKED_FINAL';
+    description = 'All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain.';
   } else if (machineActionsRemaining) {
     state = 'RUNNING';
     description = 'At least one lane still has safe machine-executable work; continue without waiting for unrelated external inputs.';
@@ -1599,7 +1610,8 @@ function buildLaneSummary(source, gold, production, catalog, verifier, reviewerA
       description,
       completionTarget,
       machineActionsRemaining,
-      externalInputsOnly: !machineActionsRemaining && !safetyFailure && state === 'WAITING_EXTERNAL_INPUTS',
+      externalInputsOnly: !machineActionsRemaining && !safetyFailure,
+      finalDisposition: externallyBlockedFinal ? 'EXTERNALLY_BLOCKED_FINAL' : null,
       waitingLanes: Object.values(lanes)
         .filter(lane => lane.state.startsWith('WAITING_'))
         .map(lane => lane.id),

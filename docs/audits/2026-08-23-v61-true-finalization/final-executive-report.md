@@ -39,8 +39,8 @@ Recover and hash-verify the remaining original source sections; triage the 155 U
 
 ## Latest controller run
 
-- run_id: c4054195-a880-4f86-8160-146a878ec30c
-- controller_state: WAITING_EXTERNAL_INPUTS
+- run_id: 4497be6a-849f-4cdf-a53c-65a26e07249b
+- controller_state: EXTERNALLY_BLOCKED_FINAL
 - source hash-verified rows: 96
 - source missing rows: 1058
 - existing catalog inventory: 993
@@ -52,6 +52,6 @@ Recover and hash-verify the remaining original source sections; triage the 155 U
 - production manifest: BLOCKED_PREREQUISITE
 - lane A/B/C/D: WAITING_OWNER_APPROVAL / WAITING_OWNER_APPROVAL / WAITING_EXTERNAL_SOURCE / WAITING_HUMAN_REVIEW
 
-Next action: All safe machine preparation is complete; independent lanes are waiting on their own external inputs.
+Next action: All safe internal preparation is complete; only original-source, independent-human-review, adjudication, or explicit owner inputs remain.
 
 <!-- v61-controller-latest:end -->\n

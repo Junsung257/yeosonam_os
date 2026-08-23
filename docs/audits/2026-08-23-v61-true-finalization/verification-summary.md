@@ -13,7 +13,7 @@
 - `npm run lint` — PASS.
 - `npm run check:product-registration-contract` — PASS; authority baseline `authorized=1`, `legacy=0`, `unapproved=0`.
 - C12 upload verification suite — PASS; 2 files, 44 tests.
-- `npm run v61:finalize -- --resume` — PASS; four-lane state persisted as `WAITING_EXTERNAL_INPUTS`.
+- `npm run v61:finalize -- --resume` — PASS; four-lane state persisted as `EXTERNALLY_BLOCKED_FINAL` with `externalInputsOnly=true` and `machineActionsRemaining=false`.
 - Source recovery — PASS; OneDrive was added to the read-only search roots, 32 additional exact-hash source files were recovered, and the verified source-backed section count increased from 120 to 191.
 - Source population reconciliation — PASS after including `SOURCE_DUPLICATE` rows in the reconciliation arithmetic.
 - Current source state — 96 hash-verified rows / 191 sections, 1,058 missing rows, 16 hash-mismatch/corrupt rows, 1 duplicate-path row.
