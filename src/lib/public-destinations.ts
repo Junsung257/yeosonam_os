@@ -31,6 +31,7 @@ const EXACT_PUBLIC_DESTINATION_MAP: Record<string, string | null> = {
   '광저우-천저우': '광저우',
   '호이안/바나힐': '다낭',
   '호이안-바나힐': '다낭',
+  '호이안-다낭': '다낭',
   '다낭/호이안': '다낭',
   '다낭-호이안': '다낭',
   '나트랑/달랏': '나트랑',
@@ -219,4 +220,3 @@ export function mergePublicDestinationStats(rows: ActiveDestinationLike[]): Publ
     }))
     .sort((a, b) => b.package_count - a.package_count || a.destination.localeCompare(b.destination, 'ko'));
 }
-

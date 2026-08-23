@@ -33,6 +33,12 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(workflow).toContain('generation:pass:${pass}:started:v1:${workflowRunId}');
     expect(workflow).toContain('finalize:approved:v1:${workflowRunId}');
     expect(workflow).toContain('cachedInputTokens: Number(attempt.cache_hit_input_tokens ?? 0)');
+    expect(workflow).toContain('BLOG_CONTENT_FACTORY_GENERATION_RESULT_MISSING:${detail}');
+    expect(workflow).toContain('const payloadOk = payload?.ok === true;');
+    expect(workflow).toContain('const requestSucceeded = response.ok && payloadOk;');
+    expect(workflow).toContain('recordWorkflowFailureStep');
+    expect(workflow).toContain("operationStatus: retryable ? 'running' : 'quarantined'");
+    expect(workflow).toContain('responseReason: payload?.reason ?? null');
   });
 
   it('starts workflows from the cron without making a model call in that request', () => {
@@ -53,6 +59,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(publisherRoute).toContain('content_operation_lease_expired');
     expect(publisherRoute).toContain('embeddedOnly: options.stagingCanary === true');
     expect(publisherRoute).toContain('publisher:progress:${step}:v1');
+    expect(publisherRoute).toContain('resultStatus: result.status');
+    expect(publisherRoute).toContain('resultReason: result.reason ?? null');
   });
 
   it('requires an approved factory operation and rechecks an immutable package snapshot before publication', () => {

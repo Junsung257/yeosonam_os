@@ -82,6 +82,30 @@ function queryResult(table: string) {
           canonical_view: {},
         },
       },
+      {
+        id: 'snapshot-hoian-danang',
+        package_id: 'pkg-hoian-danang',
+        catalog_product_id: 'catalog-hoian-danang',
+        canonical_revision_id: 'revision-hoian-danang',
+        package_revision: 2,
+        status: 'published',
+        created_at: '2026-06-04T00:00:00.000Z',
+        card_projection: { id: 'pkg-hoian-danang', title: 'Hoi An Da Nang public title', destination: '호이안-다낭' },
+        lp_projection: { id: 'pkg-hoian-danang', title: 'Hoi An Da Nang public title', destination: '호이안-다낭' },
+        snapshot_json: {
+          images_public: [],
+          package: {
+            id: 'pkg-hoian-danang',
+            title: 'Hoi An Da Nang public title',
+            display_title: 'Hoi An Da Nang public title',
+            destination: '호이안-다낭',
+            publication_state: 'published',
+            package_revision: 2,
+            price_dates: [{ date: '2026-07-13', price: 699000 }],
+          },
+          canonical_view: {},
+        },
+      },
     ],
     product_registration_v5_publication_pointers: [
       {
@@ -89,6 +113,13 @@ function queryResult(table: string) {
         catalog_product_id: 'catalog-osaka',
         current_revision_id: 'revision-osaka',
         current_snapshot_id: 'snapshot-osaka',
+        state: 'published',
+      },
+      {
+        package_id: 'pkg-hoian-danang',
+        catalog_product_id: 'catalog-hoian-danang',
+        current_revision_id: 'revision-hoian-danang',
+        current_snapshot_id: 'snapshot-hoian-danang',
         state: 'published',
       },
     ],
@@ -141,6 +172,8 @@ describe('sitemap', () => {
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
     expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
+    expect(urls).toContain(`${expectedBaseUrl}/destinations/%EB%8B%A4%EB%82%AD`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/%ED%98%B8%EC%9D%B4%EC%95%88-%EB%8B%A4%EB%82%AD`);
     expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls).not.toContain(`${expectedBaseUrl}/blog/travel-emergency-medicine-summer-checklist`);

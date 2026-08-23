@@ -336,39 +336,88 @@ async function generationStep(
   const payload = await response.json().catch(() => null) as {
     ok?: boolean;
     reason?: string;
+    targetedContentOperation?: boolean;
+    processed?: number;
+    queueId?: string;
+    operationId?: string;
+    errors?: string[];
+    resultStatus?: string;
     results?: Array<{ status?: string; reason?: string }>;
   } | null;
+  const result = payload?.results?.[0];
+  const resultStatus = result?.status ?? payload?.resultStatus ?? null;
+  const payloadOk = payload?.ok === true;
+  const requestSucceeded = response.ok && payloadOk;
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
     leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-returned:v1:${workflowRunId}`,
-    stage: 'drafting', eventStatus: response.ok ? 'succeeded' : 'retryable_failure',
-    failureCode: response.ok ? null : `publisher_http_${response.status}`,
-    evidence: { httpStatus: response.status, payloadOk: Boolean(payload), resultStatus: payload?.results?.[0]?.status ?? null },
+    stage: 'drafting', eventStatus: requestSucceeded ? 'succeeded' : 'retryable_failure',
+    failureCode: requestSucceeded ? null : `publisher_${response.ok ? 'contract' : `http_${response.status}`}`,
+    evidence: {
+      httpStatus: response.status,
+      payloadOk,
+      resultStatus,
+      resultReason: result?.reason ?? null,
+      responseReason: payload?.reason ?? null,
+      targetedContentOperation: payload?.targetedContentOperation ?? false,
+      processed: payload?.processed ?? null,
+      queueId: payload?.queueId ?? null,
+      operationId: payload?.operationId ?? null,
+      errors: Array.isArray(payload?.errors) ? payload.errors.slice(0, 5) : [],
+    },
   }).catch(() => undefined);
-  if (!response.ok || !payload) {
+  if (!requestSucceeded || !payload) {
     const reason = payload?.reason || `http_${response.status}`;
     if (response.status >= 500 || isTransient(reason)) {
       throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_TRANSIENT:${reason}`, { retryAfter: '45s' });
     }
     throw new FatalError(`BLOG_CONTENT_FACTORY_GENERATION_CONTRACT:${reason}`);
   }
-  const result = payload.results?.[0];
-  if (!result?.status) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_RESULT_MISSING');
+  if (!resultStatus) {
+    const detail = payload?.reason || result?.reason || payload?.errors?.[0] || 'publisher_result_missing';
+    throw new FatalError(`BLOG_CONTENT_FACTORY_GENERATION_RESULT_MISSING:${detail}`);
+  }
   const passDecision = decideBlogContentGenerationPassV4({
-    status: result.status,
+    status: resultStatus,
     completedPasses: pass,
   });
   if (passDecision === 'retry') {
-    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_DEFERRED:${result.reason || result.status}`, {
+    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_DEFERRED:${result?.reason || resultStatus}`, {
       retryAfter: '5m',
     });
   }
-  if (result.status === 'error' && isTransient(result.reason || '')) {
-    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_RESULT_TRANSIENT:${result.reason}`, {
+  if (resultStatus === 'error' && isTransient(result?.reason || '')) {
+    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_RESULT_TRANSIENT:${result?.reason}`, {
       retryAfter: '45s',
     });
   }
-  return { status: result.status, reason: result.reason ?? null, passDecision };
+  return { status: resultStatus, reason: result?.reason ?? null, passDecision };
+}
+
+async function recordWorkflowFailureStep(
+  input: BlogContentOperationWorkflowInput,
+  workflowRunId: string,
+  error: unknown,
+) {
+  'use step';
+  const message = error instanceof Error ? error.message : String(error);
+  const retryable = error instanceof RetryableError;
+  await recordBlogContentOperationStageV4({
+    supabase: db(),
+    operationId: input.operationId,
+    fencingToken: input.fencingToken,
+    leaseOwner: input.leaseOwner,
+    eventKey: `workflow:error:v1:${workflowRunId}`,
+    stage: retryable ? 'failed' : 'quarantined',
+    eventStatus: retryable ? 'retryable_failure' : 'failed',
+    operationStatus: retryable ? 'running' : 'quarantined',
+    failureCode: retryable ? 'workflow_retryable_failure' : 'workflow_fatal_failure',
+    evidence: {
+      errorName: error instanceof Error ? error.name : typeof error,
+      message,
+      retryable,
+    },
+  });
 }
 
 /**
@@ -517,21 +566,26 @@ export async function blogContentOperationWorkflow(
 ) {
   'use workflow';
   const { workflowRunId } = getWorkflowMetadata();
-  await bindWorkflowStep(input, workflowRunId);
-  const preflight = await preflightStep(input);
-  if (preflight.terminal) return { outcome: preflight.outcome, operationId: input.operationId };
-  await packageSnapshotStep(input);
-  await briefStep(input);
-  const research = await researchStep(input);
-  if (!research.ready) return { outcome: 'research_backlog' as const, operationId: input.operationId };
-  let generation: Awaited<ReturnType<typeof generationStep>> | null = null;
-  for (let pass = 1; pass <= 5; pass += 1) {
-    generation = pass <= 2
-      ? await generationStep(input, pass, workflowRunId)
-      : await deterministicValidationStep(input, pass, workflowRunId);
-    if (generation.passDecision !== 'continue') break;
+  try {
+    await bindWorkflowStep(input, workflowRunId);
+    const preflight = await preflightStep(input);
+    if (preflight.terminal) return { outcome: preflight.outcome, operationId: input.operationId };
+    await packageSnapshotStep(input);
+    await briefStep(input);
+    const research = await researchStep(input);
+    if (!research.ready) return { outcome: 'research_backlog' as const, operationId: input.operationId };
+    let generation: Awaited<ReturnType<typeof generationStep>> | null = null;
+    for (let pass = 1; pass <= 5; pass += 1) {
+      generation = pass <= 2
+        ? await generationStep(input, pass, workflowRunId)
+        : await deterministicValidationStep(input, pass, workflowRunId);
+      if (generation.passDecision !== 'continue') break;
+    }
+    if (!generation) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_NOT_STARTED');
+    const final = await finalizeStep(input, generation, workflowRunId);
+    return { ...final, operationId: input.operationId };
+  } catch (error) {
+    await recordWorkflowFailureStep(input, workflowRunId, error).catch(() => undefined);
+    throw error;
   }
-  if (!generation) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_NOT_STARTED');
-  const final = await finalizeStep(input, generation, workflowRunId);
-  return { ...final, operationId: input.operationId };
 }

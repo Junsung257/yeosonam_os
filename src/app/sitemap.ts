@@ -5,6 +5,7 @@ import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { loadPublicBlogCatalog } from '@/lib/blog-public-catalog';
 import { isBlogSlugRedirectTombstone } from '@/lib/blog-slug-redirects';
+import { canonicalizePublicDestination } from '@/lib/public-destinations';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -87,7 +88,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const snapshotDestinations = packageDestinations;
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {
-    const destination = pkg.destination?.trim();
+    const rawDestination = pkg.destination?.trim();
+    const destination = canonicalizePublicDestination(rawDestination) ?? rawDestination;
     if (!destination) continue;
     const current = publicDestinations.get(destination) ?? { destination, package_count: 0 };
     current.package_count = Number(current.package_count ?? 0) + 1;
