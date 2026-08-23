@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-finalization-controller-run-state-2",
-  "run_id": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
-  "head_sha": "f14245eeb2801aeb3e34c3d635607e25ecf8622f",
+  "run_id": "24e820ed-7ce5-4df1-a786-b6bebb42b855",
+  "head_sha": "b5ff3fbb1ee41f5aae5a345577b7f7ae22d1dc0d",
   "branch": "codex/product-registration-v61-authority-20260820",
   "clean": false,
   "phase": "EXTERNALLY_BLOCKED_FINAL",
@@ -33,7 +33,7 @@
     "auditDirectory": "docs/audits/2026-08-23-v61-true-finalization",
     "sourceArtifact": "../../Users/admin/Downloads/코덱스테스트/product-registration-current-corpus-v181-live-policy-full.json",
     "currentCandidateArtifact": "../../Users/admin/Downloads/코덱스테스트/product-registration-current-corpus-v181-live-policy.json",
-    "sourceSearchFiles": 8674,
+    "sourceSearchFiles": 8675,
     "productionManifestHash": "168c8095d8ef5734051c564c53917654444bf607b5c151f09d66a417ddcc5a01",
     "resumeVerifierPass": true,
     "internalPreparationComplete": true,
@@ -161,5 +161,5 @@
       }
     }
   },
-  "updated_at": "2026-08-23T09:34:26.136Z"
+  "updated_at": "2026-08-23T10:00:17.830Z"
 }

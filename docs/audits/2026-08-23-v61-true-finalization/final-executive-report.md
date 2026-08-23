@@ -39,7 +39,7 @@ Recover and hash-verify the remaining original source sections; triage the 155 U
 
 ## Latest controller run
 
-- run_id: e1d2fb87-e37f-4bfc-9b95-d808be5b0546
+- run_id: 24e820ed-7ce5-4df1-a786-b6bebb42b855
 - controller_state: EXTERNALLY_BLOCKED_FINAL
 - source hash-verified rows: 96
 - source missing rows: 1058

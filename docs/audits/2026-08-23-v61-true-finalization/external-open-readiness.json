@@ -1,8 +1,8 @@
 {
   "status": "fail",
   "passed": 9,
-  "blocked": 3,
-  "failed": 2,
+  "blocked": 4,
+  "failed": 1,
   "warnings": 1,
   "releaseBlockers": [
     {
@@ -46,17 +46,35 @@
     },
     {
       "name": "public:blog-search-quality",
-      "status": "fail",
-      "notes": "failed=unknown, strict=n/a",
-      "failedRequiredChecks": [],
-      "issueCounts": {},
+      "status": "blocked",
+      "notes": "blog quality probe saw transient DB/data unavailability; retry after warm DB or inspect ops report",
+      "failedRequiredChecks": [
+        "image_quality",
+        "seo_quality",
+        "revenue_funnel",
+        "site_indexability"
+      ],
+      "issueCounts": {
+        "image_quality.command_failed": 1,
+        "image_quality.failed_items": 1,
+        "image_quality.score_below_100": 1,
+        "seo_quality.command_failed": 1,
+        "seo_quality.failed_items": 1,
+        "seo_quality.score_below_100": 1,
+        "revenue_funnel.failed_items": 1,
+        "revenue_funnel.score_below_100": 1,
+        "site_indexability.command_failed": 1,
+        "site_indexability.failed_items": 1,
+        "site_indexability.score_below_100": 1
+      },
       "strictScore": 0,
-      "fleetScore": 0
+      "fleetScore": 50,
+      "reportPath": ".tmp\\blog-search-quality-daily-2026-08-23T10-03-39-800Z.json"
     },
     {
       "name": "vercel:error-logs",
       "status": "fail",
-      "notes": "{\"id\":\"976nm-1787477299458-284d2c68ff3a\",\"timestamp\":1787477299458,\"deploymentId\":\"dpl_BexXQ2pFVrGjcPh6fdBU3V4U5a7X\",\"projectId\":\"prj_QTQa2iUwEkBON4QczULxG1HPYLSE\",\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\",\"source\":\"serverless\",\"domain\":\"www.yeosonam.com\",\"requestMethod\":\"GET\",\"requestPath\":\"/destinations/%ED%98%B8%EC%9D%B4%EC%95%88-%EB%8B%A4%EB%82%AD\",\"responseStatusCode\":500,\"environment\":\"production\",\"branch\":\"\",\"cache\":\"MISS\",\"traceId\":\"1adf1b0de6e6ec86b6fafc951c5ec498\",\"logs\":[{\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\"},{\"level\":\"error\",\"message\":\"⨯ [Error: An error occurred in the Server Component",
+      "notes": "{\"id\":\"r4g9j-1787479565237-8e05d73ed854\",\"timestamp\":1787479565237,\"deploymentId\":\"dpl_BexXQ2pFVrGjcPh6fdBU3V4U5a7X\",\"projectId\":\"prj_QTQa2iUwEkBON4QczULxG1HPYLSE\",\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\",\"source\":\"serverless\",\"domain\":\"www.yeosonam.com\",\"requestMethod\":\"GET\",\"requestPath\":\"/destinations/%ED%98%B8%EC%9D%B4%EC%95%88-%EB%8B%A4%EB%82%AD\",\"responseStatusCode\":500,\"environment\":\"production\",\"branch\":\"\",\"cache\":\"MISS\",\"traceId\":\"2c0b1a9a6e9066bd4e607619b577212b\",\"logs\":[{\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\"},{\"level\":\"error\",\"message\":\"⨯ [Error: An error occurred in the Server Component",
       "target": "https://www.yeosonam.com"
     }
   ],
@@ -82,7 +100,7 @@
       "name": "public:home",
       "status": "pass",
       "statusCode": 200,
-      "ms": 575,
+      "ms": 469,
       "url": "https://www.yeosonam.com/",
       "location": "",
       "attempts": 1,
@@ -93,7 +111,7 @@
       "name": "public:package-detail",
       "status": "pass",
       "statusCode": 200,
-      "ms": 6762,
+      "ms": 7338,
       "url": "https://www.yeosonam.com/packages/0fdba997-1467-44ee-a045-7deae1db0098",
       "location": "",
       "attempts": 1,
@@ -104,7 +122,7 @@
       "name": "public:blog-runtime",
       "status": "pass",
       "statusCode": 200,
-      "ms": 5297,
+      "ms": 5654,
       "url": "https://www.yeosonam.com/blog/fukuoka-3",
       "location": "",
       "attempts": 1,
@@ -115,7 +133,7 @@
       "name": "public:referral-link",
       "status": "pass",
       "statusCode": 200,
-      "ms": 494,
+      "ms": 480,
       "url": "https://www.yeosonam.com/r/YSINF202606051602318291/0fdba997-1467-44ee-a045-7deae1db0098",
       "location": "",
       "attempts": 1,
@@ -125,7 +143,7 @@
     {
       "name": "public:critical-pages",
       "status": "pass",
-      "ms": 16622,
+      "ms": 15997,
       "passed": 7,
       "failed": 0,
       "score": 100,
@@ -135,7 +153,7 @@
     {
       "name": "supabase:auth-open-gate",
       "status": "blocked",
-      "ms": 1983,
+      "ms": 1554,
       "password_hibp_enabled": false,
       "password_policy_hardened": true,
       "site_url": "https://www.yeosonam.com",
@@ -144,7 +162,7 @@
     {
       "name": "local:marketing-automation",
       "status": "pass",
-      "ms": 73261,
+      "ms": 58662,
       "passed": 66,
       "blocked": 0,
       "failed": 0,
@@ -174,7 +192,7 @@
       "name": "public:blog-surface-monitor",
       "status": "blocked",
       "statusCode": 200,
-      "ms": 487,
+      "ms": 370,
       "checked": 0,
       "failed": 0,
       "warn": 0,
@@ -189,29 +207,46 @@
     },
     {
       "name": "public:blog-search-quality",
-      "status": "fail",
-      "ms": 240089,
-      "strictScore": null,
-      "fleetScore": null,
-      "failedRequiredChecks": [],
-      "issueCounts": {},
-      "reportPath": "",
-      "notes": "failed=unknown, strict=n/a",
-      "error": "spawnSync C:\\WINDOWS\\system32\\cmd.exe ETIMEDOUT"
+      "status": "blocked",
+      "ms": 162710,
+      "strictScore": 0,
+      "fleetScore": 50,
+      "failedRequiredChecks": [
+        "image_quality",
+        "seo_quality",
+        "revenue_funnel",
+        "site_indexability"
+      ],
+      "issueCounts": {
+        "image_quality.command_failed": 1,
+        "image_quality.failed_items": 1,
+        "image_quality.score_below_100": 1,
+        "seo_quality.command_failed": 1,
+        "seo_quality.failed_items": 1,
+        "seo_quality.score_below_100": 1,
+        "revenue_funnel.failed_items": 1,
+        "revenue_funnel.score_below_100": 1,
+        "site_indexability.command_failed": 1,
+        "site_indexability.failed_items": 1,
+        "site_indexability.score_below_100": 1
+      },
+      "reportPath": ".tmp\\blog-search-quality-daily-2026-08-23T10-03-39-800Z.json",
+      "notes": "blog quality probe saw transient DB/data unavailability; retry after warm DB or inspect ops report",
+      "error": ""
     },
     {
       "name": "vercel:error-logs",
       "status": "fail",
-      "ms": 62325,
+      "ms": 9014,
       "target": "https://www.yeosonam.com",
       "exitStatus": null,
       "signal": "",
-      "notes": "{\"id\":\"976nm-1787477299458-284d2c68ff3a\",\"timestamp\":1787477299458,\"deploymentId\":\"dpl_BexXQ2pFVrGjcPh6fdBU3V4U5a7X\",\"projectId\":\"prj_QTQa2iUwEkBON4QczULxG1HPYLSE\",\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\",\"source\":\"serverless\",\"domain\":\"www.yeosonam.com\",\"requestMethod\":\"GET\",\"requestPath\":\"/destinations/%ED%98%B8%EC%9D%B4%EC%95%88-%EB%8B%A4%EB%82%AD\",\"responseStatusCode\":500,\"environment\":\"production\",\"branch\":\"\",\"cache\":\"MISS\",\"traceId\":\"1adf1b0de6e6ec86b6fafc951c5ec498\",\"logs\":[{\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\"},{\"level\":\"error\",\"message\":\"⨯ [Error: An error occurred in the Server Component"
+      "notes": "{\"id\":\"r4g9j-1787479565237-8e05d73ed854\",\"timestamp\":1787479565237,\"deploymentId\":\"dpl_BexXQ2pFVrGjcPh6fdBU3V4U5a7X\",\"projectId\":\"prj_QTQa2iUwEkBON4QczULxG1HPYLSE\",\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\",\"source\":\"serverless\",\"domain\":\"www.yeosonam.com\",\"requestMethod\":\"GET\",\"requestPath\":\"/destinations/%ED%98%B8%EC%9D%B4%EC%95%88-%EB%8B%A4%EB%82%AD\",\"responseStatusCode\":500,\"environment\":\"production\",\"branch\":\"\",\"cache\":\"MISS\",\"traceId\":\"2c0b1a9a6e9066bd4e607619b577212b\",\"logs\":[{\"level\":\"error\",\"message\":\"[Error: An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error.] {\\n  digest: 'DYNAMIC_SERVER_USAGE'\\n}\"},{\"level\":\"error\",\"message\":\"⨯ [Error: An error occurred in the Server Component"
     },
     {
       "name": "vercel:fatal-logs",
       "status": "pass",
-      "ms": 58386,
+      "ms": 7851,
       "target": "https://www.yeosonam.com",
       "exitStatus": null,
       "signal": "",
@@ -220,14 +255,14 @@
     {
       "name": "local:type-check",
       "status": "pass",
-      "ms": 104567,
+      "ms": 38425,
       "command": "npm run type-check",
       "error": ""
     },
     {
       "name": "local:lint-secrets",
       "status": "pass",
-      "ms": 2176,
+      "ms": 2156,
       "command": "npm run lint:secrets -- --all",
       "error": ""
     }

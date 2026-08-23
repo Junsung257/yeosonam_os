@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-corrupted-source-triage-1",
-  "generatedAt": "2026-08-23T09:34:25.198Z",
-  "runId": "e1d2fb87-e37f-4bfc-9b95-d808be5b0546",
+  "generatedAt": "2026-08-23T10:00:17.198Z",
+  "runId": "24e820ed-7ce5-4df1-a786-b6bebb42b855",
   "status": "REQUIRES_RECONCILIATION",
   "allowedClassifications": [
     "RECOVERABLE_MAPPING_ERROR",
