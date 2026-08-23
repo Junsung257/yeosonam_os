@@ -1,6 +1,6 @@
 # V6.1 GOAL MODE FINAL GATE REPORT
 
-Generated: 2026-08-23T07:32:58.364Z
+Generated: 2026-08-23T07:51:01.086Z
 
 ## Final state
 
@@ -31,7 +31,7 @@ Generated: 2026-08-23T07:32:58.364Z
 - state: `WAITING_EXTERNAL_SOURCE`
 - preparation: complete
 - next action: Acquire approved original bytes for the P0 coverage queue, verify each SHA-256, and resume; metadata projections are not Gold evidence.
-- blockers: SOURCE_MISSING:1092; SOURCE_HASH_MISMATCH_OR_CORRUPT:13; GOLD_SECTION_GAP:280
+- blockers: SOURCE_MISSING:1058; SOURCE_HASH_MISMATCH_OR_CORRUPT:16; GOLD_SECTION_GAP:209
 
 ### LANE_D_HUMAN_DUAL_REVIEW
 
@@ -45,13 +45,13 @@ A waiting lane does not terminate the other lanes. The controller continues mach
 ## Evidence
 
 - Corpus population: 1171
-- Source hash verified: 66
-- Source missing: 1092
-- Hash mismatch/corrupt: 13
-- Gold sections verified from available sources: 120
-- Metadata-only lower-bound additional rows for 400 sections: 45
+- Source hash verified: 96
+- Source missing: 1058
+- Hash mismatch/corrupt: 16
+- Gold sections verified from available sources: 191
+- Metadata-only lower-bound additional rows for 400 sections: 31
 - UNKNOWN_BLOCKER triage rows classified: 155
-- Reviewer packet references prepared: 66
+- Reviewer packet references prepared: 96
 - Reviewer A/B completed: 0/0
 - Adjudication: not run
 - Resume verifier: PASS
@@ -62,8 +62,8 @@ A waiting lane does not terminate the other lanes. The controller continues mach
 
 ## Exact external inputs still required
 
-- 1092 original source files with exact hash verification
-- 13 hash-mismatch source cases requiring manual reconciliation
+- 1058 original source files with exact hash verification
+- 16 hash-mismatch source cases requiring manual reconciliation
 - Reviewer A independent results for 400 Gold sections
 - Reviewer B independent results for 400 Gold sections
 - Adjudicator results for every A/B disagreement and critical price/date mismatch

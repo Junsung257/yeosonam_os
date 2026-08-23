@@ -1,8 +1,8 @@
 {
   "schemaVersion": "v61-corrupted-source-triage-1",
-  "generatedAt": "2026-08-23T07:32:58.136Z",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
-  "status": "COMPLETE_MACHINE_CLASSIFICATION_MANUAL_SOURCE_REQUIRED",
+  "generatedAt": "2026-08-23T07:51:00.755Z",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
+  "status": "REQUIRES_RECONCILIATION",
   "allowedClassifications": [
     "RECOVERABLE_MAPPING_ERROR",
     "RECOVERABLE_HASH_DEFINITION_ERROR",
@@ -10,7 +10,7 @@
     "SOURCE_CORRUPTED",
     "MANUAL_SOURCE_REQUIRED"
   ],
-  "count": 13,
+  "count": 16,
   "rows": [
     {
       "corpusId": "c3ea23bb011f3606358e463ba7ef577e2d125b0042fd26ace5afcdcc0e236fe0:30",
@@ -138,6 +138,31 @@
       "goldEligible": false
     },
     {
+      "corpusId": "2a1c3b289f3ec874789e7e3b16100e365e48159708f35abb68d2818ade7eee7e:132",
+      "sourceHash": "2a1c3b289f3ec874789e7e3b16100e365e48159708f35abb68d2818ade7eee7e",
+      "expectedFilename": "[수정1] 의미분석법을 통한 현직교사와 예비교사의 메이커교육에 대한 이미지 비교 (1).hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[수정1] 의미분석법을 통한 현직교사와 예비교사의 메이커교육에 대한 이미지 비교 (1).hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "d06e1f7a76959412d3f950606127a367f8d8d61deee4fbc5a06eca801d12b63a"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
       "corpusId": "6bdb94f798c1d0e16255c45b4f65cf429825813374a3011723758d681a4ed6a4:188",
       "sourceHash": "6bdb94f798c1d0e16255c45b4f65cf429825813374a3011723758d681a4ed6a4",
       "expectedFilename": "[일정표]다낭 7C 전세기 특가 PKG - 0617.hwp",
@@ -169,7 +194,33 @@
       "sourceLocation": "C:\\Users\\admin\\Downloads\\★카멜리아 세키아 3일특가(0520).hwp",
       "observedSourceLocation": null,
       "observedHashes": [
-        "2cebe898690df14b2c4435217f3510fdd9ffdb17956a7b354cddf81de618e9b1"
+        "2cebe898690df14b2c4435217f3510fdd9ffdb17956a7b354cddf81de618e9b1",
+        "cc6e58e7ab6cefa3fea6f165390c825d513108c73e5c65846e209aa3c34438d8"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "aa6b0f168d0cf5096dfa97df7171a30e308e1e4172e5a813b1e5abcaa10f3469:683",
+      "sourceHash": "aa6b0f168d0cf5096dfa97df7171a30e308e1e4172e5a813b1e5abcaa10f3469",
+      "expectedFilename": "6~10월  BX시즈오카 2박3일 일정.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\6~10월  BX시즈오카 2박3일 일정.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "bb1e122680a4cb7d97112cfd6faaa167ce289152d0702b8828be32a9fcc0d9fa"
       ],
       "sourceStatus": "SOURCE_HASH_MISMATCH",
       "classification": "MANUAL_SOURCE_REQUIRED",
@@ -238,13 +289,39 @@
       "goldEligible": false
     },
     {
+      "corpusId": "7e02c23f619980639f5dd699ec9dcb0618d9b23df380b2770ee1b7c31bd672c0:792",
+      "sourceHash": "7e02c23f619980639f5dd699ec9dcb0618d9b23df380b2770ee1b7c31bd672c0",
+      "expectedFilename": "부산교육대학교 학위논문 작성 서식 가이드(2023.12.04.) (1) (1).hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\부산교육대학교 학위논문 작성 서식 가이드(2023.12.04.) (1) (1).hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "192b955241b811f2de2dcf89950a037206ed1d6137c81352062e49e38c22a88f"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
       "corpusId": "77a9a19d259838718cb6159cced4d1f4303fe01bbddd79b39c058217f4df4f04:796",
       "sourceHash": "77a9a19d259838718cb6159cced4d1f4303fe01bbddd79b39c058217f4df4f04",
       "expectedFilename": "부산출발 호화호특 전세기.hwp",
       "sourceLocation": "C:\\Users\\admin\\Downloads\\부산출발 호화호특 전세기.hwp",
       "observedSourceLocation": null,
       "observedHashes": [
-        "626bb1eadc894b5cc7f91b1b9b79c885706c3e0bbf1e31e9d35eba796fb05b41"
+        "626bb1eadc894b5cc7f91b1b9b79c885706c3e0bbf1e31e9d35eba796fb05b41",
+        "68c0d1b9ce9635d2c0861d46bfcc74da12c137f323bb6dfcc15e187f012be84b"
       ],
       "sourceStatus": "SOURCE_HASH_MISMATCH",
       "classification": "MANUAL_SOURCE_REQUIRED",

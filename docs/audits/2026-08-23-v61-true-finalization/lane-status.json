@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-lane-status-1",
-  "generatedAt": "2026-08-23T07:32:58.316Z",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "generatedAt": "2026-08-23T07:51:01.010Z",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
   "lanes": {
     "productionManualRollout": {
       "id": "LANE_A_PRODUCTION_MANUAL_ROLLOUT",
@@ -61,25 +61,25 @@
         "targetSections": 400,
         "reserveSections": 50,
         "targetPlusReserve": 450,
-        "verifiedSections": 120,
-        "additionalVerifiedSectionsNeeded": 280,
-        "additionalVerifiedSectionsNeededWithReserve": 330,
-        "verifiedRows": 66,
-        "missingRows": 1092,
-        "hashMismatchOrCorruptRows": 13,
-        "projectedAdditionalRowsNotGold": 45
+        "verifiedSections": 191,
+        "additionalVerifiedSectionsNeeded": 209,
+        "additionalVerifiedSectionsNeededWithReserve": 259,
+        "verifiedRows": 96,
+        "missingRows": 1058,
+        "hashMismatchOrCorruptRows": 16,
+        "projectedAdditionalRowsNotGold": 31
       },
       "blockers": [
-        "SOURCE_MISSING:1092",
-        "SOURCE_HASH_MISMATCH_OR_CORRUPT:13",
-        "GOLD_SECTION_GAP:280"
+        "SOURCE_MISSING:1058",
+        "SOURCE_HASH_MISMATCH_OR_CORRUPT:16",
+        "GOLD_SECTION_GAP:209"
       ],
       "nextAction": "Acquire approved original bytes for the P0 coverage queue, verify each SHA-256, and resume; metadata projections are not Gold evidence.",
       "externalInput": {
         "type": "ORIGINAL_SOURCE_BYTES",
-        "minimumProjectedRows": 45,
-        "minimumVerifiedSections": 280,
-        "fullMissingRows": 1092
+        "minimumProjectedRows": 31,
+        "minimumVerifiedSections": 209,
+        "fullMissingRows": 1058
       }
     },
     "humanDualReview": {
@@ -88,8 +88,8 @@
       "preparationComplete": true,
       "executionGate": "PACKETS_READY_HUMAN_INPUT_REQUIRED",
       "progress": {
-        "packetRows": 66,
-        "packetSections": 120,
+        "packetRows": 96,
+        "packetSections": 191,
         "reviewerA": 0,
         "reviewerB": 0,
         "adjudicationComplete": false,

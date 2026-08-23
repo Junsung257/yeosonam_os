@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-finalization-controller-run-state-2",
-  "run_id": "58ab7961-928d-4aea-ab69-4ed091d6c368",
-  "head_sha": "f7212834a62c2f3015a19dd39d7ecb74f647672b",
+  "run_id": "c4054195-a880-4f86-8160-146a878ec30c",
+  "head_sha": "aaf89d4058866f78df90cb4c10c1866c7f742e87",
   "branch": "codex/product-registration-v61-authority-20260820",
   "clean": false,
   "phase": "WAITING_EXTERNAL_INPUTS",
@@ -11,7 +11,7 @@
     "state": "WAITING_EXTERNAL_INPUTS",
     "description": "All safe machine preparation is complete; independent lanes are waiting on their own external inputs."
   },
-  "source_verified_count": 66,
+  "source_verified_count": 96,
   "gold_certified_count": 0,
   "reviewer_a_count": 0,
   "reviewer_b_count": 0,
@@ -24,8 +24,8 @@
   "global_freeze_state": "NOT_PROVEN_PRODUCTION_FREEZE_FALSE_OBSERVED",
   "auto_publish_state": "OFF_NOT_AUTHORIZED",
   "blockers": [
-    "SOURCE_MISSING:1092",
-    "SOURCE_HASH_MISMATCH_OR_CORRUPT:13",
+    "SOURCE_MISSING:1058",
+    "SOURCE_HASH_MISMATCH_OR_CORRUPT:16",
     "WAITING_HUMAN_REVIEW",
     "PRODUCTION:BLOCKED_PREREQUISITE"
   ],
@@ -33,7 +33,7 @@
     "auditDirectory": "docs/audits/2026-08-23-v61-true-finalization",
     "sourceArtifact": "../../Users/admin/Downloads/코덱스테스트/product-registration-current-corpus-v181-live-policy-full.json",
     "currentCandidateArtifact": "../../Users/admin/Downloads/코덱스테스트/product-registration-current-corpus-v181-live-policy.json",
-    "sourceSearchFiles": 6088,
+    "sourceSearchFiles": 8649,
     "productionManifestHash": "168c8095d8ef5734051c564c53917654444bf607b5c151f09d66a417ddcc5a01",
     "resumeVerifierPass": true,
     "internalPreparationComplete": true,
@@ -111,25 +111,25 @@
         "targetSections": 400,
         "reserveSections": 50,
         "targetPlusReserve": 450,
-        "verifiedSections": 120,
-        "additionalVerifiedSectionsNeeded": 280,
-        "additionalVerifiedSectionsNeededWithReserve": 330,
-        "verifiedRows": 66,
-        "missingRows": 1092,
-        "hashMismatchOrCorruptRows": 13,
-        "projectedAdditionalRowsNotGold": 45
+        "verifiedSections": 191,
+        "additionalVerifiedSectionsNeeded": 209,
+        "additionalVerifiedSectionsNeededWithReserve": 259,
+        "verifiedRows": 96,
+        "missingRows": 1058,
+        "hashMismatchOrCorruptRows": 16,
+        "projectedAdditionalRowsNotGold": 31
       },
       "blockers": [
-        "SOURCE_MISSING:1092",
-        "SOURCE_HASH_MISMATCH_OR_CORRUPT:13",
-        "GOLD_SECTION_GAP:280"
+        "SOURCE_MISSING:1058",
+        "SOURCE_HASH_MISMATCH_OR_CORRUPT:16",
+        "GOLD_SECTION_GAP:209"
       ],
       "nextAction": "Acquire approved original bytes for the P0 coverage queue, verify each SHA-256, and resume; metadata projections are not Gold evidence.",
       "externalInput": {
         "type": "ORIGINAL_SOURCE_BYTES",
-        "minimumProjectedRows": 45,
-        "minimumVerifiedSections": 280,
-        "fullMissingRows": 1092
+        "minimumProjectedRows": 31,
+        "minimumVerifiedSections": 209,
+        "fullMissingRows": 1058
       }
     },
     "humanDualReview": {
@@ -138,8 +138,8 @@
       "preparationComplete": true,
       "executionGate": "PACKETS_READY_HUMAN_INPUT_REQUIRED",
       "progress": {
-        "packetRows": 66,
-        "packetSections": 120,
+        "packetRows": 96,
+        "packetSections": 191,
         "reviewerA": 0,
         "reviewerB": 0,
         "adjudicationComplete": false,
@@ -160,5 +160,5 @@
       }
     }
   },
-  "updated_at": "2026-08-23T07:33:00.092Z"
+  "updated_at": "2026-08-23T07:51:01.893Z"
 }

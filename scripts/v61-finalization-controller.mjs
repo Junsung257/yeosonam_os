@@ -150,6 +150,7 @@ function candidateRoots() {
     ROOT,
     'C:\\dev\\yeosonam-os',
     'C:\\Users\\admin\\Downloads',
+    'C:\\Users\\admin\\OneDrive',
     'C:\\Users\\admin\\.codex\\attachments',
     'C:\\Users\\admin\\Desktop',
     'C:\\Users\\admin\\Documents',
@@ -1161,7 +1162,10 @@ function resumeVerifier(source, gold, reviewerArtifacts, production, requireLane
   if (requireLaneStatus) requiredFiles.push('lane-status.json');
   const missing = requiredFiles.filter(file => !existsSync(join(AUDIT_DIR, file)));
   const sourcePopulationPass = source.rows.length === source.counts.corpusEntries
-    && source.counts.sourceHashVerified + source.counts.sourceCorrupt + source.counts.sourceMissing === source.counts.corpusEntries;
+    && source.counts.sourceHashVerified
+      + source.counts.sourceDuplicate
+      + source.counts.sourceCorrupt
+      + source.counts.sourceMissing === source.counts.corpusEntries;
   const packetManifestPass = reviewerArtifacts.packets.length === source.rows.filter(row => row.sourceStatus === 'SOURCE_VERIFIED' && row.documentClass === 'travel_product').length;
   const noMutationPass = production.productionWriteCount === 0 && production.pointerChanges === 0;
   const laneStatus = readJson(join(AUDIT_DIR, 'lane-status.json'), null);

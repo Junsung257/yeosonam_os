@@ -1,13 +1,13 @@
 {
   "schemaVersion": "v61-gold-progress-controller-1",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
   "status": "WAITING_EXTERNAL_SOURCE",
   "targetSections": 400,
   "reserveSections": 50,
-  "sourceHashVerifiedRows": 66,
-  "sourceHashVerifiedSections": 120,
+  "sourceHashVerifiedRows": 96,
+  "sourceHashVerifiedSections": 191,
   "frozenCandidateSections": 10,
-  "sourceMissingRows": 1092,
+  "sourceMissingRows": 1058,
   "currentCandidate": {
     "sourceRows": 40,
     "sections": 69,

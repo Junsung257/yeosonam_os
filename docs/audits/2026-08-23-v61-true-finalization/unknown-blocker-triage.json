@@ -1,16 +1,16 @@
 {
   "schemaVersion": "v61-unknown-blocker-triage-final-1",
-  "generatedAt": "2026-08-23T07:32:58.150Z",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "generatedAt": "2026-08-23T07:51:00.769Z",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
   "queueDefinition": "Historical deduplicated development queue of 155 cases; not the full 1,171-row corpus and not Gold labels.",
   "status": "COMPLETE_MACHINE_TRIAGE_REVIEW_REQUIRED",
   "inputRows": 155,
   "unknownBlockerLabelsRemaining": 0,
   "classificationCounts": {
-    "SOURCE_MISSING": 134,
-    "DATE_AMBIGUOUS": 14,
-    "TRUE_UNKNOWN": 6,
-    "PRICE_AMBIGUOUS": 1
+    "SOURCE_MISSING": 130,
+    "TRUE_UNKNOWN": 7,
+    "DATE_AMBIGUOUS": 15,
+    "PRICE_AMBIGUOUS": 3
   },
   "allowedClassifications": [
     "SOURCE_MISSING",
@@ -231,10 +231,10 @@
       "corpusId": "f5e50d35c4500efa2e66c14b2d030436661ae5b17399092a5f1ef1137391ea54:62",
       "sourceHash": "f5e50d35c4500efa2e66c14b2d030436661ae5b17399092a5f1ef1137391ea54",
       "sectionCount": 2,
-      "sourceStatus": "SOURCE_MISSING",
-      "primaryClassification": "SOURCE_MISSING",
+      "sourceStatus": "SOURCE_VERIFIED",
+      "primaryClassification": "TRUE_UNKNOWN",
       "evidence": {
-        "sourceStatus": "SOURCE_MISSING",
+        "sourceStatus": "SOURCE_VERIFIED",
         "prelabelEvidence": {
           "kernelBlockers": [],
           "blockers": [],
@@ -279,7 +279,7 @@
       "humanReviewStatus": "NOT_HUMAN_REVIEWED",
       "goldEligible": false,
       "unresolvedForGold": true,
-      "nextAction": "Acquire and hash-verify original source."
+      "nextAction": "Route to development fixture/review queue; do not promote to Gold."
     },
     {
       "triageKey": "48ec39377e8dc1159ae8101b22b237cbfad8f95afce3e9a8a0e2105c2b39e5ab:f21ac94a8f25a13ac8b7f32d1dc200b5bd4e79b7353562420555e4c6db242a6c",
@@ -818,10 +818,10 @@
       "corpusId": "25e1b4e35fefc09213a03b24a4177638bbacfc72069fdc9aea115800182e5d9c:114",
       "sourceHash": "25e1b4e35fefc09213a03b24a4177638bbacfc72069fdc9aea115800182e5d9c",
       "sectionCount": 2,
-      "sourceStatus": "SOURCE_MISSING",
-      "primaryClassification": "SOURCE_MISSING",
+      "sourceStatus": "SOURCE_VERIFIED",
+      "primaryClassification": "DATE_AMBIGUOUS",
       "evidence": {
-        "sourceStatus": "SOURCE_MISSING",
+        "sourceStatus": "SOURCE_VERIFIED",
         "prelabelEvidence": {
           "kernelBlockers": [],
           "blockers": [],
@@ -866,7 +866,7 @@
       "humanReviewStatus": "NOT_HUMAN_REVIEWED",
       "goldEligible": false,
       "unresolvedForGold": true,
-      "nextAction": "Acquire and hash-verify original source."
+      "nextAction": "Route to development fixture/review queue; do not promote to Gold."
     },
     {
       "triageKey": "a417ed158a19ae893f393b5937695b9dc7fcb5fbd61fe3bf5327085c54aa6b98:58c196fff9076771b503fe6f635b290404cef8b1c31a3319531e46b77e8f79a5",
@@ -4836,10 +4836,10 @@
       "corpusId": "cd8a390693941864ab73a67819553304dcd40d509f37f9d45b9484313adf81d2:548",
       "sourceHash": "cd8a390693941864ab73a67819553304dcd40d509f37f9d45b9484313adf81d2",
       "sectionCount": 2,
-      "sourceStatus": "SOURCE_MISSING",
-      "primaryClassification": "SOURCE_MISSING",
+      "sourceStatus": "SOURCE_VERIFIED",
+      "primaryClassification": "PRICE_AMBIGUOUS",
       "evidence": {
-        "sourceStatus": "SOURCE_MISSING",
+        "sourceStatus": "SOURCE_VERIFIED",
         "prelabelEvidence": {
           "kernelBlockers": [
             "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
@@ -4892,7 +4892,7 @@
       "humanReviewStatus": "NOT_HUMAN_REVIEWED",
       "goldEligible": false,
       "unresolvedForGold": true,
-      "nextAction": "Acquire and hash-verify original source."
+      "nextAction": "Route to development fixture/review queue; do not promote to Gold."
     },
     {
       "triageKey": "96c5232cb9dec28d59335b608d28d8a50f1c9b658418fab40f725ef6187479c6:28da3bdeebd3e54452715bb43816130d844a903c9b7cf2fd6f462e05243bee95",
@@ -5223,10 +5223,10 @@
       "corpusId": "04fa0d859c6df244e9e3a6192074d88fb5f72e7fc5844e14b0eeb64c2b3f33bf:593",
       "sourceHash": "04fa0d859c6df244e9e3a6192074d88fb5f72e7fc5844e14b0eeb64c2b3f33bf",
       "sectionCount": 1,
-      "sourceStatus": "SOURCE_MISSING",
-      "primaryClassification": "SOURCE_MISSING",
+      "sourceStatus": "SOURCE_VERIFIED",
+      "primaryClassification": "PRICE_AMBIGUOUS",
       "evidence": {
-        "sourceStatus": "SOURCE_MISSING",
+        "sourceStatus": "SOURCE_VERIFIED",
         "prelabelEvidence": {
           "kernelBlockers": [
             "sections[0].variants[0].price: 출발일에 적용되는 성인 기준 판매가가 없습니다."
@@ -5276,7 +5276,7 @@
       "humanReviewStatus": "NOT_HUMAN_REVIEWED",
       "goldEligible": false,
       "unresolvedForGold": true,
-      "nextAction": "Acquire and hash-verify original source."
+      "nextAction": "Route to development fixture/review queue; do not promote to Gold."
     },
     {
       "triageKey": "4d0d1de2230e83b459ed5e366e5e397cb220d593dd27b4a3dde5bb392de9d0e6:929eaaa600915d6891ec667bf3d09859e271313cfbf17986df97fd7f6dff8129",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v61-controller-final-state-2",
-  "controllerRunId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "controllerRunId": "c4054195-a880-4f86-8160-146a878ec30c",
   "finalState": "WAITING_EXTERNAL_INPUTS",
   "overall": {
     "state": "WAITING_EXTERNAL_INPUTS",
@@ -74,25 +74,25 @@
         "targetSections": 400,
         "reserveSections": 50,
         "targetPlusReserve": 450,
-        "verifiedSections": 120,
-        "additionalVerifiedSectionsNeeded": 280,
-        "additionalVerifiedSectionsNeededWithReserve": 330,
-        "verifiedRows": 66,
-        "missingRows": 1092,
-        "hashMismatchOrCorruptRows": 13,
-        "projectedAdditionalRowsNotGold": 45
+        "verifiedSections": 191,
+        "additionalVerifiedSectionsNeeded": 209,
+        "additionalVerifiedSectionsNeededWithReserve": 259,
+        "verifiedRows": 96,
+        "missingRows": 1058,
+        "hashMismatchOrCorruptRows": 16,
+        "projectedAdditionalRowsNotGold": 31
       },
       "blockers": [
-        "SOURCE_MISSING:1092",
-        "SOURCE_HASH_MISMATCH_OR_CORRUPT:13",
-        "GOLD_SECTION_GAP:280"
+        "SOURCE_MISSING:1058",
+        "SOURCE_HASH_MISMATCH_OR_CORRUPT:16",
+        "GOLD_SECTION_GAP:209"
       ],
       "nextAction": "Acquire approved original bytes for the P0 coverage queue, verify each SHA-256, and resume; metadata projections are not Gold evidence.",
       "externalInput": {
         "type": "ORIGINAL_SOURCE_BYTES",
-        "minimumProjectedRows": 45,
-        "minimumVerifiedSections": 280,
-        "fullMissingRows": 1092
+        "minimumProjectedRows": 31,
+        "minimumVerifiedSections": 209,
+        "fullMissingRows": 1058
       }
     },
     "humanDualReview": {
@@ -101,8 +101,8 @@
       "preparationComplete": true,
       "executionGate": "PACKETS_READY_HUMAN_INPUT_REQUIRED",
       "progress": {
-        "packetRows": 66,
-        "packetSections": 120,
+        "packetRows": 96,
+        "packetSections": 191,
         "reviewerA": 0,
         "reviewerB": 0,
         "adjudicationComplete": false,
@@ -136,16 +136,16 @@
   },
   "gold": {
     "status": "WAITING_EXTERNAL_SOURCE",
-    "sourceHashVerifiedRows": 66,
-    "sourceHashVerifiedSections": 120,
+    "sourceHashVerifiedRows": 96,
+    "sourceHashVerifiedSections": 191,
     "reviewerA": 0,
     "reviewerB": 0,
     "adjudicated": 0,
     "certificate": "NOT_ISSUED"
   },
   "blockers": [
-    "SOURCE_MISSING:1092",
-    "SOURCE_HASH_MISMATCH_OR_CORRUPT:13",
+    "SOURCE_MISSING:1058",
+    "SOURCE_HASH_MISMATCH_OR_CORRUPT:16",
     "WAITING_HUMAN_REVIEW",
     "PRODUCTION:BLOCKED_PREREQUISITE"
   ],
@@ -155,8 +155,8 @@
   },
   "internalPreparationComplete": true,
   "externalInputsRequired": [
-    "1092 original source files with exact hash verification",
-    "13 hash-mismatch source cases requiring manual reconciliation",
+    "1058 original source files with exact hash verification",
+    "16 hash-mismatch source cases requiring manual reconciliation",
     "Reviewer A independent results for 400 Gold sections",
     "Reviewer B independent results for 400 Gold sections",
     "Adjudicator results for every A/B disagreement and critical price/date mismatch",
@@ -169,6 +169,6 @@
   "noProductionMutation": true,
   "priorFinalState": {
     "schemaVersion": "v61-controller-final-state-2",
-    "legacyStatus": "WAITING_EXTERNAL_INPUTS"
+    "legacyStatus": "RUNNING"
   }
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-resume-verifier-1",
-  "generatedAt": "2026-08-23T07:32:58.326Z",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "generatedAt": "2026-08-23T07:51:01.024Z",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
   "pass": true,
   "checks": {
     "requiredFiles": {
@@ -15,7 +15,7 @@
     },
     "packetManifestMatchesVerifiedTravelRows": {
       "pass": true,
-      "packets": 66
+      "packets": 96
     },
     "productionMutationGuard": {
       "pass": true,

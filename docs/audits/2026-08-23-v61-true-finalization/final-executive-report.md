@@ -1,6 +1,6 @@
 # V6.1 True Finalization — separated final state
 
-Captured 2026-08-23 in the dedicated V6.1 worktree. This session performed read-only production inspection and local audit artifact generation. No code, production DB, pointer, domain, CDN, freeze, or deployment state was changed.
+Initial capture: 2026-08-23 in the dedicated V6.1 worktree. The follow-up source-recovery pass added the previously omitted local OneDrive source root and corrected the source-population verifier's duplicate-row arithmetic. No production DB, pointer, domain, CDN, freeze, or deployment state was changed.
 
 ## Decision
 
@@ -24,25 +24,25 @@ The customer pointer safety queue contains 1 blocked pointer. Published proof ru
 
 ## Track C — Gold certification
 
-The full corpus metadata artifact has 1,171 rows and 1,131 unavailable source paths. Only 40 source rows are currently hash-verified; the currently frozen candidate split contains 10 sections. The legacy frozen queue has 164 cases but no available source paths and no A/B/adjudicator evidence. The historical UNKNOWN_BLOCKER queue has 155 deduplicated items and remains a triage queue, never a Gold label.
+The full corpus metadata artifact has 1,171 rows. After the OneDrive recovery pass, 96 source rows are hash-verified, yielding 191 source-backed sections; 1,058 rows remain missing, 16 require hash-mismatch/corruption reconciliation, and 1 is a duplicate-path case. The currently frozen candidate split contains 10 sections. The legacy frozen queue has 164 cases but no available source paths and no A/B/adjudicator evidence. The historical UNKNOWN_BLOCKER queue has 155 deduplicated items and remains a triage queue, never a Gold label.
 
-The 155-item development needs_review queue contains 289 sections: 18 source paths are present and 137 are missing. Evidence-based machine triage currently classifies 137 as SOURCE_MISSING, 1 as PRICE_AMBIGUOUS, 1 as VARIANT_AMBIGUOUS, and 16 as TRUE_UNKNOWN. A filename search across 19,758 local files recovered no new hash-matching source; one filename candidate had a hash mismatch. No human review status was generated.
+The 155-item development needs_review queue remains machine-triaged only. OneDrive supplied exact-hash source recovery, but no human review status was generated.
 
-Metadata-only reviewer packet templates were prepared for the 40 currently hash-verified candidate sources (69 candidate sections, 10 frozen candidate sections). They remain unassigned and are not Gold packets or human review evidence.
+Reviewer packet references were prepared for 96 hash-verified source rows (191 candidate sections, 10 frozen candidate sections). They remain unassigned and are not human review evidence.
 
-Gold certificate: NO-GO / not issued. No reviewer packet, A assignment, B assignment, adjudication, or benchmark was fabricated.
+Gold certificate: NO-GO / not issued. Reviewer packet references exist, but no A/B assignment, human review result, adjudication, or benchmark was fabricated.
 
 ## Safe next gate
 
-Recover and hash-verify the original source sections; triage the 155 UNKNOWN_BLOCKER items by evidence; obtain independent human A/B review and adjudication; then resolve Track A production prerequisites separately. Production writes remain prohibited until the exact approval string FINAL_PRODUCTION_ROLLOUT_APPROVED is received.
+Recover and hash-verify the remaining original source sections; triage the 155 UNKNOWN_BLOCKER items by evidence; obtain independent human A/B review and adjudication; then resolve Track A production prerequisites separately. Production writes remain prohibited until the lane-specific approval and prerequisite gates are satisfied.
 \n\n<!-- v61-controller-latest:start -->
 
 ## Latest controller run
 
-- run_id: 58ab7961-928d-4aea-ab69-4ed091d6c368
+- run_id: c4054195-a880-4f86-8160-146a878ec30c
 - controller_state: WAITING_EXTERNAL_INPUTS
-- source hash-verified rows: 66
-- source missing rows: 1092
+- source hash-verified rows: 96
+- source missing rows: 1058
 - existing catalog inventory: 993
 - class A/B/C: 232/0/761
 - reviewer A/B records: 0/0

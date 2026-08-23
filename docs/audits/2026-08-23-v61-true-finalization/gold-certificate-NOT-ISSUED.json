@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-gold-certificate-not-issued-1",
-  "generatedAt": "2026-08-23T07:32:58.296Z",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "generatedAt": "2026-08-23T07:51:00.983Z",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
   "decision": "NOT_ISSUED",
   "certificateIssued": false,
   "conditions": {
@@ -12,7 +12,7 @@
     },
     "sourceHashVerified": {
       "required": 400,
-      "observed": 120,
+      "observed": 191,
       "pass": false
     },
     "reviewerAComplete": {

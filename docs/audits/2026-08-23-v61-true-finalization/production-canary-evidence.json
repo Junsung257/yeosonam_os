@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v61-production-canary-evidence-2",
-  "generatedAt": "2026-08-23T07:32:58.277Z",
-  "runId": "58ab7961-928d-4aea-ab69-4ed091d6c368",
+  "generatedAt": "2026-08-23T07:51:00.948Z",
+  "runId": "c4054195-a880-4f86-8160-146a878ec30c",
   "status": "NOT_RUN",
   "approvalReceived": false,
   "requiredApproval": "APPROVE V6.1 PRODUCTION CANARY LANE A",
