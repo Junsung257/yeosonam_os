@@ -32,4 +32,14 @@ describe('destination public package data boundary', () => {
     expect(text.slice(departureIndex, departureIndex + 450)).toContain('alivePackageRows');
     expect(helperIndex).toBeGreaterThan(0);
   });
+
+  it('normalizes climate JSONB before passing it to the customer renderer', () => {
+    const text = source('src/app/destinations/[city]/page.tsx');
+
+    expect(text).toContain('normalizeMonthlyNormals');
+    expect(text).toContain('normalizeFitnessScores');
+    expect(text).toContain('normalizeSeasonalSignals');
+    expect(text).toContain('const climateCardData = normalizeClimateCardData');
+    expect(text).not.toContain('monthlyNormals={climateCardData.monthly_normals as MonthlyNormal[]}');
+  });
 });
