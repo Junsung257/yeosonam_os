@@ -32,4 +32,12 @@ describe('destination public package data boundary', () => {
     expect(text.slice(departureIndex, departureIndex + 450)).toContain('alivePackageRows');
     expect(helperIndex).toBeGreaterThan(0);
   });
+
+  it('keeps the dynamic city route request-rendered when static params are empty', () => {
+    const text = source('src/app/destinations/[city]/page.tsx');
+
+    expect(text).toContain("export const dynamic = 'force-dynamic';");
+    expect(text).toContain('export const dynamicParams = true;');
+    expect(text).toContain('export async function generateStaticParams');
+  });
 });
