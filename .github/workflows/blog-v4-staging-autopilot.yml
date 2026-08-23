@@ -354,6 +354,7 @@ jobs:
           # Remove its remote-history placeholder when a previous canary has
           # already applied the exact same checked-in SQL.
           rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823010000_remote_history_placeholder.sql
+          rm -f .tmp/blog-v4-staging-release/supabase/migrations/20260823030000_remote_history_placeholder.sql
 
       - name: Prove exact staging migration dry-run
         shell: bash
