@@ -28,6 +28,7 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(workflow).toContain('BLOG_CONTENT_FACTORY_ATTEMPT_RECEIPT_READ');
     expect(workflow).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(workflow).toContain('x-vercel-protection-bypass');
+    expect(workflow).toContain("url.searchParams.set('stagingCanary', '1')");
     expect(workflow).toContain('generation:attempt:${attemptNumber}:v1');
     expect(workflow).toContain('generation:pass:${pass}:started:v1:${workflowRunId}');
     expect(workflow).toContain('finalize:approved:v1:${workflowRunId}');
@@ -50,6 +51,8 @@ describe('Blog V4 durable workflow wiring', () => {
     expect(publisherRoute).toContain(".eq('fencing_token', fencingToken)");
     expect(publisherRoute).toContain(".eq('lease_owner', leaseOwner)");
     expect(publisherRoute).toContain('content_operation_lease_expired');
+    expect(publisherRoute).toContain('embeddedOnly: options.stagingCanary === true');
+    expect(publisherRoute).toContain('publisher:progress:${step}:v1');
   });
 
   it('requires an approved factory operation and rechecks an immutable package snapshot before publication', () => {

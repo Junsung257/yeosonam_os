@@ -62,6 +62,7 @@ import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
+import { recordBlogContentOperationStageV4 } from '@/lib/blog-content-factory/repository';
 import {
   slugifyTopic,
   romanize,
@@ -322,7 +323,7 @@ function readQueueDemandSignalV3(item: any): BlogDemandSignalInput {
   return readEmbeddedBlogQueueDemandSignalV3(item);
 }
 
-async function loadQueueDemandEvidenceV3(item: any): Promise<{
+async function loadQueueDemandEvidenceV3(item: any, options: { embeddedOnly?: boolean } = {}): Promise<{
   repositoryReady: boolean;
   signal: BlogDemandSignalInput;
   acceptedProviders: string[];
@@ -331,6 +332,16 @@ async function loadQueueDemandEvidenceV3(item: any): Promise<{
   performance: ReturnType<typeof aggregateObservedBlogSearchMetricsV3>;
 }> {
   const base = readQueueDemandSignalV3(item);
+  if (options.embeddedOnly) {
+    return {
+      repositoryReady: true,
+      signal: base,
+      acceptedProviders: ['editor_seed'],
+      rejectedCount: 0,
+      error: null,
+      performance: aggregateObservedBlogSearchMetricsV3([]),
+    };
+  }
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [demandResult, activeProductResult, performanceResult] = await Promise.all([
     supabaseAdmin
@@ -1741,6 +1752,9 @@ async function runBlogPublisher(request: NextRequest) {
     if (operationId) {
       const fencingToken = Number(request.nextUrl.searchParams.get('fencingToken'));
       const leaseOwner = request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '';
+      const stagingCanary = request.nextUrl.searchParams.get('stagingCanary') === '1'
+        && process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+        && BLOG_AUTOPUBLISH_POLICY_V3.mode === 'draft_only';
       if (!Number.isSafeInteger(fencingToken) || fencingToken <= 0 || !leaseOwner) {
         return {
           ok: false,
@@ -1799,7 +1813,12 @@ async function runBlogPublisher(request: NextRequest) {
           errors,
         };
       }
-      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });
+      const result = await processQueueItem(item, new Map(), {
+        startedAtMs: startTime,
+        deferPublication,
+        stagingCanary,
+        operationProgress: { operationId, fencingToken, leaseOwner },
+      });
       results.push(result);
       return {
         ok: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status),
@@ -2474,6 +2493,12 @@ async function processQueueItem(
     startedAtMs?: number;
     validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
     deferPublication?: boolean;
+    stagingCanary?: boolean;
+    operationProgress?: {
+      operationId: string;
+      fencingToken: number;
+      leaseOwner: string;
+    };
   } = {},
 ): Promise<{
   id: string;
@@ -2482,6 +2507,20 @@ async function processQueueItem(
   reason?: string;
   atomicIndexing?: boolean;
 }> {
+  const recordProgress = async (step: string, evidence: Record<string, unknown> = {}) => {
+    if (!options.operationProgress) return;
+    await recordBlogContentOperationStageV4({
+      supabase: supabaseAdmin,
+      operationId: options.operationProgress.operationId,
+      fencingToken: options.operationProgress.fencingToken,
+      leaseOwner: options.operationProgress.leaseOwner,
+      eventKey: `publisher:progress:${step}:v1`,
+      stage: 'drafting',
+      eventStatus: 'succeeded',
+      evidence: { publisherProgress: step, ...evidence },
+    }).catch(() => undefined);
+  };
+
   // 동시성 방지 — generating 락
   const { data: lockedRow, error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -2501,6 +2540,7 @@ async function processQueueItem(
   }
 
   try {
+    await recordProgress('entered');
     const startedAtMs = options.startedAtMs ?? Date.now();
     const contentBoundary = routeBlogContentLane({
       source: item.source,
@@ -2514,7 +2554,13 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
     const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
-    const demandPreflight = await loadQueueDemandEvidenceV3(item);
+    const demandPreflight = await loadQueueDemandEvidenceV3(item, {
+      embeddedOnly: options.stagingCanary === true,
+    });
+    await recordProgress('demand-ready', {
+      embeddedOnly: options.stagingCanary === true,
+      repositoryReady: demandPreflight.repositoryReady,
+    });
     if (
       !privateRegenerationIntent
       && BLOG_AUTOPUBLISH_POLICY_V3.requireDemandSignal
@@ -2669,6 +2715,10 @@ async function processQueueItem(
           locale: queueBrief.plan.locale,
         });
         const existingRepresentative = await findBlogInformationRepresentative(representativeKey);
+        await recordProgress('representative-ready', {
+          representativeKey,
+          existingStatus: existingRepresentative?.status ?? null,
+        });
         const reservationOwner = `blog_topic_queue:${item.id}`;
         const mayResumeOwnReservation = existingRepresentative?.status === 'reserved'
           && existingRepresentative.reservationOwner === reservationOwner;
@@ -2695,6 +2745,7 @@ async function processQueueItem(
       });
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
+    await recordProgress('duplicate-ready');
 
     let generated: GeneratedBlog;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
@@ -2801,6 +2852,12 @@ async function processQueueItem(
         }
       }
     }
+
+    await recordProgress('generated', {
+      generationModel: (
+        generated.generation_meta?.ai_orchestration_v4 as Record<string, unknown> | undefined
+      )?.model ?? null,
+    });
 
     // Deterministic fallback copy is only an operational recovery artifact. It is
     // intentionally generic and therefore must never become a public/searchable

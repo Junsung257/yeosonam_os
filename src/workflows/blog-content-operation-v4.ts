@@ -305,6 +305,9 @@ async function generationStep(
   url.searchParams.set('operationId', input.operationId);
   url.searchParams.set('fencingToken', String(input.fencingToken));
   url.searchParams.set('leaseOwner', input.leaseOwner);
+  const stagingCanary = process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+    && process.env.BLOG_AUTOPUBLISH_MODE?.trim().toLowerCase() === 'draft_only';
+  if (stagingCanary) url.searchParams.set('stagingCanary', '1');
   const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
   if (protectionBypassSecret) headers['x-vercel-protection-bypass'] = protectionBypassSecret;
   let response: Response;
