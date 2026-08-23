@@ -262,6 +262,7 @@ create table if not exists public.blog_information_source_versions (
   site_scope text default 'www.yeosonam.com'::text not null,
   version_key char(64) not null,
   content_hash char(64) not null,
+  snapshot_content text,
   source_type text not null,
   authority_level text not null,
   source_url text,
