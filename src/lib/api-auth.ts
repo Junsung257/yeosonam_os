@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
-import { getSecret } from '@/lib/secret-registry';
+import { getSecret, getStaticSecret } from '@/lib/secret-registry';
 import { safeEqualString } from '@/lib/timing-safe';
 
 export function isValidAdminApiToken(request: NextRequest): boolean {
@@ -18,9 +18,8 @@ export async function isValidProductRegistrationUploadToken(request: NextRequest
   // Keep this environment read static: the function is also imported by the
   // Edge middleware, where dynamic `process.env[key]` access is not reliable
   // after bundling. The route-local Node guard still receives the same value.
-  const configuredToken = process.env.PRODUCT_REGISTRATION_UPLOAD_TOKEN?.trim()
-    || getSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
-  const deepSeekKey = process.env.DEEPSEEK_API_KEY?.trim() || getSecret('DEEPSEEK_API_KEY');
+  const configuredToken = getStaticSecret('PRODUCT_REGISTRATION_UPLOAD_TOKEN');
+  const deepSeekKey = getStaticSecret('DEEPSEEK_API_KEY');
   let token = configuredToken;
   if (!token && deepSeekKey) {
     const digest = await globalThis.crypto.subtle.digest(
