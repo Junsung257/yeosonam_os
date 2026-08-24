@@ -28,6 +28,10 @@ Supabase.
   TypeScript, ESLint, the Next.js production build (396 pages), and 12/12
   mobile/desktop browser checks with zero production writes. Product JSON-LD
   structured-data auditing also passes.
+- Migration safety recognizes schema-qualified tables/FKs. Twenty-one missing
+  V6.1 FK indexes are supplied by forward-only concurrent migrations; five
+  reconciled historical migrations retain twelve exact-hash lock-risk
+  exceptions and still require a staged, timed release window.
 - Production remains NO-GO until staging
   migration/RLS/query-plan evidence, blog product-reader parity, golden-product
   replay, cache/rollback drills, owner/legal evidence, explicit release

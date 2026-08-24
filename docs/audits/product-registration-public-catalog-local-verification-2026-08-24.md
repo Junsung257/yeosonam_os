@@ -48,6 +48,7 @@ communication occurred during local verification.
 | ESLint | PASS |
 | Next production build | PASS — Next.js 15.5.21; 396 static pages |
 | Migration-prefix audit | PASS — 553 files; 16 pre-existing collisions; 0 new |
+| Migration safety | PASS — 20 files; 21 FK indexes added concurrently; 12 exact historical lock-risk exceptions documented |
 | Structured-data audit | PASS — 5 Product nodes include descriptions |
 | Registration authority | PASS — kernel-only; authorized 1, legacy 0, unapproved 0 |
 | Runtime environment docs/code audits | PASS |
@@ -82,6 +83,12 @@ are not committed because they are machine-local derivative artifacts.
    was removed; production was untouched. New migration static/security
    contracts pass, but staging migration apply and query-plan evidence remain
    mandatory.
+   PR CI also exposed 21 previously hidden schema-qualified FK index gaps. Two
+   forward-only `CONCURRENTLY` migrations close those gaps without changing
+   possibly applied migration history. Twelve non-concurrent indexes in five
+   reconciled historical files remain exact-hash exceptions; their approvals
+   record the risk and require statement timeouts, staging timing evidence, and
+   a controlled release window rather than authorizing a live apply.
 2. Blog-owned product attachment paths (`/api/blog`, blog detail/destination,
    and angle matching) still use the exact published-snapshot helpers rather
    than `public_catalog_view`. They remain safe from raw compatibility-table

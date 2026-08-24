@@ -333,6 +333,51 @@
       "approvedIssueCounts": {
         "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 8
       }
+    },
+    "20260818154500_product_registration_backfill_claim_lookup_index.sql": {
+      "sha256": "5825276bbdff8ce2a36bae7d164d3f09b9a232ac12c80fa8eb7a95bc160a0bf5",
+      "status": "A",
+      "rationale": "This exact partial upload-job index belongs to the reconciled deployed registration lineage and may already be applied outside protected main. Rewriting its historical SQL would create migration drift. Any environment that still needs it must use the documented staging rehearsal, statement timeout, and controlled release window before production approval.",
+      "evidence": "docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
+    },
+    "20260819235152_product_registration_v61_workflow.sql": {
+      "sha256": "8d00313b0709a636c930d91c51c22063b529376bdc7a514b49e0ee1e775f33af",
+      "status": "A",
+      "rationale": "This exact V6.1 workflow migration is preserved from the deployed lineage rather than rewritten after possible application. Its five queue/stage indexes remain an explicit lock-risk exception; staging timing, statement timeouts, and a controlled production window are mandatory before any unapplied environment receives it.",
+      "evidence": "docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 5
+      }
+    },
+    "20260819235155_product_registration_v61_surface_lineage.sql": {
+      "sha256": "abb661cc08f1d6c4c96e6959bf3bfdb72fb60dd6bd9ddd28e5aba6ef2af31540",
+      "status": "A",
+      "rationale": "This exact surface-lineage migration is retained for deployed-history parity. The three compatibility-table lineage indexes are acknowledged as lock-heavy and are not authorization to apply them live; staging duration evidence and an approved maintenance window remain required.",
+      "evidence": "docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 3
+      }
+    },
+    "20260820100000_product_registration_v61_knowledge_ledger.sql": {
+      "sha256": "6a374cd54baa7c71ac5530f6ec7fc01362f24a04b9cfe073b3f5fc02d347d89b",
+      "status": "A",
+      "rationale": "The knowledge-ledger migration hash is release evidence and is preserved exactly. Its two departure-ledger indexes are a documented lock-risk exception; all newly discovered FK gaps are handled by separate forward-only concurrent migrations, while the historical indexes require staging and a controlled release window.",
+      "evidence": "docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
+    },
+    "20260824101000_product_registration_customer_copy_v2.sql": {
+      "sha256": "49463aec3a7744a2dbe11bb20959c154605f0d2cdc9409c99562bd13152348f1",
+      "status": "A",
+      "rationale": "The exact customer-copy V2 migration is kept immutable after local release evidence was recorded. Its exact-facts-policy unique index is acknowledged as lock-heavy and must be timed in staging and applied only in an approved controlled window; this approval does not make the release production-ready.",
+      "evidence": "docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 1
+      }
     }
   }
 }
