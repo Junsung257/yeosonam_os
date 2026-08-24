@@ -7,7 +7,8 @@ manifest and final build.
 
 Date: 2026-08-24
 
-Status: pre-implementation contract; no future check is marked PASS yet
+Status: local implementation verified; environment-dependent recovery and
+release checks remain blocked pending authorization
 
 ## 1. Baseline evidence
 
@@ -441,27 +442,28 @@ Complete this table during implementation:
 
 | Gate | Result | Evidence |
 |---|---|---|
-| Concurrent branch reconciliation | PENDING | |
-| Fresh catalog baseline | PENDING | |
-| Pure policy/DTO tests | PENDING | |
-| Migration reset/apply/security | PENDING | |
-| Query-plan budget | PENDING | |
-| Shadow reconciliation | PENDING | |
-| Cross-surface set parity | PENDING | |
-| Server-rendered initial HTML | PENDING | |
-| API field/payload boundary | PENDING | |
-| Detail/destination runtime regressions | PENDING | |
-| Sitemap/robots/JSON-LD parity | PENDING | |
-| Mock/placeholder/claim removal | PENDING | |
-| Company/legal owner sign-off | PENDING | |
-| Cache/outbox convergence | PENDING | |
-| Type/lint/full test/build/release gates | PENDING | |
-| Preview browser and runtime proof | PENDING | |
-| Emergency hidden/rollback drill | PENDING | |
-| Protected main / Vercel SHA parity | PENDING | |
-| 4-hour production observation | PENDING | |
-| 24-hour production observation | PENDING | |
+| Concurrent branch reconciliation | PASS | Gate 0 audit and clean integration lineage |
+| Fresh catalog baseline | PASS | Same-time home 7 / API 2 / pointers 9 / sitemap 0; destination 500 captured |
+| Pure policy/DTO tests | PASS | Targeted catalog, API, eligibility, trust, and migration contract suites |
+| Migration reset/apply/security | BLOCKED | Static contracts pass; full local replay stops at legacy migration missing `customers` |
+| Query-plan budget | BLOCKED | Requires migrated staging data and representative row counts |
+| Shadow reconciliation | BLOCKED | Requires staging/production-like data; no production write was authorized |
+| Cross-surface set parity | PASS (code) | Home/list/API/detail/destination/sitemap use the exact catalog projection; live set proof awaits migration |
+| Server-rendered initial HTML | PASS (local) | `/packages` returns honest SSR empty state without service DB; card-bearing preview proof remains open |
+| API field/payload boundary | PASS | Minimal 13-field allowlisted search DTO; internal lineage is not serialized |
+| Detail/destination runtime regressions | PASS (local) | Targeted tests and 12-route viewport browser matrix; zero page console errors |
+| Sitemap/robots/JSON-LD parity | PARTIAL | Catalog routes pass; repository structured-data audit is blocked by untouched `src/lib/blog-jsonld.ts` |
+| Mock/placeholder/claim removal | PASS | Trust contract scan and local browser assertions pass |
+| Company/legal owner sign-off | BLOCKED | Unverified facts are hidden; owner/legal evidence was not supplied or invented |
+| Cache/outbox convergence | PASS (contract) | Existing outbox reused; canary compensation and request recovery tested; staging runtime drill open |
+| Type/lint/full test/build/release gates | PASS (local) | Type-check, lint, build; 855 files, 6,435 passed and 7 skipped |
+| Preview browser and runtime proof | BLOCKED | Local 12/12 browser proof passes; no external preview deployment authorized |
+| Emergency hidden/rollback drill | BLOCKED | Requires migrated staging and release-operator authorization |
+| Protected main / Vercel SHA parity | BLOCKED | Local branch is intentionally unpushed and unmerged |
+| 4-hour production observation | BLOCKED | No production deployment authorized |
+| 24-hour production observation | BLOCKED | No production deployment authorized |
 
-P0 is not complete while any required row is PENDING, FAIL, or unexplained
-BLOCKED. A zero-product catalog can pass; an unsafe product exposed to avoid an
-empty site cannot.
+The local implementation packet is complete through Gate 4. Production P0 is
+not complete while the explained environment/owner gates above remain blocked.
+A zero-product catalog can pass; an unsafe product exposed to avoid an empty
+site cannot.

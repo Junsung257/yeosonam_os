@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Status: implementation sequencing decision; documentation only
+Status: Gates 0-4 implemented locally; Gates 5-6 require controlled data and release authorization
 
 ## 1. Decision
 
@@ -103,10 +103,12 @@ a child table only when normalization proves the row cardinality cannot fit the
 existing departure instance without lossy JSON. Then project `products`,
 `product_prices`, and `travel_packages` atomically from those facts.
 
-Do not introduce a generic `public_catalog_view`. Preserve the V5/V6.1 exact
-pointer/snapshot/proof chain and correct its service-role fact views with a
-forward migration. Track B adds an application repository and allowlisted DTO,
-not another database publication authority.
+Do not introduce a second publication authority. Preserve the V5/V6.1 exact
+pointer/snapshot/proof chain and the revision-bound typed departure facts. The
+implemented `public_catalog_view` is a service-role-only read projection over
+those authorities: it cannot publish, repoint, repair, or infer missing facts.
+Track B maps that projection through an application repository and allowlisted
+DTO; the view itself is not a generic catalog ledger or customer-facing API.
 
 Do not create generic `registration_runs/run_items`. Keep `upload_jobs`, V6
 stage runs, immutable revisions, existing proof/publication ledgers, and expose
@@ -400,7 +402,10 @@ The program is complete only when all are true:
 
 ## 9. Immediate next command meaning
 
-When the user later says `다른 세션 끝났어. 개발 진행해`, the first action is
-not feature coding. It is Gate 0/Track 0 refresh from clean worktrees, followed
-by PR 0 and Gate 1. Only after the resulting authoritative main is identified
-may A1/B1 implementation begin.
+The user authorized sequential implementation on 2026-08-24 while settlement
+and blog work continued in non-overlapping areas. Gates 0-4 were implemented in
+the clean worktree `C:\dev\yeosonam-os-product-public-integration` on branch
+`codex/product-publication-catalog-integration-20260824`, with production writes
+and deployment kept at zero. The next authorized release action remains a fresh
+concurrent-session reconciliation, followed by a protected PR/preview; Gates
+5-6 must not be inferred from the local implementation authorization.
