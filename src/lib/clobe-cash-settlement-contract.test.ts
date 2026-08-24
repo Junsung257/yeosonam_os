@@ -6,6 +6,7 @@ const read = (relativePath: string) => fs.readFileSync(path.join(process.cwd(), 
 
 const migrationSql = read('supabase/migrations/20260823235214_clobe_cash_settlement_commands.sql');
 const mixedOutflowSql = read('supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql');
+const allocationPrivilegeSql = read('supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql');
 const correctionSql = read('supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql');
 const bookingDrawerSource = read('src/components/BookingDrawer.tsx');
 const bookingDetailSource = read('src/app/admin/bookings/[id]/BookingDetailClient.tsx');
@@ -57,6 +58,7 @@ describe('Clobe cash settlement operating contract', () => {
     expect(mixedOutflowSql).toContain('v_total <> ABS(COALESCE(v_tx.amount, 0))');
     expect(mixedOutflowSql).toContain("COALESCE(v_tx.match_status, 'unmatched')");
     expect(mixedOutflowSql).toContain('cross-tenant Clobe allocation is forbidden');
+    expect(mixedOutflowSql).toContain('v_command.request_json IS DISTINCT FROM v_request');
     expect(mixedOutflowSql).toContain('finalized booking cannot receive a new Clobe allocation');
     expect(mixedOutflowSql).toContain('finalized booking must be unfinalized before reversing Clobe allocation');
     expect(mixedOutflowSql).toContain("'clobe_outflow_allocations_reversed'");
@@ -71,6 +73,23 @@ describe('Clobe cash settlement operating contract', () => {
     expect(bankTransactionRouteSource).toContain('Number.isSafeInteger(item.amount)');
     expect(bankTransactionRouteSource).toContain("action === 'confirm_clobe_outflow_allocations'");
     expect(bankTransactionRouteSource).toContain(".from('bank_transaction_allocations')");
+  });
+
+  it('keeps an existing normal booking behind an explicit Clobe deposit approval', () => {
+    expect(settlementKeySource).toContain('suggestedBookingId: ambiguous ? null : best.row.id');
+    expect(importerSource).toContain('suggested_booking_id: input.suggestedBookingId ?? null');
+    expect(bankTransactionRouteSource).toContain("action === 'confirm_clobe_deposit'");
+    expect(bankTransactionRouteSource).toContain('suggestedBookingId !== confirmedBookingId');
+    expect(bankTransactionRouteSource).toContain('booking.tenant_id !== row.tenant_id');
+    expect(bankTransactionRouteSource).toContain('booking.settlement_confirmed_at');
+  });
+
+  it('removes direct browser-role access to financial allocation commands', () => {
+    expect(allocationPrivilegeSql).toContain('match_bank_transaction_allocations');
+    expect(allocationPrivilegeSql).toContain('FROM PUBLIC, anon, authenticated');
+    expect(allocationPrivilegeSql).toContain('TO service_role');
+    expect(mixedOutflowSql).toContain('FROM PUBLIC, anon, authenticated');
+    expect(mixedOutflowSql).toContain('TO service_role');
   });
 
   it('does not rename a representative booking when one Clobe row has mixed allocations', () => {

@@ -1470,6 +1470,9 @@ export default function PaymentsPageClient({
     const isClobeTx = isClobeTransaction(tx);
     const clobePurposeTags = getClobePurposeTags(tx);
     const isClobeRefund = clobePurposeTags.includes('환불');
+    const clobeSuggestedBooking = clobeSuggestedBookingId
+      ? bookings.find(booking => booking.id === clobeSuggestedBookingId) ?? null
+      : null;
 
     return (
       <div className={groupClass} aria-label={`${tx.counterparty_name || '거래'} 다음 액션`} role="group">
@@ -1488,7 +1491,44 @@ export default function PaymentsPageClient({
                 }}
               />
             )}
-            {isClobeTx && tx.transaction_type === '출금' ? (
+            {isClobeTx && tx.transaction_type === '입금' ? (
+              clobeSuggestedBookingId ? (
+                <button
+                  type="button"
+                  disabled={processing}
+                  onClick={async () => {
+                    setProcessing(true);
+                    try {
+                      const res = await fetch('/api/bank-transactions', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          action: 'confirm_clobe_deposit',
+                          transactionId: tx.id,
+                          bookingId: clobeSuggestedBookingId,
+                        }),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(data.error || '기존 예약 연결 승인 실패');
+                      showToast('Clobe 입금이 검토한 기존 예약에 연결되었습니다.');
+                      await Promise.all([load(), loadErp(), loadOpsQueue()]);
+                    } catch (error) {
+                      showToast(error instanceof Error ? error.message : '기존 예약 연결 승인 실패', 'err');
+                    } finally {
+                      setProcessing(false);
+                    }
+                  }}
+                  title={clobeSuggestedBooking
+                    ? `${clobeSuggestedBooking.booking_no || '예약'} · ${clobeSuggestedBooking.customers?.name || clobeSuggestedBooking.package_title || '고객'}에 입금 연결`
+                    : '동기화가 찾은 기존 예약에 입금 연결'}
+                  className={`${primaryButton} bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50`}
+                >
+                  {processing ? '연결 중...' : '기존 예약 연결 승인'}
+                </button>
+              ) : (
+                <span className="text-[11px] text-amber-700">기존 예약 후보를 다시 검토하세요</span>
+              )
+            ) : isClobeTx && tx.transaction_type === '출금' ? (
               <>
                 {clobeSuggestedBookingId && (
                   <button

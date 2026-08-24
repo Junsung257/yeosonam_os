@@ -669,6 +669,113 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Existing normal bookings are never auto-linked from a Clobe memo.
+    // The importer stores one unambiguous candidate and this explicit command
+    // applies the deposit only after the operator confirms that exact booking.
+    if (action === 'confirm_clobe_deposit') {
+      if (typeof transactionId !== 'string' || !transactionId) {
+        return NextResponse.json({ error: 'transactionId 필요' }, { status: 400 });
+      }
+      const confirmedBookingId = typeof body.bookingId === 'string' ? body.bookingId : '';
+      if (!UUID_PATTERN.test(confirmedBookingId)) {
+        return NextResponse.json({ error: '확인한 예약 ID가 필요합니다.' }, { status: 400 });
+      }
+
+      const { data: tx, error: txError } = await supabaseAdmin
+        .from('bank_transactions')
+        .select('id, tenant_id, source, external_provider, transaction_type, amount, booking_id, match_status, status, source_metadata')
+        .eq('id', transactionId)
+        .maybeSingle();
+      if (txError) throw txError;
+      const row = tx as {
+        id: string;
+        tenant_id?: string | null;
+        source?: string | null;
+        external_provider?: string | null;
+        transaction_type: string;
+        amount: number;
+        booking_id?: string | null;
+        match_status?: string | null;
+        status?: string | null;
+        source_metadata?: Record<string, unknown> | null;
+      } | null;
+      if (!row) return NextResponse.json({ error: '거래를 찾을 수 없습니다' }, { status: 404 });
+      if (!isClobeSource(row) || row.transaction_type !== '입금') {
+        return NextResponse.json({ error: 'Clobe 여행 입금만 승인할 수 있습니다.' }, { status: 400 });
+      }
+      if (row.status === 'excluded') return NextResponse.json({ error: '제외된 거래입니다.' }, { status: 409 });
+      if (row.booking_id || row.match_status === 'auto' || row.match_status === 'manual') {
+        return NextResponse.json({ success: true, alreadyMatched: true, bookingId: row.booking_id });
+      }
+
+      const clobeSourceKey = row.source === 'clobe_api' ? 'clobe_api' : 'clobe_mcp';
+      const clobeMetadata = row.source_metadata?.[clobeSourceKey];
+      const suggestedBookingId = clobeMetadata && typeof clobeMetadata === 'object'
+        ? (clobeMetadata as { suggested_booking_id?: unknown }).suggested_booking_id
+        : null;
+      if (suggestedBookingId !== confirmedBookingId) {
+        return NextResponse.json(
+          { error: '동기화가 제안한 예약과 확인한 예약이 다릅니다. 새로고침 후 다시 검토하세요.' },
+          { status: 409 },
+        );
+      }
+
+      const { data: suggestedBooking, error: bookingError } = await supabaseAdmin
+        .from('bookings')
+        .select('id, tenant_id, is_deleted, settlement_confirmed_at')
+        .eq('id', confirmedBookingId)
+        .maybeSingle();
+      if (bookingError) throw bookingError;
+      const booking = suggestedBooking as {
+        id: string;
+        tenant_id?: string | null;
+        is_deleted?: boolean | null;
+        settlement_confirmed_at?: string | null;
+      } | null;
+      if (!booking || booking.is_deleted) {
+        return NextResponse.json({ error: '연결할 예약을 찾을 수 없습니다.' }, { status: 404 });
+      }
+      if (booking.tenant_id !== row.tenant_id) {
+        return NextResponse.json({ error: '다른 테넌트 예약에는 입금을 연결할 수 없습니다.' }, { status: 409 });
+      }
+      if (booking.settlement_confirmed_at) {
+        return NextResponse.json({ error: '최종 정산된 예약은 정산을 다시 열기 전 입금을 연결할 수 없습니다.' }, { status: 409 });
+      }
+
+      const transactionAmount = Math.abs(Number(row.amount));
+      if (!Number.isSafeInteger(transactionAmount) || transactionAmount <= 0 || transactionAmount > 2147483647) {
+        return NextResponse.json({ error: '입금 금액이 올바르지 않습니다.' }, { status: 409 });
+      }
+      const result = await matchTransactionAllocations({
+        transactionId,
+        allocations: [{ bookingId: confirmedBookingId, amount: transactionAmount }],
+        confidence: 1,
+        actor,
+        notes: 'operator approved existing booking suggested by Clobe memo',
+      });
+
+      const previousMetadata = row.source_metadata ?? {};
+      const currentClobeMetadata = (previousMetadata[clobeSourceKey] ?? {}) as Record<string, unknown>;
+      const { error: metadataError } = await supabaseAdmin
+        .from('bank_transactions')
+        .update({
+          source_metadata: {
+            ...previousMetadata,
+            [clobeSourceKey]: {
+              ...currentClobeMetadata,
+              existing_booking_approved_at: new Date().toISOString(),
+              existing_booking_approved_by: actor,
+            },
+          },
+        } as Record<string, unknown>)
+        .eq('id', transactionId);
+      if (metadataError) {
+        console.warn('[Clobe deposit] approval metadata update failed:', sanitizeDbError(metadataError));
+      }
+
+      return NextResponse.json({ success: true, bookingId: confirmedBookingId, result });
+    }
+
     // Clobe outflow approval. The provider row remains one immutable bank
     // transaction, while the command can allocate it as supplier payout(s)
     // and/or customer refund(s). A purpose suffix such as `_환불` supplies the
@@ -723,7 +830,7 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ error: '메모 기준 예약 후보가 없어 검토가 필요합니다.' }, { status: 409 });
         }
         const transactionAmount = Math.abs(Number(row.amount));
-        if (!Number.isSafeInteger(transactionAmount) || transactionAmount <= 0) {
+        if (!Number.isSafeInteger(transactionAmount) || transactionAmount <= 0 || transactionAmount > 2147483647) {
           return NextResponse.json({ error: '출금 금액이 올바르지 않습니다.' }, { status: 409 });
         }
         allocations = [{
@@ -749,7 +856,7 @@ export async function PATCH(request: NextRequest) {
           };
         });
         if (allocations.length === 0
-          || allocations.some(item => !UUID_PATTERN.test(item.bookingId) || !Number.isSafeInteger(item.amount) || item.amount <= 0)) {
+          || allocations.some(item => !UUID_PATTERN.test(item.bookingId) || !Number.isSafeInteger(item.amount) || item.amount <= 0 || item.amount > 2147483647)) {
           return NextResponse.json({ error: '예약, 금액, 처리 구분이 포함된 allocations가 필요합니다.' }, { status: 400 });
         }
       }

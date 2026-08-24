@@ -46,6 +46,7 @@ DECLARE
   v_first_booking_id UUID := NULL;
   v_ledger_account TEXT;
   v_ledger_delta BIGINT;
+  v_request JSONB;
   v_result JSONB;
 BEGIN
   IF NULLIF(btrim(p_idempotency_key), '') IS NULL THEN
@@ -57,6 +58,12 @@ BEGIN
     RAISE EXCEPTION 'allocations array is required' USING ERRCODE = 'P0001';
   END IF;
 
+  v_request := jsonb_build_object(
+    'action', 'match',
+    'allocations', p_allocations,
+    'notes', p_notes,
+    'actor', p_matched_by
+  );
   PERFORM pg_advisory_xact_lock(hashtextextended('clobe-outflow:' || p_idempotency_key, 0));
 
   SELECT * INTO v_command
@@ -65,7 +72,7 @@ BEGIN
   FOR UPDATE;
   IF FOUND THEN
     IF v_command.bank_transaction_id <> p_transaction_id
-       OR v_command.request_json->>'action' IS DISTINCT FROM 'match' THEN
+       OR v_command.request_json IS DISTINCT FROM v_request THEN
       RAISE EXCEPTION 'Clobe outflow idempotency key conflict' USING ERRCODE = 'P0001';
     END IF;
     RETURN COALESCE(v_command.result_json, jsonb_build_object('ok', TRUE, 'idempotent_replay', TRUE));
@@ -108,8 +115,8 @@ BEGIN
       NULLIF(value->>'allocationType', '') AS allocation_type
     FROM jsonb_array_elements(p_allocations)
   LOOP
-    IF v_alloc.booking_id IS NULL OR v_alloc.amount <= 0 THEN
-      RAISE EXCEPTION 'each allocation requires bookingId and positive amount' USING ERRCODE = 'P0001';
+    IF v_alloc.booking_id IS NULL OR v_alloc.amount <= 0 OR v_alloc.amount > 2147483647 THEN
+      RAISE EXCEPTION 'each allocation requires bookingId and a positive 32-bit integer amount' USING ERRCODE = 'P0001';
     END IF;
     IF v_alloc.allocation_type NOT IN ('payout', 'refund') THEN
       RAISE EXCEPTION 'allocationType must be payout or refund' USING ERRCODE = 'P0001';
@@ -252,7 +259,7 @@ BEGIN
   ) VALUES (
     p_idempotency_key,
     p_transaction_id,
-    jsonb_build_object('action', 'match', 'allocations', p_allocations, 'notes', p_notes, 'actor', p_matched_by),
+    v_request,
     v_result,
     now()
   );
@@ -298,12 +305,18 @@ DECLARE
   v_finalized_booking_no TEXT;
   v_count INT := 0;
   v_reversed_total BIGINT := 0;
+  v_request JSONB;
   v_result JSONB;
 BEGIN
   IF NULLIF(btrim(p_idempotency_key), '') IS NULL THEN
     RAISE EXCEPTION 'Clobe outflow reversal requires idempotency_key' USING ERRCODE = 'P0001';
   END IF;
 
+  v_request := jsonb_build_object(
+    'action', 'reverse',
+    'reason', p_reason,
+    'actor', p_actor
+  );
   PERFORM pg_advisory_xact_lock(hashtextextended('clobe-outflow-reverse:' || p_idempotency_key, 0));
 
   SELECT * INTO v_command
@@ -312,7 +325,7 @@ BEGIN
   FOR UPDATE;
   IF FOUND THEN
     IF v_command.bank_transaction_id <> p_transaction_id
-       OR v_command.request_json->>'action' IS DISTINCT FROM 'reverse' THEN
+       OR v_command.request_json IS DISTINCT FROM v_request THEN
       RAISE EXCEPTION 'Clobe outflow reversal idempotency key conflict' USING ERRCODE = 'P0001';
     END IF;
     RETURN COALESCE(v_command.result_json, jsonb_build_object('ok', TRUE, 'idempotent_replay', TRUE));
@@ -426,7 +439,7 @@ BEGIN
   ) VALUES (
     p_idempotency_key,
     p_transaction_id,
-    jsonb_build_object('action', 'reverse', 'reason', p_reason, 'actor', p_actor),
+    v_request,
     v_result,
     now()
   );

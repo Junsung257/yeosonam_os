@@ -16,6 +16,7 @@ interface SettlementBookingCandidate {
 
 export interface SettlementMemoResolution {
   bookingId: string | null;
+  suggestedBookingId?: string | null;
   bookingNo?: string | null;
   customerName?: string | null;
   source: 'existing_key' | 'existing_booking' | 'created_booking' | 'ambiguous' | 'error';
@@ -153,6 +154,7 @@ async function findExistingBooking(memo: ParsedTravelSettlementMemo): Promise<Se
   const ambiguous = candidates.length > 1 && candidates[0].score - candidates[1].score < 0.2;
   return {
     bookingId: null,
+    suggestedBookingId: ambiguous ? null : best.row.id,
     bookingNo: ambiguous ? null : best.row.booking_no,
     customerName: ambiguous ? null : best.row.customers?.name ?? memo.leadCustomerName,
     source: 'ambiguous',

@@ -6,7 +6,6 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 type FinalizeBody = {
   confirm?: boolean;
-  settlement_mode?: 'accrual' | 'cash';
   reason?: string;
   idempotency_key?: string;
 };
@@ -32,7 +31,6 @@ export async function POST(
   }
 
   const confirm = body.confirm !== false;
-  const mode = body.settlement_mode ?? 'cash';
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   const idempotencyKey = typeof body.idempotency_key === 'string'
     ? body.idempotency_key.trim()
@@ -57,31 +55,24 @@ export async function POST(
   if (clobeKeyError) {
     return apiResponse({ error: clobeKeyError.message, code: clobeKeyError.code }, { status: 500 });
   }
-  const isClobeSettlement = Boolean(clobeKey);
+  if (!clobeKey) {
+    return apiResponse(
+      { error: '이 명령은 Clobe 메모 예약 전용입니다.', code: 'CLOBE_SETTLEMENT_KEY_REQUIRED' },
+      { status: 409 },
+    );
+  }
 
   const rpc = supabaseAdmin.rpc as unknown as (
     name: string,
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: { code?: string; message: string } | null }>;
-  const { data: command, error: rpcError } = await rpc(
-    isClobeSettlement ? 'finalize_clobe_booking_settlement' : 'finalize_booking_settlement',
-    isClobeSettlement
-      ? {
-          p_booking_id: id,
-          p_confirm: confirm,
-          p_reason: reason,
-          p_idempotency_key: idempotencyKey,
-          p_actor: actor,
-        }
-      : {
-          p_booking_id: id,
-          p_confirm: confirm,
-          p_settlement_mode: mode,
-          p_reason: reason,
-          p_idempotency_key: idempotencyKey,
-          p_actor: actor,
-        },
-  );
+  const { data: command, error: rpcError } = await rpc('finalize_clobe_booking_settlement', {
+    p_booking_id: id,
+    p_confirm: confirm,
+    p_reason: reason,
+    p_idempotency_key: idempotencyKey,
+    p_actor: actor,
+  });
 
   if (rpcError) {
     const code = rpcError.code;

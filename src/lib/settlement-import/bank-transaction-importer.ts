@@ -704,15 +704,19 @@ async function enqueueBookingCandidateReview(input: {
   row: BankTransactionImportRow;
   parsed: ParsedTravelSettlementMemo;
   eventId: string;
+  suggestedBookingId?: string | null;
 }) {
-  const title = 'Clobe memo has no existing booking candidate';
+  const legacyTitle = 'Clobe memo has no existing booking candidate';
+  const title = input.suggestedBookingId
+    ? 'Clobe memo existing booking approval required'
+    : 'Clobe memo booking review required';
   const { data: existingEvent, error: lookupError } = await supabaseAdmin
     .from('ops_events')
     .select('id')
     .eq('bank_transaction_id', input.transactionId)
     .eq('event_type', 'payment_imported')
     .eq('status', 'open')
-    .eq('title', title)
+    .in('title', [legacyTitle, 'Clobe memo existing booking approval required', 'Clobe memo booking review required'])
     .limit(1)
     .maybeSingle();
   if (lookupError) {
@@ -724,7 +728,9 @@ async function enqueueBookingCandidateReview(input: {
     event_type: 'payment_imported',
     severity: 'warning',
     title,
-    description: `Clobe 거래 메모 ${input.row.memo}가 기존 예약과 연결되지 않았습니다. 실제 예약 생성 전 운영자 승인이 필요합니다.`,
+    description: input.suggestedBookingId
+      ? `Clobe 거래 메모 ${input.row.memo}와 일치하는 기존 예약 후보가 있습니다. 입금 연결 전 운영자 승인이 필요합니다.`
+      : `Clobe 거래 메모 ${input.row.memo}의 예약 후보가 없거나 여러 건입니다. 운영자 검토가 필요합니다.`,
     bank_transaction_id: input.transactionId,
     target_type: 'booking_candidate',
     target_id: input.transactionId,
@@ -742,6 +748,7 @@ async function enqueueBookingCandidateReview(input: {
       departure_date: input.parsed.departureDate,
       external_provider: input.row.externalProvider ?? null,
       external_transaction_id: input.row.externalTransactionId ?? null,
+      suggested_booking_id: input.suggestedBookingId ?? null,
       requires_admin_booking_command: true,
     },
     created_by: 'clobe_sync',
@@ -1193,6 +1200,7 @@ export async function processBankTransactionImportRows(
     let confidence = 0;
     const matchReasons: string[] = [];
     let resolutionSource: SettlementMemoResolutionSource = null;
+    let suggestedBookingId: string | null = null;
 
     if (parsed) {
       const resolution = await resolveSettlementMemoBooking(parsed, {
@@ -1202,6 +1210,7 @@ export async function processBankTransactionImportRows(
       });
       resolutionSource = resolution.source;
       confidence = resolution.confidence;
+      suggestedBookingId = resolution.suggestedBookingId ?? null;
       if (resolution.bookingId) {
         matchedBooking = {
           id: resolution.bookingId,
@@ -1285,6 +1294,7 @@ export async function processBankTransactionImportRows(
         row,
         parsed: parsed!,
         eventId,
+        suggestedBookingId,
       });
     }
 
@@ -1389,7 +1399,7 @@ export async function processBankTransactionImportRows(
           eventId,
           matchStatus,
           confidence,
-          suggestedBookingId: !isDeposit ? matchedBooking?.id ?? null : null,
+          suggestedBookingId: matchedBooking?.id ?? suggestedBookingId,
         });
         if (matchStatus === 'auto' && matchedBooking) {
           await allocateExistingTransaction({
@@ -1412,9 +1422,9 @@ export async function processBankTransactionImportRows(
         row,
         eventId,
         parsed,
-        suggestedBookingId: !isDeposit
-          ? matchedBooking?.id ?? suggestedBookingIdOf(duplicate.row.source_metadata, options.source)
-          : null,
+        suggestedBookingId: matchedBooking?.id
+          ?? suggestedBookingId
+          ?? suggestedBookingIdOf(duplicate.row.source_metadata, options.source),
       });
       if (matchStatus === 'auto' && matchedBooking && !duplicateProcessed) {
         const allocationResult = await allocateExistingTransaction({
@@ -1448,7 +1458,7 @@ export async function processBankTransactionImportRows(
           eventId,
           matchStatus,
           confidence,
-          suggestedBookingId: !isDeposit ? matchedBooking?.id ?? null : null,
+          suggestedBookingId: matchedBooking?.id ?? suggestedBookingId,
         });
         if (matchStatus === 'auto' && matchedBooking) {
           await allocateExistingTransaction({
@@ -1490,7 +1500,7 @@ export async function processBankTransactionImportRows(
             purpose_tags: parsed.purposeTags,
             external_provider: row.externalProvider ?? null,
             external_transaction_id: row.externalTransactionId ?? null,
-            suggested_booking_id: !isDeposit ? matchedBooking?.id ?? null : null,
+            suggested_booking_id: matchedBooking?.id ?? suggestedBookingId,
             imported_at: new Date().toISOString(),
           },
         },
@@ -1528,7 +1538,7 @@ export async function processBankTransactionImportRows(
             eventId,
             txType,
             amount,
-            suggestedBookingId: !isDeposit ? matchedBooking?.id ?? null : null,
+            suggestedBookingId: matchedBooking?.id ?? suggestedBookingId,
           });
           const allocationResult = matchStatus === 'auto' && matchedBooking
             ? await allocateExistingTransaction({
@@ -1573,6 +1583,7 @@ export async function processBankTransactionImportRows(
         row,
         parsed: parsed!,
         eventId,
+        suggestedBookingId,
       });
     }
 

@@ -1041,21 +1041,35 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       const autoMode: 'accrual' | 'cash' = unpaidDiff > 0
         ? 'cash'
         : blueprint.effectiveNet > 0 ? 'accrual' : 'cash';
-      const body = confirm ? {
-        confirm: true,
-        settlement_mode: autoMode,
-        reason: isClobeSettlement
-          ? `Clobe 기준 확정: 입금 ${paidAmount.toLocaleString('ko-KR')}원 - 출금 ${Number(booking?.total_paid_out ?? 0).toLocaleString('ko-KR')}원`
-          : unpaidDiff > 0
-          ? '운영자 승인: 미수 차액을 cash 기준 손비 처리'
-          : '운영자 승인: Ledger 대조 후 예약 마감',
-        idempotency_key: `settlement-finalize:${bookingId}:${crypto.randomUUID()}`,
-      } : {
-        confirm: false,
-        reason: '운영자 요청: 정산 확정 해제',
-        idempotency_key: `settlement-unfinalize:${bookingId}:${crypto.randomUUID()}`,
-      };
-      const res = await fetch(`/api/bookings/${bookingId}/settlement/finalize`, {
+      const body = isClobeSettlement
+        ? confirm
+          ? {
+              confirm: true,
+              reason: `Clobe 기준 확정: 입금 ${paidAmount.toLocaleString('ko-KR')}원 - 출금 ${Number(booking?.total_paid_out ?? 0).toLocaleString('ko-KR')}원`,
+              idempotency_key: `settlement-finalize:${bookingId}:${crypto.randomUUID()}`,
+            }
+          : {
+              confirm: false,
+              reason: '운영자 요청: Clobe 최종정산 확정 해제',
+              idempotency_key: `settlement-unfinalize:${bookingId}:${crypto.randomUUID()}`,
+            }
+        : confirm
+          ? {
+              settlement_confirmed_at: new Date().toISOString(),
+              settlement_confirmed_by: 'admin',
+              settlement_mode: autoMode,
+              status: 'completed',
+              payment_status: '완납',
+            }
+          : {
+              settlement_confirmed_at: null,
+              settlement_confirmed_by: null,
+              settlement_mode: null,
+            };
+      const endpoint = isClobeSettlement
+        ? `/api/bookings/${bookingId}/settlement/finalize`
+        : `/api/bookings/${bookingId}`;
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

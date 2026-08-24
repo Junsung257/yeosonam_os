@@ -33,24 +33,19 @@ const PATCH_FIELDS = [
   // 예약 일반 정보
   'departure_region', 'land_operator', 'land_operator_id',
   'manager_name', 'package_title', 'departure_date',
+  // 결제 정보 (일반 예약의 기존 수동 수정 경로)
+  'paid_amount', 'payment_status',
+  // 정산 확정 / 커미션
+  'settlement_confirmed_at', 'settlement_confirmed_by',
+  'settlement_mode',
   'commission_rate', 'commission_amount',
-  // 취소/환불 (20260418010000 마이그레이션)
-  'cancellation_reason',
-  'notes',
+  // 취소/환불
+  'cancelled_at', 'cancellation_reason', 'refund_settled_at',
+  // 상태 직접 수정 (Clobe 예약은 아래 전용 guard가 차단)
+  'status', 'notes',
 ] as const;
 
 type PatchField = typeof PATCH_FIELDS[number];
-
-const COMMAND_ONLY_FIELDS = [
-  'paid_amount',
-  'payment_status',
-  'status',
-  'settlement_confirmed_at',
-  'settlement_confirmed_by',
-  'settlement_mode',
-  'cancelled_at',
-  'refund_settled_at',
-] as const;
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
@@ -147,24 +142,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     );
   }
 
-  const blockedFields = COMMAND_ONLY_FIELDS.filter(field => field in body);
-  if (blockedFields.length > 0) {
-    return NextResponse.json(
-      {
-        error: '재무·예약 종결 상태는 일반 PATCH로 변경할 수 없습니다.',
-        code: 'BOOKING_COMMAND_REQUIRED',
-        fields: blockedFields,
-        commands: {
-          payment: `/api/bookings/${id}/payment-adjustment`,
-          lifecycle: `/api/bookings/${id}/transition`,
-          settlement: `/api/bookings/${id}/settlement/finalize`,
-          cancellation: `/api/bookings/${id}/cancel`,
-        },
-      },
-      { status: 409 },
-    );
-  }
-
   // 화이트리스트 필터링 — 허용되지 않은 필드 자동 제거
   const updateFields: Record<string, unknown> = {};
   for (const field of PATCH_FIELDS as readonly string[]) {
@@ -183,17 +160,44 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // updated_at 항상 갱신
   updateFields.updated_at = new Date().toISOString();
 
+  // 일반 예약의 paid_amount 수동 수정은 기존 원장 RPC를 유지한다.
+  // Clobe 예약은 위 guard에서 이 경로에 진입하지 못한다.
+  const hasManualPaidAmount = Object.prototype.hasOwnProperty.call(updateFields, 'paid_amount');
+  const newPaidAmount = hasManualPaidAmount ? Number(updateFields.paid_amount ?? 0) : null;
+  if (hasManualPaidAmount) delete updateFields.paid_amount;
+
   // supabaseAdmin (service role key) — RLS 우회 보장
-  const { error: bulkErr } = await supabaseAdmin
-    .from('bookings')
-    .update(updateFields)
-    .eq('id', id);
-  if (bulkErr) {
-    console.error(`[bookings/${id} PATCH] Supabase 에러:`, bulkErr);
-    return NextResponse.json(
-      { error: bulkErr.message, code: bulkErr.code, details: bulkErr.details ?? null, hint: bulkErr.hint ?? null },
-      { status: 500 },
-    );
+  if (Object.keys(updateFields).length > 1) {
+    const { error: bulkErr } = await supabaseAdmin
+      .from('bookings')
+      .update(updateFields)
+      .eq('id', id);
+    if (bulkErr) {
+      console.error(`[bookings/${id} PATCH] Supabase 에러:`, bulkErr);
+      return NextResponse.json(
+        { error: bulkErr.message, code: bulkErr.code, details: bulkErr.details ?? null, hint: bulkErr.hint ?? null },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (hasManualPaidAmount && Number.isFinite(newPaidAmount)) {
+    const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
+      p_booking_id: id,
+      p_new_paid_amount: newPaidAmount,
+      p_new_total_paid_out: null,
+      p_source: 'admin_manual_edit',
+      p_source_ref_id: id,
+      p_idempotency_key: `manual:${id}:${Date.now()}`,
+      p_memo: 'admin manual paid_amount edit',
+      p_created_by: 'admin',
+    });
+    if (rpcErr) {
+      return NextResponse.json(
+        { error: rpcErr.message, code: rpcErr.code },
+        { status: 500 },
+      );
+    }
   }
 
   // 최종 booking 조회 후 반환 (ledger RPC 가 payment_status 도 자동 갱신하지만 여긴 일반 UPDATE 후라 단순 SELECT)
