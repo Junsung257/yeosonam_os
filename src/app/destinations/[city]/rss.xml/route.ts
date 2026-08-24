@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { canonicalizePublicDestination, getPublicDestinationQueryNames, slugMatchesPublicDestination } from '@/lib/public-destinations';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
@@ -136,13 +136,13 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
           .filter(Boolean),
       )];
       if (productIds.length > 0) {
-        const publicPackages = (await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 }))
-          .filter(pkg => productIds.includes(String(pkg.id ?? '')));
+        const publicPackages = (await listPublicCatalog(supabaseAdmin, { limit: 1_000 }))
+          .filter(pkg => productIds.includes(pkg.id));
         publicPackageDestinationById = new Map(
-          (publicPackages as Array<{ id?: unknown; destination?: unknown }>)
+          publicPackages
             .map(pkg => [
-              typeof pkg.id === 'string' ? pkg.id.trim() : '',
-              typeof pkg.destination === 'string' ? pkg.destination.trim() : '',
+              pkg.id,
+              pkg.destination ?? '',
             ] as const)
             .filter(([id, destination]) => Boolean(id && destination)),
         );

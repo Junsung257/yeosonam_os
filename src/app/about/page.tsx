@@ -118,22 +118,6 @@ export default function AboutPage() {
                 <dd className="text-slate-600">여소남</dd>
               </div>
               <div className="flex flex-col sm:flex-row sm:gap-4">
-                <dt className="font-bold text-slate-900 sm:w-40 shrink-0">대표자</dt>
-                <dd className="text-slate-600">김민수</dd>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:gap-4">
-                <dt className="font-bold text-slate-900 sm:w-40 shrink-0">사업자등록번호</dt>
-                <dd className="text-slate-600">000-00-00000</dd>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:gap-4">
-                <dt className="font-bold text-slate-900 sm:w-40 shrink-0">여행업 등록번호</dt>
-                <dd className="text-slate-600">제2024-000000호</dd>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:gap-4">
-                <dt className="font-bold text-slate-900 sm:w-40 shrink-0">영업소재지</dt>
-                <dd className="text-slate-600">서울특별시</dd>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:gap-4">
                 <dt className="font-bold text-slate-900 sm:w-40 shrink-0">문의 이메일</dt>
                 <dd className="text-slate-600">
                   <a href="mailto:help@yeosonam.com" className="text-brand hover:underline">
@@ -144,7 +128,7 @@ export default function AboutPage() {
             </dl>
             <p className="mt-6 text-xs leading-relaxed text-slate-400">
               여소남은 통신판매중개자로서 상품의 당사자가 아니며, 상품 정보 및 거래에 대해 책임을 지지 않습니다.
-              구체적인 여행업 등록 사항은 추후 공개 예정입니다.
+              사업자·여행업 등록 및 보험 정보는 증빙 확인 후 이 페이지에 공개합니다. 확인 전 임시 번호나 등록 완료 표현은 사용하지 않습니다.
             </p>
           </div>
         </section>

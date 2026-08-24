@@ -27,10 +27,12 @@ test('ERR-FUK-audit-gate: publish gate blocks blocked audits and requires force 
   assert.match(approve, /\{ status: 409 \}/);
 });
 
-test('ERR-FUK-audit-gate: blocked packages are filtered out of customer search and QA chat', () => {
+test('ERR-FUK-audit-gate: customer search and QA both use the fail-closed public catalog', () => {
   const search = read('src/app/api/packages/search/route.ts');
   const qa = read('src/lib/qa-chat-packages.ts');
 
-  assert.match(search, /audit_status\.is\.null,audit_status\.neq\.blocked/);
-  assert.match(qa, /audit_status\.is\.null,audit_status\.neq\.blocked/);
+  assert.match(search, /listPublicCatalog/);
+  assert.doesNotMatch(search, /audit_status/);
+  assert.match(qa, /listPublicCatalog/);
+  assert.doesNotMatch(qa, /audit_status/);
 });

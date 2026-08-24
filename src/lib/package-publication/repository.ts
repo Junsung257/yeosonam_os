@@ -148,79 +148,50 @@ export async function resolveCurrentPublicPackage(
     locale?: string;
   },
 ): Promise<CurrentPublicPackageResolution> {
-  const channel = input.channel ?? 'customer';
-  const locale = input.locale ?? 'ko-KR';
   const routeState = await resolveCustomerRouteState(supabase, input);
   if (routeState.state !== 'PUBLIC') return routeState;
-
-  const pointerSelect = 'tenant_id,package_id,catalog_product_id,current_revision_id,current_snapshot_id,state,pointer_version';
-  const { data: pointer, error: pointerError } = await supabase
-    .from('product_registration_v5_publication_pointers')
-    .select(pointerSelect)
-    .eq('catalog_product_id', routeState.catalogProductId)
-    .eq('package_id', routeState.packageId)
-    .eq('tenant_id', input.tenantId)
-    .eq('channel', channel)
-    .eq('locale', locale)
-    .eq('pointer_version', routeState.pointerVersion)
-    .eq('current_revision_id', routeState.revisionId)
-    .eq('current_snapshot_id', routeState.snapshotId)
-    .maybeSingle();
-  if (pointerError || !pointer || pointer.state !== 'published'
-    || !pointer.package_id || !pointer.catalog_product_id
-    || !pointer.current_snapshot_id || !pointer.current_revision_id) return { state: 'UNAVAILABLE' };
-  const packageId = String(pointer.package_id);
-
   const { data, error } = await supabase
-    .from('public_package_snapshots')
-    .select('id, package_id, catalog_product_id, package_revision, canonical_revision_id, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, renderer_build_id, status, created_at')
-    .eq('id', pointer.current_snapshot_id)
-    .eq('tenant_id', input.tenantId)
-    .eq('package_id', packageId)
-    .eq('catalog_product_id', pointer.catalog_product_id)
-    .eq('canonical_revision_id', pointer.current_revision_id)
-    .eq('status', 'published')
+    .from('public_catalog_view')
+    .select('id,catalog_product_id,revision_id,snapshot_id,snapshot_hash,pointer_version,booking_mode,last_verified_at,public_detail')
+    .eq('id', routeState.packageId)
+    .eq('catalog_product_id', routeState.catalogProductId)
+    .eq('revision_id', routeState.revisionId)
+    .eq('snapshot_id', routeState.snapshotId)
+    .eq('pointer_version', routeState.pointerVersion)
     .maybeSingle();
-  if (error || !data) return { state: 'UNAVAILABLE' };
-  const row = data as SnapshotRow;
+  if (error) return { state: 'UNAVAILABLE' };
+  if (!data) return { state: 'NOT_FOUND' };
+  const detail = asRecord(data.public_detail);
+  if (!detail) return { state: 'NOT_FOUND' };
+  const row: SnapshotRow = {
+    id: String(data.snapshot_id),
+    package_id: String(data.id),
+    catalog_product_id: String(data.catalog_product_id),
+    package_revision: asNumber(detail.package_revision) ?? 1,
+    canonical_revision_id: String(data.revision_id),
+    snapshot_hash: String(data.snapshot_hash),
+    snapshot_json: detail,
+    card_projection: asRecord(detail.card_projection) ?? {},
+    lp_projection: asRecord(detail.lp_projection) ?? {},
+    route_text_dump: Array.isArray(detail.route_text_dump)
+      ? detail.route_text_dump.filter((item): item is string => typeof item === 'string')
+      : [],
+    renderer_build_id: asNonEmptyString(detail.renderer_build_id),
+    status: 'published',
+    created_at: String(data.last_verified_at),
+  };
   const pkg = snapshotPackage(row);
-  if (!pkg) return { state: 'NOT_FOUND' };
-
-  const supplier = typeof pkg.land_operator === 'string' ? pkg.land_operator : '';
-  const { data: switches, error: switchError } = await supabase
-    .from('product_registration_v5_kill_switches')
-    .select('scope,scope_key')
-    .eq('tenant_id', input.tenantId)
-    .eq('active', true)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-  if (switchError) return { state: 'UNAVAILABLE' };
-  if ((switches ?? []).some(item => item.scope === 'global'
-    || (item.scope === 'product' && [packageId, pointer.catalog_product_id, '*'].includes(String(item.scope_key)))
-    || (item.scope === 'supplier' && [supplier, '*'].includes(String(item.scope_key))))) return { state: 'NOT_FOUND' };
-  const { data: overlays, error: overlayError } = await supabase.rpc(
-    'get_product_registration_availability_overlays',
-    {
-      p_catalog_product_ids: [pointer.catalog_product_id],
-      p_channel: input.channel ?? 'customer',
-    },
-  );
-  if (overlayError || !Array.isArray(overlays)) return { state: 'UNAVAILABLE' };
-  if (overlays.some(item => {
-    const overlay = asRecord(item);
-    if (!overlay) return false;
-    return overlay.catalog_product_id === pointer.catalog_product_id
-      && (
-        String(overlay.customer_visibility_state ?? 'public') !== 'public'
-        || ['closed', 'sold_out', 'suspended'].includes(String(overlay.sale_state ?? ''))
-      );
-  })) return { state: 'NOT_FOUND' };
-
-  // Canonical lineage and attraction publishability are revision/snapshot
-  // validation concerns. Re-querying mutable registration or attraction rows
-  // here would make an already-proved immutable snapshot change meaning between
-  // customer requests. Runtime reads are therefore pointer + immutable
-  // snapshot + operational kill/availability controls only.
-  return { state: 'PUBLIC', row, package: pkg };
+  return pkg
+    ? {
+        state: 'PUBLIC',
+        row,
+        package: {
+          ...pkg,
+          booking_mode: asNonEmptyString(data.booking_mode) ?? 'inquiry',
+          last_verified_at: String(data.last_verified_at),
+        },
+      }
+    : { state: 'NOT_FOUND' };
 }
 
 /** Backwards-compatible public-only reader. New customer routes should use the

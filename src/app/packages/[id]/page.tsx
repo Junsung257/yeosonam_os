@@ -32,9 +32,7 @@ import {
 import { ProductReviewNotice } from '@/components/product-review-notice';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
-import {
-  listCurrentPublicPackageCardSnapshots,
-} from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
@@ -440,12 +438,24 @@ export default async function PackageDetailPage({
   }
   let publishedCatalogPromise: Promise<Record<string, unknown>[]> | null = null;
   const loadPublishedCatalog = () => {
-    publishedCatalogPromise ??= listCurrentPublicPackageCardSnapshots(sb, {
-      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-      channel: 'customer',
-      locale: 'ko-KR',
-      limit: 5_000,
-    });
+    publishedCatalogPromise ??= listPublicCatalog(sb, { limit: 5_000 }).then((items) => items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      destination: item.destination,
+      country: item.country,
+      duration: item.duration,
+      nights: item.nights,
+      price: item.price,
+      product_type: item.productKind,
+      departure_airport: item.departureAirport,
+      hero_image_url: item.heroImage,
+      product_highlights: item.badges,
+      price_dates: item.availableDates.map((entry) => ({
+        date: entry.date,
+        price: entry.price ?? item.price ?? 0,
+        confirmed: entry.confirmed ?? false,
+      })),
+    })));
     return publishedCatalogPromise;
   };
 

@@ -14,13 +14,12 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import {
   getPublicDestinationQueryNames,
 } from '@/lib/public-destinations';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
-export const revalidate = 0;
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
 export const dynamicParams = true;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
@@ -85,7 +84,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
   if (!region) return { title: '여행지', alternates: { canonical }, robots: { index: false, follow: true } };
   return {
     title: `${region.label} 여행 패키지 가이드`,
-    description: `${region.label} 여행의 모든 것 — ${region.tagline}. ${region.featuredCities.slice(0, 4).join('·')} 등 운영팀 검증 패키지를 한곳에서.`,
+    description: `${region.label} 여행의 모든 것 — ${region.tagline}. ${region.featuredCities.slice(0, 4).join('·')} 등 공개 상품을 한곳에서 확인하세요.`,
     alternates: { canonical },
     openGraph: {
       title: `${region.label} 여행 가이드 | 여소남`,
@@ -134,7 +133,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     return getEmptyRegionData();
   }
 
-  const publicCatalog = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 5_000 })
+  const publicCatalog = await listPublicCatalog(supabaseAdmin, { limit: 5_000 })
     .catch((error) => {
       console.warn('[region] pointer-only package catalog unavailable', error);
       return [];
@@ -168,7 +167,6 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   });
 
   // 도시·패키지·블로그 3종을 병렬 — 각자 dests 만 의존하므로 round-trip 1회로 합침.
-  const today = new Date().toISOString().slice(0, 10);
   const emptyResult = { data: null } as { data: null };
   const [metaRes, attrsRes, pkgsRes, blogRes] = await Promise.all([
     queryNames.length > 0
@@ -201,7 +199,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
   ]);
   const attrs = attrsRes.data;
-  const pkgs = (pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [];
+  const pkgs = (pkgsRes.data as typeof regionPackageRows | null) ?? [];
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
@@ -224,25 +222,29 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     if (dest && row.og_image_url && !imgByDest[dest]) imgByDest[dest] = row.og_image_url;
   });
 
-  // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
-  const currentPublicPackageRows = pkgs
-  const alivePackageRows = pkgs
-    .filter(p => {
-      const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
-      if (pd.length === 0) return true;
-      return pd.some(d => d.date && d.date >= today);
-    });
-  const publicCardRows = alivePackageRows;
-  const alivePkgs = publicCardRows
-    .map(p => ({
-      ...p,
-      products: Array.isArray(p.products) ? p.products[0] ?? null : p.products,
-    }))
-    .slice(0, 12) as PackageCardData[];
+  // public_catalog_view 자체가 미래 출발일·공개 proof를 보장한다.
+  const publicCardRows = pkgs;
+  const alivePkgs: PackageCardData[] = publicCardRows.slice(0, 12).map((item) => ({
+    id: item.id,
+    title: item.title,
+    destination: item.destination,
+    duration: item.duration,
+    nights: item.nights,
+    price: item.price,
+    product_type: item.productKind,
+    departure_airport: item.departureAirport,
+    product_highlights: item.badges,
+    hero_image_url: item.heroImage,
+    price_dates: item.availableDates.map((entry) => ({
+      date: entry.date,
+      price: entry.price ?? item.price ?? 0,
+      confirmed: entry.confirmed ?? false,
+    })),
+  }));
 
   const packageStatsByDestination = new Map<string, { count: number; minPrice: number | null }>();
   for (const pkg of publicCardRows) {
-    const destination = typeof pkg.destination === 'string' ? aliasToDestination.get(pkg.destination) ?? pkg.destination : null;
+    const destination = pkg.destination ? aliasToDestination.get(pkg.destination) ?? pkg.destination : null;
     if (!destination) continue;
     const price = getPositiveNumber(pkg.price);
     const current = packageStatsByDestination.get(destination) ?? { count: 0, minPrice: null };

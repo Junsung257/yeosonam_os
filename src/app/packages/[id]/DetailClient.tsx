@@ -128,6 +128,7 @@ interface Package {
     consultationOnly?: boolean;
   } | null;
   product_type?: string;
+  booking_mode?: 'inquiry' | 'price_check' | 'consultation_only';
   price_tiers?: PriceTier[];
   price_dates?: PriceDate[];
   product_prices?: CustomerProductPriceRow[];
@@ -1048,6 +1049,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
   const productTypeLabel = formatProductTypeLabel(pkg.product_type);
+  const primaryInquiryLabel = /cruise|크루즈/i.test(pkg.product_type ?? '')
+    ? '실시간 객실·요금 확인'
+    : pkg.booking_mode === 'price_check'
+      ? '현재 좌석·요금 확인'
+      : '상담 신청';
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
   // Climate and packing guidance must follow the chosen departure month, not
@@ -1633,7 +1639,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           onClick={() => openInquiryForm('detail_price_card')}
           className="w-full h-12 rounded-2xl bg-slate-950 text-white font-bold text-sm shadow-[0_10px_24px_rgba(15,23,42,0.18)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
-          <span>예약 문의하기</span>
+          <span>{primaryInquiryLabel}</span>
           <span className="text-white/65 text-xs font-normal">날짜·인원 상담</span>
         </button>
       </div>
@@ -2105,6 +2111,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
               <div className="space-y-8">
                 {currentDay.schedule?.map((item, sIdx) => {
+                  const activity = customerVisibleText(item.activity);
                   // 2026-05-17 박제 (시즈오카 사고 ERR-shizuoka-client-match + ERR-keyword-탑승):
                   //   schedule[].attraction_ids 가 SSOT. page.tsx Step B 가 이미 정확히 매칭한
                   //   결과를 client 에서 그대로 사용. attraction_ids 없으면 카드 X (잘못된 부분
@@ -2117,7 +2124,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const itemIds = (item as { attraction_ids?: string[] }).attraction_ids;
                   const hasExplicitMatch = !!(itemIds && itemIds.length > 0);
                   const typeSkip = item.type === 'flight' || item.type === 'hotel' || item.type === 'optional' || item.type === 'shopping';
-                  const textSkip = !hasExplicitMatch && /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|추천|선택관광/.test(item.activity);
+                  const textSkip = !hasExplicitMatch && /공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식|추천|선택관광/.test(activity);
                   const skipMatch = typeSkip || textSkip;
                   const attrCandidate = skipMatch ? null : (
                     hasExplicitMatch
@@ -2145,29 +2152,29 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   const isFirstOrLastDay = currentDay.day === 1 || currentDay.day === days[days.length - 1]?.day || currentDay.day === days[days.length - 2]?.day;
                   const isArrivalOnlyFlight =
                     item.type === 'flight' &&
-                    /도착/.test(item.activity || '') &&
-                    !/출발|향발/.test(item.activity || '');
+                    /도착/.test(activity) &&
+                    !/출발|향발/.test(activity);
                   if (item.type === 'flight' && isFirstOrLastDay && !isArrivalOnlyFlight) {
                     // ERR-XIY-flight-double-render@2026-05-16 박제 — DAY 1 의 두 번째 flight item
                     // ("서안 도착") 이 잘못된 두 번째 flight 카드 ("서안 출발 → 부산 도착") 로 렌더되던 사고 차단.
                     // 도착-only item 은 앞 출발 item 의 카드에 통합됨.
-                    const isArrivalOnly = /도착/.test(item.activity)
-                      && !/출발|향발/.test(item.activity)
+                    const isArrivalOnly = /도착/.test(activity)
+                      && !/출발|향발/.test(activity)
                       && sIdx > 0
                       && currentDay.schedule?.[sIdx - 1]?.type === 'flight';
                     if (isArrivalOnly) return null;
 
                     // ERR-20260418-22 — activity 자체에서 방향 파싱 ("타이페이 출발 → 부산 도착")
                     // 같은 DAY의 다음 스케줄에서 도착 아이템도 폴백으로 확보
-                    const parsed = parseFlightActivity(item.activity);
+                    const parsed = parseFlightActivity(activity);
                     const nextItems = currentDay.schedule?.slice(sIdx + 1) || [];
                     const arrivalItem = nextItems.find(n => /도착/.test(n.activity));
-                    const isOutbound = /출발|향발/.test(item.activity) && currentDay.day === 1;
+                    const isOutbound = /출발|향발/.test(activity) && currentDay.day === 1;
                     // 귀국편은 destination → departure_airport 방향
                     const homeCity = (pkg.departure_airport || '김해').replace(/\s*(국제)?공항.*$/, '');
                     const destCity = (pkg.destination || '').split('/')[0];
                     const depCity = parsed.depCity
-                      || parseCityFromActivity(item.activity)
+                      || parseCityFromActivity(activity)
                       || (isOutbound ? homeCity : destCity);
                     const arrCityParsed = parsed.arrCity
                       || parseCityFromActivity(arrivalItem?.activity || '')
@@ -2207,21 +2214,21 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   // 분리 등록된 레거시 데이터 방어. type==='flight' 도 스킵 대상에 포함.
                   const isArrivalFlightItem =
                     item.type === 'flight' &&
-                    /도착/.test(item.activity) &&
-                    !/출발/.test(item.activity) &&
+                    /도착/.test(activity) &&
+                    !/출발/.test(activity) &&
                     sIdx > 0 &&
                     currentDay.schedule?.[sIdx - 1]?.type === 'flight';
                   if (isArrivalFlightItem) return null;
                   const isOptionalTourScheduleLine =
                     item.entity_kind === 'optional_tour'
                     || item.type === 'optional'
-                    || /추천\s*선택\s*관광|선택\s*관광|옵션/.test(item.activity || '');
+                    || /추천\s*선택\s*관광|선택\s*관광|옵션/.test(activity);
                   if (isOptionalTourScheduleLine && view.optionalTours.count > 0) return null;
                   // P2 (2026-04-27): "X공항 도착" 만 있는 단순 도착 행만 skip.
                   // "청도공항 도착 후 가이드 미팅 ..." 처럼 도착 뒤 추가 활동이 있으면 보존
                   // (이전 정규식 /공항 도착/ 이 "후 가이드 미팅" 같은 핵심 정보까지 삼키던 버그 수정).
                   const isSimpleArrival = item.type !== 'flight' && (() => {
-                    const a = item.activity.trim();
+                    const a = activity.trim();
                     // 끝까지 도착으로 끝나는 단순 행만 skip
                     if (/^[가-힣\s]*공항\s*도착\s*$/.test(a)) return true;
                     if (/^[가-힣\s]*국제공항\s*도착\s*$/.test(a)) return true;
@@ -2233,8 +2240,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
                   // 호텔 투숙/휴식 텍스트 → 하단 호텔 카드에서 통합 표시하므로 스킵
                   // 단, "*과일 도시락" 같은 추가 정보는 보존
-                  if (/호텔.*투숙|호텔.*휴식|투숙.*휴식/.test(item.activity) && currentDay.hotel?.name) {
-                    const extraNote = item.activity.match(/\*(.+)$/);
+                  if (/호텔.*투숙|호텔.*휴식|투숙.*휴식/.test(activity) && currentDay.hotel?.name) {
+                    const extraNote = activity.match(/\*(.+)$/);
                     if (extraNote && currentDay.hotel) {
                       currentDay.hotel.note = [currentDay.hotel.note, extraNote[1].trim()].filter(Boolean).join(' · ');
                     }
@@ -2269,7 +2276,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                               )}
                             </div>
                           </div>
-                        ) : /\[특전\]|특전\)/.test(item.activity) ? (
+                        ) : /\[특전\]|특전\)/.test(activity) ? (
                           <div className="bg-brand-light border border-brand-light rounded-xl px-3 py-2.5 flex items-start gap-2">
                             <span className="text-lg shrink-0">🎁</span>
                             <div>
@@ -2293,8 +2300,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                           // Phase 1 CRC: view.inclusions.flat 소비 (콤마 분리·괄호 보호 완료)
                           const inclusions = view.inclusions.flat;
                           const isIncluded = inclusions.some(inc =>
-                            item.activity.includes(inc) || inc.includes(attr.name) || attr.name.includes(inc)
-                            || (/마사지|맛사지/.test(item.activity) && inclusions.some(i => /마사지|맛사지/.test(i)))
+                            activity.includes(inc) || inc.includes(attr.name) || attr.name.includes(inc)
+                            || (/마사지|맛사지/.test(activity) && inclusions.some(i => /마사지|맛사지/.test(i)))
                           );
                           // ERR-LB-DAD-optional-badge@2026-04-20:
                           //   attr.badge_type='optional' (attractions DB 분류용)인 항목이
@@ -2775,12 +2782,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             type="button"
             onClick={() => openInquiryForm('detail_sticky_cta')}
             className="h-11 px-5 sm:px-6 rounded-full bg-slate-950 text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
-            aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
+            aria-label={selectedDate ? `${selectedDate} 출발 ${primaryInquiryLabel} 폼 열기` : `${primaryInquiryLabel} 폼 열기`}
             data-analytics-id="mobile_sticky_reservation"
           >
             {selectedDate
-              ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
-              : '예약 문의'}
+              ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 확인`
+              : primaryInquiryLabel}
           </button>
         </div>
       </div>

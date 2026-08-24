@@ -36,11 +36,7 @@ describe('packagesSearchFetcher', () => {
   it('returns valid package search payloads', async () => {
     const payload = {
       packages: [],
-      imageByPkgId: {},
-      recommendedIds: [],
-      recommendedReasonMap: {},
-      hub: 'all',
-      filterForClient: '',
+      total: 0,
     };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })));
 

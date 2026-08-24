@@ -232,7 +232,7 @@ export async function loadProductRegistrationV6CandidateSnapshot(input: {
     .maybeSingle();
   if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_SNAPSHOT_LOOKUP_FAILED', error);
   if (!data) throw new Error('REGISTRATION_PUBLICATION_CANDIDATE_SNAPSHOT_MISSING');
-  const row = data as JsonObject;
+  const row = data as unknown as JsonObject;
   const snapshotJson = row.snapshot_json;
   const currentRendererBuildId = currentProductRegistrationRendererBuildId();
   if (!snapshotJson || typeof snapshotJson !== 'object' || Array.isArray(snapshotJson)

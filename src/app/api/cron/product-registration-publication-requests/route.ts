@@ -14,6 +14,13 @@ type DispatchRow = {
   status?: unknown;
 };
 
+type PublicationDispatchRpc = {
+  rpc(
+    name: 'list_product_registration_publication_dispatches',
+    params: { p_limit: number },
+  ): Promise<{ data: unknown; error: unknown }>;
+};
+
 const handler = async () => {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
@@ -22,7 +29,7 @@ const handler = async () => {
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  const { data, error } = await supabase.rpc('list_product_registration_publication_dispatches', {
+  const { data, error } = await (supabase as unknown as PublicationDispatchRpc).rpc('list_product_registration_publication_dispatches', {
     p_limit: 10,
   });
   if (error) throw error;

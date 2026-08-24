@@ -7,17 +7,9 @@ export const APPROVED_PRODUCTION_HOSTNAMES = new Set([
 ]);
 
 const SITE_NAME = '여소남';
-const SITE_TITLE = '여소남 | 믿고 떠나는 프리미엄 패키지 여행';
+const SITE_TITLE = '여소남 | 부산 출발 패키지·크루즈·골프 전문 여행사';
 const SITE_DESCRIPTION =
-  '여소남은 믿고 떠나는 프리미엄 패키지 여행 전문 플랫폼입니다. 랜드사 직거래 없이 안심하고 비교·예약하세요. 숨은 비용 없는 투명한 여행.';
-const SOCIAL_PROFILES = [
-  'https://blog.naver.com/yeosonam_official',
-  'https://blog.naver.com/yeosonam_',
-  'https://www.instagram.com/yeosonam/',
-  'https://www.threads.com/@yeosonam',
-  'https://www.youtube.com/@yeosonam',
-];
-
+  '부산 출발 패키지·크루즈·골프 상품을 비교하고, 예약 전 실시간 가격과 조건을 다시 확인하는 여소남입니다.';
 export function configuredSiteUrl(): string {
   return process.env.NEXT_PUBLIC_SITE_URL?.trim()
     || process.env.NEXT_PUBLIC_BASE_URL?.trim()

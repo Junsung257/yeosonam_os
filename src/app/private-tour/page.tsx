@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   title: '단독맞춤여행 | 2명부터 가능한 우리끼리 여행',
   alternates: { canonical: `${BASE_URL}/private-tour` },
   description:
-    '가족여행·계모임·동창회·기업 워크샵, 김해공항 출발 단독 프라이빗 투어. 2명부터 전담 가이드·전용 차량 배정, 24시간 내 무료 견적 회신.',
+    '가족여행·계모임·동창회·기업 워크샵을 위한 단독 프라이빗 투어. 2명부터 상담 가능하며 상품별 가능 여부를 확인합니다.',
   openGraph: {
     title: '우리끼리, 더 자유롭게 | 단독맞춤여행',
     description:
@@ -126,26 +126,14 @@ const WHY_ITEMS = [
   },
   {
     icon: '⚡',
-    title: '24시간 내 견적 회신',
-    desc: '접수 즉시 담당자 배정. 복잡한 요청도 당일 내 1차 제안을 약속합니다.',
+    title: '요청 접수 후 담당자 확인',
+    desc: '인원·일정·예산을 확인한 뒤 가능한 구성과 다음 단계를 안내합니다.',
   },
   {
     icon: '🔍',
     title: '실시간 진행 확인',
     desc: '견적→확정→출발까지 전용 링크에서 언제든지 직접 확인하세요.',
   },
-] as const;
-
-// ─── 실시간 접수 현황 목업 ─────────────────────────────
-const MOCK_FEED = [
-  { dest: '다낭', pax: 4, type: '가족여행', ago: '방금 전', status: 'reviewing' as const },
-  { dest: '세부', pax: 6, type: '친구모임', ago: '1시간 전', status: 'confirmed' as const },
-  { dest: '오사카', pax: 2, type: '허니문', ago: '2시간 전', status: 'confirmed' as const },
-  { dest: '괌', pax: 8, type: '가족여행', ago: '어제', status: 'confirmed' as const },
-  { dest: '방콕', pax: 12, type: '계모임', ago: '어제', status: 'confirmed' as const },
-  { dest: '장가계', pax: 15, type: '동창회', ago: '2일 전', status: 'confirmed' as const },
-  { dest: '발리', pax: 3, type: '솔로여행', ago: '2일 전', status: 'confirmed' as const },
-  { dest: '나트랑', pax: 10, type: '기업 워크샵', ago: '3일 전', status: 'confirmed' as const },
 ] as const;
 
 export default function PrivateTourPage() {
@@ -160,7 +148,7 @@ export default function PrivateTourPage() {
             '@type': 'Product',
             name: '여소남 단독맞춤여행',
             description:
-              '가족여행·계모임·동창회·기업 워크샵, 김해공항 출발 단독 프라이빗 투어. 2명부터 전담 가이드·전용 차량 배정, 24시간 내 무료 견적 회신.',
+              '가족여행·계모임·동창회·기업 워크샵을 위한 단독 프라이빗 투어. 2명부터 상담 가능하며 상품별 가능 여부를 확인합니다.',
             url: `${BASE_URL}/private-tour`,
             provider: {
               '@type': 'TravelAgency',
@@ -205,23 +193,19 @@ export default function PrivateTourPage() {
             2명부터 가능한 완전한 프라이빗 여행
           </p>
 
-          {/* KPI 4개 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+          {/* 운영에서 확인 가능한 범위만 표시 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-10">
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-center">
               <div className="text-2xl font-bold">2명</div>
-              <div className="text-xs text-white/70 mt-1">최소 출발</div>
+              <div className="text-xs text-white/70 mt-1">상담 가능</div>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-center">
-              <div className="text-2xl font-bold">24시간</div>
-              <div className="text-xs text-white/70 mt-1">견적 회신</div>
+              <div className="text-2xl font-bold">담당자</div>
+              <div className="text-xs text-white/70 mt-1">요청 확인</div>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-center">
-              <div className="text-2xl font-bold">120+</div>
-              <div className="text-xs text-white/70 mt-1">누적 진행</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 text-center">
-              <div className="text-2xl font-bold">전담</div>
-              <div className="text-xs text-white/70 mt-1">1:1 매니저</div>
+              <div className="text-2xl font-bold">개별</div>
+              <div className="text-xs text-white/70 mt-1">가능 여부 안내</div>
             </div>
           </div>
 
@@ -336,51 +320,6 @@ export default function PrivateTourPage() {
         </div>
       </section>
 
-      {/* ─── 섹션 E. 실시간 접수 현황 ───────────────────── */}
-      <section className="bg-gray-50 py-16 md:py-20 px-4">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <h2 className="text-2xl md:text-3xl font-bold text-center">
-              최근 접수 현황
-            </h2>
-          </div>
-          <p className="text-center text-slate-600 mb-8 text-sm">
-            지금 이 순간에도 우리만의 여행을 준비 중입니다
-          </p>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-slate-500">
-              <div className="col-span-3">목적지</div>
-              <div className="col-span-2 text-right">인원</div>
-              <div className="col-span-3">유형</div>
-              <div className="col-span-2">접수</div>
-              <div className="col-span-2 text-right">상태</div>
-            </div>
-            {MOCK_FEED.map((f, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-50 last:border-b-0 text-sm"
-              >
-                <div className="col-span-3 font-semibold">{f.dest}</div>
-                <div className="col-span-2 text-right text-slate-600">{f.pax}명</div>
-                <div className="col-span-3 text-slate-600 text-xs md:text-sm">{f.type}</div>
-                <div className="col-span-2 text-slate-500 text-xs">{f.ago}</div>
-                <div className="col-span-2 text-right text-xs">
-                  {f.status === 'reviewing' ? (
-                    <span className="text-amber-600">💡 검토 중</span>
-                  ) : (
-                    <span className="text-emerald-600">✓ 확정 완료</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-center text-xs text-slate-400 mt-4">
-            ※ 개인정보 보호를 위해 단체명·연락처는 표시하지 않습니다.
-          </p>
-        </div>
-      </section>
-
       {/* ─── 섹션 F. 다단계 견적 폼 (클라이언트 컴포넌트) ── */}
       <Suspense fallback={<div className="py-16 text-center text-slate-400">로딩 중...</div>}>
         <PrivateTourLandingClient />
@@ -393,7 +332,7 @@ export default function PrivateTourPage() {
             지금 무료 견적을 받아보세요
           </h2>
           <p className="text-white/80 mb-8 text-sm md:text-base">
-            3분 입력, 24시간 내 첫 제안. 부담 없이 문의하세요.
+            요청 내용을 확인한 뒤 담당자가 가능한 일정과 견적 절차를 안내합니다.
           </p>
           <div className="flex flex-col md:flex-row gap-3 max-w-lg mx-auto">
             <a

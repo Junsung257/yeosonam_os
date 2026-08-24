@@ -18,14 +18,6 @@ import {
 
 const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
 const SITE_NAME = '여소남';
-const SOCIAL_PROFILES = [
-  'https://blog.naver.com/yeosonam_official',
-  'https://blog.naver.com/yeosonam_',
-  'https://www.instagram.com/yeosonam/',
-  'https://www.threads.com/@yeosonam',
-  'https://www.youtube.com/@yeosonam',
-];
-
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const requestHost = requestHeaders.get('x-forwarded-host')?.split(',')[0]?.trim()
@@ -119,9 +111,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   name: SITE_NAME,
                   url: canonicalUrl,
                   logo: `${canonicalUrl}/logo.png`,
-                  description: '단체·패키지 여행 전문 플랫폼',
+                  description: '부산 출발 패키지·크루즈·골프 전문 여행사',
                   address: { '@type': 'PostalAddress', addressCountry: 'KR' },
-                  sameAs: SOCIAL_PROFILES,
                 }),
               }}
             />

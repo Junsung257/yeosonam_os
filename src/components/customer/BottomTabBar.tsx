@@ -19,10 +19,10 @@ interface Tab {
 
 const TABS: Tab[] = [
   { icon: '🏠', label: '홈', href: '/' },
-  { icon: '🔍', label: '검색', href: '/packages' },
-  { icon: '👥', label: '단체맞춤', href: '/group' },
-  { icon: '💬', label: '상담', href: KAKAO_URL, external: true, highlight: true },
-  { icon: '👤', label: '내 예약', href: '/mypage' },
+  { icon: '🔍', label: '상품찾기', href: '/packages' },
+  { icon: '📝', label: '실시간견적', href: '/private-tour' },
+  { icon: '💬', label: '카카오', href: KAKAO_URL, external: true, highlight: true },
+  { icon: '👤', label: '내 여행', href: '/mypage' },
 ];
 
 function isTabActive(href: string, pathname: string | null): boolean {

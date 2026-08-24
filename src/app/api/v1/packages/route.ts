@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
-      channel: 'b2b',
+      channel: 'customer',
       locale: 'ko-KR',
       limit: 5_000,
     })
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
-      channel: 'b2b',
+      channel: 'customer',
       locale: 'ko-KR',
       limit: 5_000,
     })
