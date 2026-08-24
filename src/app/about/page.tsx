@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: '소개 — 여행을 잇는 플랫폼',
   alternates: { canonical: `${BASE_URL}/about` },
   description:
-    '여소남은 랜드사와 여행사를 연결하고, 고객에게 검증된 패키지여행을 제공하는 B2B2C 여행 플랫폼입니다. 여행업 등록 정보, 연혁, 비전을 소개합니다.',
+    '여소남은 랜드사·여행사·고객을 연결하고, 공개 검증을 마친 여행상품 정보를 비교할 수 있게 돕는 B2B2C 여행 플랫폼입니다.',
   openGraph: {
     title: '여소남 소개 — 여행을 잇는 플랫폼',
     description:
@@ -40,19 +40,11 @@ export default function AboutPage() {
     logo: `${BASE_URL}/logo.png`,
     description:
       '랜드사 → 여소남 → 여행사/고객을 잇는 B2B2C 여행 SaaS 플랫폼입니다.',
-    foundingDate: '2024',
     contactPoint: {
       '@type': 'ContactPoint',
       contactType: 'customer service',
       email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'help@yeosonam.com',
     },
-    sameAs: [
-      'https://blog.naver.com/yeosonam_official',
-      'https://blog.naver.com/yeosonam_',
-      'https://www.instagram.com/yeosonam/',
-      'https://www.threads.com/@yeosonam',
-      'https://www.youtube.com/@yeosonam',
-    ],
     knowsAbout: ['패키지여행', '해외여행', '단체여행', '여행 SaaS', 'B2B2C 여행 플랫폼'],
   };
 
@@ -86,21 +78,21 @@ export default function AboutPage() {
               <div className="text-3xl mb-3" aria-hidden="true">🏢</div>
               <h3 className="text-lg font-bold text-slate-900">랜드사 상품 등록</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                전국의 랜드사가 자사 상품을 여소남에 등록하면, 복수의 여행사에 동시 노출됩니다.
+                등록된 원문을 상품별 사실·가격·공개 검수 단계로 나누어 관리합니다.
               </p>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-6">
               <div className="text-3xl mb-3" aria-hidden="true">🔗</div>
               <h3 className="text-lg font-bold text-slate-900">여행사 연동</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                여행사는 여소남을 통해 다양한 랜드사 상품을 한 곳에서 비교·판매할 수 있습니다.
+                여행사가 승인된 상품 조건을 한 곳에서 확인할 수 있도록 연결합니다.
               </p>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-6">
               <div className="text-3xl mb-3" aria-hidden="true">👤</div>
-              <h3 className="text-lg font-bold text-slate-900">고객 직접 예약</h3>
+              <h3 className="text-lg font-bold text-slate-900">고객 상품 상담</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                고객도 여소남에서 검증된 패키지여행을 직접 비교하고 예약할 수 있습니다.
+                고객은 공개 검증을 마친 정보를 비교하고 최신 좌석·요금 확인을 요청할 수 있습니다.
               </p>
             </div>
           </div>
@@ -110,7 +102,7 @@ export default function AboutPage() {
         <section className="border-t border-slate-100 bg-slate-50/50">
           <div className="mx-auto max-w-3xl px-4 py-16 md:py-20">
             <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">
-              여행업 등록 정보
+              공개 운영 정보
             </h2>
             <dl className="mt-8 space-y-4 text-sm">
               <div className="flex flex-col sm:flex-row sm:gap-4">
@@ -127,8 +119,8 @@ export default function AboutPage() {
               </div>
             </dl>
             <p className="mt-6 text-xs leading-relaxed text-slate-400">
-              여소남은 통신판매중개자로서 상품의 당사자가 아니며, 상품 정보 및 거래에 대해 책임을 지지 않습니다.
-              사업자·여행업 등록 및 보험 정보는 증빙 확인 후 이 페이지에 공개합니다. 확인 전 임시 번호나 등록 완료 표현은 사용하지 않습니다.
+              법인·사업자·여행업 등록 및 보험 정보는 증빙과 공개 문구의 확인이 끝난 항목만 표시합니다.
+              확인 전에는 임시 번호나 등록 완료 표현을 사용하지 않습니다.
             </p>
           </div>
         </section>
@@ -141,44 +133,21 @@ export default function AboutPage() {
           <ul className="mt-8 space-y-4 text-sm text-slate-600 leading-relaxed">
             <li className="flex items-start gap-3">
               <span className="mt-0.5 text-lg shrink-0" aria-hidden="true">🌏</span>
-              <span>국내외 다양한 랜드사와의 협업을 통해 현지 정보를 기반으로 한 여행 콘텐츠 제작</span>
+              <span>상품 원문과 근거를 보존하고 고객 공개용 정보와 내부 운영 정보를 분리</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-0.5 text-lg shrink-0" aria-hidden="true">✍️</span>
-              <span>여행 상품 운영팀(OP)이 상품 일정·가격·포함 항목을 직접 확인하고 블로그 콘텐츠로 제공</span>
+              <span>일정·가격·포함 항목의 검증 상태를 상품별로 관리</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-0.5 text-lg shrink-0" aria-hidden="true">📊</span>
-              <span>실시간 여행 트렌드 분석과 검색 데이터 기반의 SEO 최적화 콘텐츠 운영</span>
+              <span>최근성과 품질 검수를 통과한 여행가이드를 공개</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="mt-0.5 text-lg shrink-0" aria-hidden="true">🤖</span>
               <span>AI 기술을 활용한 여행 정보 큐레이션 및 맞춤형 여행 플래닝 서비스 제공</span>
             </li>
           </ul>
-        </section>
-
-        {/* 연혁 */}
-        <section className="border-t border-slate-100 bg-slate-50/50">
-          <div className="mx-auto max-w-3xl px-4 py-16 md:py-20">
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">연혁</h2>
-            <dl className="mt-8 space-y-6">
-              {[
-                { year: '2024', items: ['여소남 플랫폼 론칭', 'B2B2C 여행 SaaS 서비스 시작'] },
-                { year: '2025', items: ['AI 기반 블로그 콘텐츠 자동화 시스템 구축', '멀티 테넌트 예약 플랫폼 고도화', '제휴·정산 시스템 안정화'] },
-                { year: '2026', items: ['검색 기반 SEO 최적화 콘텐츠 확장', '자유여행 AI 플래너 서비스 출시', '지속적인 여행 정보 품질 개선'] },
-              ].map((period) => (
-                <div key={period.year} className="flex gap-6">
-                  <dt className="w-16 shrink-0 text-lg font-black text-brand">{period.year}</dt>
-                  <dd className="space-y-2">
-                    {period.items.map((item) => (
-                      <p key={item} className="text-sm text-slate-600">{item}</p>
-                    ))}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
         </section>
 
         {/* 정책 링크 */}
@@ -191,10 +160,10 @@ export default function AboutPage() {
               개인정보처리방침
             </Link>
             <Link
-              href="/disclaimer"
+              href="/terms"
               className="text-sm font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 transition"
             >
-              면책공고
+              이용약관
             </Link>
           </div>
         </section>

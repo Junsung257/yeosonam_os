@@ -41,6 +41,9 @@ with source as (
     fact.lp_projection,
     fact.snapshot_json,
     snapshot.created_at as last_verified_at,
+    snapshot.package_revision,
+    snapshot.route_text_dump,
+    snapshot.renderer_build_id,
     coalesce(fact.snapshot_json->'package', '{}'::jsonb) as package_json
   from public.product_registration_customer_fact_view fact
   join public.public_package_snapshots snapshot
@@ -71,14 +74,10 @@ with source as (
         then (source.package_json->>'nights')::integer
       else null
     end as nights,
-    case
-      when jsonb_typeof(source.card_projection->'price') = 'number'
-        then (source.card_projection->>'price')::numeric
-      when jsonb_typeof(source.package_json->'price') = 'number'
-        then (source.package_json->>'price')::numeric
-      else null
-    end as price,
-    coalesce(source.package_json->'price_dates', '[]'::jsonb) as raw_price_dates
+    coalesce(
+      nullif(source.card_projection->>'hero_image_url', ''),
+      nullif(source.package_json->>'hero_image_url', '')
+    ) as hero_image
   from source
 )
 select
@@ -100,22 +99,21 @@ select
   nullif(normalized.package_json->>'departure_airport', '') as departure_airport,
   normalized.duration,
   normalized.nights,
-  normalized.price,
-  coalesce(
-    nullif(normalized.card_projection->>'price_display', ''),
-    nullif(normalized.snapshot_json->>'price_display', '')
-  ) as price_display,
-  coalesce(
-    nullif(normalized.card_projection->>'hero_image_url', ''),
-    nullif(normalized.package_json->>'hero_image_url', '')
-  ) as hero_image,
+  future_departures.minimum_price as price,
+  case
+    when future_departures.minimum_price is not null
+      then to_char(future_departures.minimum_price, 'FM999,999,999,999') || '원부터'
+    else null
+  end as price_display,
+  normalized.hero_image,
   coalesce(normalized.card_projection->'badges', '[]'::jsonb) as badges,
-  coalesce(future_dates.available_dates, '[]'::jsonb) as available_dates,
+  coalesce(future_departures.available_dates, '[]'::jsonb) as available_dates,
   case
     when normalized.package_json->>'consultation_only' = 'true'
       or normalized.package_json->>'booking_mode' = 'consultation_only'
       then 'consultation_only'
     when normalized.package_json->>'price_confirmation_required' = 'true'
+      or coalesce(future_departures.request_only_count, 0) > 0
       then 'price_check'
     else 'inquiry'
   end as booking_mode,
@@ -124,26 +122,55 @@ select
   normalized.snapshot_hash,
   normalized.revision_id,
   normalized.pointer_version,
-  normalized.snapshot_json as public_detail
+  normalized.snapshot_json || jsonb_build_object(
+    'package_revision', normalized.package_revision,
+    'card_projection', normalized.card_projection,
+    'lp_projection', normalized.lp_projection,
+    'route_text_dump', normalized.route_text_dump,
+    'renderer_build_id', normalized.renderer_build_id
+  ) as public_detail
 from normalized
 cross join lateral (
-  select jsonb_agg(item order by item->>'date') as available_dates
-  from jsonb_array_elements(
-    case
-      when jsonb_typeof(normalized.raw_price_dates) = 'array'
-        then normalized.raw_price_dates
-      else '[]'::jsonb
-    end
-  ) item
-  where internal_product_registration.try_iso_date(item->>'date')
-    >= (now() at time zone 'Asia/Seoul')::date
-) future_dates
+  select
+    jsonb_agg(
+      jsonb_build_object(
+        'date', departure.departure_date::text,
+        'price', case
+          when departure.pricing_state = 'PRICED' then departure.adult_selling_price
+          else null
+        end,
+        'confirmed', false,
+        'bookingMode', case
+          when departure.sale_state = 'request' then 'price_check'
+          else 'inquiry'
+        end
+      ) order by departure.departure_date, departure.variant_key
+    ) as available_dates,
+    min(departure.adult_selling_price)
+      filter (where departure.pricing_state = 'PRICED') as minimum_price,
+    count(*) filter (where departure.pricing_state = 'REQUEST_ONLY'
+      or departure.sale_state = 'request') as request_only_count
+  from public.product_registration_customer_departure_fact_view departure
+  where departure.product_id = normalized.catalog_product_id
+    and departure.package_id = normalized.package_id
+    and departure.revision_id = normalized.revision_id
+    and departure.snapshot_id = normalized.snapshot_id
+    and departure.departure_date >= (now() at time zone 'Asia/Seoul')::date
+    and departure.sale_state in ('available', 'request')
+    and departure.booking_state in ('AVAILABLE', 'MANUAL_CONFIRMATION_REQUIRED')
+    and departure.inventory_state in ('AVAILABLE', 'ON_REQUEST')
+    and (
+      (
+        departure.pricing_state = 'PRICED'
+        and departure.adult_selling_price is not null
+        and departure.adult_selling_price > 0
+        and departure.currency = 'KRW'
+      )
+      or departure.pricing_state = 'REQUEST_ONLY'
+    )
+) future_departures
 where normalized.title is not null
-  and (
-    jsonb_array_length(coalesce(future_dates.available_dates, '[]'::jsonb)) > 0
-    or normalized.package_json->>'booking_mode' = 'consultation_only'
-    or normalized.package_json->>'consultation_only' = 'true'
-  )
+  and jsonb_array_length(coalesce(future_departures.available_dates, '[]'::jsonb)) > 0
   and (
     nullif(normalized.package_json->>'ticketing_deadline', '') is null
     or (
@@ -153,10 +180,8 @@ where normalized.title is not null
   )
   and coalesce(nullif(normalized.package_json->>'status', ''), 'active') = 'active'
   and normalized.package_json->>'marketing_eligible' = 'true'
-  and coalesce(
-    nullif(normalized.card_projection->>'hero_image_url', ''),
-    nullif(normalized.package_json->>'hero_image_url', '')
-  ) is not null
+  and normalized.hero_image is not null
+  and normalized.hero_image ~* '^(https?:)?//|^/'
   and not exists (
     select 1
     from public.product_registration_v5_kill_switches kill_switch

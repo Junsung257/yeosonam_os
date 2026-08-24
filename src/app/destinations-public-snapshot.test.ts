@@ -7,37 +7,35 @@ function source(path: string): string {
 }
 
 describe('destination public package data boundary', () => {
-  it('builds the destinations index from publication pointers only', () => {
+  it('builds the destinations index from the exact public catalog only', () => {
     const text = source('src/app/destinations/page.tsx');
-    const mergeIndex = text.indexOf('const publicStats = await listCurrentPublicPackageCardSnapshots');
+    const mergeIndex = text.indexOf('const publicStats = await listPublicCatalog');
     const statsIndex = text.indexOf('const statsByDestination');
 
-    expect(text).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(text).toContain('listPublicCatalog');
     expect(text).not.toContain("from('travel_packages')");
     expect(mergeIndex).toBeGreaterThan(0);
     expect(statsIndex).toBeGreaterThan(mergeIndex);
   });
 
-  it('uses public snapshots for city route inventory and package-derived destination data', () => {
+  it('uses the exact public catalog for city route inventory', () => {
     const text = source('src/app/destinations/[city]/page.tsx');
-    const helperIndex = text.indexOf('async function listDestinationPublicSnapshotRows');
-    const inventoryIndex = text.indexOf('async function destinationHasPublicInventory');
-    const packageMatchIndex = text.indexOf('const packageMatch =');
-    const departureIndex = text.indexOf('const departureCities =');
+    const helperIndex = text.indexOf('async function loadDestinationProducts');
+    const catalogIndex = text.indexOf('listPublicCatalog(', helperIndex);
+    const renderIndex = text.indexOf('products.map((item)');
 
-    expect(text).toContain('listDestinationPublicSnapshotRows(');
+    expect(text).toContain('listPublicCatalog(');
     expect(text).not.toContain("from('travel_packages')");
-    expect(text.slice(inventoryIndex, packageMatchIndex)).toContain('listDestinationPublicSnapshotRows');
-    expect(text.slice(packageMatchIndex - 260, packageMatchIndex)).toContain('listDestinationPublicSnapshotRows');
-    expect(text.slice(departureIndex, departureIndex + 450)).toContain('alivePackageRows');
     expect(helperIndex).toBeGreaterThan(0);
+    expect(catalogIndex).toBeGreaterThan(helperIndex);
+    expect(renderIndex).toBeGreaterThan(catalogIndex);
   });
 
-  it('keeps the dynamic city route request-rendered when static params are empty', () => {
+  it('keeps the city route cacheable without mixing force-dynamic and revalidate', () => {
     const text = source('src/app/destinations/[city]/page.tsx');
 
-    expect(text).toContain("export const dynamic = 'force-dynamic';");
-    expect(text).toContain('export const dynamicParams = true;');
-    expect(text).toContain('export async function generateStaticParams');
+    expect(text).toContain('export const revalidate = 300;');
+    expect(text).not.toContain("export const dynamic = 'force-dynamic';");
+    expect(text).not.toContain('export async function generateStaticParams');
   });
 });

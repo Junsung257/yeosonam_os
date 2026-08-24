@@ -98,7 +98,7 @@ describe('registration kernel authority convergence', () => {
 
     expect(publicPage).not.toContain(".from('product_prices')");
     expect(publicPage).not.toContain('travel_packages!inner');
-    expect(publicPage).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(publicPage).toContain('listPublicCatalog');
   });
 
   it('persists explicit terminal outcomes for discard, archive, quarantine, and review', () => {

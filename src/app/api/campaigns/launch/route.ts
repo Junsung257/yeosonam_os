@@ -142,7 +142,7 @@ async function launchMeta(creative: any, dailyBudget: number, sb: any): Promise<
   });
 
   // 3. 크리에이티브
-  const ctaUrl = `https://yeosonam.co.kr/packages/${pkg?.id}?utm_source=meta&utm_medium=paid_social&utm_campaign=${encodeURIComponent(dest)}&utm_content=${creative.creative_type}_${creative.hook_type}_v${creative.variant_index}`;
+  const ctaUrl = `https://yeosonam.com/packages/${pkg?.id}?utm_source=meta&utm_medium=paid_social&utm_campaign=${encodeURIComponent(dest)}&utm_content=${creative.creative_type}_${creative.hook_type}_v${creative.variant_index}`;
 
   const adCreative = await uploadCreativeToMeta({
     name: `${creative.creative_type}_${creative.hook_type}`,

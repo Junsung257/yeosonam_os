@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation';
 
 import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard from '@/components/customer/PackageCard';
+import { loadPublicBlogCatalogPage } from '@/lib/blog-public-catalog';
+import { selectCurrentCustomerGuides } from '@/lib/customer-guide-selection';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -73,7 +75,11 @@ export default async function DestinationPage({ params }: { params: Promise<{ ci
   const { city: rawCity } = await params;
   const city = cityParam(rawCity);
   if (!city) notFound();
-  const products = await loadDestinationProducts(city);
+  const [products, guideCatalog] = await Promise.all([
+    loadDestinationProducts(city),
+    loadPublicBlogCatalogPage({ page: 1, pageSize: 12, destination: city }),
+  ]);
+  const guides = selectCurrentCustomerGuides(guideCatalog.posts, 6);
   const heroImage = products.find((item) => item.heroImage && isSafeImageSrc(item.heroImage))?.heroImage ?? null;
 
   return (
@@ -128,17 +134,26 @@ export default async function DestinationPage({ params }: { params: Promise<{ ci
           <div className="mx-auto max-w-[1200px] px-4 md:px-6">
             <p className="text-sm font-bold text-brand">여행가이드</p>
             <h2 id="destination-guides" className="mt-1 text-2xl font-black text-text-primary md:text-3xl">{city} 예약 전에 확인할 것</h2>
-            <div className="mt-7 grid gap-3 md:grid-cols-3">
-              {['여행 시기와 날씨', '포함·불포함 비용', '부모님·아이 동반 동선'].map((topic) => (
-                <Link
-                  key={topic}
-                  href={`/blog?q=${encodeURIComponent(`${city} ${topic}`)}`}
-                  className="flex min-h-20 items-center justify-between rounded-[16px] border border-admin-border bg-white px-5 font-bold text-text-primary"
-                >
-                  {topic}<span className="text-brand" aria-hidden>→</span>
+            {guides.length > 0 ? (
+              <div className="mt-7 grid gap-3 md:grid-cols-3">
+                {guides.map((guide) => (
+                  <Link
+                    key={guide.id}
+                    href={`/blog/${guide.slug}`}
+                    className="flex min-h-20 items-center justify-between rounded-[16px] border border-admin-border bg-white px-5 py-4 font-bold text-text-primary"
+                  >
+                    <span>{guide.seo_title}</span><span className="text-brand" aria-hidden>→</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-7 rounded-[16px] border border-admin-border bg-white px-5 py-7">
+                <p className="text-sm text-text-secondary">검수를 마친 최신 {city} 가이드를 준비 중입니다.</p>
+                <Link href={`/blog?q=${encodeURIComponent(city)}`} className="mt-3 inline-flex min-h-11 items-center text-sm font-bold text-brand">
+                  전체 여행가이드에서 찾기 →
                 </Link>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </section>
       </main>

@@ -11,7 +11,7 @@ describe('public v1 packages API publication gate', () => {
     const source = routeSource();
 
     expect(source).toContain('listCurrentPublicPackageCardSnapshots');
-    expect(source).toContain("channel: 'b2b'");
+    expect(source).toContain("channel: 'customer'");
     expect(source).not.toContain(".from('travel_packages')");
     expect(source).toContain('.map(toPublicV1Package)');
   });

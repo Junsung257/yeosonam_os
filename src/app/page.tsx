@@ -3,6 +3,8 @@ import Link from 'next/link';
 
 import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard from '@/components/customer/PackageCard';
+import { loadPublicBlogCatalogPage } from '@/lib/blog-public-catalog';
+import { selectCurrentCustomerGuides } from '@/lib/customer-guide-selection';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
@@ -18,13 +20,6 @@ const BUSINESS_AREAS = [
   { icon: '🚢', title: '크루즈', description: '항차·객실·현재 요금을 확인', href: '/cruise' },
   { icon: '⛳', title: '해외골프', description: '인원과 지역에 맞춘 견적', href: '/packages?category=golf' },
   { icon: '👥', title: '단독·단체', description: '우리 일행만을 위한 일정', href: '/private-tour' },
-] as const;
-
-const GUIDE_LINKS = [
-  { title: '처음 크루즈를 예약할 때 확인할 것', href: '/blog?q=크루즈+예약' },
-  { title: '부산 출발 패키지 가격을 비교하는 방법', href: '/blog?q=부산+출발+패키지' },
-  { title: '해외골프 예약 전 추가 비용 체크', href: '/blog?q=해외골프+추가비용' },
-  { title: '부모님 패키지를 고르는 기준', href: '/blog?q=부모님+패키지' },
 ] as const;
 
 function lowestPrice(item: PublicCatalogItem): number | undefined {
@@ -56,12 +51,16 @@ function cardPackage(item: PublicCatalogItem) {
 }
 
 export default async function HomePage() {
-  const catalog = isSupabaseConfigured
-    ? await listPublicCatalog(supabaseAdmin, { limit: 6 }).catch((error) => {
+  const [catalog, guideCatalog] = await Promise.all([
+    isSupabaseConfigured
+      ? listPublicCatalog(supabaseAdmin, { limit: 6 }).catch((error) => {
         console.error('[home] public catalog unavailable', error);
         return [];
       })
-    : [];
+      : Promise.resolve([]),
+    loadPublicBlogCatalogPage({ page: 1, pageSize: 24 }),
+  ]);
+  const guides = selectCurrentCustomerGuides(guideCatalog.posts, 4);
   const heroImage = catalog.find((item) => item.heroImage && isSafeImageSrc(item.heroImage))?.heroImage ?? null;
 
   return (
@@ -203,15 +202,26 @@ export default async function HomePage() {
               </div>
               <Link href="/blog" className="text-sm font-bold text-brand">전체 가이드 →</Link>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {GUIDE_LINKS.map((guide, index) => (
-                <Link key={guide.title} href={guide.href} className="flex min-h-20 items-center gap-4 rounded-[16px] border border-admin-border bg-white px-5 py-4 shadow-sm">
-                  <span className="text-sm font-black text-brand">0{index + 1}</span>
-                  <span className="font-bold text-text-primary">{guide.title}</span>
-                  <span className="ml-auto text-text-secondary" aria-hidden>→</span>
-                </Link>
-              ))}
-            </div>
+            {guides.length > 0 ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {guides.map((guide, index) => (
+                  <Link key={guide.id} href={`/blog/${guide.slug}`} className="flex min-h-20 items-center gap-4 rounded-[16px] border border-admin-border bg-white px-5 py-4 shadow-sm">
+                    <span className="text-sm font-black text-brand">0{index + 1}</span>
+                    <span>
+                      <span className="block font-bold text-text-primary">{guide.seo_title}</span>
+                      <span className="mt-1 block text-xs font-medium text-text-secondary">
+                        {new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(guide.published_at))}
+                      </span>
+                    </span>
+                    <span className="ml-auto text-text-secondary" aria-hidden>→</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[16px] border border-admin-border bg-white px-5 py-8 text-sm text-text-secondary">
+                최신성·품질 검수를 마친 여행가이드를 준비 중입니다.
+              </div>
+            )}
           </div>
         </section>
 

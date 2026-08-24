@@ -178,7 +178,7 @@ export default function PrivateTourPage() {
               ✈️ 김해공항 출발 전용
             </span>
             <span className="inline-block bg-white/15 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 rounded-full">
-              👥 2명부터 출발 가능
+              👥 2명부터 상담 가능
             </span>
           </div>
 
@@ -190,7 +190,7 @@ export default function PrivateTourPage() {
           <p className="text-lg md:text-xl text-white/80 leading-relaxed mb-8">
             가족여행 · 계모임 · 동창회 · 기업 워크샵
             <br />
-            2명부터 가능한 완전한 프라이빗 여행
+            2명부터 상담하는 프라이빗 여행
           </p>
 
           {/* 운영에서 확인 가능한 범위만 표시 */}

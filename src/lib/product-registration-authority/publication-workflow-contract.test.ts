@@ -14,6 +14,14 @@ const requestRoute = source('src/app/api/admin/product-registration/products/[ca
 const outboxWorker = source('src/lib/product-registration-v4/outbox-worker.ts');
 
 describe('product registration publication workflow contract', () => {
+  it('recovers stranded publication requests through the existing convergence cron slot', () => {
+    const vercel = source('vercel.json');
+    const convergence = source('src/app/api/cron/product-registration-v5-convergence/route.ts');
+
+    expect(vercel).not.toContain('"path": "/api/cron/product-registration-publication-requests"');
+    expect(convergence).toContain('dispatchProductRegistrationPublicationRequests');
+  });
+
   it('stops registration at a candidate snapshot and requires a separate publication request', () => {
     const orchestration = registrationWorkflow.slice(registrationWorkflow.indexOf('export async function productRegistrationV6Workflow'));
     const snapshotIndex = orchestration.indexOf('buildSnapshotsStep');

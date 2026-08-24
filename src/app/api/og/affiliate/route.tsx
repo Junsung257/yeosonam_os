@@ -322,7 +322,7 @@ export async function GET(request: NextRequest) {
             👉 자세히 보기 / 상담하기
           </div>
           <div style={{ fontSize: 16, opacity: 0.6, display: 'flex' }}>
-            yeosonam.co.kr/r/{code}
+            yeosonam.com/r/{code}
           </div>
         </div>
       </div>

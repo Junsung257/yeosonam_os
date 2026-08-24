@@ -53,10 +53,10 @@ describe('blog public package data boundary', () => {
 
   it('filters destination RSS posts with public snapshot destinations only', () => {
     const text = source('src/app/destinations/[city]/rss.xml/route.ts');
-    const snapshotIndex = text.indexOf('const publicPackages = (await listCurrentPublicPackageCardSnapshots');
+    const snapshotIndex = text.indexOf('const publicPackages = (await listPublicCatalog');
     const filterIndex = text.indexOf('publicPackageDestinationById.get');
 
-    expect(text).toContain('listCurrentPublicPackageCardSnapshots');
+    expect(text).toContain('listPublicCatalog');
     expect(text).not.toContain(".from('travel_packages')");
     expect(text).not.toContain('travel_packages(destination)');
     expect(text).not.toContain('p.travel_packages?.destination');

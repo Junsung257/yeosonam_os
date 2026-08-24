@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withCronGuard } from '@/lib/cron-auth';
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
+import { dispatchProductRegistrationPublicationRequests } from '@/lib/product-registration-authority/publication-dispatch';
 import { observeProductRegistrationV5ConvergenceBatch } from '@/lib/product-registration-v4/convergence-observer';
 
 export const runtime = 'nodejs';
@@ -32,11 +33,25 @@ async function handler(request: NextRequest): Promise<NextResponse> {
       limit,
       snapshotHashes,
     });
+    const publicationDispatch = await dispatchProductRegistrationPublicationRequests({
+      supabase: supabaseAdmin,
+      limit: 10,
+      requestBaseUrl: baseUrl,
+      publicBaseUrl: baseUrl,
+    }).then(
+      (results) => ({ ok: true, results }),
+      (dispatchError) => ({
+        ok: false,
+        error: dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+        results: [],
+      }),
+    );
     return NextResponse.json(
       {
         success: true,
         baseUrl,
         observed,
+        publicationDispatch,
         count: observed.length,
         summary: {
           converged: observed.filter(row => row.status === 'converged').length,

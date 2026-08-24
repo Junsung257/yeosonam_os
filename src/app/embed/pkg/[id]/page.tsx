@@ -5,7 +5,7 @@
  *
  * 사용:
  *   <iframe
- *     src="https://yeosonam.co.kr/embed/pkg/abc123?ref=PARTNER"
+ *     src="https://yeosonam.com/embed/pkg/abc123?ref=PARTNER"
  *     width="100%" height="280" frameborder="0"
  *     allow="clipboard-write" loading="lazy">
  *   </iframe>

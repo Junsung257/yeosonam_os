@@ -34,6 +34,7 @@ describe('customer trust contract', () => {
     const nav = source('src/components/customer/GlobalNav.tsx');
     const tabs = source('src/components/customer/BottomTabBar.tsx');
     const home = source('src/app/page.tsx');
+    const about = source('src/app/about/page.tsx');
     for (const label of ['패키지', '크루즈', '해외골프', '단독·단체', '여행가이드']) {
       expect(nav).toContain(label);
     }
@@ -43,5 +44,21 @@ describe('customer trust contract', () => {
     expect(home).toContain('href="/terms"');
     expect(home).toContain('href="/privacy"');
     expect(home).not.toContain('/disclaimer');
+    expect(about).not.toContain('/disclaimer');
+    expect(about).toContain('href="/terms"');
+  });
+
+  it('uses the canonical .com domain in customer and generated marketing surfaces', () => {
+    const customerSources = [
+      'src/app/influencer/[code]/layout.tsx',
+      'src/app/api/campaigns/launch/route.ts',
+      'src/app/api/influencer/links/route.ts',
+      'src/app/api/influencer/content/route.ts',
+      'src/app/api/og/affiliate/route.tsx',
+      'src/components/admin/SlideCanvas.tsx',
+      'src/components/admin/CardNewsStudio.tsx',
+    ].map(source).join('\n');
+    expect(customerSources).not.toContain('yeosonam.co.kr');
+    expect(customerSources).toContain('yeosonam.com');
   });
 });
