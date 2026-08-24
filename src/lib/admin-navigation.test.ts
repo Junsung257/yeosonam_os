@@ -84,7 +84,8 @@ describe('admin navigation registry', () => {
     const payment = findItem('/admin/finance');
     const attractions = findItem('/admin/attractions/unmatched');
 
-    expect(payment.primaryAction).toBe('정산 검토');
+    expect(payment.primaryAction).toBe('동기화·출금 승인');
+    expect(payment.searchKeywords).toContain('Clobe 동기화');
     expect(payment.searchKeywords).toContain('미매칭 입금');
     expect(attractions.primaryAction).toBe('DB 연결');
     expect(attractions.searchKeywords).toContain('미매칭 관광지');

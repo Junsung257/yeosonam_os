@@ -21,6 +21,12 @@ CREATE INDEX IF NOT EXISTS idx_clobe_outflow_commands_transaction
 ALTER TABLE public.clobe_outflow_allocation_commands ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.clobe_outflow_allocation_commands FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.clobe_outflow_allocation_commands TO service_role;
+CREATE POLICY clobe_outflow_allocation_commands_service_role
+  ON public.clobe_outflow_allocation_commands
+  FOR ALL
+  TO service_role
+  USING (TRUE)
+  WITH CHECK (TRUE);
 
 CREATE OR REPLACE FUNCTION public.match_clobe_outflow_allocations(
   p_transaction_id UUID,
