@@ -6,6 +6,11 @@ Status: implementation-ready research packet; no application, database, or produ
 
 Research base: `origin/main` at `28fa9f5a19ad6e4bfcc5e22237b938ec234baf22`
 
+Integration decision: see `integration.md`. This catalog/trust spec is Track B
+inside one product-registration-to-public-catalog release program. Shared
+baseline, authority gates, and legacy recovery are executed once; Track A and
+Track B remain separate implementation/PR ownership units.
+
 ## 1. Executive decision
 
 The customer site does not need a visual rewrite. Preserve the mobile-first blue

@@ -1,5 +1,9 @@
 # Public Catalog and Trust Hardening Plan
 
+Program sequencing and the boundary with the concurrent product-registration
+plan are defined in `integration.md`. Execute the shared Track 0 and Gates 0-3
+before cutting customer consumers over in this Track B plan.
+
 Date: 2026-08-24
 
 Execution trigger: the user says `개발 진행해` after the concurrent sessions end

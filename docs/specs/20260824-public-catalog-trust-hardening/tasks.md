@@ -1,5 +1,9 @@
 # Public Catalog and Trust Hardening Tasks
 
+Before starting this checklist, complete the shared Track 0 and applicable
+Track A gates in `integration.md`. Do not duplicate release manifests, price
+ledgers, outbox workers, or legacy product repair inventories in this track.
+
 Date: 2026-08-24
 
 Current state: research complete; all implementation boxes intentionally open

@@ -1,5 +1,10 @@
 # Public Catalog and Trust Hardening Verification
 
+This verification is Track B evidence. The combined release cannot pass until
+the shared authority, price, publication-request, pointer-compensation, and
+golden-product gates in `integration.md` also pass against the same release
+manifest and final build.
+
 Date: 2026-08-24
 
 Status: pre-implementation contract; no future check is marked PASS yet
