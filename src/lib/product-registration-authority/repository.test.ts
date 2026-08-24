@@ -103,6 +103,8 @@ describe('product registration authority repository', () => {
         package_id: 'package-1',
         internal_code: 'KRN-ABC',
         projection_hash: HASH,
+        product_price_count: 1,
+        representative_price: 999000,
       },
       error: null,
     });
@@ -129,6 +131,8 @@ describe('product registration authority repository', () => {
       packageId: 'package-1',
       internalCode: 'KRN-ABC',
       projectionHash: HASH,
+      productPriceCount: 1,
+      representativePrice: 999000,
     });
     expect(rpc).toHaveBeenCalledWith('project_product_registration_compatibility_atomic', {
       p_payload: expect.objectContaining({

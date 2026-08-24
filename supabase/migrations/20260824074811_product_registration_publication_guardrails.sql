@@ -851,6 +851,209 @@ revoke all on function public.publish_product_registration_snapshot_bundle_atomi
 grant execute on function public.publish_product_registration_snapshot_bundle_atomic(jsonb)
   to service_role;
 
+-- V6.1 already owns immutable typed price facts in departure_instances. Keep
+-- product_prices as a compatibility projection, but replace it in the same
+-- transaction as products/travel_packages and require exact representative
+-- and date-level parity before the projection can commit.
+create or replace function public.project_product_registration_compatibility_atomic(p_payload jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, internal_product_registration, extensions, pg_temp
+as $$
+declare
+  v_result jsonb;
+  v_event_id uuid;
+  v_revision_id uuid := nullif(p_payload->>'revision_id', '')::uuid;
+  v_projection_hash text := p_payload->>'projection_hash';
+  v_projection jsonb := coalesce(p_payload->'projection', '{}'::jsonb);
+  v_internal_code text;
+  v_package_id uuid;
+  v_projected_price_count integer := 0;
+  v_representative_price numeric;
+  v_package_price numeric;
+begin
+  if v_revision_id is null or v_projection_hash !~ '^[0-9a-f]{64}$'
+    or jsonb_typeof(v_projection) <> 'object' then
+    raise exception 'REGISTRATION_PROJECTION_LINEAGE_REQUIRED';
+  end if;
+
+  perform set_config('app.product_registration_writer', 'compatibility-projection', true);
+  perform set_config('app.product_registration_projection_revision_id', v_revision_id::text, true);
+  perform set_config('app.product_registration_projection_snapshot_id', '', true);
+  perform set_config('app.product_registration_projection_hash', v_projection_hash, true);
+  perform set_config('app.product_registration_projection_event_id', '', true);
+
+  v_result := internal_product_registration.project_compatibility_atomic(p_payload);
+  v_internal_code := nullif(v_result->>'internal_code', '');
+  v_package_id := nullif(v_result->>'package_id', '')::uuid;
+  if v_internal_code is null or v_package_id is null then
+    raise exception 'REGISTRATION_COMMERCIAL_PROJECTION_IDENTITY_MISSING';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('product_prices:' || v_internal_code, 0));
+
+  if exists (
+    select 1
+    from internal_product_registration.departure_instances departure
+    where departure.revision_id = v_revision_id
+      and departure.pricing_state = 'PRICED'
+      and departure.adult_selling_price is not null
+      and departure.adult_selling_price > 0
+    group by departure.departure_date, departure.variant_key
+    having count(distinct departure.adult_selling_price) > 1
+  ) then
+    raise exception 'PRICE_POLICY_CONFLICT';
+  end if;
+
+  if exists (
+    select 1
+    from internal_product_registration.departure_instances departure
+    where departure.revision_id = v_revision_id
+      and departure.pricing_state = 'PRICED'
+      and departure.adult_selling_price is not null
+      and departure.adult_selling_price > 0
+      and departure.currency <> 'KRW'
+  ) then
+    raise exception 'REGISTRATION_PRICE_CURRENCY_UNSUPPORTED';
+  end if;
+
+  delete from public.product_prices price_row
+  where price_row.product_id = v_internal_code;
+
+  insert into public.product_prices (
+    product_id,
+    target_date,
+    day_of_week,
+    net_price,
+    adult_selling_price,
+    child_price,
+    note,
+    variant_key,
+    currency,
+    price_kind,
+    source_extraction_id,
+    evidence_ref
+  )
+  select distinct on (departure.departure_date, departure.variant_key)
+    v_internal_code,
+    departure.departure_date,
+    null,
+    0,
+    departure.adult_selling_price,
+    departure.child_selling_price,
+    'V6.1 typed departure compatibility projection',
+    departure.variant_key,
+    departure.currency,
+    'adult',
+    null,
+    jsonb_build_object(
+      'authority', 'departure_instances',
+      'revisionId', v_revision_id,
+      'departureInstanceId', departure.id,
+      'sourceHash', departure.source_hash,
+      'revisionHash', departure.revision_hash,
+      'sourceRefIds', to_jsonb(departure.source_ref_ids),
+      'evidence', departure.evidence
+    )
+  from internal_product_registration.departure_instances departure
+  where departure.revision_id = v_revision_id
+    and departure.pricing_state = 'PRICED'
+    and departure.adult_selling_price is not null
+    and departure.adult_selling_price > 0
+    and departure.sale_state not in ('closed', 'sold_out', 'cancelled')
+    and departure.booking_state not in ('SALES_CLOSED', 'SOLD_OUT', 'CANCELLED')
+  order by departure.departure_date, departure.variant_key, departure.created_at;
+  get diagnostics v_projected_price_count = row_count;
+
+  select min(price_row.adult_selling_price)
+  into v_representative_price
+  from public.product_prices price_row
+  where price_row.product_id = v_internal_code
+    and price_row.target_date >= current_date
+    and price_row.adult_selling_price > 0;
+
+  select package.price into v_package_price
+  from public.travel_packages package
+  where package.id = v_package_id
+    and package.canonical_revision_id = v_revision_id
+  for share;
+  if not found then
+    raise exception 'REGISTRATION_COMMERCIAL_PROJECTION_PACKAGE_MISSING';
+  end if;
+
+  if v_package_price is not null and v_representative_price is null then
+    raise exception 'REGISTRATION_PRICE_PROJECTION_TYPED_ROWS_REQUIRED';
+  end if;
+  if v_package_price is distinct from v_representative_price then
+    raise exception 'REGISTRATION_REPRESENTATIVE_PRICE_PARITY_FAILED';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(coalesce(v_projection->'price_dates', '[]'::jsonb)) raw_price
+    left join lateral (
+      select min(price_row.adult_selling_price) as amount
+      from public.product_prices price_row
+      where price_row.product_id = v_internal_code
+        and price_row.target_date = case
+          when raw_price->>'date' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            then (raw_price->>'date')::date
+          else null
+        end
+    ) typed_price on true
+    where raw_price->>'date' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      or replace(coalesce(raw_price->>'price', ''), ',', '') !~ '^[0-9]+([.][0-9]+)?$'
+      or typed_price.amount is null
+      or typed_price.amount is distinct from case
+        when replace(coalesce(raw_price->>'price', ''), ',', '') ~ '^[0-9]+([.][0-9]+)?$'
+          then replace(raw_price->>'price', ',', '')::numeric
+        else null
+      end
+  ) then
+    raise exception 'REGISTRATION_PRICE_DATE_PARITY_FAILED';
+  end if;
+
+  select event.id into v_event_id
+  from internal_product_registration.registration_authority_events event
+  where event.operation_key = p_payload->>'operation_key'
+  order by event.created_at desc
+  limit 1;
+  if v_event_id is not null then
+    perform set_config('app.product_registration_projection_event_id', v_event_id::text, true);
+    update public.products
+    set projected_by_authority_event_id = v_event_id
+    where source_revision_id = v_revision_id;
+    update public.travel_packages
+    set projected_by_authority_event_id = v_event_id
+    where source_revision_id = v_revision_id;
+    update public.product_prices
+    set projected_by_authority_event_id = v_event_id
+    where source_revision_id = v_revision_id;
+
+    update internal_product_registration.registration_authority_events
+    set result = result || jsonb_build_object(
+      'product_price_count', v_projected_price_count,
+      'representative_price', v_representative_price,
+      'projection_hash', v_projection_hash
+    )
+    where id = v_event_id;
+  end if;
+
+  return v_result || jsonb_build_object(
+    'projection_hash', v_projection_hash,
+    'authority_event_id', v_event_id,
+    'product_price_count', v_projected_price_count,
+    'representative_price', v_representative_price
+  );
+end;
+$$;
+
+revoke all on function public.project_product_registration_compatibility_atomic(jsonb)
+  from public, anon, authenticated;
+grant execute on function public.project_product_registration_compatibility_atomic(jsonb)
+  to service_role;
+
 create or replace function internal_product_registration.mark_convergence_failed(p_payload jsonb)
 returns jsonb
 language plpgsql

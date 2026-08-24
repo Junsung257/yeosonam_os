@@ -36,6 +36,16 @@ describe('publication guardrails migration', () => {
     expect(sql).toContain("'replayed', v_updated = 0 and v_already_failed > 0");
   });
 
+  it('projects typed departure prices atomically with representative and date parity', () => {
+    expect(sql).toContain("'authority', 'departure_instances'");
+    expect(sql).toContain('delete from public.product_prices');
+    expect(sql).toContain('insert into public.product_prices');
+    expect(sql).toContain('PRICE_POLICY_CONFLICT');
+    expect(sql).toContain('REGISTRATION_REPRESENTATIVE_PRICE_PARITY_FAILED');
+    expect(sql).toContain('REGISTRATION_PRICE_DATE_PARITY_FAILED');
+    expect(sql).toContain("'product_price_count', v_projected_price_count");
+  });
+
   it('keeps admin truth private and uses invoker rights', () => {
     expect(sql).toContain('admin_package_publication_truth_v');
     expect(sql).toContain('with (security_invoker = true)');

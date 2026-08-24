@@ -223,7 +223,13 @@ export async function projectCompatibilityFromRevisionAtomic(input: {
   supplierCode: string;
   landOperator?: string | null;
   commissionRate?: number | null;
-}): Promise<{ packageId: string; internalCode: string; projectionHash: string }> {
+}): Promise<{
+  packageId: string;
+  internalCode: string;
+  projectionHash: string;
+  productPriceCount: number;
+  representativePrice: number | null;
+}> {
   const projectionHash = createHash('sha256').update(JSON.stringify(input.projection)).digest('hex');
   const { data, error } = await input.supabase.rpc('project_product_registration_compatibility_atomic', {
     p_payload: {
@@ -246,6 +252,10 @@ export async function projectCompatibilityFromRevisionAtomic(input: {
     packageId: requiredString(result.package_id, 'package_id'),
     internalCode: requiredString(result.internal_code, 'internal_code'),
     projectionHash: requiredString(result.projection_hash, 'projection_hash'),
+    productPriceCount: Number(result.product_price_count ?? 0),
+    representativePrice: result.representative_price == null
+      ? null
+      : Number(result.representative_price),
   };
 }
 

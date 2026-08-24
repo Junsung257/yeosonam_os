@@ -490,6 +490,8 @@ async function projectCompatibilityStep(
     catalogProductId: string;
     packageId: string;
     projectionHash: string;
+    productPriceCount: number;
+    representativePrice: number | null;
     operationalIdentity: JsonObject;
   }> = [];
 
@@ -544,6 +546,8 @@ async function projectCompatibilityStep(
       catalogProductId,
       packageId: projected.packageId,
       projectionHash: projected.projectionHash,
+      productPriceCount: projected.productPriceCount,
+      representativePrice: projected.representativePrice,
       operationalIdentity: {
         internal_code: projected.internalCode,
         land_operator: landOperator,
