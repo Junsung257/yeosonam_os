@@ -1,15 +1,19 @@
 # Product Registration and Public Catalog Local Verification
 
-Date: 2026-08-24  
-Branch: `codex/product-publication-catalog-integration-20260824`  
-Worktree: `C:\dev\yeosonam-os-product-public-integration`
+Date: 2026-08-24
+Branch: `codex/product-publication-catalog-pr-20260824`
+Worktree: `C:\dev\yeosonam-os-product-public-pr`
 
 ## Decision
 
-Gates 0-4 are implemented and verified locally. The branch is ready for a
-fresh-main reconciliation and protected preview, but it is not production
-ready. No production database write, pointer mutation, deployment, indexing
-request, or external communication occurred.
+Gates 0-4 are implemented and verified on top of protected `main` commit
+`8931296529d9ecdb5a9bf2b8864982b3cdef1122`. Settlement, Vercel build-stability,
+and production admin-login fixes from current `main` are preserved. The large
+unfinished Blog V4 stack remains separate; only its isolated Product JSON-LD
+audit compatibility fix was carried over. The branch is ready for a protected
+PR and preview, but it is not production ready. No production database write,
+pointer mutation, production deployment, indexing request, or external
+communication occurred during local verification.
 
 ## Implemented scope
 
@@ -39,11 +43,13 @@ request, or external communication occurred.
 | Gate | Result |
 |---|---|
 | Focused catalog/publication/trust tests | PASS |
-| Full Vitest | PASS — 855 files; 6,435 passed; 7 skipped |
-| TypeScript | PASS |
+| Full Vitest | PASS — 860 files; 6,461 passed; 7 skipped |
+| TypeScript | PASS — 8 GB Node heap, exit 0 |
 | ESLint | PASS |
 | Next production build | PASS — Next.js 15.5.21; 396 static pages |
-| Migration-prefix audit | PASS — 548 files; 16 pre-existing collisions; 0 new |
+| Migration-prefix audit | PASS — 553 files; 16 pre-existing collisions; 0 new |
+| Structured-data audit | PASS — 5 Product nodes include descriptions |
+| Registration authority | PASS — kernel-only; authorized 1, legacy 0, unapproved 0 |
 | Runtime environment docs/code audits | PASS |
 | Vercel function-count audit | PASS — 26/50 |
 | Sensitive API guard audit | PASS |
@@ -76,36 +82,30 @@ are not committed because they are machine-local derivative artifacts.
    was removed; production was untouched. New migration static/security
    contracts pass, but staging migration apply and query-plan evidence remain
    mandatory.
-2. The repository structured-data audit fails in the untouched blog-owned file
-   `src/lib/blog-jsonld.ts` because a Product description can be absent. The
-   concurrent blog session owns that file, so this branch records the release
-   blocker instead of overwriting that work.
-3. Blog-owned product attachment paths (`/api/blog`, blog detail/destination,
+2. Blog-owned product attachment paths (`/api/blog`, blog detail/destination,
    and angle matching) still use the exact published-snapshot helpers rather
    than `public_catalog_view`. They remain safe from raw compatibility-table
-   fallback, but final cross-surface catalog parity must be reconciled after the
-   concurrent blog branch lands. This branch intentionally did not edit those
-   files.
-4. The Gate 0 production read showed V6.1 migrations were not applied and the
+   fallback, but final cross-surface catalog parity must be reconciled when the
+   separate Blog V4 stack is made mergeable. This branch intentionally did not
+   absorb that 117-commit release stack.
+3. The Gate 0 production read showed V6.1 migrations were not applied and the
    source-proof auto-publish environment flag was on. Both must be rechecked and
    made safe before any staging/production data operation.
-5. Legacy product repair, the two Da Nang golden-product replays, live set
+4. Legacy product repair, the two Da Nang golden-product replays, live set
    parity, query plans, cache/rollback drills, and 4-hour/24-hour observation
    require controlled environment writes or elapsed production observation.
-6. Company, registration, insurance, and legal claims require owner-supplied
+5. Company, registration, insurance, and legal claims require owner-supplied
    evidence and legal review. Missing facts are hidden rather than fabricated.
 
 ## Required next sequence
 
-1. Wait for concurrent settlement/blog work, then fetch and reconcile this
-   branch with the resulting protected `main` without discarding either work.
-2. Push a protected PR and deploy an unaliased preview for the exact reviewed
+1. Push a protected PR and deploy an unaliased preview for the exact reviewed
    SHA.
-3. Apply migrations to an approved staging environment; run RLS/grant tests,
+2. Apply migrations to an approved staging environment; run RLS/grant tests,
    query plans, catalog shadow parity, browser proof with real eligible cards,
    kill-switch/cache/rollback drills, and structured-data audit.
-4. Repair and replay the two golden products twice under one release manifest.
-5. Request explicit approval for production migrations, release, and any data
+3. Repair and replay the two golden products twice under one release manifest.
+4. Request explicit approval for production migrations, release, and any data
    repair. Only then prove production SHA parity and run 4-hour/24-hour
    observation gates.
 
@@ -119,5 +119,5 @@ LOCAL BROWSER MATRIX: 12/12 PASS
 PRODUCTION WRITES: 0
 DEPLOYMENTS: 0
 PRODUCTION READY: NO
-NEXT STATE: PROTECTED PR/PREVIEW AFTER CONCURRENT-SESSION RECONCILIATION
+NEXT STATE: PROTECTED PR/PREVIEW
 ```

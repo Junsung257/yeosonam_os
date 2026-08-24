@@ -2,13 +2,14 @@
 
 Last updated: 2026-08-24
 
-## 2026-08-24 local release candidate — not deployed
+## 2026-08-24 current-main release candidate — not deployed
 
-Branch `codex/product-publication-catalog-integration-20260824` contains the
-combined Gate 0-4 implementation through verification commit
-`4a836a8b8cef7dd3947af66b1734cd6fb4913493`. It is a clean, locally verified
-candidate only; it has not
-been pushed, merged, deployed, or applied to production Supabase.
+Branch `codex/product-publication-catalog-pr-20260824` contains the combined
+Gate 0-4 implementation reconciled onto protected `main`
+`8931296529d9ecdb5a9bf2b8864982b3cdef1122`. It preserves the current settlement,
+Vercel build-stability, and admin-login fixes. It is a clean, locally verified
+candidate only; it has not been merged, deployed, or applied to production
+Supabase.
 
 - Registration now ends at reviewed `ready_not_published`; one admin
   publication request starts the exact revision-bound proof/CAS workflow.
@@ -23,10 +24,11 @@ been pushed, merged, deployed, or applied to production Supabase.
   recommendations, Jarvis, campaign, influencer, and affiliate surfaces use
   this boundary. It does not replace the publication pointer as publication
   authority.
-- The final local gate passed 855 Vitest files (6,435 passed, 7 skipped),
+- The final local gate passed 860 Vitest files (6,461 passed, 7 skipped),
   TypeScript, ESLint, the Next.js production build (396 pages), and 12/12
-  mobile/desktop browser checks with zero production writes.
-- Production remains NO-GO until concurrent main/blog reconciliation, staging
+  mobile/desktop browser checks with zero production writes. Product JSON-LD
+  structured-data auditing also passes.
+- Production remains NO-GO until staging
   migration/RLS/query-plan evidence, blog product-reader parity, golden-product
   replay, cache/rollback drills, owner/legal evidence, explicit release
   approval, and production observation are complete.
