@@ -192,6 +192,8 @@
 >
 > **정산센터 V3 무결성·UX 보강 (2026-08-11):** `/admin/finance`는 Clobe 신한 4128 거래를 분할 원장으로 관리하며 사장님의 예약별 `정산 확인` 없이는 월 확정수익에 포함하지 않는다. Clobe no-op 동기화는 결정을 무효화하지 않고 실제 메모·금액·배분 변경만 재검토를 만든다. 열린 여행 보호금은 예약별 고객 보유금과 남은 원가 중 큰 금액으로 계산해 이중 차감하지 않으며, 동기화는 4시간마다 최대 1,000건을 페이지로 읽고 초과 시 누락 없이 차단한다. 모바일 예약 검토, 예외 예약 식별, 회사 메모 전체 표시, 판매가·원가·검토 세금 할 일도 통합했다. 상세 계약: `docs/settlement-current-ssot.md`.
 
+> **Clobe 현금정산 실사용 흐름 (2026-08-24, 로컬 코드·일부 운영 적용):** OpenLife 신한 4128 계좌는 수동 동기화를 유지하며, `YYMMDD_고객_랜드사[_목적]` 메모가 있는 여행 거래만 예약과 연결한다. 최종정산 전 메모 수정은 같은 provider 거래·예약에 반영하고, 최종정산 후 변경은 자동수정하지 않고 검토로 보낸다. 여러 입금자와 여러 입출금은 메모 key별 한 예약으로 합산하고, 수익은 상품가가 아닌 실제 입금−실제 출금이다. 600,500원 단일 출금 보정과 Clobe cash finalize command는 운영 적용됐고, 한 출금의 복수 예약 payout/refund 원자 배정 migration `20260824033911_clobe_mixed_outflow_allocations` 및 단순화 UI는 아직 미배포다. 상세: `docs/settlement-current-ssot.md`, `docs/audits/2026-08-24-admin-dashboard-deep-ux-review/README.md`.
+
 > **AI 운영실 V1 (2026-07-28, 로컬 코드):** 기존 `agent_tasks`, `agent_approvals`, `agent_incidents`, `agent_trace_spans`를 `correlation_id` 작업실로 묶는 읽기 전용 통합 스냅샷과 `/admin/agent-mas` 운영 화면을 추가했다. 24시간 미갱신 작업과 7일 이상 지난 무기한 승인을 정체·기한 경과로 분리하며, 버전된 durable resume 상태가 연결되기 전까지 승인 큐는 관찰 전용이다. 실행은 백엔드 durable workflow, 스레드는 증거 타임라인, 외부·금전·고객 변경은 승인 경계라는 하이브리드 모델이며 자동 멀티에이전트 실행은 아직 열지 않았다. 상세 SSOT: `docs/agent-office-current-ssot.md`.
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.

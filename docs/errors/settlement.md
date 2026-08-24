@@ -1,6 +1,6 @@
 # Settlement and Ledger Errors
 
-Last updated: 2026-08-05
+Last updated: 2026-08-24
 
 ## ERR-SETTLEMENT-REVIEW-QUEUE-FALSE-ZERO@2026-08-05
 
@@ -36,7 +36,47 @@ Last updated: 2026-08-05
 - **Root cause:** The shared accounting result named the cash difference `cashProfit`, allowing presentation code to treat a reconciled cash position as earned profit.
 - **Permanent rule:** Name this value `cashPosition` throughout code and label it `현금 순포지션`. Only a booking with `settlement_confirmed_at` may contribute to settlement-confirmed profit.
 - **Required proof:** A future booking with a deposit, a company-prefunded booking, and a settled booking all show cash position in transaction rows; only the settled booking contributes to the separate confirmed-profit KPI.
+## ERR-SETTLEMENT-CLOBE-MIXED-OUTFLOW-PARTIAL-UNDO@2026-08-24
 
+- **Symptom:** 한 Clobe 출금이 여러 예약·목적에 배정된 뒤 일반 API loop로 취소하면, 중간 RPC 실패 시 일부 예약만 원복되고 나머지 원장은 유지될 수 있었다. 일반 undo는 Clobe 임시 예약을 잘못 정리할 가능성도 있었다.
+- **Root cause:** 배정 생성은 원자적인 DB command가 필요했지만 반전은 allocation별 `update_booking_ledger` 호출과 후속 UPDATE를 여러 transaction으로 실행했다.
+- **Permanent rule:** Clobe 출금 재배정은 `reverse_clobe_outflow_allocations` 하나로 모든 active allocation을 보상 원장 반전하고 provider row를 `unmatched`로 되돌린다. 연결 예약 중 하나라도 최종정산 상태면 먼저 명시적으로 정산 해제해야 한다. Clobe undo에서 예약·원거래를 삭제하지 않는다.
+- **Required proof:** 복수 allocation 전체 반전, 중간 오류 시 전체 rollback, 동일 command 재시도 멱등, 최종정산 예약 차단, 재배정 후 합계 보존을 검증한다.
+
+## ERR-SETTLEMENT-CLOBE-MIXED-MEMO-REPRESENTATIVE-RENAME@2026-08-24
+
+- **Symptom:** 한 provider 출금에 두 예약이 연결된 상태에서 Clobe 메모가 바뀌면, `bank_transactions.booking_id`에 들어 있는 대표 예약 하나가 새 메모의 고객·날짜·랜드사로 자동 변경될 수 있었다.
+- **Root cause:** 메모 수정 로직이 active allocation 존재 여부만 확인하고 allocation 수, 서로 다른 booking 수, non-booking allocation을 구분하지 않았다.
+- **Permanent rule:** active allocation이 복수이거나 booking 없는 allocation이 포함된 provider row의 메모 변경은 항상 `memo_changed_review`로 보낸다. 단일 예약 거래만 최종정산 전 in-place memo correction을 허용한다.
+- **Required proof:** 914만원 혼합 출금의 메모 변경은 창원대 대표 예약을 자동 rename하지 않고 review event 한 건을 남겨야 한다.
+
+## ERR-SETTLEMENT-CLOBE-OUTFLOW-WHOLE-ROW-PAYOUT@2026-08-24
+
+- **Symptom:** Clobe 출금 승인 경로가 거래 전체를 한 예약의 `total_paid_out`으로만 반영해, 한 출금에 랜드사 지급과 고객 환불이 함께 있는 경우 분류할 수 없었다. `_환불` 메모도 목적 태그 증거가 bank metadata로 전달되지 않아 랜드사 지급처럼 보일 수 있었다.
+- **Root cause:** 기존 `match_bank_transaction_allocations`는 거래 단위 `is_refund`만 보고 allocation type을 정했고, Clobe 전용 버튼은 suggested booking 한 건에 전체 금액을 배정했다.
+- **Permanent rule:** Clobe provider row는 절대 쪼개거나 삭제하지 않는다. 대신 `match_clobe_outflow_allocations` command가 booking별 `payout`/`refund` 배정을 원자적으로 기록하며 합계는 원본 출금액과 정확히 일치해야 한다. `_환불` purpose tag는 metadata에 보존되어 단순 승인 기본값을 `refund`로 만든다. 수수료를 추측해 자동 분리하지 않는다.
+- **Required proof:** 600,500원 환불은 allocation 한 줄, 9,140,000원 복합 출금은 7,640,000원 payout + 1,500,000원 refund, cross-tenant·finalized booking·합계 불일치는 모두 거부되어야 한다.
+
+## ERR-SETTLEMENT-CLOBE-PURPOSE-SUFFIX-AS-OPERATOR@2026-08-24
+
+- **Symptom:** `260706_김도연_투어폰_환불`이 full settlement key로는 유효하지만 parser가 랜드사명을 `투어폰_환불`로 해석했다.
+- **Root cause:** canonical parser가 고객명 뒤의 모든 underscore token을 무조건 land operator identity로 합쳤다.
+- **Permanent rule:** 등록된 trailing purpose tag(`환불`, `취소`, `수수료`, `조정`)는 full normalized key와 raw memo에는 보존하되 land operator identity에서는 분리한다. 알 수 없는 suffix는 추측해 자르지 않는다. base key와 purpose-suffixed full key는 자동 병합하지 않는다.
+- **Required proof:** 김도연 환불 fixture는 operator `투어폰`, purpose tag `환불`, full key 보존을 증명하고, `글로벌_투어` 같은 underscore 랜드사명은 잘리지 않는 것을 함께 증명한다.
+
+## ERR-SETTLEMENT-CLOBE-STATIC-COMMAND-KEY@2026-08-24
+
+- **Symptom:** `확정 → 확정 해제 → 재확정`에서 두 번째 확정이 성공처럼 보이지만 DB는 해제 상태에 남을 수 있었다.
+- **Root cause:** 화면이 예약별 고정 idempotency key를 재사용했고, DB가 최초 확정 결과를 정상적인 재시도로 판단했다. Clobe 최종정산 함수도 일반 예약 `status=completed`를 함께 변경해 고객 여정 자동화와 섞일 수 있었다.
+- **Permanent rule:** 각 운영자 명령 시도에는 새 command UUID를 사용하고 동일 네트워크 재시도에만 재사용한다. Clobe 현금 정산은 settlement confirmation 필드만 변경하며 예약 lifecycle status를 변경하지 않는다.
+- **Required proof:** 같은 예약에서 `확정 → 해제 → 재확정`을 실행해 마지막 `settlement_confirmed_at`이 존재하고, booking status는 세 단계 내내 동일하며, 각 명령의 감사 증거가 남는지 확인한다.
+
+## ERR-SETTLEMENT-CLOBE-MEMO-ALIAS-MERGE@2026-08-24
+
+- **Symptom:** `261011_고객_랜드사`를 `261012_고객_랜드사`로 고친 뒤 옛 키와 새 키가 모두 active로 남아, 실제로 두 여행이 존재해도 한 예약으로 합쳐질 수 있었다.
+- **Root cause:** 메모 수정 경로가 옛 키를 안전한 alias로 간주했지만, 다른 활성 Clobe 거래가 옛 키를 계속 사용하는지 확인하지 않았다.
+- **Permanent rule:** 정산 전 메모 수정은 다른 활성 provider row가 옛 키를 사용하지 않을 때만 하나의 DB 명령으로 예약과 키를 함께 변경한다. 옛 키 사용 행이 하나라도 있으면 자동 변경하지 않고 검토로 보낸다.
+- **Required proof:** 단독 거래의 날짜 오타는 같은 예약에서 키가 교체되고, 옛 키 거래와 새 키 거래가 함께 존재하는 fixture는 둘 다 변경 없이 review가 되는지 확인한다.
 ## ERR-SETTLEMENT-BOOKING-DRAWER-API-ENVELOPE@2026-08-03
 
 - **Symptom:** A booking row showed correct bank totals, but opening its settlement drawer displayed an empty blueprint and no matched bank transactions.

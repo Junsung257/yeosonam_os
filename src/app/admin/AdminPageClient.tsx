@@ -406,13 +406,35 @@ function OwnerFinanceCommandCenter({
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-admin-base font-bold text-text-primary">정산 대시보드</h2>
-          <p className="mt-0.5 text-[11px] text-admin-muted-2">고객 수납, 랜드사 송금, 우리 수익을 한 화면에서 확인</p>
+          <h2 className="text-admin-base font-bold text-text-primary">오늘의 현금·예약 운영</h2>
+          <p className="mt-0.5 text-[11px] text-admin-muted-2">Clobe 실거래를 동기화하고 출금을 확인한 뒤 예약별 최종수익을 확정합니다.</p>
         </div>
         <Link href="/admin/payments" className="shrink-0 rounded-[8px] border border-admin-border-mid bg-white px-3 py-1.5 text-[11px] font-semibold text-admin-text-2 hover:bg-admin-bg">
-          입금/정산
+          Clobe 정산 시작
         </Link>
       </div>
+
+      <Link
+        href="/admin/payments"
+        className="grid overflow-hidden rounded-admin-md border border-slate-200 bg-slate-950 text-white shadow-admin-xs transition hover:bg-slate-900 md:grid-cols-[1fr_auto]"
+      >
+        <div className="px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+            <span className="text-emerald-300">1. 수동 동기화</span>
+            <span className="text-slate-600">→</span>
+            <span className="text-amber-300">2. 출금·환불 확인</span>
+            <span className="text-slate-600">→</span>
+            <span className="text-blue-300">3. 예약 최종정산</span>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">Clobe 메모가 원본이며, 최종정산 전 수정은 재동기화로 반영됩니다.</p>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-slate-800 px-4 py-3 md:border-l md:border-t-0">
+          <span className="text-[11px] text-slate-400">확인 대기</span>
+          <span className={`rounded-full px-2 py-1 text-[11px] font-black ${(unmatchedCount ?? 0) > 0 ? 'bg-amber-300 text-slate-950' : 'bg-emerald-300 text-slate-950'}`}>
+            {unmatchedCount ?? 0}건
+          </span>
+        </div>
+      </Link>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-12">
         <Link
@@ -462,9 +484,9 @@ function OwnerFinanceCommandCenter({
         />
         <FinanceTile
           href="/admin/payments?filter=outstanding"
-          label="아직 받을 돈"
+          label="상품가 기준 미수"
           value={receivable != null ? fmt만KRW(receivable) : '—'}
-          caption={settlementUnavailable ? '조회 실패 · 확인 필요' : `${stats?.unpaidD7 ?? 0}건은 D-7 이내`}
+          caption={settlementUnavailable ? '조회 실패 · 확인 필요' : `상품가 입력 예약만 · D-7 ${stats?.unpaidD7 ?? 0}건`}
           tone={receivable == null ? 'neutral' : receivable > 0 ? 'danger' : 'good'}
           className="xl:col-span-2"
         />
@@ -478,9 +500,9 @@ function OwnerFinanceCommandCenter({
         />
         <FinanceTile
           href="/admin/payments?filter=unmatched"
-          label="미매칭 입금"
+          label="Clobe 확인 대기"
           value={`${unmatchedCount ?? 0}건`}
-          caption="통장·문자 자동매칭 확인"
+          caption="메모·예약 연결 또는 출금 승인"
           tone={(unmatchedCount ?? 0) > 0 ? 'warn' : 'good'}
           className="xl:col-span-2"
         />
@@ -496,8 +518,8 @@ function OwnerFinanceCommandCenter({
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {[
-          { href: '/admin/payments?filter=unmatched', label: '입금 자동매칭', value: `${unmatchedCount ?? 0}건` },
-          { href: '/admin/payments?filter=outstanding', label: '잔금 미수', value: receivable != null ? fmt만KRW(receivable) : '확인 필요' },
+          { href: '/admin/payments?filter=unmatched', label: 'Clobe 확인 대기', value: `${unmatchedCount ?? 0}건` },
+          { href: '/admin/payments?filter=outstanding', label: '상품가 기준 미수', value: receivable != null ? fmt만KRW(receivable) : '확인 필요' },
           { href: '/admin/land-settlements', label: '랜드사 정산', value: landPayable != null ? fmt만KRW(landPayable) : '확인 필요' },
           { href: '/admin/bookings?status=pending,confirmed', label: '진행 예약', value: `${stats?.activeBookings ?? 0}건` },
         ].map(item => (

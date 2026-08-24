@@ -169,12 +169,12 @@ export const adminNavGroups: NavGroup[] = [
     items: [
       {
         href: '/admin/finance',
-        label: '정산센터',
+        label: 'Clobe 입출금·정산',
         icon: Wallet,
         domain: 'finance',
         badgeKey: 'paymentUnmatched',
-        primaryAction: '정산 검토',
-        searchKeywords: ['입금 매칭', '미매칭 입금', '월 마감', '회사 경비', '세금', '통합 장부', 'bank transaction'],
+        primaryAction: '동기화·출금 승인',
+        searchKeywords: ['Clobe 동기화', '클로브 메모', '입금 매칭', '출금 승인', '고객 환불', '최종 정산', '월 마감', '회사 경비', '세금', '통합 장부', 'bank transaction'],
       },
     ],
   },

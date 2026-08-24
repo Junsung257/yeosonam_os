@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { extractPrimaryName } from '@/lib/customer-name';
 import { fmt만, fmtDate, getBalance, nameSim } from '@/lib/admin-utils';
@@ -9,12 +10,13 @@ import type { PaymentCommandBarHandle } from './_components/PaymentCommandBar';
 
 const PaymentCommandBar = dynamic(() => import('./_components/PaymentCommandBar'), { ssr: false });
 import SettlementBundleModal from './_components/SettlementBundleModal';
+import ClobeOutflowAllocationModal from './_components/ClobeOutflowAllocationModal';
 import AutoSuggestChip from './_components/AutoSuggestChip';
 import LedgerStatusChip from './_components/LedgerStatusChip';
 import { calcSettlementAccounting } from '@/lib/settlement-accounting';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
-import { parseBankStatementRows } from '@/lib/settlement-import/bank-statement-parser';
+import { parseBankStatementRows, parseTravelSettlementMemo } from '@/lib/settlement-import/bank-statement-parser';
 import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window';
 import { matchesPaymentPeriod, type PaymentPeriodFilter } from '@/lib/payment-period-filter';
 import { calculatePaymentKpis } from '@/lib/payment-kpi';
@@ -55,6 +57,8 @@ interface ClobeSyncResult {
   memoUpdated?: number;
   memoChangedReview?: number;
   nonTravelStored?: number;
+  skippedNoMemo?: number;
+  memoEligible?: number;
   fetched?: number;
   normalized?: number;
   normalizeErrors?: Array<{ index: number; reason: string; from?: string; to?: string }>;
@@ -113,11 +117,13 @@ export interface BankTransaction {
   match_confidence: number; created_at: string;
   status?: string; deleted_at?: string | null;
   source?: string | null;
+  external_provider?: string | null;
   settlement_scope?: 'travel' | 'non_travel';
   account_number?: string | null;
   balance_after?: number | null;
   provider_category?: string | null;
   provider_is_unclassified?: boolean | null;
+  source_metadata?: Record<string, unknown> | null;
   bookings?: {
     id: string; booking_no?: string; package_title?: string;
     total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number;
@@ -130,7 +136,7 @@ export interface BookingFull {
   id: string; booking_no?: string; package_title?: string;
   total_price?: number; total_cost?: number;
   paid_amount?: number; total_paid_out?: number;
-  departure_date?: string; status?: string;
+  departure_date?: string; status?: string; land_operator?: string;
   customers?: { name?: string };
   lead_customer_id?: string;
 }
@@ -196,6 +202,8 @@ const MATCH_COLORS: Record<string, string> = {
 };
 
 function importActionBadge(action?: ImportRow['importAction']) {
+  if (action === 'booking_candidate_review') return { label: '예약 후보 검토', cls: 'bg-amber-50 text-amber-800 border-amber-300' };
+  if (action === 'invalid_row_review') return { label: '거래 행 오류', cls: 'bg-red-100 text-red-800 border-red-300' };
   if (action === 'ignored_non_travel') return { label: '여행 메모 없음', cls: 'bg-slate-100 text-slate-600 border-slate-200' };
   if (action === 'non_travel_recorded') return { label: '통장 원장 저장', cls: 'bg-cyan-50 text-cyan-800 border-cyan-200' };
   if (action === 'memo_updated') return { label: '메모 수정 반영', cls: 'bg-blue-50 text-blue-700 border-blue-200' };
@@ -447,7 +455,7 @@ interface ImportRow {
   receivedAt: string; depositAmount: number; withdrawAmount: number;
   counterpartyName: string; memo: string;
   matchStatus?: string; confidence?: number; bookingNo?: string; customerName?: string;
-  importAction?: 'insert' | 'already_processed' | 'merge_candidate' | 'duplicate_review' | 'ignored_non_travel' | 'non_travel_recorded' | 'memo_updated' | 'memo_changed_review';
+  importAction?: 'insert' | 'booking_candidate_review' | 'invalid_row_review' | 'already_processed' | 'merge_candidate' | 'duplicate_review' | 'ignored_non_travel' | 'non_travel_recorded' | 'memo_updated' | 'memo_changed_review';
   existingTxId?: string | null; existingMatchStatus?: string | null; duplicateConfidence?: number;
   accountNumber?: string; originalLine?: string; rowIndex?: number;
   include?: boolean;
@@ -492,6 +500,32 @@ type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'bank_revi
 
 function isOutflowTransaction(transaction: BankTransaction): boolean {
   return transaction.transaction_type === '출금' || transaction.is_refund;
+}
+
+function getClobeSuggestedBookingId(transaction: BankTransaction): string | null {
+  for (const source of ['clobe_mcp', 'clobe_api'] as const) {
+    const metadata = transaction.source_metadata?.[source];
+    if (!metadata || typeof metadata !== 'object') continue;
+    const id = (metadata as { suggested_booking_id?: unknown }).suggested_booking_id;
+    if (typeof id === 'string' && id) return id;
+  }
+  return null;
+}
+
+function getClobePurposeTags(transaction: BankTransaction): string[] {
+  for (const source of ['clobe_mcp', 'clobe_api'] as const) {
+    const metadata = transaction.source_metadata?.[source];
+    if (!metadata || typeof metadata !== 'object') continue;
+    const tags = (metadata as { purpose_tags?: unknown }).purpose_tags;
+    if (Array.isArray(tags)) return tags.filter((tag): tag is string => typeof tag === 'string');
+  }
+  return parseTravelSettlementMemo(transaction.memo)?.purposeTags ?? [];
+}
+
+function isClobeTransaction(transaction: BankTransaction | null | undefined): boolean {
+  return transaction?.source === 'clobe_mcp'
+    || transaction?.source === 'clobe_api'
+    || transaction?.external_provider === 'clobe';
 }
 
 export function getOutflowLandingSubTab(transactions: BankTransaction[]): OutflowSubTab {
@@ -643,6 +677,7 @@ export default function PaymentsPageClient({
   const paymentBarRef = useRef<PaymentCommandBarHandle | null>(null);
   const _skipInitialFetch = useRef(!!(initialTransactions && initialErp));
   const [bundleTx, setBundleTx] = useState<BankTransaction | null>(null);
+  const [clobeAllocationTx, setClobeAllocationTx] = useState<BankTransaction | null>(null);
   const openedTxParamRef = useRef<string | null>(null);
 
   // 일괄 가져오기 모달
@@ -978,23 +1013,13 @@ export default function PaymentsPageClient({
     finally { setBulkProcessing(false); }
   }
 
-  // ── 원클릭 일괄 자동 매칭 ──────────────────────────────────────────────────
-
-  async function handleBulkAuto() {
-    setBulkProcessing(true);
-    try {
-      const res = await fetch('/api/bank-transactions', { method: 'PUT' });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || '처리 실패', 'err'); return; }
-      showToast(`${data.matched}건 자동 매칭 완료 (스킵 ${data.skipped}건)`, 'ok');
-      load(); loadErp(); loadOpsQueue();
-    } catch { showToast('처리 중 오류', 'err'); }
-    finally { setBulkProcessing(false); }
-  }
-
   // ── 수동 매칭 모달 ──────────────────────────────────────────────────────────
 
   function openMatchModal(tx: BankTransaction) {
+    if (isClobeTransaction(tx)) {
+      showToast('Clobe 거래는 Clobe 메모 기준으로만 처리합니다. 메모를 수정한 뒤 다시 동기화하세요.', 'err');
+      return;
+    }
     setSelectedTx(tx);
     setMatchMode('single');
     setSingleBookingId('');
@@ -1119,24 +1144,33 @@ export default function PaymentsPageClient({
     finally { setProcessing(false); }
   }
 
-  async function handleUndo(txId: string) {
-    if (!confirm('매칭을 취소하고 원상복구 하시겠습니까?')) return;
+  async function handleUndo(tx: BankTransaction) {
+    const clobe = isClobeTransaction(tx);
+    const confirmed = confirm(clobe
+      ? '이 출금의 모든 배정을 보상 원장으로 취소하고 다시 검토하시겠습니까? 최종정산된 예약은 먼저 정산 해제가 필요합니다.'
+      : '매칭을 취소하고 원상복구 하시겠습니까?');
+    if (!confirmed) return;
     try {
       const res = await fetch('/api/bank-transactions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'undo', transactionId: txId }),
+        body: JSON.stringify({
+          action: 'undo',
+          transactionId: tx.id,
+          idempotencyKey: clobe ? `clobe-outflow-reverse:${tx.id}:${crypto.randomUUID()}` : undefined,
+          reason: clobe ? '운영자 Clobe 출금 배정 재검토' : undefined,
+        }),
       });
       if (!res.ok) { showToast((await res.json()).error || '처리 실패', 'err'); return; }
       // Optimistic
       setTransactions(prev => prev.map(t =>
-        t.id === txId ? { ...t, match_status: 'unmatched', booking_id: undefined } : t
+        t.id === tx.id ? { ...t, match_status: 'unmatched', booking_id: undefined } : t
       ));
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
-        metadata: { surface: 'payments_undo_match', action: 'undo_match', transactionId: txId },
+        metadata: { surface: 'payments_undo_match', action: 'undo_match', transactionId: tx.id, source: clobe ? 'clobe' : 'legacy' },
       });
-      showToast('매칭 취소 완료');
+      showToast(clobe ? 'Clobe 출금 배정을 취소했습니다. 다시 배정할 수 있습니다.' : '매칭 취소 완료');
       loadErp();
       loadOpsQueue();
     } catch { showToast('처리 중 오류', 'err'); }
@@ -1216,6 +1250,8 @@ export default function PaymentsPageClient({
         memoUpdated: 0,
         memoChangedReview: 0,
         nonTravelStored: 0,
+        skippedNoMemo: 0,
+        memoEligible: 0,
         fetched: 0,
         normalized: 0,
         normalizeErrors: [],
@@ -1268,6 +1304,8 @@ export default function PaymentsPageClient({
           memoUpdated: (summary.memoUpdated ?? 0) + (data.memoUpdated ?? 0),
           memoChangedReview: (summary.memoChangedReview ?? 0) + (data.memoChangedReview ?? 0),
           nonTravelStored: (summary.nonTravelStored ?? 0) + (data.nonTravelStored ?? 0),
+          skippedNoMemo: (summary.skippedNoMemo ?? 0) + (data.skippedNoMemo ?? 0),
+          memoEligible: (summary.memoEligible ?? 0) + (data.memoEligible ?? 0),
           fetched: (summary.fetched ?? 0) + (data.fetched ?? 0),
           normalized: (summary.normalized ?? 0) + (data.normalized ?? 0),
           normalizeErrors: [
@@ -1428,23 +1466,79 @@ export default function PaymentsPageClient({
     const commandButton = compact
       ? 'px-3 py-2 rounded border border-admin-border-strong bg-white text-admin-muted text-admin-sm font-mono hover:bg-admin-bg transition-colors text-center'
       : 'px-2 py-1 rounded border border-admin-border-strong bg-white text-admin-muted text-[11px] font-mono hover:bg-admin-bg transition-colors whitespace-nowrap';
+    const clobeSuggestedBookingId = getClobeSuggestedBookingId(tx);
+    const isClobeTx = isClobeTransaction(tx);
+    const clobePurposeTags = getClobePurposeTags(tx);
+    const isClobeRefund = clobePurposeTags.includes('환불');
 
     return (
       <div className={groupClass} aria-label={`${tx.counterparty_name || '거래'} 다음 액션`} role="group">
         {isOpen && (
           <>
-            <AutoSuggestChip
-              transactionId={tx.id}
-              onMatched={() => {
-                trackEngagement({
-                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
-                  page_url: '/admin/payments',
-                  metadata: { surface: 'payments_auto_suggest', action: 'confirm_suggestion', transactionId: tx.id },
-                });
-                load(); loadErp(); loadOpsQueue();
-              }}
-            />
-            {tx.transaction_type === '출금' && !tx.is_refund ? (
+            {!isClobeTx && (
+              <AutoSuggestChip
+                transactionId={tx.id}
+                onMatched={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/payments',
+                    metadata: { surface: 'payments_auto_suggest', action: 'confirm_suggestion', transactionId: tx.id },
+                  });
+                  load(); loadErp(); loadOpsQueue();
+                }}
+              />
+            )}
+            {isClobeTx && tx.transaction_type === '출금' ? (
+              <>
+                {clobeSuggestedBookingId && (
+                  <button
+                    type="button"
+                    disabled={processing}
+                    onClick={async () => {
+                      setProcessing(true);
+                      try {
+                        const res = await fetch('/api/bank-transactions', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            action: 'confirm_clobe_outflow',
+                            transactionId: tx.id,
+                            idempotencyKey: `clobe-outflow:${tx.id}:${crypto.randomUUID()}`,
+                          }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data.error || '출금 승인 실패');
+                        showToast(isClobeRefund
+                          ? 'Clobe 고객 환불이 예약 입금 원장에 반영되었습니다.'
+                          : 'Clobe 랜드사 지급이 예약 출금 원장에 반영되었습니다.');
+                        await Promise.all([load(), loadErp(), loadOpsQueue()]);
+                      } catch (error) {
+                        showToast(error instanceof Error ? error.message : '출금 승인 실패', 'err');
+                      } finally {
+                        setProcessing(false);
+                      }
+                    }}
+                    title={isClobeRefund ? '메모 기준 예약의 고객 환불로 반영' : '메모 기준 예약의 랜드사 지급으로 반영'}
+                    aria-label={`${tx.counterparty_name || 'Clobe 출금'} ${isClobeRefund ? '고객 환불' : '랜드사 지급'} 승인`}
+                    className={`${primaryButton} bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50`}
+                  >
+                    {processing ? '반영 중...' : isClobeRefund ? '환불 승인' : '지급 승인'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setClobeAllocationTx(tx)}
+                  title="한 출금을 여러 예약의 랜드사 지급·고객 환불로 배정"
+                  aria-label={`${tx.counterparty_name || 'Clobe 출금'} 분할 배정`}
+                  className={secondaryButton}
+                >
+                  분할·환불 배정
+                </button>
+                {!clobeSuggestedBookingId && (
+                  <span className="col-span-2 text-[11px] text-amber-700">메모 예약 후보 없음 — 배정 화면에서 예약 선택</span>
+                )}
+              </>
+            ) : tx.transaction_type === '출금' && !tx.is_refund ? (
               <>
                 <button
                   type="button"
@@ -1475,54 +1569,60 @@ export default function PaymentsPageClient({
                 </button>
               </>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => openMatchModal(tx)}
-                  aria-label={`${tx.counterparty_name || '거래'} ${tx.is_refund ? '환불 매칭' : '수동 매칭'}`}
-                  className={secondaryButton}
-                >
-                  {tx.is_refund ? '환불 매칭' : '수동 매칭'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => paymentBarRef.current?.openWithTransaction(tx.id, { txType: tx.transaction_type, isRefund: tx.is_refund })}
-                  title="명령 바로 booking 검색·확정"
-                  aria-label={`${tx.counterparty_name || '거래'} 명령 바로 매칭`}
-                  className={commandButton}
-                >
-                  Cmd
-                </button>
-              </>
+              isClobeTx ? (
+                <span className="text-[11px] text-amber-700">Clobe 메모 기준 처리 대기 중</span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openMatchModal(tx)}
+                    aria-label={`${tx.counterparty_name || '거래'} ${tx.is_refund ? '환불 매칭' : '수동 매칭'}`}
+                    className={secondaryButton}
+                  >
+                    {tx.is_refund ? '환불 매칭' : '수동 매칭'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => paymentBarRef.current?.openWithTransaction(tx.id, { txType: tx.transaction_type, isRefund: tx.is_refund })}
+                    title="명령 바로 booking 검색·확정"
+                    aria-label={`${tx.counterparty_name || '거래'} 명령 바로 매칭`}
+                    className={commandButton}
+                  >
+                    Cmd
+                  </button>
+                </>
+              )
             )}
           </>
         )}
         {isMatched && (
           <button
             type="button"
-            onClick={() => handleUndo(tx.id)}
+            onClick={() => handleUndo(tx)}
             aria-label={`${tx.counterparty_name || '거래'} 매칭 취소`}
             className={`${secondaryButton} text-red-500 hover:bg-red-50`}
           >
-            매칭 취소
+            {isClobeTx ? '배정 다시하기' : '매칭 취소'}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => handleTrashSingle(tx)}
-          title="휴지통으로 이동"
-          aria-label={`${tx.counterparty_name || '거래'} 휴지통으로 이동`}
-          className={compact
-            ? 'px-3 py-2 rounded border border-red-200 bg-white text-red-500 text-admin-sm font-medium hover:bg-red-50 transition-colors'
-            : 'p-1.5 rounded text-admin-muted-2 hover:text-red-600 hover:bg-red-50 transition-colors'}
-        >
-          {compact ? '제외' : (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          )}
-        </button>
+        {!isClobeTx && (
+          <button
+            type="button"
+            onClick={() => handleTrashSingle(tx)}
+            title="휴지통으로 이동"
+            aria-label={`${tx.counterparty_name || '거래'} 휴지통으로 이동`}
+            className={compact
+              ? 'px-3 py-2 rounded border border-red-200 bg-white text-red-500 text-admin-sm font-medium hover:bg-red-50 transition-colors'
+              : 'p-1.5 rounded text-admin-muted-2 hover:text-red-600 hover:bg-red-50 transition-colors'}
+          >
+            {compact ? '제외' : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            )}
+          </button>
+        )}
       </div>
     );
   };
@@ -1548,10 +1648,10 @@ export default function PaymentsPageClient({
       )}
 
       {/* 헤더 */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-admin-lg font-semibold text-admin-text-2">Clobe 거래 검토</h1>
+            <h1 className="text-admin-lg font-bold text-admin-text-2">Clobe 입출금·정산</h1>
             <LedgerStatusChip />
             {opsQueueSummary && !focusMode && (
               <span
@@ -1568,105 +1668,121 @@ export default function PaymentsPageClient({
               </span>
             )}
           </div>
-          <p className="text-admin-sm text-admin-muted mt-0.5">Clobe AI 통장 입출금 자동 동기화 및 예약별 정산</p>
+          <p className="mt-1 text-admin-sm text-admin-muted">메모가 있는 여행 거래만 동기화하고, 출금 승인 후 예약별 실현수익을 확정합니다.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={handleResync} disabled={bulkProcessing} aria-busy={bulkProcessing}
-            className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
-            {bulkProcessing ? '처리 중...' : '입금 재동기화'}
-          </button>
-          <button type="button" onClick={handleBulkAuto} disabled={bulkProcessing} aria-busy={bulkProcessing}
-            className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
-            {bulkProcessing ? '처리 중...' : '일괄 자동 매칭'}
-          </button>
-          <button type="button" onClick={handleClobeSync} disabled={clobeSyncing || clobeIntegration.loading} aria-busy={clobeSyncing || clobeIntegration.loading}
-            className="px-3 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition">
-            {clobeSyncing ? clobeSyncProgress ?? 'Clobe syncing...' : clobeIntegration.connected ? 'Clobe sync' : 'Clobe 연결'}
-          </button>
-          <button type="button" onClick={() => setShowImport(true)}
-            className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
-            과거 내역 가져오기
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => { load(); loadErp(); loadOpsQueue(); }}
-            className="px-3 py-2 text-admin-sm text-admin-text-2 border border-admin-border-strong rounded bg-white hover:bg-admin-bg transition">
+            className="min-h-10 rounded-lg border border-admin-border-strong bg-white px-3 text-admin-sm font-semibold text-admin-text-2 transition hover:bg-admin-bg">
             새로고침
           </button>
+          <details className="relative">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center rounded-lg border border-admin-border-strong bg-white px-3 text-admin-sm font-semibold text-admin-text-2 transition hover:bg-admin-bg">
+              기타 작업
+            </summary>
+            <div className="absolute right-0 z-30 mt-2 w-52 rounded-xl border border-admin-border-mid bg-white p-2 shadow-admin-lg">
+              <button type="button" onClick={handleResync} disabled={bulkProcessing} aria-busy={bulkProcessing}
+                className="min-h-10 w-full rounded-lg px-3 text-left text-admin-sm text-admin-text-2 hover:bg-admin-bg disabled:text-admin-muted-2">
+                입금 합계 다시 계산
+              </button>
+              <button type="button" onClick={() => setShowImport(true)}
+                className="min-h-10 w-full rounded-lg px-3 text-left text-admin-sm text-admin-text-2 hover:bg-admin-bg">
+                과거 CSV 내역 가져오기
+              </button>
+              <p className="border-t border-admin-border-mid px-3 pt-2 text-[10px] leading-relaxed text-admin-muted-2">
+                Clobe 거래는 일괄 자동 매칭하지 않고 메모 기준으로만 처리합니다.
+              </p>
+            </div>
+          </details>
         </div>
       </div>
 
       {loadError ? <div className="mb-4 rounded-admin-md border border-red-200 bg-red-50 px-4 py-3 text-admin-sm text-red-800" role="alert"><strong>마지막 정상 데이터를 유지하고 있습니다.</strong> {loadError}{lastLoadedAt ? ` · 마지막 정상 로드 ${fmtTs(lastLoadedAt)}` : ''}</div> : null}
 
-      {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
-      <div
-        className={`mb-4 rounded-admin-md border px-4 py-3 shadow-admin-xs ${
-          clobeIntegration.connected
-            ? 'border-emerald-200 bg-emerald-50'
-            : 'border-amber-200 bg-amber-50'
-        }`}
-      >
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className={`text-admin-sm font-semibold ${clobeIntegration.connected ? 'text-emerald-800' : 'text-amber-800'}`}>
-              {clobeIntegration.loading
-                ? 'Clobe 연결 확인 중'
-                : clobeIntegration.connected
-                  ? 'Clobe 연결됨'
-                  : 'Clobe 연결 필요'}
-            </p>
-            <p className={`mt-1 text-admin-xs ${clobeIntegration.connected ? 'text-emerald-700' : 'text-amber-700'}`}>
-              {clobeIntegration.connected
-                ? `Clobe 메모장 입출금 내역을 OS 정산으로 가져옵니다.${clobeIntegration.connectedAt ? ` OAuth 연결일: ${fmtDate(clobeIntegration.connectedAt)}` : ''}`
-                : 'Clobe에 로그인해 연결하면 메모에 적은 여행 입출금 내역을 정산 화면에서 바로 동기화할 수 있습니다.'}
-            </p>
+      {/* ── Clobe 현금 정산 워크플로 ─────────────────────────────────────────── */}
+      <section className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-admin-xs">
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-slate-950 px-5 py-4 text-white lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                clobeIntegration.connected ? 'bg-emerald-400/15 text-emerald-200' : 'bg-amber-400/15 text-amber-200'
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${clobeIntegration.connected ? 'bg-emerald-300' : 'bg-amber-300'}`} />
+                {clobeIntegration.loading ? '연결 확인 중' : clobeIntegration.connected ? 'Clobe 연결 정상' : 'Clobe 연결 필요'}
+              </span>
+              <span className="text-[11px] text-slate-400">신한 여행사 계좌 · 수동 동기화</span>
+            </div>
+            <h2 className="mt-2 text-admin-base font-bold">동기화 → 출금 확인 → 예약 최종정산</h2>
+            <p className="mt-1 text-admin-xs text-slate-300">상품가 없이 실제 입금 − 실제 출금만 계산합니다. 최종정산 전까지 Clobe 메모 수정이 다시 반영됩니다.</p>
           </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="text-admin-xs font-medium text-admin-text-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end">
+            <label className="text-[10px] font-semibold text-slate-300">
               시작일
               <input
                 type="date"
                 value={clobeSyncWindow.from}
                 onChange={event => setClobeSyncWindow(prev => ({ ...prev, from: event.target.value }))}
-                className="mt-1 block rounded border border-admin-border-strong bg-white px-2 py-1.5 text-admin-sm text-admin-text-2"
+                className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-900 px-2 text-admin-xs text-white focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/30 sm:w-[132px]"
               />
             </label>
-            <label className="text-admin-xs font-medium text-admin-text-2">
+            <label className="text-[10px] font-semibold text-slate-300">
               종료일
               <input
                 type="date"
                 value={clobeSyncWindow.to}
                 onChange={event => setClobeSyncWindow(prev => ({ ...prev, to: event.target.value }))}
-                className="mt-1 block rounded border border-admin-border-strong bg-white px-2 py-1.5 text-admin-sm text-admin-text-2"
+                className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-900 px-2 text-admin-xs text-white focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/30 sm:w-[132px]"
               />
             </label>
-            <button
-              type="button"
-              onClick={() => setClobeSyncWindow(getDefaultClobeSyncWindow())}
-              className="rounded border border-admin-border-strong bg-white px-3 py-2 text-admin-sm text-admin-text-2 transition hover:bg-admin-bg"
-            >
-              최근 90일
-            </button>
-            {!clobeIntegration.connected && (
+            {!clobeIntegration.connected ? (
               <button
                 type="button"
                 onClick={handleClobeConnect}
                 disabled={clobeIntegration.loading}
-                className="rounded bg-emerald-600 px-3 py-2 text-admin-sm text-white transition hover:bg-emerald-700 disabled:bg-slate-300"
+                className="col-span-2 min-h-10 rounded-lg bg-emerald-500 px-4 text-admin-sm font-bold text-slate-950 hover:bg-emerald-400 disabled:bg-slate-600 sm:col-span-1"
               >
                 Clobe 연결하기
               </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleClobeSync}
+                disabled={clobeSyncing || clobeIntegration.loading}
+                aria-busy={clobeSyncing || clobeIntegration.loading}
+                className="col-span-2 min-h-10 rounded-lg bg-emerald-400 px-4 text-admin-sm font-black text-slate-950 hover:bg-emerald-300 disabled:bg-slate-600 disabled:text-slate-300 sm:col-span-1"
+              >
+                {clobeSyncing ? clobeSyncProgress ?? '동기화 중...' : '선택 기간 동기화'}
+              </button>
             )}
-            <button
-              type="button"
-              onClick={handleClobeSync}
-              disabled={clobeSyncing || clobeIntegration.loading}
-              aria-busy={clobeSyncing || clobeIntegration.loading}
-              className="rounded border border-admin-border-strong bg-white px-3 py-2 text-admin-sm text-admin-text-2 transition hover:bg-admin-bg disabled:opacity-60"
-            >
-              {clobeSyncing ? clobeSyncProgress ?? '동기화 중...' : clobeIntegration.connected ? '지금 동기화' : '연결 후 동기화'}
-            </button>
           </div>
         </div>
-      </div>
+
+        <div className="grid gap-px bg-slate-200 md:grid-cols-3">
+          <div className="bg-white px-5 py-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">1 · 가져오기</p>
+            <p className="mt-1 text-admin-sm font-bold text-admin-text-2">Clobe 메모가 있는 거래만</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-admin-muted">메모 없는 거래와 기타 경비는 예약으로 만들지 않습니다.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setTab(allOutflowUnmatchedCount > 0 ? 'outflow' : 'review'); setOutflowSubTab('unmatched'); }}
+            className="bg-white px-5 py-4 text-left transition hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">2 · 확인</p>
+            <p className={`mt-1 text-admin-sm font-bold ${allOutflowUnmatchedCount + allReviewCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+              출금·메모 검토 {allOutflowUnmatchedCount + allReviewCount}건
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-admin-muted">단순 출금은 1회 승인, 복합 출금은 예약별 지급·환불로 배정합니다.</p>
+          </button>
+          <Link
+            href="/admin/bookings"
+            className="bg-white px-5 py-4 text-left transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">3 · 마감</p>
+            <p className="mt-1 text-admin-sm font-bold text-blue-700">예약에서 최종정산</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-admin-muted">입금자·출금 배정을 확인한 뒤 최종수익을 잠급니다.</p>
+          </Link>
+        </div>
+      </section>
 
       {clobeSyncResult && (() => {
         const fetched = clobeSyncResult.fetched ?? 0;
@@ -1677,32 +1793,55 @@ export default function PaymentsPageClient({
         const scrapingStatus = clobeSyncResult.mcp?.scrapingStatus ?? [];
         const normalizeErrorCount = clobeSyncResult.normalizeErrors?.length ?? 0;
         const attemptedTools = attempts.map(attempt => `${attempt.toolName}(${attempt.extracted}/${attempt.normalized ?? 0})`).join(', ');
-        const tone = hasRows && (!hasMappedRows || normalizeErrorCount > 0 || clobeSyncResult.errors > 0 || clobeSyncResult.duplicates > 0)
-          ? 'border-amber-200 bg-amber-50 text-amber-900'
-          : hasRows
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-            : 'border-amber-200 bg-amber-50 text-amber-900';
+        const hasIssues = !hasRows || !hasMappedRows || normalizeErrorCount > 0
+          || clobeSyncResult.errors > 0 || clobeSyncResult.duplicates > 0
+          || (clobeSyncResult.memoChangedReview ?? 0) > 0;
 
         return (
-          <div className={`mb-3 rounded border px-3 py-2 text-[11px] ${tone}`}>
-            <div className="font-semibold">
-              Clobe 동기화: {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to} · 원본 {fetched}건 · OS 인식 {normalized}건 · 신규 여행 {clobeSyncResult.inserted}건 · 새 예약 매칭 {clobeSyncResult.matched}건 · 기존 여행 확인 {clobeSyncResult.merged ?? 0}건 · 여행 외 저장 {clobeSyncResult.nonTravelStored ?? 0}건 · 메모 수정 {clobeSyncResult.memoUpdated ?? 0}건 · 메모 검토 {clobeSyncResult.memoChangedReview ?? 0}건 · 실제 중복 검토 {clobeSyncResult.duplicates}건 · 미저장 {clobeSyncResult.skipped ?? 0}건 · 처리 오류 {clobeSyncResult.errors}건 · 인식 실패 {normalizeErrorCount}건
-              {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
+          <section className={`mb-4 overflow-hidden rounded-xl border ${hasIssues ? 'border-amber-200' : 'border-emerald-200'} bg-white shadow-admin-xs`}>
+            <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 ${hasIssues ? 'border-amber-100 bg-amber-50' : 'border-emerald-100 bg-emerald-50'}`}>
+              <div>
+                <p className={`text-admin-sm font-bold ${hasIssues ? 'text-amber-900' : 'text-emerald-900'}`}>
+                  {hasIssues ? '동기화 완료 · 확인할 항목 있음' : '동기화 정상 완료'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-admin-muted">
+                  {clobeSyncResult.from ?? clobeSyncWindow.from} ~ {clobeSyncResult.to ?? clobeSyncWindow.to}
+                </p>
+              </div>
+              <p className="text-[11px] font-semibold text-admin-muted">메모 없는/여행 외 미저장 {clobeSyncResult.skippedNoMemo ?? clobeSyncResult.skipped ?? 0}건</p>
             </div>
+
+            <div className="grid grid-cols-2 gap-px bg-admin-border-mid sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                { label: 'Clobe 원본', value: fetched, tone: 'text-admin-text-2' },
+                { label: '여행 메모', value: clobeSyncResult.memoEligible ?? normalized, tone: 'text-blue-700' },
+                { label: '신규 예약', value: clobeSyncResult.inserted, tone: 'text-emerald-700' },
+                { label: '기존 거래 반영', value: clobeSyncResult.merged ?? 0, tone: 'text-admin-text-2' },
+                { label: '메모 수정/검토', value: (clobeSyncResult.memoUpdated ?? 0) + (clobeSyncResult.memoChangedReview ?? 0), tone: (clobeSyncResult.memoChangedReview ?? 0) > 0 ? 'text-amber-700' : 'text-blue-700' },
+                { label: '중복·오류', value: clobeSyncResult.duplicates + clobeSyncResult.errors + normalizeErrorCount, tone: clobeSyncResult.duplicates + clobeSyncResult.errors + normalizeErrorCount > 0 ? 'text-red-600' : 'text-emerald-700' },
+              ].map(item => (
+                <div key={item.label} className="bg-white px-4 py-3">
+                  <p className="text-[10px] font-semibold text-admin-muted">{item.label}</p>
+                  <p className={`mt-1 text-admin-base font-black tabular-nums ${item.tone}`}>{item.value}건</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2 px-4 py-3 text-[11px] leading-relaxed text-admin-muted">
             {normalizeErrorCount > 0 && (
-              <div className="mt-1">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">
                 인식 실패 첫 항목: {clobeSyncResult.normalizeErrors?.[0]?.from} · {clobeSyncResult.normalizeErrors?.[0]?.reason}
               </div>
             )}
             {!hasRows && (
-              <div className="mt-1">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
                 {clobeSyncResult.mcp?.bankToolAvailable === false
                   ? 'Clobe 로그인은 정상이나 통장/입출금 조회 도구가 OS에 공개되지 않았습니다. Clobe 쪽에서 은행 거래 데이터 연결 또는 해당 MCP 도구 권한을 먼저 활성화해야 합니다.'
                   : 'Clobe 연결은 되었지만, 이 기간에 MCP가 OS로 넘긴 입출금 원본이 0건입니다. 클로브 메모가 일반 메모장에만 있고 입출금/통장 목록 도구로 노출되지 않았거나, 클로브 쪽 기간·계좌 필터 결과가 비어있는 상태입니다.'}
               </div>
             )}
             {!hasRows && scrapingStatus.length > 0 && (
-              <div className="mt-1">
+              <div>
                 Clobe 수집 상태: {scrapingStatus.map(item => {
                   const asset = item.assetType ?? '자산';
                   const collectedAt = item.scrapedAt ? ` · 마지막 수집 ${item.scrapedAt}` : '';
@@ -1715,30 +1854,32 @@ export default function PaymentsPageClient({
               </div>
             )}
             {!hasRows && clobeSyncResult.mcp?.scrapingStatusError && (
-              <div className="mt-1">Clobe 수집 상태 확인 실패: {clobeSyncResult.mcp.scrapingStatusError}</div>
+              <div>Clobe 수집 상태 확인 실패: {clobeSyncResult.mcp.scrapingStatusError}</div>
             )}
             {hasRows && !hasMappedRows && (
-              <div className="mt-1">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">
                 Clobe 원본은 왔지만 OS 필드 매핑에 실패했습니다. 날짜, 금액, 입금/출금, 메모 필드명이 클로브 응답과 달라서 매핑 보강이 필요합니다.
               </div>
             )}
-            {(attemptedTools || clobeSyncResult.mcp?.toolName) && (
-              <div className="mt-1 opacity-80">
-                MCP tool: {clobeSyncResult.mcp?.toolName ?? '-'}
-                {attemptedTools ? ` / attempts(raw/OS): ${attemptedTools}` : ''}
-              </div>
+            {clobeSyncResult.firstError && <div className="text-red-700">첫 처리 오류: {clobeSyncResult.firstError}</div>}
+            {(attemptedTools || clobeSyncResult.mcp?.toolName || clobeSyncResult.rawSampleKeys?.length) && (
+              <details className="rounded-lg border border-admin-border-mid bg-admin-surface-2 px-3 py-2">
+                <summary className="cursor-pointer font-semibold text-admin-text-2">기술 상세 보기</summary>
+                <div className="mt-2 space-y-1 break-all text-[10px] text-admin-muted">
+                  {(attemptedTools || clobeSyncResult.mcp?.toolName) && (
+                    <p>MCP tool: {clobeSyncResult.mcp?.toolName ?? '-'}{attemptedTools ? ` / attempts(raw/OS): ${attemptedTools}` : ''}</p>
+                  )}
+                  {clobeSyncResult.mcp?.bankToolAvailable === false && clobeSyncResult.mcp.toolNames?.length ? (
+                    <p>Clobe 공개 도구: {clobeSyncResult.mcp.toolNames.join(', ')}</p>
+                  ) : null}
+                  {clobeSyncResult.rawSampleKeys?.length ? (
+                    <p>raw keys: {clobeSyncResult.rawSampleKeys.map(keys => keys.join('|')).join(' / ')}</p>
+                  ) : null}
+                </div>
+              </details>
             )}
-            {clobeSyncResult.mcp?.bankToolAvailable === false && clobeSyncResult.mcp.toolNames?.length ? (
-              <div className="mt-1 opacity-80">
-                Clobe 공개 도구: {clobeSyncResult.mcp.toolNames.join(', ')}
-              </div>
-            ) : null}
-            {clobeSyncResult.rawSampleKeys?.length ? (
-              <div className="mt-1 opacity-80">
-                raw keys: {clobeSyncResult.rawSampleKeys.map(keys => keys.join('|')).join(' / ')}
-              </div>
-            ) : null}
-          </div>
+            </div>
+          </section>
         );
       })()}
 
@@ -1909,12 +2050,17 @@ export default function PaymentsPageClient({
         </div>
       ) : null}
 
-      <div className={`${focusMode ? 'hidden' : 'grid'} grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5`}>
+      <details className={`${focusMode ? 'hidden' : 'mb-5'} rounded-xl border border-admin-border-mid bg-white shadow-admin-xs`}>
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg">
+          <span>상품가를 입력한 일반 예약의 예상 손익</span>
+          <span className="text-[11px] font-medium text-admin-muted">Clobe 현금 정산에는 사용하지 않음 · 펼쳐보기</span>
+        </summary>
+      <div className="grid grid-cols-1 gap-4 border-t border-admin-border-mid p-4 xl:grid-cols-[1fr_340px]">
         <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-admin-base font-semibold text-admin-text-2">오늘 봐야 할 정산</h2>
-              <p className="text-admin-xs text-admin-muted mt-1">취소 제외 {erp?.bookingCount ?? 0}건 기준</p>
+              <h2 className="text-admin-base font-semibold text-admin-text-2">상품가 기준 예상 정산</h2>
+              <p className="text-admin-xs text-admin-muted mt-1">상품가·예정원가를 입력한 일반 예약용 · 취소 제외 {erp?.bookingCount ?? 0}건</p>
             </div>
             <div className="relative flex items-center gap-2">
               <span className="px-2 py-1 bg-admin-surface-2 border border-admin-border-mid text-admin-muted rounded text-[11px] font-medium whitespace-nowrap">
@@ -2025,6 +2171,7 @@ export default function PaymentsPageClient({
           </button>
         </div>
       </div>
+      </details>
 
       {/* ── Metric Filter Cards (탭 겸용) ──────────────────────────────────────── */}
       <p className={`${focusMode ? 'sr-only' : 'mb-2'} text-[11px] text-admin-muted`}>전체 활성 입출금 원장 기준</p>
@@ -2113,7 +2260,7 @@ export default function PaymentsPageClient({
           <div className="flex flex-col items-center gap-3">
             <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
             <p className="text-admin-sm font-medium text-admin-muted">해당 항목이 없습니다.</p>
-            {tab === 'unmatched' && <p className="text-admin-xs text-admin-muted-2">일괄 자동 매칭 버튼을 눌러보세요.</p>}
+            {tab === 'unmatched' && <p className="text-admin-xs text-admin-muted-2">Clobe에서 여행 메모를 확인한 뒤 선택 기간을 다시 동기화하세요.</p>}
           </div>
         </div>
       ) : (
@@ -2941,6 +3088,18 @@ export default function PaymentsPageClient({
             metadata: { surface: 'payments_settlement_bundle', action: 'settle_bundle', transactionId: bundleTx?.id },
           });
           load(); loadErp(); loadOpsQueue();
+        }}
+      />
+
+      <ClobeOutflowAllocationModal
+        transaction={clobeAllocationTx}
+        bookings={bookings}
+        suggestedBookingId={clobeAllocationTx ? getClobeSuggestedBookingId(clobeAllocationTx) : null}
+        defaultAllocationType={clobeAllocationTx && getClobePurposeTags(clobeAllocationTx).includes('환불') ? 'refund' : 'payout'}
+        onClose={() => setClobeAllocationTx(null)}
+        onAllocated={async () => {
+          showToast('Clobe 출금 배정이 원장에 반영되었습니다.');
+          await Promise.all([load(), loadErp(), loadOpsQueue()]);
         }}
       />
     </>

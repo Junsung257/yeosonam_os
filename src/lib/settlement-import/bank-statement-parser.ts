@@ -5,7 +5,17 @@ export interface ParsedTravelSettlementMemo {
   departureDate: string;
   leadCustomerName: string;
   landOperatorName: string;
+  purposeTags: TravelSettlementPurposeTag[];
 }
+
+export type TravelSettlementPurposeTag = '환불' | '취소' | '수수료' | '조정';
+
+const TRAVEL_SETTLEMENT_PURPOSE_TAGS = new Set<TravelSettlementPurposeTag>([
+  '환불',
+  '취소',
+  '수수료',
+  '조정',
+]);
 
 export interface ParsedBankStatementRow {
   receivedAt: string;
@@ -44,7 +54,7 @@ export function parseTravelSettlementMemo(memo: string | null | undefined): Pars
   }
   if (parts.length < 3) return null;
 
-  const [yymmdd, customerName, ...operatorParts] = parts;
+  const [yymmdd, customerName, ...rawOperatorParts] = parts;
   if (!/^\d{6}$/.test(yymmdd)) return null;
 
   const year = 2000 + Number(yymmdd.slice(0, 2));
@@ -60,16 +70,29 @@ export function parseTravelSettlementMemo(memo: string | null | undefined): Pars
   }
 
   const leadCustomerName = normalizeToken(customerName);
-  const landOperatorName = operatorParts.map(normalizeToken).join('_');
+  const normalizedOperatorParts = rawOperatorParts.map(normalizeToken).filter(Boolean);
+  const purposeTags: TravelSettlementPurposeTag[] = [];
+  while (normalizedOperatorParts.length > 1) {
+    const last = normalizedOperatorParts[normalizedOperatorParts.length - 1] as TravelSettlementPurposeTag;
+    if (!TRAVEL_SETTLEMENT_PURPOSE_TAGS.has(last)) break;
+    purposeTags.unshift(last);
+    normalizedOperatorParts.pop();
+  }
+  const landOperatorName = normalizedOperatorParts.join('_');
   if (!leadCustomerName || !landOperatorName) return null;
 
   return {
     rawMemo,
-    normalizedKey: normalizeSettlementMemoKey(`${yymmdd}_${leadCustomerName}_${landOperatorName}`),
+    // The full provider memo remains the unique settlement key. Purpose tags
+    // only change how operator identity is interpreted; they are never dropped.
+    normalizedKey: normalizeSettlementMemoKey(
+      `${yymmdd}_${leadCustomerName}_${[...normalizedOperatorParts, ...purposeTags].join('_')}`,
+    ),
     memoFormat,
     departureDate: `${year.toString().padStart(4, '0')}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`,
     leadCustomerName,
     landOperatorName,
+    purposeTags,
   };
 }
 

@@ -63,6 +63,7 @@ interface Booking {
   settlement_confirmed_at?: string | null;
   settlement_confirmed_by?: string | null;
   settlement_mode?: 'accrual' | 'cash' | null;
+  clobe_settlement_booking?: boolean;
   commission_rate?: number | null;
   commission_amount?: number | null;
   departure_date?: string;
@@ -83,7 +84,7 @@ interface Booking {
 
 // ── 상수 ──────────────────────────────────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
-  pending: '예약대기', confirmed: '예약확정', completed: '결제완료', cancelled: '취소',
+  pending: '예약대기', confirmed: '예약확정', completed: '여행 완료', cancelled: '취소',
 };
 const STATUS_COLORS: Record<string, string> = {
   pending:   'bg-status-neutralBg text-status-neutralFg',
@@ -1635,9 +1636,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
   const cardStats = useMemo(() => ({
     activeCnt:    bookings.filter(b => ['pending','confirmed'].includes(b.status)).length,
-    totalSales:   bookings.reduce((s, b) => s + (b.total_price||0), 0),
     totalPaid:    bookings.reduce((s, b) => s + (b.paid_amount||0), 0),
-    totalBalance: bookings.reduce((s, b) => s + Math.max(0, (b.total_price||0)-(b.paid_amount||0)), 0),
+    clobeCount:   bookings.filter(b => b.clobe_settlement_booking).length,
+    clobeNet:     bookings.filter(b => b.clobe_settlement_booking).reduce((s, b) => s + (b.paid_amount||0) - (b.total_paid_out||0), 0),
   }), [bookings]);
 
   useLayoutEffect(() => {
@@ -1736,7 +1737,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>,
             },
             {
-              label: '총 판매가', value: fmtK(cardStats.totalSales), color: 'text-admin-text-2', bg: 'bg-admin-bg',
+              label: 'Clobe 정산예약', value: cardStats.clobeCount + '건', color: 'text-blue-700', bg: 'bg-blue-50',
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>,
             },
             {
@@ -1744,7 +1745,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
             },
             {
-              label: '미수금 잔금', value: fmtK(cardStats.totalBalance), color: cardStats.totalBalance > 0 ? 'text-red-500' : 'text-admin-muted-2', bg: cardStats.totalBalance > 0 ? 'bg-red-50' : 'bg-admin-bg',
+              label: 'Clobe 실현수익', value: fmtK(cardStats.clobeNet), color: cardStats.clobeNet < 0 ? 'text-red-500' : 'text-emerald-700', bg: cardStats.clobeNet < 0 ? 'bg-red-50' : 'bg-emerald-50',
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>,
             },
           ] as { label: string; value: string; color: string; bg: string; icon: React.ReactNode }[]).map(c => (
@@ -1967,8 +1968,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             const receivable = getBookingReceivable(b.total_price, b.paid_amount);
             const netCashflow = (b.paid_amount || 0) - (b.total_paid_out || 0);
             const nextAction =
+              b.clobe_settlement_booking ? {
+                label: b.settlement_confirmed_at ? '정산 확인' : '최종정산',
+                run: () => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); },
+                primary: !b.settlement_confirmed_at,
+              } :
               !isTrash && b.status === 'pending' ? { label: '예약확정', run: () => patchStatus(b.id, 'confirmed'), primary: true } :
-              !isTrash && b.status === 'confirmed' ? { label: '결제완료', run: () => patchStatus(b.id, 'completed'), primary: true } :
+              !isTrash && b.status === 'confirmed' ? { label: '여행 완료', run: () => patchStatus(b.id, 'completed'), primary: false } :
               !isTrash && b.status === 'cancelled' ? { label: '복구', run: () => handleRestoreBooking(b), primary: false } :
               { label: '상세', run: () => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }, primary: false };
 
@@ -1976,7 +1982,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <article key={b.id} className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <StatusBadge booking={b} onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }} />
+                    {b.clobe_settlement_booking ? (
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${b.settlement_confirmed_at ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {b.settlement_confirmed_at ? 'Clobe 최종정산 완료' : 'Clobe 정산 진행중'}
+                      </span>
+                    ) : (
+                      <StatusBadge booking={b} onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }} />
+                    )}
                     <p className="mt-2 truncate text-admin-base font-bold text-admin-text-2">{b.customers?.name ?? b.booking_no ?? '고객명 미입력'}</p>
                     <p className="mt-1 line-clamp-2 text-admin-sm text-admin-muted">{b.package_title || '상품명 미입력'}</p>
                   </div>
@@ -1988,17 +2000,23 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
                 <div className="grid grid-cols-3 gap-2 rounded-admin-md bg-admin-bg p-3">
                   <div>
-                    <p className="text-admin-xs text-admin-muted-2">판매가</p>
-                    <p className="mt-1 text-admin-sm font-bold text-admin-text-2 tabular-nums">{fmtK(b.total_price || 0)}</p>
+                    <p className="text-admin-xs text-admin-muted-2">{b.clobe_settlement_booking ? '입금' : '판매가'}</p>
+                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${b.clobe_settlement_booking ? 'text-emerald-700' : 'text-admin-text-2'}`}>
+                      {fmtK(b.clobe_settlement_booking ? (b.paid_amount || 0) : (b.total_price || 0))}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-admin-xs text-admin-muted-2">입금</p>
-                    <p className="mt-1 text-admin-sm font-bold text-blue-700 tabular-nums">{fmtK(b.paid_amount || 0)}</p>
+                    <p className="text-admin-xs text-admin-muted-2">{b.clobe_settlement_booking ? '출금' : '입금'}</p>
+                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${b.clobe_settlement_booking ? 'text-orange-700' : 'text-blue-700'}`}>
+                      {fmtK(b.clobe_settlement_booking ? (b.total_paid_out || 0) : (b.paid_amount || 0))}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-admin-xs text-admin-muted-2">{b.status === 'cancelled' ? '환불잔액' : '잔금'}</p>
-                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${(b.status === 'cancelled' ? netCashflow : (receivable ?? 0)) > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
-                      {b.status === 'cancelled'
+                    <p className="text-admin-xs text-admin-muted-2">{b.clobe_settlement_booking ? '실현수익' : b.status === 'cancelled' ? '환불잔액' : '잔금'}</p>
+                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${b.clobe_settlement_booking ? (netCashflow >= 0 ? 'text-emerald-700' : 'text-red-600') : (b.status === 'cancelled' ? netCashflow : (receivable ?? 0)) > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
+                      {b.clobe_settlement_booking
+                        ? fmtK(netCashflow)
+                        : b.status === 'cancelled'
                         ? fmtK(netCashflow)
                         : receivable === null ? '가격 미입력' : fmtK(receivable)}
                     </p>
@@ -2061,7 +2079,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <th className="text-center px-3 py-2 text-admin-sm font-semibold text-admin-text-2 whitespace-nowrap min-w-[110px]">마진율</th>
                 <SortTh label="입금액"      field="paid_amount"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
-                <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
+                <SortTh label="잔금 / 실현수익" field="balance" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
                 <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
                 <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]"><span className="sr-only">예약 작업</span></th>
               </tr>
@@ -2338,7 +2356,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       className={`p-0 min-w-[170px] whitespace-nowrap outline-none ${focusCls(10)}`}
                       style={getCellStyle(`${b.id}-adult_price`)}
                       onClick={e => e.stopPropagation()}>
-                      {isEditing('adult_price') ? (
+                      {b.clobe_settlement_booking ? (
+                        <div className="flex h-[88px] items-center justify-end px-3 text-admin-xs font-semibold text-admin-muted-2">사용 안 함</div>
+                      ) : isEditing('adult_price') ? (
                         <div className="w-full h-[88px] flex items-center justify-end px-3">
                           <NumInputCell
                             initialValue={b.adult_price || 0}
@@ -2363,7 +2383,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     <td tabIndex={0} ref={el => regRef(el, ri, 11)} onFocus={() => setFocusedCell({ row: ri, col: 11 })}
                       className={`px-3 min-w-[170px] text-right whitespace-nowrap tabular-nums outline-none ${focusCls(11)} ${!(b.total_price) ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-admin-text-2'}`}
                       style={getCellStyle(`${b.id}-total_price`)}>
-                      {fmt(b.total_price)}
+                      {b.clobe_settlement_booking ? <span className="text-admin-xs font-semibold text-admin-muted-2">사용 안 함</span> : fmt(b.total_price)}
                     </td>
 
                     {/* 예상 마진 — 실현 현금 마진 (입금액 − 출금액) */}
@@ -2399,7 +2419,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     {/* 잔금 / 취소건은 순현금 (sticky right) */}
                     <td tabIndex={0} ref={el => regRef(el, ri, 14)} onFocus={() => setFocusedCell({ row: ri, col: 14 })}
                       className={`sticky right-[280px] z-10 bg-inherit px-3 min-w-[160px] text-right whitespace-nowrap tabular-nums relative group/bal outline-none ${focusCls(14)}`}>
-                      {isCancelled ? (
+                      {b.clobe_settlement_booking ? (
+                        <div>
+                          <span className={`font-bold text-admin-sm ${netCashflow >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                            수익 {netCashflow.toLocaleString()}원
+                          </span>
+                          <div className="mt-0.5 text-[10px] text-admin-muted-2">
+                            입 {(b.paid_amount ?? 0).toLocaleString()} / 출 {(b.total_paid_out ?? 0).toLocaleString()}
+                          </div>
+                        </div>
+                      ) : isCancelled ? (
                         <div>
                           <span className={`font-bold text-admin-sm ${
                             netCashflow < -5000 ? 'text-red-600' :
@@ -2444,7 +2473,15 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         </div>
                       )}
                       <div className="hidden group-hover/bal:block absolute bottom-full right-0 z-50 bg-slate-800 text-white text-admin-sm rounded-lg px-3.5 py-2.5 whitespace-nowrap mb-1.5 pointer-events-none min-w-[220px]">
-                        {isCancelled ? (
+                        {b.clobe_settlement_booking ? (
+                          <>
+                            <p className="font-semibold text-blue-300">Clobe 현금 정산</p>
+                            <p className="mt-1">입금 {(b.paid_amount ?? 0).toLocaleString()}원</p>
+                            <p>출금 {(b.total_paid_out ?? 0).toLocaleString()}원</p>
+                            <p className={`mt-1 font-bold ${netCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>실현수익 {netCashflow.toLocaleString()}원</p>
+                            <p className="mt-1 text-[11px] text-slate-300">상품가·미수금은 계산하지 않음</p>
+                          </>
+                        ) : isCancelled ? (
                           <>
                             <p className="text-admin-muted-2 font-semibold mb-1">취소/환불 정산</p>
                             <p>입금 {(b.paid_amount ?? 0).toLocaleString()}원</p>
@@ -2473,7 +2510,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     <td tabIndex={0} ref={el => regRef(el, ri, 15)} onFocus={() => setFocusedCell({ row: ri, col: 15 })}
                       className={`sticky right-[140px] z-10 bg-inherit px-3 min-w-[140px] text-center whitespace-nowrap outline-none ${focusCls(15)}`}
                       onClick={e => e.stopPropagation()}>
-                      {isEditing('status') ? (
+                      {!b.clobe_settlement_booking && isEditing('status') ? (
                         <select value={cellValue}
                           aria-label={`${b.customers?.name || b.booking_no || '예약'} 상태 선택`}
                           onChange={e => { setCellValue(e.target.value); commitCell(b.id, 'status', e.target.value); }}
@@ -2483,22 +2520,39 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
                       ) : (
-                        <StatusBadge booking={b} onClick={() => { setEditingCell({ id: b.id, field: 'status' }); setCellValue(b.status); }} />
+                        <div className="flex flex-col items-center gap-1">
+                          {b.clobe_settlement_booking ? (
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${b.settlement_confirmed_at ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700'}`}>
+                              {b.settlement_confirmed_at ? '최종정산 완료' : '정산 진행중'}
+                            </span>
+                          ) : (
+                            <StatusBadge booking={b} onClick={() => { setEditingCell({ id: b.id, field: 'status' }); setCellValue(b.status); }} />
+                          )}
+                        </div>
                       )}
                     </td>
 
                     {/* 액션 (sticky right) */}
                     <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                        {!isTrash && b.status === 'pending' && (
+                        {!isTrash && !b.clobe_settlement_booking && b.status === 'pending' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
                             aria-label={`${b.customers?.name || b.booking_no || '예약'} 예약 확정`}
                             className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap font-semibold">확정</button>
                         )}
-                        {!isTrash && b.status === 'confirmed' && (
+                        {!isTrash && !b.clobe_settlement_booking && b.status === 'confirmed' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'completed')} disabled={processing === b.id}
-                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 결제 완료 처리`}
-                            className="text-[11px] bg-brand text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1B64DA] disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
+                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 여행 완료 처리`}
+                            className="text-[11px] border border-admin-border-strong bg-white text-admin-text-2 px-2.5 py-1.5 rounded-lg hover:bg-admin-bg disabled:opacity-50 whitespace-nowrap font-semibold">여행 완료</button>
+                        )}
+                        {!isTrash && b.clobe_settlement_booking && (
+                          <button
+                            type="button"
+                            onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }}
+                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold whitespace-nowrap ${b.settlement_confirmed_at ? 'border border-admin-border-strong bg-white text-admin-text-2 hover:bg-admin-bg' : 'bg-slate-950 text-white hover:bg-slate-800'}`}
+                          >
+                            {b.settlement_confirmed_at ? '정산 확인' : '최종정산'}
+                          </button>
                         )}
                         {!isTrash ? (
                           <>

@@ -2,7 +2,7 @@ import { createBooking } from '@/lib/db/bookings';
 import { upsertCustomer } from '@/lib/db/customers';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
-import type { ParsedTravelSettlementMemo } from './bank-statement-parser';
+import { parseTravelSettlementMemo, type ParsedTravelSettlementMemo } from './bank-statement-parser';
 import { normalizeBankTransactionText } from '@/lib/bank-transaction-fingerprint';
 
 interface SettlementBookingCandidate {
@@ -22,6 +22,7 @@ export interface SettlementMemoResolution {
   created: boolean;
   confidence: number;
   reason?: string;
+  requiresReview?: boolean;
 }
 
 function similarity(a: string | null | undefined, b: string | null | undefined): number {
@@ -59,7 +60,7 @@ async function bindSettlementKey(
     source: string;
     metadata?: Record<string, unknown>;
   },
-) {
+): Promise<boolean> {
   const { error } = await supabaseAdmin
     .from('booking_settlement_keys')
     .insert({
@@ -80,12 +81,13 @@ async function bindSettlementKey(
   if (error && error.code !== '23505') {
     throw new Error(`settlement key bind failed: ${sanitizeDbError(error)}`);
   }
+  return !error;
 }
 
 async function findExistingKey(memo: ParsedTravelSettlementMemo): Promise<SettlementMemoResolution | null> {
   const { data, error } = await supabaseAdmin
     .from('booking_settlement_keys')
-    .select('booking_id, bookings!booking_id(booking_no, customers!lead_customer_id(name))')
+    .select('booking_id, source, metadata, bookings!booking_id(booking_no, customers!lead_customer_id(name))')
     .eq('normalized_key', memo.normalizedKey)
     .eq('status', 'active')
     .maybeSingle();
@@ -95,8 +97,28 @@ async function findExistingKey(memo: ParsedTravelSettlementMemo): Promise<Settle
 
   const row = data as unknown as {
     booking_id: string;
+    source?: string | null;
+    metadata?: Record<string, unknown> | null;
     bookings?: { booking_no?: string | null; customers?: { name?: string | null } | null } | null;
   };
+
+  const metadata = row.metadata ?? {};
+  const isClobeGenerated = row.source === 'clobe_memo_created_booking'
+    || row.source === 'bank_memo_created_booking'
+    || metadata.clobe_generated === true
+    || metadata.placeholder === true;
+  if (!isClobeGenerated) {
+    return {
+      bookingId: null,
+      bookingNo: null,
+      customerName: null,
+      source: 'ambiguous',
+      created: false,
+      confidence: 1,
+      requiresReview: true,
+      reason: 'an existing non-Clobe settlement key matches this memo; automatic linking is blocked',
+    };
+  }
 
   return {
     bookingId: row.booking_id,
@@ -113,7 +135,7 @@ async function findExistingBooking(memo: ParsedTravelSettlementMemo): Promise<Se
     .from('bookings')
     .select('id, booking_no, departure_date, land_operator, land_operator_id, customers!lead_customer_id(name)')
     .eq('departure_date', memo.departureDate)
-    .in('status', ['pending', 'confirmed', 'completed'])
+    .neq('status', 'cancelled')
     .or('is_deleted.is.null,is_deleted.eq.false');
 
   const candidates = ((data ?? []) as SettlementBookingCandidate[])
@@ -127,31 +149,19 @@ async function findExistingBooking(memo: ParsedTravelSettlementMemo): Promise<Se
     .sort((a, b) => b.score - a.score);
 
   if (candidates.length === 0) return null;
-  if (candidates.length > 1 && candidates[0].score - candidates[1].score < 0.2) {
-    return {
-      bookingId: null,
-      source: 'ambiguous',
-      created: false,
-      confidence: Math.round(candidates[0].score * 100) / 100,
-      reason: 'same memo matched more than one booking candidate',
-    };
-  }
-
   const best = candidates[0];
-  await bindSettlementKey(memo, best.row.id, {
-    bookingNo: best.row.booking_no,
-    landOperatorId: best.row.land_operator_id,
-    source: 'bank_memo_existing_booking',
-    metadata: { confidence: best.score },
-  });
-
+  const ambiguous = candidates.length > 1 && candidates[0].score - candidates[1].score < 0.2;
   return {
-    bookingId: best.row.id,
-    bookingNo: best.row.booking_no,
-    customerName: best.row.customers?.name ?? memo.leadCustomerName,
-    source: 'existing_booking',
+    bookingId: null,
+    bookingNo: ambiguous ? null : best.row.booking_no,
+    customerName: ambiguous ? null : best.row.customers?.name ?? memo.leadCustomerName,
+    source: 'ambiguous',
     created: false,
     confidence: Math.round(best.score * 100) / 100,
+    requiresReview: true,
+    reason: ambiguous
+      ? 'same memo matched more than one existing booking; review is required'
+      : 'an existing normal booking looks similar; Clobe memo will not auto-link to it',
   };
 }
 
@@ -183,12 +193,26 @@ async function createPlaceholderBooking(memo: ParsedTravelSettlementMemo): Promi
   });
   if (!booking?.id) throw new Error('booking creation failed for settlement memo');
 
-  await bindSettlementKey(memo, booking.id, {
+  const bound = await bindSettlementKey(memo, booking.id, {
     bookingNo: (booking as { booking_no?: string | null }).booking_no ?? null,
     landOperatorId,
-    source: 'bank_memo_created_booking',
-    metadata: { placeholder: true },
+    source: 'clobe_memo_created_booking',
+    metadata: { placeholder: true, clobe_generated: true },
   });
+
+  // Two manual sync clicks can race before either one sees the unique memo
+  // key. Keep the first key owner and hide the loser instead of leaving a
+  // second visible settlement booking behind.
+  if (!bound) {
+    const existing = await findExistingKey(memo);
+    if (existing?.bookingId && existing.bookingId !== booking.id) {
+      await supabaseAdmin
+        .from('bookings')
+        .update({ is_deleted: true, updated_at: new Date().toISOString() })
+        .eq('id', booking.id);
+      return existing;
+    }
+  }
 
   return {
     bookingId: booking.id,
@@ -221,4 +245,162 @@ export async function resolveSettlementMemoBooking(
   }
 
   return createPlaceholderBooking(memo);
+}
+
+export type ClobeMemoCorrectionResult =
+  | { status: 'updated'; bookingId: string; previousKey: string | null; nextKey: string }
+  | { status: 'review'; bookingId: string; previousKey: string | null; nextKey: string; reason: string };
+
+/**
+ * Update a Clobe-created settlement booking in place when its provider memo
+ * changes before final settlement. If another active provider transaction
+ * still carries the old key, the correction is quarantined for review. This
+ * prevents two real trip keys from silently becoming aliases of one booking.
+ */
+export async function applyClobeMemoCorrection(input: {
+  bookingId: string;
+  transactionId: string;
+  previousMemo: string | null | undefined;
+  nextMemo: ParsedTravelSettlementMemo;
+}): Promise<ClobeMemoCorrectionResult> {
+  const previous = input.previousMemo ? parseTravelSettlementMemo(input.previousMemo) : null;
+  const previousKey = previous?.normalizedKey ?? null;
+  const nextKey = input.nextMemo.normalizedKey;
+  if (!previous || previousKey === nextKey) {
+    return {
+      status: 'review',
+      bookingId: input.bookingId,
+      previousKey,
+      nextKey,
+      reason: 'previous Clobe memo key could not be resolved or did not change',
+    };
+  }
+
+  const { data: currentKey, error: currentKeyError } = await supabaseAdmin
+    .from('booking_settlement_keys')
+    .select('booking_id, source, metadata')
+    .eq('normalized_key', previousKey)
+    .eq('booking_id', input.bookingId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (currentKeyError) throw new Error(`previous settlement key lookup failed: ${sanitizeDbError(currentKeyError)}`);
+
+  const metadata = (currentKey?.metadata ?? {}) as Record<string, unknown>;
+  const generated = currentKey?.source === 'clobe_memo_created_booking'
+    || currentKey?.source === 'bank_memo_created_booking'
+    || metadata.clobe_generated === true
+    || metadata.placeholder === true;
+  if (!currentKey || !generated) {
+    return {
+      status: 'review',
+      bookingId: input.bookingId,
+      previousKey,
+      nextKey,
+      reason: 'the existing booking was not created by the Clobe memo flow',
+    };
+  }
+
+  const sourceFilter = 'source.eq.clobe_mcp,source.eq.clobe_api,external_provider.eq.clobe';
+  const [sameMemoResult, linkedBookingResult] = await Promise.all([
+    supabaseAdmin
+      .from('bank_transactions')
+      .select('id, memo')
+      .neq('id', input.transactionId)
+      .neq('status', 'excluded')
+      .eq('memo', previous.rawMemo)
+      .or(sourceFilter)
+      .limit(1),
+    supabaseAdmin
+      .from('bank_transactions')
+      .select('id, memo')
+      .neq('id', input.transactionId)
+      .neq('status', 'excluded')
+      .eq('booking_id', input.bookingId)
+      .or(sourceFilter)
+      .limit(200),
+  ]);
+  if (sameMemoResult.error) {
+    throw new Error(`old memo transaction lookup failed: ${sanitizeDbError(sameMemoResult.error)}`);
+  }
+  if (linkedBookingResult.error) {
+    throw new Error(`linked booking transaction lookup failed: ${sanitizeDbError(linkedBookingResult.error)}`);
+  }
+  const anotherTransactionUsesOldKey = [
+    ...(sameMemoResult.data ?? []),
+    ...(linkedBookingResult.data ?? []),
+  ].some(row => parseTravelSettlementMemo(row.memo)?.normalizedKey === previousKey);
+  if (anotherTransactionUsesOldKey) {
+    return {
+      status: 'review',
+      bookingId: input.bookingId,
+      previousKey,
+      nextKey,
+      reason: 'another active Clobe transaction still uses the previous memo key; automatic correction is blocked',
+    };
+  }
+
+  const { data: targetKey, error: targetKeyError } = await supabaseAdmin
+    .from('booking_settlement_keys')
+    .select('id, booking_id')
+    .eq('normalized_key', nextKey)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (targetKeyError) throw new Error(`next settlement key lookup failed: ${sanitizeDbError(targetKeyError)}`);
+  if (targetKey && targetKey.booking_id !== input.bookingId) {
+    return {
+      status: 'review',
+      bookingId: input.bookingId,
+      previousKey,
+      nextKey,
+      reason: 'the corrected memo key already belongs to another booking; automatic merge is blocked',
+    };
+  }
+
+  const customer = await upsertCustomer({
+    name: input.nextMemo.leadCustomerName,
+    source: 'clobe_memo_sync',
+  } as Record<string, unknown>);
+  if (!customer?.id) throw new Error('customer creation failed during Clobe memo correction');
+
+  const landOperatorId = await findLandOperatorId(input.nextMemo.landOperatorName);
+  const { data: currentBooking, error: bookingLookupError } = await supabaseAdmin
+    .from('bookings')
+    .select('package_title, quick_created')
+    .eq('id', input.bookingId)
+    .maybeSingle();
+  if (bookingLookupError) throw new Error(`booking lookup failed during Clobe memo correction: ${sanitizeDbError(bookingLookupError)}`);
+
+  let packageTitle: string | null = null;
+  if (currentBooking?.quick_created === true || String(currentBooking?.package_title ?? '').includes('정산 임시 예약')) {
+    packageTitle = `${input.nextMemo.leadCustomerName} ${input.nextMemo.departureDate} 정산 임시 예약`;
+  }
+
+  const { error: correctionError } = await supabaseAdmin.rpc('apply_clobe_memo_booking_correction', {
+    p_booking_id: input.bookingId,
+    p_transaction_id: input.transactionId,
+    p_previous_key: previousKey,
+    p_next_key: nextKey,
+    p_raw_key: input.nextMemo.rawMemo,
+    p_departure_date: input.nextMemo.departureDate,
+    p_customer_id: customer.id,
+    p_customer_name: input.nextMemo.leadCustomerName,
+    p_land_operator_id: landOperatorId,
+    p_land_operator_name: input.nextMemo.landOperatorName,
+    p_package_title: packageTitle,
+    p_actor: 'clobe_sync',
+  });
+  if (correctionError) {
+    if (correctionError.code === 'P0001') {
+      return {
+        status: 'review',
+        bookingId: input.bookingId,
+        previousKey,
+        nextKey,
+        reason: sanitizeDbError(correctionError),
+      };
+    }
+    throw new Error(`Clobe memo correction command failed: ${sanitizeDbError(correctionError)}`);
+  }
+
+  return { status: 'updated', bookingId: input.bookingId, previousKey, nextKey };
 }

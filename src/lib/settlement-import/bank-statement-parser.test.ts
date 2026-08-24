@@ -25,6 +25,7 @@ describe('bank statement parser', () => {
       departureDate: '2026-07-15',
       leadCustomerName: '정지해',
       landOperatorName: '투어폰',
+      purposeTags: [],
     });
   });
 
@@ -72,6 +73,25 @@ describe('bank statement parser', () => {
       leadCustomerName: '서진혜',
       landOperatorName: '더투어',
       memoFormat: 'separator_variant',
+      purposeTags: [],
+    });
+  });
+
+  it('keeps a registered purpose suffix in the settlement key but not in the operator identity', () => {
+    expect(parseTravelSettlementMemo('260706_김도연_투어폰_환불')).toMatchObject({
+      normalizedKey: '260706_김도연_투어폰_환불',
+      departureDate: '2026-07-06',
+      leadCustomerName: '김도연',
+      landOperatorName: '투어폰',
+      purposeTags: ['환불'],
+    });
+  });
+
+  it('does not guess that an unknown operator suffix is a purpose tag', () => {
+    expect(parseTravelSettlementMemo('260706_김도연_글로벌_투어')).toMatchObject({
+      normalizedKey: '260706_김도연_글로벌_투어',
+      landOperatorName: '글로벌_투어',
+      purposeTags: [],
     });
   });
 });

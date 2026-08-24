@@ -179,11 +179,15 @@ export async function POST(request: NextRequest) {
 
     const fetched = Array.isArray(rawPayload) ? rawPayload.length : 0;
     const normalized = normalizeClobeBankTransactions(rawPayload);
+    const memoEligible = normalized.rows.filter(row => row.memo.trim().length > 0).length;
     const rawSampleKeys = normalized.rows.length === 0 ? getRawSampleKeys(rawPayload) : [];
     const result = await processBankTransactionImportRows(normalized.rows, {
       source: 'clobe_mcp',
       preview: preview || diagnosticsOnly,
       actor: 'clobe_sync',
+      // A canonical Clobe travel memo creates one settlement booking keyed by
+      // the normalized memo. Similar existing normal bookings remain review-
+      // only inside resolveSettlementMemoBooking.
       createMissingBookings: !preview && !diagnosticsOnly,
     });
     console.info('[clobe-bank-sync]', {
@@ -194,6 +198,7 @@ export async function POST(request: NextRequest) {
       diagnosticsOnly,
       fetched,
       normalized: normalized.rows.length,
+      memoEligible,
       normalizeErrors: normalized.errors.length,
       inserted: result.inserted,
       matched: result.matched,
@@ -305,6 +310,7 @@ export async function POST(request: NextRequest) {
       fetched,
       rawSampleKeys,
       normalized: normalized.rows.length,
+      memoEligible,
       normalizeErrors: normalized.errors,
       postCloseChanges,
       classificationRefresh,
