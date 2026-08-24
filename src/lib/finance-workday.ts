@@ -181,7 +181,7 @@ export function buildFinanceWorkday(params: {
     task({
       kind: 'travel_review',
       label: '여행 메모·배분 오류',
-      description: 'Clobe 메모가 없거나 예약과 아직 연결되지 않은 거래를 먼저 처리합니다.',
+      description: '여행키 메모가 있으나 예약과 아직 연결되지 않은 거래를 먼저 처리합니다.',
       count: register(travelTransactionIds.map(id => `transaction:${id}`)),
       href: `/admin/finance?tab=review&mode=workday&queue=review&month=${params.closeMonth}&return=today`,
       actionLabel: '거래 검토 열기',

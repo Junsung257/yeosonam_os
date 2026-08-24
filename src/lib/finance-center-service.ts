@@ -4,6 +4,7 @@ import {
   calculateBankAccountReality,
   calculateBankProfitErp,
   calculateBookingCashPositions,
+  normalizeClobeOperationalScopes,
   travelMemoOrAllocationActionIds,
   YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
   type BankAccountRealityRow,
@@ -205,6 +206,7 @@ async function loadFinanceData(): Promise<LoadedFinanceData> {
     .filter(row => row.id)
     .map(row => row.id as string);
   const allocations = await loadAllocations(transactionIds);
+  const operationalTransactions = normalizeClobeOperationalScopes(transactions, allocations);
   const { data: bookingData, error: bookingError } = await supabaseAdmin
     .from('bookings')
     .select('id, booking_no, package_title, departure_date, settlement_confirmed_at, total_price, total_cost, status, is_deleted, finance_excluded, customers!lead_customer_id(name)')
@@ -212,7 +214,7 @@ async function loadFinanceData(): Promise<LoadedFinanceData> {
   if (bookingError) throw bookingError;
   const bookings = (bookingData ?? []) as LoadedFinanceData['bookings'];
 
-  return { transactions, allocations, bookings };
+  return { transactions: operationalTransactions, allocations, bookings };
 }
 
 async function loadConfirmedSettlementSnapshots(): Promise<FinanceSettlementSnapshot[]> {

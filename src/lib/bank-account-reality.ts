@@ -1,3 +1,5 @@
+import { hasClobeTravelMemo } from './settlement-import/clobe-operational-scope';
+
 export type BankSettlementScope = 'travel' | 'non_travel';
 
 export const YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER = '100038454128';
@@ -70,6 +72,42 @@ export interface BookingCashAllocationRow {
     | 'unassigned'
     | 'review'
     | null;
+}
+
+const CLOBE_BOOKING_TARGETS = new Set<BookingCashAllocationRow['target_type']>([
+  'booking',
+  'customer_refund',
+]);
+
+/**
+ * Clobe 메모를 현재 운영 분류의 SSOT로 사용한다.
+ *
+ * 이미 예약 원장에 배정된 과거 거래는 조용히 여행 외로 돌리지 않는다. 그 외
+ * 빈 메모·비정형 메모는 원본을 보존한 채 여행 수익/예약 대기열에서 제외한다.
+ */
+export function normalizeClobeOperationalScopes(
+  rows: BankAccountRealityRow[],
+  allocations: BookingCashAllocationRow[] = [],
+): BankAccountRealityRow[] {
+  const allocatedTravelIds = new Set(allocations.flatMap(allocation =>
+    allocation.booking_id && CLOBE_BOOKING_TARGETS.has(allocation.target_type ?? 'booking')
+      ? [allocation.bank_transaction_id]
+      : [],
+  ));
+
+  return rows.map(row => {
+    const hasTravelMemo = hasClobeTravelMemo(row);
+    const hasExistingBookingAllocation = Boolean(row.id && allocatedTravelIds.has(row.id));
+    if (hasTravelMemo || hasExistingBookingAllocation) {
+      return row.settlement_scope === 'travel' ? row : { ...row, settlement_scope: 'travel' };
+    }
+
+    return {
+      ...row,
+      settlement_scope: 'non_travel',
+      resolved_classification: row.resolved_classification ?? 'review',
+    };
+  });
 }
 
 export interface BookingCashBookingRow {

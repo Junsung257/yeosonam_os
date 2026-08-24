@@ -17,6 +17,7 @@ import { calcSettlementAccounting } from '@/lib/settlement-accounting';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 import { parseBankStatementRows, parseTravelSettlementMemo } from '@/lib/settlement-import/bank-statement-parser';
+import { splitClobeOperationalRows } from '@/lib/settlement-import/clobe-operational-scope';
 import { splitClobeSyncWindow } from '@/lib/settlement-import/clobe-sync-window';
 import { matchesPaymentPeriod, type PaymentPeriodFilter } from '@/lib/payment-period-filter';
 import { calculatePaymentKpis } from '@/lib/payment-kpi';
@@ -739,8 +740,13 @@ export default function PaymentsPageClient({
       const unmatchedTxs: BankTransaction[] = unmatchedData.transactions || [];
       const mainIds = new Set(mainTxs.map((t: BankTransaction) => t.id));
       const merged = [...mainTxs, ...unmatchedTxs.filter((u: BankTransaction) => !mainIds.has(u.id))];
-      setTransactions(merged);
-      setNonTravelTransactions(nonTravelData.transactions || []);
+      const storedNonTravel: BankTransaction[] = nonTravelData.transactions || [];
+      const allClobeRows = [...new Map(
+        [...merged, ...storedNonTravel].map(transaction => [transaction.id, transaction]),
+      ).values()];
+      const operational = splitClobeOperationalRows(allClobeRows);
+      setTransactions(operational.travel);
+      setNonTravelTransactions(operational.memoReview);
       setBankReality(bankRealityData.summary ?? null);
       setTrashTxs(trashData.transactions || []);
       setLastLoadedAt(new Date().toISOString());
@@ -2055,7 +2061,7 @@ export default function PaymentsPageClient({
       <div className={`mb-3 rounded-admin-sm border px-3 py-2 text-admin-xs ${activeAttentionCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
         <span className="font-semibold">예약 정산 원장</span>
         {' · '}여행키 {activeClobeCount}건 · 예약 매칭 {activeMatchedCount}건 · 확인 필요 {activeAttentionCount}건
-        <span className="ml-2 text-admin-muted">여행 외 통장 거래 {nonTravelCount}건은 예약 수익과 분리됩니다.</span>
+        <span className="ml-2 text-admin-muted">비정형 메모·여행 외 거래 {nonTravelCount}건은 예약 수익과 분리됩니다.</span>
       </div>
 
       {!focusMode ? (
@@ -2221,7 +2227,7 @@ export default function PaymentsPageClient({
           { id: 'matched'   as const, label: '매칭 완료',   count: matchedCount,   active: 'border-emerald-400 bg-emerald-50', num: 'text-emerald-700' },
           { id: 'unmatched' as const, label: '미매칭',      count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
           { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
-          { id: 'non_travel' as const, label: '여행 외·경비', count: nonTravelCount, active: 'border-cyan-400 bg-cyan-50', num: 'text-cyan-800' },
+          { id: 'non_travel' as const, label: '여행 외·메모 확인', count: nonTravelCount, active: 'border-cyan-400 bg-cyan-50', num: 'text-cyan-800' },
         ] as const).map(card => (
           <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'non_travel') setNonTravelReviewOnly(false); if (card.id === 'outflow') setOutflowSubTab(outflowUnmatchedCount > 0 ? 'unmatched' : 'all'); }}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
