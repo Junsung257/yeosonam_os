@@ -155,6 +155,22 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.ledger.variants[0]?.price_calendar[0]?.amount).toBe(1_299_000);
   });
 
+  it('does not treat foreign taxes or included-benefit values as sale prices', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: Cruise cabin 5D',
+      '상품가 1,890,000원',
+      '◎ 일본 국제 관광 여객세 3,000 JPY - 선내 지불',
+      '- 스위트 전용 기항지 관광 진행 (1인 50만원 상당)',
+      '- 무제한 음료 패키지 포함(1인 35만원 상당)',
+      'DAY 1 BX123 departure 10:00 arrival 12:00',
+      'DAY 5 BX124 departure 13:00 arrival 15:00',
+      '포함 호텔, 조식',
+      '불포함 개인경비',
+    ].join('\n'));
+
+    expect(result.ledger.variants[0]?.price_calendar.map(price => price.amount)).toEqual([1_890_000]);
+  });
+
   it('does not turn cruise capacity or dimensions into a sale price', async () => {
     const result = await runProductRegistrationV3([
       'Product: Tokyo Cruise 5D',
@@ -324,6 +340,28 @@ ZE982
     expect(result.structure_plan.document_type).toBe('catalog');
     expect(result.structure_plan.expected_products).toBe(6);
     expect(result.ledger.variants).toHaveLength(6);
+    expect(result.gate_result.checks.find(check => check.id === 'expected_products_match')?.status).toBe('pass');
+  });
+
+  it('merges an identical price-only header stub into its following itinerary product', async () => {
+    const raw = [
+      '북해도 실속비에이 3박4일 PKG',
+      '출발일 6/28, 7/2',
+      '상품가 1,169,000원',
+      '북해도 실속비에이 3박4일 PKG',
+      '일자',
+      '1일 부산 출발 BX182 06:30 신치토세 도착 09:05',
+      '2일 비에이 관광',
+      '3일 오타루 관광',
+      '4일 BX181 출발 부산 도착',
+      '포함사항 호텔, 식사, 전용차량',
+      '불포함사항 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+
+    expect(result.structure_plan.expected_products).toBe(1);
+    expect(result.ledger.variants).toHaveLength(1);
     expect(result.gate_result.checks.find(check => check.id === 'expected_products_match')?.status).toBe('pass');
   });
 
@@ -564,6 +602,24 @@ ZE982
     expect(reviewTexts).not.toContain('오 전');
     expect(reviewTexts).not.toContain('베트남 특산품 관광 3회');
     expect(reviewTexts).not.toContain('(콜드밀)');
+  });
+
+  it('keeps customs and duty-free warnings out of contracted shopping visits', async () => {
+    const result = await runProductRegistrationV3([
+      'Product: 클락 노쇼핑 골프 3박5일',
+      'Price: 799,000 KRW',
+      'DAY 1 BX123 부산 출발 18:00 클락 도착 21:00',
+      'DAY 2 골프 라운딩',
+      'DAY 5 BX124 클락 출발 22:00 부산 도착 05:00(+1)',
+      '※ 기내에서 세관 신고서 작성해야 하며 현지 공항 세관에서 과세가 심하니 면세품을 조심해서 들고 가야 합니다.',
+      'Include hotel',
+      'Exclude personal expense',
+    ].join('\\n'), { destination: '클락' });
+
+    const variant = result.ledger.variants[0];
+    expect(variant.shopping).toEqual([]);
+    expect(variant.standard_notices.some(notice => notice.source_text.includes('세관 신고서'))).toBe(true);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('shopping_not_contradictory'))?.status).toBe('pass');
   });
 
   it('keeps Guangzhou transport/table fragments out of attraction review while preserving real sights', async () => {
@@ -1077,6 +1133,61 @@ ZE982
 
     expect(preview?.optional_tours ?? []).toEqual([]);
     expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+  });
+
+  it('does not promote a generic optional-tour fee reference into a customer option', async () => {
+    const raw = [
+      '상품: 가오슝 노옵션 3박4일',
+      '가격: 899,000원',
+      '포함사항: 왕복항공료, 호텔, 차량, 관광지',
+      '불포함사항: 식사, 선택관광비용, 개인경비',
+      '선택관광, 쇼핑: 노옵션, 노쇼핑',
+      '제1일 BX795 부산 출발 11:25 가오슝 도착 13:20',
+      '제2일 가오슝 시내관광',
+      '제3일 가오슝 자유시간',
+      '제4일 BX796 가오슝 출발 14:15 부산 도착 17:55',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '가오슝' });
+    expect(result.render_contract_preview[0]?.optional_tours ?? []).toEqual([]);
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+  });
+
+  it('does not promote a flattened option-shopping policy heading into a customer option', async () => {
+    const raw = [
+      '상품: 가오슝 노옵션 노쇼핑 3박4일',
+      '가격: 899,000원',
+      '불포함: 선택관광비용, 쇼핑',
+      '선택관광,쇼핑',
+      '노옵션,노쇼핑,노팁',
+      '제1일 BX795 부산 출발 11:25 가오슝 도착 13:20',
+      '제2일 가오슝 시내관광',
+      '제3일 가오슝 자유시간',
+      '제4일 BX796 가오슝 출발 14:15 부산 도착 17:55',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '가오슝' });
+    expect(result.render_contract_preview[0]?.optional_tours ?? []).toEqual([]);
+    expect(result.ledger.variants[0]?.options ?? []).toEqual([]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('optional_tour_not_contradictory'))?.status).toBe('pass');
+  });
+
+  it('keeps a conditional no-shopping quote separate from a shopping visit', async () => {
+    const raw = [
+      '상품: 방콕 3박5일',
+      '가격: 899,000원',
+      '노옵션노팁 쇼핑1회',
+      '※노쇼핑 견적시 쇼핑일정없음',
+      '제1일 BX725 부산 출발 18:00 방콕 도착 21:45',
+      '제2일 방콕 관광',
+      '제3일 방콕 쇼핑센터 1회 방문',
+      '제4일 BX726 방콕 출발 22:55 부산 도착 06:20',
+      '제5일 부산 도착',
+    ].join('\n');
+    const result = await runProductRegistrationV3(raw, { destination: '방콕' });
+    const notices = result.ledger.variants[0]?.standard_notices ?? [];
+    expect(notices.some(notice => notice.template_key === 'shopping.none')).toBe(false);
+    expect(notices.some(notice => notice.template_key === 'shopping.visits_count')).toBe(true);
   });
 
   it('keeps Cebu semi-package transit, shopping, options, and passport notices out of unmatched attractions', async () => {
@@ -2190,8 +2301,11 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(notice?.review_status).toBe('review_needed');
     expect(notice?.standard_text).toBe('현지에서는 전자담배 반입이 금지되어 있습니다.');
     expect(notice?.source_text).toBe('전자담배 반입금지입니다.');
-    expect(result.gate_result.status).toBe('blocked');
-    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
+    // The source-backed warning is safe to expose as a generic consultation
+    // notice even when the destination country is not repeated in the line.
+    expect(result.gate_result.status).toBe('needs_review');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'pass')).toBe(true);
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_disclosure') && c.status === 'warn')).toBe(true);
   });
 
   it('fills prohibited e-cigarette notice country from known Thai city context', async () => {

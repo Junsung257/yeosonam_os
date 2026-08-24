@@ -11,6 +11,12 @@ import { PRODUCT_REGISTRATION_V4_PARSER_VERSION } from './types';
 
 const execFileAsync = promisify(execFile);
 const RHWP_MAX_BUFFER = 32 * 1024 * 1024;
+// A malformed or adversarial HWP must not hold the registration workflow
+// forever.  Keep the limit configurable for a larger offline fixture while
+// retaining a bounded production default.
+const RHWP_TIMEOUT_MS = Number.isFinite(Number(process.env.RHWP_TIMEOUT_MS))
+  ? Math.max(5_000, Number(process.env.RHWP_TIMEOUT_MS))
+  : 90_000;
 
 type RhwpTextPayload = {
   pageCount?: number;
@@ -116,6 +122,8 @@ async function runRhwpJson(binary: string, args: string[], label: string): Promi
       encoding: 'utf8',
       maxBuffer: RHWP_MAX_BUFFER,
       windowsHide: true,
+      timeout: RHWP_TIMEOUT_MS,
+      killSignal: 'SIGTERM',
     });
     return parseJsonPayload(result.stdout, label);
   } catch (error) {

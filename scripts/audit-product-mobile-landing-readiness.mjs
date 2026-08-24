@@ -1898,7 +1898,7 @@ for (const chunk of chunks(currentSnapshotIds, 100)) {
     () => supabase
       .from('product_registration_v5_proof_runs')
       // The persisted V6 proof binds the nested chromeProof to the outer
-      // route, viewport, device profile, and renderer build.  Omitting these
+      // route, viewport, device profile, and renderer build. Omitting these
       // columns makes a genuinely passed proof look stale to the authority
       // audit and incorrectly downgrades the source-proof publication.
       .select('id,public_snapshot_id,snapshot_hash,status,result,route,viewport,device_profile,renderer_build_id,created_at')

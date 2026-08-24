@@ -47,7 +47,7 @@ function headerColumns(table: DocumentIrTable): Map<string, number> | null {
       else if (/^(?:지역|도시명|행선지)$/.test(value)) headers.set('region', cell.column);
       else if (/^교통편?$/.test(value)) headers.set('transport', cell.column);
       else if (/^시간$/.test(value)) headers.set('time', cell.column);
-      else if (/^(?:일정|세부일정|상세일정|세부사항|주요행사일정|행사일정)$/.test(value)) headers.set('schedule', cell.column);
+      else if (/^(?:일정|세부일정|상세일정|세부여행일정|세부사항|주요행사일정|행사일정)$/.test(value)) headers.set('schedule', cell.column);
       else if (/^식사$/.test(value)) headers.set('meal', cell.column);
     }
     if (['day', 'region', 'transport', 'time', 'schedule', 'meal'].every(key => headers.has(key))) {

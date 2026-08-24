@@ -77,7 +77,13 @@ import {
 import { attachSharedDocumentContext, inferSharedDocumentContext } from './document-context';
 import { inferUndatedPriceScopesFromSchedule } from './price-scope-inference';
 
-export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-18.58';
+// Bump whenever segmentation or canonical interpretation changes. The
+// repeated price-card/detail collapse is a semantic change, so cached stage
+// results from .60 must not be reused as if they were produced by this build.
+// .65 recognizes one repeated shared sale window in a multi-variant catalog,
+// while leaving competing windows unresolved; this prevents stale rows from
+// remaining as undated products.
+export const PRODUCT_REGISTRATION_V4_NORMALIZATION_VERSION = 'v6-canonical-2026-08-19.76';
 
 export type CanonicalSegmentationSource =
   | 'catalog-pre-split'
@@ -122,6 +128,44 @@ function isoDateWeekday(value: string | null): number | null {
 }
 
 type V3Variant = Awaited<ReturnType<typeof runProductRegistrationV3>>['ledger']['variants'][number];
+
+function isSourceSheetFallbackVariant(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fallback = (value as { source_sheet_fallback?: unknown }).source_sheet_fallback;
+  return Boolean(fallback && typeof fallback === 'object' && !Array.isArray(fallback)
+    && (fallback as { reason?: unknown }).reason === 'schedule_and_lodging_not_in_source');
+}
+
+function canAcceptDegradedV3Failures(input: {
+  failedChecks: Array<{ id: string }>;
+  variants: unknown[];
+}): boolean {
+  if (input.failedChecks.length === 0) return false;
+  const sourceSheetFallback = input.variants.length > 0 && input.variants.every(isSourceSheetFallbackVariant);
+  // Some supplier tables expose an exclusion heading and substantive source
+  // text, but the row parser cannot safely assign that text to a variant. The
+  // canonical completeness layer already marks this field as safe-to-degrade;
+  // publish the product with an explicit 상담 확인 disclosure instead of
+  // silently inventing an exclusion or blocking the whole package.
+  const missingExclusions = input.variants.length > 0 && input.variants.every(variant => {
+    if (!variant || typeof variant !== 'object' || Array.isArray(variant)) return false;
+    const exclusions = (variant as { exclusions?: unknown }).exclusions;
+    return Array.isArray(exclusions) && exclusions.length === 0;
+  });
+  return input.failedChecks.every(check => (
+    check.id.endsWith('.flight')
+    || check.id.endsWith('.flight_times_complete')
+    || check.id.endsWith('.hotel_or_notice')
+    || (missingExclusions && check.id.endsWith('.exclusions'))
+    || (sourceSheetFallback && (
+      check.id.endsWith('.days')
+      || check.id.endsWith('.minimum_departure')
+      || check.id.endsWith('.inclusions')
+      || check.id.endsWith('.exclusions')
+      || check.id.endsWith('.meals_or_notice')
+    ))
+  ));
+}
 
 type SourceLodgingAlternative = {
   customerText: string;
@@ -214,6 +258,98 @@ function applySourceLodgingAlternative(rawText: string, variants: V3Variant[]): 
       };
     }
     variant.evidence_coverage.hotel = variant.days.some(day => Boolean(day.hotel?.raw_text ?? day.hotel?.name));
+  }
+}
+
+type SourceSheetFallbackMeta = {
+  reason: 'schedule_and_lodging_not_in_source';
+  evidence: V3Variant['days'][number]['events'][number]['evidence'];
+};
+
+function sourceSheetFallbackEvidence(rawText: string): SourceSheetFallbackMeta['evidence'] | null {
+  const lines = sourceLinesWithOffsets(rawText);
+  const marker = lines.find(candidate => /(?:\uC694\uAE08\s*\uD45C|\uAC00\uACA9\s*\uD45C|\uC5EC\uD589\s*\uACBD\uBE44|\uC0C1\uD488\s*\uAC00|\uD310\uB9E4\s*\uAC00|\uCD9C\uBC1C\s*\uC77C)/u.test(candidate.text));
+  const datePattern = /(?:\d{1,2}\s*[./-]\s*\d{1,2}|특정일|매주\s*[일월화수목금토])/u;
+  const moneyPattern = /(?:\d{3,4}(?:[,.]?\d{3})?\s*원?|\d{1,3}\s*만원)/u;
+  const sameLine = lines.find(candidate => datePattern.test(candidate.text) && moneyPattern.test(candidate.text));
+  // Supplier price matrices commonly put the departure roster on one row and
+  // the amount on the next row. Treat only a short, contiguous date→amount
+  // pair as evidence; never scan across a whole document or borrow a sibling
+  // product's price.
+  const adjacent = lines.find((candidate, index) => {
+    if (!datePattern.test(candidate.text)) return false;
+    return lines.slice(index + 1, index + 4).some(next => moneyPattern.test(next.text));
+  });
+  const line = marker ?? sameLine ?? adjacent;
+  if (!line) return null;
+  const endLine = adjacent && line === adjacent
+    ? lines.slice(lines.indexOf(line) + 1, lines.indexOf(line) + 4).find(next => moneyPattern.test(next.text)) ?? line
+    : line;
+  const quote = line === endLine ? line.text : `${line.text}\n${endLine.text}`;
+  return {
+    line_start: line.lineNumber,
+    line_end: endLine.lineNumber,
+    char_start: line.charStart,
+    char_end: endLine.charEnd,
+    quote,
+    quote_hash: sha256Hex(quote),
+    extraction_method: 'text_line',
+  };
+}
+
+/**
+ * A legitimate supplier price/flight sheet sometimes contains no day-by-day
+ * itinerary or hotel line at all.  It is still safe to show the verified
+ * departure/price/flight facts if the customer is told explicitly that the
+ * missing details require consultation.  This fallback creates no activity,
+ * hotel, meal, or attraction facts; it only creates one source-bound notice
+ * event per proven travel day so the mobile renderer has a stable contract.
+ */
+function applySourceSheetFallback(
+  rawText: string,
+  variants: V3Variant[],
+  durationHint?: number | null,
+): void {
+  const normalized = rawText.normalize('NFKC');
+  const hasCommercialSheetMarker = /(?:\uC694\uAE08\s*\uD45C|\uAC00\uACA9\s*\uD45C|\uC5EC\uD589\s*\uACBD\uBE44|\uC0C1\uD488\s*\uAC00|\uD310\uB9E4\s*\uAC00|\bPKG\b|\uD328\uD0A4\uC9C0|\uD2B9\uAC00|\uC120\uBC1C\uAD8C|\uCD9C\uBC1C\s*\uD655\uC815)/iu.test(normalized);
+  const hasDepartureMarker = /(?:\uCD9C\uBC1C\s*\uC77C|\uCD9C\uBC1C\s*\uAE30\uAC04|\uB9E4\s*\uC8FC\s*[\uC77C\uC6D4\uD654\uC218\uBAA9\uAE08\uD1A0]\s*\uCD9C\uBC1C|\d{1,2}\s*[./-]\s*\d{1,2}|특정일)/u.test(normalized);
+  const evidence = sourceSheetFallbackEvidence(rawText);
+  if (!hasCommercialSheetMarker || !hasDepartureMarker || !evidence) return;
+
+  for (const variant of variants) {
+    const parsedDurationDays = Number(variant.duration_days);
+    const durationDays = Number.isInteger(parsedDurationDays) && parsedDurationDays >= 2 && parsedDurationDays <= 31
+      ? parsedDurationDays
+      : Number(durationHint);
+    const hasSalePrice = variant.price_calendar.some(price => Number(price.amount) > 0);
+    if (variant.days.length > 0 || !Number.isInteger(durationDays) || durationDays < 2 || durationDays > 31
+      || !hasSalePrice) continue;
+    const notice = '상세 일정과 숙소는 예약 상담 시 최종 확인합니다.';
+    variant.days = Array.from({ length: durationDays }, (_, index) => ({
+      day: index + 1,
+      route: [],
+      events: [{
+        type: 'notice' as const,
+        time: null,
+        raw_text: notice,
+        canonical_id: null,
+        canonical_type: null,
+        match_status: 'review' as const,
+        evidence,
+      }],
+      meals: { breakfast: {}, lunch: {}, dinner: {} },
+      hotel: {},
+    }));
+    variant.nights = Math.max(0, durationDays - 1);
+    variant.evidence_coverage = {
+      ...variant.evidence_coverage,
+      itinerary: false,
+      hotel: false,
+    };
+    (variant as V3Variant & { source_sheet_fallback?: SourceSheetFallbackMeta }).source_sheet_fallback = {
+      reason: 'schedule_and_lodging_not_in_source',
+      evidence,
+    };
   }
 }
 
@@ -414,6 +550,82 @@ export function linkSharedDateScopesAcrossVariants(input: {
   return linked;
 }
 
+/**
+ * A common land-supplier price sheet puts several accommodation rows under
+ * one duration (for example, city hotel 789,000 and mountain hotel 889,000)
+ * while the product sections below repeat only the accommodation name. The
+ * table parser correctly preserves both evidence rows, but without this
+ * document-local relation each section receives both amounts and the policy
+ * quite rightly reports a same-date conflict. Resolve only when the price
+ * evidence row and the section title provide an unambiguous accommodation
+ * label; never choose a cheaper/median value.
+ */
+export function filterPriceCalendarByAccommodationRow(input: {
+  documentIr: DocumentIR;
+  section: CanonicalSection;
+  variants: V3Variant[];
+}): number {
+  const normalize = (value: string): string => value
+    .normalize('NFKC')
+    .replace(/\s+/gu, '')
+    .toLocaleLowerCase('ko-KR');
+  const accommodationToken = (value: string): string | null => {
+    const compact = normalize(value);
+    if (/(?:산위|마운틴|mountain)/iu.test(compact)) return 'mountain';
+    if (/(?:망선곡|wangxian)/iu.test(compact)) return 'wangxian';
+    if (/(?:시내|도심|city)/iu.test(compact)) return 'city';
+    if (/(?:숙박|호텔|리조트|resort|hotel)/iu.test(compact)) return compact;
+    return null;
+  };
+    // Only the product title is an identity signal. The itinerary can contain
+    // words such as “산위뷔페식” even when the hotel variant is the city
+    // product, so scanning the full schedule would bind the wrong price row.
+    const local = normalize(input.section.titleHint ?? '');
+  const tableCells = input.documentIr.tables.flatMap(table => table.cells.map(cell => ({ table, cell })));
+  let changed = 0;
+  for (const variant of input.variants) {
+    const prices = variant.price_calendar;
+    if (prices.length < 2) continue;
+    const rowLabels = prices.map(price => {
+      const nodeId = typeof price.evidence?.node_id === 'string' ? price.evidence.node_id : null;
+      const source = nodeId ? tableCells.find(item => item.cell.nodeId === nodeId) : null;
+      if (!source) return null;
+      const rowCells = source.table.cells
+        .filter(cell => cell.row === source.cell.row && cell.column <= source.cell.column)
+        .sort((left, right) => left.column - right.column)
+        .map(cell => cell.text)
+        .filter(Boolean)
+        .join(' ');
+      return accommodationToken(rowCells);
+    });
+    const distinctLabels = [...new Set(rowLabels.filter((value): value is string => Boolean(value)))];
+    if (distinctLabels.length < 2) continue;
+    let desired: string | null = null;
+    if (/(?:산위|마운틴|mountain)/iu.test(local)) desired = 'mountain';
+    else if (/(?:망선곡|wangxian)/iu.test(local)) desired = 'wangxian';
+    else if (/(?:시내|도심|city)/iu.test(local)) desired = 'city';
+    else if (distinctLabels.includes('city')) desired = 'city';
+    if (!desired) continue;
+    const filtered = prices.filter((_, index) => rowLabels[index] === desired);
+    if (filtered.length === 0 || filtered.length === prices.length) continue;
+    // Every removed price must carry a different, recognized row label. This
+    // prevents an unlabeled or free-text price from being silently discarded.
+    const removedHasRecognizedLabel = prices.every((_, index) => (
+      rowLabels[index] != null
+        ? rowLabels[index] === desired || distinctLabels.includes(rowLabels[index]!)
+        : false
+    ));
+    if (!removedHasRecognizedLabel) continue;
+    variant.price_calendar = filtered.map(price => ({
+      ...price,
+      label: `${price.label} [숙박 범위: ${desired}]`,
+    }));
+    variant.evidence_coverage.price = true;
+    changed += prices.length - filtered.length;
+  }
+  return changed;
+}
+
 type CanonicalSectionRecord = Record<string, unknown>;
 
 function canonicalSectionV3(section: CanonicalSectionRecord): CanonicalSectionRecord | null {
@@ -519,7 +731,34 @@ export function linkSharedPriceCalendarsAcrossSections(
   return changed;
 }
 
-function selectTablePriceCalendar(input: {
+const PRICE_AXIS_LOCATION_ALIAS_GROUPS: Array<{
+  key: string;
+  terms: string[];
+  weight: number;
+}> = [
+  // Supplier tables often label the product with a country while the itinerary
+  // uses the cities visited. These aliases are only used as a tie-breaker when
+  // the full section contains the matching itinerary evidence.
+  { key: 'malaysia', terms: ['말레이시아', '조호바루', '조호', '말라카'], weight: 24 },
+  { key: 'batam', terms: ['바탐'], weight: 24 },
+  { key: 'singapore', terms: ['싱가포르', '싱가폴'], weight: 2 },
+];
+
+function priceAxisLocationScore(candidateLabel: string, localText: string): number {
+  const candidate = normalizeProductAxisLabel(candidateLabel).replace(/\s+/gu, '');
+  const local = normalizeProductAxisLabel(localText).replace(/\s+/gu, '');
+  return PRICE_AXIS_LOCATION_ALIAS_GROUPS.reduce((score, group) => {
+    const candidateHits = group.terms.filter(term => candidate.includes(normalizeProductAxisLabel(term)));
+    const localHits = group.terms.filter(term => local.includes(normalizeProductAxisLabel(term)));
+    if (candidateHits.length === 0 || localHits.length === 0) return score;
+    // A country/city pair in the candidate and the same route in the local
+    // itinerary is stronger than a generic destination word. Keep the small
+    // Singapore weight so it cannot beat a Malaysia/Batam-specific match.
+    return score + group.weight + Math.min(candidateHits.length, localHits.length);
+  }, 0);
+}
+
+export function selectTablePriceCalendar(input: {
   calendars: DocumentIrTablePriceCalendar[];
   durationDays: number;
   sectionRawText: string;
@@ -560,16 +799,32 @@ function selectTablePriceCalendar(input: {
       .split(/(?:노팁노옵션|노팁노쇼핑|노팁|노옵션|노쇼핑|노노)/gu)
       .map(value => value.replace(/[^0-9A-Za-z가-힣]/gu, ''))
       .filter(Boolean);
+    // Supplier matrices often compress the axis into a single cell while the
+    // product heading spells the same facts out with a package separator
+    // (for example `1일자유 싱가포르 패키지 3박5일` vs
+    // `1일자유 싱가폴3박`).  Keep the match evidence-bound, but score the
+    // stable axis tokens independently rather than requiring the compressed
+    // label to be one contiguous substring.
+    const axisTokens = [...label.matchAll(/(?:\d+일자유|\d+개국관광|전일관광|관광|휴양|[가-힣]{2,}(?=\d+박)|\d+박)/gu)]
+      .map(match => match[0]!)
+      .filter(token => token.length >= 2);
+    const tokenMatches = axisTokens.filter(token => title.includes(token));
+    const headingTokenMatches = axisTokens.filter(token => localHeading.includes(token));
     const titleHasAllTokens = allTokens.length > 0 && allTokens.every(token => title.includes(token));
+    const locationScore = priceAxisLocationScore(label, localText);
     const score = specific && title.includes(specific)
       ? 500 + specific.length
       : titleHasAllTokens
         ? 400 + allTokens.join('').length
-        : title.includes(label)
-          ? 100 + label.length
-          : localHeading.includes(label)
+        : axisTokens.length >= 2 && tokenMatches.length === axisTokens.length
+          ? 360 + tokenMatches.join('').length
+          : axisTokens.length >= 2 && headingTokenMatches.length === axisTokens.length
+            ? 320 + headingTokenMatches.join('').length
+          : title.includes(label)
+            ? 100 + label.length
+            : localHeading.includes(label)
             ? 10 + label.length
-            : 0;
+            : locationScore;
     return score > 0 ? [{ candidate, score }] : [];
   }).sort((left, right) => right.score - left.score || String(right.candidate.gradeLabel).length - String(left.candidate.gradeLabel).length);
   if (labeled.length === 0 || labeled[0]!.score === labeled[1]?.score) return null;
@@ -582,7 +837,10 @@ function normalizeProductAxisLabel(value: string | null | undefined): string {
     .replace(/\s+/gu, '')
     .toLocaleLowerCase('ko-KR')
     .replace(/高품격/gu, '고품격')
-    .replace(/luxury/gu, '럭셔리');
+    .replace(/luxury/gu, '럭셔리')
+    // Common supplier spelling variants are equivalent only for matching;
+    // the original label remains the customer-facing value.
+    .replace(/싱가폴/gu, '싱가포르');
 }
 
 type ScopedCommercialCandidate = {
@@ -640,13 +898,31 @@ function variantMatchesProductAxis(variant: V3Variant, calendar: DocumentIrTable
   return gradeMatches && values.some(value => value.includes(transport));
 }
 
-function applyItineraryToVariant(variant: V3Variant, itinerary: ReturnType<typeof buildDocumentIrTableItineraries>[number]): V3Variant {
+export function resolveVariantNights(input: {
+  variant?: Pick<V3Variant, 'duration_days' | 'course' | 'grade' | 'title_parts'>;
+  itinerary: ReturnType<typeof buildDocumentIrTableItineraries>[number];
+  sourceText?: string;
+}): number {
+  const durationDays = input.itinerary.days.length;
+  const source = `${input.sourceText ?? ''} ${input.variant?.course ?? ''} ${input.variant?.grade ?? ''} ${(input.variant?.title_parts ?? []).join(' ')}`;
+  const explicit = source.match(/(?:^|[^\d])([1-9]\d?)\s*박\s*([1-9]\d?)\s*일(?!차)/u);
+  if (explicit?.[1] && Number(explicit[2]) === durationDays) {
+    return Number(explicit[1]);
+  }
+  return input.itinerary.days.filter(day => (
+    typeof day.hotel.raw_text === 'string' && day.hotel.raw_text.trim().length > 0
+  )).length;
+}
+
+function applyItineraryToVariant(
+  variant: V3Variant,
+  itinerary: ReturnType<typeof buildDocumentIrTableItineraries>[number],
+  sourceText?: string,
+): V3Variant {
   return {
     ...variant,
     duration_days: itinerary.days.length,
-    nights: itinerary.days.filter(day => (
-      typeof day.hotel.raw_text === 'string' && day.hotel.raw_text.trim().length > 0
-    )).length,
+    nights: resolveVariantNights({ variant, itinerary, sourceText }),
     days: itinerary.days,
     flight_segments: itinerary.flightSegments,
     evidence_coverage: {
@@ -681,7 +957,7 @@ function applySameOfferItineraryChoices(input: {
   const choiceSignal = /(?:일정\s*[1-9]|코스\s*[1-9]|\bOR\b|또는|택\s*1)/iu.test(input.sectionRawText);
   const identities = new Set(input.itineraries.map(itineraryIdentity));
   if (!choiceSignal || identities.size !== 1) return { applied: false, variants: input.variants };
-  const variant = applyItineraryToVariant(input.variants[0]!, input.itineraries[0]!);
+  const variant = applyItineraryToVariant(input.variants[0]!, input.itineraries[0]!, input.sectionRawText);
   variant.itinerary_choices = input.itineraries.map((itinerary, index) => ({
     label: `일정 ${index + 1}`,
     table_id: itinerary.tableId,
@@ -691,10 +967,103 @@ function applySameOfferItineraryChoices(input: {
   return { applied: true, variants: [variant] };
 }
 
+type ProductBlockScope = {
+  startLine: number;
+  endLine: number;
+  text: string;
+};
+
+function normalizeProductBlockLabel(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/\s+/gu, '')
+    .toLocaleLowerCase('ko-KR');
+}
+
+/**
+ * A price matrix can expand one itinerary body into several products.  When
+ * the source contains explicit `PKG` blocks, facts collected from the whole
+ * matrix must be narrowed back to the block matching the expanded axis.  This
+ * prevents a `노옵션` notice from the comparison product leaking into the
+ * regular product (and vice versa).
+ */
+function findProductBlockScope(rawText: string, label: string | null | undefined): ProductBlockScope | null {
+  const normalizedLabel = normalizeProductBlockLabel(label ?? '');
+  if (!normalizedLabel || rawText.length === 0) return null;
+  const lines = rawText.split('\n');
+  const starts = lines
+    .map((line, index) => ({ line: line.trim(), index }))
+    .filter(item => /^(?:PKG|상품\s*[:：])/iu.test(item.line))
+    .map(item => item.index);
+  if (starts.length < 2) return null;
+  const matches = starts
+    .map((start, index) => {
+      const end = starts[index + 1] ?? lines.length;
+      const text = lines.slice(start, end).join('\n');
+      return { startLine: start + 1, endLine: end, text };
+    })
+    .filter(scope => normalizeProductBlockLabel(scope.text).includes(normalizedLabel));
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+function evidenceWithinProductBlock(
+  evidence: { line_start?: number; line_end?: number } | Array<{ line_start?: number; line_end?: number }> | undefined,
+  scope: ProductBlockScope,
+): boolean {
+  const entries = Array.isArray(evidence) ? evidence : evidence ? [evidence] : [];
+  return entries.some(item => {
+    const start = Number(item?.line_start);
+    const end = Number(item?.line_end ?? item?.line_start);
+    return Number.isFinite(start) && Number.isFinite(end)
+      && start >= scope.startLine
+      && end <= scope.endLine;
+  });
+}
+
+function scopeExpandedVariantToProductBlock(
+  variant: V3Variant,
+  sectionRawText: string,
+  axisLabel: string | null | undefined,
+): V3Variant {
+  const scope = findProductBlockScope(sectionRawText, axisLabel);
+  if (!scope) return variant;
+  const hasNoOption = /(?:노\s*옵션|no\s*option|선택\s*관광\s*(?:없음|무))/iu.test(scope.text);
+  const hasNoShopping = /(?:노\s*쇼핑|쇼핑\s*(?:없음|무)|쇼핑센터\s*(?:없음|미방문))/iu.test(scope.text);
+  const scopedNotices = variant.standard_notices.filter(notice => {
+    if (notice.template_key === 'optional.none') return hasNoOption;
+    if (notice.template_key === 'shopping.none') return hasNoShopping;
+    return evidenceWithinProductBlock(notice.evidence, scope);
+  });
+  const scopedFacts = variant.structured_facts.filter(fact => {
+    if (fact.category === 'optional_tour' && fact.values.none === true) return hasNoOption;
+    if (fact.category === 'shopping_policy' && fact.values.none === true) return hasNoShopping;
+    return evidenceWithinProductBlock(fact.evidence, scope);
+  });
+  const scopedOptions = variant.options.filter(option => evidenceWithinProductBlock(option.evidence, scope));
+  const scopedShopping = variant.shopping.filter(item => evidenceWithinProductBlock(item.evidence, scope));
+  const scopedInclusions = variant.inclusions.filter(item => evidenceWithinProductBlock(item.evidence, scope));
+  const scopedExclusions = variant.exclusions.filter(item => evidenceWithinProductBlock(item.evidence, scope));
+  return {
+    ...variant,
+    options: scopedOptions,
+    shopping: scopedShopping,
+    inclusions: scopedInclusions.length > 0 ? scopedInclusions : variant.inclusions,
+    exclusions: scopedExclusions.length > 0 ? scopedExclusions : variant.exclusions,
+    standard_notices: scopedNotices,
+    structured_facts: scopedFacts,
+    evidence_coverage: {
+      ...variant.evidence_coverage,
+      options: scopedOptions.length > 0,
+      shopping: scopedShopping.length > 0,
+    },
+  };
+}
+
 function expandExplicitTableProductAxes(input: {
   variants: V3Variant[];
   calendars: DocumentIrTablePriceCalendar[];
   itineraries: ReturnType<typeof buildDocumentIrTableItineraries>;
+  sectionRawText?: string;
 }): { applied: boolean; variants: V3Variant[] } {
   const axes = input.calendars.filter(calendar => calendar.prices.length > 0);
   if (axes.some(calendar => !calendar.productLabelKind)) {
@@ -727,14 +1096,19 @@ function expandExplicitTableProductAxes(input: {
     const axisLabel = [calendar.transportCode, calendar.gradeLabel?.trim()]
       .filter(Boolean)
       .join(' ') || `${calendar.durationDays}\uC77C`;
+    const scopedBase = scopeExpandedVariantToProductBlock(
+      base,
+      input.sectionRawText ?? '',
+      calendar.gradeLabel,
+    );
     const titleParts = [...new Set([
-      ...base.title_parts,
+      ...scopedBase.title_parts,
       ...(calendar.transportCode ? [calendar.transportCode] : []),
       ...(calendar.gradeLabel ? [calendar.gradeLabel] : []),
       `${calendar.durationDays}\uC77C`,
     ])];
     let variant: V3Variant = {
-      ...base,
+      ...scopedBase,
       variant_key: `${base.variant_key}-table-axis-${axisIndex + 1}`,
       grade: calendar.gradeLabel ?? base.grade,
       course: base.course ? `${base.course} ${axisLabel}` : axisLabel,
@@ -750,7 +1124,7 @@ function expandExplicitTableProductAxes(input: {
       ?? (input.itineraries.length === 1 && input.itineraries[0]!.days.length === calendar.durationDays
         ? input.itineraries[0]
         : null);
-    if (itinerary) variant = applyItineraryToVariant(variant, itinerary);
+    if (itinerary) variant = applyItineraryToVariant(variant, itinerary, input.sectionRawText);
     expanded.push(variant);
   }
   return { applied: expanded.length === axes.length, variants: expanded };
@@ -1045,6 +1419,52 @@ function sourceFilenameEvidence(documentIr: DocumentIR): string {
     return values.filter((value): value is string => typeof value === 'string');
   });
   return [documentIr.filename, ...memberFilenames].join('\n');
+}
+
+function sourceEvidenceContainsFutureDepartureDate(input: {
+  sourceText: string;
+  referenceDate: string;
+  sourceWindow: { start: string; end: string };
+}): boolean {
+  const startYear = Number(input.sourceWindow.start.slice(0, 4));
+  const startMonth = Number(input.sourceWindow.start.slice(5, 7));
+  const startDay = Number(input.sourceWindow.start.slice(8, 10));
+  const normalized = input.sourceText.normalize('NFKC');
+  const contextPattern = /(?:출\s*발|상품\s*가|판매\s*가|여행\s*경비|요\s*금|가격|특가|선발|운항|일\s*정)/u;
+  const legalPattern = /(?:발권|예약|유효|취소|환불|여권|비자|입국|약관|작성|수정)/u;
+  // Keep this scanner deliberately narrow: it is used only to decide whether
+  // an otherwise expired source contains a later price/departure roster. It
+  // never creates a price or date; it only validates date-like evidence that
+  // already appears near a commercial heading.
+  const tokenPattern = /(?:(20\d{2}|2\d)\s*(?:년|['’‘])\s*)?(\d{1,2})\s*(?:월\s*|\/\s*)(\d{1,2})/gu;
+  let inheritedYear = startYear;
+  let inheritedYearIndex = -Infinity;
+  for (const match of normalized.matchAll(tokenPattern)) {
+    const index = match.index ?? 0;
+    const quote = match[0];
+    const context = normalized.slice(Math.max(0, index - 90), Math.min(normalized.length, index + quote.length + 110));
+    if (!contextPattern.test(context) || legalPattern.test(context)) continue;
+    const explicitYear = match[1] ? (match[1].length === 2 ? 2000 + Number(match[1]) : Number(match[1])) : null;
+    if (explicitYear != null) {
+      inheritedYear = explicitYear;
+      inheritedYearIndex = index;
+    }
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) continue;
+    const nearbyInheritedYear = index - inheritedYearIndex <= 16 ? inheritedYear : startYear;
+    let year = explicitYear ?? nearbyInheritedYear;
+    // Yearless dates that occur before the source-window start belong to the
+    // next side of a cross-year window (e.g. 2025-12~2026-03).
+    if (explicitYear == null
+      && nearbyInheritedYear === startYear
+      && (month < startMonth || (month === startMonth && day < startDay))) year += 1;
+    const candidate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const parsed = new Date(`${candidate}T00:00:00Z`);
+    if (!Number.isFinite(parsed.getTime())) continue;
+    if (candidate >= input.referenceDate) return true;
+  }
+  return false;
 }
 
 export function canonicalNormalizationJobStatus(input: {
@@ -2162,11 +2582,15 @@ export function segmentDocumentIR(
       `${split.sharedPrefix ? `${split.sharedPrefix}\n\n---\n\n` : ''}${section}`.trim(),
       sharedContext,
     ))
+    : split.sections.length === 1 && split.sections[0] !== fullText
+      ? [split.sections[0]!]
     : [fullText];
   const segmentationSource: CanonicalSegmentationSource = useTableProductSections
     ? 'document-ir-table-products'
     : split.sections.length >= 2
       ? segmentationOverride?.source ?? 'catalog-pre-split'
+      : split.sections.length === 1 && split.sections[0] !== fullText
+        ? segmentationOverride?.source ?? 'catalog-pre-split'
       : 'single-document';
 
   return {
@@ -2249,6 +2673,25 @@ export async function buildCanonicalNormalization(input: {
         year: priceYearEvidence.validated ? priceYearEvidence.year ?? undefined : undefined,
         referenceDate: input.departureDateReference?.referenceDate,
       };
+      // A cross-year departure window is stronger year evidence for yearless
+      // price-table cells than the nearest-future fallback year. For example,
+      // `2025년 12월~26년 3월 26일` must map `12/22` to 2025 and `3/1` to
+      // 2026; using only the current year would manufacture a future December
+      // and prevent the expired source from being archived safely.
+      const calendarSourceWindow = resolveExplicitSourceDepartureWindow(
+        section.rawText,
+        priceYearEvidence.validated ? priceYearEvidence.year : null,
+      ) ?? (segmented.sections.length === 1
+        ? resolveExplicitSourceDepartureWindow(
+            input.documentIr.text,
+            priceYearEvidence.validated ? priceYearEvidence.year : null,
+          )
+        : null);
+      const calendarFallbackYear = calendarSourceWindow
+        ? Number(calendarSourceWindow.start.slice(0, 4))
+        : priceYearEvidence.validated
+          ? priceYearEvidence.year
+          : null;
       const v3 = await runProductRegistrationV3(section.rawText, v3Options);
       linkSharedDateScopesAcrossVariants({
         variants: v3.ledger.variants,
@@ -2317,7 +2760,7 @@ export async function buildCanonicalNormalization(input: {
       const localDetectedTablePriceCalendars = buildDocumentIrTablePriceCalendars({
         documentIr: input.documentIr,
         sectionRawText: section.rawText,
-        fallbackYear: priceYearEvidence.validated ? priceYearEvidence.year : null,
+        fallbackYear: calendarFallbackYear,
         // A price-only monthly grid may omit the duration next to every price.
         // Reuse it only when the local product section or exactly one parsed
         // itinerary proves a single duration; never guess across variants.
@@ -2332,7 +2775,7 @@ export async function buildCanonicalNormalization(input: {
         : buildDocumentIrTablePriceCalendars({
             documentIr: input.documentIr,
             sectionRawText: input.documentIr.text,
-            fallbackYear: priceYearEvidence.validated ? priceYearEvidence.year : null,
+            fallbackYear: calendarFallbackYear,
             fallbackDurationDays: sourceDurationFallback,
           });
       const localDurationCalendars = localSegmentDuration == null
@@ -2360,6 +2803,7 @@ export async function buildCanonicalNormalization(input: {
         variants: v3.ledger.variants,
         calendars: tablePriceCalendars,
         itineraries: tableItineraries,
+        sectionRawText: section.rawText,
       });
       if (tableProductAxes.applied) {
         v3.ledger.variants = tableProductAxes.variants;
@@ -2421,9 +2865,11 @@ export async function buildCanonicalNormalization(input: {
             variant_key: `${existing.variant_key}-d${durationDays}`,
             course: existing.course ? `${existing.course} ${durationDays}\uC77C` : `${durationDays}\uC77C`,
             duration_days: durationDays,
-            nights: itinerary.days.filter(day => (
-              typeof day.hotel.raw_text === 'string' && day.hotel.raw_text.trim().length > 0
-            )).length,
+            nights: resolveVariantNights({
+              variant: existing,
+              itinerary,
+              sourceText: section.rawText,
+            }),
             title_parts: [...existing.title_parts, `${durationDays}\uC77C`],
             price_calendar: prices,
             days: itinerary.days,
@@ -2476,9 +2922,11 @@ export async function buildCanonicalNormalization(input: {
           variant.days = tableItinerary.days;
           variant.flight_segments = tableItinerary.flightSegments;
           variant.duration_days = tableItinerary.days.length;
-          variant.nights = tableItinerary.days.filter(day => (
-            typeof day.hotel.raw_text === 'string' && day.hotel.raw_text.trim().length > 0
-          )).length;
+          variant.nights = resolveVariantNights({
+            variant,
+            itinerary: tableItinerary,
+            sourceText: section.rawText,
+          });
           variant.evidence_coverage.itinerary = true;
           variant.evidence_coverage.flight = tableItinerary.flightSegments.length > 0;
           variant.evidence_coverage.hotel = tableItinerary.days.some(day => Boolean(day.hotel.raw_text));
@@ -2643,18 +3091,35 @@ export async function buildCanonicalNormalization(input: {
           })
         : { applied: false, dates: [], amount: null, amounts: [] };
       inferUndatedPriceScopesFromSchedule({
-        rawText: section.rawText,
+        // Evidence line numbers are anchored to the original DocumentIR. A
+        // catalog pre-split can keep the price roster in the shared prefix
+        // while the section contains only the detailed itinerary; using the
+        // section slice here would make an otherwise explicit date roster
+        // appear missing. Resolve against the full immutable source text and
+        // retain the original price/date evidence anchors.
+        rawText: input.documentIr.text || section.rawText,
         variants: v3.ledger.variants,
         year: priceYearEvidence.validated ? priceYearEvidence.year : null,
+        preferredTransportCode: section.titleHint?.match(/\[(BX|LJ|VJ|VN|KE|7C|ZE|TW|OZ|CA|PR|3U)\]/iu)?.[1]?.toUpperCase() ?? null,
       });
       const criticalPriceOverride = applyVerifiedCriticalPriceOverride({
         section,
         variants: v3.ledger.variants,
         override: input.criticalPriceOverrides?.find(item => item.sectionIndex === section.index) ?? null,
       });
+      filterPriceCalendarByAccommodationRow({
+        documentIr: input.documentIr,
+        section,
+        variants: v3.ledger.variants,
+      });
       consolidatePassengerPriceRows(v3.ledger.variants);
       applyPassengerPriceDefaults(v3.ledger.variants);
       applySourceLodgingAlternative(section.rawText, v3.ledger.variants);
+      applySourceSheetFallback(
+        section.rawText,
+        v3.ledger.variants,
+        localDurationDays(section.titleHint ?? '') ?? sourceDurationFallback,
+      );
       for (const variant of v3.ledger.variants) {
         if (variant.ticketing_condition) continue;
         variant.ticketing_condition = extractSourceTicketingCondition(section.rawText, {
@@ -2665,10 +3130,24 @@ export async function buildCanonicalNormalization(input: {
         variant.evidence_coverage.ticketing_condition = Boolean(variant.ticketing_condition);
       }
       const explicitSectionWindow = input.departureDateReference
-        ? resolveExplicitSourceDepartureWindow(section.rawText)
+        ? resolveExplicitSourceDepartureWindow(
+          section.rawText,
+          priceYearEvidence.validated ? priceYearEvidence.year : null,
+        )
+        : null;
+      const explicitDocumentWindow = input.departureDateReference
+        ? resolveExplicitSourceDepartureWindow(
+          input.documentIr.text,
+          priceYearEvidence.validated
+            ? priceYearEvidence.year
+            : Number(input.departureDateReference.referenceDate.slice(0, 4)),
+        )
         : null;
       const explicitFilenameWindow = input.departureDateReference
-        ? resolveExplicitSourceDepartureWindow(`\uCD9C\uBC1C\uC77C\n${sourceFilenameEvidence(input.documentIr)}`)
+        ? resolveExplicitSourceDepartureWindow(
+          `\uCD9C\uBC1C\uC77C\n${sourceFilenameEvidence(input.documentIr)}`,
+          priceYearEvidence.validated ? priceYearEvidence.year : null,
+        )
         : null;
       const trustedFilenameMonthWindow = parseTrustedDepartureMonthWindowFromFilename(
         sourceFilenameEvidence(input.documentIr),
@@ -2678,7 +3157,7 @@ export async function buildCanonicalNormalization(input: {
         && filenameDepartureDates?.dates.length
         && filenameDepartureDates.dates.every(date => date < input.departureDateReference!.referenceDate),
       );
-      const sourceProvesSectionExpired = Boolean(
+      const sourceExpiredByMetadata = Boolean(
         trustedFilenameDatesAreExpired
         || Boolean(
           input.departureDateReference
@@ -2687,10 +3166,28 @@ export async function buildCanonicalNormalization(input: {
         )
         || (
           input.departureDateReference
-          && explicitSectionWindow
-          && explicitSectionWindow.end < input.departureDateReference.referenceDate
+          && (explicitSectionWindow ?? explicitDocumentWindow)
+          && (explicitSectionWindow ?? explicitDocumentWindow)!.end < input.departureDateReference.referenceDate
         ),
       );
+      const hasFuturePricedDeparture = Boolean(
+        input.departureDateReference
+        && (sourceExpiredByMetadata && (explicitSectionWindow ?? explicitDocumentWindow)
+          ? sourceEvidenceContainsFutureDepartureDate({
+              sourceText: section.rawText,
+              referenceDate: input.departureDateReference.referenceDate,
+              sourceWindow: (explicitSectionWindow ?? explicitDocumentWindow)!,
+            })
+          : v3.ledger.variants.some(variant => variant.price_calendar.some(entry => (
+              typeof entry.date === 'string'
+              && entry.date >= input.departureDateReference!.referenceDate
+              && Number(entry.amount) > 0
+            )))),
+      );
+      // A single HWP frequently carries an expired early-season block and a
+      // later future price matrix. The expired window must not discard the
+      // future dates proven by the same product's price evidence.
+      const sourceProvesSectionExpired = sourceExpiredByMetadata && !hasFuturePricedDeparture;
       const variantDatePolicyResults = v3.ledger.variants.map(variant => {
         if (sourceProvesSectionExpired) {
           const originalDatedEntryCount = variant.price_calendar.filter(entry => (
@@ -2845,11 +3342,10 @@ export async function buildCanonicalNormalization(input: {
         sectionIndex: section.index,
       });
       const failedV3Checks = v3.gate_result.checks.filter(check => check.status === 'fail');
-      const onlySafeDegradedV3Failures = failedV3Checks.length > 0 && failedV3Checks.every(check =>
-        check.id.endsWith('.flight')
-        || check.id.endsWith('.flight_times_complete')
-        || check.id.endsWith('.hotel_or_notice')
-      );
+      const onlySafeDegradedV3Failures = canAcceptDegradedV3Failures({
+        failedChecks: failedV3Checks,
+        variants: v3.ledger.variants,
+      });
       v6GateAccepted.push(
         sectionDatePolicy.disposition === 'past_only_excluded'
         || gateStatus === 'ready_to_publish'
@@ -2903,11 +3399,10 @@ export async function buildCanonicalNormalization(input: {
     completenessResults[sectionIndex] = completeness;
     gateStatuses[sectionIndex] = String(gate.status ?? 'unknown');
     const failedV3Checks = gate.checks.filter(check => check.status === 'fail');
-    const onlySafeDegradedV3Failures = failedV3Checks.length > 0 && failedV3Checks.every(check =>
-      check.id.endsWith('.flight')
-      || check.id.endsWith('.flight_times_complete')
-      || check.id.endsWith('.hotel_or_notice'),
-    );
+    const onlySafeDegradedV3Failures = canAcceptDegradedV3Failures({
+      failedChecks: failedV3Checks,
+      variants,
+    });
     v6GateAccepted[sectionIndex] = (
       gate.status === 'ready_to_publish'
       || (completeness.publicationOutcome === 'degraded' && onlySafeDegradedV3Failures)

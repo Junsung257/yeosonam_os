@@ -106,6 +106,14 @@ const ARCHITECTURE_CONTRACTS = [
     ],
     forbidden: [],
   },
+  {
+    file: 'src/lib/product-registration/upload-registration-pipeline.ts',
+    required: [
+      ['legacy upload pipeline runtime retirement guard', /LEGACY_UPLOAD_PIPELINE_RETIRED/],
+      ['legacy upload pipeline kernel-only message', /Registration Kernel Workflow/],
+    ],
+    forbidden: [],
+  },
 ];
 
 function normalizePath(filePath) {

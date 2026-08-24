@@ -53,6 +53,8 @@ These audits contain recent evidence for the current product-registration engine
 
 ## Product Registration And Mobile Landing
 
+- 2026-08-19 — `2026-08-19-product-registration-full-downloads-conditional-shopping-v15.md`: Full 1,172-file HWP replay after guide-fee/tip separation and conditional no-shopping scope fix; 822/864 structurally safe terminal outcomes, 42 source-bound blockers, complete evidence/render contract, and final build/test evidence.
+
 | Date | File | Use |
 |---|---|---|
 | 2026-08-24 | `product-registration-p0-reproduction-2026-08-24.md` | Shared product-registration/public-catalog Gate 0: production Git/DB/env authority split, same-time 7/2/9/0 catalog mismatch, 410 admin UI, trust/runtime findings, and zero-write implementation decision. |

@@ -47,6 +47,13 @@ const SOURCE_PRICE_STRUCTURE_HINT_RE =
 const EXPLICIT_NO_SALE_PRICE_RE =
   /(?:(?:판매\s*가|상품\s*가|성인\s*요금|가격).{0,12}(?:별도\s*문의|문의\s*요망|미정|추후\s*안내|없음)|요금표\s*참고|(?:별첨|별도)\s*요금표\s*(?:참고|확인)?)/iu;
 
+// A schedule that only points to an unattached price table is not a sellable
+// price. HWP extraction can still leave insurance/deposit/tip/fee amounts in
+// the same document; those unlabeled numbers must not keep it eligible. A
+// real explicit adult-sale line still wins over this guard.
+const DOCUMENT_PRICE_TABLE_NOT_ATTACHED_RE =
+  /(?:요금\s*표\s*참고|(?:별첨|별도)\s*요금\s*표\s*(?:참고|확인)?)/iu;
+
 function asObject(value: unknown): JsonObject | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as JsonObject
@@ -120,6 +127,17 @@ function canonicalTitleHint(canonicalSection: Record<string, unknown>): string {
   return typeof canonicalSection.titleHint === 'string' ? canonicalSection.titleHint.trim() : '';
 }
 
+function isLikelyNonProductSection(input: { sourceText: string; titleHint: string }): boolean {
+  const title = input.titleHint.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  if (!title) return false;
+  const titleOnlyNotice = /^(?:[*※▶▷•·\-\s]*(?:호텔은|객실(?:은|:)|최소\s*출발|출발\s*인원|매너팁|개인\s*경비|상품\s*가|판매\s*가|요금표\s*참조|포함(?:\s*사항)?|불포함(?:\s*사항)?|비\s*고|REMARK|인\s*원|룸\s*타\s*입)\b)/iu.test(title);
+  if (!titleOnlyNotice) return false;
+  const body = `${title}\n${input.sourceText}`.normalize('NFKC');
+  // A notice heading can legitimately contain a product identity on the same
+  // line.  Keep it when a duration/package/travel identity is proven.
+  return !/(?:\d+\s*(?:박\s*\d+\s*일|일\s*(?:PKG|패키지)?|N\s*\d+\s*D)|PKG|패키지|관광|골프|여행|항공\s*(?:편|료)|출발\s*(?:일|일자).*(?:가격|요금|판매))/iu.test(body);
+}
+
 /**
  * Separates an actually price-less source from a price-resolution failure.
  *
@@ -147,6 +165,23 @@ export function resolveSourceSalePriceDisposition(input: {
     };
   }
 
+  if (isLikelyNonProductSection({
+    sourceText: input.sourceText,
+    titleHint: canonicalTitleHint(input.canonicalSection),
+  })) {
+    return {
+      state: 'source_price_absent',
+      shouldDiscard: true,
+      reasonCode: 'SOURCE_SALE_PRICE_ABSENT',
+      canonicalPriceCandidateCount: 0,
+      explicitSourceCandidateCount: 0,
+      unlabeledSourceCandidateCount: 0,
+      sourcePriceStructureHintCount: 0,
+      ignoredNonSaleAmountCount: 0,
+      policyVersion: SOURCE_SALE_PRICE_DISPOSITION_POLICY_VERSION,
+    };
+  }
+
   let explicitSourceCandidateCount = 0;
   let unlabeledSourceCandidateCount = 0;
   let sourcePriceStructureHintCount = 0;
@@ -154,6 +189,8 @@ export function resolveSourceSalePriceDisposition(input: {
   const candidateText = [input.sourceText, canonicalTitleHint(input.canonicalSection)]
     .filter(Boolean)
     .join('\n');
+  const hasDetachedPriceTableNotice = DOCUMENT_PRICE_TABLE_NOT_ATTACHED_RE.test(candidateText);
+  let hasExplicitAdultSaleCandidate = false;
   for (const rawLine of candidateText.normalize('NFKC').split(/\r?\n/gu)) {
     const line = rawLine.replace(/\s+/gu, ' ').trim();
     if (!line) continue;
@@ -167,6 +204,7 @@ export function resolveSourceSalePriceDisposition(input: {
     const nonSaleContext = NON_SALE_CONTEXT_RE.test(line) || NON_SALE_BUSINESS_AMOUNT_RE.test(line);
     const explicitSaleLabel = /(?:판매\s*가|상품\s*가|여행\s*(?:경비|요금)|패키지\s*가격|할인\s*가|최종\s*가|특가)/iu.test(line);
     if (explicitSaleContext && (!nonSaleContext || explicitSaleLabel)) {
+      hasExplicitAdultSaleCandidate = true;
       explicitSourceCandidateCount += new Set([...amounts, ...abbreviatedSaleAmounts]).size;
       continue;
     }
@@ -181,6 +219,22 @@ export function resolveSourceSalePriceDisposition(input: {
     } else {
       ignoredNonSaleAmountCount += amounts.length;
     }
+  }
+
+  // Do not promote an unreadable/detached price-table reference merely
+  // because the document contains large unlabeled commercial numbers.
+  if (hasDetachedPriceTableNotice && !hasExplicitAdultSaleCandidate) {
+    return {
+      state: 'source_price_absent',
+      shouldDiscard: true,
+      reasonCode: 'SOURCE_SALE_PRICE_ABSENT',
+      canonicalPriceCandidateCount: 0,
+      explicitSourceCandidateCount: 0,
+      unlabeledSourceCandidateCount: 0,
+      sourcePriceStructureHintCount: 0,
+      ignoredNonSaleAmountCount,
+      policyVersion: SOURCE_SALE_PRICE_DISPOSITION_POLICY_VERSION,
+    };
   }
 
   const sourceCandidateCount = explicitSourceCandidateCount

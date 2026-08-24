@@ -33,6 +33,21 @@ export async function runUploadRegistrationPipeline(input: {
   publicBaseUrl: string;
   deferPublicationAutopilot?: boolean;
 }): Promise<UploadRegistrationPipelineResult> {
+  // The mutable upload pipeline is retained only as a test/forensics fixture.
+  // All runtime registration must enter the durable Registration Kernel through
+  // startProductRegistrationWorkflow*. Returning before any DB read/write keeps
+  // old batch scripts from silently becoming a second product writer.
+  if (process.env.NODE_ENV !== 'test' && process.env.PRODUCT_REGISTRATION_ALLOW_LEGACY_PIPELINE !== '1') {
+    return {
+      status: 410,
+      payload: {
+        ok: false,
+        code: 'LEGACY_UPLOAD_PIPELINE_RETIRED',
+        message: '상품 등록은 Registration Kernel Workflow 경로만 사용해야 합니다.',
+      },
+    };
+  }
+
   const {
     buffer,
     fileHash,
