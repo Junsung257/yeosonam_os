@@ -11,6 +11,7 @@ import { createCandidateSnapshot } from '@/lib/product-registration-authority/re
 import { persistProductRegistrationV5ProofRun } from '@/lib/product-registration-v4/proof';
 import { PRODUCT_SOURCE_BUCKET } from '@/lib/product-registration-v4/source-documents';
 import { runProductRegistrationV6ChromeProof } from './browser-proof';
+import { PRODUCT_REGISTRATION_COPY_POLICY_V2 } from './copy-revision';
 import { createProductRegistrationV6ProofToken } from './proof-token';
 import { currentProductRegistrationRendererBuildId } from './renderer-build';
 import {
@@ -450,6 +451,13 @@ export async function buildProductRegistrationV6CandidateSnapshots(input: {
     const copyPayload = (copyResult as JsonObject).copy_payload;
     if (!copyPayload || typeof copyPayload !== 'object' || Array.isArray(copyPayload)) {
       throw new Error('V6_VERIFIED_COPY_PAYLOAD_INVALID');
+    }
+    if ((copyResult as JsonObject).copy_policy_version !== PRODUCT_REGISTRATION_COPY_POLICY_V2
+      || (copyPayload as JsonObject).copy_policy_version !== PRODUCT_REGISTRATION_COPY_POLICY_V2
+      || (copyResult as JsonObject).revision_hash !== revision.payload_hash
+      || (copyResult as JsonObject).source_hash !== revision.source_hash
+      || Number((copyResult as JsonObject).quality_score ?? 0) < 72) {
+      throw new Error('V6_VERIFIED_COPY_CONTRACT_MISMATCH');
     }
     const copy = copyPayload as JsonObject;
 

@@ -29,7 +29,11 @@ import {
 } from '@/lib/product-registration-v6/snapshot-publication';
 import { evaluateRegistrationPublicationPolicy } from '@/lib/product-registration-kernel/publication-policy';
 import { loadProductRegistrationV6PublicationBlockers } from '@/lib/product-registration-v6/publication-control';
-import { buildProductRegistrationV6Copy, persistProductRegistrationV6Copy } from '@/lib/product-registration-v6/copy-revision';
+import {
+  generateProductRegistrationV6Copy,
+  persistProductRegistrationV6Copy,
+  type ProductRegistrationCopyClaim,
+} from '@/lib/product-registration-v6/copy-revision';
 import {
   buildPackageProjectionFromRevision,
   loadProductRegistrationRevisionAggregate,
@@ -903,6 +907,12 @@ async function generateCopyStep(
   const supabase = db();
   const blockers: string[] = [];
   const copyHashes: string[] = [];
+  const generationStates: string[] = [];
+  let chargedCopyCostKrw = 0;
+  const allowAiRewrite = decision.outcome !== 'blocked'
+    && !decision.terminalOutcome.startsWith('discarded_')
+    && !decision.terminalOutcome.startsWith('archived_')
+    && !decision.terminalOutcome.startsWith('quarantined_');
   for (const [index, packageId] of decision.packageIds.entries()) {
     const revisionId = decision.revisionIds[index] ?? decision.revisionIds[0];
     if (!revisionId) {
@@ -921,23 +931,50 @@ async function generateCopyStep(
       blockers.push(`package:${packageId}:${error instanceof Error ? error.message : 'COPY_REVISION_PROJECTION_FAILED'}`);
       continue;
     }
-    const built = buildProductRegistrationV6Copy({
-      pkg: pkg as JsonObject,
-      claims: (claims ?? []) as Array<{ id: string; field_path: string; normalized_value: unknown; criticality: string; evidence_status: string; conflict_status: string }>,
-      degradedReasons: decision.degradedReasons,
-    });
-    blockers.push(...built.blockers.map(reason => `package:${packageId}:${reason}`));
-    const persisted = await persistProductRegistrationV6Copy({
+    const typedClaims = (claims ?? []) as ProductRegistrationCopyClaim[];
+    const built = await generateProductRegistrationV6Copy({
       supabase,
       tenantId: aggregate.revision.tenant_id,
+      jobId: input.jobId,
       revisionId,
       revisionHash: aggregate.revision.payload_hash,
       sourceHash: input.fileHash,
-      payload: built.payload,
-      claimLinks: built.claimLinks,
-      validationState: built.blockers.length > 0 ? 'blocked' : 'verified',
+      pkg: pkg as JsonObject,
+      claims: typedClaims,
+      degradedReasons: decision.degradedReasons,
+      allowAiRewrite,
     });
-    copyHashes.push(persisted.copyHash);
+    blockers.push(...built.blockers.map(reason => `package:${packageId}:${reason}`));
+    chargedCopyCostKrw += built.chargedCostKrw;
+    generationStates.push(built.generationState);
+    if (built.alreadyPersisted) {
+      copyHashes.push(built.copyHash);
+    } else {
+      const persisted = await persistProductRegistrationV6Copy({
+        supabase,
+        tenantId: aggregate.revision.tenant_id,
+        revisionId,
+        revisionHash: aggregate.revision.payload_hash,
+        sourceHash: input.fileHash,
+        payload: built.payload,
+        claimLinks: built.claimLinks,
+        validationState: built.blockers.length > 0 ? 'blocked' : 'verified',
+        deterministicFactsHash: built.deterministicFactsHash,
+        generationState: built.generationState,
+        qualityScore: built.qualityScore,
+        modelId: built.modelId,
+        promptHash: built.promptHash,
+      });
+      copyHashes.push(persisted.copyHash);
+    }
+  }
+  if (chargedCopyCostKrw > 0) {
+    const { error: costError } = await supabase.rpc('add_product_registration_v6_external_cost', {
+      p_job_id: input.jobId,
+      p_expected_fencing_token: input.fencingToken,
+      p_cost_krw: chargedCopyCostKrw,
+    });
+    if (costError) throw costError;
   }
   const nextDecision: ProductRegistrationV6Decision = blockers.length > 0
     ? {
@@ -953,9 +990,12 @@ async function generateCopyStep(
     stage: 'generate_copy',
     status: 'succeeded',
     output: {
-      copyPolicy: 'validated-facts-template-only',
+      copyPolicy: 'product-registration-customer-copy-v2',
       degradedNoticeApplied: decision.outcome === 'degraded',
       copyHashes,
+      generationStates,
+      aiRewriteAllowed: allowAiRewrite,
+      chargedCopyCostKrw,
       blockers,
     },
   });
