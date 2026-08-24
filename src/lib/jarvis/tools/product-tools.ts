@@ -9,12 +9,35 @@ import {
   type PublishedDepartureFact,
   type PublishedProductFact,
 } from '@/lib/product-registration-authority/read-model';
+import { listPublicCatalog } from '@/lib/public-catalog';
 import type { UIComponent } from '../ui-types';
 
 type JsonObject = Record<string, unknown>;
 
 function adminClient() {
   return getSupabaseAdmin();
+}
+
+type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
+
+async function getCustomerCatalogFact(client: AdminClient, packageId: string) {
+  const [catalogItem] = await listPublicCatalog(client, { ids: [packageId], limit: 1 });
+  if (!catalogItem) return null;
+  return getPublishedProductFactById({ supabase: client, productId: catalogItem.id });
+}
+
+async function getCustomerCatalogFacts(
+  client: AdminClient,
+  options: { destination?: string; keyword?: string; limit?: number },
+) {
+  const catalog = await listPublicCatalog(client, {
+    limit: Math.max(1, Math.min(200, options.limit ?? 100)),
+    ...(options.destination ? { destination: options.destination } : {}),
+  });
+  const ids = new Set(catalog.map((item) => item.id));
+  if (ids.size === 0) return [];
+  const facts = await getPublishedProductFacts({ supabase: client, ...options });
+  return facts.filter((fact) => ids.has(fact.packageId));
 }
 
 function projectionValue(fact: PublishedProductFact, key: string): unknown {
@@ -50,9 +73,6 @@ function packageResult(fact: PublishedProductFact): JsonObject {
     product_tags: projectionValue(fact, 'product_tags') ?? [],
     product_highlights: projectionValue(fact, 'product_highlights') ?? [],
     product_summary: projectionValue(fact, 'product_summary'),
-    land_operator: projectionValue(fact, 'land_operator'),
-    source_revision_id: fact.sourceRevisionId,
-    snapshot_hash: fact.snapshotHash,
   };
 }
 
@@ -84,8 +104,7 @@ function departureSearchMatch(row: PublishedDepartureFact, args: Record<string, 
 export async function handleSearchPackages(args: Record<string, unknown>) {
   const client = adminClient();
   if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' }, uiComponents: [] };
-  const facts = await getPublishedProductFacts({
-    supabase: client,
+  const facts = await getCustomerCatalogFacts(client, {
     destination: typeof args.destination === 'string' ? args.destination : undefined,
     keyword: typeof args.keyword === 'string' ? args.keyword : undefined,
     limit: 100,
@@ -126,7 +145,7 @@ export async function handleGetPriceQuote(args: Record<string, unknown>) {
   const adultCount = Number(args.adultCount ?? 1) || 1;
   const childCount = Number(args.childCount ?? 0) || 0;
   if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' } };
-  const fact = await getPublishedProductFactById({ supabase: client, productId: packageId });
+  const fact = await getCustomerCatalogFact(client, packageId);
   if (!fact) return { result: { error: '상품을 찾을 수 없습니다.' } };
   const departure = getPublishedDepartureFact(fact, departureDate);
   if (!departure) return { result: { error: `${departureDate}에 대한 검증된 출발 가격이 없습니다.` } };
@@ -173,7 +192,7 @@ export async function handleGetPriceQuote(args: Record<string, unknown>) {
 export async function handleFindCheapestDates(args: Record<string, unknown>) {
   const client = adminClient();
   if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' }, uiComponents: [] };
-  const fact = await getPublishedProductFactById({ supabase: client, productId: String(args.packageId ?? '') });
+  const fact = await getCustomerCatalogFact(client, String(args.packageId ?? ''));
   if (!fact) return { result: { error: '상품을 찾을 수 없습니다.' }, uiComponents: [] };
   const today = new Date().toISOString().slice(0, 10);
   const from = typeof args.fromDate === 'string' ? args.fromDate : today;
@@ -202,7 +221,7 @@ export async function handleFindCheapestDates(args: Record<string, unknown>) {
 export async function handleGenerateItinerary(args: Record<string, unknown>) {
   const client = adminClient();
   if (!client) return { result: { error: '상품 권위 저장소가 구성되지 않았습니다.' }, uiComponents: [] };
-  const fact = await getPublishedProductFactById({ supabase: client, productId: String(args.packageId ?? '') });
+  const fact = await getCustomerCatalogFact(client, String(args.packageId ?? ''));
   if (!fact) return { result: { error: '상품을 찾을 수 없습니다.' }, uiComponents: [] };
   const lp = fact.lpProjection;
   const itinerary = (lp.itinerary ?? lp.days) as JsonObject[] | undefined;

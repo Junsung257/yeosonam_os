@@ -32,7 +32,11 @@ import {
 import { ProductReviewNotice } from '@/components/product-review-notice';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
-import { listPublicCatalog } from '@/lib/public-catalog';
+import {
+  getPublicCatalogDetail,
+  listPublicCatalog,
+  type PublicCatalogDetail,
+} from '@/lib/public-catalog';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
@@ -98,6 +102,22 @@ function getNonEmptyString(value: unknown): string | null {
 function getFiniteNumber(value: unknown): number | undefined {
   const normalized = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(normalized) ? normalized : undefined;
+}
+
+function catalogDetailToSnapshot(detail: PublicCatalogDetail) {
+  return {
+    row: {
+      package_id: detail.item.id,
+      canonical_revision_id: detail.lineage.revisionId,
+      snapshot_id: detail.lineage.snapshotId,
+      snapshot_hash: detail.lineage.snapshotHash,
+      pointer_version: detail.lineage.pointerVersion,
+      package_revision: getFiniteNumber(detail.snapshot.package_revision) ?? 1,
+      renderer_build_id: getNonEmptyString(detail.snapshot.renderer_build_id)
+        ?? currentProductRegistrationRendererBuildId(),
+    },
+    package: detail.package,
+  };
 }
 
 function waitForPackageDetailRetry(ms: number) {
@@ -265,10 +285,11 @@ export async function generateMetadata({
           locale: 'ko-KR',
         }).catch(() => ({ state: 'UNAVAILABLE' as const }));
     if (routeResolution?.state === 'UNDER_REVIEW') return buildUnderReviewMetadata(canonical);
+    const catalogDetail = routeResolution?.state === 'PUBLIC'
+      ? await getPublicCatalogDetail(sb, id)
+      : null;
     const publicSnapshot = v6ProofSnapshot
-      ?? (routeResolution?.state === 'PUBLIC'
-        ? { row: routeResolution.row, package: routeResolution.package }
-        : null);
+      ?? (catalogDetail ? catalogDetailToSnapshot(catalogDetail) : null);
     rawData = publicSnapshot?.package as MetadataPackageRow | null;
     publicSnapshotFound = Boolean(publicSnapshot);
     publicSnapshotHash = publicSnapshot?.row.snapshot_hash;
@@ -389,9 +410,16 @@ export default async function PackageDetailPage({
     : null;
   if (routeResolution?.state === 'UNDER_REVIEW') return <ProductReviewNotice />;
   if (routeResolution?.state === 'UNAVAILABLE') throw new Error('PACKAGE_VISIBILITY_LOOKUP_UNAVAILABLE');
-  const pointerSnapshot = routeResolution?.state === 'PUBLIC'
-    ? { row: routeResolution.row, package: routeResolution.package }
+  const catalogDetail = routeResolution?.state === 'PUBLIC'
+    ? await getPublicCatalogDetail(sb, id).catch((error) => {
+        console.error('[packages/detail] public catalog lookup unavailable', {
+          id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error('PACKAGE_CATALOG_LOOKUP_UNAVAILABLE');
+      })
     : null;
+  const pointerSnapshot = catalogDetail ? catalogDetailToSnapshot(catalogDetail) : null;
   const rawPkgResult: { data: Record<string, unknown> | null; error: unknown } = v6ProofSnapshot
     ? { data: v6ProofSnapshot.package, error: null }
     : pointerSnapshot

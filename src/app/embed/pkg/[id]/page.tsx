@@ -18,8 +18,7 @@
  */
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { getCurrentPublicPackage } from '@/lib/package-publication/repository';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { getPublicCatalogDetail } from '@/lib/public-catalog';
 
 interface Params {
   params: Promise<{ id?: string | string[] }>;
@@ -30,20 +29,14 @@ export const dynamic = 'force-dynamic';
 
 interface PackageRow {
   id: string;
+  slug: string;
   title: string;
   destination: string | null;
   duration: number | null;
   price: number | null;
-  airline: string | null;
-  product_summary: string | null;
-  status?: string | null;
-  publication_state?: string | null;
-  package_revision?: number | null;
-  audit_status?: string | null;
-  audit_report?: unknown;
-  updated_at?: string | null;
-  optional_tours?: unknown;
-  itinerary_data?: unknown;
+  priceDisplay: string | null;
+  departureAirport: string | null;
+  lastVerifiedAt: string;
 }
 
 interface AffiliateRow {
@@ -74,17 +67,22 @@ export default async function EmbedWidget(props: Params) {
   if (id && isSupabaseConfigured) {
     try {
       const [current, { data: a }] = await Promise.all([
-        getCurrentPublicPackage(supabaseAdmin, {
-          tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-          packageRef: id,
-          channel: 'customer',
-          locale: 'ko-KR',
-        }),
+        getPublicCatalogDetail(supabaseAdmin, id),
         ref
           ? supabaseAdmin.from('affiliates').select('name, logo_url').eq('referral_code', ref).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
-      pkg = (current?.package as PackageRow | undefined) ?? null;
+      pkg = current ? {
+        id: current.item.id,
+        slug: current.item.slug,
+        title: current.item.title,
+        destination: current.item.destination,
+        duration: current.item.duration,
+        price: current.item.price,
+        priceDisplay: current.item.priceDisplay,
+        departureAirport: current.item.departureAirport,
+        lastVerifiedAt: current.item.lastVerifiedAt,
+      } : null;
       aff = (a as AffiliateRow) || null;
     } catch { /* */ }
   }
@@ -139,26 +137,13 @@ export default async function EmbedWidget(props: Params) {
           <div style={{ marginTop: 6, fontSize: 12, color: '#666', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {pkg.destination && <span>📍 {pkg.destination}</span>}
             {pkg.duration && <span>🕒 {pkg.duration}일</span>}
-            {pkg.airline && <span>✈️ {pkg.airline}</span>}
+            {pkg.departureAirport && <span>✈️ {pkg.departureAirport} 출발</span>}
           </div>
-          {pkg.product_summary && (
-            <p
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                color: '#444',
-                lineHeight: 1.5,
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              }}
-            >
-              {pkg.product_summary}
-            </p>
-          )}
+          <p style={{ marginTop: 8, fontSize: 11, color: '#777' }}>
+            최근 조건 확인 {pkg.lastVerifiedAt.slice(0, 10)} · 예약 전 가능 여부 재확인
+          </p>
         </div>
-        {pkg.price != null && (
+        {(pkg.priceDisplay || pkg.price != null) && (
           <div
             style={{
               flexShrink: 0,
@@ -168,8 +153,8 @@ export default async function EmbedWidget(props: Params) {
               color: '#2563EB',
             }}
           >
-            ₩{pkg.price.toLocaleString()}
-            <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>부터</div>
+            {pkg.priceDisplay || `₩${pkg.price?.toLocaleString()}`}
+            <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>최근 확인 가격</div>
           </div>
         )}
       </div>
@@ -190,7 +175,7 @@ export default async function EmbedWidget(props: Params) {
           marginTop: 4,
         }}
       >
-        예약 / 자세히 보기 →
+        현재 조건 확인 / 자세히 보기 →
       </a>
 
       {/* Co-brand footer */}

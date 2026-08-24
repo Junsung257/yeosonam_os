@@ -29,6 +29,8 @@ describe('package customer detail page publication contract', () => {
     expect(source).not.toContain("sb.from('travel_packages')");
     expect(source).not.toContain('isInternalRenderProofRequest');
     expect(source).toContain('verifyProductRegistrationV6ProofToken');
+    expect(source).toContain('getPublicCatalogDetail');
+    expect(source).toContain('catalogDetailToSnapshot');
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {

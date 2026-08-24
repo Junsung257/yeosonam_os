@@ -58,8 +58,24 @@ vi.mock('@/lib/supabase', () => ({
           ? snapshot.snapshot_json as Record<string, unknown>
           : {};
         const publicCatalogRow = snapshot && mocks.publicationPointerRow ? {
+          tenant_id: '00000000-0000-4000-8000-000000000000',
           id: 'pkg-1',
           catalog_product_id: 'catalog-product-test',
+          slug: 'pkg-1',
+          product_kind: 'package',
+          title: (snapshot.card_projection as Record<string, unknown> | undefined)?.title
+            ?? (snapshotJson.package as Record<string, unknown> | undefined)?.title
+            ?? 'Snapshot customer title',
+          destination: '다낭',
+          country: '베트남',
+          departure_airport: '김해국제공항',
+          duration: 4,
+          nights: 3,
+          price: 1230000,
+          price_display: '1,230,000원부터',
+          hero_image: 'https://cdn.yeosonam.com/public/pkg-1-hero.jpg',
+          badges: [],
+          available_dates: [{ date: '2026-10-12', price: 1230000, confirmed: true }],
           revision_id: snapshot.canonical_revision_id ?? 'rev-1',
           snapshot_id: snapshot.id,
           snapshot_hash: snapshot.snapshot_hash,
@@ -78,6 +94,7 @@ vi.mock('@/lib/supabase', () => ({
         const query = {
           select() { return query; },
           eq() { return query; },
+          limit() { return query; },
           async maybeSingle() { return { data: publicCatalogRow, error: null }; },
         };
         return query;

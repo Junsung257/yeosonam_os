@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { getPublicCatalogDetail, listPublicCatalog } from './public-catalog';
+import { PUBLIC_CATALOG_EGRESS_SURFACES } from './public-catalog-egress';
 
 function queryResult(rows: unknown[]) {
   const result = Promise.resolve({ data: rows, error: null });
@@ -9,12 +12,12 @@ function queryResult(rows: unknown[]) {
     order: vi.fn(),
     limit: vi.fn(),
     ilike: vi.fn(),
+    in: vi.fn(),
     eq: vi.fn(),
-    or: vi.fn(),
     maybeSingle: vi.fn(),
     then: result.then.bind(result),
   };
-  for (const method of ['select', 'order', 'limit', 'ilike', 'eq', 'or'] as const) {
+  for (const method of ['select', 'order', 'limit', 'ilike', 'in', 'eq'] as const) {
     query[method].mockReturnValue(query);
   }
   query.maybeSingle.mockResolvedValue({ data: rows[0] ?? null, error: null });
@@ -68,5 +71,34 @@ describe('public catalog', () => {
     const detail = await getPublicCatalogDetail(supabase as never, row.id);
     expect(detail?.package).toEqual(row.public_detail.package);
     expect(detail?.lineage.snapshotHash).toBe(row.snapshot_hash);
+  });
+
+  it('bounds arbitrary downstream candidates to exact public catalog ids', async () => {
+    const query = queryResult([row]);
+    const supabase = { from: vi.fn(() => query) };
+    const items = await listPublicCatalog(supabase as never, {
+      ids: [row.id, row.id, '  '],
+      limit: 20,
+    });
+    expect(query.in).toHaveBeenCalledWith('id', [row.id]);
+    expect(items.map((item) => item.id)).toEqual([row.id]);
+  });
+
+  it('does not interpolate an untrusted route ref into a PostgREST or filter', async () => {
+    const query = queryResult([]);
+    const supabase = { from: vi.fn(() => query) };
+    await getPublicCatalogDetail(supabase as never, 'slug,marketing_eligible.eq.false');
+    expect(query.eq).toHaveBeenCalledWith('id', 'slug,marketing_eligible.eq.false');
+    expect(query.eq).toHaveBeenCalledWith('slug', 'slug,marketing_eligible.eq.false');
+  });
+
+  it('keeps every registered customer egress on the exact public catalog boundary', () => {
+    const ids = new Set<string>();
+    for (const surface of PUBLIC_CATALOG_EGRESS_SURFACES) {
+      expect(ids.has(surface.id), `duplicate egress id: ${surface.id}`).toBe(false);
+      ids.add(surface.id);
+      const source = readFileSync(join(process.cwd(), surface.source), 'utf8');
+      expect(source, surface.source).toContain(surface.requiredMarker);
+    }
   });
 });

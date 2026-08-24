@@ -19,6 +19,8 @@ const PUBLIC_API_FILES = new Set([
 ]);
 
 const SNAPSHOT_OR_STRIP_MARKERS = [
+  'listPublicCatalog',
+  'getPublicCatalogDetail',
   'fetchLatestPublicPackageSnapshot',
   'fetchAndMergeCurrentPublicPackageCardSnapshots',
   'public_package_snapshots',
@@ -105,14 +107,23 @@ describe('public customer package data boundary', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('keeps package metadata behind the same pointer and renders readable Korean fallbacks', () => {
+  it('keeps package metadata behind the exact public catalog and renders readable Korean fallbacks', () => {
     const layout = readFileSync(join(ROOT, 'src/app/packages/[id]/layout.tsx'), 'utf8');
     const page = readFileSync(join(ROOT, 'src/app/packages/[id]/page.tsx'), 'utf8');
-    expect(layout).toContain('getCurrentPublicPackage');
+    expect(layout).toContain('getPublicCatalogDetail');
     expect(layout).toContain("title: '상품을 찾을 수 없습니다'");
     expect(layout).toContain('상품번호 ${input.id.slice(0, 8)}');
     expect(layout).not.toContain('getPackageById');
     expect(page).toContain("title: '상품 상세'");
     expect(page).toContain("data.title || data.destination || '여소남 패키지 여행'");
+  });
+
+  it('exposes only approved reviews for catalog-eligible products and guards every review mutation', () => {
+    const reviews = readFileSync(join(ROOT, 'src/app/api/packages/[id]/reviews/route.ts'), 'utf8');
+    expect(reviews).toContain('getPublicCatalogDetail');
+    expect(reviews).toContain(".eq('status', 'approved')");
+    expect(reviews).not.toContain('customers(name)');
+    expect(reviews.match(/await requireAdminRequest\(req\)/g)).toHaveLength(3);
+    expect(reviews).not.toContain('NextResponse.json');
   });
 });

@@ -46,5 +46,9 @@ describe('V6.1 authority read model', () => {
     expect(pkg).not.toHaveProperty('net_price');
     expect(pkg).not.toHaveProperty('price_tiers');
     expect(pkg).not.toHaveProperty('excluded_dates');
+    expect(pkg).not.toHaveProperty('canonical_revision_id');
+    expect(pkg).not.toHaveProperty('snapshot_hash');
+    expect(pkg).not.toHaveProperty('browser_proofs');
+    expect(pkg).not.toHaveProperty('departure_instances');
   });
 });

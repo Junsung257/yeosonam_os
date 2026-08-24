@@ -17,6 +17,7 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
 import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'edge';
@@ -27,42 +28,14 @@ export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type RestPublicationPointerRow = {
-  catalog_product_id?: string | null;
-  current_revision_id?: string | null;
-  current_snapshot_id?: string | null;
-  state?: string | null;
-};
-
-type PublicSnapshotRestRow = {
+type RestPublicCatalogRow = {
+  id?: string | null;
+  slug?: string | null;
+  title?: string | null;
+  destination?: string | null;
+  price?: number | string | null;
   snapshot_hash?: string | null;
-  snapshot_json?: Record<string, unknown> | null;
-  card_projection?: Record<string, unknown> | null;
 };
-
-type RestV4JobRow = {
-  id?: string | null;
-  source_document_id?: string | null;
-  extraction_id?: string | null;
-  v4_stage?: string | null;
-  v4_stage_state?: Record<string, unknown> | null;
-  v4_canonical_normalization_id?: string | null;
-};
-
-type RestV4NormalizationRow = {
-  id?: string | null;
-  job_id?: string | null;
-  source_document_id?: string | null;
-  extraction_id?: string | null;
-  canonical_payload?: { sections?: unknown[] } | null;
-  status?: string | null;
-};
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
 
 function asNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -73,101 +46,22 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function isPublishedPointer(row: RestPublicationPointerRow | null | undefined): row is {
-  catalog_product_id: string;
-  current_revision_id: string;
-  current_snapshot_id: string;
-  state: 'published';
-} {
-  return row?.state === 'published'
-    && typeof row.catalog_product_id === 'string'
-    && typeof row.current_revision_id === 'string'
-    && typeof row.current_snapshot_id === 'string';
-}
-
-async function isV4PublicationReadyViaRest(
+async function getPublicCatalogProductViaRest(
   supabaseUrl: string,
   headers: Record<string, string>,
-  packageId: string,
-): Promise<boolean> {
-  const draftRes = await fetch(
-    `${supabaseUrl}/rest/v1/product_registration_drafts?package_id=eq.${encodeURIComponent(packageId)}&upload_job_id=not.is.null&select=upload_job_id&order=created_at.desc&limit=1`,
-    { headers, cache: 'no-store' },
-  );
-  if (!draftRes.ok) return false;
-  const drafts = (await draftRes.json()) as Array<{ upload_job_id?: string | null }>;
-  let job: RestV4JobRow | null = null;
-
-  if (drafts?.[0]?.upload_job_id) {
-    const jobRes = await fetch(
-      `${supabaseUrl}/rest/v1/upload_jobs?id=eq.${encodeURIComponent(String(drafts[0].upload_job_id))}&select=id,source_document_id,extraction_id,v4_stage,v4_stage_state,v4_canonical_normalization_id&limit=1`,
+  packageRef: string,
+): Promise<RestPublicCatalogRow | null> {
+  const baseQuery = `tenant_id=eq.${encodeURIComponent(PLATFORM_PRODUCT_REGISTRATION_TENANT_ID)}&select=id,slug,title,destination,price,snapshot_hash&limit=1`;
+  for (const field of ['id', 'slug'] as const) {
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/public_catalog_view?${field}=eq.${encodeURIComponent(packageRef)}&${baseQuery}`,
       { headers, cache: 'no-store' },
     );
-    if (!jobRes.ok) return false;
-    const jobs = (await jobRes.json()) as RestV4JobRow[];
-    job = jobs?.[0] ?? null;
-  } else {
-    // The V4 sidecar draft is asynchronous. Search the bounded job window for
-    // a package id stored in the lifecycle state before treating it as legacy.
-    const jobsRes = await fetch(
-      `${supabaseUrl}/rest/v1/upload_jobs?source_document_id=not.is.null&v4_stage=in.(normalized,verified,proofed,published,needs_review,failed)&select=id,source_document_id,extraction_id,v4_stage,v4_stage_state,v4_canonical_normalization_id&order=updated_at.desc&limit=200`,
-      { headers, cache: 'no-store' },
-    );
-    if (!jobsRes.ok) return false;
-    const jobs = (await jobsRes.json()) as RestV4JobRow[];
-    job = jobs.find((candidate) => {
-      const state = candidate.v4_stage_state ?? {};
-      const packageIds = Array.isArray(state.packageIds) ? state.packageIds : [];
-      return state.packageId === packageId || packageIds.includes(packageId);
-    }) ?? null;
+    if (!response.ok) return null;
+    const rows = (await response.json()) as RestPublicCatalogRow[];
+    if (rows[0]) return rows[0];
   }
-
-  if (!job) return true;
-  const normalizationId = typeof job.v4_canonical_normalization_id === 'string'
-    ? job.v4_canonical_normalization_id
-    : null;
-  if (!job.id || !job.source_document_id || !job.extraction_id || !normalizationId
-    || !['normalized', 'verified', 'proofed', 'published'].includes(job.v4_stage ?? '')) {
-    return false;
-  }
-
-  const normalizationRes = await fetch(
-    `${supabaseUrl}/rest/v1/product_registration_v4_normalizations?id=eq.${encodeURIComponent(normalizationId)}&job_id=eq.${encodeURIComponent(job.id)}&source_document_id=eq.${encodeURIComponent(job.source_document_id)}&extraction_id=eq.${encodeURIComponent(job.extraction_id)}&status=eq.complete&select=id,job_id,source_document_id,extraction_id,canonical_payload&limit=1`,
-    { headers, cache: 'no-store' },
-  );
-  if (!normalizationRes.ok) return false;
-  const normalizations = (await normalizationRes.json()) as RestV4NormalizationRow[];
-  return Array.isArray(normalizations?.[0]?.canonical_payload?.sections)
-    && normalizations[0].canonical_payload!.sections!.length > 0;
-}
-
-function publicProductFromSnapshot(row: PublicSnapshotRestRow | null | undefined): {
-  title: string;
-  destination: string;
-  price: number | null;
-} | null {
-  const snapshot = asRecord(row?.snapshot_json);
-  const card = asRecord(row?.card_projection);
-  const pkg = asRecord(snapshot?.package);
-  const destinations = Array.isArray(snapshot?.destinations) ? snapshot.destinations : [];
-
-  const title =
-    asNonEmptyString(card?.title) ||
-    asNonEmptyString(snapshot?.public_title) ||
-    asNonEmptyString(pkg?.title) ||
-    asNonEmptyString(pkg?.display_title);
-
-  if (!title) return null;
-
-  return {
-    title,
-    destination:
-      asNonEmptyString(card?.destination) ||
-      asNonEmptyString(destinations[0]) ||
-      asNonEmptyString(pkg?.destination) ||
-      '',
-    price: asNumber(card?.price ?? pkg?.price),
-  };
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -196,33 +90,18 @@ export async function GET(request: NextRequest) {
       const affs = (await affRes.json()) as Array<{ name: string }>;
       if (affs?.[0]?.name) affiliateName = affs[0].name;
 
-      // 상품: 공개 상태/리비전만 원본 테이블에서 확인하고, 고객 문구는 public snapshot에서만 읽는다.
+      // 상품: 공개·판매·마케팅 조건을 모두 통과한 단일 고객 카탈로그에서만 읽는다.
       if (pkgId) {
-        const pointerRes = await fetch(
-          `${supabaseUrl}/rest/v1/product_registration_v5_publication_pointers?package_id=eq.${encodeURIComponent(pkgId)}&channel=eq.customer&locale=eq.ko-KR&state=eq.published&select=catalog_product_id,current_revision_id,current_snapshot_id,state&limit=1`,
-          { headers, cache: 'no-store' },
-        );
-        const pointerRows = (await pointerRes.json()) as RestPublicationPointerRow[];
-        const pointer = pointerRows?.[0];
-
-        const v4Ready = await isV4PublicationReadyViaRest(supabaseUrl, headers, pkgId);
-        if (v4Ready && isPublishedPointer(pointer)) {
-          const snapshotRes = await fetch(
-            `${supabaseUrl}/rest/v1/public_package_snapshots?id=eq.${encodeURIComponent(pointer.current_snapshot_id)}&package_id=eq.${encodeURIComponent(pkgId)}&catalog_product_id=eq.${encodeURIComponent(pointer.catalog_product_id)}&canonical_revision_id=eq.${encodeURIComponent(pointer.current_revision_id)}&status=eq.published&select=snapshot_hash,snapshot_json,card_projection&limit=1`,
-            { headers, cache: 'no-store' },
-          );
-          const snapshotRows = (await snapshotRes.json()) as PublicSnapshotRestRow[];
-          const snapshotRow = snapshotRows?.[0];
-          const publicProduct = publicProductFromSnapshot(snapshotRow);
-          if (publicProduct) {
-            productTitle = publicProduct.title;
-            productDestination = publicProduct.destination;
-            productPrice = publicProduct.price;
-            observedSnapshotHash = typeof snapshotRow?.snapshot_hash === 'string'
-              && /^[0-9a-f]{64}$/i.test(snapshotRow.snapshot_hash)
-              ? snapshotRow.snapshot_hash.toLowerCase()
-              : null;
-          }
+        const publicProduct = await getPublicCatalogProductViaRest(supabaseUrl, headers, pkgId);
+        const publicTitle = asNonEmptyString(publicProduct?.title);
+        if (publicTitle) {
+          productTitle = publicTitle;
+          productDestination = asNonEmptyString(publicProduct?.destination) || '';
+          productPrice = asNumber(publicProduct?.price);
+          observedSnapshotHash = typeof publicProduct?.snapshot_hash === 'string'
+            && /^[0-9a-f]{64}$/i.test(publicProduct.snapshot_hash)
+            ? publicProduct.snapshot_hash.toLowerCase()
+            : null;
         }
       }
     }

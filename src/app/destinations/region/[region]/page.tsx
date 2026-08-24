@@ -412,7 +412,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
             <section>
               <SectionHeader
                 title={`${region.label} 추천 여행지`}
-                subtitle="도시별 가이드 · 관광지 · 엄선 패키지"
+                subtitle="도시별 가이드 · 관광지 · 현재 공개 상품"
               />
               <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {data.cities.map(c => (
@@ -462,8 +462,8 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
           {data.packages.length > 0 && (
             <section>
               <SectionHeader
-                title={`${region.label} 엄선 패키지`}
-                subtitle="가성비 · 중가 · 프리미엄 · 운영팀 검증"
+                title={`${region.label} 여행상품`}
+                subtitle="출발일 · 최근 확인 가격 · 예약 방식을 비교하세요"
                 actionHref={`/packages?filter=${encodeURIComponent(region.label)}`}
                 actionLabel="전체 보기 →"
               />
@@ -500,7 +500,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
               {region.label} 여행 상담이 필요하신가요?
             </h3>
             <p className="text-sm md:text-base text-slate-600 mb-6">
-              여소남 운영팀이 {region.label} 최적 패키지를 맞춤 추천해드립니다.
+              현재 공개된 상품을 비교하고, 예약 가능한 조건을 상담으로 다시 확인해드립니다.
             </p>
             <TrackedKakaoLink
               source="destination_region_bottom"

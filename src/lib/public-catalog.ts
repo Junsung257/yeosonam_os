@@ -159,9 +159,19 @@ const LIST_COLUMNS = [
 
 export async function listPublicCatalog(
   supabase: SupabaseClient,
-  options: { limit?: number; destination?: string; productKind?: string; tenantId?: string } = {},
+  options: {
+    limit?: number;
+    destination?: string;
+    productKind?: string;
+    tenantId?: string;
+    ids?: string[];
+  } = {},
 ): Promise<PublicCatalogItem[]> {
   const limit = Math.max(1, Math.min(5_000, options.limit ?? 1_000));
+  const ids = options.ids
+    ? [...new Set(options.ids.map((id) => id.trim()).filter(Boolean))].slice(0, 5_000)
+    : null;
+  if (ids && ids.length === 0) return [];
   let query = supabase
     .from('public_catalog_view')
     .select(LIST_COLUMNS)
@@ -170,6 +180,7 @@ export async function listPublicCatalog(
     .limit(limit);
   if (options.destination?.trim()) query = query.ilike('destination', `%${options.destination.trim()}%`);
   if (options.productKind?.trim()) query = query.eq('product_kind', options.productKind.trim());
+  if (ids) query = query.in('id', ids);
   const { data, error } = await query;
   if (error) throw error;
   return ((data ?? []) as unknown as PublicCatalogRow[])
@@ -184,14 +195,25 @@ export async function getPublicCatalogDetail(
 ): Promise<PublicCatalogDetail | null> {
   const ref = packageRef.trim();
   if (!ref) return null;
-  const { data, error } = await supabase
+  const byId = await supabase
     .from('public_catalog_view')
     .select('*')
     .eq('tenant_id', options.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID)
-    .or(`id.eq.${ref},slug.eq.${ref}`)
+    .eq('id', ref)
     .limit(1)
     .maybeSingle();
-  if (error) throw error;
+  if (byId.error) throw byId.error;
+  const bySlug = byId.data
+    ? null
+    : await supabase
+      .from('public_catalog_view')
+      .select('*')
+      .eq('tenant_id', options.tenantId ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID)
+      .eq('slug', ref)
+      .limit(1)
+      .maybeSingle();
+  if (bySlug?.error) throw bySlug.error;
+  const data = byId.data ?? bySlug?.data ?? null;
   if (!data) return null;
   const row = data as unknown as PublicCatalogRow;
   const item = toItem(row);

@@ -7,11 +7,10 @@ function routeSource(): string {
 }
 
 describe('public v1 packages API publication gate', () => {
-  it('requires current public snapshots before returning customer package rows', () => {
+  it('requires the exact public catalog before returning customer package rows', () => {
     const source = routeSource();
 
-    expect(source).toContain('listCurrentPublicPackageCardSnapshots');
-    expect(source).toContain("channel: 'customer'");
+    expect(source).toContain('listPublicCatalog');
     expect(source).not.toContain(".from('travel_packages')");
     expect(source).toContain('.map(toPublicV1Package)');
   });
@@ -23,9 +22,10 @@ describe('public v1 packages API publication gate', () => {
     const projectionSource = source.slice(projectionIndex, getIndex);
 
     expect(projectionIndex).toBeGreaterThan(0);
-    expect(projectionSource).toContain('sanitizeCustomerPackageForClient');
-    expect(projectionSource).not.toContain('row.product_summary');
-    expect(projectionSource).not.toContain('row.summary');
+    expect(projectionSource).toContain('row.availableDates');
+    expect(projectionSource).toContain('row.bookingMode');
+    expect(projectionSource).not.toContain('row.snapshot');
+    expect(projectionSource).not.toContain('row.lineage');
     expect(projectionSource).not.toContain('audit_report');
     expect(projectionSource).not.toContain('optional_tours');
     expect(projectionSource).not.toContain('itinerary_data');

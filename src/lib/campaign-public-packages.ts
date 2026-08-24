@@ -1,8 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
 
 type AnyRecord = Record<string, any>;
 
@@ -45,11 +43,18 @@ export const CAMPAIGN_CREATIVE_PUBLIC_FIELDS = [
 const CAMPAIGN_PUBLIC_PACKAGE_FIELDS =
   'id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
 
-export function isCampaignPublicSnapshotCandidate(row: unknown): row is Record<string, unknown> {
-  if (!row || typeof row !== 'object') return false;
-  const item = row as Record<string, unknown>;
-  const publicationState = typeof item.publication_state === 'string' ? item.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(item);
+function toCampaignPackage(item: PublicCatalogItem): AnyRecord {
+  return {
+    id: item.id,
+    slug: item.slug,
+    title: item.title,
+    destination: item.destination,
+    duration: item.duration,
+    price: item.price,
+    price_display: item.priceDisplay,
+    booking_mode: item.bookingMode,
+    last_verified_at: item.lastVerifiedAt,
+  };
 }
 
 export async function loadPublicPackagesForCampaignCreatives(
@@ -63,19 +68,11 @@ export async function loadPublicPackagesForCampaignCreatives(
   )];
   if (productIds.length === 0) return new Map();
 
-  const { data, error } = await supabase
-    .from('travel_packages')
-    .select(CAMPAIGN_PUBLIC_PACKAGE_FIELDS)
-    .in('id', productIds)
-    .eq('publication_state', 'published');
-  if (error) throw error;
-
-  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(
-    supabase,
-    ((data ?? []) as Array<Record<string, unknown>>).filter(isCampaignPublicSnapshotCandidate),
-  );
-
-  return new Map(publicRows.map((row) => [String(row.id), row as AnyRecord]));
+  const publicRows = await listPublicCatalog(supabase, {
+    ids: productIds,
+    limit: productIds.length,
+  });
+  return new Map(publicRows.map((row) => [row.id, toCampaignPackage(row)]));
 }
 
 export async function attachPublicPackagesToCampaignCreatives<T extends CampaignCreativeWithPublicPackage>(

@@ -58,13 +58,13 @@ describe('campaign launch public package boundary', () => {
     expect(launchMetaSource).not.toContain("status: 'ACTIVE'");
   });
 
-  it('keeps the campaign package snapshot gate in the shared campaign helper', () => {
+  it('keeps the marketing-eligible catalog gate in the shared campaign helper', () => {
     const helper = readFileSync(join(process.cwd(), 'src/lib/campaign-public-packages.ts'), 'utf8');
 
-    expect(helper).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(helper).toContain('isCampaignPublicSnapshotCandidate');
-    expect(helper).toContain('isCustomerPubliclyOpenable');
-    expect(helper).toContain(".eq('publication_state', 'published')");
+    expect(helper).toContain('listPublicCatalog');
+    expect(helper).toContain('ids: productIds');
+    expect(helper).not.toContain(".from('travel_packages')");
+    expect(helper).not.toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
     expect(helper).toContain('travel_packages: publicPackagesById.get(productId) ?? null');
     expect(helper).toContain("'meta_campaign_id'");
     expect(helper).toContain("'meta_adset_id'");

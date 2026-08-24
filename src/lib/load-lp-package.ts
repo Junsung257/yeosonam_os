@@ -1,10 +1,10 @@
 import { unstable_cache } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
-import { fetchPublicPackageSnapshotById, getCurrentPublicPackage } from '@/lib/package-publication/repository';
+import { fetchPublicPackageSnapshotById } from '@/lib/package-publication/repository';
 import { verifyProductRegistrationV6ProofToken } from '@/lib/product-registration-v6/proof-token';
 import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
-import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { getPublicCatalogDetail } from '@/lib/public-catalog';
 
 export async function fetchLpPackageUncached(
   id: string,
@@ -24,15 +24,47 @@ export async function fetchLpPackageUncached(
     : null;
   const exactProofAllowed = Boolean(proofClaims && exactProofSnapshot);
   const rawProofPackage = exactProofAllowed ? exactProofSnapshot?.package ?? null : null;
+  const catalogDetail = exactProofAllowed
+    ? null
+    : await getPublicCatalogDetail(supabaseAdmin, id).catch(() => null);
+  const catalogPackage = catalogDetail
+    ? {
+        ...catalogDetail.package,
+        id: catalogDetail.item.id,
+        title: catalogDetail.item.title,
+        destination: catalogDetail.item.destination,
+        duration: catalogDetail.item.duration,
+        nights: catalogDetail.item.nights,
+        price: catalogDetail.item.price,
+        price_dates: catalogDetail.item.availableDates,
+        hero_image_url: catalogDetail.item.heroImage,
+        _card_projection: catalogDetail.snapshot.card_projection ?? {},
+        _lp_projection: catalogDetail.snapshot.lp_projection ?? {},
+        _public_snapshot: {
+          snapshot_id: catalogDetail.lineage.snapshotId,
+          snapshot_hash: catalogDetail.lineage.snapshotHash,
+          canonical_revision_id: catalogDetail.lineage.revisionId,
+          pointer_version: catalogDetail.lineage.pointerVersion,
+          renderer_build_id: catalogDetail.snapshot.renderer_build_id
+            ?? currentProductRegistrationRendererBuildId(),
+        },
+      }
+    : null;
   const publicSnapshot = exactProofAllowed
     ? exactProofSnapshot
-    : await getCurrentPublicPackage(supabaseAdmin, {
-      tenantId: PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
-      packageRef: id,
-      channel: 'customer',
-      locale: 'ko-KR',
-    }).catch(() => null);
-   let pkg = publicSnapshot?.package;
+    : catalogDetail
+      ? {
+          row: {
+            id: catalogDetail.lineage.snapshotId,
+            package_id: catalogDetail.item.id,
+            snapshot_hash: catalogDetail.lineage.snapshotHash,
+            canonical_revision_id: catalogDetail.lineage.revisionId,
+            renderer_build_id: catalogDetail.snapshot.renderer_build_id,
+          },
+          package: catalogPackage,
+        }
+      : null;
+   let pkg = publicSnapshot?.package ?? null;
    if (rawProofPackage) pkg = rawProofPackage;
   if (!pkg) return null;
 

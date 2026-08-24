@@ -23,48 +23,32 @@ import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { apiResponse, ApiErrors } from '@/lib/api-response'
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection'
-import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload'
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog'
 
 export const maxDuration = 30
 
-type PublicPackageRow = Record<string, unknown>
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function hasDepartureInRange(row: PublicPackageRow, dateFrom?: string | null, dateTo?: string | null): boolean {
+function hasDepartureInRange(row: PublicCatalogItem, dateFrom?: string | null, dateTo?: string | null): boolean {
   if (!dateFrom && !dateTo) return true
-  const dates = Array.isArray(row.price_dates) ? row.price_dates : []
-  return dates.some((item) => {
-    const record = asRecord(item)
-    const date = typeof record?.date === 'string' ? record.date : ''
-    return Boolean(date) && (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo)
-  })
+  return row.availableDates.some(({ date }) => (
+    (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo)
+  ))
 }
 
-function toPublicV1Package(row: PublicPackageRow): Record<string, unknown> {
-  const cardProjection = asRecord(row._card_projection)
-  const lpProjection = asRecord(row._lp_projection)
-  const publicPackage = sanitizeCustomerPackageForClient({
+function toPublicV1Package(row: PublicCatalogItem): Record<string, unknown> {
+  return {
     id: row.id,
     title: row.title,
-    display_title: row.display_title,
     destination: row.destination,
-    duration: row.duration ?? row.days,
-    days: row.duration ?? row.days,
+    departure_airport: row.departureAirport,
+    duration: row.duration,
     nights: row.nights,
     price: row.price,
-    price_display: row.price_display,
-    summary: lpProjection?.summary ?? cardProjection?.summary ?? null,
-    badges: cardProjection?.badges ?? row.badges ?? [],
-    publication_state: row.publication_state,
-    package_revision: row.package_revision,
-  })
-  return publicPackage ?? {}
+    price_display: row.priceDisplay,
+    price_dates: row.availableDates,
+    badges: row.badges,
+    booking_mode: row.bookingMode,
+    last_verified_at: row.lastVerifiedAt,
+  }
 }
 
 /** GET: 패키지 검색 */
@@ -92,23 +76,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
-      channel: 'customer',
-      locale: 'ko-KR',
-      limit: 5_000,
-    })
-    const visibleData = published
+    const published = await listPublicCatalog(supabaseAdmin, { limit: 5_000 })
+    const matched = published
       .filter(row => !destination || String(row.destination ?? '').toLowerCase().includes(destination.toLowerCase()))
-      .filter(row => !keyword || `${String(row.title ?? '')} ${String(row.summary ?? row.product_summary ?? '')}`.toLowerCase().includes(keyword.toLowerCase()))
+      .filter(row => !keyword || `${row.title} ${row.destination ?? ''}`.toLowerCase().includes(keyword.toLowerCase()))
       .filter(row => hasDepartureInRange(row, dateFrom, dateTo))
-      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      .sort((a, b) => (a.price ?? Number.MAX_SAFE_INTEGER) - (b.price ?? Number.MAX_SAFE_INTEGER))
+    const visibleData = matched
       .slice(offset, offset + limit)
       .map(toPublicV1Package)
 
     return apiResponse({
       ok: true,
       data: visibleData,
-      pagination: { total: visibleData.length, limit, offset },
+      pagination: { total: matched.length, limit, offset },
     })
   } catch (err) {
     console.warn('[api/v1/packages] 검색 실패:', err)
@@ -140,19 +121,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, {
-      channel: 'customer',
-      locale: 'ko-KR',
-      limit: 5_000,
-    })
+    const published = await listPublicCatalog(supabaseAdmin, { limit: 5_000 })
 
     // pax 수용 가능 패키지 필터 (기본 2인)
     const pax = body.pax ?? 2
     const visibleData = published
       .filter(row => !body.destination || String(row.destination ?? '').toLowerCase().includes(body.destination.toLowerCase()))
       .filter(row => hasDepartureInRange(row, body.date_from, null))
-      .filter(row => Number(row.max_pax ?? pax) >= pax)
-      .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+      .sort((a, b) => (a.price ?? Number.MAX_SAFE_INTEGER) - (b.price ?? Number.MAX_SAFE_INTEGER))
       .slice(0, 10)
       .map(toPublicV1Package)
 
@@ -160,6 +136,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       data: visibleData,
       pagination: { total: visibleData.length, limit: 10, offset: 0 },
+      requested_pax: pax,
     })
   } catch (err) {
     console.warn('[api/v1/packages] 추천 실패:', err)

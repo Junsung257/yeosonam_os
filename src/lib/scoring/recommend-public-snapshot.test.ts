@@ -12,4 +12,13 @@ describe('recommendBestPackages public snapshot gate', () => {
     expect(source).not.toContain('isPublicPublicationState');
     expect(source).toContain('title: (c as unknown as { title: string }).title');
   });
+
+  it('bounds top recommendations and proactive marketing picks to public catalog ids', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/scoring/top-recommended.ts'), 'utf8');
+
+    expect(source).toContain('listPublicCatalog');
+    expect(source).toContain(".in('package_id', publicIds)");
+    expect(source).not.toContain("travel_packages!inner");
+    expect(source).not.toContain('isCustomerPubliclyOpenable');
+  });
 });

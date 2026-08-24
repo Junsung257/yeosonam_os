@@ -136,8 +136,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
           .filter(Boolean),
       )];
       if (productIds.length > 0) {
-        const publicPackages = (await listPublicCatalog(supabaseAdmin, { limit: 1_000 }))
-          .filter(pkg => productIds.includes(pkg.id));
+        const publicPackages = await listPublicCatalog(supabaseAdmin, { ids: productIds, limit: productIds.length });
         publicPackageDestinationById = new Map(
           publicPackages
             .map(pkg => [
@@ -165,7 +164,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
 
   const channelUrl = `${BASE_URL}/destinations/${encodeDestinationPathSegment(decoded)}`;
   const channelTitle = `${decoded} 여행 매거진 | 여소남`;
-  const channelDesc = `여소남이 엄선한 ${decoded} 여행 가이드와 꿀팁 — 실시간 업데이트`;
+  const channelDesc = `여소남 ${decoded} 여행 가이드와 현재 공개된 관련 콘텐츠`;
   const lastBuildDate = filtered[0]?.published_at ? new Date(filtered[0].published_at) : new Date();
   const lastBuild = Number.isFinite(lastBuildDate.getTime()) ? lastBuildDate.toUTCString() : new Date().toUTCString();
 

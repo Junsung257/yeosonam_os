@@ -9,6 +9,7 @@ import { PRODUCTS_PROMPT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 import { getActivePolicy } from '@/lib/scoring/policy'
+import { listPublicCatalog } from '@/lib/public-catalog'
 
 const PRODUCTS_TOOLS_RAW = [
   {
@@ -293,15 +294,28 @@ const PRODUCTS_TOOLS_RAW = [
 
 const PRODUCTS_TOOLS = PRODUCTS_TOOLS_RAW
 
+async function getCustomerCatalogIdSet(options: { destination?: string; ids?: string[]; limit?: number } = {}) {
+  const catalog = await listPublicCatalog(supabaseAdmin, {
+    limit: Math.max(1, Math.min(500, options.limit ?? 200)),
+    ...(options.destination ? { destination: options.destination } : {}),
+    ...(options.ids ? { ids: options.ids } : {}),
+  })
+  return new Set(catalog.map((item) => item.id))
+}
+
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
     case 'search_packages': {
+      const catalogIds = await getCustomerCatalogIdSet({
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: Number(args.limit || 10),
+      })
       const facts = await getPublishedProductFacts({
         supabase: supabaseAdmin,
         destination: typeof args.destination === 'string' ? args.destination : undefined,
         limit: Number(args.limit || 10),
       })
-      return facts.filter(fact => fact.departureInstances.some(row =>
+      return facts.filter(fact => catalogIds.has(fact.packageId) && fact.departureInstances.some(row =>
         (!args.departure_from || row.departure_date >= String(args.departure_from))
         && (!args.departure_to || row.departure_date <= String(args.departure_to))
         && (row.adult_selling_price === null || !args.min_price || row.adult_selling_price >= Number(args.min_price))
@@ -309,12 +323,16 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       )).map(toJarvisPublishedPackage)
     }
     case 'get_package_detail': {
+      const catalogIds = await getCustomerCatalogIdSet({ ids: [String(args.package_id)], limit: 1 })
+      if (!catalogIds.has(String(args.package_id))) return null
       const fact = await getPublishedProductFactById({ supabase: supabaseAdmin, productId: String(args.package_id) })
       return fact ? toJarvisPublishedPackage(fact) : null
     }
     case 'get_package_hotel_mrt_cache': {
       const pid = args.package_id as string
       if (!pid) throw new Error('package_id 필수')
+      const catalogIds = await getCustomerCatalogIdSet({ ids: [pid], limit: 1 })
+      if (!catalogIds.has(pid)) return { error: '현재 고객 공개 가능한 상품이 아닙니다.' }
       const { fetchHotelIntelForJarvis } = await import('@/lib/mrt-hotel-intel')
       const dep = typeof args.departure_date === 'string' ? args.departure_date : null
       const rows = await fetchHotelIntelForJarvis(pid, dep)
@@ -354,12 +372,17 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       }
     }
     case 'recommend_package': {
+      const catalogIds = await getCustomerCatalogIdSet({
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: 20,
+      })
       const facts = await getPublishedProductFacts({
         supabase: supabaseAdmin,
         destination: typeof args.destination === 'string' ? args.destination : undefined,
         limit: 20,
       })
       return facts
+        .filter(fact => catalogIds.has(fact.packageId))
         .map(toJarvisPublishedPackage)
         .filter(pkg => !args.budget_per_person
           || (typeof pkg.price_dates === 'object' && Array.isArray(pkg.price_dates)
@@ -368,7 +391,9 @@ async function executeTool(toolName: string, args: any): Promise<any> {
     }
     case 'recommend_best_packages': {
       if (!args.destination) throw new Error('destination 필수')
-      const facts = await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 });
+      const catalogIds = await getCustomerCatalogIdSet({ destination: String(args.destination), limit: 200 });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
       const destination = String(args.destination).toLocaleLowerCase();
       const requestedDate = typeof args.departure_date === 'string' ? args.departure_date : null;
       const resultRows = facts
@@ -512,7 +537,12 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       return { ok: true, ack_id: id };
     }
     case 'top_recommended_packages': {
-      const facts = await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 });
+      const catalogIds = await getCustomerCatalogIdSet({
+        destination: typeof args.destination === 'string' ? args.destination : undefined,
+        limit: 200,
+      });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
       const destination = typeof args.destination === 'string' ? args.destination.toLocaleLowerCase() : null;
       const from = typeof args.departure_from === 'string' ? args.departure_from : null;
       const to = typeof args.departure_to === 'string' ? args.departure_to : null;
@@ -536,7 +566,6 @@ async function executeTool(toolName: string, args: any): Promise<any> {
             departure_date: departure.departure_date,
             price: departure.adult_selling_price,
             booking_state: departure.booking_state,
-            snapshot_hash: fact.snapshotHash,
           };
         })
         .sort((left, right) => left.price! - right.price!)
@@ -559,7 +588,9 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       const bId = args.package_id_b as string;
       if (!aId || !bId) throw new Error('package_id_a, package_id_b 필수');
       const date = args.departure_date as string | undefined;
-      const facts = await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 });
+      const catalogIds = await getCustomerCatalogIdSet({ ids: [aId, bId], limit: 2 });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
       const aFact = facts.find(fact => fact.packageId === aId);
       const bFact = facts.find(fact => fact.packageId === bId);
       const departureOf = (fact: typeof aFact) => fact?.departureInstances
@@ -574,8 +605,8 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       const priceDelta = aDeparture.adult_selling_price! - bDeparture.adult_selling_price!;
       const cheaper = priceDelta < 0 ? aId : priceDelta > 0 ? bId : null;
       return {
-        a: { package_id: aId, title: titleOf(aFact), departure_date: aDeparture.departure_date, list_price: aDeparture.adult_selling_price, booking_state: aDeparture.booking_state, entity_relations: aFact.entityRelations },
-        b: { package_id: bId, title: titleOf(bFact), departure_date: bDeparture.departure_date, list_price: bDeparture.adult_selling_price, booking_state: bDeparture.booking_state, entity_relations: bFact.entityRelations },
+        a: { package_id: aId, title: titleOf(aFact), departure_date: aDeparture.departure_date, list_price: aDeparture.adult_selling_price, booking_state: aDeparture.booking_state },
+        b: { package_id: bId, title: titleOf(bFact), departure_date: bDeparture.departure_date, list_price: bDeparture.adult_selling_price, booking_state: bDeparture.booking_state },
         summary: cheaper
           ? [`동일 출발일 기준 성인 판매가는 ${cheaper === aId ? 'A' : 'B'} 상품이 ${Math.abs(priceDelta).toLocaleString()}원 낮습니다.`, '필수 현지비·객실·라운드 조건은 각 상품의 검증된 포함/불포함 facts를 함께 확인해야 합니다.']
           : ['동일 출발일 기준 성인 판매가는 같습니다.', '필수 현지비·객실·라운드 조건은 각 상품의 검증된 포함/불포함 facts를 함께 확인해야 합니다.'],
@@ -587,7 +618,9 @@ async function executeTool(toolName: string, args: any): Promise<any> {
     case 'recommend_multi_intent': {
       const queries = Array.isArray(args.queries) ? args.queries : []
       if (queries.length === 0) throw new Error('queries 배열 필요')
-      const facts = await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 });
+      const catalogIds = await getCustomerCatalogIdSet({ limit: 200 });
+      const facts = (await getPublishedComparisonFacts({ supabase: supabaseAdmin, limit: 200 }))
+        .filter(fact => catalogIds.has(fact.packageId));
       const sections: Array<{
         label: string;
         group_size: number;

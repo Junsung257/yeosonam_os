@@ -17,30 +17,32 @@ function sourceWithoutComments(path: string) {
 }
 
 describe('packages bulk/customer publication gate', () => {
-  it('keeps customer reads pointer-only regardless of writer authority mode', () => {
+  it('routes every non-admin read through the public catalog before legacy admin branches', () => {
     const source = routeSourceWithoutComments();
+    const getIndex = source.indexOf('export async function GET');
+    const publicBranchIndex = source.indexOf('if (!isAdmin)', getIndex);
+    const aggregateIndex = source.indexOf("if (aggregate === 'destination')", publicBranchIndex);
 
-    expect(source).toContain('const pointerOnly = !isAdmin;');
-    expect(source).not.toMatch(/pointerOnly\s*=\s*!isAdmin[\s\S]{0,120}authorityMode/);
+    expect(source).toContain('handlePublicPackageGet');
+    expect(source).toContain('listPublicCatalog');
+    expect(source).toContain('getPublicCatalogDetail');
+    expect(publicBranchIndex).toBeGreaterThan(getIndex);
+    expect(aggregateIndex).toBeGreaterThan(publicBranchIndex);
   });
 
-  it('serves customer package API responses only from current public snapshots', () => {
+  it('serves customer package API responses from an allowlisted legacy-compatible DTO', () => {
     const source = routeSourceWithoutComments();
-    const detailIndex = source.indexOf('if (id) {');
-    const detailSnapshotIndex = source.indexOf('fetchLatestPublicPackageSnapshot', detailIndex);
-    const detailCandidateIndex = source.indexOf('isCustomerPublicSnapshotCandidate', detailSnapshotIndex);
-    const responsePkgIndex = source.indexOf('const responsePkg: Record<string, unknown> = isAdmin', detailCandidateIndex);
-    const listIndex = source.indexOf('const visibleRows = isAdmin', responsePkgIndex);
-    const listSnapshotIndex = source.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', listIndex);
-    const aggregateIndex = source.indexOf("if (aggregate === 'destination')");
-    const aggregateSnapshotIndex = source.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', aggregateIndex);
+    const helperIndex = source.indexOf('async function handlePublicPackageGet');
+    const helperEndIndex = source.indexOf('const CUSTOMER_PUBLIC_REAUDIT_FIELDS', helperIndex);
+    const helperSource = source.slice(helperIndex, helperEndIndex);
 
-    expect(source).toContain('function isCustomerPublicSnapshotCandidate');
-    expect(detailSnapshotIndex).toBeGreaterThan(detailIndex);
-    expect(detailCandidateIndex).toBeGreaterThan(detailSnapshotIndex);
-    expect(responsePkgIndex).toBeGreaterThan(detailCandidateIndex);
-    expect(listSnapshotIndex).toBeGreaterThan(listIndex);
-    expect(aggregateSnapshotIndex).toBeGreaterThan(aggregateIndex);
+    expect(helperSource).toContain('publicLegacyCard');
+    expect(helperSource).toContain('getPublicCatalogDetail');
+    expect(helperSource).toContain('listPublicCatalog');
+    expect(helperSource).not.toContain(".from('travel_packages')");
+    expect(helperSource).not.toContain('snapshot_hash');
+    expect(helperSource).not.toContain('package_revision');
+    expect(helperSource).not.toContain('land_operator');
   });
 
   it('retires mutable source repair and requires correction revision proof', () => {
