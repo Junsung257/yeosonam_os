@@ -1,6 +1,39 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-08-20
+Last updated: 2026-08-24
+
+## 2026-08-24 local release candidate — not deployed
+
+Branch `codex/product-publication-catalog-integration-20260824` contains the
+combined Gate 0-4 implementation through verification commit
+`4a836a8b8cef7dd3947af66b1734cd6fb4913493`. It is a clean, locally verified
+candidate only; it has not
+been pushed, merged, deployed, or applied to production Supabase.
+
+- Registration now ends at reviewed `ready_not_published`; one admin
+  publication request starts the exact revision-bound proof/CAS workflow.
+- Latest-revision fencing, atomic channel pointer replacement, canary
+  fail-closed compensation, request recovery, and typed price projection into
+  all compatibility tables are implemented without creating a second generic
+  registration-run SSOT.
+- Grounded customer-copy V2 uses deterministic facts first and an optional
+  evidence-validated DeepSeek rewrite. Render-time AI remains prohibited.
+- Service-role-only `public_catalog_view` is the customer discovery read
+  projection. Home, list, search/detail, metadata/print, destinations, sitemap,
+  recommendations, Jarvis, campaign, influencer, and affiliate surfaces use
+  this boundary. It does not replace the publication pointer as publication
+  authority.
+- The final local gate passed 855 Vitest files (6,435 passed, 7 skipped),
+  TypeScript, ESLint, the Next.js production build (396 pages), and 12/12
+  mobile/desktop browser checks with zero production writes.
+- Production remains NO-GO until concurrent main/blog reconciliation, staging
+  migration/RLS/query-plan evidence, blog product-reader parity, golden-product
+  replay, cache/rollback drills, owner/legal evidence, explicit release
+  approval, and production observation are complete.
+
+Detailed evidence and the remaining sequence are in
+`docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md`
+and `docs/specs/20260824-public-catalog-trust-hardening/`.
 
 ## V6.1 authority surgery — current operating contract (2026-08-20)
 
