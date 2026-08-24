@@ -6,7 +6,10 @@ export function isMetaAdsTestMode(): boolean {
 
 export function getSupabasePublicConfig(): { url: string | null; anonKey: string | null } {
   const url = getSecret('NEXT_PUBLIC_SUPABASE_URL') || getSecret('SUPABASE_URL') || null;
-  const anonKey = getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY') || getSecret('SUPABASE_ANON_KEY');
+  const anonKey =
+    getSecret('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') ||
+    getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
+    getSecret('SUPABASE_PUBLISHABLE_KEY') ||
+    getSecret('SUPABASE_ANON_KEY');
   return { url, anonKey };
 }
-

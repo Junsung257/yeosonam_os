@@ -98,8 +98,10 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 | 키 | 용도 | 예시 |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL | `https://ixaxnvbmhzjvupissmly.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 익명 키 (클라이언트) | `eyJhbGciOi...` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 키 (서버) | `eyJhbGciOi...` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 공개키 (클라이언트, 현재 표준) | `sb_publishable_...` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | legacy 익명 키 (전환기 fallback, 신규 설정에는 사용하지 않음) | `eyJhbGciOi...` |
+| `SUPABASE_SECRET_KEY` | Supabase 비밀키 (서버 전용, 현재 표준) | `sb_secret_...` |
+| `SUPABASE_SERVICE_ROLE_KEY` | legacy 서비스 키 (서버 전용 fallback) | `eyJhbGciOi...` |
 | `NEXT_PUBLIC_BASE_URL` | 사이트 루트 URL | `https://yeosonam.com` |
 | `NEXT_PUBLIC_CONSULT_PHONE` | 고객 QA 채팅 **전화 상담** 버튼용 (`tel:`). 미설정 시 전화 버튼 숨김 | `0511234567` 또는 `+82511234567` |
 | `CRON_SECRET` | 크론 작업 인증 Bearer 토큰 (Vercel Cron Jobs가 `Authorization: Bearer <CRON_SECRET>` 전송) | `랜덤 문자열` |
@@ -111,6 +113,8 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 | `ADMIN_EMAILS` | **브라우저 쿠키 JWT**로 `/api` 어드민 호출 시 허용 이메일 (쉼표 구분, 대소문자 무시) | `admin@yeosonam.com` |
 
 `ADMIN_EMAILS`가 비어 있으면 일반 로그인으로는 어드민 API가 거부됩니다. 서버 간 호출은 `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` 로 여전히 가능합니다.
+
+운영 빌드는 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`(또는 legacy anon 키), `ADMIN_EMAILS`를 `npm run verify:admin-auth-env`로 검사합니다. `NEXT_PUBLIC_*`는 빌드 시 브라우저 번들에 포함되므로 값을 바꾼 뒤에는 반드시 새 Production 배포가 필요합니다.
 
 ## 📊 마케팅 측정·GTM·GA4
 
@@ -377,8 +381,9 @@ New DB migrations that must be applied for full persistence:
 ```bash
 # 필수
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+SUPABASE_SECRET_KEY=your_secret_key
+ADMIN_EMAILS=admin@example.com
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 # NEXT_PUBLIC_CONSULT_PHONE=051-000-0000  # QA 채팅 전화 상담 버튼 (없으면 카톡만)
 GOOGLE_AI_API_KEY=your_gemini_key

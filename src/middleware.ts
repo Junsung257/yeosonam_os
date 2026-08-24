@@ -435,7 +435,9 @@ function getSupabaseRestConfig(): { url: string; key: string } | null {
   const key =
     getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     getSecret('SUPABASE_SERVICE_KEY') ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    getSecret('SUPABASE_PUBLISHABLE_KEY') ||
     getSecret('SUPABASE_ANON_KEY') ||
     getSecret('SUPABASE_SECRET_KEY');
 
@@ -481,7 +483,9 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
 
 async function publicBlogSlugExists(slug: string): Promise<boolean | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) return null;
 
   const controller = new AbortController();

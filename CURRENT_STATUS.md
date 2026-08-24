@@ -1,4 +1,10 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-17 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-08-24 기준)
+
+## 2026-08-24 어드민 로그인 운영 설정 복구·재발 방지
+
+- 운영 `/login`은 실제 계정·비밀번호 문제가 아니라 Vercel Production의 `NEXT_PUBLIC_SUPABASE_URL` 누락과 공개키 계약 불일치 때문에 Supabase 요청 전 브라우저에서 실패했다. 새 표준인 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 클라이언트 번들에서 정적으로 참조하고, legacy anon 키는 전환기 fallback으로만 유지한다.
+- 로그인 전용 Supabase 클라이언트는 세션 영속화·자동 갱신을 끈다. 앱의 기준 세션인 HttpOnly 서버 쿠키와 브라우저 localStorage가 같은 회전형 refresh token을 경쟁하는 경로를 제거했다.
+- Vercel Production 빌드는 `NEXT_PUBLIC_SUPABASE_URL`, 공개키, `ADMIN_EMAILS`를 선검증한다. 누락·비 HTTPS URL이면 `prebuild`에서 실패하며 `npm run verify:admin-auth-env`로 로컬에서도 같은 계약을 강제할 수 있다.
 
 ## 2026-08-17 상품등록 DeepSeek 실제 샘플 재검증 보강
 
