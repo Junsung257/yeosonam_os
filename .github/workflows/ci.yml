@@ -121,6 +121,10 @@ jobs:
 
       - run: npm ci && npm run build
         env:
+          # Performance analysis performs a third full Next build; keep it on
+          # the same deterministic heap/recovery contract as both build gates.
+          NODE_OPTIONS: "--max-old-space-size=8192"
+          NEXT_BUILD_RECOVERY_WAIT_MS: "30000"
           NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-ci"
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"
