@@ -33,15 +33,15 @@ const PATCH_FIELDS = [
   // 예약 일반 정보
   'departure_region', 'land_operator', 'land_operator_id',
   'manager_name', 'package_title', 'departure_date',
-  // 결제 정보 (직접 수정용)
+  // 결제 정보 (일반 예약의 기존 수동 수정 경로)
   'paid_amount', 'payment_status',
-  // 정산 확정 / 커미션 (20260418 마이그레이션)
+  // 정산 확정 / 커미션
   'settlement_confirmed_at', 'settlement_confirmed_by',
-  'settlement_mode', // 20260422 — accrual(장부) / cash(통장 대조)
+  'settlement_mode',
   'commission_rate', 'commission_amount',
-  // 취소/환불 (20260418010000 마이그레이션)
+  // 취소/환불
   'cancelled_at', 'cancellation_reason', 'refund_settled_at',
-  // 상태 직접 수정
+  // 상태 직접 수정 (Clobe 예약은 아래 전용 guard가 차단)
   'status', 'notes',
 ] as const;
 
@@ -80,7 +80,21 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     );
   }
 
-  return NextResponse.json({ booking: data });
+  const { data: clobeKey } = await supabaseAdmin
+    .from('booking_settlement_keys')
+    .select('id, source')
+    .eq('booking_id', id)
+    .eq('status', 'active')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .limit(1)
+    .maybeSingle();
+
+  return NextResponse.json({
+    booking: {
+      ...data,
+      clobe_settlement_booking: Boolean(clobeKey),
+    },
+  });
 }
 
 // ── PATCH ─────────────────────────────────────────────────────────────────────
@@ -112,6 +126,22 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     );
   }
 
+  const { data: clobeKey, error: clobeKeyError } = await supabaseAdmin
+    .from('booking_settlement_keys')
+    .select('id')
+    .eq('booking_id', id)
+    .eq('status', 'active')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .limit(1)
+    .maybeSingle();
+  if (clobeKeyError) return NextResponse.json({ error: clobeKeyError.message, code: clobeKeyError.code }, { status: 500 });
+  if (clobeKey) {
+    return NextResponse.json(
+      { error: 'Clobe 정산예약은 일반 예약 PATCH로 수정할 수 없습니다. Clobe 메모를 수정한 뒤 동기화하세요.', code: 'CLOBE_MEMO_SOURCE_REQUIRED' },
+      { status: 409 },
+    );
+  }
+
   // 화이트리스트 필터링 — 허용되지 않은 필드 자동 제거
   const updateFields: Record<string, unknown> = {};
   for (const field of PATCH_FIELDS as readonly string[]) {
@@ -130,19 +160,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // updated_at 항상 갱신
   updateFields.updated_at = new Date().toISOString();
 
-  // Phase 2a — paid_amount 직접 수정은 record_manual_paid_amount_change RPC 로 분기
-  //   이유: bookings.paid_amount UPDATE 와 ledger_entries INSERT 를 같은 트랜잭션에서 보장.
-  //   다른 필드들은 그대로 일반 UPDATE 로 처리 후, paid_amount 만 RPC 로 후처리.
+  // 일반 예약의 paid_amount 수동 수정은 기존 원장 RPC를 유지한다.
+  // Clobe 예약은 위 guard에서 이 경로에 진입하지 못한다.
   const hasManualPaidAmount = Object.prototype.hasOwnProperty.call(updateFields, 'paid_amount');
   const newPaidAmount = hasManualPaidAmount ? Number(updateFields.paid_amount ?? 0) : null;
-  if (hasManualPaidAmount) {
-    delete updateFields.paid_amount;
-  }
+  if (hasManualPaidAmount) delete updateFields.paid_amount;
 
   // supabaseAdmin (service role key) — RLS 우회 보장
-  // 다른 필드 먼저 UPDATE
   if (Object.keys(updateFields).length > 1) {
-    // updated_at 외 다른 필드가 있으면 일반 UPDATE
     const { error: bulkErr } = await supabaseAdmin
       .from('bookings')
       .update(updateFields)
@@ -156,7 +181,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
   }
 
-  // paid_amount 만 RPC 경로 — ledger 이중쓰기 보장
   if (hasManualPaidAmount && Number.isFinite(newPaidAmount)) {
     const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
       p_booking_id: id,
@@ -164,12 +188,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       p_new_total_paid_out: null,
       p_source: 'admin_manual_edit',
       p_source_ref_id: id,
-      p_idempotency_key: `manual:${id}:${Date.now()}`,    // 같은 booking 의 동일 호출은 시간으로 분리
+      p_idempotency_key: `manual:${id}:${Date.now()}`,
       p_memo: 'admin manual paid_amount edit',
       p_created_by: 'admin',
     });
     if (rpcErr) {
-      console.error(`[bookings/${id} PATCH] manual paid_amount RPC 실패:`, rpcErr);
       return NextResponse.json(
         { error: rpcErr.message, code: rpcErr.code },
         { status: 500 },

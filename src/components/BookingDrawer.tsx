@@ -24,6 +24,11 @@ interface BankTx {
   match_status: string;
   memo?: string;
   is_refund: boolean;
+  booking_allocation?: {
+    allocated_amount: number;
+    ledger_delta: number;
+    allocation_type: 'deposit' | 'refund' | 'payout';
+  } | null;
 }
 
 interface BookingDetail {
@@ -58,6 +63,7 @@ interface BookingDetail {
   settlement_confirmed_at?: string | null;
   settlement_confirmed_by?: string | null;
   settlement_mode?: 'accrual' | 'cash' | null;
+  clobe_settlement_booking?: boolean;
   commission_rate?: number | null;
   commission_amount?: number | null;
   /** assisted 모드에서 pending→계약금 단계 전이 전 운영자 승인 */
@@ -835,6 +841,12 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
   // ── Reality (통장) 계산 — txs 배열에만 의존, 빌더와 완전 분리 ───────────
   const reality = useMemo(() => {
+    if (booking?.clobe_settlement_booking) {
+      return {
+        actualIncome: Number(booking.paid_amount ?? 0),
+        actualExpense: Number(booking.total_paid_out ?? 0),
+      };
+    }
     const actualIncome  = txs
       .filter(t => t.transaction_type === '입금' && !t.is_refund)
       .reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -842,7 +854,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       .filter(t => t.transaction_type === '출금')
       .reduce((s, t) => s + Math.abs(t.amount), 0);
     return { actualIncome, actualExpense };
-  }, [txs]);
+  }, [booking, txs]);
 
   const transitions = booking ? (ALLOWED_TRANSITIONS[booking.status] ?? []) : [];
   const depositTransitionBlocked =
@@ -855,7 +867,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
     setLoadError(null);
     try {
       const [bRes, lRes] = await Promise.all([
-        fetch(`/api/bookings?id=${id}`),
+        fetch(`/api/bookings/${id}`),
         fetch(`/api/bookings/${id}/timeline`),
       ]);
       if (!bRes.ok) throw new Error(`booking detail request failed: ${bRes.status}`);
@@ -992,14 +1004,23 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   const handleConfirmSettlement = async (confirm: boolean) => {
     if (!bookingId) return;
 
+    const isClobeSettlement = booking?.clobe_settlement_booking === true;
+
+    if (!confirm && isClobeSettlement) {
+      const approved = window.confirm(
+        '최종정산 잠금을 해제하시겠습니까?\n\n해제 후에는 Clobe 메모 수정과 새 입출금이 다시 반영될 수 있습니다. 기존 원장과 감사 이력은 삭제되지 않습니다.',
+      );
+      if (!approved) return;
+    }
+
     // 정산확정 = 통장내역 기준 회계 마감 (사장님 모델)
     // - 명목가(total_price) vs 실수령(paid_amount) 차이가 있어도 정상 정산으로 닫음
     // - 미수 차액은 서비스 손비로 흡수, 수익은 paid_amount - total_paid_out 기준
     // - DB 원본(paid_amount/total_price/total_cost)는 절대 변경하지 않음 (회계 감사 보존)
-    if (confirm) {
-      const totalPrice = Number(booking?.total_price ?? 0);
-      const paidAmount = Number(booking?.paid_amount ?? 0);
-      const unpaidDiff = totalPrice - paidAmount;
+    const totalPrice = Number(booking?.total_price ?? 0);
+    const paidAmount = Number(booking?.paid_amount ?? 0);
+    const unpaidDiff = totalPrice - paidAmount;
+    if (confirm && !isClobeSettlement) {
       // 미수 ≥ 1만원이면 명시적 확인
       if (unpaidDiff >= 10000) {
         const won = (n: number) => `₩${n.toLocaleString('ko-KR')}`;
@@ -1017,23 +1038,39 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
     try {
       // 모드 자동 결정 — 장부(effectiveNet) 입력 여부로 accrual vs cash 분기
       // 관리자 판단 존중: 장부가 있으면 accrual, 없으면 cash (ERPNext Bank Recon 패턴)
-      const autoMode: 'accrual' | 'cash' = blueprint.effectiveNet > 0 ? 'accrual' : 'cash';
-      const body = confirm ? {
-        settlement_confirmed_at: new Date().toISOString(),
-        settlement_confirmed_by: 'admin',
-        settlement_mode: autoMode,
-        // 정산확정 = done 탭으로 이동 + 결제 완납 표기 (사장님 모델)
-        status: 'completed',
-        payment_status: '완납',
-        // paid_amount / total_price 는 의도적으로 건드리지 않음 (DB 원본 보존)
-      } : {
-        settlement_confirmed_at: null,
-        settlement_confirmed_by: null,
-        settlement_mode: null,
-        // 해제 시 status / payment_status 는 자동 복원하지 않음 (수동 복원 안내)
-      };
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: 'PATCH',
+      const autoMode: 'accrual' | 'cash' = unpaidDiff > 0
+        ? 'cash'
+        : blueprint.effectiveNet > 0 ? 'accrual' : 'cash';
+      const body = isClobeSettlement
+        ? confirm
+          ? {
+              confirm: true,
+              reason: `Clobe 기준 확정: 입금 ${paidAmount.toLocaleString('ko-KR')}원 - 출금 ${Number(booking?.total_paid_out ?? 0).toLocaleString('ko-KR')}원`,
+              idempotency_key: `settlement-finalize:${bookingId}:${crypto.randomUUID()}`,
+            }
+          : {
+              confirm: false,
+              reason: '운영자 요청: Clobe 최종정산 확정 해제',
+              idempotency_key: `settlement-unfinalize:${bookingId}:${crypto.randomUUID()}`,
+            }
+        : confirm
+          ? {
+              settlement_confirmed_at: new Date().toISOString(),
+              settlement_confirmed_by: 'admin',
+              settlement_mode: autoMode,
+              status: 'completed',
+              payment_status: '완납',
+            }
+          : {
+              settlement_confirmed_at: null,
+              settlement_confirmed_by: null,
+              settlement_mode: null,
+            };
+      const endpoint = isClobeSettlement
+        ? `/api/bookings/${bookingId}/settlement/finalize`
+        : `/api/bookings/${bookingId}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -1051,13 +1088,16 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
         const totalPrice = Number(booking?.total_price ?? 0);
         const paidAmount = Number(booking?.paid_amount ?? 0);
         const unpaid = totalPrice - paidAmount;
+        const clobeNet = reality.actualIncome - reality.actualExpense;
         showToast(
-          unpaid > 0
+          isClobeSettlement
+            ? `✅ 최종정산 확정 — 입금 ${reality.actualIncome.toLocaleString('ko-KR')}원 - 출금 ${reality.actualExpense.toLocaleString('ko-KR')}원 = 수익 ${clobeNet.toLocaleString('ko-KR')}원`
+            : unpaid > 0
             ? `✅ 정산 확정 — 완료 마감 (미수 ₩${unpaid.toLocaleString('ko-KR')} 손비 처리)`
             : '✅ 정산 확정 — 완료 상태로 마감',
         );
       } else {
-        showToast('♻️ 정산 확정 해제 — status/payment_status는 수동 복원 필요');
+        showToast('♻️ 정산 확정 해제 — 결제 상태는 Ledger 기준으로 유지');
       }
     } catch {
       showToast('네트워크 오류 — 다시 시도해주세요', 'err');
@@ -1258,7 +1298,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             ) : (
               <>
                 {/* 예약 진행 Progress Bar */}
-                {booking.status !== 'cancelled' && (
+                {booking.status !== 'cancelled' && !booking.clobe_settlement_booking && (
                   <div className="bg-gray-50 rounded-2xl p-4">
                     <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">예약 진행 상태</p>
                     <div className="relative flex items-center justify-between">
@@ -1291,9 +1331,21 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                   effectiveNet={blueprint.effectiveNet}
                   actualIncome={reality.actualIncome}
                   actualExpense={reality.actualExpense}
+                  cashSettlement={booking.clobe_settlement_booking === true}
                 />
 
-                {booking.status === 'pending' && booking.deposit_notice_blocked && (
+                {booking.clobe_settlement_booking && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                    <p className="text-[12px] font-bold text-blue-900">Clobe 메모 기준 정산예약</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-blue-800">
+                      상품가는 사용하지 않고, 입금 {reality.actualIncome.toLocaleString('ko-KR')}원 − 출금 {reality.actualExpense.toLocaleString('ko-KR')}원 = 실현수익 {(
+                        reality.actualIncome - reality.actualExpense
+                      ).toLocaleString('ko-KR')}원으로 계산합니다. 입금자명은 거래별 통장 내역에서 확인할 수 있습니다.
+                    </p>
+                  </div>
+                )}
+
+                {!booking.clobe_settlement_booking && booking.status === 'pending' && booking.deposit_notice_blocked && (
                   <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-3 space-y-2">
                     <p className="text-[12px] font-bold text-amber-950">계약금 안내 전 운영자 승인 필요</p>
                     <p className="text-[11px] text-amber-900/90 leading-relaxed">
@@ -1323,7 +1375,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                   </div>
                 )}
 
-                {booking.status !== 'cancelled' && !booking.deposit_notice_blocked && (
+                {!booking.clobe_settlement_booking && booking.status !== 'cancelled' && !booking.deposit_notice_blocked && (
                   <button
                     type="button"
                     onClick={handleIssueGuestPortal}
@@ -1335,10 +1387,12 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 )}
 
                 {/* 기본 정보 */}
-                <BookingDrawerNextActions
-                  bookingId={booking.id}
-                  onChanged={() => fetchAll(booking.id)}
-                />
+                {!booking.clobe_settlement_booking && (
+                  <BookingDrawerNextActions
+                    bookingId={booking.id}
+                    onChanged={() => fetchAll(booking.id)}
+                  />
+                )}
 
                 <div className="bg-white rounded-2xl ring-1 ring-gray-900/5 shadow-sm p-4">
                   <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">기본 정보</h3>
@@ -1422,33 +1476,60 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
           {/* ── 우측: 듀얼 관제탑 → 견적 빌더 → 통장 내역 ──────────── */}
           <div className="overflow-y-auto p-5 space-y-4">
 
-            {/* ① 듀얼 관제탑 — 최상단 (장부 vs 통장) */}
-            <DualControlTower
-              totalSale={blueprint.totalSale}
-              effectiveNet={blueprint.effectiveNet}
-              netOverride={netOverride}
-              actualIncome={reality.actualIncome}
-              actualExpense={reality.actualExpense}
-              settlementConfirmedAt={booking?.settlement_confirmed_at ?? null}
-              settlementMode={booking?.settlement_mode ?? null}
-            />
+            {booking?.clobe_settlement_booking ? (
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="bg-slate-950 px-5 py-4 text-white">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">Clobe cash settlement</p>
+                  <p className="mt-2 text-[13px] font-bold text-slate-200">최종수익</p>
+                  <p className={`mt-1 text-[28px] font-black tabular-nums ${reality.actualIncome - reality.actualExpense >= 0 ? 'text-white' : 'text-red-300'}`}>
+                    {(reality.actualIncome - reality.actualExpense).toLocaleString('ko-KR')}원
+                  </p>
+                  <p className="mt-2 text-[11px] text-slate-400">입금 {reality.actualIncome.toLocaleString('ko-KR')}원 − 출금 {reality.actualExpense.toLocaleString('ko-KR')}원</p>
+                </div>
+                <div className="grid grid-cols-2 gap-px bg-slate-200">
+                  <div className="bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold text-slate-400">메모 반영</p>
+                    <p className="mt-1 text-[12px] font-bold text-slate-800">{booking.settlement_confirmed_at ? '변경 감지 시 검토' : '재동기화 시 자동 수정'}</p>
+                  </div>
+                  <div className="bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold text-slate-400">정산 상태</p>
+                    <p className={`mt-1 text-[12px] font-bold ${booking.settlement_confirmed_at ? 'text-slate-700' : 'text-blue-700'}`}>
+                      {booking.settlement_confirmed_at ? '최종정산 잠김' : '확정 전 검토 가능'}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <>
+                {/* ① 듀얼 관제탑 — 최상단 (장부 vs 통장) */}
+                <DualControlTower
+                  totalSale={blueprint.totalSale}
+                  effectiveNet={blueprint.effectiveNet}
+                  netOverride={netOverride}
+                  actualIncome={reality.actualIncome}
+                  actualExpense={reality.actualExpense}
+                  settlementConfirmedAt={booking?.settlement_confirmed_at ?? null}
+                  settlementMode={booking?.settlement_mode ?? null}
+                />
 
-            {/* ② 견적 빌더 — 장부(Blueprint) 예산안 설정 도구 */}
-            <DynamicQuoteBuilder
-              rows={rows}
-              setRows={setRows}
-              isDirty={isDirty}
-              setIsDirty={setIsDirty}
-              netOverride={netOverride}
-              setNetOverride={setNetOverride}
-              overrideMemo={overrideMemo}
-              setOverrideMemo={setOverrideMemo}
-              commissionRate={commissionRate}
-              setCommissionRate={setCommissionRate}
-              commissionAmount={commissionAmount}
-              setCommissionAmount={setCommissionAmount}
-              disabled={savingSettlement}
-            />
+                {/* ② 견적 빌더 — 장부(Blueprint) 예산안 설정 도구 */}
+                <DynamicQuoteBuilder
+                  rows={rows}
+                  setRows={setRows}
+                  isDirty={isDirty}
+                  setIsDirty={setIsDirty}
+                  netOverride={netOverride}
+                  setNetOverride={setNetOverride}
+                  overrideMemo={overrideMemo}
+                  setOverrideMemo={setOverrideMemo}
+                  commissionRate={commissionRate}
+                  setCommissionRate={setCommissionRate}
+                  commissionAmount={commissionAmount}
+                  setCommissionAmount={setCommissionAmount}
+                  disabled={savingSettlement}
+                />
+              </>
+            )}
 
             {/* ③ 통장 입출금 내역 — 매칭된 거래만 표시 */}
             <div className="bg-white rounded-2xl ring-1 ring-gray-900/5 shadow-sm p-4">
@@ -1494,15 +1575,20 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
               ) : (
                 <div className="space-y-2">
                   {txs.map(tx => {
+                    const allocation = tx.booking_allocation;
+                    const displayAmount = Math.abs(allocation?.allocated_amount ?? tx.amount);
                     // 4-사분면 분류: (입금/출금) × (정상/환불)
                     //  ↓ 입금(정상) — 고객→우리 (계약금/잔금)
                     //  ↩ 입금(환불) — 랜드사→우리 (환불받음)
                     //  ↑ 출금(정상) — 우리→랜드사 (송금)
                     //  ↪ 출금(환불) — 우리→고객 (환불해줌)
                     const kind: 'in_normal' | 'in_refund' | 'out_normal' | 'out_refund' =
-                      tx.transaction_type === '입금'
-                        ? (tx.is_refund ? 'in_refund' : 'in_normal')
-                        : (tx.is_refund ? 'out_refund' : 'out_normal');
+                      allocation?.allocation_type === 'refund' ? 'out_refund'
+                        : allocation?.allocation_type === 'payout' ? 'out_normal'
+                        : allocation?.allocation_type === 'deposit' ? 'in_normal'
+                        : tx.transaction_type === '입금'
+                          ? (tx.is_refund ? 'in_refund' : 'in_normal')
+                          : (tx.is_refund ? 'out_refund' : 'out_normal');
                     const meta = ({
                       in_normal:  { bg: 'bg-blue-50',     iconCls: 'bg-blue-500 text-white',          icon: '↓', label: '입금 (고객)',     amountCls: 'text-blue-600',   sign: '+' },
                       in_refund:  { bg: 'bg-emerald-50',  iconCls: 'bg-emerald-100 text-emerald-700', icon: '↩', label: '환불받음 (랜드사)', amountCls: 'text-emerald-700', sign: '+' },
@@ -1523,12 +1609,13 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                               {' · '}
                               {formatSettlementTimestamp(tx.received_at)}
                               {tx.memo && ` · ${tx.memo}`}
+                              {allocation && Math.abs(tx.amount) !== displayAmount && ` · 원본 ${Math.abs(tx.amount).toLocaleString()}원 중 배정`}
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className={`text-[15px] font-extrabold tabular-nums ${meta.amountCls}`}>
-                            {meta.sign}{tx.amount.toLocaleString()}원
+                            {meta.sign}{displayAmount.toLocaleString()}원
                           </p>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded mt-0.5 inline-block font-semibold ${
                             tx.match_status === 'auto'   ? 'bg-green-100 text-green-700'  :
@@ -1549,9 +1636,9 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
         </div>
 
         {/* ── Sticky Footer ───────────────────────────────────────────── */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-3.5 flex items-center gap-2 flex-shrink-0">
+        <div className="sticky bottom-0 flex flex-shrink-0 flex-wrap items-center gap-2 border-t border-gray-100 bg-white px-4 py-3.5 sm:px-6">
           {/* 상태 전이 버튼 */}
-          {transitions.length > 0 && (
+          {!booking?.clobe_settlement_booking && transitions.length > 0 && (
             <div className="flex gap-1.5 flex-wrap flex-1">
               {transitions.map(t => (
                 <button type="button" key={t.to} onClick={() => handleTransition(t.to)}
@@ -1567,14 +1654,14 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             </div>
           )}
 
-          <div className="flex items-center gap-2 ml-auto">
-            {isDirty && (
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {!booking?.clobe_settlement_booking && isDirty && (
               <button type="button" onClick={resetSettlementEdit}
                 className="px-4 py-2 text-[13px] text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
                 되돌리기
               </button>
             )}
-            <button type="button" onClick={handleSettlementSave}
+            {!booking?.clobe_settlement_booking && <button type="button" onClick={handleSettlementSave}
               disabled={savingSettlement || !isDirty}
               className={`px-5 py-2 text-[13px] font-extrabold rounded-lg transition flex items-center gap-2 ${
                 savingSettlement
@@ -1590,22 +1677,24 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 </svg>
               )}
               {savingSettlement ? '저장 중...' : isDirty ? '장부 저장' : '저장됨'}
-            </button>
+            </button>}
 
             {/* 정산 확정 / 해제 */}
             {isConfirmedSettlement ? (
               <button type="button" onClick={() => handleConfirmSettlement(false)}
                 disabled={confirmingSettlement}
                 title={`확정 시각: ${booking?.settlement_confirmed_at?.slice(0,19).replace('T',' ') ?? ''}`}
-                className="px-4 py-2 text-[13px] bg-slate-100 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-200 transition whitespace-nowrap">
-                ♻️ 정산확정됨 · 해제
+                className="min-h-10 rounded-lg border border-slate-200 bg-slate-100 px-4 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-200 whitespace-nowrap">
+                {booking?.clobe_settlement_booking ? '최종정산 완료 · 해제' : '정산확정됨 · 해제'}
               </button>
             ) : (
               <button type="button" onClick={() => handleConfirmSettlement(true)}
                 disabled={confirmingSettlement}
-                title="이 예약을 '정산 끝'으로 마킹 → 목록에서 기본 숨김"
-                className="px-4 py-2 text-[13px] bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition whitespace-nowrap font-semibold">
-                ✅ 정산 확정
+                title={booking?.clobe_settlement_booking
+                  ? `입금 ${reality.actualIncome.toLocaleString('ko-KR')}원 - 출금 ${reality.actualExpense.toLocaleString('ko-KR')}원으로 최종수익 잠금`
+                  : '이 예약의 회계 정산을 확정'}
+                className="min-h-10 rounded-lg bg-slate-950 px-4 text-[13px] font-bold text-white transition hover:bg-slate-800 whitespace-nowrap disabled:bg-slate-300">
+                {confirmingSettlement ? '확정 중...' : booking?.clobe_settlement_booking ? `최종정산 확정 · 수익 ${(reality.actualIncome - reality.actualExpense).toLocaleString('ko-KR')}원` : '정산 확정'}
               </button>
             )}
 

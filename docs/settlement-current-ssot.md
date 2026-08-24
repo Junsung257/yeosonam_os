@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-08-12
+Last updated: 2026-08-24
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -16,6 +16,26 @@ This document owns:
 - reconciliation alerts and drift recovery.
 
 Repeated failures belong in `docs/errors/settlement.md`.
+
+## OpenLife Clobe Immediate Operating Profile (2026-08-24)
+
+The currently approved production scope is intentionally narrower than the historical full-bank-ledger design below.
+
+- One company/account is in scope: OpenLife Shinhan settlement account ending `4128`.
+- Sync is operator-triggered only. `/api/cron/clobe-bank-sync` must not be registered in `vercel.json` until the owner explicitly re-enables scheduled sync.
+- A new Clobe row enters the travel workflow only when its memo parses as canonical `YYMMDD_대표고객_랜드사` or that full key plus a registered trailing purpose tag such as `_환불`. The full normalized memo remains the unique settlement key, while the purpose tag is excluded from land-operator identity. Blank and non-canonical new rows are skipped; previously stored rows remain immutable audit evidence.
+- One full normalized memo key owns one Clobe-created settlement booking. Multiple deposits from different counterparties may aggregate into that booking, and every counterparty name remains on the original bank row. A base key and a purpose-suffixed key are distinct keys and must not be auto-merged merely because their date, customer, and operator match.
+- A similar pre-existing normal booking is review-only and is never linked automatically.
+- Deposits may auto-allocate after one exact memo-key resolution. Outflows require an operator command. A simple outflow uses `지급 승인` or, when the full memo ends with the registered `_환불` purpose tag, `환불 승인`.
+- One Clobe outflow always remains one immutable provider transaction. Its accounting meaning may be allocated exactly across bookings as `payout` and/or `refund`; the allocation sum must equal the provider amount with no implicit fee tolerance. Thus a `600,500원` outflow stays one `600,500원` booking outflow rather than an inferred `600,000원 + 500원` split. When the memo purpose or operator approval identifies it as a customer refund, that one allocation is `refund`. A `9,140,000원` mixed outflow may be explicitly allocated as `7,640,000원` supplier payout plus `1,500,000원` customer refund.
+- Before final settlement, a provider memo correction may rename the same booking only when no other active provider transaction still uses the old key. If old and new trip keys coexist, both remain unchanged and an operator review is required.
+- After `settlement_confirmed_at` is set, later provider memo changes are warning-only and cannot mutate the booking or allocation automatically.
+- A memo correction on a provider transaction with multiple active allocations or a non-booking allocation is always review-only. One corrected memo must never rename the representative booking of a mixed transaction.
+- Clobe cash settlement is `paid_amount - total_paid_out`; product price, receivable status, and full/partial payment classification are outside this immediate workflow.
+- Final settlement changes only settlement confirmation fields. It must not change the ordinary booking lifecycle `status` or trigger customer journey/review messaging.
+- One bank transaction may have multiple booking allocations only through an explicit operator-approved breakdown. Fees may be included in the booking outflow when the owner chooses a single cash-out representation.
+- Reopening a Clobe outflow for reallocation must reverse every active allocation and its ledger effect in one DB transaction. Partial API-loop reversal is forbidden. Any linked finalized booking blocks reversal until the operator explicitly unfinalizes it.
+- Production DB evidence on 2026-08-24: `clobe_mixed_outflow_allocations` (`20260824082534`), `restrict_bank_transaction_allocation_rpc` (`20260824082545`), and `harden_clobe_settlement_command_table` (`20260824082556`) are applied. The Clobe match/reverse commands and the legacy allocation command are executable only by `service_role`; both command tables have RLS, service-role-only policies, and supporting indexes. Pre/post deployment financial aggregates were identical and both new command tables contained zero rows.
 
 ## Source Of Truth
 
@@ -60,11 +80,11 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
 - Manual bank-statement imports must treat memo keys such as `260715_정지해_투어폰` as the booking binding key. Counterparty/depositor name is supporting evidence only because companions can pay separately.
 - Canonical memo keys use `YYMMDD_대표고객_랜드사`. A safe customer/operator separator variant such as `YYMMDD_대표고객-랜드사` may bind to an existing key or unambiguous existing booking, but it must never create a placeholder booking automatically.
-- Bulk bank import may auto-allocate deposits after a valid travel memo key resolves to one booking. An outflow may also auto-allocate when the memo key resolves strongly to exactly one booking; ambiguous, fuzzy, or missing memo resolutions remain review/manual-confirmed.
-- Non-travel rows from manual paste may still be skipped by default, but authoritative Clobe rows must never be discarded. Every Clobe account row is retained exactly once in the bank ledger as either `travel` or `non_travel`.
-- `travel` rows may affect booking allocations and booking cash position. `non_travel` rows affect actual bank balance only and must never auto-match to a booking.
-- Actual bank balance, travel cash position, settlement-confirmed profit, and non-travel cash movement are different metrics. The reconciliation identity is `opening balance + travel net + non-travel net = actual bank balance`; do not label travel net as current bank balance or realized profit.
-- A memo-created booking with no sales price may show received money and its cash position, but it has no computable customer receivable or profit. Show `가격 미입력` instead of a negative balance until `total_price` is entered.
+- Bulk bank import may auto-allocate deposits after a valid travel memo key resolves to one booking. Clobe outflows remain review-only until the operator presses `출금 승인`; ambiguous, fuzzy, or missing memo resolutions remain review/manual-confirmed.
+- Under the current OpenLife operating profile, blank and non-canonical new Clobe rows are skipped from the OS travel ledger. Previously stored non-travel rows remain retained for audit and are never converted or deleted silently.
+- `travel` rows may affect booking allocations and booking cash position. `non_travel` rows affect actual bank balance only and must never auto-match to a booking. The operator's final-settlement command freezes the verified cash difference as the booking's realized cash profit.
+- Actual bank balance, unfinalized travel cash position, settlement-confirmed cash profit, and non-travel cash movement are different metrics. The reconciliation identity is `opening balance + travel net + non-travel net = actual bank balance`; do not label an unfinalized travel net as current bank balance or realized profit.
+- A memo-created booking with no sales price may show received money and its cash position, but it has no computable customer receivable. After the operator confirms cash settlement, the OS may show `입금 - 출금` as realized cash profit without inferring receivables or payment completeness.
 - Booking settlement search and status filters must reset the virtualized table to its first row. A non-zero count with a visually empty result table is a blocking operations defect.
 - Provider `afterBalance` is the displayed actual balance when available. The OS must independently compute opening balance plus every inflow minus every outflow and expose a non-zero reconciliation difference as blocking financial drift.
 - Company expenses, taxes, advertising, subscriptions, fees, transfers, and other non-travel transactions remain visible in the non-travel bank tab. They are excluded from booking profit, not deleted from bank reality.
@@ -104,7 +124,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Provider transaction identity is unique among active bank rows. Excluded historical evidence may retain the same provider identity so an authoritative active Clobe row can replace it without deleting audit history.
 - Local transaction fingerprints follow the same active-only uniqueness boundary. Excluded evidence may retain the fingerprint of its authoritative active replacement.
 - When an authoritative Clobe row was initially bootstrapped from an Excel export without a provider transaction id, the first live sync may attach the provider id only to one active `clobe_mcp` row with the same minute, type, amount, counterparty, and memo. If the memo changed, a no-memo fallback is allowed only when exactly one candidate exists; ambiguous rows remain review-only and must not create a second financial allocation.
-- Clobe-sourced outflows with a valid, strong one-booking memo resolution may auto-confirm as a payout through `match_bank_transaction_allocations`. Clobe outflows without that resolution must stay review/manual-confirmed.
+- Clobe-sourced outflows never auto-confirm. A valid one-booking memo resolution stores only a suggested booking; the operator command confirms the payout through `match_bank_transaction_allocations`.
 - For the OpenLife 4128 settlement account, Clobe MCP is the authoritative bank source. Slack/SMS rows are audit-only fallback evidence and must be excluded from active settlement totals during an authoritative rebuild.
 - An authoritative Clobe rebuild reverses active allocations, resets bank-derived booking totals through the ledger RPC, then re-imports Clobe rows. Excluded rows remain retained for audit and are never eligible as duplicate candidates.
 - Similarity-based bank dedupe may merge only a strong candidate. A weak candidate is a review hint and must remain as its own imported transaction; one memo key may contain many legitimate rows.
@@ -124,7 +144,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - The non-travel memo-review queue must open only rows that require review; the full non-travel ledger remains a separate explicit view.
 - Every bank and settlement timestamp shown to operators must use `Asia/Seoul` explicitly. UTC slicing and runtime-default locale formatting are prohibited on settlement screens.
 - Clobe normalization failures must be reported separately from importer failures. A response with `fetched > normalized` must never be presented as `errors 0` without showing the normalization failure count.
-- Scheduled Clobe sync runs every four hours through Vercel Cron. While active Clobe rows lack provider ids it advances from the oldest missing row in bounded 14-day windows; after backfill completes it re-syncs the latest 30 KST dates. The cron and admin button use the same guarded sync API and import pipeline, request up to 1,000 paginated rows per bounded window, and fail before import when Clobe reports another page beyond that cap.
+- Clobe sync is manual-only for the current OpenLife rollout. The cron route may remain as dormant code, but no Vercel schedule may call it until the owner explicitly approves scheduled operation.
 - Excluded Slack/SMS and pre-rebuild Clobe rows are inactive audit evidence, not an operational error queue, and must be labeled as such in admin UI.
 
 ## State Boundary
@@ -151,6 +171,20 @@ Changes to payment matching, ledger totals, settlement creation, settlement appr
 - update to this SSOT when the invariant changes;
 - entry in `docs/errors/settlement.md` for a repeated mistake;
 - migration plus SSOT update when schema behavior changes.
+
+## 2026-08-23 실제 DB 권한 게이트
+
+연결된 활성 Supabase DB read-only 감사에서 다음 P0가 확인됐다.
+
+- `match_bank_transaction_allocations`가 anon/authenticated에 EXECUTE 가능했다.
+- `bookings_access`가 public ALL이며 인증 여부만으로 tenant 조건을 우회할 수 있었다.
+- `vouchers.authenticated_access`가 tenant 조건 없이 authenticated ALL이었다.
+- `settlements`와 `sms_payments`에도 브라우저 역할의 전체 table privilege가 남아 있었다.
+- 브라우저 역할에 booking 금액·상태와 voucher status UPDATE privilege가 남아 있었다.
+
+따라서 `20260823111632_finance_rbac_command_hardening.sql` 적용 및 권한 negative test 완료 전에는 재무·정산·확정서 무인 자동화를 활성화하지 않는다. 운영 DB에 migration이 적용되지 않았다는 사실과 코드에 migration 파일이 존재한다는 사실을 반드시 분리해 보고한다.
+
+서버 cron/API/DB 계층에서 `bookings`, `bank_transactions`, `settlements`, `sms_payments`, `vouchers`를 읽거나 변경할 때는 anon client를 사용하지 않는다. 브라우저·public surface의 읽기는 별도 공개 projection/API 계약으로만 허용하고, 서버 운영 경로는 `supabaseAdmin` 또는 service-role Command RPC를 사용한다.
 
 ## Verification
 

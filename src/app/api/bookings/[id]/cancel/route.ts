@@ -44,6 +44,23 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     if (!current) {
       return NextResponse.json({ error: '예약을 찾을 수 없습니다.' }, { status: 404 });
     }
+
+    const { data: clobeKey, error: clobeKeyError } = await supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('id')
+      .eq('booking_id', params.id)
+      .eq('status', 'active')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+      .limit(1)
+      .maybeSingle();
+    if (clobeKeyError) throw clobeKeyError;
+    if (clobeKey) {
+      return NextResponse.json(
+        { error: 'Clobe 정산예약은 일반 예약취소가 아닌 Clobe 메모 검토 절차로 처리해야 합니다.', code: 'CLOBE_MEMO_SOURCE_REQUIRED' },
+        { status: 409 },
+      );
+    }
+
     if ((current as { status: string }).status === 'cancelled') {
       return NextResponse.json({ error: '이미 취소된 예약입니다.' }, { status: 422 });
     }

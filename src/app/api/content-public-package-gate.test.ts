@@ -35,6 +35,10 @@ const contentProductRoutes = [
   'src/app/api/admin/ad-os/creative-factory/asset-group/route.ts',
 ];
 
+const retiredContentProductRoutes: Record<string, string> = {
+  'src/app/api/packages/[id]/regenerate-copies/route.ts': 'MUTABLE_COPY_REGENERATION_RETIRED',
+};
+
 describe('content generation public package gate', () => {
   it('loads product context only through current approved public snapshots', () => {
     const helper = source('src/lib/content-public-package.ts');
@@ -53,13 +57,20 @@ describe('content generation public package gate', () => {
   it('blocks raw travel_packages title/price/itinerary reads in content product routes', () => {
     for (const path of contentProductRoutes) {
       const text = source(path);
+      const retirementCode = retiredContentProductRoutes[path];
 
-      expect(
-        text.includes('loadPublicContentPackageForGeneration') ||
-          text.includes('loadPublicSearchAdPackage') ||
-          text.includes('buildAndSaveSearchAdPackagePlan'),
-        path,
-      ).toBe(true);
+      if (retirementCode) {
+        expect(text, path).toContain('requireAdminRequest(request)');
+        expect(text, path).toContain(retirementCode);
+        expect(text, path).toContain('{ status: 410');
+      } else {
+        expect(
+          text.includes('loadPublicContentPackageForGeneration') ||
+            text.includes('loadPublicSearchAdPackage') ||
+            text.includes('buildAndSaveSearchAdPackagePlan'),
+          path,
+        ).toBe(true);
+      }
       expect(text, path).not.toContain("select('id, title");
       expect(text, path).not.toContain("select('id,title");
       expect(text, path).not.toContain("select('title, destination");

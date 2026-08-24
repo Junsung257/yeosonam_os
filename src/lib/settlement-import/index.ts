@@ -4,6 +4,7 @@ export {
   parseTravelSettlementMemo,
 } from './bank-statement-parser';
 export {
+  applyClobeMemoCorrection,
   resolveSettlementMemoBooking,
 } from './booking-settlement-keys';
 export {
@@ -20,6 +21,7 @@ export type {
   ParsedTravelSettlementMemo,
 } from './bank-statement-parser';
 export type {
+  ClobeMemoCorrectionResult,
   SettlementMemoResolution,
 } from './booking-settlement-keys';
 export type {

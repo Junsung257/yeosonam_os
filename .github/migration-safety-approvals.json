@@ -1,6 +1,45 @@
 {
   "version": 1,
   "approvals": {
+    "20260823235147_correct_clobe_refund_outflow_600500.sql": {
+      "sha256": "a78830e44465379d42d47d27c6a1eef177aae956b2b32fe1f504fe1f76b08f7a",
+      "status": "A",
+      "rationale": "This exact owner-approved one-transaction correction is already applied and verified on production. Every runtime UPDATE in the PL/pgSQL block has an exact transaction or allocation WHERE predicate, and the block fails closed unless provider id, account, amount, booking key, prior allocations, and final ledger totals all match. The checker finding is a multiline PL/pgSQL parser false positive, not an unbounded data update.",
+      "evidence": "docs/settlement-current-ssot.md",
+      "approvedIssues": [
+        {
+          "severity": "critical",
+          "type": "lock-heavy",
+          "description": "Unbounded UPDATE without WHERE"
+        }
+      ]
+    },
+    "20260823235214_clobe_cash_settlement_commands.sql": {
+      "sha256": "978cbe73128c60c0d592b5deb480ba5965b9442bedcac965b28cbde3fdc09679",
+      "status": "A",
+      "rationale": "This exact command migration is already applied on production with RLS enabled and public, anon, and authenticated privileges revoked. The table currently contains zero rows. The same change set adds a service-role-only policy and booking lookup index in 20260824081500_harden_clobe_settlement_command_table.sql without rewriting applied migration history.",
+      "evidence": "CURRENT_STATUS.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "security",
+          "description": "New table 'clobe_settlement_command_idempotency' has no RLS policy"
+        }
+      ]
+    },
+    "20260824081500_harden_clobe_settlement_command_table.sql": {
+      "sha256": "63fc28c7ee9a3fa2d5fa2f860490893507437b0bfe16b70c979dbc5512c8a1ed",
+      "status": "A",
+      "rationale": "Production read-only verification on 2026-08-24 found zero rows in clobe_settlement_command_idempotency, so creating the booking_id index cannot scan or lock customer data. Fresh databases also create this command table immediately before the hardening migration. The migration adds the missing service-role-only RLS policy and keeps public roles revoked.",
+      "evidence": "docs/settlement-current-ssot.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    },
     "20260806041405_finance_review_reviewer_index_replay.sql": {
       "sha256": "9a1f1879399e23bdb534e2f9c56bb21e46aa777dc9d8b50efe7316674fabdc0b",
       "status": "A",

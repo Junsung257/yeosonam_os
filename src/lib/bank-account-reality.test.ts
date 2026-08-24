@@ -7,11 +7,47 @@ import {
   classifyNonTravelProfitRow,
   countTravelMemoOrAllocationActions,
   needsNonTravelMemoReview,
+  normalizeClobeOperationalScopes,
   travelMemoOrAllocationActionIds,
   type BankAccountRealityRow,
 } from './bank-account-reality';
 
 describe('bank account reality', () => {
+  it('uses Clobe memo as the travel boundary without changing the reconciled balance', () => {
+    const rows: BankAccountRealityRow[] = [
+      {
+        id: 'canonical', transaction_type: '입금', amount: 1_000, received_at: '2026-08-01T00:00:00+09:00',
+        settlement_scope: 'non_travel', memo: '261011_홍길동_투어폰', balance_after: 1_000,
+      },
+      {
+        id: 'blank', transaction_type: '입금', amount: 2_000, received_at: '2026-08-02T00:00:00+09:00',
+        settlement_scope: 'travel', memo: '', balance_after: 3_000,
+      },
+      {
+        id: 'legacy-linked', transaction_type: '출금', amount: 400, received_at: '2026-08-03T00:00:00+09:00',
+        settlement_scope: 'travel', memo: '옛 메모', balance_after: 2_600,
+      },
+    ];
+    const allocations = [{
+      bank_transaction_id: 'legacy-linked', booking_id: 'booking-1', allocated_amount: 400, target_type: 'booking' as const,
+    }];
+
+    const operationalRows = normalizeClobeOperationalScopes(rows, allocations);
+    const summary = calculateBankAccountReality(operationalRows, allocations);
+
+    expect(operationalRows.map(row => row.settlement_scope)).toEqual(['travel', 'non_travel', 'travel']);
+    expect(operationalRows[1]?.resolved_classification).toBe('review');
+    expect(summary).toMatchObject({
+      actualBalance: 2_600,
+      computedBalance: 2_600,
+      reconciliationDifference: 0,
+      travelDeposits: 1_000,
+      travelWithdrawals: 400,
+      nonTravelDeposits: 2_000,
+      memoReviewCount: 1,
+    });
+  });
+
   it('splits a refund and bank fee between travel cash and company expense', () => {
     const summary = calculateBankAccountReality([
       {

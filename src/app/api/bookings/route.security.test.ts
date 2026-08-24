@@ -21,6 +21,7 @@ vi.mock('@/lib/supabase', () => ({
   updateBookingStatus: vi.fn(),
   updateBooking: vi.fn(),
   isSupabaseConfigured: false,
+  isSupabaseAdminConfigured: false,
   supabase: { from: vi.fn() },
   supabaseAdmin: { from: vi.fn(), rpc: vi.fn() },
 }));

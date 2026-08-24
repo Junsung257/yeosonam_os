@@ -26,6 +26,7 @@ interface DataTableProps<T> {
   rows: T[];
   getRowKey: (row: T, index: number) => string | number;
   onRowClick?: (row: T) => void;
+  getRowAriaLabel?: (row: T, index: number) => string;
   alertCell?: (row: T) => AlertSlot | null;
   emptyState?: ReactNode;
   emptyLabel?: string;
@@ -71,6 +72,7 @@ export function DataTable<T>({
   rows,
   getRowKey,
   onRowClick,
+  getRowAriaLabel,
   alertCell,
   emptyState,
   emptyLabel,
@@ -139,7 +141,15 @@ export function DataTable<T>({
               <tr
                 key={getRowKey(row, index)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`${zebraCls} ${hoverCls}`}
+                onKeyDown={onRowClick ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onRowClick(row);
+                  }
+                } : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                aria-label={getRowAriaLabel?.(row, index)}
+                className={`${zebraCls} ${hoverCls} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500`}
               >
                 {alertCell && (
                   <td className="w-10 px-2 text-center align-middle">

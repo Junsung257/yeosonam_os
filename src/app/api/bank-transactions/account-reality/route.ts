@@ -5,6 +5,7 @@ import {
   calculateBankAccountReality,
   calculateBankProfitErp,
   calculateBookingCashPositions,
+  normalizeClobeOperationalScopes,
   YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER,
   type BookingCashAllocationRow,
   type BookingCashBookingRow,
@@ -103,12 +104,18 @@ export async function GET(request: NextRequest) {
   }
   const confirmedBookingIds = new Set(confirmedSettlementItems.map(item => item.booking_id));
 
-  const bankSummary = calculateBankAccountReality(transactions, allocations);
-  const bookingCash = calculateBookingCashPositions({ transactions, allocations, bookings, confirmedBookingIds });
+  const operationalTransactions = normalizeClobeOperationalScopes(transactions, allocations);
+  const bankSummary = calculateBankAccountReality(operationalTransactions, allocations);
+  const bookingCash = calculateBookingCashPositions({
+    transactions: operationalTransactions,
+    allocations,
+    bookings,
+    confirmedBookingIds,
+  });
   const profitErp = calculateBankProfitErp({
     bankSummary,
     bookingCash,
-    transactions,
+    transactions: operationalTransactions,
     allocations,
     bookings,
     confirmedSettlementItems,

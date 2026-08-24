@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
 import { requireAdminRequest } from '@/lib/admin-guard';
-import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
+import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
@@ -11,6 +11,23 @@ import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { recordServerAnalyticsEvent } from '@/lib/analytics/server-events';
+
+function isClobeTransactionSource(row: { source?: string | null; external_provider?: string | null } | null): boolean {
+  return row?.source === 'clobe_mcp' || row?.source === 'clobe_api' || row?.external_provider === 'clobe';
+}
+
+async function hasActiveClobeSettlementKey(bookingId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from('booking_settlement_keys')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('status', 'active')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
 
 function buildAttributionSnapshot(
   body: Record<string, any>,
@@ -81,7 +98,7 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   if (!leadCustomerId) return;
 
   // 새 예약 정보 조회
-  const { data: booking } = await supabase
+  const { data: booking } = await supabaseAdmin
     .from('bookings')
     .select('id, booking_no, total_price, total_cost, paid_amount, total_paid_out, actual_payer_name, customers!lead_customer_id(name)')
     .eq('id', bookingId)
@@ -95,9 +112,9 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
 
   // unmatched 입금 내역 조회 (최근 90일)
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: unmatched } = await supabase
+  const { data: unmatched } = await supabaseAdmin
     .from('bank_transactions')
-    .select('id, counterparty_name, amount, transaction_type')
+    .select('id, counterparty_name, amount, transaction_type, source, external_provider')
     .eq('match_status', 'unmatched')
     .eq('transaction_type', '입금')
     .gte('received_at', since);
@@ -121,8 +138,9 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   // update_booking_ledger 는 idempotency_key + per-tx ledger entry 라 동시성 안전.
 
   // 1) 메모리 매칭 — 동기, 빠름
-  const matchedTxs: Array<{ tx: { id: string; amount: number; counterparty_name: string | null; transaction_type: string }; confidence: number }> = [];
+  const matchedTxs: Array<{ tx: { id: string; amount: number; counterparty_name: string | null; transaction_type: string; source?: string | null; external_provider?: string | null }; confidence: number }> = [];
   for (const tx of unmatched) {
+    if (isClobeTransactionSource(tx)) continue;
     const candidates = matchPaymentToBookings({
       amount:     tx.amount,
       senderName: tx.counterparty_name,
@@ -141,7 +159,7 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   const nowIso = new Date().toISOString();
   const applyOne = async ({ tx, confidence }: typeof matchedTxs[number]) => {
     // 한 tx 의 UPDATE + RPC 는 직렬 (atomic 그룹), tx 들 간만 병렬.
-    await supabase
+    await supabaseAdmin
       .from('bank_transactions')
       .update({
         booking_id:       bookingId,
@@ -190,8 +208,8 @@ export async function GET(request: NextRequest) {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
 
-  if (!isSupabaseConfigured) {
-    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
+  if (!isSupabaseAdminConfigured) {
+    return ApiErrors.unavailable('Supabase 서버 권한이 설정되지 않았습니다.');
   }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
@@ -208,7 +226,17 @@ export async function GET(request: NextRequest) {
 
   if (id) {
     const booking = await getBookingById(id);
-    return successResponse({ booking });
+    const { data: clobeKey } = await supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('id, source')
+      .eq('booking_id', id)
+      .eq('status', 'active')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+      .limit(1)
+      .maybeSingle();
+    return successResponse({
+      booking: booking ? { ...booking, clobe_settlement_booking: Boolean(clobeKey) } : booking,
+    });
   }
   const bookings = await getBookings(
     status || undefined,
@@ -222,8 +250,23 @@ export async function GET(request: NextRequest) {
       offset: offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : undefined,
     },
   );
+  const bookingIds = (bookings as Array<{ id?: string }>).map(booking => booking.id).filter((value): value is string => Boolean(value));
+  let clobeBookingIds = new Set<string>();
+  if (bookingIds.length > 0) {
+    const { data: clobeKeys } = await supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('booking_id')
+      .in('booking_id', bookingIds)
+      .eq('status', 'active')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking');
+    clobeBookingIds = new Set(((clobeKeys ?? []) as Array<{ booking_id: string }>).map(row => row.booking_id));
+  }
+  const annotatedBookings = (bookings as unknown as Array<Record<string, unknown>>).map(booking => ({
+    ...booking,
+    clobe_settlement_booking: typeof booking.id === 'string' && clobeBookingIds.has(booking.id),
+  }));
   return successResponse(
-    { bookings, count: bookings.length },
+    { bookings: annotatedBookings, count: annotatedBookings.length },
     200,
     // 어드민 목록 — list 프리셋(30s/60s/5분).
     60,
@@ -236,11 +279,27 @@ export async function POST(request: NextRequest) {
 
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
-  if (!isSupabaseConfigured) {
-    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
+  if (!isSupabaseAdminConfigured) {
+    return ApiErrors.unavailable('Supabase 서버 권한이 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
+    const quickCreatedTxId = typeof body.quickCreatedTxId === 'string'
+      ? body.quickCreatedTxId
+      : typeof body.quick_created_tx_id === 'string'
+        ? body.quick_created_tx_id
+        : '';
+    if (quickCreatedTxId) {
+      const { data: sourceRow, error: sourceError } = await supabaseAdmin
+        .from('bank_transactions')
+        .select('source, external_provider')
+        .eq('id', quickCreatedTxId)
+        .maybeSingle();
+      if (sourceError) throw sourceError;
+      if (isClobeTransactionSource(sourceRow)) {
+        return ApiErrors.conflict('Clobe 거래는 메모 기준 동기화 흐름에서만 예약을 생성할 수 있습니다.');
+      }
+    }
     const rawIdempotencyKey =
       typeof body.idempotencyKey === 'string'
         ? body.idempotencyKey
@@ -683,14 +742,18 @@ export async function PATCH(request: NextRequest) {
 
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
-  if (!isSupabaseConfigured) {
-    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
+  if (!isSupabaseAdminConfigured) {
+    return ApiErrors.unavailable('Supabase 서버 권한이 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
     const { id } = body;
     if (!id) {
       return ApiErrors.badRequest('id가 필요합니다.');
+    }
+
+    if (await hasActiveClobeSettlementKey(id)) {
+      return ApiErrors.conflict('Clobe 정산예약은 일반 예약 PATCH로 수정할 수 없습니다. Clobe 메모를 수정한 뒤 동기화하세요.');
     }
 
     // 계약금 안내 게이트 해제 (assisted → 운영자 승인 후 전이 허용)
@@ -853,41 +916,29 @@ export async function PATCH(request: NextRequest) {
     // 다른 경로에서 호출 시 calcPaymentStatus 가 처리. 여기서는 ledger 정합성을 우선.
     if (typeof body.paid_amount === 'number') {
       const newPaidAmount = body.paid_amount;
-      const { data: current } = await supabase
-        .from('bookings')
-        .select('total_price, status')
-        .eq('id', id)
-        .single();
-
-      const totalPrice = (current as { total_price?: number } | null)?.total_price ?? 0;
-      const newPaymentStatus =
-        newPaidAmount >= totalPrice && totalPrice > 0 ? '완납'
-        : newPaidAmount > 0 ? '일부입금'
-        : '미입금';
-      const newStatus =
-        newPaidAmount >= totalPrice && totalPrice > 0 ? 'completed'
-        : (current as { status?: string } | null)?.status;
+      const adjustmentReason = typeof body.adjustment_reason === 'string'
+        ? body.adjustment_reason.trim()
+        : '';
+      const idempotencyKey = typeof body.idempotency_key === 'string'
+        ? body.idempotency_key.trim()
+        : request.headers.get('x-idempotency-key')?.trim() ?? '';
+      if (adjustmentReason.length < 5 || idempotencyKey.length < 8) {
+        return ApiErrors.badRequest('paid_amount 변경은 adjustment_reason과 idempotency_key가 필요합니다.');
+      }
 
       const { error: rpcErr } = await supabaseAdmin.rpc('record_manual_paid_amount_change', {
         p_booking_id: id,
         p_new_paid_amount: newPaidAmount,
         p_new_total_paid_out: null,
         p_source: 'admin_manual_edit',
-        p_source_ref_id: id,
-        p_idempotency_key: `manual:${id}:${Date.now()}`,
-        p_memo: 'PUT /api/bookings paid_amount manual edit',
+        p_source_ref_id: idempotencyKey,
+        p_idempotency_key: idempotencyKey,
+        p_memo: adjustmentReason,
         p_created_by: 'admin',
       });
       if (rpcErr) return ApiErrors.internalError(rpcErr.message);
 
-      // payment_status / status 자동 후처리 (RPC 가 손대지 않으므로 여기서)
-      await supabaseAdmin.from('bookings').update({
-        payment_status: newPaymentStatus,
-        ...(newStatus ? { status: newStatus } : {}),
-        updated_at: new Date().toISOString(),
-      }).eq('id', id);
-
-      const { data } = await supabase.from('bookings').select().eq('id', id).single();
+      const { data } = await supabaseAdmin.from('bookings').select().eq('id', id).single();
       return successResponse({ booking: data });
     }
 
