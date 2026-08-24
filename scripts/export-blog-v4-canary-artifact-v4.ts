@@ -132,12 +132,58 @@ async function waitForOperation(dbClient: SupabaseClient, operationId: string) {
   let operation: Record<string, unknown> | null = null;
   while (Date.now() < deadline) {
     operation = await readOperation(dbClient, operationId);
+    const interception = await detectPublisherInterception(dbClient, operationId);
+    if (interception) {
+      await mkdir(argument('output-dir') ?? '.', { recursive: true });
+      await writeFile(
+        join(argument('output-dir') ?? '.', 'operation-diagnostic.json'),
+        JSON.stringify(interception, null, 2) + '\n',
+        'utf8',
+      );
+      throw new Error('PUBLISHER_INTERCEPTED_BEFORE_HANDLER');
+    }
     if (operation && ['human_review', 'approved_for_slot', 'quarantined', 'failed', 'cancelled', 'published', 'indexed'].includes(text(operation.status))) {
       return operation;
     }
     await sleep(POLL_MS);
   }
   throw new Error(`blog_v4_canary_operation_timeout:${text(operation?.status || 'missing')}`);
+}
+
+async function detectPublisherInterception(dbClient: SupabaseClient, operationId: string) {
+  const diagnostic = await readOperationDiagnostics(dbClient, operationId);
+  const events = Array.isArray(diagnostic.stageEvents)
+    ? diagnostic.stageEvents as Array<Record<string, unknown>>
+    : [];
+  const publisherFetchReturned = events.some((event) => text(event.event_key).includes('publisher-fetch-returned'));
+  const publisherRouteEntered = events.some((event) => text(event.event_key) === 'publisher:route-entered:v1');
+  const resultStatusPresent = events.some((event) => {
+    const evidence = asRecord(event.evidence);
+    return typeof evidence.resultStatus === 'string' && evidence.resultStatus.trim().length > 0;
+  });
+  if (!publisherFetchReturned || publisherRouteEntered || resultStatusPresent) return null;
+
+  return {
+    ...diagnostic,
+    schemaVersion: 1,
+    failureCode: 'PUBLISHER_INTERCEPTED_BEFORE_HANDLER',
+    checks: {
+      publisherFetchReturned,
+      publisherRouteEntered,
+      resultStatusPresent,
+      operationStatus: diagnostic.operation,
+      lease: diagnostic.operation && {
+        owner: (diagnostic.operation as Record<string, unknown>).lease_owner ?? null,
+        expiresAt: (diagnostic.operation as Record<string, unknown>).lease_expires_at ?? null,
+      },
+      workflowRun: (diagnostic.operation && (diagnostic.operation as Record<string, unknown>).workflow_run_id) ?? null,
+      generationRun: diagnostic.generationRun ?? null,
+      creative: (diagnostic.operation as Record<string, unknown> | null)?.creative_id ?? null,
+      aiReservations: diagnostic.aiBudgetReservations ?? [],
+      terminalEvent: events.find((event) => ['failed', 'succeeded'].includes(text(event.status)) && ['failed', 'quarantined', 'human_review', 'approved_for_slot'].includes(text(event.stage))) ?? null,
+      publicationAndIndexingMustRemainZero: true,
+    },
+  };
 }
 
 async function readArtifacts(dbClient: SupabaseClient, operation: Record<string, unknown>) {

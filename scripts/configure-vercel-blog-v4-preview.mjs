@@ -51,7 +51,11 @@ const values = [
   // Vercel Preview runs with NODE_ENV=production. Keep staging canaries from
   // inheriting the production default resource-saver guard, while the
   // production project remains unchanged and auto-publish stays draft-only.
-  ['DB_RESOURCE_SAVER_MODE', '0', 'encrypted'],
+  // Keep the saver enabled in Preview. The targeted publisher is a critical
+  // cron and is admitted explicitly below; this preserves the same guard that
+  // production will use while still allowing the staging canary to run.
+  ['DB_RESOURCE_SAVER_MODE', '1', 'encrypted'],
+  ['DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS', '1', 'encrypted'],
   ['DB_RESOURCE_SAVER_PUBLIC_READS', '1', 'encrypted'],
   ['BLOG_GENERATION_CRON_ENABLED', 'false', 'encrypted'],
   ['BLOG_CONTENT_FACTORY_ENABLED', 'true', 'encrypted'],

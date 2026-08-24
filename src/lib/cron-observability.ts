@@ -19,6 +19,13 @@ const CRON_SIDE_EFFECT_TIMEOUT_MS = 3_000;
 export interface CronLoggingOptions {
   handlerTimeoutMs?: number;
   sideEffectTimeoutMs?: number;
+  /**
+   * Some targeted cron calls have a machine-readable contract even when the
+   * resource saver prevents the handler from running. The callback lets the
+   * route preserve that contract without coupling this generic wrapper to a
+   * specific domain.
+   */
+  resourceSaverResponse?: (request: NextRequest, skippedResponse: Response) => Response | null;
 }
 
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
@@ -42,7 +49,11 @@ export function withCronLogging(cronName: string, handler: CronHandler, options:
 
     if (isCronAuthorized(request)) {
       const resourceSaver = maybeSkipCronForResourceSaver(request, cronName);
-      if (resourceSaver) return resourceSaver;
+      if (resourceSaver) {
+        const contracted = options.resourceSaverResponse?.(request, resourceSaver);
+        if (contracted) return contracted;
+        return resourceSaver;
+      }
     }
     const startedAt = new Date();
     let status: 'success' | 'partial_failure' | 'error' = 'success';

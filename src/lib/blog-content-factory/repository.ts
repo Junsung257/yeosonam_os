@@ -86,6 +86,52 @@ export async function requeueBlogContentOperationV4(input: {
   if (error) throw new Error(`blog_content_operation_requeue_failed:${error.message}`);
 }
 
+const BLOG_CONTENT_OPERATION_TERMINAL_STATUSES = [
+  'failed',
+  'human_review',
+  'approved_for_slot',
+  'research_backlog',
+  'quarantined',
+  'cancelled',
+] as const;
+
+type BlogContentOperationTerminalStatus = (typeof BLOG_CONTENT_OPERATION_TERMINAL_STATUSES)[number];
+
+export async function terminalizeBlogContentOperationV4(input: {
+  supabase: SupabaseClient;
+  operationId: string;
+  fencingToken: number;
+  leaseOwner: string;
+  status: BlogContentOperationTerminalStatus;
+  stage: BlogContentOperationStage;
+  eventKey: string;
+  failureCode?: string | null;
+  skipReason?: string | null;
+  generationRunId?: string | null;
+  creativeId?: string | null;
+  evidence?: Record<string, unknown>;
+}): Promise<string> {
+  if (!BLOG_CONTENT_OPERATION_TERMINAL_STATUSES.includes(input.status)) {
+    throw new Error(`blog_content_operation_terminal_status_invalid:${input.status}`);
+  }
+  const { data, error } = await input.supabase.rpc('terminalize_blog_content_operation_v4', {
+    p_operation_id: input.operationId,
+    p_fencing_token: input.fencingToken,
+    p_lease_owner: input.leaseOwner,
+    p_terminal_status: input.status,
+    p_stage: input.stage,
+    p_event_key: input.eventKey,
+    p_failure_code: input.failureCode ?? null,
+    p_skip_reason: input.skipReason ?? null,
+    p_generation_run_id: input.generationRunId ?? null,
+    p_creative_id: input.creativeId ?? null,
+    p_evidence: input.evidence ?? {},
+  });
+  if (error) throw new Error(`blog_content_operation_terminalize_failed:${error.message}`);
+  if (typeof data !== 'string') throw new Error('blog_content_operation_terminal_event_id_missing');
+  return data;
+}
+
 export async function claimBlogContentOperationV4(input: {
   supabase: SupabaseClient;
   operationId: string;
