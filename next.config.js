@@ -27,8 +27,11 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+// Vercel's webpack worker has repeatedly stalled this large app before the
+// compiler emits progress. Keep the stable single-process path as the default;
+// re-enable only through an explicit, separately verified environment flag.
 const enableWebpackBuildWorker =
-  process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER !== '0';
+  process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER === '1';
 const SPECIAL_PAGE_SHIMS = {
   _app: 'next/dist/pages/_app',
   _error: 'next/dist/pages/_error',
