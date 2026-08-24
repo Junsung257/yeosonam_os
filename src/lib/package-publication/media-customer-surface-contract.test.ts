@@ -34,7 +34,12 @@ describe('public media customer surface contract', () => {
 
   it('keeps the broad attraction photo resolver out of immutable public snapshots', () => {
     const loader = source('src/lib/load-lp-package.ts');
-    expect(loader).toContain('if (rawProofPackage)');
-    expect(loader).not.toMatch(/if \(publicSnapshot\)[\s\S]{0,160}resolveLpHeroPhotoUrl/);
+    expect(loader).toContain('fetchPublicPackageSnapshotById');
+    expect(loader).toContain('verifyProductRegistrationV6ProofToken');
+    expect(loader).toContain('const exactProofAllowed');
+    expect(loader).toContain('getCurrentPublicPackage');
+    expect(loader).toContain("channel: 'customer'");
+    expect(loader).not.toContain('resolveLpHeroPhotoUrl');
+    expect(loader).not.toContain(".from('travel_packages')");
   });
 });
