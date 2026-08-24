@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/api-auth', () => ({
   isValidAdminApiToken: vi.fn(),
+  isValidProductRegistrationUploadToken: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase-jwt-verify', () => ({
@@ -10,16 +11,17 @@ vi.mock('@/lib/supabase-jwt-verify', () => ({
   verifySupabaseAccessToken: vi.fn(),
 }));
 
-import { isValidAdminApiToken } from '@/lib/api-auth';
+import { isValidAdminApiToken, isValidProductRegistrationUploadToken } from '@/lib/api-auth';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { legacyJwtExpValid, verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 
 const mockedAdminToken = vi.mocked(isValidAdminApiToken);
+const mockedUploadToken = vi.mocked(isValidProductRegistrationUploadToken);
 const mockedExpValid = vi.mocked(legacyJwtExpValid);
 const mockedVerify = vi.mocked(verifySupabaseAccessToken);
 
-function request(accessToken?: string): NextRequest {
-  return new NextRequest('https://www.yeosonam.com/api/blog', {
+function request(accessToken?: string, path = '/api/blog'): NextRequest {
+  return new NextRequest(`https://www.yeosonam.com${path}`, {
     method: 'POST',
     headers: accessToken ? { cookie: `sb-access-token=${accessToken}` } : undefined,
   });
@@ -30,6 +32,7 @@ describe('requireAdminRequest', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('ADMIN_EMAILS', 'admin@yeosonam.com');
     mockedAdminToken.mockReturnValue(false);
+    mockedUploadToken.mockResolvedValue(false);
     mockedExpValid.mockReturnValue(true);
   });
 
@@ -72,6 +75,13 @@ describe('requireAdminRequest', () => {
 
     await expect(requireAdminRequest(request())).resolves.toBeNull();
     expect(mockedVerify).not.toHaveBeenCalled();
+  });
+
+  it('allows the upload-only token only on the source upload route', async () => {
+    mockedUploadToken.mockResolvedValue(true);
+
+    await expect(requireAdminRequest(request(undefined, '/api/upload'))).resolves.toBeNull();
+    await expect(requireAdminRequest(request(undefined, '/api/admin/product-registration/v6/readiness'))).resolves.not.toBeNull();
   });
 
   it('returns 401 for an expired access token', async () => {

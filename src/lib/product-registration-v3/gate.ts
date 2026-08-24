@@ -46,6 +46,71 @@ function hasIncludedHotelEvidence(variant: V3DraftLedger['variants'][number]): b
   );
 }
 
+function meetingTimeIsReusedAsFlightDeparture(variant: V3DraftLedger['variants'][number]): boolean {
+  const meetings = variant.days
+    .flatMap(day => day.events)
+    .filter(event => event.type === 'meeting' && Boolean(event.time));
+  if (meetings.length === 0) return false;
+  return variant.flight_segments.some(segment => {
+    if (!segment.dep_time) return false;
+    return meetings.some(meeting => {
+      if (meeting.time !== segment.dep_time) return false;
+      const meetingLine = meeting.evidence?.line_start;
+      const flightLine = segment.evidence?.line_start;
+      // HWP tables often place a flight code and its time in adjacent rows.
+      // A meeting elsewhere in the itinerary with the same clock time is not
+      // evidence that the parser reused it as the flight departure.
+      return typeof meetingLine === 'number'
+        && typeof flightLine === 'number'
+        && Math.abs(meetingLine - flightLine) <= 2;
+    });
+  });
+}
+
+const SAFE_HIGH_RISK_REVIEW_CATEGORIES = new Set([
+  'local_law_restriction',
+  'passport_validity',
+  'passport_visa_law',
+  'visa_entry_rule',
+  'group_schedule_penalty',
+  'surcharge',
+  // An amount-less guide/driver tip is safe only as a source-bound inquiry
+  // notice.  The resolver never invents an amount; an included/local
+  // contradiction is still blocked by guide_tip_not_contradictory below.
+  'guide_tip',
+  'tip_guideline',
+]);
+
+function hasSourceBoundDisclosure(value: {
+  category?: unknown;
+  source_text?: unknown;
+  standard_text?: unknown;
+  evidence?: unknown;
+}): boolean {
+  const sourceText = String(value.source_text ?? '').trim();
+  const evidenceQuotes = Array.isArray(value.evidence)
+    ? value.evidence.some(item => {
+        if (typeof item !== 'object' || item === null) return false;
+        return String((item as { quote?: unknown }).quote ?? '').trim().length > 0;
+      })
+    : false;
+  return SAFE_HIGH_RISK_REVIEW_CATEGORIES.has(String(value.category ?? ''))
+    && (sourceText.length > 0 || evidenceQuotes)
+    && String(value.standard_text ?? '').trim().length > 0
+    && Array.isArray(value.evidence)
+    && value.evidence.length > 0;
+}
+
+function isExplicitAdditionalOption(option: V3DraftLedger['variants'][number]['options'][number]): boolean {
+  const source = [
+    option.raw_name,
+    option.normalized_name,
+    option.evidence?.quote,
+  ].filter(Boolean).join(' ');
+  return option.price_amount != null
+    || /추천|추가|별도|현지\s*지불|optional|extra/i.test(source);
+}
+
 export function evaluateProductRegistrationV3Gate(
   plan: V3StructurePlan,
   ledger: V3DraftLedger,
@@ -124,7 +189,7 @@ export function evaluateProductRegistrationV3Gate(
     check(
       checks,
       `${variant.variant_key}.meeting_not_flight`,
-      !variant.flight_segments.some(segment => plan.flight_pattern.meeting_times.includes(segment.dep_time ?? '')),
+      !meetingTimeIsReusedAsFlightDeparture(variant),
       'critical',
       'meeting time is not reused as flight departure time',
     );
@@ -150,6 +215,12 @@ export function evaluateProductRegistrationV3Gate(
       'source shopping section is reflected in ledger',
     );
     const highRiskNotices = variant.standard_notices.filter(n => n.risk_level === 'high');
+    const safeReviewedNotices = highRiskNotices.filter(notice =>
+      notice.review_status === 'review_needed' && hasSourceBoundDisclosure(notice),
+    );
+    const unsafeReviewedNotices = highRiskNotices.filter(notice =>
+      notice.review_status === 'review_needed' && !hasSourceBoundDisclosure(notice),
+    );
     const noticeKeys = new Set(variant.standard_notices
       .filter(notice => notice.review_status !== 'rejected')
       .map(notice => notice.template_key));
@@ -163,9 +234,11 @@ export function evaluateProductRegistrationV3Gate(
     check(
       checks,
       `${variant.variant_key}.optional_tour_not_contradictory`,
-      !(noticeKeys.has('optional.none') && variant.options.length > 0),
+      !(noticeKeys.has('optional.none')
+        && variant.options.length > 0
+        && !variant.options.every(isExplicitAdditionalOption)),
       'critical',
-      'no-option notice cannot coexist with customer-visible optional tours',
+      'no-option notice cannot coexist with unscoped customer-visible optional tours',
     );
     check(
       checks,
@@ -177,17 +250,41 @@ export function evaluateProductRegistrationV3Gate(
     check(
       checks,
       `${variant.variant_key}.high_risk_notice_values`,
-      highRiskNotices.every(n => n.review_status !== 'review_needed'),
+      unsafeReviewedNotices.length === 0,
       'critical',
       'high-risk standard notices must have required values and review status',
     );
+    check(
+      checks,
+      `${variant.variant_key}.high_risk_notice_disclosure`,
+      safeReviewedNotices.length === 0,
+      'info',
+      safeReviewedNotices.length > 0
+        ? '일부 법규·현지비용 고지는 원문 근거를 유지한 상담 확인 문구로 표시합니다.'
+        : '고위험 고지의 원문 근거와 공개 상태가 확인되었습니다.',
+    );
     const highRiskFacts = (variant.structured_facts ?? []).filter(fact => fact.risk_level === 'high');
+    const safeReviewedFacts = highRiskFacts.filter(fact =>
+      fact.review_status === 'review_needed' && hasSourceBoundDisclosure(fact),
+    );
+    const unsafeReviewedFacts = highRiskFacts.filter(fact =>
+      fact.review_status === 'review_needed' && !hasSourceBoundDisclosure(fact),
+    );
     check(
       checks,
       `${variant.variant_key}.high_risk_structured_fact_values`,
-      highRiskFacts.every(fact => fact.review_status !== 'review_needed'),
+      unsafeReviewedFacts.length === 0,
       'critical',
       'high-risk structured facts must have values or an explicit safe state',
+    );
+    check(
+      checks,
+      `${variant.variant_key}.high_risk_structured_fact_disclosure`,
+      safeReviewedFacts.length === 0,
+      'info',
+      safeReviewedFacts.length > 0
+        ? '일부 현지비용·입국 고지는 원문 근거를 유지한 상담 확인 문구로 표시합니다.'
+        : '고위험 구조 사실의 원문 근거와 공개 상태가 확인되었습니다.',
     );
   }
 
@@ -198,8 +295,13 @@ export function evaluateProductRegistrationV3Gate(
       checks,
       'attraction_unmatched_queue_clear',
       unresolvedAttractionCount === 0,
-      'high',
-      `${unresolvedAttractionCount} unmatched attraction events require review`,
+      // A missing master match is not a missing itinerary fact.  The raw
+      // activity text remains customer-visible, while media/detail enrichment
+      // is withheld and queued for later resolution.  Treat it as a warning
+      // so publication can safely degrade instead of inventing a destination
+      // record or blocking an otherwise sellable package.
+      'info',
+      `${unresolvedAttractionCount} unmatched attraction events require enrichment review`,
     );
     check(
       checks,
@@ -213,8 +315,8 @@ export function evaluateProductRegistrationV3Gate(
         checks,
         'entity_attraction_unresolved_clear',
         entity.attraction_unresolved_count === 0,
-        'high',
-        `${entity.attraction_unresolved_count} unresolved attraction entities require review`,
+        'info',
+        `${entity.attraction_unresolved_count} unresolved attraction entities require enrichment review`,
       );
       check(
         checks,

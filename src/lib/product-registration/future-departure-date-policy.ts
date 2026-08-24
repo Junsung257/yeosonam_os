@@ -88,7 +88,10 @@ function fullYear(value: string): number {
  * parser: this helper is used to discard an entirely expired mixed-year
  * calendar, never to manufacture future sale dates.
  */
-export function resolveExplicitSourceDepartureWindow(text: string): ExplicitSourceDepartureWindow | null {
+export function resolveExplicitSourceDepartureWindow(
+  text: string,
+  referenceYear?: number | null,
+): ExplicitSourceDepartureWindow | null {
   const normalized = text.normalize('NFKC');
   const heading = /\uCD9C\s*\uBC1C(?:\s*\uC77C|\s*\uB0A0\s*\uC9DC|\s*\uAE30\s*\uAC04)?/gu;
   const range = /(20\d{2}|\d{2})\s*\uB144\s*(\d{1,2})\s*\uC6D4\s*(?:(\d{1,2})\s*\uC77C)?\s*[~\-\u2013\u2014\u301C]\s*(20\d{2}|\d{2})\s*\uB144\s*(\d{1,2})\s*\uC6D4\s*(\d{1,2})\s*\uC77C/gu;
@@ -118,7 +121,45 @@ export function resolveExplicitSourceDepartureWindow(text: string): ExplicitSour
     const end = iso(endYear, Number(compact[5]), Number(compact[6]));
     if (start && end && end >= start) windows.push({ start, end, quote: compact[0].trim() });
   }
+  // Some supplier sheets put the only sale window in a title/notice line and
+  // omit the literal `출발일` heading, for example `2026년 03월 30일~05월
+  // 29일` or `4/1~5/29 월·수 출발`. This fallback is used only when the
+  // caller has an independently resolved source year and a nearby commercial
+  // keyword, so a dated revision/legal sentence cannot become a departure
+  // window by accident.
+  if (windows.length === 0 && Number.isInteger(referenceYear) && referenceYear! >= 2000) {
+    const genericPatterns = [
+      /(?:(20\d{2}|\d{2})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?\s*(?:\([^)]*\))?\s*[~\-\u2013\u2014\u301C]\s*(?:(20\d{2}|\d{2})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?/gu,
+      /(?:(20\d{2}|\d{2})\s*년\s*)?(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[~\-\u2013\u2014\u301C]\s*(?:(20\d{2}|\d{2})\s*년\s*)?(\d{1,2})\s*[./-]\s*(\d{1,2})/gu,
+    ];
+    for (const pattern of genericPatterns) {
+      pattern.lastIndex = 0;
+      for (const match of normalized.matchAll(pattern)) {
+        const index = match.index ?? 0;
+        const nearby = normalized.slice(Math.max(0, index - 100), Math.min(normalized.length, index + match[0].length + 140));
+        if (!/(?:상품\s*가|판매\s*가|가격|요금|출발|운항|전세기|선발|특가|일정)/u.test(nearby)) continue;
+        const startYear = fullYear(match[1] ?? String(referenceYear));
+        const endYear = fullYear(match[4] ?? String(startYear));
+        const start = iso(startYear, Number(match[2]), Number(match[3]));
+        const end = iso(endYear, Number(match[5]), Number(match[6]));
+        if (start && end && end >= start) windows.push({ start, end, quote: match[0].trim() });
+      }
+    }
+  }
   const unique = [...new Map(windows.map(window => [`${window.start}|${window.end}`, window])).values()];
+  if (unique.length > 1) {
+    const counts = new Map<string, number>();
+    for (const window of windows) {
+      const key = `${window.start}|${window.end}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    // A shared catalog prefix often repeats the same broad sale window once
+    // per hotel/grade section while its price table contains narrower date
+    // exceptions. Prefer that repeated common window only when it is unique;
+    // otherwise keep the expiry decision unresolved.
+    const repeated = unique.filter(window => counts.get(`${window.start}|${window.end}`)! >= 2);
+    if (repeated.length === 1) return repeated[0]!;
+  }
   return unique.length === 1 ? unique[0]! : null;
 }
 

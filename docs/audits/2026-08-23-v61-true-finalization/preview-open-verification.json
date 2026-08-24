@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v61-preview-open-verification-1",
+  "checkedAt": "2026-08-23T09:40:00Z",
+  "deploymentId": "dpl_FEVLXcmRZG4w5eyZ46SSqEtSTEZj",
+  "deploymentState": "READY",
+  "commitSha": "f01e5e0ff565e8ee4b1aeb312ef732454331dc26",
+  "previewUrl": "https://yeosonam-git-codex-product-regi-a0a63b-zzbaa0317-4596s-projects.vercel.app",
+  "productionAliasChanged": false,
+  "productionDatabaseChanged": false,
+  "checks": [
+    {
+      "path": "/destinations/%ED%98%B8%EC%9D%B4%EC%95%88-%EB%8B%A4%EB%82%AD",
+      "httpStatus": 200,
+      "matchedPath": "/destinations/[city]",
+      "applicationTitle": "페이지를 찾을 수 없습니다 | 여소남",
+      "serverError": false,
+      "interpretation": "Route reached the candidate SSR handler and returned a safe soft-404 because preview inventory is not populated; no DYNAMIC_SERVER_USAGE 500 observed."
+    },
+    {
+      "path": "/r/YSINF202606051602318291/0fdba997-1467-44ee-a045-7deae1db0098",
+      "httpStatus": 200,
+      "matchedPath": "/r/[code]/[slug]",
+      "applicationTitle": "추천 여행 — YSINF202606051602318291 | 여소남",
+      "serverError": false,
+      "interpretation": "Referral surface rendered on the candidate deployment."
+    },
+    {
+      "path": "/packages/0fdba997-1467-44ee-a045-7deae1db0098",
+      "httpStatus": 302,
+      "matchedPath": null,
+      "applicationTitle": null,
+      "serverError": false,
+      "interpretation": "Vercel SSO protection blocked unauthenticated preview verification; not treated as an application pass."
+    },
+    {
+      "path": "/blog/fukuoka-3",
+      "httpStatus": 302,
+      "matchedPath": null,
+      "applicationTitle": null,
+      "serverError": false,
+      "interpretation": "Vercel SSO protection blocked unauthenticated preview verification; not treated as an application pass."
+    }
+  ],
+  "runtimeErrorLogs": "none found for the preview deployment after verification requests"
+}

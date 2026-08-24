@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { productRegistrationV6PublicationBlocker } from './runtime-config';
+import {
+  productRegistrationV6PublicationBlocker,
+  productRegistrationV6SourceProofAutoPublishEnabled,
+} from './runtime-config';
 
 type KillSwitch = {
   scope: string;
@@ -12,10 +15,25 @@ export async function loadProductRegistrationV6PublicationBlockers(input: {
   supabase: SupabaseClient;
   catalogProductIds: string[];
   supplierKeys?: string[];
+  /**
+   * Let the workflow reach the database source-proof CAS writer even while
+   * the normal cohort/freeze flags are off.  This does not publish by itself;
+   * an ineligible source is rejected by the immutable DB gate.
+   */
+  allowSourceProofAutoPublish?: boolean;
 }): Promise<string[]> {
   const blockers: string[] = [];
   const runtimeBlocker = productRegistrationV6PublicationBlocker();
-  if (runtimeBlocker) blockers.push(runtimeBlocker);
+  const sourceProofMode = input.allowSourceProofAutoPublish
+    && productRegistrationV6SourceProofAutoPublishEnabled();
+  const sourceProofSoftBlockers = new Set([
+    'PUBLICATION_FREEZE_ACTIVE',
+    'V6_SHADOW_MODE_PUBLICATION_DISABLED',
+    'V6_PUBLICATION_DISABLED',
+  ]);
+  if (runtimeBlocker && !(sourceProofMode && sourceProofSoftBlockers.has(runtimeBlocker))) {
+    blockers.push(runtimeBlocker);
+  }
 
   const suppliers = new Set((input.supplierKeys ?? []).map(value => value.trim()).filter(Boolean));
 

@@ -3,14 +3,22 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('recommendBestPackages public snapshot gate', () => {
-  it('requires public publication state and current public snapshots before returning customer recommendations', () => {
+  it('bounds customer recommendations to exact public catalog ids', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/scoring/recommend.ts'), 'utf8');
 
-    expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('publication_state, package_revision');
-    expect(source).toContain('.filter((row) => isPublicPublicationState(row.publication_state ?? null))');
-    expect(source).toContain('const candidates = (await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(source).toContain('listPublicCatalog');
+    expect(source).toContain('const publicIds = publicCatalog.map');
+    expect(source).toContain(".in('id', publicIds)");
+    expect(source).not.toContain('isPublicPublicationState');
     expect(source).toContain('title: (c as unknown as { title: string }).title');
+  });
+
+  it('bounds top recommendations and proactive marketing picks to public catalog ids', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/scoring/top-recommended.ts'), 'utf8');
+
+    expect(source).toContain('listPublicCatalog');
+    expect(source).toContain(".in('package_id', publicIds)");
+    expect(source).not.toContain("travel_packages!inner");
+    expect(source).not.toContain('isCustomerPubliclyOpenable');
   });
 });

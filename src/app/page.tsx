@@ -1,769 +1,263 @@
-import Link from 'next/link';
 import Image from 'next/image';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
-import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
+import Link from 'next/link';
+
 import GlobalNav from '@/components/customer/GlobalNav';
-import { DestinationImageFallback, SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
-import SectionHeader from '@/components/customer/SectionHeader';
-import CategoryIcons from '@/components/customer/CategoryIcons';
-import HeroBanner from '@/components/customer/HeroBanner';
-import type { HeroSlide } from '@/components/customer/HeroBanner';
-import RankingSection from '@/components/customer/RankingSection';
-import type { RankingItem } from '@/components/customer/RankingSection';
-import { getConsultTelHref } from '@/lib/consult-escalation';
-import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
-import { getDestinationUrl } from '@/lib/regions';
-import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import PackageCard from '@/components/customer/PackageCard';
+import { loadPublicBlogCatalogPage } from '@/lib/blog-public-catalog';
+import { selectCurrentCustomerGuides } from '@/lib/customer-guide-selection';
+import { isSafeImageSrc } from '@/lib/image-url';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
-import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
-/** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
-const PKG_COUNT_DISCLOSE_MIN = 6;
-
-// Build-safe: home data depends on live Supabase rows, so render on demand instead of blocking deploy prerender.
 export const revalidate = 300;
-export const dynamic = 'force-dynamic';
 
-function guessCountry(dest: string): string {
-  if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
-  if (/장가계|청도|서안|상해|연길|백두산|구채구/.test(dest)) return '중국';
-  if (/시즈오카|후쿠오카|오사카|도쿄|큐슈|토야마|후지노미야/.test(dest)) return '일본';
-  if (/보홀|세부|마닐라/.test(dest)) return '필리핀';
-  if (/코타키나발루|말라카/.test(dest)) return '말레이시아';
-  if (/방콕|치앙마이|푸켓|파타야/.test(dest)) return '태국';
-  if (/발리|마나도/.test(dest)) return '인도네시아';
-  if (/마카오/.test(dest)) return '마카오';
-  return '';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+
+const BUSINESS_AREAS = [
+  { icon: '✈️', title: '패키지', description: '출발일과 최근 확인 가격을 비교', href: '/packages' },
+  { icon: '🚢', title: '크루즈', description: '항차·객실·현재 요금을 확인', href: '/cruise' },
+  { icon: '⛳', title: '해외골프', description: '인원과 지역에 맞춘 견적', href: '/packages?category=golf' },
+  { icon: '👥', title: '단독·단체', description: '우리 일행만을 위한 일정', href: '/private-tour' },
+] as const;
+
+function lowestPrice(item: PublicCatalogItem): number | undefined {
+  const prices = item.availableDates
+    .map((entry) => entry.price)
+    .filter((price): price is number => typeof price === 'number' && price > 0);
+  if (prices.length > 0) return Math.min(...prices);
+  return item.price && item.price > 0 ? item.price : undefined;
 }
 
-interface Destination {
-  destination: string;
-  count: number;
-  minPrice: number;
-  country: string;
-  image?: string;
-}
-
-const DOMESTIC_KEYWORDS = /국내|제주|부산|서울|강원|경주|여수/;
-
-interface AttractionPhoto {
-  src_large?: string | null;
-  src_medium?: string | null;
-  pexels_id?: number | null;
-}
-interface AttractionRow {
-  name: string | null;
-  photos: AttractionPhoto[] | null;
-  country: string | null;
-  region: string | null;
-  mention_count: number | null;
-  category?: string | null;
-  badge_type?: string | null;
-  is_active?: boolean | null;
-  customer_publishable?: boolean | null;
-}
-
-interface AggPkgRow {
-  id?: string | null;
-  destination: string | null;
-  price: number | null;
-  price_tiers: Array<{ adult_price?: number }> | null;
-  price_dates: Array<{ date?: string; price?: number }> | null;
-  country: string | null;
-  status?: string | null;
-  audit_status?: string | null;
-  audit_report?: unknown;
-  updated_at?: string | null;
-  optional_tours?: unknown;
-  itinerary_data?: unknown;
-  publication_state?: string | null;
-  package_revision?: number | null;
-  avg_rating?: number | null;
-  review_count?: number | null;
-}
-interface RankingPkg extends AggPkgRow {
-  id: string;
-  title: string | null;
-  display_title: string | null;
-  hero_tagline?: string | null;
-  destination: string | null;
-  duration: number | null;
-  nights: number | null;
-  product_type: string | null;
-  ticketing_deadline: string | null;
-}
-
-function computeRankingMinPrice(p: RankingPkg, today: string): number {
-  const pd = p.price_dates ?? [];
-  const futurePd = pd.filter((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
-  if (futurePd.length > 0) {
-    const prices = futurePd.map((d) => d.price).filter((v): v is number => v != null);
-    if (prices.length > 0) return Math.min(...prices);
-  }
-  const tierPrices = (p.price_tiers ?? []).map((t) => t.adult_price).filter((v): v is number => v != null);
-  const fallback = [p.price, ...tierPrices].filter((v): v is number => v != null);
-  return fallback.length > 0 ? Math.min(...fallback) : 0;
-}
-
-/** 랭킹 카드: 동일 이미지 URL이 여러 상품에 반복되지 않게 할당 */
-function buildRankingItemsUnique(
-  rankingPkgs: RankingPkg[],
-  attractions: AttractionRow[],
-  today: string,
-  overseasOnly: boolean,
-  usedUrls: Set<string>,
-): RankingItem[] {
-  const list = rankingPkgs
-    .filter((p) => {
-      const isDom = DOMESTIC_KEYWORDS.test(p.destination || '');
-      return overseasOnly ? !isDom : isDom;
-    })
-    .slice(0, 7);
-
-  return list.map((p) => {
-    let image: string | null = null;
-
-    // attractions 매칭으로 이미지 찾기
-    if (!image) {
-      const destParts = (p.destination || '').split(/[\/,\s]/).map((s) => s.trim()).filter(Boolean);
-      const matched = attractions
-        .filter((a) => {
-          if (!a.photos?.length) return false;
-          return destParts.some((part) => {
-            const r = a.region || '';
-            const c = a.country || '';
-            return r === part || r.includes(part) || part.includes(r) || (!!c && c.includes(part));
-          });
-        })
-        .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
-
-      outer: for (const a of matched) {
-        for (const ph of a.photos || []) {
-          const url = ph.src_large || ph.src_medium;
-          if (url && !usedUrls.has(url)) {
-            image = url;
-            usedUrls.add(url);
-            break outer;
-          }
-        }
-      }
-    }
-
-
-    return {
-      id: p.id,
-      title: (p.display_title || p.title) ?? '',
-      destination: p.destination,
-      image,
-      minPrice: computeRankingMinPrice(p, today),
-      duration: p.nights && p.duration ? `${p.nights}박${p.duration}일` : null,
-      isOverseas: !DOMESTIC_KEYWORDS.test(p.destination || ''),
-    };
-  });
+function cardPackage(item: PublicCatalogItem) {
+  return {
+    id: item.id,
+    title: item.title,
+    destination: item.destination,
+    duration: item.duration,
+    nights: item.nights,
+    price: item.price,
+    product_type: item.productKind,
+    departure_airport: item.departureAirport,
+    product_highlights: item.badges,
+    hero_image_url: item.heroImage,
+    price_dates: item.availableDates.map((entry) => ({
+      date: entry.date,
+      price: entry.price ?? item.price ?? 0,
+      confirmed: entry.confirmed ?? false,
+    })),
+  };
 }
 
 export default async function HomePage() {
-  const sb = supabaseAdmin;
-  const today = new Date().toISOString().slice(0, 10);
-  const emptyResult = { data: [] };
-  const skipPublicDbReads = shouldSkipPublicDbReadsForResourceSaver();
-
-  // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
-  const [publicCatalog, attrResult] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
-    listCurrentPublicPackageCardSnapshots(sb, { limit: 2_000 }).catch((error) => {
-      console.warn('[home] pointer-only package catalog unavailable; hiding package-derived sections', error);
-      return [];
-    }),
-    runOptionalSupabaseQuery(
-      sb.from('attractions')
-        .select('name, photos, country, region, mention_count, category, badge_type, is_active, customer_publishable')
-        .eq('is_active', true)
-        .eq('customer_publishable', true)
-        .not('photos', 'is', null)
-        .limit(60),
-      emptyResult,
-      { label: 'home.attraction.photos', timeoutMs: 1500 },
-    ),
-  ]) : [[], emptyResult];
-
-  const allPkgs = publicCatalog as unknown as AggPkgRow[];
-  const attractions = ((attrResult.data ?? []) as AttractionRow[])
-    .filter((row): row is AttractionRow => isCustomerRenderableAttraction(row as unknown as AttractionData));
-  const rankingPkgs = (publicCatalog as unknown as RankingPkg[]).slice(0, 30);
-
-  /** 홈 검색 시트 하단 — 마감 임박·특가 상품 최대 3개(랭킹 풀에서 추림) */
-  const cutoffTeaser = new Date();
-  cutoffTeaser.setDate(cutoffTeaser.getDate() + 14);
-  const cutoffTeaserStr = cutoffTeaser.toISOString().slice(0, 10);
-  function pkgAliveForTeaser(p: RankingPkg) {
-    const pd = p.price_dates ?? [];
-    if (!pd.length) return true;
-    return pd.some((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
-  }
-  function pkgUrgentForTeaser(p: RankingPkg) {
-    if (p.product_type === 'urgency') return true;
-    const td = p.ticketing_deadline ? String(p.ticketing_deadline).slice(0, 10) : '';
-    return !!(td && td <= cutoffTeaserStr);
-  }
-  const homeUrgencyTop3: { id: string; title: string; destination: string | undefined; minPrice: number }[] = [];
-  const seenUrgent = new Set<string>();
-  for (const p of rankingPkgs) {
-    if (!pkgAliveForTeaser(p) || !pkgUrgentForTeaser(p)) continue;
-    if (seenUrgent.has(p.id)) continue;
-    seenUrgent.add(p.id);
-    homeUrgencyTop3.push({
-      id: p.id,
-      title: p.display_title || p.title || '',
-      destination: p.destination ?? undefined,
-      minPrice: computeRankingMinPrice(p, today),
-    });
-    if (homeUrgencyTop3.length >= 3) break;
-  }
-
-  // 목적지별 집계
-  const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
-  allPkgs.forEach((p: AggPkgRow) => {
-    const dest = p.destination;
-    if (!dest) return;
-    const pd = p.price_dates ?? [];
-    const futurePd = pd.filter((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
-    const isAlive = pd.length === 0 || futurePd.length > 0;
-    if (!isAlive) return;
-    if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
-    destMap[dest].count++;
-    let min = Infinity;
-    if (futurePd.length > 0) {
-      const pdPrices = futurePd.map((d) => d.price).filter((v): v is number => v != null);
-      if (pdPrices.length > 0) min = Math.min(...pdPrices);
-    }
-    if (min === Infinity) {
-      const tierPrices = (p.price_tiers ?? []).map((t) => t.adult_price).filter((v): v is number => v != null);
-      const allPrices = [p.price, ...tierPrices].filter((v): v is number => v != null);
-      if (allPrices.length > 0) min = Math.min(...allPrices);
-    }
-    if (min < destMap[dest].minPrice) destMap[dest].minPrice = min;
-  });
-
-  const destinations: Destination[] = Object.entries(destMap)
-    .map(([dest, info]) => ({
-      destination: dest,
-      ...info,
-      minPrice: info.minPrice === Infinity ? 0 : info.minPrice,
-      country: (info.country && info.country.trim()) ? info.country.trim() : guessCountry(dest),
-    }))
-    .sort((a, b) => b.count - a.count);
-
-  // attraction 이미지 매핑 (목적지별 대표 이미지)
-  const usedPhotoIds = new Set<number>();
-  const destsWithImages = destinations.map(dest => {
-    const destParts = dest.destination.split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
-    const matched = attractions
-      .filter((a: AttractionRow) => {
-        if (!a.photos || a.photos.length === 0) return false;
-        const aRegion = a.region || '';
-        const aCountry = a.country || '';
-        return destParts.some((part) =>
-          aRegion === part || aRegion.includes(part) || part.includes(aRegion) ||
-          aCountry.includes(part) || dest.destination.includes(aRegion)
-        );
+  const [catalog, guideCatalog] = await Promise.all([
+    isSupabaseConfigured
+      ? listPublicCatalog(supabaseAdmin, { limit: 6 }).catch((error) => {
+        console.error('[home] public catalog unavailable', error);
+        return [];
       })
-      .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
-    const unused = matched.find((a: AttractionRow) => {
-      const photoId = a.photos?.[0]?.pexels_id;
-      return photoId && !usedPhotoIds.has(photoId);
-    });
-    const chosen = unused || matched[0];
-    if (chosen?.photos?.[0]) {
-      const image = chosen.photos[0].src_large || chosen.photos[0].src_medium || '';
-      if (chosen.photos[0].pexels_id) usedPhotoIds.add(chosen.photos[0].pexels_id);
-      return { ...dest, image };
-    }
-    return dest;
-  });
-
-  // 추천 여행지 TOP 4 (active_destinations는 위 Promise.all에서 이미 fetch)
-  const topDestsRaw = destinations.slice(0, 4).map(destination => ({
-    destination: destination.destination,
-    package_count: destination.count,
-    min_price: destination.minPrice > 0 ? destination.minPrice : null,
-  }));
-
-  const topDestNames = topDestsRaw.map(d => d.destination);
-  const { data: pillarExists } = topDestNames.length > 0
-    ? await runOptionalSupabaseQuery(
-        sb.from(PUBLIC_BLOG_READ_SOURCE).select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
-        { data: null },
-        { label: 'home.pillar.exists', timeoutMs: 1200 },
-      )
-    : { data: null };
-
-  const attrImageByDest: Record<string, string> = {};
-  (attractions as AttractionRow[]).forEach((a) => {
-    if (!a.photos?.length) return;
-    const region = a.region || '';
-    const match = topDestNames.find(d => d === region || d.includes(region) || region.includes(d));
-    if (match && !attrImageByDest[match]) {
-      const img = a.photos[0]?.src_large || a.photos[0]?.src_medium;
-      if (img) attrImageByDest[match] = img;
-    }
-  });
-
-  const pillarSet = new Set(
-    ((pillarExists as Array<{ pillar_for: string | null }>) || [])
-      .map(p => p.pillar_for).filter(Boolean) as string[]
-  );
-
-  const topDests = topDestsRaw.map(d => ({
-    ...d,
-    image: attrImageByDest[d.destination] || null,
-    hasPillar: pillarSet.has(d.destination),
-  }));
-
-  // Pexels 폴백 — 여행지 카테고리/그리드 빈 슬롯 채우기 (패키지 카드는 제외)
-  // 2026-05-19 박제 (PR #155 단계적 fix — / 를 SSG 로 복귀시키기 위한 누적 변경):
-  //   1) `getRandomPexelsPhoto`(Math.random) → `getDeterministicPexelsPhoto`
-  //   2) `await import('@/lib/pexels')` dynamic import → top-level static import
-  //   3) `getSecret('PEXELS_API_KEY')` (process.env[key] 동적 인덱싱) → `process.env.PEXELS_API_KEY` 정적 참조
-  // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
-  //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
-  let pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
-  if (process.env.PEXELS_API_KEY?.trim()) {
-    // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
-    const missingDests = [...new Set([
-      ...topDests.filter(d => !d.image).map(d => d.destination),
-      ...destsWithImages.filter(d => !d.image).map(d => d.destination),
-    ])];
-
-    if (missingDests.length > 0) {
-      const filled = await Promise.all(
-        missingDests.map(async dest => {
-          try {
-            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
-            return { dest, large2x: photo?.src.large2x ?? null, large: photo?.src.large ?? null };
-          } catch {
-            return { dest, large2x: null, large: null };
-          }
-        })
-      );
-
-      pexelsByDest = {};
-      filled.forEach(({ dest, large2x, large }) => {
-        if (large2x || large) pexelsByDest[dest] = { large2x, large };
-      });
-
-      // 추천여행지 — large2x 우선 (히어로 배너에도 사용되므로 고해상도)
-      topDests.forEach(d => {
-        if (!d.image && pexelsByDest[d.destination]) {
-          d.image = pexelsByDest[d.destination].large2x ?? pexelsByDest[d.destination].large ?? null;
-        }
-      });
-      // 인기여행지 그리드 — large (카드 크기에 충분)
-      destsWithImages.forEach(d => {
-        if (!d.image && pexelsByDest[d.destination]) {
-          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x ?? undefined;
-        }
-      });
-    }
-  }
-
-  // HeroBanner 슬라이드 — Pexels 폴백 이후에 생성해야 빈 슬롯이 채워진 topDests를 사용
-  // display_title / hero_tagline 이 있는 대표 패키지를 목적지별로 먼저 찾아 타이틀 품질 향상
-  const bestPkgByDest: Record<string, { display_title?: string; hero_tagline?: string; title?: string }> = {};
-  (rankingPkgs as RankingPkg[]).forEach(p => {
-    if (!p.destination) return;
-    if (!bestPkgByDest[p.destination] && (p.display_title || p.hero_tagline || p.title)) {
-      bestPkgByDest[p.destination] = {
-        display_title: p.display_title ?? undefined,
-        hero_tagline: p.hero_tagline ?? undefined,
-        title: p.title ?? undefined,
-      };
-    }
-  });
-
-  const heroSlides: HeroSlide[] = topDests
-    .filter(d => d.image)
-    .slice(0, 5)
-    .map(d => {
-      const best = bestPkgByDest[d.destination];
-      const slideTitle = best?.display_title || best?.title || `${d.destination} 특가 패키지`;
-      return {
-        image: d.image!,
-        destination: d.destination,
-        title: slideTitle,
-        tagline: best?.hero_tagline || undefined,
-        minPrice: d.min_price ?? undefined,
-        href: `/packages?destination=${encodeURIComponent(d.destination)}`,
-      };
-    });
-
-  const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
-  const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
-
-  // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백 (기존 pexelsByDest 우선, 없으면 직접 조회)
-  if (process.env.PEXELS_API_KEY?.trim()) {
-    const noImgRankingDests = [...new Set([
-      ...overseas.filter(i => !i.image && i.destination).map(i => i.destination!),
-      ...domestic.filter(i => !i.image && i.destination).map(i => i.destination!),
-    ])].filter(d => !pexelsByDest[d]);
-
-    if (noImgRankingDests.length > 0) {
-      const rankingFilled = await Promise.all(
-        noImgRankingDests.map(async dest => {
-          try {
-            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
-            return { dest, url: photo?.src.large ?? photo?.src.large2x ?? null };
-          } catch {
-            return { dest, url: null };
-          }
-        })
-      );
-      for (const { dest, url } of rankingFilled) {
-        if (url) pexelsByDest[dest] = { large: url, large2x: url };
-      }
-    }
-
-    const fillRankingImage = (item: RankingItem): RankingItem => {
-      if (item.image || !item.destination) return item;
-      const fallback = pexelsByDest[item.destination];
-      if (fallback) {
-        return { ...item, image: fallback.large ?? fallback.large2x ?? null };
-      }
-      return item;
-    };
-    for (let i = 0; i < overseas.length; i++) overseas[i] = fillRankingImage(overseas[i]);
-    for (let i = 0; i < domestic.length; i++) domestic[i] = fillRankingImage(domestic[i]);
-  }
-
-  /** 메인 랭킹 카드 소셜 프루프(초기 트래픽: 임계값 미만이면 미노출) */
-  const RANK_BOOKING_MIN = 3;
-  const RANK_INTEREST_MIN = 8;
-  const rankingIds = [...new Set([...overseas, ...domestic].map((p) => p.id))];
-  const socialByPackage: Record<string, { bookings: number; interest: number }> = {};
-  if (isSupabaseConfigured && rankingIds.length > 0) {
-    const since = new Date(Date.now() - 30 * 86400000).toISOString();
-    const [bkRes, sgRes] = await Promise.all([
-      runOptionalSupabaseQuery(
-        sb
-          .from('bookings')
-          .select('package_id')
-          .eq('status', 'confirmed')
-          .gte('created_at', since)
-          .in('package_id', rankingIds),
-        emptyResult,
-        { label: 'home.social.bookings', timeoutMs: 1200 },
-      ),
-      runOptionalSupabaseQuery(
-        sb
-          .from('package_score_signals')
-          .select('package_id')
-          .gte('created_at', since)
-          .in('package_id', rankingIds),
-        emptyResult,
-        { label: 'home.social.signals', timeoutMs: 1200 },
-      ),
-    ]);
-    for (const row of bkRes.data ?? []) {
-      const pid = (row as { package_id: string | null }).package_id;
-      if (!pid) continue;
-      if (!socialByPackage[pid]) socialByPackage[pid] = { bookings: 0, interest: 0 };
-      socialByPackage[pid].bookings += 1;
-    }
-    for (const row of sgRes.data ?? []) {
-      const pid = (row as { package_id: string | null }).package_id;
-      if (!pid) continue;
-      if (!socialByPackage[pid]) socialByPackage[pid] = { bookings: 0, interest: 0 };
-      socialByPackage[pid].interest += 1;
-    }
-  }
-  function withSocialBadge(item: RankingItem): RankingItem {
-    const s = socialByPackage[item.id];
-    if (!s) return item;
-    if (s.bookings >= RANK_BOOKING_MIN) {
-      return {
-        ...item,
-        socialBadge: { kind: 'bookings' as const, text: `최근 30일 예약 · ${s.bookings}건` },
-      };
-    }
-    if (s.interest >= RANK_INTEREST_MIN) {
-      return {
-        ...item,
-        socialBadge: { kind: 'interest' as const, text: '최근 조회 · 활발' },
-      };
-    }
-    return item;
-  }
-  const overseasRanked = overseas.map(withSocialBadge);
-  const domesticRanked = domestic.map(withSocialBadge);
-
-  const ratingAgg = rankingPkgs.filter(row => Number(row.review_count ?? 0) > 0 && Number(row.avg_rating ?? 0) > 0);
-  const totalReviews = ((ratingAgg as Array<{ review_count: number }>) || [])
-    .reduce((s, r) => s + (r.review_count || 0), 0);
-  const weightedSum = ((ratingAgg as Array<{ avg_rating: number; review_count: number }>) || [])
-    .reduce((s, r) => s + (r.avg_rating * r.review_count), 0);
-  const aggregateRating = totalReviews > 0 ? (weightedSum / totalReviews) : null;
-  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
-  const consultTelHref = getConsultTelHref();
-  const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
+      : Promise.resolve([]),
+    loadPublicBlogCatalogPage({ page: 1, pageSize: 24 }),
+  ]);
+  const guides = selectCurrentCustomerGuides(guideCatalog.posts, 4);
+  const heroImage = catalog.find((item) => item.heroImage && isSafeImageSrc(item.heroImage))?.heroImage ?? null;
 
   return (
-    <div className="min-h-screen bg-white max-w-lg md:max-w-none mx-auto">
-      {/* Schema.org */}
+    <div className="min-h-screen bg-white">
       <script
-        suppressHydrationWarning
         type="application/ld+json"
+        suppressHydrationWarning
         dangerouslySetInnerHTML={{
           __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
-            '@graph': [
-              {
-                '@type': 'TravelAgency',
-                name: '여소남',
-                alternateName: 'Yeosonam',
-                url: BASE_URL,
-                logo: `${BASE_URL}/logo.png`,
-                description: '가치 있는 여행을 소개하는 단위 — 부산 출발 해외여행 패키지 전문',
-                areaServed: 'KR',
-                ...(aggregateRating ? {
-                  aggregateRating: {
-                    '@type': 'AggregateRating',
-                    ratingValue: aggregateRating.toFixed(2),
-                    reviewCount: totalReviews,
-                    bestRating: 5,
-                  },
-                } : {}),
-              },
-              {
-                '@type': 'WebSite',
-                url: BASE_URL,
-                name: '여소남',
-                potentialAction: {
-                  '@type': 'SearchAction',
-                  target: { '@type': 'EntryPoint', urlTemplate: `${BASE_URL}/packages?q={search_term_string}` },
-                  'query-input': 'required name=search_term_string',
-                },
-              },
-            ],
+            '@type': 'TravelAgency',
+            name: '여소남',
+            alternateName: '가치 있는 여행을 소개하는 남자',
+            url: BASE_URL,
+            logo: `${BASE_URL}/logo.png`,
+            description: '부산 출발 패키지·크루즈·골프 상품의 실제 예약 조건을 확인하는 여행사',
+            areaServed: 'KR',
           }),
         }}
       />
-
       <GlobalNav />
-      <h1 className="sr-only">여소남 프리미엄 패키지 여행</h1>
-
-      {/* ── 히어로 배너 — 감성 훅 먼저 ── */}
-      {heroSlides.length > 0 && (
-        <HeroBanner slides={heroSlides} />
-      )}
-
-      {/* ── 검색바 — 히어로 바로 아래 독립 섹션 (오버랩 제거) ── */}
-      <div className="bg-white border-b border-[#F2F4F6] px-4 md:px-6 py-4 md:py-5">
-        <div className="max-w-[768px] mx-auto">
-          <HomeHeroSearchCluster>
-            <HomeHeroUrgencyStrip items={homeUrgencyTop3} />
-          </HomeHeroSearchCluster>
-        </div>
-      </div>
-
-      {/* ── 카테고리 아이콘 — 1줄 가로 스크롤 ── */}
-      <div className="bg-white border-b border-[#F2F4F6]">
-        <CategoryIcons />
-      </div>
-
-      {/* ── 인기 패키지 랭킹 ── */}
-      {(overseas.length > 0 || domestic.length > 0) && (
-        <section className="bg-white pt-6 pb-2 max-w-[1200px] mx-auto">
-          <SectionHeader
-            title="이번 주 인기 패키지"
-            subtitle="실시간 등록 TOP"
-            actionHref="/packages"
-            actionLabel="전체 보기"
-            className="px-5"
-          />
-          <RankingSection domestic={domesticRanked} overseas={overseasRanked} />
-        </section>
-      )}
 
       <main>
-
-        {/* ── 추천 여행지 TOP 4 — Zebra: 연회색 배경 ── */}
-        {topDests.length > 0 && (
-          <section className="bg-[#F8FAFC] px-4 md:px-8 max-w-[1200px] mx-auto pt-6 pb-8 md:pt-8 md:pb-12">
-            <SectionHeader
-              title="추천 여행지"
-              subtitle="완벽 가이드 · 관광지 · 엄선 패키지"
-              actionHref="/destinations"
-              actionLabel="전체 보기"
+        <section className="relative isolate overflow-hidden bg-slate-950 text-white">
+          {heroImage && (
+            <Image
+              src={heroImage}
+              alt="여소남 여행상품"
+              fill
+              priority
+              sizes="100vw"
+              className="-z-20 object-cover opacity-55"
             />
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-              {topDests.map((d, idx) => (
-                <Link
-                  key={d.destination}
-                  href={getDestinationUrl(d.destination)}
-                  className="group relative h-52 md:h-64 rounded-[16px] overflow-hidden bg-bg-section shadow-card hover:shadow-card-hover transition-shadow card-touch"
-                >
-                  {d.image ? (
-                    <Image
-                      src={d.image}
-                      alt={`${d.destination} 여행`}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
-                      priority={idx < 2}
-                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-                    />
-                  ) : (
-                    <DestinationImageFallback
-                      title={d.destination}
-                      destination={d.destination}
-                      compact
-                      className="absolute inset-0"
-                    />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                    {d.hasPillar && (
-                      <span className="inline-block mb-1.5 px-2 py-0.5 bg-amber-400 text-amber-950 text-[10px] font-bold rounded-full">
-                        ✨ 완벽 가이드
+          )}
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-slate-950 via-slate-950/80 to-slate-950/30" />
+          <div className="mx-auto max-w-[1200px] px-5 py-20 md:px-8 md:py-28">
+            <p className="mb-4 text-sm font-bold text-blue-200">여소남 · 부산 출발 여행</p>
+            <h1 className="max-w-3xl text-4xl font-black leading-[1.15] tracking-tight md:text-6xl">
+              부산에서 떠나는<br />패키지·크루즈·골프
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/80 md:text-lg">
+              출발일·가격·포함 조건을 비교하고, 예약 전 실시간 가능 여부를 다시 확인합니다.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/packages" className="inline-flex min-h-12 items-center rounded-full bg-white px-6 text-sm font-bold text-brand">
+                여행상품 찾기
+              </Link>
+              <a
+                href="https://pf.kakao.com/_xcFxkBG/chat"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-12 items-center rounded-full bg-[#FEE500] px-6 text-sm font-bold text-[#3C1E1E]"
+              >
+                카카오로 문의
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[1200px] px-4 py-10 md:px-6 md:py-14" aria-labelledby="business-area-title">
+          <h2 id="business-area-title" className="sr-only">여소남 여행상품 종류</h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {BUSINESS_AREAS.map((area) => (
+              <Link
+                key={area.title}
+                href={area.href}
+                className="rounded-[18px] border border-admin-border bg-white p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-card-hover"
+              >
+                <span className="text-3xl" aria-hidden>{area.icon}</span>
+                <h3 className="mt-4 text-lg font-black text-text-primary">{area.title}</h3>
+                <p className="mt-1 text-sm leading-6 text-text-secondary">{area.description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="bg-[#F8FAFC] py-12 md:py-16" aria-labelledby="available-products-title">
+          <div className="mx-auto max-w-[1200px] px-4 md:px-6">
+            <div className="mb-7 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-brand">공개 검증 완료</p>
+                <h2 id="available-products-title" className="mt-1 text-2xl font-black tracking-tight text-text-primary md:text-3xl">
+                  지금 확인할 수 있는 여행
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">미래 출발일과 승인된 고객용 정보가 있는 상품만 표시합니다.</p>
+              </div>
+              <Link href="/packages" className="shrink-0 text-sm font-bold text-brand">전체 보기 →</Link>
+            </div>
+            {catalog.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {catalog.map((item) => (
+                  <div key={item.id} className="relative">
+                    {item.bookingMode !== 'inquiry' && (
+                      <span className="absolute right-3 top-3 z-10 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-brand shadow-sm">
+                        {item.bookingMode === 'consultation_only' ? '상담 전용' : '현재 요금 확인'}
                       </span>
                     )}
-                    <h3 className="text-[18px] md:text-[20px] font-bold leading-tight tracking-[-0.02em]">
-                      {d.destination}
-                    </h3>
-                    <div className="mt-1 flex items-center gap-2 text-[12px] text-white/80 flex-wrap">
-                      {d.package_count >= PKG_COUNT_DISCLOSE_MIN ? (
-                        <span>🧳 {d.package_count}개</span>
-                      ) : (
-                        <span>다양한 출발 일정</span>
-                      )}
-                      {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
-                    </div>
+                    <PackageCard pkg={cardPackage(item)} precomputedMinPrice={lowestPrice(item)} />
+                    <p className="px-1 pt-2 text-[11px] text-text-secondary">
+                      최근 확인 {new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.lastVerifiedAt))}
+                    </p>
                   </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[24px] border border-admin-border bg-white px-6 py-12 text-center">
+                <p className="font-bold text-text-primary">현재 공개 검증을 마친 상품을 준비 중입니다.</p>
+                <p className="mt-2 text-sm text-text-secondary">원하시는 지역과 일정을 알려주시면 담당자가 확인합니다.</p>
+                <Link href="/private-tour" className="mt-5 inline-flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-bold text-white">
+                  실시간 견적 요청
+                </Link>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[1200px] px-4 py-12 md:px-6 md:py-16">
+          <div className="grid overflow-hidden rounded-[24px] bg-gradient-to-br from-[#0B2559] to-brand text-white md:grid-cols-[1.3fr_0.7fr]">
+            <div className="p-7 md:p-10">
+              <p className="text-sm font-bold text-blue-200">ROYAL CARIBBEAN CRUISE</p>
+              <h2 className="mt-2 text-3xl font-black">로열캐리비안 크루즈</h2>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-white/80">
+                항차와 객실을 먼저 확인하고, 현재 객실과 요금은 상담 요청 시 실시간으로 다시 조회합니다.
+              </p>
+              <Link href="/cruise" className="mt-6 inline-flex min-h-11 items-center rounded-full bg-white px-5 text-sm font-bold text-brand">
+                크루즈 안내 보기
+              </Link>
+            </div>
+            <div className="flex min-h-44 items-center justify-center bg-white/10 text-7xl" aria-hidden>🚢</div>
+          </div>
+        </section>
+
+        <section className="bg-[#F8FAFC] py-12 md:py-16" aria-labelledby="guide-title">
+          <div className="mx-auto max-w-[1200px] px-4 md:px-6">
+            <div className="mb-7 flex items-end justify-between">
+              <div>
+                <p className="text-sm font-bold text-brand">여행가이드</p>
+                <h2 id="guide-title" className="mt-1 text-2xl font-black text-text-primary md:text-3xl">예약 전에 필요한 기준</h2>
+              </div>
+              <Link href="/blog" className="text-sm font-bold text-brand">전체 가이드 →</Link>
+            </div>
+            {guides.length > 0 ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {guides.map((guide, index) => (
+                  <Link key={guide.id} href={`/blog/${guide.slug}`} className="flex min-h-20 items-center gap-4 rounded-[16px] border border-admin-border bg-white px-5 py-4 shadow-sm">
+                    <span className="text-sm font-black text-brand">0{index + 1}</span>
+                    <span>
+                      <span className="block font-bold text-text-primary">{guide.seo_title}</span>
+                      <span className="mt-1 block text-xs font-medium text-text-secondary">
+                        {new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(guide.published_at))}
+                      </span>
+                    </span>
+                    <span className="ml-auto text-text-secondary" aria-hidden>→</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[16px] border border-admin-border bg-white px-5 py-8 text-sm text-text-secondary">
+                최신성·품질 검수를 마친 여행가이드를 준비 중입니다.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[1200px] px-4 py-12 md:px-6 md:py-16" aria-labelledby="trust-title">
+          <div className="rounded-[24px] border border-admin-border p-6 md:p-8">
+            <h2 id="trust-title" className="text-2xl font-black text-text-primary">예약 전에 운영 정보를 확인하세요</h2>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              상품별 출발 여부와 예약 조건은 상세 화면에 표시하고, 확정 전 담당자가 최신 상태를 다시 안내합니다.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[
+                ['회사소개', '/about'],
+                ['이용약관', '/terms'],
+                ['개인정보처리방침', '/privacy'],
+                ['취소·환불 안내', '/terms'],
+                ['고객센터', '/group'],
+              ].map(([label, href]) => (
+                <Link key={label} href={href} className="inline-flex min-h-11 items-center rounded-full border border-admin-border px-4 text-sm font-semibold text-text-primary">
+                  {label}
                 </Link>
               ))}
             </div>
-          </section>
-        )}
-
-        {/* ── 인기 여행지 — Zebra: 흰 배경 ── */}
-        <section className="bg-white px-4 md:px-8 max-w-[1200px] mx-auto pt-2 pb-8 md:pb-12">
-          <SectionHeader title="인기 여행지" subtitle="실시간 패키지 등록순" />
-
-          {destsWithImages.length === 0 ? (
-            <div className="text-center py-12 text-text-secondary text-[14px]">현재 판매 중인 상품이 없습니다</div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-              {destsWithImages.map(dest => {
-                return (
-                  <Link
-                    key={dest.destination}
-                    href={`/packages?destination=${encodeURIComponent(dest.destination)}`}
-                    className="group rounded-[16px] overflow-hidden shadow-card hover:shadow-card-hover transition-shadow card-touch bg-white"
-                  >
-                    <div className="relative h-36 md:h-52 lg:h-56 bg-bg-section">
-                      <SafeCoverNextImg
-                        src={dest.image}
-                        alt={dest.destination}
-                        className="group-hover:scale-105 transition-transform duration-300"
-                        sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
-                        fallback={
-                          <DestinationImageFallback
-                            title={dest.destination}
-                            destination={dest.destination}
-                            compact
-                            className="absolute inset-0"
-                          />
-                        }
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent pointer-events-none" />
-                      <div className="absolute bottom-3 left-3 right-3">
-                        <p className="text-white text-[16px] md:text-[18px] font-bold tracking-[-0.02em] drop-shadow-md">
-                          {dest.destination}
-                        </p>
-                      </div>
-                      {/* 상품 수 배지 — 소수 노출은 이탈 유발 가능, 임계값 이상만 숫자 표기 */}
-                      <div className="absolute top-2.5 right-2.5">
-                        <span className="bg-white/90 text-[11px] font-bold text-brand px-2 py-0.5 rounded-full">
-                          {dest.count >= PKG_COUNT_DISCLOSE_MIN ? `${dest.count}개` : '보러가기'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="px-3 py-2.5 md:px-4 md:py-3">
-                      <div className="flex items-baseline gap-0.5">
-                        {dest.minPrice > 0 ? (
-                          <>
-                            <span className="text-[18px] md:text-[20px] font-extrabold text-brand tabular-nums tracking-[-0.02em]">
-                              {dest.minPrice.toLocaleString()}
-                            </span>
-                            <span className="text-[12px] font-medium text-text-secondary ml-0.5">원~</span>
-                          </>
-                        ) : (
-                          <span className="text-[13px] text-text-secondary">가격 문의</span>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+          </div>
         </section>
       </main>
 
-      {/* ── 패키지 중심 CTA (자유여행/AI는 보조 링크로 — 기대치 정렬) ── */}
-      <section className="bg-[#F8FAFC] px-4 md:px-8 pb-8 pt-6 max-w-[1200px] mx-auto">
-        <div className="rounded-2xl overflow-hidden border border-[#E5E7EB] shadow-card bg-white">
-          <Link
-            href="/packages"
-            className="group flex items-center justify-between bg-gradient-to-r from-brand to-[#60A5FA] px-5 py-4 md:px-6 md:py-5 hover:shadow-lg transition-shadow"
-          >
-            <div>
-              <p className="text-[11px] font-semibold text-white/80 tracking-wide mb-0.5">패키지·단체 여행</p>
-              <p className="text-[16px] md:text-[18px] font-extrabold text-white leading-tight">
-                출발 가능 일정·가격을 한눈에
-              </p>
-              <p className="text-[12px] text-white/85 mt-0.5">마감 임박·테마별 상품까지 바로 비교</p>
-            </div>
-            <div className="shrink-0 ml-4 bg-white/20 group-hover:bg-white/30 transition-colors rounded-full p-2.5">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
-            </div>
-          </Link>
-          <div className="px-4 py-3 md:px-6 md:py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-admin-bg">
-            <p className="text-[12px] md:text-[13px] text-text-body">
-              항공+호텔 맞춤 조합은 단계적으로 준비 중입니다.
-            </p>
-            <Link
-              href="/free-travel"
-              className="text-[12px] md:text-[13px] font-semibold text-brand shrink-0 underline-offset-2 hover:underline"
-            >
-              자유여행 베타 페이지 →
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 푸터 ── */}
-      <footer className="px-6 py-8 md:py-12 text-center border-t border-admin-border bg-white">
-        <p className="text-[13px] text-text-secondary font-medium">부산 출발 단체·패키지 여행 전문</p>
-        {/* 신뢰 뱃지 */}
-        <div className="mt-3 flex justify-center gap-2 flex-wrap">
-          <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">🛡️ 출발 보장</span>
-          <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">📋 관광사업자 등록</span>
-          <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">🔒 안전 결제</span>
-        </div>
-        <p className="text-[11px] text-text-secondary/50 mt-2">yeosonam.co.kr</p>
-        <div className="mt-3 flex justify-center gap-4">
-          <Link href="/packages" className="text-[13px] text-text-body hover:text-brand transition-colors">전체 상품</Link>
-          <Link href="/blog" className="text-[13px] text-text-body hover:text-brand transition-colors">매거진</Link>
-          <Link href="/private-tour" className="text-[13px] text-text-body hover:text-brand transition-colors">단독맞춤여행</Link>
-          <Link href="/group" className="text-[13px] text-text-body hover:text-brand transition-colors">단체 문의</Link>
+      <footer className="border-t border-admin-border bg-white px-4 py-10 text-center">
+        <p className="text-sm font-bold text-text-primary">여소남 · 부산 출발 여행 상담</p>
+        <p className="mt-2 text-xs text-text-secondary">www.yeosonam.com · help@yeosonam.com</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-text-secondary">
+          <Link href="/about">회사소개</Link>
+          <Link href="/terms">이용약관</Link>
+          <Link href="/privacy">개인정보처리방침</Link>
+          <Link href="/group">고객센터</Link>
         </div>
       </footer>
-
     </div>
   );
 }

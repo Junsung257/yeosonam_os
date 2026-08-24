@@ -464,14 +464,14 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
               onBlur={e => onUpdateText(slideIndex, 'main_text', e.currentTarget.innerText || '')}
               style={{ fontSize: '24px', opacity: 0.8, outline: 'none' }}
             >
-              {slide.main_text || '문의: yeosonam.co.kr'}
+              {slide.main_text || '문의: yeosonam.com'}
             </p>
           </div>
         )}
 
         {/* 하단 브랜딩 */}
         <div className="mt-auto flex justify-between items-end">
-          <span style={{ fontSize: '14px', opacity: 0.4 }}>yeosonam.co.kr</span>
+          <span style={{ fontSize: '14px', opacity: 0.4 }}>yeosonam.com</span>
           <span style={{ fontSize: '14px', opacity: 0.4 }}>{slide.slide_num || slideIndex + 1}</span>
         </div>
       </div>

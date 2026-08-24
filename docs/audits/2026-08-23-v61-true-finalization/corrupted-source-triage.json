@@ -1,0 +1,418 @@
+{
+  "schemaVersion": "v61-corrupted-source-triage-1",
+  "generatedAt": "2026-08-23T10:00:17.198Z",
+  "runId": "24e820ed-7ce5-4df1-a786-b6bebb42b855",
+  "status": "REQUIRES_RECONCILIATION",
+  "allowedClassifications": [
+    "RECOVERABLE_MAPPING_ERROR",
+    "RECOVERABLE_HASH_DEFINITION_ERROR",
+    "SOURCE_REPLACED",
+    "SOURCE_CORRUPTED",
+    "MANUAL_SOURCE_REQUIRED"
+  ],
+  "count": 16,
+  "rows": [
+    {
+      "corpusId": "c3ea23bb011f3606358e463ba7ef577e2d125b0042fd26ace5afcdcc0e236fe0:30",
+      "sourceHash": "c3ea23bb011f3606358e463ba7ef577e2d125b0042fd26ace5afcdcc0e236fe0",
+      "expectedFilename": "[0923추석] VJ 다낭 노노 5일 PKG.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[★추석★] 인도차이나 일정표\\[0923추석] VJ 다낭 노노 5일 PKG.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "6a2513dac29663c3e676a7ff5541bd7cc9b7788864e3442864d1b85b0a5ef567"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "0569778ff0b69eab429878eac44e9395c79d3b38aeba273e8327601ed4173d09:31",
+      "sourceHash": "0569778ff0b69eab429878eac44e9395c79d3b38aeba273e8327601ed4173d09",
+      "expectedFilename": "[0924추석] VJ 푸꾸옥 5일 PKG.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[★추석★] 인도차이나 일정표\\[0924추석] VJ 푸꾸옥 5일 PKG.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "6100abacf94d763037c2c0ac9875404f3ca686d7330dc4c9885d094f1e09984b"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "33bafb9bf2aba39d036e56ff9556086479ae806ff3f79ca4ccc7334f6e490074:70",
+      "sourceHash": "33bafb9bf2aba39d036e56ff9556086479ae806ff3f79ca4ccc7334f6e490074",
+      "expectedFilename": "[0729] VJ 다낭 노노 PKG_0624.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[0729] VJ 다낭 노노 PKG_0624.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "2cc43c3280d3b53d45f6e1de012c6b99333c94bc6164e1a543f671ac1f2395f8"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "4abec5060818b3b94e28d87815ccefaaa250257ffa70d4c173e5e865386524aa:78",
+      "sourceHash": "4abec5060818b3b94e28d87815ccefaaa250257ffa70d4c173e5e865386524aa",
+      "expectedFilename": "[0813] VJ 푸꾸옥 노옵 PKG_0619.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[0813] VJ 푸꾸옥 노옵 PKG_0619.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "7bd263a2c4f8f7c72849687dff14cea1764577366cf4373ec693e19b6c8edf82"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "a68aed325334fbc1f15f08e1515e672951239396ac62e3bb1b2367d6af2aec11:85",
+      "sourceHash": "a68aed325334fbc1f15f08e1515e672951239396ac62e3bb1b2367d6af2aec11",
+      "expectedFilename": "[0924추석] VJ 푸꾸옥 5일 PKG.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[0924추석] VJ 푸꾸옥 5일 PKG.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "6100abacf94d763037c2c0ac9875404f3ca686d7330dc4c9885d094f1e09984b"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "2a1c3b289f3ec874789e7e3b16100e365e48159708f35abb68d2818ade7eee7e:132",
+      "sourceHash": "2a1c3b289f3ec874789e7e3b16100e365e48159708f35abb68d2818ade7eee7e",
+      "expectedFilename": "[수정1] 의미분석법을 통한 현직교사와 예비교사의 메이커교육에 대한 이미지 비교 (1).hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[수정1] 의미분석법을 통한 현직교사와 예비교사의 메이커교육에 대한 이미지 비교 (1).hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "d06e1f7a76959412d3f950606127a367f8d8d61deee4fbc5a06eca801d12b63a"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "6bdb94f798c1d0e16255c45b4f65cf429825813374a3011723758d681a4ed6a4:188",
+      "sourceHash": "6bdb94f798c1d0e16255c45b4f65cf429825813374a3011723758d681a4ed6a4",
+      "expectedFilename": "[일정표]다낭 7C 전세기 특가 PKG - 0617.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\[일정표]다낭 7C 전세기 특가 PKG - 0617.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "27b98a075d2a9b98a356972263cc984229594e41671b8d1d0c65507392aa86f4"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "52011667d836f472e4d0c7bcc86fa548488c0a76b213443b657f07849e0b90dc:517",
+      "sourceHash": "52011667d836f472e4d0c7bcc86fa548488c0a76b213443b657f07849e0b90dc",
+      "expectedFilename": "★카멜리아 세키아 3일특가(0520).hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\★카멜리아 세키아 3일특가(0520).hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "2cebe898690df14b2c4435217f3510fdd9ffdb17956a7b354cddf81de618e9b1",
+        "cc6e58e7ab6cefa3fea6f165390c825d513108c73e5c65846e209aa3c34438d8"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "aa6b0f168d0cf5096dfa97df7171a30e308e1e4172e5a813b1e5abcaa10f3469:683",
+      "sourceHash": "aa6b0f168d0cf5096dfa97df7171a30e308e1e4172e5a813b1e5abcaa10f3469",
+      "expectedFilename": "6~10월  BX시즈오카 2박3일 일정.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\6~10월  BX시즈오카 2박3일 일정.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "bb1e122680a4cb7d97112cfd6faaa167ce289152d0702b8828be32a9fcc0d9fa"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "bd1ae3db5a3082adf913b0b717b8d655c84d95eba91c72d58f4c3e31cf2c1c05:690",
+      "sourceHash": "bd1ae3db5a3082adf913b0b717b8d655c84d95eba91c72d58f4c3e31cf2c1c05",
+      "expectedFilename": "7~10월  BX시즈오카 2박3일 일정.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\7~10월  BX시즈오카 2박3일 일정.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "9ea6a5d10362a93d4ebc6b00895413c66d7ccdedda860c220032355e61743857"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "e207b053831746b68c33c42db5a208464d197f6f741f005143aed02c21b5670f:691",
+      "sourceHash": "e207b053831746b68c33c42db5a208464d197f6f741f005143aed02c21b5670f",
+      "expectedFilename": "7~10월 BX시즈오카 3박4일 일정.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\7~10월 BX시즈오카 3박4일 일정.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "cb6fb499c5f9261188445d26c4aa2970535ceaa39b461dad923bcc429a6dc1f5"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "7e02c23f619980639f5dd699ec9dcb0618d9b23df380b2770ee1b7c31bd672c0:792",
+      "sourceHash": "7e02c23f619980639f5dd699ec9dcb0618d9b23df380b2770ee1b7c31bd672c0",
+      "expectedFilename": "부산교육대학교 학위논문 작성 서식 가이드(2023.12.04.) (1) (1).hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\부산교육대학교 학위논문 작성 서식 가이드(2023.12.04.) (1) (1).hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "192b955241b811f2de2dcf89950a037206ed1d6137c81352062e49e38c22a88f"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "77a9a19d259838718cb6159cced4d1f4303fe01bbddd79b39c058217f4df4f04:796",
+      "sourceHash": "77a9a19d259838718cb6159cced4d1f4303fe01bbddd79b39c058217f4df4f04",
+      "expectedFilename": "부산출발 호화호특 전세기.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\부산출발 호화호특 전세기.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "626bb1eadc894b5cc7f91b1b9b79c885706c3e0bbf1e31e9d35eba796fb05b41",
+        "68c0d1b9ce9635d2c0861d46bfcc74da12c137f323bb6dfcc15e187f012be84b"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "9672778a37decd07bd4941cbcb4a09e56e2f2f0b07036fc93bff2517e8f1a31b:806",
+      "sourceHash": "9672778a37decd07bd4941cbcb4a09e56e2f2f0b07036fc93bff2517e8f1a31b",
+      "expectedFilename": "수정) 증편특가★투어폰 26년 7월 백두산 ADM증편-컴10만.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\수정) 증편특가★투어폰 26년 7월 백두산 ADM증편-컴10만.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "572c784b371e3399c4714fdfdd148a838d7f866877c3cf6bd3624f0738118290"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "8f8a20eaeb17dd8f7a0ab81b7ff3ca3d5dfd9538691161c02bb3c82f05605416:822",
+      "sourceHash": "8f8a20eaeb17dd8f7a0ab81b7ff3ca3d5dfd9538691161c02bb3c82f05605416",
+      "expectedFilename": "시즈오카 IN-나리타 OUT 3박4일 일정.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\시즈오카 IN-나리타 OUT 3박4일 일정.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "6d00cfd8e45a37841d5faa99f9a480aa373c85a60a24168f2a64612493747c2a"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    },
+    {
+      "corpusId": "bb21012802cf6aa566bc1e22c2a1ad384d314dd5d6d6c9045c280d28a341841d:1017",
+      "sourceHash": "bb21012802cf6aa566bc1e22c2a1ad384d314dd5d6d6c9045c280d28a341841d",
+      "expectedFilename": "8,9월 특가 4박) BX방콕썬밸리무제한골프 0724.hwp",
+      "sourceLocation": "C:\\Users\\admin\\Downloads\\테스트_0729\\8,9월 특가 4박) BX방콕썬밸리무제한골프 0724.hwp",
+      "observedSourceLocation": null,
+      "observedHashes": [
+        "a6cc484aceb4598490368e78f8185ef265251107c94f72e47e0967a575096c19"
+      ],
+      "sourceStatus": "SOURCE_HASH_MISMATCH",
+      "classification": "MANUAL_SOURCE_REQUIRED",
+      "possibleCauses": [
+        "WRONG_FILE_MAPPING",
+        "FILE_CHANGED_AFTER_LEDGER",
+        "NEWLINE_OR_ENCODING_NORMALIZATION",
+        "EXTRACTION_HASH_BINARY_HASH_MIXUP",
+        "DUPLICATE_FILENAME",
+        "SOURCE_REPLACED",
+        "TRUNCATED_OR_CORRUPTED_FILE",
+        "LEDGER_DEFECT"
+      ],
+      "evidenceBoundary": "A candidate file exists but no observed candidate matches the expected immutable hash; cause cannot be selected without the approved original source or operator evidence.",
+      "nextAction": "Obtain original bytes or operator-confirmed lineage, then re-run hash verifier.",
+      "goldEligible": false
+    }
+  ]
+}

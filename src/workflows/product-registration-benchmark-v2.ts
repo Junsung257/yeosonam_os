@@ -18,6 +18,7 @@ import {
   majorCohortSafeOpenRate,
   summarizeProductRegistrationBenchmark,
   type ProductRegistrationBenchmarkCase,
+  type ProductRegistrationBenchmarkExpectedOutcome,
 } from '@/lib/product-registration-v6/benchmark-metrics';
 import {
   assertProductRegistrationEngineReleaseManifest,
@@ -129,6 +130,16 @@ function terminalOutcomeForDocumentClass(documentClass: string): ProductRegistra
   return 'blocked_action_required';
 }
 
+function benchmarkOutcomeForPrediction(input: {
+  predictedOutcome: ProductRegistrationBenchmarkCase['predictedOutcome'];
+  terminalOutcome: ProductRegistrationV6TerminalOutcome;
+}): ProductRegistrationBenchmarkExpectedOutcome {
+  if (input.terminalOutcome === 'discarded_non_travel') return 'EXPECTED_NON_PRODUCT';
+  if (input.terminalOutcome === 'discarded_source_incomplete') return 'EXPECTED_SOURCE_INCOMPLETE';
+  if (input.predictedOutcome !== 'blocked') return 'EXPECTED_PUBLISHABLE';
+  return 'EXPECTED_REVIEW_REQUIRED';
+}
+
 async function loadBenchmarkCasesStep(input: ProductRegistrationBenchmarkV2WorkflowInput): Promise<BenchmarkSourceCase[]> {
   'use step';
   assertProductRegistrationEngineReleaseManifest(input.releaseManifest);
@@ -237,6 +248,7 @@ async function runBenchmarkSourceStep(
     const sectionIndex = row.sectionIndex;
     const predictedOutcome = predictedOutcomes[sectionIndex] ?? 'blocked';
     const predictedTerminalOutcome = predictedTerminalOutcomes[sectionIndex] ?? 'blocked_action_required';
+    const predictedExpectedOutcome = benchmarkOutcomeForPrediction({ predictedOutcome, terminalOutcome: predictedTerminalOutcome });
     const expectedSourceIncompleteDiscard = row.groundTruth.sourceSalePricePresent === false;
     const publicationEligible = source.expectedDocumentClass === 'travel_product'
       && row.groundTruth.sourceSalePricePresent;
@@ -270,6 +282,10 @@ async function runBenchmarkSourceStep(
       segmentExact: segmentation.exact,
       predictedOutcome,
       predictedTerminalOutcome,
+      expectedOutcome: row.groundTruth.expectedOutcome,
+      predictedExpectedOutcome,
+      criticalSourceSpanExact: segmentation.exact
+        && comparison.criticalExactCount === comparison.criticalFieldCount,
       expectedTerminalOutcome,
       publicationEligible,
       expectedSourceIncompleteDiscard,
@@ -311,9 +327,15 @@ async function runBenchmarkSourceStep(
         criticalExactCount: comparison.criticalExactCount,
         parserFallbackUsed,
         parserDisagreement,
+        expectedOutcome: row.groundTruth.expectedOutcome,
+        predictedExpectedOutcome,
+        outcomeExact: row.groundTruth.expectedOutcome === predictedExpectedOutcome,
+        criticalSourceSpanExact: result.criticalSourceSpanExact,
         fieldDiffs: result.fieldDiffs,
         metrics: {
           predictedTerminalOutcome,
+          expectedOutcome: row.groundTruth.expectedOutcome,
+          predictedExpectedOutcome,
           expectedTerminalOutcome: expectedTerminalOutcome ?? null,
           publicationEligible,
           expectedDocumentClass: source.expectedDocumentClass,

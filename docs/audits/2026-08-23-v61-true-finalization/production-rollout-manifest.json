@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v61-production-rollout-manifest-controller-1",
+  "manifestId": "v61-production-rollout-b9f0b882523ebf55",
+  "productionProjectRef": "ixaxnvbmhzjvupissmly",
+  "expectedSchemaFingerprint": {
+    "v61MigrationsRequired": [
+      "supabase/migrations/20260819235142_product_registration_v61_authority.sql",
+      "supabase/migrations/20260819235152_product_registration_v61_workflow.sql",
+      "supabase/migrations/20260819235155_product_registration_v61_surface_lineage.sql",
+      "supabase/migrations/20260820100000_product_registration_v61_knowledge_ledger.sql"
+    ],
+    "v61MigrationsPresent": 0,
+    "v61ObjectPresent": 0,
+    "v61ObjectRequired": 6
+  },
+  "plannedWrites": [
+    "V6.1 migrations only after owner approval",
+    "1->3->10 canary records only after migration and approval"
+  ],
+  "rollbackActions": [
+    "stop canary",
+    "restore previous pointer/freeze state using approved rollback procedure"
+  ],
+  "cachePlan": "NOT_RUN",
+  "verificationQueries": [
+    "schema fingerprint",
+    "authority config",
+    "pointer binding",
+    "proof and convergence"
+  ],
+  "approval": {
+    "required": "APPROVE V6.1 PRODUCTION CANARY LANE A",
+    "received": false,
+    "approvalFile": "docs/audits/2026-08-23-v61-true-finalization/approvals/production-rollout.json"
+  },
+  "productionWriteCount": 0,
+  "pointerChanges": 0,
+  "status": "BLOCKED_PREREQUISITE",
+  "executed": false,
+  "manifestHash": "168c8095d8ef5734051c564c53917654444bf607b5c151f09d66a417ddcc5a01"
+}

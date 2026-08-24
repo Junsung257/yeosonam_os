@@ -1,6 +1,143 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-08-17
+Last updated: 2026-08-24
+
+## 2026-08-24 local release candidate — not deployed
+
+Branch `codex/product-publication-catalog-integration-20260824` contains the
+combined Gate 0-4 implementation through verification commit
+`4a836a8b8cef7dd3947af66b1734cd6fb4913493`. It is a clean, locally verified
+candidate only; it has not
+been pushed, merged, deployed, or applied to production Supabase.
+
+- Registration now ends at reviewed `ready_not_published`; one admin
+  publication request starts the exact revision-bound proof/CAS workflow.
+- Latest-revision fencing, atomic channel pointer replacement, canary
+  fail-closed compensation, request recovery, and typed price projection into
+  all compatibility tables are implemented without creating a second generic
+  registration-run SSOT.
+- Grounded customer-copy V2 uses deterministic facts first and an optional
+  evidence-validated DeepSeek rewrite. Render-time AI remains prohibited.
+- Service-role-only `public_catalog_view` is the customer discovery read
+  projection. Home, list, search/detail, metadata/print, destinations, sitemap,
+  recommendations, Jarvis, campaign, influencer, and affiliate surfaces use
+  this boundary. It does not replace the publication pointer as publication
+  authority.
+- The final local gate passed 855 Vitest files (6,435 passed, 7 skipped),
+  TypeScript, ESLint, the Next.js production build (396 pages), and 12/12
+  mobile/desktop browser checks with zero production writes.
+- Production remains NO-GO until concurrent main/blog reconciliation, staging
+  migration/RLS/query-plan evidence, blog product-reader parity, golden-product
+  replay, cache/rollback drills, owner/legal evidence, explicit release
+  approval, and production observation are complete.
+
+Detailed evidence and the remaining sequence are in
+`docs/audits/product-registration-public-catalog-local-verification-2026-08-24.md`
+and `docs/specs/20260824-public-catalog-trust-hardening/`.
+
+## V6.1 authority surgery — current operating contract (2026-08-20)
+
+V6.1 is the formal authority layer for the existing V6 compiler. It does not create a V7 product model. New and legacy recompile jobs use the same immutable-source → typed IR → revision → candidate snapshot → browser proof → CAS publication path.
+
+- Existing customer pointers and immutable snapshots are retained. Unsafe currently-visible products are isolated with a `customer_visibility_state=under_review` overlay; they are not deleted and are excluded from list, recommendation, sitemap, metadata, RSC, and JSON-LD reads before snapshot selection.
+- Publication freeze is controlled by a runtime `publication_freeze_manifest`, never by a hardcoded product count. Applying a manifest is a pointer-version CAS operation; a changed or unlisted pointer aborts the operation.
+- While frozen, publication requires one unexpired `publication_release_authorizations` row bound to the exact tenant, revision/hash, snapshot/hash, passed browser proof/hash, policy version, and expected pointer version. The row is consumed in the same transaction as pointer CAS and overlay release. Environment variables cannot bypass this authorization.
+- Workflow stage, execution state, and terminal outcome are separate fields. Retryable failure belongs to a new fenced stage attempt; a stale worker cannot finalize a newer attempt.
+- Customer snapshot hash and per-surface render hashes are separate. Detail and LP browser proof must link to exact `package_detail` and `landing_page` artifacts; listing-card and A4 projections are parity-tested separately.
+- `products`, `travel_packages`, and `product_prices` are compatibility projections only. They carry revision/snapshot/projection lineage and are writable only through the compatibility projection RPC; customer readers do not use them as authority.
+- Fuzzy attraction matches are review candidates only. Exact normalized identifiers and approved aliases may link; no parser/AI path inserts or auto-links an attraction master.
+- `SOURCE_DECLARED_PENDING` means the supplier explicitly declared a future confirmation (for example, hotel assignment before departure). It is not equivalent to missing or inferred information; unsupported or conflicting facts remain blockers.
+- Automatic publication remains OFF. Release 0 evidence, Release 1 under-review reads, Release 2 manifest isolation, V6.1 shadow recompilation, canary authorization, and the 400-section expected-outcome gold gate are separate release gates. No production mutation is implied by this document.
+
+### V6.1 knowledge ledger extension (2026-08-20)
+
+- `internal_product_registration.departure_instances` is the typed departure fact ledger. It stores adult/child selling price, currency, `pricing_state`, `booking_state`, `inventory_state`, rule/override lineage, source references, and revision metadata. `price_date_overrides` represents exact-date exceptions; a malformed source amount such as `85,9000` remains `CONFLICTING` and is never corrected by code.
+- A V6.1 knowledge commit calls `commit_product_registration_revision_v61_atomic`. It delegates to the existing immutable revision transaction and, in the same transaction, writes typed departures, exact-date overrides, and compiler-provided entity relation candidates. A failed typed write rolls the revision transaction back.
+- `catalog_entities`/`catalog_entity_revisions` hold approved lodging, golf-course, airline, airport, and property-complex facts. `product_entity_relations` preserves the raw mention and match evidence. Attraction matching continues to use the existing attractions SSOT: exact/approved alias only can be approved, while fuzzy candidates remain `REVIEW_REQUIRED`; no automatic master insert is permitted.
+- Supplier-wide operational facts belong in `supplier_overlays`; product-specific conditions belong in `product_revision_overlays`. Neither overlay may mutate a master entity or an immutable revision.
+- `product_registration_jarvis_fact_view`, `product_registration_blog_content_fact_view`, and `product_registration_comparison_fact_view` are service-role-only read models bound to the current customer pointer, exact snapshot, passed browser proof, typed departure facts, and approved entity relations. Customer-facing Jarvis and automated product blogs must use these views, not `travel_packages`, `price_tiers`, `excluded_dates`, `net_price`, or supplier raw.
+- The Atitaya regression fixture is intentionally `REVIEW_REQUIRED`: exact-date special pricing is preserved, `85,9000` is a price-format blocker, `*4박6일` remains a separate unresolved variant, and lodging/golf mentions remain source-backed relations until canonical approval.
+
+The former source-proof automatic-opening notes below are historical evidence only. They must not be used as a current operating instruction.
+
+## Historical: source-proof automatic customer opening (2026-08-19)
+
+- The durable workflow now enables `sourceProofAutoPublish` by default. A missing statistical cohort no longer prevents a product from reaching the CAS writer; the product must still pass exact tenant/catalog/revision/snapshot lineage, verified critical/high claim evidence, signed 390×844 proofs for both `/packages` and `/lp`, CTA/hydration checks, and every database kill/availability guard.
+- This behavior is recorded as workflow `product-registration-v6-workflow-33` and policy `product-registration-v6-policy-11-deepseek-source-proof`; older stage results are not reused as if they were produced by the new publication contract.
+- This is not a global publication unlock and does not publish blocked sections. `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=0` remains an explicit emergency off switch. Broad cohort readiness is still measured separately for monitoring and ramp decisions.
+- The previous default (`false`) stranded first-time supplier uploads at `V6_COHORT_QUALITY_INCOMPLETE` before their own proof could be evaluated. The new default makes the requested product-by-product automatic opening path executable while retaining source-bound fail-closed CAS checks.
+- Runtime and publication-control tests pass after this change. The deployed production path was verified below with a fresh real HWP upload and an immutable customer pointer.
+
+## Production source-proof upload → customer surface verification (2026-08-19, latest)
+
+- Production deployment `dpl_BexXQ2pFVrGjcPh6fdBU3V4U5a7X` is `READY` and aliased to `https://www.yeosonam.com`. A real HWP upload completed without an administrator approval click: job `02a84060-d267-4a01-92a0-052d81bd2687`, workflow `wrun_01M0CJ1B335VYK83RVXNNNWQY5`, terminal outcome `published_degraded`, publication state `converged`.
+- The run created revision `6ab6bb12-ffd4-4f4b-a1f8-1d665b993ef4`, snapshot `43e69df4-e6aa-4b0a-ba22-eca91dd11501`, and proof `8357b748-70f4-4a17-ae33-adccce313ee5`. Snapshot hash `6ca63371aa621357c0b370de7a16ec98297d551a827e4c658cde7eb724f9ed2e` and renderer `082c1b0f` match across customer, B2B, and partner pointers.
+- Both public customer surfaces returned HTTP 200: `/packages/fbca42ad-50cd-4622-bde0-5dc13009e833` and `/lp/fbca42ad-50cd-4622-bde0-5dc13009e833`. Their HTML metadata contains the same snapshot hash and revision; the visible source-backed price is `499,000원`, with `LJ111`/`LJ112`, Korean customer copy, terms, and consultation CTA.
+- The private 390×844 mobile proof passed both `/packages` and `/lp`: CTA opened, hydration errors 0, broken images 0, Korean font ready, required text present, and snapshot/renderer hashes matched. The OG endpoint also returned HTTP 200.
+- The degraded notices are intentional: the source ticketing deadline had expired, no licensed destination-specific media was available, and flight identity/time was unresolved, so no flight time was guessed; the customer sees final-confirmation wording instead. No administrator action was required.
+- A previously unsafe legacy package (`b68b08fe-594f-41bf-8417-637f4a66678a`) was suspended by the availability overlay after a live audit found duration/trip-style and hotel semantic mismatches; both its `/packages` and `/lp` routes now return HTTP 410. It remains immutable history, not customer-visible data.
+- The production public-only readiness audit now reports 2 customer-visible rows, 0 failures, 0 publication-authority failures, 0 stale-proof failures, and only two non-blocking `public_without_v3_facts` warnings. The audit query was corrected to load the outer proof route/viewport/device/renderer fields required by the persisted V6 proof contract.
+- This proves the real upload → revision → snapshot → mobile proof → CAS pointer → customer page path for this HWP. It does not by itself certify the full corpus at 95%; blind double-reviewed frozen benchmark evidence and cohort rollout remain separate gates.
+
+## Direct source-proof upload → customer surface verification (2026-08-19, implementation verification)
+
+- A real HWP upload was sent through the local Next/Workflow runtime with the preview Supabase project and the DeepSeek upload-token path. The terminal job `fae270bc-e1c9-4994-9791-bfe5f8f1c786` completed as `published_degraded` with `v6_publication_state=converged`; it did not require an administrator approval click.
+- The same run created immutable revision `95d5b2b9-29d8-488b-b3c6-7e6fe63e4858`, snapshot `0a758900-d55f-4b82-9a28-c513d69275b3`, and proof `8440f8cd-db19-47a1-8ad6-195ce5f25665`. Snapshot hash `638e4f54032b02fd666c1ae51b8dfa6371d254f1d2d46612ad8da27e865b41a8` and renderer build `preview-v6-20260819` matched on both surfaces.
+- The private 390×844 Chrome proof passed for `/packages` and `/lp`: both returned HTTP 200, CTA opened, hydration errors were zero, broken images were zero, Korean font was ready, and all required price/title/flight/inclusion/terms text assertions passed. Public customer URLs were then fetched without the proof token and returned HTTP 200 with the same snapshot hash in the HTML metadata.
+- The resulting customer state is intentionally `published_degraded`: the source had an expired ticketing deadline, no licensed destination media result (brand/reference fallback was used), and unresolved flight identity/time values that were hidden with a final-confirmation notice. No inferred flight time was exposed.
+- The controlled preview Supabase counts after this verification are 17 published immutable snapshots covering 10 package IDs; 25 published pointer rows cover 9 package IDs across customer, B2B, and partner channels (the extra snapshot/package difference is historical snapshot lineage). This is a live controlled-environment count, not a claim that the entire offline corpus is published.
+- A separate read-only production customer-open gate at `2026-08-19T07:52:48Z` passed all four checks: 11 public packages / 22 `/packages`+`/lp` screen checks, 20 pre-public packages / 40 proof checks, 11 DB-openable packages with 0 blocking rows, and 504 non-archived DB rows with the blocker audit passing. The DB audit reported 80 safe-fixable copy issues, but applied 0 mutations. The production URLs for the tested package returned HTTP 200 on both surfaces with matching deployed snapshot metadata, but that deployed snapshot is distinct from the controlled preview upload snapshot.
+- Therefore the source-proof upload path is fully exercised in the controlled environment, while the deployed production environment still needs one fresh upload after the code/config rollout; the production read-only gate alone does not prove that the new default is deployed.
+- Two concurrent forced test uploads also demonstrated the expected CAS behavior: a superseded source can finish with a convergence quarantine if a newer revision replaces its pointer during its bounded proof window. The winning newer job converged and is authoritative. A follow-up hardening item is to classify this specific superseded case as `discarded_duplicate_or_consolidated` instead of `quarantined_system_failure`.
+- The first test job created before the local Workflow URL fix remains a stale `uploaded` artifact from the invalid-empty-`VERCEL_URL` environment. It is not a customer pointer and should be handled by the normal stale-job watchdog; it was not deleted.
+
+## Live customer-surface verification after operational safety fix (2026-08-19, historical checkpoint)
+
+- The live production customer audit found 8 published pointer rows. One legacy package (`2624427e-8e9c-45d3-90e5-a0af602a22d3`, `4박6일`) had a source-backed itinerary with five hotel rows and was therefore exposed with a duration/trip-style mismatch. The canonical resolver has been corrected to prefer the explicit source duration when it is consistent with the six-day itinerary; the old revision itself was not mutated.
+- Until a deployed correction revision is created and reproved, that package is protected by the customer availability overlay `suspended / CUSTOMER_PROOF_BLOCKER:duration_trip_style_mismatch:awaiting_correction_revision`. Both `/packages/{id}` and `/lp/{id}` return HTTP 410, so it is not customer-visible even though its historical pointer row remains immutable.
+- The remaining 7 customer-visible packages were rechecked against the live site at 390×844. `/packages` and `/lp` passed the browser proof, including source-backed title/price/itinerary text, image handling, hydration, CTA and reservation-sheet checks. The operational customer-open gate passed with zero blocking rows after the overlay was included in readiness calculations.
+- Current effective customer-visible count at that checkpoint was **7**, not 8. A later source-proof verification increased the live published snapshot catalog to 10 package IDs; this historical section is retained to explain the earlier suspended-package decision.
+
+## Historical structural shadow baseline (not a live-open authorization)
+
+## V176 actual-source full replay and conditional commercial wording fix (2026-08-19, latest)
+
+- The current deterministic normalization build is `v6-canonical-2026-08-19.76`. It reprocessed the full `C:\Users\admin\Downloads` HWP corpus with reference date `2026-08-19`: 1,172 files, 1,048 unique sources, 896 travel documents, 152 non-travel documents, and 1,048/1,048 unique-source extraction success.
+- The corpus produced 1,689 sections. 797 past-only sections and 28 sections without a real sale price terminate automatically without a product. The live-sale denominator is 864 sections: 14 verified + 808 degraded = **822 structurally safe terminal outcomes (95.14%)**, with 42 blocked. Render contract passed 864/864 and indexed claim evidence coverage was 100% (7,337/7,337).
+- Two cross-cutting fixes were verified against the corpus: guide/driver expense is separated from etiquette tip even when both occur in one source cell, and phrases such as `노쇼핑 진행시 별도금액` are treated as a conditional alternative rather than a product-level no-shopping claim. This reduced the blocked eligible sections from 47 to 42 without weakening genuine price/date, product-axis, itinerary, or commercial-conflict blockers.
+- Remaining blockers are source-bound or ambiguity-bound: 19 sections with 24 missing-adult-sale findings, 6 sections with unresolved price/date relations, 5 sections with shopping-scope conflicts, 3 expected-product boundary mismatches, 8 itinerary/day cases, 2 guide-tip conflicts, 2 high-risk notice-value failures, and a small number of multi-itinerary/empty-itinerary cases. They are not silently auto-published.
+- Full verification after this change: 832 Vitest files / 6,355 tests passed (7 existing conditional skips), TypeScript passed, production build and post-build rhwp tracing passed, and the authority scan passed with `authorized=1`, `legacy=0`, `unapproved=0`.
+- The final local build was also opened at a 390×844 viewport: `/` and `/packages` returned HTTP 200 with meaningful content and no Next error overlay, console error, or page error. `/lp` without a snapshot/product ID intentionally redirects to login; snapshot-specific LP proof still requires a real immutable public pointer and is therefore not inferred from this route smoke test.
+- This is a structural offline shadow result, not an independently reviewed accuracy certificate. Production publication remains frozen; no Supabase mutation, deployment, new public pointer, or customer exposure was made by this replay. The live customer-visible count remains the separately audited **7** packages. Before a broad cohort is opened, the 822 candidates still require blind double-reviewed frozen samples, two identical final-build runs, and real 390×844 mobile proof for the selected snapshots.
+
+## V167 additional full-corpus verification (2026-08-19, latest)
+
+- After the foreign-currency/non-sale value guard and the identical price-only header-stub merge, the full `C:\Users\admin\Downloads` corpus was rerun with the fixed reference date `2026-08-19` and current engine build `.60`.
+- Results: 1,171 files, 1,047 unique sources, 895 travel documents, 152 non-travel documents, 1,047/1,047 unique-source extraction success, 1,691 sections, 887 current/future sale sections, 776 past-only sections, and 28 source-sale-absent sections safely terminated without a product.
+- Of the 887 publication-eligible sections, 808 are structurally safe verified/degraded candidates (90.91%; 15 verified, 793 degraded) and 79 remain blocked. Render contract passed 887/887 and evidence coverage is 99.99%. The full report is archived at `docs/audits/2026-08-19-product-registration-v167.md`.
+- The rerun specifically confirmed that JPY/foreign taxes, onboard-payable fees, and values marked `상당` are not promoted to sale prices. It also reduced false `expected 2, built 1` splits when a supplier repeats the same title above a price calendar and the real itinerary.
+- This remains a structural shadow result, not a reviewed accuracy claim. Production readiness is still blocked: the read-only Supabase audit over 30 rows found `public_total=0`, `pass=1`, `warn=4`, `fail=25`; `publication_freeze=true` remains unchanged. No production pointer or customer exposure was changed.
+
+## V160 actual-source parser hardening and current launch status (2026-08-19, latest verification)
+
+- Normalization `v6-canonical-2026-08-19.61` was rechecked against 1,171 local HWP files: 1,047 unique sources, 895 travel documents, 1,688 sections, and 1,047/1,047 unique-source extractions succeeded. Of 885 current/future sale sections, 810 are structurally safe verified/degraded candidates (91.53%), 75 remain blocked; 775 past sections and 28 source-sale-absent sections terminate without customer exposure. This is an offline shadow result, not an accuracy certification; the frozen double-review benchmark and production deployment gate remain required.
+- The shared price parser now binds Korean month/day rosters such as `7월20일·23일, 8월21일 → 859,000원` without losing the month context, skips arrow normal-price/sale-price rows in the generic parser, and keeps the dedicated relation parser authoritative. Completeness now recognizes hotel evidence in inclusion/structured-fact claims and safely discloses the common one-day departure/arrival omission instead of inventing a missing itinerary day. HWP itinerary headers written as `세부 여행 일정` are normalized to the same EvidenceIR schedule contract as `세부일정`.
+- Regression checks passed for the touched registration suites, DeepSeek-only contract, Kernel-only authority (`authorized=1`, `legacy=0`, `unapproved=0`), product-registration contract, and TypeScript. The parallel full Vitest run had one unrelated 5-second sitemap timeout; the sitemap test passes in a single-worker rerun. The final corpus report is archived at `docs/audits/2026-08-19-product-registration-final-engine-itinerary-header.md`.
+- This remains a shadow result, not a customer-open authorization. `publication_freeze=true` is unchanged; no new customer pointer was published. The remaining 89 blockers are concentrated in genuine commercial contradictions, price/date or multi-product axis ambiguity, missing source-backed itinerary fragments, and orphan price/schedule bundle boundaries. A live mobile readiness audit could not run in this worktree because Supabase runtime credentials were not present.
+
+## V159 source-proof Workflow bridge (2026-08-18, implementation in progress)
+
+- The durable Workflow no longer stops before the publication RPC solely because the broad cohort/freeze switch is off when `PRODUCT_REGISTRATION_SOURCE_PROOF_AUTO_PUBLISH=1` is explicitly enabled. It reaches the existing source-scoped CAS writer; the database still rejects any source without exact tenant/catalog/revision/snapshot/proof lineage, verified critical evidence, passed mobile proof, or an allowed authority mode.
+- Kill switches and legacy authority remain hard blockers. Normal publication behavior is unchanged when the new variable is absent or `0`.
+- Added regression coverage for frozen shadow mode, source-proof handoff, legacy-mode rejection, and kill-switch preservation. Production activation and a fresh authenticated HWP Workflow run remain the next verification step.
+
+## V158 source-evidence auto-publication and real customer canary (2026-08-18, latest verification)
+
+- The publication gate is no longer blocked solely because a permanent cohort-quality row has not yet been registered. A source may publish only when the database can replay the exact tenant/catalog/revision/source lineage, all critical/high claims have verified evidence without conflicts, the immutable snapshot hash matches, and the same revision has a passed signed mobile proof for both `/packages` and `/lp` (CTA opened, zero hydration errors, renderer build matched). This is source-scoped eligibility, not a global threshold relaxation.
+- The first implementation attempted to delete the short-lived cohort row after the CAS transaction. The append-only trigger correctly rejected that delete and rolled the publication back. Forward migration `20260818100000_source_proof_cohort_scope.sql` fixes this by storing an exact `sourceRevisionId` scope with a 15-minute expiry and promoting a proven candidate revision to `verified` before the legacy pointer-status trigger runs. No canonical payload is mutated.
+- Production Supabase project `ixaxnvbmhzjvupissmly` now has the corrected functions. Source-proof eligibility returns `true` for the real canary and `false` for a wrong proof ID. The canary published through `publish_product_registration_snapshot_atomic` as `published_degraded` with `eligibility_mode=source_evidence_and_mobile_proof`; customer, B2B, and partner pointers all reference the same immutable snapshot hash.
+- Real customer verification passed for package `5958c8cb-7d0f-4267-8ee2-7bd0f6996c20`: `/packages/{id}`, `/lp/{id}`, and the hydrated `/packages` list returned the source-backed title, 579,000원 price dates, Korean customer copy, reference-image labeling, safe `시간 미정` flight disclosure, itinerary, terms, and consultation CTA. At a 390×844 Chrome viewport, the detail reservation sheet opened with the product context and the LP 상담 신청 flow opened its date/people form. No PII was submitted.
+- This is a real customer-open proof for one source, not a 95% corpus claim. The earlier pre-fix upload job remains a historical blocked terminal record; the current publication pointer and immutable snapshot are authoritative. A fresh production upload/reprocess must be run through the deployed Workflow to produce a new terminal job record under the corrected database gate before broad rollout.
 
 ## V157.1 DeepSeek live sample replay hardening (2026-08-17, latest verification)
 

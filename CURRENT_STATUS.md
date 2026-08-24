@@ -6,6 +6,15 @@
 - 로그인 전용 Supabase 클라이언트는 세션 영속화·자동 갱신을 끈다. 앱의 기준 세션인 HttpOnly 서버 쿠키와 브라우저 localStorage가 같은 회전형 refresh token을 경쟁하는 경로를 제거했다.
 - Vercel Production 빌드는 `NEXT_PUBLIC_SUPABASE_URL`, 공개키, `ADMIN_EMAILS`를 선검증한다. 누락·비 HTTPS URL이면 `prebuild`에서 실패하며 `npm run verify:admin-auth-env`로 로컬에서도 같은 계약을 강제할 수 있다.
 
+## 2026-08-20 상품등록 V6.1 권위 수술 및 고객 노출 격리
+
+- 기존 V6 골격을 정식 권위로 승격하는 V6.1 구현을 통합 worktree에 반영했다. V7 신규 제품 구조는 만들지 않으며, 신규 업로드와 기존 상품 재컴파일이 동일한 immutable source → typed IR → revision → candidate snapshot → 390×844 browser proof → CAS 경로를 사용한다.
+- Release 0 증거 원장과 Release 1/2 안전 경로가 코드·migration·회귀 테스트로 추가됐다. 현재 작업은 로컬 통합 브랜치에서만 진행됐고 운영 DB, 배포, 고객 pointer, 기존 dirty worktree에는 쓰지 않았다.
+- 고객 route는 overlay를 먼저 확인하고 under-review면 snapshot JSON을 선택하지 않은 generic HTTP 200 noindex/no-store 안내로 종료한다. 목록·추천·sitemap·metadata·RSC·JSON-LD에도 기존 상품 사실을 넣지 않는다. 캐시 무효화 outbox는 detail/LP/list/recommendation/sitemap/metadata 태그를 함께 무효화한다.
+- 동결 공개는 runtime freeze manifest의 실제 customer pointer 집합과 pointer-version CAS로만 격리하며, 숫자 9/11을 하드코딩하지 않는다. 해제는 exact revision/snapshot/proof/policy/pointer에 묶인 일회성 `publication_release_authorizations`를 같은 트랜잭션에서 소비하는 경우에만 가능하다.
+- workflow stage·job 실행 상태·terminal outcome을 분리했고 stage retry는 새 attempt_no와 fencing token을 사용한다. source-proof 자동공개 환경변수 우회는 퇴역했으며, fuzzy 관광지 결과는 관리자 review candidate일 뿐 master 자동 INSERT/연결을 하지 않는다.
+- V6.1 migration 파일, upload dedupe 상태 응답, projection lineage, surface render hash, expected-outcome gold metrics, admin freeze/release authorization API와 단위·정적 계약 테스트가 포함됐다. 전체 자동공개는 여전히 OFF이며 400-section gold set과 실제 shadow/canary 검증이 남아 있다.
+
 ## 2026-08-17 상품등록 DeepSeek 실제 샘플 재검증 보강
 
 - 실제 샘플 HWP(`다낭 9월 499 스팟특가 3박4일`)를 pinned `deepseek-v4-flash` pass-a/pass-b에 다시 넣었다. rhwp 0.8.2 추출은 2,296자였고, 두 응답 모두 성공한 뒤 `499,000원(9/13~9/17, 8월 발권 조건)`과 `579,000원(9/21~9/22)` 두 규칙으로 합의했으며 source replay 검증도 통과했다.

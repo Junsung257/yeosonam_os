@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v61-gold-benchmark-result-1",
+  "generatedAt": "2026-08-23T10:00:17.292Z",
+  "runId": "24e820ed-7ce5-4df1-a786-b6bebb42b855",
+  "status": "NOT_RUN",
+  "reason": "Immutable 400-section Gold freeze, dual blind review, and adjudication are not complete.",
+  "goldSections": 0,
+  "metrics": {
+    "criticalFalsePublish": null,
+    "criticalFalseReview": null,
+    "priceExactMatch": null,
+    "departureExactMatch": null,
+    "currencyMatch": null,
+    "exactDateOverrideMatch": null,
+    "variantMatch": null,
+    "entityResolution": null,
+    "malformedPriceAutoCorrection": null,
+    "fuzzyEntityAutoApproval": null,
+    "supplierRawLeakage": null,
+    "nonProductFalseRegistration": null,
+    "positivePathRecall": null
+  },
+  "runner": {
+    "source": "scripts/run-product-registration-95-benchmark.ts",
+    "reviewedBenchmarkSealer": "scripts/seal-product-registration-reviewed-benchmark.ts",
+    "reviewManifestHash": "c232d73acc0a6a05ed6f5e8393653c2f82e3e14199bd7d49874f55918f7aecb2"
+  }
+}

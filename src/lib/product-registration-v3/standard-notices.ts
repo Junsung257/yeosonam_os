@@ -134,7 +134,9 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     risk: 'high',
     visibility: 'customer_visible',
     required: ['amount', 'currency'],
-    render: ({ amount, currency, per }) => `가이드/기사 팁은 ${per ?? '1인'} 기준 ${formatMoney(amount, currency)} 현지 지불입니다.`,
+    render: ({ amount, currency, per }) => typeof amount === 'number' && Number.isFinite(amount)
+      ? `가이드/기사 팁은 ${per ?? '1인'} 기준 ${formatMoney(amount, currency)} 현지 지불입니다.`
+      : '가이드/기사 팁 금액과 적용 조건은 예약 시 확인이 필요합니다.',
   },
   'guide.tip_included': {
     category: 'tip_guideline',
@@ -142,6 +144,22 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     visibility: 'customer_visible',
     required: [],
     render: () => '가이드/기사 팁은 포함되어 있습니다.',
+  },
+  'guide.fee_local_payment': {
+    category: 'surcharge_notice',
+    risk: 'high',
+    visibility: 'customer_visible',
+    required: [],
+    render: ({ amount, currency, per }) => typeof amount === 'number' && Number.isFinite(amount)
+      ? `가이드/기사 비용은 ${per ?? '1인'} 기준 ${formatMoney(amount, currency)} 현지 지불입니다.`
+      : '가이드/기사 비용은 상품가에 포함되지 않을 수 있어 예약 시 최종 확인이 필요합니다.',
+  },
+  'guide.fee_included': {
+    category: 'surcharge_notice',
+    risk: 'high',
+    visibility: 'customer_visible',
+    required: [],
+    render: () => '가이드/기사 비용은 상품에 포함되어 있습니다.',
   },
   'tip.massage_by_region_duration': {
     category: 'tip_guideline',
@@ -315,23 +333,31 @@ function parseUsd(textValue: string): number | null {
   return suffixed ? Number(suffixed[1]) : null;
 }
 
-function guideTipAmountScope(text: string): string {
-  const clauses = text
-    // Preserve monetary thousands separators while isolating the clause that
-    // actually describes the guide tip. Otherwise `30,000원` is split and the
-    // notice loses the amount or borrows a different fee from the same row.
+// A guide-tip fact must be tied to the guide/driver term itself.  A broad
+// `guide ... tip` search misclassifies lines such as "가이드, 마사지(팁별도)"
+// as a guide-tip conflict even though the separate tip belongs to the massage.
+const GUIDE_TIP_DIRECT_RE = /(?:기사|가이드)\s*(?:(?:[\/&·]\s*)?(?:기사|가이드)\s*)?(?:팁|경비)|(?:팁|경비)\s*(?:(?:[\/&·]\s*)?(?:기사|가이드)\s*)?(?:기사|가이드)/u;
+const GUIDE_FEE_RE = /(?:기사|가이드)\s*(?:(?:[\/&·]\s*)?(?:기사|가이드)\s*)?(?:비|경비)/u;
+
+function isGuideFeeClause(text: string): boolean {
+  return GUIDE_FEE_RE.test(text) && !/(?:기사|가이드)\s*팁/u.test(text);
+}
+
+function guideTipClauses(text: string): string[] {
+  return text
     .split(/[,，](?!\d{3}(?:[,，]|\D|$))|[;；▶►]/u)
     .map(value => value.trim())
-    .filter(value => /(?:기사|가이드).*(?:팁|경비)|(?:팁|경비).*(?:기사|가이드)/u.test(value));
+    .filter(value => GUIDE_TIP_DIRECT_RE.test(value));
+}
+
+function guideTipAmountScope(text: string): string {
+  const clauses = guideTipClauses(text);
   return clauses.length > 0 ? clauses.join(' ') : text;
 }
 
 function hasGuideScopedExclusionMarker(text: string): boolean {
-  const guideClauses = text
-    .split(/[,，](?!\d{3}(?:[,，]|\D|$))|[;；▶►]/u)
-    .map(value => value.trim())
-    .filter(value => /(?:기사|가이드).*(?:팁|경비)|(?:팁|경비).*(?:기사|가이드)/u.test(value));
-  return /^(?:\s*[-•·▪▶※★]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：-]?/u.test(text)
+  const guideClauses = guideTipClauses(text);
+  return /^(?:\s*[-•·▪▶※★*]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：-]?/u.test(text)
     || guideClauses.some(clause => /(?:불포함|별도|현지\s*지불|현지지불|개인경비|매너팁|팁\s*별도)/u.test(clause));
 }
 
@@ -416,7 +442,23 @@ export function detectStandardNoticeFromLine(
     });
   }
 
-  if (/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) {
+  if (guideTipClauses(source).length > 0 || /노\s*팁|NO\s*TIP/i.test(source)) {
+    if (isGuideFeeClause(source)) {
+      const amountScope = guideTipAmountScope(source);
+      const usdAmount = parseUsd(amountScope);
+      const krwAmount = usdAmount == null ? parseKrw(amountScope) : { amount: null, currency: null };
+      const amount = usdAmount ?? krwAmount.amount;
+      const currency = usdAmount ? 'USD' : krwAmount.currency;
+      const excluded = hasGuideScopedExclusionMarker(source) || amount != null;
+      return buildStandardNoticeDraft({
+        source_text: source,
+        category: 'surcharge_notice',
+        template_key: excluded ? 'guide.fee_local_payment' : 'guide.fee_included',
+        values: excluded ? { amount, currency, per: /\/P|person|1\s*인/i.test(source) ? '1인' : null } : { included: true },
+        evidence: [evidence],
+        review_status: excluded && amount == null ? 'review_needed' : undefined,
+      });
+    }
     const amountScope = guideTipAmountScope(source);
     const usdAmount = parseUsd(amountScope);
     const krwAmount = usdAmount == null ? parseKrw(amountScope) : { amount: null, currency: null };
@@ -474,8 +516,8 @@ export function detectStandardNoticeFromLine(
     });
   }
 
-  const conditionalNoOptionAlternative = /(?:노\s*옵션|NO\s*OPTION)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
-  const conditionalNoShoppingAlternative = /(?:노\s*쇼핑|NO\s*SHOPPING)\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시).*(?:별도|추가|요금|문의)/i.test(source);
+  const conditionalNoOptionAlternative = /(?:노\s*옵션|NO\s*OPTION)\s*(?:견적|상품|요금|패키지|진행)?\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시|선택\s*시|진행\s*시)/i.test(source);
+  const conditionalNoShoppingAlternative = /(?:노\s*쇼핑|NO\s*SHOPPING)\s*(?:견적|상품|요금|패키지|진행)?\s*(?:시|일\s*경우|경우|요청\s*시|변경\s*시|선택\s*시|진행\s*시)/i.test(source);
 
   if (!conditionalNoOptionAlternative && /노\s*옵션|NO\s*OPTION|선택\s*관광\s*(없|무|0회)/i.test(source)) {
     return buildStandardNoticeDraft({
@@ -520,12 +562,12 @@ export function extractStandardNoticesFromRemarkLines(lines: Array<{ text: strin
     const text = item.text.trim();
     const followedByExcludeHeading = lines
       .slice(itemIndex + 1, itemIndex + 3)
-      .some(next => /^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(next.text.trim()));
+      .some(next => /^(?:[-•·▪▶※★*]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(next.text.trim()));
     if (/^(?:포\s*함(?:\s*내\s*역|\s*사\s*항)?|포함사항|포함\s*내역)\s*[:：]?$/i.test(text)) {
       currentCostSection = 'include';
       continue;
     }
-    if (/^(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(text)) {
+    if (/^(?:[-•·▪▶※★*]?\s*)?(?:불\s*포\s*함(?:\s*내\s*역|\s*사\s*항)?|불포함사항|불포함\s*내역)\s*[:：]?$/i.test(text)) {
       currentCostSection = 'exclude';
       continue;
     }

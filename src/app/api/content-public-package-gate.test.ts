@@ -63,6 +63,7 @@ describe('content generation public package gate', () => {
         expect(text, path).toContain('requireAdminRequest(request)');
         expect(text, path).toContain(retirementCode);
         expect(text, path).toContain('{ status: 410');
+        expect(text, path).not.toMatch(/from\('travel_packages'\)[\s\S]{0,260}\.select\('[^']*(title|price|inclusions|itinerary|product_summary|product_highlights)/);
       } else {
         expect(
           text.includes('loadPublicContentPackageForGeneration') ||

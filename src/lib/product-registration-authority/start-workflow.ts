@@ -3,7 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { start } from 'workflow/api';
 
-import { createProductRegistrationV4Job } from '@/lib/product-registration-v4/jobs';
+import {
+  PRODUCT_REGISTRATION_V4_PARSER_ENGINE,
+  PRODUCT_REGISTRATION_V4_PARSER_VERSION,
+} from '@/lib/product-registration-v4/types';
 import { ensureSourceDocumentStored } from '@/lib/product-registration-v4/source-documents';
 import type { SourceDocumentRecord } from '@/lib/product-registration-v4/types';
 import {
@@ -12,6 +15,8 @@ import {
 } from '@/lib/product-registration/source-departure-year-context';
 import {
   PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+  PRODUCT_REGISTRATION_V6_SCHEMA_VERSION,
+  PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
   type ProductRegistrationV6WorkflowInput,
 } from '@/lib/product-registration-v6/types';
 import {
@@ -20,6 +25,7 @@ import {
   PRODUCT_SOURCE_DEPARTURE_TIMEZONE,
 } from '@/lib/product-registration/future-departure-date-policy';
 import { productRegistrationV6Workflow } from '@/workflows/product-registration-v6';
+import { currentProductRegistrationRendererBuildId } from '@/lib/product-registration-v6/renderer-build';
 
 type CorrectionBinding = {
   correctionJobId: string;
@@ -54,15 +60,24 @@ function defaultRollingDepartureDateInferenceEligible(input: {
     'admin-critical-fact-review',
     'admin-extract',
     'admin-job',
+    // Legacy inventory is reprocessed as a live product-registration input.
+    // It must use the same yearless month/day policy as a fresh upload; treating
+    // it as archive-only turns otherwise valid upcoming departures into
+    // PRICE_DATE_YEAR_MISSING blockers.
+    'legacy_backfill',
   ].includes(input.sourceChannel);
 }
 
 export type KernelWorkflowStartResult = {
   jobId: string;
-  workflowRunId: string;
+  workflowRunId: string | null;
   sourceDocumentId: string;
   sourceHash: string;
   dedupeHit: boolean;
+  currentStage: string;
+  jobState: string;
+  terminalOutcome: string | null;
+  workflowVersion: string;
 };
 
 const SOURCE_DOCUMENT_COLUMNS = [
@@ -159,6 +174,7 @@ export async function startProductRegistrationWorkflowForSource(input: {
   identityBinding?: IdentityBinding;
   dedupeHit?: boolean;
   departureDateReferenceOverride?: DepartureDateReferenceOverride;
+  operationKey?: string | null;
 }): Promise<KernelWorkflowStartResult> {
   const requestId = input.requestId ?? randomUUID();
   const sourceDepartureYearContext = parseProductSourceDepartureYearContext(
@@ -174,13 +190,7 @@ export async function startProductRegistrationWorkflowForSource(input: {
         sourceChannel: input.sourceChannel,
         archiveMode: input.archiveMode ?? false,
       });
-    const job = await createProductRegistrationV4Job({
-      supabase: input.supabase,
-      sourceType: input.source.source_type === 'text' ? 'text' : 'file',
-      sourceDocumentId: input.source.id,
-      normalizedHash: input.source.sha256,
-      tenantId: input.tenantId,
-      initialState: {
+    const initialState = {
         sourceChannel: input.sourceChannel,
         archiveMode: input.archiveMode ?? false,
         bulkMode: input.bulkMode ?? false,
@@ -208,15 +218,71 @@ export async function startProductRegistrationWorkflowForSource(input: {
           correctionProductKey: input.correction.productKey,
           correctionOperationKey: input.correction.operationKey,
         } : {}),
-      },
-      referenceDate: input.departureDateReferenceOverride?.referenceDate,
-    });
-    jobId = job.id;
-    if (typeof job.v6_reference_date !== 'string') {
+    };
+    const operationKey = input.operationKey?.trim()
+      || input.correction?.operationKey
+      || input.identityBinding?.operationKey
+      || `v61:${createHash('sha256').update(JSON.stringify({
+        tenantId: input.tenantId,
+        sourceDocumentId: input.source.id,
+        sourceHash: input.source.sha256,
+        sourceChannel: input.sourceChannel,
+        workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
+        forceRequestId: input.forceReprocess ? requestId : null,
+      })).digest('hex')}`;
+    const { data: reserved, error: reserveError } = await input.supabase.rpc(
+      'reserve_product_registration_v61_job',
+      { p_payload: {
+        tenant_id: input.tenantId,
+        source_document_id: input.source.id,
+        operation_key: operationKey,
+        source_type: input.source.source_type === 'text' ? 'text' : 'file',
+        normalized_hash: input.source.sha256,
+        parser_engine: PRODUCT_REGISTRATION_V4_PARSER_ENGINE,
+        parser_version: PRODUCT_REGISTRATION_V4_PARSER_VERSION,
+        normalizer_version: PRODUCT_REGISTRATION_V4_PARSER_VERSION,
+        initial_state: initialState,
+        date_policy_version: PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION,
+        source_channel: input.sourceChannel,
+        reference_date: input.departureDateReferenceOverride?.referenceDate ?? null,
+        workflow_version: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
+        publication_policy_version: PRODUCT_REGISTRATION_V6_POLICY_VERSION,
+        renderer_version: currentProductRegistrationRendererBuildId(),
+        schema_version: PRODUCT_REGISTRATION_V6_SCHEMA_VERSION,
+        engine_commit_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+      } },
+    );
+    if (reserveError) throw reserveError;
+    const reservation = (reserved ?? {}) as Record<string, unknown>;
+    jobId = String(reservation.job_id ?? '');
+    if (!jobId) throw new Error('PRODUCT_REGISTRATION_JOB_RESERVATION_MISSING');
+    const jobDedupeHit = reservation.dedupe_hit === true;
+    const currentStage = String(reservation.current_stage ?? 'RECEIVED');
+    const jobState = String(reservation.job_state ?? 'QUEUED');
+    const terminalOutcome = typeof reservation.terminal_outcome === 'string'
+      ? reservation.terminal_outcome
+      : null;
+    const existingWorkflowRunId = typeof reservation.workflow_run_id === 'string'
+      ? reservation.workflow_run_id
+      : null;
+    if (jobDedupeHit && (jobState !== 'QUEUED' || existingWorkflowRunId)) {
+      return {
+        jobId,
+        workflowRunId: existingWorkflowRunId,
+        sourceDocumentId: input.source.id,
+        sourceHash: input.source.sha256,
+        dedupeHit: true,
+        currentStage,
+        jobState,
+        terminalOutcome,
+        workflowVersion: String(reservation.workflow_version ?? PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION),
+      };
+    }
+    if (typeof reservation.reference_date !== 'string') {
       throw new Error('PRODUCT_REGISTRATION_DEPARTURE_REFERENCE_DATE_MISSING');
     }
-    const referenceDate = assertProductDepartureReferenceDate(job.v6_reference_date);
-    if (job.v6_date_policy_version !== PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION) {
+    const referenceDate = assertProductDepartureReferenceDate(reservation.reference_date);
+    if (reservation.date_policy_version !== PRODUCT_SOURCE_DEPARTURE_DATE_POLICY_VERSION) {
       throw new Error('PRODUCT_REGISTRATION_DEPARTURE_DATE_POLICY_VERSION_MISMATCH');
     }
     if (input.correction) {
@@ -280,7 +346,11 @@ export async function startProductRegistrationWorkflowForSource(input: {
       workflowRunId: run.runId,
       sourceDocumentId: input.source.id,
       sourceHash: input.source.sha256,
-      dedupeHit: input.dedupeHit ?? false,
+      dedupeHit: jobDedupeHit,
+      currentStage: 'RECEIVED',
+      jobState: 'RUNNING',
+      terminalOutcome: null,
+      workflowVersion: PRODUCT_REGISTRATION_V6_WORKFLOW_VERSION,
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -338,6 +408,7 @@ export async function startProductRegistrationWorkflowBySourceId(input: {
   identityBinding?: IdentityBinding;
   dedupeHit?: boolean;
   departureDateReferenceOverride?: DepartureDateReferenceOverride;
+  operationKey?: string | null;
 }): Promise<KernelWorkflowStartResult> {
   const source = await loadProductRegistrationSource({
     supabase: input.supabase,

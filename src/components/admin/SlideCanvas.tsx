@@ -132,7 +132,7 @@ export default function SlideCanvas({
           <span className={`${
             slide.overlay_style === 'light' ? 'text-admin-muted-2' : 'text-white/40'
           } ${isPreview ? 'text-[4px]' : 'text-[9px]'}`}>
-            yeosonam.co.kr
+            yeosonam.com
           </span>
         </div>
       </div>

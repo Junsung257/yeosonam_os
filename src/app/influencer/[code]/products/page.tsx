@@ -82,8 +82,8 @@ export default function InfluencerProducts() {
       const linkJson = await linkRes.json();
       const promoJson = await promoRes.json();
 
-      // approved 상태만 표시
-      setPackages((pkgJson.packages || []).filter((p: Package) => p.status === 'approved'));
+      // /api/packages의 고객 공개 카탈로그는 이미 exact pointer 검증을 마친 행만 반환한다.
+      setPackages(pkgJson.packages || []);
       setLinks(linkJson.links || []);
       setPromoCodes(promoJson.promo_codes || []);
     } catch { /* ignore */ } finally {

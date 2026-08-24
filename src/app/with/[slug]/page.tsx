@@ -8,7 +8,7 @@ import AffiliateTouchpointBeacon from '@/components/affiliate/AffiliateTouchpoin
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { listCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { listPublicCatalog, type PublicCatalogItem } from '@/lib/public-catalog';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
   if (!input) return null;
@@ -91,7 +91,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const socialTitle = `${name} x Yeosonam`;
   return {
     title,
-    description: `${name}님과 함께하는 여소남 패키지 여행. 제휴 혜택이 적용됩니다.`,
+    description: `${name}님과 함께 살펴보는 여소남 여행상품입니다. 가격과 예약 조건은 상담 시 다시 확인합니다.`,
     robots: { index: false, follow: false },
     alternates: { canonical },
     openGraph: {
@@ -154,33 +154,16 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
 
   const pickIds = (row.landing_pick_package_ids || []).filter(Boolean);
 
-  let picks: Array<{
-    id: string;
-    title: string;
-    destination?: string | null;
-    country?: string | null;
-    price?: number | null;
-    display_title?: string | null;
-    product_summary?: string | null;
-    product_highlights?: string[] | null;
-  }> = [];
+  let picks: PublicCatalogItem[] = [];
 
   try {
-    const published = await listCurrentPublicPackageCardSnapshots(supabaseAdmin, { limit: 1_000 });
     if (pickIds.length > 0) {
       const order = new Map(pickIds.map((id, i) => [id, i]));
-      picks = published
-        .filter(item => pickIds.includes(String(item.id ?? '')))
-        .sort(
-          (a, b) => {
-            const aId = typeof a.id === 'string' ? a.id : '';
-            const bId = typeof b.id === 'string' ? b.id : '';
-            return (order.get(aId) ?? 99) - (order.get(bId) ?? 99);
-          },
-        ) as typeof picks;
+      picks = (await listPublicCatalog(supabaseAdmin, { ids: pickIds, limit: pickIds.length }))
+        .sort((a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER));
     }
     if (picks.length === 0) {
-      picks = published.slice(0, 6) as typeof picks;
+      picks = await listPublicCatalog(supabaseAdmin, { limit: 6 });
     }
   } catch {
     picks = [];
@@ -189,9 +172,8 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   const refQ = encodeURIComponent(row.referral_code);
   const intro =
     row.landing_intro?.trim() ||
-    `안녕하세요, ${row.name}입니다. 여소남과 함께 엄선한 패키지를 소개합니다. 아래 상품은 이 링크로 예약 시 제휴 혜택이 적용됩니다.`;
+    `안녕하세요, ${row.name}입니다. 여소남과 함께 살펴볼 수 있는 여행상품을 소개합니다. 가격과 예약 가능 여부는 상담 시 다시 확인합니다.`;
   const youtubeEmbedUrl = extractYoutubeEmbedUrl(row.landing_video_url || row.landing_intro);
-  const campaignEndsAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -201,8 +183,7 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         <section className="border-b border-gray-200 bg-white">
           <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-900">
-              <strong>{row.name}</strong>님이 직접 검증한 팬 전용 추천 상품입니다. 기간 한정 혜택은{' '}
-              <span className="font-semibold">{campaignEndsAt.slice(0, 10)}</span>까지 적용됩니다.
+              <strong>{row.name}</strong>님과 함께 살펴보는 현재 공개 상품입니다. 가격과 예약 가능 여부는 상담 시 다시 확인합니다.
             </div>
             <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:justify-center">
               <div className="flex shrink-0 items-center gap-4">
@@ -284,32 +265,25 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
           ) : (
             <ul className="grid gap-5 sm:grid-cols-2">
               {picks.map(pkg => {
-                const title = pkg.display_title || pkg.title;
-                const highlight = pkg.product_highlights?.[0] || pkg.product_summary || '';
                 return (
                   <li key={pkg.id}>
                     <Link
-                      href={`/packages/${encodeURIComponent(pkg.id)}?ref=${refQ}`}
+                      href={`/packages/${encodeURIComponent(pkg.slug || pkg.id)}?ref=${refQ}`}
                       className="block h-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-emerald-400 hover:shadow-md"
                     >
                       <div className="text-xs font-medium text-emerald-700">
                         {[pkg.destination, pkg.country].filter(Boolean).join(' · ')}
                       </div>
-                      <h3 className="mt-1 line-clamp-2 text-lg font-semibold text-gray-900">{title}</h3>
-                      {highlight ? (
-                        <p className="mt-2 line-clamp-2 text-sm text-gray-600">{highlight}</p>
-                      ) : null}
-                      {typeof pkg.price === 'number' ? (
-                        <div className="mt-4">
-                          <p className="text-sm text-gray-500 line-through">
-                            일반가 {pkg.price.toLocaleString('ko-KR')}원
-                          </p>
-                          <p className="text-lg font-bold text-rose-600">
-                            팬 전용가 {Math.max(0, Math.floor(pkg.price * 0.95)).toLocaleString('ko-KR')}
-                            <span className="text-sm font-medium text-rose-500">원~</span>
-                          </p>
-                        </div>
-                      ) : null}
+                      <h3 className="mt-1 line-clamp-2 text-lg font-semibold text-gray-900">{pkg.title}</h3>
+                      <p className="mt-2 text-sm text-gray-600">
+                        {[pkg.departureAirport, pkg.duration ? `${pkg.duration}일` : null].filter(Boolean).join(' · ')}
+                      </p>
+                      <p className="mt-4 text-lg font-bold text-rose-600">
+                        {pkg.priceDisplay || (typeof pkg.price === 'number'
+                          ? `${pkg.price.toLocaleString('ko-KR')}원~`
+                          : '가격 확인 필요')}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">최근 확인 {pkg.lastVerifiedAt.slice(0, 10)}</p>
                       <span className="mt-3 inline-block text-sm font-medium text-emerald-800">상세 보기</span>
                     </Link>
                   </li>

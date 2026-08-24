@@ -60,6 +60,16 @@ function terminalOutcomeForDocumentClass(documentClass: string): ProductRegistra
   return 'blocked_action_required';
 }
 
+function benchmarkOutcomeForPrediction(input: {
+  predictedOutcome: ProductRegistrationBenchmarkCase['predictedOutcome'];
+  terminalOutcome: ProductRegistrationV6TerminalOutcome;
+}): ProductRegistrationBenchmarkCase['predictedExpectedOutcome'] {
+  if (input.terminalOutcome === 'discarded_non_travel') return 'EXPECTED_NON_PRODUCT';
+  if (input.terminalOutcome === 'discarded_source_incomplete') return 'EXPECTED_SOURCE_INCOMPLETE';
+  if (input.predictedOutcome !== 'blocked') return 'EXPECTED_PUBLISHABLE';
+  return 'EXPECTED_REVIEW_REQUIRED';
+}
+
 type BenchmarkManifest = {
   schemaVersion: 'product-registration-reviewed-benchmark-1' | typeof PRODUCT_REGISTRATION_BENCHMARK_SCHEMA_VERSION;
   corpusVersion: string;
@@ -141,6 +151,9 @@ async function main(): Promise<void> {
       segmentExact: false,
       predictedOutcome: 'blocked',
       predictedTerminalOutcome: 'blocked_action_required',
+      expectedOutcome: reviewed.annotation.sections[sectionIndex]?.expectedOutcome ?? 'EXPECTED_REVIEW_REQUIRED',
+      predictedExpectedOutcome: 'EXPECTED_REVIEW_REQUIRED',
+      criticalSourceSpanExact: false,
       expectedSourceIncompleteDiscard: false,
       criticalFalsePublish: false,
       criticalFieldCount: 0,
@@ -292,6 +305,10 @@ async function main(): Promise<void> {
         segmentExact,
         predictedOutcome,
         predictedTerminalOutcome,
+        expectedOutcome: groundTruth.expectedOutcome,
+        predictedExpectedOutcome: benchmarkOutcomeForPrediction({ predictedOutcome, terminalOutcome: predictedTerminalOutcome }),
+        criticalSourceSpanExact: segmentation.exact
+          && comparison.criticalExactCount === comparison.criticalFieldCount,
         expectedTerminalOutcome,
         publicationEligible,
         expectedSourceIncompleteDiscard,

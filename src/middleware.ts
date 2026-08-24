@@ -8,6 +8,8 @@ import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { PLATFORM_PRODUCT_REGISTRATION_TENANT_ID } from '@/lib/product-registration-authority/types';
+import { configuredSiteUrl, isApprovedProductionEnvironment } from '@/lib/preview-metadata';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -100,6 +102,7 @@ const PUBLIC_EXACT = new Set([
   '/privacy',
   '/private-tour',
   '/packages',
+  '/product-review',
   '/terms',
   '/auth/callback',
   '/auth/reset-password',
@@ -157,6 +160,11 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/resweep-unmatched',
   '/api/cron/upload-review-auto-replay',
   '/api/cron/upload-to-open-autopilot',
+  '/api/cron/product-registration-learning-report',
+  '/api/cron/product-registration-schedule-revalidation',
+  '/api/cron/product-registration-v4',
+  '/api/cron/product-registration-v5-convergence',
+  '/api/cron/product-registration-v5-outbox',
   '/api/cron/product-registration-v6-backfill',
   '/api/cron/product-registration-v6-watchdog',
   '/api/cron/embed-products',
@@ -620,9 +628,12 @@ async function publicDestinationExists(destinationOrSlug: string): Promise<boole
   return packageDestinationExists(destinationOrSlug);
 }
 
-async function getPublicPackageAvailabilityResponse(pathname: string): Promise<NextResponse | null> {
+async function getPublicPackageAvailabilityResponse(request: NextRequest): Promise<NextResponse | null> {
+  const { pathname } = request.nextUrl;
   const match = pathname.match(/^\/(?:packages|lp)\/([^/]+)\/?$/);
   if (!match) return null;
+  if (request.nextUrl.searchParams.has('__proof_snapshot')
+    && request.headers.has('x-product-registration-v6-proof-token')) return null;
   const config = getSupabaseRestConfig();
   if (!config) return NextResponse.json(
     { code: 'PACKAGE_AVAILABILITY_UNAVAILABLE' },
@@ -638,48 +649,34 @@ async function getPublicPackageAvailabilityResponse(pathname: string): Promise<N
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
-    let packageId = packageRef;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(packageId)) {
-      const identityUrl = new URL(`${config.url}/rest/v1/travel_packages`);
-      identityUrl.searchParams.set('short_code', `eq.${packageRef}`);
-      identityUrl.searchParams.set('select', 'id');
-      identityUrl.searchParams.set('limit', '1');
-      const identityResponse = await fetch(identityUrl, { headers, cache: 'no-store', signal: controller.signal });
-      if (!identityResponse.ok) throw new Error('PACKAGE_IDENTITY_LOOKUP_FAILED');
-      const identities = await identityResponse.json();
-      packageId = Array.isArray(identities) && typeof identities[0]?.id === 'string' ? identities[0].id : '';
-      if (!packageId) return null;
-    }
-    const pointerUrl = new URL(`${config.url}/rest/v1/product_registration_v5_publication_pointers`);
-    pointerUrl.searchParams.set('package_id', `eq.${packageId}`);
-    pointerUrl.searchParams.set('channel', 'eq.customer');
-    pointerUrl.searchParams.set('locale', 'eq.ko-KR');
-    pointerUrl.searchParams.set('state', 'eq.published');
-    pointerUrl.searchParams.set('select', 'catalog_product_id');
-    pointerUrl.searchParams.set('limit', '1');
-    const pointerResponse = await fetch(pointerUrl, { headers, cache: 'no-store', signal: controller.signal });
-    if (!pointerResponse.ok) throw new Error('PACKAGE_POINTER_LOOKUP_FAILED');
-    const pointers = await pointerResponse.json();
-    const catalogProductId = Array.isArray(pointers) && typeof pointers[0]?.catalog_product_id === 'string'
-      ? pointers[0].catalog_product_id
-      : null;
-    if (!catalogProductId) return null;
-    const overlayResponse = await fetch(`${config.url}/rest/v1/rpc/get_product_registration_availability_overlays`, {
+    const overlayResponse = await fetch(`${config.url}/rest/v1/rpc/get_product_registration_customer_route_state`, {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ p_catalog_product_ids: [catalogProductId], p_channel: 'customer' }),
+      body: JSON.stringify({
+        p_tenant_id: process.env.PRODUCT_REGISTRATION_PLATFORM_TENANT_ID
+          ?? PLATFORM_PRODUCT_REGISTRATION_TENANT_ID,
+        p_route_ref: packageRef,
+        p_channel: 'customer',
+        p_locale: 'ko-KR',
+      }),
       cache: 'no-store',
       signal: controller.signal,
     });
     clearTimeout(timer);
     if (!overlayResponse.ok) throw new Error('PACKAGE_AVAILABILITY_LOOKUP_FAILED');
-    const overlays = await overlayResponse.json();
-    if (Array.isArray(overlays) && overlays.some(row =>
-      ['closed', 'sold_out', 'suspended'].includes(String(row?.sale_state ?? '')))) {
-      return NextResponse.json(
-        { code: 'PACKAGE_SALE_UNAVAILABLE' },
-        { status: 410, headers: { 'Cache-Control': 'no-store, max-age=0' } },
-      );
+    const routeState = await overlayResponse.json() as { state?: unknown };
+    if (routeState?.state === 'UNDER_REVIEW') {
+      const reviewUrl = request.nextUrl.clone();
+      reviewUrl.pathname = '/product-review';
+      reviewUrl.search = '';
+      const reviewResponse = NextResponse.rewrite(reviewUrl);
+      reviewResponse.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      reviewResponse.headers.set('Cache-Control', 'no-store, max-age=0');
+      reviewResponse.headers.set('Vary', 'RSC, Next-Router-State-Tree, Next-Router-Prefetch');
+      return reviewResponse;
+    }
+    if (routeState?.state !== 'PUBLIC' && routeState?.state !== 'NOT_FOUND') {
+      throw new Error('PACKAGE_VISIBILITY_STATE_INVALID');
     }
     return null;
   } catch {
@@ -795,7 +792,7 @@ function maybeSkipCronAtMiddleware(request: NextRequest, pathname: string): Resp
   return maybeSkipCronForResourceSaver(request, cronName);
 }
 
-export async function middleware(request: NextRequest) {
+async function handleMiddleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
   const isDev = process.env.NODE_ENV !== 'production';
@@ -822,6 +819,17 @@ export async function middleware(request: NextRequest) {
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급
   const cronResourceSaverResponse = maybeSkipCronAtMiddleware(request, pathname);
   if (cronResourceSaverResponse) return cronResourceSaverResponse as NextResponse;
+
+  // Cron handlers perform their own route-local bearer validation.  Once the
+  // request has been authenticated as a Vercel cron invocation, let it reach
+  // that guard instead of falling through to the browser-session redirect
+  // below.  Without this pass-through, every scheduled registration
+  // convergence/outbox run is rewritten to /login and the durable worker can
+  // never repair a transient cache miss.
+  if (getCronNameFromPathname(pathname)
+    && (request.headers.get('x-vercel-cron') === '1' || cronSecretAllowsRequest(request))) {
+    return NextResponse.next();
+  }
 
   let response: NextResponse | null = null;
   const existingSession = request.cookies.get('ys_session_id')?.value;
@@ -914,7 +922,7 @@ export async function middleware(request: NextRequest) {
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
   if (isPublicPath(request)) {
-    const availabilityResponse = await getPublicPackageAvailabilityResponse(pathname);
+    const availabilityResponse = await getPublicPackageAvailabilityResponse(request);
     if (availabilityResponse) return availabilityResponse;
     return response || NextResponse.next();
   }
@@ -961,6 +969,9 @@ export async function middleware(request: NextRequest) {
     || pathname.startsWith('/api/content-hub/')
   ) {
     const adminTokenHeader = request.headers.get('x-admin-token');
+    const registrationUploadTokenHeader = pathname === '/api/upload'
+      ? request.headers.get('x-product-registration-upload-token') || request.headers.get('authorization')
+      : null;
     if (adminTokenHeader) {
       const { isValidAdminApiToken } = await import('@/lib/api-auth');
       if (isValidAdminApiToken(request)) {
@@ -971,6 +982,11 @@ export async function middleware(request: NextRequest) {
         { status: 403 },
       );
     }
+    // The upload-only credential is authorized again by withAdminGuard in the
+    // Node route. Letting the request reach that guard avoids relying on
+    // secret reads inside the Edge bundle while keeping the token scoped to
+    // this single endpoint.
+    if (registrationUploadTokenHeader) return response || NextResponse.next();
   }
 
   // ── 3-2. 개발 전용: 어드민 페이지 + API 우회 쿠키 허용 (프로덕션 완전 차단) ──
@@ -1060,6 +1076,23 @@ export async function middleware(request: NextRequest) {
   const loginUrl = new URL(loginPath, request.url);
   loginUrl.searchParams.set('redirect', pathname);
   return NextResponse.redirect(loginUrl);
+}
+
+export async function middleware(request: NextRequest) {
+  const response = await handleMiddleware(request);
+  const requestHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || request.headers.get('host');
+  const isApprovedProduction = isApprovedProductionEnvironment({
+    vercelEnv: process.env.VERCEL_ENV,
+    siteUrl: configuredSiteUrl(),
+    requestHost,
+  });
+
+  if (!isApprovedProduction) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  }
+
+  return response;
 }
 
 export const config = {

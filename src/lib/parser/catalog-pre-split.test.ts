@@ -33,6 +33,50 @@ describe('splitCatalogByItineraryHeaders', () => {
     expect(splitCatalogByItineraryHeaders(raw).sections).toHaveLength(1);
   });
 
+  it('folds a title-only envelope into the following decorated itinerary card', () => {
+    const raw = [
+      '큐슈 초석 시내 1박2일',
+      '♡유후인♡태재부♡이토시마',
+      '+++ 가성비 甲, 실속 후쿠오카 +++',
+      '★ 초석 패턴 1박 2일 특가 ★',
+      '상품가',
+      '8/27 (목)',
+      '319,000원',
+      '9/15 (화)',
+      '299,000원',
+      '포함사항 왕복항공료 호텔',
+      '불포함사항 개인경비',
+      '제1일 부산 출발',
+      '제2일 부산 도착',
+    ].join('\\n');
+
+    const result = splitCatalogByItineraryHeaders(raw);
+
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0]).toContain('큐슈 초석 시내 1박2일');
+    expect(result.sections[0]).toContain('319,000원');
+    expect(result.sections[0]).toContain('제2일 부산 도착');
+  });
+
+  it('keeps a destination title when the itinerary card starts with a date line', () => {
+    const raw = [
+      '몽골 울란바토르 테를지 4박6일',
+      '출 발 일',
+      '5/8 또는 5/15 출발 (4박6일)',
+      '상품가 1,419,000원',
+      '포함사항 왕복항공료 호텔',
+      '불포함사항 개인경비',
+      '제1일 부산 출발',
+      '제6일 부산 도착',
+    ].join('\\n');
+
+    const result = splitCatalogByItineraryHeaders(raw);
+
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0]).toContain('몽골 울란바토르 테를지 4박6일');
+    expect(result.sections[0]).toContain('상품가 1,419,000원');
+  });
+
   it('does not turn a price-matrix duration column into an extra product', () => {
     const raw = [
       '공통 가격표',
@@ -1027,6 +1071,57 @@ ${'요금 행 '.repeat(320)}
     expect(sections).toHaveLength(1);
     expect(sections[0]).toContain('709,000');
     expect(sections[0]).toContain('제4일 BX322');
+  });
+
+  it('merges a repeated price/detail card when USJ is written in Korean on one heading', () => {
+    const raw = [
+      '부산-오사카 1일자유orUSJor고베 3박4일 [중중] 관광PKG',
+      '출 발 일',
+      '상 품 가',
+      '8/1-8/31',
+      '2, 3, 4, 5',
+      '969,000',
+      '부산-오사카 1일 자유OR유니버셜OR고베 3박4일 [중중] 관광PKG',
+      '출발날짜',
+      '26년 8월 – 10월 매일 출발',
+      '포함 왕복항공료, 호텔, 식사',
+      '불포함 개인경비',
+      '제1일 BX126 부산 출발',
+      '제2일 오사카 관광',
+      '제3일 교토 관광',
+      '제4일 BX125 부산 도착',
+    ].join('\n');
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('969,000');
+    expect(sections[0]).toContain('제4일 BX125 부산 도착');
+  });
+
+  it('keeps a 출발 요일 price card with the adjacent same-product itinerary', () => {
+    const raw = [
+      '[VN] 베트남 호치민 3박5일 일정표',
+      '출발 요일',
+      '상품가',
+      '4/1~29',
+      '799,000',
+      '요금표 설명 '.repeat(320),
+      '베트남 호치민 3박5일 PKG',
+      '포함 왕복항공료, 호텔, 식사',
+      '불포함 개인경비',
+      '제1일 VN423 인천 출발',
+      '제2일 호치민 시내관광',
+      '제3일 메콩델타 관광',
+      '제4일 자유일정',
+      '제5일 VN422 인천 도착',
+    ].join('\n');
+
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toContain('799,000');
+    expect(sections[0]).toContain('제5일 VN422');
   });
 
   it('keeps a standalone itinerary label attached to the product title above it', () => {

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "v61-adjudication-queue-controller-1",
+  "status": "WAITING_HUMAN_REVIEW",
+  "disagreementCount": null,
+  "criticalUnresolvedCount": null,
+  "adjudicationComplete": false
+}

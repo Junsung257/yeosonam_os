@@ -1,4 +1,5 @@
 import type { AngleType } from './content-generator';
+import type { PublishedProductFact } from './product-registration-authority/read-model';
 
 type ProductWithOpsFields = {
   id: string;
@@ -27,7 +28,7 @@ type ProductWithOpsFields = {
 
 export type ProductBlogBrief = {
   content_type: 'package_intro';
-  prompt_version: 'product-template-v4';
+  prompt_version: 'product-template-v4' | 'product-template-v6.1-published-fact-1';
   product_id: string;
   product_title: string;
   destination: string | null;
@@ -56,6 +57,10 @@ export type ProductBlogBrief = {
   reader_fit: string[];
   cautions: string[];
   dedup_key: string;
+  source_revision_id?: string;
+  source_snapshot_hash?: string;
+  as_of_date?: string;
+  refresh_required_at?: string;
 };
 
 function sanitizeSlugPart(value: unknown, fallback = ''): string {
@@ -275,5 +280,47 @@ export function buildProductBlogBrief(product: ProductWithOpsFields, angle: Angl
     reader_fit: fitFor,
     cautions: riskNotes,
     dedup_key: buildProductDedupKey(product),
+  };
+}
+
+/**
+ * Builds the blog brief from the V6.1 published fact view. This adapter is the
+ * only supported path for automated product articles: it receives the exact
+ * publication pointer/snapshot and typed departures, so legacy `price`,
+ * `net_price`, supplier raw, and draft fields cannot enter the brief.
+ */
+export function buildProductBlogBriefFromPublishedFact(fact: PublishedProductFact, angle: AngleType): ProductBlogBrief {
+  const card = fact.cardProjection;
+  const lp = fact.lpProjection;
+  const departures = fact.departureInstances
+    .filter(row => row.adult_selling_price !== null && ['PRICED', 'REQUEST_ONLY'].includes(row.pricing_state))
+    .sort((a, b) => a.departure_date.localeCompare(b.departure_date));
+  const inclusions = Array.isArray(lp.inclusions) ? lp.inclusions.map(String) : [];
+  const exclusions = Array.isArray(lp.excludes ?? lp.exclusions) ? (lp.excludes ?? lp.exclusions) as unknown[] : [];
+  const safeProduct: ProductWithOpsFields = {
+    id: fact.packageId,
+    title: typeof card.title === 'string' ? card.title : typeof lp.title === 'string' ? lp.title : null,
+    destination: typeof card.destination === 'string' ? card.destination : typeof lp.destination === 'string' ? lp.destination : null,
+    duration: typeof lp.duration === 'number' ? lp.duration : null,
+    nights: typeof lp.nights === 'number' ? lp.nights : null,
+    inclusions,
+    excludes: exclusions.map(String),
+    price_dates: departures.map(row => ({
+      date: row.departure_date,
+      price: row.adult_selling_price,
+      currency: row.currency,
+      pricing_state: row.pricing_state,
+      booking_state: row.booking_state,
+    })),
+    itinerary_data: Array.isArray(lp.itinerary) ? { days: lp.itinerary } : null,
+  };
+  const brief = buildProductBlogBrief(safeProduct, angle);
+  return {
+    ...brief,
+    prompt_version: 'product-template-v6.1-published-fact-1',
+    source_revision_id: fact.sourceRevisionId,
+    source_snapshot_hash: fact.snapshotHash,
+    as_of_date: fact.asOfDate,
+    refresh_required_at: fact.refreshRequiredAt,
   };
 }

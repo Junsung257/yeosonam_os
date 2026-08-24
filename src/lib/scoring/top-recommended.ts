@@ -13,7 +13,7 @@
  *   "랜덤 패키지 광고" → 떨어지는 패키지 광고비 낭비 ↓
  */
 import { supabaseAdmin } from '@/lib/supabase';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { listPublicCatalog } from '@/lib/public-catalog';
 
 export interface TopPackage {
   package_id: string;
@@ -54,10 +54,19 @@ export async function getTopRecommendedPackages(opts: TopOptions = {}): Promise<
     dedupePackage = true,
   } = opts;
 
+  const publicCatalog = await listPublicCatalog(supabaseAdmin, {
+    limit: Math.max(100, limit * 20),
+    ...(destination ? { destination } : {}),
+  });
+  const publicDestinationById = new Map(publicCatalog.map((item) => [item.id, item.destination ?? '']));
+  const publicIds = [...publicDestinationById.keys()];
+  if (publicIds.length === 0) return [];
+
   const today = new Date().toISOString().slice(0, 10);
   let q = supabaseAdmin
     .from('package_scores')
-    .select('package_id, group_key, departure_date, rank_in_group, group_size, effective_price, list_price, topsis_score, travel_packages!inner(destination, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
+    .select('package_id, group_key, departure_date, rank_in_group, group_size, effective_price, list_price, topsis_score')
+    .in('package_id', publicIds)
     .gte('group_size', minGroupSize)
     .lte('rank_in_group', maxRank)
     .gte('departure_date', departureFrom ?? today)
@@ -66,43 +75,21 @@ export async function getTopRecommendedPackages(opts: TopOptions = {}): Promise<
     .order('topsis_score', { ascending: false })
     .limit(limit * 5); // dedupe 여유분
 
-  if (destination) q = q.ilike('travel_packages.destination', `%${destination}%`);
   if (departureTo) q = q.lte('departure_date', departureTo);
 
   const { data, error } = await q;
   if (error) throw new Error(`getTopRecommendedPackages 실패: ${error.message}`);
 
-  type JoinedPackage = {
-    destination: string;
-    status: string;
-    publication_state?: string | null;
-    audit_status?: string | null;
-    audit_report?: unknown;
-    updated_at?: string | null;
-    optional_tours?: unknown;
-    itinerary_data?: unknown;
-  };
-  const rows = (data ?? []) as unknown as Array<TopPackage & {
-    travel_packages: JoinedPackage | JoinedPackage[];
-  }>;
-
-  // active/approved만
-  const active = rows.filter(r => {
-    const tp = Array.isArray(r.travel_packages) ? r.travel_packages[0] : r.travel_packages;
-    return tp
-      && (tp.publication_state === 'approved' || tp.publication_state === 'published')
-      && isCustomerPubliclyOpenable(tp);
-  });
+  const active = (data ?? []) as unknown as TopPackage[];
 
   const seen = new Set<string>();
   const out: TopPackage[] = [];
   for (const r of active) {
-    const tp = Array.isArray(r.travel_packages) ? r.travel_packages[0] : r.travel_packages;
     if (dedupePackage && seen.has(r.package_id)) continue;
     seen.add(r.package_id);
     out.push({
       package_id: r.package_id,
-      destination: tp?.destination ?? '',
+      destination: publicDestinationById.get(r.package_id) ?? '',
       group_key: r.group_key,
       departure_date: r.departure_date,
       rank_in_group: r.rank_in_group,

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "v61-gold-source-inventory-readout-1",
+  "capturedAt": "2026-08-23T06:26:28+09:00",
+  "status": "INCOMPLETE_NOT_GOLD",
+  "privateCorpusArtifacts": [
+    {
+      "artifact": "product-registration-current-corpus-v181-live-policy-full.json",
+      "sha256": "c6dbfa52e4eab9f4b350ab69e72eed76dc1248b84b766be275268d9bfd1df7bd",
+      "rows": 1171,
+      "uniqueSourceHashes": 1047,
+      "travelSources": 895,
+      "travelSections": 1698,
+      "frozenSectionsReported": 249,
+      "sourcePathsPresent": 40,
+      "sourceHashesVerified": 40,
+      "sourcePathsMissing": 1131,
+      "sourceHashMismatchesAmongPresent": 0,
+      "interpretation": "Historical private corpus metadata; missing originals cannot be used as Gold evidence."
+    },
+    {
+      "artifact": "product-registration-current-corpus-v181-live-policy.json",
+      "sha256": "3ccb0c86fc1516f43ec84952137c7d0d710f2c9268ea7c262333fa06acbd9f1c",
+      "rows": 40,
+      "uniqueSourceHashes": 40,
+      "travelSources": 40,
+      "travelSections": 69,
+      "frozenSources": 3,
+      "frozenSections": 10,
+      "sourceHashesVerified": 40,
+      "sourceHashMismatches": 0,
+      "interpretation": "Only currently verifiable source-backed candidate inventory; not Gold."
+    }
+  ],
+  "existingFrozenReviewQueue": {
+    "artifact": "product-registration-review-queue-frozen-20260814-v15.json",
+    "sha256": "c102c0fe3fce9164dd7ae40de596cd9b6bd7421332fe90ccc9ef373b08bca8d6",
+    "sourceCases": 164,
+    "sourcePathsPresent": 0,
+    "sourceHashesVerified": 0,
+    "reviewerARecords": 0,
+    "reviewerBRecords": 0,
+    "adjudicatorRecords": 0,
+    "goldEligible": false
+  },
+  "certificateConditions": {
+    "finalSectionCount": { "required": 400, "observed": 10, "pass": false },
+    "sourceHashVerified": { "required": 400, "observed": 10, "pass": false },
+    "reviewerAComplete": { "required": 400, "observed": 0, "pass": false },
+    "reviewerBComplete": { "required": 400, "observed": 0, "pass": false },
+    "adjudicationRemaining": { "required": 0, "observed": null, "pass": false },
+    "criticalUnresolved": { "required": 0, "observed": null, "pass": false },
+    "priceGroundTruthComplete": { "required": 400, "observed": 0, "pass": false },
+    "departureGroundTruthComplete": { "required": 400, "observed": 0, "pass": false }
+  }
+}

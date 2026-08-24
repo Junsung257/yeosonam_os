@@ -154,6 +154,9 @@ const postHandler = async (request: NextRequest) => {
       archiveMode: intake.archiveMode,
       bulkMode: intake.bulkMode,
       dedupeHit,
+      operationKey: request.headers.get('idempotency-key')?.trim()
+        || request.headers.get('x-operation-key')?.trim()
+        || null,
     });
 
     return apiResponse({
@@ -163,7 +166,11 @@ const postHandler = async (request: NextRequest) => {
       workflowRunId: started.workflowRunId,
       sourceDocumentId: started.sourceDocumentId,
       inputKind: intake.sourceType,
-      state: 'processing',
+      currentStage: started.currentStage,
+      jobState: started.jobState,
+      terminalOutcome: started.terminalOutcome,
+      statusUrl: `/api/admin/product-registration/jobs/${started.jobId}`,
+      workflowVersion: started.workflowVersion,
       dedupeHit: started.dedupeHit,
       sourceBatch: intake.sourceBatch,
       sourceDepartureYearContext: intake.sourceDepartureYearContext,
@@ -171,14 +178,26 @@ const postHandler = async (request: NextRequest) => {
     }, { status: 202, headers: responseHeaders(requestId) });
   } catch (error) {
     const detail = describeUploadError(error);
+    const operationKeyConflict = detail.includes('REGISTRATION_JOB_OPERATION_KEY_REUSED');
+    const tenantMismatch = detail.includes('REGISTRATION_SOURCE_DOCUMENT_NOT_FOUND');
+    const malformedRequest = error instanceof SyntaxError;
     console.error('[Upload API] kernel intake failed:', { requestId, detail });
     return apiResponse({
       success: false,
-      code: 'PRODUCT_REGISTRATION_INTAKE_FAILED',
+      code: operationKeyConflict
+        ? 'REGISTRATION_OPERATION_KEY_REUSED'
+        : tenantMismatch
+          ? 'REGISTRATION_SOURCE_TENANT_MISMATCH'
+          : malformedRequest
+            ? 'REGISTRATION_REQUEST_INVALID'
+            : 'PRODUCT_REGISTRATION_INTAKE_FAILED',
       error: '상품등록 원문 접수에 실패했습니다. 고객 공개나 레거시 등록은 실행하지 않았습니다.',
       details: process.env.NODE_ENV === 'development' ? detail : undefined,
       uploadRequestId: requestId,
-    }, { status: 500, headers: responseHeaders(requestId) });
+    }, {
+      status: operationKeyConflict ? 409 : tenantMismatch ? 403 : malformedRequest ? 400 : 500,
+      headers: responseHeaders(requestId),
+    });
   }
 };
 

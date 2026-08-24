@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v61-gold-progress-controller-1",
+  "runId": "24e820ed-7ce5-4df1-a786-b6bebb42b855",
+  "status": "WAITING_EXTERNAL_SOURCE",
+  "targetSections": 400,
+  "reserveSections": 50,
+  "sourceHashVerifiedRows": 96,
+  "sourceHashVerifiedSections": 191,
+  "frozenCandidateSections": 10,
+  "sourceMissingRows": 1058,
+  "currentCandidate": {
+    "sourceRows": 40,
+    "sections": 69,
+    "frozenSections": 10,
+    "sourceHashVerified": 40
+  },
+  "reviewerA": {
+    "count": 0,
+    "invalid": 0
+  },
+  "reviewerB": {
+    "count": 0,
+    "invalid": 0
+  },
+  "sameReviewerDetected": false,
+  "goldQualifiedSections": 0,
+  "certificateIssued": false
+}
