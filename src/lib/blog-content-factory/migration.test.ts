@@ -9,6 +9,10 @@ const rollback = readFileSync(
   'supabase/rollbacks/blog-v4-content-factory-20260819.sql',
   'utf8',
 ).toLowerCase();
+const terminalizationMigration = readFileSync(
+  'supabase/migrations/20260824114843_blog_v4_operation_terminalization.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -42,6 +46,17 @@ describe('Blog V4 content factory migration contract', () => {
     expect(migration).toContain('blog_demand_signal_cluster_conflict');
     expect(migration).toContain('v_expires_at, v_verified_at');
     expect(migration).toContain("lease_expires_at = now() + interval '15 minutes'");
+  });
+
+  it('adds one fenced terminalizer for fatal and review handoffs', () => {
+    expect(terminalizationMigration).toContain('terminalize_blog_content_operation_v4');
+    expect(terminalizationMigration).toContain('requeue_blog_content_operation_v4');
+    expect(terminalizationMigration).toContain('fencing_token = fencing_token + 1');
+    expect(terminalizationMigration).toContain("status not in (\n    'failed', 'human_review', 'approved_for_slot'");
+    expect(terminalizationMigration).toContain('lease_owner = null');
+    expect(terminalizationMigration).toContain('lease_expires_at = null');
+    expect(terminalizationMigration).toContain('completed_at = coalesce(completed_at, now())');
+    expect(terminalizationMigration).toContain('to service_role');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {

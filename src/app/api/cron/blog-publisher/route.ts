@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
 import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
@@ -63,6 +64,7 @@ import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
 import { recordBlogContentOperationStageV4 } from '@/lib/blog-content-factory/repository';
+import { buildBlogPublisherOperationResponseV4 } from '@/lib/blog-content-factory/publisher-response';
 import {
   slugifyTopic,
   romanize,
@@ -1582,6 +1584,13 @@ async function runBlogPublisher(request: NextRequest) {
       )),
     );
   if (!schemaReadiness.publishReady || !schemaReadiness.deliveryReady) {
+    if (requestedOperationId) {
+      return buildBlogPublisherOperationResponseV4({
+        operationId: requestedOperationId,
+        resultStatus: 'retryable',
+        reason: 'blog_quality_v3_runtime_schema_not_ready',
+      });
+    }
     return {
       ok: false,
       skipped: true,
@@ -1776,51 +1785,45 @@ async function runBlogPublisher(request: NextRequest) {
       };
     }
 
-    const operationId = requestedOperationId;
+      const operationId = requestedOperationId;
     if (operationId) {
       const fencingToken = Number(request.nextUrl.searchParams.get('fencingToken'));
       const leaseOwner = request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '';
       const stagingCanary = stagingCanaryRequest;
       if (!Number.isSafeInteger(fencingToken) || fencingToken <= 0 || !leaseOwner) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          resultStatus: 'failed',
           reason: 'content_operation_fencing_input_invalid',
-          results,
-          errors,
-        };
+        });
       }
       const { data: operation, error: operationError } = await supabaseAdmin
         .from('blog_content_operations')
-        .select('id,queue_id,status,fencing_token,lease_owner,lease_expires_at')
+        .select('id,queue_id,status,fencing_token,lease_owner,lease_expires_at,generation_run_id,creative_id')
         .eq('id', operationId)
         .eq('fencing_token', fencingToken)
         .eq('lease_owner', leaseOwner)
         .eq('status', 'running')
         .maybeSingle();
       if (operationError || !operation?.queue_id) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          queueId: operation?.queue_id ?? null,
+          generationRunId: operation?.generation_run_id ?? null,
+          creativeId: operation?.creative_id ?? null,
+          resultStatus: 'failed',
           reason: operationError?.message || 'content_operation_not_claimed',
-          results,
-          errors,
-        };
+        });
       }
       if (!operation.lease_expires_at || Date.parse(operation.lease_expires_at) <= Date.now()) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          queueId: operation.queue_id,
+          generationRunId: operation.generation_run_id ?? null,
+          creativeId: operation.creative_id ?? null,
+          resultStatus: 'failed',
           reason: 'content_operation_lease_expired',
-          results,
-          errors,
-        };
+        });
       }
       const { data: item, error: itemError } = await supabaseAdmin
         .from('blog_topic_queue')
@@ -1829,15 +1832,14 @@ async function runBlogPublisher(request: NextRequest) {
         .eq('status', 'queued')
         .maybeSingle();
       if (itemError || !item) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          queueId: operation.queue_id,
+          generationRunId: operation.generation_run_id ?? null,
+          creativeId: operation.creative_id ?? null,
+          resultStatus: 'failed',
           reason: itemError?.message || 'content_operation_queue_item_not_ready',
-          results,
-          errors,
-        };
+        });
       }
       const result = await processQueueItem(item, new Map(), {
         startedAtMs: startTime,
@@ -1846,21 +1848,13 @@ async function runBlogPublisher(request: NextRequest) {
         operationProgress: { operationId, fencingToken, leaseOwner },
       });
       results.push(result);
-      return {
-        ok: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status),
-        processed: 1,
-        published: 0,
-        resultStatus: result.status,
-        resultReason: result.reason ?? null,
-        targetedContentOperation: true,
+      return buildBlogPublisherOperationResponseV4({
         operationId,
         queueId: operation.queue_id,
-        results,
-        errors: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status)
-          ? errors
-          : [...errors, result.reason || result.status],
-        ranAt: new Date().toISOString(),
-      };
+        generationRunId: result.generationRunId ?? operation.generation_run_id ?? null,
+        creativeId: result.creativeId ?? operation.creative_id ?? null,
+        result,
+      });
     }
 
     const targetQueueId = request.nextUrl.searchParams.get('targetQueueId')?.trim();
@@ -1906,7 +1900,7 @@ async function runBlogPublisher(request: NextRequest) {
         ok: published === 1 || result.status === 'pending_review',
         processed: 1,
         published,
-        resultStatus: result.status,
+      resultStatus: result.status,
         resultReason: result.reason ?? null,
         targetedCanaryPublication: true,
         queueId: targetQueueId,
@@ -2476,6 +2470,15 @@ async function runBlogPublisher(request: NextRequest) {
 export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
   handlerTimeoutMs: 285_000,
   sideEffectTimeoutMs: 5_000,
+  resourceSaverResponse: (request) => {
+    const operationId = request.nextUrl.searchParams.get('operationId')?.trim();
+    if (!operationId) return null;
+    return apiResponse(buildBlogPublisherOperationResponseV4({
+      operationId,
+      resultStatus: 'retryable',
+      reason: 'db_resource_saver_mode',
+    }));
+  },
 });
 
 async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
@@ -2536,6 +2539,8 @@ async function processQueueItem(
   status: string;
   reason?: string;
   atomicIndexing?: boolean;
+  generationRunId?: string | null;
+  creativeId?: string | null;
 }> {
   const recordProgress = async (step: string, evidence: Record<string, unknown> = {}) => {
     if (!options.operationProgress) return;
@@ -4025,6 +4030,7 @@ async function processQueueItem(
           topic: item.topic,
           status: 'pending_review',
           reason: 'v3_decision_evidence_persistence_failed',
+          creativeId,
         };
       }
     }
@@ -4147,6 +4153,7 @@ async function processQueueItem(
         topic: item.topic,
         status: 'approved_for_slot',
         reason: scheduledPublishAt,
+        creativeId,
       };
     }
 
@@ -4296,6 +4303,7 @@ async function processQueueItem(
         topic: item.topic,
         status: 'pending_review',
         reason: humanReviewReason,
+        creativeId,
       };
     }
 
@@ -4342,6 +4350,7 @@ async function processQueueItem(
       status: publishedAtomicUpgrade ? 'upgraded' : 'published',
       reason: generated.slug,
       atomicIndexing: contentBoundary.lane === 'informational',
+      creativeId,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';

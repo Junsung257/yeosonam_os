@@ -5,6 +5,7 @@ import { isBlogGenerationWindowKstV4 } from '@/lib/blog-deepseek-orchestrator-v4
 import { readBlogAutopublishPolicyV3 } from '@/lib/blog-autopublish-policy-v3';
 import { materializeBlogContentOperationsV4 } from '@/lib/blog-content-factory/materializer';
 import { startBlogContentOperationWorkflowV4 } from '@/lib/blog-content-factory/start-workflow';
+import { recoverExpiredBlogContentOperationsV4 } from '@/lib/blog-content-factory/watchdog';
 import { resolveEffectiveBlogPublicationRollout } from '@/lib/blog-publication-rollout';
 import { loadBlogPublicationRolloutState } from '@/lib/blog-publication-rollout-repository';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -40,6 +41,10 @@ async function runBlogGenerate(request: NextRequest) {
   );
   if (factoryEnabled) {
     if (!isSupabaseConfigured) return { skipped: true, reason: 'supabase_not_configured' };
+    const watchdog = await recoverExpiredBlogContentOperationsV4({
+      supabase: supabaseAdmin,
+      limit: 20,
+    });
     const policy = readBlogAutopublishPolicyV3();
     const targetQueueId = url.searchParams.get('targetQueueId')?.trim() || null;
     if (targetQueueId && !/^[0-9a-f-]{36}$/i.test(targetQueueId)) {
@@ -125,6 +130,7 @@ async function runBlogGenerate(request: NextRequest) {
       requestedAutopublishMode: policy.requestedMode,
       rollout,
       materialization,
+      watchdog,
       workflowStartLimit,
       workflows: started,
       modelCallsInCronRequest: 0,
