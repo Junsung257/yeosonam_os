@@ -10,6 +10,7 @@ import {
 } from '@/lib/blog-content-factory/repository';
 import {
   isBlogPublisherOperationResponseV4,
+  type BlogPublisherOperationResultStatus,
   type BlogPublisherOperationResponseV4,
 } from '@/lib/blog-content-factory/publisher-response';
 import type {
@@ -20,7 +21,6 @@ import { isDeepSeekOffPeakAt } from '@/lib/blog-deepseek-orchestrator-v4';
 import { buildQueuedInformationBrief, evaluateQueuedInformationResearch } from '@/lib/blog-queue-research';
 import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { BLOG_INFORMATION_RESEARCH_META_KEY } from '@/lib/blog-generation-research';
-import { isHighRiskAutoDiscardTopic } from '@/lib/blog-publication-review-policy';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 
@@ -62,6 +62,12 @@ function db(): SupabaseClient {
 
 function isTransient(message: string): boolean {
   return /timeout|temporar|connection|network|fetch failed|econn|5\d\d|rate.?limit|unavailable/i.test(message);
+}
+
+function canBypassDeepSeekOffPeakForStagingCanary(): boolean {
+  return process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+    && process.env.BLOG_AUTOPUBLISH_MODE?.trim().toLowerCase() === 'draft_only'
+    && process.env.BLOG_V4_STAGING_CANARY_ALLOW_OFFPEAK_BYPASS === '1';
 }
 
 async function operationAndQueue(input: BlogContentOperationWorkflowInput): Promise<{
@@ -111,28 +117,14 @@ async function bindWorkflowStep(input: BlogContentOperationWorkflowInput, workfl
 async function preflightStep(input: BlogContentOperationWorkflowInput) {
   'use step';
   const { operation, queue } = await operationAndQueue(input);
-  const highRiskTopic = isHighRiskAutoDiscardTopic({
-    title: queue.topic,
-    category: queue.category,
-    topic: queue.primary_keyword,
-  });
-  if (operation.risk_level === 'HIGH' || highRiskTopic) {
-    await terminalizeBlogContentOperationV4({
+  if (operation.risk_level === 'HIGH') {
+    await recordBlogContentOperationStageV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: 'preflight:high-risk:auto-discard:v2', stage: 'quarantined',
-      status: 'quarantined', failureCode: 'high_risk_auto_discarded', skipReason: 'high_risk_auto_discarded',
-      evidence: {
-        riskLevel: operation.risk_level,
-        topicClassifierMatched: highRiskTopic,
-        operationState: {
-          generationStatus: 'skipped',
-          reviewStatus: 'not_required',
-          publicationStatus: 'suppressed_by_policy',
-          indexingStatus: 'not_attempted',
-        },
-      },
+      leaseOwner: input.leaseOwner, eventKey: 'preflight:high-risk:v1', stage: 'human_review',
+      eventStatus: 'skipped', operationStatus: 'human_review', failureCode: 'high_risk_human_approval_required',
+      evidence: { riskLevel: operation.risk_level },
     });
-    return { terminal: true as const, outcome: 'quarantined' as const };
+    return { terminal: true as const, outcome: 'human_review' as const };
   }
   if (queue.status !== 'queued') throw new FatalError(`BLOG_CONTENT_FACTORY_QUEUE_NOT_QUEUED:${queue.status}`);
   const { data: signals, error } = await db()
@@ -210,11 +202,79 @@ async function briefStep(input: BlogContentOperationWorkflowInput) {
 async function researchStep(input: BlogContentOperationWorkflowInput) {
   'use step';
   const { queue } = await operationAndQueue(input);
-  const result = evaluateQueuedInformationResearch(queue);
+  const researchAttemptKey = String(Date.now());
+  let result = evaluateQueuedInformationResearch(queue);
+  if (!result.passed && !queue.product_id) {
+    const rawContentKey = queue.meta?.expected_slug ?? queue.meta?.spun_slug;
+    const contentKey = typeof rawContentKey === 'string' ? rawContentKey.trim().toLowerCase() : '';
+    const destination = typeof queue.destination === 'string' ? queue.destination.trim() : '';
+    if (contentKey && destination) {
+      const brief = buildQueuedInformationBrief(queue);
+      const autoResearch = await researchBlogInformationAutomatically({
+        contentKey,
+        destination,
+        locale: brief.plan.locale,
+        brief,
+      });
+      if (autoResearch.passed && autoResearch.bundle) {
+        const nextMeta = {
+          ...(queue.meta ?? {}),
+          [BLOG_INFORMATION_RESEARCH_META_KEY]: autoResearch.bundle,
+          auto_research: {
+            version: 'reviewed-source-direct-fetch-v3',
+            model: autoResearch.model,
+            completed_at: new Date().toISOString(),
+            grounding_source_count: autoResearch.groundingSourceCount,
+            direct_source_count: autoResearch.directSourceCount,
+          },
+        };
+        const { error } = await db()
+          .from('blog_topic_queue')
+          .update({ meta: nextMeta, updated_at: new Date().toISOString() })
+          .eq('id', queue.id);
+        if (error) {
+          throw new RetryableError(`BLOG_CONTENT_FACTORY_RESEARCH_PERSIST:${error.message}`, {
+            retryAfter: '30s',
+          });
+        }
+        result = evaluateQueuedInformationResearch({ ...queue, meta: nextMeta });
+        if (!result.passed) {
+          result = {
+            passed: false,
+            issues: [...new Set([...result.issues, ...autoResearch.issues])],
+          };
+        }
+      } else {
+        result = {
+          passed: false,
+          issues: [...new Set([
+            ...result.issues,
+            ...autoResearch.issues.slice(0, 12),
+            'research_auto_failed',
+          ])],
+        };
+        await recordBlogContentOperationStageV4({
+          supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+          leaseOwner: input.leaseOwner, eventKey: `research:diagnostic:${researchAttemptKey}:v1`,
+          stage: 'research_backlog', eventStatus: 'succeeded', evidence: {
+            passed: autoResearch.passed,
+            model: autoResearch.model,
+            directSourceCount: autoResearch.directSourceCount,
+            groundingSourceCount: autoResearch.groundingSourceCount,
+            directSourceFailures: autoResearch.directSourceFailures.slice(0, 5),
+            finishReason: autoResearch.finishReason,
+            responseTextLength: autoResearch.responseTextLength,
+            observedSourceTypes: autoResearch.observedSourceTypes,
+            observedGroundingChunkIndexes: autoResearch.observedGroundingChunkIndexes,
+          },
+        });
+      }
+    }
+  }
   if (!result.passed) {
     await recordBlogContentOperationStageV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: 'research:backlog:v1', stage: 'research_backlog',
+      leaseOwner: input.leaseOwner, eventKey: `research:backlog:${researchAttemptKey}:v2`, stage: 'research_backlog',
       eventStatus: 'skipped', operationStatus: 'research_backlog', failureCode: 'research_not_ready',
       evidence: { issues: result.issues.slice(0, 20) },
     });
@@ -222,68 +282,188 @@ async function researchStep(input: BlogContentOperationWorkflowInput) {
   }
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: 'research:ready:v1', stage: 'research_ready',
+    leaseOwner: input.leaseOwner, eventKey: `research:ready:${researchAttemptKey}:v2`, stage: 'research_ready',
     eventStatus: 'succeeded', evidence: { verified: true },
   });
   return { ready: true as const, issues: [] as string[] };
 }
 
-async function generationStep(input: BlogContentOperationWorkflowInput, pass: number) {
+async function generationStep(
+  input: BlogContentOperationWorkflowInput,
+  pass: number,
+  workflowRunId: string,
+) {
   'use step';
   await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: `generation:pass:${pass}:started:v1`,
+    leaseOwner: input.leaseOwner, eventKey: `generation:pass:${pass}:started:v1:${workflowRunId}`,
     stage: pass === 1 ? 'drafting' : 'repairing', eventStatus: 'started',
   });
-  if (!isDeepSeekOffPeakAt(new Date())) {
+  if (!isDeepSeekOffPeakAt(new Date()) && !canBypassDeepSeekOffPeakForStagingCanary()) {
     throw new RetryableError('BLOG_CONTENT_FACTORY_WAITING_FOR_DEEPSEEK_OFFPEAK', {
       retryAfter: '30m',
     });
   }
   const secret = getSecret('CRON_SECRET');
   if (!secret) throw new FatalError('BLOG_CONTENT_FACTORY_CRON_SECRET_MISSING');
+  const protectionBypassSecret = getSecret('VERCEL_AUTOMATION_BYPASS_SECRET');
   const url = new URL('/api/cron/blog-publisher', input.requestBaseUrl);
   url.searchParams.set('operationId', input.operationId);
   url.searchParams.set('fencingToken', String(input.fencingToken));
   url.searchParams.set('leaseOwner', input.leaseOwner);
+  const stagingCanary = process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+    && process.env.BLOG_AUTOPUBLISH_MODE?.trim().toLowerCase() === 'draft_only';
+  if (stagingCanary) url.searchParams.set('stagingCanary', '1');
+  const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
+  if (protectionBypassSecret) headers['x-vercel-protection-bypass'] = protectionBypassSecret;
+  await recordBlogContentOperationStageV4({
+    supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+    leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-started:v1:${workflowRunId}`,
+    stage: 'drafting', eventStatus: 'started', evidence: {
+      stagingCanary,
+      protectionBypassHeaderPresent: Boolean(protectionBypassSecret),
+    },
+  });
   let response: Response;
   try {
     response = await fetch(url, {
-      method: 'GET', cache: 'no-store', headers: { authorization: `Bearer ${secret}` },
+      method: 'GET', cache: 'no-store', headers,
       signal: AbortSignal.timeout(280_000),
     });
   } catch (error) {
+    await recordBlogContentOperationStageV4({
+      supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+      leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-error:v1:${workflowRunId}`,
+      stage: 'drafting', eventStatus: 'retryable_failure', failureCode: 'publisher_fetch_error',
+      evidence: { error: error instanceof Error ? error.message : String(error) },
+    }).catch(() => undefined);
     throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_FETCH:${error instanceof Error ? error.message : String(error)}`, { retryAfter: '45s' });
   }
-  const payload = await response.json().catch(() => null) as {
-    ok?: boolean;
-    reason?: string;
-    results?: Array<{ status?: string; reason?: string }>;
-  } | null;
-  if (!response.ok || !payload) {
-    const reason = payload?.reason || `http_${response.status}`;
-    if (response.status >= 500 || isTransient(reason)) {
-      throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_TRANSIENT:${reason}`, { retryAfter: '45s' });
+  const rawPayload = await response.json().catch(() => null) as unknown;
+  const payloadRecord = rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)
+    ? rawPayload as Record<string, unknown>
+    : null;
+  const payloadErrors = Array.isArray(payloadRecord?.errors) ? payloadRecord.errors : [];
+  const payloadSkipped = payloadRecord?.skipped === true;
+  const contractValid = isBlogPublisherOperationResponseV4(rawPayload, input.operationId)
+    && !payloadSkipped
+    && payloadErrors.length === 0;
+  const payload = contractValid ? rawPayload as BlogPublisherOperationResponseV4 : null;
+  const payloadOk = payload?.ok === true;
+  const resultStatus = payload?.resultStatus ?? null;
+  const operationSucceeded = response.ok && contractValid && payloadOk;
+  const operationRetryable = response.status >= 500
+    || payload?.retryable === true
+    || isTransient(typeof payloadRecord?.reason === 'string' ? payloadRecord.reason : '');
+  await recordBlogContentOperationStageV4({
+    supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
+    leaseOwner: input.leaseOwner, eventKey: `generation:publisher-fetch-returned:v1:${workflowRunId}`,
+    stage: 'drafting', eventStatus: operationSucceeded ? 'succeeded' : operationRetryable ? 'retryable_failure' : 'failed',
+    failureCode: operationSucceeded
+      ? null
+      : operationRetryable ? 'publisher_retryable' : `publisher_${response.ok ? 'contract' : `http_${response.status}`}`,
+    evidence: {
+      httpStatus: response.status,
+      payloadParsed: rawPayload !== null,
+      payloadOk,
+      payloadSkipped,
+      payloadReason: payloadRecord?.reason ?? null,
+      payloadTargetedOperation: payloadRecord?.targetedContentOperation ?? false,
+      payloadOperationId: payloadRecord?.operationId ?? null,
+      resultStatus,
+      generationRunId: payload?.generationRunId ?? null,
+      creativeId: payload?.creativeId ?? null,
+      contractValid,
+      legacyResponse: Array.isArray(payloadRecord?.results),
+      errors: payloadErrors.slice(0, 5),
+    },
+  }).catch(() => undefined);
+  const responseReason = typeof payloadRecord?.reason === 'string'
+    ? payloadRecord.reason
+    : `http_${response.status}`;
+  if (!contractValid || !payload) {
+    if (response.status >= 500 || isTransient(responseReason)) {
+      throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_TRANSIENT:${responseReason}`, { retryAfter: '45s' });
     }
-    throw new FatalError(`BLOG_CONTENT_FACTORY_GENERATION_CONTRACT:${reason}`);
+    const code = payloadSkipped
+      ? 'BLOG_CONTENT_FACTORY_GENERATION_PAYLOAD_SKIPPED'
+      : payloadRecord?.targetedContentOperation !== true
+        ? 'BLOG_CONTENT_FACTORY_GENERATION_TARGETED_CONTRACT_MISSING'
+        : payloadRecord?.operationId !== input.operationId
+          ? 'BLOG_CONTENT_FACTORY_GENERATION_OPERATION_ID_MISMATCH'
+          : payloadRecord?.resultStatus == null
+            ? 'BLOG_CONTENT_FACTORY_GENERATION_RESULT_MISSING'
+            : payloadErrors.length > 0
+              ? 'BLOG_CONTENT_FACTORY_GENERATION_ERRORS_PRESENT'
+              : 'BLOG_CONTENT_FACTORY_GENERATION_CONTRACT_INVALID';
+    throw new FatalError(`${code}:${responseReason}`);
   }
-  const result = payload.results?.[0];
-  if (!result?.status) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_RESULT_MISSING');
-  const passDecision = decideBlogContentGenerationPassV4({
-    status: result.status,
-    completedPasses: pass,
-  });
-  if (passDecision === 'retry') {
-    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_DEFERRED:${result.reason || result.status}`, {
+  const validResultStatus = payload.resultStatus;
+  if (!response.ok || !payload.ok) {
+    if (payload.retryable || response.status >= 500 || isTransient(responseReason)) {
+      throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_TRANSIENT:${responseReason}`, { retryAfter: '45s' });
+    }
+    throw new FatalError(`BLOG_CONTENT_FACTORY_GENERATION_CONTRACT:${responseReason}`);
+  }
+  if (payload.resultStatus === 'retryable' || payload.retryable) {
+    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_DEFERRED:${responseReason}`, {
       retryAfter: '5m',
     });
   }
-  if (result.status === 'error' && isTransient(result.reason || '')) {
-    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_RESULT_TRANSIENT:${result.reason}`, {
-      retryAfter: '45s',
+  const passDecision = decideBlogContentGenerationPassV4({
+    status: validResultStatus,
+    completedPasses: pass,
+  });
+  if (passDecision === 'retry') {
+    throw new RetryableError(`BLOG_CONTENT_FACTORY_GENERATION_DEFERRED:${payload.reason || validResultStatus}`, {
+      retryAfter: '5m',
     });
   }
-  return { status: result.status, reason: result.reason ?? null, passDecision };
+  return { status: validResultStatus, reason: payload.reason, passDecision };
+}
+
+async function recordWorkflowFailureStep(
+  input: BlogContentOperationWorkflowInput,
+  workflowRunId: string,
+  error: unknown,
+) {
+  'use step';
+  const message = error instanceof Error ? error.message : String(error);
+  const retryable = error instanceof RetryableError;
+  if (!retryable) {
+    await terminalizeBlogContentOperationV4({
+      supabase: db(),
+      operationId: input.operationId,
+      fencingToken: input.fencingToken,
+      leaseOwner: input.leaseOwner,
+      status: 'failed',
+      stage: 'failed',
+      eventKey: `workflow:error:v1:${workflowRunId}`,
+      failureCode: message.slice(0, 160),
+      evidence: {
+        errorName: error instanceof Error ? error.name : typeof error,
+        message,
+        retryable: false,
+      },
+    });
+    return;
+  }
+  await recordBlogContentOperationStageV4({
+    supabase: db(),
+    operationId: input.operationId,
+    fencingToken: input.fencingToken,
+    leaseOwner: input.leaseOwner,
+    eventKey: `workflow:error:v1:${workflowRunId}`,
+    stage: 'failed',
+    eventStatus: 'retryable_failure',
+    operationStatus: 'running',
+    failureCode: 'workflow_retryable_failure',
+    evidence: {
+      errorName: error instanceof Error ? error.name : typeof error,
+      message,
+      retryable,
+    },
+  });
 }
 
 /**
@@ -291,7 +471,11 @@ async function generationStep(input: BlogContentOperationWorkflowInput, pass: nu
  * Durable passes 3–5 therefore only re-read the selected run and record a
  * bounded validation/review event; they must never call the provider again.
  */
-async function deterministicValidationStep(input: BlogContentOperationWorkflowInput, pass: number) {
+async function deterministicValidationStep(
+  input: BlogContentOperationWorkflowInput,
+  pass: number,
+  workflowRunId: string,
+) {
   'use step';
   await operationAndQueue(input);
   const { data: run, error } = await db()
@@ -306,39 +490,30 @@ async function deterministicValidationStep(input: BlogContentOperationWorkflowIn
   if (run.status === 'approved_for_slot' && run.selected_attempt_id) {
     await recordBlogContentOperationStageV4({
       supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:approved:v1`, stage: 'evaluating',
+      leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:approved:v1:${workflowRunId}`, stage: 'evaluating',
       eventStatus: 'succeeded', operationStatus: 'approved_for_slot', generationRunId: String(run.id),
       evidence: { paidModelCalls: 2, qualityScore: run.latest_quality_score ?? null },
     });
-    return { status: 'approved_for_slot', reason: null, passDecision: 'finalize' as const };
+    return { status: 'approved_for_slot' as const, reason: null, passDecision: 'finalize' as const };
   }
-  const qualityBlocked = ['pending_review', 'human_review'].includes(String(run.status))
+  const reviewRequired = ['pending_review', 'human_review'].includes(String(run.status))
     || Number(run.latest_quality_score ?? 0) < 90;
-  const status = 'quarantined' as const;
-  await terminalizeBlogContentOperationV4({
+  const status: BlogPublisherOperationResultStatus = reviewRequired ? 'human_review' : 'quarantined';
+  await recordBlogContentOperationStageV4({
     supabase: db(), operationId: input.operationId, fencingToken: input.fencingToken,
-    leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:bounded:v2:${workflowRunId}`,
-    stage: 'quarantined', status,
-    generationRunId: String(run.id), failureCode: qualityBlocked
-      ? 'quality_gate_failed_after_bounded_repair'
-      : 'model_output_not_publishable',
-    skipReason: qualityBlocked ? 'quality_gate_failed_after_bounded_repair' : 'model_output_not_publishable',
+    leaseOwner: input.leaseOwner, eventKey: `validation:pass:${pass}:bounded:v1:${workflowRunId}`, stage: reviewRequired ? 'human_review' : 'quarantined',
+    eventStatus: reviewRequired ? 'succeeded' : 'failed', operationStatus: status,
+    generationRunId: String(run.id), failureCode: reviewRequired ? 'paid_model_call_cap_reached_human_review' : 'model_output_not_publishable',
     evidence: {
       paidModelCalls: 2,
       latestRunStatus: run.status,
       qualityScore: run.latest_quality_score ?? null,
       deterministicRepairOnly: true,
-      operationState: {
-        generationStatus: 'failed',
-        reviewStatus: 'not_required',
-        publicationStatus: 'suppressed_by_policy',
-        indexingStatus: 'not_attempted',
-      },
     },
   });
   return {
     status,
-    reason: qualityBlocked ? 'quality_gate_failed_after_bounded_repair' : 'model_output_not_publishable',
+    reason: reviewRequired ? 'paid_model_call_cap_reached_human_review' : 'model_output_not_publishable',
     passDecision: 'finalize' as const,
   };
 }
@@ -376,7 +551,7 @@ async function finalizeStep(
         operationId: input.operationId,
         fencingToken: input.fencingToken,
         leaseOwner: input.leaseOwner,
-        eventKey: `generation:attempt:${attemptNumber}:v1`,
+        eventKey: `generation:attempt:${attemptNumber}:v1:${workflowRunId}`,
         stage: attempt.stage === 'draft_flash' ? 'drafting' : 'repairing',
         eventStatus: attempt.status === 'completed' ? 'succeeded' : 'failed',
         failureCode: attempt.error_code ? String(attempt.error_code) : null,
@@ -407,7 +582,7 @@ async function finalizeStep(
     && Number(run.latest_quality_score ?? 0) >= 90) {
     await recordBlogContentOperationStageV4({
       supabase, operationId: input.operationId, fencingToken: input.fencingToken,
-      leaseOwner: input.leaseOwner, eventKey: 'finalize:approved:v1', stage: 'approved_for_slot',
+      leaseOwner: input.leaseOwner, eventKey: `finalize:approved:v1:${workflowRunId}`, stage: 'approved_for_slot',
       eventStatus: 'succeeded', operationStatus: 'approved_for_slot',
       generationRunId: String(run.id), creativeId: run.content_creative_id ? String(run.content_creative_id) : null,
       evidence: { selectedAttemptId: run.selected_attempt_id, qualityScore: run.latest_quality_score },
@@ -415,28 +590,21 @@ async function finalizeStep(
     return { outcome: 'approved_for_slot' as const, generationRunId: String(run.id) };
   }
 
-  await terminalizeBlogContentOperationV4({
+  const humanReview = ['pending_review', 'human_review'].includes(generation.status)
+    || run?.status === 'human_review';
+  await recordBlogContentOperationStageV4({
     supabase, operationId: input.operationId, fencingToken: input.fencingToken,
     leaseOwner: input.leaseOwner,
-    eventKey: `finalize:quarantined:v2:${workflowRunId}`,
-    stage: 'quarantined',
-    status: 'quarantined',
-    failureCode: generation.reason || `generation_status_${generation.status}`,
-    skipReason: generation.reason || `generation_status_${generation.status}`,
+    eventKey: `${humanReview ? 'finalize:human-review:v1' : 'finalize:quarantined:v1'}:${workflowRunId}`,
+    stage: humanReview ? 'human_review' : 'quarantined',
+    eventStatus: humanReview ? 'succeeded' : 'failed',
+    operationStatus: humanReview ? 'human_review' : 'quarantined',
+    failureCode: humanReview ? null : generation.reason || `generation_status_${generation.status}`,
     generationRunId: run?.id ? String(run.id) : null,
     creativeId: run?.content_creative_id ? String(run.content_creative_id) : null,
-    evidence: {
-      generationStatus: generation.status,
-      generationReason: generation.reason,
-      operationState: {
-        generationStatus: 'failed',
-        reviewStatus: 'not_required',
-        publicationStatus: 'suppressed_by_policy',
-        indexingStatus: 'not_attempted',
-      },
-    },
+    evidence: { generationStatus: generation.status, generationReason: generation.reason },
   });
-  return { outcome: 'quarantined' as const, generationRunId: run?.id ? String(run.id) : null };
+  return { outcome: humanReview ? 'human_review' as const : 'quarantined' as const, generationRunId: run?.id ? String(run.id) : null };
 }
 
 export async function blogContentOperationWorkflow(
@@ -444,21 +612,28 @@ export async function blogContentOperationWorkflow(
 ) {
   'use workflow';
   const { workflowRunId } = getWorkflowMetadata();
-  await bindWorkflowStep(input, workflowRunId);
-  const preflight = await preflightStep(input);
-  if (preflight.terminal) return { outcome: preflight.outcome, operationId: input.operationId };
-  await packageSnapshotStep(input);
-  await briefStep(input);
-  const research = await researchStep(input);
-  if (!research.ready) return { outcome: 'research_backlog' as const, operationId: input.operationId };
-  let generation: Awaited<ReturnType<typeof generationStep>> | null = null;
-  for (let pass = 1; pass <= 5; pass += 1) {
-    generation = pass <= 2
-      ? await generationStep(input, pass)
-      : await deterministicValidationStep(input, pass);
-    if (generation.passDecision !== 'continue') break;
+  try {
+    await bindWorkflowStep(input, workflowRunId);
+    const preflight = await preflightStep(input);
+    if (preflight.terminal) return { outcome: preflight.outcome, operationId: input.operationId };
+    await packageSnapshotStep(input);
+    await briefStep(input);
+    const research = await researchStep(input);
+    if (!research.ready) return { outcome: 'research_backlog' as const, operationId: input.operationId };
+    let generation: Awaited<ReturnType<typeof generationStep>> | null = null;
+    for (let pass = 1; pass <= 5; pass += 1) {
+      const nextGeneration = pass <= 2
+        ? await generationStep(input, pass, workflowRunId)
+        : await deterministicValidationStep(input, pass, workflowRunId);
+      generation = nextGeneration;
+      if (nextGeneration.passDecision !== 'continue') break;
+    }
+    const completedGeneration = generation;
+    if (!completedGeneration) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_NOT_STARTED');
+    const final = await finalizeStep(input, completedGeneration, workflowRunId);
+    return { ...final, operationId: input.operationId };
+  } catch (error) {
+    await recordWorkflowFailureStep(input, workflowRunId, error).catch(() => undefined);
+    throw error;
   }
-  if (!generation) throw new FatalError('BLOG_CONTENT_FACTORY_GENERATION_NOT_STARTED');
-  const final = await finalizeStep(input, generation, workflowRunId);
-  return { ...final, operationId: input.operationId };
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
 import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
@@ -62,6 +63,8 @@ import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
 import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
+import { recordBlogContentOperationStageV4 } from '@/lib/blog-content-factory/repository';
+import { buildBlogPublisherOperationResponseV4 } from '@/lib/blog-content-factory/publisher-response';
 import {
   slugifyTopic,
   romanize,
@@ -298,6 +301,16 @@ const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_I
 const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
+// Naver SERP/demand research is advisory metadata only; verified factual
+// claims already come from the persisted information research bundle. Keep a
+// slow or partially configured external provider from blocking the writer.
+const BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS = readBoundedIntEnv(
+  'BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS',
+  15_000,
+  2_000,
+  45_000,
+);
+const BLOG_PUBLISHER_SERP_RESEARCH_ENABLED = process.env.BLOG_PUBLISHER_SERP_RESEARCH_ENABLED !== '0';
 // A candidate gets one draft plus up to four DeepSeek repair passes. The
 // research bundle/claim fingerprints remain persisted between attempts, so
 // retries may change expression and structure but never invent facts. Hard
@@ -312,7 +325,7 @@ function readQueueDemandSignalV3(item: any): BlogDemandSignalInput {
   return readEmbeddedBlogQueueDemandSignalV3(item);
 }
 
-async function loadQueueDemandEvidenceV3(item: any): Promise<{
+async function loadQueueDemandEvidenceV3(item: any, options: { embeddedOnly?: boolean } = {}): Promise<{
   repositoryReady: boolean;
   signal: BlogDemandSignalInput;
   acceptedProviders: string[];
@@ -321,6 +334,16 @@ async function loadQueueDemandEvidenceV3(item: any): Promise<{
   performance: ReturnType<typeof aggregateObservedBlogSearchMetricsV3>;
 }> {
   const base = readQueueDemandSignalV3(item);
+  if (options.embeddedOnly) {
+    return {
+      repositoryReady: true,
+      signal: base,
+      acceptedProviders: ['editor_seed'],
+      rejectedCount: 0,
+      error: null,
+      performance: aggregateObservedBlogSearchMetricsV3([]),
+    };
+  }
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [demandResult, activeProductResult, performanceResult] = await Promise.all([
     supabaseAdmin
@@ -1516,6 +1539,11 @@ async function runBlogPublisher(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
 
+  const requestedOperationId = request.nextUrl.searchParams.get('operationId')?.trim();
+  const stagingCanaryRequest = request.nextUrl.searchParams.get('stagingCanary') === '1'
+    && process.env.BLOG_V4_ENVIRONMENT?.trim().toLowerCase() === 'staging'
+    && BLOG_AUTOPUBLISH_POLICY_V3.mode === 'draft_only';
+
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
@@ -1525,14 +1553,44 @@ async function runBlogPublisher(request: NextRequest) {
   // could bypass the immutable selected-attempt controller contract.
   const deferPublication = true;
 
-  const schemaReadiness = await probeBlogRuntimeSchemaWithSupabaseV3(
-    supabaseAdmin,
-    new Date(),
-    BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
-      resource.scope === 'publish' || resource.scope === 'delivery'
-    )),
-  );
+  // The staging canary already performs the same schema gate in the isolated
+  // workflow before invoking this route. Re-running every publish/delivery
+  // probe here can consume the whole serverless request budget before the
+  // targeted operation is even entered. Keep the skip narrowly scoped to an
+  // explicit staging + draft-only canary request; normal cron and production
+  // requests retain the runtime schema gate.
+  if (requestedOperationId) {
+    await recordBlogContentOperationStageV4({
+      supabase: supabaseAdmin,
+      operationId: requestedOperationId,
+      fencingToken: Number(request.nextUrl.searchParams.get('fencingToken')),
+      leaseOwner: request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '',
+      eventKey: 'publisher:route-entered:v1',
+      stage: 'drafting',
+      eventStatus: 'succeeded',
+      evidence: { stagingCanary: stagingCanaryRequest, schemaProbe: stagingCanaryRequest ? 'workflow_preflight' : 'route' },
+    }).catch((error) => {
+      console.warn('[cron/blog-publisher] staging canary entry progress failed', error);
+    });
+  }
+
+  const schemaReadiness = stagingCanaryRequest
+    ? { publishReady: true, deliveryReady: true, skipped: true }
+    : await probeBlogRuntimeSchemaWithSupabaseV3(
+      supabaseAdmin,
+      new Date(),
+      BLOG_RUNTIME_RESOURCES_V3.filter((resource) => (
+        resource.scope === 'publish' || resource.scope === 'delivery'
+      )),
+    );
   if (!schemaReadiness.publishReady || !schemaReadiness.deliveryReady) {
+    if (requestedOperationId) {
+      return buildBlogPublisherOperationResponseV4({
+        operationId: requestedOperationId,
+        resultStatus: 'retryable',
+        reason: 'blog_quality_v3_runtime_schema_not_ready',
+      });
+    }
     return {
       ok: false,
       skipped: true,
@@ -1727,50 +1785,45 @@ async function runBlogPublisher(request: NextRequest) {
       };
     }
 
-    const operationId = request.nextUrl.searchParams.get('operationId')?.trim();
+      const operationId = requestedOperationId;
     if (operationId) {
       const fencingToken = Number(request.nextUrl.searchParams.get('fencingToken'));
       const leaseOwner = request.nextUrl.searchParams.get('leaseOwner')?.trim() ?? '';
+      const stagingCanary = stagingCanaryRequest;
       if (!Number.isSafeInteger(fencingToken) || fencingToken <= 0 || !leaseOwner) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          resultStatus: 'failed',
           reason: 'content_operation_fencing_input_invalid',
-          results,
-          errors,
-        };
+        });
       }
       const { data: operation, error: operationError } = await supabaseAdmin
         .from('blog_content_operations')
-        .select('id,queue_id,status,fencing_token,lease_owner,lease_expires_at')
+        .select('id,queue_id,status,fencing_token,lease_owner,lease_expires_at,generation_run_id,creative_id')
         .eq('id', operationId)
         .eq('fencing_token', fencingToken)
         .eq('lease_owner', leaseOwner)
         .eq('status', 'running')
         .maybeSingle();
       if (operationError || !operation?.queue_id) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          queueId: operation?.queue_id ?? null,
+          generationRunId: operation?.generation_run_id ?? null,
+          creativeId: operation?.creative_id ?? null,
+          resultStatus: 'failed',
           reason: operationError?.message || 'content_operation_not_claimed',
-          results,
-          errors,
-        };
+        });
       }
       if (!operation.lease_expires_at || Date.parse(operation.lease_expires_at) <= Date.now()) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          queueId: operation.queue_id,
+          generationRunId: operation.generation_run_id ?? null,
+          creativeId: operation.creative_id ?? null,
+          resultStatus: 'failed',
           reason: 'content_operation_lease_expired',
-          results,
-          errors,
-        };
+        });
       }
       const { data: item, error: itemError } = await supabaseAdmin
         .from('blog_topic_queue')
@@ -1779,31 +1832,29 @@ async function runBlogPublisher(request: NextRequest) {
         .eq('status', 'queued')
         .maybeSingle();
       if (itemError || !item) {
-        return {
-          ok: false,
-          processed: 0,
-          published: 0,
-          targetedContentOperation: true,
+        return buildBlogPublisherOperationResponseV4({
+          operationId,
+          queueId: operation.queue_id,
+          generationRunId: operation.generation_run_id ?? null,
+          creativeId: operation.creative_id ?? null,
+          resultStatus: 'failed',
           reason: itemError?.message || 'content_operation_queue_item_not_ready',
-          results,
-          errors,
-        };
+        });
       }
-      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime, deferPublication });
+      const result = await processQueueItem(item, new Map(), {
+        startedAtMs: startTime,
+        deferPublication,
+        stagingCanary,
+        operationProgress: { operationId, fencingToken, leaseOwner },
+      });
       results.push(result);
-      return {
-        ok: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status),
-        processed: 1,
-        published: 0,
-        targetedContentOperation: true,
+      return buildBlogPublisherOperationResponseV4({
         operationId,
         queueId: operation.queue_id,
-        results,
-        errors: ['approved_for_slot', 'pending_review', 'human_review'].includes(result.status)
-          ? errors
-          : [...errors, result.reason || result.status],
-        ranAt: new Date().toISOString(),
-      };
+        generationRunId: result.generationRunId ?? operation.generation_run_id ?? null,
+        creativeId: result.creativeId ?? operation.creative_id ?? null,
+        result,
+      });
     }
 
     const targetQueueId = request.nextUrl.searchParams.get('targetQueueId')?.trim();
@@ -1849,6 +1900,8 @@ async function runBlogPublisher(request: NextRequest) {
         ok: published === 1 || result.status === 'pending_review',
         processed: 1,
         published,
+      resultStatus: result.status,
+        resultReason: result.reason ?? null,
         targetedCanaryPublication: true,
         queueId: targetQueueId,
         results,
@@ -2417,6 +2470,15 @@ async function runBlogPublisher(request: NextRequest) {
 export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
   handlerTimeoutMs: 285_000,
   sideEffectTimeoutMs: 5_000,
+  resourceSaverResponse: (request) => {
+    const operationId = request.nextUrl.searchParams.get('operationId')?.trim();
+    if (!operationId) return null;
+    return apiResponse(buildBlogPublisherOperationResponseV4({
+      operationId,
+      resultStatus: 'retryable',
+      reason: 'db_resource_saver_mode',
+    }));
+  },
 });
 
 async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
@@ -2464,6 +2526,12 @@ async function processQueueItem(
     startedAtMs?: number;
     validatedPrivateRegenerationRequest?: PrivateBlogRegenerationRequest;
     deferPublication?: boolean;
+    stagingCanary?: boolean;
+    operationProgress?: {
+      operationId: string;
+      fencingToken: number;
+      leaseOwner: string;
+    };
   } = {},
 ): Promise<{
   id: string;
@@ -2471,7 +2539,25 @@ async function processQueueItem(
   status: string;
   reason?: string;
   atomicIndexing?: boolean;
+  generationRunId?: string | null;
+  creativeId?: string | null;
 }> {
+  const recordProgress = async (step: string, evidence: Record<string, unknown> = {}) => {
+    if (!options.operationProgress) return;
+    await recordBlogContentOperationStageV4({
+      supabase: supabaseAdmin,
+      operationId: options.operationProgress.operationId,
+      fencingToken: options.operationProgress.fencingToken,
+      leaseOwner: options.operationProgress.leaseOwner,
+      eventKey: `publisher:progress:${step}:v1`,
+      stage: 'drafting',
+      eventStatus: 'succeeded',
+      evidence: { publisherProgress: step, ...evidence },
+    }).catch((error) => {
+      console.warn(`[cron/blog-publisher] operation progress failed (${step})`, error);
+    });
+  };
+
   // 동시성 방지 — generating 락
   const { data: lockedRow, error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -2491,6 +2577,7 @@ async function processQueueItem(
   }
 
   try {
+    await recordProgress('entered');
     const startedAtMs = options.startedAtMs ?? Date.now();
     const contentBoundary = routeBlogContentLane({
       source: item.source,
@@ -2504,7 +2591,13 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
     const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
-    const demandPreflight = await loadQueueDemandEvidenceV3(item);
+    const demandPreflight = await loadQueueDemandEvidenceV3(item, {
+      embeddedOnly: options.stagingCanary === true,
+    });
+    await recordProgress('demand-ready', {
+      embeddedOnly: options.stagingCanary === true,
+      repositoryReady: demandPreflight.repositoryReady,
+    });
     if (
       !privateRegenerationIntent
       && BLOG_AUTOPUBLISH_POLICY_V3.requireDemandSignal
@@ -2659,6 +2752,10 @@ async function processQueueItem(
           locale: queueBrief.plan.locale,
         });
         const existingRepresentative = await findBlogInformationRepresentative(representativeKey);
+        await recordProgress('representative-ready', {
+          representativeKey,
+          existingStatus: existingRepresentative?.status ?? null,
+        });
         const reservationOwner = `blog_topic_queue:${item.id}`;
         const mayResumeOwnReservation = existingRepresentative?.status === 'reserved'
           && existingRepresentative.reservationOwner === reservationOwner;
@@ -2685,6 +2782,7 @@ async function processQueueItem(
       });
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
+    await recordProgress('duplicate-ready');
 
     let generated: GeneratedBlog;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
@@ -2791,6 +2889,12 @@ async function processQueueItem(
         }
       }
     }
+
+    await recordProgress('generated', {
+      generationModel: (
+        generated.generation_meta?.ai_orchestration_v4 as Record<string, unknown> | undefined
+      )?.model ?? null,
+    });
 
     // Deterministic fallback copy is only an operational recovery artifact. It is
     // intentionally generic and therefore must never become a public/searchable
@@ -3926,6 +4030,7 @@ async function processQueueItem(
           topic: item.topic,
           status: 'pending_review',
           reason: 'v3_decision_evidence_persistence_failed',
+          creativeId,
         };
       }
     }
@@ -4048,6 +4153,7 @@ async function processQueueItem(
         topic: item.topic,
         status: 'approved_for_slot',
         reason: scheduledPublishAt,
+        creativeId,
       };
     }
 
@@ -4197,6 +4303,7 @@ async function processQueueItem(
         topic: item.topic,
         status: 'pending_review',
         reason: humanReviewReason,
+        creativeId,
       };
     }
 
@@ -4243,6 +4350,7 @@ async function processQueueItem(
       status: publishedAtomicUpgrade ? 'upgraded' : 'published',
       reason: generated.slug,
       atomicIndexing: contentBoundary.lane === 'informational',
+      creativeId,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
@@ -4858,18 +4966,23 @@ async function generateFromTopic(
     ),
   });
   let serpResearchV3: SerpResearchPacketV3 | null = null;
-  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
+  const shouldAnalyzeSerp = BLOG_PUBLISHER_SERP_RESEARCH_ENABLED
+    && !privateRegeneration && Boolean(
     item.primary_keyword || contentBrief.primaryKeyword,
   );
   if (shouldAnalyzeSerp) {
     try {
-      serpResearchV3 = await researchSerpNaverFirstV3({
-        primaryQuery: item.primary_keyword || contentBrief.primaryKeyword,
-        secondaryQueries: [
-          ...(Array.isArray(item.meta?.keywords) ? item.meta.keywords : []),
-          ...contentBrief.secondaryKeywords,
-        ].filter((value): value is string => typeof value === 'string'),
-      });
+      serpResearchV3 = await withPublisherTimeout(
+        researchSerpNaverFirstV3({
+          primaryQuery: item.primary_keyword || contentBrief.primaryKeyword,
+          secondaryQueries: [
+            ...(Array.isArray(item.meta?.keywords) ? item.meta.keywords : []),
+            ...contentBrief.secondaryKeywords,
+          ].filter((value): value is string => typeof value === 'string'),
+        }),
+        BLOG_PUBLISHER_SERP_RESEARCH_TIMEOUT_MS,
+        'blog_serp_research',
+      );
     } catch (error) {
       console.warn('[blog-publisher] Naver-first research unavailable; continuing with verified demand and official evidence only:',
         error instanceof Error ? error.message : String(error));
