@@ -35,6 +35,7 @@ The currently approved production scope is intentionally narrower than the histo
 - Final settlement changes only settlement confirmation fields. It must not change the ordinary booking lifecycle `status` or trigger customer journey/review messaging.
 - One bank transaction may have multiple booking allocations only through an explicit operator-approved breakdown. Fees may be included in the booking outflow when the owner chooses a single cash-out representation.
 - Reopening a Clobe outflow for reallocation must reverse every active allocation and its ledger effect in one DB transaction. Partial API-loop reversal is forbidden. Any linked finalized booking blocks reversal until the operator explicitly unfinalizes it.
+- Production DB evidence on 2026-08-24: `clobe_mixed_outflow_allocations` (`20260824082534`), `restrict_bank_transaction_allocation_rpc` (`20260824082545`), and `harden_clobe_settlement_command_table` (`20260824082556`) are applied. The Clobe match/reverse commands and the legacy allocation command are executable only by `service_role`; both command tables have RLS, service-role-only policies, and supporting indexes. Pre/post deployment financial aggregates were identical and both new command tables contained zero rows.
 
 ## Source Of Truth
 
