@@ -69,6 +69,20 @@ describe('migration safety checker', () => {
       .not.toContainEqual(expect.objectContaining({ type: 'foreign-key-index' }));
   });
 
+  it('does not classify an index on a schema-qualified table created in the same migration as lock-heavy', () => {
+    const migration = `
+      CREATE TABLE internal_product_registration.stage_runs (
+        id uuid PRIMARY KEY,
+        status text NOT NULL
+      );
+      CREATE INDEX idx_stage_runs_status
+        ON internal_product_registration.stage_runs(status);
+    `;
+
+    expect(new checker.MigrationChecker('20260101000000_stage_runs.sql', migration).run())
+      .not.toContainEqual(expect.objectContaining({ type: 'lock-heavy' }));
+  });
+
   it('returns nonzero for HIGH and CRITICAL findings', () => {
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'high' }] }] })).toBe(1);
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'critical' }] }] })).toBe(1);
