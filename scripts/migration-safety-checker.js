@@ -157,15 +157,15 @@ class MigrationChecker {
   checkForeignKeyIndexes() {
     const foreignKeys = [];
     for (const match of this.normalizedContent.matchAll(
-      /alter table (?:public\.)?(\w+)[\s\S]*?foreign key\s*\((\w+)\)\s*references\s+(?:public\.)?(\w+)\s*\((\w+)\)/g,
+      /alter table (?:\w+\.)?(\w+)[\s\S]*?foreign key\s*\((\w+)\)\s*references\s+(?:\w+\.)?(\w+)\s*\((\w+)\)/g,
     )) foreignKeys.push({ table: match[1], column: match[2] });
 
     for (const tableMatch of this.normalizedContent.matchAll(
-      /create table (?:if not exists )?(?:public\.)?(\w+)\s*\(([\s\S]*?)\)\s*;/g,
+      /create table (?:if not exists )?(?:\w+\.)?(\w+)\s*\(([\s\S]*?)\)\s*;/g,
     )) {
       const table = tableMatch[1];
       const body = tableMatch[2];
-      for (const match of body.matchAll(/(?:^|,)\s*(\w+)\s+[^,]*?references\s+(?:public\.)?\w+\s*\(\w+\)/g)) {
+      for (const match of body.matchAll(/(?:^|,)\s*(\w+)\s+[^,]*?references\s+(?:\w+\.)?\w+\s*\(\w+\)/g)) {
         foreignKeys.push({ table, column: match[1] });
       }
       for (const match of body.matchAll(/foreign key\s*\((\w+)\)\s*references/g)) {
@@ -174,7 +174,7 @@ class MigrationChecker {
     }
 
     for (const { table, column } of foreignKeys) {
-      const index = new RegExp(`create (?:unique )?index[^;]* on (?:public\\.)?${table}\\s*\\([^)]*\\b${column}\\b`);
+      const index = new RegExp(`create (?:unique )?index[^;]* on (?:\\w+\\.)?${table}\\s*\\([^)]*\\b${column}\\b`);
       const uniqueOrPrimary = new RegExp(`(?:primary key|unique)\\s*\\([^)]*\\b${column}\\b`);
       const inlineUnique = new RegExp(`(?:^|,)\\s*${column}\\s+[^,]*\\bunique\\b`);
       if (!index.test(this.indexCorpus)

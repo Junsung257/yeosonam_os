@@ -95,8 +95,6 @@ create index if not exists idx_pr_v61_departure_fact_lookup
   on internal_product_registration.departure_instances(catalog_product_id, departure_date, pricing_state, booking_state);
 create index if not exists idx_pr_v61_departure_revision_fact
   on internal_product_registration.departure_instances(revision_id, variant_key, departure_date);
-create index if not exists idx_pr_v61_departure_price_rule
-  on internal_product_registration.departure_instances(price_rule_id);
 
 -- Entity master is deliberately separate from the existing attractions SSOT.
 -- A compiler may create relation candidates, but only approved admin data may
