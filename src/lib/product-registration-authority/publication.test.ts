@@ -16,6 +16,7 @@ describe('product registration publication authority', () => {
         catalog_product_id: 'catalog-1',
         product_key: 'supplier:product-1',
         package_id: 'package-1',
+        package_title: '다낭 3박 4일',
         latest_revision_id: 'revision-3',
         latest_revision_no: 3,
         latest_revision_status: 'verified',
@@ -46,6 +47,7 @@ describe('product registration publication authority', () => {
 
     expect(rows).toEqual([expect.objectContaining({
       catalogProductId: 'catalog-1',
+      packageTitle: '다낭 3박 4일',
       latestRevisionNo: 3,
       actualCustomerPublic: true,
       blockerCodes: [],

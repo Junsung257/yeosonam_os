@@ -22,7 +22,7 @@ describe('campaign launch public package boundary', () => {
     expect(supabaseIndex).toBeGreaterThan(guardIndex);
   });
 
-  it('requires approved public package snapshots before launching customer-facing ads', () => {
+  it('requires published public package snapshots before launching customer-facing ads', () => {
     const source = routeSource();
     const creativeQueryIndex = source.indexOf(".from('ad_creatives')");
     const publicPackageIndex = source.indexOf('const launchableCreatives = await attachPublicPackagesToCampaignCreatives');
@@ -64,7 +64,7 @@ describe('campaign launch public package boundary', () => {
     expect(helper).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
     expect(helper).toContain('isCampaignPublicSnapshotCandidate');
     expect(helper).toContain('isCustomerPubliclyOpenable');
-    expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(helper).toContain(".eq('publication_state', 'published')");
     expect(helper).toContain('travel_packages: publicPackagesById.get(productId) ?? null');
     expect(helper).toContain("'meta_campaign_id'");
     expect(helper).toContain("'meta_adset_id'");

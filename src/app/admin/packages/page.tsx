@@ -1,11 +1,11 @@
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
-import PackagesPageClient from './PackagesPageClient';
+import { PackagesReadOnlyClient, type ReadOnlyPackage } from './PackagesReadOnlyClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PackagesPage() {
   if (!isSupabaseAdminConfigured) {
-    return <PackagesPageClient initialPackages={[]} />;
+    return <PackagesReadOnlyClient initialPackages={[]} />;
   }
 
   const { data } = await supabaseAdmin
@@ -22,5 +22,5 @@ export default async function PackagesPage() {
     .order('created_at', { ascending: false })
     .limit(200);
 
-  return <PackagesPageClient initialPackages={(data ?? []) as unknown as import('./PackagesPageClient').Package[]} />;
+  return <PackagesReadOnlyClient initialPackages={(data ?? []) as unknown as ReadOnlyPackage[]} />;
 }

@@ -91,7 +91,7 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
     .limit(120);
@@ -106,7 +106,7 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .order('created_at', { ascending: false })
     .limit(150);
 

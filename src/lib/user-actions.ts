@@ -145,7 +145,7 @@ export async function getSimilarPackages(
     .from('travel_packages')
     .select(USER_ACTION_PACKAGE_FIELDS)
     .eq('id', packageId)
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .single();
 
   if (pkgErr || !isUserActionPublicSnapshotCandidate(pkg)) return [];
@@ -164,7 +164,7 @@ export async function getSimilarPackages(
       .from('travel_packages')
       .select(USER_ACTION_PACKAGE_FIELDS)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
+      .eq('publication_state', 'published')
       .neq('id', packageId)
       .eq('category', category)
       .limit(limit);
@@ -175,7 +175,7 @@ export async function getSimilarPackages(
     .from('travel_packages')
     .select(USER_ACTION_PACKAGE_FIELDS)
     .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-    .in('publication_state', ['approved', 'published'])
+    .eq('publication_state', 'published')
     .neq('id', packageId)
     .eq('destination', destination)
     .limit(limit);
@@ -186,7 +186,7 @@ export async function getSimilarPackages(
       .from('travel_packages')
       .select(USER_ACTION_PACKAGE_FIELDS)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
+      .eq('publication_state', 'published')
       .neq('id', packageId)
       .eq('category', category)
       .limit(limit);

@@ -14,6 +14,7 @@ export type AdminPackagePublicationTruth = {
   catalogProductId: string;
   productKey: string;
   packageId: string | null;
+  packageTitle: string | null;
   latestRevisionId: string | null;
   latestRevisionNo: number | null;
   latestRevisionStatus: string | null;
@@ -96,6 +97,7 @@ function truthRow(value: unknown): AdminPackagePublicationTruth {
     catalogProductId: required(row.catalog_product_id, 'catalog_product_id'),
     productKey: required(row.product_key, 'product_key'),
     packageId: string(row.package_id),
+    packageTitle: string(row.package_title),
     latestRevisionId: string(row.latest_revision_id),
     latestRevisionNo: number(row.latest_revision_no),
     latestRevisionStatus: string(row.latest_revision_status),

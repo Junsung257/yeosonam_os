@@ -54,7 +54,7 @@ describe('affiliate and embed public package data boundary', () => {
     const responseSlice = text.slice(responseIndex);
 
     expect(text).toContain('function isInfluencerPublicSnapshotCandidate');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).toContain(".eq('publication_state', 'published')");
     expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
     expect(responseIndex).toBeGreaterThan(snapshotIndex);
     expect(responseSlice).not.toContain('(packages || []).map');

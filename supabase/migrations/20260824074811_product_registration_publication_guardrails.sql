@@ -571,6 +571,7 @@ select
   latest_revision.payload_hash as latest_revision_hash,
   source_document.sha256 as source_hash,
   package.id as package_id,
+  package.title as package_title,
   package.status as compatibility_status,
   package.publication_state as compatibility_publication_state,
   package.canonical_revision_id as compatibility_revision_id,

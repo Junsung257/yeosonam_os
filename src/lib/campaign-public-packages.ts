@@ -67,7 +67,7 @@ export async function loadPublicPackagesForCampaignCreatives(
     .from('travel_packages')
     .select(CAMPAIGN_PUBLIC_PACKAGE_FIELDS)
     .in('id', productIds)
-    .in('publication_state', ['approved', 'published']);
+    .eq('publication_state', 'published');
   if (error) throw error;
 
   const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(

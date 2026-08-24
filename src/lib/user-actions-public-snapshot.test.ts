@@ -16,7 +16,7 @@ describe('user action package helper publication boundary', () => {
     expect(text).toContain('function isUserActionPublicSnapshotCandidate');
     expect(text).toContain('isCustomerPubliclyOpenable');
     expect(text).toContain('isPublicPublicationState');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).toContain(".eq('publication_state', 'published')");
     expect(helperIndex).toBeGreaterThan(0);
     expect(snapshotIndex).toBeGreaterThan(similarIndex);
   });

@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       .from('travel_packages')
       .select(PACKAGE_MARKETING_ASSET_FIELDS)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
+      .eq('publication_state', 'published')
       .order('created_at', { ascending: false })
       .limit(50);
 

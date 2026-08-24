@@ -8,7 +8,7 @@ describe('QA chat package context public snapshot gate', () => {
 
     expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
     expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(source).toContain(".eq('publication_state', 'published')");
     expect(source).toContain('toQaCustomerPackageRows');
     expect(source).toContain("typeof row.title === 'string'");
     expect(source).not.toContain('raw_text');

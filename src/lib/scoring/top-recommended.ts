@@ -14,6 +14,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export interface TopPackage {
   package_id: string;
@@ -86,11 +87,11 @@ export async function getTopRecommendedPackages(opts: TopOptions = {}): Promise<
     travel_packages: JoinedPackage | JoinedPackage[];
   }>;
 
-  // active/approved만
+  // Customer-facing automation only consumes rows that reached published.
   const active = rows.filter(r => {
     const tp = Array.isArray(r.travel_packages) ? r.travel_packages[0] : r.travel_packages;
     return tp
-      && (tp.publication_state === 'approved' || tp.publication_state === 'published')
+      && isPublicPublicationState(tp.publication_state)
       && isCustomerPubliclyOpenable(tp);
   });
 

@@ -15,7 +15,7 @@ describe('blog list public package data boundary', () => {
     expect(anglePage).not.toContain('isCustomerPubliclyOpenable');
     expect(matcher).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
     expect(matcher).toContain('function isAnglePublicSnapshotCandidate');
-    expect(matcher).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(matcher).toContain(".eq('publication_state', 'published')");
   });
 
   it('keeps destination blog lists from joining raw packages and gates destination package cards', () => {

@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
         .from('travel_packages')
         .select(USER_ACTION_PACKAGE_FIELDS)
         .eq('id', packageId)
-        .in('publication_state', ['approved', 'published'])
+        .eq('publication_state', 'published')
         .maybeSingle();
 
       if (!isUserActionPublicSnapshotCandidate(pkg)) return NextResponse.json({ packages: [] });
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
         .from('travel_packages')
         .select(USER_ACTION_PACKAGE_FIELDS)
         .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
+        .eq('publication_state', 'published')
         .neq('id', packageId)
         .limit(limit);
 
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
         .select(USER_ACTION_PACKAGE_FIELDS)
         .in('id', ids)
         .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published']);
+        .eq('publication_state', 'published');
 
       const order = new Map(ids.map((id, index) => [id, index]));
       return NextResponse.json({ packages: await toPublicPackageCards(data, order) });
