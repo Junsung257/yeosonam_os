@@ -77,8 +77,11 @@ describe('blog search data and published quality recovery contract', () => {
     expect(route).toContain("const representativeRace = queueError.code === '23505'");
     expect(route).toContain('atomic_publish_replace: true');
     expect(route).not.toContain("message: 'rank_history 데이터 없음'");
-    expect(vercel).toContain('"/api/cron/blog-regenerate-zero-click"');
-    expect(vercel).toContain('"schedule": "45 12 * * *"');
+    // V4 keeps this recovery route available for the external maintenance
+    // workflow, but removes it from Vercel's producer cron allowlist so it
+    // cannot compete with the durable content factory.
+    expect(vercel).not.toContain('"/api/cron/blog-regenerate-zero-click"');
+    expect(vercel).not.toContain('"schedule": "45 12 * * *"');
     expect(workflow).toContain("cron: '50 12 * * *'");
     expect(workflow).toContain('endpoint="blog-regenerate-zero-click"');
   });

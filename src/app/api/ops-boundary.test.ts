@@ -21,6 +21,15 @@ describe('launch ops and ingest route boundaries', () => {
     }
   });
 
+  it('allows the blog system probe to use a dedicated read-only token', () => {
+    const route = readRoute('src/app/api/ops/blog-system/route.ts');
+
+    expect(route).toContain("getSecret('BLOG_OPS_READ_TOKEN')");
+    expect(route).toContain('BLOG_OPS_ALLOW_CRON_FALLBACK');
+    expect(route).toContain('isOpsRead');
+    expect(route).toContain('!isCron && !isOpsRead');
+  });
+
   it('protects console links with admin guard before returning URLs', () => {
     const route = readRoute('src/app/api/ops/console-links/route.ts');
 

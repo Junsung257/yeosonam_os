@@ -31,6 +31,8 @@ try {
     analyticsCanary: readJson(argument('analytics-canary'), 'analytics_canary'),
     rankTracking: readJson(argument('rank-tracking'), 'rank_tracking'),
     dataReadiness: readJson(argument('data-readiness'), 'data_readiness'),
+  }, {
+    requirePublicationReady: process.argv.includes('--require-publication-ready'),
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } catch (error) {

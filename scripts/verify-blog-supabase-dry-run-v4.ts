@@ -11,8 +11,10 @@ function main(): void {
   if (!input) throw new Error('usage: --input=<supabase db push --dry-run output>');
   const path = resolve(input);
   if (!existsSync(path)) throw new Error(`supabase_dry_run_output_missing:${path}`);
+  const manifestPath = argument('manifest')
+    ?? 'supabase/release-manifests/blog-orchestrator-v4-20260816.json';
   const manifest = JSON.parse(readFileSync(
-    resolve('supabase/release-manifests/blog-orchestrator-v4-20260816.json'),
+    resolve(manifestPath),
     'utf8',
   )) as { migrations: Array<{ version: string; file: string }> };
   const output = readFileSync(path, 'utf8');
@@ -27,6 +29,10 @@ function main(): void {
   const unexpected = observed.filter((version) => !expected.includes(version));
   if (unexpected.length > 0) {
     throw new Error(`supabase_dry_run_set_mismatch:unexpected=${unexpected.join(',')}`);
+  }
+  const missing = expected.filter((version) => !observed.includes(version));
+  if (process.argv.includes('--require-exact') && missing.length > 0) {
+    throw new Error(`supabase_dry_run_set_mismatch:missing=${missing.join(',')}`);
   }
   const mode = observed.length === expected.length ? 'exact_pending_set' : 'pending_manifest_subset';
   process.stdout.write(`${JSON.stringify({ passed: true, mode, expected, observed }, null, 2)}\n`);

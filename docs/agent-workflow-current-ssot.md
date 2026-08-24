@@ -1,5 +1,7 @@
 # Agent Workflow Current SSOT
 
+> 2026-08-19 Blog V4 implementation note: 블로그 후보는 12개 독립 agent가 아니라 operation 하나당 Workflow DevKit durable workflow 하나를 사용한다. 수요·snapshot·research·brief·DeepSeek generation·평가·재작성·승인 단계를 idempotency key와 fencing token으로 이어가며, 외부 API/DB 일시 장애만 재시도하고 사실/계약 위반은 fail-closed로 종료한다. durable attempt는 최대 5개지만 AI Control Plane 활성화 후 유료 provider 호출은 Flash 1회와 Pro 1회로 제한되며 나머지는 deterministic repair/review 단계다. 공개는 workflow가 아닌 publication controller가 담당한다.
+
 Last updated: 2026-06-27
 
 This is the current operating contract for AI-agent development workflow in Yeosonam OS. It absorbs the useful patterns from Superpowers, Spec Kit, LazyCodex, Cline, OpenHands, Aider, ast-grep, Probe, and Agency Agents without installing their autonomous runtimes or letting them override Yeosonam domain rules.

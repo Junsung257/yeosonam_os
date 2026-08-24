@@ -16,6 +16,8 @@ import { evaluateCurrentDayPublisherHealth } from '@/lib/blog-current-day-publis
 import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless-info';
 import { evaluateBlogEngineV2 } from '@/lib/blog-engine-v2';
 import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
+import { buildBlogContentFactoryFunnelV4 } from '@/lib/blog-content-factory/funnel';
+import { getBlogPublicationRampDefinition, parseBlogPublicationRampStage } from '@/lib/blog-publication-rollout';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -109,6 +111,47 @@ type RankRow = {
   source: string | null;
   impressions: number | null;
   clicks: number | null;
+};
+
+type ContentOperationRow = {
+  id: string;
+  current_stage: string;
+  status: string;
+  creative_id: string | null;
+  operation_type: string;
+  creates_new_url: boolean;
+  skip_reason: string | null;
+  failure_code: string | null;
+  workflow_run_id: string | null;
+  updated_at: string;
+};
+
+type ContentStageEventRow = {
+  operation_id: string;
+  stage: string;
+  status: string;
+  failure_code: string | null;
+};
+
+type AiBudgetBucketRow = {
+  scope_type: string;
+  scope_key: string;
+  budget_day_kst: string;
+  hard_cap_usd: number | string;
+  reserved_usd: number | string;
+  settled_usd: number | string;
+  status: string;
+};
+
+type AiCallReservationRow = {
+  id: string;
+  candidate_id: string;
+  model_class: string;
+  status: string;
+};
+
+type AiCallReceiptRow = {
+  reservation_id: string;
 };
 
 function countBy<T>(rows: T[], pick: (row: T) => string | null | undefined): Record<string, number> {
@@ -449,6 +492,13 @@ export async function buildBlogOpsSummary(supabase: any) {
     categoryRows,
     adRows,
     rankRows,
+    demandClusterRows,
+    contentOperationRows,
+    contentStageEventRows,
+    rolloutRows,
+    aiBudgetBucketRows,
+    aiCallReservationRows,
+    aiCallReceiptRows,
   ] = await Promise.all([
     settle<QueueRow>('blog_topic_queue', supabase.from('blog_topic_queue').select('*').order('created_at', { ascending: false }).limit(500), warnings),
     settle<PostRow>(
@@ -490,6 +540,44 @@ export async function buildBlogOpsSummary(supabase: any) {
     settle<CategoryRow>('blog_categories', supabase.from('blog_categories').select('is_active, scope'), warnings),
     settle<AdMappingRow>('ad_landing_mappings', supabase.from('ad_landing_mappings').select('active, operational_status, clicks, cta_clicks, conversions').limit(500), warnings),
     settle<RankRow>('rank_history', supabase.from('rank_history').select('source, impressions, clicks').gte('date', monthAgoDate).limit(2000), warnings),
+    settle<{ id: string }>('blog_demand_clusters', supabase.from('blog_demand_clusters').select('id').limit(2000), warnings),
+    settle<ContentOperationRow>(
+      'blog_content_operations',
+      supabase.from('blog_content_operations')
+        .select('id,current_stage,status,creative_id,operation_type,creates_new_url,skip_reason,failure_code,workflow_run_id,updated_at')
+        .order('updated_at', { ascending: false }).limit(2000),
+      warnings,
+    ),
+    settle<ContentStageEventRow>(
+      'blog_content_stage_events',
+      supabase.from('blog_content_stage_events')
+        .select('operation_id,stage,status,failure_code')
+        .order('occurred_at', { ascending: false }).limit(4000),
+      warnings,
+    ),
+    settle<{ scope: string; stage: string; status: string; freeze_reason: string | null; state_version: number }>(
+      'blog_publication_rollout_state',
+      supabase.from('blog_publication_rollout_state')
+        .select('scope,stage,status,freeze_reason,state_version').eq('scope', 'global').limit(1),
+      warnings,
+    ),
+    settle<AiBudgetBucketRow>(
+      'ai_budget_buckets',
+      supabase.from('ai_budget_buckets').select('scope_type,scope_key,budget_day_kst,hard_cap_usd,reserved_usd,settled_usd,status')
+        .eq('budget_day_kst', new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)),
+      warnings,
+    ),
+    settle<AiCallReservationRow>(
+      'ai_call_reservations',
+      supabase.from('ai_call_reservations').select('id,candidate_id,model_class,status')
+        .gte('created_at', weekAgoIso).limit(2000),
+      warnings,
+    ),
+    settle<AiCallReceiptRow>(
+      'ai_call_receipts',
+      supabase.from('ai_call_receipts').select('reservation_id').limit(2000),
+      warnings,
+    ),
   ]);
 
   const queueCounts = countBy(queueRows, (row) => row.status);
@@ -529,6 +617,41 @@ export async function buildBlogOpsSummary(supabase: any) {
     && autopublishPolicy.mode !== 'draft_only'
     && effectiveDailyTarget > 0;
   const publicDailyTarget = publicPublicationEnabled ? effectiveDailyTarget : 0;
+  const indexedCreativeIds = indexingJobs
+    .filter((row) => ['succeeded', 'done', 'completed'].includes(String(row.status || '')) && row.content_creative_id)
+    .map((row) => String(row.content_creative_id));
+  const contentFactoryFunnel = buildBlogContentFactoryFunnelV4({
+    demandClusterIds: demandClusterRows.map((row) => row.id),
+    operations: contentOperationRows.map((row) => ({
+      id: row.id,
+      currentStage: row.current_stage as never,
+      status: row.status as never,
+      creativeId: row.creative_id,
+      skipReason: row.skip_reason,
+      failureCode: row.failure_code,
+    })),
+    events: contentStageEventRows.map((row) => ({
+      operationId: row.operation_id,
+      stage: row.stage,
+      status: row.status,
+      failureCode: row.failure_code,
+    })),
+    indexedCreativeIds,
+    dailyInventoryTarget: Math.max(1, Math.min(
+      autopublishPolicy.requestedDailyPublishCap,
+      getBlogPublicationRampDefinition(parseBlogPublicationRampStage(rolloutRows[0]?.stage)).dailyCap,
+    )),
+  });
+  const aiReceiptIds = new Set(aiCallReceiptRows.map((row) => row.reservation_id));
+  const aiControlPlaneEnabled = process.env.BLOG_AI_CONTROL_PLANE_ENABLED === '1';
+  const aiGlobalBucket = aiBudgetBucketRows.find((row) => row.scope_type === 'global' && row.scope_key === 'all') ?? null;
+  const aiProCalls = aiCallReservationRows.filter((row) => row.model_class === 'pro').length;
+  const aiFlashCalls = aiCallReservationRows.filter((row) => row.model_class === 'flash').length;
+  const aiReceiptGap = Math.max(0, aiCallReservationRows.filter((row) => row.status !== 'reserved' && !aiReceiptIds.has(row.id)).length);
+  const aiControlPlaneReady = !aiControlPlaneEnabled || (aiGlobalBucket !== null && aiReceiptGap === 0);
+  const factorySchemaWarnings = warnings.filter((warning) => /blog_(?:demand_clusters|content_operations|content_stage_events)/.test(warning));
+  const factoryEnabled = ['1', 'true'].includes(String(process.env.BLOG_CONTENT_FACTORY_ENABLED || '').trim().toLowerCase());
+  const generationEnabled = ['1', 'true'].includes(String(process.env.BLOG_GENERATION_CRON_ENABLED || '').trim().toLowerCase());
   const generatedCanaryRequested = Math.min(5, Math.max(3, effectiveDailyTarget));
   const qualitySummary = summarizePublishedBlogQuality(publishedRows, 30);
   const engineCategoryScorecard = summarizeEngineCategoryScorecard(publishedRows, 30);
@@ -690,9 +813,23 @@ export async function buildBlogOpsSummary(supabase: any) {
   const generatedCanaryLevel: BlogOpsLevel = generatedCanaryQuality.status === 'block' ? 'risk' : generatedCanaryQuality.status === 'warn' ? 'watch' : 'healthy';
   const fleetPhraseLevel: BlogOpsLevel = fleetPhraseDrift.status === 'block' ? 'risk' : fleetPhraseDrift.status === 'warn' ? 'watch' : 'healthy';
   const candidateContractLevel: BlogOpsLevel = candidateContractBlocked > 0 ? 'watch' : 'healthy';
-  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel);
+  const contentFactoryLevel: BlogOpsLevel = factoryEnabled
+    && (factorySchemaWarnings.length > 0 || !generationEnabled)
+    ? 'blocked'
+    : 'healthy';
+  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel, contentFactoryLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
+  if (aiControlPlaneEnabled && !aiControlPlaneReady) {
+    nextActions.unshift({
+      severity: 'risk',
+      title: 'AI 비용 방화벽 준비 미완료',
+      detail: aiGlobalBucket === null
+        ? 'ai_budget_buckets가 없어 유료 생성이 fail-closed 상태입니다.'
+        : `AI 영수증 누락 ${aiReceiptGap}건을 reconciliation 하세요.`,
+      href: '/admin/blog/system',
+    });
+  }
   if (!publicPublicationEnabled) {
     nextActions.push({
       severity: 'blocked',
@@ -859,7 +996,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     warnings,
     contract: {
       document: 'docs/blog-autopublish-contract.md',
-      current_version: '2026-06-16',
+      current_version: '2026-08-19',
       passed: overallLevel === 'healthy' || overallLevel === 'watch',
       failed_checks: [
         ...(!publicPublicationEnabled ? ['autopublish_mode_draft_only'] : []),
@@ -875,7 +1012,56 @@ export async function buildBlogOpsSummary(supabase: any) {
         ...(fleetPhraseDrift.status === 'block' ? ['fleet_phrase_drift'] : []),
         ...(currentDayPublisherHealth.status === 'risk' ? ['current_day_publisher_failure'] : []),
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
+        ...(factoryEnabled && factorySchemaWarnings.length > 0 ? ['content_factory_migration_missing'] : []),
+        ...(factoryEnabled && !generationEnabled ? ['content_factory_generation_disabled'] : []),
+        ...(aiControlPlaneEnabled && !aiControlPlaneReady ? ['ai_control_plane_not_ready'] : []),
       ],
+    },
+    content_factory: {
+      enabled: factoryEnabled,
+      generation_enabled: generationEnabled,
+      migration_ready: factorySchemaWarnings.length === 0,
+      migration_warnings: factorySchemaWarnings,
+      workflow_version: 'blog-content-operation-workflow-v1',
+      publication_mode: autopublishPolicy.mode,
+      requested_publication_mode: autopublishPolicy.requestedMode,
+      provenance: autopublishPolicy.deploymentProvenance,
+      rollout: rolloutRows[0] ?? null,
+      funnel: contentFactoryFunnel.counts,
+      approved_inventory_days: contentFactoryFunnel.approvedInventoryDays,
+      approved_inventory_target_days: 2,
+      verified_brief_target: 90,
+      operation_counts: countBy(contentOperationRows, (row) => row.status),
+      operation_type_counts: countBy(contentOperationRows, (row) => row.operation_type),
+      skip_reasons: contentFactoryFunnel.skipReasons,
+      latest_workflows: contentOperationRows.slice(0, 12).map((row) => ({
+        operation_id: row.id,
+        workflow_run_id: row.workflow_run_id,
+        stage: row.current_stage,
+        status: row.status,
+        updated_at: row.updated_at,
+        skip_reason: row.skip_reason,
+        failure_code: row.failure_code,
+      })),
+    },
+    ai_control_plane: {
+      enabled: aiControlPlaneEnabled,
+      ready: aiControlPlaneReady,
+      global_bucket: aiGlobalBucket
+        ? {
+          hard_cap_usd: asNumber(aiGlobalBucket.hard_cap_usd),
+          reserved_usd: asNumber(aiGlobalBucket.reserved_usd),
+          settled_usd: asNumber(aiGlobalBucket.settled_usd),
+          status: aiGlobalBucket.status,
+        }
+        : null,
+      flash_calls_7d: aiFlashCalls,
+      pro_calls_7d: aiProCalls,
+      total_calls_7d: aiCallReservationRows.length,
+      receipt_gap: aiReceiptGap,
+      candidate_model_call_cap: 'one_flash_plus_one_pro',
+      fallback_allowed: false,
+      advisor_allowed: false,
     },
     health_sections: {
       publish: {
