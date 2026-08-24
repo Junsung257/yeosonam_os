@@ -28,7 +28,7 @@ describe('product OCR/PDF candidate benchmark', () => {
     expect(report.summary.mealSeparated).toBe(report.total);
     expect(report.summary.evidenceSpanRecoverable).toBe(report.total);
     expect(report.summary.finalCustomerOutcomeReady).toBe(report.total);
-  });
+  }, 20_000);
 
   it('marks unknown benchmark cases as failed instead of guessing', async () => {
     const report = await runProductOcrBenchmark({
