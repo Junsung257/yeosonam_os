@@ -1489,40 +1489,13 @@ export async function productRegistrationV6Workflow(
     if (copyDecision.outcome === 'blocked') return await terminalStep(input, workflowRunId, copyDecision, 'not_requested');
     const compatibility = await projectCompatibilityStep(input, canonical);
     const snapshots = await buildSnapshotsStep(input, copyDecision, shared, compatibility.bindings);
-    const proofs = await proveSnapshotsStep(input, snapshots);
-    const publication = await publicationControlStep(input, copyDecision);
-    if (!publication.allowed) {
-      return await terminalStep(
-        input,
-        workflowRunId,
-        unpublishedReadyDecision(copyDecision),
-        publication.publicationState,
-        publication.blockers,
-      );
-    }
-    await publishSnapshotsStep(input, copyDecision, proofs);
-    let convergence = await convergeStep(input, snapshots);
-    // These waits are deliberately in the workflow function, not the step,
-    // so the run remains durable and a transient CDN/image cache miss does not
-    // become a system quarantine. The cron observer remains the long-lived
-    // repair path after this bounded retry window.
-    for (const delay of ['5s', '15s'] as const) {
-      if (convergence.complete) break;
-      await sleep(delay);
-      convergence = await convergeStep(input, snapshots);
-    }
-    if (convergence.superseded) {
-      return await terminalStep(
-        input,
-        workflowRunId,
-        terminalDocumentDecision('NEWER_REVISION_ALREADY_PUBLISHED', 'discarded_duplicate_or_consolidated'),
-        'not_requested',
-      );
-    }
-    if (!convergence.complete) {
-      throw new Error(`V6_SURFACE_CONVERGENCE_PENDING:${convergence.pending}`);
-    }
-    return await terminalStep(input, workflowRunId, copyDecision, 'converged');
+    return await terminalStep(
+      input,
+      workflowRunId,
+      unpublishedReadyDecision(copyDecision),
+      'not_requested',
+      snapshots.length > 0 ? ['PUBLICATION_REQUEST_REQUIRED'] : ['CANDIDATE_SNAPSHOT_MISSING'],
+    );
   } catch (error) {
     return await blockFailedWorkflowStep(input, workflowRunId, error instanceof Error ? error.message : String(error));
   }

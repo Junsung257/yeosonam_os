@@ -110,6 +110,7 @@ async function markOutboxFailed(input: { supabase: SupabaseClient; event: Outbox
 async function processOutboxEvent(input: { supabase: SupabaseClient; event: OutboxRow; workerId: string }): Promise<{ ok: boolean; reason?: string; packageId?: string }> {
   const supportedEvent = [
     'package.publication.pointer_committed',
+    'package.publication.convergence_failed',
     'package.visibility.under_review',
     'package.visibility.public',
   ].includes(input.event.event_type);

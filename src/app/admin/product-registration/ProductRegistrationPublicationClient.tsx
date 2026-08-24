@@ -47,6 +47,9 @@ function statusClass(row: AdminPackagePublicationTruth): string {
 
 function canRequestPublication(row: AdminPackagePublicationTruth): boolean {
   if (!row.packageId || !row.latestRevisionId || !row.latestRevisionNo || !row.sourceHash) return false;
+  const recoverablePublishedSnapshot = row.candidateSnapshotStatus === 'published'
+    && row.pointerState === 'convergence_failed';
+  if (!row.candidateSnapshotId || (row.candidateSnapshotStatus !== 'candidate' && !recoverablePublishedSnapshot)) return false;
   if (row.blockerCodes.includes('COMPATIBILITY_REVISION_MISMATCH')) return false;
   return !['requested', 'revalidating', 'proving', 'ready', 'pointer_committed']
     .includes(row.latestPublicationRequestStatus ?? '');
@@ -203,7 +206,7 @@ export function ProductRegistrationPublicationClient() {
                   </div>
                   <p className="mt-1 truncate font-mono text-[11px] text-admin-muted-2">{row.productKey}</p>
                   <p className="mt-1 text-admin-xs text-admin-muted">
-                    revision {row.latestRevisionNo ?? '-'} · pointer {row.pointerVersion} · {row.proofStatus ?? 'proof 없음'}
+                    revision {row.latestRevisionNo ?? '-'} · candidate {row.candidateSnapshotStatus ?? '없음'} · pointer {row.pointerVersion} · {row.proofStatus ?? 'proof 없음'}
                   </p>
                 </div>
 

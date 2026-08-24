@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { start } from 'workflow/api';
 
 import {
   resolveAdminActorId,
@@ -12,6 +13,7 @@ import {
   requestProductRegistrationPublication,
 } from '@/lib/product-registration-authority';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { productRegistrationPublicationWorkflow } from '@/workflows/product-registration-publication';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -142,12 +144,21 @@ const postHandler = async (request: NextRequest, context?: RouteContext) => {
         requestedBy: actorId,
         requestedActor: actor,
         requestReason,
-        idempotencyKey: `publish:${productId}:${expectedRevisionId}`,
+        idempotencyKey: `publish:${productId}:${expectedRevisionId}:${expectedPointerVersions.customer}-${expectedPointerVersions.b2b}-${expectedPointerVersions.partner}`,
       },
     });
+    let workflowRunId: string | null = null;
+    if (!result.replayed || result.status === 'requested') {
+      const run = await start(productRegistrationPublicationWorkflow, [{
+        publicationRequestId: result.requestId,
+        requestBaseUrl: request.nextUrl.origin,
+        publicBaseUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com',
+      }]);
+      workflowRunId = run.runId;
+    }
 
     return apiResponse(
-      { success: true, data: result },
+      { success: true, data: { ...result, workflowRunId } },
       { status: result.replayed ? 200 : 202, headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {

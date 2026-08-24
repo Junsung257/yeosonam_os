@@ -153,7 +153,7 @@ export type ProductRegistrationV6CandidateSnapshot = {
   };
 };
 
-function customerProofAssertions(input: {
+export function customerProofAssertions(input: {
   snapshot: JsonObject;
   packageId: string;
   resolvedTransport: ResolvedTransportForSnapshot[];
@@ -197,6 +197,137 @@ function customerProofAssertions(input: {
     requiredText: [...new Set(requiredText)],
     forbiddenText: [...new Set(forbiddenText)],
   };
+}
+
+export async function loadProductRegistrationV6CandidateSnapshot(input: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  catalogProductId: string;
+  packageId: string;
+  revisionId: string;
+}): Promise<ProductRegistrationV6CandidateSnapshot> {
+  const { data, error } = await input.supabase
+    .from('public_package_snapshots')
+    .select([
+      'id',
+      'tenant_id',
+      'package_id',
+      'catalog_product_id',
+      'canonical_revision_id',
+      'snapshot_hash',
+      'revision_content_hash',
+      'customer_snapshot_hash',
+      'renderer_build_id',
+      'snapshot_json',
+      'status',
+      'created_at',
+    ].join(','))
+    .eq('tenant_id', input.tenantId)
+    .eq('catalog_product_id', input.catalogProductId)
+    .eq('package_id', input.packageId)
+    .eq('canonical_revision_id', input.revisionId)
+    .in('status', ['candidate', 'published'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_SNAPSHOT_LOOKUP_FAILED', error);
+  if (!data) throw new Error('REGISTRATION_PUBLICATION_CANDIDATE_SNAPSHOT_MISSING');
+  const row = data as JsonObject;
+  const snapshotJson = row.snapshot_json;
+  const currentRendererBuildId = currentProductRegistrationRendererBuildId();
+  if (!snapshotJson || typeof snapshotJson !== 'object' || Array.isArray(snapshotJson)
+    || row.tenant_id !== input.tenantId
+    || row.catalog_product_id !== input.catalogProductId
+    || row.package_id !== input.packageId
+    || row.canonical_revision_id !== input.revisionId
+    || row.renderer_build_id !== currentRendererBuildId
+    || typeof row.snapshot_hash !== 'string'
+    || typeof row.revision_content_hash !== 'string'
+    || typeof row.customer_snapshot_hash !== 'string') {
+    throw new Error('REGISTRATION_PUBLICATION_SNAPSHOT_REVALIDATION_REQUIRED');
+  }
+  const snapshot = snapshotJson as JsonObject;
+  return {
+    tenantId: input.tenantId,
+    catalogProductId: input.catalogProductId,
+    packageId: input.packageId,
+    revisionId: input.revisionId,
+    snapshotId: String(row.id),
+    snapshotHash: row.snapshot_hash,
+    revisionContentHash: row.revision_content_hash,
+    customerSnapshotHash: row.customer_snapshot_hash,
+    rendererBuildId: currentRendererBuildId,
+    proofAssertions: customerProofAssertions({
+      snapshot,
+      packageId: input.catalogProductId,
+      resolvedTransport: [],
+    }),
+  };
+}
+
+function reusableProofPassed(result: unknown): boolean {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
+  const chromeProof = (result as JsonObject).chromeProof;
+  if (!chromeProof || typeof chromeProof !== 'object' || Array.isArray(chromeProof)) return false;
+  const surfaces = (chromeProof as JsonObject).surfaces;
+  if (!Array.isArray(surfaces) || surfaces.length !== 2) return false;
+  const names = new Set<string>();
+  for (const raw of surfaces) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+    const surface = raw as JsonObject;
+    if (surface.status !== 'passed' || surface.ctaOpened !== true
+      || !surface.screenshotStorage || typeof surface.screenshotStorage !== 'object') return false;
+    if (surface.surface === 'packages' || surface.surface === 'lp') names.add(surface.surface);
+  }
+  return names.has('packages') && names.has('lp');
+}
+
+export async function proveOrReuseProductRegistrationV6Snapshot(input: {
+  supabase: SupabaseClient;
+  snapshot: ProductRegistrationV6CandidateSnapshot;
+  baseUrl: string;
+}): Promise<{ proofRunId: string; reused: boolean }> {
+  const { data: existing, error } = await input.supabase
+    .from('product_registration_v5_proof_runs')
+    .select('id,result,route')
+    .eq('tenant_id', input.snapshot.tenantId)
+    .eq('catalog_product_id', input.snapshot.catalogProductId)
+    .eq('package_id', input.snapshot.packageId)
+    .eq('revision_id', input.snapshot.revisionId)
+    .eq('public_snapshot_id', input.snapshot.snapshotId)
+    .eq('snapshot_hash', input.snapshot.snapshotHash)
+    .eq('renderer_build_id', input.snapshot.rendererBuildId)
+    .eq('status', 'passed')
+    .order('checked_at', { ascending: false })
+    .limit(5);
+  if (error) throw formatSupabaseError('REGISTRATION_PUBLICATION_PROOF_LOOKUP_FAILED', error);
+  const reusable = (existing ?? []).find(row => {
+    const route = typeof row.route === 'string' ? row.route : '';
+    return route.includes('/product-registration-proof/packages/')
+      && route.includes('/product-registration-proof/lp/')
+      && reusableProofPassed(row.result);
+  });
+  if (reusable) return { proofRunId: String(reusable.id), reused: true };
+  const proof = await proveProductRegistrationV6Snapshot(input);
+  return { proofRunId: proof.proofRunId, reused: false };
+}
+
+export async function runProductRegistrationV6LiveCanary(input: {
+  snapshot: ProductRegistrationV6CandidateSnapshot;
+  baseUrl: string;
+}): Promise<Awaited<ReturnType<typeof runProductRegistrationV6ChromeProof>>> {
+  const baseUrl = input.baseUrl.replace(/\/$/u, '');
+  return runProductRegistrationV6ChromeProof({
+    surfaceUrls: {
+      packages: `${baseUrl}/packages/${input.snapshot.packageId}`,
+      lp: `${baseUrl}/lp/${input.snapshot.packageId}`,
+    },
+    proofToken: `live-canary:${input.snapshot.snapshotId}:${input.snapshot.snapshotHash}`,
+    expectedSnapshotHash: input.snapshot.snapshotHash,
+    expectedRendererBuildId: input.snapshot.rendererBuildId,
+    requiredText: input.snapshot.proofAssertions.requiredText,
+    forbiddenText: input.snapshot.proofAssertions.forbiddenText,
+  });
 }
 
 const DEGRADED_SCHEDULE_LODGING_NOTICE = '항공 운항 시각과 미정 숙소는 상담 시 최종 확인해 드립니다.';

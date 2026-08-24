@@ -36,6 +36,7 @@ describe('admin package publication authority UI', () => {
     expect(route).toContain('resolveAdminActorId(request)');
     expect(route).toContain(".from('product_registration_v5_publication_pointers')");
     expect(route).toContain('expectedPointerVersions');
+    expect(route).toContain('start(productRegistrationPublicationWorkflow');
     expect(route).not.toContain('body.requestedActor');
     expect(route).not.toContain('body.expectedPointerVersions');
   });

@@ -19,6 +19,10 @@ export type AdminPackagePublicationTruth = {
   latestRevisionNo: number | null;
   latestRevisionStatus: string | null;
   sourceHash: string | null;
+  candidateSnapshotId: string | null;
+  candidateSnapshotStatus: string | null;
+  candidateSnapshotHash: string | null;
+  candidateRendererBuildId: string | null;
   pointerState: string | null;
   pointerVersion: number;
   pointerRevisionId: string | null;
@@ -59,6 +63,26 @@ export type PublicationRequestResult = {
   replayed: boolean;
 };
 
+export type PublicationWorkflowRequest = {
+  id: string;
+  tenantId: string;
+  catalogProductId: string;
+  packageId: string;
+  expectedRevisionId: string;
+  expectedRevisionNo: number;
+  expectedSourceHash: string;
+  expectedPointerVersions: Record<string, number>;
+  channels: Array<'customer' | 'b2b' | 'partner'>;
+  locale: string;
+  requestedBy: string | null;
+  requestedActor: string;
+  requestReason: string;
+  status: string;
+  snapshotId: string | null;
+  proofId: string | null;
+  workflowRunId: string | null;
+};
+
 function rpcClient(supabase: SupabaseClient): RpcClient {
   return supabase as unknown as RpcClient;
 }
@@ -90,6 +114,39 @@ function required(value: unknown, field: string): string {
   return parsed;
 }
 
+function publicationWorkflowRequest(value: unknown): PublicationWorkflowRequest {
+  const row = object(value);
+  const channels = strings(row.channels).filter(
+    (channel): channel is 'customer' | 'b2b' | 'partner' => (
+      channel === 'customer' || channel === 'b2b' || channel === 'partner'
+    ),
+  );
+  const rawVersions = object(row.expected_pointer_versions);
+  const expectedPointerVersions = Object.fromEntries(Object.entries(rawVersions).map(([channel, version]) => [
+    channel,
+    Number(version),
+  ]));
+  return {
+    id: required(row.id, 'id'),
+    tenantId: required(row.tenant_id, 'tenant_id'),
+    catalogProductId: required(row.catalog_product_id, 'catalog_product_id'),
+    packageId: required(row.package_id, 'package_id'),
+    expectedRevisionId: required(row.expected_revision_id, 'expected_revision_id'),
+    expectedRevisionNo: number(row.expected_revision_no) ?? 0,
+    expectedSourceHash: required(row.expected_source_hash, 'expected_source_hash'),
+    expectedPointerVersions,
+    channels,
+    locale: string(row.locale) ?? 'ko-KR',
+    requestedBy: string(row.requested_by),
+    requestedActor: required(row.requested_actor, 'requested_actor'),
+    requestReason: required(row.request_reason, 'request_reason'),
+    status: required(row.status, 'status'),
+    snapshotId: string(row.snapshot_id),
+    proofId: string(row.proof_id),
+    workflowRunId: string(row.workflow_run_id),
+  };
+}
+
 function truthRow(value: unknown): AdminPackagePublicationTruth {
   const row = object(value);
   return {
@@ -102,6 +159,10 @@ function truthRow(value: unknown): AdminPackagePublicationTruth {
     latestRevisionNo: number(row.latest_revision_no),
     latestRevisionStatus: string(row.latest_revision_status),
     sourceHash: string(row.source_hash),
+    candidateSnapshotId: string(row.candidate_snapshot_id),
+    candidateSnapshotStatus: string(row.candidate_snapshot_status),
+    candidateSnapshotHash: string(row.candidate_snapshot_hash),
+    candidateRendererBuildId: string(row.candidate_renderer_build_id),
     pointerState: string(row.pointer_state),
     pointerVersion: number(row.pointer_version) ?? 0,
     pointerRevisionId: string(row.pointer_revision_id),
@@ -177,6 +238,160 @@ export async function requestProductRegistrationPublication(input: {
   };
 }
 
+export async function claimProductRegistrationPublicationRequest(input: {
+  supabase: SupabaseClient;
+  publicationRequestId: string;
+  workflowRunId: string;
+}): Promise<{ action: string; request: PublicationWorkflowRequest }> {
+  const { data, error } = await rpcClient(input.supabase).rpc(
+    'claim_product_registration_publication_request',
+    { p_payload: {
+      publication_request_id: input.publicationRequestId,
+      workflow_run_id: input.workflowRunId,
+    } },
+  );
+  if (error) throw new Error(error.message);
+  const result = object(data);
+  return {
+    action: required(result.action, 'action'),
+    request: publicationWorkflowRequest(result.request),
+  };
+}
+
+export async function loadProductRegistrationPublicationRequest(input: {
+  supabase: SupabaseClient;
+  publicationRequestId: string;
+}): Promise<PublicationWorkflowRequest | null> {
+  const { data, error } = await rpcClient(input.supabase).rpc(
+    'get_product_registration_publication_request',
+    { p_request_id: input.publicationRequestId },
+  );
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return publicationWorkflowRequest(data);
+}
+
+export async function transitionProductRegistrationPublicationRequest(input: {
+  supabase: SupabaseClient;
+  publicationRequestId: string;
+  workflowRunId: string;
+  expectedStatus: string;
+  nextStatus: string;
+  snapshotId?: string | null;
+  proofId?: string | null;
+  releaseManifestHash?: string | null;
+  liveCanaryResult?: JsonObject | null;
+  errorCode?: string | null;
+  errorDetail?: string | null;
+}): Promise<PublicationWorkflowRequest> {
+  const payload: JsonObject = {
+    publication_request_id: input.publicationRequestId,
+    workflow_run_id: input.workflowRunId,
+    expected_status: input.expectedStatus,
+    next_status: input.nextStatus,
+    snapshot_id: input.snapshotId ?? null,
+    proof_id: input.proofId ?? null,
+    release_manifest_hash: input.releaseManifestHash ?? null,
+    error_code: input.errorCode ?? null,
+    error_detail: input.errorDetail ?? null,
+  };
+  if (input.liveCanaryResult) payload.live_canary_result = input.liveCanaryResult;
+  const { data, error } = await rpcClient(input.supabase).rpc(
+    'transition_product_registration_publication_request',
+    { p_payload: payload },
+  );
+  if (error) throw new Error(error.message);
+  return publicationWorkflowRequest(object(data).request);
+}
+
+export async function issueProductRegistrationReleaseAuthorization(input: {
+  supabase: SupabaseClient;
+  request: PublicationWorkflowRequest;
+  snapshotId: string;
+  snapshotHash: string;
+  revisionHash: string;
+  proofId: string;
+  proofHash: string;
+  channel: 'customer' | 'b2b' | 'partner';
+  policyVersion: string;
+}): Promise<{ authorizationId: string; expectedPointerVersion: number }> {
+  const expectedPointerVersion = Number(input.request.expectedPointerVersions[input.channel] ?? 0);
+  const { data, error } = await rpcClient(input.supabase).rpc(
+    'issue_product_registration_release_authorization',
+    { p_payload: {
+      tenant_id: input.request.tenantId,
+      product_id: input.request.catalogProductId,
+      package_id: input.request.packageId,
+      revision_id: input.request.expectedRevisionId,
+      revision_hash: input.revisionHash,
+      snapshot_id: input.snapshotId,
+      snapshot_hash: input.snapshotHash,
+      proof_id: input.proofId,
+      proof_hash: input.proofHash,
+      expected_pointer_version: expectedPointerVersion,
+      policy_version: input.policyVersion,
+      approved_by: input.request.requestedBy,
+      approved_actor: input.request.requestedActor,
+      approval_reason: input.request.requestReason,
+      expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      channel: input.channel,
+      locale: input.request.locale,
+    } },
+  );
+  if (error) throw new Error(error.message);
+  const result = object(data);
+  return {
+    authorizationId: required(result.authorization_id, 'authorization_id'),
+    expectedPointerVersion: number(result.expected_pointer_version) ?? expectedPointerVersion,
+  };
+}
+
+export async function publishProductRegistrationSnapshotBundle(input: {
+  supabase: SupabaseClient;
+  request: PublicationWorkflowRequest;
+  snapshotId: string;
+  snapshotHash: string;
+  revisionHash: string;
+  proofId: string;
+  proofHash: string;
+  releaseManifestHash: string;
+  outcome: 'published_verified' | 'published_degraded';
+  policyVersion: string;
+  authorizations: Array<{
+    channel: 'customer' | 'b2b' | 'partner';
+    authorizationId: string;
+    expectedPointerVersion: number;
+  }>;
+}): Promise<JsonObject> {
+  const { data, error } = await rpcClient(input.supabase).rpc(
+    'publish_product_registration_snapshot_bundle_atomic',
+    { p_payload: {
+      publication_request_id: input.request.id,
+      tenant_id: input.request.tenantId,
+      catalog_product_id: input.request.catalogProductId,
+      package_id: input.request.packageId,
+      revision_id: input.request.expectedRevisionId,
+      revision_hash: input.revisionHash,
+      snapshot_id: input.snapshotId,
+      snapshot_hash: input.snapshotHash,
+      proof_run_id: input.proofId,
+      proof_hash: input.proofHash,
+      policy_version: input.policyVersion,
+      outcome: input.outcome,
+      release_manifest_hash: input.releaseManifestHash,
+      operation_key: `publication-request:${input.request.id}:bundle`,
+      publications: input.authorizations.map(authorization => ({
+        channel: authorization.channel,
+        expected_pointer_version: authorization.expectedPointerVersion,
+        release_authorization_id: authorization.authorizationId,
+        operation_key: `publication-request:${input.request.id}:${authorization.channel}`,
+      })),
+    } },
+  );
+  if (error) throw new Error(error.message);
+  return object(data);
+}
+
 export async function markProductRegistrationConvergenceFailed(input: {
   supabase: SupabaseClient;
   publicationRequestId?: string | null;
@@ -187,6 +402,7 @@ export async function markProductRegistrationConvergenceFailed(input: {
   snapshotId: string;
   reason: string;
   errorDetail?: string | null;
+  liveCanaryResult?: JsonObject | null;
 }): Promise<JsonObject> {
   const { data, error } = await rpcClient(input.supabase).rpc(
     'mark_product_registration_convergence_failed',
@@ -200,6 +416,7 @@ export async function markProductRegistrationConvergenceFailed(input: {
         snapshot_id: input.snapshotId,
         reason: input.reason,
         error_detail: input.errorDetail ?? null,
+        ...(input.liveCanaryResult ? { live_canary_result: input.liveCanaryResult } : {}),
       },
     },
   );

@@ -575,6 +575,10 @@ select
   package.status as compatibility_status,
   package.publication_state as compatibility_publication_state,
   package.canonical_revision_id as compatibility_revision_id,
+  candidate_snapshot.id as candidate_snapshot_id,
+  candidate_snapshot.status as candidate_snapshot_status,
+  candidate_snapshot.snapshot_hash as candidate_snapshot_hash,
+  candidate_snapshot.renderer_build_id as candidate_renderer_build_id,
   pointer.state as pointer_state,
   pointer.pointer_version,
   pointer.current_revision_id as pointer_revision_id,
@@ -634,6 +638,8 @@ select
     when latest_revision.id is null then '원문에서 새 리비전을 생성하세요.'
     when package.canonical_revision_id is distinct from latest_revision.id
       then '최신 리비전으로 호환 projection을 다시 생성하세요.'
+    when candidate_snapshot.id is not null and pointer.state is distinct from 'published'
+      then '후보 스냅샷을 검수한 뒤 공개 심사를 시작하세요.'
     when snapshot.id is null then '고객용 스냅샷을 생성하세요.'
     when proof.id is null then '390×844 패키지·LP 모바일 검사를 실행하세요.'
     when pointer.current_revision_id is distinct from latest_revision.id
@@ -663,6 +669,17 @@ left join lateral (
   order by compatibility.updated_at desc, compatibility.created_at desc
   limit 1
 ) package on true
+left join lateral (
+  select candidate.*
+  from public.public_package_snapshots candidate
+  where candidate.tenant_id = catalog.tenant_id
+    and candidate.catalog_product_id = catalog.id
+    and candidate.package_id = package.id
+    and candidate.canonical_revision_id = latest_revision.id
+    and candidate.status in ('candidate', 'published')
+  order by (candidate.status = 'candidate') desc, candidate.created_at desc
+  limit 1
+) candidate_snapshot on true
 left join public.product_registration_v5_publication_pointers pointer
   on pointer.tenant_id = catalog.tenant_id
  and pointer.catalog_product_id = catalog.id
@@ -1068,6 +1085,7 @@ declare
   v_revision_id uuid := nullif(p_payload->>'revision_id', '')::uuid;
   v_snapshot_id uuid := nullif(p_payload->>'snapshot_id', '')::uuid;
   v_reason text := coalesce(nullif(btrim(p_payload->>'reason'), ''), 'SURFACE_CONVERGENCE_FAILED');
+  v_snapshot_hash text;
   v_updated integer := 0;
   v_already_failed integer := 0;
 begin
@@ -1086,6 +1104,17 @@ begin
       and request.expected_revision_id = v_revision_id
   ) then
     raise exception 'REGISTRATION_PUBLICATION_REQUEST_LINEAGE_MISMATCH';
+  end if;
+
+  select snapshot.snapshot_hash into v_snapshot_hash
+  from public.public_package_snapshots snapshot
+  where snapshot.id = v_snapshot_id
+    and snapshot.tenant_id = v_tenant_id
+    and snapshot.catalog_product_id = v_catalog_product_id
+    and snapshot.package_id = v_package_id
+    and snapshot.canonical_revision_id = v_revision_id;
+  if v_snapshot_hash is null then
+    raise exception 'REGISTRATION_CONVERGENCE_FAILURE_SNAPSHOT_MISMATCH';
   end if;
 
   perform set_config('app.product_registration_writer', 'publication-kernel', true);
@@ -1167,6 +1196,7 @@ begin
       'package_id', v_package_id,
       'revision_id', v_revision_id,
       'snapshot_id', v_snapshot_id,
+      'snapshot_hash', v_snapshot_hash,
       'reason', v_reason,
       'channels_blocked', v_updated
     )
