@@ -28,7 +28,7 @@ import {
 } from '@/lib/bank-account-reality';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 import { resolveClobeTransactionAuthority } from '@/lib/settlement-import/clobe-transaction-authority';
-import { getStalePaymentAttentionRows } from '@/lib/payment-stale-queue';
+import { buildStalePaymentAttentionQueue } from '@/lib/payment-stale-queue';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -867,8 +867,8 @@ export default function PaymentsPageClient({
   // The queue card count and the visible table must share the exact same rows.
   // Keeping separate predicates caused old review outflows to count as waiting work
   // while the selected queue rendered an empty table.
-  const staleTransactions = useMemo(
-    () => getStalePaymentAttentionRows(
+  const staleQueue = useMemo(
+    () => buildStalePaymentAttentionQueue(
       scopedTransactions,
       lastLoadedAt ? Date.parse(lastLoadedAt) : Date.now(),
     ),
@@ -884,7 +884,7 @@ export default function PaymentsPageClient({
         new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
       );
     }
-    if (tab === 'stale') return staleTransactions;
+    if (tab === 'stale') return staleQueue.rows;
 
     // B-3: 환불/출금은 입금 탭에서 분리 — 전용 탭(outflow)에서만 노출
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
@@ -922,7 +922,7 @@ export default function PaymentsPageClient({
       });
     }
     return result;
-  }, [scopedTransactions, staleTransactions, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
+  }, [scopedTransactions, staleQueue, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
 
   const isOutflowTx = isOutflowTransaction;
   const reviewCount    = scopedTransactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
@@ -968,7 +968,7 @@ export default function PaymentsPageClient({
       .reduce((s, t) => s + t.amount, 0),
     [scopedTransactions]
   );
-  const staleCount = staleTransactions.length;
+  const staleCount = staleQueue.count;
 
   const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
     const queueCounts: Record<PaymentQueueKey, number> = {

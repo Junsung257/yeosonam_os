@@ -26,3 +26,11 @@ export function getStalePaymentAttentionRows<T extends PaymentStaleQueueRow>(
     .slice()
     .sort((a, b) => Date.parse(a.created_at ?? '') - Date.parse(b.created_at ?? ''));
 }
+
+export function buildStalePaymentAttentionQueue<T extends PaymentStaleQueueRow>(
+  rows: readonly T[],
+  nowMs: number = Date.now(),
+): { rows: T[]; count: number } {
+  const staleRows = getStalePaymentAttentionRows(rows, nowMs);
+  return { rows: staleRows, count: staleRows.length };
+}

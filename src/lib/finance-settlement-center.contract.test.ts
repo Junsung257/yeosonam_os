@@ -231,4 +231,10 @@ describe('finance settlement center contracts', () => {
     expect(financeClassifications).toContain('여행 가능성 {data?.summary.travelReviewTransactionTotal');
     expect(paymentsPage).toContain('opsQueueSummary && !focusMode');
   });
+
+  it('renders the 24-hour queue count and rows from one shared queue result', () => {
+    expect(paymentsPage).toContain('buildStalePaymentAttentionQueue(');
+    expect(paymentsPage).toContain("if (tab === 'stale') return staleQueue.rows;");
+    expect(paymentsPage).toContain('const staleCount = staleQueue.count;');
+  });
 });
