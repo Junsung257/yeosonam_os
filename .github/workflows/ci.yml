@@ -79,6 +79,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-ci"
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"
           NEXT_PUBLIC_BASE_URL: "https://example.com"
+          # The required quality job already ran tsc --noEmit.
+          NEXT_BUILD_SKIP_TYPECHECK: "1"
 
       # Visual regression 은 dummy supabase env 라 실제 데이터 fetch 못 함 → continue-on-error.
       # Vercel Preview 환경에서는 real secrets 라 정상 검증. CI 빌드 통과만 보장. (2026-05-15 박제)
@@ -120,6 +122,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-ci"
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"
           NEXT_PUBLIC_BASE_URL: "https://example.com"
+          # Performance analysis needs production output, not a duplicate tsc.
+          NEXT_BUILD_SKIP_TYPECHECK: "1"
 
       - name: Lighthouse CI
         continue-on-error: true
