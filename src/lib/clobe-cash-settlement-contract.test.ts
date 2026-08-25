@@ -9,6 +9,7 @@ const hardeningSql = read('supabase/migrations/20260824221515_harden_clobe_sync_
 const mixedOutflowSql = read('supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql');
 const allocationPrivilegeSql = read('supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql');
 const correctionSql = read('supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql');
+const pendingOutflowReviewSql = read('supabase/migrations/20260825123855_enforce_clobe_unassigned_outflow_review.sql');
 const bookingDrawerSource = read('src/components/BookingDrawer.tsx');
 const bookingDetailSource = read('src/app/admin/bookings/[id]/BookingDetailClient.tsx');
 const bookingDetailPageSource = read('src/app/admin/bookings/[id]/page.tsx');
@@ -87,6 +88,28 @@ describe('Clobe cash settlement operating contract', () => {
     expect(importerSource).toContain('releasableNonBookingClassification');
     expect(importerSource).toContain("supabaseAdmin.rpc('reconcile_clobe_provider_memo_allocation'");
     expect(hardeningSql).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+
+  it('keeps only unapproved travel outflows in review after provider evidence refresh', () => {
+    const refreshStart = importerSource.indexOf('async function updateProcessedDuplicateFromMemo');
+    const refreshEnd = importerSource.indexOf('async function resolveClobeMemoReviewEvents');
+    const processedEvidenceRefresh = importerSource.slice(refreshStart, refreshEnd);
+    expect(processedEvidenceRefresh).toContain('Match state and approval evidence belong to the atomic DB command');
+    expect(processedEvidenceRefresh).not.toContain('booking_id:');
+    expect(processedEvidenceRefresh).not.toContain('match_status:');
+    expect(processedEvidenceRefresh).not.toContain('match_confidence:');
+    expect(processedEvidenceRefresh).not.toContain('matched_by:');
+    expect(processedEvidenceRefresh).not.toContain('matched_at:');
+    expect(pendingOutflowReviewSql).toContain('CREATE TRIGGER trg_enforce_pending_clobe_outflow_review');
+    expect(pendingOutflowReviewSql).toContain('CREATE TRIGGER trg_enforce_clobe_outflow_review_from_allocation');
+    expect(pendingOutflowReviewSql).toContain("NEW.settlement_scope = 'travel'");
+    expect(pendingOutflowReviewSql).toContain("NEW.match_status := 'review'");
+    expect(pendingOutflowReviewSql).toContain('NEW.matched_by := NULL');
+    expect(pendingOutflowReviewSql).toContain("OLD.match_status IN ('manual', 'auto')");
+    expect(pendingOutflowReviewSql).toContain("a.target_type = 'unassigned'");
+    expect(pendingOutflowReviewSql).toContain("a.allocation_type = 'unassigned'");
+    expect(pendingOutflowReviewSql).not.toContain('provider_is_unclassified');
+    expect(pendingOutflowReviewSql).toContain('FROM PUBLIC, anon, authenticated');
   });
 
   it('permits the dedicated Clobe command sources in the append-only ledger', () => {
