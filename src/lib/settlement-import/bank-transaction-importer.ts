@@ -691,7 +691,7 @@ async function updateProcessedDuplicateFromMemo(input: {
 }) {
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('bank_transactions')
-    .select('source_metadata, match_status')
+    .select('source_metadata')
     .eq('id', input.existingId)
     .maybeSingle();
   if (existingError) {
@@ -699,12 +699,8 @@ async function updateProcessedDuplicateFromMemo(input: {
   }
   const existingRow = existing as {
     source_metadata?: Record<string, unknown>;
-    match_status?: string | null;
   } | null;
   const previousMetadata = (existingRow?.source_metadata ?? {}) as Record<string, unknown>;
-  const restoredMatchStatus = existingRow?.match_status === 'auto' || existingRow?.match_status === 'manual'
-    ? existingRow.match_status
-    : input.row.depositAmount > 0 ? 'auto' : 'manual';
 
   const { error } = await supabaseAdmin
     .from('bank_transactions')
@@ -713,10 +709,9 @@ async function updateProcessedDuplicateFromMemo(input: {
       counterparty_name: input.row.counterpartyName,
       transaction_fingerprint: input.fingerprint,
       raw_payload: input.row.rawPayload ?? {},
-      match_status: restoredMatchStatus,
-      match_confidence: 1,
-      matched_by: 'clobe_memo_sync',
-      matched_at: new Date().toISOString(),
+      // Match state and approval evidence belong to the atomic DB command
+      // that changed the allocation. This evidence refresh must not race an
+      // operator approval or overwrite its actor/timestamp.
       ...accountFieldsFor(input.row, 'travel'),
       source_metadata: {
         ...previousMetadata,
