@@ -1,9 +1,14 @@
 -- Blog V4 forward migration: make every fatal/quality terminal path use one
 -- idempotent, fenced transition that clears the lease and preserves lineage.
 
+-- 20260823020000 already installed this function with a composite return type.
+-- PostgreSQL cannot change a function's return type with CREATE OR REPLACE, so
+-- replace the exact signature explicitly while preserving that contract.
+drop function if exists public.requeue_blog_content_operation_v4(uuid);
+
 create or replace function public.requeue_blog_content_operation_v4(
   p_operation_id uuid
-) returns boolean
+) returns public.blog_content_operations
 language plpgsql
 security invoker
 set search_path = public, pg_temp
@@ -16,22 +21,40 @@ begin
   from public.blog_content_operations
   where id = p_operation_id
   for update;
-  if v_operation.id is null then raise exception 'blog_content_operation_not_requeueable'; end if;
-  if v_operation.status <> 'running'
-    or (v_operation.lease_expires_at is not null and v_operation.lease_expires_at >= now()) then
-    raise exception 'blog_content_operation_lease_not_expired';
+  if v_operation.id is null then
+    raise exception 'blog_content_operation_not_found';
   end if;
 
-  update public.blog_content_operations
-  set status = 'queued',
-      current_stage = 'demand_verified',
-      fencing_token = fencing_token + 1,
-      lease_owner = null,
-      lease_expires_at = null,
-      workflow_run_id = null,
-      completed_at = null,
-      updated_at = now()
-  where id = p_operation_id;
+  if v_operation.status = 'research_backlog' then
+    update public.blog_content_operations
+    set status = 'queued',
+        current_stage = 'demand_verified',
+        failure_code = null,
+        skip_reason = null,
+        workflow_run_id = null,
+        lease_owner = null,
+        lease_expires_at = null,
+        started_at = null,
+        completed_at = null,
+        updated_at = now()
+    where id = p_operation_id
+    returning * into v_operation;
+  elsif v_operation.status = 'running'
+    and (v_operation.lease_expires_at is null or v_operation.lease_expires_at < now()) then
+    update public.blog_content_operations
+    set status = 'queued',
+        current_stage = 'demand_verified',
+        fencing_token = fencing_token + 1,
+        lease_owner = null,
+        lease_expires_at = null,
+        workflow_run_id = null,
+        completed_at = null,
+        updated_at = now()
+    where id = p_operation_id
+    returning * into v_operation;
+  elsif v_operation.status <> 'queued' then
+    raise exception 'blog_content_operation_not_requeueable:%', v_operation.status;
+  end if;
 
   if v_operation.queue_id is not null then
     update public.blog_topic_queue
@@ -40,10 +63,11 @@ begin
     where id = v_operation.queue_id
       and status in ('generating', 'queued');
   end if;
-  return true;
+  return v_operation;
 end;
 $$;
 
+revoke all on function public.requeue_blog_content_operation_v4(uuid) from public, anon, authenticated;
 grant execute on function public.requeue_blog_content_operation_v4(uuid) to service_role;
 
 create or replace function public.terminalize_blog_content_operation_v4(
