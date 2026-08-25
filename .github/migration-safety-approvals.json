@@ -1,6 +1,26 @@
 {
   "version": 1,
   "approvals": {
+    "20260824221515_harden_clobe_sync_reconciliation_and_finalization.sql": {
+      "sha256": "3d473abb9b8fd924dd0b098d0ae903a210443fff66a429012826ae03c503c9cd",
+      "status": "A",
+      "rationale": "This exact migration was applied and verified on production before the approval was recorded. The two existing-table indexes covered 945 bank transactions and 125 sync runs. The command journal contained zero rows. The immediately following hardening migration adds its service-role-only RLS policy and both missing foreign-key indexes without rewriting applied history. The critical UPDATE finding is a parser false positive caused by the trigger clause 'BEFORE UPDATE OF'; every executable runtime UPDATE in the RPC bodies has a WHERE predicate.",
+      "evidence": "docs/settlement-current-ssot.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2,
+        "high:security:New table 'clobe_existing_booking_deposit_commands' has no RLS policy": 1,
+        "critical:lock-heavy:Unbounded UPDATE without WHERE": 1
+      }
+    },
+    "20260825105630_harden_clobe_command_rls_and_fk_indexes.sql": {
+      "sha256": "95399208c469e19e0837e580a9dc5ef1ddcfffaf12522647b6b58884ba871e6c",
+      "status": "A",
+      "rationale": "The policy and two replay-safe foreign-key indexes harden tables created by the immediately preceding migration. Production verification found both target tables empty before this migration, so these index builds cannot scan or lock customer rows. Fresh databases apply both migrations consecutively before serving traffic.",
+      "evidence": "docs/settlement-current-ssot.md",
+      "approvedIssueCounts": {
+        "high:lock-heavy:CREATE INDEX on an existing table must use CONCURRENTLY": 2
+      }
+    },
     "20260823235147_correct_clobe_refund_outflow_600500.sql": {
       "sha256": "a78830e44465379d42d47d27c6a1eef177aae956b2b32fe1f504fe1f76b08f7a",
       "status": "A",
