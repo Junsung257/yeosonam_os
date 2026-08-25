@@ -874,9 +874,12 @@ function NavRecommendations({
       (it) => (usageCounts[it.href] ?? 0) < 3 && !dismissed.includes(it.href),
     );
 
-    // 최대 3개, 우선순위: 사이드바에서 먼 그룹/아이템 중 랜덤
+    // 최대 3개. 방문이 적은 메뉴부터 href로 안정 정렬해 재렌더 때 메뉴가 튀지 않게 한다.
     return candidates
-      .sort(() => Math.random() - 0.5)
+      .sort((a, b) => {
+        const visitDiff = (usageCounts[a.href] ?? 0) - (usageCounts[b.href] ?? 0);
+        return visitDiff !== 0 ? visitDiff : a.href.localeCompare(b.href, 'ko-KR');
+      })
       .slice(0, 3);
   }, [groups, usageCounts, dismissed]);
 
