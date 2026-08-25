@@ -498,6 +498,17 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
       throw new Error('bulk_confirm_settlements: booking_ids 배열 필수')
     }
 
+    const { data: clobeKeys, error: clobeKeyError } = await supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('booking_id')
+      .in('booking_id', booking_ids)
+      .eq('status', 'active')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
+    if (clobeKeyError) throw new Error(`bulk_confirm_settlements: Clobe 예약 확인 실패: ${clobeKeyError.message}`)
+    if ((clobeKeys ?? []).length > 0) {
+      throw new Error('bulk_confirm_settlements: Clobe 예약은 일괄·AI 확정할 수 없습니다. 예약별 최종정산 버튼을 사용하세요.')
+    }
+
     const now = new Date().toISOString()
     const { data, error } = await supabaseAdmin
       .from('bookings')

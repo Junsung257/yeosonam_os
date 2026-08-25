@@ -4,6 +4,7 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
 import { parseTravelSettlementMemo, type ParsedTravelSettlementMemo } from './bank-statement-parser';
 import { normalizeBankTransactionText } from '@/lib/bank-transaction-fingerprint';
+import { resolveClobeTransactionAuthority } from './clobe-transaction-authority';
 
 interface SettlementBookingCandidate {
   id: string;
@@ -56,6 +57,7 @@ async function bindSettlementKey(
   memo: ParsedTravelSettlementMemo,
   bookingId: string,
   opts: {
+    tenantId?: string | null;
     bookingNo?: string | null;
     landOperatorId?: string | null;
     source: string;
@@ -65,6 +67,7 @@ async function bindSettlementKey(
   const { error } = await supabaseAdmin
     .from('booking_settlement_keys')
     .insert({
+      tenant_id: opts.tenantId ?? null,
       normalized_key: memo.normalizedKey,
       raw_key: memo.rawMemo,
       booking_id: bookingId,
@@ -85,13 +88,19 @@ async function bindSettlementKey(
   return !error;
 }
 
-async function findExistingKey(memo: ParsedTravelSettlementMemo): Promise<SettlementMemoResolution | null> {
-  const { data, error } = await supabaseAdmin
+async function findExistingKey(
+  memo: ParsedTravelSettlementMemo,
+  tenantId?: string | null,
+): Promise<SettlementMemoResolution | null> {
+  let query = supabaseAdmin
     .from('booking_settlement_keys')
     .select('booking_id, source, metadata, bookings!booking_id(booking_no, customers!lead_customer_id(name))')
     .eq('normalized_key', memo.normalizedKey)
-    .eq('status', 'active')
-    .maybeSingle();
+    .eq('status', 'active');
+  query = tenantId
+    ? query.eq('tenant_id', tenantId) as typeof query
+    : query.is('tenant_id', null) as typeof query;
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw new Error(`settlement key lookup failed: ${sanitizeDbError(error)}`);
   if (!data) return null;
@@ -106,6 +115,7 @@ async function findExistingKey(memo: ParsedTravelSettlementMemo): Promise<Settle
   const metadata = row.metadata ?? {};
   const isClobeGenerated = row.source === 'clobe_memo_created_booking'
     || row.source === 'bank_memo_created_booking'
+    || row.source === 'clobe_memo_approved_booking'
     || metadata.clobe_generated === true
     || metadata.placeholder === true;
   if (!isClobeGenerated) {
@@ -131,13 +141,21 @@ async function findExistingKey(memo: ParsedTravelSettlementMemo): Promise<Settle
   };
 }
 
-async function findExistingBooking(memo: ParsedTravelSettlementMemo): Promise<SettlementMemoResolution | null> {
-  const { data } = await supabaseAdmin
+async function findExistingBooking(
+  memo: ParsedTravelSettlementMemo,
+  tenantId?: string | null,
+): Promise<SettlementMemoResolution | null> {
+  let query = supabaseAdmin
     .from('bookings')
     .select('id, booking_no, departure_date, land_operator, land_operator_id, customers!lead_customer_id(name)')
     .eq('departure_date', memo.departureDate)
     .neq('status', 'cancelled')
     .or('is_deleted.is.null,is_deleted.eq.false');
+  query = tenantId
+    ? query.eq('tenant_id', tenantId) as typeof query
+    : query.is('tenant_id', null) as typeof query;
+  const { data, error } = await query;
+  if (error) throw new Error(`existing booking lookup failed: ${sanitizeDbError(error)}`);
 
   const candidates = ((data ?? []) as SettlementBookingCandidate[])
     .map(row => {
@@ -167,15 +185,20 @@ async function findExistingBooking(memo: ParsedTravelSettlementMemo): Promise<Se
   };
 }
 
-async function createPlaceholderBooking(memo: ParsedTravelSettlementMemo): Promise<SettlementMemoResolution> {
+async function createPlaceholderBooking(
+  memo: ParsedTravelSettlementMemo,
+  tenantId?: string | null,
+): Promise<SettlementMemoResolution> {
   const customer = await upsertCustomer({
     name: memo.leadCustomerName,
     source: 'bank_memo_import',
+    tenant_id: tenantId ?? null,
   } as Record<string, unknown>);
   if (!customer?.id) throw new Error('customer creation failed for settlement memo');
 
   const landOperatorId = await findLandOperatorId(memo.landOperatorName);
   const booking = await createBooking({
+    tenantId,
     leadCustomerId: customer.id,
     packageTitle: `${memo.leadCustomerName} ${memo.departureDate} 정산 임시 예약`,
     adultCount: 1,
@@ -196,6 +219,7 @@ async function createPlaceholderBooking(memo: ParsedTravelSettlementMemo): Promi
   if (!booking?.id) throw new Error('booking creation failed for settlement memo');
 
   const bound = await bindSettlementKey(memo, booking.id, {
+    tenantId,
     bookingNo: (booking as { booking_no?: string | null }).booking_no ?? null,
     landOperatorId,
     source: 'clobe_memo_created_booking',
@@ -206,7 +230,7 @@ async function createPlaceholderBooking(memo: ParsedTravelSettlementMemo): Promi
   // key. Keep the first key owner and hide the loser instead of leaving a
   // second visible settlement booking behind.
   if (!bound) {
-    const existing = await findExistingKey(memo);
+    const existing = await findExistingKey(memo, tenantId);
     if (existing?.bookingId && existing.bookingId !== booking.id) {
       await supabaseAdmin
         .from('bookings')
@@ -228,12 +252,12 @@ async function createPlaceholderBooking(memo: ParsedTravelSettlementMemo): Promi
 
 export async function resolveSettlementMemoBooking(
   memo: ParsedTravelSettlementMemo,
-  options: { createIfMissing: boolean },
+  options: { createIfMissing: boolean; tenantId?: string | null },
 ): Promise<SettlementMemoResolution> {
-  const byKey = await findExistingKey(memo);
+  const byKey = await findExistingKey(memo, options.tenantId);
   if (byKey) return byKey;
 
-  const byBooking = await findExistingBooking(memo);
+  const byBooking = await findExistingBooking(memo, options.tenantId);
   if (byBooking) return byBooking;
 
   if (!options.createIfMissing) {
@@ -246,7 +270,7 @@ export async function resolveSettlementMemoBooking(
     };
   }
 
-  return createPlaceholderBooking(memo);
+  return createPlaceholderBooking(memo, options.tenantId);
 }
 
 export type ClobeMemoCorrectionResult =
@@ -280,16 +304,40 @@ export async function applyClobeMemoCorrection(input: {
 
   const { data: currentKey, error: currentKeyError } = await supabaseAdmin
     .from('booking_settlement_keys')
-    .select('booking_id, source, metadata')
+    .select('booking_id, tenant_id, source, metadata')
     .eq('normalized_key', previousKey)
     .eq('booking_id', input.bookingId)
     .eq('status', 'active')
     .maybeSingle();
   if (currentKeyError) throw new Error(`previous settlement key lookup failed: ${sanitizeDbError(currentKeyError)}`);
 
+  // Another transaction in the same sync may already have atomically renamed
+  // the generated booking. Remaining provider rows should converge their
+  // stored memo to that active key instead of being quarantined forever.
+  if (!currentKey) {
+    const { data: renamedKey, error: renamedKeyError } = await supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('booking_id, source, metadata')
+      .eq('normalized_key', nextKey)
+      .eq('booking_id', input.bookingId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (renamedKeyError) throw new Error(`renamed settlement key lookup failed: ${sanitizeDbError(renamedKeyError)}`);
+    const renamedMetadata = (renamedKey?.metadata ?? {}) as Record<string, unknown>;
+    const alreadyRenamed = renamedKey?.source === 'clobe_memo_created_booking'
+      || renamedKey?.source === 'bank_memo_created_booking'
+      || renamedKey?.source === 'clobe_memo_approved_booking'
+      || renamedMetadata.clobe_generated === true
+      || renamedMetadata.placeholder === true;
+    if (renamedKey && alreadyRenamed) {
+      return { status: 'updated', bookingId: input.bookingId, previousKey, nextKey };
+    }
+  }
+
   const metadata = (currentKey?.metadata ?? {}) as Record<string, unknown>;
   const generated = currentKey?.source === 'clobe_memo_created_booking'
     || currentKey?.source === 'bank_memo_created_booking'
+    || currentKey?.source === 'clobe_memo_approved_booking'
     || metadata.clobe_generated === true
     || metadata.placeholder === true;
   if (!currentKey || !generated) {
@@ -303,23 +351,31 @@ export async function applyClobeMemoCorrection(input: {
   }
 
   const sourceFilter = 'source.eq.clobe_mcp,source.eq.clobe_api,external_provider.eq.clobe';
-  const [sameMemoResult, linkedBookingResult] = await Promise.all([
-    supabaseAdmin
+  let sameMemoQuery = supabaseAdmin
       .from('bank_transactions')
-      .select('id, memo')
+      .select('id, memo, source, external_provider, source_metadata')
       .neq('id', input.transactionId)
       .neq('status', 'excluded')
       .eq('memo', previous.rawMemo)
       .or(sourceFilter)
-      .limit(1),
-    supabaseAdmin
+      .limit(1);
+  let linkedBookingQuery = supabaseAdmin
       .from('bank_transactions')
-      .select('id, memo')
+      .select('id, memo, source, external_provider, source_metadata')
       .neq('id', input.transactionId)
       .neq('status', 'excluded')
       .eq('booking_id', input.bookingId)
       .or(sourceFilter)
-      .limit(200),
+      .limit(200);
+  sameMemoQuery = currentKey.tenant_id
+    ? sameMemoQuery.eq('tenant_id', currentKey.tenant_id) as typeof sameMemoQuery
+    : sameMemoQuery.is('tenant_id', null) as typeof sameMemoQuery;
+  linkedBookingQuery = currentKey.tenant_id
+    ? linkedBookingQuery.eq('tenant_id', currentKey.tenant_id) as typeof linkedBookingQuery
+    : linkedBookingQuery.is('tenant_id', null) as typeof linkedBookingQuery;
+  const [sameMemoResult, linkedBookingResult] = await Promise.all([
+    sameMemoQuery,
+    linkedBookingQuery,
   ]);
   if (sameMemoResult.error) {
     throw new Error(`old memo transaction lookup failed: ${sanitizeDbError(sameMemoResult.error)}`);
@@ -330,7 +386,7 @@ export async function applyClobeMemoCorrection(input: {
   const anotherTransactionUsesOldKey = [
     ...(sameMemoResult.data ?? []),
     ...(linkedBookingResult.data ?? []),
-  ].some(row => parseTravelSettlementMemo(row.memo)?.normalizedKey === previousKey);
+  ].some(row => resolveClobeTransactionAuthority(row).providerSettlementKey === previousKey);
   if (anotherTransactionUsesOldKey) {
     return {
       status: 'review',
@@ -341,26 +397,10 @@ export async function applyClobeMemoCorrection(input: {
     };
   }
 
-  const { data: targetKey, error: targetKeyError } = await supabaseAdmin
-    .from('booking_settlement_keys')
-    .select('id, booking_id')
-    .eq('normalized_key', nextKey)
-    .eq('status', 'active')
-    .maybeSingle();
-  if (targetKeyError) throw new Error(`next settlement key lookup failed: ${sanitizeDbError(targetKeyError)}`);
-  if (targetKey && targetKey.booking_id !== input.bookingId) {
-    return {
-      status: 'review',
-      bookingId: input.bookingId,
-      previousKey,
-      nextKey,
-      reason: 'the corrected memo key already belongs to another booking; automatic merge is blocked',
-    };
-  }
-
   const customer = await upsertCustomer({
     name: input.nextMemo.leadCustomerName,
     source: 'clobe_memo_sync',
+    tenant_id: currentKey.tenant_id ?? null,
   } as Record<string, unknown>);
   if (!customer?.id) throw new Error('customer creation failed during Clobe memo correction');
 

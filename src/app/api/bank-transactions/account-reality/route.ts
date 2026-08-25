@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     || YEOSONAM_PRIMARY_BANK_ACCOUNT_NUMBER;
   let query = supabaseAdmin
     .from('bank_transactions')
-    .select('id, transaction_type, amount, received_at, settlement_scope, account_number, balance_after, memo, counterparty_name, provider_category, provider_is_unclassified')
+    .select('id, transaction_type, amount, received_at, settlement_scope, account_number, balance_after, memo, counterparty_name, provider_category, provider_is_unclassified, source, external_provider, source_metadata')
     .eq('external_provider', 'clobe')
     .eq('source', 'clobe_mcp')
     .eq('status', 'active')

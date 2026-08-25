@@ -22,7 +22,7 @@ async function hasActiveClobeSettlementKey(bookingId: string): Promise<boolean> 
     .select('id')
     .eq('booking_id', bookingId)
     .eq('status', 'active')
-    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
     .limit(1)
     .maybeSingle();
   if (error) throw error;
@@ -226,14 +226,15 @@ export async function GET(request: NextRequest) {
 
   if (id) {
     const booking = await getBookingById(id);
-    const { data: clobeKey } = await supabaseAdmin
+    const { data: clobeKey, error: clobeKeyError } = await supabaseAdmin
       .from('booking_settlement_keys')
       .select('id, source')
       .eq('booking_id', id)
       .eq('status', 'active')
-      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
       .limit(1)
       .maybeSingle();
+    if (clobeKeyError) throw clobeKeyError;
     return successResponse({
       booking: booking ? { ...booking, clobe_settlement_booking: Boolean(clobeKey) } : booking,
     });
@@ -253,12 +254,13 @@ export async function GET(request: NextRequest) {
   const bookingIds = (bookings as Array<{ id?: string }>).map(booking => booking.id).filter((value): value is string => Boolean(value));
   let clobeBookingIds = new Set<string>();
   if (bookingIds.length > 0) {
-    const { data: clobeKeys } = await supabaseAdmin
+    const { data: clobeKeys, error: clobeKeysError } = await supabaseAdmin
       .from('booking_settlement_keys')
       .select('booking_id')
       .in('booking_id', bookingIds)
       .eq('status', 'active')
-      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking');
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking');
+    if (clobeKeysError) throw clobeKeysError;
     clobeBookingIds = new Set(((clobeKeys ?? []) as Array<{ booking_id: string }>).map(row => row.booking_id));
   }
   const annotatedBookings = (bookings as unknown as Array<Record<string, unknown>>).map(booking => ({

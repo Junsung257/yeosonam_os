@@ -1,7 +1,11 @@
 import { parseTravelSettlementMemo } from './bank-statement-parser';
+import { resolveClobeTransactionAuthority } from './clobe-transaction-authority';
 
 export interface ClobeMemoRow {
   memo?: string | null;
+  source?: string | null;
+  external_provider?: string | null;
+  source_metadata?: Record<string, unknown> | null;
 }
 
 /**
@@ -9,7 +13,8 @@ export interface ClobeMemoRow {
  * 원본 거래 보존 여부와는 무관하며, 운영 화면과 현금 정산 projection의 경계로만 쓴다.
  */
 export function hasClobeTravelMemo(row: ClobeMemoRow): boolean {
-  return parseTravelSettlementMemo(row.memo) !== null;
+  const authority = resolveClobeTransactionAuthority(row);
+  return parseTravelSettlementMemo(authority.effectiveMemo) !== null;
 }
 
 export function splitClobeOperationalRows<T extends ClobeMemoRow>(rows: T[]): {

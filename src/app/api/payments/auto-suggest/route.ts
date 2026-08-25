@@ -9,6 +9,7 @@ import { successResponse, ApiErrors } from '@/lib/api-response';
 import { operatorScore } from '@/lib/payment-command-resolver';
 import { findSubsetSum } from '@/lib/subset-sum';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { isClobeTransaction } from '@/lib/settlement-import/clobe-transaction-authority';
 
 /**
  * GET /api/payments/auto-suggest?transactionId=UUID
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: txData, error: txErr } = await supabaseAdmin
       .from('bank_transactions')
-      .select('id, transaction_type, amount, counterparty_name, received_at, is_refund, match_status')
+      .select('id, transaction_type, amount, counterparty_name, received_at, is_refund, match_status, source, external_provider')
       .eq('id', txId)
       .limit(1);
     if (txErr) throw txErr;
@@ -53,12 +54,23 @@ export async function GET(req: NextRequest) {
       received_at: string | null;
       is_refund: boolean;
       match_status: string;
+      source?: string | null;
+      external_provider?: string | null;
     } | null;
     if (!tx) {
       return ApiErrors.notFound('거래를 찾을 수 없습니다');
     }
     if (tx.match_status !== 'unmatched' && tx.match_status !== 'review' && tx.match_status !== 'error') {
       return successResponse({ candidates: [], note: '이미 매칭된 거래' });
+    }
+
+    // Clobe transactions have an exact provider-memo key and dedicated
+    // approval commands. Name/amount fuzzy matching must never override it.
+    if (isClobeTransaction(tx)) {
+      return successResponse({
+        candidates: [],
+        note: 'Clobe 거래는 메모 기준 예약 후보와 Clobe 승인 버튼만 사용합니다.',
+      });
     }
 
     const amountAbs = Math.abs(tx.amount);

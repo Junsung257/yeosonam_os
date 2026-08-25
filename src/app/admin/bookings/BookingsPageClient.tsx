@@ -679,7 +679,7 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
 // ──────────────────────────────────────────────────────────────────────────────
 // 인텔리전트 상태 뱃지
 // ──────────────────────────────────────────────────────────────────────────────
-function StatusBadge({ booking, onClick }: { booking: Booking; onClick: () => void }) {
+function StatusBadge({ booking, onClick, referenceNowMs }: { booking: Booking; onClick: () => void; referenceNowMs: number }) {
   const totalPrice   = booking.total_price   || 0;
   const paidAmount   = booking.paid_amount   || 0;
   const totalPaidOut = booking.total_paid_out || 0;
@@ -691,7 +691,7 @@ function StatusBadge({ booking, onClick }: { booking: Booking; onClick: () => vo
   const partialPay   = totalPaidOut > 0 && !isAgencyPaid;
   const payRatio     = totalCost > 0 ? Math.min(100, Math.round((totalPaidOut / totalCost) * 100)) : 0;
   const isStale      = booking.status === 'pending' &&
-    Date.now() - new Date(booking.created_at).getTime() > 48 * 3600 * 1000;
+    referenceNowMs - new Date(booking.created_at).getTime() > 48 * 3600 * 1000;
 
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -711,7 +711,7 @@ function StatusBadge({ booking, onClick }: { booking: Booking; onClick: () => vo
       {!isAgencyPaid && agencyUnpaid > 0 && (
         <div className="flex flex-col items-center gap-0.5">
           <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap
-            ${booking.departure_date && Math.ceil((new Date(booking.departure_date).getTime() - Date.now()) / 86400000) <= 7
+            ${booking.departure_date && Math.ceil((new Date(booking.departure_date).getTime() - referenceNowMs) / 86400000) <= 7
               ? 'bg-red-600 text-white animate-pulse' : 'bg-amber-50 text-amber-700'}`}>
             {partialPay ? '부분송금' : '미송금'}
           </span>
@@ -811,13 +811,22 @@ function BookingWorkQueue({
   );
 }
 
-export default function BookingsPage({ initialBookings }: { initialBookings?: Booking[] } = {}) {
+export default function BookingsPage({
+  initialBookings,
+  referenceNowIso = '1970-01-01T00:00:00.000Z',
+  initialDataTrusted = true,
+}: {
+  initialBookings?: Booking[];
+  referenceNowIso?: string;
+  initialDataTrusted?: boolean;
+} = {}) {
 
   // ── 데이터 ─────────────────────────────────────────────────────────────────
   const [bookings, setBookings]             = useState<Booking[]>(initialBookings ?? []);
   // 서버 pre-fetch 데이터가 있으면 로딩 스피너 스킵
   const [isLoading, setIsLoading]           = useState(!initialBookings?.length);
   const [processing, setProcessing]         = useState<string | null>(null);
+  const referenceNowMs = useMemo(() => new Date(referenceNowIso).getTime(), [referenceNowIso]);
 
   // ── 마스터 데이터 훅 (모듈 캐시 — 중복 fetch 없음) ─────────────────────────
   const { vendors: activeVendors, all: allVendors } = useVendors();
@@ -827,7 +836,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const bookingsRef = useRef<Booking[]>([]);
   bookingsRef.current = bookings; // 렌더마다 동기 갱신
   // 서버 pre-fetch 첫 로드 스킵 여부 (trash 탭 전환 시에는 항상 fetch)
-  const _skipInitialFetch = useRef(!!initialBookings?.length);
+  const _skipInitialFetch = useRef(Boolean(initialBookings?.length && initialDataTrusted));
 
   // ── 필터/탭 ────────────────────────────────────────────────────────────────
   // 대시보드 KPI 카드에서 drilldown으로 진입 시 ?mode= / ?filter= 쿼리파라미터로 초기 상태 설정
@@ -1446,7 +1455,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   }, [searchQuery]);
 
   // ── 탭 카운트 ────────────────────────────────────────────────────────────────
-  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const today = useMemo(() => { const d = new Date(referenceNowMs); d.setHours(0, 0, 0, 0); return d; }, [referenceNowMs]);
   const dDiffFn = (date?: string) => date
     ? Math.ceil((new Date(date).getTime() - today.getTime()) / 86400000)
     : null;
@@ -1459,14 +1468,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const refundPendingCnt = useMemo(() => bookings.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000).length, [bookings]);
   // 정산대기 D-7 지남: 출발 7일 이상 지났는데 settlement_confirmed_at이 비어있는 취소 제외 건
   const settlementPendingCnt = useMemo(() => {
-    const now = Date.now();
+    const now = referenceNowMs;
     return bookings.filter(b => {
       if (b.status === 'cancelled' || b.settlement_confirmed_at) return false;
       if (!b.departure_date) return false;
       const daysAfter = (now - new Date(b.departure_date).getTime()) / 86400000;
       return daysAfter >= 7;
     }).length;
-  }, [bookings]);
+  }, [bookings, referenceNowMs]);
   const prepDocsCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; }).length, [bookings, today]); // eslint-disable-line
   const depositUnpaidCnt = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0)).length, [bookings]);
   const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, today]); // eslint-disable-line
@@ -1556,7 +1565,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     else if (activeTab === 'over_cost')       list = list.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000);
     else if (activeTab === 'refund_pending')  list = list.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000);
     else if (activeTab === 'settlement_pending') {
-      const now = Date.now();
+      const now = referenceNowMs;
       list = list.filter(b => {
         if (b.status === 'cancelled' || b.settlement_confirmed_at) return false;
         if (!b.departure_date) return false;
@@ -1624,7 +1633,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     }
     return list;
   // eslint-disable-next-line
-  }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today]);
+  }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today, referenceNowMs]);
 
   const footerStats = useMemo(() => ({
     totalSales:    filtered.reduce((s, b) => s + (b.total_price||0), 0),
@@ -1714,7 +1723,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
   // ── JSX ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 80px)' }}>
+    <div className="flex min-h-[calc(100vh-80px)] flex-col">
 
       {/* 헤더 */}
       <div className="flex flex-col gap-3 mb-3 shrink-0 sm:flex-row sm:items-center sm:justify-between">
@@ -1987,7 +1996,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         {b.settlement_confirmed_at ? 'Clobe 최종정산 완료' : 'Clobe 정산 진행중'}
                       </span>
                     ) : (
-                      <StatusBadge booking={b} onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }} />
+                      <StatusBadge booking={b} referenceNowMs={referenceNowMs} onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }} />
                     )}
                     <p className="mt-2 truncate text-admin-base font-bold text-admin-text-2">{b.customers?.name ?? b.booking_no ?? '고객명 미입력'}</p>
                     <p className="mt-1 line-clamp-2 text-admin-sm text-admin-muted">{b.package_title || '상품명 미입력'}</p>
@@ -2526,7 +2535,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                               {b.settlement_confirmed_at ? '최종정산 완료' : '정산 진행중'}
                             </span>
                           ) : (
-                            <StatusBadge booking={b} onClick={() => { setEditingCell({ id: b.id, field: 'status' }); setCellValue(b.status); }} />
+                            <StatusBadge booking={b} referenceNowMs={referenceNowMs} onClick={() => { setEditingCell({ id: b.id, field: 'status' }); setCellValue(b.status); }} />
                           )}
                         </div>
                       )}
@@ -2534,7 +2543,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
                     {/* 액션 (sticky right) */}
                     <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      <div className="flex gap-1.5 justify-end">
                         {!isTrash && !b.clobe_settlement_booking && b.status === 'pending' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
                             aria-label={`${b.customers?.name || b.booking_no || '예약'} 예약 확정`}
