@@ -10,6 +10,7 @@ const mixedOutflowSql = read('supabase/migrations/20260824033911_clobe_mixed_out
 const allocationPrivilegeSql = read('supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql');
 const correctionSql = read('supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql');
 const pendingOutflowReviewSql = read('supabase/migrations/20260825123855_enforce_clobe_unassigned_outflow_review.sql');
+const mixedRefundLinkSql = read('supabase/migrations/20260825133902_link_9140000_customer_refund_to_booking.sql');
 const bookingDrawerSource = read('src/components/BookingDrawer.tsx');
 const bookingDetailSource = read('src/app/admin/bookings/[id]/BookingDetailClient.tsx');
 const bookingDetailPageSource = read('src/app/admin/bookings/[id]/page.tsx');
@@ -167,6 +168,28 @@ describe('Clobe cash settlement operating contract', () => {
     expect(mixedOutflowSql).not.toMatch(/\bDELETE\s+FROM\b/i);
     expect(hardeningSql).toContain('match_clobe_outflow_allocations_v1');
     expect(hardeningSql).toContain('replaced_by_command');
+  });
+
+  it('links the 1.5m mixed-withdrawal refund to the Kim Do-yeon booking', () => {
+    expect(mixedRefundLinkSql).toContain('CREATE TRIGGER trg_normalize_booking_refund_allocation_target');
+    expect(mixedRefundLinkSql).toContain("NEW.target_type := 'customer_refund'");
+    expect(mixedRefundLinkSql).toContain('FROM PUBLIC, anon, authenticated');
+    expect(mixedRefundLinkSql).toContain("bt.external_transaction_id = '105941839'");
+    expect(mixedRefundLinkSql).toContain("bt.account_number = '100038454128'");
+    expect(mixedRefundLinkSql).toContain('INTO STRICT v_tx');
+    expect(mixedRefundLinkSql).toContain('FOR UPDATE');
+    expect(mixedRefundLinkSql).toContain('v_source_ledger_count');
+    expect(mixedRefundLinkSql).toContain('pre-existing booking projection/ledger drift blocks the repair');
+    expect(mixedRefundLinkSql).toContain('active booking-linked refund target drift requires explicit review');
+    expect(mixedRefundLinkSql).toContain('active repaired allocation is missing correlated Ledger evidence');
+    expect(mixedRefundLinkSql).toContain('v_projection <> v_payout_projection_before');
+    expect(mixedRefundLinkSql).toContain('public.reverse_clobe_outflow_allocations');
+    expect(mixedRefundLinkSql).toContain('public.match_clobe_outflow_allocations');
+    expect(mixedRefundLinkSql).toContain("'allocationType', 'refund'");
+    expect(mixedRefundLinkSql).toContain("a.target_type = 'customer_refund'");
+    expect(mixedRefundLinkSql).toContain('a.ledger_delta = -1500000');
+    expect(mixedRefundLinkSql).toContain('v_projection <> 0 OR v_ledger <> 0');
+    expect(mixedRefundLinkSql).not.toMatch(/\bDELETE\s+FROM\b/i);
   });
 
   it('carries refund purpose evidence from memo parsing into one-click approval', () => {

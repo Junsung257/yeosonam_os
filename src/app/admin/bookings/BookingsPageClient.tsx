@@ -34,6 +34,7 @@ import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { maskPhone } from '@/lib/pii-mask';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { trackEngagement } from '@/lib/tracker';
+import { formatBookingDateKo, getBookingDayOffset, getKstDateKey } from '@/lib/booking-list-calendar';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -133,7 +134,7 @@ function fmtK(n?: number | null) {
   if (n == null) return '0';
   if (Math.abs(n) >= 100_000_000) return (n / 100_000_000).toFixed(1) + '억원';
   if (Math.abs(n) >= 10_000)      return Math.round(n / 10_000) + '만원';
-  return n.toLocaleString() + '원';
+  return n.toLocaleString('ko-KR') + '원';
 }
 function fmtDate(s?: string | null) { return s ? s.slice(0, 10) : '-'; }
 function parseShortDate(s: string) {
@@ -144,16 +145,9 @@ function parseShortDate(s: string) {
   return `20${yy}-${s.slice(0, 2)}-${s.slice(2, 4)}`;
 }
 
-const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 // '2026-03-17' → '26-03-17 (월)'
 function fmtDateKo(s?: string | null): string {
-  if (!s) return '-';
-  const d = new Date(s.slice(0, 10));
-  if (isNaN(d.getTime())) return s.slice(0, 10);
-  const yy = String(d.getFullYear()).slice(2);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yy}-${mm}-${dd} (${DAYS_KO[d.getDay()]})`;
+  return formatBookingDateKo(s);
 }
 
 // 마진율 컬러 배지
@@ -827,6 +821,7 @@ export default function BookingsPage({
   const [isLoading, setIsLoading]           = useState(!initialBookings?.length);
   const [processing, setProcessing]         = useState<string | null>(null);
   const referenceNowMs = useMemo(() => new Date(referenceNowIso).getTime(), [referenceNowIso]);
+  const referenceDateKst = useMemo(() => getKstDateKey(referenceNowMs), [referenceNowMs]);
 
   // ── 마스터 데이터 훅 (모듈 캐시 — 중복 fetch 없음) ─────────────────────────
   const { vendors: activeVendors, all: allVendors } = useVendors();
@@ -1455,12 +1450,12 @@ export default function BookingsPage({
   }, [searchQuery]);
 
   // ── 탭 카운트 ────────────────────────────────────────────────────────────────
-  const today = useMemo(() => { const d = new Date(referenceNowMs); d.setHours(0, 0, 0, 0); return d; }, [referenceNowMs]);
-  const dDiffFn = (date?: string) => date
-    ? Math.ceil((new Date(date).getTime() - today.getTime()) / 86400000)
-    : null;
+  const dDiffFn = useCallback(
+    (date?: string) => getBookingDayOffset(date, referenceDateKst),
+    [referenceDateKst],
+  );
 
-  const unpaidRiskCnt    = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return ['pending','confirmed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && (b.total_price||0)-(b.paid_amount||0) > 0; }).length, [bookings, today]); // eslint-disable-line
+  const unpaidRiskCnt    = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return ['pending','confirmed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && (b.total_price||0)-(b.paid_amount||0) > 0; }).length, [bookings, dDiffFn]);
   const missingCnt       = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (!b.customers?.phone || !b.departure_date || !b.departure_region)).length, [bookings]);
   // 원가초과: 진짜 손실 (출금이 입금보다 -10k 이상)
   const overCostCnt      = useMemo(() => bookings.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000).length, [bookings]);
@@ -1468,17 +1463,15 @@ export default function BookingsPage({
   const refundPendingCnt = useMemo(() => bookings.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000).length, [bookings]);
   // 정산대기 D-7 지남: 출발 7일 이상 지났는데 settlement_confirmed_at이 비어있는 취소 제외 건
   const settlementPendingCnt = useMemo(() => {
-    const now = referenceNowMs;
     return bookings.filter(b => {
       if (b.status === 'cancelled' || b.settlement_confirmed_at) return false;
-      if (!b.departure_date) return false;
-      const daysAfter = (now - new Date(b.departure_date).getTime()) / 86400000;
-      return daysAfter >= 7;
+      const dayOffset = dDiffFn(b.departure_date);
+      return dayOffset !== null && dayOffset <= -7;
     }).length;
-  }, [bookings, referenceNowMs]);
-  const prepDocsCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; }).length, [bookings, today]); // eslint-disable-line
+  }, [bookings, dDiffFn]);
+  const prepDocsCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; }).length, [bookings, dDiffFn]);
   const depositUnpaidCnt = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0)).length, [bookings]);
-  const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, today]); // eslint-disable-line
+  const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, dDiffFn]);
 
   const handleWorkQueueSelect = useCallback((queue: BookingWorkQueueKey) => {
     const queueCounts: Record<BookingWorkQueueKey, number> = {
@@ -1540,13 +1533,15 @@ export default function BookingsPage({
         // 정산 확정된 건은 기본 숨김 (settlement_pending 필터에서만 보임)
         if (b.settlement_confirmed_at && activeTab !== 'settlement_pending') return false;
         if (!b.departure_date) return true;
-        return new Date(b.departure_date).getTime() >= today.getTime();
+        const dayOffset = dDiffFn(b.departure_date);
+        return dayOffset !== null && dayOffset >= 0;
       });
     } else if (lifecycleTab === 'done') {
       list = list.filter(b => {
         if (b.is_deleted) return false;
         if (b.status === 'completed') return true;
-        return !!(b.departure_date && new Date(b.departure_date).getTime() < today.getTime());
+        const dayOffset = dDiffFn(b.departure_date);
+        return dayOffset !== null && dayOffset < 0;
       });
       // sub-필터: 정산완료 / 정산대기
       if (doneSubTab === 'settled')   list = list.filter(b => !!b.settlement_confirmed_at);
@@ -1565,12 +1560,10 @@ export default function BookingsPage({
     else if (activeTab === 'over_cost')       list = list.filter(b => b.status !== 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) < -10000);
     else if (activeTab === 'refund_pending')  list = list.filter(b => b.status === 'cancelled' && ((b.paid_amount||0) - (b.total_paid_out||0)) > 5000);
     else if (activeTab === 'settlement_pending') {
-      const now = referenceNowMs;
       list = list.filter(b => {
         if (b.status === 'cancelled' || b.settlement_confirmed_at) return false;
-        if (!b.departure_date) return false;
-        const daysAfter = (now - new Date(b.departure_date).getTime()) / 86400000;
-        return daysAfter >= 7;
+        const dayOffset = dDiffFn(b.departure_date);
+        return dayOffset !== null && dayOffset <= -7;
       });
     }
 
@@ -1633,7 +1626,7 @@ export default function BookingsPage({
     }
     return list;
   // eslint-disable-next-line
-  }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today, referenceNowMs]);
+  }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, dDiffFn]);
 
   const footerStats = useMemo(() => ({
     totalSales:    filtered.reduce((s, b) => s + (b.total_price||0), 0),
@@ -1836,8 +1829,8 @@ export default function BookingsPage({
           </div>
         )}
         {([
-          { id: 'active'    as const, label: '진행 중',         cntFn: () => bookings.filter(b => !b.is_deleted && ['pending','confirmed'].includes(b.status) && (!b.departure_date || new Date(b.departure_date) >= today)).length },
-          { id: 'done'      as const, label: '완료/지난 행사',  cntFn: () => bookings.filter(b => !b.is_deleted && (b.status === 'completed' || (!!b.departure_date && new Date(b.departure_date) < today))).length },
+          { id: 'active'    as const, label: '진행 중',         cntFn: () => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !b.is_deleted && ['pending','confirmed'].includes(b.status) && (d === null || d >= 0); }).length },
+          { id: 'done'      as const, label: '완료/지난 행사',  cntFn: () => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !b.is_deleted && (b.status === 'completed' || (d !== null && d < 0)); }).length },
           { id: 'cancelled' as const, label: '취소',            cntFn: () => bookings.filter(b => !b.is_deleted && b.status === 'cancelled').length },
           { id: 'trash'     as const, label: '휴지통',          cntFn: () => 0 },
         ]).map(tab => {
@@ -1889,7 +1882,7 @@ export default function BookingsPage({
       ) : lifecycleTab === 'done' ? (
         <div className="flex gap-1.5 mb-2 flex-wrap items-center shrink-0 mt-2">
           {(() => {
-            const doneList = bookings.filter(b => !b.is_deleted && (b.status === 'completed' || (!!b.departure_date && new Date(b.departure_date) < today)));
+            const doneList = bookings.filter(b => { const d = dDiffFn(b.departure_date); return !b.is_deleted && (b.status === 'completed' || (d !== null && d < 0)); });
             const unsettledCnt = doneList.filter(b => !b.settlement_confirmed_at).length;
             const settledCnt   = doneList.filter(b => !!b.settlement_confirmed_at).length;
             return ([
