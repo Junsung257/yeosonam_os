@@ -28,6 +28,7 @@ import {
 } from '@/lib/bank-account-reality';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
 import { resolveClobeTransactionAuthority } from '@/lib/settlement-import/clobe-transaction-authority';
+import { getStalePaymentAttentionRows } from '@/lib/payment-stale-queue';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -863,6 +864,17 @@ export default function PaymentsPageClient({
   }, [closeMonth, focusMode, focusScope, transactions]);
   const isFocusScopeLoading = Boolean(focusMode && closeMonth && !focusScope && !focusScopeError);
 
+  // The queue card count and the visible table must share the exact same rows.
+  // Keeping separate predicates caused old review outflows to count as waiting work
+  // while the selected queue rendered an empty table.
+  const staleTransactions = useMemo(
+    () => getStalePaymentAttentionRows(
+      scopedTransactions,
+      lastLoadedAt ? Date.parse(lastLoadedAt) : Date.now(),
+    ),
+    [scopedTransactions, lastLoadedAt],
+  );
+
   const filtered = useMemo(() => {
     if (tab === 'non_travel') {
       return nonTravelTransactions
@@ -872,14 +884,12 @@ export default function PaymentsPageClient({
         new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
       );
     }
+    if (tab === 'stale') return staleTransactions;
+
     // B-3: 환불/출금은 입금 탭에서 분리 — 전용 탭(outflow)에서만 노출
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
 
     const result = scopedTransactions.filter(tx => {
-      if (tab === 'stale') {
-        return (tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error')
-          && hoursSince(tx.created_at) >= 24;
-      }
       if (tab === 'outflow') {
         if (!isOutflow(tx)) return false;
         // sub-필터로 매칭 상태별 분리
@@ -904,7 +914,7 @@ export default function PaymentsPageClient({
       });
     }
     // 24h 이상 방치는 최상단으로 (스테일 우선 처리)
-    if (tab === 'review' || tab === 'unmatched' || tab === 'stale') {
+    if (tab === 'review' || tab === 'unmatched') {
       result.sort((a, b) => {
         const aStale = hoursSince(a.created_at) >= 24 ? 1 : 0;
         const bStale = hoursSince(b.created_at) >= 24 ? 1 : 0;
@@ -912,7 +922,7 @@ export default function PaymentsPageClient({
       });
     }
     return result;
-  }, [scopedTransactions, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
+  }, [scopedTransactions, staleTransactions, nonTravelTransactions, tab, outflowSubTab, nonTravelReviewOnly]);
 
   const isOutflowTx = isOutflowTransaction;
   const reviewCount    = scopedTransactions.filter(t => !isOutflowTx(t) && t.match_status === 'review').length;
@@ -958,13 +968,7 @@ export default function PaymentsPageClient({
       .reduce((s, t) => s + t.amount, 0),
     [scopedTransactions]
   );
-  const staleCount = useMemo(() =>
-    scopedTransactions.filter(t =>
-      (t.match_status === 'review' || t.match_status === 'unmatched' || t.match_status === 'error') &&
-      hoursSince(t.created_at) >= 24
-    ).length,
-    [scopedTransactions]
-  );
+  const staleCount = staleTransactions.length;
 
   const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
     const queueCounts: Record<PaymentQueueKey, number> = {
