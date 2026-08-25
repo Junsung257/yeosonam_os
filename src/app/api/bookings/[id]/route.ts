@@ -85,7 +85,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     .select('id, source')
     .eq('booking_id', id)
     .eq('status', 'active')
-    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
     .limit(1)
     .maybeSingle();
 
@@ -131,7 +131,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     .select('id')
     .eq('booking_id', id)
     .eq('status', 'active')
-    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
     .limit(1)
     .maybeSingle();
   if (clobeKeyError) return NextResponse.json({ error: clobeKeyError.message, code: clobeKeyError.code }, { status: 500 });

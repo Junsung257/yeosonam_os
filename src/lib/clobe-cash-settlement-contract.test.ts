@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const read = (relativePath: string) => fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8');
 
 const migrationSql = read('supabase/migrations/20260823235214_clobe_cash_settlement_commands.sql');
+const hardeningSql = read('supabase/migrations/20260824221515_harden_clobe_sync_reconciliation_and_finalization.sql');
 const mixedOutflowSql = read('supabase/migrations/20260824033911_clobe_mixed_outflow_allocations.sql');
 const allocationPrivilegeSql = read('supabase/migrations/20260824052738_restrict_bank_transaction_allocation_rpc.sql');
 const correctionSql = read('supabase/migrations/20260823235147_correct_clobe_refund_outflow_600500.sql');
@@ -14,6 +15,9 @@ const bookingDetailPageSource = read('src/app/admin/bookings/[id]/page.tsx');
 const settlementKeySource = read('src/lib/settlement-import/booking-settlement-keys.ts');
 const importerSource = read('src/lib/settlement-import/bank-transaction-importer.ts');
 const bankTransactionRouteSource = read('src/app/api/bank-transactions/route.ts');
+const clobeSyncRouteSource = read('src/app/api/bank-transactions/sync-clobe/route.ts');
+const agentActionExecutorSource = read('src/lib/agent-action-executor.ts');
+const financePeriodsRouteSource = read('src/app/api/admin/finance/periods/route.ts');
 const vercelConfig = JSON.parse(read('vercel.json')) as {
   crons?: Array<{ path?: string; schedule?: string }>;
 };
@@ -27,6 +31,70 @@ describe('Clobe cash settlement operating contract', () => {
     expect(migrationSql).not.toContain("status = CASE WHEN status = 'completed'");
   });
 
+  it('blocks final settlement until every provider-key transaction is exactly allocated', () => {
+    expect(hardeningSql).toContain('every Clobe transaction must be fully allocated before final settlement');
+    expect(hardeningSql).toContain('provider-key transaction is not allocated to this booking');
+    expect(hardeningSql).toContain('latest Clobe memo has not been applied to every transaction');
+    expect(hardeningSql).toContain('unresolved non-booking allocation blocks Clobe final settlement');
+    expect(hardeningSql).toContain('allocation ledger evidence blocks Clobe final settlement');
+    expect(hardeningSql).toContain('clobe_booking_settlement_snapshots');
+    expect(hardeningSql).toContain('Clobe settlement snapshots are append-only');
+    expect(hardeningSql).toContain('Clobe allocation has unresolved memo-key or review state');
+    expect(hardeningSql).toContain('open Clobe memo-change review blocks final settlement');
+    expect(hardeningSql).toContain("c.request_json ->> 'action' = 'match'");
+    expect(hardeningSql).toContain("current_a.idempotency_key NOT LIKE c.idempotency_key || ':%'");
+  });
+
+  it('blocks legacy and AI paths from bypassing the Clobe final-settlement command', () => {
+    expect(hardeningSql).toContain('CREATE OR REPLACE FUNCTION public.guard_clobe_booking_settlement_mutation');
+    expect(hardeningSql).toContain('trg_guard_clobe_booking_settlement_mutation');
+    expect(hardeningSql).toContain("set_config('yeosonam.clobe_settlement_booking_id'");
+    expect(agentActionExecutorSource).toContain('Clobe 예약은 일괄·AI 확정할 수 없습니다');
+    expect(financePeriodsRouteSource).toContain('clobe_individual_finalize_required');
+  });
+
+  it('uses a durable account lease for every live Clobe sync', () => {
+    expect(hardeningSql).toContain('CREATE OR REPLACE FUNCTION public.begin_clobe_sync_run');
+    expect(hardeningSql).toContain('CREATE OR REPLACE FUNCTION public.checkpoint_clobe_sync_run');
+    expect(hardeningSql).toContain('CREATE OR REPLACE FUNCTION public.complete_clobe_sync_run');
+    expect(hardeningSql).toContain('Clobe sync is already running for this account');
+    expect(hardeningSql).toContain("COALESCE(p_tenant_id::TEXT, 'platform')");
+    expect(clobeSyncRouteSource).toContain('p_tenant_id: settlementTenantId');
+    expect(clobeSyncRouteSource).toContain("(row.account_number ?? '').replace(/\\D/g, '') === normalizedAccount");
+    expect(clobeSyncRouteSource).toContain('Clobe sync account mismatch');
+  });
+
+  it('repairs the production deposit classifier without mojibake', () => {
+    expect(hardeningSql).toContain("v_tx.transaction_type = '입금'");
+    expect(hardeningSql).not.toContain('?낃툑');
+    expect(hardeningSql).toContain('SECURITY DEFINER');
+    expect(hardeningSql).toContain('FROM PUBLIC, anon, authenticated');
+  });
+
+  it('moves a provider-key inflow out of non-booking only through a compensating command', () => {
+    expect(hardeningSql).toContain('CREATE OR REPLACE FUNCTION public.reclassify_clobe_nonbooking_inflow_to_booking');
+    expect(hardeningSql).toContain("SET status = 'reversed'");
+    expect(hardeningSql).toContain("p_source := 'clobe_nonbooking_reclassification'");
+    expect(hardeningSql).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+
+  it('reconciles a late canonical provider memo without deleting classification evidence', () => {
+    expect(hardeningSql).toContain('CREATE OR REPLACE FUNCTION public.reconcile_clobe_provider_memo_allocation');
+    expect(hardeningSql).toContain("v_status := 'reclassified_booking'");
+    expect(hardeningSql).toContain("v_status := 'released_for_review'");
+    expect(hardeningSql).toContain("'requires_outflow_approval', TRUE");
+    expect(hardeningSql).toContain("a.target_type IN ('booking', 'customer_refund')");
+    expect(importerSource).toContain('releasableNonBookingClassification');
+    expect(importerSource).toContain("supabaseAdmin.rpc('reconcile_clobe_provider_memo_allocation'");
+    expect(hardeningSql).not.toMatch(/\bDELETE\s+FROM\b/i);
+  });
+
+  it('permits the dedicated Clobe command sources in the append-only ledger', () => {
+    expect(hardeningSql).toContain('DROP CONSTRAINT IF EXISTS ledger_entries_source_check');
+    expect(hardeningSql).toContain("'clobe_provider_memo_reconciliation'");
+    expect(hardeningSql).toContain("'clobe_outflow_allocation'");
+  });
+
   it('uses one command id per operator action so finalize can run again after unfinalize', () => {
     expect(bookingDrawerSource).toContain('settlement-finalize:${bookingId}:${crypto.randomUUID()}');
     expect(bookingDrawerSource).toContain('settlement-unfinalize:${bookingId}:${crypto.randomUUID()}');
@@ -37,6 +105,17 @@ describe('Clobe cash settlement operating contract', () => {
     expect(migrationSql).toContain('another active Clobe transaction still uses the previous memo key');
     expect(settlementKeySource).toContain('transactionId: string');
     expect(settlementKeySource).toContain(".neq('status', 'cancelled')");
+    expect(importerSource).toContain('Prime the latest provider evidence for every changed canonical row');
+    expect(settlementKeySource).toContain('renamed settlement key lookup failed');
+  });
+
+  it('merges only a provably empty duplicate Clobe placeholder', () => {
+    expect(hardeningSql).toContain('corrected memo key belongs to a non-empty booking; manual review is required');
+    expect(hardeningSql).toContain("finance_exclusion_reason = 'empty Clobe placeholder merged after provider memo correction'");
+    expect(hardeningSql).toContain("'merged_empty_booking_id'");
+    expect(hardeningSql).toContain('latest provider memo key does not match requested correction');
+    expect(hardeningSql).toContain('cross-tenant Clobe memo correction is forbidden');
+    expect(hardeningSql).not.toMatch(/\bDELETE\s+FROM\b/i);
   });
 
   it('keeps Clobe sync manual until the operator changes the policy', () => {
@@ -63,6 +142,8 @@ describe('Clobe cash settlement operating contract', () => {
     expect(mixedOutflowSql).toContain('finalized booking must be unfinalized before reversing Clobe allocation');
     expect(mixedOutflowSql).toContain("'clobe_outflow_allocations_reversed'");
     expect(mixedOutflowSql).not.toMatch(/\bDELETE\s+FROM\b/i);
+    expect(hardeningSql).toContain('match_clobe_outflow_allocations_v1');
+    expect(hardeningSql).toContain('replaced_by_command');
   });
 
   it('carries refund purpose evidence from memo parsing into one-click approval', () => {
@@ -82,6 +163,7 @@ describe('Clobe cash settlement operating contract', () => {
     expect(bankTransactionRouteSource).toContain('suggestedBookingId !== confirmedBookingId');
     expect(bankTransactionRouteSource).toContain('booking.tenant_id !== row.tenant_id');
     expect(bankTransactionRouteSource).toContain('booking.settlement_confirmed_at');
+    expect(hardeningSql).toContain('existing Clobe deposit allocation lacks ledger evidence');
   });
 
   it('removes direct browser-role access to financial allocation commands', () => {
@@ -90,6 +172,7 @@ describe('Clobe cash settlement operating contract', () => {
     expect(allocationPrivilegeSql).toContain('TO service_role');
     expect(mixedOutflowSql).toContain('FROM PUBLIC, anon, authenticated');
     expect(mixedOutflowSql).toContain('TO service_role');
+    expect(hardeningSql).toContain('cross-tenant legacy repair is forbidden');
   });
 
   it('does not rename a representative booking when one Clobe row has mixed allocations', () => {

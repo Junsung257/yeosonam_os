@@ -18,6 +18,7 @@ import {
   type BookingCandidate,
 } from '@/lib/payment-matcher';
 import type { InboxTaskRow } from '@/types/booking-tasks';
+import { isClobeTransaction } from '@/lib/settlement-import/clobe-transaction-authority';
 
 type HealthRow = {
   urgent_open?: number | null;
@@ -57,6 +58,8 @@ type BankTransactionRow = {
   received_at: string | null;
   match_status: string | null;
   transaction_type: string | null;
+  source?: string | null;
+  external_provider?: string | null;
 };
 
 type ActiveBookingRow = {
@@ -179,7 +182,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       safe<BankTransactionRow[]>(
         supabaseAdmin
           .from('bank_transactions')
-          .select('id, amount, counterparty_name, received_at, match_status, transaction_type')
+          .select('id, amount, counterparty_name, received_at, match_status, transaction_type, source, external_provider')
           .in('match_status', ['unmatched', 'review'])
           .neq('status', 'excluded')
           .order('received_at', { ascending: false })
@@ -235,6 +238,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
     const resolvedTotal = autoResolved + manualResolved;
     const activeBookingCandidates = (activeBookingsRaw ?? []).map(toBookingCandidate);
     const paymentMatchCandidates = (bankTxRaw ?? [])
+      .filter((tx) => !isClobeTransaction(tx))
       .filter((tx) => num(tx.amount) > 0 && (!tx.transaction_type || tx.transaction_type === '입금'))
       .map((tx) => {
         const candidates = applyDuplicateNameGuard(matchPaymentToBookings({

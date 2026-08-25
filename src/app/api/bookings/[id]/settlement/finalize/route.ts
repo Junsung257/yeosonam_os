@@ -49,7 +49,7 @@ export async function POST(
     .select('id, source, metadata')
     .eq('booking_id', id)
     .eq('status', 'active')
-    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
     .limit(1)
     .maybeSingle();
   if (clobeKeyError) {

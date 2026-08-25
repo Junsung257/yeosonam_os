@@ -63,6 +63,7 @@ export interface BankTransactionImportRow {
 
 interface ExistingBankTxCandidate {
   id: string;
+  tenant_id?: string | null;
   amount: number;
   transaction_type: string;
   counterparty_name: string | null;
@@ -74,6 +75,7 @@ interface ExistingBankTxCandidate {
   source_metadata?: Record<string, unknown> | null;
   external_provider?: string | null;
   external_transaction_id?: string | null;
+  account_number?: string | null;
   settlement_scope?: 'travel' | 'non_travel' | null;
 }
 
@@ -129,11 +131,34 @@ interface ProcessOptions {
   preview?: boolean;
   actor: string;
   createMissingBookings?: boolean;
+  tenantId?: string | null;
+  onProgress?: (processed: number, total: number) => Promise<void>;
 }
 
-function stableEventId(source: BankTransactionImportSource, row: BankTransactionImportRow, fingerprint: string): string {
+function providerTransactionScopeKey(input: {
+  provider?: string | null;
+  transactionId?: string | null;
+  accountNumber?: string | null;
+}): string {
+  return [
+    input.provider?.trim().toLowerCase() || 'clobe',
+    input.accountNumber?.replace(/\D/g, '') || 'unknown-account',
+    input.transactionId?.trim() || 'unknown-transaction',
+  ].join(':');
+}
+
+function stableEventId(
+  source: BankTransactionImportSource,
+  row: BankTransactionImportRow,
+  fingerprint: string,
+  tenantId?: string | null,
+): string {
   const externalKey = row.externalProvider && row.externalTransactionId
-    ? `${row.externalProvider}:${row.externalTransactionId}`
+    ? `${tenantId ?? 'platform'}:${providerTransactionScopeKey({
+      provider: row.externalProvider,
+      transactionId: row.externalTransactionId,
+      accountNumber: row.accountNumber,
+    })}`
     : fingerprint;
   return `${source}_${createHash('sha256').update(externalKey).digest('hex')}`;
 }
@@ -198,14 +223,21 @@ async function matchTransactionAllocations(params: {
 async function getActiveAllocationShape(transactionId: string): Promise<{
   hasAllocation: boolean;
   memoCorrectionRequiresReview: boolean;
+  releasableNonBookingClassification: boolean;
 }> {
   const { data, error } = await supabaseAdmin
     .from('bank_transaction_allocations')
-    .select('id, booking_id')
+    .select('id, booking_id, ledger_account, ledger_delta, target_type')
     .eq('bank_transaction_id', transactionId)
     .eq('status', 'active');
   if (error) throw new Error(`bank transaction allocation lookup failed: ${sanitizeDbError(error)}`);
-  const rows = (data ?? []) as Array<{ id: string; booking_id: string | null }>;
+  const rows = (data ?? []) as Array<{
+    id: string;
+    booking_id: string | null;
+    ledger_account: string | null;
+    ledger_delta: number | null;
+    target_type: string | null;
+  }>;
   const bookingIds = new Set(rows.map(row => row.booking_id).filter((id): id is string => typeof id === 'string'));
   return {
     hasAllocation: rows.length > 0,
@@ -213,7 +245,40 @@ async function getActiveAllocationShape(transactionId: string): Promise<{
     // non-booking allocation, cannot use one corrected memo to rename a
     // representative booking. It must be reviewed and reallocated explicitly.
     memoCorrectionRequiresReview: rows.length > 1 || rows.some(row => !row.booking_id) || bookingIds.size > 1,
+    // Clobe rows can be classified as company/non-travel before an operator
+    // later enters a canonical booking memo. Those allocations are evidence,
+    // not immutable truth: the DB command reverses them append-only before
+    // applying the provider memo. Any booking/ledger allocation stays guarded.
+    releasableNonBookingClassification: rows.length > 0 && rows.every(row =>
+      row.booking_id === null
+      && row.ledger_account === null
+      && row.ledger_delta === null
+      && row.target_type !== 'booking'
+      && row.target_type !== 'customer_refund'
+    ),
   };
+}
+
+async function reconcileClobeProviderMemoAllocation(params: {
+  transactionId: string;
+  bookingId: string;
+  actor: string;
+  reason: string;
+}): Promise<{ status: 'reclassified_booking' | 'released_for_review' }> {
+  const { data, error } = await supabaseAdmin.rpc('reconcile_clobe_provider_memo_allocation', {
+    p_transaction_id: params.transactionId,
+    p_booking_id: params.bookingId,
+    p_reason: params.reason,
+    p_actor: params.actor,
+  });
+  if (error) {
+    const code = (error as { code?: string }).code;
+    const status = code === 'P0002' ? 404 : 400;
+    throw Object.assign(new Error(sanitizeDbError(error)), { status });
+  }
+  const result = data as { status?: 'reclassified_booking' | 'released_for_review' } | null;
+  if (!result?.status) throw new Error('Clobe provider memo reconciliation returned no status');
+  return { status: result.status };
 }
 
 async function isBookingSettlementFinalized(bookingId: string | null | undefined): Promise<boolean> {
@@ -283,6 +348,7 @@ async function allocateExistingTransaction(params: {
 
 async function findExistingBankTransaction(input: {
   tenantId?: string | null;
+  accountNumber?: string | null;
   receivedAt: string;
   txType: string;
   amount: number;
@@ -295,25 +361,42 @@ async function findExistingBankTransaction(input: {
   excludedIds?: Set<string>;
 }): Promise<{ kind: 'exact' | 'reconciled' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
   if (input.externalProvider && input.externalTransactionId) {
-    const external = await supabaseAdmin
+    const normalizedAccount = input.accountNumber?.replace(/\D/g, '') ?? '';
+    if ((input.incomingSource === 'clobe_mcp' || input.incomingSource === 'clobe_api') && !normalizedAccount) {
+      throw new Error('Clobe provider transaction requires a normalized source account');
+    }
+    let externalQuery = supabaseAdmin
       .from('bank_transactions')
-      .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
+      .select('id, tenant_id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id, account_number')
       .eq('external_provider', input.externalProvider)
       .eq('external_transaction_id', input.externalTransactionId)
-      .neq('status', 'excluded')
-      .maybeSingle();
+      .neq('status', 'excluded');
+    externalQuery = input.tenantId
+      ? externalQuery.eq('tenant_id', input.tenantId) as typeof externalQuery
+      : externalQuery.is('tenant_id', null) as typeof externalQuery;
+    if (normalizedAccount) externalQuery = externalQuery.eq('account_number', normalizedAccount) as typeof externalQuery;
+    const external = await externalQuery.maybeSingle();
+    if (external.error) {
+      throw new Error(`provider transaction lookup failed: ${sanitizeDbError(external.error)}`);
+    }
 
     if (external.data) {
       return { kind: 'exact', row: external.data as ExistingBankTxCandidate, confidence: 1 };
     }
   }
 
-  const exact = await supabaseAdmin
+  let exactQuery = supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
+    .select('id, tenant_id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id, account_number')
     .eq('transaction_fingerprint', input.fingerprint)
-    .neq('status', 'excluded')
-    .maybeSingle();
+    .neq('status', 'excluded');
+  exactQuery = input.tenantId
+    ? exactQuery.eq('tenant_id', input.tenantId) as typeof exactQuery
+    : exactQuery.is('tenant_id', null) as typeof exactQuery;
+  const normalizedAccount = input.accountNumber?.replace(/\D/g, '') ?? '';
+  if (normalizedAccount) exactQuery = exactQuery.eq('account_number', normalizedAccount) as typeof exactQuery;
+  const exact = await exactQuery.maybeSingle();
+  if (exact.error) throw new Error(`transaction fingerprint lookup failed: ${sanitizeDbError(exact.error)}`);
 
   if (exact.data) {
     return { kind: 'exact', row: exact.data as ExistingBankTxCandidate, confidence: 1 };
@@ -326,7 +409,7 @@ async function findExistingBankTransaction(input: {
   const to = new Date(center.getTime() + 60 * 60_000).toISOString();
   let query = supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
+    .select('id, tenant_id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id, account_number')
     .eq('transaction_type', input.txType)
     .eq('amount', input.amount)
     .gte('received_at', from)
@@ -336,8 +419,10 @@ async function findExistingBankTransaction(input: {
 
   if (input.tenantId) query = query.eq('tenant_id', input.tenantId) as typeof query;
   else query = query.is('tenant_id', null) as typeof query;
+  if (normalizedAccount) query = query.eq('account_number', normalizedAccount) as typeof query;
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw new Error(`transaction duplicate candidate lookup failed: ${sanitizeDbError(error)}`);
   let best: ExistingBankTxCandidate | null = null;
   let bestScore = 0;
   const normalizedIncomingName = normalizeBankTransactionText(input.counterpartyName);
@@ -434,11 +519,14 @@ async function attachImportEvidence(existingId: string, input: {
   parsed: ParsedTravelSettlementMemo | null;
   suggestedBookingId?: string | null;
 }) {
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from('bank_transactions')
     .select('source_metadata')
     .eq('id', existingId)
     .maybeSingle();
+  if (existingError) {
+    throw new Error(`bank transaction evidence lookup failed: ${sanitizeDbError(existingError)}`);
+  }
   const previousMetadata = ((existing as { source_metadata?: Record<string, unknown> } | null)?.source_metadata ?? {}) as Record<string, unknown>;
 
   const patch: Record<string, unknown> = {
@@ -465,13 +553,17 @@ async function attachImportEvidence(existingId: string, input: {
 
 async function findExcludedTransactionByFingerprint(
   fingerprint: string,
+  tenantId?: string | null,
 ): Promise<ExistingBankTxCandidate | null> {
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
+    .select('id, tenant_id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, source_metadata, external_provider, external_transaction_id')
     .eq('transaction_fingerprint', fingerprint)
-    .eq('status', 'excluded')
-    .maybeSingle();
+    .eq('status', 'excluded');
+  query = tenantId
+    ? query.eq('tenant_id', tenantId) as typeof query
+    : query.is('tenant_id', null) as typeof query;
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw new Error(`excluded bank transaction lookup failed: ${sanitizeDbError(error)}`);
   return (data as ExistingBankTxCandidate | null) ?? null;
@@ -553,11 +645,14 @@ async function updateUnprocessedDuplicateFromMemo(input: {
   confidence: number;
   suggestedBookingId?: string | null;
 }) {
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from('bank_transactions')
     .select('source_metadata')
     .eq('id', input.existingId)
     .maybeSingle();
+  if (existingError) {
+    throw new Error(`bank transaction memo evidence lookup failed: ${sanitizeDbError(existingError)}`);
+  }
   const previousMetadata = ((existing as { source_metadata?: Record<string, unknown> } | null)?.source_metadata ?? {}) as Record<string, unknown>;
 
   const patch: Record<string, unknown> = {
@@ -594,12 +689,22 @@ async function updateProcessedDuplicateFromMemo(input: {
   eventId: string;
   suggestedBookingId?: string | null;
 }) {
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from('bank_transactions')
-    .select('source_metadata')
+    .select('source_metadata, match_status')
     .eq('id', input.existingId)
     .maybeSingle();
-  const previousMetadata = ((existing as { source_metadata?: Record<string, unknown> } | null)?.source_metadata ?? {}) as Record<string, unknown>;
+  if (existingError) {
+    throw new Error(`processed bank transaction evidence lookup failed: ${sanitizeDbError(existingError)}`);
+  }
+  const existingRow = existing as {
+    source_metadata?: Record<string, unknown>;
+    match_status?: string | null;
+  } | null;
+  const previousMetadata = (existingRow?.source_metadata ?? {}) as Record<string, unknown>;
+  const restoredMatchStatus = existingRow?.match_status === 'auto' || existingRow?.match_status === 'manual'
+    ? existingRow.match_status
+    : input.row.depositAmount > 0 ? 'auto' : 'manual';
 
   const { error } = await supabaseAdmin
     .from('bank_transactions')
@@ -608,6 +713,10 @@ async function updateProcessedDuplicateFromMemo(input: {
       counterparty_name: input.row.counterpartyName,
       transaction_fingerprint: input.fingerprint,
       raw_payload: input.row.rawPayload ?? {},
+      match_status: restoredMatchStatus,
+      match_confidence: 1,
+      matched_by: 'clobe_memo_sync',
+      matched_at: new Date().toISOString(),
       ...accountFieldsFor(input.row, 'travel'),
       source_metadata: {
         ...previousMetadata,
@@ -616,6 +725,19 @@ async function updateProcessedDuplicateFromMemo(input: {
     } as Record<string, unknown>)
     .eq('id', input.existingId);
   if (error) throw new Error(`processed bank transaction memo update failed: ${sanitizeDbError(error)}`);
+}
+
+async function resolveClobeMemoReviewEvents(transactionId: string) {
+  const { error } = await supabaseAdmin
+    .from('ops_events')
+    .update({
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+    } as Record<string, unknown>)
+    .eq('bank_transaction_id', transactionId)
+    .eq('event_type', 'payment_imported')
+    .eq('status', 'open');
+  if (error) throw new Error(`Clobe memo review resolution failed: ${sanitizeDbError(error)}`);
 }
 
 async function flagProcessedMemoChange(input: {
@@ -766,6 +888,7 @@ async function persistNonTravelClobeTransaction(input: {
   txType: '입금' | '출금';
   amount: number;
   existing?: ExistingBankTxCandidate | null;
+  tenantId?: string | null;
 }): Promise<{ id: string | null; inserted: boolean }> {
   const metadata = sourceMetadataFor({
     source: input.source,
@@ -774,6 +897,7 @@ async function persistNonTravelClobeTransaction(input: {
     parsed: null,
   });
   const common = {
+    tenant_id: input.tenantId ?? null,
     slack_event_id: input.eventId,
     raw_message: `[${input.source}] ${input.row.memo}`,
     transaction_fingerprint: input.fingerprint,
@@ -884,6 +1008,103 @@ async function flagTravelTransactionDeclassification(input: {
   } as Record<string, unknown>);
 }
 
+async function prioritizeClobeMemoCorrections(
+  rows: BankTransactionImportRow[],
+  options: ProcessOptions,
+): Promise<BankTransactionImportRow[]> {
+  if (options.source !== 'clobe_mcp' && options.source !== 'clobe_api') return rows;
+
+  const identities = [...new Set(rows
+    .map(row => row.externalTransactionId?.trim())
+    .filter((value): value is string => Boolean(value)))];
+  if (identities.length === 0) return rows;
+
+  let query = supabaseAdmin
+    .from('bank_transactions')
+    .select('id, external_provider, external_transaction_id, account_number, booking_id, memo, source_metadata')
+    .eq('external_provider', 'clobe')
+    .in('external_transaction_id', identities)
+    .neq('status', 'excluded');
+  query = options.tenantId
+    ? query.eq('tenant_id', options.tenantId) as typeof query
+    : query.is('tenant_id', null) as typeof query;
+  const { data, error } = await query;
+  if (error) throw new Error(`Clobe correction priority lookup failed: ${sanitizeDbError(error)}`);
+
+  const existingById = new Map((data ?? []).map(existing => [providerTransactionScopeKey({
+    provider: existing.external_provider,
+    transactionId: existing.external_transaction_id,
+    accountNumber: existing.account_number,
+  }), existing]));
+
+  // Prime the latest provider evidence for every changed canonical row before
+  // applying any booking-key rename. A trip can have several deposits and
+  // withdrawals; when the operator corrects all their memos together, the
+  // first row must see that the other provider rows have also left the old key.
+  if (!options.preview) {
+    for (const row of rows) {
+      if (!row.externalTransactionId) continue;
+      const existing = existingById.get(providerTransactionScopeKey({
+        provider: row.externalProvider,
+        transactionId: row.externalTransactionId,
+        accountNumber: row.accountNumber,
+      }));
+      const parsed = parseTravelSettlementMemo(row.memo);
+      if (!existing || !parsed || parsed.memoFormat !== 'canonical') continue;
+      const previousKey = normalizedMemoKeyOf(existing.memo);
+      if (!previousKey || previousKey === parsed.normalizedKey) continue;
+      const hasDeposit = row.depositAmount > 0;
+      const hasWithdraw = row.withdrawAmount > 0;
+      if (hasDeposit === hasWithdraw) continue;
+      const txType: '입금' | '출금' = hasDeposit ? '입금' : '출금';
+      const amount = hasDeposit ? row.depositAmount : row.withdrawAmount;
+      const fingerprint = buildBankTransactionFingerprint({
+        accountNumber: row.accountNumber,
+        receivedAt: row.receivedAt,
+        txType,
+        amount,
+        counterpartyName: row.counterpartyName,
+        memo: row.memo,
+      });
+      await attachImportEvidence(existing.id, {
+        source: options.source,
+        fingerprint,
+        row,
+        eventId: stableEventId(options.source, row, fingerprint, options.tenantId),
+        parsed,
+        suggestedBookingId: existing.booking_id
+          ?? suggestedBookingIdOf(existing.source_metadata as Record<string, unknown> | null | undefined, options.source),
+      });
+    }
+  }
+
+  return rows
+    .map((row, originalIndex) => {
+      const existing = row.externalTransactionId
+        ? existingById.get(providerTransactionScopeKey({
+          provider: row.externalProvider,
+          transactionId: row.externalTransactionId,
+          accountNumber: row.accountNumber,
+        }))
+        : null;
+      const previousKey = normalizedMemoKeyOf(existing?.memo);
+      const incomingKey = normalizedMemoKeyOf(row.memo);
+      const suggestedBookingId = suggestedBookingIdOf(
+        existing?.source_metadata as Record<string, unknown> | null | undefined,
+        options.source,
+      );
+      const isBookingRename = Boolean(
+        previousKey
+        && incomingKey
+        && previousKey !== incomingKey
+        && (existing?.booking_id || suggestedBookingId),
+      );
+      return { row, originalIndex, priority: isBookingRename ? 0 : 1 };
+    })
+    .sort((left, right) => left.priority - right.priority || left.originalIndex - right.originalIndex)
+    .map(item => item.row);
+}
+
 export async function processBankTransactionImportRows(
   rows: BankTransactionImportRow[],
   options: ProcessOptions,
@@ -891,8 +1112,13 @@ export async function processBankTransactionImportRows(
   const preview = options.preview === true;
   const results: BankTransactionImportPreviewRow[] = [];
   const claimedProbableIds = new Set<string>();
+  const orderedRows = await prioritizeClobeMemoCorrections(rows, options);
 
-  for (const row of rows) {
+  for (let rowIndex = 0; rowIndex < orderedRows.length; rowIndex += 1) {
+    if (!preview && rowIndex > 0 && rowIndex % 25 === 0) {
+      await options.onProgress?.(rowIndex, orderedRows.length);
+    }
+    const row = orderedRows[rowIndex];
     const hasDeposit = row.depositAmount > 0;
     const hasWithdraw = row.withdrawAmount > 0;
     if (hasDeposit === hasWithdraw) {
@@ -915,7 +1141,7 @@ export async function processBankTransactionImportRows(
         matchStatus: 'review',
         confidence: 0,
         matchReasons: ['deposit_and_withdraw_must_be_exactly_one_positive_value'],
-        eventId: stableEventId(options.source, row, fingerprint),
+        eventId: stableEventId(options.source, row, fingerprint, options.tenantId),
         transactionFingerprint: fingerprint,
         importAction: 'invalid_row_review',
         resolutionSource: null,
@@ -943,6 +1169,8 @@ export async function processBankTransactionImportRows(
       memo: row.memo,
     });
     const duplicate = await findExistingBankTransaction({
+      tenantId: options.tenantId,
+      accountNumber: row.accountNumber,
       receivedAt: row.receivedAt,
       txType,
       amount,
@@ -954,7 +1182,7 @@ export async function processBankTransactionImportRows(
       incomingSource: options.source,
       excludedIds: claimedProbableIds,
     });
-    const eventId = stableEventId(options.source, row, fingerprint);
+    const eventId = stableEventId(options.source, row, fingerprint, options.tenantId);
     const isClobeSource = options.source === 'clobe_mcp' || options.source === 'clobe_api';
 
     // The immediate Clobe workflow is travel-memo-only. A new blank or
@@ -1014,7 +1242,11 @@ export async function processBankTransactionImportRows(
     const previousMemoKey = normalizedMemoKeyOf(previousMemo);
     const duplicateAllocationShape = duplicate.row
       ? await getActiveAllocationShape(duplicate.row.id)
-      : { hasAllocation: false, memoCorrectionRequiresReview: false };
+      : {
+          hasAllocation: false,
+          memoCorrectionRequiresReview: false,
+          releasableNonBookingClassification: false,
+        };
     const duplicateProcessed = duplicateAllocationShape.hasAllocation;
     const providerMemoDecision = duplicate.row
       ? evaluateProviderMemoChange({
@@ -1039,7 +1271,24 @@ export async function processBankTransactionImportRows(
     // Before final settlement, a valid memo correction updates that generated
     // booking in place. After final settlement, the financial snapshot is
     // frozen and only an ops warning is recorded.
-    if (isClobeSource && parsed && correctionExisting && memoBookingId && memoChanged && !preview) {
+    if (
+      isClobeSource
+      && parsed
+      && correctionExisting
+      && previousMemoKey
+      && memoBookingId
+      && memoChanged
+      && !duplicateAllocationShape.releasableNonBookingClassification
+      && !preview
+    ) {
+      await attachImportEvidence(correctionExisting.id, {
+        source: options.source,
+        fingerprint,
+        row,
+        eventId,
+        parsed,
+        suggestedBookingId: memoBookingId,
+      });
       if (duplicateAllocationShape.memoCorrectionRequiresReview) {
         await flagProcessedMemoChange({
           source: options.source,
@@ -1094,6 +1343,7 @@ export async function processBankTransactionImportRows(
             eventId,
             suggestedBookingId: isDeposit ? null : correction.bookingId,
           });
+          await resolveClobeMemoReviewEvents(correctionExisting.id);
           results.push({
             receivedAt: row.receivedAt,
             type: txType,
@@ -1207,6 +1457,7 @@ export async function processBankTransactionImportRows(
         createIfMissing: options.createMissingBookings === true
           && parsed.memoFormat === 'canonical'
           && !preview,
+        tenantId: options.tenantId,
       });
       resolutionSource = resolution.source;
       confidence = resolution.confidence;
@@ -1248,7 +1499,8 @@ export async function processBankTransactionImportRows(
       !parsed && recordsCompleteClobeLedger ? 'non_travel_recorded' :
       !parsed ? 'ignored_non_travel' :
       bookingCandidateReview ? 'booking_candidate_review' :
-      memoChanged && duplicateProcessed ? 'memo_changed_review' :
+      memoChanged && duplicateProcessed && !duplicateAllocationShape.releasableNonBookingClassification
+        ? 'memo_changed_review' :
       memoChanged ? 'memo_updated' :
       duplicateIsLegacyMatched ? 'legacy_repaired' :
       duplicate.kind === 'exact' ? 'already_processed' :
@@ -1364,6 +1616,7 @@ export async function processBankTransactionImportRows(
         txType,
         amount,
         existing: duplicate.row,
+        tenantId: options.tenantId,
       });
       results.push({
         ...previewRow,
@@ -1375,6 +1628,48 @@ export async function processBankTransactionImportRows(
 
     if ((duplicate.kind === 'exact' || duplicate.kind === 'reconciled') && duplicate.row) {
       if (duplicate.kind === 'reconciled') claimedProbableIds.add(duplicate.row.id);
+      if (
+        isClobeSource
+        && parsed
+        && parsed.memoFormat === 'canonical'
+        && memoChanged
+        && duplicateProcessed
+        && duplicateAllocationShape.releasableNonBookingClassification
+        && matchedBooking
+      ) {
+        await attachImportEvidence(duplicate.row.id, {
+          source: options.source,
+          fingerprint,
+          row,
+          eventId,
+          parsed,
+          suggestedBookingId: matchedBooking.id,
+        });
+        const reconciliation = await reconcileClobeProviderMemoAllocation({
+          transactionId: duplicate.row.id,
+          bookingId: matchedBooking.id,
+          actor: options.actor,
+          reason: `${options.source} canonical provider memo replaced prior non-booking classification`,
+        });
+        await updateProcessedDuplicateFromMemo({
+          existingId: duplicate.row.id,
+          source: options.source,
+          fingerprint,
+          row,
+          parsed,
+          eventId,
+          suggestedBookingId: isDeposit ? null : matchedBooking.id,
+        });
+        await resolveClobeMemoReviewEvents(duplicate.row.id);
+        results.push({
+          ...previewRow,
+          status: reconciliation.status === 'reclassified_booking'
+            ? 'memo_updated'
+            : 'memo_changed_review',
+          txId: duplicate.row.id,
+        });
+        continue;
+      }
       if (memoChanged && duplicateProcessed) {
         await flagProcessedMemoChange({
           source: options.source,
@@ -1483,6 +1778,7 @@ export async function processBankTransactionImportRows(
     const { data: inserted, error: insertError } = await supabaseAdmin
       .from('bank_transactions')
       .insert([{
+        tenant_id: options.tenantId ?? null,
         slack_event_id: eventId,
         raw_message: `[${options.source}] ${row.memo}`,
         transaction_fingerprint: fingerprint,
@@ -1526,7 +1822,7 @@ export async function processBankTransactionImportRows(
       .single();
 
     if (insertError?.code === '23505' && options.source === 'clobe_mcp') {
-      const excluded = await findExcludedTransactionByFingerprint(fingerprint);
+      const excluded = await findExcludedTransactionByFingerprint(fingerprint, options.tenantId);
       if (excluded) {
         try {
           const restored = await restoreExcludedTransactionAsClobe({

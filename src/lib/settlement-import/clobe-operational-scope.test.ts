@@ -13,6 +13,19 @@ describe('Clobe operational scope', () => {
     expect(hasClobeTravelMemo({ memo: 'VA비용' })).toBe(false);
   });
 
+  it('uses the latest provider memo for travel/non-travel routing', () => {
+    const row = {
+      source: 'clobe_mcp',
+      external_provider: 'clobe',
+      memo: '',
+      source_metadata: {
+        clobe_mcp: { memo: '260813_최주연_투어코코넛', settlement_key: '260813_최주연_투어코코넛' },
+      },
+    };
+    expect(hasClobeTravelMemo(row)).toBe(true);
+    expect(splitClobeOperationalRows([row])).toEqual({ travel: [row], memoReview: [] });
+  });
+
   it('keeps noncanonical evidence while removing it from travel operations', () => {
     const rows = [
       { id: 'travel', memo: '261011_홍길동_투어폰' },

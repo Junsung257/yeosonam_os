@@ -32,6 +32,7 @@ import {
   resolveSettlementMemoBooking,
   type ParsedTravelSettlementMemo,
 } from '@/lib/settlement-import';
+import { resolveClobeTransactionAuthority } from '@/lib/settlement-import/clobe-transaction-authority';
 
 // 매칭 성공 후 counterparty_name ↔ customer 매핑 학습 (best-effort)
 async function learnAliasForMatch(bookingId: string, counterpartyName: string | undefined | null) {
@@ -135,6 +136,7 @@ function nameSim(a: string, b: string): number {
 
 async function findExistingBankTransaction(input: {
   tenantId?: string | null;
+  accountNumber?: string | null;
   receivedAt: string;
   txType: string;
   amount: number;
@@ -142,11 +144,18 @@ async function findExistingBankTransaction(input: {
   memo?: string;
   fingerprint: string;
 }): Promise<{ kind: 'exact' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
-  const exact = await supabaseAdmin
+  let exactQuery = supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, tenant_id, account_number')
     .eq('transaction_fingerprint', input.fingerprint)
-    .maybeSingle();
+    .neq('status', 'excluded');
+  exactQuery = input.tenantId
+    ? exactQuery.eq('tenant_id', input.tenantId) as typeof exactQuery
+    : exactQuery.is('tenant_id', null) as typeof exactQuery;
+  const normalizedAccount = input.accountNumber?.replace(/\D/g, '') ?? '';
+  if (normalizedAccount) exactQuery = exactQuery.eq('account_number', normalizedAccount) as typeof exactQuery;
+  const exact = await exactQuery.maybeSingle();
+  if (exact.error) throw new Error(`bank transaction fingerprint lookup failed: ${sanitizeDbError(exact.error)}`);
 
   if (exact.data) {
     return { kind: 'exact', row: exact.data as ExistingBankTxCandidate, confidence: 1 };
@@ -159,7 +168,7 @@ async function findExistingBankTransaction(input: {
   const to = new Date(center.getTime() + 60 * 60_000).toISOString();
   let query = supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo, tenant_id, account_number')
     .eq('transaction_type', input.txType)
     .eq('amount', input.amount)
     .gte('received_at', from)
@@ -169,8 +178,10 @@ async function findExistingBankTransaction(input: {
 
   if (input.tenantId) query = query.eq('tenant_id', input.tenantId) as typeof query;
   else query = query.is('tenant_id', null) as typeof query;
+  if (normalizedAccount) query = query.eq('account_number', normalizedAccount) as typeof query;
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw new Error(`bank transaction candidate lookup failed: ${sanitizeDbError(error)}`);
   let best: ExistingBankTxCandidate | null = null;
   let bestScore = 0;
   for (const row of (data ?? []) as ExistingBankTxCandidate[]) {
@@ -432,7 +443,7 @@ export async function GET(request: NextRequest) {
   const aggregate    = searchParams.get('aggregate');             // 'monthly'
   const months       = parseInt(searchParams.get('months') || '6', 10);
   const bookingId    = searchParams.get('booking_id');            // 예약별 입금 필터
-  const matchStatus  = searchParams.get('match_status');          // 'unmatched' → 전체 기간 미매칭 조회
+  const matchStatus  = searchParams.get('match_status');          // unmatched | attention → 전체 기간 조회
   const requestedScope = searchParams.get('scope');
   const sourceFilter = searchParams.get('source');
   if (bookingId && !UUID_PATTERN.test(bookingId)) {
@@ -495,13 +506,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ chartData }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
-  // ── 미매칭 전체 기간 조회 (limit 없음) ────────────────────────────────────
-  if (matchStatus === 'unmatched') {
+  // ── 미매칭/검토 전체 기간 조회 (limit 없음) ───────────────────────────────
+  if (matchStatus === 'unmatched' || matchStatus === 'attention') {
+    const requestedMatchStatuses = matchStatus === 'attention'
+      ? ['unmatched', 'review', 'error']
+      : ['unmatched'];
     if (summaryOnly) {
       let countQuery = supabaseAdmin
         .from('bank_transactions')
         .select('id', { count: 'exact', head: true })
-        .in('match_status', ['unmatched'])
+        .in('match_status', requestedMatchStatuses)
         .neq('status', 'excluded');
       if (settlementScope) countQuery = countQuery.eq('settlement_scope', settlementScope) as typeof countQuery;
       if (sourceFilter) countQuery = countQuery.eq('source', sourceFilter) as typeof countQuery;
@@ -512,26 +526,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ count: count ?? 0, transactions: [] }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
-    let unmatchedQuery = supabaseAdmin
-      .from('bank_transactions')
-      .select(`
-        *,
-        bookings!booking_id (
-          id, booking_no, package_title,
-          total_price, paid_amount, total_paid_out, departure_date,
-          customers!lead_customer_id(name)
-        )
-      `)
-      .in('match_status', ['unmatched'])
-      .neq('status', 'excluded')
-      .order('received_at', { ascending: false });
-    if (settlementScope) unmatchedQuery = unmatchedQuery.eq('settlement_scope', settlementScope) as typeof unmatchedQuery;
-    if (sourceFilter) unmatchedQuery = unmatchedQuery.eq('source', sourceFilter) as typeof unmatchedQuery;
+    const pageSize = 1000;
+    const unmatchedData: Array<Record<string, unknown>> = [];
+    for (let offset = 0; ; offset += pageSize) {
+      let unmatchedQuery = supabaseAdmin
+        .from('bank_transactions')
+        .select(`
+          *,
+          bookings!booking_id (
+            id, booking_no, package_title,
+            total_price, paid_amount, total_paid_out, departure_date,
+            customers!lead_customer_id(name)
+          )
+        `)
+        .in('match_status', requestedMatchStatuses)
+        .neq('status', 'excluded')
+        .order('received_at', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (settlementScope) unmatchedQuery = unmatchedQuery.eq('settlement_scope', settlementScope) as typeof unmatchedQuery;
+      if (sourceFilter) unmatchedQuery = unmatchedQuery.eq('source', sourceFilter) as typeof unmatchedQuery;
 
-    const { data: unmatchedData, error: unmatchedError } = await unmatchedQuery;
-
-    if (unmatchedError) return NextResponse.json({ error: unmatchedError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
-    return NextResponse.json({ transactions: unmatchedData || [] }, { headers: { 'Cache-Control': 'no-store' } });
+      const { data: page, error: unmatchedError } = await unmatchedQuery;
+      if (unmatchedError) return NextResponse.json({ error: unmatchedError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+      unmatchedData.push(...((page ?? []) as Array<Record<string, unknown>>));
+      if ((page ?? []).length < pageSize) break;
+    }
+    return NextResponse.json(
+      { transactions: unmatchedData, complete: true, total: unmatchedData.length },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 
   // ── 일반 트랜잭션 목록 ─────────────────────────────────────────────────────
@@ -683,7 +706,7 @@ export async function PATCH(request: NextRequest) {
 
       const { data: tx, error: txError } = await supabaseAdmin
         .from('bank_transactions')
-        .select('id, tenant_id, source, external_provider, transaction_type, amount, booking_id, match_status, status, source_metadata')
+        .select('id, tenant_id, source, external_provider, transaction_type, amount, memo, booking_id, match_status, status, source_metadata')
         .eq('id', transactionId)
         .maybeSingle();
       if (txError) throw txError;
@@ -694,6 +717,7 @@ export async function PATCH(request: NextRequest) {
         external_provider?: string | null;
         transaction_type: string;
         amount: number;
+        memo?: string | null;
         booking_id?: string | null;
         match_status?: string | null;
         status?: string | null;
@@ -704,10 +728,12 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Clobe 여행 입금만 승인할 수 있습니다.' }, { status: 400 });
       }
       if (row.status === 'excluded') return NextResponse.json({ error: '제외된 거래입니다.' }, { status: 409 });
-      if (row.booking_id || row.match_status === 'auto' || row.match_status === 'manual') {
-        return NextResponse.json({ success: true, alreadyMatched: true, bookingId: row.booking_id });
-      }
 
+      const authority = resolveClobeTransactionAuthority(row);
+      const parsedMemo = parseTravelSettlementMemo(authority.providerMemo);
+      if (!parsedMemo || parsedMemo.memoFormat !== 'canonical') {
+        return NextResponse.json({ error: '최신 Clobe 메모가 예약 형식이 아닙니다. 동기화 후 다시 확인하세요.' }, { status: 409 });
+      }
       const clobeSourceKey = row.source === 'clobe_api' ? 'clobe_api' : 'clobe_mcp';
       const clobeMetadata = row.source_metadata?.[clobeSourceKey];
       const suggestedBookingId = clobeMetadata && typeof clobeMetadata === 'object'
@@ -746,31 +772,23 @@ export async function PATCH(request: NextRequest) {
       if (!Number.isSafeInteger(transactionAmount) || transactionAmount <= 0 || transactionAmount > 2147483647) {
         return NextResponse.json({ error: '입금 금액이 올바르지 않습니다.' }, { status: 409 });
       }
-      const result = await matchTransactionAllocations({
-        transactionId,
-        allocations: [{ bookingId: confirmedBookingId, amount: transactionAmount }],
-        confidence: 1,
-        actor,
-        notes: 'operator approved existing booking suggested by Clobe memo',
+      const idempotencyKey = typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : `clobe-existing-deposit:${transactionId}:${confirmedBookingId}`;
+      const { data: result, error: approvalError } = await supabaseAdmin.rpc('confirm_clobe_deposit_to_existing_booking', {
+        p_transaction_id: transactionId,
+        p_booking_id: confirmedBookingId,
+        p_expected_settlement_key: parsedMemo.normalizedKey,
+        p_raw_key: authority.providerMemo,
+        p_departure_date: parsedMemo.departureDate,
+        p_customer_name: parsedMemo.leadCustomerName,
+        p_land_operator_name: parsedMemo.landOperatorName,
+        p_idempotency_key: idempotencyKey,
+        p_actor: actor,
       });
-
-      const previousMetadata = row.source_metadata ?? {};
-      const currentClobeMetadata = (previousMetadata[clobeSourceKey] ?? {}) as Record<string, unknown>;
-      const { error: metadataError } = await supabaseAdmin
-        .from('bank_transactions')
-        .update({
-          source_metadata: {
-            ...previousMetadata,
-            [clobeSourceKey]: {
-              ...currentClobeMetadata,
-              existing_booking_approved_at: new Date().toISOString(),
-              existing_booking_approved_by: actor,
-            },
-          },
-        } as Record<string, unknown>)
-        .eq('id', transactionId);
-      if (metadataError) {
-        console.warn('[Clobe deposit] approval metadata update failed:', sanitizeDbError(metadataError));
+      if (approvalError) {
+        const status = approvalError.code === 'P0002' ? 404 : 409;
+        return NextResponse.json({ error: sanitizeDbError(approvalError) }, { status });
       }
 
       return NextResponse.json({ success: true, bookingId: confirmedBookingId, result });
@@ -819,7 +837,8 @@ export async function PATCH(request: NextRequest) {
       const purposeTags = clobeMetadata && typeof clobeMetadata === 'object'
         ? (clobeMetadata as { purpose_tags?: unknown }).purpose_tags
         : null;
-      const parsedPurposeTags = parseTravelSettlementMemo(row.memo)?.purposeTags ?? [];
+      const outflowAuthority = resolveClobeTransactionAuthority(row);
+      const parsedPurposeTags = parseTravelSettlementMemo(outflowAuthority.effectiveMemo)?.purposeTags ?? [];
       const defaultAllocationType = (Array.isArray(purposeTags) && purposeTags.includes('환불')) || parsedPurposeTags.includes('환불')
         ? 'refund'
         : 'payout';
@@ -1385,6 +1404,8 @@ export async function POST(request: NextRequest) {
         memo: row.memo,
       });
       const duplicate = await findExistingBankTransaction({
+        tenantId: null,
+        accountNumber: row.accountNumber,
         receivedAt: row.receivedAt,
         txType,
         amount,
@@ -1465,6 +1486,8 @@ export async function POST(request: NextRequest) {
         .insert([{
           slack_event_id: eventId, raw_message: `[일괄등록] ${row.memo}`,
           transaction_fingerprint: fingerprint,
+          tenant_id: null,
+          account_number: row.accountNumber?.replace(/\D/g, '') || null,
           source: 'bulk_import',
           source_metadata: {
             bulk_import: {

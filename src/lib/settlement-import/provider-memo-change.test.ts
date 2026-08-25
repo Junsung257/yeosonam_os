@@ -46,7 +46,7 @@ describe('provider memo observation', () => {
     });
   });
 
-  it('does not repeat a review for an already observed provider memo', () => {
+  it('keeps retrying while provider evidence is newer than the memo applied in OS', () => {
     expect(evaluateProviderMemoChange({
       source: 'clobe_mcp',
       storedMemo: '260611_창원대_투어폰',
@@ -59,12 +59,12 @@ describe('provider memo observation', () => {
         },
       },
     })).toEqual(expect.objectContaining({
-      memoChanged: false,
+      memoChanged: true,
       declassificationNeedsReview: false,
     }));
   });
 
-  it('reviews a travel memo removal once, then treats the same provider evidence as merged', () => {
+  it('keeps a travel memo removal pending until the applied memo is cleared', () => {
     expect(evaluateProviderMemoChange({
       source: 'clobe_mcp',
       storedMemo: '260715_정지해_투어폰',
@@ -78,7 +78,7 @@ describe('provider memo observation', () => {
 
     expect(evaluateProviderMemoChange({
       source: 'clobe_mcp',
-      storedMemo: '260715_정지해_투어폰',
+      storedMemo: null,
       incomingMemo: '',
       processed: true,
       sourceMetadata: {

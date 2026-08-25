@@ -12,7 +12,7 @@ async function assertNotClobeSettlementBooking(bookingId: string): Promise<void>
     .select('id')
     .eq('booking_id', bookingId)
     .eq('status', 'active')
-    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking')
+    .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
     .limit(1)
     .maybeSingle();
   if (error) throw error;
@@ -98,6 +98,7 @@ export async function getBookingById(id: string) {
 // ── 생성 ─────────────────────────────────────────────────────
 
 export async function createBooking(data: {
+  tenantId?: string | null;
   packageId?: string; packageTitle?: string; leadCustomerId: string;
   adultCount: number; childCount: number; adultCost: number; adultPrice: number;
   childCost: number; childPrice: number; infantCount?: number; infantCost?: number; fuelSurcharge: number;
@@ -160,6 +161,7 @@ export async function createBooking(data: {
     }
 
     const { data: booking, error } = await supabaseAdmin.from('bookings').insert([{
+      ...(data.tenantId ? { tenant_id: data.tenantId } : {}),
       package_id: data.packageId || null,
       package_title: data.packageTitle || '미정',
       lead_customer_id: data.leadCustomerId,

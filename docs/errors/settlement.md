@@ -1,6 +1,20 @@
 # Settlement and Ledger Errors
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
+
+## ERR-SETTLEMENT-CLOBE-FINALIZE-BYPASS@2026-08-25
+
+- **Symptom:** A Clobe booking could be marked settled by a legacy AI bulk command or departure-month close without the booking-level allocation, ledger, memo-review, and immutable snapshot checks.
+- **Root cause:** The dedicated finalization RPC was safe, but compatibility paths still wrote `bookings.settlement_confirmed_*` directly and the database did not distinguish an authorized Clobe command from a general update.
+- **Permanent rule:** A booking with an active Clobe settlement key may change final-settlement columns only while `finalize_clobe_booking_settlement` holds the transaction-local booking gate. AI bulk confirmation rejects Clobe bookings, monthly close cannot substitute for individual confirmation, and the database trigger is the final enforcement layer.
+- **Required proof:** Direct settlement-column UPDATE fails; exact allocation+ledger finalization succeeds and creates one immutable snapshot; key mismatch, `review/error/unmatched`, open memo-change evidence, unallocated amount, and ledger-free allocation each fail. Explicit mixed-outflow command evidence remains valid for a withdrawal split across bookings.
+
+## ERR-SETTLEMENT-CLOBE-LATE-MEMO-STUCK-NONTRAVEL@2026-08-25
+
+- **Symptom:** An operator filled a canonical Clobe memo after sync, but the next sync kept the transaction as `unassigned` or `company_expense`. The booking showed only part of its deposits/outflows even though the provider memo key was exact.
+- **Root cause:** Lossless bank conservation had already created a non-booking allocation. The importer treated every active allocation as financially final and sent the changed memo to generic review, so the authoritative provider memo could not enter the booking workflow.
+- **Permanent rule:** Before final settlement, only an exact fully conserved set of ledger-free non-booking allocations may be reversed append-only by `reconcile_clobe_provider_memo_allocation`. A canonical inflow then auto-allocates to the exact memo-key booking; an outflow becomes travel `review` and still requires explicit payout/refund/split approval. Existing booking/ledger allocations, mixed booking rows, non-canonical memo, cross-tenant targets, finalized bookings, and amount mismatch remain blocked.
+- **Required proof:** A late-memo inflow preserves reversed classification evidence and creates one deposit/ledger effect; a late-memo outflow preserves reversed evidence but creates no payout until approval; a multi-row `1011 → 1012` correction primes all provider evidence and converges every row to one renamed booking in one sync; replay is idempotent; provider/fingerprint duplicates, booking projection drift, and over-allocation remain zero.
 
 ## ERR-SETTLEMENT-REVIEW-QUEUE-FALSE-ZERO@2026-08-05
 

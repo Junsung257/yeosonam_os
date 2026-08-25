@@ -1,4 +1,5 @@
 import { hasClobeTravelMemo } from './settlement-import/clobe-operational-scope';
+import { resolveClobeTransactionAuthority } from './settlement-import/clobe-transaction-authority';
 
 export type BankSettlementScope = 'travel' | 'non_travel';
 
@@ -16,6 +17,9 @@ export interface BankAccountRealityRow {
   counterparty_name?: string | null;
   provider_category?: string | null;
   provider_is_unclassified?: boolean | null;
+  source?: string | null;
+  external_provider?: string | null;
+  source_metadata?: Record<string, unknown> | null;
   match_status?: string | null;
   resolved_classification?:
     | 'company_expense'
@@ -96,14 +100,20 @@ export function normalizeClobeOperationalScopes(
   ));
 
   return rows.map(row => {
-    const hasTravelMemo = hasClobeTravelMemo(row);
+    const authority = resolveClobeTransactionAuthority(row);
+    const effectiveRow = authority.isClobe
+      ? { ...row, memo: authority.effectiveMemo }
+      : row;
+    const hasTravelMemo = hasClobeTravelMemo(effectiveRow);
     const hasExistingBookingAllocation = Boolean(row.id && allocatedTravelIds.has(row.id));
     if (hasTravelMemo || hasExistingBookingAllocation) {
-      return row.settlement_scope === 'travel' ? row : { ...row, settlement_scope: 'travel' };
+      return effectiveRow.settlement_scope === 'travel'
+        ? effectiveRow
+        : { ...effectiveRow, settlement_scope: 'travel' };
     }
 
     return {
-      ...row,
+      ...effectiveRow,
       settlement_scope: 'non_travel',
       resolved_classification: row.resolved_classification ?? 'review',
     };
@@ -725,7 +735,7 @@ export function calculateBankProfitErp(params: {
 
 export function needsNonTravelMemoReview(row: BankAccountRealityRow): boolean {
   if (row.settlement_scope !== 'non_travel') return false;
-  const memo = (row.memo ?? '').normalize('NFKC').trim();
+  const memo = (resolveClobeTransactionAuthority(row).effectiveMemo ?? row.memo ?? '').normalize('NFKC').trim();
   if (!memo || row.provider_is_unclassified === true) return true;
   return /(?:^|\D)\d{6}(?:\D|$)|취소|환불/.test(memo);
 }

@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { getBookings, isSupabaseAdminConfigured } from '@/lib/supabase';
+import { getBookings, isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import BookingsPageClient from './BookingsPageClient';
 
 export const dynamic = 'force-dynamic';
@@ -70,13 +70,40 @@ function BookingsPageFallback() {
 }
 
 export default async function BookingsPage() {
-  const initialBookings = isSupabaseAdminConfigured
+  const rawInitialBookings = (isSupabaseAdminConfigured
     ? await getBookings(undefined, undefined, { lite: true })
-    : [];
+    : []) as unknown as BookingListRow[];
+  const initialBookingIds = rawInitialBookings
+    .map(booking => typeof booking.id === 'string' ? booking.id : null)
+    .filter((id): id is string => Boolean(id));
+  const clobeKeyResult = initialBookingIds.length > 0
+    ? await supabaseAdmin
+      .from('booking_settlement_keys')
+      .select('booking_id')
+      .in('booking_id', initialBookingIds)
+      .eq('status', 'active')
+      .or('source.eq.clobe_memo_created_booking,source.eq.bank_memo_created_booking,source.eq.clobe_memo_approved_booking')
+    : { data: [] as Array<{ booking_id: string }>, error: null };
+  const clobeKeys = clobeKeyResult.data;
+  const clobeBookingIds = new Set((clobeKeys ?? []).map(row => row.booking_id));
+  // Fail closed: when settlement-key enrichment is unavailable, do not render
+  // normal-booking actions against financially ambiguous rows. The client
+  // retries the API and shows its load error instead of a false ordinary view.
+  const initialBookings = clobeKeyResult.error
+    ? []
+    : rawInitialBookings.map(booking => ({
+      ...booking,
+      clobe_settlement_booking: clobeBookingIds.has(booking.id as string),
+    }));
+  const referenceNowIso = new Date().toISOString();
 
   return (
     <Suspense fallback={<BookingsPageFallback />}>
-      <BookingsPageClient initialBookings={initialBookings as unknown as BookingListRow[]} />
+      <BookingsPageClient
+        initialBookings={initialBookings as unknown as BookingListRow[]}
+        referenceNowIso={referenceNowIso}
+        initialDataTrusted={!clobeKeyResult.error}
+      />
     </Suspense>
   );
 }

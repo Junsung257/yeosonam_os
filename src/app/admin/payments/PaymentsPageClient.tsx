@@ -27,6 +27,7 @@ import {
   type BankAccountRealitySummary,
 } from '@/lib/bank-account-reality';
 import { formatSettlementTimestamp } from '@/lib/settlement-date-format';
+import { resolveClobeTransactionAuthority } from '@/lib/settlement-import/clobe-transaction-authority';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -495,7 +496,7 @@ interface OpsQueueSummary {
   payment_attention: number;
 }
 
-type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow' | 'non_travel';
+type PaymentTab = 'review' | 'matched' | 'unmatched' | 'stale' | 'outflow' | 'non_travel';
 type OutflowSubTab = 'unmatched' | 'matched' | 'all';
 type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'bank_review' | 'trash';
 
@@ -520,7 +521,11 @@ function getClobePurposeTags(transaction: BankTransaction): string[] {
     const tags = (metadata as { purpose_tags?: unknown }).purpose_tags;
     if (Array.isArray(tags)) return tags.filter((tag): tag is string => typeof tag === 'string');
   }
-  return parseTravelSettlementMemo(transaction.memo)?.purposeTags ?? [];
+  return parseTravelSettlementMemo(getEffectiveTransactionMemo(transaction))?.purposeTags ?? [];
+}
+
+function getEffectiveTransactionMemo(transaction: BankTransaction): string | null {
+  return resolveClobeTransactionAuthority(transaction).effectiveMemo;
 }
 
 function isClobeTransaction(transaction: BankTransaction | null | undefined): boolean {
@@ -612,13 +617,13 @@ export default function PaymentsPageClient({
 }: PaymentsClientProps = {}) {
   // 대시보드 KPI 카드 drilldown 진입점:
   //   ?filter=outstanding → unmatched 탭 (미매칭 입금 대사 = 미수금 운영 뷰)
-  //   ?tab=outflow|matched|unmatched|review → 명시적 탭 진입
+  //   ?tab=outflow|matched|unmatched|stale|review → 명시적 탭 진입
   const searchParams = useSearchParams();
   const initialTab: PaymentTab = (() => {
     const filter = searchParams?.get('filter');
     const tabParam = searchParams?.get('tab');
     if (filter === 'outstanding') return 'unmatched';
-    if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'outflow' || tabParam === 'review' || tabParam === 'non_travel') {
+    if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'stale' || tabParam === 'outflow' || tabParam === 'review' || tabParam === 'non_travel') {
       return tabParam;
     }
     return initialQueue === 'unmatched' || initialQueue === 'outflow' || initialQueue === 'non_travel'
@@ -726,7 +731,7 @@ export default function PaymentsPageClient({
       const [res, trashRes, unmatchedRes, nonTravelRes, bankRealityRes] = await Promise.all([
         fetch('/api/bank-transactions?status=active&source=clobe_mcp'),
         fetch('/api/bank-transactions?status=excluded'),
-        fetch('/api/bank-transactions?status=active&match_status=unmatched&source=clobe_mcp'),
+        fetch('/api/bank-transactions?status=active&match_status=attention&source=clobe_mcp'),
         fetch('/api/bank-transactions?status=active&scope=non_travel&source=clobe_mcp'),
         fetch('/api/bank-transactions/account-reality', { cache: 'no-store' }),
       ]);
@@ -871,6 +876,10 @@ export default function PaymentsPageClient({
     const isOutflow = (t: BankTransaction) => t.transaction_type === '출금' || t.is_refund;
 
     const result = scopedTransactions.filter(tx => {
+      if (tab === 'stale') {
+        return (tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error')
+          && hoursSince(tx.created_at) >= 24;
+      }
       if (tab === 'outflow') {
         if (!isOutflow(tx)) return false;
         // sub-필터로 매칭 상태별 분리
@@ -895,7 +904,7 @@ export default function PaymentsPageClient({
       });
     }
     // 24h 이상 방치는 최상단으로 (스테일 우선 처리)
-    if (tab === 'review' || tab === 'unmatched') {
+    if (tab === 'review' || tab === 'unmatched' || tab === 'stale') {
       result.sort((a, b) => {
         const aStale = hoursSince(a.created_at) >= 24 ? 1 : 0;
         const bStale = hoursSince(b.created_at) >= 24 ? 1 : 0;
@@ -970,8 +979,13 @@ export default function PaymentsPageClient({
       setDateFilter('전체');
       setTab('review');
       setOutflowSubTab('unmatched');
-    } else if (queue === 'unmatched' || queue === 'stale') {
+    } else if (queue === 'unmatched') {
+      setDateFilter('전체');
       setTab('unmatched');
+      setOutflowSubTab('unmatched');
+    } else if (queue === 'stale') {
+      setDateFilter('전체');
+      setTab('stale');
       setOutflowSubTab('unmatched');
     } else if (queue === 'outflow') {
       setDateFilter('전체');
@@ -1512,6 +1526,7 @@ export default function PaymentsPageClient({
                           action: 'confirm_clobe_deposit',
                           transactionId: tx.id,
                           bookingId: clobeSuggestedBookingId,
+                          idempotencyKey: `clobe-existing-deposit:${tx.id}:${crypto.randomUUID()}`,
                         }),
                       });
                       const data = await res.json().catch(() => ({}));
@@ -2066,7 +2081,7 @@ export default function PaymentsPageClient({
 
       {!focusMode ? (
         <PaymentOpsQueue
-          activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow'
+          activeKey={tab === 'review' || tab === 'unmatched' || tab === 'stale' || tab === 'outflow'
             ? tab
             : tab === 'non_travel' && nonTravelReviewOnly ? 'bank_review' : undefined}
           counts={{
@@ -2382,7 +2397,7 @@ export default function PaymentsPageClient({
                       {tx.bookings ? fmtBookingAnchor(tx.bookings) : tx.counterparty_name || '거래처 없음'}
                     </h3>
                     <p className="mt-0.5 line-clamp-2 text-[11px] text-admin-muted">
-                      {tx.bookings?.package_title || tx.memo || '연결된 예약 없음'}
+                      {tx.bookings?.package_title || getEffectiveTransactionMemo(tx) || '연결된 예약 없음'}
                     </p>
                   </div>
                   {tx.settlement_scope !== 'non_travel' && <label className="shrink-0">
@@ -2547,7 +2562,7 @@ export default function PaymentsPageClient({
                       </>
                     ) : (
                       <div>
-                        <p className="font-medium text-cyan-800">{tx.memo || '메모 없음'}</p>
+                        <p className="font-medium text-cyan-800">{getEffectiveTransactionMemo(tx) || '메모 없음'}</p>
                         <p className="mt-0.5 text-[11px] text-admin-muted-2">{tx.provider_category || 'Clobe 분류 없음'}</p>
                       </div>
                     )}

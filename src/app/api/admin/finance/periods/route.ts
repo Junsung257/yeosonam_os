@@ -200,6 +200,13 @@ export async function POST(request: NextRequest) {
 
     const summary = await loadFinanceCenterSummary();
     const context = getAdminContext(request);
+    if (preview.eligible.length > 0) {
+      return NextResponse.json({
+        error: 'Clobe 예약은 월 마감으로 개별 최종정산을 대신할 수 없습니다. 예약별 최종정산 버튼으로 먼저 확정하세요.',
+        code: 'clobe_individual_finalize_required',
+        bookingCount: preview.eligible.length,
+      }, { status: 409 });
+    }
     const items = preview.eligible.map(row => ({
       booking_id: row.bookingId,
       booking_no: row.bookingNo,

@@ -1,4 +1,5 @@
 import { parseTravelSettlementMemo } from './bank-statement-parser';
+import { resolveClobeTransactionAuthority } from './clobe-transaction-authority';
 
 export interface ProviderMemoObservation {
   seen: boolean;
@@ -7,6 +8,7 @@ export interface ProviderMemoObservation {
 
 export interface ProviderMemoChangeDecision extends ProviderMemoObservation {
   incomingSettlementKey: string | null;
+  appliedSettlementKey: string | null;
   memoChanged: boolean;
   declassificationNeedsReview: boolean;
 }
@@ -21,23 +23,17 @@ export function getProviderMemoObservation(input: {
   sourceMetadata?: Record<string, unknown> | null;
   storedMemo?: string | null;
 }): ProviderMemoObservation {
-  const providerEvidence = input.sourceMetadata?.[input.source];
-  if (providerEvidence && typeof providerEvidence === 'object' && !Array.isArray(providerEvidence)) {
-    const evidence = providerEvidence as Record<string, unknown>;
-    const seen = Object.prototype.hasOwnProperty.call(evidence, 'settlement_key')
-      || Object.prototype.hasOwnProperty.call(evidence, 'memo');
-    if (seen) {
-      return {
-        seen: true,
-        settlementKey: normalizedSettlementKey(evidence.settlement_key)
-          ?? normalizedSettlementKey(evidence.memo),
-      };
-    }
-  }
-
+  const authority = resolveClobeTransactionAuthority({
+    source: input.source,
+    external_provider: 'clobe',
+    memo: input.storedMemo,
+    source_metadata: input.sourceMetadata,
+  });
   return {
-    seen: false,
-    settlementKey: normalizedSettlementKey(input.storedMemo),
+    seen: authority.providerMemoSeen,
+    settlementKey: authority.providerMemoSeen
+      ? authority.providerSettlementKey
+      : authority.appliedSettlementKey,
   };
 }
 
@@ -50,14 +46,16 @@ export function evaluateProviderMemoChange(input: {
 }): ProviderMemoChangeDecision {
   const observation = getProviderMemoObservation(input);
   const incomingSettlementKey = normalizedSettlementKey(input.incomingMemo);
-  const memoChanged = observation.settlementKey !== incomingSettlementKey;
+  const appliedSettlementKey = normalizedSettlementKey(input.storedMemo);
+  const memoChanged = appliedSettlementKey !== incomingSettlementKey;
 
   return {
     ...observation,
     incomingSettlementKey,
+    appliedSettlementKey,
     memoChanged,
     declassificationNeedsReview: input.processed
       && incomingSettlementKey === null
-      && (memoChanged || !observation.seen),
+      && memoChanged,
   };
 }
