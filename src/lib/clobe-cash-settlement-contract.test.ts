@@ -95,7 +95,9 @@ describe('Clobe cash settlement operating contract', () => {
     const refreshEnd = importerSource.indexOf('async function resolveClobeMemoReviewEvents');
     const processedEvidenceRefresh = importerSource.slice(refreshStart, refreshEnd);
     expect(processedEvidenceRefresh).toContain('Match state and approval evidence belong to the atomic DB command');
+    expect(processedEvidenceRefresh).not.toContain('booking_id:');
     expect(processedEvidenceRefresh).not.toContain('match_status:');
+    expect(processedEvidenceRefresh).not.toContain('match_confidence:');
     expect(processedEvidenceRefresh).not.toContain('matched_by:');
     expect(processedEvidenceRefresh).not.toContain('matched_at:');
     expect(pendingOutflowReviewSql).toContain('CREATE TRIGGER trg_enforce_pending_clobe_outflow_review');
