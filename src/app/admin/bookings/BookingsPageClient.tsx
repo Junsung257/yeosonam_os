@@ -35,6 +35,12 @@ import { maskPhone } from '@/lib/pii-mask';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { trackEngagement } from '@/lib/tracker';
 import { formatBookingDateKo, getBookingDayOffset, getKstDateKey } from '@/lib/booking-list-calendar';
+import {
+  selectBookingSmartFilter,
+  type BookingActiveTab,
+  type BookingDoneSubTab,
+  type BookingLifecycleTab,
+} from '@/lib/booking-list-filter-navigation';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -747,9 +753,6 @@ function SortTh({ label, field, sortField, sortDir, onSort, className = '' }: {
 // ══════════════════════════════════════════════════════════════════════════════
 // 메인 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-type BookingLifecycleTab = 'active' | 'done' | 'cancelled' | 'trash';
-type BookingActiveTab =
-  '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'over_cost' | 'refund_pending' | 'settlement_pending';
 type BookingWorkQueueKey = 'unpaid' | 'prep' | 'deposit' | 'land' | 'settlement' | 'refund';
 
 function BookingWorkQueue({
@@ -860,7 +863,7 @@ export default function BookingsPage({
   const [lifecycleTab, setLifecycleTab] = useState<BookingLifecycleTab>(initialLifecycle);
   const [activeTab, setActiveTab] = useState<BookingActiveTab>(initialActiveTab);
   // 완료/지난 행사 탭 내 sub-필터: '' | 'settled' | 'unsettled'
-  const [doneSubTab, setDoneSubTab] = useState<'' | 'settled' | 'unsettled'>('');
+  const [doneSubTab, setDoneSubTab] = useState<BookingDoneSubTab>('');
   const [rawSearch, setRawSearch]       = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
   const [searchTarget, setSearchTarget] = useState<'all' | 'departure' | 'booking'>('all');
@@ -1521,6 +1524,13 @@ export default function BookingsPage({
     });
   }, [depositUnpaidCnt, landBombCnt, prepDocsCnt, refundPendingCnt, settlementPendingCnt, unpaidRiskCnt]);
 
+  const handleSmartFilterSelect = useCallback((tab: BookingActiveTab) => {
+    const next = selectBookingSmartFilter(tab, activeTab);
+    setLifecycleTab(next.lifecycleTab);
+    setActiveTab(next.activeTab);
+    setDoneSubTab(next.doneSubTab);
+  }, [activeTab]);
+
   // ── 필터 + 정렬 ─────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...bookings];
@@ -1865,7 +1875,7 @@ export default function BookingsPage({
             ['refund_pending', '⚠️ 환불대기',         refundPendingCnt, 'amber'],
             ['settlement_pending', '⏳ 정산대기(D-7 지남)', settlementPendingCnt, 'slate'],
           ] as [string, string, number, string][]).map(([tab, label, cnt, color]) => (
-            <button type="button" key={tab} onClick={() => setActiveTab(prev => prev === tab ? '' : tab as typeof activeTab)}
+            <button type="button" key={tab} onClick={() => handleSmartFilterSelect(tab as BookingActiveTab)}
               className={`px-3 py-1 rounded-full text-[11px] font-medium transition flex items-center gap-1 whitespace-nowrap
                 ${activeTab === tab
                   ? `bg-${color}-600 text-white`
