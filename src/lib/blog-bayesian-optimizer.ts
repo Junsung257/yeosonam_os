@@ -1,12 +1,12 @@
 /**
- * Blog Bayesian Optimizer — 데이터 기반 품질 게이트 임계값 자동 조정
+ * Blog Bayesian Optimizer — 데이터 기반 품질 게이트 임계값 제안
  *
  * 원리:
- *   7일 CTR / 노출 데이터를 기반으로 각 게이트의 임계값을 베이지안 추론으로 조정.
- *   "게이트 통과율 70~80%"를 목표로 삼아 너무 빡빡하거나 너무 느슨하지 않게 유지.
+ *   7일 CTR / 노출 데이터를 기반으로 각 게이트의 임계값 후보를 계산.
+ *   후보는 제안으로만 저장하며, 사람 승인 전에는 활성 정책을 변경하지 않는다.
  *
  * 사용처:
- *   - blog-learn cron (월간 1회) — 임계값 조정
+ *   - blog-learn cron (월간 1회) — 임계값 변경 제안
  *   - blog-quality-gate.ts — 조정된 임계값 동적 로드
  *
  * SSOT:
@@ -39,6 +39,17 @@ export interface AdaptiveThresholds {
   rationale: string;
 }
 
+export interface AdaptiveThresholdProposal {
+  schemaVersion: 1;
+  proposalId: string;
+  current: AdaptiveThresholds;
+  proposed: AdaptiveThresholds;
+  dataSufficient: boolean;
+  status: 'proposed';
+  recommendedAction: 'human_review';
+  generatedAt: string;
+}
+
 const DEFAULT_THRESHOLDS: AdaptiveThresholds = {
   infoMinLen: 2500,
   productMinLen: 1200,
@@ -52,6 +63,25 @@ const DEFAULT_THRESHOLDS: AdaptiveThresholds = {
 };
 
 type ThresholdKey = keyof AdaptiveThresholds;
+
+export function buildAdaptiveThresholdProposal(
+  current: AdaptiveThresholds,
+  proposed: AdaptiveThresholds,
+  options: { dataSufficient: boolean; generatedAt?: string },
+): AdaptiveThresholdProposal {
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  const proposalId = `adaptive-threshold-${generatedAt.replace(/[^0-9]/g, '').slice(0, 14)}`;
+  return {
+    schemaVersion: 1,
+    proposalId,
+    current: { ...current },
+    proposed: { ...proposed },
+    dataSufficient: options.dataSufficient,
+    status: 'proposed',
+    recommendedAction: 'human_review',
+    generatedAt,
+  };
+}
 
 /**
  * 현재 활성 임계값 조회 (DB → 없으면 기본값)
@@ -81,7 +111,7 @@ export async function getActiveThresholds(): Promise<AdaptiveThresholds> {
  *   4. 각 게이트는 독립적으로 조정 (서로 다른 성격)
  *
  * @param passRate 목표 통과율 (기본 0.75 = 75%)
- * @returns 조정된 임계값 (저장 전)
+ * @returns 조정된 임계값 후보 (저장 전)
  */
 export async function computeAdaptiveThresholds(
   passRate = 0.75,
@@ -177,11 +207,25 @@ export async function computeAdaptiveThresholds(
 }
 
 /**
- * 조정된 임계값을 DB에 저장 + publishing_policies 갱신
+ * 승인된 임계값을 DB에 저장 + publishing_policies 갱신.
+ *
+ * 자동 학습 크론은 이 함수를 호출하면 안 된다. Approval lineage is
+ * required so insufficient or misleading performance data cannot silently
+ * relax a publication gate.
  */
+export interface AdaptiveThresholdApproval {
+  actorId: string;
+  approvedAt: string;
+  reason: string;
+}
+
 export async function persistAdaptiveThresholds(
   thresholds: AdaptiveThresholds,
+  approval?: AdaptiveThresholdApproval,
 ): Promise<void> {
+  if (!approval?.actorId?.trim() || !approval.approvedAt?.trim() || !approval.reason?.trim()) {
+    throw new Error('adaptive_threshold_approval_required');
+  }
   const { data: policy, error: readError } = await supabaseAdmin
     .from('publishing_policies')
     .select('meta')

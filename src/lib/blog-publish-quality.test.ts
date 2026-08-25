@@ -186,6 +186,39 @@ describe('blog publish quality', () => {
     });
   });
 
+  it('records the V4 evaluation beside existing generation metadata without clobbering it', async () => {
+    const report = await evaluateBlogPublishQuality({
+      blog_html: '# 테스트 글\n\n검증된 본문입니다.',
+      slug: 'quality-loop-v4-test',
+      seo_title: '품질 루프 테스트',
+      seo_description: '품질 루프 테스트 설명',
+      destination: '괌',
+      generation_meta: {
+        content_version: 'content-v1',
+        prompt_version: 'prompt-v1',
+        claim_fingerprint: 'claim-v1',
+        information_research_fingerprint: 'research-v1',
+        information_claim_validation: { passed: true },
+      },
+    });
+    const updateData: Record<string, unknown> = {
+      generation_meta: { preserve_me: true },
+    };
+
+    applyBlogPublishQualityToUpdate(updateData, report);
+
+    expect(report.qualityEvaluationV4).toMatchObject({
+      contentVersion: 'content-v1',
+      promptVersion: 'prompt-v1',
+      claimHash: expect.any(String),
+      sourceEvidenceHash: expect.any(String),
+    });
+    expect(updateData.generation_meta).toMatchObject({
+      preserve_me: true,
+      quality_evaluation_v4: report.qualityEvaluationV4,
+    });
+  });
+
   it('blocks posts whose rendered public customer quality is below 95', async () => {
     const sections = Array.from(
       { length: 16 },

@@ -20,6 +20,11 @@ import {
   stripPublicDuplicateBodyTitleHeading,
 } from './blog-public-render-normalizer';
 import { extractFaqItems, extractHowToSteps } from './blog-jsonld';
+import {
+  buildBlogQualityEvaluationV4,
+  createBlogQualityEvidenceHash,
+  type BlogQualityEvaluationV4,
+} from './blog-quality-improvement-v4';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -67,6 +72,7 @@ export interface BlogPublishQualityReport {
   renderedSeoQuality: BlogRenderedSeoQualityReport | null;
   readingTimeMinutes: number | null;
   blogQualityScore: BlogQualityScoreReport;
+  qualityEvaluationV4?: BlogQualityEvaluationV4;
   summary: string;
 }
 
@@ -208,6 +214,81 @@ function inspectBlogPublishContract(input: BlogPublishQualityInput): BlogPublish
     message: '생성 실패 시 만든 비상용 정보성 글은 공개 발행할 수 없습니다.',
     evidence: { fallbackFlags },
   }];
+}
+
+function readMetaString(meta: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = meta[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function gateScore(report: QualityGateReport, names: string[]): number {
+  const matching = report.gates.filter(gate => names.includes(gate.gate));
+  return matching.length > 0 && matching.every(gate => gate.passed) ? 100 : 0;
+}
+
+function buildQualityEvaluationV4ForPublish(
+  input: BlogPublishQualityInput,
+  report: {
+    publishContractIssues: BlogPublishContractIssue[];
+    qualityGate: QualityGateReport;
+    seoScore: SeoScoreResult;
+    readability: ReadabilityResult;
+    publicCustomerQuality: PublicBlogCustomerQualityReport;
+    blogQualityScore: BlogQualityScoreReport;
+  },
+  passed: boolean,
+): BlogQualityEvaluationV4 {
+  const meta = input.generation_meta ?? {};
+  const claimFingerprint = readMetaString(meta, [
+    'claim_fingerprint',
+    'claimFingerprint',
+    'information_claim_fingerprint',
+  ]);
+  const sourceFingerprint = readMetaString(meta, [
+    'information_research_fingerprint',
+    'research_fingerprint',
+    'source_evidence_hash',
+  ]);
+  const contentVersion = readMetaString(meta, ['content_version', 'contentVersion', 'content_fingerprint'])
+    ?? 'unversioned';
+  const promptVersion = readMetaString(meta, ['prompt_version', 'promptVersion'])
+    ?? 'unversioned';
+  const claimValidation = meta.information_claim_validation;
+  const claimValidationPassed = claimValidation
+    && typeof claimValidation === 'object'
+    && !Array.isArray(claimValidation)
+    && (claimValidation as Record<string, unknown>).passed === true;
+  const blockers = [
+    ...report.publishContractIssues.map(issue => issue.code),
+    ...report.qualityGate.gates.filter(gate => !gate.passed).map(gate => gate.gate),
+    ...(claimFingerprint ? [] : ['missing_claim_hash']),
+    ...(sourceFingerprint ? [] : ['missing_source_evidence_hash']),
+    ...(contentVersion === 'unversioned' ? ['missing_content_version'] : []),
+    ...(promptVersion === 'unversioned' ? ['missing_prompt_version'] : []),
+  ];
+  return buildBlogQualityEvaluationV4({
+    candidateId: input.id ?? input.slug,
+    contentVersion,
+    promptVersion,
+    claimHash: createBlogQualityEvidenceHash(claimFingerprint ? [claimFingerprint] : []),
+    sourceEvidenceHash: createBlogQualityEvidenceHash(sourceFingerprint ? [sourceFingerprint] : []),
+    scores: {
+      factuality: claimValidationPassed === true ? 100 : input.product_id ? report.blogQualityScore.score : 0,
+      intent: gateScore(report.qualityGate, ['intent_quality']),
+      structure: gateScore(report.qualityGate, ['structure_integrity']),
+      readability: report.readability.score,
+      originality: gateScore(report.qualityGate, ['duplicate']),
+      publicSurface: report.publicCustomerQuality.score,
+      seo: report.seoScore.score,
+      imageRelevance: gateScore(report.qualityGate, ['image_quality']),
+      ctaPressure: gateScore(report.qualityGate, ['cta', 'cta_destination_integrity']),
+    },
+    publishGatePassed: passed,
+    blockers,
+  });
 }
 
 export async function evaluateBlogPublicCustomerQuality(
@@ -372,9 +453,21 @@ export async function evaluateBlogPublishQuality(
       && publishContractIssues.length === 0
       && publicCustomerGatePassed;
 
+  const qualityEvaluationV4 = input.generation_meta
+    ? buildQualityEvaluationV4ForPublish(input, {
+        publishContractIssues,
+        qualityGate,
+        seoScore,
+        readability,
+        publicCustomerQuality,
+        blogQualityScore,
+      }, passed)
+    : undefined;
+
   return {
     ...report,
     passed,
+    qualityEvaluationV4,
     summary: passed && flexibleV3
       ? `V3 publish contract passed: public customer ${publicCustomerQuality.score}/100, `
         + 'claim/intent/render gates passed; legacy SEO aggregate retained as diagnostic only'
@@ -463,4 +556,13 @@ export function applyBlogPublishQualityToUpdate(
   updateData.seo_score = report.seoScore;
   updateData.readability_score = report.readability.score;
   updateData.readability_issues = report.readability.issues;
+  if (report.qualityEvaluationV4) {
+    const existingMeta = updateData.generation_meta;
+    if (existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta)) {
+      updateData.generation_meta = {
+        ...(existingMeta as Record<string, unknown>),
+        quality_evaluation_v4: report.qualityEvaluationV4,
+      };
+    }
+  }
 }

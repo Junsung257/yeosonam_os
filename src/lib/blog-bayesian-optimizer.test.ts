@@ -18,6 +18,7 @@ vi.mock('./blog-metrics-store', () => ({
 }));
 
 import {
+  buildAdaptiveThresholdProposal,
   getActiveThresholds,
   persistAdaptiveThresholds,
   type AdaptiveThresholds,
@@ -67,7 +68,11 @@ describe('blog bayesian optimizer persistence', () => {
       rationale: 'test',
     };
 
-    await persistAdaptiveThresholds(thresholds);
+    await persistAdaptiveThresholds(thresholds, {
+      actorId: 'editor-1',
+      approvedAt: '2026-08-25T00:00:00.000Z',
+      reason: '검토된 학습 제안 승인',
+    });
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       meta: expect.objectContaining({
@@ -85,7 +90,31 @@ describe('blog bayesian optimizer persistence', () => {
     maybeSingle.mockResolvedValue({ data: { meta: {} }, error: null });
     updateEq.mockResolvedValue({ error: { message: 'database unavailable' } });
 
-    await expect(persistAdaptiveThresholds({} as AdaptiveThresholds))
+    await expect(persistAdaptiveThresholds({} as AdaptiveThresholds, {
+      actorId: 'editor-1',
+      approvedAt: '2026-08-25T00:00:00.000Z',
+      reason: 'test',
+    }))
       .rejects.toThrow('adaptive_threshold_write_failed:database unavailable');
+  });
+
+  it('requires approval before any adaptive threshold write', async () => {
+    await expect(persistAdaptiveThresholds({} as AdaptiveThresholds))
+      .rejects.toThrow('adaptive_threshold_approval_required');
+  });
+
+  it('builds a proposal without changing the active value', () => {
+    const current = { infoMinReadability: 70 } as AdaptiveThresholds;
+    const proposed = { infoMinReadability: 75 } as AdaptiveThresholds;
+    expect(buildAdaptiveThresholdProposal(current, proposed, {
+      dataSufficient: false,
+      generatedAt: '2026-08-25T00:00:00.000Z',
+    })).toMatchObject({
+      status: 'proposed',
+      recommendedAction: 'human_review',
+      dataSufficient: false,
+      current,
+      proposed,
+    });
   });
 });

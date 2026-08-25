@@ -109,6 +109,7 @@
     "eval:jarvis": "npx tsx scripts/eval-jarvis-golden.ts",
     "eval:jarvis:ci": "npx tsx scripts/eval-jarvis-golden.ts --strict",
     "eval:blog-info-v2": "npx tsx scripts/eval-blog-informational-engine-v2.ts",
+    "eval:blog-quality-v4": "npx tsx scripts/eval-blog-quality-regression-v4.ts",
     "eval:blog-prompt-v2": "npx tsx scripts/eval-blog-informational-writer-prompt.ts",
     "audit:blog-quality-v3": "npx tsx scripts/audit-blog-corpus-v3.ts",
     "audit:blog-serp-v3": "npx tsx scripts/audit-blog-serp-benchmark-v3.ts",

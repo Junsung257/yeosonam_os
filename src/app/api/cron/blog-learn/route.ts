@@ -4,7 +4,11 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { logError, logWarning } from '@/lib/sentry-logger';
 import { collectWeeklyMetrics } from '@/lib/blog-metrics-store';
-import { computeAdaptiveThresholds, persistAdaptiveThresholds } from '@/lib/blog-bayesian-optimizer';
+import {
+  buildAdaptiveThresholdProposal,
+  computeAdaptiveThresholds,
+  getActiveThresholds,
+} from '@/lib/blog-bayesian-optimizer';
 import { collectSystemHealth } from '@/lib/blog-content-orchestrator';
 import { autoFinalizeExperiments } from '@/lib/ab-test-engine';
 import { getSecret } from '@/lib/secret-registry';
@@ -243,9 +247,20 @@ const handleBlogLearn = async (request: NextRequest) => {
   const today = new Date().getDate();
   if (today <= 2) {
     try {
-      const newThresholds = await computeAdaptiveThresholds();
-      await persistAdaptiveThresholds(newThresholds);
-      result.adaptive_thresholds = { applied: true, ...newThresholds };
+      const currentThresholds = await getActiveThresholds();
+      const proposedThresholds = await computeAdaptiveThresholds();
+      const proposal = buildAdaptiveThresholdProposal(
+        currentThresholds,
+        proposedThresholds,
+        {
+          dataSufficient: !proposedThresholds.rationale.includes('데이터 부족'),
+        },
+      );
+      result.adaptive_thresholds = {
+        ...proposal,
+        applied: false,
+        status: 'proposal_only',
+      };
     } catch (err) {
       logWarning('[cron/blog-learn] bayesian optimizer failed', err);
       const msg = sanitizeDbError(err);
