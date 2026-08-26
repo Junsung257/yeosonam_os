@@ -203,6 +203,11 @@ describe('blog publish quality', () => {
     } as unknown as import('./blog-publish-quality').BlogPublishQualityReport)).toBe(100);
   });
 
+  it('uses a complete-contract fallback when a passing report has no public score', () => {
+    expect(getBlogPublishDecisionScore({ passed: true } as unknown as import('./blog-publish-quality').BlogPublishQualityReport))
+      .toBe(100);
+  });
+
   it('records the V4 evaluation beside existing generation metadata without clobbering it', async () => {
     const report = await evaluateBlogPublishQuality({
       blog_html: '# 테스트 글\n\n검증된 본문입니다.',
