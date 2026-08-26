@@ -70,6 +70,7 @@ import {
   romanize,
   extractDestination,
   slugIncludesDestination,
+  slugMatchesExpectedTopic,
 } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
 import {
@@ -959,12 +960,14 @@ function normalizeGeneratedSlug(generated: GeneratedBlog, item: any): boolean {
     Boolean(romanize(destination))
     && slugIncludesDestination(queueSlug, destination)
     && !slugIncludesDestination(current, destination);
+  const currentMissesExpectedTopic = !slugMatchesExpectedTopic(current, queueSlug);
 
   if (
     !isUsableBlogSlug(current)
     || currentLooksThin
     || currentIsCategoryOnly
     || currentMissesKnownDestination
+    || currentMissesExpectedTopic
   ) {
     generated.slug = queueSlug;
     return true;

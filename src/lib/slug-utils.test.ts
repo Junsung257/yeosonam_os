@@ -4,6 +4,7 @@ import {
   romanize,
   slugifyTopic,
   slugIncludesDestination,
+  slugMatchesExpectedTopic,
 } from './slug-utils';
 
 describe('slug-utils', () => {
@@ -64,5 +65,16 @@ describe('slug-utils', () => {
       'oslo-8-weather-preparation',
     );
     expect(slugIncludesDestination('weather-checklist-august', '오슬로')).toBe(false);
+  });
+
+  it('rejects a generic generated slug that loses the queue topic contract', () => {
+    expect(slugMatchesExpectedTopic(
+      'guam-family-itinerary',
+      'guam-lodging-area-decision-v13',
+    )).toBe(false);
+    expect(slugMatchesExpectedTopic(
+      'guam-lodging-area-guide',
+      'guam-lodging-area-decision-v13',
+    )).toBe(true);
   });
 });
