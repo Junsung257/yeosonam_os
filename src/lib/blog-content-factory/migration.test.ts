@@ -29,6 +29,10 @@ const qualityContractStateMigration = readFileSync(
   'supabase/migrations/20260827010000_blog_v4_quality_contract_state_20260827.sql',
   'utf8',
 ).toLowerCase();
+const terminalSuccessMigration = readFileSync(
+  'supabase/migrations/20260827020000_blog_v4_terminal_success_clears_failure.sql',
+  'utf8',
+).toLowerCase();
 
 describe('Blog V4 content factory migration contract', () => {
   it('creates the four service-role ledgers with RLS and explicit grants', () => {
@@ -111,6 +115,13 @@ describe('Blog V4 content factory migration contract', () => {
     expect(qualityContractStateMigration).toContain('indexing_status = coalesce(v_indexing_status, indexing_status)');
     expect(qualityContractStateMigration).toContain('final_quality_decision_id = coalesce');
     expect(qualityContractStateMigration).toContain('to service_role');
+  });
+
+  it('clears stale retry failures on successful terminal projections', () => {
+    expect(terminalSuccessMigration).toContain("in ('completed', 'approved_for_slot')");
+    expect(terminalSuccessMigration).toContain('then null');
+    expect(terminalSuccessMigration).toContain('explicitly supplies');
+    expect(terminalSuccessMigration).toContain('to service_role');
   });
 
   it('publishes commercial content and its indexing outbox in one fenced transaction', () => {
