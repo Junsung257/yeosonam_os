@@ -43,16 +43,18 @@ permissions:
 
 ### 4. 외부 액션 버전 고정 + deprecated 확인
 
-- `aquasecurity/trivy-action@master` 같은 floating tag 금지 (재현성 깨짐) → 가능하면 SHA pin.
+- `aquasecurity/trivy-action@master` 같은 floating tag 금지 (재현성 깨짐) → 외부 액션은 40자리 commit SHA로, Docker action은 `sha256` image digest로 고정하고 옆에 검증한 release 버전을 주석으로 남긴다.
+- `npm run verify:ci-action-pins`가 `ci.yml`의 floating action을 차단한다.
 - 매 분기 deprecated 액션 점검:
-  - `github/codeql-action/*@v2` → `@v3` (v2 deprecated 2025-01).
-  - `actions/upload-artifact@v3` → `@v4`.
-  - `actions/checkout@v3` → `@v4`.
+  - Node 24 기반 최신 major와 GitHub-hosted runner 호환성을 확인한다.
+  - major tag를 그대로 쓰지 않고 검증한 tag가 가리키는 commit SHA를 사용한다.
 
 ### 5. 보안 스캔 step 은 `continue-on-error: true`
 
 Trivy / CodeQL / Snyk 등은 정보성이지 머지 게이트가 아니다.
 SARIF 업로드 403 같은 외부 실패가 메인 CI 통과를 막지 않게 한다.
+
+예외: 현재 PR/push가 새로 추가한 commit 범위만 검사하는 Gitleaks CLI는 결정론적 품질 게이트로 취급한다. 과거 전체 history finding 때문에 새 PR을 막지 않으며, secret 내용은 항상 완전히 redaction한다. 별도 라이선스가 필요한 Gitleaks Action 대신 MIT CLI의 고정 버전과 SHA-256 checksum을 사용한다.
 
 ```yaml
 - name: Trivy scan
