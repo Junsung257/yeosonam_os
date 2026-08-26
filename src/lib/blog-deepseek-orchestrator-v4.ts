@@ -322,6 +322,12 @@ export function decideBlogQualityRouteV4(
   const allReasons = unique([...hardBlockers, ...failures]);
   const completedAttempts = Math.max(1, Math.trunc(input.completedAttempts));
   const score = Number.isFinite(input.score) ? Math.max(0, Math.min(100, input.score)) : 0;
+  const groundedProReviewable = completedAttempts >= 2
+    && score >= 90
+    && hardBlockers.length === 0
+    && input.lastStage === 'rewrite_pro_high'
+    && input.researchValid === true
+    && input.claimLedgerValid === true;
 
   if (input.riskLevel === 'HIGH' && !input.humanApproved) {
     return {
@@ -332,6 +338,13 @@ export function decideBlogQualityRouteV4(
 
   const researchBlocked = allReasons.some(isResearchBlocker);
   if (researchBlocked) {
+    if (groundedProReviewable) {
+      return {
+        route: 'human_review', nextStage: null, publishable: false,
+        reasons: unique(['pro_call_cap_review_required', ...allReasons]),
+        maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
+      };
+    }
     const canResearchAgain = (input.researchAttempts ?? 0) < 1 && completedAttempts < BLOG_QUALITY_MAX_ATTEMPTS_V4;
     const researchReasons = allReasons.filter(isResearchBlocker);
     const canUseFinalGroundedRewrite = !canResearchAgain
@@ -370,6 +383,19 @@ export function decideBlogQualityRouteV4(
     return {
       route: 'quarantine', nextStage: null, publishable: false,
       reasons: hardBlockers, maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
+    };
+  }
+
+  // The budget contract allows one Flash call and one Pro call per candidate.
+  // If the grounded Pro rewrite is already reviewable, do not schedule a
+  // second Pro call that the budget firewall must reject; preserve the result
+  // as a human-review draft instead. Publication still requires every public
+  // quality gate to pass below.
+  if (groundedProReviewable) {
+    return {
+      route: 'human_review', nextStage: null, publishable: false,
+      reasons: unique(['pro_call_cap_review_required', ...allReasons]),
+      maxAttempts: BLOG_QUALITY_MAX_ATTEMPTS_V4,
     };
   }
 

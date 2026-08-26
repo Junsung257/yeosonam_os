@@ -103,6 +103,24 @@ describe('blog DeepSeek orchestrator V4', () => {
     });
   });
 
+  it('keeps a grounded Pro result for human review instead of scheduling a second Pro call', () => {
+    expect(decideBlogQualityRouteV4({
+      score: 94.35,
+      hardBlockers: [],
+      failureReasons: ['claim_support_coverage_below_90_percent', 'opening_too_similar'],
+      completedAttempts: 2,
+      researchAttempts: 1,
+      researchValid: true,
+      claimLedgerValid: true,
+      lastStage: 'rewrite_pro_high',
+    })).toMatchObject({
+      route: 'human_review',
+      nextStage: null,
+      publishable: false,
+      reasons: expect.arrayContaining(['pro_call_cap_review_required']),
+    });
+  });
+
   it('does not rewrite around missing, stale, conflicting, or saturated evidence', () => {
     for (const blocker of ['missing_evidence', 'stale_claim', 'claim_conflict_present']) {
       expect(decideBlogQualityRouteV4({
