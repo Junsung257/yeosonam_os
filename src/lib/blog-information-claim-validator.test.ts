@@ -188,6 +188,28 @@ describe('V3 editorial decision guidance classification', () => {
   });
 
   it.each([
+    '가족 동반이라면 아이가 참여할 활동이 예약제인지 미리 확인하는 것이 숙소 권역 선택보다 우선할 수 있습니다.',
+    '투몬 지역 숙소의 확인일 표시 가격을 나란히 비교하면 예산 범위를 좁히는 데 도움이 됩니다.',
+  ])('keeps source-neutral lodging planning guidance out of the factual ledger: %s', (sentence) => {
+    expect(classifyBlogInformationStatement(sentence)).toMatchObject({
+      category: 'navigation_boilerplate',
+      factualClassification: null,
+    });
+  });
+
+  it('recognizes a reviewed-source factual sentence for rewrite packet compatibility', () => {
+    expect(classifyBlogInformationStatement(
+      'Agoda 가이드는 괌 플라자 리조트 앤 스파가 투몬 비치 중심부에 있다고 설명한다.',
+    )).toMatchObject({
+      category: 'verified_factual',
+      factualClassification: {
+        claimType: 'factual',
+        candidateKind: 'unknown_statement',
+      },
+    });
+  });
+
+  it.each([
     '일정을 짤 때는 날짜부터 정하기보다 이동 구간을 먼저 나누고, 예약과 휴식 순서를 그 위에 얹는 편이 무리가 적습니다.',
     '동선은 시작에서 가까운 구간을 처리하고, 중간에 휴식 지점을 두며, 마무리에는 우천이나 휴무로 밀릴 수 있는 대체 일정을 남겨 두는 순서로 잡으면 결정이 단순해집니다.',
     '이 순서를 기준으로 예약 확정 여부와 휴식 지점을 다시 점검하면, 이동 부담을 줄이는 일정을 더 쉽게 고를 수 있습니다.',
