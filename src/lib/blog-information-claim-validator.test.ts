@@ -191,6 +191,7 @@ describe('V3 editorial decision guidance classification', () => {
     '가족 동반이라면 아이가 참여할 활동이 예약제인지 미리 확인하는 것이 숙소 권역 선택보다 우선할 수 있습니다.',
     '투몬 지역 숙소의 확인일 표시 가격을 나란히 비교하면 예산 범위를 좁히는 데 도움이 됩니다.',
     '가족 여부와 휴양·관광 비중을 나누는 이유는 숙소 지역 선택이 방 개수나 호텔 등급보다 먼저 정해져야 하기 때문입니다.',
+    '아래 가격은 확인일 기준 표시 가격이므로, 같은 조건이라도 예약 시점에 달라질 수 있습니다.',
   ])('keeps source-neutral lodging planning guidance out of the factual ledger: %s', (sentence) => {
     expect(classifyBlogInformationStatement(sentence)).toMatchObject({
       category: 'navigation_boilerplate',
