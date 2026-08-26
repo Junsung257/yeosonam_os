@@ -120,9 +120,9 @@ export interface PreparedBlogPublishResult {
  */
 export function getBlogPublishDecisionScore(report: BlogPublishQualityReport): number {
   if (!report.passed) return 0;
-  const score = report.publicCustomerQuality?.score;
-  return typeof score === 'number' && Number.isFinite(score)
-    ? Math.max(0, Math.min(100, score))
+  const publicCustomerScore = report.publicCustomerQuality?.score;
+  return typeof publicCustomerScore === 'number' && Number.isFinite(publicCustomerScore)
+    ? Math.max(0, Math.min(100, publicCustomerScore))
     : 100;
 }
 
