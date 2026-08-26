@@ -85,6 +85,25 @@ V6는 기본적으로 레거시 호환 또는 그림자 처리만 합니다. 운
 
 외부 OCR 합계는 원문 문서당 2,000원을 넘으면 호출 전 차단합니다. 항공 시간은 현재 원문값을 덮어쓰지 않고, 누락값은 날짜·노선이 같은 두 독립 출처가 분 단위로 일치할 때만 보완합니다.
 
+## 타입 안전 기능 플래그·관측성 (2026-08-27)
+
+아래 플래그는 `src/env.ts`와 `src/lib/feature-flags.ts`에서 타입·기본값·범위를 함께 관리합니다. Vercel 환경 변수 변경은 새 배포부터 적용됩니다.
+
+| 변수 | 안전한 기본값 | 용도 |
+|---|---:|---|
+| `JARVIS_STREAM_ENABLED` | `true` | 정확히 `false`일 때만 Jarvis SSE 엔드포인트를 503으로 중지 |
+| `IR_CANARY_ENABLED` | `false` | 정확히 `true`일 때만 IR canary 표본 라우팅 허용 |
+| `IR_CANARY_ROLLOUT_PCT` | `1` | 0~100 범위의 결정적 표본 비율. 잘못된 값은 1로 복귀 |
+| `IR_CANARY_MULTI` | `1` | 정확히 `0`일 때만 복수상품 IR 분리를 중지 |
+| `IR_CANARY_MAX_PRODUCTS` | `8` | 1~16 범위의 상품 분리 상한 |
+| `IR_CANARY_CONCURRENCY` | `2` | 1~6 범위의 정규화 동시 실행 수 |
+| `NEXT_PUBLIC_QA_CHAT_V2_ENABLED` | `false` | 공개 QA 위젯의 V2 SSE 우선 시도. `true`/`false`만 허용 |
+| `NEXT_PUBLIC_PARTYTOWN` | `0` | 공개 분석 스크립트의 Partytown 실행. `0`/`1`만 허용 |
+
+상품 공개 동결, 가격·결제·정산 권위, 외부 발행 승인 같은 안전 스위치는 범용 기능 플래그로 옮기지 않습니다. 해당 도메인 SSOT의 fail-closed 설정과 승인 절차를 그대로 사용합니다.
+
+LLM trace는 원문 prompt/response를 속성에 저장하지 않고 `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, token usage와 여소남 task/phase만 기록합니다. Sentry 전송 전에는 전화·이메일·여권·계좌·주민번호와 credential key를 재귀적으로 마스킹합니다.
+
 ## ⚠️ 시크릿 관리 정책 (중요)
 
 1. **실제 시크릿 값은 Vercel Environment Variables에서만 관리합니다.**

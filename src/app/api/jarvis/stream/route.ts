@@ -32,6 +32,7 @@ import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { rateLimitAI } from '@/lib/rate-limiter'
 import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
+import { readServerFeatureFlags } from '@/lib/feature-flags'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   const limited = await rateLimitAI(req)
   if (limited) return limited
 
-  if (process.env.JARVIS_STREAM_ENABLED === 'false') {
+  if (!readServerFeatureFlags().jarvisStreamEnabled) {
     return new Response(JSON.stringify({ error: 'streaming disabled' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' },

@@ -34,36 +34,26 @@ export interface IrCanaryStatus {
 }
 
 export function isIrCanaryEnabled(): boolean {
-  return process.env.IR_CANARY_ENABLED === 'true';
+  return readServerFeatureFlags().irCanaryEnabled;
 }
 
 export function getIrCanaryRolloutPct(): number {
-  const raw = process.env.IR_CANARY_ROLLOUT_PCT;
-  if (!raw) return 1;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(100, Math.max(0, n));
+  return readServerFeatureFlags().irCanaryRolloutPct;
 }
 
 /** 복수 PKG 카탈로그 IR primary 추출 (기본 on, IR_CANARY_MULTI=0 으로 끔) */
 export function isIrCanaryMultiEnabled(): boolean {
-  return process.env.IR_CANARY_MULTI !== '0';
+  return readServerFeatureFlags().irCanaryMultiEnabled;
 }
 
 /** 카탈로그 IR 추출 상한 (기본 8) */
 export function getIrCanaryMaxProducts(): number {
-  const raw = process.env.IR_CANARY_MAX_PRODUCTS;
-  const n = raw ? parseInt(raw, 10) : 8;
-  if (!Number.isFinite(n) || n < 1) return 8;
-  return Math.min(16, n);
+  return readServerFeatureFlags().irCanaryMaxProducts;
 }
 
 /** 섹션별 normalize 동시 실행 수 (기본 2) */
 export function getIrCanaryConcurrency(): number {
-  const raw = process.env.IR_CANARY_CONCURRENCY;
-  const n = raw ? parseInt(raw, 10) : 2;
-  if (!Number.isFinite(n) || n < 1) return 2;
-  return Math.min(6, n);
+  return readServerFeatureFlags().irCanaryConcurrency;
 }
 
 function fnv1a(input: string): number {
@@ -104,3 +94,4 @@ export function getIrCanaryStatus(): IrCanaryStatus {
     anthropicAvailable: false,
   };
 }
+import { readServerFeatureFlags } from '@/lib/feature-flags';

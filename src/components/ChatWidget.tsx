@@ -16,6 +16,7 @@ import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getReferrer, trackEngagement } from '@/lib/tracker';
 import { MessageCircle, X, Send } from 'lucide-react';
 import { trackAnalyticsEvent } from '@/lib/analytics';
+import { env } from '@/env';
 
 export default function ChatWidget() {
   const pathname = usePathname();
@@ -234,7 +235,7 @@ type StreamEventV1 =
   | { type: 'done' };
 
 async function streamChat(text: string) {
-  if (process.env.NEXT_PUBLIC_QA_CHAT_V2_ENABLED === 'true') {
+  if (env.NEXT_PUBLIC_QA_CHAT_V2_ENABLED === 'true') {
     const v2Ok = await tryV2Stream(text);
     if (v2Ok) return;
   }
