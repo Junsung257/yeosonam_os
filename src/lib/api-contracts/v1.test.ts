@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createV1OpenApiDocument } from '../../../scripts/lib/v1-openapi-document';
 import {
-  createV1OpenApiDocument,
   V1HealthResponseSchema,
   V1PackageRecommendationBodySchema,
   V1PackageSearchQuerySchema,

@@ -194,6 +194,9 @@ const nextConfig = {
     'binary',
     'bluebird',
     'googleapis',
+    // Pino uses worker/thread transports that webpack cannot safely statically
+    // analyze. Keep it as a Node dependency for server routes.
+    'pino',
   ],
   experimental: {
     webpackBuildWorker: enableWebpackBuildWorker,

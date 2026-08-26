@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import openapiTS, { astToString } from 'openapi-typescript';
-import { createV1OpenApiDocument } from '../src/lib/api-contracts/v1';
+import { createV1OpenApiDocument } from './lib/v1-openapi-document';
 
 const CHECK_ONLY = process.argv.includes('--check');
 const SPEC_PATH = join(process.cwd(), 'docs', 'api', 'v1-openapi.json');

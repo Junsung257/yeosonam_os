@@ -270,15 +270,13 @@
           },
           "date_from": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-09-01"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
           "pax": {
             "type": "integer",
             "minimum": 1,
             "maximum": 100,
-            "default": 2,
-            "example": 2
+            "default": 2
           }
         }
       }
@@ -322,8 +320,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 100,
-              "example": "다낭"
+              "maxLength": 100
             },
             "required": false,
             "name": "destination",
@@ -332,8 +329,7 @@
           {
             "schema": {
               "type": "string",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-              "example": "2026-09-01"
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
             },
             "required": false,
             "name": "date_from",
@@ -342,8 +338,7 @@
           {
             "schema": {
               "type": "string",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-              "example": "2026-09-01"
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
             },
             "required": false,
             "name": "date_to",
@@ -353,8 +348,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 100,
-              "example": "부산 출발"
+              "maxLength": 100
             },
             "required": false,
             "name": "keyword",
@@ -365,8 +359,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100,
-              "default": 20,
-              "example": 20
+              "default": 20
             },
             "required": false,
             "name": "limit",
@@ -378,8 +371,7 @@
               "nullable": true,
               "minimum": 0,
               "maximum": 10000,
-              "default": 0,
-              "example": 0
+              "default": 0
             },
             "required": false,
             "name": "offset",

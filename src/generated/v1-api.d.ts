@@ -232,12 +232,8 @@ export interface components {
         };
         V1PackageRecommendationBody: {
             destination?: string;
-            /** @example 2026-09-01 */
             date_from?: string;
-            /**
-             * @default 2
-             * @example 2
-             */
+            /** @default 2 */
             pax: number;
         };
     };

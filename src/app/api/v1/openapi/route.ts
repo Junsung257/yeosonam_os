@@ -1,11 +1,11 @@
 import { apiResponse } from '@/lib/api-response';
-import { createV1OpenApiDocument } from '@/lib/api-contracts/v1';
+import document from '../../../../../docs/api/v1-openapi.json';
 
 export const dynamic = 'force-static';
 export const revalidate = 3_600;
 
 export async function GET() {
-  return apiResponse(createV1OpenApiDocument(), {
+  return apiResponse(document, {
     cacheSeconds: 3_600,
     headers: {
       'Access-Control-Allow-Origin': '*',
