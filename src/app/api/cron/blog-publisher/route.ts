@@ -1140,6 +1140,41 @@ function applyInformationalAnswerFirstRepair(
   return ['added_source_neutral_weather_answer_signal'];
 }
 
+/**
+ * The weather intent contract requires a usable clothing/preparation block.
+ * When a grounded rewrite removes that block, restore only generic reader
+ * actions; no destination-specific fact is synthesized here.
+ */
+function applyInformationalWeatherCoverageRepair(
+  generated: GeneratedBlog,
+  item: any,
+): string[] {
+  if (item.product_id) return [];
+  const context = `${item.topic || ''} ${item.category || ''} ${generated.seo_title || ''}`;
+  if (!/(날씨|옷차림|준비물|체크리스트|강수|우기|건기)/i.test(context)) return [];
+  if (/(옷차림|겉옷|우산|방수|신발|준비물|챙기)/i.test(generated.blog_html)) return [];
+
+  const block = [
+    '## 옷차림과 준비물 기준',
+    '',
+    '옷차림은 통풍이 되는 옷을 기본으로 정하고, 비와 실내 환경에 대비할 얇은 겉옷 또는 방수용 겉옷을 선택하세요. 물놀이를 일정에 넣었다면 젖은 물건을 담을 봉투와 여벌 옷을 준비하세요.',
+  ].join('\n');
+  const promptMarker = /\n\n<!-- prompt_version:/i;
+  const markerIndex = generated.blog_html.search(promptMarker);
+  generated.blog_html = markerIndex >= 0
+    ? `${generated.blog_html.slice(0, markerIndex)}\n\n${block}${generated.blog_html.slice(markerIndex)}`
+    : `${generated.blog_html.trim()}\n\n${block}`;
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    weather_coverage_repair_v4: {
+      applied: true,
+      changes: ['restored_source_neutral_clothing_preparation_block'],
+      applied_at: new Date().toISOString(),
+    },
+  };
+  return ['restored_source_neutral_clothing_preparation_block'];
+}
+
 function buildDeterministicInfoFallbackMarkdown(item: any, primaryKeyword?: string | null): string {
   const keyword = String(primaryKeyword || item.primary_keyword || item.topic || item.destination || '여행 준비');
   const destination = item.destination || extractDestination(String(item.topic || keyword)) || keyword.split(/\s+/)[0] || '여행지';
@@ -3150,6 +3185,10 @@ async function processQueueItem(
     );
     if (answerFirstRepairChanges.length > 0) {
       console.log(`[blog-publisher] informational answer-first repair: ${answerFirstRepairChanges.join(', ')}`);
+    }
+    const weatherCoverageRepairChanges = applyInformationalWeatherCoverageRepair(generated, item);
+    if (weatherCoverageRepairChanges.length > 0) {
+      console.log(`[blog-publisher] informational weather coverage repair: ${weatherCoverageRepairChanges.join(', ')}`);
     }
 
     const applyFinalResearchStructureRepair = (): void => {

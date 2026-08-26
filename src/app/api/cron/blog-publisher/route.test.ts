@@ -558,4 +558,13 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('publish_quality_legacy_diagnostic: publishQuality.blogQualityScore.score');
     expect(source).toContain('getBlogPublishDecisionScore(publishQuality)');
   });
+
+  it('keeps grounded weather rewrites answer-first and complete for clothing coverage', () => {
+    const source = routeSource();
+
+    expect(source).toContain('applyInformationalAnswerFirstRepair');
+    expect(source).toContain('applyInformationalWeatherCoverageRepair');
+    expect(source).toContain('restored_source_neutral_clothing_preparation_block');
+    expect(source).toContain('added_source_neutral_weather_answer_signal');
+  });
 });
